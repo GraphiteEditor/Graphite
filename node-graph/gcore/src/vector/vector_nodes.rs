@@ -3,7 +3,7 @@ use super::algorithms::offset_subpath::offset_subpath;
 use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
-use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
+use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataExt, VectorDataTable};
 use crate::instances::{Instance, InstanceMut, Instances};
 use crate::raster_types::{CPU, GPU, RasterDataTable};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};

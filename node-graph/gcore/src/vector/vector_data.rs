@@ -186,11 +186,6 @@ impl VectorData {
 		self.point_domain.push(id, point.position);
 	}
 
-	/// Appends a Kurbo BezPath to the vector data.
-	pub fn append_bezpath(&mut self, bezpath: kurbo::BezPath) {
-		AppendBezpath::append_bezpath(self, bezpath);
-	}
-
 	/// Construct some new vector data from a single subpath with an identity transform and black fill.
 	pub fn from_subpath(subpath: impl Borrow<bezier_rs::Subpath<PointId>>) -> Self {
 		Self::from_subpaths([subpath], false)
