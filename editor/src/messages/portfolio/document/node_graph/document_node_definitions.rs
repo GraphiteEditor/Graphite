@@ -316,7 +316,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Layer".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(1, -3)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -3)),
 										..Default::default()
 									},
 									..Default::default()
@@ -333,7 +333,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("The Merge node combines graphical data through composition."),
+			description: Cow::Borrowed("Merge attaches a layer to the stack's group."),
 			properties: None,
 		},
 		DocumentNodeDefinition {
@@ -429,7 +429,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "To Artboard".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-10, -3)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
 										..Default::default()
 									},
 									..Default::default()
@@ -437,7 +437,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Monitor".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-2, -3)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -3)),
 										..Default::default()
 									},
 									..Default::default()
@@ -445,7 +445,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Append Artboards".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(6, -4)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -4)),
 										..Default::default()
 									},
 									..Default::default()

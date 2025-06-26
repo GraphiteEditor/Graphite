@@ -1076,7 +1076,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 
 					if reference == "Sample Points" && inputs_count == 5 {
-						// TODO: Rename to "Sample Polyline", also remove segment generation from "Scatter Points"
 						let node_definition = resolve_document_node_type("Sample Polyline").unwrap();
 						let new_node_template = node_definition.default_node_template();
 						let document_node = new_node_template.document_node;
@@ -1096,7 +1095,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
 						document.network_interface.set_input(&InputConnector::node(*node_id, 6), old_inputs[4].clone(), network_path);
 
-						// TODO: Rename to "Sample Polyline", also remove segment generation from "Scatter Points"
 						document.network_interface.replace_reference_name(node_id, network_path, "Sample Polyline".to_string());
 					}
 				}

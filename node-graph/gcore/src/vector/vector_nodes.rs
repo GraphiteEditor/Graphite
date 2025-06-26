@@ -9,7 +9,7 @@ use crate::raster_types::{CPU, GPU, RasterDataTable};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform};
-use crate::vector::misc::{MergeByDistanceAlgorithm, PointSpacingType, dvec2_to_point};
+use crate::vector::misc::{MergeByDistanceAlgorithm, PointSpacingType};
 use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, PointDomain, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
@@ -1413,7 +1413,6 @@ async fn poisson_disk_points(
 			.stroke_bezpath_iter()
 			.map(|mut bezpath| {
 				// TODO: apply transform to points instead of modifying the paths
-				bezpath.apply_affine(Affine::new(vector_data_instance.transform.to_cols_array()));
 				bezpath.close_path();
 				let bbox = bezpath.bounding_box();
 				(bezpath, bbox)
@@ -1425,16 +1424,9 @@ async fn poisson_disk_points(
 				continue;
 			}
 
-			let mut poisson_disk_bezpath = BezPath::new();
-
 			for point in bezpath_algorithms::poisson_disk_points(i, &path_with_bounding_boxes, separation_disk_diameter, || rng.random::<f64>()) {
-				if poisson_disk_bezpath.elements().is_empty() {
-					poisson_disk_bezpath.move_to(dvec2_to_point(point));
-				} else {
-					poisson_disk_bezpath.line_to(dvec2_to_point(point));
-				}
+				result.point_domain.push(PointId::generate(), point);
 			}
-			result.append_bezpath(poisson_disk_bezpath);
 		}
 
 		// Transfer the style from the input vector data to the result.
