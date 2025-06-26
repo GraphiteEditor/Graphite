@@ -1481,7 +1481,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							},
 							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::network(concrete!(graphene_std::vector::VectorTableModification), 1)],
+								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::network(concrete!(graphene_std::vector::VectorDataInstancesModification), 1)],
 								manual_composition: Some(generic!(T)),
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::vector_data::modification::PathModifyNode")),
 								..Default::default()
@@ -1495,7 +1495,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::VectorData(VectorDataTable::default()), true),
-						NodeInput::value(TaggedValue::VectorModification(Default::default()), false),
+						NodeInput::value(TaggedValue::VectorDataInstancesModification(Default::default()), false),
 					],
 					..Default::default()
 				},

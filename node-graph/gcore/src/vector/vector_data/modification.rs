@@ -418,11 +418,11 @@ impl Hash for VectorModification {
 	}
 }
 
-pub type VectorTableModification = HashMap<usize, VectorModification>;
+pub type VectorDataInstancesModification = HashMap<usize, VectorModification>;
 
 /// A node that applies a procedural modification to some [`VectorData`].
 #[node_macro::node(category(""))]
-async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: VectorTableModification) -> VectorDataTable {
+async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: VectorDataInstancesModification) -> VectorDataTable {
 	for (index, vector_data_instance) in vector_data.instance_mut_iter().enumerate() {
 		if let Some(vector_modification) = modification.get(&index) {
 			vector_modification.apply(vector_data_instance.instance);
