@@ -11,7 +11,7 @@
 
 	const editor = getContext<Editor>("editor");
 
-	let hintData: HintData = [];
+	let hintData: HintData = $state([]);
 
 	function inputKeysForPlatform(hint: HintInfo): LayoutKeysGroup[] {
 		if (platformIsMac() && hint.keyGroupsMac) return hint.keyGroupsMac;
