@@ -60,6 +60,10 @@
 		activeEntry = makeActiveEntry();
 	}
 
+	function getEntryIndex(entry: MenuListEntry): number {
+		return entries.flat().findIndex(item => item.value === entry.value);
+	}
+
 	// Called when the `activeEntry` two-way binding on this component's MenuList component is changed, or by the `selectedIndex()` watcher above (but we want to skip that case)
 	function watchActiveEntry(activeEntry: MenuListEntry) {
 		if (activeEntrySkipWatcher) {
@@ -67,12 +71,12 @@
 		} else if (activeEntry !== DASH_ENTRY) {
 			// We need to set to the initial value first to track a right history step, as if we hover in initial selection.
 			if (initialSelectedIndex !== undefined) onhoverInEntry?.(initialSelectedIndex);
-			onselectedIndex?.(entries.flat().indexOf(activeEntry));
+			onselectedIndex?.(getEntryIndex(activeEntry));
 		}
 	}
 
 	function dispatchHoverInEntry(hoveredEntry: MenuListEntry) {
-		onhoverInEntry?.(entries.flat().indexOf(hoveredEntry));
+		onhoverInEntry?.(getEntryIndex(hoveredEntry));
 	}
 
 	function dispatchHoverOutEntry() {
