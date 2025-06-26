@@ -1,4 +1,4 @@
-use super::algorithms::bezpath_algorithms::{self, position_on_bezpath, sample_points_on_bezpath, split_bezpath, tangent_on_bezpath};
+use super::algorithms::bezpath_algorithms::{self, position_on_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
 use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use super::misc::{CentroidType, point_to_dvec2};
@@ -9,7 +9,7 @@ use crate::raster_types::{CPU, GPU, RasterDataTable};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform};
-use crate::vector::misc::{MergeByDistanceAlgorithm, dvec2_to_point};
+use crate::vector::misc::{MergeByDistanceAlgorithm, PointSpacingType, dvec2_to_point};
 use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, PointDomain, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
@@ -1141,11 +1141,19 @@ where
 	output_table
 }
 
+/// Convert vector geometry into a polyline composed of evenly spaced points.
 #[node_macro::node(category(""), path(graphene_core::vector))]
-async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, start_offset: f64, stop_offset: f64, adaptive_spacing: bool, subpath_segment_lengths: Vec<f64>) -> VectorDataTable {
-	// Limit the smallest spacing to something sensible to avoid freezing the application.
-	let spacing = spacing.max(0.01);
-
+async fn sample_polyline(
+	_: impl Ctx,
+	vector_data: VectorDataTable,
+	spacing: PointSpacingType,
+	separation: f64,
+	quantity: f64,
+	start_offset: f64,
+	stop_offset: f64,
+	adaptive_spacing: bool,
+	subpath_segment_lengths: Vec<f64>,
+) -> VectorDataTable {
 	let mut result_table = VectorDataTable::default();
 
 	for mut vector_data_instance in vector_data.instance_iter() {
@@ -1180,7 +1188,11 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 			// Increment the segment index by the number of segments in the current bezpath to calculate the next bezpath segment's length.
 			next_segment_index += segment_count;
 
-			let Some(mut sample_bezpath) = sample_points_on_bezpath(bezpath, spacing, start_offset, stop_offset, adaptive_spacing, current_bezpath_segments_length) else {
+			let amount = match spacing {
+				PointSpacingType::Separation => separation,
+				PointSpacingType::Quantity => quantity,
+			};
+			let Some(mut sample_bezpath) = sample_polyline_on_bezpath(bezpath, spacing, amount, start_offset, stop_offset, adaptive_spacing, current_bezpath_segments_length) else {
 				continue;
 			};
 
@@ -2073,41 +2085,41 @@ mod test {
 		}
 	}
 	#[tokio::test]
-	async fn sample_points() {
+	async fn sample_polyline() {
 		let path = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
-		let sample_points = super::sample_points(Footprint::default(), vector_node(path), 30., 0., 0., false, vec![100.]).await;
-		let sample_points = sample_points.instance_ref_iter().next().unwrap().instance;
-		assert_eq!(sample_points.point_domain.positions().len(), 4);
-		for (pos, expected) in sample_points.point_domain.positions().iter().zip([DVec2::X * 0., DVec2::X * 30., DVec2::X * 60., DVec2::X * 90.]) {
+		let sample_polyline = super::sample_polyline(Footprint::default(), vector_node(path), PointSpacingType::Separation, 30., 0., 0., 0., false, vec![100.]).await;
+		let sample_polyline = sample_polyline.instance_ref_iter().next().unwrap().instance;
+		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
+		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 0., DVec2::X * 30., DVec2::X * 60., DVec2::X * 90.]) {
 			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
 		}
 	}
 	#[tokio::test]
-	async fn adaptive_spacing() {
+	async fn sample_polyline_adaptive_spacing() {
 		let path = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
-		let sample_points = super::sample_points(Footprint::default(), vector_node(path), 18., 45., 10., true, vec![100.]).await;
-		let sample_points = sample_points.instance_ref_iter().next().unwrap().instance;
-		assert_eq!(sample_points.point_domain.positions().len(), 4);
-		for (pos, expected) in sample_points.point_domain.positions().iter().zip([DVec2::X * 45., DVec2::X * 60., DVec2::X * 75., DVec2::X * 90.]) {
+		let sample_polyline = super::sample_polyline(Footprint::default(), vector_node(path), PointSpacingType::Separation, 18., 0., 45., 10., true, vec![100.]).await;
+		let sample_polyline = sample_polyline.instance_ref_iter().next().unwrap().instance;
+		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
+		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 45., DVec2::X * 60., DVec2::X * 75., DVec2::X * 90.]) {
 			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
 		}
 	}
 	#[tokio::test]
 	async fn poisson() {
-		let sample_points = super::poisson_disk_points(
+		let poisson_points = super::poisson_disk_points(
 			Footprint::default(),
 			vector_node(Subpath::new_ellipse(DVec2::NEG_ONE * 50., DVec2::ONE * 50.)),
 			10. * std::f64::consts::SQRT_2,
 			0,
 		)
 		.await;
-		let sample_points = sample_points.instance_ref_iter().next().unwrap().instance;
+		let poisson_points = poisson_points.instance_ref_iter().next().unwrap().instance;
 		assert!(
-			(20..=40).contains(&sample_points.point_domain.positions().len()),
+			(20..=40).contains(&poisson_points.point_domain.positions().len()),
 			"actual len {}",
-			sample_points.point_domain.positions().len()
+			poisson_points.point_domain.positions().len()
 		);
-		for point in sample_points.point_domain.positions() {
+		for point in poisson_points.point_domain.positions() {
 			assert!(point.length() < 50. + 1., "Expected point in circle {point}")
 		}
 	}
@@ -2126,8 +2138,8 @@ mod test {
 
 		let length = super::path_length(Footprint::default(), vector_node_from_instances(instances)).await;
 
-		// 4040 equals 101 * 4 (rectangle perimeter) * 2 (scale) * 5 (number of rows)
-		assert_eq!(length, 4040.);
+		// 101 (each rectangle edge length) * 4 (rectangle perimeter) * 2 (scale) * 5 (number of rows)
+		assert_eq!(length, 101. * 4. * 2. * 5.);
 	}
 	#[tokio::test]
 	async fn spline() {
@@ -2140,10 +2152,10 @@ mod test {
 	async fn morph() {
 		let source = Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.);
 		let target = Subpath::new_ellipse(DVec2::NEG_ONE * 100., DVec2::ZERO);
-		let sample_points = super::morph(Footprint::default(), vector_node(source), vector_node(target), 0.5).await;
-		let sample_points = sample_points.instance_ref_iter().next().unwrap().instance;
+		let morphed = super::morph(Footprint::default(), vector_node(source), vector_node(target), 0.5).await;
+		let morphed = morphed.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(
-			&sample_points.point_domain.positions()[..4],
+			&morphed.point_domain.positions()[..4],
 			vec![DVec2::new(-25., -50.), DVec2::new(50., -25.), DVec2::new(25., 50.), DVec2::new(-50., 25.)]
 		);
 	}
