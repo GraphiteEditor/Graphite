@@ -17,7 +17,7 @@
 	import { getContext, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { type LayoutKeysGroup, type Key } from "@graphite/messages";
+	import { type LayoutKeysGroup, type Key } from "@graphite/messages.svelte";
 	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
 
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
@@ -167,7 +167,7 @@
 							<tbody>
 								<tr>
 									<td>
-										<TextButton label="New Document" icon="File" flush={true} action={() => editor.handle.newDocumentDialog()} />
+										<TextButton label="New Document" icon="File" flush={true} onclick={() => editor.handle.newDocumentDialog()} />
 									</td>
 									<td>
 										<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
@@ -175,7 +175,7 @@
 								</tr>
 								<tr>
 									<td>
-										<TextButton label="Open Document" icon="Folder" flush={true} action={() => editor.handle.openDocument()} />
+										<TextButton label="Open Document" icon="Folder" flush={true} onclick={() => editor.handle.openDocument()} />
 									</td>
 									<td>
 										<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
@@ -183,12 +183,12 @@
 								</tr>
 								<tr>
 									<td colspan="2">
-										<TextButton label="Open Demo Artwork" icon="Image" flush={true} action={() => editor.handle.demoArtworkDialog()} />
+										<TextButton label="Open Demo Artwork" icon="Image" flush={true} onclick={() => editor.handle.demoArtworkDialog()} />
 									</td>
 								</tr>
 								<tr>
 									<td colspan="2">
-										<TextButton label="Support the Development Fund" icon="Heart" flush={true} action={() => editor.handle.visitUrl("https://graphite.rs/donate/")} />
+										<TextButton label="Support the Development Fund" icon="Heart" flush={true} onclick={() => editor.handle.visitUrl("https://graphite.rs/donate/")} />
 									</td>
 								</tr>
 							</tbody>

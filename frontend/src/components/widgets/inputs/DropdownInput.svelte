@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { MenuListEntry } from "@graphite/messages";
+	import type { MenuListEntry } from "@graphite/messages.svelte";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
