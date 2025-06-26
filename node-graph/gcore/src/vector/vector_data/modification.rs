@@ -645,6 +645,22 @@ impl VectorDataExt for VectorData {
 	}
 }
 
+pub trait HandleExt {
+	/// Set the handle's position relative to the anchor which is the start anchor for the primary handle and end anchor for the end handle.
+	#[must_use]
+	fn set_relative_position(self, relative_position: DVec2) -> VectorModificationType;
+}
+
+impl HandleExt for HandleId {
+	fn set_relative_position(self, relative_position: DVec2) -> VectorModificationType {
+		let Self { ty, segment } = self;
+		match ty {
+			HandleType::Primary => VectorModificationType::SetPrimaryHandle { segment, relative_position },
+			HandleType::End => VectorModificationType::SetEndHandle { segment, relative_position },
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

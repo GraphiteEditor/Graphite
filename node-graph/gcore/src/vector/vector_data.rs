@@ -632,16 +632,6 @@ impl HandleId {
 		handle_position.map(|pos| (pos - anchor_position).length()).unwrap_or(f64::MAX)
 	}
 
-	/// Set the handle's position relative to the anchor which is the start anchor for the primary handle and end anchor for the end handle.
-	#[must_use]
-	pub fn set_relative_position(self, relative_position: DVec2) -> VectorModificationType {
-		let Self { ty, segment } = self;
-		match ty {
-			HandleType::Primary => VectorModificationType::SetPrimaryHandle { segment, relative_position },
-			HandleType::End => VectorModificationType::SetEndHandle { segment, relative_position },
-		}
-	}
-
 	/// Convert an end handle to the primary handle and a primary handle to an end handle. Note that the new handle may not exist (e.g. for a quadratic bézier).
 	#[must_use]
 	pub fn opposite(self) -> Self {

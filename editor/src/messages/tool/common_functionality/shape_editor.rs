@@ -12,7 +12,7 @@ use crate::messages::tool::common_functionality::utility_functions::is_visible_p
 use crate::messages::tool::tool_messages::path_tool::{PathOverlayMode, PointSelectState};
 use bezier_rs::{Bezier, BezierHandles, Subpath, TValue};
 use glam::{DAffine2, DVec2};
-use graphene_std::vector::{HandleId, SegmentId};
+use graphene_std::vector::{HandleExt, HandleId, SegmentId};
 use graphene_std::vector::{ManipulatorPointId, PointId, VectorData, VectorModificationType};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
