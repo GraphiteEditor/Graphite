@@ -32,6 +32,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		into_node!(from: RasterDataTable<CPU>, to: RasterDataTable<CPU>),
 		// into_node!(from: RasterDataTable<CPU>, to: RasterDataTable<SRGBA8>),
 		into_node!(from: RasterDataTable<CPU>, to: GraphicElement),
+		into_node!(from: RasterDataTable<GPU>, to: GraphicElement),
 		into_node!(from: RasterDataTable<CPU>, to: GraphicGroupTable),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => RasterDataTable<CPU>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ImageTexture]),

@@ -8,6 +8,9 @@ use graphene_std::*;
 use std::collections::{HashMap, HashSet};
 
 pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<String, DocumentNode>) {
+	if network.generated {
+		return;
+	}
 	for node in network.nodes.values_mut() {
 		match &mut node.implementation {
 			DocumentNodeImplementation::Network(node_network) => expand_network(node_network, substitutions),
