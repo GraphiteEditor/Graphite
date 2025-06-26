@@ -1,4 +1,7 @@
 <script lang="ts">
+	import WidgetSection from './WidgetSection.svelte';
+	import { stopPropagation } from 'svelte/legacy';
+
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
@@ -9,23 +12,33 @@
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 
-	export let widgetData: WidgetSectionFromJsMessages;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	export let layoutTarget: any; // TODO: Give type
+	
 
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
+	
+	interface Props {
+		widgetData: WidgetSectionFromJsMessages;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		layoutTarget: any; // TODO: Give type
+		class?: string;
+		classes?: Record<string, boolean>;
+	}
 
-	let expanded = true;
+	let {
+		widgetData,
+		layoutTarget,
+		class: className = "",
+		classes = {}
+	}: Props = $props();
+
+	let expanded = $state(true);
 
 	const editor = getContext<Editor>("editor");
 </script>
 
 <!-- TODO: Implement collapsable sections with properties system -->
 <LayoutCol class={`widget-section ${className}`.trim()} {classes}>
-	<button class="header" class:expanded on:click|stopPropagation={() => (expanded = !expanded)} tabindex="0">
-		<div class="expand-arrow" />
+	<button class="header" class:expanded onclick={stopPropagation(() => (expanded = !expanded))} tabindex="0">
+		<div class="expand-arrow"></div>
 		<TextLabel tooltip={widgetData.description} bold={true}>{widgetData.name}</TextLabel>
 		<IconButton
 			icon={widgetData.pinned ? "PinActive" : "PinInactive"}
@@ -67,7 +80,7 @@
 				{:else if isWidgetSpanColumn(layoutGroup)}
 					<TextLabel styles={{ color: "#d6536e" }}>Error: The WidgetSpan used here should be a row not a column</TextLabel>
 				{:else if isWidgetSection(layoutGroup)}
-					<svelte:self widgetData={layoutGroup} {layoutTarget} />
+					<WidgetSection widgetData={layoutGroup} {layoutTarget} />
 				{:else}
 					<TextLabel styles={{ color: "#d6536e" }}>Error: The widget that belongs here has an invalid layout group type</TextLabel>
 				{/if}
