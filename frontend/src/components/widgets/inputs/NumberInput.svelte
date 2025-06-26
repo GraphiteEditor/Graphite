@@ -1,7 +1,4 @@
 <script lang="ts">
-	import { createBubbler, preventDefault } from 'svelte/legacy';
-
-	const bubble = createBubbler();
 	import { onMount } from "svelte";
 
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
@@ -10,6 +7,7 @@
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
+	import type { MouseEventHandler } from 'svelte/elements';
 
 	const BUTTONS_LEFT = 0b0000_0001;
 	const BUTTONS_RIGHT = 0b0000_0010;
@@ -56,6 +54,7 @@
 		incrementCallbackDecrease?: (() => void) | undefined;
 		onvalue?: (value: number | undefined) => void;
 		onstartHistoryTransaction?: () => void;
+		oncontextmenu?: MouseEventHandler<HTMLInputElement>
 	}
 
 	let {
@@ -80,6 +79,7 @@
 		incrementCallbackDecrease = undefined,
 		onvalue,
 		onstartHistoryTransaction,
+		oncontextmenu,
 	}: Props = $props();
 
 	let self: FieldInput | undefined = $state();
@@ -708,13 +708,16 @@
 				class="slider"
 				class:hidden={rangeSliderClickDragState === "Deciding"}
 				{disabled}
-				min={rangeMin}
+				min={rangeMin}	
 				max={rangeMax}
 				step={sliderStepValue}
 				bind:value={rangeSliderValue}
 				oninput={onSliderInput}
 				onpointerup={onSliderPointerUp}
-				oncontextmenu={preventDefault(bubble('contextmenu'))}
+				oncontextmenu={(event) => {
+					event.preventDefault();
+					oncontextmenu?.(event);
+				}}
 				onwheel={(e) => /* Stops slider eating the scroll event in Firefox */ e.target instanceof HTMLInputElement && e.target.blur()}
 				bind:this={inputRangeElement}
 			/>
