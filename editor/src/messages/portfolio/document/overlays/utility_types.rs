@@ -1,7 +1,7 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER,
-	COMPASS_ROSE_RING_INNER_DIAMETER, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
+	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER,
+	COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
 use bezier_rs::{Bezier, Subpath};
@@ -548,6 +548,12 @@ impl OverlayContext {
 		self.render_context.set_line_cap("butt");
 
 		self.end_dpi_aware_transform();
+	}
+
+	pub fn arc_sweep_angle(&mut self, offset_angle: f64, angle: f64, end_point_position: DVec2, radius: f64, pivot: DVec2, text: &str, transform: DAffine2) {
+		self.manipulator_handle(end_point_position, true, Some(COLOR_OVERLAY_RED));
+		self.draw_angle(pivot, radius, ARC_SWEEP_GIZMO_RADIUS, offset_angle, angle.to_radians());
+		self.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 	}
 
 	/// Used by the Pen and Path tools to outline the path of the shape.
