@@ -1003,6 +1003,7 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					tool_data.layers_dragging = selected;
+					debug!("done");
 					if tool_data.dot_type.is_pivot() && !tool_data.layers_dragging.is_empty() {
 						responses.add(SelectToolMessage::SetPivot {
 							position: tool_data.pivot.old_pivot_position,

@@ -1737,6 +1737,14 @@ impl DocumentMessageHandler {
 			.reduce(graphene_std::renderer::Quad::combine_bounds)
 	}
 
+	pub fn selected_visible_and_unlock_layers_bounding_box_document(&self) -> Option<[DVec2; 2]> {
+		self.network_interface
+			.selected_nodes()
+			.selected_visible_and_unlocked_layers(&self.network_interface)
+			.map(|layer| self.metadata().nonzero_bounding_box(layer))
+			.reduce(graphene_std::renderer::Quad::combine_bounds)
+	}
+
 	pub fn document_network(&self) -> &NodeNetwork {
 		self.network_interface.document_network()
 	}
