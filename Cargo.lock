@@ -2133,6 +2133,7 @@ dependencies = [
  "graphene-application-io",
  "graphene-core",
  "graphene-path-bool",
+ "graphene-svg-renderer",
  "iai-callgrind",
  "js-sys",
  "log",
@@ -2210,8 +2211,6 @@ dependencies = [
  "specta",
  "tinyvec",
  "tokio",
- "usvg",
- "vello",
  "wgpu",
 ]
 
@@ -2244,6 +2243,7 @@ dependencies = [
  "graphene-application-io",
  "graphene-core",
  "graphene-path-bool",
+ "graphene-svg-renderer",
  "image",
  "log",
  "ndarray",
@@ -2257,6 +2257,22 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "wgpu-executor",
+]
+
+[[package]]
+name = "graphene-svg-renderer"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "bezier-rs",
+ "dyn-any",
+ "glam",
+ "graphene-core",
+ "log",
+ "num-traits",
+ "serde",
+ "usvg",
+ "vello",
 ]
 
 [[package]]
@@ -7427,6 +7443,7 @@ dependencies = [
  "glam",
  "graphene-application-io",
  "graphene-core",
+ "graphene-svg-renderer",
  "node-macro",
  "vello",
  "web-sys",

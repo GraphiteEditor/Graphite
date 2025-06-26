@@ -1,5 +1,5 @@
 use crate::math::math_ext::QuadExt;
-use crate::renderer::Quad;
+use crate::math::quad::Quad;
 use crate::vector::PointId;
 use bezier_rs::Subpath;
 use glam::{DAffine2, DMat2, DVec2};
