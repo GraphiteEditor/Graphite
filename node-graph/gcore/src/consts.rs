@@ -1,4 +1,4 @@
-use crate::raster::Color;
+use crate::color::Color;
 
 // RENDERING
 pub const LAYER_OUTLINE_STROKE_COLOR: Color = Color::BLACK;

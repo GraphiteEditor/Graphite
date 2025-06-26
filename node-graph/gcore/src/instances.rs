@@ -1,4 +1,4 @@
-use crate::AlphaBlending;
+use crate::blending::AlphaBlending;
 use crate::uuid::NodeId;
 use dyn_any::StaticType;
 use glam::DAffine2;

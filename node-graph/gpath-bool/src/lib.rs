@@ -1,15 +1,13 @@
 use bezier_rs::{ManipulatorGroup, Subpath};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
+use graphene_core::context::{CloneVarArgs, Context, Ctx, ExtractAll, OwnedContextImpl};
 use graphene_core::instances::{Instance, InstanceRef};
-use graphene_core::vector::algorithms::merge_by_distance::MergeByDistanceExt;
-use graphene_core::vector::style::Fill;
-use graphene_core::vector::{PointId, VectorData, VectorDataTable};
-use graphene_core::{Color, Ctx, GraphicElement, GraphicGroupTable};
-pub use path_bool as path_bool_lib;
+use graphene_element::{GraphicElement, GraphicGroupTable};
+use graphene_vector::style::Fill;
+use graphene_vector::{PointId, VectorData, VectorDataTable};
 use path_bool::{FillRule, PathBooleanOperation};
 use std::ops::Mul;
-
 // TODO: Fix boolean ops to work by removing .transform() and .one_instnace_*() calls,
 // TODO: since before we used a Vec of single-row tables and now we use a single table
 // TODO: with multiple rows while still assuming a single row for the boolean operations.

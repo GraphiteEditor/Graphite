@@ -7,14 +7,22 @@ members = [
 	"node-graph/gapplication-io",
 	"node-graph/gbrush",
 	"node-graph/gcore",
-	"node-graph/gstd",
+	"node-graph/gelement",
+	"node-graph/gelement-nodes",
+    "node-graph/gmath-nodes",
+	"node-graph/gpath-bool",
 	"node-graph/gelement-nodes",
 	"node-graph/gmath-nodes",
 	"node-graph/gpath-bool",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
+	"node-graph/graster",
 	"node-graph/graster-nodes",
+	"node-graph/gstd",
 	"node-graph/gsvg-renderer",
+	"node-graph/gtext",
+	"node-graph/gvector",
+    "node-graph/gvector-nodes",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
@@ -29,14 +37,22 @@ default-members = [
 	"frontend/wasm",
 	"node-graph/gbrush",
 	"node-graph/gcore",
-	"node-graph/gstd",
+	"node-graph/gelement",
+	"node-graph/gelement-nodes",
+    "node-graph/gmath-nodes",
+	"node-graph/gpath-bool",
 	"node-graph/gelement-nodes",
 	"node-graph/gmath-nodes",
 	"node-graph/gpath-bool",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
+	"node-graph/graster",
 	"node-graph/graster-nodes",
+	"node-graph/gstd",
 	"node-graph/gsvg-renderer",
+	"node-graph/gtext",
+	"node-graph/gvector",
+    "node-graph/gvector-nodes",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 ]
@@ -52,13 +68,18 @@ path-bool = { path = "libraries/path-bool" }
 graphene-application-io = { path = "node-graph/gapplication-io" }
 graphene-brush = { path = "node-graph/gbrush" }
 graphene-core = { path = "node-graph/gcore" }
+graphene-element = { path = "node-graph/gelement" }
 graphene-element-nodes = { path = "node-graph/gelement-nodes" }
 graphene-math-nodes = { path = "node-graph/gmath-nodes" }
 graphene-path-bool = { path = "node-graph/gpath-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
+graphene-raster = { path = "node-graph/graster" }
 graphene-raster-nodes = { path = "node-graph/graster-nodes" }
 graphene-std = { path = "node-graph/gstd" }
 graphene-svg-renderer = { path = "node-graph/gsvg-renderer" }
+graphene-text = { path = "node-graph/gtext" }
+graphene-vector = { path = "node-graph/gvector" }
+graphene-vector-nodes = { path = "node-graph/gvector-nodes" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
 node-macro = { path = "node-graph/node-macro" }
 wgpu-executor = { path = "node-graph/wgpu-executor" }

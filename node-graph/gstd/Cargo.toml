@@ -32,9 +32,14 @@ graphene-path-bool = { workspace = true }
 graphene-math-nodes = { workspace = true }
 graphene-svg-renderer = { workspace = true }
 graphene-application-io = { workspace = true }
+graphene-element = { workspace = true }
 graphene-element-nodes = { workspace = true }
+graphene-raster = { workspace = true }
 graphene-raster-nodes = { workspace = true }
+graphene-vector = { workspace = true }
+graphene-vector-nodes = { workspace = true }
 graphene-brush = { workspace = true }
+graphene-text = { workspace = true }
 
 # Workspace dependencies
 fastnoise-lite = { workspace = true }
@@ -65,9 +70,6 @@ web-sys = { workspace = true, optional = true, features = [
 	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
 ] }
-
-# Required dependencies
-ndarray = "0.16.1"
 
 [dev-dependencies]
 tokio = { workspace = true }

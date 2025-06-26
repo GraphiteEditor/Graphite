@@ -1,7 +1,7 @@
 use graphene_core::context::Ctx;
-use graphene_core::raster::image::Image;
-use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::registry::types::Percentage;
+use graphene_raster::image::Image;
+use graphene_raster::{CPU, Raster, RasterDataTable};
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use std::cmp::{max, min};

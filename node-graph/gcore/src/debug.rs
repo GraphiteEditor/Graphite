@@ -1,5 +1,5 @@
-use crate::raster_types::{CPU, RasterDataTable};
-use crate::{Color, Ctx};
+use crate::color::Color;
+use crate::context::Ctx;
 
 /// Meant for debugging purposes, not general use. Returns the size of the input type in bytes.
 #[node_macro::node(category("Debug"))]
@@ -19,8 +19,4 @@ fn unwrap<T: Default>(_: impl Ctx, #[implementations(Option<f64>, Option<f32>, O
 	input.unwrap_or_default()
 }
 
-/// Meant for debugging purposes, not general use. Clones the input value.
-#[node_macro::node(category("Debug"))]
-fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&RasterDataTable<CPU>)] value: &'i T) -> T {
-	value.clone()
-}
+// FIXME am I allowed to just remove clone?

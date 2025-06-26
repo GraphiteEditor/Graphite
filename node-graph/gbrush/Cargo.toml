@@ -14,11 +14,16 @@ serde = ["dep:serde"]
 # Local dependencies
 dyn-any = { workspace = true }
 graphene-core = { workspace = true }
+graphene-vector = { workspace = true }
+graphene-raster = { workspace = true }
+graphene-element = { workspace = true }
 graphene-raster-nodes = { workspace = true }
+graphene-svg-renderer = { workspace = true }
 node-macro = { workspace = true }
 
 # Workspace dependencies
 glam = { workspace = true }
+specta = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true, features = ["derive"] }
@@ -26,3 +31,4 @@ serde = { workspace = true, optional = true, features = ["derive"] }
 [dev-dependencies]
 # Workspace dependencies
 tokio = { workspace = true }
+serde_json = { workspace = true }

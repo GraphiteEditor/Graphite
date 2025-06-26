@@ -2,22 +2,21 @@ use dyn_any::StaticType;
 use glam::{DVec2, IVec2, UVec2};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
-use graphene_core::raster::color::Color;
-use graphene_core::raster::*;
-use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
-use graphene_core::vector::VectorDataTable;
-use graphene_core::{Artboard, GraphicGroupTable, concrete, generic};
-use graphene_core::{Cow, ProtoNodeIdentifier, Type};
-use graphene_core::{NodeIO, NodeIOTypes};
-use graphene_core::{fn_type_fut, future};
-use graphene_std::Context;
-use graphene_std::GraphicElement;
 #[cfg(feature = "gpu")]
 use graphene_std::any::DowncastBothNode;
 use graphene_std::any::{ComposeTypeErased, DynAnyNode, IntoTypeErasedNode};
 use graphene_std::application_io::{ImageTexture, SurfaceFrame};
+use graphene_std::color::Color;
+use graphene_std::context::Context;
+use graphene_std::element::{Artboard, GraphicElement, GraphicGroupTable};
+use graphene_std::raster::*;
+use graphene_std::vector::VectorDataTable;
 #[cfg(feature = "gpu")]
 use graphene_std::wasm_application_io::{WasmEditorApi, WasmSurfaceHandle};
+use graphene_std::{Cow, ProtoNodeIdentifier, Type};
+use graphene_std::{NodeIO, NodeIOTypes};
+use graphene_std::{concrete, generic};
+use graphene_std::{fn_type_fut, future};
 use node_registry_macros::{async_node, convert_node, into_node};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -73,7 +72,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Vec<graphene_core::uuid::NodeId>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Color]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Box<graphene_core::vector::VectorModification>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::CentroidType]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::std_nodes::misc::CentroidType]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::PointSpacingType]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Image<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => VectorDataTable]),

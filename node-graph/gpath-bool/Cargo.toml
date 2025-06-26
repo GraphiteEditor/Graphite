@@ -11,6 +11,8 @@ license = "MIT OR Apache-2.0"
 dyn-any = { workspace = true }
 bezier-rs = { workspace = true }
 graphene-core = { workspace = true }
+graphene-vector = { workspace = true }
+graphene-element = { workspace = true }
 node-macro = { workspace = true }
 glam = { workspace = true }
 specta = { workspace = true }

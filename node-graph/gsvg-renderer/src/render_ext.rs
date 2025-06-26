@@ -3,8 +3,8 @@ use glam::{DAffine2, DVec2};
 use graphene_core::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 use graphene_core::gradient::{Gradient, GradientType};
 use graphene_core::uuid::generate_uuid;
-use graphene_core::vector::style::{Fill, PaintOrder, PathStyle, Stroke, StrokeAlign, StrokeCap, StrokeJoin, ViewMode};
-use std::fmt::Write;
+use graphene_core::view_mode::ViewMode;
+use graphene_vector::style::{Fill, PaintOrder, PathStyle, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 
 pub trait RenderExt {
 	type Output;

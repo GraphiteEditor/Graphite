@@ -1,4 +1,4 @@
-use crate::Color;
+use crate::color::Color;
 use glam::{DAffine2, DVec2};
 
 pub trait BoundingBox {

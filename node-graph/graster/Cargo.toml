@@ -1,0 +1,32 @@
+[package]
+name = "graphene-raster"
+version = "0.1.0"
+edition = "2024"
+description = "graphene raster data format"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["serde"]
+serde = ["dep:serde"]
+wgpu = ["dep:wgpu"]
+
+[dependencies]
+# Local dependencies
+dyn-any = { workspace = true }
+graphene-core = { workspace = true }
+node-macro = { workspace = true }
+
+# Workspace dependencies
+glam = { workspace = true }
+specta = { workspace = true }
+base64 = { workspace = true }
+bytemuck = { workspace = true }
+image = { workspace = true }
+
+# Optional workspace dependencies
+serde = { workspace = true, optional = true, features = ["derive"] }
+wgpu = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

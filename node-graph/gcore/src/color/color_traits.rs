@@ -5,8 +5,6 @@ use std::fmt::Debug;
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
 
-pub use crate::blending::*;
-
 pub trait Linear {
 	fn from_f32(x: f32) -> Self;
 	fn to_f32(self) -> f32;

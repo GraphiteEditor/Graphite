@@ -1,10 +1,11 @@
 use glam::DVec2;
-use graphene_core::GraphicElement;
-use graphene_core::GraphicGroupTable;
+use graphene_core::color::Color;
 use graphene_core::context::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, OwnedContextImpl};
 use graphene_core::instances::{InstanceRef, Instances};
-use graphene_core::raster_types::{CPU, RasterDataTable};
-use graphene_core::vector::VectorDataTable;
+use graphene_element::GraphicElement;
+use graphene_element::GraphicGroupTable;
+use graphene_raster::{CPU, GPU, RasterDataTable};
+use graphene_vector::VectorDataTable;
 use log::warn;
 
 #[node_macro::node(name("Instance on Points"), category("Instancing"), path(graphene_core::vector))]
@@ -105,7 +106,7 @@ mod test {
 	use glam::DVec2;
 	use graphene_core::Node;
 	use graphene_core::extract_xy::{ExtractXyNode, XY};
-	use graphene_core::vector::VectorData;
+	use graphene_vector::VectorData;
 	use std::pin::Pin;
 
 	#[derive(Clone)]

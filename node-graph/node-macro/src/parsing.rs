@@ -643,7 +643,7 @@ impl ParsedNodeFn {
 			}));
 			self.input.ty = parse_quote!(#ident);
 			if self.input.implementations.is_empty() {
-				self.input.implementations.push(parse_quote!(gcore::Context));
+				self.input.implementations.push(parse_quote!(gcore::context::Context));
 			}
 		}
 		if self.input.pat_ident.ident == "_" {

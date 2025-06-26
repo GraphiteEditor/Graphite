@@ -27,13 +27,11 @@ rustc-hash = { workspace = true }
 dyn-any = { workspace = true }
 ctor = { workspace = true }
 rand_chacha = { workspace = true }
-bezier-rs = { workspace = true }
 specta = { workspace = true }
 rustybuzz = { workspace = true }
 image = { workspace = true }
 half = { workspace = true }
 tinyvec = { workspace = true }
-kurbo = { workspace = true }
 log = { workspace = true }
 base64 = { workspace = true }
 

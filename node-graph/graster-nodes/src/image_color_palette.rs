@@ -1,6 +1,6 @@
 use graphene_core::color::Color;
 use graphene_core::context::Ctx;
-use graphene_core::raster_types::{CPU, RasterDataTable};
+use graphene_raster::{CPU, RasterDataTable};
 
 #[node_macro::node(category("Color"))]
 async fn image_color_palette(
@@ -65,8 +65,8 @@ async fn image_color_palette(
 #[cfg(test)]
 mod test {
 	use super::*;
-	use graphene_core::raster::image::Image;
-	use graphene_core::raster_types::{Raster, RasterDataTable};
+	use graphene_raster::image::Image;
+	use graphene_raster::{Raster, RasterDataTable};
 
 	#[test]
 	fn test_image_color_palette() {

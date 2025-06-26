@@ -1,9 +1,9 @@
 use graphene_core::color::Color;
 use graphene_core::context::Ctx;
-use graphene_core::raster::image::Image;
-use graphene_core::raster::{Bitmap, BitmapMut};
-use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::registry::types::PixelLength;
+use graphene_raster::bitmap::{Bitmap, BitmapMut};
+use graphene_raster::image::Image;
+use graphene_raster::{CPU, Raster, RasterDataTable};
 
 /// Blurs the image with a Gaussian or blur kernel filter.
 #[node_macro::node(category("Raster: Filter"))]

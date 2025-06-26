@@ -2,7 +2,7 @@ mod benchmark_util;
 
 use benchmark_util::{bench_for_each_demo, setup_network};
 use criterion::{Criterion, criterion_group, criterion_main};
-use graphene_std::Context;
+use graphene_std::context::Context;
 
 fn run_once(c: &mut Criterion) {
 	let mut group = c.benchmark_group("Run Once");

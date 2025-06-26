@@ -1,10 +1,10 @@
-use graphene_core::GraphicGroupTable;
 use graphene_core::blending::BlendMode;
 use graphene_core::color::Color;
 use graphene_core::context::Ctx;
-use graphene_core::raster_types::{CPU, RasterDataTable};
 use graphene_core::registry::types::Percentage;
-use graphene_core::vector::VectorDataTable;
+use graphene_element::GraphicGroupTable;
+use graphene_raster::{CPU, RasterDataTable};
+use graphene_vector::VectorDataTable;
 
 pub(super) trait MultiplyAlpha {
 	fn multiply_alpha(&mut self, factor: f64);

@@ -8,10 +8,11 @@ use graphene_core::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, R
 use graphene_core::context::{Ctx, ExtractFootprint};
 use graphene_core::instances::Instance;
 use graphene_core::math::bbox::Bbox;
-use graphene_core::raster::image::Image;
-use graphene_core::raster::{Bitmap, BitmapMut};
-use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::transform::Transform;
+use graphene_raster::bitmap::{Bitmap, BitmapMut};
+use graphene_raster::image::Image;
+use graphene_raster::transform::FootprintExt;
+use graphene_raster::{CPU, Raster, RasterDataTable};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::fmt::Debug;

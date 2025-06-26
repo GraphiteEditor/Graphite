@@ -1,21 +1,22 @@
 use crate::brush_cache::BrushCache;
 use crate::brush_stroke::{BrushStroke, BrushStyle};
 use glam::{DAffine2, DVec2};
+use graphene_core::Node;
 use graphene_core::blending::BlendMode;
 use graphene_core::bounds::BoundingBox;
 use graphene_core::color::{Alpha, Color, Pixel, Sample};
 use graphene_core::generic::FnNode;
 use graphene_core::instances::Instance;
 use graphene_core::math::bbox::{AxisAlignedBbox, Bbox};
-use graphene_core::raster::BitmapMut;
-use graphene_core::raster::image::Image;
-use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::registry::FutureWrapperNode;
 use graphene_core::transform::Transform;
 use graphene_core::value::ClonedNode;
-use graphene_core::{Ctx, Node};
+use graphene_raster::bitmap::BitmapMut;
+use graphene_raster::image::Image;
+use graphene_raster::{CPU, Raster, RasterDataTable};
 use graphene_raster_nodes::adjustments::blend_colors;
 use graphene_raster_nodes::std_nodes::{empty_image, extend_image_to_bounds};
+use graphene_svg_renderer::renderer::GraphicElementRendered;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BrushStampGenerator<P: Pixel + Alpha> {

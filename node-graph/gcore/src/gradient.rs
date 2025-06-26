@@ -1,4 +1,4 @@
-use crate::Color;
+use crate::color::Color;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 

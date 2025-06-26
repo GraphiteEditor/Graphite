@@ -4,7 +4,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 use graph_craft::generic;
 use graph_craft::wasm_application_io::WasmEditorApi;
-use graphene_std::Context;
+use graphene_std::context::Context;
 use graphene_std::uuid::NodeId;
 use std::sync::Arc;
 

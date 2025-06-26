@@ -1,7 +1,3 @@
-use crate::Artboard;
-use crate::math::bbox::AxisAlignedBbox;
-pub use crate::vector::ReferencePoint;
-use core::f64;
 use glam::{DAffine2, DMat2, DVec2};
 
 pub trait Transform {
@@ -28,16 +24,6 @@ pub trait TransformMut: Transform {
 impl<T: Transform> Transform for &T {
 	fn transform(&self) -> DAffine2 {
 		(*self).transform()
-	}
-}
-
-// Implementations for Artboard
-impl Transform for Artboard {
-	fn transform(&self) -> DAffine2 {
-		DAffine2::from_translation(self.location.as_dvec2())
-	}
-	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
-		self.location.as_dvec2() + self.dimensions.as_dvec2() * pivot
 	}
 }
 
@@ -109,13 +95,6 @@ impl Footprint {
 		resolution: glam::UVec2::new(0, 0),
 		quality: RenderQuality::Full,
 	};
-
-	pub fn viewport_bounds_in_local_space(&self) -> AxisAlignedBbox {
-		let inverse = self.transform.inverse();
-		let start = inverse.transform_point2((0., 0.).into());
-		let end = inverse.transform_point2(self.resolution.as_dvec2());
-		AxisAlignedBbox { start, end }
-	}
 
 	pub fn scale(&self) -> DVec2 {
 		self.transform.decompose_scale()

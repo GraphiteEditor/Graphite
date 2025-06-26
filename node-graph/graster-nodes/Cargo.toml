@@ -14,6 +14,7 @@ serde = ["dep:serde"]
 # Local dependencies
 dyn-any = { workspace = true }
 graphene-core = { workspace = true }
+graphene-raster = { workspace = true }
 node-macro = { workspace = true }
 
 # Workspace dependencies

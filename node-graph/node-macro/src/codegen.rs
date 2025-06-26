@@ -517,7 +517,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 	}
 
 	let mut constructors = Vec::new();
-	let unit = parse_quote!(gcore::Context);
+	let unit = parse_quote!(gcore::context::Context);
 	let parameter_types: Vec<_> = parsed
 		.fields
 		.iter()

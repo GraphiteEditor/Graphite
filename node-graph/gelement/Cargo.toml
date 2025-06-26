@@ -1,0 +1,22 @@
+[package]
+name = "graphene-element"
+version = "0.1.0"
+edition = "2024"
+description = "graphene element data format"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Local dependencies
+dyn-any = { workspace = true }
+graphene-core = { workspace = true }
+graphene-raster = { workspace = true }
+graphene-vector = { workspace = true }
+node-macro = { workspace = true }
+bezier-rs = { workspace = true }
+
+# Workspace dependencies
+glam = { workspace = true }
+specta = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

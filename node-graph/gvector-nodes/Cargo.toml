@@ -1,0 +1,38 @@
+[package]
+name = "graphene-vector-nodes"
+version = "0.1.0"
+edition = "2024"
+description = "graphene vector nodes"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["serde"]
+serde = [
+	"dep:serde",
+	"bezier-rs/serde",
+]
+
+[dependencies]
+# Local dependencies
+dyn-any = { workspace = true }
+bezier-rs = { workspace = true }
+graphene-core = { workspace = true }
+graphene-vector = { workspace = true }
+node-macro = { workspace = true }
+
+# Workspace dependencies
+kurbo = { workspace = true }
+glam = { workspace = true }
+specta = { workspace = true }
+log = { workspace = true }
+rustc-hash = { workspace = true }
+petgraph = { workspace = true }
+rand = { workspace = true }
+
+# Optional workspace dependencies
+serde = { workspace = true, optional = true, features = ["derive"] }
+
+[dev-dependencies]
+# Workspace dependencies
+tokio = { workspace = true }

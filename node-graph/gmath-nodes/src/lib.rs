@@ -1,7 +1,9 @@
 use glam::DVec2;
+use graphene_core::color::Color;
+use graphene_core::context::Ctx;
 use graphene_core::gradient::GradientStops;
+use graphene_core::num_traits;
 use graphene_core::registry::types::{Fraction, Percentage};
-use graphene_core::{Color, Ctx, num_traits};
 use log::warn;
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};

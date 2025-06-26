@@ -1,6 +1,5 @@
 #![allow(clippy::too_many_arguments)]
 
-use crate::curve::CubicSplines;
 use dyn_any::DynAny;
 use graphene_core::Node;
 use graphene_core::blending::BlendMode;
@@ -8,12 +7,12 @@ use graphene_core::color::Color;
 use graphene_core::color::Pixel;
 use graphene_core::context::Ctx;
 use graphene_core::gradient::GradientStops;
-use graphene_core::raster::image::Image;
-use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::registry::types::{Angle, Percentage, SignedPercentage};
+use graphene_raster::curve::CubicSplines;
+use graphene_raster::image::Image;
+use graphene_raster::{CPU, Raster, RasterDataTable};
 use std::cmp::Ordering;
 use std::fmt::Debug;
-
 // TODO: Implement the following:
 // Color Balance
 // Aims for interoperable compatibility with:
@@ -1181,8 +1180,8 @@ fn color_overlay<T: Adjust<Color>>(
 mod test {
 	use graphene_core::blending::BlendMode;
 	use graphene_core::color::Color;
-	use graphene_core::raster::image::Image;
-	use graphene_core::raster_types::{Raster, RasterDataTable};
+	use graphene_raster::image::Image;
+	use graphene_raster::{Raster, RasterDataTable};
 
 	#[tokio::test]
 	async fn color_overlay_multiply() {
