@@ -2132,6 +2132,7 @@ dependencies = [
  "graph-craft",
  "graphene-application-io",
  "graphene-core",
+ "graphene-path-bool",
  "iai-callgrind",
  "js-sys",
  "log",
@@ -2215,11 +2216,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphene-path-bool"
+version = "0.1.0"
+dependencies = [
+ "bezier-rs",
+ "dyn-any",
+ "glam",
+ "graphene-core",
+ "log",
+ "node-macro",
+ "path-bool",
+ "serde",
+ "specta",
+]
+
+[[package]]
 name = "graphene-std"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "bezier-rs",
  "bytemuck",
  "dyn-any",
  "fastnoise-lite",
@@ -2228,16 +2243,15 @@ dependencies = [
  "graph-craft",
  "graphene-application-io",
  "graphene-core",
+ "graphene-path-bool",
  "image",
  "log",
  "ndarray",
  "node-macro",
- "path-bool",
  "rand 0.9.0",
  "rand_chacha 0.9.0",
  "reqwest",
  "tokio",
- "usvg",
  "vello",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -2947,6 +2961,7 @@ dependencies = [
  "glam",
  "graph-craft",
  "graphene-core",
+ "graphene-path-bool",
  "graphene-std",
  "log",
  "once_cell",

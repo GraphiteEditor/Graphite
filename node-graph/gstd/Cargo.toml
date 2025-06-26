@@ -28,18 +28,16 @@ dyn-any = { workspace = true }
 graph-craft = { workspace = true }
 wgpu-executor = { workspace = true }
 graphene-core = { workspace = true }
+graphene-path-bool = { workspace = true }
 graphene-application-io = { workspace = true }
 
 # Workspace dependencies
 fastnoise-lite = { workspace = true }
 log = { workspace = true }
-bezier-rs = { workspace = true }
-path-bool = { workspace = true }
 glam = { workspace = true }
 node-macro = { workspace = true }
 reqwest = { workspace = true }
 futures = { workspace = true }
-usvg = { workspace = true }
 rand_chacha = { workspace = true }
 rand = { workspace = true }
 bytemuck = { workspace = true }

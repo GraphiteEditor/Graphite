@@ -7,6 +7,7 @@ members = [
 	"node-graph/gapplication-io",
 	"node-graph/gcore",
 	"node-graph/gstd",
+	"node-graph/gpath-bool",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
 	"node-graph/interpreted-executor",
@@ -23,6 +24,7 @@ default-members = [
 	"frontend/wasm",
 	"node-graph/gcore",
 	"node-graph/gstd",
+	"node-graph/gpath-bool",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
 	"node-graph/interpreted-executor",
@@ -39,6 +41,7 @@ math-parser = { path = "libraries/math-parser" }
 path-bool = { path = "libraries/path-bool" }
 graphene-application-io = { path = "node-graph/gapplication-io" }
 graphene-core = { path = "node-graph/gcore" }
+graphene-path-bool = { path = "node-graph/gpath-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
 graphene-std = { path = "node-graph/gstd" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
