@@ -1289,22 +1289,10 @@ fn color_overlay<T: Adjust<Color>>(
 
 #[cfg(test)]
 mod test {
+	use crate::Color;
 	use crate::blending::BlendMode;
 	use crate::raster::image::Image;
 	use crate::raster_types::{Raster, RasterDataTable};
-	use crate::{Color, Node};
-	use std::pin::Pin;
-
-	#[derive(Clone)]
-	pub struct FutureWrapperNode<T: Clone>(T);
-
-	impl<'i, T: 'i + Clone + Send> Node<'i, ()> for FutureWrapperNode<T> {
-		type Output = Pin<Box<dyn Future<Output = T> + 'i + Send>>;
-		fn eval(&'i self, _input: ()) -> Self::Output {
-			let value = self.0.clone();
-			Box::pin(async move { value })
-		}
-	}
 
 	#[tokio::test]
 	async fn color_overlay_multiply() {
