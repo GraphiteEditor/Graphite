@@ -5,7 +5,7 @@ mod modification;
 use super::misc::{dvec2_to_point, point_to_dvec2};
 use super::style::{PathStyle, Stroke};
 use crate::instances::Instances;
-use crate::renderer::{ClickTargetType, FreePoint};
+use crate::vector::click_target::{ClickTargetType, FreePoint};
 use crate::{AlphaBlending, Color, GraphicGroupTable};
 pub use attributes::*;
 use bezier_rs::ManipulatorGroup;
