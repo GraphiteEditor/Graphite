@@ -683,6 +683,7 @@ pub struct NodeNetwork {
 	#[serde(default)]
 	#[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")]
 	pub scope_injections: FxHashMap<String, (NodeId, Type)>,
+	#[serde(skip)]
 	pub generated: bool,
 }
 

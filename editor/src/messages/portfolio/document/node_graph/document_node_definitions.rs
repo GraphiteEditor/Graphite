@@ -293,6 +293,22 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "To Element".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -1)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "To Group".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Monitor".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -1)),
 										..Default::default()
