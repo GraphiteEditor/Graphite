@@ -340,12 +340,7 @@ pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D)
 pub type ArtboardGroupTable = Instances<Artboard>;
 
 #[node_macro::node(category(""))]
-async fn layer<I: 'n + Send + Clone>(
-	_: impl Ctx,
-	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>, RasterDataTable<GPU>)] mut stack: Instances<I>,
-	#[implementations(GraphicElement, VectorData, Raster<CPU>, Raster<GPU>)] element: I,
-	node_path: Vec<NodeId>,
-) -> Instances<I> {
+async fn layer(_: impl Ctx, mut stack: GraphicGroupTable, element: GraphicElement, node_path: Vec<NodeId>) -> GraphicGroupTable {
 	// Get the penultimate element of the node path, or None if the path is too short
 	let source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 

@@ -235,7 +235,6 @@ tagged_value! {
 	GridType(graphene_core::vector::misc::GridType),
 	ArcType(graphene_core::vector::misc::ArcType),
 	MergeByDistanceAlgorithm(graphene_core::vector::misc::MergeByDistanceAlgorithm),
-	PointSpacingType(graphene_core::vector::misc::PointSpacingType),
 	#[serde(alias = "LineCap")]
 	StrokeCap(graphene_core::vector::style::StrokeCap),
 	#[serde(alias = "LineJoin")]

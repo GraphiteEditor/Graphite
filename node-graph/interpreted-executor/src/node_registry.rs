@@ -70,7 +70,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Color]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Box<graphene_core::vector::VectorModification>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::CentroidType]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::PointSpacingType]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Image<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => VectorDataTable]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => RasterDataTable<CPU>]),

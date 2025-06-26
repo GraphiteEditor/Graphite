@@ -252,32 +252,23 @@ function formatThirdPartyLicenses(jsLicenses: Dependency[]): string {
 
 function generateRustLicenses(): LicenseInfo[] | undefined {
 	// Log the starting status to the build output.
-	console.info("\n\nGenerating license information for Rust code\n");
+	console.info("\n\nLoading license information for Rust code from pre-generated file\n");
 
 	try {
-		// Call `cargo about` in the terminal to generate the license information for Rust crates.
-		// The `about.hbs` file is written so it generates a valid JavaScript array expression which we evaluate below.
-		const { stdout, stderr, status } = spawnSync("cargo", ["about", "generate", "about.hbs"], {
-			cwd: path.join(__dirname, ".."),
-			encoding: "utf8",
-			timeout: 60000, // One minute
-			shell: true,
-			windowsHide: true, // Hide the terminal on Windows
-		});
-
-		// If the command failed, print the error message and exit early.
-		if (status !== 0) {
-			// Cargo returns 101 when the subcommand (`about`) wasn't found, so we skip printing the below error message in that case.
-			if (status !== 101) {
-				console.error("cargo-about failed", status, stderr);
-			}
+		// Read the pre-generated license file instead of running cargo about
+		const licensePath = path.join(__dirname, "..", "generated-licenses.js");
+		
+		if (!fs.existsSync(licensePath)) {
+			console.error("Pre-generated license file not found at:", licensePath);
 			return undefined;
 		}
+		
+		const licenseContent = fs.readFileSync(licensePath, 'utf8');
 
 		// Make sure the output starts with this expected label, which lets us know the file generated with expected output.
 		// We don't want to eval an error message or something else, so we fail early if that happens.
-		if (!stdout.trim().startsWith("GENERATED_BY_CARGO_ABOUT:")) {
-			console.error("Unexpected output from cargo-about", stdout);
+		if (!licenseContent.trim().startsWith("GENERATED_BY_CARGO_ABOUT:")) {
+			console.error("Unexpected content in pre-generated license file", licenseContent.substring(0, 100));
 			return undefined;
 		}
 
@@ -285,7 +276,7 @@ function generateRustLicenses(): LicenseInfo[] | undefined {
 		// Security-wise, eval() isn't any worse than require(), but it's able to work without a temporary file.
 		// We call eval indirectly to avoid a warning as explained here: <https://esbuild.github.io/content-types/#direct-eval>.
 		const indirectEval = eval;
-		const licensesArray = indirectEval(stdout) as LicenseInfo[];
+		const licensesArray = indirectEval(licenseContent) as LicenseInfo[];
 
 		// Remove the HTML character encoding caused by Handlebars.
 		const rustLicenses = (licensesArray || []).map(
@@ -306,7 +297,8 @@ function generateRustLicenses(): LicenseInfo[] | undefined {
 		);
 
 		return rustLicenses;
-	} catch (_) {
+	} catch (error) {
+		console.error("Error reading pre-generated license file:", error);
 		return undefined;
 	}
 }

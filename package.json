@@ -3,15 +3,15 @@
 	"private": true,
 	"scripts": {
 		"---------- DEV SERVER ----------": "",
-		"start": "cd frontend && npm start",
-		"profiling": "cd frontend && npm run profiling",
-		"production": "cd frontend && npm run production",
+		"start": "cd frontend && bun start",
+		"profiling": "cd frontend && bun run profiling",
+		"production": "cd frontend && bun run production",
 		"---------- BUILDS ----------": "",
-		"build-dev": "cd frontend && npm run build-dev",
-		"build-profiling": "cd frontend && npm run build-profiling",
-		"build": "cd frontend && npm run build",
+		"build-dev": "cd frontend && bun run build-dev",
+		"build-profiling": "cd frontend && bun run build-profiling",
+		"build": "cd frontend && bun run build",
 		"---------- UTILITIES ----------": "",
-		"lint": "cd frontend && npm run lint",
-		"lint-fix": "cd frontend && npm run lint-fix"
+		"lint": "cd frontend && bun run lint",
+		"lint-fix": "cd frontend && bun run lint-fix"
 	}
 }

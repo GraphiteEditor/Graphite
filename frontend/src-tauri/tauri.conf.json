@@ -43,9 +43,10 @@
 		"withGlobalTauri": true,
 		"windows": [
 			{
-				"decorations": false,
+				"decorations": true,
 				"fullscreen": false,
 				"height": 1080,
+				"maximized": true,
 				"resizable": true,
 				"title": "Graphite",
 				"width": 1920,

@@ -62,7 +62,7 @@ async fn main() {
 		.invoke_handler(tauri::generate_handler![poll_node_graph, runtime_message])
 		.setup(|_app| {
 			use tauri::Manager;
-			_app.get_webview_window("main").unwrap().open_devtools();
+	// _app.get_webview_window("main").unwrap().open_devtools(); // Disabled for production
 			Ok(())
 		})
 		.run(tauri::generate_context!())

@@ -316,7 +316,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Layer".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -3)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(1, -3)),
 										..Default::default()
 									},
 									..Default::default()
@@ -333,7 +333,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("Merge attaches a layer to the stack's group."),
+			description: Cow::Borrowed("The Merge node combines graphical data through composition."),
 			properties: None,
 		},
 		DocumentNodeDefinition {
@@ -429,7 +429,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "To Artboard".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-10, -3)),
 										..Default::default()
 									},
 									..Default::default()
@@ -437,7 +437,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Monitor".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -3)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-2, -3)),
 										..Default::default()
 									},
 									..Default::default()
@@ -445,7 +445,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Append Artboards".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -4)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(6, -4)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1822,12 +1822,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: None,
 		},
 		DocumentNodeDefinition {
-			identifier: "Sample Polyline",
+			identifier: "Sample Points",
 			category: "Vector: Modifier",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(4), 0)],
+						exports: vec![NodeInput::node(NodeId(4), 0)], // Taken from output 0 of Sample Points
 						nodes: [
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(graphene_std::vector::VectorDataTable), 0)],
@@ -1838,15 +1838,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								inputs: vec![
 									NodeInput::network(concrete!(graphene_std::vector::VectorDataTable), 0),
-									NodeInput::network(concrete!(vector::misc::PointSpacingType), 1),
-									NodeInput::network(concrete!(f64), 2),
-									NodeInput::network(concrete!(f64), 3),
-									NodeInput::network(concrete!(f64), 4),
-									NodeInput::network(concrete!(f64), 5),
-									NodeInput::network(concrete!(bool), 6),
-									NodeInput::node(NodeId(0), 0),
+									NodeInput::network(concrete!(f64), 1),  // From the document node's parameters
+									NodeInput::network(concrete!(f64), 2),  // From the document node's parameters
+									NodeInput::network(concrete!(f64), 3),  // From the document node's parameters
+									NodeInput::network(concrete!(bool), 4), // From the document node's parameters
+									NodeInput::node(NodeId(0), 0),          // From output 0 of SubpathSegmentLengthsNode
 								],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SamplePolylineNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SamplePointsNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
@@ -1877,8 +1875,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorDataTable::default()), true),
-						NodeInput::value(TaggedValue::PointSpacingType(Default::default()), false),
-						NodeInput::value(TaggedValue::F64(100.), false),
 						NodeInput::value(TaggedValue::F64(100.), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
@@ -1893,14 +1889,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Subpath Segment Lengths".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 7)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 5)),
 										..Default::default()
 									},
 									..Default::default()
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Sample Polyline".to_string(),
+										display_name: "Sample Points".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 										..Default::default()
 									},
@@ -1941,28 +1937,18 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					}),
 					input_properties: vec![
 						("Vector Data", "The shape to be resampled and converted into a polyline.").into(),
-						Into::<PropertiesRow>::into(("Spacing", node_properties::SAMPLE_POLYLINE_TOOLTIP_SPACING)),
 						PropertiesRow::with_override(
-							"Separation",
-							node_properties::SAMPLE_POLYLINE_TOOLTIP_SEPARATION,
+							"Spacing",
+							"Distance between each instance (exact if 'Adaptive Spacing' is disabled, approximate if enabled).",
 							WidgetOverride::Number(NumberInputSettings {
-								min: Some(0.),
+								min: Some(1.),
 								unit: Some(" px".to_string()),
 								..Default::default()
 							}),
 						),
 						PropertiesRow::with_override(
-							"Quantity",
-							node_properties::SAMPLE_POLYLINE_TOOLTIP_QUANTITY,
-							WidgetOverride::Number(NumberInputSettings {
-								min: Some(2.),
-								is_integer: true,
-								..Default::default()
-							}),
-						),
-						PropertiesRow::with_override(
 							"Start Offset",
-							node_properties::SAMPLE_POLYLINE_TOOLTIP_START_OFFSET,
+							"Exclude some distance from the start of the path before the first instance.",
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(0.),
 								unit: Some(" px".to_string()),
@@ -1971,21 +1957,21 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						),
 						PropertiesRow::with_override(
 							"Stop Offset",
-							node_properties::SAMPLE_POLYLINE_TOOLTIP_STOP_OFFSET,
+							"Exclude some distance from the end of the path after the last instance.",
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(0.),
 								unit: Some(" px".to_string()),
 								..Default::default()
 							}),
 						),
-						Into::<PropertiesRow>::into(("Adaptive Spacing", node_properties::SAMPLE_POLYLINE_TOOLTIP_ADAPTIVE_SPACING)),
+						Into::<PropertiesRow>::into(("Adaptive Spacing", "Round 'Spacing' to a nearby value that divides into the path length evenly.")),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("Convert vector geometry into a polyline composed of evenly spaced points."),
-			properties: Some("sample_polyline_properties"),
+			properties: None,
 		},
 		DocumentNodeDefinition {
 			identifier: "Scatter Points",
@@ -2358,7 +2344,6 @@ fn static_node_properties() -> NodeProperties {
 	map.insert("math_properties".to_string(), Box::new(node_properties::math_properties));
 	map.insert("rectangle_properties".to_string(), Box::new(node_properties::rectangle_properties));
 	map.insert("grid_properties".to_string(), Box::new(node_properties::grid_properties));
-	map.insert("sample_polyline_properties".to_string(), Box::new(node_properties::sample_polyline_properties));
 	map.insert(
 		"identity_properties".to_string(),
 		Box::new(|_node_id, _context| node_properties::string_properties("The identity node simply passes its data through.")),
