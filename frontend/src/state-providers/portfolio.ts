@@ -16,7 +16,7 @@ import {
 	defaultWidgetLayout,
 	patchWidgetLayout,
 	UpdateSpreadsheetLayout,
-} from "@graphite/messages";
+} from "@graphite/messages.svelte";
 import { downloadFileText, downloadFileBlob, upload } from "@graphite/utility-functions/files";
 import { extractPixelData, rasterizeSVG } from "@graphite/utility-functions/rasterization";
 

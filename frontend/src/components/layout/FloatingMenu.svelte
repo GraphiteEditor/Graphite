@@ -21,7 +21,7 @@
 
 	import { onMount, tick } from "svelte";
 
-	import type { MenuDirection } from "@graphite/messages";
+	import type { MenuDirection } from "@graphite/messages.svelte";
 	import { browserVersion } from "@graphite/utility-functions/platform";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";

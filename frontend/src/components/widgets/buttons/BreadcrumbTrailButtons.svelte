@@ -7,20 +7,20 @@
 		disabled?: boolean;
 		tooltip?: string | undefined;
 		// Callbacks
-		action: (index: number) => void;
+		onclick: (index: number) => void;
 	}
 
 	let {
 		labels,
 		disabled = false,
 		tooltip = undefined,
-		action
+		onclick
 	}: Props = $props();
 </script>
 
 <LayoutRow class="breadcrumb-trail-buttons" {tooltip}>
 	{#each labels as label, index}
-		<TextButton {label} emphasized={index === labels.length - 1} {disabled} action={() => !disabled && index !== labels.length - 1 && action(index)} />
+		<TextButton {label} emphasized={index === labels.length - 1} {disabled} onclick={() => !disabled && index !== labels.length - 1 && onclick(index)} />
 	{/each}
 </LayoutRow>
 

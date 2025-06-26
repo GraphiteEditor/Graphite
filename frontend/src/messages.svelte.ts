@@ -109,7 +109,7 @@ export class UpdateNodeGraphWires extends JsMessage {
 	readonly wires!: WireUpdate[];
 }
 
-export class ClearAllNodeGraphWires extends JsMessage {}
+export class ClearAllNodeGraphWires extends JsMessage { }
 
 export class UpdateNodeGraphTransform extends JsMessage {
 	readonly transform!: NodeGraphTransform;
@@ -759,10 +759,10 @@ export class UpdateMouseCursor extends JsMessage {
 	readonly cursor!: MouseCursorIcon;
 }
 
-export class TriggerLoadFirstAutoSaveDocument extends JsMessage {}
-export class TriggerLoadRestAutoSaveDocuments extends JsMessage {}
+export class TriggerLoadFirstAutoSaveDocument extends JsMessage { }
+export class TriggerLoadRestAutoSaveDocuments extends JsMessage { }
 
-export class TriggerLoadPreferences extends JsMessage {}
+export class TriggerLoadPreferences extends JsMessage { }
 
 export class TriggerFetchAndOpenDocument extends JsMessage {
 	readonly name!: string;
@@ -770,13 +770,13 @@ export class TriggerFetchAndOpenDocument extends JsMessage {
 	readonly filename!: string;
 }
 
-export class TriggerOpenDocument extends JsMessage {}
+export class TriggerOpenDocument extends JsMessage { }
 
-export class TriggerImport extends JsMessage {}
+export class TriggerImport extends JsMessage { }
 
-export class TriggerPaste extends JsMessage {}
+export class TriggerPaste extends JsMessage { }
 
-export class TriggerDelayedZoomCanvasToFitAll extends JsMessage {}
+export class TriggerDelayedZoomCanvasToFitAll extends JsMessage { }
 
 export class TriggerDownloadImage extends JsMessage {
 	readonly svg!: string;
@@ -803,7 +803,7 @@ export class TriggerSaveActiveDocument extends JsMessage {
 	readonly documentId!: bigint;
 }
 
-export class DocumentChanged extends JsMessage {}
+export class DocumentChanged extends JsMessage { }
 
 export type DataBuffer = {
 	pointer: bigint;
@@ -837,7 +837,7 @@ export class DisplayEditableTextboxTransform extends JsMessage {
 	readonly transform!: number[];
 }
 
-export class DisplayRemoveEditableTextbox extends JsMessage {}
+export class DisplayRemoveEditableTextbox extends JsMessage { }
 
 export class UpdateDocumentLayerDetails extends JsMessage {
 	@Type(() => LayerPanelEntry)
@@ -886,7 +886,7 @@ export class LayerPanelEntry {
 	clippable!: boolean;
 }
 
-export class DisplayDialogDismiss extends JsMessage {}
+export class DisplayDialogDismiss extends JsMessage { }
 
 export class Font {
 	fontFamily!: string;
@@ -903,7 +903,7 @@ export class TriggerVisitLink extends JsMessage {
 	url!: string;
 }
 
-export class TriggerTextCommit extends JsMessage {}
+export class TriggerTextCommit extends JsMessage { }
 
 export class TriggerTextCopy extends JsMessage {
 	readonly copyText!: string;
@@ -1383,8 +1383,8 @@ export function narrowWidgetProps<K extends WidgetPropsNames>(props: WidgetProps
 
 export class Widget {
 	constructor(props: WidgetPropsSet, widgetId: bigint) {
-		this.props = props;
-		this.widgetId = widgetId;
+		this.props = $state(props);
+		this.widgetId = $state(widgetId);
 	}
 
 	@Type(() => WidgetProps, { discriminator: { property: "kind", subTypes: [...widgetSubTypes] }, keepDiscriminatorProperty: true })
@@ -1445,7 +1445,7 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 
 	updates.diff.forEach((update) => {
 		// Find the object where the diff applies to
-		const diffObject = update.widgetPath.reduce((targetLayout, index) => {
+		let diffObject = update.widgetPath.reduce((targetLayout, index) => {
 			if ("columnWidgets" in targetLayout) return targetLayout.columnWidgets[index];
 			if ("rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
 			if ("tableWidgets" in targetLayout) return targetLayout.tableWidgets[index];
@@ -1464,18 +1464,33 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 			return targetLayout[index];
 		}, layout.layout as UIItem);
 
-		// If this is a list with a length, then set the length to 0 to clear the list
-		if ("length" in diffObject) {
-			diffObject.length = 0;
-		}
-		// Remove all of the keys from the old object
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		Object.keys(diffObject).forEach((key) => delete (diffObject as any)[key]);
+		if (diffObject instanceof Widget) {
+			// For Widget instances, use direct property assignment
+			// The setters will handle the reactivity
+			diffObject.props = (update.newValue as Widget).props;
+			diffObject.widgetId = (update.newValue as Widget).widgetId;
+		} else {
+			// Clear array length using Reflect to trigger reactivity
+			if (Reflect.has(diffObject, "length")) {
+				Reflect.set(diffObject, "length", 0);
+			}
 
-		// Assign keys to the new object
-		// `Object.assign` works but `diffObject = update.newValue;` doesn't.
-		// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign
-		Object.assign(diffObject, update.newValue);
+			// Clear existing properties
+			// Remove all keys using Reflect.deleteProperty to ensure proxy notifications
+			Reflect.ownKeys(diffObject).forEach((key) => {
+				if (key !== "length") {
+					// Don't delete length property on arrays
+					Reflect.deleteProperty(diffObject, key);
+				}
+			});
+
+			// Assign new properties
+			if (update.newValue && typeof update.newValue === "object") {
+				Object.entries(update.newValue).forEach(([key, value]) => {
+					Reflect.set(diffObject, key, value);
+				});
+			}
+		}
 	});
 }
 
@@ -1558,21 +1573,21 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 }
 
 // WIDGET LAYOUTS
-export class UpdateDialogButtons extends WidgetDiffUpdate {}
+export class UpdateDialogButtons extends WidgetDiffUpdate { }
 
-export class UpdateDialogColumn1 extends WidgetDiffUpdate {}
+export class UpdateDialogColumn1 extends WidgetDiffUpdate { }
 
-export class UpdateDialogColumn2 extends WidgetDiffUpdate {}
+export class UpdateDialogColumn2 extends WidgetDiffUpdate { }
 
-export class UpdateDocumentBarLayout extends WidgetDiffUpdate {}
+export class UpdateDocumentBarLayout extends WidgetDiffUpdate { }
 
-export class UpdateDocumentModeLayout extends WidgetDiffUpdate {}
+export class UpdateDocumentModeLayout extends WidgetDiffUpdate { }
 
-export class UpdateLayersPanelControlBarLeftLayout extends WidgetDiffUpdate {}
+export class UpdateLayersPanelControlBarLeftLayout extends WidgetDiffUpdate { }
 
-export class UpdateLayersPanelControlBarRightLayout extends WidgetDiffUpdate {}
+export class UpdateLayersPanelControlBarRightLayout extends WidgetDiffUpdate { }
 
-export class UpdateLayersPanelBottomBarLayout extends WidgetDiffUpdate {}
+export class UpdateLayersPanelBottomBarLayout extends WidgetDiffUpdate { }
 
 // Extends JsMessage instead of WidgetDiffUpdate because the menu bar isn't diffed
 export class UpdateMenuBarLayout extends JsMessage {
@@ -1584,17 +1599,17 @@ export class UpdateMenuBarLayout extends JsMessage {
 	layout!: MenuBarEntry[];
 }
 
-export class UpdateNodeGraphControlBarLayout extends WidgetDiffUpdate {}
+export class UpdateNodeGraphControlBarLayout extends WidgetDiffUpdate { }
 
-export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate {}
+export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate { }
 
-export class UpdateSpreadsheetLayout extends WidgetDiffUpdate {}
+export class UpdateSpreadsheetLayout extends WidgetDiffUpdate { }
 
-export class UpdateToolOptionsLayout extends WidgetDiffUpdate {}
+export class UpdateToolOptionsLayout extends WidgetDiffUpdate { }
 
-export class UpdateToolShelfLayout extends WidgetDiffUpdate {}
+export class UpdateToolShelfLayout extends WidgetDiffUpdate { }
 
-export class UpdateWorkingColorsLayout extends WidgetDiffUpdate {}
+export class UpdateWorkingColorsLayout extends WidgetDiffUpdate { }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createMenuLayout(menuBarEntry: any[]): MenuBarEntry[] {
