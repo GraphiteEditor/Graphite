@@ -1,7 +1,4 @@
 <script lang="ts">
-	import { createBubbler, stopPropagation, passive } from 'svelte/legacy';
-
-	const bubble = createBubbler();
 	import { getContext, onMount } from "svelte";
 
 	import type { FrontendNodeType } from "@graphite/messages";
@@ -10,6 +7,7 @@
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import type { WheelEventHandler } from 'svelte/elements';
 
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
@@ -17,9 +15,10 @@
 		disabled?: boolean;
 		initialSearchTerm?: string;
 		onselectNodeType?: (selectNodeType: string) => void;
+		onwheel?: WheelEventHandler<HTMLDivElement>;
 	}
 
-	let { disabled = false, initialSearchTerm = "", onselectNodeType }: Props = $props();
+	let { disabled = false, initialSearchTerm = "", onselectNodeType, onwheel }: Props = $props();
 
 	let nodeSearchInput: TextInput | undefined = $state(undefined);
 	let searchTerm = $state(initialSearchTerm);
@@ -118,7 +117,12 @@
 
 <div class="node-catalog">
 	<TextInput placeholder="Search Nodes..." bind:value={searchTerm} bind:this={nodeSearchInput} />
-	<div class="list-results" use:passive={['wheel', () => stopPropagation(bubble('wheel'))]}>
+	<div class="list-results" onwheel={(event) => {
+			// onwheel events are passive by default
+			// https://svelte.dev/docs/svelte/v5-migration-guide#Breaking-changes-in-runes-mode-Touch-and-wheel-events-are-passive
+			event.stopPropagation();
+			onwheel?.(event);
+		}}>
 		{#each nodeCategories as nodeCategory}
 			<details open={nodeCategory[1].open}>
 				<summary>

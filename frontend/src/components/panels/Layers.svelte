@@ -1,6 +1,4 @@
 <script lang="ts">
-	import { handlers } from 'svelte/legacy';
-
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";

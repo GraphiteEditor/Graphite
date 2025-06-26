@@ -1,8 +1,5 @@
 <script lang="ts">
 	import type { SvelteHTMLElements } from 'svelte/elements';
-	import { createBubbler } from 'svelte/legacy';
-
-	const bubble = createBubbler();
 
 	type DivHTMLElementProps = SvelteHTMLElements["div"];
 	
@@ -54,26 +51,26 @@
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	title={tooltip}
 	bind:this={self}
-	onauxclick={bubble('auxclick')}
-	onblur={bubble('blur')}
-	onclick={bubble('click')}
-	ondblclick={bubble('dblclick')}
-	ondragend={bubble('dragend')}
-	ondragleave={bubble('dragleave')}
-	ondragover={bubble('dragover')}
-	ondragstart={bubble('dragstart')}
-	ondrop={bubble('drop')}
-	onmouseup={bubble('mouseup')}
-	onpointerdown={bubble('pointerdown')}
-	onpointerenter={bubble('pointerenter')}
-	onpointerleave={bubble('pointerleave')}
-	onscroll={bubble('scroll')}
 	{...rest}
 >
 	{@render children?.()}
 </div>
 
 <!-- Unused (each impacts performance, see <https://github.com/GraphiteEditor/Graphite/issues/1877>):
+onauxclick={bubble('auxclick')}
+onblur={bubble('blur')}
+onclick={bubble('click')}
+ondblclick={bubble('dblclick')}
+ondragend={bubble('dragend')}
+ondragleave={bubble('dragleave')}
+ondragover={bubble('dragover')}
+ondragstart={bubble('dragstart')}
+ondrop={bubble('drop')}
+onmouseup={bubble('mouseup')}
+onpointerdown={bubble('pointerdown')}
+onpointerenter={bubble('pointerenter')}
+onpointerleave={bubble('pointerleave')}
+onscroll={bubble('scroll')}
 on:contextmenu
 on:copy
 on:cut
