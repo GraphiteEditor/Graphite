@@ -2,7 +2,7 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { FrontendDocumentDetails } from "@graphite/messages";
+	import type { FrontendDocumentDetails } from "@graphite/messages.svelte";
 	import type { DialogState } from "@graphite/state-providers/dialog";
 	import type { PortfolioState } from "@graphite/state-providers/portfolio";
 
@@ -150,18 +150,18 @@
 				/>
 			</LayoutRow>
 			{#if $portfolio.spreadsheetOpen}
-				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} />
+				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical onpointerdown={(e) => resizePanel(e)} />
 				<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["spreadsheet"] }} data-subdivision-name="spreadsheet">
 					<Panel panelType="Spreadsheet" tabLabels={[{ name: "Spreadsheet" }]} tabActiveIndex={0} />
 				</LayoutRow>
 			{/if}
 		</LayoutCol>
-		<LayoutCol class="workspace-grid-resize-gutter" data-gutter-horizontal on:pointerdown={(e) => resizePanel(e)} />
+		<LayoutCol class="workspace-grid-resize-gutter" data-gutter-horizontal onpointerdown={(e) => resizePanel(e)} />
 		<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["details"] }} data-subdivision-name="details">
 			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["properties"] }} data-subdivision-name="properties">
 				<Panel panelType="Properties" tabLabels={[{ name: "Properties" }]} tabActiveIndex={0} />
 			</LayoutRow>
-			<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} />
+			<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical onpointerdown={(e) => resizePanel(e)} />
 			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["layers"] }} data-subdivision-name="layers">
 				<Panel panelType="Layers" tabLabels={[{ name: "Layers" }]} tabActiveIndex={0} />
 			</LayoutRow>

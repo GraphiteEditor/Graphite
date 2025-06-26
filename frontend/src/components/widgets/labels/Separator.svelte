@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type SeparatorDirection, type SeparatorType } from "@graphite/messages";
+	import { type SeparatorDirection, type SeparatorType } from "@graphite/messages.svelte";
 
 	interface Props {
 		direction?: SeparatorDirection;

@@ -1,5 +1,5 @@
 import { type Editor } from "@graphite/editor";
-import { TriggerVisitLink } from "@graphite/messages";
+import { TriggerVisitLink } from "@graphite/messages.svelte";
 
 export function createHyperlinkManager(editor: Editor) {
 	// Subscribe to process backend event

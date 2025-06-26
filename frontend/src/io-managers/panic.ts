@@ -1,5 +1,5 @@
 import { type Editor } from "@graphite/editor";
-import { DisplayDialogPanic } from "@graphite/messages";
+import { DisplayDialogPanic } from "@graphite/messages.svelte";
 import { type DialogState } from "@graphite/state-providers/dialog";
 import { browserVersion, operatingSystem } from "@graphite/utility-functions/platform";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";

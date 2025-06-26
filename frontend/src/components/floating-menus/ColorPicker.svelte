@@ -2,9 +2,9 @@
 	import { onDestroy, getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { HSV, RGB, FillChoice } from "@graphite/messages";
-	import type { MenuDirection } from "@graphite/messages";
-	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
+	import type { HSV, RGB, FillChoice } from "@graphite/messages.svelte";
+	import type { MenuDirection } from "@graphite/messages.svelte";
+	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages.svelte";
 	import { clamp } from "@graphite/utility-functions/math";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";

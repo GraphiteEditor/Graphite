@@ -2,7 +2,7 @@
 	import { getContext, onMount } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@graphite/messages";
+	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@graphite/messages.svelte";
 	import type { PortfolioState } from "@graphite/state-providers/portfolio";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 
@@ -76,7 +76,7 @@
 			<WindowButtonsMac {maximized} />
 		{:else}
 			{#each entries as entry}
-				<TextButton label={entry.label} icon={entry.icon} menuListChildren={entry.children} action={entry.action} flush={true} />
+				<TextButton label={entry.label} icon={entry.icon} menuListChildren={entry.children} onclick={entry.action!} flush={true} />
 			{/each}
 		{/if}
 	</LayoutRow>

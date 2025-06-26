@@ -1,11 +1,12 @@
 <script lang="ts">
-	import type { MenuListEntry } from "@graphite/messages";
+	import type { MenuListEntry } from "@graphite/messages.svelte";
 	import type { IconName } from "@graphite/utility-functions/icons";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import ConditionalWrapper from "@graphite/components/layout/ConditionalWrapper.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import type { MouseEventHandler } from "svelte/elements";
 
 	let self: MenuList | undefined = $state();
 	let open: boolean = $state(false);
@@ -21,8 +22,7 @@
 		disabled?: boolean;
 		tooltip?: string | undefined;
 		menuListChildren?: MenuListEntry[][] | undefined;
-		// TODO: Replace this with an event binding (and on other components that do this)
-		action: (() => void) | undefined;
+		onclick: MouseEventHandler<HTMLButtonElement>;
 	}
 
 	let {
@@ -35,17 +35,17 @@
 		disabled = false,
 		tooltip = undefined,
 		menuListChildren = $bindable([]),
-		action
+		onclick,
 	}: Props = $props();
 
 	let menuListChildrenExists = $derived((menuListChildren?.length ?? 0) > 0);
 
 	// Handles either a button click or, if applicable, the opening of the menu list floating menu
-	function onClick(e: MouseEvent) {
+	function onClick(e: MouseEvent & { currentTarget: EventTarget & HTMLButtonElement; }) {
 		// If there's no menu to open, trigger the action
 		if ((menuListChildren?.length ?? 0) === 0) {
 			// Call the action
-			if (action && !disabled) action();
+			if (!disabled) onclick?.(e);
 
 			// Exit early so we don't continue on and try to open the menu
 			return;
@@ -121,6 +121,7 @@
 		color: var(--button-text-color);
 		--button-background-color: var(--color-5-dullgray);
 		--button-text-color: var(--color-e-nearwhite);
+		cursor: pointer;
 
 		&:hover,
 		&.open {
@@ -141,6 +142,8 @@
 		&.disabled {
 			--button-background-color: var(--color-4-dimgray);
 			--button-text-color: var(--color-8-uppergray);
+			cursor: not-allowed;
+			pointer-events: all;
 		}
 
 		&.emphasized {

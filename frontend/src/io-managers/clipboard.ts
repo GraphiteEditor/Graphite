@@ -1,5 +1,5 @@
 import { type Editor } from "@graphite/editor";
-import { TriggerTextCopy } from "@graphite/messages";
+import { TriggerTextCopy } from "@graphite/messages.svelte";
 
 export function createClipboardManager(editor: Editor) {
 	// Subscribe to process backend event

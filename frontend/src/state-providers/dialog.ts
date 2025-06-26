@@ -1,7 +1,7 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import { defaultWidgetLayout, DisplayDialog, DisplayDialogDismiss, UpdateDialogButtons, UpdateDialogColumn1, UpdateDialogColumn2, patchWidgetLayout } from "@graphite/messages";
+import { defaultWidgetLayout, DisplayDialog, DisplayDialogDismiss, UpdateDialogButtons, UpdateDialogColumn1, UpdateDialogColumn2, patchWidgetLayout } from "@graphite/messages.svelte";
 import { type IconName } from "@graphite/utility-functions/icons";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick, onDestroy, onMount } from "svelte";
 
-	import type { MenuListEntry, MenuDirection } from "@graphite/messages";
+	import type { MenuListEntry, MenuDirection } from "@graphite/messages.svelte";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { MenuDirection } from "@graphite/messages";
+	import type { MenuDirection } from "@graphite/messages.svelte";
 	import { type IconName, type PopoverButtonStyle } from "@graphite/utility-functions/icons";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";

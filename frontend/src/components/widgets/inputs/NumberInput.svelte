@@ -2,7 +2,7 @@
 	import { onMount } from "svelte";
 
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
-	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@graphite/messages";
+	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@graphite/messages.svelte";
 	import { evaluateMathExpression } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";

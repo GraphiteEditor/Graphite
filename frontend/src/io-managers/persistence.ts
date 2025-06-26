@@ -10,7 +10,7 @@ import {
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadRestAutoSaveDocuments,
 	TriggerSaveActiveDocument,
-} from "@graphite/messages";
+} from "@graphite/messages.svelte";
 import { type PortfolioState } from "@graphite/state-providers/portfolio";
 
 const graphiteStore = createStore("graphite", "store");
