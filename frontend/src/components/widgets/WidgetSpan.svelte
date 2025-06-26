@@ -30,21 +30,21 @@
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
 	const editor = getContext<Editor>("editor");
+	
+	interface Props {
+		widgetData: WidgetSpanRow | WidgetSpanColumn;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		layoutTarget: any;
+		class?: string;
+		classes?: Record<string, boolean>;
+	}
 
-	export let widgetData: WidgetSpanRow | WidgetSpanColumn;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	export let layoutTarget: any;
-
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
-
-	$: extraClasses = Object.entries(classes)
-		.flatMap(([className, stateName]) => (stateName ? [className] : []))
-		.join(" ");
-
-	$: direction = watchDirection(widgetData);
-	$: widgets = watchWidgets(widgetData);
+	let {
+		widgetData,
+		layoutTarget,
+		class: className = "",
+		classes = {}
+	}: Props = $props();
 
 	function watchDirection(widgetData: WidgetSpanRow | WidgetSpanColumn): "row" | "column" | undefined {
 		if (isWidgetSpanRow(widgetData)) return "row";
@@ -77,6 +77,11 @@
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		return Object.fromEntries(Object.entries(props).filter((entry) => !exclusions.includes(entry[0]))) as any;
 	}
+	let extraClasses = $derived(Object.entries(classes)
+		.flatMap(([className, stateName]) => (stateName ? [className] : []))
+		.join(" "));
+	let direction = $derived(watchDirection(widgetData));
+	let widgets = $derived(watchWidgets(widgetData));
 </script>
 
 <!-- TODO: Refactor this component to use `<svelte:component this={attributesObject} />` to avoid all the separate conditional components -->
@@ -130,7 +135,7 @@
 		{/if}
 		{@const nodeCatalog = narrowWidgetProps(component.props, "NodeCatalog")}
 		{#if nodeCatalog}
-			<NodeCatalog {...exclude(nodeCatalog)} on:selectNodeType={(e) => widgetValueCommitAndUpdate(index, e.detail)} />
+			<NodeCatalog {...exclude(nodeCatalog)} onselectNodeType={(e) => widgetValueCommitAndUpdate(index, e)} />
 		{/if}
 		{@const numberInput = narrowWidgetProps(component.props, "NumberInput")}
 		{#if numberInput}

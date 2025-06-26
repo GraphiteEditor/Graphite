@@ -1,5 +1,8 @@
 <script lang="ts">
-	import { createEventDispatcher, getContext, onMount } from "svelte";
+	import { createBubbler, stopPropagation, passive } from 'svelte/legacy';
+
+	const bubble = createBubbler();
+	import { getContext, onMount } from "svelte";
 
 	import type { FrontendNodeType } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
@@ -8,16 +11,19 @@
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	const dispatch = createEventDispatcher<{ selectNodeType: string }>();
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
-	export let disabled = false;
-	export let initialSearchTerm = "";
+	interface Props {
+		disabled?: boolean;
+		initialSearchTerm?: string;
+		onselectNodeType?: (selectNodeType: string) => void;
+	}
 
-	let nodeSearchInput: TextInput | undefined = undefined;
-	let searchTerm = initialSearchTerm;
+	let { disabled = false, initialSearchTerm = "", onselectNodeType }: Props = $props();
 
-	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
+	let nodeSearchInput: TextInput | undefined = $state(undefined);
+	let searchTerm = $state(initialSearchTerm);
+
 
 	type NodeCategoryDetails = {
 		nodes: FrontendNodeType[];
@@ -107,18 +113,19 @@
 	onMount(() => {
 		setTimeout(() => nodeSearchInput?.focus(), 0);
 	});
+	let nodeCategories = $derived(buildNodeCategories($nodeGraph.nodeTypes, searchTerm));
 </script>
 
 <div class="node-catalog">
 	<TextInput placeholder="Search Nodes..." bind:value={searchTerm} bind:this={nodeSearchInput} />
-	<div class="list-results" on:wheel|passive|stopPropagation>
+	<div class="list-results" use:passive={['wheel', () => stopPropagation(bubble('wheel'))]}>
 		{#each nodeCategories as nodeCategory}
 			<details open={nodeCategory[1].open}>
 				<summary>
 					<TextLabel>{nodeCategory[0]}</TextLabel>
 				</summary>
 				{#each nodeCategory[1].nodes as nodeType}
-					<TextButton {disabled} label={nodeType.name} tooltip={$nodeGraph.nodeDescriptions.get(nodeType.name)} action={() => dispatch("selectNodeType", nodeType.name)} />
+					<TextButton {disabled} label={nodeType.name} tooltip={$nodeGraph.nodeDescriptions.get(nodeType.name)} action={() => onselectNodeType?.(nodeType.name)} />
 				{/each}
 			</details>
 		{:else}
