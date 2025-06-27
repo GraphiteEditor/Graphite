@@ -57,8 +57,6 @@ Raster image editing is a growing capability that will develop over time into th
 
 A prototype <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/brush-tool-icon.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width = this.naturalWidth / 2" alt="" style="vertical-align: bottom" /> Brush tool exists letting you draw simple doodles and sketches. However it is very limited in its capabilities and there are multiple bugs and performance issues with the feature. It can be used in a basic capacity, but don't expect to paint anything too impressive using raster brushes quite yet. The tool will be fully rewritten in the future.
 
-<!-- The raster-based Imaginate feature enables you to synthesize artwork using generative AI based on text descriptions. With it, you can also nondestructively modify your vector art and imported images. You can inpaint (or outpaint) the content in a specific masked part of an image or use it to touch up quick-and-dirty compositions. This feature is temporarily out of comission but will be resurrected, and further improved upon, in the near future. -->
-
 ## Status and limitations
 
 Please make yourself aware of these factors to better understand and work around the rough edges in today's Graphite editor.

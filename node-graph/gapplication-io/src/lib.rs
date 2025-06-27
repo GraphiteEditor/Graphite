@@ -193,9 +193,7 @@ pub enum ApplicationError {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub enum NodeGraphUpdateMessage {
-	// ImaginateStatusUpdate,
-}
+pub enum NodeGraphUpdateMessage {}
 
 pub trait NodeGraphUpdateSender {
 	fn send(&self, message: NodeGraphUpdateMessage);
@@ -208,7 +206,6 @@ impl<T: NodeGraphUpdateSender> NodeGraphUpdateSender for std::sync::Mutex<T> {
 }
 
 pub trait GetEditorPreferences {
-	// fn hostname(&self) -> &str;
 	fn use_vello(&self) -> bool;
 }
 
@@ -250,10 +247,6 @@ impl NodeGraphUpdateSender for Logger {
 struct DummyPreferences;
 
 impl GetEditorPreferences for DummyPreferences {
-	// fn hostname(&self) -> &str {
-	// 	"dummy_endpoint"
-	// }
-
 	fn use_vello(&self) -> bool {
 		false
 	}

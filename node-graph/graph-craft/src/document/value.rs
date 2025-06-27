@@ -248,11 +248,6 @@ tagged_value! {
 	ReferencePoint(graphene_core::transform::ReferencePoint),
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
-
-	// ImaginateCache(ImaginateCache),
-	// ImaginateSamplingMethod(ImaginateSamplingMethod),
-	// ImaginateMaskStartingFill(ImaginateMaskStartingFill),
-	// ImaginateController(ImaginateController),
 }
 
 impl TaggedValue {
