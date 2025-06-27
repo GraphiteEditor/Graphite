@@ -1919,7 +1919,8 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::Delete) => {
 				// Delete the selected points and clean up overlays
 				responses.add(DocumentMessage::AddTransaction);
-				shape_editor.delete_selected_points(document, responses);
+				// shape_editor.delete_selected_points(document, responses);
+				shape_editor.delete_selected_points(document, responses, false);
 				responses.add(PathToolMessage::SelectionChanged);
 
 				PathToolFsmState::Ready
@@ -1940,7 +1941,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::DeleteAndRefit) => {
 				responses.add(DocumentMessage::AddTransaction);
-				shape_editor.delete_point_and_refit(document, responses);
+				shape_editor.delete_selected_points(document, responses, true);
 				responses.add(PathToolMessage::SelectionChanged);
 
 				PathToolFsmState::Ready

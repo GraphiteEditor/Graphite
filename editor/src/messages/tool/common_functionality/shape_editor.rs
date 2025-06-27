@@ -8,11 +8,10 @@ use crate::messages::portfolio::document::utility_types::misc::{PathSnapSource, 
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
-use crate::messages::tool::common_functionality::utility_functions::is_visible_point;
+use crate::messages::tool::common_functionality::utility_functions::{find_refit_handle_lengths, is_visible_point};
 use crate::messages::tool::tool_messages::path_tool::{PathOverlayMode, PointSelectState};
 use bezier_rs::{Bezier, BezierHandles, Subpath, TValue};
 use glam::{DAffine2, DVec2};
-use graph_craft::document;
 use graphene_std::vector::{HandleId, SegmentId};
 use graphene_std::vector::{ManipulatorPointId, PointId, VectorData, VectorModificationType};
 
@@ -1174,11 +1173,7 @@ impl ShapeState {
 		}
 	}
 
-	pub fn get_bezier_from_segment_id(segment: SegmentId, vector_data: &VectorData) -> Option<SegmentId> {
-		vector_data.segment_bezier_iter().find(|(id, _, _, _)| *id == segment).map(|(_, bezier, _, _)| bezier)
-	}
-
-	fn dissolve_anchor(anchor: PointId, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData) -> Option<[(HandleId, PointId); 2]> {
+	fn dissolve_anchor(anchor: PointId, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData) -> Option<[(HandleId, PointId, Bezier); 2]> {
 		// Delete point
 		let modification_type = VectorModificationType::RemovePoint { id: anchor };
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
@@ -1201,19 +1196,15 @@ impl ShapeState {
 		let [Some(start), Some(end)] = opposites.map(|opposite| opposite.to_manipulator_point().get_anchor(vector_data)) else {
 			return None;
 		};
-		let Some(bezier1) = vector_data.segment_bezier_iter().find(|(id, _, _, _)| *id == segment).map(|(_, bezier, _, _)| bezier) else {
-			return None;
-		};
-		let Some(bezier2) = vector_data.segment_bezier_iter().find(|(id, _, _, _)| *id == segment).map(|(_, bezier, _, _)| bezier) else {
-			return None;
-		};
-		// Here we should also return the beziers of the connected handles
 
-		Some([(handles[0], start), (handles[1], end)])
+		let get_bezier = |segment_id: SegmentId| -> Option<Bezier> { vector_data.segment_bezier_iter().find(|(id, _, _, _)| *id == segment_id).map(|(_, bezier, _, _)| bezier) };
+		let beziers = opposites.map(|opposite| get_bezier(opposite.segment));
+
+		Some([(handles[0], start, beziers[0]?), (handles[1], end, beziers[1]?)])
 	}
 
 	/// Dissolve the selected points.
-	pub fn delete_selected_points(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn delete_selected_points(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, refit: bool) {
 		for (&layer, state) in &mut self.selected_shape_state {
 			let mut missing_anchors = HashMap::new();
 			let mut deleted_anchors = HashSet::new();
@@ -1248,20 +1239,45 @@ impl ShapeState {
 			}
 
 			let mut visited = Vec::new();
-			while let Some((anchor, handles)) = missing_anchors.keys().next().copied().and_then(|id| missing_anchors.remove_entry(&id)) {
+			while let Some((anchor, connected_info)) = missing_anchors.keys().next().copied().and_then(|id| missing_anchors.remove_entry(&id)) {
 				visited.push(anchor);
 
 				// If the adjacent point is just this point then skip
-				let mut handles = handles.map(|handle| (handle.1 != anchor).then_some(handle));
+				let mut handles = connected_info.map(|handle| (handle.1 != anchor).then_some(handle));
 
 				// If the adjacent points are themselves being deleted, then repeatedly visit the newest agacent points.
-				for handle in &mut handles {
-					while let Some((point, connected)) = (*handle).and_then(|(_, point)| missing_anchors.remove_entry(&point)) {
-						visited.push(point);
+				let [handle1, handle2] = &mut handles;
 
-						*handle = connected.into_iter().find(|(_, point)| !visited.contains(point));
+				// Store Beziers for fitting later
+				let mut beziers_start = Vec::new();
+				let mut beziers_end = Vec::new();
+				if let Some((_, _, bezier)) = *handle1 {
+					beziers_start.push(bezier);
+				}
+				while let Some((point, connected)) = (*handle1).and_then(|(_, point, _)| missing_anchors.remove_entry(&point)) {
+					visited.push(point);
+
+					if let Some(new_handle) = connected.into_iter().find(|(_, point, _)| !visited.contains(point)) {
+						*handle1 = Some(new_handle);
+						beziers_start.push(new_handle.2);
 					}
 				}
+
+				if let Some((_, _, bezier)) = *handle2 {
+					beziers_end.push(bezier);
+				}
+				while let Some((point, connected)) = (*handle2).and_then(|(_, point, _)| missing_anchors.remove_entry(&point)) {
+					visited.push(point);
+
+					if let Some(new_handle) = connected.into_iter().find(|(_, point, _)| !visited.contains(point)) {
+						*handle2 = Some(new_handle);
+						beziers_end.push(new_handle.2);
+					}
+				}
+
+				beziers_start.reverse();
+				let mut combined = beziers_start.clone();
+				combined.extend(beziers_end);
 
 				let [Some(start), Some(end)] = handles else { continue };
 
@@ -1271,7 +1287,7 @@ impl ShapeState {
 				}
 
 				// Grab the handles from the opposite side of the segment(s) being deleted and make it relative to the anchor
-				let [handle_start, handle_end] = [start, end].map(|(handle, _)| {
+				let [handle_start, handle_end] = [start, end].map(|(handle, _, _)| {
 					let handle = handle.opposite();
 					let handle_position = handle.to_manipulator_point().get_position(&vector_data);
 					let relative_position = handle
@@ -1281,12 +1297,36 @@ impl ShapeState {
 					handle_position.and_then(|handle| relative_position.map(|relative| handle - relative)).unwrap_or_default()
 				});
 
+				let [handle1, handle2] = if refit {
+					let handle_start_unit = handle_start.try_normalize().unwrap_or_default();
+					let handle_end_unit = handle_end.try_normalize().unwrap_or_default();
+
+					let p1 = start
+						.0
+						.opposite()
+						.to_manipulator_point()
+						.get_anchor(&vector_data)
+						.and_then(|anchor| vector_data.point_domain.position_from_id(anchor))
+						.unwrap_or_default();
+
+					let p3 = end
+						.0
+						.opposite()
+						.to_manipulator_point()
+						.get_anchor(&vector_data)
+						.and_then(|anchor| vector_data.point_domain.position_from_id(anchor))
+						.unwrap_or_default();
+					find_refit_handle_lengths(p1, p3, combined, handle_start_unit, handle_end_unit)
+				} else {
+					[handle_start, handle_end]
+				};
+
 				let segment = start.0.segment;
 
 				let modification_type = VectorModificationType::InsertSegment {
 					id: segment,
 					points: [start.1, end.1],
-					handles: [Some(handle_start), Some(handle_end)],
+					handles: [Some(handle1), Some(handle2)],
 				};
 
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
@@ -1314,15 +1354,6 @@ impl ShapeState {
 					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 				}
 			}
-		}
-	}
-
-	pub fn delete_point_and_refit(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		// Here define the logic of what happens exactly when sone selected points are deleted
-		for (&layer, state) in &mut self.selected_shape_state {
-			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
-				continue;
-			};
 		}
 	}
 
