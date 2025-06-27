@@ -1375,6 +1375,9 @@ impl Fsm for SelectToolFsmState {
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.select_single_layer = None;
 
+				let center = tool_data.get_dot_position();
+				responses.add(TransformLayerMessage::SetDot { center });
+
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
