@@ -16,7 +16,7 @@
 		UpdateMouseCursor,
 		isWidgetSpanRow,
 	} from "@graphite/messages.svelte";
-	import type { DocumentState } from "@graphite/state-providers/document";
+	import type { DocumentState } from "@graphite/state-providers/document.svelte";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
@@ -124,7 +124,7 @@
 			totalToolRowsFor2Columns,
 			totalToolRowsFor3Columns,
 		};
-	})($document.toolShelfLayout.layout[0]));
+	})(document.toolShelfLayout.layout[0]));
 
 	function dropFile(e: DragEvent) {
 		const { dataTransfer } = e;
@@ -462,14 +462,14 @@
 </script>
 
 <LayoutCol class="document" ondragover={(e) => e.preventDefault()} ondrop={dropFile}>
-	<LayoutRow class="control-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
-		{#if !$document.graphViewOverlayOpen}
-			<WidgetLayout layout={$document.documentModeLayout} />
-			<WidgetLayout layout={$document.toolOptionsLayout} />
+	<LayoutRow class="control-bar" classes={{ "for-graph": document.graphViewOverlayOpen }} scrollableX={true}>
+		{#if !document.graphViewOverlayOpen}
+			<WidgetLayout layout={document.documentModeLayout} />
+			<WidgetLayout layout={document.toolOptionsLayout} />
 			<LayoutRow class="spacer" />
-			<WidgetLayout layout={$document.documentBarLayout} />
+			<WidgetLayout layout={document.documentBarLayout} />
 		{:else}
-			<WidgetLayout layout={$document.nodeGraphControlBarLayout} />
+			<WidgetLayout layout={document.nodeGraphControlBarLayout} />
 		{/if}
 	</LayoutRow>
 	<LayoutRow
@@ -482,15 +482,15 @@
 		}}
 	>
 		<LayoutCol class="tool-shelf">
-			{#if !$document.graphViewOverlayOpen}
+			{#if !document.graphViewOverlayOpen}
 				<LayoutCol class="tools" scrollableY={true}>
-					<WidgetLayout layout={$document.toolShelfLayout} />
+					<WidgetLayout layout={document.toolShelfLayout} />
 				</LayoutCol>
 			{:else}
 				<LayoutRow class="spacer" />
 			{/if}
 			<LayoutCol class="tool-shelf-bottom-widgets">
-				<WidgetLayout class={"working-colors-input-area"} layout={$document.workingColorsLayout} />
+				<WidgetLayout class={"working-colors-input-area"} layout={document.workingColorsLayout} />
 			</LayoutCol>
 		</LayoutCol>
 		<LayoutCol class="viewport-container">
@@ -536,7 +536,7 @@
 						>
 						</canvas>
 					</div>
-					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork={`${$document.fadeArtwork}%`} data-graph>
+					<div class="graph-view" class:open={document.graphViewOverlayOpen} style:--fade-artwork={`${document.fadeArtwork}%`} data-graph>
 						<Graph />
 					</div>
 				</LayoutCol>
