@@ -1734,7 +1734,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: vec![
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(VectorDataTable), 0), NodeInput::network(concrete!(vector::style::Fill), 1)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::vector::BooleanOperationNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_path_bool::BooleanOperationNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
@@ -1765,7 +1765,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroupTable::default()), true),
-						NodeInput::value(TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
+						NodeInput::value(TaggedValue::BooleanOperation(path_bool::BooleanOperation::Union), false),
 					],
 					..Default::default()
 				},

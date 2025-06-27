@@ -1,3 +1,5 @@
+pub mod convert_usvg_path;
+
 use crate::instances::Instance;
 pub use crate::math::quad::Quad;
 pub use crate::math::rect::Rect;

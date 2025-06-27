@@ -70,6 +70,7 @@ const REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::transform::CullNode", "graphene_core::ops::IdentityNode"),
 	("graphene_std::raster::MaskImageNode", "graphene_std::raster::MaskNode"),
 	("graphene_core::vector::FlattenVectorElementsNode", "graphene_core::vector::FlattenPathNode"),
+	("graphene_std::vector::BooleanOperationNode", "graphene_path_bool::BooleanOperationNode"),
 ];
 
 pub fn document_migration_string_preprocessing(document_serialized_content: String) -> String {

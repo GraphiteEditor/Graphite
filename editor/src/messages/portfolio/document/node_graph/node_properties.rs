@@ -13,6 +13,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_std::animation::RealTimeMode;
 use graphene_std::ops::XY;
+use graphene_std::path_bool::BooleanOperation;
 use graphene_std::raster::curve::Curve;
 use graphene_std::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
@@ -22,8 +23,8 @@ use graphene_std::raster_types::{CPU, GPU, RasterDataTable};
 use graphene_std::text::Font;
 use graphene_std::transform::{Footprint, ReferencePoint};
 use graphene_std::vector::VectorDataTable;
+use graphene_std::vector::misc::GridType;
 use graphene_std::vector::misc::{ArcType, MergeByDistanceAlgorithm};
-use graphene_std::vector::misc::{BooleanOperation, GridType};
 use graphene_std::vector::misc::{CentroidType, PointSpacingType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
 use graphene_std::vector::style::{GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};

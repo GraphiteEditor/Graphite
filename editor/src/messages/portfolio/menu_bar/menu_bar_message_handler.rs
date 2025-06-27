@@ -4,7 +4,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::prelude::*;
-use graphene_std::vector::misc::BooleanOperation;
+use graphene_std::path_bool::BooleanOperation;
 
 #[derive(Debug, Clone, Default)]
 pub struct MenuBarMessageHandler {

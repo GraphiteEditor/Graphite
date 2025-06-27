@@ -247,7 +247,7 @@ tagged_value! {
 	GradientType(graphene_core::vector::style::GradientType),
 	ReferencePoint(graphene_core::transform::ReferencePoint),
 	CentroidType(graphene_core::vector::misc::CentroidType),
-	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
+	BooleanOperation(graphene_path_bool::BooleanOperation),
 }
 
 impl TaggedValue {
