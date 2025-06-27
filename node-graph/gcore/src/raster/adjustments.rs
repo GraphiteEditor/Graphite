@@ -1,5 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
+use crate::GraphicElement;
 use crate::blending::BlendMode;
 use crate::raster::curve::{CubicSplines, CurveManipulatorGroup};
 use crate::raster::curve::{Curve, ValueMapperNode};
@@ -7,10 +8,8 @@ use crate::raster::image::Image;
 use crate::raster::{Channel, Color, Pixel};
 use crate::raster_types::{CPU, Raster, RasterDataTable};
 use crate::registry::types::{Angle, Percentage, SignedPercentage};
-use crate::vector::VectorDataTable;
 use crate::vector::style::GradientStops;
 use crate::{Ctx, Node};
-use crate::{GraphicElement, GraphicGroupTable};
 use dyn_any::DynAny;
 use std::cmp::Ordering;
 use std::fmt::Debug;
@@ -1060,70 +1059,6 @@ async fn selective_color<T: Adjust<Color>>(
 		color.to_linear_srgb()
 	});
 	image
-}
-
-pub(super) trait MultiplyAlpha {
-	fn multiply_alpha(&mut self, factor: f64);
-}
-
-impl MultiplyAlpha for Color {
-	fn multiply_alpha(&mut self, factor: f64) {
-		*self = Color::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), (self.a() * factor as f32).clamp(0., 1.))
-	}
-}
-impl MultiplyAlpha for VectorDataTable {
-	fn multiply_alpha(&mut self, factor: f64) {
-		for instance in self.instance_mut_iter() {
-			instance.alpha_blending.opacity *= factor as f32;
-		}
-	}
-}
-impl MultiplyAlpha for GraphicGroupTable {
-	fn multiply_alpha(&mut self, factor: f64) {
-		for instance in self.instance_mut_iter() {
-			instance.alpha_blending.opacity *= factor as f32;
-		}
-	}
-}
-impl MultiplyAlpha for RasterDataTable<CPU>
-where
-	GraphicElement: From<Image<Color>>,
-{
-	fn multiply_alpha(&mut self, factor: f64) {
-		for instance in self.instance_mut_iter() {
-			instance.alpha_blending.opacity *= factor as f32;
-		}
-	}
-}
-
-pub(super) trait MultiplyFill {
-	fn multiply_fill(&mut self, factor: f64);
-}
-impl MultiplyFill for Color {
-	fn multiply_fill(&mut self, factor: f64) {
-		*self = Color::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), (self.a() * factor as f32).clamp(0., 1.))
-	}
-}
-impl MultiplyFill for VectorDataTable {
-	fn multiply_fill(&mut self, factor: f64) {
-		for instance in self.instance_mut_iter() {
-			instance.alpha_blending.fill *= factor as f32;
-		}
-	}
-}
-impl MultiplyFill for GraphicGroupTable {
-	fn multiply_fill(&mut self, factor: f64) {
-		for instance in self.instance_mut_iter() {
-			instance.alpha_blending.fill *= factor as f32;
-		}
-	}
-}
-impl MultiplyFill for RasterDataTable<CPU> {
-	fn multiply_fill(&mut self, factor: f64) {
-		for instance in self.instance_mut_iter() {
-			instance.alpha_blending.fill *= factor as f32;
-		}
-	}
 }
 
 // Aims for interoperable compatibility with:

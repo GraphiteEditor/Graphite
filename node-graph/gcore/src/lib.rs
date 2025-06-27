@@ -3,6 +3,7 @@ extern crate log;
 
 pub mod animation;
 pub mod blending;
+pub mod blending_nodes;
 pub mod color;
 pub mod consts;
 pub mod context;
