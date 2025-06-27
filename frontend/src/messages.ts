@@ -940,15 +940,6 @@ export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
 	readonly commitDate!: string;
 }
 
-// TODO: Eventually remove this document upgrade code
-export class TriggerUpgradeDocumentToVectorManipulationFormat extends JsMessage {
-	readonly documentId!: bigint;
-	readonly documentName!: string;
-	readonly documentIsAutoSaved!: boolean;
-	readonly documentIsSaved!: boolean;
-	readonly documentSerializedContent!: string;
-}
-
 // WIDGET PROPS
 
 export abstract class WidgetProps {
@@ -1679,7 +1670,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerSavePreferences,
 	TriggerTextCommit,
 	TriggerTextCopy,
-	TriggerUpgradeDocumentToVectorManipulationFormat,
 	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateBox,
