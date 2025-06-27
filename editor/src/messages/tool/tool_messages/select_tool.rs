@@ -56,8 +56,8 @@ pub enum NestedSelectionBehavior {
 
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum DotType {
-	#[default]
 	Origin,
+	#[default]
 	Pivot,
 	Off,
 }

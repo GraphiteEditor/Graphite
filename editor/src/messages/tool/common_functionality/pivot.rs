@@ -39,21 +39,32 @@ impl Pivot {
 			return;
 		}
 
-		if !document.network_interface.selected_nodes().has_selected_nodes() {
+		let selected = document.network_interface.selected_nodes();
+		if !selected.has_selected_nodes() {
 			self.normalized_pivot = DVec2::ZERO;
 			self.pivot = None;
 			return;
 		};
 
-		let transform = document
-			.network_interface
-			.selected_nodes()
+		let transform = selected
 			.selected_visible_and_unlocked_layers(&document.network_interface)
 			.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 			.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
 			.unwrap_or_default();
 
-		let [min, max] = document.selected_visible_and_unlock_layers_bounding_box_document().unwrap_or([DVec2::ZERO, DVec2::ONE]);
+		let bounds = document
+			.network_interface
+			.selected_nodes()
+			.selected_visible_and_unlocked_layers(&document.network_interface)
+			.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+			.filter_map(|layer| {
+				document
+					.metadata()
+					.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))
+			})
+			.reduce(graphene_std::renderer::Quad::combine_bounds);
+
+		let [min, max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
 		self.transform_from_normalized = transform * DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
 		self.pivot = Some(self.transform_from_normalized.transform_point2(self.normalized_pivot));
 	}
