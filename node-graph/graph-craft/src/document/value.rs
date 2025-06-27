@@ -8,11 +8,11 @@ use graphene_application_io::SurfaceFrame;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use graphene_core::raster_types::CPU;
-use graphene_core::renderer::RenderMetadata;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
 use graphene_core::vector::style::Fill;
 use graphene_core::{Color, MemoHash, Node, Type};
+use graphene_svg_renderer::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -235,6 +235,7 @@ tagged_value! {
 	GridType(graphene_core::vector::misc::GridType),
 	ArcType(graphene_core::vector::misc::ArcType),
 	MergeByDistanceAlgorithm(graphene_core::vector::misc::MergeByDistanceAlgorithm),
+	PointSpacingType(graphene_core::vector::misc::PointSpacingType),
 	#[serde(alias = "LineCap")]
 	StrokeCap(graphene_core::vector::style::StrokeCap),
 	#[serde(alias = "LineJoin")]
@@ -246,12 +247,7 @@ tagged_value! {
 	GradientType(graphene_core::vector::style::GradientType),
 	ReferencePoint(graphene_core::transform::ReferencePoint),
 	CentroidType(graphene_core::vector::misc::CentroidType),
-	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
-
-	// ImaginateCache(ImaginateCache),
-	// ImaginateSamplingMethod(ImaginateSamplingMethod),
-	// ImaginateMaskStartingFill(ImaginateMaskStartingFill),
-	// ImaginateController(ImaginateController),
+	BooleanOperation(graphene_path_bool::BooleanOperation),
 }
 
 impl TaggedValue {

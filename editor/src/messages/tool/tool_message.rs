@@ -48,17 +48,17 @@ pub enum ToolMessage {
 	// Relight(RelightToolMessage),
 	// 	// #[child]
 	// Detail(DetailToolMessage),
-	// #[child]
-	// Imaginate(ImaginateToolMessage),
 
 	// Messages
+
+	// General tools
 	ActivateToolSelect,
 	ActivateToolArtboard,
 	ActivateToolNavigate,
 	ActivateToolEyedropper,
 	ActivateToolFill,
 	ActivateToolGradient,
-
+	// Vector tools
 	ActivateToolPath,
 	ActivateToolPen,
 	ActivateToolFreehand,
@@ -68,10 +68,9 @@ pub enum ToolMessage {
 	ActivateToolShapeEllipse,
 	ActivateToolShape,
 	ActivateToolText,
-
+	// Raster tools
 	ActivateToolBrush,
-	// ActivateToolImaginate,
-	//
+
 	ActivateTool {
 		tool_type: ToolType,
 	},

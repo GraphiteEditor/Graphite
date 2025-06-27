@@ -59,7 +59,7 @@ pub struct FieldMetadata {
 	pub unit: Option<&'static str>,
 }
 
-pub trait ChoiceTypeStatic: Sized + Copy + crate::vector::misc::AsU32 + Send + Sync {
+pub trait ChoiceTypeStatic: Sized + Copy + crate::AsU32 + Send + Sync {
 	const WIDGET_HINT: ChoiceWidgetHint;
 	const DESCRIPTION: Option<&'static str>;
 	fn list() -> &'static [&'static [(Self, VariantMetadata)]];

@@ -21,6 +21,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
+use graphene_std::math::math_ext::QuadExt;
 use graphene_std::*;
 use renderer::Quad;
 use std::cmp::Ordering;
@@ -1396,12 +1397,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					input,
 				});
 				responses.add(PropertiesPanelMessage::Refresh);
-				if (network_interface
-					.reference(&node_id, selection_network_path)
-					.is_none_or(|reference| *reference != Some("Imaginate".to_string())) // TODO: Potentially remove the reference to Imaginate
-					|| input_index == 0)
-					&& network_interface.connected_to_output(&node_id, selection_network_path)
-				{
+				if !(network_interface.reference(&node_id, selection_network_path).is_none() || input_index == 0) && network_interface.connected_to_output(&node_id, selection_network_path) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}

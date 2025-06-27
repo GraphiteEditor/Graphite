@@ -7,11 +7,13 @@ members = [
 	"node-graph/gapplication-io",
 	"node-graph/gcore",
 	"node-graph/gstd",
+	"node-graph/gpath-bool",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
+	"node-graph/gsvg-renderer",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
-	"node-graph/wgpu-executor",
+	"node-graph/preprocessor",
 	"libraries/dyn-any",
 	"libraries/path-bool",
 	"libraries/bezier-rs",
@@ -23,8 +25,10 @@ default-members = [
 	"frontend/wasm",
 	"node-graph/gcore",
 	"node-graph/gstd",
+	"node-graph/gpath-bool",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
+	"node-graph/gsvg-renderer",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 ]
@@ -34,12 +38,15 @@ resolver = "2"
 # Local dependencies
 bezier-rs = { path = "libraries/bezier-rs", features = ["dyn-any", "serde"] }
 dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam", "reqwest", "log-bad-types", "rc"] }
+preprocessor = { path = "node-graph/preprocessor"}
 math-parser = { path = "libraries/math-parser" }
 path-bool = { path = "libraries/path-bool" }
 graphene-application-io = { path = "node-graph/gapplication-io" }
 graphene-core = { path = "node-graph/gcore" }
+graphene-path-bool = { path = "node-graph/gpath-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
 graphene-std = { path = "node-graph/gstd" }
+graphene-svg-renderer = { path = "node-graph/gsvg-renderer" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
 node-macro = { path = "node-graph/node-macro" }
 wgpu-executor = { path = "node-graph/wgpu-executor" }

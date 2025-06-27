@@ -1,55 +1,26 @@
-mod quad;
-mod rect;
-
-use crate::instances::Instance;
-use crate::raster::{BlendMode, Image};
-use crate::raster_types::{CPU, GPU, RasterDataTable};
-use crate::transform::{Footprint, Transform};
-use crate::uuid::{NodeId, generate_uuid};
-use crate::vector::style::{Fill, Stroke, StrokeAlign, ViewMode};
-use crate::vector::{PointId, VectorDataTable};
-use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable};
-use base64::Engine;
+use crate::render_ext::RenderExt;
+use crate::to_peniko::BlendModeExt;
 use bezier_rs::Subpath;
 use dyn_any::DynAny;
-use glam::{DAffine2, DMat2, DVec2};
+use glam::{DAffine2, DVec2};
+use graphene_core::blending::BlendMode;
+use graphene_core::bounds::BoundingBox;
+use graphene_core::color::Color;
+use graphene_core::instances::Instance;
+use graphene_core::math::quad::Quad;
+use graphene_core::raster::Image;
+use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
+use graphene_core::transform::{Footprint, Transform};
+use graphene_core::uuid::{NodeId, generate_uuid};
+use graphene_core::vector::VectorDataTable;
+use graphene_core::vector::click_target::{ClickTarget, FreePoint};
+use graphene_core::vector::style::{Fill, Stroke, StrokeAlign, ViewMode};
+use graphene_core::{AlphaBlending, Artboard, ArtboardGroupTable, GraphicElement, GraphicGroupTable};
 use num_traits::Zero;
-pub use quad::Quad;
-pub use rect::Rect;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 #[cfg(feature = "vello")]
 use vello::*;
-
-#[derive(Copy, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FreePoint {
-	pub id: PointId,
-	pub position: DVec2,
-}
-
-impl FreePoint {
-	pub fn new(id: PointId, position: DVec2) -> Self {
-		Self { id, position }
-	}
-
-	pub fn apply_transform(&mut self, transform: DAffine2) {
-		self.position = transform.transform_point2(self.position);
-	}
-}
-
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum ClickTargetType {
-	Subpath(Subpath<PointId>),
-	FreePoint(FreePoint),
-}
-
-/// Represents a clickable target for the layer
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ClickTarget {
-	target_type: ClickTargetType,
-	stroke_width: f64,
-	bounding_box: Option<[DVec2; 2]>,
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 enum MaskType {
@@ -70,133 +41,6 @@ impl MaskType {
 		match self {
 			Self::Clip => write!(svg_defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg_string).unwrap(),
 			Self::Mask => write!(svg_defs, r##"<mask id="{id}" mask-type="alpha">{}</mask>"##, svg_string).unwrap(),
-		}
-	}
-}
-
-impl ClickTarget {
-	pub fn new_with_subpath(subpath: Subpath<PointId>, stroke_width: f64) -> Self {
-		let bounding_box = subpath.loose_bounding_box();
-		Self {
-			target_type: ClickTargetType::Subpath(subpath),
-			stroke_width,
-			bounding_box,
-		}
-	}
-
-	pub fn new_with_free_point(point: FreePoint) -> Self {
-		const MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT: f64 = 1e-4 / 2.;
-		let stroke_width = 10.;
-		let bounding_box = Some([
-			point.position - DVec2::splat(MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT),
-			point.position + DVec2::splat(MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT),
-		]);
-
-		Self {
-			target_type: ClickTargetType::FreePoint(point),
-			stroke_width,
-			bounding_box,
-		}
-	}
-
-	pub fn target_type(&self) -> &ClickTargetType {
-		&self.target_type
-	}
-
-	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
-		self.bounding_box
-	}
-
-	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.bounding_box.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)])
-	}
-
-	pub fn apply_transform(&mut self, affine_transform: DAffine2) {
-		match self.target_type {
-			ClickTargetType::Subpath(ref mut subpath) => {
-				subpath.apply_transform(affine_transform);
-			}
-			ClickTargetType::FreePoint(ref mut point) => {
-				point.apply_transform(affine_transform);
-			}
-		}
-		self.update_bbox();
-	}
-
-	fn update_bbox(&mut self) {
-		match self.target_type {
-			ClickTargetType::Subpath(ref subpath) => {
-				self.bounding_box = subpath.bounding_box();
-			}
-			ClickTargetType::FreePoint(ref point) => {
-				self.bounding_box = Some([point.position - DVec2::splat(self.stroke_width / 2.), point.position + DVec2::splat(self.stroke_width / 2.)]);
-			}
-		}
-	}
-
-	/// Does the click target intersect the path
-	pub fn intersect_path<It: Iterator<Item = bezier_rs::Bezier>>(&self, mut bezier_iter: impl FnMut() -> It, layer_transform: DAffine2) -> bool {
-		// Check if the matrix is not invertible
-		let mut layer_transform = layer_transform;
-		if layer_transform.matrix2.determinant().abs() <= f64::EPSILON {
-			layer_transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
-		}
-
-		let inverse = layer_transform.inverse();
-		let mut bezier_iter = || bezier_iter().map(|bezier| bezier.apply_transformation(|point| inverse.transform_point2(point)));
-
-		match self.target_type() {
-			ClickTargetType::Subpath(subpath) => {
-				// Check if outlines intersect
-				let outline_intersects = |path_segment: bezier_rs::Bezier| bezier_iter().any(|line| !path_segment.intersections(&line, None, None).is_empty());
-				if subpath.iter().any(outline_intersects) {
-					return true;
-				}
-				// Check if selection is entirely within the shape
-				if subpath.closed() && bezier_iter().next().is_some_and(|bezier| subpath.contains_point(bezier.start)) {
-					return true;
-				}
-
-				// Check if shape is entirely within selection
-				let any_point_from_subpath = subpath.manipulator_groups().first().map(|group| group.anchor);
-				any_point_from_subpath.is_some_and(|shape_point| bezier_iter().map(|bezier| bezier.winding(shape_point)).sum::<i32>() != 0)
-			}
-			ClickTargetType::FreePoint(point) => bezier_iter().map(|bezier: bezier_rs::Bezier| bezier.winding(point.position)).sum::<i32>() != 0,
-		}
-	}
-
-	/// Does the click target intersect the point (accounting for stroke size)
-	pub fn intersect_point(&self, point: DVec2, layer_transform: DAffine2) -> bool {
-		let target_bounds = [point - DVec2::splat(self.stroke_width / 2.), point + DVec2::splat(self.stroke_width / 2.)];
-		let intersects = |a: [DVec2; 2], b: [DVec2; 2]| a[0].x <= b[1].x && a[1].x >= b[0].x && a[0].y <= b[1].y && a[1].y >= b[0].y;
-		// This bounding box is not very accurate as it is the axis aligned version of the transformed bounding box. However it is fast.
-		if !self
-			.bounding_box
-			.is_some_and(|loose| (loose[0] - loose[1]).abs().cmpgt(DVec2::splat(1e-4)).any() && intersects((layer_transform * Quad::from_box(loose)).bounding_box(), target_bounds))
-		{
-			return false;
-		}
-
-		// Allows for selecting lines
-		// TODO: actual intersection of stroke
-		let inflated_quad = Quad::from_box(target_bounds);
-		self.intersect_path(|| inflated_quad.bezier_lines(), layer_transform)
-	}
-
-	/// Does the click target intersect the point (not accounting for stroke size)
-	pub fn intersect_point_no_stroke(&self, point: DVec2) -> bool {
-		// Check if the point is within the bounding box
-		if self
-			.bounding_box
-			.is_some_and(|bbox| bbox[0].x <= point.x && point.x <= bbox[1].x && bbox[0].y <= point.y && point.y <= bbox[1].y)
-		{
-			// Check if the point is within the shape
-			match self.target_type() {
-				ClickTargetType::Subpath(subpath) => subpath.closed() && subpath.contains_point(point),
-				ClickTargetType::FreePoint(free_point) => free_point.position == point,
-			}
-		} else {
-			false
 		}
 	}
 }
@@ -359,12 +203,11 @@ pub struct RenderMetadata {
 }
 
 // TODO: Rename to "Graphical"
-pub trait GraphicElementRendered {
+pub trait GraphicElementRendered: BoundingBox {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams);
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]>;
 
 	/// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection.
 	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
@@ -380,10 +223,6 @@ pub trait GraphicElementRendered {
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {}
-
-	fn to_graphic_element(&self) -> GraphicElement {
-		GraphicElement::default()
-	}
 }
 
 impl GraphicElementRendered for GraphicGroupTable {
@@ -457,7 +296,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 			if let Some(bounds) = bounds {
 				let blend_mode = match render_params.view_mode {
 					ViewMode::Outline => peniko::Mix::Normal,
-					_ => alpha_blending.blend_mode.into(),
+					_ => alpha_blending.blend_mode.to_peniko(),
 				};
 
 				let factor = if render_params.for_mask { 1. } else { alpha_blending.fill };
@@ -484,7 +323,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 				}
 
 				if let Some(bounds) = bounds {
-					let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
 					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 					instance_mask.render_to_vello(scene, transform_mask, context, &render_params.for_clipper());
@@ -505,12 +344,6 @@ impl GraphicElementRendered for GraphicGroupTable {
 				scene.pop_layer();
 			}
 		}
-	}
-
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.instance_ref_iter()
-			.filter_map(|element| element.instance.bounding_box(transform * *element.transform, include_stroke))
-			.reduce(Quad::combine_bounds)
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
@@ -563,10 +396,6 @@ impl GraphicElementRendered for GraphicGroupTable {
 		for instance in self.instance_mut_iter() {
 			instance.instance.new_ids_from_hash(*instance.source_node_id);
 		}
-	}
-
-	fn to_graphic_element(&self) -> GraphicElement {
-		GraphicElement::GraphicGroup(self.clone())
 	}
 }
 
@@ -677,8 +506,8 @@ impl GraphicElementRendered for VectorDataTable {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
-		use crate::vector::style::{GradientType, StrokeCap, StrokeJoin};
+		use graphene_core::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
+		use graphene_core::vector::style::{GradientType, StrokeCap, StrokeJoin};
 		use vello::kurbo::{Cap, Join};
 		use vello::peniko;
 
@@ -701,7 +530,7 @@ impl GraphicElementRendered for VectorDataTable {
 			// If we're using opacity or a blend mode, we need to push a layer
 			let blend_mode = match render_params.view_mode {
 				ViewMode::Outline => peniko::Mix::Normal,
-				_ => instance.alpha_blending.blend_mode.into(),
+				_ => instance.alpha_blending.blend_mode.to_peniko(),
 			};
 			let mut layer = false;
 			let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
@@ -740,7 +569,7 @@ impl GraphicElementRendered for VectorDataTable {
 
 				let weight = instance.instance.style.stroke().unwrap().weight;
 				let quad = Quad::from_box(layer_bounds).inflate(weight * element_transform.matrix2.determinant());
-				let rect = vello::kurbo::Rect::new(quad.top_left().x, quad.top_left().y, quad.bottom_right().x, quad.bottom_right().y);
+				let rect = kurbo::Rect::new(quad.top_left().x, quad.top_left().y, quad.bottom_right().x, quad.bottom_right().y);
 
 				let inside = instance.instance.style.stroke().unwrap().align == StrokeAlign::Inside;
 				let compose = if inside { peniko::Compose::SrcIn } else { peniko::Compose::SrcOut };
@@ -883,27 +712,6 @@ impl GraphicElementRendered for VectorDataTable {
 		}
 	}
 
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.instance_ref_iter()
-			.flat_map(|instance| {
-				if !include_stroke {
-					return instance.instance.bounding_box_with_transform(transform * *instance.transform);
-				}
-
-				let stroke_width = instance.instance.style.stroke().map(|s| s.weight()).unwrap_or_default();
-
-				let miter_limit = instance.instance.style.stroke().map(|s| s.join_miter_limit).unwrap_or(1.);
-
-				let scale = transform.decompose_scale();
-
-				// We use the full line width here to account for different styles of stroke caps
-				let offset = DVec2::splat(stroke_width * scale.x.max(scale.y) * miter_limit);
-
-				instance.instance.bounding_box_with_transform(transform * *instance.transform).map(|[a, b]| [a - offset, b + offset])
-			})
-			.reduce(Quad::combine_bounds)
-	}
-
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
 		for instance in self.instance_ref_iter() {
 			let instance_transform = *instance.transform;
@@ -986,10 +794,6 @@ impl GraphicElementRendered for VectorDataTable {
 			instance.instance.vector_new_ids_from_hash(reference.map(|id| id.0).unwrap_or_default());
 		}
 	}
-
-	fn to_graphic_element(&self) -> GraphicElement {
-		GraphicElement::VectorData(self.clone())
-	}
 }
 
 impl GraphicElementRendered for Artboard {
@@ -1064,18 +868,6 @@ impl GraphicElementRendered for Artboard {
 		}
 	}
 
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		let artboard_bounds = (transform * Quad::from_box([self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()])).bounding_box();
-		if self.clip {
-			Some(artboard_bounds)
-		} else {
-			[self.graphic_group.bounding_box(transform, include_stroke), Some(artboard_bounds)]
-				.into_iter()
-				.flatten()
-				.reduce(Quad::combine_bounds)
-		}
-	}
-
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
@@ -1114,12 +906,6 @@ impl GraphicElementRendered for ArtboardGroupTable {
 		}
 	}
 
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.instance_ref_iter()
-			.filter_map(|instance| instance.instance.bounding_box(transform, include_stroke))
-			.reduce(Quad::combine_bounds)
-	}
-
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
 		for instance in self.instance_ref_iter() {
 			instance.instance.collect_metadata(metadata, footprint, *instance.source_node_id);
@@ -1148,6 +934,8 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 			}
 
 			let base64_string = image.base64_string.clone().unwrap_or_else(|| {
+				use base64::Engine;
+
 				let output = image.to_png();
 				let preamble = "data:image/png;base64,";
 				let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
@@ -1192,15 +980,6 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 		}
 	}
 
-	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.instance_ref_iter()
-			.flat_map(|instance| {
-				let transform = transform * *instance.transform;
-				(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
-			})
-			.reduce(Quad::combine_bounds)
-	}
-
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		let Some(element_id) = element_id else { return };
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
@@ -1217,10 +996,6 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 		click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
 	}
-
-	fn to_graphic_element(&self) -> GraphicElement {
-		GraphicElement::RasterDataCPU(self.clone())
-	}
 }
 
 impl GraphicElementRendered for RasterDataTable<GPU> {
@@ -1232,40 +1007,31 @@ impl GraphicElementRendered for RasterDataTable<GPU> {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams) {
 		use vello::peniko;
 
-		let mut render_stuff = |image: vello::peniko::Image, instance_transform: DAffine2, blend_mode: crate::AlphaBlending| {
+		let mut render_stuff = |image: peniko::Image, instance_transform: DAffine2, blend_mode: AlphaBlending| {
 			let image_transform = transform * instance_transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 			let layer = blend_mode != Default::default();
 
 			let Some(bounds) = self.bounding_box(transform, true) else { return };
-			let blending = vello::peniko::BlendMode::new(blend_mode.blend_mode.into(), vello::peniko::Compose::SrcOver);
+			let blending = peniko::BlendMode::new(blend_mode.blend_mode.to_peniko(), peniko::Compose::SrcOver);
 
 			if layer {
-				let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 				scene.push_layer(blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
 			}
-			scene.draw_image(&image, vello::kurbo::Affine::new(image_transform.to_cols_array()));
+			scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
 			if layer {
 				scene.pop_layer()
 			}
 		};
 
 		for instance in self.instance_ref_iter() {
-			let image = vello::peniko::Image::new(vec![].into(), peniko::Format::Rgba8, instance.instance.data().width(), instance.instance.data().height()).with_extend(peniko::Extend::Repeat);
+			let image = peniko::Image::new(vec![].into(), peniko::Format::Rgba8, instance.instance.data().width(), instance.instance.data().height()).with_extend(peniko::Extend::Repeat);
 
 			let id = image.data.id();
 			context.resource_overrides.insert(id, instance.instance.data_owned());
 
 			render_stuff(image, *instance.transform, *instance.alpha_blending);
 		}
-	}
-
-	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.instance_ref_iter()
-			.flat_map(|instance| {
-				let transform = transform * *instance.transform;
-				(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
-			})
-			.reduce(Quad::combine_bounds)
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
@@ -1303,15 +1069,6 @@ impl GraphicElementRendered for GraphicElement {
 			GraphicElement::RasterDataCPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
 			GraphicElement::RasterDataGPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_to_vello(scene, transform, context, render_params),
-		}
-	}
-
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		match self {
-			GraphicElement::VectorData(vector_data) => vector_data.bounding_box(transform, include_stroke),
-			GraphicElement::RasterDataCPU(raster) => raster.bounding_box(transform, include_stroke),
-			GraphicElement::RasterDataGPU(raster) => raster.bounding_box(transform, include_stroke),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform, include_stroke),
 		}
 	}
 
@@ -1384,7 +1141,7 @@ impl GraphicElementRendered for GraphicElement {
 }
 
 /// Used to stop rust complaining about upstream traits adding display implementations to `Option<Color>`. This would not be an issue as we control that crate.
-trait Primitive: std::fmt::Display {}
+trait Primitive: std::fmt::Display + BoundingBox {}
 impl Primitive for String {}
 impl Primitive for bool {}
 impl Primitive for f32 {}
@@ -1400,10 +1157,6 @@ fn text_attributes(attributes: &mut SvgRenderAttrs) {
 impl<P: Primitive> GraphicElementRendered for P {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
 		render.parent_tag("text", text_attributes, |render| render.leaf_node(format!("{self}")));
-	}
-
-	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
-		None
 	}
 
 	#[cfg(feature = "vello")]
@@ -1430,10 +1183,6 @@ impl GraphicElementRendered for Option<Color> {
 		render.parent_tag("text", text_attributes, |render| render.leaf_node(color_info))
 	}
 
-	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
-		None
-	}
-
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
 }
@@ -1452,10 +1201,6 @@ impl GraphicElementRendered for Vec<Color> {
 				}
 			});
 		}
-	}
-
-	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
-		None
 	}
 
 	#[cfg(feature = "vello")]

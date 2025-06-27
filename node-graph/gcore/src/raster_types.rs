@@ -1,8 +1,11 @@
 use crate::Color;
+use crate::bounds::BoundingBox;
 use crate::instances::Instances;
+use crate::math::quad::Quad;
 use crate::raster::Image;
 use core::ops::Deref;
 use dyn_any::DynAny;
+use glam::{DAffine2, DVec2};
 #[cfg(feature = "wgpu")]
 use std::sync::Arc;
 
@@ -11,18 +14,18 @@ pub struct CPU;
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Copy)]
 pub struct GPU;
 
-trait Storage {}
+trait Storage: 'static {}
 impl Storage for CPU {}
 impl Storage for GPU {}
 
 #[derive(Clone, Debug, Hash, PartialEq)]
 #[allow(private_bounds)]
-pub struct Raster<T: 'static + Storage> {
+pub struct Raster<T: Storage> {
 	data: RasterStorage,
 	storage: T,
 }
 
-unsafe impl<T: 'static + Storage> dyn_any::StaticType for Raster<T> {
+unsafe impl<T: Storage> dyn_any::StaticType for Raster<T> {
 	type Static = Raster<T>;
 }
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
@@ -100,3 +103,14 @@ impl Deref for Raster<GPU> {
 	}
 }
 pub type RasterDataTable<Storage> = Instances<Raster<Storage>>;
+
+impl<S: Storage> BoundingBox for RasterDataTable<S> {
+	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
+		self.instance_ref_iter()
+			.flat_map(|instance| {
+				let transform = transform * *instance.transform;
+				(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
+			})
+			.reduce(Quad::combine_bounds)
+	}
+}

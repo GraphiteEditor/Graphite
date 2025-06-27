@@ -82,7 +82,6 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				responses.add(ShapeToolMessage::HideShapeTypeWidget(true));
 				responses.add(ShapeToolMessage::SetShape(shape));
 			}
-			// ToolMessage::ActivateToolImaginate => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Imaginate }),
 			ToolMessage::ActivateTool { tool_type } => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let old_tool = tool_data.active_tool_type.get_tool();
@@ -340,7 +339,6 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			ActivateToolText,
 
 			ActivateToolBrush,
-			// ActivateToolImaginate,
 
 			SelectRandomPrimaryColor,
 			ResetColors,

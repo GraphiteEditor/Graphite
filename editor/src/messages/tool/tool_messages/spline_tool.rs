@@ -656,15 +656,15 @@ mod test_spline_tool {
 		editor.new_document().await;
 
 		// Zooming the viewport
-		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2.0 }).await;
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2. }).await;
 
 		// Selecting the spline tool
 		editor.select_tool(ToolType::Spline).await;
 
 		// Adding points by clicking at different positions
-		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(50.0, 50.0), ModifierKeys::empty()).await;
-		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(100.0, 50.0), ModifierKeys::empty()).await;
-		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(150.0, 100.0), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(50., 50.), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(100., 50.), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(150., 100.), ModifierKeys::empty()).await;
 
 		// Finish the spline
 		editor.handle_message(SplineToolMessage::Confirm).await;
@@ -686,7 +686,7 @@ mod test_spline_tool {
 		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 
 		// Expected points in viewport coordinates
-		let expected_points = vec![DVec2::new(50.0, 50.0), DVec2::new(100.0, 50.0), DVec2::new(150.0, 100.0)];
+		let expected_points = vec![DVec2::new(50., 50.), DVec2::new(100., 50.), DVec2::new(150., 100.)];
 
 		// Assert all points are correctly positioned
 		assert_point_positions(&vector_data, layer_to_viewport, &expected_points, 1e-10);
@@ -697,15 +697,15 @@ mod test_spline_tool {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 
-		let pan_amount = DVec2::new(200.0, 150.0);
+		let pan_amount = DVec2::new(200., 150.);
 		editor.handle_message(NavigationMessage::CanvasPan { delta: pan_amount }).await;
 
 		editor.select_tool(ToolType::Spline).await;
 
 		// Add points by clicking at different positions
-		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(50.0, 50.0), ModifierKeys::empty()).await;
-		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(100.0, 50.0), ModifierKeys::empty()).await;
-		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(150.0, 100.0), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(50., 50.), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(100., 50.), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(150., 100.), ModifierKeys::empty()).await;
 
 		editor.handle_message(SplineToolMessage::Confirm).await;
 
@@ -726,7 +726,7 @@ mod test_spline_tool {
 		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 
 		// Expected points in viewport coordinates
-		let expected_points = vec![DVec2::new(50.0, 50.0), DVec2::new(100.0, 50.0), DVec2::new(150.0, 100.0)];
+		let expected_points = vec![DVec2::new(50., 50.), DVec2::new(100., 50.), DVec2::new(150., 100.)];
 
 		// Assert all points are correctly positioned
 		assert_point_positions(&vector_data, layer_to_viewport, &expected_points, 1e-10);
@@ -738,12 +738,12 @@ mod test_spline_tool {
 		editor.new_document().await;
 
 		// Tilt/rotate the viewport (45 degrees)
-		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 45.0_f64.to_radians() }).await;
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 45_f64.to_radians() }).await;
 		editor.select_tool(ToolType::Spline).await;
 
-		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(50.0, 50.0), ModifierKeys::empty()).await;
-		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(100.0, 50.0), ModifierKeys::empty()).await;
-		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(150.0, 100.0), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(50., 50.), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(100., 50.), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(150., 100.), ModifierKeys::empty()).await;
 
 		editor.handle_message(SplineToolMessage::Confirm).await;
 
@@ -764,7 +764,7 @@ mod test_spline_tool {
 		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 
 		// Expected points in viewport coordinates
-		let expected_points = vec![DVec2::new(50.0, 50.0), DVec2::new(100.0, 50.0), DVec2::new(150.0, 100.0)];
+		let expected_points = vec![DVec2::new(50., 50.), DVec2::new(100., 50.), DVec2::new(150., 100.)];
 
 		// Assert all points are correctly positioned
 		assert_point_positions(&vector_data, layer_to_viewport, &expected_points, 1e-10);
@@ -777,14 +777,14 @@ mod test_spline_tool {
 
 		// Applying multiple transformations
 		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 1.5 }).await;
-		editor.handle_message(NavigationMessage::CanvasPan { delta: DVec2::new(100.0, 75.0) }).await;
-		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 30.0_f64.to_radians() }).await;
+		editor.handle_message(NavigationMessage::CanvasPan { delta: DVec2::new(100., 75.) }).await;
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 30_f64.to_radians() }).await;
 
 		editor.select_tool(ToolType::Spline).await;
 
-		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(50.0, 50.0), ModifierKeys::empty()).await;
-		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(100.0, 50.0), ModifierKeys::empty()).await;
-		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(150.0, 100.0), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(50., 50.), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(100., 50.), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(150., 100.), ModifierKeys::empty()).await;
 
 		editor.handle_message(SplineToolMessage::Confirm).await;
 		if let Err(e) = editor.eval_graph().await {
@@ -803,7 +803,7 @@ mod test_spline_tool {
 		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 
 		// Expected points in viewport coordinates
-		let expected_points = vec![DVec2::new(50.0, 50.0), DVec2::new(100.0, 50.0), DVec2::new(150.0, 100.0)];
+		let expected_points = vec![DVec2::new(50., 50.), DVec2::new(100., 50.), DVec2::new(150., 100.)];
 
 		// Assert all points are correctly positioned
 		assert_point_positions(&vector_data, layer_to_viewport, &expected_points, 1e-10);

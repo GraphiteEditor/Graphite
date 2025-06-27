@@ -11,8 +11,8 @@ use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster::Image;
-use graphene_std::renderer::ClickTarget;
 use graphene_std::transform::Footprint;
+use graphene_std::vector::click_target::ClickTarget;
 use graphene_std::vector::style::ViewMode;
 
 #[impl_message(Message, PortfolioMessage, Document)]
@@ -73,13 +73,6 @@ pub enum DocumentMessage {
 	GroupSelectedLayers {
 		group_folder_type: GroupFolderType,
 	},
-	// ImaginateGenerate {
-	// 	imaginate_node: Vec<NodeId>,
-	// },
-	// ImaginateRandom {
-	// 	imaginate_node: Vec<NodeId>,
-	// 	then_generate: bool,
-	// },
 	MoveSelectedLayersTo {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
