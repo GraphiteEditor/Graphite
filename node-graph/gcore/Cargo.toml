@@ -14,9 +14,6 @@ wgpu = ["dep:wgpu"]
 dealloc_nodes = []
 
 [dependencies]
-# Local dependencies
-math-parser = { workspace = true }
-
 # Workspace dependencies
 bytemuck = { workspace = true }
 node-macro = { workspace = true }

@@ -2197,7 +2197,6 @@ dependencies = [
  "image",
  "kurbo",
  "log",
- "math-parser",
  "node-macro",
  "num-derive",
  "num-traits",
@@ -2212,6 +2211,18 @@ dependencies = [
  "tinyvec",
  "tokio",
  "wgpu",
+]
+
+[[package]]
+name = "graphene-math-nodes"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "graphene-core",
+ "log",
+ "math-parser",
+ "node-macro",
+ "rand 0.9.0",
 ]
 
 [[package]]
@@ -2242,6 +2253,7 @@ dependencies = [
  "graph-craft",
  "graphene-application-io",
  "graphene-core",
+ "graphene-math-nodes",
  "graphene-path-bool",
  "graphene-svg-renderer",
  "image",
