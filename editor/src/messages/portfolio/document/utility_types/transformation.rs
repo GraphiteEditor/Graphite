@@ -484,6 +484,24 @@ impl TransformOperation {
 	}
 }
 
+pub trait MeanAverage {
+	fn mean_average_origin(self, network_interface: &NodeNetworkInterface) -> DVec2;
+}
+
+impl MeanAverage for &[LayerNodeIdentifier] {
+	fn mean_average_origin(self, network_interface: &NodeNetworkInterface) -> DVec2 {
+		if self.is_empty() {
+			return DVec2::default();
+		}
+
+		self.iter()
+			.map(|&layer| graph_modification_utils::get_viewport_origin(layer, network_interface))
+			.reduce(|a, b| a + b)
+			.unwrap_or_default()
+			/ self.len() as f64
+	}
+}
+
 pub struct Selected<'a> {
 	pub selected: &'a [LayerNodeIdentifier],
 	pub responses: &'a mut VecDeque<Message>,
@@ -528,14 +546,7 @@ impl<'a> Selected<'a> {
 	}
 
 	pub fn mean_average_of_pivots(&mut self) -> DVec2 {
-		let xy_summation = self
-			.selected
-			.iter()
-			.map(|&layer| graph_modification_utils::get_viewport_origin(layer, self.network_interface))
-			.reduce(|a, b| a + b)
-			.unwrap_or_default();
-
-		xy_summation / self.selected.len() as f64
+		self.selected.mean_average_origin(&self.network_interface)
 	}
 
 	pub fn center_of_aabb(&mut self) -> DVec2 {

@@ -3,7 +3,6 @@ pub mod color_selector;
 pub mod compass_rose;
 pub mod graph_modification_utils;
 pub mod measure;
-pub mod origin;
 pub mod pivot;
 pub mod resize;
 pub mod shape_editor;

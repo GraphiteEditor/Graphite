@@ -178,7 +178,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			}
 
 			if !using_path_tool {
-				debug!("{:?}", self.pivot_from_select);
 				*selected.pivot = self.pivot_from_select.unwrap_or(selected.mean_average_of_pivots());
 				self.local_pivot = document.metadata().document_to_viewport.inverse().transform_point2(*selected.pivot);
 				self.grab_target = document.metadata().document_to_viewport.inverse().transform_point2(selected.mean_average_of_pivots());

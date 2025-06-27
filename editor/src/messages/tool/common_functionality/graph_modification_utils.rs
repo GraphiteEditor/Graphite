@@ -245,7 +245,7 @@ pub fn new_custom(id: NodeId, nodes: Vec<(NodeId, NodeTemplate)>, parent: LayerN
 
 /// Locate the origin of the transform node
 pub fn get_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DVec2> {
-	let origin_node_input_index = 5;
+	let origin_node_input_index = 1;
 	if let TaggedValue::DVec2(origin) = NodeGraphLayer::new(layer, network_interface).find_input("Transform", origin_node_input_index)? {
 		Some(*origin)
 	} else {
@@ -254,9 +254,8 @@ pub fn get_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInt
 }
 
 pub fn get_viewport_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DVec2 {
-	let [min, max] = network_interface.document_metadata().nonzero_bounding_box(layer);
-	let origin = get_origin(layer, network_interface).unwrap_or(DVec2::ZERO);
-	network_interface.document_metadata().transform_to_viewport(layer).transform_point2(min + (max - min) * origin)
+	let origin = get_origin(layer, network_interface).unwrap_or_default();
+	network_interface.document_metadata().document_to_viewport.transform_point2(origin)
 }
 
 /// Get the current gradient of a layer from the closest "Fill" node.

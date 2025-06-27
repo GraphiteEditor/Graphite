@@ -6,7 +6,7 @@ use crate::consts::{
 use crate::messages::prelude::Message;
 use bezier_rs::{Bezier, Subpath};
 use core::borrow::Borrow;
-use core::f64::consts::{FRAC_PI_2, TAU};
+use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
 use graphene_std::Color;
 use graphene_std::renderer::ClickTargetType;
@@ -550,8 +550,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn draw_origin(&mut self, position: DVec2) {
-		use std::f64::consts::PI;
+	pub fn dowel_pin(&mut self, position: DVec2) {
 		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
 
 		self.start_dpi_aware_transform();
