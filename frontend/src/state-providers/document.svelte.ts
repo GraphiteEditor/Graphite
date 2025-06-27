@@ -17,7 +17,6 @@ import {
 } from "@graphite/messages.svelte";
 
 export const documentContextState = $state({
-	// Layouts - these are already $state objects from defaultWidgetLayout()
 	documentModeLayout: defaultWidgetLayout(),
 	toolOptionsLayout: defaultWidgetLayout(),
 	documentBarLayout: defaultWidgetLayout(),
