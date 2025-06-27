@@ -12,14 +12,20 @@ use graphene_core::{NodeIO, NodeIOTypes};
 use graphene_core::{fn_type_fut, future};
 use graphene_std::Context;
 use graphene_std::GraphicElement;
-use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, IntoTypeErasedNode};
+#[cfg(feature = "gpu")]
+use graphene_std::any::DowncastBothNode;
+use graphene_std::any::{ComposeTypeErased, DynAnyNode, IntoTypeErasedNode};
 use graphene_std::application_io::{ImageTexture, SurfaceFrame};
-use graphene_std::wasm_application_io::*;
+#[cfg(feature = "gpu")]
+use graphene_std::wasm_application_io::{WasmEditorApi, WasmSurfaceHandle};
 use node_registry_macros::{async_node, convert_node, into_node};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+#[cfg(feature = "gpu")]
 use std::sync::Arc;
-use wgpu_executor::{WgpuExecutor, WgpuSurface, WindowHandle};
+#[cfg(feature = "gpu")]
+use wgpu_executor::WgpuExecutor;
+use wgpu_executor::{WgpuSurface, WindowHandle};
 
 // TODO: turn into hashmap
 fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> {
