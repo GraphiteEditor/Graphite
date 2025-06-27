@@ -3,9 +3,12 @@ use crate::messages::input_mapper::utility_types::input_mouse::{DocumentPosition
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
+use crate::messages::portfolio::document::utility_types::transformation::MeanAverage;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, TransformType, Typing};
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::pivot::Pivot as SelectToolPivot;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::tool_messages::select_tool::DotType;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 use glam::{DAffine2, DVec2};
@@ -34,7 +37,7 @@ pub struct TransformLayerMessageHandler {
 	start_mouse: ViewportPosition,
 
 	original_transforms: OriginalTransforms,
-	pivot_from_select: DVec2,
+	dot: (SelectToolPivot, DotType),
 	pivot: ViewportPosition,
 
 	local_pivot: DocumentPosition,
@@ -178,7 +181,19 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			}
 
 			if !using_path_tool {
-				*selected.pivot = self.pivot_from_select;
+				self.dot.0.recalculate_pivot(document);
+				let dot_position = |&(ref pivot, ref dot_type): &(SelectToolPivot, DotType)| {
+					match dot_type {
+						DotType::Origin => {
+							let network_interface = &document.network_interface;
+							Some((network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect::<Vec<_>>()).mean_average_origin(network_interface))
+						}
+						DotType::Pivot => pivot.position(),
+						_ => None,
+					}
+					.unwrap_or_else(|| pivot.transform_from_normalized.transform_point2(DVec2::splat(0.5)))
+				};
+				*selected.pivot = dot_position(&self.dot);
 				self.local_pivot = document.metadata().document_to_viewport.inverse().transform_point2(*selected.pivot);
 				self.grab_target = document.metadata().document_to_viewport.inverse().transform_point2(selected.mean_average_of_pivots());
 			} else if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
@@ -688,7 +703,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					self.initial_transform,
 				)
 			}
-			TransformLayerMessage::SetDot { center } => self.pivot_from_select = center,
+			TransformLayerMessage::SetDot { dot } => self.dot = dot,
 		}
 	}
 

@@ -6,7 +6,7 @@ use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
 use graphene_std::transform::ReferencePoint;
 
-#[derive(Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Pivot {
 	/// Pivot between (0,0) and (1,1)
 	normalized_pivot: DVec2,
@@ -34,7 +34,7 @@ impl Default for Pivot {
 
 impl Pivot {
 	/// Recomputes the pivot position and transform.
-	fn recalculate_pivot(&mut self, document: &DocumentMessageHandler) {
+	pub fn recalculate_pivot(&mut self, document: &DocumentMessageHandler) {
 		if !self.active {
 			return;
 		}
@@ -77,7 +77,6 @@ impl Pivot {
 			self.active = true;
 		}
 
-		// self.recalculate_transform(document);
 		self.recalculate_pivot(document);
 		if !draw {
 			return;

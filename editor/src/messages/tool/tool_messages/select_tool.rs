@@ -307,8 +307,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 				SelectOptionsUpdate::DotType(dot_type) => {
 					self.tool_data.dot_type = *dot_type;
 					responses.add(ToolMessage::UpdateHints);
-					let center = self.tool_data.get_dot_position();
-					responses.add(TransformLayerMessage::SetDot { center });
+					let dot = self.tool_data.get_as_dot();
+					responses.add(TransformLayerMessage::SetDot { dot });
 					redraw_ref_pivot = true;
 				}
 			}
@@ -579,6 +579,9 @@ impl SelectToolData {
 			_ => None,
 		};
 		dot_position.unwrap_or_else(|| self.pivot.transform_from_normalized.transform_point2(DVec2::splat(0.5)))
+	}
+	fn get_as_dot(&self) -> (Pivot, DotType) {
+		(self.pivot.clone(), self.dot_type)
 	}
 }
 
@@ -1375,8 +1378,8 @@ impl Fsm for SelectToolFsmState {
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.select_single_layer = None;
 
-				let center = tool_data.get_dot_position();
-				responses.add(TransformLayerMessage::SetDot { center });
+				let dot = tool_data.get_as_dot();
+				responses.add(TransformLayerMessage::SetDot { dot });
 
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
@@ -1527,9 +1530,8 @@ impl Fsm for SelectToolFsmState {
 
 				let pos: Option<DVec2> = position.into();
 				tool_data.pivot.set_normalized_position(pos.unwrap());
-				let pivot = &tool_data.pivot;
-				let center = pivot.position().unwrap_or_else(|| pivot.transform_from_normalized.transform_point2(DVec2::splat(0.5)));
-				responses.add(TransformLayerMessage::SetDot { center });
+				let dot = tool_data.get_as_dot();
+				responses.add(TransformLayerMessage::SetDot { dot });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 
 				self
