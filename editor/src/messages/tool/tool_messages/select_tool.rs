@@ -307,8 +307,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 				SelectOptionsUpdate::DotType(dot_type) => {
 					self.tool_data.dot_type = *dot_type;
 					responses.add(ToolMessage::UpdateHints);
-					let center = self.tool_data.get_pivot_position();
-					responses.add(TransformLayerMessage::SetCenter { center });
+					let center = self.tool_data.get_dot_position();
+					responses.add(TransformLayerMessage::SetDot { center });
 					redraw_ref_pivot = true;
 				}
 			}
@@ -398,6 +398,7 @@ struct SelectToolData {
 	cursor: MouseCursorIcon,
 	pivot: Pivot,
 	dot_type: DotType,
+	origin: DVec2, // hack because process_message doesn't have document
 	compass_rose: CompassRose,
 	line_center: DVec2,
 	skew_edge: EdgeBool,
@@ -571,12 +572,13 @@ impl SelectToolData {
 		}
 	}
 
-	fn get_pivot_position(&self) -> Option<DVec2> {
-		match self.dot_type {
-			DotType::Origin => None,
-			DotType::Pivot => self.pivot.position().or(Some(DVec2::splat(0.5))),
-			_ => Some(DVec2::splat(0.5)),
-		}
+	fn get_dot_position(&self) -> DVec2 {
+		let dot_position = match self.dot_type {
+			DotType::Origin => Some(self.origin),
+			DotType::Pivot => self.pivot.position(),
+			_ => None,
+		};
+		dot_position.unwrap_or_else(|| self.pivot.transform_from_normalized.transform_point2(DVec2::splat(0.5)))
 	}
 }
 
@@ -794,8 +796,9 @@ impl Fsm for SelectToolFsmState {
 				tool_data.pivot.update(document, &mut overlay_context, Some((angle,)), tool_data.dot_type.is_pivot());
 				if tool_data.dot_type.is_origin() {
 					let network_interface = &document.network_interface;
-					let origin = (network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect::<Vec<_>>()).mean_average_origin(network_interface);
-					overlay_context.dowel_pin(origin);
+					tool_data.origin =
+						(network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect::<Vec<_>>()).mean_average_origin(network_interface);
+					overlay_context.dowel_pin(tool_data.origin);
 				}
 
 				// Update compass rose
@@ -954,8 +957,8 @@ impl Fsm for SelectToolFsmState {
 				let intersection_list = document.click_list(input).collect::<Vec<_>>();
 				let intersection = document.find_deepest(&intersection_list);
 
-				let pos = tool_data.get_pivot_position();
-				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, pos);
+				let pos = tool_data.get_dot_position();
+				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, Some(pos));
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -1521,8 +1524,9 @@ impl Fsm for SelectToolFsmState {
 
 				let pos: Option<DVec2> = position.into();
 				tool_data.pivot.set_normalized_position(pos.unwrap());
-				let center = tool_data.pivot.position();
-				responses.add(TransformLayerMessage::SetCenter { center });
+				let pivot = &tool_data.pivot;
+				let center = pivot.position().unwrap_or_else(|| pivot.transform_from_normalized.transform_point2(DVec2::splat(0.5)));
+				responses.add(TransformLayerMessage::SetDot { center });
 
 				self
 			}

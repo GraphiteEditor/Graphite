@@ -11,7 +11,7 @@ pub struct Pivot {
 	/// Pivot between (0,0) and (1,1)
 	normalized_pivot: DVec2,
 	/// Transform to get from normalized pivot to viewspace
-	transform_from_normalized: DAffine2,
+	pub transform_from_normalized: DAffine2,
 	/// The viewspace pivot position
 	pivot: Option<DVec2>,
 	/// The old pivot position in the GUI, used to reduce refreshes of the document bar
