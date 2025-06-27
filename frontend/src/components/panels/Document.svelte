@@ -29,70 +29,70 @@
 	import ScrollbarInput from "@graphite/components/widgets/inputs/ScrollbarInput.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
-	let rulerHorizontal: RulerInput | undefined;
-	let rulerVertical: RulerInput | undefined;
-	let viewport: HTMLDivElement | undefined;
+	let rulerHorizontal: RulerInput | undefined = $state();
+	let rulerVertical: RulerInput | undefined = $state();
+	let viewport: HTMLDivElement | undefined = $state();
 
 	const editor = getContext<Editor>("editor");
 	const document = getContext<DocumentState>("document");
 
 	// Interactive text editing
-	let textInput: undefined | HTMLDivElement = undefined;
-	let showTextInput: boolean;
-	let textInputMatrix: number[];
+	let textInput: undefined | HTMLDivElement = $state(undefined);
+	let showTextInput: boolean = $state(false);
+	let textInputMatrix: number[] = $state([]);
 
 	// Scrollbars
-	let scrollbarPos: XY = { x: 0.5, y: 0.5 };
-	let scrollbarSize: XY = { x: 0.5, y: 0.5 };
+	let scrollbarPos: XY = $state({ x: 0.5, y: 0.5 });
+	let scrollbarSize: XY = $state({ x: 0.5, y: 0.5 });
 	let scrollbarMultiplier: XY = { x: 0, y: 0 };
 
 	// Rulers
-	let rulerOrigin: XY = { x: 0, y: 0 };
-	let rulerSpacing = 100;
-	let rulerInterval = 100;
-	let rulersVisible = true;
+	let rulerOrigin: XY = $state({ x: 0, y: 0 });
+	let rulerSpacing = $state(100);
+	let rulerInterval = $state(100);
+	let rulersVisible = $state(true);
 
 	// Rendered SVG viewport data
-	let artworkSvg = "";
+	let artworkSvg = $state("");
 
 	// Rasterized SVG viewport data, or none if it's not up-to-date
 	let rasterizedCanvas: HTMLCanvasElement | undefined = undefined;
 	let rasterizedContext: CanvasRenderingContext2D | undefined = undefined;
 
 	// Cursor icon to display while hovering over the canvas
-	let canvasCursor = "default";
+	let canvasCursor = $state("default");
 
 	// Cursor position for cursor floating menus like the Eyedropper tool zoom
-	let cursorLeft = 0;
-	let cursorTop = 0;
-	let cursorEyedropper = false;
-	let cursorEyedropperPreviewImageData: ImageData | undefined = undefined;
-	let cursorEyedropperPreviewColorChoice = "";
-	let cursorEyedropperPreviewColorPrimary = "";
-	let cursorEyedropperPreviewColorSecondary = "";
+	let cursorLeft = $state(0);
+	let cursorTop = $state(0);
+	let cursorEyedropper = $state(false);
+	let cursorEyedropperPreviewImageData: ImageData | undefined = $state(undefined);
+	let cursorEyedropperPreviewColorChoice = $state("");
+	let cursorEyedropperPreviewColorPrimary = $state("");
+	let cursorEyedropperPreviewColorSecondary = $state("");
 
 	// Canvas dimensions
-	let canvasSvgWidth: number | undefined = undefined;
-	let canvasSvgHeight: number | undefined = undefined;
+	let canvasSvgWidth: number | undefined = $state(undefined);
+	let canvasSvgHeight: number | undefined = $state(undefined);
 
-	let devicePixelRatio: number | undefined;
+	let devicePixelRatio: number | undefined = $state();
 
 	// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
-	$: canvasWidthRoundedToEven = canvasSvgWidth && (canvasSvgWidth % 2 === 1 ? canvasSvgWidth + 1 : canvasSvgWidth);
-	$: canvasHeightRoundedToEven = canvasSvgHeight && (canvasSvgHeight % 2 === 1 ? canvasSvgHeight + 1 : canvasSvgHeight);
+	let canvasWidthRoundedToEven = $derived(canvasSvgWidth && (canvasSvgWidth % 2 === 1 ? canvasSvgWidth + 1 : canvasSvgWidth));
+	let canvasHeightRoundedToEven = $derived(canvasSvgHeight && (canvasSvgHeight % 2 === 1 ? canvasSvgHeight + 1 : canvasSvgHeight));
 	// Used to set the canvas element size on the page.
 	// The value above in pixels, or if undefined, we fall back to 100% as a non-pixel-perfect backup that's hopefully short-lived
-	$: canvasWidthCSS = canvasWidthRoundedToEven ? `${canvasWidthRoundedToEven}px` : "100%";
-	$: canvasHeightCSS = canvasHeightRoundedToEven ? `${canvasHeightRoundedToEven}px` : "100%";
+	let canvasWidthCSS = $derived(canvasWidthRoundedToEven ? `${canvasWidthRoundedToEven}px` : "100%");
+	let canvasHeightCSS = $derived(canvasHeightRoundedToEven ? `${canvasHeightRoundedToEven}px` : "100%");
 
-	$: canvasWidthScaled = canvasSvgWidth && devicePixelRatio && Math.floor(canvasSvgWidth * devicePixelRatio);
-	$: canvasHeightScaled = canvasSvgHeight && devicePixelRatio && Math.floor(canvasSvgHeight * devicePixelRatio);
+	let canvasWidthScaled = $derived(canvasSvgWidth && devicePixelRatio && Math.floor(canvasSvgWidth * devicePixelRatio));
+	let canvasHeightScaled = $derived(canvasSvgHeight && devicePixelRatio && Math.floor(canvasSvgHeight * devicePixelRatio));
 
 	// Used to set the canvas rendering dimensions.
-	$: canvasWidthScaledRoundedToEven = canvasWidthScaled && (canvasWidthScaled % 2 === 1 ? canvasWidthScaled + 1 : canvasWidthScaled);
-	$: canvasHeightScaledRoundedToEven = canvasHeightScaled && (canvasHeightScaled % 2 === 1 ? canvasHeightScaled + 1 : canvasHeightScaled);
+	let canvasWidthScaledRoundedToEven = $derived(canvasWidthScaled && (canvasWidthScaled % 2 === 1 ? canvasWidthScaled + 1 : canvasWidthScaled));
+	let canvasHeightScaledRoundedToEven = $derived(canvasHeightScaled && (canvasHeightScaled % 2 === 1 ? canvasHeightScaled + 1 : canvasHeightScaled));
 
-	$: toolShelfTotalToolsAndSeparators = ((layoutGroup) => {
+	let toolShelfTotalToolsAndSeparators = $derived(((layoutGroup) => {
 		if (!isWidgetSpanRow(layoutGroup)) return undefined;
 
 		let totalSeparators = 0;
@@ -124,7 +124,7 @@
 			totalToolRowsFor2Columns,
 			totalToolRowsFor3Columns,
 		};
-	})($document.toolShelfLayout.layout[0]);
+	})($document.toolShelfLayout.layout[0]));
 
 	function dropFile(e: DragEvent) {
 		const { dataTransfer } = e;
@@ -461,7 +461,7 @@
 	});
 </script>
 
-<LayoutCol class="document" on:dragover={(e) => e.preventDefault()} on:drop={dropFile}>
+<LayoutCol class="document" ondragover={(e) => e.preventDefault()} ondrop={dropFile}>
 	<LayoutRow class="control-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
 		{#if !$document.graphViewOverlayOpen}
 			<WidgetLayout layout={$document.documentModeLayout} />
@@ -517,13 +517,13 @@
 							y={cursorTop}
 						/>
 					{/if}
-					<div class="viewport" on:pointerdown={(e) => canvasPointerDown(e)} bind:this={viewport} data-viewport>
+					<div class="viewport" onpointerdown={(e) => canvasPointerDown(e)} bind:this={viewport} data-viewport>
 						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html artworkSvg}
 						</svg>
 						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={showTextInput ? "auto" : ""}>
 							{#if showTextInput}
-								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll} />
+								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" onscroll={preventTextEditingScroll}></div>
 							{/if}
 						</div>
 						<canvas
@@ -545,10 +545,10 @@
 						direction="Vertical"
 						thumbLength={scrollbarSize.y}
 						thumbPosition={scrollbarPos.y}
-						on:trackShift={({ detail }) => editor.handle.panCanvasByFraction(0, detail)}
-						on:thumbPosition={({ detail }) => panCanvasY(detail)}
-						on:thumbDragStart={() => editor.handle.panCanvasAbortPrepare(false)}
-						on:thumbDragAbort={() => editor.handle.panCanvasAbort(false)}
+						ontrackShift={(detail) => editor.handle.panCanvasByFraction(0, detail)}
+						onthumbPosition={(detail) => panCanvasY(detail)}
+						onthumbDragStart={() => editor.handle.panCanvasAbortPrepare(false)}
+						onthumbDragAbort={() => editor.handle.panCanvasAbort(false)}
 					/>
 				</LayoutCol>
 			</LayoutRow>
@@ -557,11 +557,11 @@
 					direction="Horizontal"
 					thumbLength={scrollbarSize.x}
 					thumbPosition={scrollbarPos.x}
-					on:trackShift={({ detail }) => editor.handle.panCanvasByFraction(detail, 0)}
-					on:thumbPosition={({ detail }) => panCanvasX(detail)}
-					on:thumbDragEnd={() => editor.handle.setGridAlignedEdges()}
-					on:thumbDragStart={() => editor.handle.panCanvasAbortPrepare(true)}
-					on:thumbDragAbort={() => editor.handle.panCanvasAbort(true)}
+					ontrackShift={(detail) => editor.handle.panCanvasByFraction(detail, 0)}
+					onthumbPosition={(detail) => panCanvasX(detail)}
+					onthumbDragEnd={() => editor.handle.setGridAlignedEdges()}
+					onthumbDragStart={() => editor.handle.panCanvasAbortPrepare(true)}
+					onthumbDragAbort={() => editor.handle.panCanvasAbort(true)}
 				/>
 			</LayoutRow>
 		</LayoutCol>

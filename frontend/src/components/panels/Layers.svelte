@@ -43,26 +43,26 @@
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
-	let list: LayoutCol | undefined;
+	let list: LayoutCol | undefined = $state();
 
 	// Layer data
 	let layerCache = new Map<string, LayerPanelEntry>(); // TODO: replace with BigUint64Array as index
-	let layers: LayerListingInfo[] = [];
+	let layers: LayerListingInfo[] = $state([]);
 
 	// Interactive dragging
-	let draggable = true;
-	let draggingData: undefined | DraggingData = undefined;
-	let fakeHighlightOfNotYetSelectedLayerBeingDragged: undefined | bigint = undefined;
-	let dragInPanel = false;
+	let draggable = $state(true);
+	let draggingData: undefined | DraggingData = $state(undefined);
+	let fakeHighlightOfNotYetSelectedLayerBeingDragged: undefined | bigint = $state(undefined);
+	let dragInPanel = $state(false);
 
 	// Interactive clipping
-	let layerToClipUponClick: LayerListingInfo | undefined = undefined;
-	let layerToClipAltKeyPressed = false;
+	let layerToClipUponClick: LayerListingInfo | undefined = $state(undefined);
+	let layerToClipAltKeyPressed = $state(false);
 
 	// Layouts
-	let layersPanelControlBarLeftLayout = defaultWidgetLayout();
-	let layersPanelControlBarRightLayout = defaultWidgetLayout();
-	let layersPanelBottomBarLayout = defaultWidgetLayout();
+	let layersPanelControlBarLeftLayout = $state(defaultWidgetLayout());
+	let layersPanelControlBarRightLayout = $state(defaultWidgetLayout());
+	let layersPanelBottomBarLayout = $state(defaultWidgetLayout());
 
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (updateLayersPanelControlBarLeftLayout) => {
@@ -530,7 +530,7 @@
 							title={listing.entry.expanded
 								? "Collapse (Click) / Collapse All (Alt Click)"
 								: `Expand (Click) / Expand All (Alt Click)${listing.entry.ancestorOfSelected ? "\n(A selected layer is contained within)" : ""}`}
-							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
+							onclick={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
 							tabindex="0"
 						></button>
 					{:else}
@@ -554,17 +554,19 @@
 							value={listing.entry.alias}
 							placeholder={listing.entry.name}
 							disabled={!listing.editingName}
-							on:blur={() => onEditLayerNameDeselect(listing)}
-							on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}
-							on:keydown={(e) => e.key === "Enter" && onEditLayerNameChange(listing, e)}
-							on:change={(e) => onEditLayerNameChange(listing, e)}
+							onblur={() => onEditLayerNameDeselect(listing)}
+							onkeydown={(e) => {
+								e.key === "Escape" && onEditLayerNameDeselect(listing);
+								e.key === "Enter" && onEditLayerNameChange(listing, e);
+							}}
+							onchange={(e) => onEditLayerNameChange(listing, e)}
 						/>
 					</LayoutRow>
 					{#if !listing.entry.unlocked || !listing.entry.parentsUnlocked}
 						<IconButton
 							class={"status-toggle"}
 							classes={{ inherited: !listing.entry.parentsUnlocked }}
-							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
+							onclick={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
 							size={24}
 							icon={listing.entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
 							hoverIcon={listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
@@ -574,7 +576,7 @@
 					<IconButton
 						class={"status-toggle"}
 						classes={{ inherited: !listing.entry.parentsVisible }}
-						action={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
+						onclick={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
 						size={24}
 						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
 						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
@@ -584,7 +586,7 @@
 			{/each}
 		</LayoutCol>
 		{#if draggingData && !draggingData.highlightFolder && dragInPanel}
-			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`} />
+			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`}></div>
 		{/if}
 	</LayoutRow>
 	<LayoutRow class="bottom-bar" scrollableX={true}>

@@ -26,34 +26,30 @@
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
-	let graph: HTMLDivElement | undefined;
-	let nodesContainer: HTMLDivElement | undefined;
+	let graph: HTMLDivElement | undefined = $state();
+	let nodesContainer: HTMLDivElement | undefined = $state();
 
 	// TODO: Using this not-complete code, or another better approach, make it so the dragged in-progress connector correctly handles showing/hiding the SVG shape of the connector caps
 	// let wireInProgressFromLayerTop: bigint | undefined = undefined;
 	// let wireInProgressFromLayerBottom: bigint | undefined = undefined;
 
-	let nodeWirePaths: WirePath[] = [];
+	let nodeWirePaths: WirePath[] = $state([]);
 
 	// TODO: Convert these arrays-of-arrays to a Map?
-	let inputs: SVGSVGElement[][] = [];
-	let outputs: SVGSVGElement[][] = [];
-	let nodeElements: HTMLDivElement[] = [];
+	let inputs: SVGSVGElement[][] = $state([]);
+	let outputs: SVGSVGElement[][] = $state([]);
+	let nodeElements: HTMLDivElement[] = $state([]);
 
-	$: watchNodes($nodeGraph.nodes);
 
-	$: gridSpacing = calculateGridSpacing($nodeGraph.transform.scale);
-	$: dotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
 
-	$: wirePaths = createWirePaths($nodeGraph.wirePathInProgress, nodeWirePaths);
 
-	let inputElement: HTMLInputElement;
-	let hoveringImportIndex: number | undefined = undefined;
-	let hoveringExportIndex: number | undefined = undefined;
+	let inputElement: HTMLInputElement | undefined = $state();
+	let hoveringImportIndex: number | undefined = $state(undefined);
+	let hoveringExportIndex: number | undefined = $state(undefined);
 
-	let editingNameImportIndex: number | undefined = undefined;
-	let editingNameExportIndex: number | undefined = undefined;
-	let editingNameText = "";
+	let editingNameImportIndex: number | undefined = $state(undefined);
+	let editingNameExportIndex: number | undefined = $state(undefined);
+	let editingNameText = $state("");
 
 	function exportsToEdgeTextInputWidth() {
 		let exportTextDivs = document.querySelectorAll(`[data-export-text-edge]`);
@@ -636,6 +632,12 @@
 		}
 		return result;
 	}
+	$effect(() => {
+		watchNodes($nodeGraph.nodes);
+	});
+	let gridSpacing = $derived(calculateGridSpacing($nodeGraph.transform.scale));
+	let dotRadius = $derived(1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2);
+	let wirePaths = $derived(createWirePaths($nodeGraph.wirePathInProgress, nodeWirePaths));
 </script>
 
 <div
@@ -658,9 +660,9 @@
 			}}
 		>
 			{#if typeof $nodeGraph.contextMenuInformation.contextMenuData === "string" && $nodeGraph.contextMenuInformation.contextMenuData === "CreateNode"}
-				<NodeCatalog on:selectNodeType={(e) => createNode(e.detail)} />
+				<NodeCatalog onselectNodeType={(detail) => createNode(detail)} />
 			{:else if $nodeGraph.contextMenuInformation.contextMenuData && "compatibleType" in $nodeGraph.contextMenuInformation.contextMenuData}
-				<NodeCatalog initialSearchTerm={$nodeGraph.contextMenuInformation.contextMenuData.compatibleType || ""} on:selectNodeType={(e) => createNode(e.detail)} />
+				<NodeCatalog initialSearchTerm={$nodeGraph.contextMenuInformation.contextMenuData.compatibleType || ""} onselectNodeType={(detail) => createNode(detail)} />
 			{:else}
 				{@const contextMenuData = $nodeGraph.contextMenuInformation.contextMenuData}
 				<LayoutRow class="toggle-layer-or-node">
@@ -761,8 +763,8 @@
 
 			<div
 				class="edit-import-export import"
-				on:pointerenter={() => (hoveringImportIndex = index)}
-				on:pointerleave={() => (hoveringImportIndex = undefined)}
+				onpointerenter={() => (hoveringImportIndex = index)}
+				onpointerleave={() => (hoveringImportIndex = undefined)}
 				style:--offset-left={position.x / 24}
 				style:--offset-top={position.y / 24}
 			>
@@ -773,11 +775,11 @@
 						style:width={importsToEdgeTextInputWidth()}
 						bind:this={inputElement}
 						bind:value={editingNameText}
-						on:blur={setEditingImportName}
-						on:keydown={(e) => e.key === "Enter" && setEditingImportName(e)}
+						onblur={setEditingImportName}
+						onkeydown={(e) => e.key === "Enter" && setEditingImportName(e)}
 					/>
 				{:else}
-					<p class="import-text" on:dblclick={() => setEditingImportNameIndex(index, outputMetadata.name)}>{outputMetadata.name}</p>
+					<p class="import-text" ondblclick={() => setEditingImportNameIndex(index, outputMetadata.name)}>{outputMetadata.name}</p>
 				{/if}
 				{#if hoveringImportIndex === index || editingNameImportIndex === index}
 					<IconButton
@@ -786,7 +788,7 @@
 						class="remove-button-import"
 						data-index={index}
 						data-import-text-edge
-						action={() => {
+						onclick={() => {
 							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 						}}
 					/>
@@ -799,86 +801,89 @@
 				x: Number($nodeGraph.imports[0].position.x),
 				y: Number($nodeGraph.imports[0].position.y) + Number($nodeGraph.reorderImportIndex) * 24,
 			}}
-			<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 4) / 24} />
+			<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 4) / 24}></div>
 		{/if}
 		{#if $nodeGraph.addImport !== undefined}
 			<div class="plus" style:--offset-left={$nodeGraph.addImport.x / 24} style:--offset-top={$nodeGraph.addImport.y / 24}>
 				<IconButton
 					size={24}
 					icon="Add"
-					action={() => {
+					onclick={() => {
 						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
 				/>
 			</div>
 		{/if}
-		{#each $nodeGraph.exports as { inputMetadata, position }, index}
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				viewBox="0 0 8 8"
-				class="port"
-				data-port="input"
-				data-datatype={inputMetadata.dataType}
-				style:--data-color={`var(--color-data-${inputMetadata.dataType.toLowerCase()})`}
-				style:--data-color-dim={`var(--color-data-${inputMetadata.dataType.toLowerCase()}-dim)`}
-				style:--offset-left={position.x / 24}
-				style:--offset-top={position.y / 24}
-				bind:this={inputs[0][index]}
-			>
-				<title>{`${dataTypeTooltip(inputMetadata)}\n\n${inputConnectedToText(inputMetadata)}`}</title>
-				{#if inputMetadata.connectedTo !== undefined}
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-				{:else}
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-				{/if}
-			</svg>
-			<div
-				class="edit-import-export export"
-				on:pointerenter={() => (hoveringExportIndex = index)}
-				on:pointerleave={() => (hoveringExportIndex = undefined)}
-				style:--offset-left={position.x / 24}
-				style:--offset-top={position.y / 24}
-			>
-				{#if hoveringExportIndex === index || editingNameExportIndex === index}
-					<div class="reorder-drag-grip" title="Reorder this export"></div>
-					<IconButton
-						size={16}
-						icon={"Remove"}
-						class="remove-button-export"
-						data-index={index}
-						data-export-text-edge
-						action={() => {
-							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
-						}}
-					/>
-				{/if}
-				{#if editingNameExportIndex === index}
-					<input
-						type="text"
-						style:width={exportsToEdgeTextInputWidth()}
-						bind:this={inputElement}
-						bind:value={editingNameText}
-						on:blur={setEditingExportName}
-						on:keydown={(e) => e.key === "Enter" && setEditingExportName(e)}
-					/>
-				{:else}
-					<p class="export-text" on:dblclick={() => setEditingExportNameIndex(index, inputMetadata.name)}>{inputMetadata.name}</p>
-				{/if}
-			</div>
-		{/each}
+		<!-- // TODO: SM17 Check data order, had to add condition to fix undefined error -->
+		{#if inputs.length > 0}
+			{#each $nodeGraph.exports as { inputMetadata, position }, index}
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					viewBox="0 0 8 8"
+					class="port"
+					data-port="input"
+					data-datatype={inputMetadata.dataType}
+					style:--data-color={`var(--color-data-${inputMetadata.dataType.toLowerCase()})`}
+					style:--data-color-dim={`var(--color-data-${inputMetadata.dataType.toLowerCase()}-dim)`}
+					style:--offset-left={position.x / 24}
+					style:--offset-top={position.y / 24}
+					bind:this={inputs[0][index]}
+				>
+					<title>{`${dataTypeTooltip(inputMetadata)}\n\n${inputConnectedToText(inputMetadata)}`}</title>
+					{#if inputMetadata.connectedTo !== undefined}
+						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+					{:else}
+						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+					{/if}
+				</svg>
+				<div
+					class="edit-import-export export"
+					onpointerenter={() => (hoveringExportIndex = index)}
+					onpointerleave={() => (hoveringExportIndex = undefined)}
+					style:--offset-left={position.x / 24}
+					style:--offset-top={position.y / 24}
+				>
+					{#if hoveringExportIndex === index || editingNameExportIndex === index}
+						<div class="reorder-drag-grip" title="Reorder this export"></div>
+						<IconButton
+							size={16}
+							icon={"Remove"}
+							class="remove-button-export"
+							data-index={index}
+							data-export-text-edge
+							onclick={() => {
+								/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+							}}
+						/>
+					{/if}
+					{#if editingNameExportIndex === index}
+						<input
+							type="text"
+							style:width={exportsToEdgeTextInputWidth()}
+							bind:this={inputElement}
+							bind:value={editingNameText}
+							onblur={setEditingExportName}
+							onkeydown={(e) => e.key === "Enter" && setEditingExportName(e)}
+						/>
+					{:else}
+						<p class="export-text" ondblclick={() => setEditingExportNameIndex(index, inputMetadata.name)}>{inputMetadata.name}</p>
+					{/if}
+				</div>
+			{/each}
+		{/if}
 		{#if $nodeGraph.reorderExportIndex !== undefined}
 			{@const position = {
 				x: Number($nodeGraph.exports[0].position.x),
 				y: Number($nodeGraph.exports[0].position.y) + Number($nodeGraph.reorderExportIndex) * 24,
 			}}
-			<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 4) / 24} />
+			<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 4) / 24}></div>
 		{/if}
 		{#if $nodeGraph.addExport !== undefined}
 			<div class="plus" style:--offset-left={$nodeGraph.addExport.x / 24} style:--offset-top={$nodeGraph.addExport.y / 24}>
 				<IconButton
 					size={24}
 					icon={"Add"}
-					action={() => {
+					onclick={() => {
 						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
 				/>
@@ -1005,7 +1010,7 @@
 					data-visibility-button
 					size={24}
 					icon={node.visible ? "EyeVisible" : "EyeHidden"}
-					action={() => {
+					onclick={() => {
 						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
 					tooltip={node.visible ? "Visible" : "Hidden"}
