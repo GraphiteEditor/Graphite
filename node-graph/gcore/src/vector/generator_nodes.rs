@@ -1,7 +1,7 @@
 use super::misc::{ArcType, AsU64, GridType};
 use super::{PointId, SegmentId, StrokeId};
 use crate::Ctx;
-use crate::registry::types::{Angle, PixelSize};
+use crate::registry::types::PixelSize;
 use crate::vector::{HandleId, VectorData, VectorDataTable};
 use bezier_rs::Subpath;
 use glam::DVec2;
@@ -43,16 +43,7 @@ fn circle(_: impl Ctx, _primary: (), #[default(50.)] radius: f64) -> VectorDataT
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn arc(
-	_: impl Ctx,
-	_primary: (),
-	#[default(50.)] radius: f64,
-	start_angle: Angle,
-	#[default(270.)]
-	#[range((0., 360.))]
-	sweep_angle: Angle,
-	arc_type: ArcType,
-) -> VectorDataTable {
+fn arc(_: impl Ctx, _primary: (), #[default(50.)] radius: f64, start_angle: f64, #[default(270.)] sweep_angle: f64, arc_type: ArcType) -> VectorDataTable {
 	VectorDataTable::new(VectorData::from_subpath(Subpath::new_arc(
 		radius,
 		start_angle / 360. * std::f64::consts::TAU,
