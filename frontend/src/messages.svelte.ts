@@ -1522,62 +1522,6 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 	});
 }
 
-// export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: WidgetDiffUpdate) {
-// 	// Use Reflect.set to ensure proxy reactivity
-// 	Reflect.set(layout, "layoutTarget", updates.layoutTarget);
-
-// 	updates.diff.forEach((update) => {
-// 		// Find the object where the diff applies to
-// 		let diffObject = update.widgetPath.reduce((targetLayout, index) => {
-// 			// Use Reflect.get to ensure we're going through the proxy
-// 			if (Reflect.has(targetLayout, "columnWidgets")) {
-// 				return Reflect.get(Reflect.get(targetLayout, "columnWidgets"), index);
-// 			}
-// 			if (Reflect.has(targetLayout, "rowWidgets")) {
-// 				return Reflect.get(Reflect.get(targetLayout, "rowWidgets"), index);
-// 			}
-// 			if (Reflect.has(targetLayout, "tableWidgets")) {
-// 				return Reflect.get(Reflect.get(targetLayout, "tableWidgets"), index);
-// 			}
-// 			if (Reflect.has(targetLayout, "layout")) {
-// 				return Reflect.get(Reflect.get(targetLayout, "layout"), index);
-// 			}
-// 			if (targetLayout instanceof Widget) {
-// 				if (targetLayout.props.kind === "PopoverButton" && targetLayout.props instanceof PopoverButton && targetLayout.props.popoverLayout) {
-// 					return Reflect.get(targetLayout.props.popoverLayout, index);
-// 				}
-// 				console.error("Tried to index widget");
-// 				return targetLayout;
-// 			}
-// 			if (Reflect.has(targetLayout, "action")) {
-// 				const children = Reflect.get(targetLayout, "children");
-// 				return children ? Reflect.get(children, index) : undefined;
-// 			}
-// 			return Reflect.get(targetLayout, index);
-// 		}, layout.layout as UIItem);
-
-// 		// Clear array length using Reflect to trigger reactivity
-// 		if (Reflect.has(diffObject, "length")) {
-// 			Reflect.set(diffObject, "length", 0);
-// 		}
-
-// 		// Remove all keys using Reflect.deleteProperty to ensure proxy notifications
-// 		Reflect.ownKeys(diffObject).forEach((key) => {
-// 			if (key !== "length") {
-// 				// Don't delete length property on arrays
-// 				Reflect.deleteProperty(diffObject, key);
-// 			}
-// 		});
-
-// 		// Assign new properties using Reflect.set
-// 		if (update.newValue && typeof update.newValue === "object") {
-// 			Object.entries(update.newValue).forEach(([key, value]) => {
-// 				Reflect.set(diffObject, key, value);
-// 			});
-// 		}
-// 	});
-// }
-
 export type LayoutGroup = WidgetSpanRow | WidgetSpanColumn | WidgetTable | WidgetSection;
 
 export type WidgetSpanColumn = { columnWidgets: Widget[] };
