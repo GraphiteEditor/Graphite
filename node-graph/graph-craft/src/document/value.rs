@@ -5,7 +5,8 @@ use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::SurfaceFrame;
-use graphene_core::raster::brush_cache::BrushCache;
+use graphene_brush::brush_cache::BrushCache;
+use graphene_brush::brush_stroke::BrushStroke;
 use graphene_core::raster_types::CPU;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
@@ -208,7 +209,7 @@ tagged_value! {
 	#[serde(alias = "GradientPositions")] // TODO: Eventually remove this alias document upgrade code
 	GradientStops(graphene_core::vector::style::GradientStops),
 	Font(graphene_core::text::Font),
-	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
+	BrushStrokes(Vec<BrushStroke>),
 	BrushCache(BrushCache),
 	DocumentNode(DocumentNode),
 	Curve(graphene_raster_nodes::curve::Curve),
