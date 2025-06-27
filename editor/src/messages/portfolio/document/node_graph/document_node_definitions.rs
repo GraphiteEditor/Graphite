@@ -16,8 +16,8 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
+use graphene_std::brush::brush_cache::BrushCache;
 use graphene_std::extract_xy::XY;
-use graphene_std::raster::brush_cache::BrushCache;
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
 use graphene_std::raster_types::{CPU, RasterDataTable};
 use graphene_std::text::{Font, TypesettingConfig};
@@ -1030,7 +1030,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: vec![DocumentNode {
 							inputs: vec![
 								NodeInput::network(concrete!(RasterDataTable<CPU>), 0),
-								NodeInput::network(concrete!(Vec<graphene_std::vector::brush_stroke::BrushStroke>), 1),
+								NodeInput::network(concrete!(Vec<brush::brush_stroke::BrushStroke>), 1),
 								NodeInput::network(concrete!(BrushCache), 2),
 							],
 							manual_composition: Some(concrete!(Context)),

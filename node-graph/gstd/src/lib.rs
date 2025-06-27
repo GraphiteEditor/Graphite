@@ -1,11 +1,11 @@
 pub mod any;
-pub mod brush;
 pub mod http;
 pub mod text;
 #[cfg(feature = "wasm")]
 pub mod wasm_application_io;
 
 pub use graphene_application_io as application_io;
+pub use graphene_brush as brush;
 pub use graphene_core::vector;
 pub use graphene_core::*;
 pub use graphene_element_nodes as element_nodes;
