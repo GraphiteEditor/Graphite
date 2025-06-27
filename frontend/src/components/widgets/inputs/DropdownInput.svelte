@@ -30,6 +30,7 @@
 	let open = false;
 
 	$: watchSelectedIndex(selectedIndex);
+	$: watchEntries(entries);
 	$: watchActiveEntry(activeEntry);
 	$: watchOpen(open);
 
@@ -39,6 +40,12 @@
 
 	// Called only when `selectedIndex` is changed from outside this component
 	function watchSelectedIndex(_?: number) {
+		activeEntrySkipWatcher = true;
+		activeEntry = makeActiveEntry();
+	}
+
+	// Called only when `entries` is changed from outside this component
+	function watchEntries(_?: any) {
 		activeEntrySkipWatcher = true;
 		activeEntry = makeActiveEntry();
 	}
