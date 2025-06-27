@@ -1527,6 +1527,7 @@ impl Fsm for SelectToolFsmState {
 				let pivot = &tool_data.pivot;
 				let center = pivot.position().unwrap_or_else(|| pivot.transform_from_normalized.transform_point2(DVec2::splat(0.5)));
 				responses.add(TransformLayerMessage::SetDot { center });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 
 				self
 			}
