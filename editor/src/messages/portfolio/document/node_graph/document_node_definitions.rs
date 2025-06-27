@@ -1466,7 +1466,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		// 	description: Cow::Borrowed("TODO"),
 		// 	properties: None,
 		// },
-		// (*IMAGINATE_NODE).clone(),
 		DocumentNodeDefinition {
 			identifier: "Path",
 			category: "Vector",
@@ -2118,128 +2117,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 
 	document_node_derive::post_process_nodes(custom)
 }
-
-// pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentNodeDefinition {
-// 	identifier: "Imaginate",
-// 	category: "Raster",
-// 	node_template: NodeTemplate {
-// 		document_node: DocumentNode {
-// 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-// 				exports: vec![NodeInput::node(NodeId(1), 0)],
-// 				nodes: [
-// 					DocumentNode {
-// 						inputs: vec![NodeInput::network(concrete!(RasterDataTable<CPU>), 0)],
-// 						implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
-// 						manual_composition: Some(concrete!(Context)),
-// 						skip_deduplication: true,
-// 						..Default::default()
-// 					},
-// 					DocumentNode {
-// 						inputs: vec![
-// 							NodeInput::node(NodeId(0), 0),
-// 							NodeInput::network(concrete!(&WasmEditorApi), 1),
-// 							NodeInput::network(concrete!(ImaginateController), 2),
-// 							NodeInput::network(concrete!(f64), 3),
-// 							NodeInput::network(concrete!(Option<DVec2>), 4),
-// 							NodeInput::network(concrete!(u32), 5),
-// 							NodeInput::network(concrete!(ImaginateSamplingMethod), 6),
-// 							NodeInput::network(concrete!(f64), 7),
-// 							NodeInput::network(concrete!(String), 8),
-// 							NodeInput::network(concrete!(String), 9),
-// 							NodeInput::network(concrete!(bool), 10),
-// 							NodeInput::network(concrete!(f64), 11),
-// 							NodeInput::network(concrete!(bool), 12),
-// 							NodeInput::network(concrete!(f64), 13),
-// 							NodeInput::network(concrete!(ImaginateMaskStartingFill), 14),
-// 							NodeInput::network(concrete!(bool), 15),
-// 							NodeInput::network(concrete!(bool), 16),
-// 							NodeInput::network(concrete!(u64), 17),
-// 						],
-// 						implementation: DocumentNodeImplementation::proto("graphene_std::raster::ImaginateNode"),
-// 						..Default::default()
-// 					},
-// 				]
-// 				.into_iter()
-// 				.enumerate()
-// 				.map(|(id, node)| (NodeId(id as u64), node))
-// 				.collect(),
-// 				..Default::default()
-// 			}),
-// 			inputs: vec![
-// 				NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true),
-// 				NodeInput::scope("editor-api"),
-// 				NodeInput::value(TaggedValue::ImaginateController(Default::default()), false),
-// 				NodeInput::value(TaggedValue::F64(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
-// 				NodeInput::value(TaggedValue::OptionalDVec2(None), false),
-// 				NodeInput::value(TaggedValue::U32(30), false),
-// 				NodeInput::value(TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
-// 				NodeInput::value(TaggedValue::F64(7.5), false),
-// 				NodeInput::value(TaggedValue::String(String::new()), false),
-// 				NodeInput::value(TaggedValue::String(String::new()), false),
-// 				NodeInput::value(TaggedValue::Bool(false), false),
-// 				NodeInput::value(TaggedValue::F64(66.), false),
-// 				NodeInput::value(TaggedValue::Bool(true), false),
-// 				NodeInput::value(TaggedValue::F64(4.), false),
-// 				NodeInput::value(TaggedValue::ImaginateMaskStartingFill(ImaginateMaskStartingFill::Fill), false),
-// 				NodeInput::value(TaggedValue::Bool(false), false),
-// 				NodeInput::value(TaggedValue::Bool(false), false),
-// 				NodeInput::value(TaggedValue::U64(0), false),
-// 			],
-// 			..Default::default()
-// 		},
-// 		persistent_node_metadata: DocumentNodePersistentMetadata {
-// 			network_metadata: Some(NodeNetworkMetadata {
-// 				persistent_metadata: NodeNetworkPersistentMetadata {
-// 					node_metadata: [
-// 						DocumentNodeMetadata {
-// 							persistent_metadata: DocumentNodePersistentMetadata {
-// 								display_name: "Monitor".to_string(),
-// 								..Default::default()
-// 							},
-// 							..Default::default()
-// 						},
-// 						DocumentNodeMetadata {
-// 							persistent_metadata: DocumentNodePersistentMetadata {
-// 								display_name: "Imaginate".to_string(),
-// 								..Default::default()
-// 							},
-// 							..Default::default()
-// 						},
-// 					]
-// 					.into_iter()
-// 					.enumerate()
-// 					.map(|(id, node)| (NodeId(id as u64), node))
-// 					.collect(),
-// 					..Default::default()
-// 				},
-// 				..Default::default()
-// 			}),
-// 			input_properties: vec![
-// 				"Input Image".into(),
-// 				"Editor Api".into(),
-// 				"Controller".into(),
-// 				"Seed".into(),
-// 				"Resolution".into(),
-// 				"Samples".into(),
-// 				"Sampling Method".into(),
-// 				"Prompt Guidance".into(),
-// 				"Prompt".into(),
-// 				"Negative Prompt".into(),
-// 				"Adapt Input Image".into(),
-// 				"Image Creativity".into(),
-// 				"Inpaint".into(),
-// 				"Mask Blur".into(),
-// 				"Mask Starting Fill".into(),
-// 				"Improve Faces".into(),
-// 				"Tiling".into(),
-// 			],
-// 			output_names: vec!["Image".to_string()],
-// 			..Default::default()
-// 		},
-// 	},
-// 	description: Cow::Borrowed("TODO"),
-// 	properties: None, // Some(&node_properties::imaginate_properties),
-// });
 
 type NodeProperties = HashMap<String, Box<dyn Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Send + Sync>>;
 
@@ -2975,19 +2852,3 @@ impl DocumentNodeDefinition {
 		self.node_template_input_override(self.node_template.document_node.inputs.clone().into_iter().map(Some))
 	}
 }
-
-// Previously used by the Imaginate node, but usage was commented out since it did nothing.
-// pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetwork {
-// 	let mut network = NodeNetwork { ..Default::default() };
-// 	network.push_node_to_document_network(
-// 		resolve_document_node_type("Input Frame")
-// 			.expect("Input Frame node does not exist")
-// 			.to_document_node_default_inputs([], DocumentNodeMetadata::position((8, 4))),
-// 	);
-// 	network.push_node_to_document_network(
-// 		resolve_document_node_type("Output")
-// 			.expect("Output node does not exist")
-// 			.to_document_node([NodeInput::node(output_node_id, 0)], DocumentNodeMetadata::position((output_offset + 8, 4))),
-// 	);
-// 	network
-// }
