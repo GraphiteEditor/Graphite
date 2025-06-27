@@ -18,7 +18,7 @@ wasm = [
 	"image/png",
 ]
 image-compare = []
-vello = ["dep:vello", "gpu", "graphene-core/vello"]
+vello = ["dep:vello", "gpu"]
 resvg = []
 wayland = ["graph-craft/wayland"]
 
@@ -29,6 +29,7 @@ graph-craft = { workspace = true }
 wgpu-executor = { workspace = true }
 graphene-core = { workspace = true }
 graphene-path-bool = { workspace = true }
+graphene-svg-renderer = { workspace = true }
 graphene-application-io = { workspace = true }
 
 # Workspace dependencies

@@ -238,34 +238,3 @@ impl std::fmt::Display for BlendMode {
 		}
 	}
 }
-
-#[cfg(feature = "vello")]
-impl From<BlendMode> for vello::peniko::Mix {
-	fn from(val: BlendMode) -> Self {
-		match val {
-			// Normal group
-			BlendMode::Normal => vello::peniko::Mix::Normal,
-			// Darken group
-			BlendMode::Darken => vello::peniko::Mix::Darken,
-			BlendMode::Multiply => vello::peniko::Mix::Multiply,
-			BlendMode::ColorBurn => vello::peniko::Mix::ColorBurn,
-			// Lighten group
-			BlendMode::Lighten => vello::peniko::Mix::Lighten,
-			BlendMode::Screen => vello::peniko::Mix::Screen,
-			BlendMode::ColorDodge => vello::peniko::Mix::ColorDodge,
-			// Contrast group
-			BlendMode::Overlay => vello::peniko::Mix::Overlay,
-			BlendMode::SoftLight => vello::peniko::Mix::SoftLight,
-			BlendMode::HardLight => vello::peniko::Mix::HardLight,
-			// Inversion group
-			BlendMode::Difference => vello::peniko::Mix::Difference,
-			BlendMode::Exclusion => vello::peniko::Mix::Exclusion,
-			// Component group
-			BlendMode::Hue => vello::peniko::Mix::Hue,
-			BlendMode::Saturation => vello::peniko::Mix::Saturation,
-			BlendMode::Color => vello::peniko::Mix::Color,
-			BlendMode::Luminosity => vello::peniko::Mix::Luminosity,
-			_ => todo!(),
-		}
-	}
-}

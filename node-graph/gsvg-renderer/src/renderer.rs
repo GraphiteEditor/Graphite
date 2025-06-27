@@ -1,19 +1,21 @@
-pub mod convert_usvg_path;
-
-use crate::instances::Instance;
-pub use crate::math::quad::Quad;
-pub use crate::math::rect::Rect;
-use crate::raster::{BlendMode, Image};
-use crate::raster_types::{CPU, GPU, RasterDataTable};
-use crate::transform::{Footprint, Transform};
-use crate::uuid::{NodeId, generate_uuid};
-use crate::vector::VectorDataTable;
-use crate::vector::click_target::{ClickTarget, FreePoint};
-use crate::vector::style::{Fill, Stroke, StrokeAlign, ViewMode};
-use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable};
+use crate::render_ext::RenderExt;
+use crate::to_peniko::BlendModeExt;
 use bezier_rs::Subpath;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
+use graphene_core::blending::BlendMode;
+use graphene_core::bounds::BoundingBox;
+use graphene_core::color::Color;
+use graphene_core::instances::Instance;
+use graphene_core::math::quad::Quad;
+use graphene_core::raster::Image;
+use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
+use graphene_core::transform::{Footprint, Transform};
+use graphene_core::uuid::{NodeId, generate_uuid};
+use graphene_core::vector::VectorDataTable;
+use graphene_core::vector::click_target::{ClickTarget, FreePoint};
+use graphene_core::vector::style::{Fill, Stroke, StrokeAlign, ViewMode};
+use graphene_core::{AlphaBlending, Artboard, ArtboardGroupTable, GraphicElement, GraphicGroupTable};
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -201,12 +203,11 @@ pub struct RenderMetadata {
 }
 
 // TODO: Rename to "Graphical"
-pub trait GraphicElementRendered {
+pub trait GraphicElementRendered: BoundingBox {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams);
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]>;
 
 	/// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection.
 	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
@@ -222,10 +223,6 @@ pub trait GraphicElementRendered {
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {}
-
-	fn to_graphic_element(&self) -> GraphicElement {
-		GraphicElement::default()
-	}
 }
 
 impl GraphicElementRendered for GraphicGroupTable {
@@ -299,7 +296,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 			if let Some(bounds) = bounds {
 				let blend_mode = match render_params.view_mode {
 					ViewMode::Outline => peniko::Mix::Normal,
-					_ => alpha_blending.blend_mode.into(),
+					_ => alpha_blending.blend_mode.to_peniko(),
 				};
 
 				let factor = if render_params.for_mask { 1. } else { alpha_blending.fill };
@@ -326,7 +323,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 				}
 
 				if let Some(bounds) = bounds {
-					let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
 					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 					instance_mask.render_to_vello(scene, transform_mask, context, &render_params.for_clipper());
@@ -347,12 +344,6 @@ impl GraphicElementRendered for GraphicGroupTable {
 				scene.pop_layer();
 			}
 		}
-	}
-
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.instance_ref_iter()
-			.filter_map(|element| element.instance.bounding_box(transform * *element.transform, include_stroke))
-			.reduce(Quad::combine_bounds)
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
@@ -405,10 +396,6 @@ impl GraphicElementRendered for GraphicGroupTable {
 		for instance in self.instance_mut_iter() {
 			instance.instance.new_ids_from_hash(*instance.source_node_id);
 		}
-	}
-
-	fn to_graphic_element(&self) -> GraphicElement {
-		GraphicElement::GraphicGroup(self.clone())
 	}
 }
 
@@ -519,8 +506,8 @@ impl GraphicElementRendered for VectorDataTable {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
-		use crate::vector::style::{GradientType, StrokeCap, StrokeJoin};
+		use graphene_core::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
+		use graphene_core::vector::style::{GradientType, StrokeCap, StrokeJoin};
 		use vello::kurbo::{Cap, Join};
 		use vello::peniko;
 
@@ -543,7 +530,7 @@ impl GraphicElementRendered for VectorDataTable {
 			// If we're using opacity or a blend mode, we need to push a layer
 			let blend_mode = match render_params.view_mode {
 				ViewMode::Outline => peniko::Mix::Normal,
-				_ => instance.alpha_blending.blend_mode.into(),
+				_ => instance.alpha_blending.blend_mode.to_peniko(),
 			};
 			let mut layer = false;
 			let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
@@ -582,7 +569,7 @@ impl GraphicElementRendered for VectorDataTable {
 
 				let weight = instance.instance.style.stroke().unwrap().weight;
 				let quad = Quad::from_box(layer_bounds).inflate(weight * element_transform.matrix2.determinant());
-				let rect = vello::kurbo::Rect::new(quad.top_left().x, quad.top_left().y, quad.bottom_right().x, quad.bottom_right().y);
+				let rect = kurbo::Rect::new(quad.top_left().x, quad.top_left().y, quad.bottom_right().x, quad.bottom_right().y);
 
 				let inside = instance.instance.style.stroke().unwrap().align == StrokeAlign::Inside;
 				let compose = if inside { peniko::Compose::SrcIn } else { peniko::Compose::SrcOut };
@@ -725,27 +712,6 @@ impl GraphicElementRendered for VectorDataTable {
 		}
 	}
 
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.instance_ref_iter()
-			.flat_map(|instance| {
-				if !include_stroke {
-					return instance.instance.bounding_box_with_transform(transform * *instance.transform);
-				}
-
-				let stroke_width = instance.instance.style.stroke().map(|s| s.weight()).unwrap_or_default();
-
-				let miter_limit = instance.instance.style.stroke().map(|s| s.join_miter_limit).unwrap_or(1.);
-
-				let scale = transform.decompose_scale();
-
-				// We use the full line width here to account for different styles of stroke caps
-				let offset = DVec2::splat(stroke_width * scale.x.max(scale.y) * miter_limit);
-
-				instance.instance.bounding_box_with_transform(transform * *instance.transform).map(|[a, b]| [a - offset, b + offset])
-			})
-			.reduce(Quad::combine_bounds)
-	}
-
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
 		for instance in self.instance_ref_iter() {
 			let instance_transform = *instance.transform;
@@ -828,10 +794,6 @@ impl GraphicElementRendered for VectorDataTable {
 			instance.instance.vector_new_ids_from_hash(reference.map(|id| id.0).unwrap_or_default());
 		}
 	}
-
-	fn to_graphic_element(&self) -> GraphicElement {
-		GraphicElement::VectorData(self.clone())
-	}
 }
 
 impl GraphicElementRendered for Artboard {
@@ -906,18 +868,6 @@ impl GraphicElementRendered for Artboard {
 		}
 	}
 
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		let artboard_bounds = (transform * Quad::from_box([self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()])).bounding_box();
-		if self.clip {
-			Some(artboard_bounds)
-		} else {
-			[self.graphic_group.bounding_box(transform, include_stroke), Some(artboard_bounds)]
-				.into_iter()
-				.flatten()
-				.reduce(Quad::combine_bounds)
-		}
-	}
-
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
@@ -954,12 +904,6 @@ impl GraphicElementRendered for ArtboardGroupTable {
 		for instance in self.instance_ref_iter() {
 			instance.instance.render_to_vello(scene, transform, context, render_params);
 		}
-	}
-
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.instance_ref_iter()
-			.filter_map(|instance| instance.instance.bounding_box(transform, include_stroke))
-			.reduce(Quad::combine_bounds)
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
@@ -1036,15 +980,6 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 		}
 	}
 
-	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.instance_ref_iter()
-			.flat_map(|instance| {
-				let transform = transform * *instance.transform;
-				(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
-			})
-			.reduce(Quad::combine_bounds)
-	}
-
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		let Some(element_id) = element_id else { return };
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
@@ -1061,10 +996,6 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 		click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
 	}
-
-	fn to_graphic_element(&self) -> GraphicElement {
-		GraphicElement::RasterDataCPU(self.clone())
-	}
 }
 
 impl GraphicElementRendered for RasterDataTable<GPU> {
@@ -1076,40 +1007,31 @@ impl GraphicElementRendered for RasterDataTable<GPU> {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams) {
 		use vello::peniko;
 
-		let mut render_stuff = |image: vello::peniko::Image, instance_transform: DAffine2, blend_mode: crate::AlphaBlending| {
+		let mut render_stuff = |image: peniko::Image, instance_transform: DAffine2, blend_mode: AlphaBlending| {
 			let image_transform = transform * instance_transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 			let layer = blend_mode != Default::default();
 
 			let Some(bounds) = self.bounding_box(transform, true) else { return };
-			let blending = vello::peniko::BlendMode::new(blend_mode.blend_mode.into(), vello::peniko::Compose::SrcOver);
+			let blending = peniko::BlendMode::new(blend_mode.blend_mode.to_peniko(), peniko::Compose::SrcOver);
 
 			if layer {
-				let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 				scene.push_layer(blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
 			}
-			scene.draw_image(&image, vello::kurbo::Affine::new(image_transform.to_cols_array()));
+			scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
 			if layer {
 				scene.pop_layer()
 			}
 		};
 
 		for instance in self.instance_ref_iter() {
-			let image = vello::peniko::Image::new(vec![].into(), peniko::Format::Rgba8, instance.instance.data().width(), instance.instance.data().height()).with_extend(peniko::Extend::Repeat);
+			let image = peniko::Image::new(vec![].into(), peniko::Format::Rgba8, instance.instance.data().width(), instance.instance.data().height()).with_extend(peniko::Extend::Repeat);
 
 			let id = image.data.id();
 			context.resource_overrides.insert(id, instance.instance.data_owned());
 
 			render_stuff(image, *instance.transform, *instance.alpha_blending);
 		}
-	}
-
-	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.instance_ref_iter()
-			.flat_map(|instance| {
-				let transform = transform * *instance.transform;
-				(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
-			})
-			.reduce(Quad::combine_bounds)
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
@@ -1147,15 +1069,6 @@ impl GraphicElementRendered for GraphicElement {
 			GraphicElement::RasterDataCPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
 			GraphicElement::RasterDataGPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_to_vello(scene, transform, context, render_params),
-		}
-	}
-
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		match self {
-			GraphicElement::VectorData(vector_data) => vector_data.bounding_box(transform, include_stroke),
-			GraphicElement::RasterDataCPU(raster) => raster.bounding_box(transform, include_stroke),
-			GraphicElement::RasterDataGPU(raster) => raster.bounding_box(transform, include_stroke),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform, include_stroke),
 		}
 	}
 
@@ -1228,7 +1141,7 @@ impl GraphicElementRendered for GraphicElement {
 }
 
 /// Used to stop rust complaining about upstream traits adding display implementations to `Option<Color>`. This would not be an issue as we control that crate.
-trait Primitive: std::fmt::Display {}
+trait Primitive: std::fmt::Display + BoundingBox {}
 impl Primitive for String {}
 impl Primitive for bool {}
 impl Primitive for f32 {}
@@ -1244,10 +1157,6 @@ fn text_attributes(attributes: &mut SvgRenderAttrs) {
 impl<P: Primitive> GraphicElementRendered for P {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
 		render.parent_tag("text", text_attributes, |render| render.leaf_node(format!("{self}")));
-	}
-
-	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
-		None
 	}
 
 	#[cfg(feature = "vello")]
@@ -1274,10 +1183,6 @@ impl GraphicElementRendered for Option<Color> {
 		render.parent_tag("text", text_attributes, |render| render.leaf_node(color_info))
 	}
 
-	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
-		None
-	}
-
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
 }
@@ -1296,10 +1201,6 @@ impl GraphicElementRendered for Vec<Color> {
 				}
 			});
 		}
-	}
-
-	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
-		None
 	}
 
 	#[cfg(feature = "vello")]

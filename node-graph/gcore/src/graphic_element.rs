@@ -1,5 +1,7 @@
 use crate::blending::AlphaBlending;
+use crate::bounds::BoundingBox;
 use crate::instances::{Instance, Instances};
+use crate::math::quad::Quad;
 use crate::raster::image::Image;
 use crate::raster_types::{CPU, GPU, Raster, RasterDataTable};
 use crate::transform::TransformMut;
@@ -7,10 +9,8 @@ use crate::uuid::NodeId;
 use crate::vector::{VectorData, VectorDataTable};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use dyn_any::DynAny;
-use glam::{DAffine2, IVec2};
+use glam::{DAffine2, DVec2, IVec2};
 use std::hash::Hash;
-
-pub mod renderer;
 
 // TODO: Eventually remove this migration document upgrade code
 pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GraphicGroupTable, D::Error> {
@@ -182,6 +182,25 @@ impl GraphicElement {
 	}
 }
 
+impl BoundingBox for GraphicElement {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
+		match self {
+			GraphicElement::VectorData(vector_data) => vector_data.bounding_box(transform, include_stroke),
+			GraphicElement::RasterDataCPU(raster) => raster.bounding_box(transform, include_stroke),
+			GraphicElement::RasterDataGPU(raster) => raster.bounding_box(transform, include_stroke),
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform, include_stroke),
+		}
+	}
+}
+
+impl BoundingBox for GraphicGroupTable {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
+		self.instance_ref_iter()
+			.filter_map(|element| element.instance.bounding_box(transform * *element.transform, include_stroke))
+			.reduce(Quad::combine_bounds)
+	}
+}
+
 impl<'de> serde::Deserialize<'de> for Raster<CPU> {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
@@ -247,6 +266,20 @@ impl Artboard {
 	}
 }
 
+impl BoundingBox for Artboard {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
+		let artboard_bounds = (transform * Quad::from_box([self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()])).bounding_box();
+		if self.clip {
+			Some(artboard_bounds)
+		} else {
+			[self.graphic_group.bounding_box(transform, include_stroke), Some(artboard_bounds)]
+				.into_iter()
+				.flatten()
+				.reduce(Quad::combine_bounds)
+		}
+	}
+}
+
 // TODO: Eventually remove this migration document upgrade code
 pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<ArtboardGroupTable, D::Error> {
 	use serde::Deserialize;
@@ -281,6 +314,14 @@ pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D)
 }
 
 pub type ArtboardGroupTable = Instances<Artboard>;
+
+impl BoundingBox for ArtboardGroupTable {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
+		self.instance_ref_iter()
+			.filter_map(|instance| instance.instance.bounding_box(transform, include_stroke))
+			.reduce(Quad::combine_bounds)
+	}
+}
 
 #[node_macro::node(category(""))]
 async fn layer<I: 'n + Send + Clone>(
@@ -505,4 +546,8 @@ impl From<GraphicGroupTable> for GraphicElement {
 	fn from(graphic_group: GraphicGroupTable) -> Self {
 		GraphicElement::GraphicGroup(graphic_group)
 	}
+}
+
+pub trait ToGraphicElement {
+	fn to_graphic_element(&self) -> GraphicElement;
 }

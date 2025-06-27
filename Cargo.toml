@@ -10,6 +10,7 @@ members = [
 	"node-graph/gpath-bool",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
+	"node-graph/gsvg-renderer",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
@@ -27,6 +28,7 @@ default-members = [
 	"node-graph/gpath-bool",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
+	"node-graph/gsvg-renderer",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 ]
@@ -44,6 +46,7 @@ graphene-core = { path = "node-graph/gcore" }
 graphene-path-bool = { path = "node-graph/gpath-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
 graphene-std = { path = "node-graph/gstd" }
+graphene-svg-renderer = { path = "node-graph/gsvg-renderer" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
 node-macro = { path = "node-graph/node-macro" }
 wgpu-executor = { path = "node-graph/wgpu-executor" }

@@ -4,7 +4,10 @@ mod modification;
 
 use super::misc::{dvec2_to_point, point_to_dvec2};
 use super::style::{PathStyle, Stroke};
+use crate::bounds::BoundingBox;
 use crate::instances::Instances;
+use crate::math::quad::Quad;
+use crate::transform::Transform;
 use crate::vector::click_target::{ClickTargetType, FreePoint};
 use crate::{AlphaBlending, Color, GraphicGroupTable};
 pub use attributes::*;
@@ -484,6 +487,29 @@ impl VectorData {
 		self.style = additional.style.clone();
 
 		self.colinear_manipulators.extend(additional.colinear_manipulators.iter().copied());
+	}
+}
+
+impl BoundingBox for VectorDataTable {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
+		self.instance_ref_iter()
+			.flat_map(|instance| {
+				if !include_stroke {
+					return instance.instance.bounding_box_with_transform(transform * *instance.transform);
+				}
+
+				let stroke_width = instance.instance.style.stroke().map(|s| s.weight()).unwrap_or_default();
+
+				let miter_limit = instance.instance.style.stroke().map(|s| s.join_miter_limit).unwrap_or(1.);
+
+				let scale = transform.decompose_scale();
+
+				// We use the full line width here to account for different styles of stroke caps
+				let offset = DVec2::splat(stroke_width * scale.x.max(scale.y) * miter_limit);
+
+				instance.instance.bounding_box_with_transform(transform * *instance.transform).map(|[a, b]| [a - offset, b + offset])
+			})
+			.reduce(Quad::combine_bounds)
 	}
 }
 
