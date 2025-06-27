@@ -1,8 +1,11 @@
-use crate::instances::{InstanceRef, Instances};
-use crate::raster_types::{CPU, RasterDataTable};
-use crate::vector::VectorDataTable;
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use glam::DVec2;
+use graphene_core::GraphicElement;
+use graphene_core::GraphicGroupTable;
+use graphene_core::context::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, OwnedContextImpl};
+use graphene_core::instances::{InstanceRef, Instances};
+use graphene_core::raster_types::{CPU, RasterDataTable};
+use graphene_core::vector::VectorDataTable;
+use log::warn;
 
 #[node_macro::node(name("Instance on Points"), category("Instancing"), path(graphene_core::vector))]
 async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + 'static>(
@@ -98,11 +101,11 @@ async fn instance_index(ctx: impl Ctx + ExtractIndex) -> f64 {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::Node;
-	use crate::extract_xy::{ExtractXyNode, XY};
-	use crate::vector::VectorData;
 	use bezier_rs::Subpath;
 	use glam::DVec2;
+	use graphene_core::Node;
+	use graphene_core::extract_xy::{ExtractXyNode, XY};
+	use graphene_core::vector::VectorData;
 	use std::pin::Pin;
 
 	#[derive(Clone)]
@@ -119,7 +122,7 @@ mod test {
 	#[tokio::test]
 	async fn instance_on_points_test() {
 		let owned = OwnedContextImpl::default().into_context();
-		let rect = crate::vector::generator_nodes::RectangleNode::new(
+		let rect = graphene_core::vector::generator_nodes::RectangleNode::new(
 			FutureWrapperNode(()),
 			ExtractXyNode::new(InstancePositionNode {}, FutureWrapperNode(XY::Y)),
 			FutureWrapperNode(2_f64),

@@ -1650,7 +1650,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(DVec2), 5),
 								],
 								manual_composition: Some(concrete!(Context)),
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform_nodes::TransformNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_element_nodes::transform_nodes::TransformNode")),
 								..Default::default()
 							},
 						]

@@ -1,9 +1,7 @@
 #[macro_use]
 extern crate log;
 
-pub mod animation;
 pub mod blending;
-pub mod blending_nodes;
 pub mod bounds;
 pub mod color;
 pub mod consts;
@@ -14,7 +12,6 @@ pub mod generic;
 pub mod gradient;
 mod graphic_element;
 pub mod instances;
-pub mod logic;
 pub mod math;
 pub mod memo;
 pub mod misc;
@@ -25,7 +22,6 @@ pub mod registry;
 pub mod structural;
 pub mod text;
 pub mod transform;
-pub mod transform_nodes;
 pub mod uuid;
 pub mod value;
 pub mod vector;
