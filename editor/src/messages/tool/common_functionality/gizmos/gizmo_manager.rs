@@ -1,19 +1,15 @@
+use crate::messages::message::Message;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler};
+use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::common_functionality::shapes::polygon_shape::PolygonGizmoHandler;
+use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
+use crate::messages::tool::common_functionality::shapes::star_shape::StarGizmoHandler;
+use glam::DVec2;
 use std::collections::VecDeque;
 
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self};
-use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
-use glam::DVec2;
-
-use crate::messages::{
-	message::Message,
-	portfolio::document::overlays::utility_types::OverlayContext,
-	prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler},
-	tool::common_functionality::{
-		shape_editor::ShapeState,
-		shapes::{polygon_shape::PolygonGizmoHandler, star_shape::StarGizmoHandler},
-	},
-};
 /// A unified enum wrapper around all available shape-specific gizmo handlers.
 ///
 /// This abstraction allows `GizmoManager` to interact with different shape gizmos (like Star or Polygon)
@@ -76,6 +72,7 @@ impl ShapeGizmoHandlers {
 		}
 	}
 
+	/// Cleans up any state used by the gizmo handler.
 	pub fn cleanup(&mut self) {
 		match self {
 			Self::Star(h) => h.cleanup(),
@@ -140,11 +137,14 @@ impl GizmoManager {
 	///
 	/// Returns `None` if the given layer does not represent a shape with a registered gizmo.
 	pub fn detect_shape_handler(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<ShapeGizmoHandlers> {
+		// Star
 		if graph_modification_utils::get_star_id(layer, &document.network_interface).is_some() {
-			return Some(ShapeGizmoHandlers::Star(StarGizmoHandler::new()));
+			return Some(ShapeGizmoHandlers::Star(StarGizmoHandler::default()));
 		}
+
+		// Polygon
 		if graph_modification_utils::get_polygon_id(layer, &document.network_interface).is_some() {
-			return Some(ShapeGizmoHandlers::Polygon(PolygonGizmoHandler::new()));
+			return Some(ShapeGizmoHandlers::Polygon(PolygonGizmoHandler::default()));
 		}
 
 		None
@@ -157,7 +157,7 @@ impl GizmoManager {
 
 	/// Called every frame to check selected layers and update the active shape gizmo, if hovered.
 	///
-	/// Also groups all shape layers with the same kind of gizmo to support multi-shape overlays.
+	/// Also groups all shape layers with the same kind of gizmo to support overlays for multi-shape editing.
 	pub fn handle_actions(&mut self, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		let mut handlers_layer: Vec<(ShapeGizmoHandlers, Vec<LayerNodeIdentifier>)> = Vec::new();
 

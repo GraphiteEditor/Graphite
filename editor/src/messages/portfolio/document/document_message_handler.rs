@@ -1624,7 +1624,7 @@ impl DocumentMessageHandler {
 					subpath.is_inside_subpath(&viewport_polygon, None, None)
 				}
 				ClickTargetType::FreePoint(point) => {
-					let mut point = point.clone();
+					let mut point = *point;
 					point.apply_transform(layer_transform);
 					viewport_polygon.contains_point(point.position)
 				}
@@ -3346,9 +3346,9 @@ mod document_message_handler_tests {
 		let rect_bbox_after = document.metadata().bounding_box_viewport(rect_layer).unwrap();
 
 		// Verifing the rectangle maintains approximately the same position in viewport space
-		let before_center = (rect_bbox_before[0] + rect_bbox_before[1]) / 2.; // TODO: Should be: DVec2(0.0, -25.0), regression (#2688) causes it to be: DVec2(100.0, 25.0)
-		let after_center = (rect_bbox_after[0] + rect_bbox_after[1]) / 2.; // TODO:    Should be: DVec2(0.0, -25.0), regression (#2688) causes it to be: DVec2(200.0, 75.0)
-		let distance = before_center.distance(after_center); // TODO:                    Should be: 0.0,               regression (#2688) causes it to be: 111.80339887498948
+		let before_center = (rect_bbox_before[0] + rect_bbox_before[1]) / 2.; // TODO: Should be: DVec2(0., -25.), regression (#2688) causes it to be: DVec2(100., 25.)
+		let after_center = (rect_bbox_after[0] + rect_bbox_after[1]) / 2.; // TODO:    Should be: DVec2(0., -25.), regression (#2688) causes it to be: DVec2(200., 75.)
+		let distance = before_center.distance(after_center); // TODO:                    Should be: 0.,               regression (#2688) causes it to be: 111.80339887498948
 
 		assert!(
 			distance < 1.,

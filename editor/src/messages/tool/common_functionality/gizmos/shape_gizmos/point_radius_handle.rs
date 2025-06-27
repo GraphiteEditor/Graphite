@@ -1,33 +1,20 @@
-use crate::{
-	consts::{COLOR_OVERLAY_RED, POINT_RADIUS_HANDLE_SNAP_THRESHOLD},
-	messages::{
-		frontend::utility_types::MouseCursorIcon,
-		prelude::FrontendMessage,
-		tool::common_functionality::shapes::shape_utility::{calculate_polygon_vertex_position, draw_snapping_ticks, extract_polygon_parameters, polygon_outline, star_outline},
-	},
-};
-use std::{
-	collections::VecDeque,
-	f64::consts::{FRAC_1_SQRT_2, FRAC_PI_4, PI, SQRT_2},
-};
-
-use crate::messages::{portfolio::document::utility_types::document_metadata::LayerNodeIdentifier, prelude::Responses};
+use crate::consts::GIZMO_HIDE_THRESHOLD;
+use crate::consts::{COLOR_OVERLAY_RED, POINT_RADIUS_HANDLE_SNAP_THRESHOLD};
+use crate::messages::frontend::utility_types::MouseCursorIcon;
+use crate::messages::message::Message;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::{overlays::utility_types::OverlayContext, utility_types::network_interface::InputConnector};
+use crate::messages::prelude::FrontendMessage;
+use crate::messages::prelude::Responses;
+use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{draw_snapping_ticks, extract_polygon_parameters, polygon_outline, polygon_vertex_position, star_outline};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{extract_star_parameters, star_vertex_position};
 use glam::DVec2;
-use graph_craft::document::{NodeInput, value::TaggedValue};
-
-use crate::{
-	consts::GIZMO_HIDE_THRESHOLD,
-	messages::{
-		message::Message,
-		portfolio::document::{overlays::utility_types::OverlayContext, utility_types::network_interface::InputConnector},
-		prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage},
-		tool::common_functionality::{
-			graph_modification_utils,
-			graph_modification_utils::NodeGraphLayer,
-			shapes::shape_utility::{calculate_star_vertex_position, extract_star_parameters},
-		},
-	},
-};
+use graph_craft::document::NodeInput;
+use graph_craft::document::value::TaggedValue;
+use std::collections::VecDeque;
+use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_4, PI, SQRT_2};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub enum PointRadiusHandleState {
@@ -70,12 +57,13 @@ impl PointRadiusHandle {
 	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, mouse_position: DVec2, responses: &mut VecDeque<Message>) {
 		match &self.handle_state {
 			PointRadiusHandleState::Inactive => {
-				if let Some((n, radius1, radius2)) = extract_star_parameters(Some(layer), document) {
+				// Draw the point handle gizmo for the star shape
+				if let Some((sides, radius1, radius2)) = extract_star_parameters(Some(layer), document) {
 					let viewport = document.metadata().transform_to_viewport(layer);
 
-					for i in 0..2 * n {
+					for i in 0..2 * sides {
 						let (radius, radius_index) = if i % 2 == 0 { (radius1, 2) } else { (radius2, 3) };
-						let point = calculate_star_vertex_position(viewport, i as i32, n, radius1, radius2);
+						let point = star_vertex_position(viewport, i as i32, sides, radius1, radius2);
 						let center = viewport.transform_point2(DVec2::ZERO);
 
 						// If the user zooms out such that shape is very small hide the gizmo
@@ -97,12 +85,12 @@ impl PointRadiusHandle {
 					}
 				}
 
-				// Draw the point handle gizmo for the Polygon shape
-				if let Some((n, radius)) = extract_polygon_parameters(Some(layer), document) {
+				// Draw the point handle gizmo for the polygon shape
+				if let Some((sides, radius)) = extract_polygon_parameters(Some(layer), document) {
 					let viewport = document.metadata().transform_to_viewport(layer);
 
-					for i in 0..n {
-						let point = calculate_polygon_vertex_position(viewport, i as i32, n, radius);
+					for i in 0..sides {
+						let point = polygon_vertex_position(viewport, i as i32, sides, radius);
 						let center = viewport.transform_point2(DVec2::ZERO);
 
 						// If the user zooms out such that shape is very small hide the gizmo
@@ -110,7 +98,7 @@ impl PointRadiusHandle {
 							return;
 						}
 
-						if point.distance(mouse_position) < 5.0 {
+						if point.distance(mouse_position) < 5. {
 							self.radius_index = 2;
 							self.layer = Some(layer);
 							self.point = i;
@@ -125,33 +113,28 @@ impl PointRadiusHandle {
 			}
 
 			PointRadiusHandleState::Dragging | PointRadiusHandleState::Hover => {
-				let Some(layer) = self.layer else {
-					return;
-				};
+				let Some(layer) = self.layer else { return };
 
 				let viewport = document.metadata().transform_to_viewport(layer);
 
-				if let Some((n, radius1, radius2)) = extract_star_parameters(Some(layer), document) {
-					let point = calculate_star_vertex_position(viewport, self.point as i32, n, radius1, radius2);
+				// Star
+				if let Some((sides, radius1, radius2)) = extract_star_parameters(Some(layer), document) {
+					let point = star_vertex_position(viewport, self.point as i32, sides, radius1, radius2);
 
-					if matches!(&self.handle_state, PointRadiusHandleState::Hover) {
-						if (mouse_position - point).length() > 5.0 {
-							self.update_state(PointRadiusHandleState::Inactive);
-							self.layer = None;
-							return;
-						}
+					if matches!(&self.handle_state, PointRadiusHandleState::Hover) && (mouse_position - point).length() > 5. {
+						self.update_state(PointRadiusHandleState::Inactive);
+						self.layer = None;
+						return;
 					}
 				}
 
-				if let Some((n, radius)) = extract_polygon_parameters(Some(layer), document) {
-					let point = calculate_polygon_vertex_position(viewport, self.point as i32, n, radius);
+				// Polygon
+				if let Some((sides, radius)) = extract_polygon_parameters(Some(layer), document) {
+					let point = polygon_vertex_position(viewport, self.point as i32, sides, radius);
 
-					if matches!(&self.handle_state, PointRadiusHandleState::Hover) {
-						if (mouse_position - point).length() > 5. {
-							self.update_state(PointRadiusHandleState::Inactive);
-							self.layer = None;
-							return;
-						}
+					if matches!(&self.handle_state, PointRadiusHandleState::Hover) && (mouse_position - point).length() > 5. {
+						self.update_state(PointRadiusHandleState::Inactive);
+						self.layer = None;
 					}
 				}
 			}
@@ -172,11 +155,11 @@ impl PointRadiusHandle {
 				let Some(layer) = selected_star_layer else { return };
 
 				// Draw the point handle gizmo for the star shape
-				if let Some((n, radius1, radius2)) = extract_star_parameters(Some(layer), document) {
+				if let Some((sides, radius1, radius2)) = extract_star_parameters(Some(layer), document) {
 					let viewport = document.metadata().transform_to_viewport(layer);
 
-					for i in 0..2 * n {
-						let point = calculate_star_vertex_position(viewport, i as i32, n, radius1, radius2);
+					for i in 0..(2 * sides) {
+						let point = star_vertex_position(viewport, i as i32, sides, radius1, radius2);
 						let center = viewport.transform_point2(DVec2::ZERO);
 						let viewport_diagonal = input.viewport_bounds.size().length();
 
@@ -186,12 +169,10 @@ impl PointRadiusHandle {
 						}
 
 						if point.distance(mouse_position) < 5. {
-							let Some(direction) = (point - center).try_normalize() else {
-								continue;
-							};
+							let Some(direction) = (point - center).try_normalize() else { continue };
 
 							overlay_context.manipulator_handle(point, true, None);
-							let angle = ((i as f64) * PI) / (n as f64);
+							let angle = ((i as f64) * PI) / (sides as f64);
 							overlay_context.line(center, center + direction * viewport_diagonal, None, None);
 
 							draw_snapping_ticks(&self.snap_radii, direction, viewport, angle, overlay_context);
@@ -204,11 +185,11 @@ impl PointRadiusHandle {
 				}
 
 				// Draw the point handle gizmo for the Polygon shape
-				if let Some((n, radius)) = extract_polygon_parameters(Some(layer), document) {
+				if let Some((sides, radius)) = extract_polygon_parameters(Some(layer), document) {
 					let viewport = document.metadata().transform_to_viewport(layer);
 
-					for i in 0..n {
-						let point = calculate_polygon_vertex_position(viewport, i as i32, n, radius);
+					for i in 0..sides {
+						let point = polygon_vertex_position(viewport, i as i32, sides, radius);
 						let center = viewport.transform_point2(DVec2::ZERO);
 						let viewport_diagonal = input.viewport_bounds.size().length();
 
@@ -218,9 +199,7 @@ impl PointRadiusHandle {
 						}
 
 						if point.distance(mouse_position) < 5. {
-							let Some(direction) = (point - center).try_normalize() else {
-								continue;
-							};
+							let Some(direction) = (point - center).try_normalize() else { continue };
 
 							overlay_context.manipulator_handle(point, true, None);
 							overlay_context.line(center, center + direction * viewport_diagonal, None, None);
@@ -234,31 +213,28 @@ impl PointRadiusHandle {
 			}
 
 			PointRadiusHandleState::Dragging | PointRadiusHandleState::Hover => {
-				let Some(layer) = self.layer else {
-					return;
-				};
+				let Some(layer) = self.layer else { return };
 
 				let viewport = document.metadata().transform_to_viewport(layer);
 				let center = viewport.transform_point2(DVec2::ZERO);
 				let viewport_diagonal = input.viewport_bounds.size().length();
 
-				if let Some((n, radius1, radius2)) = extract_star_parameters(Some(layer), document) {
-					let angle = ((self.point as f64) * PI) / (n as f64);
-					let point = calculate_star_vertex_position(viewport, self.point as i32, n, radius1, radius2);
+				// Star
+				if let Some((sides, radius1, radius2)) = extract_star_parameters(Some(layer), document) {
+					let angle = ((self.point as f64) * PI) / (sides as f64);
+					let point = star_vertex_position(viewport, self.point as i32, sides, radius1, radius2);
 
-					let Some(direction) = (point - center).try_normalize() else {
-						return;
-					};
+					let Some(direction) = (point - center).try_normalize() else { return };
 
 					// Draws the ray from the center to the dragging point extending till the viewport
 					overlay_context.manipulator_handle(point, true, None);
 					overlay_context.line(center, center + direction * viewport_diagonal, None, None);
 					star_outline(Some(layer), document, overlay_context);
 
-					// makes the ticks for snapping
+					// Make the ticks for snapping
 
-					// if dragging to make radius negative don't show the
-					if (mouse_position - center).dot(direction) < 0.0 {
+					// If dragging to make radius negative don't show the
+					if (mouse_position - center).dot(direction) < 0. {
 						return;
 					}
 					draw_snapping_ticks(&self.snap_radii, direction, viewport, angle, overlay_context);
@@ -266,12 +242,11 @@ impl PointRadiusHandle {
 					return;
 				}
 
-				if let Some((n, radius)) = extract_polygon_parameters(Some(layer), document) {
-					let point = calculate_polygon_vertex_position(viewport, self.point as i32, n, radius);
+				// Polygon
+				if let Some((sides, radius)) = extract_polygon_parameters(Some(layer), document) {
+					let point = polygon_vertex_position(viewport, self.point as i32, sides, radius);
 
-					let Some(direction) = (point - center).try_normalize() else {
-						return;
-					};
+					let Some(direction) = (point - center).try_normalize() else { return };
 
 					// Draws the ray from the center to the dragging point extending till the viewport
 					overlay_context.manipulator_handle(point, true, None);
@@ -281,11 +256,8 @@ impl PointRadiusHandle {
 				}
 			}
 			PointRadiusHandleState::Snapped(snapping_index) => {
-				let Some(layer) = self.layer else {
-					return;
-				};
-
-				let Some((n, radius1, radius2)) = extract_star_parameters(Some(layer), document) else {
+				let Some(layer) = self.layer else { return };
+				let Some((sides, radius1, radius2)) = extract_star_parameters(Some(layer), document) else {
 					return;
 				};
 
@@ -293,101 +265,83 @@ impl PointRadiusHandle {
 				let center = viewport.transform_point2(DVec2::ZERO);
 
 				match snapping_index {
-					//Make a triangle with previous two points
+					// Make a triangle with previous two points
 					0 => {
-						let before_outer_position = calculate_star_vertex_position(viewport, (self.point as i32) - 2, n, radius1, radius2);
-						let outer_position = calculate_star_vertex_position(viewport, (self.point as i32) - 1, n, radius1, radius2);
-						let point_position = calculate_star_vertex_position(viewport, self.point as i32, n, radius1, radius2);
+						let before_outer_position = star_vertex_position(viewport, (self.point as i32) - 2, sides, radius1, radius2);
+						let outer_position = star_vertex_position(viewport, (self.point as i32) - 1, sides, radius1, radius2);
+						let point_position = star_vertex_position(viewport, self.point as i32, sides, radius1, radius2);
 
-						overlay_context.line(before_outer_position, outer_position, Some(COLOR_OVERLAY_RED), Some(3.0));
-						overlay_context.line(outer_position, point_position, Some(COLOR_OVERLAY_RED), Some(3.0));
+						overlay_context.line(before_outer_position, outer_position, Some(COLOR_OVERLAY_RED), Some(3.));
+						overlay_context.line(outer_position, point_position, Some(COLOR_OVERLAY_RED), Some(3.));
 
 						let l1 = (before_outer_position - outer_position).length() * 0.2;
-						let Some(l1_direction) = (before_outer_position - outer_position).try_normalize() else {
-							return;
-						};
-
-						let Some(l2_direction) = (point_position - outer_position).try_normalize() else {
-							return;
-						};
-
-						let Some(direction) = (center - outer_position).try_normalize() else {
-							return;
-						};
+						let Some(l1_direction) = (before_outer_position - outer_position).try_normalize() else { return };
+						let Some(l2_direction) = (point_position - outer_position).try_normalize() else { return };
+						let Some(direction) = (center - outer_position).try_normalize() else { return };
 
 						let new_point = SQRT_2 * l1 * direction + outer_position;
 
 						let before_outer_position = l1 * l1_direction + outer_position;
 						let point_position = l1 * l2_direction + outer_position;
 
-						overlay_context.line(before_outer_position, new_point, Some(COLOR_OVERLAY_RED), Some(3.0));
-						overlay_context.line(new_point, point_position, Some(COLOR_OVERLAY_RED), Some(3.0));
+						overlay_context.line(before_outer_position, new_point, Some(COLOR_OVERLAY_RED), Some(3.));
+						overlay_context.line(new_point, point_position, Some(COLOR_OVERLAY_RED), Some(3.));
 					}
 					1 => {
-						let before_outer_position = calculate_star_vertex_position(viewport, (self.point as i32) - 1, n, radius1, radius2);
+						let before_outer_position = star_vertex_position(viewport, (self.point as i32) - 1, sides, radius1, radius2);
 
-						let after_point_position = calculate_star_vertex_position(viewport, (self.point as i32) + 1, n, radius1, radius2);
+						let after_point_position = star_vertex_position(viewport, (self.point as i32) + 1, sides, radius1, radius2);
 
-						let point_position = calculate_star_vertex_position(viewport, self.point as i32, n, radius1, radius2);
+						let point_position = star_vertex_position(viewport, self.point as i32, sides, radius1, radius2);
 
-						overlay_context.line(before_outer_position, point_position, Some(COLOR_OVERLAY_RED), Some(3.0));
-						overlay_context.line(point_position, after_point_position, Some(COLOR_OVERLAY_RED), Some(3.0));
+						overlay_context.line(before_outer_position, point_position, Some(COLOR_OVERLAY_RED), Some(3.));
+						overlay_context.line(point_position, after_point_position, Some(COLOR_OVERLAY_RED), Some(3.));
 
 						let l1 = (before_outer_position - point_position).length() * 0.2;
-						let Some(l1_direction) = (before_outer_position - point_position).try_normalize() else {
-							return;
-						};
-
-						let Some(l2_direction) = (after_point_position - point_position).try_normalize() else {
-							return;
-						};
-
-						let Some(direction) = (center - point_position).try_normalize() else {
-							return;
-						};
+						let Some(l1_direction) = (before_outer_position - point_position).try_normalize() else { return };
+						let Some(l2_direction) = (after_point_position - point_position).try_normalize() else { return };
+						let Some(direction) = (center - point_position).try_normalize() else { return };
 
 						let new_point = SQRT_2 * l1 * direction + point_position;
 
 						let before_outer_position = l1 * l1_direction + point_position;
 						let after_point_position = l1 * l2_direction + point_position;
 
-						overlay_context.line(before_outer_position, new_point, Some(COLOR_OVERLAY_RED), Some(3.0));
-						overlay_context.line(new_point, after_point_position, Some(COLOR_OVERLAY_RED), Some(3.0));
+						overlay_context.line(before_outer_position, new_point, Some(COLOR_OVERLAY_RED), Some(3.));
+						overlay_context.line(new_point, after_point_position, Some(COLOR_OVERLAY_RED), Some(3.));
 					}
 					i => {
-						// use 'self.point' as absolute reference as it match the index of vertices of star starting from 0
+						// Use `self.point` as absolute reference as it matches the index of vertices of the star starting from 0
 						if i % 2 != 0 {
-							// flipped case
-							let point_position = calculate_star_vertex_position(viewport, self.point as i32, n, radius1, radius2);
+							// Flipped case
+							let point_position = star_vertex_position(viewport, self.point as i32, sides, radius1, radius2);
 							let target_index = (1 - (*i as i32)).abs() + (self.point as i32);
-							let target_point_position = calculate_star_vertex_position(viewport, target_index, n, radius1, radius2);
+							let target_point_position = star_vertex_position(viewport, target_index, sides, radius1, radius2);
 
 							let mirrored_index = 2 * (self.point as i32) - target_index;
-							let mirrored = calculate_star_vertex_position(viewport, mirrored_index, n, radius1, radius2);
+							let mirrored = star_vertex_position(viewport, mirrored_index, sides, radius1, radius2);
 
-							overlay_context.line(point_position, target_point_position, Some(COLOR_OVERLAY_RED), Some(3.0));
-							overlay_context.line(point_position, mirrored, Some(COLOR_OVERLAY_RED), Some(3.0));
+							overlay_context.line(point_position, target_point_position, Some(COLOR_OVERLAY_RED), Some(3.));
+							overlay_context.line(point_position, mirrored, Some(COLOR_OVERLAY_RED), Some(3.));
 						} else {
 							let outer_index = (self.point as i32) - 1;
-							let outer_position = calculate_star_vertex_position(viewport, outer_index, n, radius1, radius2);
+							let outer_position = star_vertex_position(viewport, outer_index, sides, radius1, radius2);
 
-							// the vertex which is colinear with the point we are dragging and its previous outer vertex
+							// The vertex which is colinear with the point we are dragging and its previous outer vertex
 							let target_index = (self.point as i32) + (*i as i32) - 1;
-							let target_point_position = calculate_star_vertex_position(viewport, target_index, n, radius1, radius2);
+							let target_point_position = star_vertex_position(viewport, target_index, sides, radius1, radius2);
 
 							let mirrored_index = 2 * outer_index - target_index;
 
-							let mirrored = calculate_star_vertex_position(viewport, mirrored_index, n, radius1, radius2);
+							let mirrored = star_vertex_position(viewport, mirrored_index, sides, radius1, radius2);
 
-							overlay_context.line(outer_position, target_point_position, Some(COLOR_OVERLAY_RED), Some(3.0));
-							overlay_context.line(outer_position, mirrored, Some(COLOR_OVERLAY_RED), Some(3.0));
+							overlay_context.line(outer_position, target_point_position, Some(COLOR_OVERLAY_RED), Some(3.));
+							overlay_context.line(outer_position, mirrored, Some(COLOR_OVERLAY_RED), Some(3.));
 						}
 					}
 				}
 
 				star_outline(Some(layer), document, overlay_context);
-
-				// 0,1 90
 			}
 		}
 	}
@@ -404,32 +358,31 @@ impl PointRadiusHandle {
 		let Some(&TaggedValue::F64(other_radius)) = node_inputs[other_index].as_value() else {
 			return snap_radii;
 		};
-
-		let Some(&TaggedValue::U32(n)) = node_inputs[1].as_value() else {
+		let Some(&TaggedValue::U32(sides)) = node_inputs[1].as_value() else {
 			return snap_radii;
 		};
 
-		// inner radius for 90
-		let b = FRAC_PI_4 * 3. - PI / (n as f64);
+		// Inner radius for 90°
+		let b = FRAC_PI_4 * 3. - PI / (sides as f64);
 		let angle = b.sin();
 		let required_radius = (other_radius / angle) * FRAC_1_SQRT_2;
 
 		snap_radii.push(required_radius);
 
-		// also push the case when the when it length increases more than the other
+		// Also push the case when the when it length increases more than the other
 
 		let flipped = other_radius * angle * SQRT_2;
 
 		snap_radii.push(flipped);
 
-		for i in 1..n {
-			let n = n as f64;
+		for i in 1..sides {
+			let sides = sides as f64;
 			let i = i as f64;
-			let denominator = 2. * ((PI * (i - 1.0)) / n).cos() * ((PI * i) / n).sin();
-			let numerator = ((2. * PI * i) / n).sin();
+			let denominator = 2. * ((PI * (i - 1.)) / sides).cos() * ((PI * i) / sides).sin();
+			let numerator = ((2. * PI * i) / sides).sin();
 			let factor = numerator / denominator;
 
-			if factor < 0.0 {
+			if factor < 0. {
 				break;
 			}
 
@@ -437,7 +390,7 @@ impl PointRadiusHandle {
 				snap_radii.push(other_radius * factor);
 			}
 
-			snap_radii.push((other_radius * 1.0) / factor);
+			snap_radii.push((other_radius * 1.) / factor);
 		}
 
 		snap_radii
@@ -454,9 +407,12 @@ impl PointRadiusHandle {
 
 				// Check if either index is 0 or 1 and prioritize them
 				match (*i_a == 0 || *i_a == 1, *i_b == 0 || *i_b == 1) {
-					(true, false) => std::cmp::Ordering::Less,                             // a is priority index, b is not
-					(false, true) => std::cmp::Ordering::Greater,                          // b is priority index, a is not
-					_ => dist_a.partial_cmp(&dist_b).unwrap_or(std::cmp::Ordering::Equal), // normal comparison
+					// `a` is priority index, `b` is not
+					(true, false) => std::cmp::Ordering::Less,
+					// `b` is priority index, `a` is not
+					(false, true) => std::cmp::Ordering::Greater,
+					// Normal comparison
+					_ => dist_a.partial_cmp(&dist_b).unwrap_or(std::cmp::Ordering::Equal),
 				}
 			})
 			.map(|(i, rad)| (i, *rad - original_radius))

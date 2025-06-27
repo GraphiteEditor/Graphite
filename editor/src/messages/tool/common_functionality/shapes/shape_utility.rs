@@ -127,7 +127,6 @@ pub trait ShapeGizmoHandler {
 }
 
 /// Center, Lock Ratio, Lock Angle, Snap Angle, Increase/Decrease Side
-
 pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	let sign_num = if end[1] > start[1] { 1. } else { -1. };
 	let new_layer = NodeGraphLayer::new(layer, &document.network_interface);
@@ -209,19 +208,22 @@ pub fn anchor_overlays(document: &DocumentMessageHandler, overlay_context: &mut 
 	}
 }
 
-/// Extract the node input values of Star
+/// Extract the node input values of Star.
+/// Returns an option of (sides, radius1, radius2).
 pub fn extract_star_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(u32, f64, f64)> {
 	let node_inputs = NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs("Star")?;
 
-	let (Some(&TaggedValue::U32(n)), Some(&TaggedValue::F64(outer)), Some(&TaggedValue::F64(inner))) = (node_inputs.get(1)?.as_value(), node_inputs.get(2)?.as_value(), node_inputs.get(3)?.as_value())
+	let (Some(&TaggedValue::U32(sides)), Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) =
+		(node_inputs.get(1)?.as_value(), node_inputs.get(2)?.as_value(), node_inputs.get(3)?.as_value())
 	else {
 		return None;
 	};
 
-	Some((n, outer, inner))
+	Some((sides, radius_1, radius_2))
 }
 
-/// Extract the node input values of Polygon
+/// Extract the node input values of Polygon.
+/// Returns an option of (sides, radius).
 pub fn extract_polygon_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(u32, f64)> {
 	let node_inputs = NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs("Regular Polygon")?;
 
@@ -233,7 +235,7 @@ pub fn extract_polygon_parameters(layer: Option<LayerNodeIdentifier>, document: 
 }
 
 /// Calculate the viewport position of as a star vertex given its index
-pub fn calculate_star_vertex_position(viewport: DAffine2, vertex_index: i32, n: u32, radius1: f64, radius2: f64) -> DVec2 {
+pub fn star_vertex_position(viewport: DAffine2, vertex_index: i32, n: u32, radius1: f64, radius2: f64) -> DVec2 {
 	let angle = ((vertex_index as f64) * PI) / (n as f64);
 	let radius = if vertex_index % 2 == 0 { radius1 } else { radius2 };
 
@@ -244,7 +246,7 @@ pub fn calculate_star_vertex_position(viewport: DAffine2, vertex_index: i32, n: 
 }
 
 /// Calculate the viewport position of a polygon vertex given its index
-pub fn calculate_polygon_vertex_position(viewport: DAffine2, vertex_index: i32, n: u32, radius: f64) -> DVec2 {
+pub fn polygon_vertex_position(viewport: DAffine2, vertex_index: i32, n: u32, radius: f64) -> DVec2 {
 	let angle = ((vertex_index as f64) * TAU) / (n as f64);
 
 	viewport.transform_point2(DVec2 {
@@ -273,10 +275,7 @@ pub fn star_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessa
 
 /// Outlines the geometric shape made by polygon-node
 pub fn polygon_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
-	let Some(layer) = layer else {
-		return;
-	};
-
+	let Some(layer) = layer else { return };
 	let Some((sides, radius)) = extract_polygon_parameters(Some(layer), document) else {
 		return;
 	};
@@ -296,7 +295,7 @@ pub fn inside_star(viewport: DAffine2, n: u32, radius1: f64, radius2: f64, mouse
 	let mut paths = Vec::new();
 
 	for i in 0..2 * n {
-		let new_point = dvec2_to_point(calculate_star_vertex_position(viewport, i as i32, n, radius1, radius2));
+		let new_point = dvec2_to_point(star_vertex_position(viewport, i as i32, n, radius1, radius2));
 
 		if i == 0 {
 			paths.push(PathEl::MoveTo(new_point));
@@ -325,7 +324,7 @@ pub fn inside_polygon(viewport: DAffine2, n: u32, radius: f64, mouse_position: D
 	let mut paths = Vec::new();
 
 	for i in 0..n {
-		let new_point = dvec2_to_point(calculate_polygon_vertex_position(viewport, i as i32, n, radius));
+		let new_point = dvec2_to_point(polygon_vertex_position(viewport, i as i32, n, radius));
 
 		if i == 0 {
 			paths.push(PathEl::MoveTo(new_point));

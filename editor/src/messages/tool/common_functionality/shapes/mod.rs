@@ -1,5 +1,4 @@
 pub mod ellipse_shape;
-pub mod gizmo_manager;
 pub mod line_shape;
 pub mod polygon_shape;
 pub mod rectangle_shape;

@@ -119,12 +119,12 @@ fn star<T: AsU64>(
 	#[hard_min(2.)]
 	#[implementations(u32, u64, f64)]
 	sides: T,
-	#[default(50)] radius: f64,
-	#[default(25)] inner_radius: f64,
+	#[default(50)] radius_1: f64,
+	#[default(25)] radius_2: f64,
 ) -> VectorDataTable {
 	let points = sides.as_u64();
-	let diameter: f64 = radius * 2.;
-	let inner_diameter = inner_radius * 2.;
+	let diameter: f64 = radius_1 * 2.;
+	let inner_diameter = radius_2 * 2.;
 
 	VectorDataTable::new(VectorData::from_subpath(Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
 }

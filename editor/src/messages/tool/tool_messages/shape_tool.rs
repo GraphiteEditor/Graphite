@@ -7,8 +7,8 @@ use crate::messages::portfolio::document::utility_types::network_interface::Inpu
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::gizmos::gizmo_manager::GizmoManager;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self};
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::shapes::line_shape::{LineToolData, clicked_on_line_endpoints};
 use crate::messages::tool::common_functionality::shapes::polygon_shape::Polygon;
@@ -47,8 +47,8 @@ impl Default for ShapeToolOptions {
 			line_weight: DEFAULT_STROKE_WIDTH,
 			fill: ToolColorOptions::new_secondary(),
 			stroke: ToolColorOptions::new_primary(),
-			shape_type: ShapeType::Polygon,
 			vertices: 5,
+			shape_type: ShapeType::Polygon,
 			arc_type: ArcType::Open,
 		}
 	}
@@ -270,10 +270,8 @@ pub enum ShapeToolFsmState {
 	Ready(ShapeType),
 	Drawing(ShapeType),
 
-	// Line shape-specific
+	// Gizmos
 	DraggingLineEndpoints,
-
-	// GizmoState
 	ModifyingGizmo,
 
 	// Transform cage
@@ -312,7 +310,7 @@ pub struct ShapeToolData {
 	// Current shape which is being drawn
 	current_shape: ShapeType,
 
-	// GizmoManger
+	// Gizmos
 	gizmo_manger: GizmoManager,
 }
 
@@ -595,7 +593,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Star => Star::create_node(tool_options.vertices),
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
-					ShapeType::Line => Line::create_node(&document, tool_data.data.drag_start),
+					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
 				};
 
 				let nodes = vec![(NodeId(0), node)];
@@ -632,11 +630,11 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
-					ShapeType::Rectangle => Rectangle::update_shape(&document, &input, layer, tool_data, modifier, responses),
-					ShapeType::Ellipse => Ellipse::update_shape(&document, &input, layer, tool_data, modifier, responses),
-					ShapeType::Line => Line::update_shape(&document, &input, layer, tool_data, modifier, responses),
-					ShapeType::Polygon => Polygon::update_shape(&document, &input, layer, tool_data, modifier, responses),
-					ShapeType::Star => Star::update_shape(&document, &input, layer, tool_data, modifier, responses),
+					ShapeType::Rectangle => Rectangle::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Ellipse => Ellipse::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Line => Line::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Polygon => Polygon::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Star => Star::update_shape(document, input, layer, tool_data, modifier, responses),
 				}
 
 				// Auto-panning
@@ -727,11 +725,7 @@ impl Fsm for ShapeToolFsmState {
 
 				let cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Crosshair, |bounds| {
 					let cursor = bounds.get_cursor(input, true, dragging_bounds, Some(tool_data.skew_edge));
-					if cursor == MouseCursorIcon::Default {
-						return MouseCursorIcon::Crosshair;
-					} else {
-						return cursor;
-					}
+					if cursor == MouseCursorIcon::Default { MouseCursorIcon::Crosshair } else { cursor }
 				});
 
 				if tool_data.cursor != cursor && !input.keyboard.key(Key::Control) && !all_selected_layers_line {

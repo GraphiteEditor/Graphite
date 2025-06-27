@@ -6,8 +6,8 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::number_of_points_handle::NumberOfPointsHandle;
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::number_of_points_handle::NumberOfPointsHandleState;
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::number_of_points_dial::NumberOfPointsDial;
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::number_of_points_dial::NumberOfPointsDialState;
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::point_radius_handle::PointRadiusHandle;
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::point_radius_handle::PointRadiusHandleState;
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -22,44 +22,34 @@ use std::collections::VecDeque;
 
 #[derive(Clone, Debug, Default)]
 pub struct PolygonGizmoHandler {
-	number_of_points_handle: NumberOfPointsHandle,
+	number_of_points_dial: NumberOfPointsDial,
 	point_radius_handle: PointRadiusHandle,
-}
-
-impl PolygonGizmoHandler {
-	pub fn new() -> Self {
-		Self {
-			number_of_points_handle: NumberOfPointsHandle::default(),
-			point_radius_handle: PointRadiusHandle::default(),
-		}
-	}
 }
 
 impl ShapeGizmoHandler for PolygonGizmoHandler {
 	fn is_any_gizmo_hovered(&self) -> bool {
-		self.number_of_points_handle.is_hovering() || self.point_radius_handle.hovered()
+		self.number_of_points_dial.is_hovering() || self.point_radius_handle.hovered()
 	}
 
 	fn handle_state(&mut self, selected_star_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		self.number_of_points_handle.handle_actions(selected_star_layer, mouse_position, document, responses);
+		self.number_of_points_dial.handle_actions(selected_star_layer, mouse_position, document, responses);
 		self.point_radius_handle.handle_actions(selected_star_layer, document, mouse_position, responses);
 	}
 
 	fn handle_click(&mut self) {
-		if self.number_of_points_handle.is_hovering() {
-			self.number_of_points_handle.update_state(NumberOfPointsHandleState::Dragging);
+		if self.number_of_points_dial.is_hovering() {
+			self.number_of_points_dial.update_state(NumberOfPointsDialState::Dragging);
 			return;
 		}
 
 		if self.point_radius_handle.hovered() {
 			self.point_radius_handle.update_state(PointRadiusHandleState::Dragging);
-			return;
 		}
 	}
 
 	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		if self.number_of_points_handle.is_dragging() {
-			self.number_of_points_handle.update_no_of_sides(document, input, responses, drag_start);
+		if self.number_of_points_dial.is_dragging() {
+			self.number_of_points_dial.update_number_of_sides(document, input, responses, drag_start);
 		}
 
 		if self.point_radius_handle.is_dragging_or_snapped() {
@@ -76,7 +66,7 @@ impl ShapeGizmoHandler for PolygonGizmoHandler {
 		mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
 	) {
-		self.number_of_points_handle.overlays(document, selected_polygon_layer, shape_editor, mouse_position, overlay_context);
+		self.number_of_points_dial.overlays(document, selected_polygon_layer, shape_editor, mouse_position, overlay_context);
 		self.point_radius_handle.overlays(selected_polygon_layer, document, input, mouse_position, overlay_context);
 
 		polygon_outline(selected_polygon_layer, document, overlay_context);
@@ -90,8 +80,8 @@ impl ShapeGizmoHandler for PolygonGizmoHandler {
 		mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
 	) {
-		if self.number_of_points_handle.is_dragging() {
-			self.number_of_points_handle.overlays(document, None, shape_editor, mouse_position, overlay_context);
+		if self.number_of_points_dial.is_dragging() {
+			self.number_of_points_dial.overlays(document, None, shape_editor, mouse_position, overlay_context);
 		}
 
 		if self.point_radius_handle.is_dragging_or_snapped() {
@@ -100,7 +90,7 @@ impl ShapeGizmoHandler for PolygonGizmoHandler {
 	}
 
 	fn cleanup(&mut self) {
-		self.number_of_points_handle.cleanup();
+		self.number_of_points_dial.cleanup();
 		self.point_radius_handle.cleanup();
 	}
 }
