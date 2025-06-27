@@ -186,11 +186,6 @@ impl VectorData {
 		self.point_domain.push(id, point.position);
 	}
 
-	/// Appends a Kurbo BezPath to the vector data.
-	pub fn append_bezpath(&mut self, bezpath: kurbo::BezPath) {
-		AppendBezpath::append_bezpath(self, bezpath);
-	}
-
 	/// Construct some new vector data from a single subpath with an identity transform and black fill.
 	pub fn from_subpath(subpath: impl Borrow<bezier_rs::Subpath<PointId>>) -> Self {
 		Self::from_subpaths([subpath], false)
@@ -635,16 +630,6 @@ impl HandleId {
 		};
 		let handle_position = self.to_manipulator_point().get_position(vector_data);
 		handle_position.map(|pos| (pos - anchor_position).length()).unwrap_or(f64::MAX)
-	}
-
-	/// Set the handle's position relative to the anchor which is the start anchor for the primary handle and end anchor for the end handle.
-	#[must_use]
-	pub fn set_relative_position(self, relative_position: DVec2) -> VectorModificationType {
-		let Self { ty, segment } = self;
-		match ty {
-			HandleType::Primary => VectorModificationType::SetPrimaryHandle { segment, relative_position },
-			HandleType::End => VectorModificationType::SetEndHandle { segment, relative_position },
-		}
 	}
 
 	/// Convert an end handle to the primary handle and a primary handle to an end handle. Note that the new handle may not exist (e.g. for a quadratic bézier).
