@@ -41,7 +41,7 @@ impl Pivot {
 
 		let selected = document.network_interface.selected_nodes();
 		if !selected.has_selected_nodes() {
-			self.normalized_pivot = DVec2::ZERO;
+			self.normalized_pivot = DVec2::splat(0.5);
 			self.pivot = None;
 			return;
 		};

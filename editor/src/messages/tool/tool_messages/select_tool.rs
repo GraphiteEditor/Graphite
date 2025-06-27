@@ -794,7 +794,7 @@ impl Fsm for SelectToolFsmState {
 				});
 
 				tool_data.pivot.update(document, &mut overlay_context, Some((angle,)), tool_data.dot_type.is_pivot());
-				if tool_data.dot_type.is_origin() {
+				if tool_data.dot_type.is_origin() && document.network_interface.selected_nodes().has_selected_nodes() {
 					let network_interface = &document.network_interface;
 					tool_data.origin =
 						(network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect::<Vec<_>>()).mean_average_origin(network_interface);
