@@ -163,7 +163,6 @@ messages
 │   │   ├── fill_tool.rs
 │   │   ├── freehand_tool.rs
 │   │   ├── gradient_tool.rs
-│   │   ├── imaginate_tool.rs
 │   │   ├── line_tool.rs
 │   │   ├── navigate_tool.rs
 │   │   ├── path_tool.rs

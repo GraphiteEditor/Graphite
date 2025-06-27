@@ -235,6 +235,7 @@ tagged_value! {
 	GridType(graphene_core::vector::misc::GridType),
 	ArcType(graphene_core::vector::misc::ArcType),
 	MergeByDistanceAlgorithm(graphene_core::vector::misc::MergeByDistanceAlgorithm),
+	PointSpacingType(graphene_core::vector::misc::PointSpacingType),
 	#[serde(alias = "LineCap")]
 	StrokeCap(graphene_core::vector::style::StrokeCap),
 	#[serde(alias = "LineJoin")]
@@ -247,11 +248,6 @@ tagged_value! {
 	ReferencePoint(graphene_core::transform::ReferencePoint),
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
-
-	// ImaginateCache(ImaginateCache),
-	// ImaginateSamplingMethod(ImaginateSamplingMethod),
-	// ImaginateMaskStartingFill(ImaginateMaskStartingFill),
-	// ImaginateController(ImaginateController),
 }
 
 impl TaggedValue {

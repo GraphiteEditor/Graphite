@@ -99,19 +99,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "copyText")]
 		copy_text: String,
 	},
-	// TODO: Eventually remove this document upgrade code
-	TriggerUpgradeDocumentToVectorManipulationFormat {
-		#[serde(rename = "documentId")]
-		document_id: DocumentId,
-		#[serde(rename = "documentName")]
-		document_name: String,
-		#[serde(rename = "documentIsAutoSaved")]
-		document_is_auto_saved: bool,
-		#[serde(rename = "documentIsSaved")]
-		document_is_saved: bool,
-		#[serde(rename = "documentSerializedContent")]
-		document_serialized_content: String,
-	},
 	TriggerVisitLink {
 		url: String,
 	},

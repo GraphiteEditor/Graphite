@@ -1,4 +1,4 @@
-use super::algorithms::bezpath_algorithms::{self, position_on_bezpath, sample_points_on_bezpath, split_bezpath, tangent_on_bezpath};
+use super::algorithms::bezpath_algorithms::{self, position_on_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
 use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use super::misc::{CentroidType, point_to_dvec2};
@@ -9,13 +9,13 @@ use crate::raster_types::{CPU, GPU, RasterDataTable};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform};
-use crate::vector::misc::{MergeByDistanceAlgorithm, dvec2_to_point};
+use crate::vector::misc::{MergeByDistanceAlgorithm, PointSpacingType};
 use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, PointDomain, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use bezier_rs::{Join, ManipulatorGroup, Subpath};
 use glam::{DAffine2, DVec2};
-use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, ParamCurve, PathEl, PathSeg, Point, Shape};
+use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, ParamCurve, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use std::f64::consts::PI;
@@ -554,7 +554,7 @@ pub fn merge_by_distance(
 	vector_data: VectorDataTable,
 	#[default(0.1)]
 	#[hard_min(0.0001)]
-	distance: Length,
+	distance: PixelLength,
 	algorithm: MergeByDistanceAlgorithm,
 ) -> VectorDataTable {
 	let mut result_table = VectorDataTable::default();
@@ -562,130 +562,14 @@ pub fn merge_by_distance(
 	match algorithm {
 		MergeByDistanceAlgorithm::Spatial => {
 			for mut vector_data_instance in vector_data.instance_iter() {
-				let vector_data_transform = vector_data_instance.transform;
-				let vector_data = vector_data_instance.instance;
-
-				let point_count = vector_data.point_domain.positions().len();
-
-				// Find min x and y for grid cell normalization
-				let mut min_x = f64::MAX;
-				let mut min_y = f64::MAX;
-
-				// Calculate mins without collecting all positions
-				for &pos in vector_data.point_domain.positions() {
-					let transformed_pos = vector_data_transform.transform_point2(pos);
-					min_x = min_x.min(transformed_pos.x);
-					min_y = min_y.min(transformed_pos.y);
-				}
-
-				// Create a spatial grid with cell size of 'distance'
-				use std::collections::HashMap;
-				let mut grid: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
-
-				// Add points to grid cells without collecting all positions first
-				for i in 0..point_count {
-					let pos = vector_data_transform.transform_point2(vector_data.point_domain.positions()[i]);
-					let grid_x = ((pos.x - min_x) / distance).floor() as i32;
-					let grid_y = ((pos.y - min_y) / distance).floor() as i32;
-
-					grid.entry((grid_x, grid_y)).or_default().push(i);
-				}
-
-				// Create point index mapping for merged points
-				let mut point_index_map = vec![None; point_count];
-				let mut merged_positions = Vec::new();
-				let mut merged_indices = Vec::new();
-
-				// Process each point
-				for i in 0..point_count {
-					// Skip points that have already been processed
-					if point_index_map[i].is_some() {
-						continue;
-					}
-
-					let pos_i = vector_data_transform.transform_point2(vector_data.point_domain.positions()[i]);
-					let grid_x = ((pos_i.x - min_x) / distance).floor() as i32;
-					let grid_y = ((pos_i.y - min_y) / distance).floor() as i32;
-
-					let mut group = vec![i];
-
-					// Check only neighboring cells (3x3 grid around current cell)
-					for dx in -1..=1 {
-						for dy in -1..=1 {
-							let neighbor_cell = (grid_x + dx, grid_y + dy);
-
-							if let Some(indices) = grid.get(&neighbor_cell) {
-								for &j in indices {
-									if j > i && point_index_map[j].is_none() {
-										let pos_j = vector_data_transform.transform_point2(vector_data.point_domain.positions()[j]);
-										if pos_i.distance(pos_j) <= distance {
-											group.push(j);
-										}
-									}
-								}
-							}
-						}
-					}
-
-					// Create merged point - calculate positions as needed
-					let merged_position = group
-						.iter()
-						.map(|&idx| vector_data_transform.transform_point2(vector_data.point_domain.positions()[idx]))
-						.fold(DVec2::ZERO, |sum, pos| sum + pos)
-						/ group.len() as f64;
-
-					let merged_position = vector_data_transform.inverse().transform_point2(merged_position);
-					let merged_index = merged_positions.len();
-
-					merged_positions.push(merged_position);
-					merged_indices.push(vector_data.point_domain.ids()[group[0]]);
-
-					// Update mapping for all points in the group
-					for &idx in &group {
-						point_index_map[idx] = Some(merged_index);
-					}
-				}
-
-				// Create new point domain with merged points
-				let mut new_point_domain = PointDomain::new();
-				for (idx, pos) in merged_indices.into_iter().zip(merged_positions) {
-					new_point_domain.push(idx, pos);
-				}
-
-				// Update segment domain
-				let mut new_segment_domain = SegmentDomain::new();
-				for segment_idx in 0..vector_data.segment_domain.ids().len() {
-					let id = vector_data.segment_domain.ids()[segment_idx];
-					let start = vector_data.segment_domain.start_point()[segment_idx];
-					let end = vector_data.segment_domain.end_point()[segment_idx];
-					let handles = vector_data.segment_domain.handles()[segment_idx];
-					let stroke = vector_data.segment_domain.stroke()[segment_idx];
-
-					// Get new indices for start and end points
-					let new_start = point_index_map[start].unwrap();
-					let new_end = point_index_map[end].unwrap();
-
-					// Skip segments where start and end points were merged
-					if new_start != new_end {
-						new_segment_domain.push(id, new_start, new_end, handles, stroke);
-					}
-				}
-
-				// Create new vector data
-				let mut result = vector_data.clone();
-				result.point_domain = new_point_domain;
-				result.segment_domain = new_segment_domain;
-
-				// Create and return the result
-				vector_data_instance.instance = result;
-				vector_data_instance.source_node_id = None;
+				vector_data_instance.instance.merge_by_distance_spatial(vector_data_instance.transform, distance);
 				result_table.push(vector_data_instance);
 			}
 		}
 		MergeByDistanceAlgorithm::Topological => {
-			for mut source_instance in vector_data.instance_iter() {
-				source_instance.instance.merge_by_distance(distance);
-				result_table.push(source_instance);
+			for mut vector_data_instance in vector_data.instance_iter() {
+				vector_data_instance.instance.merge_by_distance_topological(distance);
+				result_table.push(vector_data_instance);
 			}
 		}
 	}
@@ -1256,11 +1140,19 @@ where
 	output_table
 }
 
+/// Convert vector geometry into a polyline composed of evenly spaced points.
 #[node_macro::node(category(""), path(graphene_core::vector))]
-async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, start_offset: f64, stop_offset: f64, adaptive_spacing: bool, subpath_segment_lengths: Vec<f64>) -> VectorDataTable {
-	// Limit the smallest spacing to something sensible to avoid freezing the application.
-	let spacing = spacing.max(0.01);
-
+async fn sample_polyline(
+	_: impl Ctx,
+	vector_data: VectorDataTable,
+	spacing: PointSpacingType,
+	separation: f64,
+	quantity: f64,
+	start_offset: f64,
+	stop_offset: f64,
+	adaptive_spacing: bool,
+	subpath_segment_lengths: Vec<f64>,
+) -> VectorDataTable {
 	let mut result_table = VectorDataTable::default();
 
 	for mut vector_data_instance in vector_data.instance_iter() {
@@ -1295,7 +1187,11 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 			// Increment the segment index by the number of segments in the current bezpath to calculate the next bezpath segment's length.
 			next_segment_index += segment_count;
 
-			let Some(mut sample_bezpath) = sample_points_on_bezpath(bezpath, spacing, start_offset, stop_offset, adaptive_spacing, current_bezpath_segments_length) else {
+			let amount = match spacing {
+				PointSpacingType::Separation => separation,
+				PointSpacingType::Quantity => quantity,
+			};
+			let Some(mut sample_bezpath) = sample_polyline_on_bezpath(bezpath, spacing, amount, start_offset, stop_offset, adaptive_spacing, current_bezpath_segments_length) else {
 				continue;
 			};
 
@@ -1313,8 +1209,11 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 	result_table
 }
 
+/// Splits a path at a given progress from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
+///
+/// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn split_path(_: impl Ctx, mut vector_data: VectorDataTable, t_value: f64, parameterized_distance: bool, reverse: bool) -> VectorDataTable {
+async fn split_path(_: impl Ctx, mut vector_data: VectorDataTable, progress: Fraction, parameterized_distance: bool, reverse: bool) -> VectorDataTable {
 	let euclidian = !parameterized_distance;
 
 	let bezpaths = vector_data
@@ -1324,7 +1223,7 @@ async fn split_path(_: impl Ctx, mut vector_data: VectorDataTable, t_value: f64,
 		.collect::<Vec<_>>();
 
 	let bezpath_count = bezpaths.len() as f64;
-	let t_value = t_value.clamp(0., bezpath_count);
+	let t_value = progress.clamp(0., bezpath_count);
 	let t_value = if reverse { bezpath_count - t_value } else { t_value };
 	let index = if t_value >= bezpath_count { (bezpath_count - 1.) as usize } else { t_value as usize };
 
@@ -1352,7 +1251,65 @@ async fn split_path(_: impl Ctx, mut vector_data: VectorDataTable, t_value: f64,
 	vector_data
 }
 
+/// Splits path segments into separate disconnected pieces where each is a distinct subpath.
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
+async fn split_segments(_: impl Ctx, mut vector_data: VectorDataTable) -> VectorDataTable {
+	// Iterate through every segment and make a copy of each of its endpoints, then reassign each segment's endpoints to its own unique point copy
+	for vector_data_instance in vector_data.instance_mut_iter() {
+		let points_count = vector_data_instance.instance.point_domain.ids().len();
+		let segments_count = vector_data_instance.instance.segment_domain.ids().len();
+
+		let mut point_usages = vec![0_usize; points_count];
+
+		// Count how many times each point is used as an endpoint of the segments
+		let start_points = vector_data_instance.instance.segment_domain.start_point().iter();
+		let end_points = vector_data_instance.instance.segment_domain.end_point().iter();
+		for (&start, &end) in start_points.zip(end_points) {
+			point_usages[start] += 1;
+			point_usages[end] += 1;
+		}
+
+		let mut new_points = PointDomain::new();
+		let mut offset_sum: usize = 0;
+		let mut points_with_new_offsets = Vec::with_capacity(points_count);
+
+		// Build a new point domain with the original points, but with duplications based on their extra usages by the segments
+		for (index, (point_id, point)) in vector_data_instance.instance.point_domain.iter().enumerate() {
+			// Ensure at least one usage to preserve free-floating points not connected to any segments
+			let usage_count = point_usages[index].max(1);
+
+			new_points.push_unchecked(point_id, point);
+
+			for i in 1..usage_count {
+				new_points.push_unchecked(point_id.generate_from_hash(i as u64), point);
+			}
+
+			points_with_new_offsets.push(offset_sum);
+			offset_sum += usage_count;
+		}
+
+		// Reconcile the segment domain with the new points
+		vector_data_instance.instance.point_domain = new_points;
+		for original_segment_index in 0..segments_count {
+			let original_point_start_index = vector_data_instance.instance.segment_domain.start_point()[original_segment_index];
+			let original_point_end_index = vector_data_instance.instance.segment_domain.end_point()[original_segment_index];
+
+			point_usages[original_point_start_index] -= 1;
+			point_usages[original_point_end_index] -= 1;
+
+			let start_usage = points_with_new_offsets[original_point_start_index] + point_usages[original_point_start_index];
+			let end_usage = points_with_new_offsets[original_point_end_index] + point_usages[original_point_end_index];
+
+			vector_data_instance.instance.segment_domain.set_start_point(original_segment_index, start_usage);
+			vector_data_instance.instance.segment_domain.set_end_point(original_segment_index, end_usage);
+		}
+	}
+
+	vector_data
+}
+
 /// Determines the position of a point on the path, given by its progress from 0 to 1 along the path.
+///
 /// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Position on Path"), category("Vector: Measure"), path(graphene_core::vector))]
 async fn position_on_path(
@@ -1389,6 +1346,7 @@ async fn position_on_path(
 }
 
 /// Determines the angle of the tangent at a point on the path, given by its progress from 0 to 1 along the path.
+///
 /// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Tangent on Path"), category("Vector: Measure"), path(graphene_core::vector))]
 async fn tangent_on_path(
@@ -1454,7 +1412,6 @@ async fn poisson_disk_points(
 			.stroke_bezpath_iter()
 			.map(|mut bezpath| {
 				// TODO: apply transform to points instead of modifying the paths
-				bezpath.apply_affine(Affine::new(vector_data_instance.transform.to_cols_array()));
 				bezpath.close_path();
 				let bbox = bezpath.bounding_box();
 				(bezpath, bbox)
@@ -1466,16 +1423,9 @@ async fn poisson_disk_points(
 				continue;
 			}
 
-			let mut poisson_disk_bezpath = BezPath::new();
-
 			for point in bezpath_algorithms::poisson_disk_points(i, &path_with_bounding_boxes, separation_disk_diameter, || rng.random::<f64>()) {
-				if poisson_disk_bezpath.elements().is_empty() {
-					poisson_disk_bezpath.move_to(dvec2_to_point(point));
-				} else {
-					poisson_disk_bezpath.line_to(dvec2_to_point(point));
-				}
+				result.point_domain.push(PointId::generate(), point);
 			}
-			result.append_bezpath(poisson_disk_bezpath);
 		}
 
 		// Transfer the style from the input vector data to the result.
@@ -1640,6 +1590,9 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 			}
 
 			for segment in new_segments {
+				if bezpath.elements().is_empty() {
+					bezpath.move_to(segment.start())
+				}
 				bezpath.push(segment.as_path_el());
 			}
 
@@ -1715,7 +1668,10 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 		for mut source_path in source_paths {
 			source_path.apply_affine(Affine::new(source_transform.to_cols_array()));
 
-			let end: Point = source_path.elements().last().and_then(|element| element.end_point()).unwrap_or_default();
+			// Skip if the path has no segments else get the point at the end of the path.
+			let Some(end) = source_path.segments().last().and_then(|element| Some(element.end())) else {
+				continue;
+			};
 
 			for element in source_path.elements_mut() {
 				match element {
@@ -1739,20 +1695,23 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 		for mut target_path in target_paths {
 			target_path.apply_affine(Affine::new(source_transform.to_cols_array()));
 
-			let end: Point = target_path.elements().last().and_then(|element| element.end_point()).unwrap_or_default();
+			// Skip if the path has no segments else get the point at the start of the path.
+			let Some(start) = target_path.segments().next().and_then(|element| Some(element.start())) else {
+				continue;
+			};
 
 			for element in target_path.elements_mut() {
 				match element {
-					PathEl::MoveTo(point) => *point = point.lerp(end, time),
-					PathEl::LineTo(point) => *point = point.lerp(end, time),
+					PathEl::MoveTo(point) => *point = start.lerp(*point, time),
+					PathEl::LineTo(point) => *point = start.lerp(*point, time),
 					PathEl::QuadTo(point, point1) => {
-						*point = point.lerp(end, time);
-						*point1 = point1.lerp(end, time);
+						*point = start.lerp(*point, time);
+						*point1 = start.lerp(*point1, time);
 					}
 					PathEl::CurveTo(point, point1, point2) => {
-						*point = point.lerp(end, time);
-						*point1 = point1.lerp(end, time);
-						*point2 = point2.lerp(end, time);
+						*point = start.lerp(*point, time);
+						*point1 = start.lerp(*point1, time);
+						*point2 = start.lerp(*point2, time);
 					}
 					PathEl::ClosePath => {}
 				}
@@ -2126,41 +2085,41 @@ mod test {
 		}
 	}
 	#[tokio::test]
-	async fn sample_points() {
+	async fn sample_polyline() {
 		let path = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
-		let sample_points = super::sample_points(Footprint::default(), vector_node(path), 30., 0., 0., false, vec![100.]).await;
-		let sample_points = sample_points.instance_ref_iter().next().unwrap().instance;
-		assert_eq!(sample_points.point_domain.positions().len(), 4);
-		for (pos, expected) in sample_points.point_domain.positions().iter().zip([DVec2::X * 0., DVec2::X * 30., DVec2::X * 60., DVec2::X * 90.]) {
+		let sample_polyline = super::sample_polyline(Footprint::default(), vector_node(path), PointSpacingType::Separation, 30., 0., 0., 0., false, vec![100.]).await;
+		let sample_polyline = sample_polyline.instance_ref_iter().next().unwrap().instance;
+		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
+		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 0., DVec2::X * 30., DVec2::X * 60., DVec2::X * 90.]) {
 			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
 		}
 	}
 	#[tokio::test]
-	async fn adaptive_spacing() {
+	async fn sample_polyline_adaptive_spacing() {
 		let path = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
-		let sample_points = super::sample_points(Footprint::default(), vector_node(path), 18., 45., 10., true, vec![100.]).await;
-		let sample_points = sample_points.instance_ref_iter().next().unwrap().instance;
-		assert_eq!(sample_points.point_domain.positions().len(), 4);
-		for (pos, expected) in sample_points.point_domain.positions().iter().zip([DVec2::X * 45., DVec2::X * 60., DVec2::X * 75., DVec2::X * 90.]) {
+		let sample_polyline = super::sample_polyline(Footprint::default(), vector_node(path), PointSpacingType::Separation, 18., 0., 45., 10., true, vec![100.]).await;
+		let sample_polyline = sample_polyline.instance_ref_iter().next().unwrap().instance;
+		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
+		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 45., DVec2::X * 60., DVec2::X * 75., DVec2::X * 90.]) {
 			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
 		}
 	}
 	#[tokio::test]
 	async fn poisson() {
-		let sample_points = super::poisson_disk_points(
+		let poisson_points = super::poisson_disk_points(
 			Footprint::default(),
 			vector_node(Subpath::new_ellipse(DVec2::NEG_ONE * 50., DVec2::ONE * 50.)),
 			10. * std::f64::consts::SQRT_2,
 			0,
 		)
 		.await;
-		let sample_points = sample_points.instance_ref_iter().next().unwrap().instance;
+		let poisson_points = poisson_points.instance_ref_iter().next().unwrap().instance;
 		assert!(
-			(20..=40).contains(&sample_points.point_domain.positions().len()),
+			(20..=40).contains(&poisson_points.point_domain.positions().len()),
 			"actual len {}",
-			sample_points.point_domain.positions().len()
+			poisson_points.point_domain.positions().len()
 		);
-		for point in sample_points.point_domain.positions() {
+		for point in poisson_points.point_domain.positions() {
 			assert!(point.length() < 50. + 1., "Expected point in circle {point}")
 		}
 	}
@@ -2179,8 +2138,8 @@ mod test {
 
 		let length = super::path_length(Footprint::default(), vector_node_from_instances(instances)).await;
 
-		// 4040 equals 101 * 4 (rectangle perimeter) * 2 (scale) * 5 (number of rows)
-		assert_eq!(length, 4040.);
+		// 101 (each rectangle edge length) * 4 (rectangle perimeter) * 2 (scale) * 5 (number of rows)
+		assert_eq!(length, 101. * 4. * 2. * 5.);
 	}
 	#[tokio::test]
 	async fn spline() {
@@ -2193,10 +2152,10 @@ mod test {
 	async fn morph() {
 		let source = Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.);
 		let target = Subpath::new_ellipse(DVec2::NEG_ONE * 100., DVec2::ZERO);
-		let sample_points = super::morph(Footprint::default(), vector_node(source), vector_node(target), 0.5).await;
-		let sample_points = sample_points.instance_ref_iter().next().unwrap().instance;
+		let morphed = super::morph(Footprint::default(), vector_node(source), vector_node(target), 0.5).await;
+		let morphed = morphed.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(
-			&sample_points.point_domain.positions()[..4],
+			&morphed.point_domain.positions()[..4],
 			vec![DVec2::new(-25., -50.), DVec2::new(50., -25.), DVec2::new(25., 50.), DVec2::new(-50., 25.)]
 		);
 	}

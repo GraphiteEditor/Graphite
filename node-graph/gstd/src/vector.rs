@@ -43,7 +43,7 @@ async fn boolean_operation<I: Into<GraphicGroupTable> + 'n + Send + Clone>(
 		result_vector_data.instance.upstream_graphic_group = Some(group_of_paths.clone());
 
 		// Clean up the boolean operation result by merging duplicated points
-		result_vector_data.instance.merge_by_distance(0.001);
+		result_vector_data.instance.merge_by_distance_spatial(*result_vector_data.transform, 0.0001);
 	}
 
 	result_vector_data_table

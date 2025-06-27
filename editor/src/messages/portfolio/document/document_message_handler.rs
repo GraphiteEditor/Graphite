@@ -613,37 +613,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_folders });
 				}
 			}
-			// DocumentMessage::ImaginateGenerate { imaginate_node } => {
-			// 	let random_value = generate_uuid();
-			// 	responses.add(NodeGraphMessage::SetInputValue {
-			// 		node_id: *imaginate_node.last().unwrap(),
-			// 		// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
-			// 		input_index: 17,
-			// 		value: graph_craft::document::value::TaggedValue::U64(random_value),
-			// 	});
-
-			// 	responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
-			// }
-			// DocumentMessage::ImaginateRandom { imaginate_node, then_generate } => {
-			// 	// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
-			// 	// outside of this range can get rounded in f64
-			// 	let random_bits = generate_uuid();
-			// 	let random_value = ((random_bits >> 11) as f64).copysign(f64::from_bits(random_bits & (1 << 63)));
-
-			// 	responses.add(DocumentMessage::AddTransaction);
-			// 	// Set a random seed input
-			// 	responses.add(NodeGraphMessage::SetInputValue {
-			// 		node_id: *imaginate_node.last().unwrap(),
-			// 		// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
-			// 		input_index: 3,
-			// 		value: graph_craft::document::value::TaggedValue::F64(random_value),
-			// 	});
-
-			// 	// Generate the image
-			// 	if then_generate {
-			// 		responses.add(DocumentMessage::ImaginateGenerate { imaginate_node });
-			// 	}
-			// }
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
 				if !self.selection_network_path.is_empty() {
 					log::error!("Moving selected layers is only supported for the Document Network");

@@ -9,7 +9,6 @@ use crate::uuid::{NodeId, generate_uuid};
 use crate::vector::style::{Fill, Stroke, StrokeAlign, ViewMode};
 use crate::vector::{PointId, VectorDataTable};
 use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable};
-use base64::Engine;
 use bezier_rs::Subpath;
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
@@ -1148,6 +1147,8 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 			}
 
 			let base64_string = image.base64_string.clone().unwrap_or_else(|| {
+				use base64::Engine;
+
 				let output = image.to_png();
 				let preamble = "data:image/png;base64,";
 				let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);

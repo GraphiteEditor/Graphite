@@ -103,6 +103,17 @@ pub enum MergeByDistanceAlgorithm {
 	Topological,
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum PointSpacingType {
+	#[default]
+	/// The desired spacing distance between points.
+	Separation,
+	/// The exact number of points to span the path.
+	Quantity,
+}
+
 pub fn point_to_dvec2(point: Point) -> DVec2 {
 	DVec2 { x: point.x, y: point.y }
 }

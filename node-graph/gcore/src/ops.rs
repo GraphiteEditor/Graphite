@@ -441,30 +441,6 @@ fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Option
 	color
 }
 
-// // Aims for interoperable compatibility with:
-// // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map
-// // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Gradient%20settings%20(Photoshop%206.0)
-// #[node_macro::node(category("Raster: Adjustment"))]
-// async fn gradient_map<T: Adjust<Color>>(
-// 	_: impl Ctx,
-// 	#[implementations(
-// 		Color,
-// 		RasterDataTable<CPU>,
-// 		GradientStops,
-// 	)]
-// 	mut image: T,
-// 	gradient: GradientStops,
-// 	reverse: bool,
-// ) -> T {
-// 	image.adjust(|color| {
-// 		let intensity = color.luminance_srgb();
-// 		let intensity = if reverse { 1. - intensity } else { intensity };
-// 		gradient.evaluate(intensity as f64)
-// 	});
-
-// 	image
-// }
-
 /// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
 #[node_macro::node(category("Color"))]
 fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position: Fraction) -> Color {
@@ -592,6 +568,76 @@ where
 	#[inline]
 	fn eval(&'input self, input: I) -> Self::Output {
 		Box::pin(async move { input.into() })
+	}
+}
+
+/// The [`Convert`] trait allows for conversion between Rust primitive numeric types.
+/// Because number casting is lossy, we cannot use the normal [`Into`] trait like we do for other types.
+pub trait Convert<T>: Sized {
+	/// Converts this type into the (usually inferred) output type.
+	#[must_use]
+	fn convert(self) -> T;
+}
+
+/// Implements the [`Convert`] trait for conversion between the cartesian product of Rust's primitive numeric types.
+macro_rules! impl_convert {
+	($from:ty,$to:ty) => {
+		impl Convert<$to> for $from {
+			fn convert(self) -> $to {
+				self as $to
+			}
+		}
+	};
+	($to:ty) => {
+		impl_convert!(f32, $to);
+		impl_convert!(f64, $to);
+		impl_convert!(i8, $to);
+		impl_convert!(u8, $to);
+		impl_convert!(u16, $to);
+		impl_convert!(i16, $to);
+		impl_convert!(i32, $to);
+		impl_convert!(u32, $to);
+		impl_convert!(i64, $to);
+		impl_convert!(u64, $to);
+		impl_convert!(i128, $to);
+		impl_convert!(u128, $to);
+		impl_convert!(isize, $to);
+		impl_convert!(usize, $to);
+	};
+}
+impl_convert!(f32);
+impl_convert!(f64);
+impl_convert!(i8);
+impl_convert!(u8);
+impl_convert!(u16);
+impl_convert!(i16);
+impl_convert!(i32);
+impl_convert!(u32);
+impl_convert!(i64);
+impl_convert!(u64);
+impl_convert!(i128);
+impl_convert!(u128);
+impl_convert!(isize);
+impl_convert!(usize);
+
+// Convert
+pub struct ConvertNode<O>(PhantomData<O>);
+impl<_O> ConvertNode<_O> {
+	pub const fn new() -> Self {
+		Self(core::marker::PhantomData)
+	}
+}
+impl<_O> Default for ConvertNode<_O> {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+impl<'input, I: 'input + Convert<_O> + Sync + Send, _O: 'input> Node<'input, I> for ConvertNode<_O> {
+	type Output = ::dyn_any::DynFuture<'input, _O>;
+
+	#[inline]
+	fn eval(&'input self, input: I) -> Self::Output {
+		Box::pin(async move { input.convert() })
 	}
 }
 

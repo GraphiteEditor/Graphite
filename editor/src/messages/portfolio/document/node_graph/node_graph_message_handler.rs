@@ -1396,12 +1396,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					input,
 				});
 				responses.add(PropertiesPanelMessage::Refresh);
-				if (network_interface
-					.reference(&node_id, selection_network_path)
-					.is_none_or(|reference| *reference != Some("Imaginate".to_string())) // TODO: Potentially remove the reference to Imaginate
-					|| input_index == 0)
-					&& network_interface.connected_to_output(&node_id, selection_network_path)
-				{
+				if (network_interface.reference(&node_id, selection_network_path).is_none() || input_index == 0) && network_interface.connected_to_output(&node_id, selection_network_path) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
