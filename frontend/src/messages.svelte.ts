@@ -1388,6 +1388,12 @@ export class Widget {
 	}
 
 	@Type(() => WidgetProps, { discriminator: { property: "kind", subTypes: [...widgetSubTypes] }, keepDiscriminatorProperty: true })
+	@Transform(({ value }) => {
+		if (value.kind === "PopoverButton") {
+			value.popoverLayout = value.popoverLayout.map(createLayoutGroup);
+		}
+		return value;
+	})
 	props!: WidgetPropsSet;
 
 	widgetId!: bigint;
@@ -1398,10 +1404,6 @@ function hoistWidgetHolder(widgetHolder: any): Widget {
 	const kind = Object.keys(widgetHolder.widget)[0];
 	const props = widgetHolder.widget[kind];
 	props.kind = kind;
-
-	if (kind === "PopoverButton") {
-		props.popoverLayout = props.popoverLayout.map(createLayoutGroup);
-	}
 
 	const { widgetId } = widgetHolder;
 
@@ -1475,13 +1477,9 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 				Reflect.set(diffObject, "length", 0);
 			}
 
-			// Clear existing properties
-			// Remove all keys using Reflect.deleteProperty to ensure proxy notifications
-			Reflect.ownKeys(diffObject).forEach((key) => {
-				if (key !== "length") {
-					// Don't delete length property on arrays
-					Reflect.deleteProperty(diffObject, key);
-				}
+			// Remove all enumerable properties using Reflect.deleteProperty to ensure proxy notifications
+			Object.keys(diffObject).forEach((key) => {
+				Reflect.deleteProperty(diffObject, key);
 			});
 
 			// Assign new properties
