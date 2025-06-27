@@ -12,6 +12,7 @@ pub mod wasm_application_io;
 pub use graphene_application_io as application_io;
 pub use graphene_core::vector;
 pub use graphene_core::*;
+pub use graphene_math_nodes as math_nodes;
 pub use graphene_path_bool as path_bool;
 
 /// stop gap solution until all `Quad` and `Rect` paths have been replaced with their absolute ones

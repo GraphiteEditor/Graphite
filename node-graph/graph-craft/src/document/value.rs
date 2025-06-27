@@ -221,7 +221,7 @@ tagged_value! {
 	// ==========
 	BlendMode(BlendMode),
 	LuminanceCalculation(LuminanceCalculation),
-	XY(graphene_core::ops::XY),
+	XY(graphene_core::extract_xy::XY),
 	RedGreenBlue(graphene_core::raster::RedGreenBlue),
 	RedGreenBlueAlpha(graphene_core::raster::RedGreenBlueAlpha),
 	RealTimeMode(graphene_core::animation::RealTimeMode),
