@@ -10,7 +10,7 @@
 	import { createPanicManager } from "@graphite/io-managers/panic";
 	import { createPersistenceManager } from "@graphite/io-managers/persistence";
 	import { createDialogState } from "@graphite/state-providers/dialog";
-	import { createDocumentState } from "@graphite/state-providers/document";
+	import { createDocumentState } from "@graphite/state-providers/document.svelte";
 	import { createFontsState } from "@graphite/state-providers/fonts";
 	import { createFullscreenState } from "@graphite/state-providers/fullscreen";
 	import { createNodeGraphState } from "@graphite/state-providers/node-graph";
