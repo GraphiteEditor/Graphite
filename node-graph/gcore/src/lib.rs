@@ -20,6 +20,7 @@ pub mod registry;
 pub mod structural;
 pub mod text;
 pub mod transform;
+pub mod transform_nodes;
 pub mod uuid;
 pub mod value;
 pub mod vector;

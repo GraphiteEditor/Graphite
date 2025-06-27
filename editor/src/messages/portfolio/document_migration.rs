@@ -14,12 +14,12 @@ use graphene_std::vector::style::{Fill, FillType, Gradient, PaintOrder, StrokeAl
 use graphene_std::vector::{VectorData, VectorDataTable};
 use std::collections::HashMap;
 
-const TEXT_REPLACEMENTS: [(&str, &str); 2] = [
+const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::vector::vector_nodes::SamplePointsNode", "graphene_core::vector::SamplePolylineNode"),
 	("graphene_core::vector::vector_nodes::SubpathSegmentLengthsNode", "graphene_core::vector::SubpathSegmentLengthsNode"),
 ];
 
-const REPLACEMENTS: [(&str, &str); 40] = [
+const REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"),
 	("graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"),
 	("graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"),
@@ -48,7 +48,11 @@ const REPLACEMENTS: [(&str, &str); 40] = [
 	("graphene_core::raster::ThresholdNode", "graphene_core::raster::adjustments::ThresholdNode"),
 	("graphene_core::raster::VibranceNode", "graphene_core::raster::adjustments::VibranceNode"),
 	("graphene_core::text::TextGeneratorNode", "graphene_core::text::TextNode"),
-	("graphene_core::transform::SetTransformNode", "graphene_core::transform::ReplaceTransformNode"),
+	("graphene_core::transform::SetTransformNode", "graphene_core::transform_nodes::ReplaceTransformNode"),
+	("graphene_core::transform::ReplaceTransformNode", "graphene_core::transform_nodes::ReplaceTransformNode"),
+	("graphene_core::transform::TransformNode", "graphene_core::transform_nodes::TransformNode"),
+	("graphene_core::transform::BoundlessFootprintNode", "graphene_core::transform_nodes::BoundlessFootprintNode"),
+	("graphene_core::transform::FreezeRealTimeNode", "graphene_core::transform_nodes::FreezeRealTimeNode"),
 	("graphene_core::vector::SplinesFromPointsNode", "graphene_core::vector::SplineNode"),
 	("graphene_core::vector::generator_nodes::EllipseGenerator", "graphene_core::vector::generator_nodes::EllipseNode"),
 	("graphene_core::vector::generator_nodes::LineGenerator", "graphene_core::vector::generator_nodes::LineNode"),
