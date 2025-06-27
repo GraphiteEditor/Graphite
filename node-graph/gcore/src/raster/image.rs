@@ -1,6 +1,6 @@
 use super::Color;
-use super::discrete_srgb::float_to_srgb_u8;
 use crate::AlphaBlending;
+use crate::color::float_to_srgb_u8;
 use crate::instances::{Instance, Instances};
 use crate::raster_types::Raster;
 use core::hash::{Hash, Hasher};
