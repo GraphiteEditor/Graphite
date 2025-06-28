@@ -36,6 +36,7 @@
 	let editingNameImportIndex = $state<number>();
 	let editingNameExportIndex = $state<number>();
 	let editingNameText = $state<string>("");
+	let nodeValues: FrontendNode[] = $state([]);
 
 	function exportsToEdgeTextInputWidth() {
 		let exportTextDivs = document.querySelectorAll(`[data-export-text-edge]`);
@@ -199,7 +200,7 @@
 	}
 
 	function primaryOutputConnectedToLayer(node: FrontendNode): boolean {
-		let firstConnectedNode = Array.from($nodeGraph.nodes.values()).find((n) =>
+		let firstConnectedNode = nodeValues.find((n) =>
 			node.primaryOutput?.connectedTo.some((connector) => {
 				if ((connector as Node).nodeId === undefined) return false;
 				if (connector.index !== 0n) return false;
@@ -210,7 +211,7 @@
 	}
 
 	function primaryInputConnectedToLayer(node: FrontendNode): boolean {
-		const connectedNode = Array.from($nodeGraph.nodes.values()).find((n) => {
+		const connectedNode = nodeValues.find((n) => {
 			if ((node.primaryInput?.connectedTo as Node) === undefined) return false;
 			return n.id === (node.primaryInput?.connectedTo as Node).nodeId;
 		});
@@ -225,6 +226,10 @@
 		}
 		return result;
 	}
+
+	$effect.pre(() => {
+		nodeValues = Array.from($nodeGraph.nodes.values());
+	});
 	// Key value is node id + input/output index
 	// Imports/Export are stored at a key value of 0
 
