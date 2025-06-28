@@ -11,22 +11,25 @@
 	let { value, disabled = false, onvalue, tooltip }: Props = $props();
 
 	function setValue(event: MouseEvent) {
-		let element = event.target as HTMLElement;
-		let position = element.dataset.position as ReferencePoint;
-		onvalue?.(position);
+		const element = event.target as HTMLDivElement;
+		const button = element.parentElement;
+		if (button) {
+			let position = button.dataset.position! as ReferencePoint;
+			onvalue?.(position);
+		}
 	}
 </script>
 
-<div class="reference-point-input" class:disabled title={tooltip}>
-	<button onclick={setValue} data-position="TopLeft" class="row-1 col-1" class:active={value === "TopLeft"} tabindex="-1" {disabled}><div></div></button>
-	<button onclick={setValue} data-position="TopCenter" class="row-1 col-2" class:active={value === "TopCenter"} tabindex="-1" {disabled}><div></div></button>
-	<button onclick={setValue} data-position="TopRight" class="row-1 col-3" class:active={value === "TopRight"} tabindex="-1" {disabled}><div></div></button>
-	<button onclick={setValue} data-position="CenterLeft" class="row-2 col-1" class:active={value === "CenterLeft"} tabindex="-1" {disabled}><div></div></button>
-	<button onclick={setValue} data-position="Center" class="row-2 col-2" class:active={value === "Center"} tabindex="-1" {disabled}><div></div></button>
-	<button onclick={setValue} data-position="CenterRight" class="row-2 col-3" class:active={value === "CenterRight"} tabindex="-1" {disabled}><div></div></button>
-	<button onclick={setValue} data-position="BottomLeft" class="row-3 col-1" class:active={value === "BottomLeft"} tabindex="-1" {disabled}><div></div></button>
-	<button onclick={setValue} data-position="BottomCenter" class="row-3 col-2" class:active={value === "BottomCenter"} tabindex="-1" {disabled}><div></div></button>
-	<button onclick={setValue} data-position="BottomRight" class="row-3 col-3" class:active={value === "BottomRight"} tabindex="-1" {disabled}><div></div></button>
+<div class="reference-point-input" class:disabled onclick={setValue} title={tooltip}>
+	<button data-position="TopLeft" class="row-1 col-1" class:active={value === "TopLeft"} tabindex="-1" {disabled}><div></div></button>
+	<button data-position="TopCenter" class="row-1 col-2" class:active={value === "TopCenter"} tabindex="-1" {disabled}><div></div></button>
+	<button data-position="TopRight" class="row-1 col-3" class:active={value === "TopRight"} tabindex="-1" {disabled}><div></div></button>
+	<button data-position="CenterLeft" class="row-2 col-1" class:active={value === "CenterLeft"} tabindex="-1" {disabled}><div></div></button>
+	<button data-position="Center" class="row-2 col-2" class:active={value === "Center"} tabindex="-1" {disabled}><div></div></button>
+	<button data-position="CenterRight" class="row-2 col-3" class:active={value === "CenterRight"} tabindex="-1" {disabled}><div></div></button>
+	<button data-position="BottomLeft" class="row-3 col-1" class:active={value === "BottomLeft"} tabindex="-1" {disabled}><div></div></button>
+	<button data-position="BottomCenter" class="row-3 col-2" class:active={value === "BottomCenter"} tabindex="-1" {disabled}><div></div></button>
+	<button data-position="BottomRight" class="row-3 col-3" class:active={value === "BottomRight"} tabindex="-1" {disabled}><div></div></button>
 </div>
 
 <style lang="scss" global>
