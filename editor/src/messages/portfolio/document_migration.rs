@@ -435,12 +435,20 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			);
 			document.network_interface.set_input(
 				&InputConnector::node(*node_id, 6),
-				NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
+				if inputs_count >= 7 {
+					old_inputs[6].clone()
+				} else {
+					NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false)
+				},
 				network_path,
 			);
 			document.network_interface.set_input(
 				&InputConnector::node(*node_id, 7),
-				NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
+				if inputs_count >= 8 {
+					old_inputs[7].clone()
+				} else {
+					NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false)
+				},
 				network_path,
 			);
 			document.network_interface.insert_input_properties_row(
