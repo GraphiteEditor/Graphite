@@ -454,6 +454,28 @@ impl Color {
 		Color { red, green, blue, alpha }
 	}
 
+	/// Create a [Color] from Return a `Color` from given `f32` CMYKA channels (all between 0 and 1)
+	///
+	/// # Examples
+	/// ```
+	/// use graphene_core::color::Color;
+	/// let color = Color::from_cmyka(0.5, 0.2, 0.3, 0.5, 1.0);
+	/// ```
+	// From https://graphicdesign.stackexchange.com/questions/114260/alternative-formulae-for-cmyk-to-rgb-conversion-for-display-on-screen
+	pub fn from_cmyka(cyan: f32, magenta: f32, yellow: f32, key: f32, alpha: f32) -> Color {
+		let cyan_temp: f32 = (1. - cyan) * 255.;
+		let magenta_temp: f32 = (1. - magenta) * 255.;
+		let yellow_temp: f32 = (1. - yellow) * 255.;
+		let red: f32 = (80. + 0.5882 * cyan_temp - 0.3529 * magenta_temp - 0.1373 * yellow_temp + 0.00185 * cyan_temp * magenta_temp + 0.00046 * yellow_temp * cyan_temp) / 255. * key;
+		let green: f32 =
+			(66. - 0.1961 * cyan_temp + 0.2745 * magenta_temp - 0.0627 * yellow_temp + 0.00215 * cyan_temp * magenta_temp + 0.00008 * yellow_temp * cyan_temp + 0.00062 * yellow_temp * magenta_temp)
+				/ 255. * key;
+		let blue: f32 =
+			(86. - 0.3255 * cyan_temp - 0.1569 * magenta_temp + 0.1647 * yellow_temp + 0.00046 * cyan_temp * magenta_temp + 0.00123 * yellow_temp * cyan_temp + 0.00215 * yellow_temp * magenta_temp)
+				/ 255. * key;
+		Color { red, green, blue, alpha }
+	}
+
 	/// Return the `red` component.
 	///
 	/// # Examples
