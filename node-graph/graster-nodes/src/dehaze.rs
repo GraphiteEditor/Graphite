@@ -1,7 +1,7 @@
-use graph_craft::proto::types::Percentage;
-use graphene_core::Ctx;
+use graphene_core::context::Ctx;
 use graphene_core::raster::image::Image;
 use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
+use graphene_core::registry::types::Percentage;
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use std::cmp::{max, min};
@@ -15,7 +15,7 @@ async fn dehaze(_: impl Ctx, image_frame: RasterDataTable<CPU>, strength: Percen
 		// Prepare the image data for processing
 		let image_data = bytemuck::cast_vec(image.data.clone());
 		let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, image_data).expect("Failed to convert internal image format into image-rs data type.");
-		let dynamic_image: image::DynamicImage = image_buffer.into();
+		let dynamic_image: DynamicImage = image_buffer.into();
 
 		// Run the dehaze algorithm
 		let dehazed_dynamic_image = dehaze_image(dynamic_image, strength / 100.);

@@ -1,16 +1,16 @@
 #![allow(clippy::too_many_arguments)]
 
-use crate::GraphicElement;
-use crate::blending::BlendMode;
-use crate::raster::curve::{CubicSplines, CurveManipulatorGroup};
-use crate::raster::curve::{Curve, ValueMapperNode};
-use crate::raster::image::Image;
-use crate::raster::{Channel, Color, Pixel};
-use crate::raster_types::{CPU, Raster, RasterDataTable};
-use crate::registry::types::{Angle, Percentage, SignedPercentage};
-use crate::vector::style::GradientStops;
-use crate::{Ctx, Node};
+use crate::curve::CubicSplines;
 use dyn_any::DynAny;
+use graphene_core::Node;
+use graphene_core::blending::BlendMode;
+use graphene_core::color::Color;
+use graphene_core::color::Pixel;
+use graphene_core::context::Ctx;
+use graphene_core::gradient::GradientStops;
+use graphene_core::raster::image::Image;
+use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
+use graphene_core::registry::types::{Angle, Percentage, SignedPercentage};
 use std::cmp::Ordering;
 use std::fmt::Debug;
 
@@ -576,10 +576,7 @@ impl Adjust<Color> for GradientStops {
 		}
 	}
 }
-impl Adjust<Color> for RasterDataTable<CPU>
-where
-	GraphicElement: From<Image<Color>>,
-{
+impl Adjust<Color> for RasterDataTable<CPU> {
 	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
 		for instance in self.instance_mut_iter() {
 			for c in instance.instance.data_mut().data.iter_mut() {
@@ -1130,48 +1127,6 @@ async fn exposure<T: Adjust<Color>>(
 	input
 }
 
-const WINDOW_SIZE: usize = 1024;
-
-#[node_macro::node(category(""))]
-fn generate_curves<C: Channel + crate::raster::Linear>(_: impl Ctx, curve: Curve, #[implementations(f32, f64)] _target_format: C) -> ValueMapperNode<C> {
-	use bezier_rs::{Bezier, TValue};
-
-	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.; 2], curve.first_handle];
-	let mut lut = vec![C::from_f64(0.); WINDOW_SIZE];
-	let end = CurveManipulatorGroup {
-		anchor: [1.; 2],
-		handles: [curve.last_handle, [0.; 2]],
-	};
-	for sample in curve.manipulator_groups.iter().chain(std::iter::once(&end)) {
-		let [x0, y0, x1, y1, x2, y2, x3, y3] = [pos[0], pos[1], param[0], param[1], sample.handles[0][0], sample.handles[0][1], sample.anchor[0], sample.anchor[1]].map(f64::from);
-
-		let bezier = Bezier::from_cubic_coordinates(x0, y0, x1, y1, x2, y2, x3, y3);
-
-		let [left, right] = [pos[0], sample.anchor[0]].map(|c| c.clamp(0., 1.));
-		let lut_index_left: usize = (left * (lut.len() - 1) as f32).floor() as _;
-		let lut_index_right: usize = (right * (lut.len() - 1) as f32).ceil() as _;
-		for index in lut_index_left..=lut_index_right {
-			let x = index as f64 / (lut.len() - 1) as f64;
-			let y = if x <= x0 {
-				y0
-			} else if x >= x3 {
-				y3
-			} else {
-				bezier.find_tvalues_for_x(x)
-					.next()
-					.map(|t| bezier.evaluate(TValue::Parametric(t.clamp(0., 1.))).y)
-					// Fall back to a very bad approximation if Bezier-rs fails
-					.unwrap_or_else(|| (x - x0) / (x3 - x0) * (y3 - y0) + y0)
-			};
-			lut[index] = C::from_f64(y);
-		}
-
-		pos = sample.anchor;
-		param = sample.handles[1];
-	}
-	ValueMapperNode::new(lut)
-}
-
 #[node_macro::node(category("Raster: Adjustment"))]
 fn color_overlay<T: Adjust<Color>>(
 	_: impl Ctx,
@@ -1224,10 +1179,10 @@ fn color_overlay<T: Adjust<Color>>(
 
 #[cfg(test)]
 mod test {
-	use crate::Color;
-	use crate::blending::BlendMode;
-	use crate::raster::image::Image;
-	use crate::raster_types::{Raster, RasterDataTable};
+	use graphene_core::blending::BlendMode;
+	use graphene_core::color::Color;
+	use graphene_core::raster::image::Image;
+	use graphene_core::raster_types::{Raster, RasterDataTable};
 
 	#[tokio::test]
 	async fn color_overlay_multiply() {

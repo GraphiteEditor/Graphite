@@ -12,13 +12,10 @@ pub mod color {
 	pub use super::*;
 }
 
-pub mod adjustments;
 pub mod brush_cache;
-pub mod curve;
 pub mod image;
 
 pub use self::image::Image;
-pub use adjustments::*;
 
 pub trait Bitmap {
 	type Pixel: Pixel;

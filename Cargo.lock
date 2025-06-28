@@ -2134,6 +2134,7 @@ dependencies = [
  "graphene-core",
  "graphene-element-nodes",
  "graphene-path-bool",
+ "graphene-raster-nodes",
  "graphene-svg-renderer",
  "iai-callgrind",
  "js-sys",
@@ -2259,6 +2260,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphene-raster-nodes"
+version = "0.1.0"
+dependencies = [
+ "bezier-rs",
+ "bytemuck",
+ "dyn-any",
+ "fastnoise-lite",
+ "futures",
+ "glam",
+ "graphene-core",
+ "image",
+ "ndarray",
+ "node-macro",
+ "rand 0.9.0",
+ "rand_chacha 0.9.0",
+ "serde",
+ "specta",
+ "tokio",
+]
+
+[[package]]
 name = "graphene-std"
 version = "0.1.0"
 dependencies = [
@@ -2274,6 +2296,7 @@ dependencies = [
  "graphene-element-nodes",
  "graphene-math-nodes",
  "graphene-path-bool",
+ "graphene-raster-nodes",
  "graphene-svg-renderer",
  "image",
  "log",

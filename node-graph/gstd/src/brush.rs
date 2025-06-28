@@ -1,11 +1,9 @@
-use crate::raster::{empty_image, extend_image_to_bounds};
 use glam::{DAffine2, DVec2};
 use graph_craft::generic::FnNode;
 use graph_craft::proto::FutureWrapperNode;
 use graphene_core::bounds::BoundingBox;
 use graphene_core::instances::Instance;
 use graphene_core::math::bbox::{AxisAlignedBbox, Bbox};
-use graphene_core::raster::adjustments::blend_colors;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::image::Image;
 use graphene_core::raster::{Alpha, BitmapMut, BlendMode, Color, Pixel, Sample};
@@ -14,6 +12,8 @@ use graphene_core::transform::Transform;
 use graphene_core::value::ClonedNode;
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
 use graphene_core::{Ctx, GraphicElement, Node};
+use graphene_raster_nodes::adjustments::blend_colors;
+use graphene_raster_nodes::std_nodes::{empty_image, extend_image_to_bounds};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BrushStampGenerator<P: Pixel + Alpha> {
@@ -239,7 +239,6 @@ async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes
 				let target = core::mem::take(&mut brush_plan.first_stroke_texture);
 				extend_image_to_bounds((), target.to_table(), stroke_to_layer)
 			} else {
-				use crate::raster::empty_image;
 				empty_image((), stroke_to_layer, Color::TRANSPARENT)
 				// EmptyImageNode::new(CopiedNode::new(stroke_to_layer), CopiedNode::new(Color::TRANSPARENT)).eval(())
 			};
