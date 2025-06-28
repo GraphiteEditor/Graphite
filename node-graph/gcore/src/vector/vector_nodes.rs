@@ -2,7 +2,7 @@ use super::algorithms::bezpath_algorithms::{self, position_on_bezpath, sample_po
 use super::algorithms::offset_subpath::offset_subpath;
 use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use super::misc::{CentroidType, point_to_dvec2};
-use super::style::{Fill, Gradient, GradientStops, Stroke};
+use super::style::{Fill, Gradient, GradientStops, ShapeRenderingModes, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataExt, VectorDataTable};
 use crate::bounds::BoundingBox;
 use crate::instances::{Instance, InstanceMut, Instances};
@@ -206,6 +206,35 @@ where
 		let mut stroke = stroke.clone();
 		stroke.transform *= *vector.transform;
 		vector.instance.style.set_stroke(stroke);
+	}
+
+	vector_data
+}
+
+/// Set the shape-render SVG property for all input vectors. Determines anti-aliasing, but output varies by renderer.
+/// Not implimented in Vello
+#[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
+async fn shape_render_mode<V>(
+	_: impl Ctx,
+	#[implementations(
+		VectorDataTable,
+		VectorDataTable,
+		VectorDataTable,
+		VectorDataTable,
+		GraphicGroupTable,
+		GraphicGroupTable,
+		GraphicGroupTable,
+		GraphicGroupTable
+	)]
+	/// The vector elements, or group of vector elements, to apply the shape render mode to.
+	mut vector_data: V,
+	render_mode: ShapeRenderingModes,
+) -> V
+where
+	V: VectorDataTableIterMut + 'n + Send,
+{
+	for vector in vector_data.vector_iter_mut() {
+		vector.instance.style.set_shape_rendering(render_mode);
 	}
 
 	vector_data

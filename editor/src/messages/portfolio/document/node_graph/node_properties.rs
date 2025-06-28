@@ -27,7 +27,7 @@ use graphene_std::vector::misc::GridType;
 use graphene_std::vector::misc::{ArcType, MergeByDistanceAlgorithm};
 use graphene_std::vector::misc::{CentroidType, PointSpacingType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
-use graphene_std::vector::style::{GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{GradientType, PaintOrder, ShapeRenderingModes, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{GraphicGroupTable, NodeInputDecleration};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
@@ -243,6 +243,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<BooleanOperation>() => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<CentroidType>() => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<LuminanceCalculation>() => enum_choice::<LuminanceCalculation>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<ShapeRenderingModes>() => enum_choice::<ShapeRenderingModes>().for_socket(default_info).property_row(),
 						// =====
 						// OTHER
 						// =====
