@@ -131,6 +131,13 @@ const REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_std::raster::MaskImageNode", "graphene_std::raster::MaskNode"),
 	("graphene_core::vector::FlattenVectorElementsNode", "graphene_core::vector::FlattenPathNode"),
 	("graphene_std::vector::BooleanOperationNode", "graphene_path_bool::BooleanOperationNode"),
+	("graphene_core::graphic_element::LayerNode", "graphene_element_nodes::conversion::LayerNode"),
+	("graphene_core::graphic_element::ToElementNode", "graphene_element_nodes::conversion::ToElementNode"),
+	("graphene_core::graphic_element::ToGroupNode", "graphene_element_nodes::conversion::ToGroupNode"),
+	("graphene_core::graphic_element::FlattenGroupNode", "graphene_element_nodes::conversion::FlattenGroupNode"),
+	("graphene_core::graphic_element::FlattenVectorNode", "graphene_element_nodes::conversion::FlattenVectorNode"),
+	("graphene_core::graphic_element::ToArtboardNode", "graphene_element_nodes::conversion::ToArtboardNode"),
+	("graphene_core::graphic_element::AppendArtboardNode", "graphene_element_nodes::conversion::AppendArtboardNode"),
 ];
 
 pub fn document_migration_string_preprocessing(document_serialized_content: String) -> String {

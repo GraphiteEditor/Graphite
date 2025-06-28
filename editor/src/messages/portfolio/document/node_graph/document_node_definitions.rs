@@ -242,14 +242,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							// Secondary (left) input type coercion
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 1)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::ToElementNode"),
+								implementation: DocumentNodeImplementation::proto("graphene_element_nodes::conversion::ToElementNode"),
 								manual_composition: Some(concrete!(Context)),
 								..Default::default()
 							},
 							// Primary (bottom) input type coercion
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 0)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::ToGroupNode"),
+								implementation: DocumentNodeImplementation::proto("graphene_element_nodes::conversion::ToGroupNode"),
 								manual_composition: Some(concrete!(Context)),
 								..Default::default()
 							},
@@ -268,7 +268,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::node(NodeId(2), 0),
 									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
 								],
-								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::LayerNode"),
+								implementation: DocumentNodeImplementation::proto("graphene_element_nodes::conversion::LayerNode"),
 								..Default::default()
 							},
 						]
@@ -349,7 +349,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							// Ensure this ID is kept in sync with the ID in set_alias so that the name input is kept in sync with the alias
 							DocumentNode {
 								manual_composition: Some(generic!(T)),
-								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::ToArtboardNode"),
+								implementation: DocumentNodeImplementation::proto("graphene_element_nodes::conversion::ToArtboardNode"),
 								inputs: vec![
 									NodeInput::network(concrete!(TaggedValue), 1),
 									NodeInput::value(TaggedValue::String(String::from("Artboard")), false),
@@ -376,7 +376,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::node(NodeId(1), 0),
 									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
 								],
-								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::AppendArtboardNode"),
+								implementation: DocumentNodeImplementation::proto("graphene_element_nodes::conversion::AppendArtboardNode"),
 								..Default::default()
 							},
 						]
