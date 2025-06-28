@@ -39,13 +39,13 @@
 	}
 
 	// Called only when `selectedIndex` is changed from outside this component
-	function watchSelectedIndex(_?: number) {
+	function watchSelectedIndex(_?: typeof selectedIndex) {
 		activeEntrySkipWatcher = true;
 		activeEntry = makeActiveEntry();
 	}
 
 	// Called only when `entries` is changed from outside this component
-	function watchEntries(_?: any) {
+	function watchEntries(_?: typeof entries) {
 		activeEntrySkipWatcher = true;
 		activeEntry = makeActiveEntry();
 	}
