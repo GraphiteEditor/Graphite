@@ -15,7 +15,6 @@ use graphene_std::text::{FontCache, load_face};
 use graphene_std::vector::{HandleExt, HandleId, ManipulatorPointId, PointId, SegmentId, VectorData, VectorModificationType};
 use kurbo::{CubicBez, Line, ParamCurveExtrema, PathSeg, Point, QuadBez};
 
-
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
 pub fn should_extend(
 	document: &DocumentMessageHandler,
