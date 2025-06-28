@@ -1889,7 +1889,7 @@ impl Fsm for PathToolFsmState {
 					selection_mode => selection_mode,
 				};
 
-				if (tool_data.drag_start_pos - previous_mouse).element_sum() < 1e-8 {
+				if tool_data.drag_start_pos.distance(previous_mouse) < 1e-8 {
 					// If click happens inside of a shape then don't set selected nodes to empty
 					if document.click(&input).is_none() {
 						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
