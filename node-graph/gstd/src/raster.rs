@@ -231,7 +231,7 @@ fn mask(
 }
 
 #[node_macro::node(category(""))]
-fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<CPU>, bounds: DAffine2) -> RasterDataTable<CPU> {
+pub fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<CPU>, bounds: DAffine2) -> RasterDataTable<CPU> {
 	let mut result_table = RasterDataTable::default();
 
 	for mut image_instance in image.instance_iter() {
@@ -284,7 +284,7 @@ fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<CPU>, bounds: DAff
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> RasterDataTable<CPU> {
+pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> RasterDataTable<CPU> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
