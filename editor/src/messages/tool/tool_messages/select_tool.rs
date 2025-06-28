@@ -9,10 +9,10 @@ use crate::messages::portfolio::document::utility_types::document_metadata::{Doc
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
-use crate::messages::portfolio::document::utility_types::transformation::MeanAverage;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::compass_rose::{Axis, CompassRose};
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::measure;
 use crate::messages::tool::common_functionality::pivot::Pivot;
@@ -54,21 +54,40 @@ pub enum NestedSelectionBehavior {
 	Deepest,
 }
 
+#[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct Dot(Pivot, DotType);
+
+impl Dot {
+	pub fn position(&self, document: &DocumentMessageHandler) -> DVec2 {
+		let network = &document.network_interface;
+		match self.1 {
+			DotType::Average => Some(network.selected_nodes().selected_visible_and_unlocked_layers_mean_average_origin(network)),
+			DotType::Pivot => self.0.position(),
+			_ => None,
+		}
+		.unwrap_or_else(|| self.0.transform_from_normalized.transform_point2(DVec2::splat(0.5)))
+	}
+	pub fn recalculate_transform(&mut self, document: &DocumentMessageHandler) -> DAffine2 {
+		self.0.recalculate_pivot(document);
+		self.0.transform_from_normalized
+	}
+}
+
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum DotType {
-	Origin,
+	// Pivot
+	Off,
 	#[default]
 	Pivot,
-	Off,
+	// Origin
+	// Indidual,
+	Average,
+	// Active,
 }
 
 impl DotType {
 	pub fn is_pivot(self) -> bool {
 		self == Self::Pivot
-	}
-
-	pub fn is_origin(self) -> bool {
-		self == Self::Origin
 	}
 }
 
@@ -77,7 +96,8 @@ impl fmt::Display for DotType {
 		match self {
 			DotType::Off => write!(f, "Bounding Box Center"),
 			DotType::Pivot => write!(f, "Pivot"),
-			DotType::Origin => write!(f, "Origin"),
+			// DotType::Indidual => write!(f, "Median Points"),
+			DotType::Average => write!(f, "Origin"),
 		}
 	}
 }
@@ -163,7 +183,7 @@ impl SelectTool {
 			.widget_holder()
 	}
 	fn dot_type_widget(&self) -> WidgetHolder {
-		let dot_type_entries = [DotType::Off, DotType::Pivot, DotType::Origin]
+		let dot_type_entries = [DotType::Off, DotType::Pivot, DotType::Average]
 			.iter()
 			.map(|dot_type| {
 				MenuListEntry::new(format!("{dot_type:?}"))
@@ -176,7 +196,7 @@ impl SelectTool {
 			.selected_index(Some(match self.tool_data.dot_type {
 				DotType::Off => 0,
 				DotType::Pivot => 1,
-				DotType::Origin => 2,
+				DotType::Average => 2,
 			}))
 			.tooltip("Choose between bounding box center, pivot point, or origin point for transformations")
 			.widget_holder()
@@ -398,7 +418,6 @@ struct SelectToolData {
 	cursor: MouseCursorIcon,
 	pivot: Pivot,
 	dot_type: DotType,
-	origin: DVec2, // hack because process_message doesn't have document
 	compass_rose: CompassRose,
 	line_center: DVec2,
 	skew_edge: EdgeBool,
@@ -572,16 +591,8 @@ impl SelectToolData {
 		}
 	}
 
-	fn get_dot_position(&self) -> DVec2 {
-		let dot_position = match self.dot_type {
-			DotType::Origin => Some(self.origin),
-			DotType::Pivot => self.pivot.position(),
-			_ => None,
-		};
-		dot_position.unwrap_or_else(|| self.pivot.transform_from_normalized.transform_point2(DVec2::splat(0.5)))
-	}
-	fn get_as_dot(&self) -> (Pivot, DotType) {
-		(self.pivot.clone(), self.dot_type)
+	fn get_as_dot(&self) -> Dot {
+		Dot(self.pivot.clone(), self.dot_type)
 	}
 }
 
@@ -797,11 +808,11 @@ impl Fsm for SelectToolFsmState {
 				});
 
 				tool_data.pivot.update(document, &mut overlay_context, Some((angle,)), tool_data.dot_type.is_pivot());
-				if tool_data.dot_type.is_origin() && document.network_interface.selected_nodes().has_selected_nodes() {
-					let network_interface = &document.network_interface;
-					tool_data.origin =
-						(network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect::<Vec<_>>()).mean_average_origin(network_interface);
-					overlay_context.dowel_pin(tool_data.origin);
+				if overlay_context.visibility_settings.origin() {
+					for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
+						let origin = graph_modification_utils::get_viewport_origin(layer, &document.network_interface);
+						overlay_context.dowel_pin(origin);
+					}
 				}
 
 				// Update compass rose
@@ -960,7 +971,7 @@ impl Fsm for SelectToolFsmState {
 				let intersection_list = document.click_list(input).collect::<Vec<_>>();
 				let intersection = document.find_deepest(&intersection_list);
 
-				let pos = tool_data.get_dot_position();
+				let pos = tool_data.get_as_dot().position(document);
 				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, Some(pos));
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.

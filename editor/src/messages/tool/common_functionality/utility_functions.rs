@@ -326,7 +326,7 @@ pub fn transforming_transform_cage(
 	input: &InputPreprocessorMessageHandler,
 	responses: &mut VecDeque<Message>,
 	layers_dragging: &mut Vec<LayerNodeIdentifier>,
-	pos: Option<DVec2>
+	pos: Option<DVec2>,
 ) -> (bool, bool, bool) {
 	let dragging_bounds = bounding_box_manager.as_mut().and_then(|bounding_box| {
 		let edges = bounding_box.check_selected_edges(input.mouse.position);
@@ -363,17 +363,12 @@ pub fn transforming_transform_cage(
 				}
 			});
 
-			let mut selected = Selected::new(
-				&mut bounds.original_transforms,
-				&mut bounds.center_of_transformation,
-				&layers_dragging,
-				responses,
-				&document.network_interface,
-				None,
-				&ToolType::Select,
-				None,
-			);
-			bounds.center_of_transformation = pos.unwrap_or(selected.mean_average_of_pivots());
+			bounds.center_of_transformation = pos.unwrap_or_else(|| {
+				document
+					.network_interface
+					.selected_nodes()
+					.selected_visible_and_unlocked_layers_mean_average_origin(&document.network_interface)
+			});
 
 			// Check if we're hovering over a skew triangle
 			let edges = bounds.check_selected_edges(input.mouse.position);
@@ -403,18 +398,12 @@ pub fn transforming_transform_cage(
 				}
 			});
 
-			let mut selected = Selected::new(
-				&mut bounds.original_transforms,
-				&mut bounds.center_of_transformation,
-				&selected,
-				responses,
-				&document.network_interface,
-				None,
-				&ToolType::Select,
-				None,
-			);
-
-			bounds.center_of_transformation = pos.unwrap_or(selected.mean_average_of_pivots());
+			bounds.center_of_transformation = pos.unwrap_or_else(|| {
+				document
+					.network_interface
+					.selected_nodes()
+					.selected_visible_and_unlocked_layers_mean_average_origin(&document.network_interface)
+			});
 		}
 
 		*layers_dragging = selected;

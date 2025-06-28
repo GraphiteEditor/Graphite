@@ -258,6 +258,12 @@ pub fn get_viewport_origin(layer: LayerNodeIdentifier, network_interface: &NodeN
 	network_interface.document_metadata().document_to_viewport.transform_point2(origin)
 }
 
+pub fn get_viewport_center(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DVec2 {
+	let [min, max] = network_interface.document_metadata().nonzero_bounding_box(layer);
+	let center = DVec2::splat(0.5);
+	network_interface.document_metadata().transform_to_viewport(layer).transform_point2(min + (max - min) * center)
+}
+
 /// Get the current gradient of a layer from the closest "Fill" node.
 pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	let fill_index = 1;

@@ -33,6 +33,7 @@ pub enum OverlaysType {
 	HoverOutline,
 	SelectionOutline,
 	Pivot,
+	Origin,
 	Path,
 	Anchors,
 	Handles,
@@ -49,6 +50,7 @@ pub struct OverlaysVisibilitySettings {
 	pub hover_outline: bool,
 	pub selection_outline: bool,
 	pub pivot: bool,
+	pub origin: bool,
 	pub path: bool,
 	pub anchors: bool,
 	pub handles: bool,
@@ -66,6 +68,7 @@ impl Default for OverlaysVisibilitySettings {
 			hover_outline: true,
 			selection_outline: true,
 			pivot: true,
+			origin: true,
 			path: true,
 			anchors: true,
 			handles: true,
@@ -108,6 +111,10 @@ impl OverlaysVisibilitySettings {
 
 	pub fn pivot(&self) -> bool {
 		self.all && self.pivot
+	}
+
+	pub fn origin(&self) -> bool {
+		self.all && self.origin
 	}
 
 	pub fn path(&self) -> bool {

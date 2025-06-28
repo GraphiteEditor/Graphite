@@ -1177,6 +1177,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					OverlaysType::HoverOutline => visibility_settings.hover_outline = visible,
 					OverlaysType::SelectionOutline => visibility_settings.selection_outline = visible,
 					OverlaysType::Pivot => visibility_settings.pivot = visible,
+					OverlaysType::Origin => visibility_settings.origin = visible,
 					OverlaysType::Path => visibility_settings.path = visible,
 					OverlaysType::Anchors => {
 						visibility_settings.anchors = visible;
@@ -2256,6 +2257,24 @@ impl DocumentMessageHandler {
 										DocumentMessage::SetOverlaysVisibility {
 											visible: optional_input.checked,
 											overlays_type: Some(OverlaysType::Pivot),
+										}
+										.into()
+									})
+									.for_label(checkbox_id.clone())
+									.widget_holder(),
+								TextLabel::new("Transform Pivot".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+							]
+						},
+					},
+					LayoutGroup::Row {
+						widgets: {
+							let mut checkbox_id = CheckboxId::default();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.pivot)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::Origin),
 										}
 										.into()
 									})
