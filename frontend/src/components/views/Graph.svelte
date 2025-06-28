@@ -18,6 +18,7 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import { SvelteMap } from "svelte/reactivity";
 
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
@@ -34,15 +35,13 @@
 	// let wireInProgressFromLayerBottom: bigint | undefined = undefined;
 
 	let nodeWirePaths: WirePath[] = $state([]);
+	let nodeIndexes = new SvelteMap<bigint, number>();
+	let nodeValues: FrontendNode[] = $state([]);
 
 	// TODO: Convert these arrays-of-arrays to a Map?
-	let inputs: SVGSVGElement[][] = $state([]);
-	let outputs: SVGSVGElement[][] = $state([]);
+	let inputs: SVGSVGElement[][] = $state([[]]);
+	let outputs: SVGSVGElement[][] = $state([[]]);
 	let nodeElements: HTMLDivElement[] = $state([]);
-
-	// $inspect("Nodes", $nodeGraph.nodes).with(console.info);
-	// $inspect("Outputs", outputs).with(console.info);
-	// $inspect("Inputs", inputs).with(console.info);
 
 
 	let inputElement: HTMLInputElement | undefined = $state();
@@ -125,9 +124,13 @@
 	}
 
 	async function watchNodes(nodes: Map<bigint, FrontendNode>) {
-		if (!inputs[0]) inputs[0] = [];
-		if (!outputs[0]) outputs[0] = [];
-		let length = nodes.size;
+		Array.from(nodes.keys()).forEach((nodeId, index) => {
+			nodeIndexes.set(nodeId, index + 1);
+		});
+
+		nodeValues = Array.from($nodeGraph.nodes.values());
+
+		let length = nodes.size + 1;
 
 		let diff = length - inputs.length;
 
@@ -135,25 +138,21 @@
 			inputs.push(...Array.from({ length: diff }, () => []))
 			outputs.push(...Array.from({ length: diff }, () => []))
 		}
-
-		await refreshWires();
 	}
 
 	function resolveWire(wire: FrontendNodeWire): { nodeOutput: SVGSVGElement; nodeInput: SVGSVGElement } | undefined {
-		// TODO: Avoid the linear search
-		const wireStartNodeIdIndex = Array.from($nodeGraph.nodes.keys()).findIndex((nodeId) => nodeId === (wire.wireStart as Node).nodeId);
-		let nodeOutputConnectors = outputs[wireStartNodeIdIndex + 1];
-		if (nodeOutputConnectors === undefined && (wire.wireStart as Node).nodeId === undefined) {
+		const wireStartNodeIdIndex = nodeIndexes.get(wire.wireStart.nodeId!);
+		let nodeOutputConnectors = outputs[wireStartNodeIdIndex];
+		if (nodeOutputConnectors === undefined && wire.wireStart.nodeId === undefined) {
 			nodeOutputConnectors = outputs[0];
 		}
 		const indexOutput = Number(wire.wireStart.index);
 		const nodeOutput = nodeOutputConnectors?.[indexOutput] as SVGSVGElement | undefined;
 		if (nodeOutput === undefined) return undefined;
 
-		// TODO: Avoid the linear search
-		const wireEndNodeIdIndex = Array.from($nodeGraph.nodes.keys()).findIndex((nodeId) => nodeId === (wire.wireEnd as Node).nodeId);
-		let nodeInputConnectors = inputs[wireEndNodeIdIndex + 1] || undefined;
-		if (nodeInputConnectors === undefined && (wire.wireEnd as Node).nodeId === undefined) {
+		const wireEndNodeIdIndex = nodeIndexes.get(wire.wireEnd.nodeId!);
+		let nodeInputConnectors = inputs[wireEndNodeIdIndex] || undefined;
+		if (nodeInputConnectors === undefined && wire.wireEnd.nodeId === undefined) {
 			nodeInputConnectors = inputs[0];
 		}
 		const indexInput = Number(wire.wireEnd.index);
@@ -180,7 +179,6 @@
 		await tick();
 
 		nodeWirePaths = $nodeGraph.wires.flatMap((wire) => {
-			// TODO: This call contains linear searches, which combined with the loop we're in, causes O(n^2) complexity as the graph grows
 			const resolvedWires = resolveWire(wire);
 			if (!resolvedWires) return [];
 			const { nodeOutput, nodeInput } = resolvedWires;
@@ -190,12 +188,9 @@
 
 			const wireEndNode = wire.wireEnd.nodeId !== undefined ? $nodeGraph.nodes.get(wire.wireEnd.nodeId) : undefined;
 			const wireEnd = (wireEndNode?.isLayer && Number(wire.wireEnd.index) === 0) || false;
-
 			return [createWirePath(nodeOutput, nodeInput, wireStart, wireEnd, wire.dashed, $nodeGraph.wiresDirectNotGridAligned)];
 		});
 	}
-
-	onMount(refreshWires);
 
 	function nodeIcon(icon?: string): IconName {
 		if (!icon) return "NodeNodes";
@@ -612,7 +607,7 @@
 	}
 
 	function primaryOutputConnectedToLayer(node: FrontendNode): boolean {
-		let firstConnectedNode = Array.from($nodeGraph.nodes.values()).find((n) =>
+		let firstConnectedNode = nodeValues.find((n) =>
 			node.primaryOutput?.connectedTo.some((connector) => {
 				if ((connector as Node).nodeId === undefined) return false;
 				if (connector.index !== 0n) return false;
@@ -623,7 +618,7 @@
 	}
 
 	function primaryInputConnectedToLayer(node: FrontendNode): boolean {
-		const connectedNode = Array.from($nodeGraph.nodes.values()).find((n) => {
+		const connectedNode = nodeValues.find((n) => {
 			if ((node.primaryInput?.connectedTo as Node) === undefined) return false;
 			return n.id === (node.primaryInput?.connectedTo as Node).nodeId;
 		});
@@ -638,12 +633,23 @@
 		}
 		return result;
 	}
-	$effect(() => {
+
+	$effect.pre(() => {
 		watchNodes($nodeGraph.nodes);
 	});
+	
+	$effect.pre(() => {
+		if (inputs.length && outputs.length && $nodeGraph.nodes) {
+			refreshWires(inputs, outputs)
+		}
+	})
+
 	let gridSpacing = $derived(calculateGridSpacing($nodeGraph.transform.scale));
 	let dotRadius = $derived(1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2);
 	let wirePaths = $derived(createWirePaths($nodeGraph.wirePathInProgress, nodeWirePaths));
+
+	// $inspect("Graph: $nodeGraph.wires", $nodeGraph.wires).with(console.info);
+	// $inspect("Graph: wirePaths", wirePaths).with(console.info);
 </script>
 
 <div
@@ -746,65 +752,62 @@
 
 	<!-- Import and Export ports -->
 	<div class="imports-and-exports" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
-		<!-- // TODO: SM17 Check data order, had to add condition to fix undefined error -->
-		{#if outputs.length > 0}
-			{#each $nodeGraph.imports as { outputMetadata, position }, index}
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					viewBox="0 0 8 8"
-					class="port"
-					data-port="output"
-					data-datatype={outputMetadata.dataType}
-					style:--data-color={`var(--color-data-${outputMetadata.dataType.toLowerCase()})`}
-					style:--data-color-dim={`var(--color-data-${outputMetadata.dataType.toLowerCase()}-dim)`}
-					style:--offset-left={position.x / 24}
-					style:--offset-top={position.y / 24}
-					bind:this={outputs[0][index]}
-				>
-					<title>{`${dataTypeTooltip(outputMetadata)}\n\n${outputConnectedToText(outputMetadata)}`}</title>
-					{#if outputMetadata.connectedTo !== undefined}
-						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-					{:else}
-						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-					{/if}
-				</svg>
+		{#each $nodeGraph.imports as { outputMetadata, position }, index}
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				viewBox="0 0 8 8"
+				class="port"
+				data-port="output"
+				data-datatype={outputMetadata.dataType}
+				style:--data-color={`var(--color-data-${outputMetadata.dataType.toLowerCase()})`}
+				style:--data-color-dim={`var(--color-data-${outputMetadata.dataType.toLowerCase()}-dim)`}
+				style:--offset-left={position.x / 24}
+				style:--offset-top={position.y / 24}
+				bind:this={outputs[0][index]}
+			>
+				<title>{`${dataTypeTooltip(outputMetadata)}\n\n${outputConnectedToText(outputMetadata)}`}</title>
+				{#if outputMetadata.connectedTo !== undefined}
+					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+				{:else}
+					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+				{/if}
+			</svg>
 
-				<div
-					class="edit-import-export import"
-					onpointerenter={() => (hoveringImportIndex = index)}
-					onpointerleave={() => (hoveringImportIndex = undefined)}
-					style:--offset-left={position.x / 24}
-					style:--offset-top={position.y / 24}
-				>
-					{#if editingNameImportIndex == index}
-						<input
-							class="import-text-input"
-							type="text"
-							style:width={importsToEdgeTextInputWidth()}
-							bind:this={inputElement}
-							bind:value={editingNameText}
-							onblur={setEditingImportName}
-							onkeydown={(e) => e.key === "Enter" && setEditingImportName(e)}
-						/>
-					{:else}
-						<p class="import-text" ondblclick={() => setEditingImportNameIndex(index, outputMetadata.name)}>{outputMetadata.name}</p>
-					{/if}
-					{#if hoveringImportIndex === index || editingNameImportIndex === index}
-						<IconButton
-							size={16}
-							icon={"Remove"}
-							class="remove-button-import"
-							data-index={index}
-							data-import-text-edge
-							onclick={() => {
-								/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
-							}}
-						/>
-						<div class="reorder-drag-grip" title="Reorder this import"></div>
-					{/if}
-				</div>
-			{/each}
-		{/if}
+			<div
+				class="edit-import-export import"
+				onpointerenter={() => (hoveringImportIndex = index)}
+				onpointerleave={() => (hoveringImportIndex = undefined)}
+				style:--offset-left={position.x / 24}
+				style:--offset-top={position.y / 24}
+			>
+				{#if editingNameImportIndex == index}
+					<input
+						class="import-text-input"
+						type="text"
+						style:width={importsToEdgeTextInputWidth()}
+						bind:this={inputElement}
+						bind:value={editingNameText}
+						onblur={setEditingImportName}
+						onkeydown={(e) => e.key === "Enter" && setEditingImportName(e)}
+					/>
+				{:else}
+					<p class="import-text" ondblclick={() => setEditingImportNameIndex(index, outputMetadata.name)}>{outputMetadata.name}</p>
+				{/if}
+				{#if hoveringImportIndex === index || editingNameImportIndex === index}
+					<IconButton
+						size={16}
+						icon={"Remove"}
+						class="remove-button-import"
+						data-index={index}
+						data-import-text-edge
+						onclick={() => {
+							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+						}}
+					/>
+					<div class="reorder-drag-grip" title="Reorder this import"></div>
+				{/if}
+			</div>
+		{/each}
 
 		{#if $nodeGraph.reorderImportIndex !== undefined}
 			{@const position = {
@@ -824,63 +827,60 @@
 				/>
 			</div>
 		{/if}
-		<!-- // TODO: SM17 Check data order, had to add condition to fix undefined error -->
-		{#if inputs.length > 0}
-			{#each $nodeGraph.exports as { inputMetadata, position }, index}
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					viewBox="0 0 8 8"
-					class="port"
-					data-port="input"
-					data-datatype={inputMetadata.dataType}
-					style:--data-color={`var(--color-data-${inputMetadata.dataType.toLowerCase()})`}
-					style:--data-color-dim={`var(--color-data-${inputMetadata.dataType.toLowerCase()}-dim)`}
-					style:--offset-left={position.x / 24}
-					style:--offset-top={position.y / 24}
-					bind:this={inputs[0][index]}
-				>
-					<title>{`${dataTypeTooltip(inputMetadata)}\n\n${inputConnectedToText(inputMetadata)}`}</title>
-					{#if inputMetadata.connectedTo !== undefined}
-						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-					{:else}
-						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-					{/if}
-				</svg>
-				<div
-					class="edit-import-export export"
-					onpointerenter={() => (hoveringExportIndex = index)}
-					onpointerleave={() => (hoveringExportIndex = undefined)}
-					style:--offset-left={position.x / 24}
-					style:--offset-top={position.y / 24}
-				>
-					{#if hoveringExportIndex === index || editingNameExportIndex === index}
-						<div class="reorder-drag-grip" title="Reorder this export"></div>
-						<IconButton
-							size={16}
-							icon={"Remove"}
-							class="remove-button-export"
-							data-index={index}
-							data-export-text-edge
-							onclick={() => {
-								/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
-							}}
-						/>
-					{/if}
-					{#if editingNameExportIndex === index}
-						<input
-							type="text"
-							style:width={exportsToEdgeTextInputWidth()}
-							bind:this={inputElement}
-							bind:value={editingNameText}
-							onblur={setEditingExportName}
-							onkeydown={(e) => e.key === "Enter" && setEditingExportName(e)}
-						/>
-					{:else}
-						<p class="export-text" ondblclick={() => setEditingExportNameIndex(index, inputMetadata.name)}>{inputMetadata.name}</p>
-					{/if}
-				</div>
-			{/each}
-		{/if}
+		{#each $nodeGraph.exports as { inputMetadata, position }, index}
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				viewBox="0 0 8 8"
+				class="port"
+				data-port="input"
+				data-datatype={inputMetadata.dataType}
+				style:--data-color={`var(--color-data-${inputMetadata.dataType.toLowerCase()})`}
+				style:--data-color-dim={`var(--color-data-${inputMetadata.dataType.toLowerCase()}-dim)`}
+				style:--offset-left={position.x / 24}
+				style:--offset-top={position.y / 24}
+				bind:this={inputs[0][index]}
+			>
+				<title>{`${dataTypeTooltip(inputMetadata)}\n\n${inputConnectedToText(inputMetadata)}`}</title>
+				{#if inputMetadata.connectedTo !== undefined}
+					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+				{:else}
+					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+				{/if}
+			</svg>
+			<div
+				class="edit-import-export export"
+				onpointerenter={() => (hoveringExportIndex = index)}
+				onpointerleave={() => (hoveringExportIndex = undefined)}
+				style:--offset-left={position.x / 24}
+				style:--offset-top={position.y / 24}
+			>
+				{#if hoveringExportIndex === index || editingNameExportIndex === index}
+					<div class="reorder-drag-grip" title="Reorder this export"></div>
+					<IconButton
+						size={16}
+						icon={"Remove"}
+						class="remove-button-export"
+						data-index={index}
+						data-export-text-edge
+						onclick={() => {
+							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+						}}
+					/>
+				{/if}
+				{#if editingNameExportIndex === index}
+					<input
+						type="text"
+						style:width={exportsToEdgeTextInputWidth()}
+						bind:this={inputElement}
+						bind:value={editingNameText}
+						onblur={setEditingExportName}
+						onkeydown={(e) => e.key === "Enter" && setEditingExportName(e)}
+					/>
+				{:else}
+					<p class="export-text" ondblclick={() => setEditingExportNameIndex(index, inputMetadata.name)}>{inputMetadata.name}</p>
+				{/if}
+			</div>
+		{/each}
 		{#if $nodeGraph.reorderExportIndex !== undefined}
 			{@const position = {
 				x: Number($nodeGraph.exports[0].position.x),
@@ -909,7 +909,7 @@
 		bind:this={nodesContainer}
 	>
 		<!-- Layers -->
-		{#each Array.from($nodeGraph.nodes.values()).flatMap((node, nodeIndex) => (node.isLayer ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (nodeIndex)}
+		{#each nodeValues.flatMap((node, nodeIndex) => (node.isLayer ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (nodeIndex)}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const stackDataInput = node.exposedInputs[0]}
 			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
@@ -942,7 +942,7 @@
 						{@html $nodeGraph.thumbnails.get(node.id)}
 					{/if}
 					<!-- Layer stacking top output -->
-					{#if node.primaryOutput && outputs[nodeIndex + 1]?.length > 0}
+					{#if node.primaryOutput}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 12"
@@ -1055,7 +1055,7 @@
 		</div>
 
 		<!-- Nodes -->
-		{#each Array.from($nodeGraph.nodes.values()).flatMap((node, nodeIndex) => (node.isLayer ? [] : [{ node, nodeIndex }])) as { node, nodeIndex } (nodeIndex)}
+		{#each nodeValues.flatMap((node, nodeIndex) => (node.isLayer ? [] : [{ node, nodeIndex }])) as { node, nodeIndex } (nodeIndex)}
 			{@const exposedInputsOutputs = zipWithUndefined(node.exposedInputs, node.exposedOutputs)}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const description = (node.reference && $nodeGraph.nodeDescriptions.get(node.reference)) || undefined}
