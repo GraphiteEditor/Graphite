@@ -29,11 +29,13 @@ use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
+use graphene_std::math::quad::Quad;
+use graphene_std::path_bool::{boolean_intersect, path_bool_lib};
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{Raster, RasterDataTable};
-use graphene_std::renderer::{ClickTarget, ClickTargetType, Quad};
+use graphene_std::vector::PointId;
+use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::style::ViewMode;
-use graphene_std::vector::{PointId, path_bool_lib};
 use std::time::Duration;
 
 pub struct DocumentMessageData<'a> {
@@ -1625,7 +1627,7 @@ impl DocumentMessageHandler {
 					subpath.is_inside_subpath(&viewport_polygon, None, None)
 				}
 				ClickTargetType::FreePoint(point) => {
-					let mut point = point.clone();
+					let mut point = *point;
 					point.apply_transform(layer_transform);
 					viewport_polygon.contains_point(point.position)
 				}
@@ -2988,7 +2990,7 @@ impl<'a> ClickXRayIter<'a> {
 		// We do this on this using the target area to reduce computation (as the target area is usually very simple).
 		if clip && intersects {
 			let clip_path = click_targets_to_path_lib_segments(click_targets.iter().flat_map(|x| x.iter()), transform);
-			let subtracted = graphene_std::vector::boolean_intersect(path, clip_path).into_iter().flatten().collect::<Vec<_>>();
+			let subtracted = boolean_intersect(path, clip_path).into_iter().flatten().collect::<Vec<_>>();
 			if subtracted.is_empty() {
 				use_children = false;
 			} else {
@@ -3373,9 +3375,9 @@ mod document_message_handler_tests {
 		let rect_bbox_after = document.metadata().bounding_box_viewport(rect_layer).unwrap();
 
 		// Verifing the rectangle maintains approximately the same position in viewport space
-		let before_center = (rect_bbox_before[0] + rect_bbox_before[1]) / 2.; // TODO: Should be: DVec2(0.0, -25.0), regression (#2688) causes it to be: DVec2(100.0, 25.0)
-		let after_center = (rect_bbox_after[0] + rect_bbox_after[1]) / 2.; // TODO:    Should be: DVec2(0.0, -25.0), regression (#2688) causes it to be: DVec2(200.0, 75.0)
-		let distance = before_center.distance(after_center); // TODO:                    Should be: 0.0,               regression (#2688) causes it to be: 111.80339887498948
+		let before_center = (rect_bbox_before[0] + rect_bbox_before[1]) / 2.; // TODO: Should be: DVec2(0., -25.), regression (#2688) causes it to be: DVec2(100., 25.)
+		let after_center = (rect_bbox_after[0] + rect_bbox_after[1]) / 2.; // TODO:    Should be: DVec2(0., -25.), regression (#2688) causes it to be: DVec2(200., 75.)
+		let distance = before_center.distance(after_center); // TODO:                    Should be: 0.,               regression (#2688) causes it to be: 111.80339887498948
 
 		assert!(
 			distance < 1.,

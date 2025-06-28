@@ -8,11 +8,11 @@ use graphene_application_io::SurfaceFrame;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use graphene_core::raster_types::CPU;
-use graphene_core::renderer::RenderMetadata;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
 use graphene_core::vector::style::Fill;
 use graphene_core::{Color, MemoHash, Node, Type};
+use graphene_svg_renderer::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -221,7 +221,7 @@ tagged_value! {
 	// ==========
 	BlendMode(BlendMode),
 	LuminanceCalculation(LuminanceCalculation),
-	XY(graphene_core::ops::XY),
+	XY(graphene_core::extract_xy::XY),
 	RedGreenBlue(graphene_core::raster::RedGreenBlue),
 	RedGreenBlueAlpha(graphene_core::raster::RedGreenBlueAlpha),
 	RealTimeMode(graphene_core::animation::RealTimeMode),
@@ -247,7 +247,7 @@ tagged_value! {
 	GradientType(graphene_core::vector::style::GradientType),
 	ReferencePoint(graphene_core::transform::ReferencePoint),
 	CentroidType(graphene_core::vector::misc::CentroidType),
-	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
+	BooleanOperation(graphene_path_bool::BooleanOperation),
 }
 
 impl TaggedValue {

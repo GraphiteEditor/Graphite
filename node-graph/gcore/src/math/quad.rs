@@ -58,11 +58,6 @@ impl Quad {
 		self.edges().into_iter().all(|[a, b]| (a - b).length_squared() >= width.powi(2))
 	}
 
-	/// Get all the edges in the quad as linear bezier curves
-	pub fn bezier_lines(&self) -> impl Iterator<Item = bezier_rs::Bezier> + '_ {
-		self.all_edges().into_iter().map(|[start, end]| bezier_rs::Bezier::from_linear_dvec2(start, end))
-	}
-
 	/// Generates the axis aligned bounding box of the quad
 	pub fn bounding_box(&self) -> [DVec2; 2] {
 		[

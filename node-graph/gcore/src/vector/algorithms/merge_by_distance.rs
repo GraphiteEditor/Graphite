@@ -3,9 +3,14 @@ use glam::{DAffine2, DVec2};
 use petgraph::prelude::UnGraphMap;
 use rustc_hash::FxHashSet;
 
-impl VectorData {
+pub trait MergeByDistanceExt {
 	/// Collapse all points with edges shorter than the specified distance
-	pub fn merge_by_distance_topological(&mut self, distance: f64) {
+	fn merge_by_distance_topological(&mut self, distance: f64);
+	fn merge_by_distance_spatial(&mut self, transform: DAffine2, distance: f64);
+}
+
+impl MergeByDistanceExt for VectorData {
+	fn merge_by_distance_topological(&mut self, distance: f64) {
 		// Treat self as an undirected graph
 		let indices = VectorDataIndex::build_from(self);
 
@@ -95,7 +100,7 @@ impl VectorData {
 		self.point_domain.retain(&mut self.segment_domain, |id| !points_to_delete.contains(id));
 	}
 
-	pub fn merge_by_distance_spatial(&mut self, transform: DAffine2, distance: f64) {
+	fn merge_by_distance_spatial(&mut self, transform: DAffine2, distance: f64) {
 		let point_count = self.point_domain.positions().len();
 
 		// Find min x and y for grid cell normalization

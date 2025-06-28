@@ -3,12 +3,13 @@ use super::algorithms::offset_subpath::offset_subpath;
 use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
-use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
+use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataExt, VectorDataTable};
+use crate::bounds::BoundingBox;
 use crate::instances::{Instance, InstanceMut, Instances};
 use crate::raster_types::{CPU, GPU, RasterDataTable};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
-use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform};
+use crate::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use crate::vector::misc::{MergeByDistanceAlgorithm, PointSpacingType};
 use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, PointDomain, RegionId};
@@ -220,10 +221,7 @@ async fn repeat<I: 'n + Send + Clone>(
 	direction: PixelSize,
 	angle: Angle,
 	#[default(4)] instances: IntegerCount,
-) -> Instances<I>
-where
-	Instances<I>: GraphicElementRendered,
-{
+) -> Instances<I> {
 	let angle = angle.to_radians();
 	let count = instances.max(1);
 	let total = (count - 1) as f64;
@@ -257,10 +255,7 @@ async fn circular_repeat<I: 'n + Send + Clone>(
 	angle_offset: Angle,
 	#[default(5)] radius: f64,
 	#[default(5)] instances: IntegerCount,
-) -> Instances<I>
-where
-	Instances<I>: GraphicElementRendered,
-{
+) -> Instances<I> {
 	let count = instances.max(1);
 
 	let mut result_table = Instances::<I>::default();
@@ -312,10 +307,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	random_rotation: Angle,
 	/// Seed to determine unique variations on all the randomized instance angles.
 	random_rotation_seed: SeedValue,
-) -> Instances<I>
-where
-	Instances<I>: GraphicElementRendered,
-{
+) -> Instances<I> {
 	let mut result_table = Instances::<I>::default();
 
 	let random_scale_difference = random_scale_max - random_scale_min;
@@ -375,7 +367,7 @@ async fn mirror<I: 'n + Send + Clone>(
 	#[default(true)] keep_original: bool,
 ) -> Instances<I>
 where
-	Instances<I>: GraphicElementRendered,
+	Instances<I>: BoundingBox,
 {
 	let mut result_table = Instances::default();
 
@@ -1088,7 +1080,7 @@ async fn solidify_stroke(_: impl Ctx, vector_data: VectorDataTable) -> VectorDat
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn flatten_path<I: 'n + Send>(_: impl Ctx, #[implementations(GraphicGroupTable, VectorDataTable)] graphic_group_input: Instances<I>) -> VectorDataTable
 where
-	Instances<I>: GraphicElementRendered,
+	GraphicElement: From<Instances<I>>,
 {
 	// A node based solution to support passing through vector data could be a network node with a cache node connected to
 	// a Flatten Path connected to an if else node, another connection from the cache directly
@@ -1133,7 +1125,7 @@ where
 	};
 
 	// Flatten the graphic group input into the output VectorData instance
-	let base_graphic_group = GraphicGroupTable::new(graphic_group_input.to_graphic_element());
+	let base_graphic_group = GraphicGroupTable::new(GraphicElement::from(graphic_group_input));
 	flatten_group(&base_graphic_group, &mut output);
 
 	// Return the single-row VectorDataTable containing the flattened VectorData subpaths

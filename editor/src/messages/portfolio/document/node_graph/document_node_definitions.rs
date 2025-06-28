@@ -16,7 +16,7 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
-use graphene_std::ops::XY;
+use graphene_std::extract_xy::XY;
 use graphene_std::raster::brush_cache::BrushCache;
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
 use graphene_std::raster_types::{CPU, RasterDataTable};
@@ -166,13 +166,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::FreezeRealTimeNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform_nodes::FreezeRealTimeNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::BoundlessFootprintNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform_nodes::BoundlessFootprintNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
@@ -1648,7 +1648,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(DVec2), 4),
 								],
 								manual_composition: Some(concrete!(Context)),
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::TransformNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform_nodes::TransformNode")),
 								..Default::default()
 							},
 						]
@@ -1731,7 +1731,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: vec![
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(VectorDataTable), 0), NodeInput::network(concrete!(vector::style::Fill), 1)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::vector::BooleanOperationNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_path_bool::BooleanOperationNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
@@ -1743,13 +1743,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::FreezeRealTimeNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform_nodes::FreezeRealTimeNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(2), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::BoundlessFootprintNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform_nodes::BoundlessFootprintNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
@@ -1762,7 +1762,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroupTable::default()), true),
-						NodeInput::value(TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
+						NodeInput::value(TaggedValue::BooleanOperation(path_bool::BooleanOperation::Union), false),
 					],
 					..Default::default()
 				},
@@ -1856,13 +1856,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(2), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::FreezeRealTimeNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform_nodes::FreezeRealTimeNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(3), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::BoundlessFootprintNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform_nodes::BoundlessFootprintNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
@@ -2011,13 +2011,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::FreezeRealTimeNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform_nodes::FreezeRealTimeNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(2), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::BoundlessFootprintNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform_nodes::BoundlessFootprintNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},

@@ -2132,6 +2132,8 @@ dependencies = [
  "graph-craft",
  "graphene-application-io",
  "graphene-core",
+ "graphene-path-bool",
+ "graphene-svg-renderer",
  "iai-callgrind",
  "js-sys",
  "log",
@@ -2195,7 +2197,6 @@ dependencies = [
  "image",
  "kurbo",
  "log",
- "math-parser",
  "node-macro",
  "num-derive",
  "num-traits",
@@ -2209,9 +2210,34 @@ dependencies = [
  "specta",
  "tinyvec",
  "tokio",
- "usvg",
- "vello",
  "wgpu",
+]
+
+[[package]]
+name = "graphene-math-nodes"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "graphene-core",
+ "log",
+ "math-parser",
+ "node-macro",
+ "rand 0.9.0",
+]
+
+[[package]]
+name = "graphene-path-bool"
+version = "0.1.0"
+dependencies = [
+ "bezier-rs",
+ "dyn-any",
+ "glam",
+ "graphene-core",
+ "log",
+ "node-macro",
+ "path-bool",
+ "serde",
+ "specta",
 ]
 
 [[package]]
@@ -2219,7 +2245,6 @@ name = "graphene-std"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "bezier-rs",
  "bytemuck",
  "dyn-any",
  "fastnoise-lite",
@@ -2228,21 +2253,38 @@ dependencies = [
  "graph-craft",
  "graphene-application-io",
  "graphene-core",
+ "graphene-math-nodes",
+ "graphene-path-bool",
+ "graphene-svg-renderer",
  "image",
  "log",
  "ndarray",
  "node-macro",
- "path-bool",
  "rand 0.9.0",
  "rand_chacha 0.9.0",
  "reqwest",
  "tokio",
- "usvg",
  "vello",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
  "wgpu-executor",
+]
+
+[[package]]
+name = "graphene-svg-renderer"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "bezier-rs",
+ "dyn-any",
+ "glam",
+ "graphene-core",
+ "log",
+ "num-traits",
+ "serde",
+ "usvg",
+ "vello",
 ]
 
 [[package]]
@@ -2313,7 +2355,6 @@ dependencies = [
 name = "graphite-wasm"
 version = "0.0.0"
 dependencies = [
- "glam",
  "graph-craft",
  "graphene-std",
  "graphite-editor",
@@ -2948,6 +2989,7 @@ dependencies = [
  "glam",
  "graph-craft",
  "graphene-core",
+ "graphene-path-bool",
  "graphene-std",
  "log",
  "once_cell",
@@ -4481,17 +4523,9 @@ checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 name = "preprocessor"
 version = "0.1.0"
 dependencies = [
- "base64 0.22.1",
- "dyn-any",
- "futures",
- "glam",
  "graph-craft",
  "graphene-std",
  "interpreted-executor",
- "log",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -7421,6 +7455,7 @@ dependencies = [
  "glam",
  "graphene-application-io",
  "graphene-core",
+ "graphene-svg-renderer",
  "node-macro",
  "vello",
  "web-sys",

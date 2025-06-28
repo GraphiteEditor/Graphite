@@ -16,7 +16,9 @@ loading = ["serde_json"]
 # Local dependencies
 dyn-any = { workspace = true }
 graphene-core = { workspace = true }
+graphene-path-bool = { workspace = true }
 graphene-application-io = { workspace = true }
+graphene-svg-renderer = { workspace = true }
 
 # Workspace dependencies
 log = { workspace = true }
