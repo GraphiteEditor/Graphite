@@ -95,6 +95,7 @@ pub struct DotState {
 	enabled: bool,
 	dot: DotType,
 }
+
 impl Default for DotState {
 	fn default() -> Self {
 		Self {
@@ -113,7 +114,7 @@ impl DotType {
 impl fmt::Display for DotType {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			DotType::Pivot => write!(f, "Working Pivot"),
+			DotType::Pivot => write!(f, "Draft Pivot"),
 			DotType::Average => write!(f, "Average of Origins"),
 		}
 	}
@@ -215,7 +216,7 @@ impl SelectTool {
 				.tooltip("Disable Transform Pivot Point")
 				.on_update(|optional_input: &CheckboxInput| SelectToolMessage::SelectOptions(SelectOptionsUpdate::ToggleDotType(optional_input.checked)).into())
 				.widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
 			DropdownInput::new(vec![dot_type_entries])
 				.selected_index(Some(match self.tool_data.dot_state.dot {
 					DotType::Pivot => 0,
@@ -839,7 +840,7 @@ impl Fsm for SelectToolFsmState {
 						.flatten()
 				});
 
-				if overlay_context.visibility_settings.origin() {
+				if overlay_context.visibility_settings.origin() && !tool_data.dot_state.dot.is_pivot() {
 					for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 						let origin = graph_modification_utils::get_viewport_origin(layer, &document.network_interface);
 						overlay_context.dowel_pin(origin);
