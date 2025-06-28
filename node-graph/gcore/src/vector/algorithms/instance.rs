@@ -86,6 +86,7 @@ async fn instance_position(ctx: impl Ctx + ExtractVarArgs) -> DVec2 {
 	Default::default()
 }
 
+// TODO: Make this return a u32 instead of an f64, but we ned to improve math-related compatibility with integer types first.
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn instance_index(ctx: impl Ctx + ExtractIndex) -> f64 {
 	match ctx.try_index() {
