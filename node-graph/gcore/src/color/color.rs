@@ -454,7 +454,7 @@ impl Color {
 		Color { red, green, blue, alpha }
 	}
 
-	/// Create a [Color] from Return a `Color` from given `f32` CMYKA channels (all between 0 and 1)
+	/// Create a [Color] from given `f32` CMYKA channels (all between 0 and 1)
 	///
 	/// # Examples
 	/// ```
