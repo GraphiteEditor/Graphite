@@ -2131,6 +2131,7 @@ dependencies = [
  "glam",
  "graph-craft",
  "graphene-application-io",
+ "graphene-brush",
  "graphene-core",
  "graphene-element-nodes",
  "graphene-path-bool",
@@ -2164,6 +2165,19 @@ dependencies = [
  "serde",
  "web-sys",
  "wgpu",
+]
+
+[[package]]
+name = "graphene-brush"
+version = "0.1.0"
+dependencies = [
+ "dyn-any",
+ "glam",
+ "graphene-core",
+ "graphene-raster-nodes",
+ "node-macro",
+ "serde",
+ "tokio",
 ]
 
 [[package]]
@@ -2292,6 +2306,7 @@ dependencies = [
  "glam",
  "graph-craft",
  "graphene-application-io",
+ "graphene-brush",
  "graphene-core",
  "graphene-element-nodes",
  "graphene-math-nodes",

@@ -6,12 +6,12 @@ use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Artboard;
+use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{CPU, RasterDataTable};
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::PointId;
 use graphene_std::vector::VectorModificationType;
-use graphene_std::vector::brush_stroke::BrushStroke;
 use graphene_std::vector::style::{Fill, Stroke};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]

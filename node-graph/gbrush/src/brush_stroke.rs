@@ -1,8 +1,8 @@
-use crate::Color;
-use crate::math::bbox::AxisAlignedBbox;
-use crate::raster::BlendMode;
 use dyn_any::DynAny;
 use glam::DVec2;
+use graphene_core::blending::BlendMode;
+use graphene_core::color::Color;
+use graphene_core::math::bbox::AxisAlignedBbox;
 use std::hash::{Hash, Hasher};
 
 /// The style of a brush.

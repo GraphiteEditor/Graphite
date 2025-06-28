@@ -5,6 +5,7 @@ members = [
 	"frontend/wasm",
 	"frontend/src-tauri",
 	"node-graph/gapplication-io",
+	"node-graph/gbrush",
 	"node-graph/gcore",
 	"node-graph/gstd",
 	"node-graph/gelement-nodes",
@@ -26,6 +27,7 @@ members = [
 default-members = [
 	"editor",
 	"frontend/wasm",
+	"node-graph/gbrush",
 	"node-graph/gcore",
 	"node-graph/gstd",
 	"node-graph/gelement-nodes",
@@ -48,6 +50,7 @@ preprocessor = { path = "node-graph/preprocessor"}
 math-parser = { path = "libraries/math-parser" }
 path-bool = { path = "libraries/path-bool" }
 graphene-application-io = { path = "node-graph/gapplication-io" }
+graphene-brush = { path = "node-graph/gbrush" }
 graphene-core = { path = "node-graph/gcore" }
 graphene-element-nodes = { path = "node-graph/gelement-nodes" }
 graphene-math-nodes = { path = "node-graph/gmath-nodes" }

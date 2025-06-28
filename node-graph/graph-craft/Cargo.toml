@@ -18,6 +18,7 @@ dyn-any = { workspace = true }
 graphene-core = { workspace = true }
 graphene-element-nodes = { workspace = true }
 graphene-path-bool = { workspace = true }
+graphene-brush = { workspace = true }
 graphene-application-io = { workspace = true }
 graphene-svg-renderer = { workspace = true }
 graphene-raster-nodes = { workspace = true }

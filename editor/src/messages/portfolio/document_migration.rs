@@ -170,6 +170,10 @@ const REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::ConstructArtboardNode", "graphene_element_nodes::conversion::ToArtboardNode"),
 	("graphene_core::graphic_element::AppendArtboardNode", "graphene_element_nodes::conversion::AppendArtboardNode"),
 	("graphene_core::AddArtboardNode", "graphene_element_nodes::conversion::AppendArtboardNode"),
+	// brush
+	("graphene_std::brush::BrushStampGeneratorNode", "graphene_brush::brush::BrushStampGeneratorNode"),
+	("graphene_std::brush::BlitNode", "graphene_brush::brush::BlitNode"),
+	("graphene_std::brush::BrushNode", "graphene_brush::brush::BrushNode"),
 ];
 
 pub fn document_migration_string_preprocessing(document_serialized_content: String) -> String {
