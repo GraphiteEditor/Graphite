@@ -1,12 +1,17 @@
+use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
 use dyn_any::DynAny;
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
+use graphene_core::blending::AlphaBlending;
+use graphene_core::color::Color;
+use graphene_core::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
+use graphene_core::context::{Ctx, ExtractFootprint};
 use graphene_core::instances::Instance;
 use graphene_core::math::bbox::Bbox;
-pub use graphene_core::raster::*;
+use graphene_core::raster::image::Image;
+use graphene_core::raster::{Bitmap, BitmapMut};
 use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::transform::Transform;
-use graphene_core::{Ctx, ExtractFootprint};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::fmt::Debug;
@@ -25,7 +30,7 @@ impl From<std::io::Error> for Error {
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: RasterDataTable<CPU>) -> RasterDataTable<CPU> {
+pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: RasterDataTable<CPU>) -> RasterDataTable<CPU> {
 	let mut result_table = RasterDataTable::default();
 
 	for mut image_frame_instance in image_frame.instance_iter() {
@@ -92,7 +97,7 @@ fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: RasterDa
 }
 
 #[node_macro::node(category("Raster: Channels"))]
-fn combine_channels(
+pub fn combine_channels(
 	_: impl Ctx,
 	_primary: (),
 	#[expose] red: RasterDataTable<CPU>,
@@ -181,7 +186,7 @@ fn combine_channels(
 }
 
 #[node_macro::node(category("Raster"))]
-fn mask(
+pub fn mask(
 	_: impl Ctx,
 	/// The image to be masked.
 	image: RasterDataTable<CPU>,
@@ -301,13 +306,13 @@ pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> RasterData
 
 /// Constructs a raster image.
 #[node_macro::node(category(""))]
-fn image_value(_: impl Ctx, _primary: (), image: RasterDataTable<CPU>) -> RasterDataTable<CPU> {
+pub fn image_value(_: impl Ctx, _primary: (), image: RasterDataTable<CPU>) -> RasterDataTable<CPU> {
 	image
 }
 
 #[node_macro::node(category("Raster: Pattern"))]
 #[allow(clippy::too_many_arguments)]
-fn noise_pattern(
+pub fn noise_pattern(
 	ctx: impl ExtractFootprint + Ctx,
 	_primary: (),
 	clip: bool,
@@ -463,7 +468,7 @@ fn noise_pattern(
 }
 
 #[node_macro::node(category("Raster: Pattern"))]
-fn mandelbrot(ctx: impl ExtractFootprint + Send) -> RasterDataTable<CPU> {
+pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> RasterDataTable<CPU> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 

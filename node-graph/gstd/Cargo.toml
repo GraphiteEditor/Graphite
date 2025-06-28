@@ -33,6 +33,7 @@ graphene-math-nodes = { workspace = true }
 graphene-svg-renderer = { workspace = true }
 graphene-application-io = { workspace = true }
 graphene-element-nodes = { workspace = true }
+graphene-raster-nodes = { workspace = true }
 
 # Workspace dependencies
 fastnoise-lite = { workspace = true }
