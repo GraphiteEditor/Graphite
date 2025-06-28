@@ -20,10 +20,6 @@ const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 ];
 
 const REPLACEMENTS: &[(&str, &str)] = &[
-	("graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"),
-	("graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"),
-	("graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"),
-	("graphene_core::ToGraphicGroupNode", "graphene_core::graphic_element::ToGroupNode"),
 	("graphene_core::ops::MathNode", "graphene_math_nodes::MathNode"),
 	("graphene_core::ops::AddNode", "graphene_math_nodes::AddNode"),
 	("graphene_core::ops::SubtractNode", "graphene_math_nodes::SubtractNode"),
@@ -133,11 +129,15 @@ const REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_std::vector::BooleanOperationNode", "graphene_path_bool::BooleanOperationNode"),
 	("graphene_core::graphic_element::LayerNode", "graphene_element_nodes::conversion::LayerNode"),
 	("graphene_core::graphic_element::ToElementNode", "graphene_element_nodes::conversion::ToElementNode"),
+	("graphene_core::ToGraphicElementNode", "graphene_element_nodes::conversion::ToElementNode"),
 	("graphene_core::graphic_element::ToGroupNode", "graphene_element_nodes::conversion::ToGroupNode"),
+	("graphene_core::ToGraphicGroupNode", "graphene_element_nodes::conversion::ToGroupNode"),
 	("graphene_core::graphic_element::FlattenGroupNode", "graphene_element_nodes::conversion::FlattenGroupNode"),
 	("graphene_core::graphic_element::FlattenVectorNode", "graphene_element_nodes::conversion::FlattenVectorNode"),
 	("graphene_core::graphic_element::ToArtboardNode", "graphene_element_nodes::conversion::ToArtboardNode"),
+	("graphene_core::ConstructArtboardNode", "graphene_element_nodes::conversion::ToArtboardNode"),
 	("graphene_core::graphic_element::AppendArtboardNode", "graphene_element_nodes::conversion::AppendArtboardNode"),
+	("graphene_core::AddArtboardNode", "graphene_element_nodes::conversion::AppendArtboardNode"),
 ];
 
 pub fn document_migration_string_preprocessing(document_serialized_content: String) -> String {
