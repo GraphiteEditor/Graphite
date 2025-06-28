@@ -229,9 +229,13 @@ async fn repeat<I: 'n + Send + Clone>(
 	let mut result_table = Instances::<I>::default();
 
 	for index in 0..count {
-		let angle = index as f64 * angle / total;
-		let translation = index as f64 * direction / total;
-		let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
+		let transform = if total == 0. {
+			DAffine2::IDENTITY
+		} else {
+			let angle = index as f64 * angle / total;
+			let translation = index as f64 * direction / total;
+			DAffine2::from_angle(angle) * DAffine2::from_translation(translation)
+		};
 
 		for instance in instance.instance_ref_iter() {
 			let mut instance = instance.to_instance_cloned();
