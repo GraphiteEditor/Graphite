@@ -10,6 +10,7 @@
 	import type { WheelEventHandler } from 'svelte/elements';
 
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
+	let nodeTypes: FrontendNodeType[] = [ ...$nodeGraph.nodeTypes ];
 
 	interface Props {
 		disabled?: boolean;
@@ -20,16 +21,15 @@
 
 	let { disabled = false, initialSearchTerm = "", onselectNodeType, onwheel }: Props = $props();
 
-	let nodeSearchInput: TextInput | undefined = $state(undefined);
+	let nodeSearchInput: TextInput | undefined = $state();
 	let searchTerm = $state(initialSearchTerm);
-
 
 	type NodeCategoryDetails = {
 		nodes: FrontendNodeType[];
 		open: boolean;
 	};
 
-	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, NodeCategoryDetails][] {
+	function buildNodeCategories(searchTerm: string): [string, NodeCategoryDetails][] {
 		const categories = new Map<string, NodeCategoryDetails>();
 		const isTypeSearch = searchTerm.toLowerCase().startsWith("type:");
 		let typeSearchTerm = "";
@@ -115,8 +115,8 @@
 
 	let nodeCategories = $state<[string, NodeCategoryDetails][]>([]);
 
-	$effect(() => {
-		nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
+	$effect.pre(() => {
+		nodeCategories = buildNodeCategories(searchTerm);
 	})
 
 </script>
