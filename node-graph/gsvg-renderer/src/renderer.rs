@@ -289,19 +289,21 @@ impl GraphicElementRendered for GraphicGroupTable {
 
 			let mut layer = false;
 
-			let bounds = self
-				.instance_ref_iter()
-				.filter_map(|element| element.instance.bounding_box(transform, true))
-				.reduce(Quad::combine_bounds);
-			if let Some(bounds) = bounds {
-				let blend_mode = match render_params.view_mode {
-					ViewMode::Outline => peniko::Mix::Normal,
-					_ => alpha_blending.blend_mode.to_peniko(),
-				};
+			let blend_mode = match render_params.view_mode {
+				ViewMode::Outline => peniko::Mix::Normal,
+				_ => alpha_blending.blend_mode.to_peniko(),
+			};
+			let mut bounds = None;
 
-				let factor = if render_params.for_mask { 1. } else { alpha_blending.fill };
-				let opacity = alpha_blending.opacity * factor;
-				if opacity < 1. || (render_params.view_mode != ViewMode::Outline && alpha_blending.blend_mode != BlendMode::default()) {
+			let factor = if render_params.for_mask { 1. } else { alpha_blending.fill };
+			let opacity = alpha_blending.opacity * factor;
+			if opacity < 1. || (render_params.view_mode != ViewMode::Outline && alpha_blending.blend_mode != BlendMode::default()) {
+				bounds = self
+					.instance_ref_iter()
+					.filter_map(|element| element.instance.bounding_box(transform, true))
+					.reduce(Quad::combine_bounds);
+
+				if let Some(bounds) = bounds {
 					scene.push_layer(
 						peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
 						opacity,
@@ -320,6 +322,12 @@ impl GraphicElementRendered for GraphicGroupTable {
 			} else if let Some((instance_mask, transform_mask)) = mask_instance_state {
 				if !next_clips {
 					mask_instance_state = None;
+				}
+				if !layer {
+					bounds = self
+						.instance_ref_iter()
+						.filter_map(|element| element.instance.bounding_box(transform, true))
+						.reduce(Quad::combine_bounds);
 				}
 
 				if let Some(bounds) = bounds {
