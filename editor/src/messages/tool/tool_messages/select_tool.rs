@@ -45,6 +45,7 @@ pub struct SelectOptions {
 pub enum SelectOptionsUpdate {
 	NestedSelectionBehavior(NestedSelectionBehavior),
 	DotType(DotType),
+	ToggleDotType(bool),
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -55,17 +56,21 @@ pub enum NestedSelectionBehavior {
 }
 
 #[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
-pub struct Dot(Pivot, DotType);
+pub struct Dot(Pivot, DotState);
 
 impl Dot {
 	pub fn position(&self, document: &DocumentMessageHandler) -> DVec2 {
 		let network = &document.network_interface;
-		match self.1 {
-			DotType::Average => Some(network.selected_nodes().selected_visible_and_unlocked_layers_mean_average_origin(network)),
-			DotType::Pivot => self.0.position(),
-			_ => None,
-		}
-		.unwrap_or_else(|| self.0.transform_from_normalized.transform_point2(DVec2::splat(0.5)))
+		self.1
+			.enabled
+			.then_some({
+				match self.1.dot {
+					DotType::Average => Some(network.selected_nodes().selected_visible_and_unlocked_layers_mean_average_origin(network)),
+					DotType::Pivot => self.0.position(),
+				}
+			})
+			.flatten()
+			.unwrap_or_else(|| self.0.transform_from_normalized.transform_point2(DVec2::splat(0.5)))
 	}
 	pub fn recalculate_transform(&mut self, document: &DocumentMessageHandler) -> DAffine2 {
 		self.0.recalculate_pivot(document);
@@ -76,13 +81,27 @@ impl Dot {
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum DotType {
 	// Pivot
-	Off,
 	#[default]
 	Pivot,
 	// Origin
+
 	// Indidual,
 	Average,
 	// Active,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct DotState {
+	enabled: bool,
+	dot: DotType,
+}
+impl Default for DotState {
+	fn default() -> Self {
+		Self {
+			enabled: true,
+			dot: DotType::default(),
+		}
+	}
 }
 
 impl DotType {
@@ -94,9 +113,7 @@ impl DotType {
 impl fmt::Display for DotType {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			DotType::Off => write!(f, "Bounding Box Center"),
 			DotType::Pivot => write!(f, "Pivot"),
-			// DotType::Indidual => write!(f, "Median Points"),
 			DotType::Average => write!(f, "Origin"),
 		}
 	}
@@ -182,8 +199,8 @@ impl SelectTool {
 			.disabled(disabled)
 			.widget_holder()
 	}
-	fn dot_type_widget(&self) -> WidgetHolder {
-		let dot_type_entries = [DotType::Off, DotType::Pivot, DotType::Average]
+	fn dot_type_widget(&self) -> Vec<WidgetHolder> {
+		let dot_type_entries = [DotType::Pivot, DotType::Average]
 			.iter()
 			.map(|dot_type| {
 				MenuListEntry::new(format!("{dot_type:?}"))
@@ -192,14 +209,22 @@ impl SelectTool {
 			})
 			.collect();
 
-		DropdownInput::new(vec![dot_type_entries])
-			.selected_index(Some(match self.tool_data.dot_type {
-				DotType::Off => 0,
-				DotType::Pivot => 1,
-				DotType::Average => 2,
-			}))
-			.tooltip("Choose between bounding box center, pivot point, or origin point for transformations")
-			.widget_holder()
+		vec![
+			CheckboxInput::new(self.tool_data.dot_state.enabled)
+				.icon("Overlays")
+				.tooltip("Overlays")
+				.on_update(|optional_input: &CheckboxInput| SelectToolMessage::SelectOptions(SelectOptionsUpdate::ToggleDotType(optional_input.checked)).into())
+				.widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			DropdownInput::new(vec![dot_type_entries])
+				.selected_index(Some(match self.tool_data.dot_state.dot {
+					DotType::Pivot => 0,
+					DotType::Average => 1,
+				}))
+				.tooltip("Choose between bounding box center, pivot point, or origin point for transformations")
+				.disabled(!self.tool_data.dot_state.enabled)
+				.widget_holder(),
+		]
 	}
 
 	fn alignment_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> + use<> {
@@ -274,11 +299,11 @@ impl LayoutHolder for SelectTool {
 
 		// Dot Type (Pivot/Origin/Off)
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.push(self.dot_type_widget());
+		widgets.extend(self.dot_type_widget());
 
 		// Pivot
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.push(self.pivot_reference_point_widget(self.tool_data.selected_layers_count == 0 || self.tool_data.dot_type != DotType::Pivot));
+		widgets.push(self.pivot_reference_point_widget(self.tool_data.selected_layers_count == 0 || !self.tool_data.dot_state.dot.is_pivot()));
 
 		// Align
 		let disabled = self.tool_data.selected_layers_count < 2;
@@ -325,10 +350,17 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 					responses.add(ToolMessage::UpdateHints);
 				}
 				SelectOptionsUpdate::DotType(dot_type) => {
-					self.tool_data.dot_type = *dot_type;
+					if self.tool_data.dot_state.enabled {
+						self.tool_data.dot_state.dot = *dot_type;
+						responses.add(ToolMessage::UpdateHints);
+						let dot = self.tool_data.get_as_dot();
+						responses.add(TransformLayerMessage::SetDot { dot });
+						redraw_ref_pivot = true;
+					}
+				}
+				SelectOptionsUpdate::ToggleDotType(state) => {
+					self.tool_data.dot_state.enabled = *state;
 					responses.add(ToolMessage::UpdateHints);
-					let dot = self.tool_data.get_as_dot();
-					responses.add(TransformLayerMessage::SetDot { dot });
 					redraw_ref_pivot = true;
 				}
 			}
@@ -417,7 +449,7 @@ struct SelectToolData {
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
 	pivot: Pivot,
-	dot_type: DotType,
+	dot_state: DotState,
 	compass_rose: CompassRose,
 	line_center: DVec2,
 	skew_edge: EdgeBool,
@@ -585,14 +617,14 @@ impl SelectToolData {
 	}
 
 	fn state_from_dot(&self, mouse: DVec2) -> Option<SelectToolFsmState> {
-		match self.dot_type {
+		match self.dot_state.dot {
 			DotType::Pivot => self.pivot.is_over(mouse).then_some(SelectToolFsmState::DraggingPivot),
 			_ => None,
 		}
 	}
 
 	fn get_as_dot(&self) -> Dot {
-		Dot(self.pivot.clone(), self.dot_type)
+		Dot(self.pivot.clone(), self.dot_state)
 	}
 }
 
@@ -807,13 +839,15 @@ impl Fsm for SelectToolFsmState {
 						.flatten()
 				});
 
-				tool_data.pivot.update(document, &mut overlay_context, Some((angle,)), tool_data.dot_type.is_pivot());
 				if overlay_context.visibility_settings.origin() {
 					for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 						let origin = graph_modification_utils::get_viewport_origin(layer, &document.network_interface);
 						overlay_context.dowel_pin(origin);
 					}
 				}
+
+				let draw_pivot = tool_data.dot_state.dot.is_pivot() && overlay_context.visibility_settings.pivot();
+				tool_data.pivot.update(document, &mut overlay_context, Some((angle,)), draw_pivot);
 
 				// Update compass rose
 				if overlay_context.visibility_settings.compass_rose() {
@@ -1018,12 +1052,6 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					tool_data.layers_dragging = selected;
-					if tool_data.dot_type.is_pivot() && !tool_data.layers_dragging.is_empty() {
-						responses.add(SelectToolMessage::SetPivot {
-							position: tool_data.pivot.old_pivot_position,
-						});
-					}
-
 					tool_data.get_snap_candidates(document, input);
 					let (axis, using_compass) = {
 						let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
