@@ -113,8 +113,8 @@ impl DotType {
 impl fmt::Display for DotType {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			DotType::Pivot => write!(f, "Pivot"),
-			DotType::Average => write!(f, "Origin"),
+			DotType::Pivot => write!(f, "Working Pivot"),
+			DotType::Average => write!(f, "Average of Origins"),
 		}
 	}
 }
@@ -212,7 +212,7 @@ impl SelectTool {
 		vec![
 			CheckboxInput::new(self.tool_data.dot_state.enabled)
 				.icon("Overlays")
-				.tooltip("Overlays")
+				.tooltip("Disable Transform Pivot Point")
 				.on_update(|optional_input: &CheckboxInput| SelectToolMessage::SelectOptions(SelectOptionsUpdate::ToggleDotType(optional_input.checked)).into())
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
@@ -221,7 +221,7 @@ impl SelectTool {
 					DotType::Pivot => 0,
 					DotType::Average => 1,
 				}))
-				.tooltip("Choose between bounding box center, pivot point, or origin point for transformations")
+				.tooltip("Choose between type of Transform Pivot Point")
 				.disabled(!self.tool_data.dot_state.enabled)
 				.widget_holder(),
 		]
