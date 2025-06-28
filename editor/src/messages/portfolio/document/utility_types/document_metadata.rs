@@ -5,7 +5,7 @@ use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 use graphene_std::renderer::{ClickTarget, ClickTargetType, Quad};
 use graphene_std::transform::Footprint;
-use graphene_std::vector::{PointId, VectorData};
+use graphene_std::vector::{PointId, VectorData, VectorDataTable};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 
@@ -20,9 +20,9 @@ pub struct DocumentMetadata {
 	pub upstream_footprints: HashMap<NodeId, Footprint>,
 	pub local_transforms: HashMap<NodeId, DAffine2>,
 	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
-	pub click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
+	pub click_targets: HashMap<LayerNodeIdentifier, HashMap<usize, Vec<ClickTarget>>>,
 	pub clip_targets: HashSet<NodeId>,
-	pub vector_modify: HashMap<NodeId, VectorData>,
+	pub vector_modify: HashMap<NodeId, VectorDataTable>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 }

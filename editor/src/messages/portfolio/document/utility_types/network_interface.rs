@@ -14,7 +14,7 @@ use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, No
 use graph_craft::{Type, concrete};
 use graphene_std::renderer::{ClickTarget, ClickTargetType, Quad};
 use graphene_std::transform::Footprint;
-use graphene_std::vector::{PointId, VectorData, VectorModificationType};
+use graphene_std::vector::{PointId, VectorData, VectorDataTable, VectorModificationType};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use interpreted_executor::node_registry::NODE_REGISTRY;
 use serde_json::{Value, json};
@@ -3178,15 +3178,27 @@ impl NodeNetworkInterface {
 		(layer_widths, chain_widths, has_left_input_wire)
 	}
 
+	pub fn compute_modified_vector_table(&self, layer: LayerNodeIdentifier) -> Option<VectorDataTable> {
+		todo!()
+	}
+
 	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<VectorData> {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
 
-		if let Some(vector_data) = graph_layer.upstream_node_id_from_name("Path").and_then(|node| self.document_metadata.vector_modify.get(&node)) {
-			let mut modified = vector_data.clone();
-			if let Some(TaggedValue::VectorModification(modification)) = graph_layer.find_input("Path", 1) {
-				modification.apply(&mut modified);
+		let vector_data = graph_layer.upstream_node_id_from_name("Path").and_then(|node| self.document_metadata.vector_modify.get(&node));
+		let modification = graph_layer.find_input("Path", 1);
+
+		match (vector_data, modification) {
+			(Some(vector_data), Some(TaggedValue::VectorDataModification(modification))) => {
+				let mut vector_data = vector_data.clone();
+				for (index, vector_data_instance) in vector_data.instance_mut_iter().enumerate() {
+					if let Some(vector_modification) = modification.get(&index) {
+						vector_modification.apply(vector_data_instance.instance);
+					}
+				}
+				return Some(vector_data);
 			}
-			return Some(modified);
+			_ => {}
 		}
 
 		self.document_metadata
@@ -3361,7 +3373,7 @@ impl NodeNetworkInterface {
 		};
 		{
 			let mut value = node.inputs.get_mut(1).and_then(|input| input.as_value_mut());
-			let Some(TaggedValue::VectorModification(modification)) = value.as_deref_mut() else {
+			let Some(TaggedValue::VectorDataModification(modification)) = value.as_deref_mut() else {
 				panic!("Path node does not have modification input");
 			};
 

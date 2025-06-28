@@ -11,7 +11,7 @@ use graphene_core::raster_types::CPU;
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
-use graphene_core::vector::VectorDataInstancesModification;
+use graphene_core::vector::VectorDataModification;
 use graphene_core::vector::style::Fill;
 use graphene_core::{Color, MemoHash, Node, Type};
 use std::fmt::Display;
@@ -215,7 +215,7 @@ tagged_value! {
 	DocumentNode(DocumentNode),
 	Curve(graphene_core::raster::curve::Curve),
 	Footprint(graphene_core::transform::Footprint),
-	VectorDataInstancesModification(VectorDataInstancesModification),
+	VectorDataModification(VectorDataModification),
 	FontCache(Arc<graphene_core::text::FontCache>),
 	// ==========
 	// ENUM TYPES

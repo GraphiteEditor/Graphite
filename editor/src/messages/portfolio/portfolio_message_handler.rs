@@ -745,7 +745,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						let path_node_type = resolve_document_node_type("Path").expect("Path node does not exist.");
 						let path_node = path_node_type.node_template_input_override([
 							Some(NodeInput::value(TaggedValue::VectorData(VectorDataTable::new(vector_data)), true)),
-							Some(NodeInput::value(TaggedValue::VectorModification(Default::default()), false)),
+							Some(NodeInput::value(TaggedValue::VectorDataModification(Default::default()), false)),
 						]);
 
 						// Get the "Spline" node definition and wire it up with the "Path" node as input

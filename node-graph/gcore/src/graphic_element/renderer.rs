@@ -8,7 +8,7 @@ use crate::transform::{Footprint, Transform};
 use crate::uuid::{NodeId, generate_uuid};
 use crate::vector::style::{Fill, Stroke, StrokeAlign, ViewMode};
 use crate::vector::{PointId, VectorDataTable};
-use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable};
+use crate::{ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable};
 use base64::Engine;
 use bezier_rs::Subpath;
 use dyn_any::DynAny;
@@ -354,7 +354,7 @@ pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 pub struct RenderMetadata {
 	pub upstream_footprints: HashMap<NodeId, Footprint>,
 	pub local_transforms: HashMap<NodeId, DAffine2>,
-	pub click_targets: HashMap<NodeId, Vec<ClickTarget>>,
+	pub click_targets: HashMap<NodeId, HashMap<usize, Vec<ClickTarget>>>,
 	pub clip_targets: HashSet<NodeId>,
 }
 
@@ -367,7 +367,7 @@ pub trait GraphicElementRendered {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]>;
 
 	/// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection.
-	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
+	fn add_upstream_click_targets(&self, _click_targets: &mut HashMap<usize, Vec<ClickTarget>>) {}
 
 	// TODO: Store all click targets in a vec which contains the AABB, click target, and path
 	// fn add_click_targets(&self, click_targets: &mut Vec<([DVec2; 2], ClickTarget, Vec<NodeId>)>, current_path: Option<NodeId>) {}
@@ -524,14 +524,16 @@ impl GraphicElementRendered for GraphicGroupTable {
 		}
 
 		if let Some(graphic_group_id) = element_id {
-			let mut all_upstream_click_targets = Vec::new();
+			let mut all_upstream_click_targets = HashMap::new();
 
-			for instance in self.instance_ref_iter() {
-				let mut new_click_targets = Vec::new();
+			for (index, instance) in self.instance_ref_iter().enumerate() {
+				let mut new_click_targets = HashMap::new();
 				instance.instance.add_upstream_click_targets(&mut new_click_targets);
 
-				for click_target in new_click_targets.iter_mut() {
-					click_target.apply_transform(*instance.transform)
+				for (_, click_targets) in new_click_targets.iter_mut() {
+					for click_target in click_targets {
+						click_target.apply_transform(*instance.transform)
+					}
 				}
 
 				all_upstream_click_targets.extend(new_click_targets);
@@ -541,14 +543,16 @@ impl GraphicElementRendered for GraphicGroupTable {
 		}
 	}
 
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+	fn add_upstream_click_targets(&self, click_targets: &mut HashMap<usize, Vec<ClickTarget>>) {
 		for instance in self.instance_ref_iter() {
-			let mut new_click_targets = Vec::new();
+			let mut new_click_targets = HashMap::new();
 
 			instance.instance.add_upstream_click_targets(&mut new_click_targets);
 
-			for click_target in new_click_targets.iter_mut() {
-				click_target.apply_transform(*instance.transform)
+			for (_, click_targets) in new_click_targets.iter_mut() {
+				for click_target in click_targets {
+					click_target.apply_transform(*instance.transform)
+				}
 			}
 
 			click_targets.extend(new_click_targets);
@@ -905,7 +909,7 @@ impl GraphicElementRendered for VectorDataTable {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
-		for instance in self.instance_ref_iter() {
+		for (index, instance) in self.instance_ref_iter().enumerate() {
 			let instance_transform = *instance.transform;
 			let instance = instance.instance;
 
@@ -938,7 +942,10 @@ impl GraphicElementRendered for VectorDataTable {
 					.chain(single_anchors_targets.into_iter())
 					.collect::<Vec<ClickTarget>>();
 
-				metadata.click_targets.insert(element_id, click_targets);
+				// metadata.click_targets.insert(element_id, );
+				metadata.click_targets.entry(element_id).and_modify(|click_target_map| {
+					click_target_map.insert(index, click_targets);
+				});
 			}
 
 			if let Some(upstream_graphic_group) = &instance.upstream_graphic_group {
@@ -948,8 +955,8 @@ impl GraphicElementRendered for VectorDataTable {
 		}
 	}
 
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for instance in self.instance_ref_iter() {
+	fn add_upstream_click_targets(&self, click_targets: &mut HashMap<usize, Vec<ClickTarget>>) {
+		for (index, instance) in self.instance_ref_iter().enumerate() {
 			let stroke_width = instance.instance.style.stroke().as_ref().map_or(0., Stroke::weight);
 			let filled = instance.instance.style.fill() != &Fill::None;
 			let fill = |mut subpath: Subpath<_>| {
@@ -958,11 +965,15 @@ impl GraphicElementRendered for VectorDataTable {
 				}
 				subpath
 			};
-			click_targets.extend(instance.instance.stroke_bezier_paths().map(fill).map(|subpath| {
-				let mut click_target = ClickTarget::new_with_subpath(subpath, stroke_width);
-				click_target.apply_transform(*instance.transform);
-				click_target
-			}));
+
+			click_targets
+				.entry(index)
+				.or_insert(Vec::new())
+				.extend(instance.instance.stroke_bezier_paths().map(fill).map(|subpath| {
+					let mut click_target = ClickTarget::new_with_subpath(subpath, stroke_width);
+					click_target.apply_transform(*instance.transform);
+					click_target
+				}));
 
 			// For free-floating anchors, we need to add a click target for each
 			let single_anchors_targets = instance.instance.point_domain.ids().iter().filter_map(|&point_id| {
@@ -977,7 +988,8 @@ impl GraphicElementRendered for VectorDataTable {
 				click_target.apply_transform(*instance.transform);
 				Some(click_target)
 			});
-			click_targets.extend(single_anchors_targets);
+
+			click_targets.entry(index).or_insert(Vec::new()).extend(single_anchors_targets);
 		}
 	}
 
@@ -992,143 +1004,133 @@ impl GraphicElementRendered for VectorDataTable {
 	}
 }
 
-impl GraphicElementRendered for Artboard {
+impl GraphicElementRendered for ArtboardGroupTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		if !render_params.hide_artboards {
-			// Background
-			render.leaf_tag("rect", |attributes| {
-				attributes.push("fill", format!("#{}", self.background.to_rgb_hex_srgb_from_gamma()));
-				if self.background.a() < 1. {
-					attributes.push("fill-opacity", ((self.background.a() * 1000.).round() / 1000.).to_string());
-				}
-				attributes.push("x", self.location.x.min(self.location.x + self.dimensions.x).to_string());
-				attributes.push("y", self.location.y.min(self.location.y + self.dimensions.y).to_string());
-				attributes.push("width", self.dimensions.x.abs().to_string());
-				attributes.push("height", self.dimensions.y.abs().to_string());
-			});
+		for artboard in self.instance_ref_iter() {
+			let artboard = artboard.instance;
+
+			if !render_params.hide_artboards {
+				// Background
+				render.leaf_tag("rect", |attributes| {
+					attributes.push("fill", format!("#{}", artboard.background.to_rgb_hex_srgb_from_gamma()));
+					if artboard.background.a() < 1. {
+						attributes.push("fill-opacity", ((artboard.background.a() * 1000.).round() / 1000.).to_string());
+					}
+					attributes.push("x", artboard.location.x.min(artboard.location.x + artboard.dimensions.x).to_string());
+					attributes.push("y", artboard.location.y.min(artboard.location.y + artboard.dimensions.y).to_string());
+					attributes.push("width", artboard.dimensions.x.abs().to_string());
+					attributes.push("height", artboard.dimensions.y.abs().to_string());
+				});
+			}
+
+			// Contents group (includes the artwork but not the background)
+			render.parent_tag(
+				// SVG group tag
+				"g",
+				// Group tag attributes
+				|attributes| {
+					let matrix = format_transform_matrix(artboard.transform());
+					if !matrix.is_empty() {
+						attributes.push("transform", matrix);
+					}
+
+					if artboard.clip {
+						let id = format!("artboard-{}", generate_uuid());
+						let selector = format!("url(#{id})");
+
+						write!(
+							&mut attributes.0.svg_defs,
+							r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}"/></clipPath>"##,
+							artboard.dimensions.x, artboard.dimensions.y,
+						)
+						.unwrap();
+						attributes.push("clip-path", selector);
+					}
+				},
+				// Artboard contents
+				|render| {
+					artboard.graphic_group.render_svg(render, render_params);
+				},
+			);
 		}
-
-		// Contents group (includes the artwork but not the background)
-		render.parent_tag(
-			// SVG group tag
-			"g",
-			// Group tag attributes
-			|attributes| {
-				let matrix = format_transform_matrix(self.transform());
-				if !matrix.is_empty() {
-					attributes.push("transform", matrix);
-				}
-
-				if self.clip {
-					let id = format!("artboard-{}", generate_uuid());
-					let selector = format!("url(#{id})");
-
-					write!(
-						&mut attributes.0.svg_defs,
-						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}"/></clipPath>"##,
-						self.dimensions.x, self.dimensions.y,
-					)
-					.unwrap();
-					attributes.push("clip-path", selector);
-				}
-			},
-			// Artboard contents
-			|render| {
-				self.graphic_group.render_svg(render, render_params);
-			},
-		);
 	}
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
-
-		// Render background
-		let color = peniko::Color::new([self.background.r(), self.background.g(), self.background.b(), self.background.a()]);
-		let [a, b] = [self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()];
-		let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
-
-		scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
-		scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), color, None, &rect);
-		scene.pop_layer();
-
-		if self.clip {
-			let blend_mode = peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcOver);
-			scene.push_layer(blend_mode, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
-		}
-		// Since the graphic group's transform is right multiplied in when rendering the graphic group, we just need to right multiply by the offset here.
-		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2());
-		self.graphic_group.render_to_vello(scene, child_transform, context, render_params);
-		if self.clip {
-			scene.pop_layer();
-		}
-	}
-
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		let artboard_bounds = (transform * Quad::from_box([self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()])).bounding_box();
-		if self.clip {
-			Some(artboard_bounds)
-		} else {
-			[self.graphic_group.bounding_box(transform, include_stroke), Some(artboard_bounds)]
-				.into_iter()
-				.flatten()
-				.reduce(Quad::combine_bounds)
-		}
-	}
-
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
-		if let Some(element_id) = element_id {
-			let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
-			metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
-			metadata.upstream_footprints.insert(element_id, footprint);
-			metadata.local_transforms.insert(element_id, DAffine2::from_translation(self.location.as_dvec2()));
-			if self.clip {
-				metadata.clip_targets.insert(element_id);
-			}
-		}
-		footprint.transform *= self.transform();
-		self.graphic_group.collect_metadata(metadata, footprint, None);
-	}
-
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let subpath_rectangle = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
-		click_targets.push(ClickTarget::new_with_subpath(subpath_rectangle, 0.));
-	}
-
-	fn contains_artboard(&self) -> bool {
-		true
-	}
-}
-
-impl GraphicElementRendered for ArtboardGroupTable {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for artboard in self.instance_ref_iter() {
-			artboard.instance.render_svg(render, render_params);
-		}
-	}
-
-	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		for instance in self.instance_ref_iter() {
-			instance.instance.render_to_vello(scene, transform, context, render_params);
+			let instance = instance.instance;
+
+			// Render background
+			let color = peniko::Color::new([instance.background.r(), instance.background.g(), instance.background.b(), instance.background.a()]);
+			let [a, b] = [instance.location.as_dvec2(), instance.location.as_dvec2() + instance.dimensions.as_dvec2()];
+			let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
+
+			scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
+			scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), color, None, &rect);
+			scene.pop_layer();
+
+			if instance.clip {
+				let blend_mode = peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcOver);
+				scene.push_layer(blend_mode, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
+			}
+			// Since the graphic group's transform is right multiplied in when rendering the graphic group, we just need to right multiply by the offset here.
+			let child_transform = transform * DAffine2::from_translation(instance.location.as_dvec2());
+			instance.graphic_group.render_to_vello(scene, child_transform, context, render_params);
+			if instance.clip {
+				scene.pop_layer();
+			}
 		}
 	}
 
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
 		self.instance_ref_iter()
-			.filter_map(|instance| instance.instance.bounding_box(transform, include_stroke))
+			.filter_map(|instance| {
+				let instance = instance.instance;
+				let artboard_bounds = (transform * Quad::from_box([instance.location.as_dvec2(), instance.location.as_dvec2() + instance.dimensions.as_dvec2()])).bounding_box();
+				if instance.clip {
+					Some(artboard_bounds)
+				} else {
+					[instance.graphic_group.bounding_box(transform, include_stroke), Some(artboard_bounds)]
+						.into_iter()
+						.flatten()
+						.reduce(Quad::combine_bounds)
+				}
+			})
 			.reduce(Quad::combine_bounds)
 	}
 
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
-		for instance in self.instance_ref_iter() {
-			instance.instance.collect_metadata(metadata, footprint, *instance.source_node_id);
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
+		for (index, instance) in self.instance_ref_iter().enumerate() {
+			let instance = instance.instance;
+
+			if let Some(element_id) = element_id {
+				let subpath = Subpath::new_rect(DVec2::ZERO, instance.dimensions.as_dvec2());
+
+				metadata
+					.click_targets
+					.entry(element_id)
+					.or_insert(HashMap::new())
+					.entry(index)
+					.or_insert(Vec::new())
+					.push(ClickTarget::new_with_subpath(subpath, 0.));
+
+				metadata.upstream_footprints.insert(element_id, footprint);
+				metadata.local_transforms.insert(element_id, DAffine2::from_translation(instance.location.as_dvec2()));
+				if instance.clip {
+					metadata.clip_targets.insert(element_id);
+				}
+			}
+			footprint.transform *= instance.transform();
+			instance.graphic_group.collect_metadata(metadata, footprint, None);
 		}
 	}
 
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for instance in self.instance_ref_iter() {
-			instance.instance.add_upstream_click_targets(click_targets);
+	fn add_upstream_click_targets(&self, click_targets: &mut HashMap<usize, Vec<ClickTarget>>) {
+		for (index, instance) in self.instance_ref_iter().enumerate() {
+			let subpath_rectangle = Subpath::new_rect(DVec2::ZERO, instance.instance.dimensions.as_dvec2());
+
+			click_targets.entry(index).or_insert(Vec::new()).push(ClickTarget::new_with_subpath(subpath_rectangle, 0.));
 		}
 	}
 
@@ -1205,7 +1207,9 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 		let Some(element_id) = element_id else { return };
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 
-		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
+		let mut click_targets = HashMap::new();
+		click_targets.insert(0, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
+		metadata.click_targets.insert(element_id, click_targets);
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the graphical data table
 		if let Some(image) = self.instance_ref_iter().next() {
@@ -1213,9 +1217,9 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 		}
 	}
 
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+	fn add_upstream_click_targets(&self, click_targets: &mut HashMap<usize, Vec<ClickTarget>>) {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-		click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
+		click_targets.entry(0).or_insert(Vec::new()).push(ClickTarget::new_with_subpath(subpath, 0.));
 	}
 
 	fn to_graphic_element(&self) -> GraphicElement {
@@ -1272,7 +1276,10 @@ impl GraphicElementRendered for RasterDataTable<GPU> {
 		let Some(element_id) = element_id else { return };
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 
-		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
+		let mut click_targets = HashMap::new();
+		click_targets.insert(0, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
+
+		metadata.click_targets.insert(element_id, click_targets);
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the graphical data table
 		if let Some(image) = self.instance_ref_iter().next() {
@@ -1280,9 +1287,9 @@ impl GraphicElementRendered for RasterDataTable<GPU> {
 		}
 	}
 
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+	fn add_upstream_click_targets(&self, click_targets: &mut HashMap<usize, Vec<ClickTarget>>) {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-		click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
+		click_targets.entry(0).or_insert(Vec::new()).push(ClickTarget::new_with_subpath(subpath, 0.));
 	}
 }
 
@@ -1355,7 +1362,7 @@ impl GraphicElementRendered for GraphicElement {
 		}
 	}
 
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+	fn add_upstream_click_targets(&self, click_targets: &mut HashMap<usize, Vec<ClickTarget>>) {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.add_upstream_click_targets(click_targets),
 			GraphicElement::RasterDataCPU(raster) => raster.add_upstream_click_targets(click_targets),

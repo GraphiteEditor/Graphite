@@ -5,7 +5,7 @@ use crate::uuid::generate_uuid;
 use bezier_rs::BezierHandles;
 use dyn_any::DynAny;
 use kurbo::{BezPath, PathEl, Point};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::BuildHasher;
 
 /// Represents a procedural change to the [`PointDomain`] in [`VectorData`].
@@ -418,11 +418,11 @@ impl Hash for VectorModification {
 	}
 }
 
-pub type VectorDataInstancesModification = HashMap<usize, VectorModification>;
+pub type VectorDataModification = BTreeMap<usize, VectorModification>;
 
 /// A node that applies a procedural modification to some [`VectorData`].
 #[node_macro::node(category(""))]
-async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: VectorDataInstancesModification) -> VectorDataTable {
+async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: VectorDataModification) -> VectorDataTable {
 	for (index, vector_data_instance) in vector_data.instance_mut_iter().enumerate() {
 		if let Some(vector_modification) = modification.get(&index) {
 			vector_modification.apply(vector_data_instance.instance);
