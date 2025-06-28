@@ -78,12 +78,8 @@ fn math<U: num_traits::float::Float>(
 #[node_macro::node(category("Math: Arithmetic"))]
 fn add<U: Add<T>, T>(
 	_: impl Ctx,
-	/// The left-hand side of the addition operation.
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
-	augend: U,
-	/// The right-hand side of the addition operation.
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
-	addend: T,
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, f64, DVec2)] augend: U,
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, DVec2, f64)] addend: T,
 ) -> <U as Add<T>>::Output {
 	augend + addend
 }
@@ -92,12 +88,8 @@ fn add<U: Add<T>, T>(
 #[node_macro::node(category("Math: Arithmetic"))]
 fn subtract<U: Sub<T>, T>(
 	_: impl Ctx,
-	/// The left-hand side of the subtraction operation.
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
-	minuend: U,
-	/// The right-hand side of the subtraction operation.
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
-	subtrahend: T,
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, f64, DVec2)] minuend: U,
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, DVec2, f64)] subtrahend: T,
 ) -> <U as Sub<T>>::Output {
 	minuend - subtrahend
 }
@@ -106,12 +98,9 @@ fn subtract<U: Sub<T>, T>(
 #[node_macro::node(category("Math: Arithmetic"))]
 fn multiply<U: Mul<T>, T>(
 	_: impl Ctx,
-	/// The left-hand side of the multiplication operation.
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
-	multiplier: U,
-	/// The right-hand side of the multiplication operation.
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, f64, DVec2)] multiplier: U,
 	#[default(1.)]
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, DVec2, f64)]
 	multiplicand: T,
 ) -> <U as Mul<T>>::Output {
 	multiplier * multiplicand
@@ -123,10 +112,7 @@ fn multiply<U: Mul<T>, T>(
 #[node_macro::node(category("Math: Arithmetic"))]
 fn divide<U: Div<T> + Default + PartialEq, T: Default + PartialEq>(
 	_: impl Ctx,
-	/// The left-hand side of the division operation.
-	#[implementations(f64, f64, f32, f32, u32, u32, DVec2, DVec2, f64)]
-	numerator: U,
-	/// The right-hand side of the division operation.
+	#[implementations(f64, f64, f32, f32, u32, u32, DVec2, DVec2, f64)] numerator: U,
 	#[default(1.)]
 	#[implementations(f64, f64, f32, f32, u32, u32, DVec2, f64, DVec2)]
 	denominator: T,
@@ -144,12 +130,9 @@ where
 #[node_macro::node(category("Math: Arithmetic"))]
 fn modulo<U: Rem<T, Output: Add<T, Output: Rem<T, Output = U::Output>>>, T: Copy>(
 	_: impl Ctx,
-	/// The left-hand side of the modulo operation.
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
-	numerator: U,
-	/// The right-hand side of the modulo operation.
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, DVec2, f64)] numerator: U,
 	#[default(2.)]
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, f64, DVec2)]
 	modulus: T,
 	always_positive: bool,
 ) -> <U as Rem<T>>::Output {
@@ -160,12 +143,9 @@ fn modulo<U: Rem<T, Output: Add<T, Output: Rem<T, Output = U::Output>>>, T: Copy
 #[node_macro::node(category("Math: Arithmetic"))]
 fn exponent<U: Pow<T>, T>(
 	_: impl Ctx,
-	/// The base number that will be raised to the power.
-	#[implementations(f64, f32, u32)]
-	base: U,
-	/// The power to which the base number will be raised.
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32)] base: U,
 	#[default(2.)]
-	#[implementations(f64, f32, u32)]
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32)]
 	power: T,
 ) -> <U as num_traits::Pow<T>>::Output {
 	base.pow(power)
@@ -175,11 +155,9 @@ fn exponent<U: Pow<T>, T>(
 #[node_macro::node(category("Math: Arithmetic"))]
 fn root<U: num_traits::float::Float>(
 	_: impl Ctx,
-	/// The number for which the nth root will be calculated.
 	#[default(2.)]
 	#[implementations(f64, f32)]
 	radicand: U,
-	/// The degree of the root to be calculated. Square root is 2, cube root is 3, and so on.
 	#[default(2.)]
 	#[implementations(f64, f32)]
 	degree: U,
@@ -294,6 +272,26 @@ fn random<U: num_traits::float::Float>(
 	result * (max - min) + min
 }
 
+/// Convert a number to an integer of the type u32, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
+#[node_macro::node(name("To u32"), category("Math: Numeric"))]
+fn to_u32<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U) -> u32 {
+	let value = U::clamp(value, U::from(0.).unwrap(), U::from(u32::MAX as f64).unwrap());
+	value.to_u32().unwrap()
+}
+
+/// Convert a number to an integer of the type u64, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
+#[node_macro::node(name("To u64"), category("Math: Numeric"))]
+fn to_u64<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U) -> u64 {
+	let value = U::clamp(value, U::from(0.).unwrap(), U::from(u64::MAX as f64).unwrap());
+	value.to_u64().unwrap()
+}
+
+/// Convert an integer to a decimal number of the type f64, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
+#[node_macro::node(name("To f64"), category("Math: Numeric"))]
+fn to_f64<U: num_traits::int::PrimInt>(_: impl Ctx, #[implementations(u32, u64)] value: U) -> f64 {
+	value.to_f64().unwrap()
+}
+
 /// The rounding function (round) maps an input value to its nearest whole number. Halfway values are rounded away from zero.
 #[node_macro::node(category("Math: Numeric"))]
 fn round<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U) -> U {
@@ -320,29 +318,13 @@ fn absolute_value<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f6
 
 /// The minimum function (min) picks the smaller of two numbers.
 #[node_macro::node(category("Math: Numeric"))]
-fn min<T: std::cmp::PartialOrd>(
-	_: impl Ctx,
-	/// One of the two values, of which the lesser will be returned.
-	#[implementations(f64, f32, u32, &str)]
-	value: T,
-	/// The other of the two values, of which the lesser will be returned.
-	#[implementations(f64, f32, u32, &str)]
-	other_value: T,
-) -> T {
+fn min<T: std::cmp::PartialOrd>(_: impl Ctx, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
 	if value < other_value { value } else { other_value }
 }
 
 /// The maximum function (max) picks the larger of two numbers.
 #[node_macro::node(category("Math: Numeric"))]
-fn max<T: std::cmp::PartialOrd>(
-	_: impl Ctx,
-	/// One of the two values, of which the greater will be returned.
-	#[implementations(f64, f32, u32, &str)]
-	value: T,
-	/// The other of the two values, of which the greater will be returned.
-	#[implementations(f64, f32, u32, &str)]
-	other_value: T,
-) -> T {
+fn max<T: std::cmp::PartialOrd>(_: impl Ctx, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
 	if value > other_value { value } else { other_value }
 }
 
@@ -350,15 +332,9 @@ fn max<T: std::cmp::PartialOrd>(
 #[node_macro::node(category("Math: Numeric"))]
 fn clamp<T: std::cmp::PartialOrd>(
 	_: impl Ctx,
-	/// The value to be clamped, which will be restricted to the range between the minimum and maximum values.
-	#[implementations(f64, f32, u32, &str)]
-	value: T,
-	/// One of the two values that defines the range within which the input value will be clamped. This is conventionally the lesser of the two values.
-	#[implementations(f64, f32, u32, &str)]
-	min: T,
-	/// The other of the two values that defines the range within which the input value will be clamped. This is conventionally the greater of the two values.
-	#[implementations(f64, f32, u32, &str)]
-	max: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] min: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] max: T,
 ) -> T {
 	let (min, max) = if min < max { (min, max) } else { (max, min) };
 	if value < min {
@@ -372,27 +348,45 @@ fn clamp<T: std::cmp::PartialOrd>(
 
 /// The equality operation (==) compares two values and returns true if they are equal, or false if they are not.
 #[node_macro::node(category("Math: Logic"))]
-fn equals<U: std::cmp::PartialEq<T>, T>(_: impl Ctx, #[implementations(f64, f32, u32, DVec2, &str)] value: T, #[implementations(f64, f32, u32, DVec2, &str)] other_value: U) -> bool {
+fn equals<U: std::cmp::PartialEq<T>, T>(
+	_: impl Ctx,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] other_value: U,
+) -> bool {
 	other_value == value
 }
 
 /// The inequality operation (!=) compares two values and returns true if they are not equal, or false if they are.
 #[node_macro::node(category("Math: Logic"))]
-fn not_equals<U: std::cmp::PartialEq<T>, T>(_: impl Ctx, #[implementations(f64, f32, u32, DVec2, &str)] value: T, #[implementations(f64, f32, u32, DVec2, &str)] other_value: U) -> bool {
+fn not_equals<U: std::cmp::PartialEq<T>, T>(
+	_: impl Ctx,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] other_value: U,
+) -> bool {
 	other_value != value
 }
 
 /// The less-than operation (<) compares two values and returns true if the first value is less than the second, or false if it is not.
 /// If enabled with "Or Equal", the less-than-or-equal operation (<=) will be used instead.
 #[node_macro::node(category("Math: Logic"))]
-fn less_than<T: std::cmp::PartialOrd<T>>(_: impl Ctx, #[implementations(f64, f32, u32)] value: T, #[implementations(f64, f32, u32)] other_value: T, or_equal: bool) -> bool {
+fn less_than<T: std::cmp::PartialOrd<T>>(
+	_: impl Ctx,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] other_value: T,
+	or_equal: bool,
+) -> bool {
 	if or_equal { value <= other_value } else { value < other_value }
 }
 
 /// The greater-than operation (>) compares two values and returns true if the first value is greater than the second, or false if it is not.
 /// If enabled with "Or Equal", the greater-than-or-equal operation (>=) will be used instead.
 #[node_macro::node(category("Math: Logic"))]
-fn greater_than<T: std::cmp::PartialOrd<T>>(_: impl Ctx, #[implementations(f64, f32, u32)] value: T, #[implementations(f64, f32, u32)] other_value: T, or_equal: bool) -> bool {
+fn greater_than<T: std::cmp::PartialOrd<T>>(
+	_: impl Ctx,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] other_value: T,
+	or_equal: bool,
+) -> bool {
 	if or_equal { value >= other_value } else { value > other_value }
 }
 

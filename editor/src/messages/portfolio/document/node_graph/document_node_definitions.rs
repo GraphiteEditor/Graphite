@@ -1016,9 +1016,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed(
-				"Decomposes the X and Y components of a 2D coordinate.\n\nThe inverse of this node is \"Coordinate Value\", which can have either or both its X and Y exposed as graph inputs.",
-			),
+			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
 		// TODO: Remove this and just use the proto node definition directly

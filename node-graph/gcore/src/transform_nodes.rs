@@ -70,7 +70,6 @@ async fn boundless_footprint<T: 'n + 'static>(
 
 	transform_target.eval(ctx.into_context()).await
 }
-
 #[node_macro::node(category("Debug"))]
 async fn freeze_real_time<T: 'n + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,

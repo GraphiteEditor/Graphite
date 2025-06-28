@@ -73,17 +73,9 @@ pub trait Convert<T>: Sized {
 	fn convert(self) -> T;
 }
 
-impl<T: ToString> Convert<String> for T {
-	/// Converts this type into a `String` using its `ToString` implementation.
-	#[inline]
-	fn convert(self) -> String {
-		self.to_string()
-	}
-}
-
 /// Implements the [`Convert`] trait for conversion between the cartesian product of Rust's primitive numeric types.
 macro_rules! impl_convert {
-	($from:ty, $to:ty) => {
+	($from:ty,$to:ty) => {
 		impl Convert<$to> for $from {
 			fn convert(self) -> $to {
 				self as $to
