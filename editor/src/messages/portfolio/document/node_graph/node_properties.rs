@@ -12,7 +12,8 @@ use graph_craft::Type;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_std::animation::RealTimeMode;
-use graphene_std::ops::XY;
+use graphene_std::extract_xy::XY;
+use graphene_std::path_bool::BooleanOperation;
 use graphene_std::raster::curve::Curve;
 use graphene_std::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
@@ -22,9 +23,9 @@ use graphene_std::raster_types::{CPU, GPU, RasterDataTable};
 use graphene_std::text::Font;
 use graphene_std::transform::{Footprint, ReferencePoint};
 use graphene_std::vector::VectorDataTable;
-use graphene_std::vector::misc::CentroidType;
+use graphene_std::vector::misc::GridType;
 use graphene_std::vector::misc::{ArcType, MergeByDistanceAlgorithm};
-use graphene_std::vector::misc::{BooleanOperation, GridType};
+use graphene_std::vector::misc::{CentroidType, PointSpacingType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
 use graphene_std::vector::style::{GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{GraphicGroupTable, NodeInputDecleration};
@@ -238,6 +239,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<PaintOrder>() => enum_choice::<PaintOrder>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<ArcType>() => enum_choice::<ArcType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<MergeByDistanceAlgorithm>() => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<PointSpacingType>() => enum_choice::<PointSpacingType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<BooleanOperation>() => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<CentroidType>() => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<LuminanceCalculation>() => enum_choice::<LuminanceCalculation>().for_socket(default_info).property_row(),
@@ -1225,6 +1227,64 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	widgets
 }
 
+pub(crate) const SAMPLE_POLYLINE_TOOLTIP_SPACING: &str = "Use a point sampling density controlled by a distance between, or specific number of, points.";
+pub(crate) const SAMPLE_POLYLINE_TOOLTIP_SEPARATION: &str = "Distance between each instance (exact if 'Adaptive Spacing' is disabled, approximate if enabled).";
+pub(crate) const SAMPLE_POLYLINE_TOOLTIP_QUANTITY: &str = "Number of points to place along the path.";
+pub(crate) const SAMPLE_POLYLINE_TOOLTIP_START_OFFSET: &str = "Exclude some distance from the start of the path before the first instance.";
+pub(crate) const SAMPLE_POLYLINE_TOOLTIP_STOP_OFFSET: &str = "Exclude some distance from the end of the path after the last instance.";
+pub(crate) const SAMPLE_POLYLINE_TOOLTIP_ADAPTIVE_SPACING: &str = "Round 'Separation' to a nearby value that divides into the path length evenly.";
+
+pub(crate) fn sample_polyline_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::vector::sample_polyline::*;
+
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in sample_polyline_properties: {err}");
+			return Vec::new();
+		}
+	};
+
+	let current_spacing = document_node.inputs.get(SpacingInput::INDEX).and_then(|input| input.as_value()).cloned();
+	let is_quantity = matches!(current_spacing, Some(TaggedValue::PointSpacingType(PointSpacingType::Quantity)));
+
+	let spacing = enum_choice::<PointSpacingType>()
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, SpacingInput::INDEX, true, context))
+		.property_row();
+	let separation = number_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, SeparationInput::INDEX, true, context),
+		NumberInput::default().min(0.).unit(" px"),
+	);
+	let quantity = number_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, QuantityInput::INDEX, true, context),
+		NumberInput::default().min(2.).int(),
+	);
+	let start_offset = number_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, StartOffsetInput::INDEX, true, context),
+		NumberInput::default().min(0.).unit(" px"),
+	);
+	let stop_offset = number_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, StopOffsetInput::INDEX, true, context),
+		NumberInput::default().min(0.).unit(" px"),
+	);
+	let adaptive_spacing = bool_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, AdaptiveSpacingInput::INDEX, true, context),
+		CheckboxInput::default().disabled(is_quantity),
+	);
+
+	vec![
+		spacing.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_SPACING),
+		match current_spacing {
+			Some(TaggedValue::PointSpacingType(PointSpacingType::Separation)) => LayoutGroup::Row { widgets: separation }.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_SEPARATION),
+			Some(TaggedValue::PointSpacingType(PointSpacingType::Quantity)) => LayoutGroup::Row { widgets: quantity }.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_QUANTITY),
+			_ => LayoutGroup::Row { widgets: vec![] },
+		},
+		LayoutGroup::Row { widgets: start_offset }.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_START_OFFSET),
+		LayoutGroup::Row { widgets: stop_offset }.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_STOP_OFFSET),
+		LayoutGroup::Row { widgets: adaptive_spacing }.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_ADAPTIVE_SPACING),
+	]
+}
+
 pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::exposure::*;
 
@@ -1780,7 +1840,7 @@ pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesConte
 }
 
 pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	use graphene_std::ops::math::*;
+	use graphene_std::math_nodes::math::*;
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,

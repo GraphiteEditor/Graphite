@@ -1,9 +1,10 @@
 use bezier_rs::{ManipulatorGroup, Subpath};
+use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_core::instances::{Instance, InstanceRef};
-use graphene_core::vector::misc::BooleanOperation;
+use graphene_core::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use graphene_core::vector::style::Fill;
-pub use graphene_core::vector::*;
+use graphene_core::vector::{PointId, VectorData, VectorDataTable};
 use graphene_core::{Color, Ctx, GraphicElement, GraphicGroupTable};
 pub use path_bool as path_bool_lib;
 use path_bool::{FillRule, PathBooleanOperation};
@@ -12,6 +13,22 @@ use std::ops::Mul;
 // TODO: Fix boolean ops to work by removing .transform() and .one_instnace_*() calls,
 // TODO: since before we used a Vec of single-row tables and now we use a single table
 // TODO: with multiple rows while still assuming a single row for the boolean operations.
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum BooleanOperation {
+	#[default]
+	#[icon("BooleanUnion")]
+	Union,
+	#[icon("BooleanSubtractFront")]
+	SubtractFront,
+	#[icon("BooleanSubtractBack")]
+	SubtractBack,
+	#[icon("BooleanIntersect")]
+	Intersect,
+	#[icon("BooleanDifference")]
+	Difference,
+}
 
 /// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
 #[node_macro::node(category(""))]
@@ -43,7 +60,7 @@ async fn boolean_operation<I: Into<GraphicGroupTable> + 'n + Send + Clone>(
 		result_vector_data.instance.upstream_graphic_group = Some(group_of_paths.clone());
 
 		// Clean up the boolean operation result by merging duplicated points
-		result_vector_data.instance.merge_by_distance(0.001);
+		result_vector_data.instance.merge_by_distance_spatial(*result_vector_data.transform, 0.0001);
 	}
 
 	result_vector_data_table
@@ -353,50 +370,6 @@ fn from_path(path_data: &[Path]) -> VectorData {
 	}
 
 	VectorData::from_subpaths(all_subpaths, false)
-}
-
-pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
-	let mut subpaths = Vec::new();
-	let mut groups = Vec::new();
-
-	let mut points = path.data().points().iter();
-	let to_vec = |p: &usvg::tiny_skia_path::Point| DVec2::new(p.x as f64, p.y as f64);
-
-	for verb in path.data().verbs() {
-		match verb {
-			usvg::tiny_skia_path::PathVerb::Move => {
-				subpaths.push(Subpath::new(std::mem::take(&mut groups), false));
-				let Some(start) = points.next().map(to_vec) else { continue };
-				groups.push(ManipulatorGroup::new(start, Some(start), Some(start)));
-			}
-			usvg::tiny_skia_path::PathVerb::Line => {
-				let Some(end) = points.next().map(to_vec) else { continue };
-				groups.push(ManipulatorGroup::new(end, Some(end), Some(end)));
-			}
-			usvg::tiny_skia_path::PathVerb::Quad => {
-				let Some(handle) = points.next().map(to_vec) else { continue };
-				let Some(end) = points.next().map(to_vec) else { continue };
-				if let Some(last) = groups.last_mut() {
-					last.out_handle = Some(last.anchor + (2. / 3.) * (handle - last.anchor));
-				}
-				groups.push(ManipulatorGroup::new(end, Some(end + (2. / 3.) * (handle - end)), Some(end)));
-			}
-			usvg::tiny_skia_path::PathVerb::Cubic => {
-				let Some(first_handle) = points.next().map(to_vec) else { continue };
-				let Some(second_handle) = points.next().map(to_vec) else { continue };
-				let Some(end) = points.next().map(to_vec) else { continue };
-				if let Some(last) = groups.last_mut() {
-					last.out_handle = Some(first_handle);
-				}
-				groups.push(ManipulatorGroup::new(end, Some(second_handle), Some(end)));
-			}
-			usvg::tiny_skia_path::PathVerb::Close => {
-				subpaths.push(Subpath::new(std::mem::take(&mut groups), true));
-			}
-		}
-	}
-	subpaths.push(Subpath::new(groups, false));
-	subpaths
 }
 
 type Path = Vec<path_bool::PathSegment>;

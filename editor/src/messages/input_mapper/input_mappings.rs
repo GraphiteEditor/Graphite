@@ -206,13 +206,6 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(ArrowUp); action_dispatch=ShapeToolMessage::IncreaseSides),
 		entry!(KeyDown(ArrowDown); action_dispatch=ShapeToolMessage::DecreaseSides),
 		//
-		// ImaginateToolMessage
-		// entry!(KeyDown(MouseLeft); action_dispatch=ImaginateToolMessage::DragStart),
-		// entry!(KeyUp(MouseLeft); action_dispatch=ImaginateToolMessage::DragStop),
-		// entry!(KeyDown(MouseRight); action_dispatch=ImaginateToolMessage::Abort),
-		// entry!(KeyDown(Escape); action_dispatch=ImaginateToolMessage::Abort),
-		// entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=ImaginateToolMessage::Resize { center: Alt, lock_ratio: Shift }),
-		//
 		// PathToolMessage
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=PathToolMessage::DeleteAndBreakPath),
 		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=PathToolMessage::DeleteAndBreakPath),

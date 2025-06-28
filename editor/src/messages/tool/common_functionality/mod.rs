@@ -1,12 +1,12 @@
 pub mod auto_panning;
 pub mod color_selector;
 pub mod compass_rose;
+pub mod gizmos;
 pub mod graph_modification_utils;
 pub mod measure;
 pub mod pivot;
 pub mod resize;
 pub mod shape_editor;
-pub mod shape_gizmos;
 pub mod shapes;
 pub mod snapping;
 pub mod transformation_cage;

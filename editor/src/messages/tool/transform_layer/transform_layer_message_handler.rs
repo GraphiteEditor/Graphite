@@ -1036,8 +1036,8 @@ mod test_transform_layer {
 		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
 		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
 
-		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2.0, got: {}", scale_x);
-		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2.0, got: {}", scale_y);
+		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {}", scale_x);
+		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {}", scale_y);
 	}
 
 	#[tokio::test]
@@ -1062,8 +1062,8 @@ mod test_transform_layer {
 		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
 		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
 
-		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2.0, got: {}", scale_x);
-		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2.0, got: {}", scale_y);
+		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {}", scale_x);
+		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {}", scale_y);
 	}
 
 	#[tokio::test]
