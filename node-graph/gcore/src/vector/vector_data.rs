@@ -96,7 +96,7 @@ pub struct VectorData {
 impl Default for VectorData {
 	fn default() -> Self {
 		Self {
-			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None),
+			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None, super::style::ShapeRenderingModes::Auto),
 			colinear_manipulators: Vec::new(),
 			point_domain: PointDomain::new(),
 			segment_domain: SegmentDomain::new(),

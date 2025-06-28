@@ -468,17 +468,42 @@ impl Default for Stroke {
 	}
 }
 
+/// The shape-rendering attribute provides hints to the renderer about what tradeoffs to make when rendering shapes like paths, circles, or rectangles.
+/// See https://developer.mozilla.org/en-US/docs/Web/SVG/Reference/Attribute/shape-rendering
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Dropdown)]
+pub enum ShapeRenderingModes {
+	#[default]
+	Auto,
+	OptimizeSpeed,
+	CrispEdges,
+	GeometricPrecision,
+}
+
+impl ShapeRenderingModes {
+	pub fn svg_name(&self) -> &'static str {
+		match self {
+			ShapeRenderingModes::Auto => "auto",
+			ShapeRenderingModes::OptimizeSpeed => "optimizeSpeed",
+			ShapeRenderingModes::CrispEdges => "crispEdges",
+			ShapeRenderingModes::GeometricPrecision => "geometricPrecision",
+		}
+	}
+}
+
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
 pub struct PathStyle {
 	pub stroke: Option<Stroke>,
 	pub fill: Fill,
+	pub shape_rendering: ShapeRenderingModes,
 }
 
 impl std::hash::Hash for PathStyle {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.stroke.hash(state);
 		self.fill.hash(state);
+		self.shape_rendering.hash(state);
 	}
 }
 
@@ -491,13 +516,15 @@ impl std::fmt::Display for PathStyle {
 			None => "None".to_string(),
 		};
 
-		write!(f, "Fill: {fill}\nStroke: {stroke}")
+		let shape_rendering = &self.shape_rendering;
+
+		write!(f, "Fill: {fill}\nStroke: {stroke}\nShape-Rendering: {shape_rendering}")
 	}
 }
 
 impl PathStyle {
-	pub const fn new(stroke: Option<Stroke>, fill: Fill) -> Self {
-		Self { stroke, fill }
+	pub const fn new(stroke: Option<Stroke>, fill: Fill, shape_rendering: ShapeRenderingModes) -> Self {
+		Self { stroke, fill, shape_rendering }
 	}
 
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
@@ -521,6 +548,7 @@ impl PathStyle {
 				}
 				(None, None) => None,
 			},
+			shape_rendering: self.shape_rendering,
 		}
 	}
 
@@ -596,6 +624,11 @@ impl PathStyle {
 	/// ```
 	pub fn set_stroke(&mut self, stroke: Stroke) {
 		self.stroke = Some(stroke);
+	}
+
+	/// Replace the path's [ShapeRenderingModes] with a provided one.
+	pub fn set_shape_rendering(&mut self, shape_rendering: ShapeRenderingModes) {
+		self.shape_rendering = shape_rendering;
 	}
 
 	/// Set the path's fill to None.
