@@ -1892,7 +1892,7 @@ async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<
 		.instance_ref_iter()
 		.map(|vector_data_instance| {
 			let scale = vector_data_instance.transform.decompose_scale();
-			vector_data_instance.instance.stroke_bezier_paths().map(|subpath| subpath.area(Some(1e-3), Some(1e-3))).sum::<f64>() * scale.x * scale.y
+			vector_data_instance.instance.stroke_bezpath_iter().map(|bezpath| bezpath.area()).sum::<f64>() * scale.x * scale.y
 		})
 		.sum()
 }
