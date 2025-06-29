@@ -317,6 +317,17 @@ impl Default for SelectToolFsmState {
 	}
 }
 
+#[derive(Debug)]
+enum DragStartIntent {
+	DragPivot,
+	Resize,
+	Skew,
+	DragWithPreviousSelection,
+	DragWithNewSelection(LayerNodeIdentifier),
+	Rotate,
+	Draw,
+}
+
 #[derive(Clone, Debug, Default)]
 struct SelectToolData {
 	drag_start: ViewportPosition,
@@ -887,66 +898,75 @@ impl Fsm for SelectToolFsmState {
 
 				let show_compass = bounds.is_some_and(|quad| quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
 				let can_grab_compass_rose = compass_rose_state.can_grab() && (show_compass || bounds.is_none());
+				let lasso_select = input.keyboard.key(lasso_select_key);
 
-				let state = if is_over_pivot
-				// Dragging the pivot
-				{
-					responses.add(DocumentMessage::StartTransaction);
-
-					// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-					// tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
-
-					SelectToolFsmState::DraggingPivot
-				}
-				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
-				else if resize {
-					tool_data.get_snap_candidates(document, input);
-					SelectToolFsmState::ResizingBounds
+				let drag_start_intent = if is_over_pivot {
+					DragStartIntent::DragPivot
+				} else if resize {
+					DragStartIntent::Resize
 				} else if skew {
-					tool_data.get_snap_candidates(document, input);
-					SelectToolFsmState::SkewingBounds { skew: Key::Control }
-				}
-				// Dragging the selected layers around to transform them
-				else if can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
-					responses.add(DocumentMessage::StartTransaction);
+					DragStartIntent::Skew
+				} else if rotate {
+					DragStartIntent::Rotate
+				} else if lasso_select {
+					DragStartIntent::Draw
+				} else if can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
+					DragStartIntent::DragWithPreviousSelection
+				} else if let Some(intersection) = intersection {
+					DragStartIntent::DragWithNewSelection(intersection)
+				} else {
+					DragStartIntent::Draw
+				};
 
-					if input.keyboard.key(select_deepest_key) || tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
-						tool_data.select_single_layer = intersection;
-					} else {
-						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(document.metadata()).find(|ancestor| selected.contains(ancestor)));
+				let state = match drag_start_intent {
+					DragStartIntent::DragPivot => {
+						responses.add(DocumentMessage::StartTransaction);
+						// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+						// tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
+
+						SelectToolFsmState::DraggingPivot
 					}
-
-					tool_data.layers_dragging = selected;
-
-					tool_data.get_snap_candidates(document, input);
-					let (axis, using_compass) = {
-						let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
-						(axis_state.unwrap_or_default(), axis_state.is_some())
-					};
-					SelectToolFsmState::Dragging {
-						axis,
-						using_compass,
-						has_dragged: false,
-						deepest: input.keyboard.key(select_deepest_key),
-						remove: input.keyboard.key(extend_selection),
+					DragStartIntent::Resize => {
+						tool_data.get_snap_candidates(document, input);
+						SelectToolFsmState::ResizingBounds
 					}
-				}
-				// Dragging near the transform cage bounding box to rotate it
-				else if rotate {
-					SelectToolFsmState::RotatingBounds
-				}
-				// Dragging a selection box or lasso
-				else {
-					tool_data.layers_dragging = selected;
-					let extend = input.keyboard.key(extend_selection);
-					if !extend && !input.keyboard.key(remove_from_selection) {
-						responses.add(DocumentMessage::DeselectAllLayers);
-						tool_data.layers_dragging.clear();
+					DragStartIntent::Skew => {
+						tool_data.get_snap_candidates(document, input);
+						SelectToolFsmState::SkewingBounds { skew: Key::Control }
 					}
+					DragStartIntent::DragWithPreviousSelection => {
+						responses.add(DocumentMessage::StartTransaction);
+						if input.keyboard.key(select_deepest_key) || tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
+							tool_data.select_single_layer = intersection;
+						} else {
+							tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(document.metadata()).find(|ancestor| selected.contains(ancestor)));
+						}
 
-					let lasso_select = input.keyboard.key(lasso_select_key);
-					if !lasso_select && let Some(intersection) = intersection {
-						tool_data.layer_selected_on_start = Some(intersection);
+						tool_data.layers_dragging = selected;
+
+						tool_data.get_snap_candidates(document, input);
+						let (axis, using_compass) = {
+							let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
+							(axis_state.unwrap_or_default(), axis_state.is_some())
+						};
+						SelectToolFsmState::Dragging {
+							axis,
+							using_compass,
+							has_dragged: false,
+							deepest: input.keyboard.key(select_deepest_key),
+							remove: input.keyboard.key(extend_selection),
+						}
+					}
+					DragStartIntent::Rotate => SelectToolFsmState::RotatingBounds,
+					DragStartIntent::DragWithNewSelection(layer) => {
+						tool_data.layers_dragging = selected;
+						let extend = input.keyboard.key(extend_selection);
+						if !extend && !input.keyboard.key(remove_from_selection) {
+							responses.add(DocumentMessage::DeselectAllLayers);
+							tool_data.layers_dragging.clear();
+						}
+
+						tool_data.layer_selected_on_start = Some(layer);
 						selected = intersection_list;
 
 						match tool_data.nested_selection_behavior {
@@ -954,7 +974,6 @@ impl Fsm for SelectToolFsmState {
 							_ => drag_deepest_manipulation(responses, selected, tool_data, document, false),
 						}
 						tool_data.get_snap_candidates(document, input);
-
 						responses.add(DocumentMessage::StartTransaction);
 						SelectToolFsmState::Dragging {
 							axis: Axis::None,
@@ -963,7 +982,15 @@ impl Fsm for SelectToolFsmState {
 							deepest: input.keyboard.key(select_deepest_key),
 							remove: input.keyboard.key(extend_selection),
 						}
-					} else {
+					}
+					DragStartIntent::Draw => {
+						tool_data.layers_dragging = selected;
+						let extend = input.keyboard.key(extend_selection);
+						if !extend && !input.keyboard.key(remove_from_selection) {
+							responses.add(DocumentMessage::DeselectAllLayers);
+							tool_data.layers_dragging.clear();
+						}
+
 						let selection_shape = if lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
 						SelectToolFsmState::Drawing { selection_shape, has_drawn: false }
 					}
