@@ -363,6 +363,13 @@ pub struct SlidingPointInfo {
 	connected_segments: [SlidingSegmentData; 2],
 }
 
+enum MouseDownIntent<'a> {
+	UpdatePoint { already_selected: bool, selection_info: Option<SelectedPointsInfo> },
+	MoldSegment { segment: &'a ClosestSegment },
+	SelectLayer { layer: LayerNodeIdentifier },
+	Draw,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum PathToolFsmState {
 	#[default]
@@ -502,135 +509,148 @@ impl PathToolData {
 
 		let old_selection = shape_editor.selected_points().cloned().collect::<Vec<_>>();
 
-		// Check if the point is already selected; if not, select the first point within the threshold (in pixels)
-		// Don't select the points which are not shown currently in PathOverlayMode
-		if let Some((already_selected, mut selection_info)) = shape_editor.get_point_selection_state(
-			&document.network_interface,
-			input.mouse.position,
-			SELECTION_THRESHOLD,
-			path_overlay_mode,
-			self.frontier_handles_info.clone(),
-		) {
-			responses.add(DocumentMessage::StartTransaction);
-
-			self.last_clicked_point_was_selected = already_selected;
-
-			// If the point is already selected and shift (`extend_selection`) is used, keep the selection unchanged.
-			// Otherwise, select the first point within the threshold.
-			if !(already_selected && extend_selection) {
-				if let Some(updated_selection_info) = shape_editor.change_point_selection(
-					&document.network_interface,
-					input.mouse.position,
-					SELECTION_THRESHOLD,
-					extend_selection,
-					path_overlay_mode,
-					self.frontier_handles_info.clone(),
-				) {
-					selection_info = updated_selection_info;
-				}
+		let mouse_down_intent = {
+			// Check if the point is already selected; if not, select the first point within the threshold (in pixels)
+			if let Some((already_selected, selection_info)) = shape_editor.get_point_selection_state(
+				&document.network_interface,
+				input.mouse.position,
+				SELECTION_THRESHOLD,
+				path_overlay_mode,
+				self.frontier_handles_info.clone(),
+			) {
+				MouseDownIntent::UpdatePoint { already_selected, selection_info }
+			} else if lasso_select {
+				MouseDownIntent::Draw
+			} else if let Some(closed_segment) = &self.segment {
+				MouseDownIntent::MoldSegment { segment: closed_segment }
+			} else if let Some(layer) = document.click(input) {
+				MouseDownIntent::SelectLayer { layer }
+			} else {
+				MouseDownIntent::Draw
 			}
+		};
 
-			if let Some(selected_points) = selection_info {
-				self.drag_start_pos = input.mouse.position;
+		match mouse_down_intent {
+			MouseDownIntent::UpdatePoint { already_selected, mut selection_info } => {
+				responses.add(DocumentMessage::StartTransaction);
 
-				// If selected points contain only handles and there was some selection before, then it is stored and becomes restored upon release
-				let mut dragging_only_handles = true;
-				for point in &selected_points.points {
-					if matches!(point.point_id, ManipulatorPointId::Anchor(_)) {
-						dragging_only_handles = false;
-						break;
+				self.last_clicked_point_was_selected = already_selected;
+
+				// If the point is already selected and shift (`extend_selection`) is used, keep the selection unchanged.
+				// Otherwise, select the first point within the threshold.
+				if !(already_selected && extend_selection) {
+					if let Some(updated_selection_info) = shape_editor.change_point_selection(
+						&document.network_interface,
+						input.mouse.position,
+						SELECTION_THRESHOLD,
+						extend_selection,
+						path_overlay_mode,
+						self.frontier_handles_info.clone(),
+					) {
+						selection_info = updated_selection_info;
 					}
 				}
-				if dragging_only_handles && !self.handle_drag_toggle && !old_selection.is_empty() {
-					self.saved_points_before_handle_drag = old_selection;
-				}
 
-				if handle_drag_from_anchor {
-					if let Some((layer, point)) = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
-						// Check that selected point is an anchor
-						if let (Some(point_id), Some(vector_data)) = (point.as_anchor(), document.network_interface.compute_modified_vector(layer)) {
-							let handles = vector_data.all_connected(point_id).collect::<Vec<_>>();
-							self.alt_clicked_on_anchor = true;
-							for handle in &handles {
-								let modification_type = handle.set_relative_position(DVec2::ZERO);
-								responses.add(GraphOperationMessage::Vector { layer, modification_type });
-								for &handles in &vector_data.colinear_manipulators {
-									if handles.contains(handle) {
-										let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
-										responses.add(GraphOperationMessage::Vector { layer, modification_type });
-									}
-								}
-							}
+				if let Some(selected_points) = selection_info {
+					self.drag_start_pos = input.mouse.position;
 
-							let manipulator_point_id = handles[0].to_manipulator_point();
-							shape_editor.deselect_all_points();
-							shape_editor.select_points_by_manipulator_id(&vec![manipulator_point_id]);
-							responses.add(PathToolMessage::SelectedPointUpdated);
+					// If selected points contain only handles and there was some selection before, then it is stored and becomes restored upon release
+					let mut dragging_only_handles = true;
+					for point in &selected_points.points {
+						if matches!(point.point_id, ManipulatorPointId::Anchor(_)) {
+							dragging_only_handles = false;
+							break;
 						}
 					}
+					if dragging_only_handles && !self.handle_drag_toggle && !old_selection.is_empty() {
+						self.saved_points_before_handle_drag = old_selection;
+					}
+
+					if handle_drag_from_anchor {
+						if let Some((layer, point)) = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
+							// Check that selected point is an anchor
+							if let (Some(point_id), Some(vector_data)) = (point.as_anchor(), document.network_interface.compute_modified_vector(layer)) {
+								let handles = vector_data.all_connected(point_id).collect::<Vec<_>>();
+								self.alt_clicked_on_anchor = true;
+								for handle in &handles {
+									let modification_type = handle.set_relative_position(DVec2::ZERO);
+									responses.add(GraphOperationMessage::Vector { layer, modification_type });
+									for &handles in &vector_data.colinear_manipulators {
+										if handles.contains(handle) {
+											let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+											responses.add(GraphOperationMessage::Vector { layer, modification_type });
+										}
+									}
+								}
+
+								let manipulator_point_id = handles[0].to_manipulator_point();
+								shape_editor.deselect_all_points();
+								shape_editor.select_points_by_manipulator_id(&vec![manipulator_point_id]);
+								responses.add(PathToolMessage::SelectedPointUpdated);
+							}
+						}
+					}
+
+					if let Some((Some(point), Some(vector_data))) = shape_editor
+						.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
+						.map(|(layer, point)| (point.as_anchor(), document.network_interface.compute_modified_vector(layer)))
+					{
+						let handles = vector_data
+							.all_connected(point)
+							.filter(|handle| handle.length(&vector_data) < 1e-6)
+							.map(|handle| handle.to_manipulator_point())
+							.collect::<Vec<_>>();
+						let endpoint = vector_data.extendable_points(false).any(|anchor| point == anchor);
+
+						if drag_zero_handle && (handles.len() == 1 && !endpoint) {
+							shape_editor.deselect_all_points();
+							shape_editor.select_points_by_manipulator_id(&handles);
+							shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
+						}
+					}
+
+					self.start_dragging_point(selected_points, input, document, shape_editor);
+					responses.add(OverlaysMessage::Draw);
 				}
+				PathToolFsmState::Dragging(self.dragging_state)
+			}
+			MouseDownIntent::MoldSegment { segment: closed_segment } => {
+				responses.add(DocumentMessage::StartTransaction);
 
-				if let Some((Some(point), Some(vector_data))) = shape_editor
-					.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
-					.map(|(layer, point)| (point.as_anchor(), document.network_interface.compute_modified_vector(layer)))
-				{
-					let handles = vector_data
-						.all_connected(point)
-						.filter(|handle| handle.length(&vector_data) < 1e-6)
-						.map(|handle| handle.to_manipulator_point())
-						.collect::<Vec<_>>();
-					let endpoint = vector_data.extendable_points(false).any(|anchor| point == anchor);
+				// Calculating and storing handle positions
+				let handle1 = ManipulatorPointId::PrimaryHandle(closed_segment.segment());
+				let handle2 = ManipulatorPointId::EndHandle(closed_segment.segment());
 
-					if drag_zero_handle && (handles.len() == 1 && !endpoint) {
-						shape_editor.deselect_all_points();
-						shape_editor.select_points_by_manipulator_id(&handles);
-						shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
+				if let Some(vector_data) = document.network_interface.compute_modified_vector(closed_segment.layer()) {
+					if let (Some(pos1), Some(pos2)) = (handle1.get_position(&vector_data), handle2.get_position(&vector_data)) {
+						self.molding_info = Some((pos1, pos2))
 					}
 				}
-
-				self.start_dragging_point(selected_points, input, document, shape_editor);
-				responses.add(OverlaysMessage::Draw);
+				PathToolFsmState::MoldingSegment
 			}
-			PathToolFsmState::Dragging(self.dragging_state)
-		}
-		// We didn't find a point nearby, so we will see if there is a segment to insert a point on
-		else if let Some(closed_segment) = &mut self.segment {
-			responses.add(DocumentMessage::StartTransaction);
-
-			// Calculating and storing handle positions
-			let handle1 = ManipulatorPointId::PrimaryHandle(closed_segment.segment());
-			let handle2 = ManipulatorPointId::EndHandle(closed_segment.segment());
-
-			if let Some(vector_data) = document.network_interface.compute_modified_vector(closed_segment.layer()) {
-				if let (Some(pos1), Some(pos2)) = (handle1.get_position(&vector_data), handle2.get_position(&vector_data)) {
-					self.molding_info = Some((pos1, pos2))
+			// We didn't find a segment, so consider selecting the nearest shape instead
+			MouseDownIntent::SelectLayer { layer } => {
+				shape_editor.deselect_all_points();
+				if extend_selection {
+					responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
+				} else {
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 				}
+				self.drag_start_pos = input.mouse.position;
+				self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+
+				responses.add(DocumentMessage::StartTransaction);
+
+				PathToolFsmState::Dragging(self.dragging_state)
 			}
+			// Start drawing
+			MouseDownIntent::Draw => {
+				self.drag_start_pos = input.mouse.position;
+				self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 
-			PathToolFsmState::MoldingSegment
-		}
-		// We didn't find a segment, so consider selecting the nearest shape instead
-		else if let Some(layer) = document.click(input) {
-			shape_editor.deselect_all_points();
-			if extend_selection {
-				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
-			} else {
-				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
+				let selection_shape = if lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
+				PathToolFsmState::Drawing { selection_shape }
 			}
-			self.drag_start_pos = input.mouse.position;
-			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
-
-			responses.add(DocumentMessage::StartTransaction);
-
-			PathToolFsmState::Dragging(self.dragging_state)
-		}
-		// Start drawing
-		else {
-			self.drag_start_pos = input.mouse.position;
-			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
-
-			let selection_shape = if lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
-			PathToolFsmState::Drawing { selection_shape }
 		}
 	}
 
