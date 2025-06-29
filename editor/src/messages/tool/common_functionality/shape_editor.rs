@@ -1393,7 +1393,7 @@ impl ShapeState {
 		}
 	}
 
-	/// Find a [ManipulatorPoint] that is within the selection threshold and return the layer path, an index to the [ManipulatorGroup], and an enum index for [ManipulatorPoint].
+	/// Find a [ManipulatorPointId](ManipulatorPointId) that is within the selection threshold and return the layer path, an index to the [ManipulatorGroup](crate::bezier_rs::ManipulatorGroup), and an enum index for  [ManipulatorPointId](ManipulatorPointId).
 	pub fn find_nearest_point_indices(&mut self, network_interface: &NodeNetworkInterface, mouse_position: DVec2, select_threshold: f64) -> Option<(LayerNodeIdentifier, ManipulatorPointId)> {
 		if self.selected_shape_state.is_empty() {
 			return None;

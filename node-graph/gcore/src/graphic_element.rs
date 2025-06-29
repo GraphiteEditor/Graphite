@@ -104,9 +104,9 @@ impl From<RasterDataTable<GPU>> for GraphicGroupTable {
 /// The possible forms of graphical content held in a Vec by the `elements` field of [`GraphicElement`].
 #[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum GraphicElement {
-	/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
+	/// Equivalent to the SVG `<g>` tag: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g>
 	GraphicGroup(GraphicGroupTable),
-	/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
+	/// A vector shape, equivalent to the SVG `<path>` tag: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path>
 	VectorData(VectorDataTable),
 	RasterDataCPU(RasterDataTable<CPU>),
 	RasterDataGPU(RasterDataTable<GPU>),
@@ -236,7 +236,7 @@ impl serde::Serialize for Raster<GPU> {
 	}
 }
 
-/// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
+/// Some `ArtboardData` with some optional clipping bounds that can be exported.
 #[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct Artboard {
 	pub graphic_group: GraphicGroupTable,

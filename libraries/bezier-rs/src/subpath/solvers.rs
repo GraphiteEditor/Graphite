@@ -46,14 +46,14 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	}
 
 	/// Returns how many times a given ray intersects with this subpath. (`ray_direction` does not need to be normalized.)
-	/// If this needs to be called frequently with a ray of the same rotation angle, consider instead using [`ray_test_crossings_count_prerotated`].
+	/// If this needs to be called frequently with a ray of the same rotation angle, consider instead using [`ray_test_crossings_count_prerotated`](Subpath::ray_test_crossings_count_prerotated).
 	pub fn ray_test_crossings_count(&self, ray_start: DVec2, ray_direction: DVec2) -> usize {
 		self.iter().map(|bezier| bezier.ray_test_crossings(ray_start, ray_direction).count()).sum()
 	}
 
 	/// Returns how many times a given ray intersects with this subpath. (`ray_direction` does not need to be normalized.)
 	/// This version of the function is for better performance when calling it frequently without needing to change the rotation between each call.
-	/// If that isn't important, use [`ray_test_crossings_count`] which provides an easier interface by taking a ray direction vector.
+	/// If that isn't important, use [`ray_test_crossings_count`](Subpath::ray_test_crossings_count) which provides an easier interface by taking a ray direction vector.
 	/// Instead, this version requires a rotation matrix for the ray's rotation and a prerotated version of this subpath that has had its rotation applied.
 	pub fn ray_test_crossings_count_prerotated(&self, ray_start: DVec2, rotation_matrix: DMat2, rotated_subpath: &Self) -> usize {
 		self.iter()
@@ -64,7 +64,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 
 	/// Returns true if the given point is inside this subpath. Open paths are NOT automatically closed so you'll need to call `set_closed(true)` before calling this.
 	/// Self-intersecting subpaths use the `evenodd` fill rule for checking in/outside-ness: <https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/fill-rule>.
-	/// If this needs to be called frequently, consider instead using [`point_inside_prerotated`] and moving this function's setup code into your own logic before the repeated call.
+	/// If this needs to be called frequently, consider instead using [`point_inside_prerotated`](Subpath::point_inside_prerotated) and moving this function's setup code into your own logic before the repeated call.
 	pub fn point_inside(&self, point: DVec2) -> bool {
 		// The directions use prime numbers to reduce the likelihood of running across two anchor points simultaneously
 		const SIN_13DEG: f64 = 0.22495105434;
@@ -82,7 +82,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// Returns true if the given point is inside this subpath. Open paths are NOT automatically closed so you'll need to call `set_closed(true)` before calling this.
 	/// Self-intersecting subpaths use the `evenodd` fill rule for checking in/outside-ness: <https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/fill-rule>.
 	/// This version of the function is for better performance when calling it frequently because it lets the caller precompute the rotations once instead of every call.
-	/// If that isn't important, use [`point_inside`] which provides an easier interface.
+	/// If that isn't important, use [`point_inside`](Subpath::point_inside) which provides an easier interface.
 	/// Instead, this version requires a pair of rotation matrices for the ray's rotation and a pair of prerotated versions of this subpath.
 	/// They should face in different directions that are unlikely to align in the real world. Consider using the following rotations:
 	/// ```rs
@@ -186,7 +186,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	}
 
 	/// Checks if any intersections exist between this subpath and the four edges of the rectangle defined by the top-left `corner1` and bottom-right `corner2`.
-	/// This is faster than calling [`rectangle_intersections`]`.len()` because it short-circuits as soon as an intersection is found.
+	/// This is faster than calling [`rectangle_intersections`](Subpath::rectangle_intersections)`.len()` because it short-circuits as soon as an intersection is found.
 	pub fn rectangle_intersections_exist(&self, corner1: DVec2, corner2: DVec2) -> bool {
 		let rotate_by_90deg = |point| DMat2::from_angle(std::f64::consts::FRAC_PI_2) * point;
 

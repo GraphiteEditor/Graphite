@@ -51,7 +51,7 @@ macro_rules! tagged_value {
 			}
 		}
 		impl<'a> TaggedValue {
-			/// Converts to a Box<dyn DynAny>
+			/// Converts to a `Box<dyn DynAny>`
 			pub fn to_dynany(self) -> DAny<'a> {
 				match self {
 					Self::None => Box::new(()),

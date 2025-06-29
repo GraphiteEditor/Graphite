@@ -350,7 +350,7 @@ impl VectorData {
 		index.flat_map(|index| self.segment_domain.end_connected(index))
 	}
 
-	/// Enumerate all segments that start or end at a point, converting them to [`HandleId`s]. Note that the handles may not exist e.g. for a linear segment.
+	/// Enumerate all segments that start or end at a point, converting them to [`HandleId`s](HandleId). Note that the handles may not exist e.g. for a linear segment.
 	pub fn all_connected(&self, point: PointId) -> impl Iterator<Item = HandleId> + '_ {
 		let index = [self.point_domain.resolve_id(point)].into_iter().flatten();
 		index.flat_map(|index| self.segment_domain.all_connected(index))

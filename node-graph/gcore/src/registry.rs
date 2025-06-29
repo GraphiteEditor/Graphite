@@ -190,7 +190,7 @@ impl NodeContainer {
 }
 
 /// Boxes the input and downcasts the output.
-/// Wraps around a node taking Box<dyn DynAny> and returning Box<dyn DynAny>
+/// Wraps around a node taking `Box<dyn DynAny>` and returning `Box<dyn DynAny>`
 #[derive(Clone)]
 pub struct DowncastBothNode<I, O> {
 	node: SharedNodeContainer,

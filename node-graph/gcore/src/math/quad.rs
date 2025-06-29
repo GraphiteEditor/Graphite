@@ -100,7 +100,7 @@ impl Quad {
 
 	/// Does this quad contain a point
 	///
-	/// Code from https://wrfranklin.org/Research/Short_Notes/pnpoly.html
+	/// Code from <https://wrfranklin.org/Research/Short_Notes/pnpoly.html>
 	pub fn contains(&self, p: DVec2) -> bool {
 		let mut inside = false;
 		for (i, j) in (0..4).zip([3, 0, 1, 2]) {

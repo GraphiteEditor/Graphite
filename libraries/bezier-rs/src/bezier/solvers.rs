@@ -7,7 +7,7 @@ use std::ops::Range;
 
 /// Functionality that solve for various curve information such as derivative, tangent, intersect, etc.
 impl Bezier {
-	/// Get roots as [[x], [y]]
+	/// Get roots as [[`x`](SymmetricalBasis), [y](SymmetricalBasis)]
 	#[must_use]
 	pub fn roots(self) -> [Vec<f64>; 2] {
 		let s_basis = to_symmetrical_basis_pair(self);
@@ -40,7 +40,7 @@ impl Bezier {
 		de_casteljau_points
 	}
 
-	/// Returns two [`Polynomial`]s representing the parametric equations for x and y coordinates of the bezier curve respectively.
+	/// Returns two [`Polynomial`](Polynomial)s representing the parametric equations for x and y coordinates of the bezier curve respectively.
 	/// The domain of both the equations are from t=0.0 representing the start and t=1.0 representing the end of the bezier curve.
 	pub fn parametric_polynomial(&self) -> (Polynomial<4>, Polynomial<4>) {
 		match self.handles {
@@ -440,7 +440,7 @@ impl Bezier {
 	}
 
 	/// Returns a list of `t` values that correspond to points on this Bezier segment where they intersect with the given line. (`direction_vector` does not need to be normalized.)
-	/// If this needs to be called frequently with a line of the same rotation angle, consider instead using [`line_test_crossings_prerotated`] and moving this function's setup code into your own logic before the repeated call.
+	/// If this needs to be called frequently with a line of the same rotation angle, consider instead using [`line_test_crossings_prerotated`](Bezier::line_test_crossings_prerotated) and moving this function's setup code into your own logic before the repeated call.
 	pub fn line_test_crossings(&self, point_on_line: DVec2, direction_vector: DVec2) -> impl Iterator<Item = f64> + '_ {
 		// Rotate the bezier and the line by the angle that the line makes with the x axis
 		let angle = direction_vector.angle_to(DVec2::new(0., 1.));
@@ -452,7 +452,7 @@ impl Bezier {
 
 	/// Returns a list of `t` values that correspond to points on this Bezier segment where they intersect with the given infinite line.
 	/// This version of the function is for better performance when calling it frequently without needing to change the rotation between each call.
-	/// If that isn't important, use [`line_test_crossings`] which wraps this and provides an easier interface by taking a line rotation vector.
+	/// If that isn't important, use [`line_test_crossings`](Bezier::line_test_crossings_prerotated) which wraps this and provides an easier interface by taking a line rotation vector.
 	/// Instead, this version requires a rotation matrix for the line's rotation and a version of this Bezier segment that has had its rotation already applied.
 	pub fn line_test_crossings_prerotated(&self, point_on_line: DVec2, rotation_matrix: DMat2, rotated_bezier: Self) -> impl Iterator<Item = f64> + '_ {
 		// Translate the bezier such that the line becomes aligned on top of the x-axis

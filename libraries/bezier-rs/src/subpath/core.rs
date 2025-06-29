@@ -365,7 +365,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		Self::from_anchors(anchor_positions, true)
 	}
 
-	/// Constructs a star polygon (n-star). See [new_regular_polygon], but with interspersed vertices at an `inner_radius`.
+	/// Constructs a star polygon (n-star). See [new_regular_polygon](Subpath::new_regular_polygon), but with interspersed vertices at an `inner_radius`.
 	pub fn new_star_polygon(center: DVec2, sides: u64, radius: f64, inner_radius: f64) -> Self {
 		let sides = sides.max(2);
 		let angle_increment = 0.5 * std::f64::consts::TAU / (sides as f64);
