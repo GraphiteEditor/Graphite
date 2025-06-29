@@ -1,6 +1,6 @@
 use crate::ast::{BinaryOp, Literal, Node, UnaryOp, Unit};
 use crate::context::EvalContext;
-use crate::lexer::{Span, Token, TokenStream, lexer};
+use crate::lexer::{Lexer, Span, Token};
 use crate::value::{Complex, Number, Value};
 use chumsky::container::Seq;
 use chumsky::input::{BorrowInput, ValueInput};
@@ -12,9 +12,6 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ParseError<'src> {
-	#[error("lexical error(s): {0:#?}")]
-	Lex(Vec<Rich<'src, char>>),
-
 	#[error("syntax error(s): {0:#?}")]
 	Parse(Vec<Rich<'src, Token<'src>, Span>>),
 }
@@ -22,15 +19,10 @@ pub enum ParseError<'src> {
 impl Node {
 	/// Lex + parse the source and either return an AST `Node`
 	/// or a typed `ParseError`.
-	pub fn try_parse_from_str(src: &str) -> Result<Node, ParseError> {
-		// ── stage 1: lexing ──────────────────────────────────────────────
-		let (tokens_opt, lex_errs) = lexer().parse(src).into_output_errors();
-		if !lex_errs.is_empty() {
-			return Err(ParseError::Lex(lex_errs));
-		}
-		let tokens = TokenStream::new(tokens_opt.expect("lexer always returns tokens with recovery"));
+	pub fn try_parse_from_str(src: &str) -> Result<Node, ParseError<'_>> {
+		let tokens = Lexer::new(src);
 
-		match parser().parse(tokens.map((0..src.len()).into(), |(t, s)| (t, s))).into_result() {
+		match parser().parse(tokens).into_result() {
 			Ok(ast) => Ok(ast),
 			Err(errs) => Err(ParseError::Parse(errs)),
 		}
@@ -63,12 +55,12 @@ where
         })
     });
 
-		let call = select! {Token::Call(s) => s}
+		let call = select! {Token::Ident(s) => s}
 			.then(args)
 			.try_map(|(name, args): (&str, Vec<Node>), span| Ok(Node::FnCall { name: name.to_string(), expr: args }));
 
 		let parens = expr.clone().clone().delimited_by(just(Token::LParen), just(Token::RParen));
-		let var = select! { Token::Var(name) => Node::Var(name.to_string()) };
+		let var = select! { Token::Ident(name) => Node::Var(name.to_string()) };
 
 		let atom = choice((constant, if_expr, call, parens, var)).boxed();
 
@@ -84,7 +76,7 @@ where
 			just(Token::EqEq).to(BinaryOp::Eq),
 		));
 
-		let unary = unary_op.repeated().foldr(atom, |op, expr| Node::UnaryOp { op, expr: Box::new(expr) });
+		let unary = unary_op.repeated().foldr(atom, |op, expr| Node::UnaryOp { op, expr: Box::new(expr) }).boxed();
 
 		let cmp = unary.clone().foldl(cmp_op.then(unary).repeated(), |lhs: Node, (op, rhs)| Node::BinOp {
 			lhs: Box::new(lhs),
@@ -107,7 +99,13 @@ where
 			})
 			.boxed();
 
-		product.clone().foldl(add_op.then(product).repeated(), |lhs, (op, rhs)| Node::BinOp {
+		let add = product.clone().foldl(add_op.then(product).repeated(), |lhs, (op, rhs)| Node::BinOp {
+			lhs: Box::new(lhs),
+			op,
+			rhs: Box::new(rhs),
+		});
+
+		add.clone().foldl(add.map(|rhs| (BinaryOp::Mul, rhs)).repeated(), |lhs, (op, rhs)| Node::BinOp {
 			lhs: Box::new(lhs),
 			op,
 			rhs: Box::new(rhs),
@@ -133,7 +131,7 @@ mod tests {
 	test_parser! {
 		test_parse_int_literal: "42" => Node::Lit(Literal::Float(42.0)),
 		test_parse_float_literal: "3.14" => Node::Lit(Literal::Float(#[allow(clippy::approx_constant)] 3.14)),
-		test_parse_ident: "#x" => Node::Var("x".to_string()),
+		test_parse_ident: "x" => Node::Var("x".to_string()),
 		test_parse_unary_neg: "-42" => Node::UnaryOp {
 			expr: Box::new(Node::Lit(Literal::Float(42.0))),
 			op: UnaryOp::Neg,
@@ -153,14 +151,19 @@ mod tests {
 			op: BinaryOp::Pow,
 			rhs: Box::new(Node::Lit(Literal::Float(3.0))),
 		},
-		test_parse_unary_sqrt: "@sqrt(16)" => Node::FnCall {
+		test_parse_unary_sqrt: "sqrt(16)" => Node::FnCall {
 			name: "sqrt".to_string(),
 			expr: vec![Node::Lit(Literal::Float(16.0))],
 		},
-		test_parse_i_call: "@i(16)" => Node::FnCall {
-			 name:"i".to_string(),
+		test_parse_ii_call: "ii(16)" => Node::FnCall {
+			 name:"ii".to_string(),
 			 expr: vec![Node::Lit(Literal::Float(16.0))]
 		},
+		test_parse_i_mul: "i(16)" => Node::BinOp {
+		lhs: Box::new(Node::Lit(Literal::Complex(Complex::new(0.0, 1.0)))),
+		op: BinaryOp::Mul,
+		rhs: Box::new(Node::Lit(Literal::Float(16.0))),
+	},
 		test_parse_complex_expr: "(1 + 2) * 3 - 4 ^ 2" => Node::BinOp {
 			lhs: Box::new(Node::BinOp {
 				lhs: Box::new(Node::BinOp {
@@ -178,7 +181,7 @@ mod tests {
 				rhs: Box::new(Node::Lit(Literal::Float(2.0))),
 			}),
 		},
-		test_conditional_expr: "if (#x+3, 0, 1)" => Node::Conditional{
+		test_conditional_expr: "if (x+3, 0, 1)" => Node::Conditional{
 			condition: Box::new(Node::BinOp{
 				lhs: Box::new(Node::Var("x".to_string())),
 				op: BinaryOp::Add,

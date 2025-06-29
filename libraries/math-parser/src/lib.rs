@@ -14,7 +14,7 @@ use executer::EvalError;
 use parser::ParseError;
 use value::Value;
 
-pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, ParseError> {
+pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, ParseError<'_>> {
 	let expr = ast::Node::try_parse_from_str(expression);
 	let context = EvalContext::default();
 	expr.map(|node| node.eval(&context))
@@ -96,8 +96,8 @@ mod tests {
 		order_of_operations_negative_prefix: "-10 + 5" => -5.,
 		order_of_operations_add_multiply: "5+1*1+5" => 11.,
 		order_of_operations_add_negative_multiply: "5+(-1)*1+5" => 9.,
-		order_of_operations_sqrt: "@sqrt(25) + 11" => 16.,
-		order_of_operations_sqrt_expression: "@sqrt(25+11)" => 6.,
+		order_of_operations_sqrt: "sqrt(25) + 11" => 16.,
+		order_of_operations_sqrt_expression: "sqrt(25+11)" => 6.,
 
 		// Parentheses and nested expressions
 		parentheses_nested_multiply: "(5 + 3) * (2 + 6)" => 64.,
@@ -105,13 +105,13 @@ mod tests {
 		parentheses_divide_add_multiply: "10 / (2 + 3) + (7 * 2)" => 16.,
 
 		// Square root and nested square root
-		sqrt_chain_operations: "@sqrt(16) + @sqrt(9) * @sqrt(4)" => 10.,
-		sqrt_nested: "@sqrt(@sqrt(81))" => 3.,
-		sqrt_divide_expression: "@sqrt((25 + 11) / 9)" => 2.,
+		sqrt_chain_operations: "sqrt(16) + sqrt(9) * sqrt(4)" => 10.,
+		sqrt_nested: "sqrt(sqrt(81))" => 3.,
+		sqrt_divide_expression: "sqrt((25 + 11) / 9)" => 2.,
 
 		// Mixed square root and units
-		sqrt_add_multiply: "@sqrt(49) - 1 + 2 * 3" => 12.,
-		sqrt_addition_multiply: "(@sqrt(36) + 2) * 2" => 16.,
+		sqrt_add_multiply: "sqrt(49) - 1 + 2 * 3" => 12.,
+		sqrt_addition_multiply: "(sqrt(36) + 2) * 2" => 16.,
 
 		// Exponentiation
 		exponent_single: "2^3" => 8.,
@@ -120,10 +120,10 @@ mod tests {
 
 		// Operations with negative values
 		negative_nested_parentheses: "-(5 + 3 * (2 - 1))" => -8.,
-		negative_sqrt_addition: "-(@sqrt(16) + @sqrt(9))" => -7.,
-		multiply_sqrt_subtract: "5 * 2 + @sqrt(16) / 2 - 3" => 9.,
-		add_multiply_subtract_sqrt: "4 + 3 * (2 + 1) - @sqrt(25)" => 8.,
-		add_sqrt_subtract_nested_multiply: "10 + @sqrt(64) - (5 * (2 + 1))" => 3.,
+		negative_sqrt_addition: "-(sqrt(16) + sqrt(9))" => -7.,
+		multiply_sqrt_subtract: "5 * 2 + sqrt(16) / 2 - 3" => 9.,
+		add_multiply_subtract_sqrt: "4 + 3 * (2 + 1) - sqrt(25)" => 8.,
+		add_sqrt_subtract_nested_multiply: "10 + sqrt(64) - (5 * (2 + 1))" => 3.,
 
 		// Mathematical constants
 		constant_pi: "pi" => std::f64::consts::PI,
@@ -139,11 +139,11 @@ mod tests {
 		infinity_subtract_large_number: "inf - 1000" => f64::INFINITY,
 
 		// Trigonometric functions
-		trig_sin_pi: "@sin(pi)" => 0.0,
-		trig_cos_zero: "@cos(0)" => 1.0,
-		trig_tan_pi_div_four: "@tan(pi/4)" => 1.0,
-		trig_sin_tau: "@sin(tau)" => 0.0,
-		trig_cos_tau_div_two: "@cos(tau/2)" => -1.0,
+		trig_sin_pi: "sin(pi)" => 0.0,
+		trig_cos_zero: "cos(0)" => 1.0,
+		trig_tan_pi_div_four: "tan(pi/4)" => 1.0,
+		trig_sin_tau: "sin(tau)" => 0.0,
+		trig_cos_tau_div_two: "cos(tau/2)" => -1.0,
 
 		// Basic if statements
 		if_true_condition: "if(1,5,3)" => 5.,
@@ -162,21 +162,21 @@ mod tests {
 		if_with_e: "if(e < 3, 1, 0)" => 1.,
 
 		// Functions in conditions
-		if_with_sqrt: "if(@sqrt(16) == 4, 1, 0)" => 1.,
-		if_with_sin: "if(@sin(pi) == 0.0, 1, 0)" => 0.,
+		if_with_sqrt: "if(sqrt(16) == 4, 1, 0)" => 1.,
+		if_with_sin: "if(sin(pi) == 0.0, 1, 0)" => 0.,
 
 		// Nested if statements
 		nested_if: "if(1, if(0, 1, 2), 3)" => 2.,
 		nested_if_complex: "if(2-2 == 0, if(1, 5, 6), if(1, 7, 8))" => 5.,
 
 		// Mixed operations in conditions and blocks
-		if_complex_condition: "if(@sqrt(16) + @sin(pi) < 5, 2*pi, 3*e)" => 2. * std::f64::consts::PI,
-		if_complex_blocks: "if(1, 2*@sqrt(16) + @sin(pi/2), 3*@cos(0) + 4)" => 9.,
+		if_complex_condition: "if(sqrt(16) + sin(pi) < 5, 2*pi, 3*e)" => 2. * std::f64::consts::PI,
+		if_complex_blocks: "if(1, 2*sqrt(16) + sin(pi/2), 3*cos(0) + 4)" => 9.,
 
 		// Edge cases
 		if_zero: "if(0.0, 1, 2)" => 2.,
 
 		// Complex nested expressions
-		if_nested_expr: "if((@sqrt(16) + 2) * (@sin(pi) + 1), 3 + 4 * 2, 5 - 2 / 1)" => 11.,
+		if_nested_expr: "if((sqrt(16) + 2) * (sin(pi) + 1), 3 + 4 * 2, 5 - 2 / 1)" => 11.,
 	}
 }
