@@ -50,6 +50,7 @@ pub struct OverlaysVisibilitySettings {
 	pub hover_outline: bool,
 	pub selection_outline: bool,
 	pub pivot: bool,
+	#[serde(default)]
 	pub origin: bool,
 	pub path: bool,
 	pub anchors: bool,

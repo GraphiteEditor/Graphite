@@ -2282,7 +2282,7 @@ impl DocumentMessageHandler {
 									})
 									.for_label(checkbox_id.clone())
 									.widget_holder(),
-								TextLabel::new("Transform Pivot".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Transform Origin".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
 							]
 						},
 					},
