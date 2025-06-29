@@ -23,7 +23,7 @@ if (isInstallNeeded()) {
 		console.log("Installing npm packages...");
 
 		// Check if packages are up to date, doing so quickly by using `npm ci`, preferring local cached packages, and skipping the package audit and other checks
-		execSync("npm ci --prefer-offline --no-audit --no-fund", { stdio: "inherit" });
+		execSync("npm ci --prefer-offline --no-audit --no-fund");
 
 		// Touch the install timestamp file
 		writeFileSync(INSTALL_TIMESTAMP_FILE, "");
