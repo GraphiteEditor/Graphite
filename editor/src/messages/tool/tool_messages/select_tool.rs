@@ -1234,6 +1234,7 @@ impl Fsm for SelectToolFsmState {
 				let mouse_position = input.mouse.position;
 				let snapped_mouse_position = mouse_position;
 				tool_data.pivot.set_viewport_position(snapped_mouse_position);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 
 				// Auto-panning
 				let messages = [
@@ -1434,6 +1435,8 @@ impl Fsm for SelectToolFsmState {
 			) => {
 				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
+				let dot = tool_data.get_as_dot();
+				responses.add(TransformLayerMessage::SetDot { dot });
 				responses.add(response);
 				tool_data.axis_align = false;
 				tool_data.snap_manager.cleanup(responses);
