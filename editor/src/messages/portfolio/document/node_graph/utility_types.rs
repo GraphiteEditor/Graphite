@@ -15,7 +15,7 @@ pub enum FrontendGraphDataType {
 }
 
 impl FrontendGraphDataType {
-	fn with_type(input: &Type) -> Self {
+	pub fn from_type(input: &Type) -> Self {
 		match TaggedValue::from_type_or_none(input) {
 			TaggedValue::Image(_) | TaggedValue::RasterData(_) => Self::Raster,
 			TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::VectorData,
@@ -38,7 +38,7 @@ impl FrontendGraphDataType {
 	pub fn displayed_type(input: &Type, type_source: &TypeSource) -> Self {
 		match type_source {
 			TypeSource::Error(_) | TypeSource::RandomProtonodeImplementation => Self::General,
-			_ => Self::with_type(input),
+			_ => Self::from_type(input),
 		}
 	}
 }
@@ -96,12 +96,12 @@ pub struct FrontendNode {
 	pub ui_only: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeWire {
-	#[serde(rename = "wireStart")]
-	pub wire_start: OutputConnector,
-	#[serde(rename = "wireEnd")]
-	pub wire_end: InputConnector,
+	pub wire_start_rect: (f64, f64, f64, f64),
+	pub wire_end_rect: (f64, f64, f64, f64),
+	pub vertical_start: bool,
+	pub vertical_end: bool,
 	pub dashed: bool,
 }
 
@@ -151,16 +151,6 @@ pub struct Transform {
 	pub scale: f64,
 	pub x: f64,
 	pub y: f64,
-}
-
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct WirePath {
-	#[serde(rename = "pathString")]
-	pub path_string: String,
-	#[serde(rename = "dataType")]
-	pub data_type: FrontendGraphDataType,
-	pub thick: bool,
-	pub dashed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]

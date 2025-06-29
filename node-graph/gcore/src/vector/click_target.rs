@@ -67,6 +67,16 @@ impl ClickTarget {
 		self.bounding_box
 	}
 
+	pub fn to_dom_rect(&self) -> Option<(f64, f64, f64, f64)> {
+		self.bounding_box.map(|bbox| {
+			let a = bbox[0].x;
+			let b = bbox[0].y;
+			let c = bbox[1].x;
+			let d = bbox[1].y;
+			(a, b, c - a, d - b)
+		})
+	}
+
 	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.bounding_box.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)])
 	}

@@ -1,5 +1,8 @@
+use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
+
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use super::network_interface::NodeNetworkInterface;
+use glam::DVec2;
 use graph_craft::document::{NodeId, NodeNetwork};
 use serde::ser::SerializeStruct;
 
@@ -154,3 +157,92 @@ impl SelectedNodes {
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
 pub struct CollapsedLayers(pub Vec<LayerNodeIdentifier>);
+
+pub fn build_wire_path(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool) -> String {
+	// let vertical_wire_overlap_on_shaped_cap = 1;
+	// let line_width = 2;
+
+	// let input_radius = 8.;
+	// let layer_radius: f64 = 12.;
+
+	// let in_x = if vertical_in { input_position.x } else { input_position.x - input_radius };
+	// let in_y = if vertical_in { input_position.y + layer_radius } else { input_position.y };
+	// let out_x = if vertical_out { output_position.x } else { output_position.x + input_radius };
+	// let out_y = if vertical_out { output_position.y + layer_radius } else { output_position.y };
+
+	// format!("M{:?},{:?} L{:?},{:?}", in_x, in_y, out_x, out_y)
+	let horizontal_gap = (output_position.x - input_position.x).abs();
+	let vertical_gap = (output_position.y - input_position.y).abs();
+	// TODO: Finish this commented out code replacement for the code below it based on this diagram: <https://files.keavon.com/-/SuperbWideFoxterrier/capture.png>
+	// // Straight: stacking lines which are always straight, or a straight horizontal wire between two aligned nodes
+	// if ((verticalOut && vertical_in) || (!verticalOut && !vertical_in && vertical_gap === 0)) {
+	// 	return [
+	// 		{ x: output_position.x, y: output_position.y },
+	// 		{ x: input_position.x, y: input_position.y },
+	// 	];
+	// }
+
+	// // L-shape bend
+	// if (verticalOut !== vertical_in) {
+	// }
+
+	let curve_length = 24.;
+	let curve_falloff_rate = curve_length * std::f64::consts::PI * 2.;
+
+	let horizontal_curve_amount = -(2_f64.powf((-10. * horizontal_gap) / curve_falloff_rate)) + 1.;
+	let vertical_curve_amount = -(2_f64.powf((-10. * vertical_gap) / curve_falloff_rate)) + 1.;
+	let horizontal_curve = horizontal_curve_amount * curve_length;
+	let vertical_curve = vertical_curve_amount * curve_length;
+
+	let locations = vec![
+		output_position,
+		DVec2::new(
+			if vertical_out { output_position.x } else { output_position.x + horizontal_curve },
+			if vertical_out { output_position.y - vertical_curve } else { output_position.y },
+		),
+		DVec2::new(
+			if vertical_in { input_position.x } else { input_position.x - horizontal_curve },
+			if vertical_in { input_position.y + vertical_curve } else { input_position.y },
+		),
+		DVec2::new(input_position.x, input_position.y),
+	];
+
+	let smoothing = 0.5;
+	let delta01 = DVec2::new((locations[1].x - locations[0].x) * smoothing, (locations[1].y - locations[0].y) * smoothing);
+	let delta23 = DVec2::new((locations[3].x - locations[2].x) * smoothing, (locations[3].y - locations[2].y) * smoothing);
+	format!(
+		"M{},{} L{},{} C{},{} {},{} {},{} L{},{}",
+		locations[0].x,
+		locations[0].y,
+		locations[1].x,
+		locations[1].y,
+		locations[1].x + delta01.x,
+		locations[1].y + delta01.y,
+		locations[2].x - delta23.x,
+		locations[2].y - delta23.y,
+		locations[2].x,
+		locations[2].y,
+		locations[3].x,
+		locations[3].y
+	)
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct WirePath {
+	#[serde(rename = "pathString")]
+	pub path_string: String,
+	#[serde(rename = "dataType")]
+	pub data_type: FrontendGraphDataType,
+	pub thick: bool,
+	pub dashed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct WireUpdate {
+	pub id: NodeId,
+	#[serde(rename = "inputIndex")]
+	pub input_index: usize,
+	#[serde(rename = "wirePathUpdate")]
+	pub wire_path_update: Option<WirePath>,
+	// readonly wireSNIUpdate!: number | undefined;
+}

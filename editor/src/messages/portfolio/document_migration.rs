@@ -3,14 +3,14 @@
 
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
 use bezier_rs::Subpath;
 use glam::IVec2;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::text::TypesettingConfig;
 use graphene_std::uuid::NodeId;
-use graphene_std::vector::style::{Fill, FillType, Gradient, PaintOrder, StrokeAlign};
+use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use graphene_std::vector::{VectorData, VectorDataTable};
 use std::collections::HashMap;
 
@@ -139,90 +139,37 @@ pub fn document_migration_reset_node_definition(document_serialized_content: &st
 }
 
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
-	let mut network = document.network_interface.document_network().clone();
-	network.generate_node_paths(&[]);
+	let network = document.network_interface.document_network().clone();
 
 	// Apply string replacements to each node
-	let node_ids: Vec<_> = network.recursive_nodes().map(|(&id, node)| (id, node.original_location.path.clone().unwrap())).collect();
-	for (node_id, path) in &node_ids {
-		let network_path: Vec<_> = path.iter().copied().take(path.len() - 1).collect();
-
-		if let Some(DocumentNodeImplementation::ProtoNode(protonode_id)) = document
-			.network_interface
-			.nested_network(&network_path)
-			.unwrap()
-			.nodes
-			.get(node_id)
-			.map(|node| node.implementation.clone())
-		{
+	for (node_id, node, network_path) in network.recursive_nodes() {
+		if let DocumentNodeImplementation::ProtoNode(protonode_id) = &node.implementation {
 			for (old, new) in REPLACEMENTS {
 				let node_path_without_type_args = protonode_id.name.split('<').next();
+				let mut default_template = NodeTemplate::default();
+				default_template.document_node.implementation = DocumentNodeImplementation::ProtoNode(new.to_string().into());
 				if node_path_without_type_args == Some(old) {
-					document
-						.network_interface
-						.replace_implementation(node_id, &network_path, DocumentNodeImplementation::ProtoNode(new.to_string().into()));
+					document.network_interface.replace_implementation(node_id, &network_path, &mut default_template);
 					document.network_interface.set_manual_compostion(node_id, &network_path, Some(graph_craft::Type::Generic("T".into())));
 				}
 			}
 		}
 	}
 
-	if reset_node_definitions_on_open {
-		// This can be used, if uncommented, to upgrade demo artwork with outdated document node internals from their definitions. Delete when it's no longer needed.
-		// Used for upgrading old internal networks for demo artwork nodes. Will reset all node internals for any opened file
-		for node_id in &document
-			.network_interface
-			.document_network_metadata()
-			.persistent_metadata
-			.node_metadata
-			.keys()
-			.cloned()
-			.collect::<Vec<NodeId>>()
-		{
-			if let Some(reference) = document
-				.network_interface
-				.document_network_metadata()
-				.persistent_metadata
-				.node_metadata
-				.get(node_id)
-				.and_then(|node| node.persistent_metadata.reference.as_ref())
-			{
+	// Apply upgrades to each unmodified node.
+	let nodes = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.map(|(node_id, node, path)| (node_id.clone(), node.clone(), path))
+		.collect::<Vec<(NodeId, graph_craft::document::DocumentNode, Vec<NodeId>)>>();
+	for (node_id, node, network_path) in &nodes {
+		if reset_node_definitions_on_open {
+			if let Some(Some(reference)) = document.network_interface.reference(node_id, network_path) {
 				let Some(node_definition) = resolve_document_node_type(reference) else { continue };
-				let default_definition_node = node_definition.default_node_template();
-				document.network_interface.replace_implementation(node_id, &[], default_definition_node.document_node.implementation);
-				document
-					.network_interface
-					.replace_implementation_metadata(node_id, &[], default_definition_node.persistent_node_metadata);
-				document.network_interface.set_manual_compostion(node_id, &[], default_definition_node.document_node.manual_composition);
+				document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
 			}
 		}
-	}
-
-	if document
-		.network_interface
-		.document_network_metadata()
-		.persistent_metadata
-		.node_metadata
-		.iter()
-		.any(|(node_id, node)| node.persistent_metadata.reference.as_ref().is_some_and(|reference| reference == "Output") && *node_id == NodeId(0))
-	{
-		document.network_interface.delete_nodes(vec![NodeId(0)], true, &[]);
-	}
-
-	let mut network = document.network_interface.document_network().clone();
-	network.generate_node_paths(&[]);
-
-	let node_ids: Vec<_> = network.recursive_nodes().map(|(&id, node)| (id, node.original_location.path.clone().unwrap())).collect();
-
-	// Apply upgrades to each node
-	for (node_id, path) in &node_ids {
-		let network_path: Vec<_> = path.iter().copied().take(path.len() - 1).collect();
-		let network_path = &network_path;
-
-		let Some(node) = document.network_interface.nested_network(network_path).unwrap().nodes.get(node_id).cloned() else {
-			log::error!("could not get node in deserialize_document");
-			continue;
-		};
 
 		// Upgrade old nodes to use `Context` instead of `()` or `Footprint` for manual composition
 		if node.manual_composition == Some(graph_craft::concrete!(())) || node.manual_composition == Some(graph_craft::concrete!(graphene_std::transform::Footprint)) {
@@ -231,87 +178,19 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				.set_manual_compostion(node_id, network_path, graph_craft::concrete!(graphene_std::Context).into());
 		}
 
-		let Some(node_metadata) = document.network_interface.network_metadata(network_path).unwrap().persistent_metadata.node_metadata.get(node_id) else {
-			log::error!("could not get node metadata for node {node_id} in deserialize_document");
+		let Some(Some(reference)) = document.network_interface.reference(node_id, network_path).cloned() else {
+			// Only nodes that have not been modified and still refer to a definition can be updated
 			continue;
 		};
-
-		let Some(ref reference) = node_metadata.persistent_metadata.reference.clone() else {
-			// TODO: Investigate if this should be an expected case, because currently it runs hundreds of times normally.
-			// TODO: Either delete the commented out error below if this is normal, or fix the underlying issue if this is not expected.
-			// log::error!("could not get reference in deserialize_document");
-			continue;
-		};
+		let reference = &reference;
 
 		let inputs_count = node.inputs.len();
 
-		// Upgrade Fill nodes to the format change in #1778
-		if reference == "Fill" && inputs_count == 8 {
-			let node_definition = resolve_document_node_type(reference).unwrap();
-			let document_node = node_definition.default_node_template().document_node;
-			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
-
-			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
-
-			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-
-			let Some(fill_type) = old_inputs[1].as_value().cloned() else { continue };
-			let TaggedValue::FillType(fill_type) = fill_type else { continue };
-			let Some(solid_color) = old_inputs[2].as_value().cloned() else { continue };
-			let TaggedValue::OptionalColor(solid_color) = solid_color else { continue };
-			let Some(gradient_type) = old_inputs[3].as_value().cloned() else { continue };
-			let TaggedValue::GradientType(gradient_type) = gradient_type else { continue };
-			let Some(start) = old_inputs[4].as_value().cloned() else { continue };
-			let TaggedValue::DVec2(start) = start else { continue };
-			let Some(end) = old_inputs[5].as_value().cloned() else { continue };
-			let TaggedValue::DVec2(end) = end else { continue };
-			let Some(transform) = old_inputs[6].as_value().cloned() else { continue };
-			let TaggedValue::DAffine2(transform) = transform else { continue };
-			let Some(positions) = old_inputs[7].as_value().cloned() else { continue };
-			let TaggedValue::GradientStops(positions) = positions else { continue };
-
-			let fill = match (fill_type, solid_color) {
-				(FillType::Solid, None) => Fill::None,
-				(FillType::Solid, Some(color)) => Fill::Solid(color),
-				(FillType::Gradient, _) => Fill::Gradient(Gradient {
-					stops: positions,
-					gradient_type,
-					start,
-					end,
-					transform,
-				}),
-			};
-			document
-				.network_interface
-				.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Fill(fill.clone()), false), network_path);
-			match fill {
-				Fill::None => {
-					document
-						.network_interface
-						.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(None), false), network_path);
-				}
-				Fill::Solid(color) => {
-					document
-						.network_interface
-						.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(Some(color)), false), network_path);
-				}
-				Fill::Gradient(gradient) => {
-					document
-						.network_interface
-						.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(gradient), false), network_path);
-				}
-			}
-		}
-
 		// Upgrade Stroke node to reorder parameters and add "Align" and "Paint Order" (#2644)
 		if reference == "Stroke" && inputs_count == 8 {
-			let node_definition = resolve_document_node_type(reference).unwrap();
-			let document_node = node_definition.default_node_template().document_node;
-			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
-			document.network_interface.insert_input_properties_row(node_id, 8, network_path);
-			document.network_interface.insert_input_properties_row(node_id, 9, network_path);
+			let mut node_template = resolve_document_node_type(reference).unwrap().default_node_template();
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template).unwrap();
 
-			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
 			let align_input = NodeInput::value(TaggedValue::StrokeAlign(StrokeAlign::Center), false);
 			let paint_order_input = NodeInput::value(TaggedValue::PaintOrder(PaintOrder::StrokeAbove), false);
 
@@ -403,11 +282,9 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 		// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
 		if reference == "Text" && inputs_count != 8 {
-			let node_definition = resolve_document_node_type(reference).unwrap();
-			let document_node = node_definition.default_node_template().document_node;
-			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
-
-			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+			let mut template = resolve_document_node_type(reference).unwrap().default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut template);
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template).unwrap();
 
 			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
@@ -445,11 +322,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 		// Upgrade Sine, Cosine, and Tangent nodes to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
 		if (reference == "Sine" || reference == "Cosine" || reference == "Tangent") && inputs_count == 1 {
-			let node_definition = resolve_document_node_type(reference).unwrap();
-			let document_node = node_definition.default_node_template().document_node;
-			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+			let mut node_template = resolve_document_node_type(reference).unwrap().default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
-			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template).unwrap();
 
 			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 			document
@@ -459,11 +335,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 		// Upgrade the Modulo node to include a boolean input for whether the output should be always positive, which was previously not an option
 		if reference == "Modulo" && inputs_count == 2 {
-			let node_definition = resolve_document_node_type(reference).unwrap();
-			let document_node = node_definition.default_node_template().document_node;
-			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+			let mut node_template = resolve_document_node_type(reference).unwrap().default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
-			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template).unwrap();
 
 			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
@@ -474,11 +349,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 		// Upgrade the Mirror node to add the `keep_original` boolean input
 		if reference == "Mirror" && inputs_count == 3 {
-			let node_definition = resolve_document_node_type(reference).unwrap();
-			let document_node = node_definition.default_node_template().document_node;
-			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+			let mut node_template = resolve_document_node_type(reference).unwrap().default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
-			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template).unwrap();
 
 			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
@@ -490,15 +364,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 		// Upgrade the Mirror node to add the `reference_point` input and change `offset` from `DVec2` to `f64`
 		if reference == "Mirror" && inputs_count == 4 {
-			let node_definition = resolve_document_node_type(reference).unwrap();
-			let new_node_template = node_definition.default_node_template();
-			let document_node = new_node_template.document_node;
-			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
-			document
-				.network_interface
-				.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+			let mut node_template = resolve_document_node_type(reference).unwrap().default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
-			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template).unwrap();
 
 			let Some(&TaggedValue::DVec2(old_offset)) = old_inputs[1].as_value() else { return };
 			let old_offset = if old_offset.x.abs() > old_offset.y.abs() { old_offset.x } else { old_offset.y };
@@ -525,9 +394,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 
 		if reference == "Image" && inputs_count == 1 {
-			let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
-			let new_image_node = node_definition.default_node_template();
-			document.network_interface.replace_implementation(node_id, network_path, new_image_node.document_node.implementation);
+			let mut node_template = resolve_document_node_type(reference).unwrap().default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 			// Insert a new empty input for the image
 			document.network_interface.add_import(TaggedValue::None, false, 0, "Empty", "", &[*node_id]);
@@ -535,13 +403,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 
 		if reference == "Noise Pattern" && inputs_count == 15 {
-			let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
-			let new_noise_pattern_node = node_definition.default_node_template();
-			document
-				.network_interface
-				.replace_implementation(node_id, network_path, new_noise_pattern_node.document_node.implementation);
+			let mut node_template = resolve_document_node_type(reference).unwrap().default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
-			let old_inputs = document.network_interface.replace_inputs(node_id, new_noise_pattern_node.document_node.inputs.clone(), network_path);
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template).unwrap();
 
 			document
 				.network_interface
@@ -552,30 +417,20 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 
 		if reference == "Instance on Points" && inputs_count == 2 {
-			let node_definition = resolve_document_node_type(reference).unwrap();
-			let new_node_template = node_definition.default_node_template();
-			let document_node = new_node_template.document_node;
-			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
-			document
-				.network_interface
-				.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+			let mut node_template = resolve_document_node_type(reference).unwrap().default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
-			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template).unwrap();
 
 			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
 		}
 
 		if reference == "Morph" && inputs_count == 4 {
-			let node_definition = resolve_document_node_type(reference).unwrap();
-			let new_node_template = node_definition.default_node_template();
-			let document_node = new_node_template.document_node;
-			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
-			document
-				.network_interface
-				.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+			let mut node_template = resolve_document_node_type(reference).unwrap().default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
-			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template).unwrap();
 
 			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
@@ -584,15 +439,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 
 		if reference == "Brush" && inputs_count == 4 {
-			let node_definition = resolve_document_node_type(reference).unwrap();
-			let new_node_template = node_definition.default_node_template();
-			let document_node = new_node_template.document_node;
-			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
-			document
-				.network_interface
-				.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+			let mut node_template = resolve_document_node_type(reference).unwrap().default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
-			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template).unwrap();
 
 			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 			// We have removed the second input ("bounds"), so we don't add index 1 and we shift the rest of the inputs down by one
@@ -601,15 +451,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 
 		if reference == "Flatten Vector Elements" {
-			let node_definition = resolve_document_node_type("Flatten Path").unwrap();
-			let new_node_template = node_definition.default_node_template();
-			let document_node = new_node_template.document_node;
-			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
-			document
-				.network_interface
-				.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+			let mut node_template = resolve_document_node_type(reference).unwrap().default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
-			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template).unwrap();
 
 			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 
@@ -617,15 +462,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 
 		if reference == "Remove Handles" {
-			let node_definition = resolve_document_node_type("Auto-Tangents").unwrap();
-			let new_node_template = node_definition.default_node_template();
-			let document_node = new_node_template.document_node;
-			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
-			document
-				.network_interface
-				.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+			let mut node_template = resolve_document_node_type(reference).unwrap().default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
-			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template).unwrap();
 
 			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 			document
@@ -639,15 +479,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 
 		if reference == "Generate Handles" {
-			let node_definition = resolve_document_node_type("Auto-Tangents").unwrap();
-			let new_node_template = node_definition.default_node_template();
-			let document_node = new_node_template.document_node;
-			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
-			document
-				.network_interface
-				.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+			let mut node_template = resolve_document_node_type("Auto-Tangents").unwrap().default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
-			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template).unwrap();
 
 			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
@@ -659,15 +494,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 
 		if reference == "Merge by Distance" && inputs_count == 2 {
-			let node_definition = resolve_document_node_type("Merge by Distance").unwrap();
-			let new_node_template = node_definition.default_node_template();
-			let document_node = new_node_template.document_node;
-			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
-			document
-				.network_interface
-				.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+			let mut node_template = resolve_document_node_type(reference).unwrap().default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
-			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template).unwrap();
 
 			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
@@ -679,15 +509,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 
 		if reference == "Spatial Merge by Distance" {
-			let node_definition = resolve_document_node_type("Merge by Distance").unwrap();
-			let new_node_template = node_definition.default_node_template();
-			let document_node = new_node_template.document_node;
-			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
-			document
-				.network_interface
-				.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+			let mut node_template = resolve_document_node_type("Merge by Distance").unwrap().default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
-			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template).unwrap();
 
 			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
@@ -701,15 +526,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 
 		if reference == "Sample Points" && inputs_count == 5 {
-			let node_definition = resolve_document_node_type("Sample Polyline").unwrap();
-			let new_node_template = node_definition.default_node_template();
-			let document_node = new_node_template.document_node;
-			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
-			document
-				.network_interface
-				.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+			let mut node_template = resolve_document_node_type("Sample Polyline").unwrap().default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
-			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template).unwrap();
 			let new_spacing_value = NodeInput::value(TaggedValue::PointSpacingType(graphene_std::vector::misc::PointSpacingType::Separation), false);
 
 			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);

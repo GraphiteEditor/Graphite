@@ -12,6 +12,8 @@ export class JsMessage {
 }
 
 const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
+const TupleToDOMRect = Transform(({ value }: { value: [number, number, number, number] }) => new DOMRect(value[0], value[1], value[2], value[3]));
+
 const ImportsToVec2Array = Transform(({ obj: { imports } }: { obj: { imports: [FrontendGraphOutput, number, number][] } }) =>
 	imports.map(([outputMetadata, x, y]) => ({ outputMetadata, position: { x, y } })),
 );
@@ -96,15 +98,22 @@ export class UpdateLayerWidths extends JsMessage {
 	readonly hasLeftInputWire!: Map<bigint, boolean>;
 }
 
-export class UpdateNodeGraph extends JsMessage {
+export class UpdateNodeGraphNodes extends JsMessage {
 	@Type(() => FrontendNode)
 	readonly nodes!: FrontendNode[];
+}
 
-	@Type(() => FrontendNodeWire)
-	readonly wires!: FrontendNodeWire[];
+export class UpdateVisibleNodes extends JsMessage {
+	readonly nodes!: bigint[];
+}
+
+export class UpdateNodeGraphWires extends JsMessage {
+	readonly wires!: WireUpdate[];
 
 	readonly wiresDirectNotGridAligned!: boolean;
 }
+
+export class ClearNodeGraphWires extends JsMessage {}
 
 export class UpdateNodeGraphTransform extends JsMessage {
 	readonly transform!: NodeGraphTransform;
@@ -326,11 +335,14 @@ const CreateInputConnector = Transform(({ obj }) => {
 });
 
 export class FrontendNodeWire {
-	@CreateOutputConnector
-	readonly wireStart!: Node;
+	@TupleToDOMRect
+	readonly wireStart!: DOMRect;
+	@TupleToDOMRect
+	readonly wireEnd!: DOMRect;
 
-	@CreateInputConnector
-	readonly wireEnd!: Node;
+	readonly verticalStart!: boolean;
+
+	readonly verticalEnd!: boolean;
 
 	readonly dashed!: boolean;
 }
@@ -354,6 +366,13 @@ export class WirePath {
 	readonly dataType!: FrontendGraphDataType;
 	readonly thick!: boolean;
 	readonly dashed!: boolean;
+}
+
+export class WireUpdate {
+	readonly id!: bigint;
+	readonly inputIndex!: number;
+	readonly wirePathUpdate!: WirePath | undefined;
+	// readonly wireSNIUpdate!: number | undefined;
 }
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
@@ -1700,10 +1719,13 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateLayerWidths,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
-	UpdateNodeGraph,
+	UpdateNodeGraphNodes,
+	UpdateVisibleNodes,
+	UpdateNodeGraphWires,
+	ClearNodeGraphWires,
+	UpdateNodeGraphTransform,
 	UpdateNodeGraphControlBarLayout,
 	UpdateNodeGraphSelection,
-	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelSectionsLayout,

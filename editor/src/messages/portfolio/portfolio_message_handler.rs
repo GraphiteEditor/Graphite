@@ -426,6 +426,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				// Upgrade the document's nodes to be compatible with the latest version
 				document_migration_upgrades(&mut document, reset_node_definitions_on_open);
 
+				// Ensure each node has the metadata for its inputs
+				for (node_id, _node, path) in document.network_interface.document_network().clone().recursive_nodes() {
+					document.network_interface.validate_input_metadata(node_id, &path);
+				}
+
 				// Set the save state of the document based on what's given to us by the caller to this message
 				document.set_auto_save_state(document_is_auto_saved);
 				document.set_save_state(document_is_saved);
@@ -709,7 +714,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				}
 
 				let Some(document) = self.documents.get_mut(&document_id) else {
-					warn!("Tried to read non existant document");
+					warn!("Tried to read non existent document");
 					return;
 				};
 				if !document.is_loaded {

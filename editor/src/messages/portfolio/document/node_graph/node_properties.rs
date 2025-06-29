@@ -135,8 +135,12 @@ pub(crate) fn property_from_type(
 		return Err(vec![]);
 	};
 
-	let name = context.network_interface.input_name(node_id, index, context.selection_network_path).unwrap_or_default();
-	let description = context.network_interface.input_description(node_id, index, context.selection_network_path).unwrap_or_default();
+	let Some(metadata) = context.network_interface.persistent_input_metadata(&node_id, index, context.selection_network_path) else {
+		log::error!("Could not get persistent metadata for input. It should always exist in the persistent metadata");
+		return Err(vec![]);
+	};
+	let name = &metadata.input_name;
+	let description = &metadata.input_description;
 
 	let (mut number_min, mut number_max, range) = number_options;
 	let mut number_input = NumberInput::default();
@@ -941,12 +945,11 @@ pub fn get_document_node<'a>(node_id: NodeId, context: &'a NodePropertiesContext
 
 pub fn query_node_and_input_info<'a>(node_id: NodeId, input_index: usize, context: &'a NodePropertiesContext<'a>) -> Result<(&'a DocumentNode, &'a str, &'a str), String> {
 	let document_node = get_document_node(node_id, context)?;
-	let input_name = context.network_interface.input_name(node_id, input_index, context.selection_network_path).unwrap_or_else(|| {
-		log::warn!("input name not found in query_node_and_input_info");
-		""
-	});
-	let input_description = context.network_interface.input_description(node_id, input_index, context.selection_network_path).unwrap_or_default();
-	Ok((document_node, input_name, input_description))
+	let Some(input_metadata) = context.network_interface.persistent_input_metadata(&node_id, input_index, context.selection_network_path) else {
+		log::warn!("input metadata not found in query_node_and_input_info");
+		return Err("input metadata not found in query_node_and_input_info".to_string());
+	};
+	Ok((document_node, &input_metadata.input_name, &input_metadata.input_description))
 }
 
 pub fn query_noise_pattern_state(node_id: NodeId, context: &NodePropertiesContext) -> Result<(bool, bool, bool, bool, bool, bool), String> {
@@ -1923,15 +1926,17 @@ impl<'a> ParameterWidgetsInfo<'a> {
 	}
 
 	pub fn from_index(document_node: &'a DocumentNode, node_id: NodeId, index: usize, blank_assist: bool, context: &'a NodePropertiesContext) -> ParameterWidgetsInfo<'a> {
-		let name = context.network_interface.input_name(node_id, index, context.selection_network_path).unwrap_or_default();
-		let description = context.network_interface.input_description(node_id, index, context.selection_network_path).unwrap_or_default();
+		let metadata = context
+			.network_interface
+			.persistent_input_metadata(&node_id, index, context.selection_network_path)
+			.expect("Input metadata must exist for each node. Ensure this when opening the document");
 
 		Self {
 			document_node,
 			node_id,
 			index,
-			name,
-			description,
+			name: &metadata.input_name,
+			description: &metadata.input_description,
 			blank_assist,
 		}
 	}

@@ -5,6 +5,7 @@ use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_G
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DocumentNodeDefinition, resolve_document_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
+use crate::messages::portfolio::document::utility_types::nodes::{WirePath, WireUpdate};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
 use bezier_rs::Subpath;
@@ -784,7 +785,7 @@ impl NodeNetworkInterface {
 					// Empty string means to use type, or "Import + index" if type can't be determined
 					let properties_row = self
 						.encapsulating_node_metadata(network_path)
-						.and_then(|encapsulating_metadata| encapsulating_metadata.persistent_metadata.input_properties.get(*import_index).cloned())
+						.and_then(|encapsulating_metadata| encapsulating_metadata.persistent_metadata.input_metadata.get(*import_index).cloned())
 						.unwrap_or_default();
 
 					let mut import_metadata = None;
@@ -796,7 +797,7 @@ impl NodeNetworkInterface {
 						let (input_type, type_source) = self.input_type(&InputConnector::node(encapsulating_node_id, *import_index), &encapsulating_path);
 						let data_type = FrontendGraphDataType::displayed_type(&input_type, &type_source);
 
-						let input_name = properties_row.input_name.as_str();
+						let input_name = &properties_row.persistent_metadata.input_name;
 						let import_name = if input_name.is_empty() {
 							input_type.clone().nested_type().to_string()
 						} else {
@@ -1110,7 +1111,7 @@ impl NodeNetworkInterface {
 
 	pub fn reference(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&Option<String>> {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
-			log::error!("Could not get reference");
+			log::error!("Could not get reference for node: {:?}", node_id);
 			return None;
 		};
 		Some(&node_metadata.persistent_metadata.reference)
@@ -1124,56 +1125,24 @@ impl NodeNetworkInterface {
 		Some(&node.implementation)
 	}
 
-	pub fn input_name<'a>(&'a self, node_id: NodeId, index: usize, network_path: &[NodeId]) -> Option<&'a str> {
-		let Some(input_row) = self.input_properties_row(&node_id, index, network_path) else {
-			log::error!("Could not get input_name for node {node_id} index {index}");
-			return None;
-		};
-		let name = input_row.input_name.as_str();
-		if !name.is_empty() {
-			Some(name)
-		} else {
-			let node_definition = resolve_document_node_type(self.reference(&node_id, network_path)?.as_ref()?)?;
-			let rows = &node_definition.node_template.persistent_node_metadata.input_properties;
-
-			rows.get(index).map(|row| row.input_name.as_str())
-		}
+	pub fn input_data(&self, node_id: &NodeId, index: usize, key: &str, network_path: &[NodeId]) -> Option<&Value> {
+		let metadata = self
+			.node_metadata(node_id, network_path)
+			.and_then(|node_metadata| node_metadata.persistent_metadata.input_metadata.get(index))?;
+		metadata.persistent_metadata.input_data.get(key)
+	}
+	pub fn persistent_input_metadata(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&InputPersistentMetadata> {
+		let metadata = self
+			.node_metadata(node_id, network_path)
+			.and_then(|node_metadata| node_metadata.persistent_metadata.input_metadata.get(index))?;
+		Some(&metadata.persistent_metadata)
 	}
 
-	pub fn input_description<'a>(&'a self, node_id: NodeId, index: usize, network_path: &[NodeId]) -> Option<&'a str> {
-		let Some(input_row) = self.input_properties_row(&node_id, index, network_path) else {
-			log::error!("Could not get input_row in input_description");
-			return None;
-		};
-		let description = input_row.input_description.as_str();
-		if !description.is_empty() && description != "TODO" {
-			Some(description)
-		} else {
-			let node_definition = resolve_document_node_type(self.reference(&node_id, network_path)?.as_ref()?)?;
-			let rows = &node_definition.node_template.persistent_node_metadata.input_properties;
-
-			rows.get(index).map(|row| row.input_description.as_str())
-		}
-	}
-
-	pub fn input_properties_row(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&PropertiesRow> {
-		self.node_metadata(node_id, network_path)
-			.and_then(|node_metadata| node_metadata.persistent_metadata.input_properties.get(index))
-	}
-
-	pub fn insert_input_properties_row(&mut self, node_id: &NodeId, index: usize, network_path: &[NodeId]) {
-		let row = ("", "TODO").into();
-		let _ = self
-			.node_metadata_mut(node_id, network_path)
-			.map(|node_metadata| node_metadata.persistent_metadata.input_properties.insert(index - 1, row));
-	}
-
-	pub fn input_metadata(&self, node_id: &NodeId, index: usize, field: &str, network_path: &[NodeId]) -> Option<&Value> {
-		let Some(input_row) = self.input_properties_row(node_id, index, network_path) else {
-			log::error!("Could not get input_row in get_input_metadata");
-			return None;
-		};
-		input_row.input_data.get(field)
+	fn transient_input_metadata(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&InputTransientMetadata> {
+		let metadata = self
+			.node_metadata(node_id, network_path)
+			.and_then(|node_metadata| node_metadata.persistent_metadata.input_metadata.get(index))?;
+		Some(&metadata.transient_metadata)
 	}
 
 	/// Returns the display name of the node. If the display name is empty, it will return "Untitled Node" or "Untitled Layer" depending on the node type.
@@ -1967,14 +1936,7 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn import_export_ports(&mut self, network_path: &[NodeId]) -> Option<&Ports> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in export_ports");
-			return None;
-		};
-		if !network_metadata.transient_metadata.import_export_ports.is_loaded() {
-			self.load_import_export_ports(network_path);
-		}
+	pub fn try_get_import_export_ports(&self, network_path: &[NodeId]) -> Option<&Ports> {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in export_ports");
 			return None;
@@ -1984,6 +1946,17 @@ impl NodeNetworkInterface {
 			return None;
 		};
 		Some(ports)
+	}
+
+	pub fn import_export_ports(&mut self, network_path: &[NodeId]) -> Option<&Ports> {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in export_ports");
+			return None;
+		};
+		if !network_metadata.transient_metadata.import_export_ports.is_loaded() {
+			self.load_import_export_ports(network_path);
+		}
+		self.try_get_import_export_ports(network_path)
 	}
 
 	pub fn load_import_export_ports(&mut self, network_path: &[NodeId]) {
@@ -2065,6 +2038,30 @@ impl NodeNetworkInterface {
 			return;
 		};
 		network_metadata.transient_metadata.import_export_ports.unload();
+
+		// Always unload all wires connected to them as well
+		let number_of_imports = self.number_of_imports(network_path);
+		let Some(outward_wires) = self.outward_wires(network_path) else {
+			log::error!("Could not get outward wires in remove_import");
+			return;
+		};
+		let mut input_connectors = Vec::new();
+		for import_index in 0..number_of_imports {
+			let Some(outward_wires_for_import) = outward_wires.get(&OutputConnector::Import(import_index)).cloned() else {
+				log::error!("Could not get outward wires for import in remove_import");
+				return;
+			};
+			input_connectors.extend(outward_wires_for_import);
+		}
+		let Some(network) = self.nested_network(network_path) else {
+			return;
+		};
+		for export_index in 0..network.exports.len() {
+			input_connectors.push(InputConnector::Export(export_index));
+		}
+		for input in &input_connectors {
+			self.unload_wire(input, network_path);
+		}
 	}
 
 	pub fn modify_import_export(&mut self, network_path: &[NodeId]) -> Option<&ModifyImportExportClickTarget> {
@@ -2335,7 +2332,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 		network_metadata.transient_metadata.all_nodes_bounding_box.unload();
-		network_metadata.transient_metadata.import_export_ports.unload();
+		self.unload_import_export_ports(network_path);
 	}
 
 	pub fn outward_wires(&mut self, network_path: &[NodeId]) -> Option<&HashMap<OutputConnector, Vec<InputConnector>>> {
@@ -2509,12 +2506,265 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	pub fn try_get_input_dom_rect(&mut self, input: &InputConnector, network_path: &[NodeId]) -> Option<(f64, f64, f64, f64)> {
+		let (ports, index) = match input {
+			InputConnector::Node { node_id, input_index } => {
+				let node_click_target = self.node_click_targets(node_id, network_path)?;
+				(&node_click_target.port_click_targets, input_index)
+			}
+			InputConnector::Export(export_index) => {
+				let ports = self.import_export_ports(network_path)?;
+				(ports, export_index)
+			}
+		};
+		ports
+			.input_ports
+			.iter()
+			.find_map(|(input_index, click_target)| if index == input_index { click_target.to_dom_rect() } else { None })
+	}
+
+	pub fn try_get_output_dom_rect(&mut self, output: &OutputConnector, network_path: &[NodeId]) -> Option<(f64, f64, f64, f64)> {
+		let (ports, index) = match output {
+			OutputConnector::Node { node_id, output_index } => {
+				let node_click_target = self.node_click_targets(node_id, network_path)?;
+				(&node_click_target.port_click_targets, output_index)
+			}
+			OutputConnector::Import(import_index) => {
+				let ports = self.import_export_ports(network_path)?;
+				(ports, import_index)
+			}
+		};
+		ports
+			.output_ports
+			.iter()
+			.find_map(|(input_index, click_target)| if index == input_index { click_target.to_dom_rect() } else { None })
+	}
+
+	pub fn newly_loaded_input_wire(&mut self, input: &InputConnector, network_path: &[NodeId]) -> Option<WireUpdate> {
+		if self.upstream_output_connector(input, network_path).is_none() {
+			return None;
+		}
+		if !self.wire_is_loaded(input, network_path) {
+			self.load_wire(input, network_path);
+		} else {
+			return None;
+		}
+		let wire = match input {
+			InputConnector::Node { node_id, input_index } => {
+				let input_metadata = self.transient_input_metadata(node_id, *input_index, network_path)?;
+				let TransientMetadata::Loaded(wire) = &input_metadata.wire else {
+					log::error!("Could not load wire for input: {:?}", input);
+					return None;
+				};
+				WireUpdate {
+					id: *node_id,
+					input_index: *input_index,
+					wire_path_update: Some(wire.clone()),
+				}
+			}
+			InputConnector::Export(export_index) => {
+				let network_metadata = self.network_metadata(network_path)?;
+				let Some(TransientMetadata::Loaded(wire)) = network_metadata.transient_metadata.wires.get(*export_index) else {
+					log::error!("Could not load wire for input: {:?}", input);
+					return None;
+				};
+				WireUpdate {
+					id: NodeId(u64::MAX),
+					input_index: *export_index,
+					wire_path_update: Some(wire.clone()),
+				}
+			}
+		};
+		Some(wire)
+	}
+
+	pub fn wire_is_loaded(&mut self, input: &InputConnector, network_path: &[NodeId]) -> bool {
+		match input {
+			InputConnector::Node { node_id, input_index } => {
+				let Some(input_metadata) = self.transient_input_metadata(node_id, *input_index, network_path) else {
+					log::error!("Input metadata should always exist for input");
+					return false;
+				};
+				input_metadata.wire.is_loaded()
+			}
+			InputConnector::Export(export_index) => {
+				let Some(network_metadata) = self.network_metadata(network_path) else {
+					return false;
+				};
+				match network_metadata.transient_metadata.wires.get(*export_index) {
+					Some(wire) => wire.is_loaded(),
+					None => false,
+				}
+			}
+		}
+	}
+
+	fn load_wire(&mut self, input: &InputConnector, network_path: &[NodeId]) {
+		let dashed = match self.previewing(network_path) {
+			Previewing::Yes { .. } => match input {
+				InputConnector::Node { .. } => false,
+				InputConnector::Export(export_index) => *export_index == 0,
+			},
+			Previewing::No => false,
+		};
+
+		let Some(wire) = self.wire_path_from_input(input, dashed, network_path) else {
+			return;
+		};
+
+		match input {
+			InputConnector::Node { node_id, input_index } => {
+				let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+					return;
+				};
+				let Some(input_metadata) = node_metadata.persistent_metadata.input_metadata.get_mut(*input_index) else {
+					log::error!("Node metadata must exist on node: {input:?}");
+					return;
+				};
+				input_metadata.transient_metadata.wire = TransientMetadata::Loaded(wire);
+			}
+			InputConnector::Export(export_index) => {
+				let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+					return;
+				};
+				if *export_index >= network_metadata.transient_metadata.wires.len() {
+					network_metadata.transient_metadata.wires.resize(export_index + 1, TransientMetadata::Unloaded);
+				}
+				let Some(input_metadata) = network_metadata.transient_metadata.wires.get_mut(*export_index) else {
+					return;
+				};
+				*input_metadata = TransientMetadata::Loaded(wire);
+			}
+		}
+	}
+
+	pub fn unload_all_wires(&mut self, network_path: &[NodeId]) {
+		let mut input_connectors = Vec::new();
+		let Some(network) = self.nested_network(network_path) else {
+			return;
+		};
+		for export_index in 0..network.exports.len() {
+			input_connectors.push(InputConnector::Export(export_index));
+		}
+		for (node_id, node) in &network.nodes {
+			for input_index in 0..node.inputs.len() {
+				input_connectors.push(InputConnector::node(*node_id, input_index));
+			}
+		}
+		for input in &input_connectors {
+			self.unload_wire(input, network_path);
+		}
+	}
+
+	fn unload_wires_for_node(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+		let number_of_outputs = self.number_of_outputs(node_id, network_path);
+		let Some(outward_wires) = self.outward_wires(network_path) else {
+			log::error!("Could not get outward wires in reorder_export");
+			return;
+		};
+		let mut input_connectors = Vec::new();
+		for output_index in 0..number_of_outputs {
+			let Some(inputs) = outward_wires.get(&OutputConnector::node(*node_id, output_index)) else {
+				continue;
+			};
+			input_connectors.extend(inputs.clone())
+		}
+		for input_index in 0..self.number_of_inputs(node_id, network_path) {
+			input_connectors.push(InputConnector::node(*node_id, input_index));
+		}
+		for input in input_connectors {
+			self.unload_wire(&input, network_path);
+		}
+	}
+	fn unload_wire(&mut self, input: &InputConnector, network_path: &[NodeId]) {
+		match input {
+			InputConnector::Node { node_id, input_index } => {
+				let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+					return;
+				};
+				let Some(input_metadata) = node_metadata.persistent_metadata.input_metadata.get_mut(*input_index) else {
+					log::error!("Node metadata must exist on node: {input:?}");
+					return;
+				};
+				input_metadata.transient_metadata.wire = TransientMetadata::Unloaded;
+			}
+			InputConnector::Export(export_index) => {
+				let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+					return;
+				};
+				if *export_index >= network_metadata.transient_metadata.wires.len() {
+					network_metadata.transient_metadata.wires.resize(export_index + 1, TransientMetadata::Unloaded);
+				}
+				let Some(input_metadata) = network_metadata.transient_metadata.wires.get_mut(*export_index) else {
+					return;
+				};
+				*input_metadata = TransientMetadata::Unloaded;
+			}
+		}
+	}
+	// When previewing, there may be a second path to the root node
+	pub fn wire_to_root(&mut self, network_path: &[NodeId]) -> Option<WireUpdate> {
+		let current_export = self.upstream_output_connector(&InputConnector::Export(0), network_path)?;
+
+		let root_node = match self.previewing(network_path) {
+			Previewing::Yes { root_node_to_restore } => root_node_to_restore,
+			Previewing::No => None,
+		}?;
+
+		if Some(root_node.node_id) == current_export.node_id() {
+			return None;
+		}
+
+		let wire_path = self.wire_path_from_input(&InputConnector::Export(0), false, network_path)?;
+		Some(WireUpdate {
+			id: NodeId(u64::MAX),
+			input_index: usize::MAX,
+			wire_path_update: Some(wire_path),
+		})
+	}
+
+	pub fn wire_path_from_input(&mut self, input: &InputConnector, dashed: bool, network_path: &[NodeId]) -> Option<WirePath> {
+		let Some(end) = self.try_get_input_dom_rect(input, network_path) else {
+			log::error!("Could not get dom rect for wire end: {:?}", input);
+			return None;
+		};
+		let input_position = DVec2 {
+			x: end.0 + end.2 / 2.,
+			y: end.1 + end.3 / 2.,
+		};
+		let Some(upstream_output) = self.upstream_output_connector(input, network_path) else {
+			return None;
+		};
+		let Some(start) = self.try_get_output_dom_rect(&upstream_output, network_path) else {
+			log::error!("Could not get dom rect for wire start: {:?}", upstream_output);
+			return None;
+		};
+		let output_position = DVec2 {
+			x: start.0 + start.2 / 2.,
+			y: start.1 + start.3 / 2.,
+		};
+
+		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
+		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
+
+		let path_string = super::nodes::build_wire_path(output_position, input_position, vertical_start, vertical_end);
+		let data_type = FrontendGraphDataType::from_type(&self.input_type(input, network_path).0);
+		let thick = vertical_end && vertical_start;
+
+		Some(WirePath {
+			path_string,
+			data_type,
+			thick,
+			dashed,
+		})
+	}
+
 	pub fn node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&DocumentNodeClickTargets> {
 		self.try_load_node_click_targets(node_id, network_path);
 		self.try_get_node_click_targets(node_id, network_path)
 	}
 
-	fn try_load_node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+	pub fn try_load_node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 			log::error!("Could not get nested node_metadata in node_click_targets");
 			return;
@@ -2747,17 +2997,14 @@ impl NodeNetworkInterface {
 			return;
 		};
 		node_metadata.transient_metadata.click_targets.unload();
+		self.unload_wires_for_node(node_id, network_path);
 	}
 
 	pub fn unload_upstream_node_click_targets(&mut self, node_ids: Vec<NodeId>, network_path: &[NodeId]) {
 		let upstream_nodes = self.upstream_flow_back_from_nodes(node_ids, network_path, FlowType::UpstreamFlow).collect::<Vec<_>>();
 
 		for upstream_id in &upstream_nodes {
-			let Some(node_metadata) = self.node_metadata_mut(upstream_id, network_path) else {
-				log::error!("Could not get node_metadata for node {upstream_id}");
-				return;
-			};
-			node_metadata.transient_metadata.click_targets.unload();
+			self.unload_node_click_targets(upstream_id, network_path);
 		}
 	}
 
@@ -2769,11 +3016,7 @@ impl NodeNetworkInterface {
 		let upstream_nodes = network.nodes.keys().cloned().collect::<Vec<_>>();
 
 		for upstream_id in &upstream_nodes {
-			let Some(node_metadata) = self.node_metadata_mut(upstream_id, network_path) else {
-				log::error!("Could not get node_metadata for node {upstream_id}");
-				return;
-			};
-			node_metadata.transient_metadata.click_targets.unload();
+			self.unload_node_click_targets(upstream_id, network_path);
 		}
 	}
 }
@@ -3418,9 +3661,10 @@ impl NodeNetworkInterface {
 		}
 
 		// Update the click targets for the encapsulating node, if it exists. There is no encapsulating node if the network is the document network
-		if let Some(encapsulating_node_metadata_mut) = self.encapsulating_node_metadata_mut(network_path) {
-			encapsulating_node_metadata_mut.transient_metadata.click_targets.unload();
-		};
+		let mut path = network_path.to_vec();
+		if let Some(encapsulating_node) = path.pop() {
+			self.unload_node_click_targets(&encapsulating_node, &path);
+		}
 
 		// If the export is inserted as the first input or second input, and the parent network is the document_network, then it may have affected the document metadata structure
 		if network_path.len() == 1 && (insert_index == 0 || insert_index == 1) {
@@ -3465,9 +3709,9 @@ impl NodeNetworkInterface {
 		};
 		let new_input = (input_name, input_description).into();
 		if insert_index == -1 {
-			node_metadata.persistent_metadata.input_properties.push(new_input);
+			node_metadata.persistent_metadata.input_metadata.push(new_input);
 		} else {
-			node_metadata.persistent_metadata.input_properties.insert(insert_index as usize, new_input);
+			node_metadata.persistent_metadata.input_metadata.insert(insert_index as usize, new_input);
 		}
 
 		// Clear the reference to the nodes definition
@@ -3601,7 +3845,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get encapsulating node metadata in remove_export");
 			return;
 		};
-		encapsulating_node_metadata.persistent_metadata.input_properties.remove(import_index);
+		encapsulating_node_metadata.persistent_metadata.input_metadata.remove(import_index);
 		encapsulating_node_metadata.persistent_metadata.reference = None;
 
 		// Update the metadata for the encapsulating node
@@ -3738,8 +3982,8 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let properties_row = encapsulating_node_metadata.persistent_metadata.input_properties.remove(start_index);
-		encapsulating_node_metadata.persistent_metadata.input_properties.insert(end_index, properties_row);
+		let properties_row = encapsulating_node_metadata.persistent_metadata.input_metadata.remove(start_index);
+		encapsulating_node_metadata.persistent_metadata.input_metadata.insert(end_index, properties_row);
 		encapsulating_node_metadata.persistent_metadata.reference = None;
 
 		// Update the metadata for the outer network
@@ -3800,9 +4044,8 @@ impl NodeNetworkInterface {
 		self.unload_stack_dependents(network_path);
 	}
 
-	// TODO: Eventually remove this document upgrade code
-	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
-	pub fn replace_implementation(&mut self, node_id: &NodeId, network_path: &[NodeId], implementation: DocumentNodeImplementation) {
+	// Replaces the implementation and corresponding metadata
+	pub fn replace_implementation(&mut self, node_id: &NodeId, network_path: &[NodeId], new_template: &mut NodeTemplate) {
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in set_implementation");
 			return;
@@ -3811,17 +4054,42 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node in set_implementation");
 			return;
 		};
-		node.implementation = implementation;
-	}
-
-	// TODO: Eventually remove this document upgrade code
-	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
-	pub fn replace_implementation_metadata(&mut self, node_id: &NodeId, network_path: &[NodeId], metadata: DocumentNodePersistentMetadata) {
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
-			log::error!("Could not get network metadata in set implementation");
+		let new_implementation = std::mem::take(&mut new_template.document_node.implementation);
+		let _ = std::mem::replace(&mut node.implementation, new_implementation);
+		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
+			log::error!("Could not get metadata in set_implementation");
 			return;
 		};
-		node_metadata.persistent_metadata.network_metadata = metadata.network_metadata;
+		let new_metadata = std::mem::take(&mut new_template.persistent_node_metadata.network_metadata);
+		let _ = std::mem::replace(&mut metadata.persistent_metadata.network_metadata, new_metadata);
+	}
+
+	// Replaces the inputs and corresponding metadata
+	pub fn replace_inputs(&mut self, node_id: &NodeId, network_path: &[NodeId], new_template: &mut NodeTemplate) -> Option<Vec<NodeInput>> {
+		let Some(network) = self.network_mut(network_path) else {
+			log::error!("Could not get nested network in set_implementation");
+			return None;
+		};
+		let Some(node) = network.nodes.get_mut(node_id) else {
+			log::error!("Could not get node in set_implementation");
+			return None;
+		};
+		let new_inputs = std::mem::take(&mut new_template.document_node.inputs);
+		let old_inputs = std::mem::replace(&mut node.inputs, new_inputs);
+		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
+			log::error!("Could not get metadata in set_implementation");
+			return None;
+		};
+		let new_metadata = std::mem::take(&mut new_template.persistent_node_metadata.input_metadata);
+		let _ = std::mem::replace(&mut metadata.persistent_metadata.input_metadata, new_metadata);
+		Some(old_inputs)
+	}
+
+	pub fn validate_input_metadata(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+		let Some(node) = self.document_node(node_id, network_path) else { return };
+		let number_of_inputs = node.inputs.len();
+		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else { return };
+		metadata.persistent_metadata.input_metadata.resize(number_of_inputs, InputMetadata::default());
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
@@ -3844,19 +4112,6 @@ impl NodeNetworkInterface {
 			return;
 		};
 		node.manual_composition = manual_composition;
-	}
-
-	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
-	pub fn replace_inputs(&mut self, node_id: &NodeId, inputs: Vec<NodeInput>, network_path: &[NodeId]) -> Vec<NodeInput> {
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in replace_inputs");
-			return Vec::new();
-		};
-		let Some(node) = network.nodes.get_mut(node_id) else {
-			log::error!("Could not get node in replace_inputs");
-			return Vec::new();
-		};
-		std::mem::replace(&mut node.inputs, inputs)
 	}
 
 	pub fn set_input(&mut self, input_connector: &InputConnector, new_input: NodeInput, network_path: &[NodeId]) {
@@ -4014,20 +4269,22 @@ impl NodeNetworkInterface {
 				}
 				self.unload_upstream_node_click_targets(vec![*upstream_node_id], network_path);
 				self.unload_stack_dependents(network_path);
-
 				self.try_set_upstream_to_chain(input_connector, network_path);
 			}
 			// If a connection is made to the imports
 			(NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }, NodeInput::Network { .. }) => {
 				self.unload_outward_wires(network_path);
+				self.unload_wire(input_connector, network_path);
 			}
 			// If a connection to the imports is disconnected
 			(NodeInput::Network { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
 				self.unload_outward_wires(network_path);
+				self.unload_wire(input_connector, network_path);
 			}
 			// If a node is disconnected.
 			(NodeInput::Node { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
 				self.unload_outward_wires(network_path);
+				self.unload_wire(input_connector, network_path);
 
 				if let Some((old_upstream_node_id, previous_position)) = previous_metadata {
 					let old_upstream_node_is_layer = self.is_layer(&old_upstream_node_id, network_path);
@@ -4171,8 +4428,8 @@ impl NodeNetworkInterface {
 		self.unload_outward_wires(network_path);
 	}
 
-	/// Used to insert a node template with no node/network inputs into the network.
-	pub fn insert_node(&mut self, node_id: NodeId, node_template: NodeTemplate, network_path: &[NodeId]) {
+	/// Used to insert a node template with no node/network inputs into the network and returns the old template
+	pub fn insert_node(&mut self, node_id: NodeId, node_template: NodeTemplate, network_path: &[NodeId]) -> Option<NodeTemplate> {
 		let has_node_or_network_input = node_template
 			.document_node
 			.inputs
@@ -4181,24 +4438,29 @@ impl NodeNetworkInterface {
 		assert!(has_node_or_network_input, "Cannot insert node with node or network inputs. Use insert_node_group instead");
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Network not found in insert_node");
-			return;
+			return None;
 		};
 
-		network.nodes.insert(node_id, node_template.document_node);
+		let previous_node = network.nodes.insert(node_id, node_template.document_node);
 		self.transaction_modified();
 
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Network not found in insert_node");
-			return;
+			return None;
 		};
 		let node_metadata = DocumentNodeMetadata {
 			persistent_metadata: node_template.persistent_node_metadata,
 			transient_metadata: DocumentNodeTransientMetadata::default(),
 		};
-		network_metadata.persistent_metadata.node_metadata.insert(node_id, node_metadata);
+		let previous_metadata = network_metadata.persistent_metadata.node_metadata.insert(node_id, node_metadata);
 
 		self.unload_all_nodes_bounding_box(network_path);
-		self.unload_node_click_targets(&node_id, network_path)
+		self.unload_node_click_targets(&node_id, network_path);
+
+		previous_node.zip(previous_metadata).map(|(document_node, node_metadata)| NodeTemplate {
+			document_node,
+			persistent_node_metadata: node_metadata.persistent_metadata,
+		})
 	}
 
 	/// Deletes all nodes in `node_ids` and any sole dependents in the horizontal chain if the node to delete is a layer node.
@@ -4464,25 +4726,21 @@ impl NodeNetworkInterface {
 
 		let name_changed = match index {
 			ImportOrExport::Import(import_index) => {
-				let Some(input_properties) = encapsulating_node.persistent_metadata.input_properties.get_mut(import_index) else {
+				let Some(input_properties) = encapsulating_node.persistent_metadata.input_metadata.get_mut(import_index) else {
 					log::error!("Could not get input properties in set_import_export_name");
 					return;
 				};
 				// Only return false if the previous value is the same as the current value
-				std::mem::swap(&mut input_properties.input_name, &mut name);
-				input_properties.input_name != name
+				std::mem::swap(&mut input_properties.persistent_metadata.input_name, &mut name);
+				input_properties.persistent_metadata.input_name != name
 			}
 			ImportOrExport::Export(export_index) => {
 				let Some(export_name) = encapsulating_node.persistent_metadata.output_names.get_mut(export_index) else {
 					log::error!("Could not get export_name in set_import_export_name");
 					return;
 				};
-				if *export_name == name {
-					false
-				} else {
-					*export_name = name;
-					true
-				}
+				std::mem::swap(export_name, &mut name);
+				*export_name != name
 			}
 		};
 		if name_changed {
@@ -4753,6 +5011,7 @@ impl NodeNetworkInterface {
 				log::error!("Could not set stack position for non layer node {node_id}");
 			}
 		}
+		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 	}
 
 	/// Sets the position of a node to a stack position without changing its y offset
@@ -5680,34 +5939,6 @@ impl NodeNetworkInterface {
 			self.force_set_upstream_to_chain(node_id, network_path);
 		}
 	}
-
-	pub fn iter_recursive(&self) -> NodesRecursiveIter<'_> {
-		NodesRecursiveIter {
-			stack: vec![&self.network],
-			current_slice: None,
-		}
-	}
-}
-
-pub struct NodesRecursiveIter<'a> {
-	stack: Vec<&'a NodeNetwork>,
-	current_slice: Option<std::collections::hash_map::Iter<'a, NodeId, DocumentNode>>,
-}
-
-impl<'a> Iterator for NodesRecursiveIter<'a> {
-	type Item = (NodeId, &'a DocumentNode);
-	fn next(&mut self) -> Option<Self::Item> {
-		loop {
-			if let Some((id, node)) = self.current_slice.as_mut().and_then(|iter| iter.next()) {
-				if let DocumentNodeImplementation::Network(network) = &node.implementation {
-					self.stack.push(network);
-				}
-				return Some((*id, node));
-			}
-			let network = self.stack.pop()?;
-			self.current_slice = Some(network.nodes.iter());
-		}
-	}
 }
 
 #[derive(PartialEq)]
@@ -6100,14 +6331,14 @@ pub struct NodeNetworkTransientMetadata {
 	// node_group_bounding_box: Vec<(Subpath<ManipulatorGroupId>, Vec<Nodes>)>,
 	/// Cache for all outward wire connections
 	pub outward_wires: TransientMetadata<HashMap<OutputConnector, Vec<InputConnector>>>,
-	// TODO: Cache all wire paths instead of calculating in Graph.svelte
-	// pub wire_paths: Vec<WirePath>
 	/// All export connector click targets
 	pub import_export_ports: TransientMetadata<Ports>,
 	/// Click targets for adding, removing, and moving import/export ports
 	pub modify_import_export: TransientMetadata<ModifyImportExportClickTarget>,
 	// Distance to the edges of the network, where the import/export ports are displayed. Rounded to nearest grid space when the panning ends.
 	pub rounded_network_edge_distance: TransientMetadata<NetworkEdgeDistance>,
+	// Wires from the exports
+	pub wires: Vec<TransientMetadata<WirePath>>,
 }
 
 #[derive(Debug, Clone)]
@@ -6213,116 +6444,89 @@ pub enum WidgetOverride {
 }
 
 // TODO: Custom deserialization/serialization to ensure number of properties row matches number of node inputs
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct PropertiesRow {
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct InputPersistentMetadata {
 	/// A general datastore than can store key value pairs of any types for any input
-	// TODO: This could be simplified to just Value, and key value pairs could be stored as the Value::Object variant
+	/// Each instance of the input node needs to store its own data, since it can
 	pub input_data: HashMap<String, Value>,
 	// An input can override a widget, which would otherwise be automatically generated from the type
 	// The string is the identifier to the widget override function stored in INPUT_OVERRIDES
 	pub widget_override: Option<String>,
-	#[serde(skip)]
+	// An empty input name means to use the type as the name
 	pub input_name: String,
-	#[serde(skip)]
+	// Tooltip
 	pub input_description: String,
 }
 
-impl Default for PropertiesRow {
-	fn default() -> Self {
-		("", "TODO").into()
+impl InputPersistentMetadata {
+	pub fn with_name(mut self, input_name: &str) -> Self {
+		self.input_name = input_name.to_string();
+		self
 	}
-}
-
-impl From<(&str, &str)> for PropertiesRow {
-	fn from(input_name_and_description: (&str, &str)) -> Self {
-		PropertiesRow::with_override(input_name_and_description.0, input_name_and_description.1, WidgetOverride::None)
-	}
-}
-
-impl PropertiesRow {
-	pub fn with_override(input_name: &str, input_description: &str, widget_override: WidgetOverride) -> Self {
-		let mut input_data = HashMap::new();
-		let input_name = input_name.to_string();
-		let input_description = input_description.to_string();
-
+	pub fn with_override(mut self, widget_override: WidgetOverride) -> Self {
 		match widget_override {
-			WidgetOverride::None => PropertiesRow {
-				input_data,
-				widget_override: None,
-				input_name,
-				input_description,
-			},
-			WidgetOverride::Hidden => PropertiesRow {
-				input_data,
-				widget_override: Some("hidden".to_string()),
-				input_name,
-				input_description,
-			},
+			// Uses the default widget for the type
+			WidgetOverride::None => {
+				self.widget_override = None;
+			}
+			WidgetOverride::Hidden => {
+				self.widget_override = Some("hidden".to_string());
+			}
 			WidgetOverride::String(string_properties) => {
-				input_data.insert("string_properties".to_string(), Value::String(string_properties));
-				PropertiesRow {
-					input_data,
-					widget_override: Some("string".to_string()),
-					input_name,
-					input_description,
-				}
+				self.input_data.insert("string_properties".to_string(), Value::String(string_properties));
+				self.widget_override = Some("string".to_string());
 			}
 			WidgetOverride::Number(mut number_properties) => {
 				if let Some(unit) = number_properties.unit.take() {
-					input_data.insert("unit".to_string(), json!(unit));
+					self.input_data.insert("unit".to_string(), json!(unit));
 				}
 				if let Some(min) = number_properties.min.take() {
-					input_data.insert("min".to_string(), json!(min));
+					self.input_data.insert("min".to_string(), json!(min));
 				}
 				if let Some(max) = number_properties.max.take() {
-					input_data.insert("max".to_string(), json!(max));
+					self.input_data.insert("max".to_string(), json!(max));
 				}
 				if let Some(step) = number_properties.step.take() {
-					input_data.insert("step".to_string(), json!(step));
+					self.input_data.insert("step".to_string(), json!(step));
 				}
 				if let Some(range_min) = number_properties.range_min.take() {
-					input_data.insert("range_min".to_string(), json!(range_min));
+					self.input_data.insert("range_min".to_string(), json!(range_min));
 				}
 				if let Some(range_max) = number_properties.range_max.take() {
-					input_data.insert("range_max".to_string(), json!(range_max));
+					self.input_data.insert("range_max".to_string(), json!(range_max));
 				}
-				input_data.insert("mode".to_string(), json!(number_properties.mode));
-				input_data.insert("is_integer".to_string(), Value::Bool(number_properties.is_integer));
-				input_data.insert("blank_assist".to_string(), Value::Bool(number_properties.blank_assist));
-				PropertiesRow {
-					input_data,
-					widget_override: Some("number".to_string()),
-					input_name,
-					input_description,
-				}
+				self.input_data.insert("mode".to_string(), json!(number_properties.mode));
+				self.input_data.insert("is_integer".to_string(), Value::Bool(number_properties.is_integer));
+				self.input_data.insert("blank_assist".to_string(), Value::Bool(number_properties.blank_assist));
+				self.widget_override = Some("number".to_string());
 			}
 			WidgetOverride::Vec2(vec2_properties) => {
-				input_data.insert("x".to_string(), json!(vec2_properties.x));
-				input_data.insert("y".to_string(), json!(vec2_properties.y));
-				input_data.insert("unit".to_string(), json!(vec2_properties.unit));
+				self.input_data.insert("x".to_string(), json!(vec2_properties.x));
+				self.input_data.insert("y".to_string(), json!(vec2_properties.y));
+				self.input_data.insert("unit".to_string(), json!(vec2_properties.unit));
 				if let Some(min) = vec2_properties.min {
-					input_data.insert("min".to_string(), json!(min));
+					self.input_data.insert("min".to_string(), json!(min));
 				}
-				PropertiesRow {
-					input_data,
-					widget_override: Some("vec2".to_string()),
-					input_name,
-					input_description,
-				}
+				self.widget_override = Some("vec2".to_string());
 			}
-			WidgetOverride::Custom(lambda_name) => PropertiesRow {
-				input_data,
-				widget_override: Some(lambda_name),
-				input_name,
-				input_description,
-			},
-		}
-	}
-
-	pub fn with_tooltip(mut self, tooltip: &str) -> Self {
-		self.input_data.insert("tooltip".to_string(), json!(tooltip));
+			WidgetOverride::Custom(lambda_name) => {
+				self.widget_override = Some(lambda_name);
+			}
+		};
 		self
 	}
+
+	pub fn with_description(mut self, tooltip: &str) -> Self {
+		self.input_description = tooltip.to_string();
+		self
+	}
+}
+
+#[derive(Debug, Clone, Default)]
+struct InputTransientMetadata {
+	wire: TransientMetadata<WirePath>,
+	// downstream_protonode: populated for all inputs after each compile
+	// types: populated for each protonode after each
 }
 
 // TODO: Eventually remove this migration document upgrade code
@@ -6362,7 +6566,7 @@ pub struct DocumentNodePersistentMetadata {
 	pub display_name: String,
 	/// Stores metadata to override the properties in the properties panel for each input. These can either be generated automatically based on the type, or with a custom function.
 	/// Must match the length of node inputs
-	pub input_properties: Vec<PropertiesRow>,
+	pub input_metadata: Vec<InputMetadata>,
 	#[serde(deserialize_with = "migrate_output_names")]
 	pub output_names: Vec<String>,
 	/// Indicates to the UI if a primary output should be drawn for this node.
@@ -6387,7 +6591,7 @@ impl Default for DocumentNodePersistentMetadata {
 		DocumentNodePersistentMetadata {
 			reference: None,
 			display_name: String::new(),
-			input_properties: Vec::new(),
+			input_metadata: Vec::new(),
 			output_names: Vec::new(),
 			has_primary_output: true,
 			pinned: false,
@@ -6401,6 +6605,39 @@ impl Default for DocumentNodePersistentMetadata {
 impl DocumentNodePersistentMetadata {
 	pub fn is_layer(&self) -> bool {
 		matches!(self.node_type_metadata, NodeTypePersistentMetadata::Layer(_))
+	}
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct InputMetadata {
+	pub persistent_metadata: InputPersistentMetadata,
+	#[serde(skip)]
+	transient_metadata: InputTransientMetadata,
+}
+
+impl PartialEq for InputMetadata {
+	fn eq(&self, other: &Self) -> bool {
+		self.persistent_metadata == other.persistent_metadata
+	}
+}
+
+impl From<(&str, &str)> for InputMetadata {
+	fn from(input_name_and_description: (&str, &str)) -> Self {
+		InputMetadata {
+			persistent_metadata: InputPersistentMetadata::default()
+				.with_name(input_name_and_description.0)
+				.with_description(input_name_and_description.1),
+			..Default::default()
+		}
+	}
+}
+
+impl InputMetadata {
+	pub fn with_name_description_override(input_name: &str, tooltip: &str, widget_override: WidgetOverride) -> Self {
+		InputMetadata {
+			persistent_metadata: InputPersistentMetadata::default().with_name(input_name).with_description(tooltip).with_override(widget_override),
+			..Default::default()
+		}
 	}
 }
 
@@ -6424,17 +6661,66 @@ pub struct DocumentNodePersistentMetadataInputNames {
 
 impl From<DocumentNodePersistentMetadataInputNames> for DocumentNodePersistentMetadata {
 	fn from(old: DocumentNodePersistentMetadataInputNames) -> Self {
-		let input_properties = old
-			.reference
-			.as_ref()
-			.and_then(|reference| resolve_document_node_type(reference))
-			.map(|definition| definition.node_template.persistent_node_metadata.input_properties.clone())
-			.unwrap_or(old.input_names.into_iter().map(|name| (name.as_str(), "").into()).collect());
-
 		DocumentNodePersistentMetadata {
 			reference: old.reference,
 			display_name: old.display_name,
-			input_properties,
+			input_metadata: Vec::new(),
+			output_names: old.output_names,
+			has_primary_output: old.has_primary_output,
+			locked: old.locked,
+			pinned: old.pinned,
+			node_type_metadata: old.node_type_metadata,
+			network_metadata: old.network_metadata,
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DocumentNodePersistentMetadataPropertiesRow {
+	pub reference: Option<String>,
+	#[serde(default)]
+	pub display_name: String,
+	pub input_properties: Vec<PropertiesRow>,
+	#[serde(deserialize_with = "migrate_output_names")]
+	pub output_names: Vec<String>,
+	#[serde(default = "return_true")]
+	pub has_primary_output: bool,
+	#[serde(default)]
+	pub locked: bool,
+	#[serde(default)]
+	pub pinned: bool,
+	pub node_type_metadata: NodeTypePersistentMetadata,
+	pub network_metadata: Option<NodeNetworkMetadata>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PropertiesRow {
+	pub input_data: HashMap<String, Value>,
+	pub widget_override: Option<String>,
+	#[serde(skip)]
+	pub input_name: String,
+	#[serde(skip)]
+	pub input_description: String,
+}
+
+impl From<DocumentNodePersistentMetadataPropertiesRow> for DocumentNodePersistentMetadata {
+	fn from(old: DocumentNodePersistentMetadataPropertiesRow) -> Self {
+		let mut input_metadata = Vec::new();
+		for properties_row in old.input_properties {
+			input_metadata.push(InputMetadata {
+				persistent_metadata: InputPersistentMetadata {
+					input_data: properties_row.input_data,
+					widget_override: properties_row.widget_override,
+					input_name: properties_row.input_name,
+					input_description: properties_row.input_description,
+				},
+				..Default::default()
+			})
+		}
+		DocumentNodePersistentMetadata {
+			reference: old.reference,
+			display_name: old.display_name,
+			input_metadata: Vec::new(),
 			output_names: old.output_names,
 			has_primary_output: old.has_primary_output,
 			locked: old.locked,
@@ -6447,6 +6733,7 @@ impl From<DocumentNodePersistentMetadataInputNames> for DocumentNodePersistentMe
 
 #[derive(serde::Serialize, serde::Deserialize)]
 enum NodePersistentMetadataVersions {
+	DocumentNodePersistentMetadataPropertiesRow(DocumentNodePersistentMetadataPropertiesRow),
 	NodePersistentMetadataInputNames(DocumentNodePersistentMetadataInputNames),
 	NodePersistentMetadata(DocumentNodePersistentMetadata),
 }
@@ -6458,12 +6745,18 @@ where
 	use serde::Deserialize;
 
 	let value = Value::deserialize(deserializer)?;
-
-	serde_json::from_value::<DocumentNodePersistentMetadata>(value.clone()).or_else(|_| {
-		serde_json::from_value::<DocumentNodePersistentMetadataInputNames>(value)
-			.map(DocumentNodePersistentMetadata::from)
-			.map_err(serde::de::Error::custom)
-	})
+	match serde_json::from_value::<DocumentNodePersistentMetadata>(value.clone()) {
+		Ok(document) => return Ok(document),
+		Err(_) => {}
+	};
+	match serde_json::from_value::<DocumentNodePersistentMetadataPropertiesRow>(value.clone()) {
+		Ok(document) => return Ok(document.into()),
+		Err(_) => {}
+	};
+	match serde_json::from_value::<DocumentNodePersistentMetadataInputNames>(value.clone()) {
+		Ok(document) => return Ok(document.into()),
+		Err(e) => Err(serde::de::Error::custom(e)),
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -6627,7 +6920,7 @@ impl Default for NavigationMetadata {
 
 // PartialEq required by message handlers
 /// All persistent editor and Graphene data for a node. Used to serialize and deserialize a node, pass it through the editor, and create definitions.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodeTemplate {
 	pub document_node: DocumentNode,
 	pub persistent_node_metadata: DocumentNodePersistentMetadata,

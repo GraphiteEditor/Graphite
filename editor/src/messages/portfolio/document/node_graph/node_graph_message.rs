@@ -123,6 +123,9 @@ pub enum NodeGraphMessage {
 	},
 	SendClickTargets,
 	EndSendClickTargets,
+	RefreshWires,
+	SendWires,
+	UpdateVisibleNodes,
 	SendGraph,
 	SetGridAlignedEdges,
 	SetInputValue {

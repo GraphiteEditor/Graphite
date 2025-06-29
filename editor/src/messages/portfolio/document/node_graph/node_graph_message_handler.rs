@@ -1,4 +1,4 @@
-use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, WirePath};
+use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendGraphInput, FrontendGraphOutput, FrontendNode};
 use super::{document_node_definitions, node_properties};
 use crate::consts::GRID_SIZE;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
@@ -12,7 +12,7 @@ use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	self, InputConnector, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing, TypeSource,
 };
-use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
+use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry, WirePath, WireUpdate};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
@@ -67,6 +67,7 @@ pub struct NodeGraphMessageHandler {
 	select_if_not_dragged: Option<NodeId>,
 	/// The start of the dragged line (cannot be moved), stored in node graph coordinates
 	pub wire_in_progress_from_connector: Option<DVec2>,
+	wire_in_progress_type: FrontendGraphDataType,
 	/// The end point of the dragged line (cannot be moved), stored in node graph coordinates
 	pub wire_in_progress_to_connector: Option<DVec2>,
 	/// State for the context menu popups.
@@ -83,6 +84,9 @@ pub struct NodeGraphMessageHandler {
 	reordering_export: Option<usize>,
 	// The end index of the moved port
 	end_index: Option<usize>,
+	// Used to cache nodes so that only visible ones are sent to the frontend
+	current_nodes: Vec<NodeId>,
+	all_nodes: Vec<NodeId>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -236,6 +240,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 
 					self.wire_in_progress_from_connector = None;
+					self.wire_in_progress_type = FrontendGraphDataType::General;
 					self.wire_in_progress_to_connector = None;
 				}
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
@@ -629,6 +634,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					// Abort dragging a wire
 					if self.wire_in_progress_from_connector.is_some() {
 						self.wire_in_progress_from_connector = None;
+						self.wire_in_progress_type = FrontendGraphDataType::General;
 						self.wire_in_progress_to_connector = None;
 						responses.add(DocumentMessage::AbortTransaction);
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
@@ -707,6 +713,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if self.context_menu.is_some() {
 					self.context_menu = None;
 					self.wire_in_progress_from_connector = None;
+					self.wire_in_progress_type = FrontendGraphDataType::General;
 					self.wire_in_progress_to_connector = None;
 					responses.add(FrontendMessage::UpdateContextMenuInformation {
 						context_menu_information: self.context_menu.clone(),
@@ -740,6 +747,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					};
 					let Some(output_connector) = output_connector else { return };
 					self.wire_in_progress_from_connector = network_interface.output_position(&output_connector, selection_network_path);
+					self.wire_in_progress_type = FrontendGraphDataType::from_type(&network_interface.input_type(clicked_input, breadcrumb_network_path).0);
 					return;
 				}
 
@@ -749,6 +757,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.initial_disconnecting = false;
 
 					self.wire_in_progress_from_connector = network_interface.output_position(&clicked_output, selection_network_path);
+					if let Some(Some((output_type, _))) = clicked_output
+						.node_id()
+						.and_then(|node_id| network_interface.output_types(&node_id, breadcrumb_network_path).get(clicked_output.index()).cloned())
+					{
+						self.wire_in_progress_type = FrontendGraphDataType::from_type(&output_type);
+					} else {
+						self.wire_in_progress_type = FrontendGraphDataType::General;
+					}
+
 					self.update_node_graph_hints(responses);
 					return;
 				}
@@ -896,8 +913,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							}
 						});
 						let wire_path = WirePath {
-							path_string: Self::build_wire_path_string(wire_in_progress_from_connector, wire_in_progress_to_connector, from_connector_is_layer, to_connector_is_layer),
-							data_type: FrontendGraphDataType::General,
+							path_string: crate::messages::portfolio::document::utility_types::nodes::build_wire_path(
+								wire_in_progress_from_connector,
+								wire_in_progress_to_connector,
+								from_connector_is_layer,
+								to_connector_is_layer,
+							),
+							data_type: self.wire_in_progress_type,
 							thick: false,
 							dashed: false,
 						};
@@ -1107,160 +1129,141 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 					responses.add(NodeGraphMessage::SendGraph);
 
-					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
-						log::error!("Could not get selected nodes in PointerUp");
-						return;
-					};
-					// Check if a single node was dragged onto a wire and that the node was dragged onto the wire
-					if selected_nodes.selected_nodes_ref().len() == 1 && !self.begin_dragging {
-						let selected_node_id = selected_nodes.selected_nodes_ref()[0];
-						let has_primary_output_connection = network_interface
-							.outward_wires(selection_network_path)
-							.is_some_and(|outward_wires| outward_wires.get(&OutputConnector::node(selected_node_id, 0)).is_some_and(|outward_wires| !outward_wires.is_empty()));
-						let Some(network) = network_interface.nested_network(selection_network_path) else {
-							return;
-						};
-						if let Some(selected_node) = network.nodes.get(&selected_node_id) {
-							// Check if any downstream node has any input that feeds into the primary export of the selected node
-							let primary_input_is_value = selected_node.inputs.first().is_some_and(|first_input| first_input.as_value().is_some());
-							// Check that neither the primary input or output of the selected node are already connected.
-							if !has_primary_output_connection && primary_input_is_value {
-								let Some(bounding_box) = network_interface.node_bounding_box(&selected_node_id, selection_network_path) else {
-									log::error!("Could not get bounding box for node: {selected_node_id}");
-									return;
-								};
-								// TODO: Cache all wire locations if this is a performance issue
-								let overlapping_wires = Self::collect_wires(network_interface, selection_network_path)
-									.into_iter()
-									.filter(|frontend_wire| {
-										// Prevent inserting on a link that is connected upstream to the selected node
-										if network_interface
-											.upstream_flow_back_from_nodes(vec![selected_node_id], selection_network_path, network_interface::FlowType::UpstreamFlow)
-											.any(|upstream_id| {
-												frontend_wire.wire_end.node_id().is_some_and(|wire_end_id| wire_end_id == upstream_id)
-													|| frontend_wire.wire_start.node_id().is_some_and(|wire_start_id| wire_start_id == upstream_id)
-											}) {
-											return false;
-										}
+					// let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
+					// 	log::error!("Could not get selected nodes in PointerUp");
+					// 	return;
+					// };
+					// // Check if a single node was dragged onto a wire and that the node was dragged onto the wire
+					// if selected_nodes.selected_nodes_ref().len() == 1 && !self.begin_dragging {
+					// 	let selected_node_id = selected_nodes.selected_nodes_ref()[0];
+					// 	let has_primary_output_connection = network_interface
+					// 		.outward_wires(selection_network_path)
+					// 		.is_some_and(|outward_wires| outward_wires.get(&OutputConnector::node(selected_node_id, 0)).is_some_and(|outward_wires| !outward_wires.is_empty()));
+					// 	let Some(network) = network_interface.nested_network(selection_network_path) else {
+					// 		return;
+					// 	};
+					// 	if let Some(selected_node) = network.nodes.get(&selected_node_id) {
+					// 		// Check if any downstream node has any input that feeds into the primary export of the selected node
+					// 		let primary_input_is_value = selected_node.inputs.first().is_some_and(|first_input| first_input.as_value().is_some());
+					// 		// Check that neither the primary input or output of the selected node are already connected.
+					// 		if !has_primary_output_connection && primary_input_is_value {
+					// 			let Some(bounding_box) = network_interface.node_bounding_box(&selected_node_id, selection_network_path) else {
+					// 				log::error!("Could not get bounding box for node: {selected_node_id}");
+					// 				return;
+					// 			};
+					// 			// TODO: Cache all wire locations if this is a performance issue
+					// 			let overlapping_wires = Self::collect_wires(network_interface, selection_network_path)
+					// 				.into_iter()
+					// 				.filter(|frontend_wire| {
+					// 					// Prevent inserting on a link that is connected upstream to the selected node
+					// 					if network_interface
+					// 						.upstream_flow_back_from_nodes(vec![selected_node_id], selection_network_path, network_interface::FlowType::UpstreamFlow)
+					// 						.any(|upstream_id| {
+					// 							frontend_wire.wire_end_rect.node_id().is_some_and(|wire_end_id| wire_end_id == upstream_id)
+					// 								|| frontend_wire.wire_start_rect.node_id().is_some_and(|wire_start_id| wire_start_id == upstream_id)
+					// 						}) {
+					// 						return false;
+					// 					}
 
-										// Prevent inserting a layer into a chain
-										if network_interface.is_layer(&selected_node_id, selection_network_path)
-											&& frontend_wire
-												.wire_start
-												.node_id()
-												.is_some_and(|wire_start_id| network_interface.is_chain(&wire_start_id, selection_network_path))
-										{
-											return false;
-										}
+					// 					// Prevent inserting a layer into a chain
+					// 					if network_interface.is_layer(&selected_node_id, selection_network_path)
+					// 						&& frontend_wire
+					// 							.wire_start_rect
+					// 							.node_id()
+					// 							.is_some_and(|wire_start_id| network_interface.is_chain(&wire_start_id, selection_network_path))
+					// 					{
+					// 						return false;
+					// 					}
 
-										let Some(input_position) = network_interface.input_position(&frontend_wire.wire_end, selection_network_path) else {
-											log::error!("Could not get input port position for {:?}", frontend_wire.wire_end);
-											return false;
-										};
+					// 					let locations = Self::build_wire_path_locations(output_position, input_position, start_node_is_layer, end_node_is_layer);
+					// 					let bezier = bezier_rs::Bezier::from_cubic_dvec2(
+					// 						(locations[0].x, locations[0].y).into(),
+					// 						(locations[1].x, locations[1].y).into(),
+					// 						(locations[2].x, locations[2].y).into(),
+					// 						(locations[3].x, locations[3].y).into(),
+					// 					);
 
-										let Some(output_position) = network_interface.output_position(&frontend_wire.wire_start, selection_network_path) else {
-											log::error!("Could not get output port position for {:?}", frontend_wire.wire_start);
-											return false;
-										};
+					// 					!bezier.rectangle_intersections(bounding_box[0], bounding_box[1]).is_empty() || bezier.is_contained_within(bounding_box[0], bounding_box[1])
+					// 				})
+					// 				.collect::<Vec<_>>()
+					// 				.into_iter()
+					// 				.filter_map(|mut wire| {
+					// 					if let Some(end_node_id) = wire.wire_end_rect.node_id() {
+					// 						let Some(actual_index_from_exposed) = (0..network_interface.number_of_inputs(&end_node_id, selection_network_path))
+					// 							.filter(|&input_index| {
+					// 								network_interface
+					// 									.input_from_connector(&InputConnector::Node { node_id: end_node_id, input_index }, selection_network_path)
+					// 									.is_some_and(|input| input.is_exposed_to_frontend(selection_network_path.is_empty()))
+					// 							})
+					// 							.nth(wire.wire_end_rect.input_index())
+					// 						else {
+					// 							log::error!("Could not get exposed input index for {:?}", wire.wire_end_rect);
+					// 							return None;
+					// 						};
+					// 						wire.wire_end_rect = InputConnector::Node {
+					// 							node_id: end_node_id,
+					// 							input_index: actual_index_from_exposed,
+					// 						};
+					// 					}
+					// 					Some(wire)
+					// 				})
+					// 				.collect::<Vec<_>>();
 
-										let start_node_is_layer = frontend_wire
-											.wire_end
-											.node_id()
-											.is_some_and(|wire_start_id| network_interface.is_layer(&wire_start_id, selection_network_path));
-										let end_node_is_layer = frontend_wire
-											.wire_end
-											.node_id()
-											.is_some_and(|wire_end_id| network_interface.is_layer(&wire_end_id, selection_network_path));
+					// 			let is_stack_wire = |wire: &FrontendNodeWire| match (wire.wire_start_rect.node_id(), wire.wire_end_rect.node_id(), wire.wire_end_rect.input_index()) {
+					// 				(Some(start_id), Some(end_id), input_index) => {
+					// 					input_index == 0 && network_interface.is_layer(&start_id, selection_network_path) && network_interface.is_layer(&end_id, selection_network_path)
+					// 				}
+					// 				_ => false,
+					// 			};
 
-										let locations = Self::build_wire_path_locations(output_position, input_position, start_node_is_layer, end_node_is_layer);
-										let bezier = bezier_rs::Bezier::from_cubic_dvec2(
-											(locations[0].x, locations[0].y).into(),
-											(locations[1].x, locations[1].y).into(),
-											(locations[2].x, locations[2].y).into(),
-											(locations[3].x, locations[3].y).into(),
-										);
+					// 			// Prioritize vertical thick lines and cancel if there are multiple potential wires
+					// 			let mut node_wires = Vec::new();
+					// 			let mut stack_wires = Vec::new();
+					// 			for wire in overlapping_wires {
+					// 				if is_stack_wire(&wire) { stack_wires.push(wire) } else { node_wires.push(wire) }
+					// 			}
 
-										!bezier.rectangle_intersections(bounding_box[0], bounding_box[1]).is_empty() || bezier.is_contained_within(bounding_box[0], bounding_box[1])
-									})
-									.collect::<Vec<_>>()
-									.into_iter()
-									.filter_map(|mut wire| {
-										if let Some(end_node_id) = wire.wire_end.node_id() {
-											let Some(actual_index_from_exposed) = (0..network_interface.number_of_inputs(&end_node_id, selection_network_path))
-												.filter(|&input_index| {
-													network_interface
-														.input_from_connector(&InputConnector::Node { node_id: end_node_id, input_index }, selection_network_path)
-														.is_some_and(|input| input.is_exposed_to_frontend(selection_network_path.is_empty()))
-												})
-												.nth(wire.wire_end.input_index())
-											else {
-												log::error!("Could not get exposed input index for {:?}", wire.wire_end);
-												return None;
-											};
-											wire.wire_end = InputConnector::Node {
-												node_id: end_node_id,
-												input_index: actual_index_from_exposed,
-											};
-										}
-										Some(wire)
-									})
-									.collect::<Vec<_>>();
+					// 			let overlapping_wire = if network_interface.is_layer(&selected_node_id, selection_network_path) {
+					// 				if stack_wires.len() == 1 {
+					// 					stack_wires.first()
+					// 				} else if stack_wires.is_empty() && node_wires.len() == 1 {
+					// 					node_wires.first()
+					// 				} else {
+					// 					None
+					// 				}
+					// 			} else if node_wires.len() == 1 {
+					// 				node_wires.first()
+					// 			} else {
+					// 				None
+					// 			};
+					// 			if let Some(overlapping_wire) = overlapping_wire {
+					// 				let Some(network) = network_interface.nested_network(selection_network_path) else {
+					// 					return;
+					// 				};
+					// 				// Ensure connection is to first visible input of selected node. If it does not have an input then do not connect
+					// 				if let Some((selected_node_input_index, _)) = network
+					// 					.nodes
+					// 					.get(&selected_node_id)
+					// 					.unwrap()
+					// 					.inputs
+					// 					.iter()
+					// 					.enumerate()
+					// 					.find(|(_, input)| input.is_exposed_to_frontend(selection_network_path.is_empty()))
+					// 				{
+					// 					responses.add(NodeGraphMessage::InsertNodeBetween {
+					// 						node_id: selected_node_id,
+					// 						input_connector: overlapping_wire.wire_end_rect,
+					// 						insert_node_input_index: selected_node_input_index,
+					// 					});
 
-								let is_stack_wire = |wire: &FrontendNodeWire| match (wire.wire_start.node_id(), wire.wire_end.node_id(), wire.wire_end.input_index()) {
-									(Some(start_id), Some(end_id), input_index) => {
-										input_index == 0 && network_interface.is_layer(&start_id, selection_network_path) && network_interface.is_layer(&end_id, selection_network_path)
-									}
-									_ => false,
-								};
+					// 					responses.add(NodeGraphMessage::RunDocumentGraph);
 
-								// Prioritize vertical thick lines and cancel if there are multiple potential wires
-								let mut node_wires = Vec::new();
-								let mut stack_wires = Vec::new();
-								for wire in overlapping_wires {
-									if is_stack_wire(&wire) { stack_wires.push(wire) } else { node_wires.push(wire) }
-								}
-
-								let overlapping_wire = if network_interface.is_layer(&selected_node_id, selection_network_path) {
-									if stack_wires.len() == 1 {
-										stack_wires.first()
-									} else if stack_wires.is_empty() && node_wires.len() == 1 {
-										node_wires.first()
-									} else {
-										None
-									}
-								} else if node_wires.len() == 1 {
-									node_wires.first()
-								} else {
-									None
-								};
-								if let Some(overlapping_wire) = overlapping_wire {
-									let Some(network) = network_interface.nested_network(selection_network_path) else {
-										return;
-									};
-									// Ensure connection is to first visible input of selected node. If it does not have an input then do not connect
-									if let Some((selected_node_input_index, _)) = network
-										.nodes
-										.get(&selected_node_id)
-										.unwrap()
-										.inputs
-										.iter()
-										.enumerate()
-										.find(|(_, input)| input.is_exposed_to_frontend(selection_network_path.is_empty()))
-									{
-										responses.add(NodeGraphMessage::InsertNodeBetween {
-											node_id: selected_node_id,
-											input_connector: overlapping_wire.wire_end,
-											insert_node_input_index: selected_node_input_index,
-										});
-
-										responses.add(NodeGraphMessage::RunDocumentGraph);
-
-										responses.add(NodeGraphMessage::SendGraph);
-									}
-								}
-							}
-						}
-					}
+					// 					responses.add(NodeGraphMessage::SendGraph);
+					// 				}
+					// 			}
+					// 		}
+					// 	}
+					// }
 					self.select_if_not_dragged = None;
 				}
 				// End of reordering an import
@@ -1283,6 +1286,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.begin_dragging = false;
 				self.box_selection_start = None;
 				self.wire_in_progress_from_connector = None;
+				self.wire_in_progress_type = FrontendGraphDataType::General;
 				self.wire_in_progress_to_connector = None;
 				self.reordering_export = None;
 				self.reordering_import = None;
@@ -1357,23 +1361,48 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				click_targets: Some(network_interface.collect_frontend_click_targets(breadcrumb_network_path)),
 			}),
 			NodeGraphMessage::EndSendClickTargets => responses.add(FrontendMessage::UpdateClickTargets { click_targets: None }),
+			NodeGraphMessage::RefreshWires => {
+				network_interface.unload_all_wires(breadcrumb_network_path);
+				responses.add(FrontendMessage::ClearNodeGraphWires);
+				responses.add(NodeGraphMessage::SendWires);
+			}
+			NodeGraphMessage::SendWires => {
+				let wires = Self::collect_wires(network_interface, breadcrumb_network_path);
+				let wires_direct_not_grid_aligned = preferences.graph_wire_style.is_direct();
+				responses.add(FrontendMessage::UpdateNodeGraphWires { wires, wires_direct_not_grid_aligned });
+			}
+			NodeGraphMessage::UpdateVisibleNodes => {
+				let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) else {
+					return;
+				};
+				let viewport_bbox = ipp.document_bounds();
+				let document_bbox = viewport_bbox.map(|p| network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(p));
+				self.current_nodes = Vec::new();
+				for node_id in &self.all_nodes {
+					let Some(node_bbox) = network_interface.node_bounding_box(&node_id, breadcrumb_network_path) else {
+						log::error!("Could not get bbox for node: {:?}", node_id);
+						continue;
+					};
+					if node_bbox[1].x >= document_bbox[0].x && node_bbox[0].x <= document_bbox[1].x && node_bbox[1].y >= document_bbox[0].y && node_bbox[0].y <= document_bbox[1].y {
+						self.current_nodes.push(*node_id);
+					}
+				}
+				responses.add(FrontendMessage::UpdateVisibleNodes { nodes: self.current_nodes.clone() });
+			}
 			NodeGraphMessage::SendGraph => {
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(PropertiesPanelMessage::Refresh);
 				if breadcrumb_network_path == selection_network_path && graph_view_overlay_open {
 					// TODO: Implement culling of nodes and wires whose bounding boxes are outside of the viewport
-					let wires = Self::collect_wires(network_interface, breadcrumb_network_path);
 					let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
+					self.all_nodes = nodes.iter().map(|node| node.id).collect();
+					responses.add(FrontendMessage::UpdateNodeGraphNodes { nodes });
+					responses.add(NodeGraphMessage::UpdateVisibleNodes);
+
 					let (layer_widths, chain_widths, has_left_input_wire) = network_interface.collect_layer_widths(breadcrumb_network_path);
-					let wires_direct_not_grid_aligned = preferences.graph_wire_style.is_direct();
 
 					responses.add(NodeGraphMessage::UpdateImportsExports);
-					responses.add(FrontendMessage::UpdateNodeGraph {
-						nodes,
-						wires,
-						wires_direct_not_grid_aligned,
-					});
 					responses.add(FrontendMessage::UpdateLayerWidths {
 						layer_widths,
 						chain_widths,
@@ -1455,6 +1484,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						Ordering::Equal => {}
 					}
 				}
+				responses.add(NodeGraphMessage::SendWires);
 			}
 			NodeGraphMessage::ToggleSelectedAsLayersOrNodes => {
 				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
@@ -1474,6 +1504,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::ShiftNodePosition { node_id, x, y } => {
 				network_interface.shift_absolute_node_position(&node_id, IVec2::new(x, y), selection_network_path);
+				responses.add(NodeGraphMessage::SendWires);
 			}
 			NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer } => {
 				if is_layer && !network_interface.is_eligible_to_be_layer(&node_id, selection_network_path) {
@@ -1487,6 +1518,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				});
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::SendWires);
 			}
 			NodeGraphMessage::SetDisplayName {
 				node_id,
@@ -1623,7 +1655,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					// }
 
 					let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
-						log::error!("Could not get network metadata in PointerMove");
+						log::error!("Could not get network metadata in UpdateBoxSelection");
 						return;
 					};
 
@@ -1689,7 +1721,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					)
 					.into_iter()
 					.next();
-
+				responses.add(NodeGraphMessage::UpdateVisibleNodes);
+				responses.add(NodeGraphMessage::SendWires);
 				responses.add(FrontendMessage::UpdateImportsExports {
 					imports,
 					exports,
@@ -2151,67 +2184,28 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	fn collect_wires(network_interface: &NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Vec<FrontendNodeWire> {
+	fn collect_wires(network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Vec<WireUpdate> {
 		let Some(network) = network_interface.nested_network(breadcrumb_network_path) else {
 			log::error!("Could not get network when collecting wires");
 			return Vec::new();
 		};
-		let mut wires = network
-			.nodes
-			.iter()
-			.flat_map(|(wire_end, node)| node.inputs.iter().filter(|input| input.is_exposed()).enumerate().map(move |(index, input)| (input, wire_end, index)))
-			.filter_map(|(input, &wire_end, wire_end_input_index)| {
-				match *input {
-					NodeInput::Node {
-						node_id: wire_start,
-						output_index: wire_start_output_index,
-						// TODO: add ui for lambdas
-						lambda: _,
-					} => Some(FrontendNodeWire {
-						wire_start: OutputConnector::node(wire_start, wire_start_output_index),
-						wire_end: InputConnector::node(wire_end, wire_end_input_index),
-						dashed: false,
-					}),
-					NodeInput::Network { import_index, .. } => Some(FrontendNodeWire {
-						wire_start: OutputConnector::Import(import_index),
-						wire_end: InputConnector::node(wire_end, wire_end_input_index),
-						dashed: false,
-					}),
-					_ => None,
-				}
-			})
-			.collect::<Vec<_>>();
 
-		// Connect primary export to root node, since previewing a node will change the primary export
-		if let Some(root_node) = network_interface.root_node(breadcrumb_network_path) {
-			wires.push(FrontendNodeWire {
-				wire_start: OutputConnector::node(root_node.node_id, root_node.output_index),
-				wire_end: InputConnector::Export(0),
-				dashed: false,
-			});
+		let mut input_connectors = Vec::new();
+		for (node_id, node) in &network.nodes {
+			for index in 0..node.inputs.len() {
+				input_connectors.push(InputConnector::node(*node_id, index));
+			}
+		}
+		for index in 0..network.exports.len() {
+			input_connectors.push(InputConnector::Export(index));
 		}
 
-		// Connect rest of exports to their actual export field since they are not affected by previewing. Only connect the primary export if it is dashed
-		for (i, export) in network.exports.iter().enumerate() {
-			let dashed = matches!(network_interface.previewing(breadcrumb_network_path), Previewing::Yes { .. }) && i == 0;
-			if dashed || i != 0 {
-				if let NodeInput::Node { node_id, output_index, .. } = export {
-					wires.push(FrontendNodeWire {
-						wire_start: OutputConnector::Node {
-							node_id: *node_id,
-							output_index: *output_index,
-						},
-						wire_end: InputConnector::Export(i),
-						dashed,
-					});
-				} else if let NodeInput::Network { import_index, .. } = *export {
-					wires.push(FrontendNodeWire {
-						wire_start: OutputConnector::Import(import_index),
-						wire_end: InputConnector::Export(i),
-						dashed,
-					})
-				}
-			}
+		let mut wires = input_connectors
+			.iter()
+			.filter_map(|connector| network_interface.newly_loaded_input_wire(connector, breadcrumb_network_path))
+			.collect::<Vec<_>>();
+		if let Some(wire_to_root) = network_interface.wire_to_root(breadcrumb_network_path) {
+			wires.push(wire_to_root);
 		}
 		wires
 	}
@@ -2252,14 +2246,19 @@ impl NodeGraphMessageHandler {
 			let node_id_path = [breadcrumb_network_path, (&[node_id])].concat();
 
 			let inputs = frontend_inputs_lookup.remove(&node_id).unwrap_or_default();
+
 			let mut inputs = inputs.into_iter().map(|input| {
-				input.map(|input| FrontendGraphInput {
-					data_type: FrontendGraphDataType::displayed_type(&input.ty, &input.type_source),
-					resolved_type: Some(format!("{:?}", &input.ty)),
-					valid_types: input.valid_types.iter().map(|ty| ty.to_string()).collect(),
-					name: input.input_name.unwrap_or_else(|| input.ty.nested_type().to_string()),
-					description: input.input_description.unwrap_or_default(),
-					connected_to: input.output_connector,
+				input.map(|input| {
+					let name = if input.input_name.is_empty() { input.ty.nested_type().to_string() } else { input.input_name };
+
+					FrontendGraphInput {
+						data_type: FrontendGraphDataType::displayed_type(&input.ty, &input.type_source),
+						resolved_type: Some(format!("{:?}", &input.ty)),
+						valid_types: input.valid_types.iter().map(|ty| ty.to_string()).collect(),
+						name,
+						description: input.input_description,
+						connected_to: input.output_connector,
+					}
 				})
 			});
 
@@ -2467,66 +2466,6 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	fn build_wire_path_string(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool) -> String {
-		let locations = Self::build_wire_path_locations(output_position, input_position, vertical_out, vertical_in);
-		let smoothing = 0.5;
-		let delta01 = DVec2::new((locations[1].x - locations[0].x) * smoothing, (locations[1].y - locations[0].y) * smoothing);
-		let delta23 = DVec2::new((locations[3].x - locations[2].x) * smoothing, (locations[3].y - locations[2].y) * smoothing);
-		format!(
-			"M{},{} L{},{} C{},{} {},{} {},{} L{},{}",
-			locations[0].x,
-			locations[0].y,
-			locations[1].x,
-			locations[1].y,
-			locations[1].x + delta01.x,
-			locations[1].y + delta01.y,
-			locations[2].x - delta23.x,
-			locations[2].y - delta23.y,
-			locations[2].x,
-			locations[2].y,
-			locations[3].x,
-			locations[3].y
-		)
-	}
-
-	fn build_wire_path_locations(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool) -> Vec<DVec2> {
-		let horizontal_gap = (output_position.x - input_position.x).abs();
-		let vertical_gap = (output_position.y - input_position.y).abs();
-		// TODO: Finish this commented out code replacement for the code below it based on this diagram: <https://files.keavon.com/-/SuperbWideFoxterrier/capture.png>
-		// // Straight: stacking lines which are always straight, or a straight horizontal wire between two aligned nodes
-		// if ((verticalOut && vertical_in) || (!verticalOut && !vertical_in && vertical_gap === 0)) {
-		// 	return [
-		// 		{ x: output_position.x, y: output_position.y },
-		// 		{ x: input_position.x, y: input_position.y },
-		// 	];
-		// }
-
-		// // L-shape bend
-		// if (verticalOut !== vertical_in) {
-		// }
-
-		let curve_length = 24.;
-		let curve_falloff_rate = curve_length * std::f64::consts::PI * 2.;
-
-		let horizontal_curve_amount = -(2_f64.powf((-10. * horizontal_gap) / curve_falloff_rate)) + 1.;
-		let vertical_curve_amount = -(2_f64.powf((-10. * vertical_gap) / curve_falloff_rate)) + 1.;
-		let horizontal_curve = horizontal_curve_amount * curve_length;
-		let vertical_curve = vertical_curve_amount * curve_length;
-
-		vec![
-			output_position,
-			DVec2::new(
-				if vertical_out { output_position.x } else { output_position.x + horizontal_curve },
-				if vertical_out { output_position.y - vertical_curve } else { output_position.y },
-			),
-			DVec2::new(
-				if vertical_in { input_position.x } else { input_position.x - horizontal_curve },
-				if vertical_in { input_position.y + vertical_curve } else { input_position.y },
-			),
-			DVec2::new(input_position.x, input_position.y),
-		]
-	}
-
 	pub fn update_node_graph_hints(&self, responses: &mut VecDeque<Message>) {
 		// A wire is in progress and its start and end connectors are set
 		let wiring = self.wire_in_progress_from_connector.is_some();
@@ -2570,8 +2509,8 @@ impl NodeGraphMessageHandler {
 
 #[derive(Default)]
 struct InputLookup {
-	input_name: Option<String>,
-	input_description: Option<String>,
+	input_name: String,
+	input_description: String,
 	ty: Type,
 	type_source: TypeSource,
 	valid_types: Vec<Type>,
@@ -2598,17 +2537,16 @@ fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface:
 			}
 
 			// Get the name from the metadata here (since it also requires a reference to the `network_interface`)
-			let input_name = network_interface
-				.input_name(node_id, index, breadcrumb_network_path)
-				.filter(|s| !s.is_empty())
-				.map(|name| name.to_string());
-			let input_description = network_interface.input_description(node_id, index, breadcrumb_network_path).map(|description| description.to_string());
+			let Some(metadata) = network_interface.persistent_input_metadata(&node_id, index, breadcrumb_network_path) else {
+				log::error!("Could not get metadata for node");
+				continue;
+			};
 			// Get the output connector that feeds into this input (done here as well for simplicity)
-			let connector = OutputConnector::from_input(input);
+			let connector: Option<OutputConnector> = OutputConnector::from_input(input);
 
 			inputs.push(Some(InputLookup {
-				input_name,
-				input_description,
+				input_name: metadata.input_name.clone(),
+				input_description: metadata.input_description.clone(),
 				output_connector: connector,
 				..Default::default()
 			}));
@@ -2656,6 +2594,7 @@ impl Default for NodeGraphMessageHandler {
 			select_if_not_dragged: None,
 			wire_in_progress_from_connector: None,
 			wire_in_progress_to_connector: None,
+			wire_in_progress_type: FrontendGraphDataType::General,
 			context_menu: None,
 			deselect_on_pointer_up: None,
 			auto_panning: Default::default(),
@@ -2663,6 +2602,8 @@ impl Default for NodeGraphMessageHandler {
 			reordering_export: None,
 			reordering_import: None,
 			end_index: None,
+			current_nodes: Vec::new(),
+			all_nodes: Vec::new(),
 		}
 	}
 }
