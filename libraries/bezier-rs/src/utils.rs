@@ -302,6 +302,49 @@ pub fn format_point(svg: &mut String, prefix: &str, x: f64, y: f64) -> std::fmt:
 	Ok(())
 }
 
+pub fn spiral_point(theta: f64, a: f64, b: f64) -> DVec2 {
+	let r = a + b * theta;
+	DVec2::new(r * theta.cos(), -r * theta.sin())
+}
+
+pub fn spiral_tangent(theta: f64, b: f64) -> DVec2 {
+	let dx = b * (theta.cos() - theta * theta.sin());
+	let dy = b * (theta.sin() + theta * theta.cos());
+	DVec2::new(dx, dy).normalize()
+}
+
+pub fn wrap_angle(angle: f64) -> f64 {
+	(angle + std::f64::consts::PI).rem_euclid(2.0 * std::f64::consts::PI) - std::f64::consts::PI
+}
+
+pub fn bezier_point(p0: DVec2, p1: DVec2, p2: DVec2, p3: DVec2, t: f64) -> DVec2 {
+	let u = 1.0 - t;
+	p0 * u * u * u + p1 * 3.0 * u * u * t + p2 * 3.0 * u * t * t + p3 * t * t * t
+}
+
+pub fn bezier_derivative(p0: DVec2, p1: DVec2, p2: DVec2, p3: DVec2, t: f64) -> DVec2 {
+	let u = 1.0 - t;
+	-3.0 * u * u * p0 + 3.0 * (u * u - 2.0 * u * t) * p1 + 3.0 * (2.0 * u * t - t * t) * p2 + 3.0 * t * t * p3
+}
+
+pub fn esq_for_d(p0: DVec2, t0: DVec2, p3: DVec2, t1: DVec2, theta0: f64, theta1: f64, d: f64, a: f64, b: f64, samples: usize) -> f64 {
+	let p1 = p0 + d * t0;
+	let p2 = p3 - d * t1;
+	let mut total = 0.0;
+	for i in 1..samples {
+		let t = i as f64 / samples as f64;
+		let bez = bezier_point(p0, p1, p2, p3, t);
+		let bez_d = bezier_derivative(p0, p1, p2, p3, t);
+		let bez_angle = bez_d.y.atan2(bez_d.x);
+
+		let theta = theta0 + (theta1 - theta0) * t;
+		let spiral_angle = theta;
+		let diff = wrap_angle(bez_angle - spiral_angle);
+		total += diff * diff * bez_d.length();
+	}
+	total / samples as f64
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

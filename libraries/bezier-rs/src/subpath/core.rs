@@ -1,6 +1,6 @@
 use super::*;
-use crate::consts::*;
 use crate::utils::format_point;
+use crate::{BezierHandles, consts::*};
 use glam::DVec2;
 use std::fmt::Write;
 
@@ -269,6 +269,55 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 			.concat(),
 			true,
 		)
+	}
+
+	pub fn spiral_point(theta: f64, a: f64, b: f64) -> DVec2 {
+		let r = a + b * theta;
+		DVec2::new(r * theta.cos(), -r * theta.sin())
+	}
+
+	fn spiral_tangent(theta: f64, a: f64, b: f64) -> DVec2 {
+		let r = a + b * theta;
+		let dx = b * theta.cos() - r * theta.sin();
+		let dy = b * theta.sin() + r * theta.cos();
+		DVec2::new(dx, -dy).normalize()
+	}
+
+	pub fn wrap_angle(angle: f64) -> f64 {
+		(angle + std::f64::consts::PI).rem_euclid(2.0 * std::f64::consts::PI) - std::f64::consts::PI
+	}
+
+	fn spiral_arc_length(theta: f64, a: f64, b: f64) -> f64 {
+		let r = a + b * theta;
+		let sqrt_term = (r * r + b * b).sqrt();
+		(r * sqrt_term + b * b * ((r + sqrt_term).ln())) / (2.0 * b)
+	}
+
+	pub fn generate_equal_arc_bezier_spiral2(a: f64, b: f64, turns: u32, delta_theta: f64, angle_offset: f64) -> Self {
+		let mut manipulator_groups = Vec::new();
+		let mut prev_in_handle = None;
+		let mut theta = 0.;
+		let theta_end = angle_offset + turns as f64 * std::f64::consts::TAU;
+
+		while theta < theta_end {
+			let theta_next = f64::min(theta + delta_theta, theta_end);
+			let p0 = Self::spiral_point(theta, a, b);
+			let p3 = Self::spiral_point(theta_next, a, b);
+			let t0 = Self::spiral_tangent(theta, a, b);
+			let t1 = Self::spiral_tangent(theta_next, a, b);
+
+			let arc_len = Self::spiral_arc_length(theta_next, a, b) - Self::spiral_arc_length(theta, a, b);
+			let d = arc_len / 3.0;
+
+			let p1 = p0 + d * t0;
+			let p2 = p3 - d * t1;
+
+			manipulator_groups.push(ManipulatorGroup::new(p0, prev_in_handle, Some(p1)));
+			prev_in_handle = Some(p2);
+			theta = theta_next;
+		}
+
+		Self::new(manipulator_groups, false)
 	}
 
 	/// Constructs an ellipse with `corner1` and `corner2` as the two corners of the bounding box.

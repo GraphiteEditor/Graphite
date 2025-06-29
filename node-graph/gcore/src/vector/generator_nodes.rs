@@ -1,3 +1,5 @@
+use std::f64::consts::{FRAC_PI_4, FRAC_PI_8, TAU};
+
 use super::misc::{ArcType, AsU64, GridType};
 use super::{PointId, SegmentId, StrokeId};
 use crate::Ctx;
@@ -62,6 +64,28 @@ fn arc(
 			ArcType::Closed => bezier_rs::ArcType::Closed,
 			ArcType::PieSlice => bezier_rs::ArcType::PieSlice,
 		},
+	)))
+}
+
+#[node_macro::node(category("Vector: Shape"))]
+fn spiral(
+	_: impl Ctx,
+	_primary: (),
+	#[default(1.)] inner_radius: f64,
+	#[default(1.)] tightness: f64,
+	#[default(6)]
+	#[hard_min(1.)]
+	turns: u32,
+	#[default(0.)]
+	#[range((0., 360.))]
+	angle_offset: f64,
+) -> VectorDataTable {
+	VectorDataTable::new(VectorData::from_subpath(Subpath::generate_equal_arc_bezier_spiral2(
+		inner_radius,
+		tightness,
+		turns,
+		FRAC_PI_4,
+		angle_offset.to_radians(),
 	)))
 }
 
