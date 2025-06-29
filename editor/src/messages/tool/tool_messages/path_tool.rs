@@ -594,7 +594,7 @@ impl PathToolData {
 			PathToolFsmState::Dragging(self.dragging_state)
 		}
 		// We didn't find a point nearby, so we will see if there is a segment to insert a point on
-		else if let Some(closed_segment) = &mut self.segment {
+		else if !lasso_select && let Some(closed_segment) = &mut self.segment {
 			responses.add(DocumentMessage::StartTransaction);
 
 			// Calculating and storing handle positions
@@ -610,7 +610,7 @@ impl PathToolData {
 			PathToolFsmState::MoldingSegment
 		}
 		// We didn't find a segment, so consider selecting the nearest shape instead
-		else if let Some(layer) = document.click(input) {
+		else if !lasso_select && let Some(layer) = document.click(input) {
 			shape_editor.deselect_all_points();
 			if extend_selection {
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });

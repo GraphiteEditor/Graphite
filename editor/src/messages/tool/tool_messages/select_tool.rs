@@ -78,11 +78,11 @@ pub enum SelectToolMessage {
 
 	// Tool-specific messages
 	DragStart {
-		extend_selection: Key,
-		remove_from_selection: Key,
-		select_deepest: Key,
-		lasso_select: Key,
-		skew: Key,
+		extend_selection_key: Key,
+		remove_from_selection_key: Key,
+		select_deepest_key: Key,
+		lasso_select_key: Key,
+		skew_key: Key,
 	},
 	DragStop {
 		remove_from_selection: Key,
@@ -853,10 +853,10 @@ impl Fsm for SelectToolFsmState {
 			(
 				SelectToolFsmState::Ready { .. },
 				SelectToolMessage::DragStart {
-					extend_selection,
-					remove_from_selection,
-					select_deepest,
-					lasso_select,
+					extend_selection_key,
+					remove_from_selection_key,
+					select_deepest_key,
+					lasso_select_key,
 					..
 				},
 			) => {
@@ -874,7 +874,7 @@ impl Fsm for SelectToolFsmState {
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
 				// If the user clicks on a layer that is in their current selection, go into the dragging mode.
 				// If the user clicks on new shape, make that layer their new selection.
-				// Otherwise enter the box select mode
+				// Otherwise enter the box or lasso select mode
 				let bounds = tool_data
 					.bounding_box_manager
 					.as_ref()
@@ -888,6 +888,7 @@ impl Fsm for SelectToolFsmState {
 				let show_compass = bounds.is_some_and(|quad| quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
 				let can_grab_compass_rose = compass_rose_state.can_grab() && (show_compass || bounds.is_none());
 
+				let lasso_select = input.keyboard.key(lasso_select_key);
 				let state = if is_over_pivot
 				// Dragging the pivot
 				{
@@ -907,10 +908,12 @@ impl Fsm for SelectToolFsmState {
 					SelectToolFsmState::SkewingBounds { skew: Key::Control }
 				}
 				// Dragging the selected layers around to transform them
-				else if can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
+				else if !lasso_select
+					&& (can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))))
+				{
 					responses.add(DocumentMessage::StartTransaction);
 
-					if input.keyboard.key(select_deepest) || tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
+					if input.keyboard.key(select_deepest_key) || tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
 						tool_data.select_single_layer = intersection;
 					} else {
 						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(document.metadata()).find(|ancestor| selected.contains(ancestor)));
@@ -927,29 +930,29 @@ impl Fsm for SelectToolFsmState {
 						axis,
 						using_compass,
 						has_dragged: false,
-						deepest: input.keyboard.key(select_deepest),
-						remove: input.keyboard.key(extend_selection),
+						deepest: input.keyboard.key(select_deepest_key),
+						remove: input.keyboard.key(extend_selection_key),
 					}
 				}
 				// Dragging near the transform cage bounding box to rotate it
 				else if rotate {
 					SelectToolFsmState::RotatingBounds
 				}
-				// Dragging a selection box
+				// Dragging a selection box or lasso
 				else {
 					tool_data.layers_dragging = selected;
-					let extend = input.keyboard.key(extend_selection);
-					if !extend && !input.keyboard.key(remove_from_selection) {
+					let extend = input.keyboard.key(extend_selection_key);
+					if !extend && !input.keyboard.key(remove_from_selection_key) {
 						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.layers_dragging.clear();
 					}
 
-					if let Some(intersection) = intersection {
+					if !lasso_select && let Some(intersection) = intersection {
 						tool_data.layer_selected_on_start = Some(intersection);
 						selected = intersection_list;
 
 						match tool_data.nested_selection_behavior {
-							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest) => drag_shallowest_manipulation(responses, selected, tool_data, document, false, extend),
+							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest_key) => drag_shallowest_manipulation(responses, selected, tool_data, document, false, extend),
 							_ => drag_deepest_manipulation(responses, selected, tool_data, document, false),
 						}
 						tool_data.get_snap_candidates(document, input);
@@ -959,11 +962,11 @@ impl Fsm for SelectToolFsmState {
 							axis: Axis::None,
 							using_compass: false,
 							has_dragged: false,
-							deepest: input.keyboard.key(select_deepest),
-							remove: input.keyboard.key(extend_selection),
+							deepest: input.keyboard.key(select_deepest_key),
+							remove: input.keyboard.key(extend_selection_key),
 						}
 					} else {
-						let selection_shape = if input.keyboard.key(lasso_select) { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
+						let selection_shape = if lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
 						SelectToolFsmState::Drawing { selection_shape, has_drawn: false }
 					}
 				};
