@@ -7,8 +7,6 @@ on:
     paths:
       - website/**
   pull_request:
-    branches:
-      - master
     paths:
       - website/**
 env:

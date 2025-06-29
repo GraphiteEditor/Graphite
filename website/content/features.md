@@ -117,10 +117,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Procedural vector editing and usability</span>
 		</div>
-		<!-- <div class="feature-icon ongoing" title="Development Ongoing">
-			<img class="atlas" style="--atlas-index: 0" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Imaginate tool</span>
-		</div> -->
 		<!-- Alpha 4 -->
 		<div class="feature-icon ongoing heading" title="Began February 2025" data-year="2025">
 			<h3>— Alpha 4 —</h3>
@@ -209,6 +205,10 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Stable document format</span>
 		</div>
+		<!-- <div class="feature-icon ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 0" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Imaginate tool</span>
+		</div> -->
 		<!-- Beta -->
 		<div class="feature-icon heading">
 			<h3>— Beta —</h3>

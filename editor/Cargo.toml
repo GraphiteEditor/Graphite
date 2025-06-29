@@ -13,66 +13,45 @@ license = "Apache-2.0"
 [features]
 default = ["wasm"]
 wasm = ["wasm-bindgen", "graphene-std/wasm", "wasm-bindgen-futures"]
-gpu = [
-	"interpreted-executor/gpu",
-	"graphene-std/gpu",
-	"graphene-core/gpu",
-	"wgpu-executor",
-	"gpu-executor",
-]
+gpu = ["interpreted-executor/gpu", "wgpu-executor"]
 tauri = ["ron", "decouple-execution"]
 decouple-execution = []
 resvg = ["graphene-std/resvg"]
-vello = ["graphene-std/vello", "resvg", "graphene-core/vello"]
+vello = ["graphene-std/vello", "resvg"]
 ron = ["dep:ron"]
 
 [dependencies]
 # Local dependencies
-graphite-proc-macros = { path = "../proc-macros" }
-graph-craft = { path = "../node-graph/graph-craft" }
-interpreted-executor = { path = "../node-graph/interpreted-executor", features = [
-	"serde",
-] }
-graphene-core = { path = "../node-graph/gcore" }
-graphene-std = { path = "../node-graph/gstd", features = ["serde"] }
+graphite-proc-macros = { workspace = true }
+graph-craft = { workspace = true }
+interpreted-executor = { workspace = true }
+graphene-std = { workspace = true }
+preprocessor = { workspace = true }
 
 # Workspace dependencies
 js-sys = { workspace = true }
 log = { workspace = true }
 bitflags = { workspace = true }
-convert_case = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 bezier-rs = { workspace = true }
 futures = { workspace = true }
-glam = { workspace = true, features = ["serde", "debug-glam-assert"] }
+glam = { workspace = true }
+kurbo = { workspace = true }
 derivative = { workspace = true }
 specta = { workspace = true }
-image = { workspace = true, features = ["bmp", "png"] }
 dyn-any = { workspace = true }
 num_enum = { workspace = true }
 usvg = { workspace = true }
 once_cell = { workspace = true }
-web-sys = { workspace = true, features = [
-	"Document",
-	"DomRect",
-	"Element",
-	"HtmlCanvasElement",
-	"CanvasRenderingContext2d",
-	"CanvasPattern",
-	"OffscreenCanvas",
-	"OffscreenCanvasRenderingContext2d",
-	"TextMetrics",
-] }
+web-sys = { workspace = true }
 
 # Required dependencies
-async-mutex = "1.4.0"
 spin = "0.9.8"
 
 # Optional local dependencies
-wgpu-executor = { path = "../node-graph/wgpu-executor", optional = true }
-gpu-executor = { path = "../node-graph/gpu-executor", optional = true }
+wgpu-executor = { workspace = true, optional = true }
 
 # Optional workspace dependencies
 wasm-bindgen = { workspace = true, optional = true }
@@ -83,7 +62,7 @@ ron = { workspace = true, optional = true }
 # Workspace dependencies
 env_logger = { workspace = true }
 futures = { workspace = true }
-tokio = { workspace = true, features = ["rt", "macros"] }
+tokio = { workspace = true }
 
 [lints.rust]
 # TODO: figure out why we check these features when they do not exist

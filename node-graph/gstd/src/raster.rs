@@ -2,11 +2,11 @@ use dyn_any::DynAny;
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
 use graphene_core::instances::Instance;
-use graphene_core::raster::bbox::Bbox;
-use graphene_core::raster::image::{Image, RasterDataTable};
-use graphene_core::raster::{Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, Channel, DomainWarpType, FractalType, LinearChannel, Luminance, NoiseType, RGBMut};
+use graphene_core::math::bbox::Bbox;
+pub use graphene_core::raster::*;
+use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::transform::Transform;
-use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint};
+use graphene_core::{Ctx, ExtractFootprint};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::fmt::Debug;
@@ -25,7 +25,7 @@ impl From<std::io::Error> for Error {
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: RasterDataTable<Color>) -> RasterDataTable<Color> {
+fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: RasterDataTable<CPU>) -> RasterDataTable<CPU> {
 	let mut result_table = RasterDataTable::default();
 
 	for mut image_frame_instance in image_frame.instance_iter() {
@@ -84,22 +84,22 @@ fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: RasterDa
 
 		image_frame_instance.transform = new_transform;
 		image_frame_instance.source_node_id = None;
-		image_frame_instance.instance = image;
+		image_frame_instance.instance = Raster::new_cpu(image);
 		result_table.push(image_frame_instance)
 	}
 
 	result_table
 }
 
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category("Raster: Channels"))]
 fn combine_channels(
 	_: impl Ctx,
 	_primary: (),
-	#[expose] red: RasterDataTable<Color>,
-	#[expose] green: RasterDataTable<Color>,
-	#[expose] blue: RasterDataTable<Color>,
-	#[expose] alpha: RasterDataTable<Color>,
-) -> RasterDataTable<Color> {
+	#[expose] red: RasterDataTable<CPU>,
+	#[expose] green: RasterDataTable<CPU>,
+	#[expose] blue: RasterDataTable<CPU>,
+	#[expose] alpha: RasterDataTable<CPU>,
+) -> RasterDataTable<CPU> {
 	let mut result_table = RasterDataTable::default();
 
 	let max_len = red.len().max(green.len()).max(blue.len()).max(alpha.len());
@@ -170,7 +170,7 @@ fn combine_channels(
 
 		// Add this instance to the result table
 		result_table.push(Instance {
-			instance: image,
+			instance: Raster::new_cpu(image),
 			transform,
 			alpha_blending,
 			source_node_id: None,
@@ -184,11 +184,11 @@ fn combine_channels(
 fn mask(
 	_: impl Ctx,
 	/// The image to be masked.
-	image: RasterDataTable<Color>,
+	image: RasterDataTable<CPU>,
 	/// The stencil to be used for masking.
 	#[expose]
-	stencil: RasterDataTable<Color>,
-) -> RasterDataTable<Color> {
+	stencil: RasterDataTable<CPU>,
+) -> RasterDataTable<CPU> {
 	// TODO: Support multiple stencil instances
 	let Some(stencil_instance) = stencil.instance_iter().next() else {
 		// No stencil provided so we return the original image
@@ -218,7 +218,7 @@ fn mask(
 				let mask_point = stencil_instance.transform.transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
 				let mask_point = (DAffine2::from_scale(stencil_size) * stencil_instance.transform.inverse()).transform_point2(mask_point);
 
-				let image_pixel = image_instance.instance.get_pixel_mut(x, y).unwrap();
+				let image_pixel = image_instance.instance.data_mut().get_pixel_mut(x, y).unwrap();
 				let mask_pixel = stencil_instance.instance.sample(mask_point);
 				*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().cast_linear_channel());
 			}
@@ -231,7 +231,7 @@ fn mask(
 }
 
 #[node_macro::node(category(""))]
-fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<Color>, bounds: DAffine2) -> RasterDataTable<Color> {
+fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<CPU>, bounds: DAffine2) -> RasterDataTable<CPU> {
 	let mut result_table = RasterDataTable::default();
 
 	for mut image_instance in image.instance_iter() {
@@ -242,7 +242,7 @@ fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<Color>, bounds: DA
 			continue;
 		}
 
-		let image_data = image_instance.instance.data;
+		let image_data = &image_instance.instance.data;
 		let (image_width, image_height) = (image_instance.instance.width, image_instance.instance.height);
 		if image_width == 0 || image_height == 0 {
 			for image_instance in empty_image((), bounds, Color::TRANSPARENT).instance_iter() {
@@ -274,7 +274,7 @@ fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<Color>, bounds: DA
 		// let layer_to_new_texture_space = (DAffine2::from_scale(1. / new_scale) * DAffine2::from_translation(new_start) * layer_to_image_space).inverse();
 		let new_texture_to_layer_space = image_instance.transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
 
-		image_instance.instance = new_image;
+		image_instance.instance = Raster::new_cpu(new_image);
 		image_instance.transform = new_texture_to_layer_space;
 		image_instance.source_node_id = None;
 		result_table.push(image_instance);
@@ -284,13 +284,13 @@ fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<Color>, bounds: DA
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> RasterDataTable<Color> {
+fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> RasterDataTable<CPU> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
 	let image = Image::new(width, height, color);
 
-	let mut result_table = RasterDataTable::new(image);
+	let mut result_table = RasterDataTable::new(Raster::new_cpu(image));
 	let image_instance = result_table.get_mut(0).unwrap();
 	*image_instance.transform = transform;
 	*image_instance.alpha_blending = AlphaBlending::default();
@@ -301,110 +301,11 @@ fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> RasterDataTabl
 
 /// Constructs a raster image.
 #[node_macro::node(category(""))]
-fn image(_: impl Ctx, _primary: (), image: RasterDataTable<Color>) -> RasterDataTable<Color> {
+fn image_value(_: impl Ctx, _primary: (), image: RasterDataTable<CPU>) -> RasterDataTable<CPU> {
 	image
 }
 
-// #[cfg(feature = "serde")]
-// macro_rules! generate_imaginate_node {
-// 	($($val:ident: $t:ident: $o:ty,)*) => {
-// 		pub struct ImaginateNode<P: Pixel, E, C, G, $($t,)*> {
-// 			editor_api: E,
-// 			controller: C,
-// 			generation_id: G,
-// 			$($val: $t,)*
-// 			cache: std::sync::Arc<std::sync::Mutex<HashMap<u64, Image<P>>>>,
-// 			last_generation: std::sync::atomic::AtomicU64,
-// 		}
-
-// 		impl<'e, P: Pixel, E, C, G, $($t,)*> ImaginateNode<P, E, C, G, $($t,)*>
-// 		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
-// 			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, &'e WasmEditorApi>>,
-// 			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
-// 			G: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, u64>>,
-// 		{
-// 			#[allow(clippy::too_many_arguments)]
-// 			pub fn new(editor_api: E, controller: C, $($val: $t,)*  generation_id: G ) -> Self {
-// 				Self { editor_api, controller, generation_id, $($val,)* cache: Default::default(), last_generation: std::sync::atomic::AtomicU64::new(u64::MAX) }
-// 			}
-// 		}
-
-// 		impl<'i, 'e: 'i, P: Pixel + 'i + Hash + Default + Send, E: 'i, C: 'i, G: 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, E, C, G, $($t,)*>
-// 		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
-// 			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, &'e WasmEditorApi>>,
-// 			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
-// 			G: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, u64>>,
-// 		{
-// 			type Output = DynFuture<'i, ImageFrame<P>>;
-
-// 			fn eval(&'i self, frame: ImageFrame<P>) -> Self::Output {
-// 				let controller = self.controller.eval(());
-// 				$(let $val = self.$val.eval(());)*
-
-// 				use std::hash::Hasher;
-// 				let mut hasher = rustc_hash::FxHasher::default();
-// 				frame.image.hash(&mut hasher);
-// 				let hash = hasher.finish();
-// 				let editor_api = self.editor_api.eval(());
-// 				let cache = self.cache.clone();
-// 				let generation_future = self.generation_id.eval(());
-// 				let last_generation = &self.last_generation;
-
-// 				Box::pin(async move {
-// 					let controller: ImaginateController = controller.await;
-// 					let generation_id = generation_future.await;
-// 					if generation_id !=  last_generation.swap(generation_id, std::sync::atomic::Ordering::SeqCst) {
-// 						let image = super::imaginate::imaginate(frame.image, editor_api, controller, $($val,)*).await;
-
-// 						cache.lock().unwrap().insert(hash, image.clone());
-
-// 						return wrap_image_frame(image, frame.transform);
-// 					}
-// 					let image = cache.lock().unwrap().get(&hash).cloned().unwrap_or_default();
-
-// 					return wrap_image_frame(image, frame.transform);
-// 				})
-// 			}
-// 		}
-// 	}
-// }
-
-// fn wrap_image_frame<P: Pixel>(image: Image<P>, transform: DAffine2) -> ImageFrame<P> {
-// 	if !transform.decompose_scale().abs_diff_eq(DVec2::ZERO, 0.00001) {
-// 		ImageFrame {
-// 			image,
-// 			transform,
-// 			alpha_blending: AlphaBlending::default(),
-// 		}
-// 	} else {
-// 		let resolution = DVec2::new(image.height as f64, image.width as f64);
-// 		ImageFrame {
-// 			image,
-// 			transform: DAffine2::from_scale_angle_translation(resolution, 0., transform.translation),
-// 			alpha_blending: AlphaBlending::default(),
-// 		}
-// 	}
-// }
-
-// #[cfg(feature = "serde")]
-// generate_imaginate_node! {
-// 	seed: Seed: f64,
-// 	res: Res: Option<DVec2>,
-// 	samples: Samples: u32,
-// 	sampling_method: SamplingMethod: ImaginateSamplingMethod,
-// 	prompt_guidance: PromptGuidance: f64,
-// 	prompt: Prompt: String,
-// 	negative_prompt: NegativePrompt: String,
-// 	adapt_input_image: AdaptInputImage: bool,
-// 	image_creativity: ImageCreativity: f64,
-// 	inpaint: Inpaint: bool,
-// 	mask_blur: MaskBlur: f64,
-// 	mask_starting_fill: MaskStartingFill: ImaginateMaskStartingFill,
-// 	improve_faces: ImproveFaces: bool,
-// 	tiling: Tiling: bool,
-// }
-
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category("Raster: Pattern"))]
 #[allow(clippy::too_many_arguments)]
 fn noise_pattern(
 	ctx: impl ExtractFootprint + Ctx,
@@ -424,7 +325,7 @@ fn noise_pattern(
 	cellular_distance_function: CellularDistanceFunction,
 	cellular_return_type: CellularReturnType,
 	cellular_jitter: f64,
-) -> RasterDataTable<Color> {
+) -> RasterDataTable<CPU> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
@@ -488,7 +389,7 @@ fn noise_pattern(
 
 			let mut result = RasterDataTable::default();
 			result.push(Instance {
-				instance: image,
+				instance: Raster::new_cpu(image),
 				transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
 				..Default::default()
 			});
@@ -553,7 +454,7 @@ fn noise_pattern(
 
 	let mut result = RasterDataTable::default();
 	result.push(Instance {
-		instance: image,
+		instance: Raster::new_cpu(image),
 		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
 		..Default::default()
 	});
@@ -561,8 +462,8 @@ fn noise_pattern(
 	result
 }
 
-#[node_macro::node(category("Raster"))]
-fn mandelbrot(ctx: impl ExtractFootprint + Send) -> RasterDataTable<Color> {
+#[node_macro::node(category("Raster: Pattern"))]
+fn mandelbrot(ctx: impl ExtractFootprint + Send) -> RasterDataTable<CPU> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
@@ -604,7 +505,7 @@ fn mandelbrot(ctx: impl ExtractFootprint + Send) -> RasterDataTable<Color> {
 	};
 	let mut result = RasterDataTable::default();
 	result.push(Instance {
-		instance: image,
+		instance: Raster::new_cpu(image),
 		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
 		..Default::default()
 	});

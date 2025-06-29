@@ -1,7 +1,56 @@
 use super::poisson_disk::poisson_disk_sample;
-use crate::vector::misc::dvec2_to_point;
+use crate::vector::misc::{PointSpacingType, dvec2_to_point};
 use glam::DVec2;
 use kurbo::{BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, Rect, Shape};
+
+/// Splits the [`BezPath`] at `t` value which lie in the range of [0, 1].
+/// Returns [`None`] if the given [`BezPath`] has no segments or `t` is within f64::EPSILON of 0 or 1.
+pub fn split_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Option<(BezPath, BezPath)> {
+	if t <= f64::EPSILON || (1. - t) <= f64::EPSILON || bezpath.segments().count() == 0 {
+		return None;
+	}
+
+	// Get the segment which lies at the split.
+	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, None);
+	let segment = bezpath.get_seg(segment_index + 1).unwrap();
+
+	// Divide the segment.
+	let first_segment = segment.subsegment(0.0..t);
+	let second_segment = segment.subsegment(t..1.);
+
+	let mut first_bezpath = BezPath::new();
+	let mut second_bezpath = BezPath::new();
+
+	// Append the segments up to the subdividing segment from original bezpath to first bezpath.
+	for segment in bezpath.segments().take(segment_index) {
+		if first_bezpath.elements().is_empty() {
+			first_bezpath.move_to(segment.start());
+		}
+		first_bezpath.push(segment.as_path_el());
+	}
+
+	// Append the first segment of the subdivided segment.
+	if first_bezpath.elements().is_empty() {
+		first_bezpath.move_to(first_segment.start());
+	}
+	first_bezpath.push(first_segment.as_path_el());
+
+	// Append the second segment of the subdivided segment in the second bezpath.
+	if second_bezpath.elements().is_empty() {
+		second_bezpath.move_to(second_segment.start());
+	}
+	second_bezpath.push(second_segment.as_path_el());
+
+	// Append the segments after the subdividing segment from original bezpath to second bezpath.
+	for segment in bezpath.segments().skip(segment_index + 1) {
+		if second_bezpath.elements().is_empty() {
+			second_bezpath.move_to(segment.start());
+		}
+		second_bezpath.push(segment.as_path_el());
+	}
+
+	Some((first_bezpath, second_bezpath))
+}
 
 pub fn position_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> Point {
 	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, segments_length);
@@ -18,7 +67,15 @@ pub fn tangent_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_l
 	}
 }
 
-pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f64, stop_offset: f64, adaptive_spacing: bool, segments_length: &[f64]) -> Option<BezPath> {
+pub fn sample_polyline_on_bezpath(
+	bezpath: BezPath,
+	point_spacing_type: PointSpacingType,
+	amount: f64,
+	start_offset: f64,
+	stop_offset: f64,
+	adaptive_spacing: bool,
+	segments_length: &[f64],
+) -> Option<BezPath> {
 	let mut sample_bezpath = BezPath::new();
 
 	let was_closed = matches!(bezpath.elements().last(), Some(PathEl::ClosePath));
@@ -29,22 +86,33 @@ pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f6
 	// Adjust the usable length by subtracting start and stop offsets.
 	let mut used_length = total_length - start_offset - stop_offset;
 
+	// Sanity check that the usable length is positive.
 	if used_length <= 0. {
 		return None;
 	}
 
-	// Determine the number of points to generate along the path.
-	let sample_count = if adaptive_spacing {
-		// Calculate point count to evenly distribute points while covering the entire path.
-		// With adaptive spacing, we widen or narrow the points as necessary to ensure the last point is always at the end of the path.
-		(used_length / spacing).round()
-	} else {
-		// Calculate point count based on exact spacing, which may not cover the entire path.
+	const SAFETY_MAX_COUNT: f64 = 10_000. - 1.;
 
-		// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path.
-		let count = (used_length / spacing + f64::EPSILON).floor();
-		used_length -= used_length % spacing;
-		count
+	// Determine the number of points to generate along the path.
+	let sample_count = match point_spacing_type {
+		PointSpacingType::Separation => {
+			let spacing = amount.min(used_length - f64::EPSILON);
+
+			if adaptive_spacing {
+				// Calculate point count to evenly distribute points while covering the entire path.
+				// With adaptive spacing, we widen or narrow the points as necessary to ensure the last point is always at the end of the path.
+				(used_length / spacing).round().min(SAFETY_MAX_COUNT)
+			} else {
+				// Calculate point count based on exact spacing, which may not cover the entire path.
+				// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path.
+				let count = (used_length / spacing + f64::EPSILON).floor().min(SAFETY_MAX_COUNT);
+				if count != SAFETY_MAX_COUNT {
+					used_length -= used_length % spacing;
+				}
+				count
+			}
+		}
+		PointSpacingType::Quantity => (amount - 1.).floor().clamp(1., SAFETY_MAX_COUNT),
 	};
 
 	// Skip if there are no points to generate.
@@ -108,7 +176,7 @@ pub fn t_value_to_parametric(bezpath: &BezPath, t: f64, euclidian: bool, segment
 
 /// Finds the t value of point on the given path segment i.e fractional distance along the segment's total length.
 /// It uses a binary search to find the value `t` such that the ratio `length_up_to_t / total_length` approximates the input `distance`.
-pub fn eval_pathseg_euclidean(path_segment: kurbo::PathSeg, distance: f64, accuracy: f64) -> f64 {
+pub fn eval_pathseg_euclidean(path_segment: PathSeg, distance: f64, accuracy: f64) -> f64 {
 	let mut low_t = 0.;
 	let mut mid_t = 0.5;
 	let mut high_t = 1.;
@@ -139,7 +207,7 @@ pub fn eval_pathseg_euclidean(path_segment: kurbo::PathSeg, distance: f64, accur
 /// Converts from a bezpath (composed of multiple segments) to a point along a certain segment represented.
 /// The returned tuple represents the segment index and the `t` value along that segment.
 /// Both the input global `t` value and the output `t` value are in euclidean space, meaning there is a constant rate of change along the arc length.
-fn global_euclidean_to_local_euclidean(bezpath: &kurbo::BezPath, global_t: f64, lengths: &[f64], total_length: f64) -> (usize, f64) {
+fn global_euclidean_to_local_euclidean(bezpath: &BezPath, global_t: f64, lengths: &[f64], total_length: f64) -> (usize, f64) {
 	let mut accumulator = 0.;
 	for (index, length) in lengths.iter().enumerate() {
 		let length_ratio = length / total_length;
@@ -158,7 +226,7 @@ enum BezPathTValue {
 
 /// Convert a [BezPathTValue] to a parametric `(segment_index, t)` tuple.
 /// - Asserts that `t` values contained within the `SubpathTValue` argument lie in the range [0, 1].
-fn bezpath_t_value_to_parametric(bezpath: &kurbo::BezPath, t: BezPathTValue, precomputed_segments_length: Option<&[f64]>) -> (usize, f64) {
+fn bezpath_t_value_to_parametric(bezpath: &BezPath, t: BezPathTValue, precomputed_segments_length: Option<&[f64]>) -> (usize, f64) {
 	let segment_count = bezpath.segments().count();
 	assert!(segment_count >= 1);
 

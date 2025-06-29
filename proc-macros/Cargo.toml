@@ -23,7 +23,6 @@ serde-discriminant = []
 proc-macro2 = { workspace = true }
 syn = { workspace = true }
 quote = { workspace = true }
-convert_case = { workspace = true }
 
 [dev-dependencies]
 # Local dependencies
@@ -31,3 +30,6 @@ editor = { path = "../editor", package = "graphite-editor" }
 
 # Workspace dependencies
 serde = { workspace = true }
+
+[package.metadata.cargo-shear]
+ignored = ["graphite-editor"]

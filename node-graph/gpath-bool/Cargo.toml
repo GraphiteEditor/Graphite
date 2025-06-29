@@ -1,0 +1,19 @@
+[package]
+name = "graphene-path-bool"
+version = "0.1.0"
+edition = "2024"
+description = "graphene path bool nodes"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Local dependencies
+dyn-any = { workspace = true }
+bezier-rs = { workspace = true }
+graphene-core = { workspace = true }
+node-macro = { workspace = true }
+glam = { workspace = true }
+specta = { workspace = true }
+log = { workspace = true }
+path-bool = { workspace = true }
+serde = { workspace = true }

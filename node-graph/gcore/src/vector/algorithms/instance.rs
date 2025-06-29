@@ -1,6 +1,5 @@
 use crate::instances::{InstanceRef, Instances};
-use crate::raster::Color;
-use crate::raster::image::RasterDataTable;
+use crate::raster_types::{CPU, RasterDataTable};
 use crate::vector::VectorDataTable;
 use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use glam::DVec2;
@@ -12,7 +11,7 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + '
 	#[implementations(
 		Context -> GraphicGroupTable,
 		Context -> VectorDataTable,
-		Context -> RasterDataTable<Color>
+		Context -> RasterDataTable<CPU>
 	)]
 	instance: impl Node<'n, Context<'static>, Output = Instances<T>>,
 	reverse: bool,
@@ -53,7 +52,7 @@ async fn instance_repeat<T: Into<GraphicElement> + Default + Send + Clone + 'sta
 	#[implementations(
 		Context -> GraphicGroupTable,
 		Context -> VectorDataTable,
-		Context -> RasterDataTable<Color>
+		Context -> RasterDataTable<CPU>
 	)]
 	instance: impl Node<'n, Context<'static>, Output = Instances<T>>,
 	#[default(1)] count: u64,
@@ -100,7 +99,7 @@ async fn instance_index(ctx: impl Ctx + ExtractIndex) -> f64 {
 mod test {
 	use super::*;
 	use crate::Node;
-	use crate::ops::ExtractXyNode;
+	use crate::extract_xy::{ExtractXyNode, XY};
 	use crate::vector::VectorData;
 	use bezier_rs::Subpath;
 	use glam::DVec2;
@@ -110,7 +109,7 @@ mod test {
 	pub struct FutureWrapperNode<T: Clone>(T);
 
 	impl<'i, I: Ctx, T: 'i + Clone + Send> Node<'i, I> for FutureWrapperNode<T> {
-		type Output = Pin<Box<dyn core::future::Future<Output = T> + 'i + Send>>;
+		type Output = Pin<Box<dyn Future<Output = T> + 'i + Send>>;
 		fn eval(&'i self, _input: I) -> Self::Output {
 			let value = self.0.clone();
 			Box::pin(async move { value })
@@ -122,7 +121,7 @@ mod test {
 		let owned = OwnedContextImpl::default().into_context();
 		let rect = crate::vector::generator_nodes::RectangleNode::new(
 			FutureWrapperNode(()),
-			ExtractXyNode::new(InstancePositionNode {}, FutureWrapperNode(crate::ops::XY::Y)),
+			ExtractXyNode::new(InstancePositionNode {}, FutureWrapperNode(XY::Y)),
 			FutureWrapperNode(2_f64),
 			FutureWrapperNode(false),
 			FutureWrapperNode(0_f64),

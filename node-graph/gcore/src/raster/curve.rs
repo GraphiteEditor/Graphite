@@ -1,10 +1,9 @@
 use super::{Channel, Linear, LuminanceMut};
 use crate::Node;
-use core::ops::{Add, Mul, Sub};
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
+use std::ops::{Add, Mul, Sub};
 
-#[derive(Debug, Clone, PartialEq, DynAny, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, DynAny, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct Curve {
 	#[serde(rename = "manipulatorGroups")]
 	pub manipulator_groups: Vec<CurveManipulatorGroup>,
@@ -31,8 +30,7 @@ impl std::hash::Hash for Curve {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, DynAny, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, DynAny, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct CurveManipulatorGroup {
 	pub anchor: [f32; 2],
 	pub handles: [[f32; 2]; 2],
@@ -95,12 +93,7 @@ impl CubicSplines {
 		// Gaussian elimination: forward elimination
 		for row in 0..4 {
 			let pivot_row_index = (row..4)
-				.max_by(|&a_row, &b_row| {
-					augmented_matrix[a_row][row]
-						.abs()
-						.partial_cmp(&augmented_matrix[b_row][row].abs())
-						.unwrap_or(core::cmp::Ordering::Equal)
-				})
+				.max_by(|&a_row, &b_row| augmented_matrix[a_row][row].abs().partial_cmp(&augmented_matrix[b_row][row].abs()).unwrap_or(std::cmp::Ordering::Equal))
 				.unwrap();
 
 			// Swap the current row with the row that has the largest pivot element
@@ -174,7 +167,6 @@ pub struct ValueMapperNode<C> {
 	lut: Vec<C>,
 }
 
-#[cfg(feature = "dyn-any")]
 unsafe impl<C: StaticTypeSized> StaticType for ValueMapperNode<C> {
 	type Static = ValueMapperNode<C::Static>;
 }

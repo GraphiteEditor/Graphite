@@ -88,10 +88,10 @@ impl Parse for ParsedWidgetOverride {
 					let lit: LitStr = input.parse()?;
 					Ok(ParsedWidgetOverride::Custom(lit))
 				}
-				_ => Err(syn::Error::new(variant.span(), "Unknown ParsedWidgetOverride variant")),
+				_ => Err(Error::new(variant.span(), "Unknown ParsedWidgetOverride variant")),
 			}
 		} else {
-			Err(syn::Error::new(input.span(), "Expected ParsedWidgetOverride::<variant>"))
+			Err(Error::new(input.span(), "Expected ParsedWidgetOverride::<variant>"))
 		}
 	}
 }
@@ -474,7 +474,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	}
 
 	let unit = extract_attribute(attrs, "unit")
-		.map(|attr| attr.parse_args::<LitStr>().map_err(|e| Error::new_spanned(attr, format!("Expected a unit type as string"))))
+		.map(|attr| attr.parse_args::<LitStr>().map_err(|_e| Error::new_spanned(attr, format!("Expected a unit type as string"))))
 		.transpose()?;
 
 	let number_display_decimal_places = extract_attribute(attrs, "display_decimal_places")
@@ -1052,7 +1052,7 @@ mod tests {
 	fn test_async_node() {
 		let attr = quote!(category("IO"));
 		let input = quote!(
-			async fn load_image(api: &WasmEditorApi, #[expose] path: String) -> RasterDataTable<Color> {
+			async fn load_image(api: &WasmEditorApi, #[expose] path: String) -> RasterDataTable<CPU> {
 				// Implementation details...
 			}
 		);
@@ -1076,7 +1076,7 @@ mod tests {
 				ty: parse_quote!(&WasmEditorApi),
 				implementations: Punctuated::new(),
 			},
-			output_type: parse_quote!(RasterDataTable<Color>),
+			output_type: parse_quote!(RasterDataTable<CPU>),
 			is_async: true,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("path"),
@@ -1195,7 +1195,7 @@ mod tests {
 	fn test_invalid_implementation_syntax() {
 		let attr = quote!(category("Test"));
 		let input = quote!(
-			fn test_node(_: (), #[implementations((Footprint, Color), (Footprint, RasterDataTable<Color>))] input: impl Node<Footprint, Output = T>) -> T {
+			fn test_node(_: (), #[implementations((Footprint, Color), (Footprint, RasterDataTable<CPU>))] input: impl Node<Footprint, Output = T>) -> T {
 				// Implementation details...
 			}
 		);
@@ -1214,17 +1214,17 @@ mod tests {
 		let attr = quote!(category("Test"));
 
 		// Use quote_spanned! to attach a specific span to the problematic part
-		let problem_span = proc_macro2::Span::call_site(); // You could create a custom span here if needed
+		let problem_span = Span::call_site(); // You could create a custom span here if needed
 		let tuples = quote_spanned!(problem_span=> () ());
 		let input = quote! {
 			fn test_node(
 				#[implementations((), #tuples, Footprint)] footprint: F,
 				#[implementations(
 				() -> Color,
-				() -> RasterDataTable<Color>,
+				() -> RasterDataTable<CPU>,
 				() -> GradientStops,
 				Footprint -> Color,
-				Footprint -> RasterDataTable<Color>,
+				Footprint -> RasterDataTable<CPU>,
 				Footprint -> GradientStops,
 			)]
 				image: impl Node<F, Output = T>,

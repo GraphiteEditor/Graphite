@@ -3,9 +3,9 @@ use super::utility_types::PanelType;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
-use graphene_core::Color;
-use graphene_core::raster::Image;
-use graphene_core::text::Font;
+use graphene_std::Color;
+use graphene_std::raster::Image;
+use graphene_std::text::Font;
 
 #[impl_message(Message, Portfolio)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -54,9 +54,6 @@ pub enum PortfolioMessage {
 		preview_url: String,
 		data: Vec<u8>,
 	},
-	// ImaginateCheckServerStatus,
-	// ImaginatePollServerStatus,
-	// ImaginateServerHostname,
 	Import,
 	LoadDocumentResources {
 		document_id: DocumentId,

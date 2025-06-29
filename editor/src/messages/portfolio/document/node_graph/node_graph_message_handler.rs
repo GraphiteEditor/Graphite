@@ -15,12 +15,14 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
+use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
-use graphene_core::*;
+use graphene_std::math::math_ext::QuadExt;
+use graphene_std::*;
 use renderer::Quad;
 use std::cmp::Ordering;
 
@@ -566,7 +568,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(DocumentMessage::AddTransaction);
 
 				let new_ids: HashMap<_, _> = data.iter().map(|(id, _)| (*id, NodeId::new())).collect();
-				let nodes: Vec<_> = new_ids.iter().map(|(_, id)| *id).collect();
+				let nodes: Vec<_> = new_ids.values().copied().collect();
 				responses.add(NodeGraphMessage::AddNodes {
 					nodes: data,
 					new_ids: new_ids.clone(),
@@ -1395,12 +1397,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					input,
 				});
 				responses.add(PropertiesPanelMessage::Refresh);
-				if (network_interface
-					.reference(&node_id, selection_network_path)
-					.is_none_or(|reference| *reference != Some("Imaginate".to_string())) // TODO: Potentially remove the reference to Imaginate
-					|| input_index == 0)
-					&& network_interface.connected_to_output(&node_id, selection_network_path)
-				{
+				if !(network_interface.reference(&node_id, selection_network_path).is_none() || input_index == 0) && network_interface.connected_to_output(&node_id, selection_network_path) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
@@ -2442,6 +2439,7 @@ impl NodeGraphMessageHandler {
 					}
 				});
 
+				let clippable = layer.can_be_clipped(network_interface.document_metadata());
 				let data = LayerPanelEntry {
 					id: node_id,
 					alias: network_interface.display_name(&node_id, &[]),
@@ -2461,6 +2459,8 @@ impl NodeGraphMessageHandler {
 					selected: selected_layers.contains(&node_id),
 					ancestor_of_selected: ancestors_of_selected.contains(&node_id),
 					descendant_of_selected: descendants_of_selected.contains(&node_id),
+					clipped: get_clip_mode(layer, network_interface).unwrap_or(false) && clippable,
+					clippable,
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
 			}

@@ -7,14 +7,14 @@ use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
-use graphene_core::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
-use graphene_core::memo::IORecord;
-use graphene_core::renderer::{GraphicElementRendered, RenderParams, SvgRender};
-use graphene_core::renderer::{RenderSvgSegmentList, SvgSegment};
-use graphene_core::text::FontCache;
-use graphene_core::vector::style::ViewMode;
 use graphene_std::Context;
+use graphene_std::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_std::instances::Instance;
+use graphene_std::memo::IORecord;
+use graphene_std::renderer::{GraphicElementRendered, RenderParams, SvgRender};
+use graphene_std::renderer::{RenderSvgSegmentList, SvgSegment};
+use graphene_std::text::FontCache;
+use graphene_std::vector::style::ViewMode;
 use graphene_std::vector::{VectorData, VectorDataTable};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
@@ -44,6 +44,9 @@ pub struct NodeRuntime {
 
 	/// Which node is inspected and which monitor node is used (if any) for the current execution
 	inspect_state: Option<InspectState>,
+
+	/// Mapping of the fully-qualified node paths to their preprocessor substitutions.
+	substitutions: HashMap<String, DocumentNode>,
 
 	// TODO: Remove, it doesn't need to be persisted anymore
 	/// The current renders of the thumbnails for layer nodes.
@@ -119,6 +122,8 @@ impl NodeRuntime {
 
 			node_graph_errors: Vec::new(),
 			monitor_nodes: Vec::new(),
+
+			substitutions: preprocessor::generate_node_substitutions(),
 
 			thumbnail_renders: Default::default(),
 			vector_modify: Default::default(),
@@ -221,11 +226,16 @@ impl NodeRuntime {
 		}
 	}
 
-	async fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, String> {
+	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, String> {
+		if cfg!(not(test)) {
+			preprocessor::expand_network(&mut graph, &self.substitutions);
+		}
+
 		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 
 		// We assume only one output
 		assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
+
 		let c = Compiler {};
 		let proto_network = match c.compile_single(scoped_network) {
 			Ok(network) => network,
@@ -288,9 +298,9 @@ impl NodeRuntime {
 				continue;
 			};
 
-			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_core::GraphicElement>>() {
+			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_std::GraphicElement>>() {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
-			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_core::Artboard>>() {
+			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_std::Artboard>>() {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			// Insert the vector modify if we are dealing with vector data
 			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, VectorDataTable>>() {
@@ -323,7 +333,15 @@ impl NodeRuntime {
 		let bounds = graphic_element.bounding_box(DAffine2::IDENTITY, true);
 
 		// Render the thumbnail from a `GraphicElement` into an SVG string
-		let render_params = RenderParams::new(ViewMode::Normal, bounds, true, false, false);
+		let render_params = RenderParams {
+			view_mode: ViewMode::Normal,
+			culling_bounds: bounds,
+			thumbnail: true,
+			hide_artboards: false,
+			for_export: false,
+			for_mask: false,
+			alignment_parent_transform: None,
+		};
 		let mut render = SvgRender::new();
 		graphic_element.render_svg(&mut render, &render_params);
 

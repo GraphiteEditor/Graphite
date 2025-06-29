@@ -1,19 +1,18 @@
 use graph_craft::document::value::RenderOutput;
 pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
-#[cfg(target_arch = "wasm32")]
-use graphene_core::application_io::SurfaceHandle;
-use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig};
+use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
 #[cfg(target_arch = "wasm32")]
 use graphene_core::instances::Instances;
 #[cfg(target_arch = "wasm32")]
-use graphene_core::raster::bbox::Bbox;
-use graphene_core::raster::image::{Image, RasterDataTable};
-use graphene_core::renderer::RenderMetadata;
-use graphene_core::renderer::{GraphicElementRendered, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
+use graphene_core::math::bbox::Bbox;
+use graphene_core::raster::image::Image;
+use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorDataTable;
 use graphene_core::{Color, Context, Ctx, ExtractFootprint, GraphicGroupTable, OwnedContextImpl, WasmNotSend};
+use graphene_svg_renderer::RenderMetadata;
+use graphene_svg_renderer::{GraphicElementRendered, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 
 #[cfg(target_arch = "wasm32")]
 use base64::Engine;
@@ -26,6 +25,7 @@ use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
+#[cfg(feature = "wgpu")]
 #[node_macro::node(category("Debug: GPU"))]
 async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
 	Arc::new(editor.application_io.as_ref().unwrap().create_window())
@@ -49,9 +49,9 @@ async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<W
 // 		let canvas = &surface_handle.surface;
 // 		canvas.set_width(image.image.width);
 // 		canvas.set_height(image.image.height);
-// 		// TODO: replace "2d" with "bitmaprenderer" once we switch to ImageBitmap (lives on gpu) from ImageData (lives on cpu)
+// 		// TODO: replace "2d" with "bitmaprenderer" once we switch to ImageBitmap (lives on gpu) from RasterData (lives on cpu)
 // 		let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
-// 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.image.width, image.image.height).expect("Failed to construct ImageData");
+// 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.image.width, image.image.height).expect("Failed to construct RasterData");
 // 		context.put_image_data(&image_data, 0., 0.).unwrap();
 // 	}
 // 	graphene_core::application_io::SurfaceHandleFrame {
@@ -60,7 +60,7 @@ async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<W
 // 	}
 // }
 
-#[node_macro::node(category("Network"))]
+#[node_macro::node(category("Web Request"))]
 async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] editor: &'a WasmEditorApi, #[name("URL")] url: String) -> Arc<[u8]> {
 	let Some(api) = editor.application_io.as_ref() else {
 		return Arc::from(include_bytes!("../../graph-craft/src/null.png").to_vec());
@@ -75,8 +75,8 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")]
 	data
 }
 
-#[node_macro::node(category("Network"))]
-fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> RasterDataTable<Color> {
+#[node_macro::node(category("Web Request"))]
+fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> RasterDataTable<CPU> {
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
 		return RasterDataTable::default();
 	};
@@ -91,7 +91,7 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> RasterDataTable<Color> {
 		..Default::default()
 	};
 
-	RasterDataTable::new(image)
+	RasterDataTable::new(Raster::new_cpu(image))
 }
 
 fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutputType {
@@ -125,7 +125,7 @@ async fn render_canvas(
 	surface_handle: wgpu_executor::WgpuSurface,
 	render_params: RenderParams,
 ) -> RenderOutputType {
-	use graphene_core::SurfaceFrame;
+	use graphene_application_io::SurfaceFrame;
 
 	let footprint = render_config.viewport;
 	let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() else {
@@ -165,13 +165,13 @@ async fn rasterize<T: WasmNotSend + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		VectorDataTable,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GraphicGroupTable,
 	)]
 	mut data: Instances<T>,
 	footprint: Footprint,
-	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
-) -> RasterDataTable<Color>
+	surface_handle: Arc<graphene_application_io::SurfaceHandle<HtmlCanvasElement>>,
+) -> RasterDataTable<CPU>
 where
 	Instances<T>: GraphicElementRendered,
 {
@@ -219,8 +219,9 @@ where
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
 	let mut result = RasterDataTable::default();
+	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
 	result.push(Instance {
-		instance: Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32),
+		instance: Raster::new_cpu(image),
 		transform: footprint.transform,
 		..Default::default()
 	});
@@ -234,7 +235,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	editor_api: impl Node<Context<'static>, Output = &'a WasmEditorApi>,
 	#[implementations(
 		Context -> VectorDataTable,
-		Context -> RasterDataTable<Color>,
+		Context -> RasterDataTable<CPU>,
 		Context -> GraphicGroupTable,
 		Context -> graphene_core::Artboard,
 		Context -> graphene_core::ArtboardGroupTable,
@@ -257,7 +258,15 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	ctx.footprint();
 
 	let RenderConfig { hide_artboards, for_export, .. } = render_config;
-	let render_params = RenderParams::new(render_config.view_mode, None, false, hide_artboards, for_export);
+	let render_params = RenderParams {
+		view_mode: render_config.view_mode,
+		culling_bounds: None,
+		thumbnail: false,
+		hide_artboards,
+		for_export,
+		for_mask: false,
+		alignment_parent_transform: None,
+	};
 
 	let data = data.eval(ctx.clone()).await;
 	let editor_api = editor_api.eval(None).await;
