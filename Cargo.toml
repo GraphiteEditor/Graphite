@@ -7,6 +7,7 @@ members = [
 	"node-graph/gapplication-io",
 	"node-graph/gcore",
 	"node-graph/gstd",
+	"node-graph/gelement-nodes",
 	"node-graph/gmath-nodes",
 	"node-graph/gpath-bool",
 	"node-graph/graph-craft",
@@ -26,6 +27,7 @@ default-members = [
 	"frontend/wasm",
 	"node-graph/gcore",
 	"node-graph/gstd",
+	"node-graph/gelement-nodes",
 	"node-graph/gmath-nodes",
 	"node-graph/gpath-bool",
 	"node-graph/graph-craft",
@@ -45,6 +47,7 @@ math-parser = { path = "libraries/math-parser" }
 path-bool = { path = "libraries/path-bool" }
 graphene-application-io = { path = "node-graph/gapplication-io" }
 graphene-core = { path = "node-graph/gcore" }
+graphene-element-nodes = { path = "node-graph/gelement-nodes" }
 graphene-math-nodes = { path = "node-graph/gmath-nodes" }
 graphene-path-bool = { path = "node-graph/gpath-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
