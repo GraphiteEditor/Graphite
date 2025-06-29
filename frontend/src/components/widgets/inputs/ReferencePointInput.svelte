@@ -13,7 +13,7 @@
 	function setValue(event: MouseEvent) {
 		const element = event.target as HTMLDivElement;
 		const button = element.parentElement;
-		if (button) {
+		if (button instanceof HTMLButtonElement) {
 			let position = button.dataset.position! as ReferencePoint;
 			onvalue?.(position);
 		}
