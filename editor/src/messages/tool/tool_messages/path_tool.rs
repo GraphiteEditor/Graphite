@@ -58,7 +58,10 @@ pub enum PathToolMessage {
 	},
 	Escape,
 	ClosePath,
-	FlipSmoothSharp,
+	DoubleClick {
+		extend_selection: Key,
+		shrink_selection: Key,
+	},
 	GRS {
 		// Should be `Key::KeyG` (Grab), `Key::KeyR` (Rotate), or `Key::KeyS` (Scale)
 		key: Key,
@@ -319,7 +322,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 	fn actions(&self) -> ActionList {
 		match self.fsm_state {
 			PathToolFsmState::Ready => actions!(PathToolMessageDiscriminant;
-				FlipSmoothSharp,
+				DoubleClick,
 				MouseDown,
 				Delete,
 				NudgeSelectedPoints,
@@ -334,7 +337,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 			PathToolFsmState::Dragging(_) => actions!(PathToolMessageDiscriminant;
 				Escape,
 				RightClick,
-				FlipSmoothSharp,
+				DoubleClick,
 				DragStop,
 				PointerMove,
 				Delete,
@@ -343,7 +346,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				SwapSelectedHandles,
 			),
 			PathToolFsmState::Drawing { .. } => actions!(PathToolMessageDiscriminant;
-				FlipSmoothSharp,
+				DoubleClick,
 				DragStop,
 				PointerMove,
 				Delete,
@@ -461,7 +464,6 @@ struct PathToolData {
 	frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
 	adjacent_anchor_offset: Option<DVec2>,
 	sliding_point_info: Option<SlidingPointInfo>,
-	started_drawing_from_inside: bool,
 }
 
 impl PathToolData {
@@ -684,23 +686,6 @@ impl PathToolData {
 				}
 				PathToolFsmState::MoldingSegment
 			}
-		}
-		// We didn't find a segment, so consider selecting the nearest shape instead and start drawing
-		else if let Some(layer) = document.click(input) {
-			shape_editor.deselect_all_points();
-			shape_editor.deselect_all_segments();
-			if extend_selection {
-				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
-			} else {
-				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
-			}
-			self.drag_start_pos = input.mouse.position;
-			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
-
-			self.started_drawing_from_inside = true;
-
-			let selection_shape = if lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
-			PathToolFsmState::Drawing { selection_shape }
 		}
 		// Start drawing
 		else {
@@ -1465,13 +1450,12 @@ impl Fsm for PathToolFsmState {
 						let quad = tool_data.selection_quad(document.metadata());
 						let polygon = &tool_data.lasso_polygon;
 
-						match (selection_shape, selection_mode, tool_data.started_drawing_from_inside) {
+						match (selection_shape, selection_mode) {
 							// Don't draw box if it is from inside a shape and selection just began
-							(SelectionShapeType::Box, SelectionMode::Enclosed, false) => overlay_context.dashed_quad(quad, None, fill_color, Some(4.), Some(4.), Some(0.5)),
-							(SelectionShapeType::Lasso, SelectionMode::Enclosed, _) => overlay_context.dashed_polygon(polygon, None, fill_color, Some(4.), Some(4.), Some(0.5)),
-							(SelectionShapeType::Box, _, false) => overlay_context.quad(quad, None, fill_color),
-							(SelectionShapeType::Lasso, _, _) => overlay_context.polygon(polygon, None, fill_color),
-							(SelectionShapeType::Box, _, _) => {}
+							(SelectionShapeType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, None, fill_color, Some(4.), Some(4.), Some(0.5)),
+							(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, None, fill_color, Some(4.), Some(4.), Some(0.5)),
+							(SelectionShapeType::Box, _) => overlay_context.quad(quad, None, fill_color),
+							(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, None, fill_color),
 						}
 					}
 					Self::Dragging(_) => {
@@ -1557,7 +1541,6 @@ impl Fsm for PathToolFsmState {
 				},
 			) => {
 				tool_data.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
-				tool_data.started_drawing_from_inside = false;
 
 				if selection_shape == SelectionShapeType::Lasso {
 					extend_lasso(&mut tool_data.lasso_polygon, input.mouse.position);
@@ -2072,8 +2055,8 @@ impl Fsm for PathToolFsmState {
 				shape_editor.delete_point_and_break_path(document, responses);
 				PathToolFsmState::Ready
 			}
-			(_, PathToolMessage::FlipSmoothSharp) => {
-				// Double-clicked on a point
+			(_, PathToolMessage::DoubleClick { extend_selection, shrink_selection }) => {
+				// Double-clicked on a point (flip smooth sharp behaviour)
 				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD);
 				if nearest_point.is_some() {
 					// Flip the selected point between smooth and sharp
@@ -2090,11 +2073,28 @@ impl Fsm for PathToolFsmState {
 
 					return PathToolFsmState::Ready;
 				}
+				// Double clicked on a filled region
+				else if let Some(layer) = document.click(input) {
+					let extend_selection = input.keyboard.get(extend_selection as usize);
+					let shrink_selection = input.keyboard.get(shrink_selection as usize);
+					if shape_editor.is_selected_layer(layer) {
+						if extend_selection {
+							responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
+						} else if shrink_selection {
+							responses.add(NodeGraphMessage::SelectedNodesRemove { nodes: vec![layer.to_node()] });
+						} else {
+							shape_editor.select_connected_anchors(document, layer, input.mouse.position);
+						}
+					} else {
+						if extend_selection {
+							responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
+						} else if shrink_selection {
+							responses.add(NodeGraphMessage::SelectedNodesRemove { nodes: vec![layer.to_node()] });
+						} else {
+							responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
+						}
+					}
 
-				// Double-clicked on a filled region
-				if let Some(layer) = document.click(input) {
-					// Select all points in the layer
-					shape_editor.select_connected_anchors(document, layer, input.mouse.position);
 					responses.add(OverlaysMessage::Draw);
 				}
 

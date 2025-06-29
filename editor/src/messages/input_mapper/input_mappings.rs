@@ -225,7 +225,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Backspace); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyUp(MouseLeft); action_dispatch=PathToolMessage::DragStop { extend_selection: Shift, shrink_selection: Alt }),
 		entry!(KeyDown(Enter); action_dispatch=PathToolMessage::Enter { extend_selection: Shift, shrink_selection: Alt }),
-		entry!(DoubleClick(MouseButton::Left); action_dispatch=PathToolMessage::FlipSmoothSharp),
+		entry!(DoubleClick(MouseButton::Left); action_dispatch=PathToolMessage::DoubleClick{ extend_selection: Shift, shrink_selection: Alt}),
 		entry!(KeyDown(ArrowRight); action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: 0. }),
 		entry!(KeyDown(ArrowRight); modifiers=[Shift], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: BIG_NUDGE_AMOUNT, delta_y: 0. }),
 		entry!(KeyDown(ArrowRight); modifiers=[ArrowUp], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT }),
