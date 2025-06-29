@@ -511,6 +511,7 @@ impl PathToolData {
 
 		let mouse_down_intent = {
 			// Check if the point is already selected; if not, select the first point within the threshold (in pixels)
+			// Don't select the points which are not shown currently in PathOverlayMode
 			if let Some((already_selected, selection_info)) = shape_editor.get_point_selection_state(
 				&document.network_interface,
 				input.mouse.position,
