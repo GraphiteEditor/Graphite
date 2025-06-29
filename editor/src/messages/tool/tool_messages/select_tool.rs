@@ -888,6 +888,7 @@ impl Fsm for SelectToolFsmState {
 				let show_compass = bounds.is_some_and(|quad| quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
 				let can_grab_compass_rose = compass_rose_state.can_grab() && (show_compass || bounds.is_none());
 
+				let lasso_select = input.keyboard.key(lasso_select_key);
 				let state = if is_over_pivot
 				// Dragging the pivot
 				{
@@ -907,7 +908,9 @@ impl Fsm for SelectToolFsmState {
 					SelectToolFsmState::SkewingBounds { skew: Key::Control }
 				}
 				// Dragging the selected layers around to transform them
-				else if can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
+				else if !lasso_select
+					&& (can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))))
+				{
 					responses.add(DocumentMessage::StartTransaction);
 
 					if input.keyboard.key(select_deepest_key) || tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
@@ -944,7 +947,6 @@ impl Fsm for SelectToolFsmState {
 						tool_data.layers_dragging.clear();
 					}
 
-					let lasso_select = input.keyboard.key(lasso_select_key);
 					if !lasso_select && let Some(intersection) = intersection {
 						tool_data.layer_selected_on_start = Some(intersection);
 						selected = intersection_list;
