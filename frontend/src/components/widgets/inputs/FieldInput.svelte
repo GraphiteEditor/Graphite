@@ -158,6 +158,7 @@
 			background: none;
 			color: var(--color-e-nearwhite);
 			caret-color: var(--color-e-nearwhite);
+			unicode-bidi: plaintext;
 
 			&::selection {
 				background-color: var(--color-4-dimgray);

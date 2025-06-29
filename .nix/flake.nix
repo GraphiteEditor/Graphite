@@ -51,7 +51,7 @@
           libraw
 
 
-          # Tauri dependencies: keep in sync with https://v2.tauri.app/start/prerequisites/
+          # Tauri dependencies: keep in sync with https://v2.tauri.app/start/prerequisites/#system-dependencies (under the NixOS tab)
           at-spi2-atk
           atkmm
           cairo

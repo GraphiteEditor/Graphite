@@ -1161,8 +1161,7 @@ impl NodeNetworkInterface {
 			.and_then(|node_metadata| node_metadata.persistent_metadata.input_properties.get(index))
 	}
 
-	pub fn insert_input_properties_row(&mut self, node_id: &NodeId, index: usize, network_path: &[NodeId]) {
-		let row = ("", "TODO").into();
+	pub fn insert_input_properties_row(&mut self, node_id: &NodeId, index: usize, network_path: &[NodeId], row: PropertiesRow) {
 		let _ = self
 			.node_metadata_mut(node_id, network_path)
 			.map(|node_metadata| node_metadata.persistent_metadata.input_properties.insert(index - 1, row));

@@ -11,21 +11,23 @@ fn text<'i: 'n>(
 	font_name: Font,
 	#[default(24.)] font_size: f64,
 	#[default(1.2)] line_height_ratio: f64,
-	#[default(1.)] character_spacing: f64,
+	#[default(0.)] character_spacing: f64,
 	#[default(None)] max_width: Option<f64>,
 	#[default(None)] max_height: Option<f64>,
+	#[default(0.)] shear: f64,
 ) -> VectorDataTable {
-	let buzz_face = editor.font_cache.get(&font_name).map(|data| load_face(data));
-
 	let typesetting = TypesettingConfig {
 		font_size,
 		line_height_ratio,
 		character_spacing,
 		max_width,
 		max_height,
+		shear,
 	};
 
-	let result = VectorData::from_subpaths(to_path(&text, buzz_face, typesetting), false);
+	let font_data = editor.font_cache.get(&font_name).map(|f| load_font(f));
+
+	let result = VectorData::from_subpaths(to_path(&text, font_data, typesetting), false);
 
 	VectorDataTable::new(result)
 }
