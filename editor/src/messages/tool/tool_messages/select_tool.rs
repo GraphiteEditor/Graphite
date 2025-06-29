@@ -1076,6 +1076,8 @@ impl Fsm for SelectToolFsmState {
 					let extend = input.keyboard.key(extend_selection);
 					if !extend && !input.keyboard.key(remove_from_selection) {
 						responses.add(DocumentMessage::DeselectAllLayers);
+						let position = tool_data.pivot.last_non_none_reference;
+						responses.add(SelectToolMessage::SetPivot { position });
 						tool_data.layers_dragging.clear();
 					}
 
@@ -1571,6 +1573,7 @@ impl Fsm for SelectToolFsmState {
 			(_, SelectToolMessage::SetPivot { position }) => {
 				responses.add(DocumentMessage::StartTransaction);
 
+				tool_data.pivot.last_non_none_reference = position;
 				let pos: Option<DVec2> = position.into();
 				tool_data.pivot.set_normalized_position(pos.unwrap());
 				let dot = tool_data.get_as_dot();

@@ -16,6 +16,8 @@ pub struct Pivot {
 	pivot: Option<DVec2>,
 	/// The old pivot position in the GUI, used to reduce refreshes of the document bar
 	pub old_pivot_position: ReferencePoint,
+	/// The last ReferencePoint which wasn't none
+	pub last_non_none_reference: ReferencePoint,
 	/// Used to enable and disable the pivot
 	active: bool,
 }
@@ -27,6 +29,7 @@ impl Default for Pivot {
 			transform_from_normalized: Default::default(),
 			pivot: Default::default(),
 			old_pivot_position: ReferencePoint::Center,
+			last_non_none_reference: ReferencePoint::Center,
 			active: true,
 		}
 	}
