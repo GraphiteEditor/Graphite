@@ -439,16 +439,48 @@ pub fn log_optimization(a: f64, b: f64, p1: DVec2, p3: DVec2, d1: DVec2, d2: DVe
 	let new_curve = Bezier::from_cubic_coordinates(p1.x, p1.y, c1.x, c1.y, c2.x, c2.y, p3.x, p3.y);
 
 	// Sample 2*n points from new curve and get the L2 metric between all of points
-	let points = new_curve.compute_lookup_table(Some(2 * n), None).collect::<Vec<_>>();
-
+	let points = new_curve.compute_lookup_table(Some(n), None).collect::<Vec<_>>();
 	let dist = points1.iter().zip(points.iter()).map(|(p1, p2)| (p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sum::<f64>();
 
-	dist / (2 * n) as f64
+	dist / (n) as f64
 }
 
 /// Calculates optimal handle lengths with adam optimization.
 #[allow(clippy::too_many_arguments)]
 pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, min_len1: f64, min_len2: f64, farther_segment: Bezier, other_segment: Bezier) -> (DVec2, DVec2) {
+	let n = 40;
+
+	let farther_segment = if farther_segment.start.distance(p1) >= f64::EPSILON {
+		farther_segment.reverse()
+	} else {
+		farther_segment
+	};
+
+	let other_segment = if other_segment.end.distance(p3) >= f64::EPSILON { other_segment.reverse() } else { other_segment };
+
+	// Now we sample points proportional to the lengths of the beziers
+	let l1 = farther_segment.length(None);
+	let l2 = other_segment.length(None);
+	let ratio = l1 / (l1 + l2);
+	let n_points1 = ((n) as f64 * ratio).floor() as usize;
+	let n_points2 = n - n_points1;
+	let mut points1 = farther_segment.compute_lookup_table(Some(2), None).collect::<Vec<_>>();
+	let points2 = other_segment.compute_lookup_table(Some(n_points2), None).collect::<Vec<_>>();
+	if points2.len() >= 2 {
+		points1.extend_from_slice(&points2[1..]);
+	}
+
+	let f = |a: f64, b: f64| -> f64 { log_optimization(a, b, p1, p3, d1, d2, &points1, n) };
+
+	let (a, b) = adam_optimizer(f);
+
+	let len1 = a.exp().max(min_len1);
+	let len2 = b.exp().max(min_len2);
+
+	(d1 * len1, d2 * len2)
+}
+
+pub fn adam_optimizer(f: impl Fn(f64, f64) -> f64) -> (f64, f64) {
 	let h = 1e-6;
 	let tol = 1e-6;
 	let max_iter = 200;
@@ -468,30 +500,9 @@ pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec
 	let beta2 = 0.999;
 	let epsilon = 1e-8;
 
-	let n = 20;
-
-	let farther_segment = if farther_segment.start.distance(p1) >= f64::EPSILON {
-		farther_segment.reverse()
-	} else {
-		farther_segment
-	};
-
-	let other_segment = if other_segment.end.distance(p3) >= f64::EPSILON { other_segment.reverse() } else { other_segment };
-
-	// Now we sample points proportional to the lengths of the beziers
-	let l1 = farther_segment.length(None);
-	let l2 = other_segment.length(None);
-	let ratio = l1 / (l1 + l2);
-	let n_points1 = ((2 * n) as f64 * ratio).floor() as usize;
-	let mut points1 = farther_segment.compute_lookup_table(Some(n_points1), None).collect::<Vec<_>>();
-	let mut points2 = other_segment.compute_lookup_table(Some(n), None).collect::<Vec<_>>();
-	points1.append(&mut points2);
-
-	let f = |a: f64, b: f64| -> f64 { log_optimization(a, b, p1, p3, d1, d2, &points1, n) };
-
 	for t in 1..=max_iter {
-		let dfa = (f(a + h, b) - f(a - h, b)) / (2. * h);
-		let dfb = (f(a, b + h) - f(a, b - h)) / (2. * h);
+		let dfa: f64 = (f(a + h, b) - f(a - h, b)) / (2. * h);
+		let dfb: f64 = (f(a, b + h) - f(a, b - h)) / (2. * h);
 
 		m_a = beta1 * m_a + (1. - beta1) * dfa;
 		m_b = beta1 * m_b + (1. - beta1) * dfb;
@@ -515,9 +526,46 @@ pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec
 			break;
 		}
 	}
+	(a, b)
+}
 
-	let len1 = a.exp().max(min_len1);
-	let len2 = b.exp().max(min_len2);
+pub fn find_refit_handle_lengths(p1: DVec2, p3: DVec2, beziers: Vec<Bezier>, d1: DVec2, d2: DVec2) -> [DVec2; 2] {
+	let n = 40;
 
-	(d1 * len1, d2 * len2)
+	let points_per_bez = n / beziers.len();
+
+	let points = if points_per_bez < 1 {
+		beziers.iter().map(|bezier| bezier.start()).collect::<Vec<_>>()
+	} else {
+		let mut points = Vec::new();
+		for bezier in &beziers {
+			let lookup = bezier.compute_lookup_table(Some(points_per_bez), None).collect::<Vec<_>>();
+			points.extend_from_slice(&lookup[..lookup.len() - 1]);
+		}
+		points
+	};
+
+	let limit = points.len();
+
+	let f = |a: f64, b: f64| -> f64 {
+		let start_handle_len = a.exp();
+		let end_handle_len = b.exp();
+
+		let c1 = p1 + d1 * start_handle_len;
+		let c2 = p3 + d2 * end_handle_len;
+
+		let new_curve = Bezier::from_cubic_coordinates(p1.x, p1.y, c1.x, c1.y, c2.x, c2.y, p3.x, p3.y);
+
+		let new_points = new_curve.compute_lookup_table(Some(limit), None);
+		let dist = points.iter().zip(new_points).map(|(p1, p2)| (p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sum::<f64>();
+
+		dist / (limit) as f64
+	};
+
+	let (a, b) = adam_optimizer(f);
+
+	let len1 = a.exp();
+	let len2 = b.exp();
+
+	[d1 * len1, d2 * len2]
 }
