@@ -5,7 +5,7 @@
 
 	import type { Editor } from "@graphite/editor";
 	import type { Node } from "@graphite/messages.svelte";
-	import type { FrontendNodeWire, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath } from "@graphite/messages.svelte";
+	import { type FrontendNodeWire, type FrontendNode, type FrontendGraphInput, FrontendGraphOutput, type FrontendGraphDataType, type WirePath } from "@graphite/messages.svelte";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 
@@ -142,7 +142,7 @@
 
 	function resolveWire(wire: FrontendNodeWire): { nodeOutput: SVGSVGElement; nodeInput: SVGSVGElement } | undefined {
 		const wireStartNodeIdIndex = nodeIndexes.get(wire.wireStart.nodeId!);
-		let nodeOutputConnectors = outputs[wireStartNodeIdIndex];
+		let nodeOutputConnectors = outputs[wireStartNodeIdIndex] ?? undefined;
 		if (nodeOutputConnectors === undefined && wire.wireStart.nodeId === undefined) {
 			nodeOutputConnectors = outputs[0];
 		}
@@ -151,7 +151,7 @@
 		if (nodeOutput === undefined) return undefined;
 
 		const wireEndNodeIdIndex = nodeIndexes.get(wire.wireEnd.nodeId!);
-		let nodeInputConnectors = inputs[wireEndNodeIdIndex] || undefined;
+		let nodeInputConnectors = inputs[wireEndNodeIdIndex] ?? undefined;
 		if (nodeInputConnectors === undefined && wire.wireEnd.nodeId === undefined) {
 			nodeInputConnectors = inputs[0];
 		}
@@ -640,7 +640,7 @@
 	
 	$effect.pre(() => {
 		if (inputs.length && outputs.length && $nodeGraph.nodes) {
-			refreshWires(inputs, outputs)
+			refreshWires()
 		}
 	})
 
@@ -753,26 +753,7 @@
 	<!-- Import and Export ports -->
 	<div class="imports-and-exports" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		{#each $nodeGraph.imports as { outputMetadata, position }, index}
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				viewBox="0 0 8 8"
-				class="port"
-				data-port="output"
-				data-datatype={outputMetadata.dataType}
-				style:--data-color={`var(--color-data-${outputMetadata.dataType.toLowerCase()})`}
-				style:--data-color-dim={`var(--color-data-${outputMetadata.dataType.toLowerCase()}-dim)`}
-				style:--offset-left={position.x / 24}
-				style:--offset-top={position.y / 24}
-				bind:this={outputs[0][index]}
-			>
-				<title>{`${dataTypeTooltip(outputMetadata)}\n\n${outputConnectedToText(outputMetadata)}`}</title>
-				{#if outputMetadata.connectedTo !== undefined}
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-				{:else}
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-				{/if}
-			</svg>
-
+			{@render port("port", "output", outputs, 0, index, outputMetadata, position.x / 24, position.y / 24)}
 			<div
 				class="edit-import-export import"
 				onpointerenter={() => (hoveringImportIndex = index)}
@@ -828,25 +809,7 @@
 			</div>
 		{/if}
 		{#each $nodeGraph.exports as { inputMetadata, position }, index}
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				viewBox="0 0 8 8"
-				class="port"
-				data-port="input"
-				data-datatype={inputMetadata.dataType}
-				style:--data-color={`var(--color-data-${inputMetadata.dataType.toLowerCase()})`}
-				style:--data-color-dim={`var(--color-data-${inputMetadata.dataType.toLowerCase()}-dim)`}
-				style:--offset-left={position.x / 24}
-				style:--offset-top={position.y / 24}
-				bind:this={inputs[0][index]}
-			>
-				<title>{`${dataTypeTooltip(inputMetadata)}\n\n${inputConnectedToText(inputMetadata)}`}</title>
-				{#if inputMetadata.connectedTo !== undefined}
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-				{:else}
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-				{/if}
-			</svg>
+			{@render port("port", "input", inputs, 0, index, inputMetadata, position.x / 24, position.y / 24)}
 			<div
 				class="edit-import-export export"
 				onpointerenter={() => (hoveringExportIndex = index)}
@@ -991,23 +954,7 @@
 				<!-- Layer input port (from left) -->
 				{#if node.exposedInputs.length > 0}
 					<div class="input ports">
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="port"
-							data-port="input"
-							data-datatype={stackDataInput.dataType}
-							style:--data-color={`var(--color-data-${stackDataInput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
-							bind:this={inputs[nodeIndex + 1][1]}
-						>
-							<title>{`${dataTypeTooltip(stackDataInput)}\n\n${validTypesText(stackDataInput)}\n\n${inputConnectedToText(stackDataInput)}`}</title>
-							{#if stackDataInput.connectedTo !== undefined}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
+						{@render port("port", "input", inputs, nodeIndex + 1, 1, stackDataInput)}
 					</div>
 				{/if}
 				<div class="details">
@@ -1098,85 +1045,19 @@
 				<!-- Input ports -->
 				<div class="input ports">
 					{#if node.primaryInput?.dataType}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="port primary-port"
-							data-port="input"
-							data-datatype={node.primaryInput?.dataType}
-							style:--data-color={`var(--color-data-${node.primaryInput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
-							bind:this={inputs[nodeIndex + 1][0]}
-						>
-							<title>{`${dataTypeTooltip(node.primaryInput)}\n\n${validTypesText(node.primaryInput)}\n\n${inputConnectedToText(node.primaryInput)}`}</title>
-							{#if node.primaryInput.connectedTo !== undefined}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
+						{@render port("port primary-port", "input", inputs, nodeIndex + 1, 0, node.primaryInput)}
 					{/if}
 					{#each node.exposedInputs as secondary, index}
 						{#if index < node.exposedInputs.length}
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								viewBox="0 0 8 8"
-								class="port"
-								data-port="input"
-								data-datatype={secondary.dataType}
-								style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
-								style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
-								bind:this={inputs[nodeIndex + 1][index + (node.primaryInput ? 1 : 0)]}
-							>
-								<title>{`${dataTypeTooltip(secondary)}\n\n${validTypesText(secondary)}\n\n${inputConnectedToText(secondary)}`}</title>
-								{#if secondary.connectedTo !== undefined}
-									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-								{:else}
-									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-								{/if}
-							</svg>
+							{@render port("port", "input", inputs, nodeIndex + 1, index + (node.primaryInput ? 1 : 0), secondary)}
 						{/if}
 					{/each}
 				</div>
 				<!-- Output ports -->
 				<div class="output ports">
-					{#if node.primaryOutput}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="port primary-port"
-							data-port="output"
-							data-datatype={node.primaryOutput.dataType}
-							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
-							bind:this={outputs[nodeIndex + 1][0]}
-						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\n\n${outputConnectedToText(node.primaryOutput)}`}</title>
-							{#if node.primaryOutput.connectedTo !== undefined}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
-					{/if}
+						{@render port("port primary-port", "output", outputs, nodeIndex + 1, 0, node.primaryOutput)}
 					{#each node.exposedOutputs as secondary, outputIndex}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="port"
-							data-port="output"
-							data-datatype={secondary.dataType}
-							style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
-							bind:this={outputs[nodeIndex + 1][outputIndex + (node.primaryOutput ? 1 : 0)]}
-						>
-							<title>{`${dataTypeTooltip(secondary)}\n\n${outputConnectedToText(secondary)}`}</title>
-							{#if secondary.connectedTo !== undefined}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
+						{@render port("port", "output", outputs, nodeIndex + 1, outputIndex + (node.primaryOutput ? 1 : 0), secondary)}
 					{/each}
 				</div>
 				<svg class="border-mask" width="0" height="0">
@@ -1205,6 +1086,35 @@
 		style:height={`${Math.abs($nodeGraph.box.startY - $nodeGraph.box.endY)}px`}
 	></div>
 {/if}
+
+{#snippet port(className: string, dataPort: string, ref: SVGSVGElement[][], x: number, y: number, node?: FrontendGraphInput | FrontendGraphOutput, offsetLeft?: number, offsetTop?: number)}
+	{#if node}
+		{@const color = node.dataType.toLowerCase()}
+    <svg
+			xmlns="http://www.w3.org/2000/svg"
+			viewBox="0 0 8 8"
+			class={className}
+			data-port={dataPort}
+			data-datatype={node.dataType}
+			style:--data-color={`var(--color-data-${color})`}
+			style:--data-color-dim={`var(--color-data-${color}-dim)`}
+			style:--offset-left={offsetLeft}
+			style:--offset-top={offsetTop}
+			bind:this={ref[x][y]}
+			>
+			{#if node instanceof FrontendGraphOutput}
+				<title>{`${dataTypeTooltip(node)}\n\n${outputConnectedToText(node)}`}</title>
+			{:else}
+				<title>{`${dataTypeTooltip(node)}\n\n${validTypesText(node)}\n\n${inputConnectedToText(node)}`}</title>
+			{/if}
+			{#if node.connectedTo !== undefined}
+				<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+			{:else}
+				<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+			{/if}
+		</svg>
+	{/if}
+{/snippet}
 
 <style lang="scss" global>
 	.graph {
