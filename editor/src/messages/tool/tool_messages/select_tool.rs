@@ -90,6 +90,12 @@ pub enum DotType {
 	// Active,
 }
 
+impl DotType {
+	pub fn is_pivot(self) -> bool {
+		self == Self::Pivot
+	}
+}
+
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct DotState {
 	enabled: bool,
@@ -105,9 +111,9 @@ impl Default for DotState {
 	}
 }
 
-impl DotType {
-	pub fn is_pivot(self) -> bool {
-		self == Self::Pivot
+impl DotState {
+	pub fn is_pivot(&self) -> bool {
+		self.dot == DotType::Pivot || !self.enabled
 	}
 }
 
@@ -356,12 +362,14 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 						responses.add(ToolMessage::UpdateHints);
 						let dot = self.tool_data.get_as_dot();
 						responses.add(TransformLayerMessage::SetDot { dot });
+						responses.add(NodeGraphMessage::RunDocumentGraph);
 						redraw_ref_pivot = true;
 					}
 				}
 				SelectOptionsUpdate::ToggleDotType(state) => {
 					self.tool_data.dot_state.enabled = *state;
 					responses.add(ToolMessage::UpdateHints);
+					responses.add(NodeGraphMessage::RunDocumentGraph);
 					redraw_ref_pivot = true;
 				}
 			}
@@ -840,7 +848,7 @@ impl Fsm for SelectToolFsmState {
 						.flatten()
 				});
 
-				if overlay_context.visibility_settings.origin() && !tool_data.dot_state.dot.is_pivot() {
+				if overlay_context.visibility_settings.origin() && !tool_data.dot_state.is_pivot() {
 					for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 						let origin = graph_modification_utils::get_viewport_origin(layer, &document.network_interface);
 						overlay_context.dowel_pin(origin);
