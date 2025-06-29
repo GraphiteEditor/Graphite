@@ -165,6 +165,7 @@ async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	#[default(Color::BLACK)]
 	/// The stroke color.
 	color: C,
+	#[unit(" px")]
 	#[default(2.)]
 	/// The stroke weight.
 	weight: f64,
@@ -183,6 +184,7 @@ async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
 	dash_lengths: Vec<f64>,
 	/// The phase offset distance from the starting point of the dash pattern.
+	#[unit(" px")]
 	dash_offset: f64,
 ) -> Instances<V>
 where
@@ -253,7 +255,9 @@ async fn circular_repeat<I: 'n + Send + Clone>(
 	// TODO: Implement other GraphicElementRendered types.
 	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Instances<I>,
 	angle_offset: Angle,
-	#[default(5)] radius: f64,
+	#[unit(" px")]
+	#[default(5)]
+	radius: f64,
 	#[default(5)] instances: IntegerCount,
 ) -> Instances<I> {
 	let count = instances.max(1);
@@ -363,7 +367,7 @@ async fn mirror<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Instances<I>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
-	offset: f64,
+	#[unit(" px")] offset: f64,
 	#[range((-90., 90.))] angle: Angle,
 	#[default(true)] keep_original: bool,
 ) -> Instances<I>
@@ -1139,10 +1143,10 @@ async fn sample_polyline(
 	_: impl Ctx,
 	vector_data: VectorDataTable,
 	spacing: PointSpacingType,
-	separation: f64,
-	quantity: f64,
-	start_offset: f64,
-	stop_offset: f64,
+	#[unit(" px")] separation: f64,
+	quantity: u32,
+	#[unit(" px")] start_offset: f64,
+	#[unit(" px")] stop_offset: f64,
 	adaptive_spacing: bool,
 	subpath_segment_lengths: Vec<f64>,
 ) -> VectorDataTable {
@@ -1182,7 +1186,7 @@ async fn sample_polyline(
 
 			let amount = match spacing {
 				PointSpacingType::Separation => separation,
-				PointSpacingType::Quantity => quantity,
+				PointSpacingType::Quantity => quantity as f64,
 			};
 			let Some(mut sample_bezpath) = sample_polyline_on_bezpath(bezpath, spacing, amount, start_offset, stop_offset, adaptive_spacing, current_bezpath_segments_length) else {
 				continue;
@@ -1388,6 +1392,7 @@ async fn tangent_on_path(
 async fn poisson_disk_points(
 	_: impl Ctx,
 	vector_data: VectorDataTable,
+	#[unit(" px")]
 	#[default(10.)]
 	#[hard_min(0.01)]
 	separation_disk_diameter: f64,
@@ -1498,7 +1503,14 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)] amount: f64, seed: SeedValue) -> VectorDataTable {
+async fn jitter_points(
+	_: impl Ctx,
+	vector_data: VectorDataTable,
+	#[unit(" px")]
+	#[default(5.)]
+	amount: f64,
+	seed: SeedValue,
+) -> VectorDataTable {
 	let mut result_table = VectorDataTable::default();
 
 	for mut vector_data_instance in vector_data.instance_iter() {

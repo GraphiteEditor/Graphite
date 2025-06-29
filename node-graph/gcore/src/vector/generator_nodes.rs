@@ -37,7 +37,13 @@ impl CornerRadius for [f64; 4] {
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn circle(_: impl Ctx, _primary: (), #[default(50.)] radius: f64) -> VectorDataTable {
+fn circle(
+	_: impl Ctx,
+	_primary: (),
+	#[unit(" px")]
+	#[default(50.)]
+	radius: f64,
+) -> VectorDataTable {
 	let radius = radius.abs();
 	VectorDataTable::new(VectorData::from_subpath(Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
 }
@@ -46,7 +52,9 @@ fn circle(_: impl Ctx, _primary: (), #[default(50.)] radius: f64) -> VectorDataT
 fn arc(
 	_: impl Ctx,
 	_primary: (),
-	#[default(50.)] radius: f64,
+	#[unit(" px")]
+	#[default(50.)]
+	radius: f64,
 	start_angle: Angle,
 	#[default(270.)]
 	#[range((0., 360.))]
@@ -66,7 +74,16 @@ fn arc(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn ellipse(_: impl Ctx, _primary: (), #[default(50)] radius_x: f64, #[default(25)] radius_y: f64) -> VectorDataTable {
+fn ellipse(
+	_: impl Ctx,
+	_primary: (),
+	#[unit(" px")]
+	#[default(50)]
+	radius_x: f64,
+	#[unit(" px")]
+	#[default(25)]
+	radius_y: f64,
+) -> VectorDataTable {
 	let radius = DVec2::new(radius_x, radius_y);
 	let corner1 = -radius;
 	let corner2 = radius;
@@ -87,8 +104,12 @@ fn ellipse(_: impl Ctx, _primary: (), #[default(50)] radius_x: f64, #[default(25
 fn rectangle<T: CornerRadius>(
 	_: impl Ctx,
 	_primary: (),
-	#[default(100)] width: f64,
-	#[default(100)] height: f64,
+	#[unit(" px")]
+	#[default(100)]
+	width: f64,
+	#[unit(" px")]
+	#[default(100)]
+	height: f64,
 	_individual_corner_radii: bool, // TODO: Move this to the bottom once we have a migration capability
 	#[implementations(f64, [f64; 4])] corner_radius: T,
 	#[default(true)] clamped: bool,
@@ -104,7 +125,9 @@ fn regular_polygon<T: AsU64>(
 	#[hard_min(3.)]
 	#[implementations(u32, u64, f64)]
 	sides: T,
-	#[default(50)] radius: f64,
+	#[unit(" px")]
+	#[default(50)]
+	radius: f64,
 ) -> VectorDataTable {
 	let points = sides.as_u64();
 	let radius: f64 = radius * 2.;
@@ -119,8 +142,12 @@ fn star<T: AsU64>(
 	#[hard_min(2.)]
 	#[implementations(u32, u64, f64)]
 	sides: T,
-	#[default(50)] radius_1: f64,
-	#[default(25)] radius_2: f64,
+	#[unit(" px")]
+	#[default(50)]
+	radius_1: f64,
+	#[unit(" px")]
+	#[default(25)]
+	radius_2: f64,
 ) -> VectorDataTable {
 	let points = sides.as_u64();
 	let diameter: f64 = radius_1 * 2.;
@@ -153,13 +180,14 @@ fn grid<T: GridSpacing>(
 	_: impl Ctx,
 	_primary: (),
 	grid_type: GridType,
+	#[unit(" px")]
 	#[hard_min(0.)]
 	#[default(10)]
 	#[implementations(f64, DVec2)]
 	spacing: T,
-	#[default(30., 30.)] angles: DVec2,
 	#[default(10)] columns: u32,
 	#[default(10)] rows: u32,
+	#[default(30., 30.)] angles: DVec2,
 ) -> VectorDataTable {
 	let (x_spacing, y_spacing) = spacing.as_dvec2().into();
 	let (angle_a, angle_b) = angles.into();
