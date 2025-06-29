@@ -78,11 +78,11 @@ pub enum SelectToolMessage {
 
 	// Tool-specific messages
 	DragStart {
-		extend_selection: Key,
-		remove_from_selection: Key,
+		extend_selection_key: Key,
+		remove_from_selection_key: Key,
 		select_deepest_key: Key,
 		lasso_select_key: Key,
-		skew: Key,
+		skew_key: Key,
 	},
 	DragStop {
 		remove_from_selection: Key,
@@ -864,8 +864,8 @@ impl Fsm for SelectToolFsmState {
 			(
 				SelectToolFsmState::Ready { .. },
 				SelectToolMessage::DragStart {
-					extend_selection,
-					remove_from_selection,
+					extend_selection_key,
+					remove_from_selection_key,
 					select_deepest_key,
 					lasso_select_key,
 					..
@@ -954,14 +954,14 @@ impl Fsm for SelectToolFsmState {
 							using_compass,
 							has_dragged: false,
 							deepest: input.keyboard.key(select_deepest_key),
-							remove: input.keyboard.key(extend_selection),
+							remove: input.keyboard.key(extend_selection_key),
 						}
 					}
 					DragStartIntent::Rotate => SelectToolFsmState::RotatingBounds,
 					DragStartIntent::DragWithNewSelection(layer) => {
 						tool_data.layers_dragging = selected;
-						let extend = input.keyboard.key(extend_selection);
-						if !extend && !input.keyboard.key(remove_from_selection) {
+						let extend = input.keyboard.key(extend_selection_key);
+						if !extend && !input.keyboard.key(remove_from_selection_key) {
 							responses.add(DocumentMessage::DeselectAllLayers);
 							tool_data.layers_dragging.clear();
 						}
@@ -980,13 +980,13 @@ impl Fsm for SelectToolFsmState {
 							using_compass: false,
 							has_dragged: false,
 							deepest: input.keyboard.key(select_deepest_key),
-							remove: input.keyboard.key(extend_selection),
+							remove: input.keyboard.key(extend_selection_key),
 						}
 					}
 					DragStartIntent::Draw => {
 						tool_data.layers_dragging = selected;
-						let extend = input.keyboard.key(extend_selection);
-						if !extend && !input.keyboard.key(remove_from_selection) {
+						let extend = input.keyboard.key(extend_selection_key);
+						if !extend && !input.keyboard.key(remove_from_selection_key) {
 							responses.add(DocumentMessage::DeselectAllLayers);
 							tool_data.layers_dragging.clear();
 						}
