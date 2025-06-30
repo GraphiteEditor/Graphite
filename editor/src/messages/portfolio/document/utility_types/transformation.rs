@@ -88,6 +88,18 @@ impl OriginalTransforms {
 					let Some(selected_points) = shape_editor.selected_points_in_layer(layer) else {
 						continue;
 					};
+					let Some(selected_segments) = shape_editor.selected_segments_in_layer(layer) else {
+						continue;
+					};
+
+					let mut selected_points = selected_points.clone();
+
+					for (segment_id, _, start, end) in vector_data.segment_bezier_iter() {
+						if selected_segments.contains(&segment_id) {
+							selected_points.insert(ManipulatorPointId::Anchor(start));
+							selected_points.insert(ManipulatorPointId::Anchor(end));
+						}
+					}
 
 					// Anchors also move their handles
 					let anchor_ids = selected_points.iter().filter_map(|point| point.as_anchor());
