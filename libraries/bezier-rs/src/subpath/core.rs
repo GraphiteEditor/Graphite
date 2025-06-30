@@ -346,6 +346,64 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		Self::new(manipulator_groups, false)
 	}
 
+	pub fn log_spiral_point(theta: f64, a: f64, b: f64) -> DVec2 {
+		let r = a * (b * theta).exp(); // a * e^(bθ)
+		DVec2::new(r * theta.cos(), -r * theta.sin())
+	}
+
+	pub fn log_spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64) -> f64 {
+		let factor = (1. + b * b).sqrt();
+		(a / b) * factor * ((b * theta_end).exp() - (b * theta_start).exp())
+	}
+
+	pub fn log_spiral_tangent(theta: f64, a: f64, b: f64) -> DVec2 {
+		let r = a * (b * theta).exp();
+		let dx = r * (b * theta.cos() - theta.sin());
+		let dy = r * (b * theta.sin() + theta.cos());
+
+		DVec2::new(dx, -dy).normalize()
+	}
+
+	pub fn generate_logarithmic_spiral(a: f64, b: f64, turns: f64, delta_theta: f64) -> Self {
+		let mut manipulator_groups = Vec::new();
+		let mut prev_in_handle = None;
+		let theta_end = turns * std::f64::consts::TAU;
+
+		let mut theta = 0.0;
+		while theta < theta_end {
+			let theta_next = theta + delta_theta;
+
+			let p0 = Self::log_spiral_point(theta, a, b);
+			let p3 = Self::log_spiral_point(theta_next, a, b);
+			let t0 = Self::log_spiral_tangent(theta, a, b);
+			let t1 = Self::log_spiral_tangent(theta_next, a, b);
+
+			let arc_len = Self::log_spiral_arc_length(theta, theta_next, a, b);
+			let d = arc_len / 3.0;
+
+			let p1 = p0 + d * t0;
+			let p2 = p3 - d * t1;
+
+			let is_last_segment = theta_next >= theta_end;
+			if is_last_segment {
+				let t = (theta_end - theta) / (theta_next - theta); // t in [0, 1]
+				let (trim_p0, trim_p1, trim_p2, trim_p3) = Self::split_cubic_bezier(p0, p1, p2, p3, t);
+
+				manipulator_groups.push(ManipulatorGroup::new(trim_p0, prev_in_handle, Some(trim_p1)));
+				prev_in_handle = Some(trim_p2);
+				manipulator_groups.push(ManipulatorGroup::new(trim_p3, prev_in_handle, None));
+				break;
+			} else {
+				manipulator_groups.push(ManipulatorGroup::new(p0, prev_in_handle, Some(p1)));
+				prev_in_handle = Some(p2);
+			}
+
+			theta = theta_next;
+		}
+
+		Self::new(manipulator_groups, false)
+	}
+
 	/// Constructs an ellipse with `corner1` and `corner2` as the two corners of the bounding box.
 	pub fn new_ellipse(corner1: DVec2, corner2: DVec2) -> Self {
 		let size = (corner1 - corner2).abs();

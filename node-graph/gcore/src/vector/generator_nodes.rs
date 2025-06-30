@@ -68,7 +68,7 @@ fn arc(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn spiral(
+fn archimedean_spiral(
 	_: impl Ctx,
 	_primary: (),
 	#[default(1.)] inner_radius: f64,
@@ -86,6 +86,26 @@ fn spiral(
 		turns,
 		angle_offset.to_radians(),
 	)))
+}
+
+#[node_macro::node(category("Vector: Shape"))]
+fn logarithmic_spiral(
+	_: impl Ctx,
+	_primary: (),
+	#[range((0.1, 1.))]
+	#[default(0.5)]
+	start_radius: f64,
+	#[range((0.1, 1.))]
+	#[default(0.2)]
+	growth: f64,
+	#[default(3)]
+	#[hard_min(0.5)]
+	turns: f64,
+	#[default(45.)]
+	#[range((1., 180.))]
+	angle_offset: f64,
+) -> VectorDataTable {
+	VectorDataTable::new(VectorData::from_subpath(Subpath::generate_logarithmic_spiral(start_radius, growth, turns, angle_offset.to_radians())))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
