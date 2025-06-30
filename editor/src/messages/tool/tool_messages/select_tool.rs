@@ -1571,6 +1571,7 @@ impl Fsm for SelectToolFsmState {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.axis_align = false;
+				tool_data.lasso_polygon.clear();
 				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;
@@ -1591,6 +1592,7 @@ impl Fsm for SelectToolFsmState {
 
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
+				tool_data.lasso_polygon.clear();
 				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;

@@ -12,12 +12,13 @@ use crate::vector::click_target::{ClickTargetType, FreePoint};
 use crate::{AlphaBlending, Color, GraphicGroupTable};
 pub use attributes::*;
 use bezier_rs::ManipulatorGroup;
+use core::borrow::Borrow;
+use core::hash::Hash;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 pub use indexed::VectorDataIndex;
 use kurbo::{Affine, Rect, Shape};
 pub use modification::*;
-use std::borrow::Borrow;
 use std::collections::HashMap;
 
 // TODO: Eventually remove this migration document upgrade code
