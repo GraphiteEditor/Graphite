@@ -157,7 +157,7 @@ fn star<T: AsU64>(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn line(_: impl Ctx, _primary: (), #[default((0., -50.))] start: PixelSize, #[default((0., 50.))] end: PixelSize) -> VectorDataTable {
+fn line(_: impl Ctx, _primary: (), #[default(0., 0.)] start: PixelSize, #[default(100., 100.)] end: PixelSize) -> VectorDataTable {
 	VectorDataTable::new(VectorData::from_subpath(Subpath::new_line(start, end)))
 }
 
