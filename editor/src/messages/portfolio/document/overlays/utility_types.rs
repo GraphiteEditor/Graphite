@@ -1,7 +1,7 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER,
-	COMPASS_ROSE_RING_INNER_DIAMETER, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER,
+	COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
 use bezier_rs::{Bezier, Subpath};
@@ -577,6 +577,35 @@ impl OverlayContext {
 		self.bezier_command(bezier, transform, true);
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.stroke();
+
+		self.end_dpi_aware_transform();
+	}
+
+	/// Used by the path tool segment mode in order to show the selected segments.
+	pub fn outline_select_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+		self.start_dpi_aware_transform();
+
+		self.render_context.begin_path();
+		self.bezier_command(bezier, transform, true);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		self.render_context.set_line_width(4.);
+		self.render_context.stroke();
+
+		self.render_context.set_line_width(1.);
+
+		self.end_dpi_aware_transform();
+	}
+
+	pub fn outline_overlay_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+		self.start_dpi_aware_transform();
+
+		self.render_context.begin_path();
+		self.bezier_command(bezier, transform, true);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE_50);
+		self.render_context.set_line_width(4.);
+		self.render_context.stroke();
+
+		self.render_context.set_line_width(1.);
 
 		self.end_dpi_aware_transform();
 	}
