@@ -480,6 +480,24 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	pub fn take_input(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<NodeInput> {
+		let Some(network) = self.network_mut(network_path) else {
+			log::error!("Could not get network in input_from_connector");
+			return None;
+		};
+		let input = match input_connector {
+			InputConnector::Node { node_id, input_index } => {
+				let Some(node) = network.nodes.get_mut(node_id) else {
+					log::error!("Could not get node {node_id} in input_from_connector");
+					return None;
+				};
+				node.inputs.get_mut(*input_index)
+			}
+			InputConnector::Export(export_index) => network.exports.get_mut(*export_index),
+		};
+		input.map(|input| std::mem::replace(input, NodeInput::value(TaggedValue::None, true)))
+	}
+
 	/// Try and get the [`Type`] for any [`InputConnector`] based on the `self.resolved_types`.
 	fn node_type_from_compiled(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<(Type, TypeSource)> {
 		let (node_id, input_index) = match *input_connector {
@@ -1173,7 +1191,7 @@ impl NodeNetworkInterface {
 		};
 
 		if display_name.is_empty() {
-			if is_layer && *reference == Some("Merge".to_string()) {
+			if is_layer {
 				"Untitled Layer".to_string()
 			} else {
 				reference.clone().unwrap_or("Untitled Node".to_string())
