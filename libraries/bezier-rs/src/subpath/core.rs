@@ -293,14 +293,28 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		(r * sqrt_term + b * b * ((r + sqrt_term).ln())) / (2.0 * b)
 	}
 
-	pub fn generate_equal_arc_bezier_spiral2(a: f64, b: f64, turns: u32, delta_theta: f64, angle_offset: f64) -> Self {
+	fn split_cubic_bezier(p0: DVec2, p1: DVec2, p2: DVec2, p3: DVec2, t: f64) -> (DVec2, DVec2, DVec2, DVec2) {
+		let p01 = p0.lerp(p1, t);
+		let p12 = p1.lerp(p2, t);
+		let p23 = p2.lerp(p3, t);
+
+		let p012 = p01.lerp(p12, t);
+		let p123 = p12.lerp(p23, t);
+
+		let p0123 = p012.lerp(p123, t); // final split point
+
+		(p0, p01, p012, p0123) // First half of the Bézier
+	}
+
+	pub fn generate_equal_arc_bezier_spiral2(a: f64, b: f64, turns: f64, delta_theta: f64) -> Self {
 		let mut manipulator_groups = Vec::new();
 		let mut prev_in_handle = None;
-		let mut theta = 0.;
-		let theta_end = angle_offset + turns as f64 * std::f64::consts::TAU;
+		let theta_end = turns * std::f64::consts::TAU;
 
+		let mut theta = 0.0;
 		while theta < theta_end {
-			let theta_next = f64::min(theta + delta_theta, theta_end);
+			let theta_next = theta + delta_theta;
+
 			let p0 = Self::spiral_point(theta, a, b);
 			let p3 = Self::spiral_point(theta_next, a, b);
 			let t0 = Self::spiral_tangent(theta, a, b);
@@ -312,8 +326,20 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 			let p1 = p0 + d * t0;
 			let p2 = p3 - d * t1;
 
-			manipulator_groups.push(ManipulatorGroup::new(p0, prev_in_handle, Some(p1)));
-			prev_in_handle = Some(p2);
+			let is_last_segment = theta_next >= theta_end;
+			if is_last_segment {
+				let t = (theta_end - theta) / (theta_next - theta); // t in [0, 1]
+				let (trim_p0, trim_p1, trim_p2, trim_p3) = Self::split_cubic_bezier(p0, p1, p2, p3, t);
+
+				manipulator_groups.push(ManipulatorGroup::new(trim_p0, prev_in_handle, Some(trim_p1)));
+				prev_in_handle = Some(trim_p2);
+				manipulator_groups.push(ManipulatorGroup::new(trim_p3, prev_in_handle, None));
+				break;
+			} else {
+				manipulator_groups.push(ManipulatorGroup::new(p0, prev_in_handle, Some(p1)));
+				prev_in_handle = Some(p2);
+			}
+
 			theta = theta_next;
 		}
 

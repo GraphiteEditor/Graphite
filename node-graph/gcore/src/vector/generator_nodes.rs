@@ -75,16 +75,15 @@ fn spiral(
 	#[default(1.)] tightness: f64,
 	#[default(6)]
 	#[hard_min(1.)]
-	turns: u32,
-	#[default(0.)]
-	#[range((0., 360.))]
+	turns: f64,
+	#[default(45.)]
+	#[range((1., 180.))]
 	angle_offset: f64,
 ) -> VectorDataTable {
 	VectorDataTable::new(VectorData::from_subpath(Subpath::generate_equal_arc_bezier_spiral2(
 		inner_radius,
 		tightness,
 		turns,
-		FRAC_PI_4,
 		angle_offset.to_radians(),
 	)))
 }
