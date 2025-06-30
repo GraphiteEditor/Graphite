@@ -35,6 +35,7 @@ graphene-application-io = { workspace = true }
 graphene-element-nodes = { workspace = true }
 graphene-raster-nodes = { workspace = true }
 graphene-brush = { workspace = true }
+graphene-text = { workspace = true }
 
 # Workspace dependencies
 fastnoise-lite = { workspace = true }

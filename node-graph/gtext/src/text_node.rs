@@ -1,7 +1,6 @@
-use crate::vector::{VectorData, VectorDataTable};
-use graph_craft::wasm_application_io::WasmEditorApi;
+use crate::{Font, TypesettingConfig, load_face, to_path};
 use graphene_core::Ctx;
-pub use graphene_core::text::*;
+use graphene_core::vector::{VectorData, VectorDataTable};
 
 #[node_macro::node(category(""))]
 fn text<'i: 'n>(

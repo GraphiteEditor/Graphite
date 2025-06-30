@@ -15,6 +15,7 @@ members = [
 	"node-graph/graphene-cli",
 	"node-graph/graster-nodes",
 	"node-graph/gsvg-renderer",
+	"node-graph/gtext",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
@@ -37,6 +38,7 @@ default-members = [
 	"node-graph/graphene-cli",
 	"node-graph/graster-nodes",
 	"node-graph/gsvg-renderer",
+	"node-graph/gtext",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 ]
@@ -59,6 +61,7 @@ graph-craft = { path = "node-graph/graph-craft" }
 graphene-raster-nodes = { path = "node-graph/graster-nodes" }
 graphene-std = { path = "node-graph/gstd" }
 graphene-svg-renderer = { path = "node-graph/gsvg-renderer" }
+graphene-text = { path = "node-graph/gtext" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
 node-macro = { path = "node-graph/node-macro" }
 wgpu-executor = { path = "node-graph/wgpu-executor" }

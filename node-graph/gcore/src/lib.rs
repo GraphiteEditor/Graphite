@@ -20,7 +20,6 @@ pub mod raster;
 pub mod raster_types;
 pub mod registry;
 pub mod structural;
-pub mod text;
 pub mod transform;
 pub mod uuid;
 pub mod value;

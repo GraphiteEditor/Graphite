@@ -2313,6 +2313,7 @@ dependencies = [
  "graphene-path-bool",
  "graphene-raster-nodes",
  "graphene-svg-renderer",
+ "graphene-text",
  "image",
  "log",
  "ndarray",
@@ -2342,6 +2343,22 @@ dependencies = [
  "serde",
  "usvg",
  "vello",
+]
+
+[[package]]
+name = "graphene-text"
+version = "0.1.0"
+dependencies = [
+ "bezier-rs",
+ "dyn-any",
+ "glam",
+ "graphene-application-io",
+ "graphene-core",
+ "kurbo",
+ "node-macro",
+ "rustybuzz 0.20.1",
+ "serde",
+ "specta",
 ]
 
 [[package]]

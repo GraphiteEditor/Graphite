@@ -1,6 +1,5 @@
 pub mod any;
 pub mod http;
-pub mod text;
 #[cfg(feature = "wasm")]
 pub mod wasm_application_io;
 
@@ -13,6 +12,7 @@ pub use graphene_element_nodes::animation;
 pub use graphene_math_nodes as math_nodes;
 pub use graphene_path_bool as path_bool;
 pub use graphene_raster_nodes as raster_nodes;
+pub use graphene_text as text;
 
 /// stop gap solutions until all paths have been replaced with their absolute ones
 pub mod renderer {

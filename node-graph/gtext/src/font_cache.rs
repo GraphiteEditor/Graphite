@@ -1,4 +1,6 @@
 use dyn_any::DynAny;
+use graphene_application_io::EditorApi;
+use graphene_core::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
 use std::collections::HashMap;
 
 /// A font type (storing font family and font style and an optional preview URL)
@@ -16,7 +18,7 @@ impl Font {
 }
 impl Default for Font {
 	fn default() -> Self {
-		Self::new(crate::consts::DEFAULT_FONT_FAMILY.into(), crate::consts::DEFAULT_FONT_STYLE.into())
+		Self::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into())
 	}
 }
 /// A cache of all loaded font data and preview urls along with the default font (send from `init_app` in `editor_api.rs`)
@@ -33,9 +35,7 @@ impl FontCache {
 		if self.font_file_data.contains_key(font) {
 			Some(font)
 		} else {
-			self.font_file_data
-				.keys()
-				.find(|font| font.font_family == crate::consts::DEFAULT_FONT_FAMILY && font.font_style == crate::consts::DEFAULT_FONT_STYLE)
+			self.font_file_data.keys().find(|font| font.font_family == DEFAULT_FONT_FAMILY && font.font_style == DEFAULT_FONT_STYLE)
 		}
 	}
 
@@ -77,4 +77,18 @@ impl std::hash::Hash for FontCache {
 fn migrate_font_style<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
 	use serde::Deserialize;
 	String::deserialize(deserializer).map(|name| if name == "Normal (400)" { "Regular (400)".to_string() } else { name })
+}
+
+pub trait EditorApiFontCacheExt {
+	fn get_font_cache(&self) -> &FontCache;
+}
+
+impl<Io> EditorApiFontCacheExt for EditorApi<Io> {
+	fn get_font_cache(&self) -> &FontCache {
+		let mut guard = self.font_cache.lock().unwrap();
+		if *guard == None {
+			*guard = Some(Box::new(FontCache::default()));
+		}
+		*guard.as_ref().unwrap().downcast_ref().unwrap();
+	}
 }

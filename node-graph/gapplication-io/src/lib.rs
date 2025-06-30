@@ -1,14 +1,14 @@
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::{DAffine2, UVec2};
-use graphene_core::text::FontCache;
 use graphene_core::transform::Footprint;
 use graphene_core::vector::style::ViewMode;
+use std::any::Any;
 use std::fmt::Debug;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::pin::Pin;
 use std::ptr::addr_of;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -254,7 +254,7 @@ impl GetEditorPreferences for DummyPreferences {
 
 pub struct EditorApi<Io> {
 	/// Font data (for rendering text) made available to the graph through the [`WasmEditorApi`].
-	pub font_cache: FontCache,
+	pub font_cache: Mutex<Option<Box<dyn Any>>>,
 	/// Gives access to APIs like a rendering surface (native window handle or HTML5 canvas) and WGPU (which becomes WebGPU on web).
 	pub application_io: Option<Arc<Io>>,
 	pub node_graph_message_sender: Box<dyn NodeGraphUpdateSender + Send + Sync>,
@@ -262,40 +262,14 @@ pub struct EditorApi<Io> {
 	pub editor_preferences: Box<dyn GetEditorPreferences + Send + Sync>,
 }
 
-impl<Io> Eq for EditorApi<Io> {}
-
 impl<Io: Default> Default for EditorApi<Io> {
 	fn default() -> Self {
 		Self {
-			font_cache: FontCache::default(),
+			font_cache: Mutex::new(None),
 			application_io: None,
 			node_graph_message_sender: Box::new(Logger),
 			editor_preferences: Box::new(DummyPreferences),
 		}
-	}
-}
-
-impl<Io> Hash for EditorApi<Io> {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.font_cache.hash(state);
-		self.application_io.as_ref().map_or(0, |io| io.as_ref() as *const _ as usize).hash(state);
-		(self.node_graph_message_sender.as_ref() as *const dyn NodeGraphUpdateSender).hash(state);
-		(self.editor_preferences.as_ref() as *const dyn GetEditorPreferences).hash(state);
-	}
-}
-
-impl<Io> PartialEq for EditorApi<Io> {
-	fn eq(&self, other: &Self) -> bool {
-		self.font_cache == other.font_cache
-			&& self.application_io.as_ref().map_or(0, |io| addr_of!(io) as usize) == other.application_io.as_ref().map_or(0, |io| addr_of!(io) as usize)
-			&& std::ptr::eq(self.node_graph_message_sender.as_ref() as *const _, other.node_graph_message_sender.as_ref() as *const _)
-			&& std::ptr::eq(self.editor_preferences.as_ref() as *const _, other.editor_preferences.as_ref() as *const _)
-	}
-}
-
-impl<T> Debug for EditorApi<T> {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("EditorApi").field("font_cache", &self.font_cache).finish()
 	}
 }
 
