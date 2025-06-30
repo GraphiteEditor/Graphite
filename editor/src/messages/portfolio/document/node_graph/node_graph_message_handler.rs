@@ -917,7 +917,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							wire_in_progress_to_connector,
 							from_connector_is_layer,
 							to_connector_is_layer,
-							preferences.graph_wire_style,
+							GraphWireStyle::Direct,
 						);
 						let mut path_string = String::new();
 						let _ = vector_wire.subpath_to_svg(&mut path_string, DAffine2::IDENTITY);
@@ -1162,7 +1162,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									log::error!("Could not get bounding box for node: {selected_node_id}");
 									return;
 								};
-								log::debug!("bounding_box: {:?}", bounding_box);
 								let mut wires_to_check = network_interface.node_graph_input_connectors(selection_network_path).into_iter().collect::<HashSet<_>>();
 								// Prevent inserting on a link that is connected upstream to the selected node
 								for upstream_node in network_interface.upstream_flow_back_from_nodes(vec![selected_node_id], selection_network_path, network_interface::FlowType::UpstreamFlow) {
