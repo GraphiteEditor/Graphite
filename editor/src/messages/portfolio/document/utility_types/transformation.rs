@@ -9,9 +9,7 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::ToolType;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_std::renderer::Quad;
-use graphene_std::vector::VectorModificationType;
-use graphene_std::vector::{HandleExt, ManipulatorPointId};
-use graphene_std::vector::{HandleId, PointId};
+use graphene_std::vector::{HandleExt, HandleId, ManipulatorPointId, PointId, VectorModificationType};
 use std::collections::{HashMap, VecDeque};
 use std::f64::consts::PI;
 
