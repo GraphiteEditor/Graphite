@@ -430,8 +430,9 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::MergingEndpoints
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::Abort) => {
-				responses.add(OverlaysMessage::Draw);
-				// responses.add(DocumentMessage::AbortTransaction);
+				delete_preview(tool_data, responses);
+
+				responses.add(DocumentMessage::EndTransaction);
 				SplineToolFsmState::Ready
 			}
 			(_, SplineToolMessage::WorkingColorChanged) => {
