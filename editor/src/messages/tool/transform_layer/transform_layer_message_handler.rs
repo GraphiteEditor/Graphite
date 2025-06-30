@@ -181,15 +181,15 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				self.local_pivot = document.metadata().document_to_viewport.inverse().transform_point2(*selected.pivot);
 				self.grab_target = document.metadata().document_to_viewport.inverse().transform_point2(selected.mean_average_of_pivots());
 			}
-			// Here vector data from all layers is not considered which can be problem in pivot calculation
+			// Here vector data from all layers is not considered which can be a problem in pivot calculation
 			else if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
 				*selected.original_transforms = OriginalTransforms::default();
 
 				let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
-				let selected_points = shape_editor.selected_points().collect::<Vec<_>>();
-				let mut affected_points = selected_points.iter().map(|p| (*p).clone()).collect::<Vec<_>>();
 
 				let selected_segments = shape_editor.selected_segments().collect::<HashSet<_>>();
+
+				let mut affected_points = shape_editor.selected_points().copied().collect::<Vec<_>>();
 
 				for (segment_id, _, start, end) in vector_data.segment_bezier_iter() {
 					if selected_segments.contains(&segment_id) {

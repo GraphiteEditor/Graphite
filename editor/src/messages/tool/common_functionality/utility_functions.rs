@@ -269,6 +269,7 @@ pub fn is_intersecting(bezier: Bezier, quad: [DVec2; 2], transform: DAffine2) ->
 	is_intersecting
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn resize_bounds(
 	document: &DocumentMessageHandler,
 	responses: &mut VecDeque<Message>,
@@ -286,7 +287,7 @@ pub fn resize_bounds(
 		let snap = Some(SizeSnapData {
 			manager: snap_manager,
 			points: snap_candidates,
-			snap_data: SnapData::ignore(document, input, &dragging_layers),
+			snap_data: SnapData::ignore(document, input, dragging_layers),
 		});
 		let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
 		let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
@@ -303,11 +304,12 @@ pub fn resize_bounds(
 			}
 		});
 
-		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, &dragging_layers, responses, &document.network_interface, None, &tool, None);
+		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, dragging_layers, responses, &document.network_interface, None, &tool, None);
 		selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
 	}
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn rotate_bounds(
 	document: &DocumentMessageHandler,
 	responses: &mut VecDeque<Message>,
@@ -345,7 +347,7 @@ pub fn rotate_bounds(
 	let mut selected = Selected::new(
 		&mut bounds.original_transforms,
 		&mut bounds.center_of_transformation,
-		&dragging_layers,
+		dragging_layers,
 		responses,
 		&document.network_interface,
 		None,
@@ -378,7 +380,7 @@ pub fn skew_bounds(
 			}
 		});
 
-		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, &layers, responses, &document.network_interface, None, &tool, None);
+		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, layers, responses, &document.network_interface, None, &tool, None);
 		selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
 	}
 }
@@ -430,7 +432,7 @@ pub fn transforming_transform_cage(
 			let mut selected = Selected::new(
 				&mut bounds.original_transforms,
 				&mut bounds.center_of_transformation,
-				&layers_dragging,
+				layers_dragging,
 				responses,
 				&document.network_interface,
 				None,
@@ -488,7 +490,7 @@ pub fn transforming_transform_cage(
 	}
 
 	// No resize, rotate, or skew
-	return (false, false, false);
+	(false, false, false)
 }
 
 /// Calculates similarity metric between new bezier curve and two old beziers by using sampled points.

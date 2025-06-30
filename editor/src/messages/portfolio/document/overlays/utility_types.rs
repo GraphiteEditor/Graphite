@@ -581,7 +581,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	/// Used by the path tool segment mode in order to show the selected segments
+	/// Used by the path tool segment mode in order to show the selected segments.
 	pub fn outline_select_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 

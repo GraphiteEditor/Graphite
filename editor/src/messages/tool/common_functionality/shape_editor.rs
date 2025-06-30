@@ -56,11 +56,27 @@ pub struct SelectedLayerState {
 }
 
 impl SelectedLayerState {
-	pub fn selected(&self) -> impl Iterator<Item = ManipulatorPointId> + '_ {
+	pub fn selected_points(&self) -> impl Iterator<Item = ManipulatorPointId> + '_ {
 		self.selected_points.iter().copied()
 	}
 
-	pub fn is_selected(&self, point: ManipulatorPointId) -> bool {
+	pub fn selected_segments(&self) -> impl Iterator<Item = SegmentId> + '_ {
+		self.selected_segments.iter().copied()
+	}
+
+	pub fn selected_points_count(&self) -> usize {
+		self.selected_points.len()
+	}
+
+	pub fn selected_segments_count(&self) -> usize {
+		self.selected_segments.len()
+	}
+
+	pub fn is_segment_selected(&self, segment: SegmentId) -> bool {
+		self.selected_segments.contains(&segment)
+	}
+
+	pub fn is_point_selected(&self, point: ManipulatorPointId) -> bool {
 		self.selected_points.contains(&point)
 	}
 
@@ -68,25 +84,24 @@ impl SelectedLayerState {
 		self.selected_points.insert(point);
 	}
 
-	pub fn deselect_point(&mut self, point: ManipulatorPointId) {
-		self.selected_points.remove(&point);
-	}
-
-	// Same methods for segment selection mode
-	pub fn selected_segments(&self) -> impl Iterator<Item = SegmentId> + '_ {
-		self.selected_segments.iter().copied()
-	}
-
-	pub fn is_selected_segment(&self, segment: SegmentId) -> bool {
-		self.selected_segments.contains(&segment)
-	}
-
 	pub fn select_segment(&mut self, segment: SegmentId) {
 		self.selected_segments.insert(segment);
 	}
 
+	pub fn deselect_point(&mut self, point: ManipulatorPointId) {
+		self.selected_points.remove(&point);
+	}
+
 	pub fn deselect_segment(&mut self, segment: SegmentId) {
 		self.selected_segments.remove(&segment);
+	}
+
+	pub fn clear_points(&mut self) {
+		self.selected_points.clear();
+	}
+
+	pub fn clear_segments(&mut self) {
+		self.selected_segments.clear();
 	}
 
 	pub fn ignore_handles(&mut self, status: bool) {
@@ -119,18 +134,6 @@ impl SelectedLayerState {
 			self.selected_points.extend(self.ignored_anchor_points.iter().copied());
 			self.ignored_anchor_points.clear();
 		}
-	}
-
-	pub fn clear_points(&mut self) {
-		self.selected_points.clear();
-	}
-
-	pub fn clear_segments(&mut self) {
-		self.selected_segments.clear();
-	}
-
-	pub fn selected_points_count(&self) -> usize {
-		self.selected_points.len()
 	}
 }
 
@@ -507,7 +510,7 @@ impl ShapeState {
 
 				if let Some(id) = selected.as_anchor() {
 					for neighbor in vector_data.connected_points(id) {
-						if state.is_selected(ManipulatorPointId::Anchor(neighbor)) {
+						if state.is_point_selected(ManipulatorPointId::Anchor(neighbor)) {
 							continue;
 						}
 						let Some(position) = vector_data.point_domain.position_from_id(neighbor) else { continue };
@@ -546,7 +549,7 @@ impl ShapeState {
 			let point_position = manipulator_point_id.get_position(&vector_data)?;
 
 			let selected_shape_state = self.selected_shape_state.get(&layer)?;
-			let already_selected = selected_shape_state.is_selected(manipulator_point_id);
+			let already_selected = selected_shape_state.is_point_selected(manipulator_point_id);
 
 			// Offset to snap the selected point to the cursor
 			let offset = mouse_position - network_interface.document_metadata().transform_to_viewport(layer).transform_point2(point_position);
@@ -603,7 +606,7 @@ impl ShapeState {
 			}
 
 			let selected_shape_state = self.selected_shape_state.get(&layer)?;
-			let already_selected = selected_shape_state.is_selected(manipulator_point_id);
+			let already_selected = selected_shape_state.is_point_selected(manipulator_point_id);
 
 			// Offset to snap the selected point to the cursor
 			let offset = mouse_position - network_interface.document_metadata().transform_to_viewport(layer).transform_point2(point_position);
@@ -661,7 +664,7 @@ impl ShapeState {
 			// Select all connected points
 			while let Some(point) = selected_stack.pop() {
 				let anchor_point = ManipulatorPointId::Anchor(point);
-				if !state.is_selected(anchor_point) {
+				if !state.is_point_selected(anchor_point) {
 					state.select_point(anchor_point);
 					selected_stack.extend(vector_data.connected_points(point));
 				}
@@ -812,7 +815,7 @@ impl ShapeState {
 			let Some((start, _end, bezier)) = vector_data.segment_points_from_id(segment) else { continue };
 
 			if let BezierHandles::Quadratic { handle } = bezier.handles {
-				if selected.is_some_and(|selected| selected.is_selected(ManipulatorPointId::Anchor(start))) {
+				if selected.is_some_and(|selected| selected.is_point_selected(ManipulatorPointId::Anchor(start))) {
 					continue;
 				}
 
@@ -1058,10 +1061,9 @@ impl ShapeState {
 		}
 	}
 
-	/// Move the selected points by dragging the mouse.
-	/// This now also includes the logic to move the selected segments.
+	/// Move the selected points and segments by dragging the mouse.
 	#[allow(clippy::too_many_arguments)]
-	pub fn move_selected_points(
+	pub fn move_selected_points_and_segments(
 		&self,
 		handle_lengths: Option<OpposingHandleLengths>,
 		document: &DocumentMessageHandler,
@@ -1091,7 +1093,7 @@ impl ShapeState {
 			let mut affected_points = state.selected_points.clone();
 
 			for (segment_id, _, start, end) in vector_data.segment_bezier_iter() {
-				if state.is_selected_segment(segment_id) {
+				if state.is_segment_selected(segment_id) {
 					affected_points.insert(ManipulatorPointId::Anchor(start));
 					affected_points.insert(ManipulatorPointId::Anchor(end));
 				}
@@ -1112,7 +1114,7 @@ impl ShapeState {
 				};
 
 				let Some(anchor_id) = point.get_anchor(&vector_data) else { continue };
-				if state.is_selected(ManipulatorPointId::Anchor(anchor_id)) {
+				if state.is_point_selected(ManipulatorPointId::Anchor(anchor_id)) {
 					continue;
 				}
 
@@ -1131,7 +1133,7 @@ impl ShapeState {
 					continue;
 				}
 
-				if state.is_selected(other.to_manipulator_point()) {
+				if state.is_point_selected(other.to_manipulator_point()) {
 					// If two colinear handles are being dragged at the same time but not the anchor, it is necessary to break the colinear state.
 					let handles = [handle, other];
 					let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
@@ -1182,12 +1184,12 @@ impl ShapeState {
 						// ii) The anchor is not selected.
 
 						let anchor = handles[0].to_manipulator_point().get_anchor(&vector_data)?;
-						let anchor_selected = state.is_selected(ManipulatorPointId::Anchor(anchor));
+						let anchor_selected = state.is_point_selected(ManipulatorPointId::Anchor(anchor));
 						if anchor_selected {
 							return None;
 						}
 
-						let handles_selected = handles.map(|handle| state.is_selected(handle.to_manipulator_point()));
+						let handles_selected = handles.map(|handle| state.is_point_selected(handle.to_manipulator_point()));
 
 						let other = match handles_selected {
 							[true, false] => handles[1],
@@ -1825,6 +1827,7 @@ impl ShapeState {
 		false
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn select_all_in_shape(
 		&mut self,
 		network_interface: &NodeNetworkInterface,
@@ -1833,7 +1836,8 @@ impl ShapeState {
 		path_overlay_mode: PathOverlayMode,
 		frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
 		select_segments: bool,
-		selection_mode: SelectionMode, // Here selection mode represents touched or enclosed, not to be confused with editing modes
+		// Here, "selection mode" represents touched or enclosed, not to be confused with editing modes
+		selection_mode: SelectionMode,
 	) {
 		let selected_points = self.selected_points().cloned().collect::<HashSet<_>>();
 		let selected_segments = selected_segments(network_interface, self);
