@@ -90,12 +90,6 @@ pub enum DotType {
 	Active,
 }
 
-impl DotType {
-	pub fn is_pivot(self) -> bool {
-		self == Self::Pivot
-	}
-}
-
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct DotState {
 	enabled: bool,
@@ -112,8 +106,12 @@ impl Default for DotState {
 }
 
 impl DotState {
-	pub fn is_pivot(&self) -> bool {
+	pub fn is_pivot_type(&self) -> bool {
 		self.dot == DotType::Pivot || !self.enabled
+	}
+
+	pub fn is_pivot(&self) -> bool {
+		self.dot == DotType::Pivot && self.enabled
 	}
 }
 
@@ -312,7 +310,7 @@ impl LayoutHolder for SelectTool {
 
 		// Pivot
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.push(self.pivot_reference_point_widget(self.tool_data.selected_layers_count == 0 || !self.tool_data.dot_state.dot.is_pivot()));
+		widgets.push(self.pivot_reference_point_widget(self.tool_data.selected_layers_count == 0 || !self.tool_data.dot_state.is_pivot()));
 
 		// Align
 		let disabled = self.tool_data.selected_layers_count < 2;
@@ -861,7 +859,7 @@ impl Fsm for SelectToolFsmState {
 				});
 
 				let mut active_origin = None;
-				if overlay_context.visibility_settings.origin() && !tool_data.dot_state.is_pivot() {
+				if overlay_context.visibility_settings.origin() && !tool_data.dot_state.is_pivot_type() {
 					for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 						let origin = graph_modification_utils::get_viewport_origin(layer, &document.network_interface);
 						if Some(layer) == tool_data.active_layer {
@@ -875,7 +873,7 @@ impl Fsm for SelectToolFsmState {
 					overlay_context.dowel_pin(origin, Some(COLOR_OVERLAY_ORANGE));
 				}
 
-				let draw_pivot = tool_data.dot_state.dot.is_pivot() && overlay_context.visibility_settings.pivot();
+				let draw_pivot = tool_data.dot_state.is_pivot() && overlay_context.visibility_settings.pivot();
 				tool_data.pivot.update(document, &mut overlay_context, Some((angle,)), draw_pivot);
 
 				// Update compass rose
