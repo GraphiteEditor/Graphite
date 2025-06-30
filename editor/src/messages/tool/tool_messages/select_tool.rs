@@ -906,12 +906,12 @@ impl Fsm for SelectToolFsmState {
 					DragStartIntent::Resize
 				} else if skew {
 					DragStartIntent::Skew
-				} else if rotate {
-					DragStartIntent::Rotate
 				} else if lasso_select {
 					DragStartIntent::Draw
 				} else if can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
 					DragStartIntent::DragWithPreviousSelection
+				} else if rotate {
+					DragStartIntent::Rotate
 				} else if let Some(intersection) = intersection {
 					DragStartIntent::DragWithNewSelection(intersection)
 				} else {
