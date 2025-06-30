@@ -56,7 +56,7 @@ pub enum NestedSelectionBehavior {
 }
 
 #[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
-pub struct Dot(Pivot, DotState);
+pub struct Dot(Pivot, DotState, Option<LayerNodeIdentifier>);
 
 impl Dot {
 	pub fn position(&self, document: &DocumentMessageHandler) -> DVec2 {
@@ -67,6 +67,7 @@ impl Dot {
 				match self.1.dot {
 					DotType::Average => Some(network.selected_nodes().selected_visible_and_unlocked_layers_mean_average_origin(network)),
 					DotType::Pivot => self.0.position(),
+					DotType::Active => self.2.map(|layer| graph_modification_utils::get_viewport_origin(layer, network)),
 				}
 			})
 			.flatten()
@@ -84,10 +85,9 @@ pub enum DotType {
 	#[default]
 	Pivot,
 	// Origin
-
 	// Indidual,
 	Average,
-	// Active,
+	Active,
 }
 
 impl DotType {
@@ -122,6 +122,7 @@ impl fmt::Display for DotType {
 		match self {
 			DotType::Pivot => write!(f, "Draft Pivot"),
 			DotType::Average => write!(f, "Average of Origins"),
+			DotType::Active => write!(f, "Active Object Origin"),
 		}
 	}
 }
@@ -207,7 +208,7 @@ impl SelectTool {
 			.widget_holder()
 	}
 	fn dot_type_widget(&self) -> Vec<WidgetHolder> {
-		let dot_type_entries = [DotType::Pivot, DotType::Average]
+		let dot_type_entries = [DotType::Pivot, DotType::Average, DotType::Active]
 			.iter()
 			.map(|dot_type| {
 				MenuListEntry::new(format!("{dot_type:?}"))
@@ -227,6 +228,7 @@ impl SelectTool {
 				.selected_index(Some(match self.tool_data.dot_state.dot {
 					DotType::Pivot => 0,
 					DotType::Average => 1,
+					DotType::Active => 2,
 				}))
 				.tooltip("Choose between type of Transform Pivot Point")
 				.disabled(!self.tool_data.dot_state.enabled)
@@ -449,7 +451,9 @@ struct SelectToolData {
 	drag_current: ViewportPosition,
 	lasso_polygon: Vec<ViewportPosition>,
 	selection_mode: Option<SelectionMode>,
-	layers_dragging: Vec<LayerNodeIdentifier>,
+	layers_dragging: Vec<LayerNodeIdentifier>, // Unordered, often used as temporary buffer
+	orderer_layers: Vec<LayerNodeIdentifier>,  // Ordered list of layers
+	active_layer: Option<LayerNodeIdentifier>,
 	layer_selected_on_start: Option<LayerNodeIdentifier>,
 	select_single_layer: Option<LayerNodeIdentifier>,
 	axis_align: bool,
@@ -633,7 +637,15 @@ impl SelectToolData {
 	}
 
 	fn get_as_dot(&self) -> Dot {
-		Dot(self.pivot.clone(), self.dot_state)
+		Dot(self.pivot.clone(), self.dot_state, self.active_layer.clone())
+	}
+
+	fn sync_history(&mut self) {
+		debug!("{:?}", self.layers_dragging);
+		self.orderer_layers.retain(|layer| self.layers_dragging.contains(layer));
+		self.orderer_layers.extend(self.layers_dragging.iter().find(|&layer| !self.orderer_layers.contains(layer)));
+		debug!("{:?}", self.orderer_layers);
+		self.active_layer = self.orderer_layers.last().map(|x| *x)
 	}
 }
 
@@ -848,11 +860,19 @@ impl Fsm for SelectToolFsmState {
 						.flatten()
 				});
 
+				let mut active_origin = None;
 				if overlay_context.visibility_settings.origin() && !tool_data.dot_state.is_pivot() {
 					for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 						let origin = graph_modification_utils::get_viewport_origin(layer, &document.network_interface);
-						overlay_context.dowel_pin(origin);
+						if Some(layer) == tool_data.active_layer {
+							active_origin = Some(origin);
+							continue;
+						}
+						overlay_context.dowel_pin(origin, None);
 					}
+				}
+				if let Some(origin) = active_origin {
+					overlay_context.dowel_pin(origin, Some(COLOR_OVERLAY_ORANGE));
 				}
 
 				let draw_pivot = tool_data.dot_state.dot.is_pivot() && overlay_context.visibility_settings.pivot();
@@ -1436,11 +1456,7 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(
-				SelectToolFsmState::ResizingBounds
-				| SelectToolFsmState::SkewingBounds { .. }
-				| SelectToolFsmState::RotatingBounds
-				| SelectToolFsmState::Dragging { .. }
-				| SelectToolFsmState::DraggingPivot,
+				SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds | SelectToolFsmState::DraggingPivot,
 				SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter,
 			) => {
 				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
@@ -1498,6 +1514,7 @@ impl Fsm for SelectToolFsmState {
 						NestedSelectionBehavior::Deepest => {
 							let filtered_selections = filter_nested_selection(document.metadata(), &new_selected);
 							tool_data.layers_dragging.extend(filtered_selections);
+							tool_data.sync_history();
 						}
 						NestedSelectionBehavior::Shallowest => {
 							// Find each new_selected's parent node
@@ -1506,6 +1523,7 @@ impl Fsm for SelectToolFsmState {
 								.map(|layer| layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer))
 								.collect();
 							tool_data.layers_dragging.extend(parent_selected.iter().copied());
+							tool_data.sync_history();
 						}
 					}
 				}
@@ -1760,6 +1778,7 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 		}
 	}
 
+	tool_data.sync_history();
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
 			.layers_dragging
@@ -1811,10 +1830,13 @@ fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<La
 			.next()
 			.expect("ROOT_PARENT should have a layer child when clicking"),
 	);
+
 	if !remove {
 		tool_data.layers_dragging.extend(vec![layer]);
+		tool_data.sync_history();
 	} else {
 		tool_data.layers_dragging.retain(|&selected_layer| layer != selected_layer);
+		tool_data.sync_history();
 	}
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
