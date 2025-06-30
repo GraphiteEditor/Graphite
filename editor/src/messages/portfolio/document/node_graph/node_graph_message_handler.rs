@@ -2210,7 +2210,7 @@ impl NodeGraphMessageHandler {
 			let mut inputs = inputs.into_iter().map(|input| {
 				input.map(|input| FrontendGraphInput {
 					data_type: FrontendGraphDataType::displayed_type(&input.ty, &input.type_source),
-					resolved_type: format!("{:?} from {:?}", &input.ty, &input.type_source),
+					resolved_type: format!("{:?}", &input.ty),
 					valid_types: input.valid_types.iter().map(|ty| ty.to_string()).collect(),
 					name: input.input_name,
 					description: input.input_description,
@@ -2230,7 +2230,7 @@ impl NodeGraphMessageHandler {
 					data_type: frontend_data_type,
 					name: "Output 1".to_string(),
 					description: String::new(),
-					resolved_type: format!("{:?} from {:?}", output_type, type_source),
+					resolved_type: format!("{:?}", output_type),
 					connected_to,
 				})
 			} else {
@@ -2262,7 +2262,7 @@ impl NodeGraphMessageHandler {
 					data_type,
 					name: output_name,
 					description: String::new(),
-					resolved_type: format!("{:?} from {:?}", output_type, type_source),
+					resolved_type: format!("{:?}", output_type),
 					connected_to,
 				});
 			}
