@@ -12,6 +12,8 @@ export class JsMessage {
 }
 
 const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
+const TupleToDOMRect = Transform(({ value }: { value: [number, number, number, number] }) => new DOMRect(value[0], value[1], value[2], value[3]));
+
 const ImportsToVec2Array = Transform(({ obj: { imports } }: { obj: { imports: [FrontendGraphOutput, number, number][] } }) =>
 	imports.map(([outputMetadata, x, y]) => ({ outputMetadata, position: { x, y } })),
 );
@@ -96,15 +98,20 @@ export class UpdateLayerWidths extends JsMessage {
 	readonly hasLeftInputWire!: Map<bigint, boolean>;
 }
 
-export class UpdateNodeGraph extends JsMessage {
+export class UpdateNodeGraphNodes extends JsMessage {
 	@Type(() => FrontendNode)
 	readonly nodes!: FrontendNode[];
-
-	@Type(() => FrontendNodeWire)
-	readonly wires!: FrontendNodeWire[];
-
-	readonly wiresDirectNotGridAligned!: boolean;
 }
+
+export class UpdateVisibleNodes extends JsMessage {
+	readonly nodes!: bigint[];
+}
+
+export class UpdateNodeGraphWires extends JsMessage {
+	readonly wires!: WireUpdate[];
+}
+
+export class ClearAllNodeGraphWires extends JsMessage {}
 
 export class UpdateNodeGraphTransform extends JsMessage {
 	readonly transform!: NodeGraphTransform;
@@ -219,7 +226,7 @@ export class FrontendGraphInput {
 
 	readonly description!: string;
 
-	readonly resolvedType!: string | undefined;
+	readonly resolvedType!: string;
 
 	readonly validTypes!: string[];
 
@@ -252,7 +259,7 @@ export class FrontendGraphOutput {
 
 	readonly description!: string;
 
-	readonly resolvedType!: string | undefined;
+	readonly resolvedType!: string;
 
 	@CreateInputConnectorArray
 	connectedTo!: Node[];
@@ -297,40 +304,43 @@ export class FrontendNode {
 	readonly uiOnly!: boolean;
 }
 
-const CreateOutputConnector = Transform(({ obj }) => {
-	if (obj.wireStart.export !== undefined) {
-		return { index: obj.wireStart.export };
-	} else if (obj.wireStart.import !== undefined) {
-		return { index: obj.wireStart.import };
-	} else {
-		if (obj.wireStart.node.inputIndex !== undefined) {
-			return { nodeId: obj.wireStart.node.nodeId, index: obj.wireStart.node.inputIndex };
-		} else {
-			return { nodeId: obj.wireStart.node.nodeId, index: obj.wireStart.node.outputIndex };
-		}
-	}
-});
+// const CreateOutputConnector = Transform(({ obj }) => {
+// 	if (obj.wireStart.export !== undefined) {
+// 		return { index: obj.wireStart.export };
+// 	} else if (obj.wireStart.import !== undefined) {
+// 		return { index: obj.wireStart.import };
+// 	} else {
+// 		if (obj.wireStart.node.inputIndex !== undefined) {
+// 			return { nodeId: obj.wireStart.node.nodeId, index: obj.wireStart.node.inputIndex };
+// 		} else {
+// 			return { nodeId: obj.wireStart.node.nodeId, index: obj.wireStart.node.outputIndex };
+// 		}
+// 	}
+// });
 
-const CreateInputConnector = Transform(({ obj }) => {
-	if (obj.wireEnd.export !== undefined) {
-		return { index: obj.wireEnd.export };
-	} else if (obj.wireEnd.import !== undefined) {
-		return { index: obj.wireEnd.import };
-	} else {
-		if (obj.wireEnd.node.inputIndex !== undefined) {
-			return { nodeId: obj.wireEnd.node.nodeId, index: obj.wireEnd.node.inputIndex };
-		} else {
-			return { nodeId: obj.wireEnd.node.nodeId, index: obj.wireEnd.node.outputIndex };
-		}
-	}
-});
+// const CreateInputConnector = Transform(({ obj }) => {
+// 	if (obj.wireEnd.export !== undefined) {
+// 		return { index: obj.wireEnd.export };
+// 	} else if (obj.wireEnd.import !== undefined) {
+// 		return { index: obj.wireEnd.import };
+// 	} else {
+// 		if (obj.wireEnd.node.inputIndex !== undefined) {
+// 			return { nodeId: obj.wireEnd.node.nodeId, index: obj.wireEnd.node.inputIndex };
+// 		} else {
+// 			return { nodeId: obj.wireEnd.node.nodeId, index: obj.wireEnd.node.outputIndex };
+// 		}
+// 	}
+// });
 
 export class FrontendNodeWire {
-	@CreateOutputConnector
-	readonly wireStart!: Node;
+	@TupleToDOMRect
+	readonly wireStart!: DOMRect;
+	@TupleToDOMRect
+	readonly wireEnd!: DOMRect;
 
-	@CreateInputConnector
-	readonly wireEnd!: Node;
+	readonly verticalStart!: boolean;
+
+	readonly verticalEnd!: boolean;
 
 	readonly dashed!: boolean;
 }
@@ -354,6 +364,13 @@ export class WirePath {
 	readonly dataType!: FrontendGraphDataType;
 	readonly thick!: boolean;
 	readonly dashed!: boolean;
+}
+
+export class WireUpdate {
+	readonly id!: bigint;
+	readonly inputIndex!: number;
+	readonly wirePathUpdate!: WirePath | undefined;
+	// readonly wireSNIUpdate!: number | undefined;
 }
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
@@ -1645,6 +1662,7 @@ type JSMessageFactory = (data: any, wasm: WebAssembly.Memory, handle: EditorHand
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageMakers: Record<string, MessageMaker> = {
+	ClearAllNodeGraphWires,
 	DisplayDialog,
 	DisplayDialogDismiss,
 	DisplayDialogPanic,
@@ -1700,10 +1718,12 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateLayerWidths,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
-	UpdateNodeGraph,
+	UpdateNodeGraphNodes,
+	UpdateVisibleNodes,
+	UpdateNodeGraphWires,
+	UpdateNodeGraphTransform,
 	UpdateNodeGraphControlBarLayout,
 	UpdateNodeGraphSelection,
-	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelSectionsLayout,

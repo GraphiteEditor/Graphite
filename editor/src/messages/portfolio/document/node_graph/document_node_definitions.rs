@@ -5,8 +5,8 @@ use super::node_properties::{self, ParameterWidgetsInfo};
 use super::utility_types::FrontendNodeType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	DocumentNodeMetadata, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata, NumberInputSettings,
-	PropertiesRow, Vec2InputSettings, WidgetOverride,
+	DocumentNodeMetadata, DocumentNodePersistentMetadata, InputMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata,
+	NumberInputSettings, Vec2InputSettings, WidgetOverride,
 };
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
@@ -37,23 +37,20 @@ pub struct NodePropertiesContext<'a> {
 
 impl NodePropertiesContext<'_> {
 	pub fn call_widget_override(&mut self, node_id: &NodeId, index: usize) -> Option<Vec<LayoutGroup>> {
-		let input_properties_row = self.network_interface.input_properties_row(node_id, index, self.selection_network_path)?;
+		let input_properties_row = self.network_interface.persistent_input_metadata(node_id, index, self.selection_network_path)?;
 		if let Some(widget_override) = &input_properties_row.widget_override {
 			let Some(widget_override_lambda) = INPUT_OVERRIDES.get(widget_override) else {
 				log::error!("Could not get widget override '{widget_override}' lambda in call_widget_override");
 				return None;
 			};
 			widget_override_lambda(*node_id, index, self)
-				.map(|layout_group| {
-					let Some(input_properties_row) = self.network_interface.input_properties_row(node_id, index, self.selection_network_path) else {
-						log::error!("Could not get input properties row in call_widget_override");
-						return Vec::new();
-					};
-					match &input_properties_row.input_data.get("tooltip").and_then(|tooltip| tooltip.as_str()) {
-						Some(tooltip) => layout_group.into_iter().map(|widget| widget.with_tooltip(*tooltip)).collect::<Vec<_>>(),
-						_ => layout_group,
-					}
-				})
+				// .map(|layout_group| {
+				// 	let Some(input_metadata) = self.network_interface.persistent_input_metadata(node_id, index, self.selection_network_path) else {
+				// 		log::error!("Could not get input properties row in call_widget_override");
+				// 		return Vec::new();
+				// 	};
+				// 	layout_group.into_iter().map(|widget| widget.with_tooltip(*input_metadata.input_description.clone())).collect::<Vec<_>>()
+				// })
 				.map_err(|error| {
 					log::error!("Error in widget override lambda: {}", error);
 				})
@@ -105,7 +102,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("In", "TODO").into()],
+					input_metadata: vec![("In", "TODO").into()],
 					output_names: vec!["Out".to_string()],
 					..Default::default()
 				},
@@ -126,7 +123,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("In", "TODO").into()],
+					input_metadata: vec![("In", "TODO").into()],
 					output_names: vec!["Out".to_string()],
 					..Default::default()
 				},
@@ -223,7 +220,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_properties: vec![("Data", "TODO").into()],
+					input_metadata: vec![("Data", "TODO").into()],
 					output_names: vec!["Data".to_string()],
 					..Default::default()
 				},
@@ -285,7 +282,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("Graphical Data", "TODO").into(), ("Over", "TODO").into()],
+					input_metadata: vec![("Graphical Data", "TODO").into(), ("Over", "TODO").into()],
 					output_names: vec!["Out".to_string()],
 					node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
 					network_metadata: Some(NodeNetworkMetadata {
@@ -397,10 +394,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![
+					input_metadata: vec![
 						("Artboards", "TODO").into(),
-						PropertiesRow::with_override("Contents", "TODO", WidgetOverride::Hidden),
-						PropertiesRow::with_override(
+						InputMetadata::with_name_description_override("Contents", "TODO", WidgetOverride::Hidden),
+						InputMetadata::with_name_description_override(
 							"Location",
 							"TODO",
 							WidgetOverride::Vec2(Vec2InputSettings {
@@ -410,7 +407,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						PropertiesRow::with_override(
+						InputMetadata::with_name_description_override(
 							"Dimensions",
 							"TODO",
 							WidgetOverride::Vec2(Vec2InputSettings {
@@ -420,7 +417,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						PropertiesRow::with_override("Background", "TODO", WidgetOverride::Custom("artboard_background".to_string())),
+						InputMetadata::with_name_description_override("Background", "TODO", WidgetOverride::Custom("artboard_background".to_string())),
 						("Clip", "TODO").into(),
 					],
 					output_names: vec!["Out".to_string()],
@@ -498,7 +495,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("Empty", "TODO").into(), ("URL", "TODO").into()],
+					input_metadata: vec![("Empty", "TODO").into(), ("URL", "TODO").into()],
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -640,7 +637,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("In", "TODO").into()],
+					input_metadata: vec![("In", "TODO").into()],
 					output_names: vec!["Canvas".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -740,7 +737,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("Artwork", "TODO").into(), ("Footprint", "TODO").into()],
+					input_metadata: vec![("Artwork", "TODO").into(), ("Footprint", "TODO").into()],
 					output_names: vec!["Canvas".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -812,23 +809,23 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![
+					input_metadata: vec![
 						("Spacer", "TODO").into(),
 						("Clip", "TODO").into(),
 						("Seed", "TODO").into(),
-						PropertiesRow::with_override("Scale", "TODO", WidgetOverride::Custom("noise_properties_scale".to_string())),
-						PropertiesRow::with_override("Noise Type", "TODO", WidgetOverride::Custom("noise_properties_noise_type".to_string())),
-						PropertiesRow::with_override("Domain Warp Type", "TODO", WidgetOverride::Custom("noise_properties_domain_warp_type".to_string())),
-						PropertiesRow::with_override("Domain Warp Amplitude", "TODO", WidgetOverride::Custom("noise_properties_domain_warp_amplitude".to_string())),
-						PropertiesRow::with_override("Fractal Type", "TODO", WidgetOverride::Custom("noise_properties_fractal_type".to_string())),
-						PropertiesRow::with_override("Fractal Octaves", "TODO", WidgetOverride::Custom("noise_properties_fractal_octaves".to_string())),
-						PropertiesRow::with_override("Fractal Lacunarity", "TODO", WidgetOverride::Custom("noise_properties_fractal_lacunarity".to_string())),
-						PropertiesRow::with_override("Fractal Gain", "TODO", WidgetOverride::Custom("noise_properties_fractal_gain".to_string())),
-						PropertiesRow::with_override("Fractal Weighted Strength", "TODO", WidgetOverride::Custom("noise_properties_fractal_weighted_strength".to_string())),
-						PropertiesRow::with_override("Fractal Ping Pong Strength", "TODO", WidgetOverride::Custom("noise_properties_ping_pong_strength".to_string())),
-						PropertiesRow::with_override("Cellular Distance Function", "TODO", WidgetOverride::Custom("noise_properties_cellular_distance_function".to_string())),
-						PropertiesRow::with_override("Cellular Return Type", "TODO", WidgetOverride::Custom("noise_properties_cellular_return_type".to_string())),
-						PropertiesRow::with_override("Cellular Jitter", "TODO", WidgetOverride::Custom("noise_properties_cellular_jitter".to_string())),
+						InputMetadata::with_name_description_override("Scale", "TODO", WidgetOverride::Custom("noise_properties_scale".to_string())),
+						InputMetadata::with_name_description_override("Noise Type", "TODO", WidgetOverride::Custom("noise_properties_noise_type".to_string())),
+						InputMetadata::with_name_description_override("Domain Warp Type", "TODO", WidgetOverride::Custom("noise_properties_domain_warp_type".to_string())),
+						InputMetadata::with_name_description_override("Domain Warp Amplitude", "TODO", WidgetOverride::Custom("noise_properties_domain_warp_amplitude".to_string())),
+						InputMetadata::with_name_description_override("Fractal Type", "TODO", WidgetOverride::Custom("noise_properties_fractal_type".to_string())),
+						InputMetadata::with_name_description_override("Fractal Octaves", "TODO", WidgetOverride::Custom("noise_properties_fractal_octaves".to_string())),
+						InputMetadata::with_name_description_override("Fractal Lacunarity", "TODO", WidgetOverride::Custom("noise_properties_fractal_lacunarity".to_string())),
+						InputMetadata::with_name_description_override("Fractal Gain", "TODO", WidgetOverride::Custom("noise_properties_fractal_gain".to_string())),
+						InputMetadata::with_name_description_override("Fractal Weighted Strength", "TODO", WidgetOverride::Custom("noise_properties_fractal_weighted_strength".to_string())),
+						InputMetadata::with_name_description_override("Fractal Ping Pong Strength", "TODO", WidgetOverride::Custom("noise_properties_ping_pong_strength".to_string())),
+						InputMetadata::with_name_description_override("Cellular Distance Function", "TODO", WidgetOverride::Custom("noise_properties_cellular_distance_function".to_string())),
+						InputMetadata::with_name_description_override("Cellular Return Type", "TODO", WidgetOverride::Custom("noise_properties_cellular_return_type".to_string())),
+						InputMetadata::with_name_description_override("Cellular Jitter", "TODO", WidgetOverride::Custom("noise_properties_cellular_jitter".to_string())),
 					],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
@@ -897,7 +894,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("Image", "TODO").into()],
+					input_metadata: vec![("Image", "TODO").into()],
 					output_names: vec!["Red".to_string(), "Green".to_string(), "Blue".to_string(), "Alpha".to_string()],
 					has_primary_output: false,
 					network_metadata: Some(NodeNetworkMetadata {
@@ -982,7 +979,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("Coordinate", "TODO").into()],
+					input_metadata: vec![("Coordinate", "TODO").into()],
 					output_names: vec!["X".to_string(), "Y".to_string()],
 					has_primary_output: false,
 					network_metadata: Some(NodeNetworkMetadata {
@@ -1051,7 +1048,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("Background", "TODO").into(), ("Trace", "TODO").into(), ("Cache", "TODO").into()],
+					input_metadata: vec![("Background", "TODO").into(), ("Trace", "TODO").into(), ("Cache", "TODO").into()],
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1088,7 +1085,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("Image", "TODO").into()],
+					input_metadata: vec![("Image", "TODO").into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -1107,7 +1104,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("Image", "TODO").into()],
+					input_metadata: vec![("Image", "TODO").into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -1150,7 +1147,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("In", "TODO").into()],
+					input_metadata: vec![("In", "TODO").into()],
 					output_names: vec!["Storage".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1229,7 +1226,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("In", "TODO").into(), ("In", "TODO").into()],
+					input_metadata: vec![("In", "TODO").into(), ("In", "TODO").into()],
 					output_names: vec!["Output Buffer".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1376,7 +1373,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("In", "TODO").into()],
+					input_metadata: vec![("In", "TODO").into()],
 					output_names: vec!["Texture".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1430,7 +1427,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("Node", "TODO").into()],
+					input_metadata: vec![("Node", "TODO").into()],
 					output_names: vec!["Document Node".to_string()],
 					..Default::default()
 				},
@@ -1501,7 +1498,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("Vector Data", "TODO").into(), ("Modification", "TODO").into()],
+					input_metadata: vec![("Vector Data", "TODO").into(), ("Modification", "TODO").into()],
 					output_names: vec!["Vector Data".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1560,11 +1557,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![
+					input_metadata: vec![
 						("Editor API", "TODO").into(),
-						PropertiesRow::with_override("Text", "TODO", WidgetOverride::Custom("text_area".to_string())),
-						PropertiesRow::with_override("Font", "TODO", WidgetOverride::Custom("text_font".to_string())),
-						PropertiesRow::with_override(
+						InputMetadata::with_name_description_override("Text", "TODO", WidgetOverride::Custom("text_area".to_string())),
+						InputMetadata::with_name_description_override("Font", "TODO", WidgetOverride::Custom("text_font".to_string())),
+						InputMetadata::with_name_description_override(
 							"Size",
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
@@ -1573,7 +1570,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						PropertiesRow::with_override(
+						InputMetadata::with_name_description_override(
 							"Line Height",
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
@@ -1582,7 +1579,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						PropertiesRow::with_override(
+						InputMetadata::with_name_description_override(
 							"Character Spacing",
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
@@ -1591,7 +1588,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						PropertiesRow::with_override(
+						InputMetadata::with_name_description_override(
 							"Max Width",
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
@@ -1600,7 +1597,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						PropertiesRow::with_override(
+						InputMetadata::with_name_description_override(
 							"Max Height",
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
@@ -1691,9 +1688,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_properties: vec![
+					input_metadata: vec![
 						("Vector Data", "TODO").into(),
-						PropertiesRow::with_override(
+						InputMetadata::with_name_description_override(
 							"Translation",
 							"TODO",
 							WidgetOverride::Vec2(Vec2InputSettings {
@@ -1703,8 +1700,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						PropertiesRow::with_override("Rotation", "TODO", WidgetOverride::Custom("transform_rotation".to_string())),
-						PropertiesRow::with_override(
+						InputMetadata::with_name_description_override("Rotation", "TODO", WidgetOverride::Custom("transform_rotation".to_string())),
+						InputMetadata::with_name_description_override(
 							"Scale",
 							"TODO",
 							WidgetOverride::Vec2(Vec2InputSettings {
@@ -1714,8 +1711,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						PropertiesRow::with_override("Skew", "TODO", WidgetOverride::Custom("transform_skew".to_string())),
-						PropertiesRow::with_override("Pivot", "TODO", WidgetOverride::Hidden),
+						InputMetadata::with_name_description_override("Skew", "TODO", WidgetOverride::Custom("transform_skew".to_string())),
+						InputMetadata::with_name_description_override("Pivot", "TODO", WidgetOverride::Hidden),
 					],
 					output_names: vec!["Data".to_string()],
 					..Default::default()
@@ -1814,7 +1811,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_properties: vec![("Group of Paths", "TODO").into(), ("Operation", "TODO").into()],
+					input_metadata: vec![("Group of Paths", "TODO").into(), ("Operation", "TODO").into()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -1940,10 +1937,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_properties: vec![
+					input_metadata: vec![
 						("Vector Data", "The shape to be resampled and converted into a polyline.").into(),
-						Into::<PropertiesRow>::into(("Spacing", node_properties::SAMPLE_POLYLINE_TOOLTIP_SPACING)),
-						PropertiesRow::with_override(
+						("Spacing", node_properties::SAMPLE_POLYLINE_TOOLTIP_SPACING).into(),
+						InputMetadata::with_name_description_override(
 							"Separation",
 							node_properties::SAMPLE_POLYLINE_TOOLTIP_SEPARATION,
 							WidgetOverride::Number(NumberInputSettings {
@@ -1952,7 +1949,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						PropertiesRow::with_override(
+						InputMetadata::with_name_description_override(
 							"Quantity",
 							node_properties::SAMPLE_POLYLINE_TOOLTIP_QUANTITY,
 							WidgetOverride::Number(NumberInputSettings {
@@ -1961,7 +1958,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						PropertiesRow::with_override(
+						InputMetadata::with_name_description_override(
 							"Start Offset",
 							node_properties::SAMPLE_POLYLINE_TOOLTIP_START_OFFSET,
 							WidgetOverride::Number(NumberInputSettings {
@@ -1970,7 +1967,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						PropertiesRow::with_override(
+						InputMetadata::with_name_description_override(
 							"Stop Offset",
 							node_properties::SAMPLE_POLYLINE_TOOLTIP_STOP_OFFSET,
 							WidgetOverride::Number(NumberInputSettings {
@@ -1979,7 +1976,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						Into::<PropertiesRow>::into(("Adaptive Spacing", node_properties::SAMPLE_POLYLINE_TOOLTIP_ADAPTIVE_SPACING)),
+						("Adaptive Spacing", node_properties::SAMPLE_POLYLINE_TOOLTIP_ADAPTIVE_SPACING).into(),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
@@ -2083,9 +2080,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_properties: vec![
+					input_metadata: vec![
 						("Vector Data", "TODO").into(),
-						PropertiesRow::with_override(
+						InputMetadata::with_name_description_override(
 							"Separation Disk Diameter",
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
@@ -2096,7 +2093,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						PropertiesRow::with_override(
+						InputMetadata::with_name_description_override(
 							"Seed",
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
@@ -2138,7 +2135,7 @@ fn static_node_properties() -> NodeProperties {
 	map.insert("sample_polyline_properties".to_string(), Box::new(node_properties::sample_polyline_properties));
 	map.insert(
 		"identity_properties".to_string(),
-		Box::new(|_node_id, _context| node_properties::string_properties("The identity node simply passes its data through.")),
+		Box::new(|_node_id, _context| node_properties::string_properties("The identity node passes its data through.")),
 	);
 	map.insert(
 		"monitor_properties".to_string(),
@@ -2158,7 +2155,7 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"string".to_string(),
 		Box::new(|node_id, index, context| {
-			let Some(value) = context.network_interface.input_metadata(&node_id, index, "string_properties", context.selection_network_path) else {
+			let Some(value) = context.network_interface.input_data(&node_id, index, "string_properties", context.selection_network_path) else {
 				return Err(format!("Could not get string properties for node {}", node_id));
 			};
 			let Some(string) = value.as_str() else {
@@ -2170,37 +2167,36 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"number".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let mut number_input = NumberInput::default();
 			if let Some(unit) = context
 				.network_interface
-				.input_metadata(&node_id, index, "unit", context.selection_network_path)
+				.input_data(&node_id, index, "unit", context.selection_network_path)
 				.and_then(|value| value.as_str())
 			{
 				number_input = number_input.unit(unit);
 			}
 			if let Some(min) = context
 				.network_interface
-				.input_metadata(&node_id, index, "min", context.selection_network_path)
+				.input_data(&node_id, index, "min", context.selection_network_path)
 				.and_then(|value| value.as_f64())
 			{
 				number_input = number_input.min(min);
 			}
 			if let Some(max) = context
 				.network_interface
-				.input_metadata(&node_id, index, "max", context.selection_network_path)
+				.input_data(&node_id, index, "max", context.selection_network_path)
 				.and_then(|value| value.as_f64())
 			{
 				number_input = number_input.max(max);
 			}
 			if let Some(step) = context
 				.network_interface
-				.input_metadata(&node_id, index, "step", context.selection_network_path)
+				.input_data(&node_id, index, "step", context.selection_network_path)
 				.and_then(|value| value.as_f64())
 			{
 				number_input = number_input.step(step);
 			}
-			if let Some(mode) = context.network_interface.input_metadata(&node_id, index, "mode", context.selection_network_path).map(|value| {
+			if let Some(mode) = context.network_interface.input_data(&node_id, index, "mode", context.selection_network_path).map(|value| {
 				let mode: NumberInputMode = serde_json::from_value(value.clone()).unwrap();
 				mode
 			}) {
@@ -2208,87 +2204,83 @@ fn static_input_properties() -> InputProperties {
 			}
 			if let Some(range_min) = context
 				.network_interface
-				.input_metadata(&node_id, index, "range_min", context.selection_network_path)
+				.input_data(&node_id, index, "range_min", context.selection_network_path)
 				.and_then(|value| value.as_f64())
 			{
 				number_input = number_input.range_min(Some(range_min));
 			}
 			if let Some(range_max) = context
 				.network_interface
-				.input_metadata(&node_id, index, "range_max", context.selection_network_path)
+				.input_data(&node_id, index, "range_max", context.selection_network_path)
 				.and_then(|value| value.as_f64())
 			{
 				number_input = number_input.range_max(Some(range_max));
 			}
 			if let Some(is_integer) = context
 				.network_interface
-				.input_metadata(&node_id, index, "is_integer", context.selection_network_path)
+				.input_data(&node_id, index, "is_integer", context.selection_network_path)
 				.and_then(|value| value.as_bool())
 			{
 				number_input = number_input.is_integer(is_integer);
 			}
 			let blank_assist = context
 				.network_interface
-				.input_metadata(&node_id, index, "blank_assist", context.selection_network_path)
+				.input_data(&node_id, index, "blank_assist", context.selection_network_path)
 				.and_then(|value| value.as_bool())
 				.unwrap_or_else(|| {
 					log::error!("Could not get blank assist when displaying number input for node {node_id}, index {index}");
 					true
 				});
+
 			Ok(vec![LayoutGroup::Row {
-				widgets: node_properties::number_widget(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, blank_assist), number_input),
+				widgets: node_properties::number_widget(ParameterWidgetsInfo::new(node_id, index, blank_assist, context), number_input),
 			}])
 		}),
 	);
 	map.insert(
 		"vec2".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let x = context
 				.network_interface
-				.input_metadata(&node_id, index, "x", context.selection_network_path)
+				.input_data(&node_id, index, "x", context.selection_network_path)
 				.and_then(|value| value.as_str())
 				.unwrap_or_else(|| {
 					log::error!("Could not get x for vec2 input");
 					""
-				});
+				})
+				.to_string();
 			let y = context
 				.network_interface
-				.input_metadata(&node_id, index, "y", context.selection_network_path)
+				.input_data(&node_id, index, "y", context.selection_network_path)
 				.and_then(|value| value.as_str())
 				.unwrap_or_else(|| {
 					log::error!("Could not get y for vec2 input");
 					""
-				});
+				})
+				.to_string();
 			let unit = context
 				.network_interface
-				.input_metadata(&node_id, index, "unit", context.selection_network_path)
+				.input_data(&node_id, index, "unit", context.selection_network_path)
 				.and_then(|value| value.as_str())
 				.unwrap_or_else(|| {
 					log::error!("Could not get unit for vec2 input");
 					""
-				});
+				})
+				.to_string();
 			let min = context
 				.network_interface
-				.input_metadata(&node_id, index, "min", context.selection_network_path)
+				.input_data(&node_id, index, "min", context.selection_network_path)
 				.and_then(|value| value.as_f64());
 
-			Ok(vec![node_properties::coordinate_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
-				x,
-				y,
-				unit,
-				min,
-			)])
+			Ok(vec![node_properties::coordinate_widget(ParameterWidgetsInfo::new(node_id, index, true, context), &x, &y, &unit, min)])
 		}),
 	);
 	map.insert(
 		"noise_properties_scale".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let scale = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default().min(0.).disabled(!coherent_noise_active),
 			);
 			Ok(vec![scale.into()])
@@ -2297,20 +2289,16 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_noise_type".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
-			let noise_type_row = enum_choice::<NoiseType>()
-				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
-				.property_row();
+			let noise_type_row = enum_choice::<NoiseType>().for_socket(ParameterWidgetsInfo::new(node_id, index, true, context)).property_row();
 			Ok(vec![noise_type_row, LayoutGroup::Row { widgets: Vec::new() }])
 		}),
 	);
 	map.insert(
 		"noise_properties_domain_warp_type".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let domain_warp_type = enum_choice::<DomainWarpType>()
-				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.for_socket(ParameterWidgetsInfo::new(node_id, index, true, context))
 				.disabled(!coherent_noise_active)
 				.property_row();
 			Ok(vec![domain_warp_type])
@@ -2319,10 +2307,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_domain_warp_amplitude".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, _, _, domain_warp_active, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let domain_warp_amplitude = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default().min(0.).disabled(!coherent_noise_active || !domain_warp_active),
 			);
 			Ok(vec![domain_warp_amplitude.into(), LayoutGroup::Row { widgets: Vec::new() }])
@@ -2331,10 +2318,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_fractal_type".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_type_row = enum_choice::<FractalType>()
-				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.for_socket(ParameterWidgetsInfo::new(node_id, index, true, context))
 				.disabled(!coherent_noise_active)
 				.property_row();
 			Ok(vec![fractal_type_row])
@@ -2343,10 +2329,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_fractal_octaves".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_octaves = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(1.)
@@ -2361,10 +2346,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_fractal_lacunarity".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_lacunarity = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(0.)
@@ -2377,10 +2361,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_fractal_gain".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_gain = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(0.)
@@ -2393,10 +2376,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_fractal_weighted_strength".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_weighted_strength = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(0.)
@@ -2409,10 +2391,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_ping_pong_strength".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (fractal_active, coherent_noise_active, _, ping_pong_active, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_ping_pong_strength = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(0.)
@@ -2425,10 +2406,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_cellular_distance_function".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let cellular_distance_function_row = enum_choice::<CellularDistanceFunction>()
-				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.for_socket(ParameterWidgetsInfo::new(node_id, index, true, context))
 				.disabled(!coherent_noise_active || !cellular_noise_active)
 				.property_row();
 			Ok(vec![cellular_distance_function_row])
@@ -2437,10 +2417,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_cellular_return_type".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let cellular_return_type = enum_choice::<CellularReturnType>()
-				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.for_socket(ParameterWidgetsInfo::new(node_id, index, true, context))
 				.disabled(!coherent_noise_active || !cellular_noise_active)
 				.property_row();
 			Ok(vec![cellular_return_type])
@@ -2449,10 +2428,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_cellular_jitter".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let cellular_jitter = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.range_min(Some(0.))
@@ -2465,7 +2443,7 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"brightness".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
+			let document_node = node_properties::get_document_node(node_id, context)?;
 			let is_use_classic = document_node
 				.inputs
 				.iter()
@@ -2476,7 +2454,7 @@ fn static_input_properties() -> InputProperties {
 				.unwrap_or(false);
 			let (b_min, b_max) = if is_use_classic { (-100., 100.) } else { (-100., 150.) };
 			let brightness = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default().mode_range().range_min(Some(b_min)).range_max(Some(b_max)).unit("%").display_decimal_places(2),
 			);
 			Ok(vec![brightness.into()])
@@ -2485,7 +2463,8 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"contrast".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
+			let document_node = node_properties::get_document_node(node_id, context)?;
+
 			let is_use_classic = document_node
 				.inputs
 				.iter()
@@ -2496,7 +2475,7 @@ fn static_input_properties() -> InputProperties {
 				.unwrap_or(false);
 			let (c_min, c_max) = if is_use_classic { (-100., 100.) } else { (-50., 100.) };
 			let contrast = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default().mode_range().range_min(Some(c_min)).range_max(Some(c_max)).unit("%").display_decimal_places(2),
 			);
 			Ok(vec![contrast.into()])
@@ -2505,21 +2484,16 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"assign_colors_gradient".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
-			let gradient_row = node_properties::color_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
-				ColorInput::default().allow_none(false),
-			);
+			let gradient_row = node_properties::color_widget(ParameterWidgetsInfo::new(node_id, index, true, context), ColorInput::default().allow_none(false));
 			Ok(vec![gradient_row])
 		}),
 	);
 	map.insert(
 		"assign_colors_seed".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let randomize_enabled = node_properties::query_assign_colors_randomize(node_id, context)?;
 			let seed_row = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default().min(0.).int().disabled(!randomize_enabled),
 			);
 			Ok(vec![seed_row.into()])
@@ -2528,10 +2502,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"assign_colors_repeat_every".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let randomize_enabled = node_properties::query_assign_colors_randomize(node_id, context)?;
 			let repeat_every_row = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default().min(0.).int().disabled(randomize_enabled),
 			);
 			Ok(vec![repeat_every_row.into()])
@@ -2540,33 +2513,24 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"mask_stencil".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
-			let mask = node_properties::color_widget(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true), ColorInput::default());
+			let mask = node_properties::color_widget(ParameterWidgetsInfo::new(node_id, index, true, context), ColorInput::default());
 			Ok(vec![mask])
 		}),
 	);
 	map.insert(
 		"spline_input".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			Ok(vec![LayoutGroup::Row {
-				widgets: node_properties::array_of_coordinates_widget(
-					ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
-					TextInput::default().centered(true),
-				),
+				widgets: node_properties::array_of_coordinates_widget(ParameterWidgetsInfo::new(node_id, index, true, context), TextInput::default().centered(true)),
 			}])
 		}),
 	);
 	map.insert(
 		"transform_rotation".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
+			let mut widgets = node_properties::start_widgets(ParameterWidgetsInfo::new(node_id, index, true, context));
 
-			let mut widgets = node_properties::start_widgets(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
-				super::utility_types::FrontendGraphDataType::Number,
-			);
-
+			let document_node = node_properties::get_document_node(node_id, context)?;
 			let Some(input) = document_node.inputs.get(index) else {
 				return Err("Input not found in transform rotation input override".to_string());
 			};
@@ -2595,13 +2559,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"transform_skew".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
+			let mut widgets = node_properties::start_widgets(ParameterWidgetsInfo::new(node_id, index, true, context));
 
-			let mut widgets = node_properties::start_widgets(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
-				super::utility_types::FrontendGraphDataType::Number,
-			);
-
+			let document_node = node_properties::get_document_node(node_id, context)?;
 			let Some(input) = document_node.inputs.get(index) else {
 				return Err("Input not found in transform skew input override".to_string());
 			};
@@ -2643,17 +2603,15 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"text_area".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			Ok(vec![LayoutGroup::Row {
-				widgets: node_properties::text_area_widget(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true)),
+				widgets: node_properties::text_area_widget(ParameterWidgetsInfo::new(node_id, index, true, context)),
 			}])
 		}),
 	);
 	map.insert(
 		"text_font".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
-			let (font, style) = node_properties::font_inputs(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true));
+			let (font, style) = node_properties::font_inputs(ParameterWidgetsInfo::new(node_id, index, true, context));
 			let mut result = vec![LayoutGroup::Row { widgets: font }];
 			if let Some(style) = style {
 				result.push(LayoutGroup::Row { widgets: style });
@@ -2664,9 +2622,8 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"artboard_background".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			Ok(vec![node_properties::color_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				ColorInput::default().allow_none(false),
 			)])
 		}),
@@ -2707,7 +2664,7 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 			// Extract input types (already creates owned Strings)
 			let input_types = implementations
 				.iter()
-				.flat_map(|(_, node_io)| node_io.inputs.iter().map(|ty| ty.clone().nested_type().to_string()))
+				.flat_map(|(_, node_io)| node_io.inputs.iter().map(|ty| ty.nested_type().to_string()))
 				.collect::<HashSet<String>>()
 				.into_iter()
 				.collect::<Vec<String>>();
@@ -2813,7 +2770,7 @@ impl DocumentNodeDefinition {
 					log::error!("Path is not valid for network");
 					return;
 				};
-				nested_node_metadata.persistent_metadata.input_properties.resize_with(input_length, PropertiesRow::default);
+				nested_node_metadata.persistent_metadata.input_metadata.resize_with(input_length, InputMetadata::default);
 
 				// Recurse over all sub-nodes if the current node is a network implementation
 				let mut current_path = path.clone();
@@ -2832,7 +2789,7 @@ impl DocumentNodeDefinition {
 			} else {
 				// Base case
 				let input_len = node_template.document_node.inputs.len();
-				node_template.persistent_node_metadata.input_properties.resize_with(input_len, PropertiesRow::default);
+				node_template.persistent_node_metadata.input_metadata.resize_with(input_len, InputMetadata::default);
 				if let DocumentNodeImplementation::Network(node_template_network) = &node_template.document_node.implementation {
 					for sub_node_id in node_template_network.nodes.keys().cloned().collect::<Vec<_>>() {
 						populate_input_properties(node_template, vec![sub_node_id]);
