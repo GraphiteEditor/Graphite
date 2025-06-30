@@ -437,7 +437,6 @@ pub fn transforming_transform_cage(
 					.selected_visible_and_unlocked_layers_mean_average_origin(&document.network_interface)
 			});
 
-
 			// Check if we're hovering over a skew triangle
 			let edges = bounds.check_selected_edges(input.mouse.position);
 			if let Some(edges) = edges {
