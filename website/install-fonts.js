@@ -8,6 +8,30 @@ const basePath = path.resolve(__dirname);
 // Define files to copy as [source, destination] pairs
 // Files with the same destination will be concatenated
 const FILES_TO_COPY = [
+const path = require('path');
+
+// Function to safely join paths and prevent traversal
+function safePath(basePath, userInput) {
+    // Remove any path traversal attempts
+    const sanitized = userInput.replace(/\.\./g, '').replace(/[\/\\]/g, '');
+    
+    // Only allow alphanumeric characters, hyphens, underscores, and dots for font files
+    if (!/^[a-zA-Z0-9._-]+$/.test(sanitized)) {
+        throw new Error('Invalid filename characters');
+    }
+    
+    const joined = path.join(basePath, sanitized);
+    const resolved = path.resolve(joined);
+    const baseResolved = path.resolve(basePath);
+    
+    // Ensure the resolved path is within the base directory
+    if (!resolved.startsWith(baseResolved + path.sep) && resolved !== baseResolved) {
+        throw new Error('Path traversal attempt detected');
+    }
+    
+    return resolved;
+}
+
 	["node_modules/@fontsource-variable/inter/opsz.css", "static/fonts/common.css"],
 	["node_modules/@fontsource-variable/inter/opsz-italic.css", "static/fonts/common.css"],
 	["node_modules/@fontsource/bona-nova/700.css", "static/fonts/common.css"],
