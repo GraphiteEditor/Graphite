@@ -1,5 +1,5 @@
 use super::file::TiffRead;
-use super::values::{CurveLookupTable, Rational, Transform};
+use super::values::{CompressionValue, CurveLookupTable, OrientationValue, Rational};
 use super::{Ifd, IfdTagType, TiffError};
 use std::io::{Read, Seek};
 
@@ -350,6 +350,7 @@ impl<T: PrimitiveType, const N: usize> TagType for ConstArray<T, N> {
 	}
 }
 
+pub struct TypeCompression;
 pub struct TypeString;
 pub struct TypeSonyToneCurve;
 pub struct TypeOrientation;
@@ -376,19 +377,17 @@ impl TagType for TypeSonyToneCurve {
 }
 
 impl TagType for TypeOrientation {
-	type Output = Transform;
+	type Output = OrientationValue;
 
 	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
-		Ok(match TypeShort::read(file)? {
-			1 => Transform::Horizontal,
-			2 => Transform::MirrorHorizontal,
-			3 => Transform::Rotate180,
-			4 => Transform::MirrorVertical,
-			5 => Transform::MirrorHorizontalRotate270,
-			6 => Transform::Rotate90,
-			7 => Transform::MirrorHorizontalRotate90,
-			8 => Transform::Rotate270,
-			_ => return Err(TiffError::InvalidValue),
-		})
+		OrientationValue::try_from(TypeShort::read(file)?).map_err(|_| TiffError::InvalidValue)
+	}
+}
+
+impl TagType for TypeCompression {
+	type Output = CompressionValue;
+
+	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
+		CompressionValue::try_from(TypeShort::read(file)?).map_err(|_| TiffError::InvalidValue)
 	}
 }
