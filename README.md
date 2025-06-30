@@ -58,7 +58,7 @@ Learn more from the [website](https://graphite.rs/), subscribe to the [newslette
 </a>
 <br /><br />
 
-https://github.com/user-attachments/assets/e0b80e09-6f12-41e5-9183-8e9ee04343bd
+https://github.com/user-attachments/assets/f4604aea-e8f1-45ce-9218-46ddc666f11d
 
 ## Support our mission ❤️
 
