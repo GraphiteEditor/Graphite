@@ -65,6 +65,7 @@ async fn assign_colors<T>(
 	randomize: bool,
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_seed")]
 	/// The seed used for randomization.
+	/// Seed to determine unique variations on the randomized color selection.
 	seed: SeedValue,
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every")]
 	/// The number of elements to span across the gradient before repeating. A 0 value will span the entire gradient once.
