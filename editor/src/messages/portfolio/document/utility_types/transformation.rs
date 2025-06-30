@@ -616,7 +616,7 @@ impl<'a> Selected<'a> {
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
 		}
 
-		if transform_operation.is_some_and(|transform_operation| matches!(transform_operation, TransformOperation::Scaling(_))) && initial_points.anchors.len() > 1 {
+		if transform_operation.is_some_and(|transform_operation| matches!(transform_operation, TransformOperation::Scaling(_))) && initial_points.anchors.len() < 3 {
 			return;
 		}
 

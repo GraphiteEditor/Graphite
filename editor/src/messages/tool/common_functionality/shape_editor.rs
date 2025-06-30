@@ -899,6 +899,9 @@ impl ShapeState {
 		let non_zero_handles = handles.iter().filter(|handle| handle.length(vector_data) > 1e-6).count();
 		let handle_segments = handles.iter().map(|handles| handles.segment).collect::<Vec<_>>();
 
+		// Check if the anchor is connected to linear segments and has no handles
+		let linear_segments = vector_data.connected_linear_segments(point_id) != 0;
+
 		// Grab the next and previous manipulator groups by simply looking at the next / previous index
 		let points = handles.iter().map(|handle| vector_data.other_point(handle.segment, point_id));
 		let anchor_positions = points
@@ -940,7 +943,7 @@ impl ShapeState {
 			handle_direction *= -1.;
 		}
 
-		if non_zero_handles != 0 {
+		if non_zero_handles != 0 && !linear_segments {
 			let [a, b] = handles.as_slice() else { return };
 			let (non_zero_handle, zero_handle) = if a.length(vector_data) > 1e-6 { (a, b) } else { (b, a) };
 			let Some(direction) = non_zero_handle
@@ -1772,10 +1775,13 @@ impl ShapeState {
 				.filter(|&handle| anchor.abs_diff_eq(handle, 1e-5))
 				.count();
 
+			// Check if the anchor is connected to linear segments.
+			let one_or_more_segment_linear = vector_data.connected_linear_segments(id) != 0;
+
 			// Check by comparing the handle positions to the anchor if this manipulator group is a point
 			for point in self.selected_points() {
 				let Some(point_id) = point.as_anchor() else { continue };
-				if positions != 0 {
+				if positions != 0 || one_or_more_segment_linear {
 					self.convert_manipulator_handles_to_colinear(&vector_data, point_id, responses, layer);
 				} else {
 					for handle in vector_data.all_connected(point_id) {
