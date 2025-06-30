@@ -61,7 +61,7 @@ pub fn generate_node_substitutions() -> HashMap<String, DocumentNode> {
 				(
 					NodeId(i as u64),
 					match inputs.len() {
-						1 => {
+						1 if false => {
 							let input = inputs.iter().next().unwrap();
 							let input_ty = input.nested_type();
 

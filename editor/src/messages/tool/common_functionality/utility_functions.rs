@@ -8,11 +8,12 @@ use crate::messages::tool::common_functionality::graph_modification_utils::get_t
 use crate::messages::tool::common_functionality::transformation_cage::SelectedEdges;
 use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
 use crate::messages::tool::utility_types::ToolType;
-use bezier_rs::Bezier;
+use bezier_rs::{Bezier, BezierHandles};
 use glam::{DAffine2, DVec2};
 use graphene_std::renderer::Quad;
 use graphene_std::text::{FontCache, load_face};
 use graphene_std::vector::{HandleExt, HandleId, ManipulatorPointId, PointId, SegmentId, VectorData, VectorModificationType};
+use kurbo::{CubicBez, Line, ParamCurveExtrema, PathSeg, Point, QuadBez};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
 pub fn should_extend(
@@ -204,6 +205,71 @@ pub fn is_visible_point(
 	}
 }
 
+/// Function to find the bounding box of bezier (uses method from kurbo)
+pub fn calculate_bezier_bbox(bezier: Bezier) -> [DVec2; 2] {
+	let start = Point::new(bezier.start.x, bezier.start.y);
+	let end = Point::new(bezier.end.x, bezier.end.y);
+	let bbox = match bezier.handles {
+		BezierHandles::Cubic { handle_start, handle_end } => {
+			let p1 = Point::new(handle_start.x, handle_start.y);
+			let p2 = Point::new(handle_end.x, handle_end.y);
+			CubicBez::new(start, p1, p2, end).bounding_box()
+		}
+		BezierHandles::Quadratic { handle } => {
+			let p1 = Point::new(handle.x, handle.y);
+			QuadBez::new(start, p1, end).bounding_box()
+		}
+		BezierHandles::Linear => Line::new(start, end).bounding_box(),
+	};
+	[DVec2::new(bbox.x0, bbox.y0), DVec2::new(bbox.x1, bbox.y1)]
+}
+
+pub fn is_intersecting(bezier: Bezier, quad: [DVec2; 2], transform: DAffine2) -> bool {
+	let to_layerspace = transform.inverse();
+	let quad = [to_layerspace.transform_point2(quad[0]), to_layerspace.transform_point2(quad[1])];
+	let start = Point::new(bezier.start.x, bezier.start.y);
+	let end = Point::new(bezier.end.x, bezier.end.y);
+	let segment = match bezier.handles {
+		BezierHandles::Cubic { handle_start, handle_end } => {
+			let p1 = Point::new(handle_start.x, handle_start.y);
+			let p2 = Point::new(handle_end.x, handle_end.y);
+			PathSeg::Cubic(CubicBez::new(start, p1, p2, end))
+		}
+		BezierHandles::Quadratic { handle } => {
+			let p1 = Point::new(handle.x, handle.y);
+			PathSeg::Quad(QuadBez::new(start, p1, end))
+		}
+		BezierHandles::Linear => PathSeg::Line(Line::new(start, end)),
+	};
+
+	// Create a list of all the sides
+	let sides = [
+		Line::new((quad[0].x, quad[0].y), (quad[1].x, quad[0].y)),
+		Line::new((quad[0].x, quad[0].y), (quad[0].x, quad[1].y)),
+		Line::new((quad[1].x, quad[1].y), (quad[1].x, quad[0].y)),
+		Line::new((quad[1].x, quad[1].y), (quad[0].x, quad[1].y)),
+	];
+
+	let mut is_intersecting = false;
+	for line in sides {
+		let intersections = segment.intersect_line(line);
+		let mut intersects = false;
+		for intersection in intersections {
+			if intersection.line_t <= 1. && intersection.line_t >= 0. && intersection.segment_t <= 1. && intersection.segment_t >= 0. {
+				// There is a valid intersection point
+				intersects = true;
+				break;
+			}
+		}
+		if intersects {
+			is_intersecting = true;
+			break;
+		}
+	}
+	is_intersecting
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn resize_bounds(
 	document: &DocumentMessageHandler,
 	responses: &mut VecDeque<Message>,
@@ -221,7 +287,7 @@ pub fn resize_bounds(
 		let snap = Some(SizeSnapData {
 			manager: snap_manager,
 			points: snap_candidates,
-			snap_data: SnapData::ignore(document, input, &dragging_layers),
+			snap_data: SnapData::ignore(document, input, dragging_layers),
 		});
 		let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
 		let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
@@ -238,11 +304,12 @@ pub fn resize_bounds(
 			}
 		});
 
-		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, &dragging_layers, responses, &document.network_interface, None, &tool, None);
+		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, dragging_layers, responses, &document.network_interface, None, &tool, None);
 		selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
 	}
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn rotate_bounds(
 	document: &DocumentMessageHandler,
 	responses: &mut VecDeque<Message>,
@@ -280,7 +347,7 @@ pub fn rotate_bounds(
 	let mut selected = Selected::new(
 		&mut bounds.original_transforms,
 		&mut bounds.center_of_transformation,
-		&dragging_layers,
+		dragging_layers,
 		responses,
 		&document.network_interface,
 		None,
@@ -313,7 +380,7 @@ pub fn skew_bounds(
 			}
 		});
 
-		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, &layers, responses, &document.network_interface, None, &tool, None);
+		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, layers, responses, &document.network_interface, None, &tool, None);
 		selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
 	}
 }
@@ -365,7 +432,7 @@ pub fn transforming_transform_cage(
 			let mut selected = Selected::new(
 				&mut bounds.original_transforms,
 				&mut bounds.center_of_transformation,
-				&layers_dragging,
+				layers_dragging,
 				responses,
 				&document.network_interface,
 				None,
@@ -423,7 +490,7 @@ pub fn transforming_transform_cage(
 	}
 
 	// No resize, rotate, or skew
-	return (false, false, false);
+	(false, false, false)
 }
 
 /// Calculates similarity metric between new bezier curve and two old beziers by using sampled points.
