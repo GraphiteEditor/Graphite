@@ -1628,7 +1628,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ONE), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
-						NodeInput::value(TaggedValue::DVec2(DVec2::splat(0.5)), false),
 					],
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
 						exports: vec![NodeInput::node(NodeId(1), 0)],
@@ -1647,7 +1646,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(f64), 2),
 									NodeInput::network(concrete!(DVec2), 3),
 									NodeInput::network(concrete!(DVec2), 4),
-									NodeInput::network(concrete!(DVec2), 5),
 								],
 								manual_composition: Some(concrete!(Context)),
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform_nodes::TransformNode")),
@@ -1715,7 +1713,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							}),
 						),
 						PropertiesRow::with_override("Skew", "TODO", WidgetOverride::Custom("transform_skew".to_string())),
-						PropertiesRow::with_override("Pivot", "TODO", WidgetOverride::Hidden),
 					],
 					output_names: vec!["Data".to_string()],
 					..Default::default()

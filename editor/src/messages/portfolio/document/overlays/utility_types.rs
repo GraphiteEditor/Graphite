@@ -1,12 +1,12 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
 	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER,
-	COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
+	COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
 use bezier_rs::{Bezier, Subpath};
 use core::borrow::Borrow;
-use core::f64::consts::{FRAC_PI_2, TAU};
+use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
 use graphene_std::Color;
 use graphene_std::math::quad::Quad;
@@ -33,6 +33,7 @@ pub enum OverlaysType {
 	HoverOutline,
 	SelectionOutline,
 	Pivot,
+	Origin,
 	Path,
 	Anchors,
 	Handles,
@@ -49,6 +50,8 @@ pub struct OverlaysVisibilitySettings {
 	pub hover_outline: bool,
 	pub selection_outline: bool,
 	pub pivot: bool,
+	#[serde(default)]
+	pub origin: bool,
 	pub path: bool,
 	pub anchors: bool,
 	pub handles: bool,
@@ -66,6 +69,7 @@ impl Default for OverlaysVisibilitySettings {
 			hover_outline: true,
 			selection_outline: true,
 			pivot: true,
+			origin: true,
 			path: true,
 			anchors: true,
 			handles: true,
@@ -108,6 +112,10 @@ impl OverlaysVisibilitySettings {
 
 	pub fn pivot(&self) -> bool {
 		self.all && self.pivot
+	}
+
+	pub fn origin(&self) -> bool {
+		self.all && self.origin
 	}
 
 	pub fn path(&self) -> bool {
@@ -546,6 +554,36 @@ impl OverlayContext {
 		self.render_context.stroke();
 
 		self.render_context.set_line_cap("butt");
+
+		self.end_dpi_aware_transform();
+	}
+
+	pub fn dowel_pin(&mut self, position: DVec2, color: Option<&str>) {
+		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
+		let color = color.unwrap_or(COLOR_OVERLAY_YELLOW);
+
+		self.start_dpi_aware_transform();
+
+		// Draw the background circle with a white fill and blue outline
+		self.render_context.begin_path();
+		self.render_context.arc(x, y, DOWEL_PIN_RADIUS, 0., TAU).expect("Failed to draw the circle");
+		self.render_context.set_fill_style_str(COLOR_OVERLAY_WHITE);
+		self.render_context.fill();
+		self.render_context.set_stroke_style_str(color);
+		self.render_context.stroke();
+
+		// Draw the two blue filled sectors
+		self.render_context.begin_path();
+		// Top-left sector
+		self.render_context.move_to(x, y);
+		self.render_context.arc(x, y, DOWEL_PIN_RADIUS, FRAC_PI_2, PI).expect("Failed to draw arc");
+		self.render_context.close_path();
+		// Bottom-right sector
+		self.render_context.move_to(x, y);
+		self.render_context.arc(x, y, DOWEL_PIN_RADIUS, PI + FRAC_PI_2, TAU).expect("Failed to draw arc");
+		self.render_context.close_path();
+		self.render_context.set_fill_style_str(color);
+		self.render_context.fill();
 
 		self.end_dpi_aware_transform();
 	}

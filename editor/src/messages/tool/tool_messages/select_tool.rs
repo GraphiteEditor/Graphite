@@ -12,6 +12,7 @@ use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::compass_rose::{Axis, CompassRose};
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::measure;
 use crate::messages::tool::common_functionality::pivot::Pivot;
@@ -43,6 +44,8 @@ pub struct SelectOptions {
 #[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum SelectOptionsUpdate {
 	NestedSelectionBehavior(NestedSelectionBehavior),
+	DotType(DotType),
+	ToggleDotType(bool),
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -50,6 +53,78 @@ pub enum NestedSelectionBehavior {
 	#[default]
 	Shallowest,
 	Deepest,
+}
+
+#[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct Dot(Pivot, DotState, Option<LayerNodeIdentifier>);
+
+impl Dot {
+	pub fn position(&self, document: &DocumentMessageHandler) -> DVec2 {
+		let network = &document.network_interface;
+		self.1
+			.enabled
+			.then_some({
+				match self.1.dot {
+					DotType::Average => Some(network.selected_nodes().selected_visible_and_unlocked_layers_mean_average_origin(network)),
+					DotType::Pivot => self.0.position(),
+					DotType::Active => self.2.map(|layer| graph_modification_utils::get_viewport_origin(layer, network)),
+				}
+			})
+			.flatten()
+			.unwrap_or_else(|| self.0.transform_from_normalized.transform_point2(DVec2::splat(0.5)))
+	}
+	pub fn recalculate_transform(&mut self, document: &DocumentMessageHandler) -> DAffine2 {
+		self.0.recalculate_pivot(document);
+		self.0.transform_from_normalized
+	}
+}
+
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum DotType {
+	// Pivot
+	#[default]
+	Pivot,
+	// Origin
+	// Indidual,
+	Average,
+	Active,
+}
+
+impl DotType {
+	pub fn is_pivot(self) -> bool {
+		self == Self::Pivot
+	}
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct DotState {
+	enabled: bool,
+	dot: DotType,
+}
+
+impl Default for DotState {
+	fn default() -> Self {
+		Self {
+			enabled: true,
+			dot: DotType::default(),
+		}
+	}
+}
+
+impl DotState {
+	pub fn is_pivot(&self) -> bool {
+		self.dot == DotType::Pivot || !self.enabled
+	}
+}
+
+impl fmt::Display for DotType {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			DotType::Pivot => write!(f, "Draft Pivot"),
+			DotType::Average => write!(f, "Average of Origins"),
+			DotType::Active => write!(f, "Active Object Origin"),
+		}
+	}
 }
 
 impl fmt::Display for NestedSelectionBehavior {
@@ -132,6 +207,34 @@ impl SelectTool {
 			.disabled(disabled)
 			.widget_holder()
 	}
+	fn dot_type_widget(&self) -> Vec<WidgetHolder> {
+		let dot_type_entries = [DotType::Pivot, DotType::Average, DotType::Active]
+			.iter()
+			.map(|dot_type| {
+				MenuListEntry::new(format!("{dot_type:?}"))
+					.label(dot_type.to_string())
+					.on_commit(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::DotType(*dot_type)).into())
+			})
+			.collect();
+
+		vec![
+			CheckboxInput::new(self.tool_data.dot_state.enabled)
+				.icon("Overlays")
+				.tooltip("Disable Transform Pivot Point")
+				.on_update(|optional_input: &CheckboxInput| SelectToolMessage::SelectOptions(SelectOptionsUpdate::ToggleDotType(optional_input.checked)).into())
+				.widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			DropdownInput::new(vec![dot_type_entries])
+				.selected_index(Some(match self.tool_data.dot_state.dot {
+					DotType::Pivot => 0,
+					DotType::Average => 1,
+					DotType::Active => 2,
+				}))
+				.tooltip("Choose between type of Transform Pivot Point")
+				.disabled(!self.tool_data.dot_state.enabled)
+				.widget_holder(),
+		]
+	}
 
 	fn alignment_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> + use<> {
 		[AlignAxis::X, AlignAxis::Y]
@@ -203,9 +306,13 @@ impl LayoutHolder for SelectTool {
 		// Select mode (Deep/Shallow)
 		widgets.push(self.deep_selection_widget());
 
+		// Dot Type (Pivot/Origin/Off)
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.extend(self.dot_type_widget());
+
 		// Pivot
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.push(self.pivot_reference_point_widget(self.tool_data.selected_layers_count == 0));
+		widgets.push(self.pivot_reference_point_widget(self.tool_data.selected_layers_count == 0 || !self.tool_data.dot_state.dot.is_pivot()));
 
 		// Align
 		let disabled = self.tool_data.selected_layers_count < 2;
@@ -244,14 +351,35 @@ impl LayoutHolder for SelectTool {
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		if let ToolMessage::Select(SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(nested_selection_behavior))) = message {
-			self.tool_data.nested_selection_behavior = nested_selection_behavior;
-			responses.add(ToolMessage::UpdateHints);
+		let mut redraw_ref_pivot = false;
+		if let ToolMessage::Select(SelectToolMessage::SelectOptions(ref option_update)) = message {
+			match option_update {
+				SelectOptionsUpdate::NestedSelectionBehavior(nested_selection_behavior) => {
+					self.tool_data.nested_selection_behavior = *nested_selection_behavior;
+					responses.add(ToolMessage::UpdateHints);
+				}
+				SelectOptionsUpdate::DotType(dot_type) => {
+					if self.tool_data.dot_state.enabled {
+						self.tool_data.dot_state.dot = *dot_type;
+						responses.add(ToolMessage::UpdateHints);
+						let dot = self.tool_data.get_as_dot();
+						responses.add(TransformLayerMessage::SetDot { dot });
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+						redraw_ref_pivot = true;
+					}
+				}
+				SelectOptionsUpdate::ToggleDotType(state) => {
+					self.tool_data.dot_state.enabled = *state;
+					responses.add(ToolMessage::UpdateHints);
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					redraw_ref_pivot = true;
+				}
+			}
 		}
 
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
 
-		if self.tool_data.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed {
+		if self.tool_data.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed || redraw_ref_pivot {
 			// Send the layout containing the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
 			self.send_layout(responses, LayoutTarget::ToolOptions);
 			self.tool_data.selected_layers_changed = false;
@@ -323,7 +451,9 @@ struct SelectToolData {
 	drag_current: ViewportPosition,
 	lasso_polygon: Vec<ViewportPosition>,
 	selection_mode: Option<SelectionMode>,
-	layers_dragging: Vec<LayerNodeIdentifier>,
+	layers_dragging: Vec<LayerNodeIdentifier>, // Unordered, often used as temporary buffer
+	orderer_layers: Vec<LayerNodeIdentifier>,  // Ordered list of layers
+	active_layer: Option<LayerNodeIdentifier>,
 	layer_selected_on_start: Option<LayerNodeIdentifier>,
 	select_single_layer: Option<LayerNodeIdentifier>,
 	axis_align: bool,
@@ -332,6 +462,7 @@ struct SelectToolData {
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
 	pivot: Pivot,
+	dot_state: DotState,
 	compass_rose: CompassRose,
 	line_center: DVec2,
 	skew_edge: EdgeBool,
@@ -496,6 +627,25 @@ impl SelectToolData {
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::SendGraph);
 		self.layers_dragging = original;
+	}
+
+	fn state_from_dot(&self, mouse: DVec2) -> Option<SelectToolFsmState> {
+		match self.dot_state.dot {
+			DotType::Pivot => self.pivot.is_over(mouse).then_some(SelectToolFsmState::DraggingPivot),
+			_ => None,
+		}
+	}
+
+	fn get_as_dot(&self) -> Dot {
+		Dot(self.pivot.clone(), self.dot_state, self.active_layer.clone())
+	}
+
+	fn sync_history(&mut self) {
+		debug!("{:?}", self.layers_dragging);
+		self.orderer_layers.retain(|layer| self.layers_dragging.contains(layer));
+		self.orderer_layers.extend(self.layers_dragging.iter().find(|&layer| !self.orderer_layers.contains(layer)));
+		debug!("{:?}", self.orderer_layers);
+		self.active_layer = self.orderer_layers.last().map(|x| *x)
 	}
 }
 
@@ -710,8 +860,23 @@ impl Fsm for SelectToolFsmState {
 						.flatten()
 				});
 
-				// Update pivot
-				tool_data.pivot.update_pivot(document, &mut overlay_context, Some((angle,)));
+				let mut active_origin = None;
+				if overlay_context.visibility_settings.origin() && !tool_data.dot_state.is_pivot() {
+					for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
+						let origin = graph_modification_utils::get_viewport_origin(layer, &document.network_interface);
+						if Some(layer) == tool_data.active_layer {
+							active_origin = Some(origin);
+							continue;
+						}
+						overlay_context.dowel_pin(origin, None);
+					}
+				}
+				if let Some(origin) = active_origin {
+					overlay_context.dowel_pin(origin, Some(COLOR_OVERLAY_ORANGE));
+				}
+
+				let draw_pivot = tool_data.dot_state.dot.is_pivot() && overlay_context.visibility_settings.pivot();
+				tool_data.pivot.update(document, &mut overlay_context, Some((angle,)), draw_pivot);
 
 				// Update compass rose
 				if overlay_context.visibility_settings.compass_rose() {
@@ -837,6 +1002,7 @@ impl Fsm for SelectToolFsmState {
 						(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, None, fill_color),
 					}
 				}
+
 				self
 			}
 			(_, SelectToolMessage::EditLayer) => {
@@ -868,7 +1034,8 @@ impl Fsm for SelectToolFsmState {
 				let intersection_list = document.click_list(input).collect::<Vec<_>>();
 				let intersection = document.find_deepest(&intersection_list);
 
-				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging);
+				let pos = tool_data.get_as_dot().position(document);
+				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, Some(pos));
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -883,20 +1050,17 @@ impl Fsm for SelectToolFsmState {
 				let angle = bounds.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
 				let mouse_position = input.mouse.position;
 				let compass_rose_state = tool_data.compass_rose.compass_rose_state(mouse_position, angle);
-				let is_over_pivot = tool_data.pivot.is_over(mouse_position);
 
 				let show_compass = bounds.is_some_and(|quad| quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
 				let can_grab_compass_rose = compass_rose_state.can_grab() && (show_compass || bounds.is_none());
 
-				let state = if is_over_pivot
-				// Dragging the pivot
-				{
+				let state = if let Some(state) = tool_data.state_from_dot(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
 
 					// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 					// tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
-					SelectToolFsmState::DraggingPivot
+					state
 				}
 				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
 				else if resize {
@@ -917,7 +1081,6 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					tool_data.layers_dragging = selected;
-
 					tool_data.get_snap_candidates(document, input);
 					let (axis, using_compass) = {
 						let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
@@ -941,6 +1104,8 @@ impl Fsm for SelectToolFsmState {
 					let extend = input.keyboard.key(extend_selection);
 					if !extend && !input.keyboard.key(remove_from_selection) {
 						responses.add(DocumentMessage::DeselectAllLayers);
+						let position = tool_data.pivot.last_non_none_reference;
+						responses.add(SelectToolMessage::SetPivot { position });
 						tool_data.layers_dragging.clear();
 					}
 
@@ -1098,7 +1263,8 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerMove(modifier_keys)) => {
 				let mouse_position = input.mouse.position;
 				let snapped_mouse_position = mouse_position;
-				tool_data.pivot.set_viewport_position(snapped_mouse_position, document, responses);
+				tool_data.pivot.set_viewport_position(snapped_mouse_position);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 
 				// Auto-panning
 				let messages = [
@@ -1283,19 +1449,20 @@ impl Fsm for SelectToolFsmState {
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.select_single_layer = None;
 
+				let dot = tool_data.get_as_dot();
+				responses.add(TransformLayerMessage::SetDot { dot });
+
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
 			(
-				SelectToolFsmState::ResizingBounds
-				| SelectToolFsmState::SkewingBounds { .. }
-				| SelectToolFsmState::RotatingBounds
-				| SelectToolFsmState::Dragging { .. }
-				| SelectToolFsmState::DraggingPivot,
+				SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds | SelectToolFsmState::DraggingPivot,
 				SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter,
 			) => {
 				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
+				let dot = tool_data.get_as_dot();
+				responses.add(TransformLayerMessage::SetDot { dot });
 				responses.add(response);
 				tool_data.axis_align = false;
 				tool_data.snap_manager.cleanup(responses);
@@ -1347,6 +1514,7 @@ impl Fsm for SelectToolFsmState {
 						NestedSelectionBehavior::Deepest => {
 							let filtered_selections = filter_nested_selection(document.metadata(), &new_selected);
 							tool_data.layers_dragging.extend(filtered_selections);
+							tool_data.sync_history();
 						}
 						NestedSelectionBehavior::Shallowest => {
 							// Find each new_selected's parent node
@@ -1355,6 +1523,7 @@ impl Fsm for SelectToolFsmState {
 								.map(|layer| layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer))
 								.collect();
 							tool_data.layers_dragging.extend(parent_selected.iter().copied());
+							tool_data.sync_history();
 						}
 					}
 				}
@@ -1432,8 +1601,12 @@ impl Fsm for SelectToolFsmState {
 			(_, SelectToolMessage::SetPivot { position }) => {
 				responses.add(DocumentMessage::StartTransaction);
 
+				tool_data.pivot.last_non_none_reference = position;
 				let pos: Option<DVec2> = position.into();
-				tool_data.pivot.set_normalized_position(pos.unwrap(), document, responses);
+				tool_data.pivot.set_normalized_position(pos.unwrap());
+				let dot = tool_data.get_as_dot();
+				responses.add(TransformLayerMessage::SetDot { dot });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 
 				self
 			}
@@ -1607,6 +1780,7 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 		}
 	}
 
+	tool_data.sync_history();
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
 			.layers_dragging
@@ -1658,10 +1832,13 @@ fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<La
 			.next()
 			.expect("ROOT_PARENT should have a layer child when clicking"),
 	);
+
 	if !remove {
 		tool_data.layers_dragging.extend(vec![layer]);
+		tool_data.sync_history();
 	} else {
 		tool_data.layers_dragging.retain(|&selected_layer| layer != selected_layer);
+		tool_data.sync_history();
 	}
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
