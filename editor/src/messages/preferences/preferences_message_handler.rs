@@ -1,6 +1,6 @@
 use crate::consts::VIEWPORT_ZOOM_WHEEL_RATE;
 use crate::messages::input_mapper::key_mapping::MappingVariant;
-use crate::messages::portfolio::document::node_graph::utility_types::GraphWireStyle;
+use crate::messages::portfolio::document::utility_types::nodes::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use graph_craft::wasm_application_io::EditorPreferences;

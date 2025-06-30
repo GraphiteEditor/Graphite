@@ -109,11 +109,9 @@ export class UpdateVisibleNodes extends JsMessage {
 
 export class UpdateNodeGraphWires extends JsMessage {
 	readonly wires!: WireUpdate[];
-
-	readonly wiresDirectNotGridAligned!: boolean;
 }
 
-export class ClearNodeGraphWires extends JsMessage {}
+export class ClearAllNodeGraphWires extends JsMessage {}
 
 export class UpdateNodeGraphTransform extends JsMessage {
 	readonly transform!: NodeGraphTransform;
@@ -228,7 +226,7 @@ export class FrontendGraphInput {
 
 	readonly description!: string;
 
-	readonly resolvedType!: string | undefined;
+	readonly resolvedType!: string;
 
 	readonly validTypes!: string[];
 
@@ -261,7 +259,7 @@ export class FrontendGraphOutput {
 
 	readonly description!: string;
 
-	readonly resolvedType!: string | undefined;
+	readonly resolvedType!: string;
 
 	@CreateInputConnectorArray
 	connectedTo!: Node[];
@@ -306,33 +304,33 @@ export class FrontendNode {
 	readonly uiOnly!: boolean;
 }
 
-const CreateOutputConnector = Transform(({ obj }) => {
-	if (obj.wireStart.export !== undefined) {
-		return { index: obj.wireStart.export };
-	} else if (obj.wireStart.import !== undefined) {
-		return { index: obj.wireStart.import };
-	} else {
-		if (obj.wireStart.node.inputIndex !== undefined) {
-			return { nodeId: obj.wireStart.node.nodeId, index: obj.wireStart.node.inputIndex };
-		} else {
-			return { nodeId: obj.wireStart.node.nodeId, index: obj.wireStart.node.outputIndex };
-		}
-	}
-});
+// const CreateOutputConnector = Transform(({ obj }) => {
+// 	if (obj.wireStart.export !== undefined) {
+// 		return { index: obj.wireStart.export };
+// 	} else if (obj.wireStart.import !== undefined) {
+// 		return { index: obj.wireStart.import };
+// 	} else {
+// 		if (obj.wireStart.node.inputIndex !== undefined) {
+// 			return { nodeId: obj.wireStart.node.nodeId, index: obj.wireStart.node.inputIndex };
+// 		} else {
+// 			return { nodeId: obj.wireStart.node.nodeId, index: obj.wireStart.node.outputIndex };
+// 		}
+// 	}
+// });
 
-const CreateInputConnector = Transform(({ obj }) => {
-	if (obj.wireEnd.export !== undefined) {
-		return { index: obj.wireEnd.export };
-	} else if (obj.wireEnd.import !== undefined) {
-		return { index: obj.wireEnd.import };
-	} else {
-		if (obj.wireEnd.node.inputIndex !== undefined) {
-			return { nodeId: obj.wireEnd.node.nodeId, index: obj.wireEnd.node.inputIndex };
-		} else {
-			return { nodeId: obj.wireEnd.node.nodeId, index: obj.wireEnd.node.outputIndex };
-		}
-	}
-});
+// const CreateInputConnector = Transform(({ obj }) => {
+// 	if (obj.wireEnd.export !== undefined) {
+// 		return { index: obj.wireEnd.export };
+// 	} else if (obj.wireEnd.import !== undefined) {
+// 		return { index: obj.wireEnd.import };
+// 	} else {
+// 		if (obj.wireEnd.node.inputIndex !== undefined) {
+// 			return { nodeId: obj.wireEnd.node.nodeId, index: obj.wireEnd.node.inputIndex };
+// 		} else {
+// 			return { nodeId: obj.wireEnd.node.nodeId, index: obj.wireEnd.node.outputIndex };
+// 		}
+// 	}
+// });
 
 export class FrontendNodeWire {
 	@TupleToDOMRect
@@ -1664,6 +1662,7 @@ type JSMessageFactory = (data: any, wasm: WebAssembly.Memory, handle: EditorHand
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageMakers: Record<string, MessageMaker> = {
+	ClearAllNodeGraphWires,
 	DisplayDialog,
 	DisplayDialogDismiss,
 	DisplayDialogPanic,
@@ -1722,7 +1721,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeGraphNodes,
 	UpdateVisibleNodes,
 	UpdateNodeGraphWires,
-	ClearNodeGraphWires,
 	UpdateNodeGraphTransform,
 	UpdateNodeGraphControlBarLayout,
 	UpdateNodeGraphSelection,

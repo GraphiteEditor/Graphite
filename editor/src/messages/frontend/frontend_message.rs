@@ -3,7 +3,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
 	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, Transform,
 };
-use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer, WirePath, WireUpdate};
+use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer, WirePath, WirePathUpdate};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 use graph_craft::document::NodeId;
@@ -257,11 +257,9 @@ pub enum FrontendMessage {
 		nodes: Vec<NodeId>,
 	},
 	UpdateNodeGraphWires {
-		wires: Vec<WireUpdate>,
-		#[serde(rename = "wiresDirectNotGridAligned")]
-		wires_direct_not_grid_aligned: bool,
+		wires: Vec<WirePathUpdate>,
 	},
-	ClearNodeGraphWires,
+	ClearAllNodeGraphWires,
 	UpdateNodeGraphControlBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,

@@ -1939,7 +1939,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					}),
 					input_metadata: vec![
 						("Vector Data", "The shape to be resampled and converted into a polyline.").into(),
-						(("Spacing", node_properties::SAMPLE_POLYLINE_TOOLTIP_SPACING)).into(),
+						("Spacing", node_properties::SAMPLE_POLYLINE_TOOLTIP_SPACING).into(),
 						InputMetadata::with_name_description_override(
 							"Separation",
 							node_properties::SAMPLE_POLYLINE_TOOLTIP_SEPARATION,
@@ -2167,7 +2167,6 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"number".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let mut number_input = NumberInput::default();
 			if let Some(unit) = context
 				.network_interface
@@ -2232,15 +2231,15 @@ fn static_input_properties() -> InputProperties {
 					log::error!("Could not get blank assist when displaying number input for node {node_id}, index {index}");
 					true
 				});
+
 			Ok(vec![LayoutGroup::Row {
-				widgets: node_properties::number_widget(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, blank_assist), number_input),
+				widgets: node_properties::number_widget(ParameterWidgetsInfo::new(node_id, index, blank_assist, context), number_input),
 			}])
 		}),
 	);
 	map.insert(
 		"vec2".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let x = context
 				.network_interface
 				.input_data(&node_id, index, "x", context.selection_network_path)
@@ -2248,7 +2247,8 @@ fn static_input_properties() -> InputProperties {
 				.unwrap_or_else(|| {
 					log::error!("Could not get x for vec2 input");
 					""
-				});
+				})
+				.to_string();
 			let y = context
 				.network_interface
 				.input_data(&node_id, index, "y", context.selection_network_path)
@@ -2256,7 +2256,8 @@ fn static_input_properties() -> InputProperties {
 				.unwrap_or_else(|| {
 					log::error!("Could not get y for vec2 input");
 					""
-				});
+				})
+				.to_string();
 			let unit = context
 				.network_interface
 				.input_data(&node_id, index, "unit", context.selection_network_path)
@@ -2264,28 +2265,22 @@ fn static_input_properties() -> InputProperties {
 				.unwrap_or_else(|| {
 					log::error!("Could not get unit for vec2 input");
 					""
-				});
+				})
+				.to_string();
 			let min = context
 				.network_interface
 				.input_data(&node_id, index, "min", context.selection_network_path)
 				.and_then(|value| value.as_f64());
 
-			Ok(vec![node_properties::coordinate_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
-				x,
-				y,
-				unit,
-				min,
-			)])
+			Ok(vec![node_properties::coordinate_widget(ParameterWidgetsInfo::new(node_id, index, true, context), &x, &y, &unit, min)])
 		}),
 	);
 	map.insert(
 		"noise_properties_scale".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let scale = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default().min(0.).disabled(!coherent_noise_active),
 			);
 			Ok(vec![scale.into()])
@@ -2294,20 +2289,16 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_noise_type".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
-			let noise_type_row = enum_choice::<NoiseType>()
-				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
-				.property_row();
+			let noise_type_row = enum_choice::<NoiseType>().for_socket(ParameterWidgetsInfo::new(node_id, index, true, context)).property_row();
 			Ok(vec![noise_type_row, LayoutGroup::Row { widgets: Vec::new() }])
 		}),
 	);
 	map.insert(
 		"noise_properties_domain_warp_type".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let domain_warp_type = enum_choice::<DomainWarpType>()
-				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.for_socket(ParameterWidgetsInfo::new(node_id, index, true, context))
 				.disabled(!coherent_noise_active)
 				.property_row();
 			Ok(vec![domain_warp_type])
@@ -2316,10 +2307,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_domain_warp_amplitude".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, _, _, domain_warp_active, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let domain_warp_amplitude = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default().min(0.).disabled(!coherent_noise_active || !domain_warp_active),
 			);
 			Ok(vec![domain_warp_amplitude.into(), LayoutGroup::Row { widgets: Vec::new() }])
@@ -2328,10 +2318,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_fractal_type".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_type_row = enum_choice::<FractalType>()
-				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.for_socket(ParameterWidgetsInfo::new(node_id, index, true, context))
 				.disabled(!coherent_noise_active)
 				.property_row();
 			Ok(vec![fractal_type_row])
@@ -2340,10 +2329,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_fractal_octaves".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_octaves = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(1.)
@@ -2358,10 +2346,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_fractal_lacunarity".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_lacunarity = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(0.)
@@ -2374,10 +2361,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_fractal_gain".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_gain = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(0.)
@@ -2390,10 +2376,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_fractal_weighted_strength".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_weighted_strength = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(0.)
@@ -2406,10 +2391,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_ping_pong_strength".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (fractal_active, coherent_noise_active, _, ping_pong_active, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_ping_pong_strength = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(0.)
@@ -2422,10 +2406,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_cellular_distance_function".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let cellular_distance_function_row = enum_choice::<CellularDistanceFunction>()
-				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.for_socket(ParameterWidgetsInfo::new(node_id, index, true, context))
 				.disabled(!coherent_noise_active || !cellular_noise_active)
 				.property_row();
 			Ok(vec![cellular_distance_function_row])
@@ -2434,10 +2417,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_cellular_return_type".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let cellular_return_type = enum_choice::<CellularReturnType>()
-				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.for_socket(ParameterWidgetsInfo::new(node_id, index, true, context))
 				.disabled(!coherent_noise_active || !cellular_noise_active)
 				.property_row();
 			Ok(vec![cellular_return_type])
@@ -2446,10 +2428,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_cellular_jitter".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let cellular_jitter = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.range_min(Some(0.))
@@ -2462,7 +2443,7 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"brightness".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
+			let document_node = node_properties::get_document_node(node_id, context)?;
 			let is_use_classic = document_node
 				.inputs
 				.iter()
@@ -2473,7 +2454,7 @@ fn static_input_properties() -> InputProperties {
 				.unwrap_or(false);
 			let (b_min, b_max) = if is_use_classic { (-100., 100.) } else { (-100., 150.) };
 			let brightness = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default().mode_range().range_min(Some(b_min)).range_max(Some(b_max)).unit("%").display_decimal_places(2),
 			);
 			Ok(vec![brightness.into()])
@@ -2482,7 +2463,8 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"contrast".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
+			let document_node = node_properties::get_document_node(node_id, context)?;
+
 			let is_use_classic = document_node
 				.inputs
 				.iter()
@@ -2493,7 +2475,7 @@ fn static_input_properties() -> InputProperties {
 				.unwrap_or(false);
 			let (c_min, c_max) = if is_use_classic { (-100., 100.) } else { (-50., 100.) };
 			let contrast = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default().mode_range().range_min(Some(c_min)).range_max(Some(c_max)).unit("%").display_decimal_places(2),
 			);
 			Ok(vec![contrast.into()])
@@ -2502,21 +2484,16 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"assign_colors_gradient".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
-			let gradient_row = node_properties::color_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
-				ColorInput::default().allow_none(false),
-			);
+			let gradient_row = node_properties::color_widget(ParameterWidgetsInfo::new(node_id, index, true, context), ColorInput::default().allow_none(false));
 			Ok(vec![gradient_row])
 		}),
 	);
 	map.insert(
 		"assign_colors_seed".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let randomize_enabled = node_properties::query_assign_colors_randomize(node_id, context)?;
 			let seed_row = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default().min(0.).int().disabled(!randomize_enabled),
 			);
 			Ok(vec![seed_row.into()])
@@ -2525,10 +2502,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"assign_colors_repeat_every".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let randomize_enabled = node_properties::query_assign_colors_randomize(node_id, context)?;
 			let repeat_every_row = node_properties::number_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default().min(0.).int().disabled(randomize_enabled),
 			);
 			Ok(vec![repeat_every_row.into()])
@@ -2537,33 +2513,24 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"mask_stencil".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
-			let mask = node_properties::color_widget(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true), ColorInput::default());
+			let mask = node_properties::color_widget(ParameterWidgetsInfo::new(node_id, index, true, context), ColorInput::default());
 			Ok(vec![mask])
 		}),
 	);
 	map.insert(
 		"spline_input".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			Ok(vec![LayoutGroup::Row {
-				widgets: node_properties::array_of_coordinates_widget(
-					ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
-					TextInput::default().centered(true),
-				),
+				widgets: node_properties::array_of_coordinates_widget(ParameterWidgetsInfo::new(node_id, index, true, context), TextInput::default().centered(true)),
 			}])
 		}),
 	);
 	map.insert(
 		"transform_rotation".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
+			let mut widgets = node_properties::start_widgets(ParameterWidgetsInfo::new(node_id, index, true, context));
 
-			let mut widgets = node_properties::start_widgets(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
-				super::utility_types::FrontendGraphDataType::Number,
-			);
-
+			let document_node = node_properties::get_document_node(node_id, context)?;
 			let Some(input) = document_node.inputs.get(index) else {
 				return Err("Input not found in transform rotation input override".to_string());
 			};
@@ -2592,13 +2559,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"transform_skew".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
+			let mut widgets = node_properties::start_widgets(ParameterWidgetsInfo::new(node_id, index, true, context));
 
-			let mut widgets = node_properties::start_widgets(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
-				super::utility_types::FrontendGraphDataType::Number,
-			);
-
+			let document_node = node_properties::get_document_node(node_id, context)?;
 			let Some(input) = document_node.inputs.get(index) else {
 				return Err("Input not found in transform skew input override".to_string());
 			};
@@ -2640,17 +2603,15 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"text_area".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			Ok(vec![LayoutGroup::Row {
-				widgets: node_properties::text_area_widget(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true)),
+				widgets: node_properties::text_area_widget(ParameterWidgetsInfo::new(node_id, index, true, context)),
 			}])
 		}),
 	);
 	map.insert(
 		"text_font".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
-			let (font, style) = node_properties::font_inputs(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true));
+			let (font, style) = node_properties::font_inputs(ParameterWidgetsInfo::new(node_id, index, true, context));
 			let mut result = vec![LayoutGroup::Row { widgets: font }];
 			if let Some(style) = style {
 				result.push(LayoutGroup::Row { widgets: style });
@@ -2661,9 +2622,8 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"artboard_background".to_string(),
 		Box::new(|node_id, index, context| {
-			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			Ok(vec![node_properties::color_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
+				ParameterWidgetsInfo::new(node_id, index, true, context),
 				ColorInput::default().allow_none(false),
 			)])
 		}),
@@ -2704,7 +2664,7 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 			// Extract input types (already creates owned Strings)
 			let input_types = implementations
 				.iter()
-				.flat_map(|(_, node_io)| node_io.inputs.iter().map(|ty| ty.clone().nested_type().to_string()))
+				.flat_map(|(_, node_io)| node_io.inputs.iter().map(|ty| ty.nested_type().to_string()))
 				.collect::<HashSet<String>>()
 				.into_iter()
 				.collect::<Vec<String>>();

@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { getContext, onMount, tick } from "svelte";
+	import { getContext } from "svelte";
 	import { cubicInOut } from "svelte/easing";
 	import { fade } from "svelte/transition";
 
 	import type { Editor } from "@graphite/editor";
-	import type { Node, WirePath } from "@graphite/messages";
-	import { type FrontendNodeWire, type FrontendNode, type FrontendGraphInput, type FrontendGraphOutput, type FrontendGraphDataType } from "@graphite/messages";
+	import type { Node } from "@graphite/messages";
+	import type { FrontendNode, FrontendGraphInput, FrontendGraphOutput } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 
@@ -651,7 +651,6 @@
 			</svg>
 		</div>
 	{/if}
-	<!-- {console.log($nodeGraph.wires)} -->
 	<!-- Layer connection wires -->
 	<div class="wires" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		<svg>
@@ -660,7 +659,7 @@
 					{#if thick}
 						<path
 							d={pathString}
-							style:--data-line-width={`8px`}
+							style:--data-line-width={"8px"}
 							style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
 							style:--data-dasharray={`3,${dashed ? 2 : 0}`}
@@ -668,15 +667,6 @@
 					{/if}
 				{/each}
 			{/each}
-			{#if $nodeGraph.wirePathInProgress && $nodeGraph.wirePathInProgress?.thick}
-				<path
-					d={$nodeGraph.wirePathInProgress?.pathString}
-					style:--data-line-width={`8px`}
-					style:--data-color={`var(--color-data-${$nodeGraph.wirePathInProgress.dataType.toLowerCase()})`}
-					style:--data-color-dim={`var(--color-data-${$nodeGraph.wirePathInProgress.dataType.toLowerCase()}-dim)`}
-					style:--data-dasharray={`3,${$nodeGraph.wirePathInProgress.dashed ? 2 : 0}`}
-				/>
-			{/if}
 		</svg>
 	</div>
 
@@ -684,7 +674,6 @@
 	<div class="imports-and-exports" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		{#each $nodeGraph.imports as { outputMetadata, position }, index}
 			<svg
-				id={`import${index}`}
 				xmlns="http://www.w3.org/2000/svg"
 				viewBox="0 0 8 8"
 				class="port"
@@ -758,7 +747,6 @@
 		{/if}
 		{#each $nodeGraph.exports as { inputMetadata, position }, index}
 			<svg
-				id={`input${index}`}
 				xmlns="http://www.w3.org/2000/svg"
 				viewBox="0 0 8 8"
 				class="port"
@@ -840,7 +828,7 @@
 		<!-- Layers -->
 		{#each Array.from($nodeGraph.nodes)
 			.filter(([nodeId, node]) => node.isLayer && $nodeGraph.visibleNodes.has(nodeId))
-			.map(([nodeId, node], nodeIndex) => ({ node, nodeIndex })) as { node, nodeIndex } (nodeIndex)}
+			.map(([_, node], nodeIndex) => ({ node, nodeIndex })) as { node, nodeIndex } (nodeIndex)}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const stackDataInput = node.exposedInputs[0]}
 			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
@@ -875,7 +863,6 @@
 					<!-- Layer stacking top output -->
 					{#if node.primaryOutput}
 						<svg
-							id={`output${node.id + 0n}`}
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 12"
 							class="port top"
@@ -897,7 +884,6 @@
 					{/if}
 					<!-- Layer stacking bottom input -->
 					<svg
-						id={`input${node.id + 1n}`}
 						xmlns="http://www.w3.org/2000/svg"
 						viewBox="0 0 8 12"
 						class="port bottom"
@@ -923,7 +909,6 @@
 				{#if node.exposedInputs.length > 0}
 					<div class="input ports">
 						<svg
-							id={`input${node.id + 0n}`}
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
 							class="port"
@@ -976,7 +961,7 @@
 						{#if !thick}
 							<path
 								d={pathString}
-								style:--data-line-width={`2px`}
+								style:--data-line-width={"2px"}
 								style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
 								style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
 								style:--data-dasharray={`3,${dashed ? 2 : 0}`}
@@ -986,8 +971,8 @@
 				{/each}
 				{#if $nodeGraph.wirePathInProgress}
 					<path
-						d={$nodeGraph.wirePathInProgress.pathString}
-						style:--data-line-width={`2px`}
+						d={$nodeGraph.wirePathInProgress?.pathString}
+						style:--data-line-width={`${$nodeGraph.wirePathInProgress.thick ? 8 : 2}px`}
 						style:--data-color={`var(--color-data-${$nodeGraph.wirePathInProgress.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${$nodeGraph.wirePathInProgress.dataType.toLowerCase()}-dim)`}
 						style:--data-dasharray={`3,${$nodeGraph.wirePathInProgress.dashed ? 2 : 0}`}
@@ -999,7 +984,7 @@
 		<!-- Nodes -->
 		{#each Array.from($nodeGraph.nodes)
 			.filter(([nodeId, node]) => !node.isLayer && $nodeGraph.visibleNodes.has(nodeId))
-			.map(([nodeId, node], nodeIndex) => ({ node, nodeIndex })) as { node, nodeIndex } (nodeIndex)}
+			.map(([_, node], nodeIndex) => ({ node, nodeIndex })) as { node, nodeIndex } (nodeIndex)}
 			{@const exposedInputsOutputs = zipWithUndefined(node.exposedInputs, node.exposedOutputs)}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const description = (node.reference && $nodeGraph.nodeDescriptions.get(node.reference)) || undefined}

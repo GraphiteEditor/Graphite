@@ -444,7 +444,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::EnterNestedNetwork { node_id } => {
 				self.breadcrumb_network_path.push(node_id);
 				self.selection_network_path.clone_from(&self.breadcrumb_network_path);
-				responses.add(NodeGraphMessage::RefreshWires);
+				for input in self.network_interface.node_graph_input_connectors(&self.breadcrumb_network_path) {
+					self.network_interface.unload_wire(&input, &self.breadcrumb_network_path);
+				}
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
@@ -474,10 +476,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					self.breadcrumb_network_path.pop();
 					self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				}
+				for input in self.network_interface.node_graph_input_connectors(&self.breadcrumb_network_path) {
+					self.network_interface.unload_wire(&input, &self.breadcrumb_network_path);
+				}
+				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
-				responses.add(NodeGraphMessage::RefreshWires);
-				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::FlipSelectedLayers { flip_axis } => {
 				let scale = match flip_axis {
@@ -540,6 +544,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				if open {
+					for input in self.network_interface.node_graph_input_connectors(&self.breadcrumb_network_path) {
+						self.network_interface.unload_wire(&input, &self.breadcrumb_network_path);
+					}
+					responses.add(FrontendMessage::ClearAllNodeGraphWires);
 					responses.add(ToolMessage::DeactivateTools);
 					responses.add(OverlaysMessage::Draw); // Clear the overlays
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
@@ -547,7 +555,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(NodeGraphMessage::UpdateHints);
-					responses.add(NodeGraphMessage::RefreshWires);
+					// responses.add(NodeGraphMessage::RefreshWires);
 				} else {
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
 				}

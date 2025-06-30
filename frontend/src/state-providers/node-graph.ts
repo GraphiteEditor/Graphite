@@ -7,9 +7,9 @@ import {
 	type FrontendClickTargets,
 	type ContextMenuInformation,
 	type FrontendNode,
-	type FrontendNodeWire as FrontendNodeWire,
 	type FrontendNodeType,
 	type WirePath,
+	ClearAllNodeGraphWires,
 	SendUIMetadata,
 	UpdateBox,
 	UpdateClickTargets,
@@ -22,7 +22,6 @@ import {
 	UpdateNodeGraphNodes,
 	UpdateVisibleNodes,
 	UpdateNodeGraphWires,
-	ClearNodeGraphWires,
 	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
@@ -44,10 +43,8 @@ export function createNodeGraphState(editor: Editor) {
 		addExport: undefined as { x: number; y: number } | undefined,
 		nodes: new Map<bigint, FrontendNode>(),
 		visibleNodes: new Set<bigint>(),
-		// The index is the exposed input index
-		// The exports have a first key value of u32::MAX
+		/// The index is the exposed input index. The exports have a first key value of u32::MAX.
 		wires: new Map<bigint, Map<number, WirePath>>(),
-		wiresDirectNotGridAligned: false,
 		wirePathInProgress: undefined as WirePath | undefined,
 		nodeDescriptions: new Map<string, string>(),
 		nodeTypes: [] as FrontendNodeType[],
@@ -131,7 +128,6 @@ export function createNodeGraphState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateVisibleNodes, (updateVisibleNodes) => {
 		update((state) => {
-			console.log(updateVisibleNodes.nodes);
 			state.visibleNodes = new Set<bigint>(updateVisibleNodes.nodes);
 			return state;
 		});
@@ -147,14 +143,14 @@ export function createNodeGraphState(editor: Editor) {
 				}
 				if (wireUpdate.wirePathUpdate !== undefined) {
 					inputMap.set(wireUpdate.inputIndex, wireUpdate.wirePathUpdate);
+				} else {
+					inputMap.delete(wireUpdate.inputIndex);
 				}
 			});
-			// console.log(updateNodeWires.wires);
-			state.wiresDirectNotGridAligned = updateNodeWires.wiresDirectNotGridAligned;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(ClearNodeGraphWires, () => {
+	editor.subscriptions.subscribeJsMessage(ClearAllNodeGraphWires, (_) => {
 		update((state) => {
 			state.wires.clear();
 			return state;

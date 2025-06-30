@@ -5,7 +5,7 @@ use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_G
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DocumentNodeDefinition, resolve_document_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
-use crate::messages::portfolio::document::utility_types::nodes::{WirePath, WireUpdate};
+use crate::messages::portfolio::document::utility_types::nodes::{GraphWireStyle, WirePath, WirePathUpdate};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
 use bezier_rs::Subpath;
@@ -312,7 +312,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node {node_id} in number_of_displayed_inputs");
 			return 0;
 		};
-		node.inputs.iter().filter(|input| input.is_exposed_to_frontend(network_path.is_empty())).count()
+		node.inputs.iter().filter(|input| input.is_exposed()).count()
 	}
 
 	pub fn number_of_inputs(&self, node_id: &NodeId, network_path: &[NodeId]) -> usize {
@@ -457,6 +457,12 @@ impl NodeNetworkInterface {
 		node_template
 	}
 
+	/// Try and get the [`DocumentNodeDefinition`] for a node
+	pub fn get_node_definition(&self, network_path: &[NodeId], node_id: NodeId) -> Option<&DocumentNodeDefinition> {
+		let metadata = self.node_metadata(&node_id, network_path)?;
+		resolve_document_node_type(metadata.persistent_metadata.reference.as_ref()?)
+	}
+
 	pub fn input_from_connector(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<&NodeInput> {
 		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get network in input_from_connector");
@@ -474,12 +480,6 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// Try and get the [`DocumentNodeDefinition`] for a node
-	pub fn get_node_definition(&self, network_path: &[NodeId], node_id: NodeId) -> Option<&DocumentNodeDefinition> {
-		let metadata = self.node_metadata(&node_id, network_path)?;
-		resolve_document_node_type(metadata.persistent_metadata.reference.as_ref()?)
-	}
-
 	/// Try and get the [`Type`] for any [`InputConnector`] based on the `self.resolved_types`.
 	fn node_type_from_compiled(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<(Type, TypeSource)> {
 		let (node_id, input_index) = match *input_connector {
@@ -490,11 +490,8 @@ impl NodeNetworkInterface {
 					return Some((concrete!(graphene_std::ArtboardGroupTable), TypeSource::OuterMostExportDefault));
 				};
 
-				let output_type = self.output_types(encapsulating_node_id, encapsulating_node_id_path).into_iter().nth(export_index).flatten();
-				if output_type.is_none() {
-					warn!("Could not find output type for export node");
-				}
-				return output_type;
+				let output_type = self.output_type(encapsulating_node_id, export_index, encapsulating_node_id_path);
+				return Some(output_type);
 			}
 		};
 		let Some(node) = self.document_node(&node_id, network_path) else {
@@ -592,6 +589,65 @@ impl NodeNetworkInterface {
 			_ => (concrete!(()), TypeSource::Error("implementation is not network or protonode")),
 		}
 	}
+
+	// pub fn output_type(&self, output_connector: &OutputConnector, network_path: &[NodeId]) {
+	// 	match output_connector {
+	// 		OutputConnector::Node { node_id, output_index } => {
+	// 			let Some(implementation) = self.implementation(*node_id, network_path) else {
+	// 				return (concrete!(()), TypeSource::Error("Error getting implementation"));
+	// 			};
+	// 			let mut node_path = network_path.to_vec();
+	// 			node_path.push(*node_id);
+	// 			match implementation {
+	// 				DocumentNodeImplementation::Network(node_network) => {
+	// 					self.input_type(&InputConnector::Export(*output_index), &node_path)
+	// 				},
+	// 				DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
+	// 					match self.resolved_types.types.get(node_path) {
+	// 						Some(_) => todo!(),
+	// 						None => self.guess_type_from_node(network_path, node_id, input_index),
+	// 					}
+	// 				},
+	// 				DocumentNodeImplementation::Extract => (concrete!(()), TypeSource::Extract),
+	// 			}
+	// 		},
+	// 		OutputConnector::Import(import_index) => {
+	// 			let mut encapsulating_network = network_path.to_vec();
+	// 			let encapsulating_node = encapsulating_network.pop().expect("No network inputs in document network");
+	// 			self.input_type(&InputConnector::Node { node_id: encapsulating_node, input_index: import_index }, &encapsulating_network);
+	// 		},
+	// 	}
+	// }
+
+	// /// Get the [`Type`] for any InputConnector by iterating upstream
+	// pub fn input_type(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> (Type, TypeSource) {
+	// 	if let Some(result) = self.node_type_from_compiled(input_connector, network_path) {
+	// 		return result;
+	// 	}
+
+	// 	let Some(input) = self.input_from_connector(input_connector, network_path) else {
+	// 		return (concrete!(()), TypeSource::Error("Error getting input"));
+	// 	};
+	// 	match input {
+	// 		// A node input can either be from an export, protonode, or network node
+	// 		NodeInput::Node { node_id, output_index, lambda } => {
+	// 			self.output_type(OutputConnector::node(*node_id, *output_index), network_path);
+	// 		},
+	// 		NodeInput::Value { tagged_value, exposed } => {
+	// 			(tagged_value.ty(), TypeSource::TaggedValue)
+	// 		},
+	// 		NodeInput::Network { .., import_index } => {
+	// 			let mut encapsulating_network = network_path.to_vec();
+	// 			let encapsulating_node = encapsulating_network.pop().expect("No network inputs in document network");
+	// 			self.input_type(&InputConnector::Node { node_id: encapsulating_node, input_index: import_index }, &encapsulating_network);
+	// 		},
+	// 		NodeInput::Scope(cow) => {
+	// 			(concrete!(()), TypeSource::Error("Scope input types cannot be determined"))
+	// 		},
+	// 		NodeInput::Reflection(document_node_metadata) => (concrete!(Vec<NodeId>), TypeSource::NodePath),
+	// 		NodeInput::Inline(inline_rust) => (concrete!(String), TypeSource::Inline),
+	// 	}
+	// }
 
 	/// Get the [`Type`] for any InputConnector
 	pub fn input_type(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> (Type, TypeSource) {
@@ -700,60 +756,51 @@ impl NodeNetworkInterface {
 	///
 	/// This function assumes that export indices and node IDs always exist within their respective
 	/// collections. It will panic if these assumptions are violated.
-	pub fn output_types(&self, node_id: &NodeId, network_path: &[NodeId]) -> Vec<Option<(Type, TypeSource)>> {
+	///
+	pub fn output_type(&self, node_id: &NodeId, output_index: usize, network_path: &[NodeId]) -> (Type, TypeSource) {
 		let Some(implementation) = self.implementation(node_id, network_path) else {
-			log::error!("Could not get node {node_id} in output_types");
-			return Vec::new();
+			log::error!("Could not get output type for node {node_id} output index {output_index}. This node is no longer supported, and needs to be upgraded.");
+			return (concrete!(()), TypeSource::Error("Could not get implementation"));
 		};
-
-		let mut output_types = Vec::new();
 
 		// If the node is not a protonode, get types by traversing across exports until a proto node is reached.
 		match &implementation {
 			graph_craft::document::DocumentNodeImplementation::Network(internal_network) => {
-				for export in internal_network.exports.iter() {
-					match export {
-						NodeInput::Node {
-							node_id: nested_node_id,
-							output_index,
-							..
-						} => {
-							let nested_output_types = self.output_types(nested_node_id, &[network_path, &[*node_id]].concat());
-							let Some(nested_nodes_output_types) = nested_output_types.get(*output_index) else {
-								log::error!("Could not get nested nodes output in output_types");
-								return Vec::new();
-							};
-							output_types.push(nested_nodes_output_types.clone());
-						}
-						NodeInput::Value { tagged_value, .. } => {
-							output_types.push(Some((tagged_value.ty(), TypeSource::TaggedValue)));
-						}
-
-						NodeInput::Network { .. } => {
-							// https://github.com/GraphiteEditor/Graphite/issues/1762
-							log::error!("Network input type cannot be connected to export");
-							return Vec::new();
-						}
-						NodeInput::Scope(_) => todo!(),
-						NodeInput::Inline(_) => todo!(),
-						NodeInput::Reflection(_) => todo!(),
+				let Some(export) = internal_network.exports.get(output_index) else {
+					return (concrete!(()), TypeSource::Error("Could not get export index"));
+				};
+				match export {
+					NodeInput::Node {
+						node_id: nested_node_id,
+						output_index,
+						..
+					} => self.output_type(nested_node_id, *output_index, &[network_path, &[*node_id]].concat()),
+					NodeInput::Value { tagged_value, .. } => (tagged_value.ty(), TypeSource::TaggedValue),
+					NodeInput::Network { .. } => {
+						// let mut encapsulating_path = network_path.to_vec();
+						// let encapsulating_node = encapsulating_path.pop().expect("No imports exist in document network");
+						// self.input_type(&InputConnector::node(encapsulating_node, *import_index), network_path)
+						(concrete!(()), TypeSource::Error("Could not type from network"))
 					}
+					NodeInput::Scope(_) => todo!(),
+					NodeInput::Inline(_) => todo!(),
+					NodeInput::Reflection(_) => todo!(),
 				}
 			}
 			graph_craft::document::DocumentNodeImplementation::ProtoNode(protonode) => {
 				let node_id_path = &[network_path, &[*node_id]].concat();
-				let primary_output_type = self.resolved_types.types.get(node_id_path).map(|ty| (ty.output.clone(), TypeSource::Compiled)).or_else(|| {
-					let node_types = random_protonode_implementation(protonode)?;
-					Some((node_types.return_value.clone(), TypeSource::RandomProtonodeImplementation))
-				});
-
-				output_types.push(primary_output_type);
+				self.resolved_types
+					.types
+					.get(node_id_path)
+					.map(|ty| (ty.output.clone(), TypeSource::Compiled))
+					.or_else(|| {
+						let node_types = random_protonode_implementation(protonode)?;
+						Some((node_types.return_value.clone(), TypeSource::RandomProtonodeImplementation))
+					})
+					.unwrap_or((concrete!(()), TypeSource::Error("Could not get protonode implementation")))
 			}
-			graph_craft::document::DocumentNodeImplementation::Extract => {
-				output_types.push(Some((concrete!(()), TypeSource::Error("extract node"))));
-			}
+			graph_craft::document::DocumentNodeImplementation::Extract => (concrete!(()), TypeSource::Error("extract node")),
 		}
-		output_types
 	}
 
 	pub fn position(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
@@ -783,10 +830,6 @@ impl NodeNetworkInterface {
 				.filter_map(|(import_index, click_target)| {
 					// Get import name from parent node metadata input, which must match the number of imports.
 					// Empty string means to use type, or "Import + index" if type can't be determined
-					let properties_row = self
-						.encapsulating_node_metadata(network_path)
-						.and_then(|encapsulating_metadata| encapsulating_metadata.persistent_metadata.input_metadata.get(*import_index).cloned())
-						.unwrap_or_default();
 
 					let mut import_metadata = None;
 
@@ -797,12 +840,7 @@ impl NodeNetworkInterface {
 						let (input_type, type_source) = self.input_type(&InputConnector::node(encapsulating_node_id, *import_index), &encapsulating_path);
 						let data_type = FrontendGraphDataType::displayed_type(&input_type, &type_source);
 
-						let input_name = &properties_row.persistent_metadata.input_name;
-						let import_name = if input_name.is_empty() {
-							input_type.clone().nested_type().to_string()
-						} else {
-							input_name.to_string()
-						};
+						let (name, description) = self.displayed_input_name_and_description(&encapsulating_node_id, *import_index, &encapsulating_path);
 
 						let connected_to = self
 							.outward_wires(network_path)
@@ -816,9 +854,9 @@ impl NodeNetworkInterface {
 						import_metadata = Some((
 							FrontendGraphOutput {
 								data_type,
-								name: import_name,
-								description: String::new(),
-								resolved_type: Some(format!("{input_type:?}")),
+								name,
+								description,
+								resolved_type: format!("{:?} from {:?}", input_type, type_source),
 								connected_to,
 							},
 							click_target,
@@ -837,50 +875,13 @@ impl NodeNetworkInterface {
 				.input_ports
 				.iter()
 				.filter_map(|(export_index, click_target)| {
-					let Some(network) = self.nested_network(network_path) else {
-						log::error!("Could not get network in frontend_exports");
-						return None;
-					};
+					let export_type = self.input_type(&InputConnector::Export(*export_index), network_path);
+					let data_type = FrontendGraphDataType::displayed_type(&export_type.0, &TypeSource::TaggedValue);
 
-					let Some(export) = network.exports.get(*export_index) else {
-						log::error!("Could not get export {export_index} in frontend_exports");
-						return None;
-					};
-
-					let (frontend_data_type, input_type) = if let NodeInput::Node { node_id, output_index, .. } = export {
-						let output_types = self.output_types(node_id, network_path);
-
-						if let Some((output_type, type_source)) = output_types.get(*output_index).cloned().flatten() {
-							(FrontendGraphDataType::displayed_type(&output_type, &type_source), Some((output_type, type_source)))
-						} else {
-							(FrontendGraphDataType::General, None)
-						}
-					} else if let NodeInput::Value { tagged_value, .. } = export {
-						(
-							FrontendGraphDataType::displayed_type(&tagged_value.ty(), &TypeSource::TaggedValue),
-							Some((tagged_value.ty(), TypeSource::TaggedValue)),
-						)
-					// TODO: Get type from parent node input when <https://github.com/GraphiteEditor/Graphite/issues/1762> is possible
-					// else if let NodeInput::Network { import_type, .. } = export {
-					// 	(FrontendGraphDataType::with_type(import_type), Some(import_type.clone()))
-					// }
-					} else {
-						(FrontendGraphDataType::General, None)
-					};
-
-					// First import index is visually connected to the root node instead of its actual export input so previewing does not change the connection
-					let connected_to = if *export_index == 0 {
-						self.root_node(network_path).map(|root_node| OutputConnector::node(root_node.node_id, root_node.output_index))
-					} else if let NodeInput::Node { node_id, output_index, .. } = export {
-						Some(OutputConnector::node(*node_id, *output_index))
-					} else if let NodeInput::Network { import_index, .. } = export {
-						Some(OutputConnector::Import(*import_index))
-					} else {
-						None
-					};
+					let connected_to = self.upstream_output_connector(&InputConnector::Export(*export_index), network_path);
 
 					// Get export name from parent node metadata input, which must match the number of exports.
-					// Empty string means to use type, or "Export + index" if type can't be determined
+					// Empty string means to use type, or "Export + index" if type is empty determined
 					let export_name = if network_path.is_empty() {
 						"Canvas".to_string()
 					} else {
@@ -891,19 +892,18 @@ impl NodeNetworkInterface {
 
 					let export_name = if !export_name.is_empty() {
 						export_name
+					} else if *export_type.0.nested_type() != concrete!(()) {
+						export_type.0.nested_type().to_string()
 					} else {
-						input_type
-							.clone()
-							.map(|(input_type, _)| input_type.nested_type().to_string())
-							.unwrap_or(format!("Export {}", export_index + 1))
+						format!("Export {}", *export_index + 1)
 					};
 
 					Some((
 						FrontendGraphInput {
-							data_type: frontend_data_type,
+							data_type,
 							name: export_name,
 							description: String::new(),
-							resolved_type: input_type.map(|(export_type, _source)| format!("{export_type:?}")),
+							resolved_type: format!("{:?} from {:?}", export_type.0, export_type.1),
 							valid_types: self.valid_input_types(&InputConnector::Export(*export_index), network_path).iter().map(|ty| ty.to_string()).collect(),
 							connected_to,
 						},
@@ -957,14 +957,7 @@ impl NodeNetworkInterface {
 				log::error!("Could not get node {node_id} in upstream_nodes_below_layer");
 				continue;
 			};
-			potential_upstream_nodes.extend(
-				chain_node
-					.inputs
-					.iter()
-					.filter(|input| input.is_exposed_to_frontend(network_path.is_empty()))
-					.skip(1)
-					.filter_map(|node_input| node_input.as_node()),
-			)
+			potential_upstream_nodes.extend(chain_node.inputs.iter().filter(|input| input.is_exposed()).skip(1).filter_map(|node_input| node_input.as_node()))
 		}
 
 		// Get the node feeding into the left input of the chain
@@ -977,7 +970,7 @@ impl NodeNetworkInterface {
 			if let Some(primary_node_id) = current_node
 				.inputs
 				.iter()
-				.filter(|input| input.is_exposed_to_frontend(network_path.is_empty()))
+				.filter(|input| input.is_exposed())
 				.nth(if self.is_layer(&current_node_id, network_path) { 1 } else { 0 })
 				.and_then(|left_input| left_input.as_node())
 			{
@@ -1143,6 +1136,21 @@ impl NodeNetworkInterface {
 			.node_metadata(node_id, network_path)
 			.and_then(|node_metadata| node_metadata.persistent_metadata.input_metadata.get(index))?;
 		Some(&metadata.transient_metadata)
+	}
+
+	/// Returns the input name to display in the properties panel. If the name is empty then the type is used.
+	pub fn displayed_input_name_and_description(&mut self, node_id: &NodeId, input_index: usize, network_path: &[NodeId]) -> (String, String) {
+		let Some(input_metadata) = self.persistent_input_metadata(&node_id, input_index, network_path) else {
+			log::warn!("input metadata not found in displayed_input_name_and_description");
+			return (String::new(), String::new());
+		};
+		let description = input_metadata.input_description.to_string();
+		let name = if input_metadata.input_name.is_empty() {
+			self.input_type(&InputConnector::node(*node_id, input_index), network_path).0.nested_type().to_string()
+		} else {
+			input_metadata.input_name.to_string()
+		};
+		(name, description)
 	}
 
 	/// Returns the display name of the node. If the display name is empty, it will return "Untitled Node" or "Untitled Layer" depending on the node type.
@@ -2506,7 +2514,7 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn try_get_input_dom_rect(&mut self, input: &InputConnector, network_path: &[NodeId]) -> Option<(f64, f64, f64, f64)> {
+	pub fn get_input_center(&mut self, input: &InputConnector, network_path: &[NodeId]) -> Option<DVec2> {
 		let (ports, index) = match input {
 			InputConnector::Node { node_id, input_index } => {
 				let node_click_target = self.node_click_targets(node_id, network_path)?;
@@ -2520,10 +2528,10 @@ impl NodeNetworkInterface {
 		ports
 			.input_ports
 			.iter()
-			.find_map(|(input_index, click_target)| if index == input_index { click_target.to_dom_rect() } else { None })
+			.find_map(|(input_index, click_target)| if index == input_index { click_target.bounding_box_center() } else { None })
 	}
 
-	pub fn try_get_output_dom_rect(&mut self, output: &OutputConnector, network_path: &[NodeId]) -> Option<(f64, f64, f64, f64)> {
+	pub fn get_output_center(&mut self, output: &OutputConnector, network_path: &[NodeId]) -> Option<DVec2> {
 		let (ports, index) = match output {
 			OutputConnector::Node { node_id, output_index } => {
 				let node_click_target = self.node_click_targets(node_id, network_path)?;
@@ -2537,18 +2545,16 @@ impl NodeNetworkInterface {
 		ports
 			.output_ports
 			.iter()
-			.find_map(|(input_index, click_target)| if index == input_index { click_target.to_dom_rect() } else { None })
+			.find_map(|(input_index, click_target)| if index == input_index { click_target.bounding_box_center() } else { None })
 	}
 
-	pub fn newly_loaded_input_wire(&mut self, input: &InputConnector, network_path: &[NodeId]) -> Option<WireUpdate> {
-		if self.upstream_output_connector(input, network_path).is_none() {
-			return None;
-		}
+	pub fn newly_loaded_input_wire(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
 		if !self.wire_is_loaded(input, network_path) {
-			self.load_wire(input, network_path);
+			self.load_wire(input, graph_wire_style, network_path);
 		} else {
 			return None;
 		}
+
 		let wire = match input {
 			InputConnector::Node { node_id, input_index } => {
 				let input_metadata = self.transient_input_metadata(node_id, *input_index, network_path)?;
@@ -2556,11 +2562,7 @@ impl NodeNetworkInterface {
 					log::error!("Could not load wire for input: {:?}", input);
 					return None;
 				};
-				WireUpdate {
-					id: *node_id,
-					input_index: *input_index,
-					wire_path_update: Some(wire.clone()),
-				}
+				wire.clone()
 			}
 			InputConnector::Export(export_index) => {
 				let network_metadata = self.network_metadata(network_path)?;
@@ -2568,11 +2570,7 @@ impl NodeNetworkInterface {
 					log::error!("Could not load wire for input: {:?}", input);
 					return None;
 				};
-				WireUpdate {
-					id: NodeId(u64::MAX),
-					input_index: *export_index,
-					wire_path_update: Some(wire.clone()),
-				}
+				wire.clone()
 			}
 		};
 		Some(wire)
@@ -2599,7 +2597,7 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	fn load_wire(&mut self, input: &InputConnector, network_path: &[NodeId]) {
+	fn load_wire(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) {
 		let dashed = match self.previewing(network_path) {
 			Previewing::Yes { .. } => match input {
 				InputConnector::Node { .. } => false,
@@ -2607,41 +2605,46 @@ impl NodeNetworkInterface {
 			},
 			Previewing::No => false,
 		};
-
-		let Some(wire) = self.wire_path_from_input(input, dashed, network_path) else {
+		let Some(wire) = self.wire_path_from_input(input, graph_wire_style, dashed, network_path) else {
 			return;
 		};
-
 		match input {
 			InputConnector::Node { node_id, input_index } => {
-				let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
-					return;
-				};
+				let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else { return };
 				let Some(input_metadata) = node_metadata.persistent_metadata.input_metadata.get_mut(*input_index) else {
 					log::error!("Node metadata must exist on node: {input:?}");
 					return;
 				};
-				input_metadata.transient_metadata.wire = TransientMetadata::Loaded(wire);
+				let wire_update = WirePathUpdate {
+					id: *node_id,
+					input_index: *input_index,
+					wire_path_update: Some(wire),
+				};
+				input_metadata.transient_metadata.wire = TransientMetadata::Loaded(wire_update);
 			}
 			InputConnector::Export(export_index) => {
-				let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-					return;
-				};
+				let Some(network_metadata) = self.network_metadata_mut(network_path) else { return };
 				if *export_index >= network_metadata.transient_metadata.wires.len() {
 					network_metadata.transient_metadata.wires.resize(export_index + 1, TransientMetadata::Unloaded);
 				}
 				let Some(input_metadata) = network_metadata.transient_metadata.wires.get_mut(*export_index) else {
 					return;
 				};
-				*input_metadata = TransientMetadata::Loaded(wire);
+				let wire_update = WirePathUpdate {
+					id: NodeId(u64::MAX),
+					input_index: *export_index,
+					wire_path_update: Some(wire),
+				};
+				*input_metadata = TransientMetadata::Loaded(wire_update);
 			}
 		}
 	}
 
-	pub fn unload_all_wires(&mut self, network_path: &[NodeId]) {
+	pub fn all_input_connectors(&self, network_path: &[NodeId]) -> Vec<InputConnector> {
 		let mut input_connectors = Vec::new();
 		let Some(network) = self.nested_network(network_path) else {
-			return;
+			log::error!("Could not get nested network in all_input_connectors");
+			return Vec::new();
 		};
 		for export_index in 0..network.exports.len() {
 			input_connectors.push(InputConnector::Export(export_index));
@@ -2651,9 +2654,26 @@ impl NodeNetworkInterface {
 				input_connectors.push(InputConnector::node(*node_id, input_index));
 			}
 		}
-		for input in &input_connectors {
-			self.unload_wire(input, network_path);
-		}
+		input_connectors
+	}
+
+	pub fn node_graph_input_connectors(&self, network_path: &[NodeId]) -> Vec<InputConnector> {
+		self.all_input_connectors(network_path)
+			.into_iter()
+			.filter(|input| self.input_from_connector(input, network_path).is_some_and(|input| input.is_exposed()))
+			.collect()
+	}
+
+	// Maps to the frontend representation of a wire start. Includes disconnected value wire inputs
+	pub fn node_graph_wire_inputs(&self, network_path: &[NodeId]) -> Vec<(NodeId, usize)> {
+		self.node_graph_input_connectors(network_path)
+			.iter()
+			.map(|input| match input {
+				InputConnector::Node { node_id, input_index } => (*node_id, *input_index),
+				InputConnector::Export(export_index) => (NodeId(u64::MAX), *export_index),
+			})
+			.chain(std::iter::once((NodeId(u64::MAX), usize::MAX)))
+			.collect()
 	}
 
 	fn unload_wires_for_node(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
@@ -2676,7 +2696,7 @@ impl NodeNetworkInterface {
 			self.unload_wire(&input, network_path);
 		}
 	}
-	fn unload_wire(&mut self, input: &InputConnector, network_path: &[NodeId]) {
+	pub fn unload_wire(&mut self, input: &InputConnector, network_path: &[NodeId]) {
 		match input {
 			InputConnector::Node { node_id, input_index } => {
 				let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
@@ -2703,8 +2723,9 @@ impl NodeNetworkInterface {
 		}
 	}
 	// When previewing, there may be a second path to the root node
-	pub fn wire_to_root(&mut self, network_path: &[NodeId]) -> Option<WireUpdate> {
-		let current_export = self.upstream_output_connector(&InputConnector::Export(0), network_path)?;
+	pub fn wire_to_root(&mut self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
+		let input = InputConnector::Export(0);
+		let current_export = self.upstream_output_connector(&input, network_path)?;
 
 		let root_node = match self.previewing(network_path) {
 			Previewing::Yes { root_node_to_restore } => root_node_to_restore,
@@ -2714,43 +2735,62 @@ impl NodeNetworkInterface {
 		if Some(root_node.node_id) == current_export.node_id() {
 			return None;
 		}
+		let Some(input_position) = self.get_input_center(&input, network_path) else {
+			log::error!("Could not get dom rect for wire end in root node: {:?}", input);
+			return None;
+		};
+		let upstream_output = OutputConnector::node(root_node.node_id, root_node.output_index);
+		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
+			log::error!("Could not get dom rect for wire start in root node: {:?}", upstream_output);
+			return None;
+		};
+		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
+		let vertical_start: bool = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
+		let thick = vertical_end && vertical_start;
+		let vector_wire = super::nodes::build_vector_wire(output_position, input_position, vertical_start, vertical_end, graph_wire_style);
 
-		let wire_path = self.wire_path_from_input(&InputConnector::Export(0), false, network_path)?;
-		Some(WireUpdate {
+		let mut path_string = String::new();
+		let _ = vector_wire.subpath_to_svg(&mut path_string, DAffine2::IDENTITY);
+		let data_type = FrontendGraphDataType::from_type(&self.input_type(&input, network_path).0);
+		let wire_path_update = Some(WirePath {
+			path_string,
+			data_type,
+			thick,
+			dashed: false,
+		});
+
+		Some(WirePathUpdate {
 			id: NodeId(u64::MAX),
 			input_index: usize::MAX,
-			wire_path_update: Some(wire_path),
+			wire_path_update,
 		})
 	}
 
-	pub fn wire_path_from_input(&mut self, input: &InputConnector, dashed: bool, network_path: &[NodeId]) -> Option<WirePath> {
-		let Some(end) = self.try_get_input_dom_rect(input, network_path) else {
+	// Returns the vector subpath and a boolean of whether the wire should be thick
+	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(Subpath<PointId>, bool)> {
+		let Some(input_position) = self.get_input_center(input, network_path) else {
 			log::error!("Could not get dom rect for wire end: {:?}", input);
 			return None;
 		};
-		let input_position = DVec2 {
-			x: end.0 + end.2 / 2.,
-			y: end.1 + end.3 / 2.,
-		};
+		// An upstream output could not be found, so the wire does not exist, but it should still be loaded as as empty vector
 		let Some(upstream_output) = self.upstream_output_connector(input, network_path) else {
-			return None;
+			return Some((Subpath::from_anchors(std::iter::empty(), false), false));
 		};
-		let Some(start) = self.try_get_output_dom_rect(&upstream_output, network_path) else {
+		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
 			log::error!("Could not get dom rect for wire start: {:?}", upstream_output);
 			return None;
 		};
-		let output_position = DVec2 {
-			x: start.0 + start.2 / 2.,
-			y: start.1 + start.3 / 2.,
-		};
-
 		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
 		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
-
-		let path_string = super::nodes::build_wire_path(output_position, input_position, vertical_start, vertical_end);
-		let data_type = FrontendGraphDataType::from_type(&self.input_type(input, network_path).0);
 		let thick = vertical_end && vertical_start;
+		Some((super::nodes::build_vector_wire(output_position, input_position, vertical_start, vertical_end, wire_style), thick))
+	}
 
+	pub fn wire_path_from_input(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, dashed: bool, network_path: &[NodeId]) -> Option<WirePath> {
+		let (vector_wire, thick) = self.vector_wire_from_input(input, graph_wire_style, network_path)?;
+		let mut path_string = String::new();
+		let _ = vector_wire.subpath_to_svg(&mut path_string, DAffine2::IDENTITY);
+		let data_type = FrontendGraphDataType::from_type(&self.input_type(input, network_path).0);
 		Some(WirePath {
 			path_string,
 			data_type,
@@ -3159,8 +3199,8 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node {node_id} in is_eligible_to_be_layer");
 			return false;
 		};
-		let input_count = node.inputs.iter().take(2).filter(|input| input.is_exposed_to_frontend(network_path.is_empty())).count();
-		let parameters_hidden = node.inputs.iter().skip(2).all(|input| !input.is_exposed_to_frontend(network_path.is_empty()));
+		let input_count = node.inputs.iter().take(2).filter(|input| input.is_exposed()).count();
+		let parameters_hidden = node.inputs.iter().skip(2).all(|input| !input.is_exposed());
 		let output_count = self.number_of_outputs(node_id, network_path);
 
 		self.node_metadata(node_id, network_path)
@@ -3324,7 +3364,7 @@ impl NodeNetworkInterface {
 				};
 				let mut displayed_index = 0;
 				for i in 0..*input_index {
-					if node.inputs[i].is_exposed_to_frontend(network_path.is_empty()) {
+					if node.inputs[i].is_exposed() {
 						displayed_index += 1;
 					}
 				}
@@ -4085,11 +4125,18 @@ impl NodeNetworkInterface {
 		Some(old_inputs)
 	}
 
-	pub fn validate_input_metadata(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
-		let Some(node) = self.document_node(node_id, network_path) else { return };
+	// Used when opening an old document to add the persistent metadata for each input if it doesnt exist, which is where the name/description are saved.
+	pub fn validate_input_metadata(&mut self, node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId]) {
 		let number_of_inputs = node.inputs.len();
 		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else { return };
-		metadata.persistent_metadata.input_metadata.resize(number_of_inputs, InputMetadata::default());
+		for added_input_index in metadata.persistent_metadata.input_metadata.len()..number_of_inputs {
+			let reference = metadata.persistent_metadata.reference.as_ref();
+			let definition = reference.and_then(|reference| resolve_document_node_type(reference));
+			let input_metadata = definition
+				.and_then(|definition| definition.node_template.persistent_node_metadata.input_metadata.get(added_input_index))
+				.cloned();
+			metadata.persistent_metadata.input_metadata.push(input_metadata.unwrap_or_default());
+		}
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
@@ -4570,7 +4617,7 @@ impl NodeNetworkInterface {
 		let reconnect_to_input = self.document_node(node_id, network_path).and_then(|node| {
 			node.inputs
 				.iter()
-				.find(|input| input.is_exposed_to_frontend(network_path.is_empty()))
+				.find(|input| input.is_exposed())
 				.filter(|input| matches!(input, NodeInput::Node { .. } | NodeInput::Network { .. }))
 				.cloned()
 		});
@@ -6002,6 +6049,9 @@ pub enum TypeSource {
 	DocumentNodeDefault,
 	TaggedValue,
 	OuterMostExportDefault,
+	NodePath,
+	Inline,
+	Extract,
 
 	Error(&'static str),
 }
@@ -6019,7 +6069,7 @@ pub enum ImportOrExport {
 }
 
 /// Represents an input connector with index based on the [`DocumentNode::inputs`] index, not the visible input index
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum InputConnector {
 	#[serde(rename = "node")]
 	Node {
@@ -6338,7 +6388,7 @@ pub struct NodeNetworkTransientMetadata {
 	// Distance to the edges of the network, where the import/export ports are displayed. Rounded to nearest grid space when the panning ends.
 	pub rounded_network_edge_distance: TransientMetadata<NetworkEdgeDistance>,
 	// Wires from the exports
-	pub wires: Vec<TransientMetadata<WirePath>>,
+	pub wires: Vec<TransientMetadata<WirePathUpdate>>,
 }
 
 #[derive(Debug, Clone)]
@@ -6447,14 +6497,15 @@ pub enum WidgetOverride {
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InputPersistentMetadata {
 	/// A general datastore than can store key value pairs of any types for any input
-	/// Each instance of the input node needs to store its own data, since it can
+	/// Each instance of the input node needs to store its own data, since it can lose the reference to its
+	/// node definition if the node signature is modified by the user. For example adding/removing/renaming an import/export of a network node.
 	pub input_data: HashMap<String, Value>,
 	// An input can override a widget, which would otherwise be automatically generated from the type
 	// The string is the identifier to the widget override function stored in INPUT_OVERRIDES
 	pub widget_override: Option<String>,
-	// An empty input name means to use the type as the name
+	/// An empty input name means to use the type as the name.
 	pub input_name: String,
-	// Tooltip
+	/// Displayed as the tooltip.
 	pub input_description: String,
 }
 
@@ -6524,7 +6575,7 @@ impl InputPersistentMetadata {
 
 #[derive(Debug, Clone, Default)]
 struct InputTransientMetadata {
-	wire: TransientMetadata<WirePath>,
+	wire: TransientMetadata<WirePathUpdate>,
 	// downstream_protonode: populated for all inputs after each compile
 	// types: populated for each protonode after each
 }
@@ -6608,11 +6659,20 @@ impl DocumentNodePersistentMetadata {
 	}
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct InputMetadata {
 	pub persistent_metadata: InputPersistentMetadata,
 	#[serde(skip)]
 	transient_metadata: InputTransientMetadata,
+}
+
+impl Clone for InputMetadata {
+	fn clone(&self) -> Self {
+		InputMetadata {
+			persistent_metadata: self.persistent_metadata.clone(),
+			transient_metadata: Default::default(),
+		}
+	}
 }
 
 impl PartialEq for InputMetadata {
@@ -6662,15 +6722,8 @@ pub struct DocumentNodePersistentMetadataInputNames {
 impl From<DocumentNodePersistentMetadataInputNames> for DocumentNodePersistentMetadata {
 	fn from(old: DocumentNodePersistentMetadataInputNames) -> Self {
 		DocumentNodePersistentMetadata {
-			reference: old.reference,
-			display_name: old.display_name,
 			input_metadata: Vec::new(),
-			output_names: old.output_names,
-			has_primary_output: old.has_primary_output,
-			locked: old.locked,
-			pinned: old.pinned,
-			node_type_metadata: old.node_type_metadata,
-			network_metadata: old.network_metadata,
+			..old.into()
 		}
 	}
 }
@@ -6745,16 +6798,14 @@ where
 	use serde::Deserialize;
 
 	let value = Value::deserialize(deserializer)?;
-	match serde_json::from_value::<DocumentNodePersistentMetadata>(value.clone()) {
-		Ok(document) => return Ok(document),
-		Err(_) => {}
+	if let Ok(document) = serde_json::from_value::<DocumentNodePersistentMetadata>(value.clone()) {
+		return Ok(document);
 	};
-	match serde_json::from_value::<DocumentNodePersistentMetadataPropertiesRow>(value.clone()) {
-		Ok(document) => return Ok(document.into()),
-		Err(_) => {}
+	if let Ok(document) = serde_json::from_value::<DocumentNodePersistentMetadataPropertiesRow>(value.clone()) {
+		return Ok(document.into());
 	};
 	match serde_json::from_value::<DocumentNodePersistentMetadataInputNames>(value.clone()) {
-		Ok(document) => return Ok(document.into()),
+		Ok(document) => Ok(document.into()),
 		Err(e) => Err(serde::de::Error::custom(e)),
 	}
 }

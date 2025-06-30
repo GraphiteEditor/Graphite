@@ -363,17 +363,6 @@ impl NodeInput {
 			NodeInput::Reflection(_) => false,
 		}
 	}
-	/// Network node inputs in the document network are not displayed, but still exist in the compiled network
-	pub fn is_exposed_to_frontend(&self, is_document_network: bool) -> bool {
-		match self {
-			NodeInput::Node { .. } => true,
-			NodeInput::Value { exposed, .. } => *exposed,
-			NodeInput::Network { .. } => !is_document_network,
-			NodeInput::Inline(_) => false,
-			NodeInput::Scope(_) => false,
-			NodeInput::Reflection(_) => false,
-		}
-	}
 
 	pub fn ty(&self) -> Type {
 		match self {
