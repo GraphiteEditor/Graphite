@@ -388,6 +388,10 @@ impl ClosestSegment {
 
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
 impl ShapeState {
+	pub fn is_selected_layer(&self, layer: LayerNodeIdentifier) -> bool {
+		self.selected_shape_state.contains_key(&layer)
+	}
+
 	pub fn is_point_ignored(&self, point: &ManipulatorPointId) -> bool {
 		(point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors)
 	}
