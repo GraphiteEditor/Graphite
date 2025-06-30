@@ -81,7 +81,7 @@ jobs:
       - name: ⌨ Set build command based on comment
         id: build_command
         run: |
-          if [[ "${{ github.event.comment.body }}" == "!build-dev" ]]; then
+          if [[ "$EVENT.COMMENT.BODY " == "!build-dev" ]]; then
             echo "command=build-dev" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event.comment.body }}" == "!build-profiling" ]]; then
             echo "command=build-profiling" >> $GITHUB_OUTPUT
