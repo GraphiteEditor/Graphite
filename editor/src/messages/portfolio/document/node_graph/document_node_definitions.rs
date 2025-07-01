@@ -1016,7 +1016,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("TODO"),
+			description: Cow::Borrowed(
+				"Decomposes the X and Y components of a 2D coordinate.\n\nThe inverse of this node is \"Coordinate Value\", which can have either or both its X and Y exposed as graph inputs.",
+			),
 			properties: None,
 		},
 		// TODO: Remove this and just use the proto node definition directly
@@ -1856,7 +1858,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(graphene_std::vector::VectorDataTable), 0),
 									NodeInput::network(concrete!(vector::misc::PointSpacingType), 1),
 									NodeInput::network(concrete!(f64), 2),
-									NodeInput::network(concrete!(f64), 3),
+									NodeInput::network(concrete!(u32), 3),
 									NodeInput::network(concrete!(f64), 4),
 									NodeInput::network(concrete!(f64), 5),
 									NodeInput::network(concrete!(bool), 6),
@@ -1895,7 +1897,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorDataTable::default()), true),
 						NodeInput::value(TaggedValue::PointSpacingType(Default::default()), false),
 						NodeInput::value(TaggedValue::F64(100.), false),
-						NodeInput::value(TaggedValue::F64(100.), false),
+						NodeInput::value(TaggedValue::U32(100), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::Bool(false), false),
