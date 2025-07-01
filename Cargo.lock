@@ -2196,6 +2196,7 @@ dependencies = [
  "graph-craft",
  "graphene-application-io",
  "graphene-core",
+ "graphene-element-nodes",
  "graphene-path-bool",
  "graphene-svg-renderer",
  "iai-callgrind",
@@ -2279,6 +2280,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphene-element-nodes"
+version = "0.1.0"
+dependencies = [
+ "bezier-rs",
+ "dyn-any",
+ "glam",
+ "graphene-core",
+ "graphene-math-nodes",
+ "log",
+ "node-macro",
+ "rand 0.9.0",
+ "serde",
+ "specta",
+ "tokio",
+]
+
+[[package]]
 name = "graphene-math-nodes"
 version = "0.1.0"
 dependencies = [
@@ -2318,6 +2336,7 @@ dependencies = [
  "graph-craft",
  "graphene-application-io",
  "graphene-core",
+ "graphene-element-nodes",
  "graphene-math-nodes",
  "graphene-path-bool",
  "graphene-svg-renderer",

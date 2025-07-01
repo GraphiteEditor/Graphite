@@ -1,12 +1,12 @@
-use crate::ArtboardGroupTable;
-use crate::Color;
-use crate::GraphicElement;
-use crate::GraphicGroupTable;
-use crate::gradient::GradientStops;
-use crate::raster_types::{CPU, GPU, RasterDataTable};
-use crate::vector::VectorDataTable;
-use crate::{Context, Ctx};
 use glam::{DAffine2, DVec2};
+use graphene_core::ArtboardGroupTable;
+use graphene_core::GraphicElement;
+use graphene_core::GraphicGroupTable;
+use graphene_core::color::Color;
+use graphene_core::context::{Context, Ctx};
+use graphene_core::gradient::GradientStops;
+use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
+use graphene_core::vector::VectorDataTable;
 
 #[node_macro::node(category("Text"))]
 fn to_string<T: std::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2)] value: T) -> String {
