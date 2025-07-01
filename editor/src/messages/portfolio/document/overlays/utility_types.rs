@@ -10,8 +10,6 @@ use core::f64::consts::{FRAC_PI_2, TAU};
 use glam::{DAffine2, DVec2};
 use graphene_std::Color;
 use graphene_std::math::quad::Quad;
-use graphene_std::renderer::ClickTargetType;
-use graphene_std::renderer::Quad;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::style::Stroke;
 use graphene_std::vector::{PointId, SegmentId, VectorData};
