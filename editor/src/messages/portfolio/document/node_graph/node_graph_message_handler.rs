@@ -1379,11 +1379,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				click_targets: Some(network_interface.collect_frontend_click_targets(breadcrumb_network_path)),
 			}),
 			NodeGraphMessage::EndSendClickTargets => responses.add(FrontendMessage::UpdateClickTargets { click_targets: None }),
-			// NodeGraphMessage::RefreshWires => {
-			// 	network_interface.unload_all_wires(breadcrumb_network_path);
-			// 	responses.add(FrontendMessage::RemoveNodeGraphWires);
-			// 	responses.add(NodeGraphMessage::SendWires);
-			// }
+			NodeGraphMessage::UnloadWires => {
+				for input in network_interface.node_graph_input_connectors(&breadcrumb_network_path) {
+					network_interface.unload_wire(&input, &breadcrumb_network_path);
+				}
+				responses.add(FrontendMessage::ClearAllNodeGraphWires);
+			}
 			NodeGraphMessage::SendWires => {
 				let wires = self.collect_wires(network_interface, preferences.graph_wire_style, breadcrumb_network_path);
 				responses.add(FrontendMessage::UpdateNodeGraphWires { wires });

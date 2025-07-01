@@ -86,7 +86,8 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			}
 			PreferencesMessage::GraphWireStyle { style } => {
 				self.graph_wire_style = style;
-				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::UnloadWires);
+				responses.add(NodeGraphMessage::SendWires);
 			}
 			PreferencesMessage::ViewportZoomWheelRate { rate } => {
 				self.viewport_zoom_wheel_rate = rate;
