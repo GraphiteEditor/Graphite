@@ -151,19 +151,6 @@ body > .page {
 					.heart.heart {
 						// The same color is also used below in the SVG after the `%23` (URL-encoded `#`)
 						color: #cc304f;
-
-						&::after {
-							content: "";
-							background-image: url('data:image/svg+xml;utf8,\
-								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8,15C5.12471,9.753694 0.5,8.795225 0.5,4.736524 C0.5,-0.507473 7.468734,0 8,4.967381 C8.531266,0 15.5,-0.507473 15.5,4.736524 C15.5,8.795225 10.87529,9.753694 8,15z" fill="%23cc304f" /></svg>\
-								');
-							display: inline-block;
-							width: 0.75em;
-							height: 0.75em;
-							margin-left: 0.25em;
-							margin-bottom: -0.1em;
-							vertical-align: baseline;
-						}
 					}
 
 					@media screen and (max-width: 1200px) {
@@ -681,6 +668,19 @@ hr,
 		border: 2px solid white;
 		pointer-events: none;
 	}
+}
+
+.heart::after {
+	content: "";
+	background-image: url('data:image/svg+xml;utf8,\
+		<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8,15C5.12471,9.753694 0.5,8.795225 0.5,4.736524 C0.5,-0.507473 7.468734,0 8,4.967381 C8.531266,0 15.5,-0.507473 15.5,4.736524 C15.5,8.795225 10.87529,9.753694 8,15z" fill="%23cc304f" /></svg>\
+		');
+	display: inline-block;
+	width: 0.75em;
+	height: 0.75em;
+	margin-left: 0.25em;
+	margin-bottom: -0.1em;
+	vertical-align: baseline;
 }
 
 // blockquote {
