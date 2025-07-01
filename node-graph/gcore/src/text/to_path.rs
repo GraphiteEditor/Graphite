@@ -96,7 +96,7 @@ pub struct TypesettingConfig {
 	pub character_spacing: f64,
 	pub max_width: Option<f64>,
 	pub max_height: Option<f64>,
-	pub shear: f64,
+	pub tilt: f64,
 }
 
 impl Default for TypesettingConfig {
@@ -107,31 +107,31 @@ impl Default for TypesettingConfig {
 			character_spacing: 0.,
 			max_width: None,
 			max_height: None,
-			shear: 0.,
+			tilt: 0.,
 		}
 	}
 }
 
-fn render_glyph_run(glyph_run: &GlyphRun<'_, ()>, path_builder: &mut PathBuilder, shear: f64) {
+fn render_glyph_run(glyph_run: &GlyphRun<'_, ()>, path_builder: &mut PathBuilder, tilt: f64) {
 	let mut run_x = glyph_run.offset();
 	let run_y = glyph_run.baseline();
 
 	let run = glyph_run.run();
 
-	// User-requested shear applied around baseline to avoid vertical displacement
+	// User-requested tilt applied around baseline to avoid vertical displacement
 	// Translation ensures rotation point is at the baseline, not origin
-	let skew = DAffine2::from_translation(DVec2::new(0.0, run_y as f64))
-		* DAffine2::from_cols_array(&[1.0, 0.0, -shear.to_radians().tan() as f64, 1.0, 0.0, 0.0])
-		* DAffine2::from_translation(DVec2::new(0.0, -run_y as f64));
+	let skew = DAffine2::from_translation(DVec2::new(0., run_y as f64))
+		* DAffine2::from_cols_array(&[1., 0., -tilt.to_radians().tan(), 1., 0., 0.])
+		* DAffine2::from_translation(DVec2::new(0., -run_y as f64));
 
 	let synthesis = run.synthesis();
 
 	// Font synthesis (e.g., synthetic italic) applied separately from user transforms
 	// This preserves the distinction between font styling and user transformations
 	let style_skew = synthesis.skew().map(|angle| {
-		DAffine2::from_translation(DVec2::new(0.0, run_y as f64))
-			* DAffine2::from_cols_array(&[1.0, 0.0, -angle.to_radians().tan() as f64, 1.0, 0.0, 0.0])
-			* DAffine2::from_translation(DVec2::new(0.0, -run_y as f64))
+		DAffine2::from_translation(DVec2::new(0., run_y as f64))
+			* DAffine2::from_cols_array(&[1., 0., -angle.to_radians().tan() as f64, 1., 0., 0.])
+			* DAffine2::from_translation(DVec2::new(0., -run_y as f64))
 	});
 
 	let font = run.font();
@@ -202,7 +202,7 @@ pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 	for line in layout.lines() {
 		for item in line.items() {
 			if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
-				render_glyph_run(&glyph_run, &mut path_builder, typesetting.shear);
+				render_glyph_run(&glyph_run, &mut path_builder, typesetting.tilt);
 			}
 		}
 	}

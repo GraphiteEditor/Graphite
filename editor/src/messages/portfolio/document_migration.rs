@@ -1,6 +1,7 @@
 // TODO: Eventually remove this document upgrade code
 // This file contains lots of hacky code for upgrading old documents to the new format
 
+use super::document::utility_types::network_interface::{NumberInputSettings, PropertiesRow, WidgetOverride};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
@@ -13,8 +14,6 @@ use graphene_std::uuid::NodeId;
 use graphene_std::vector::style::{Fill, FillType, Gradient, PaintOrder, StrokeAlign};
 use graphene_std::vector::{VectorData, VectorDataTable};
 use std::collections::HashMap;
-
-use super::document::utility_types::network_interface::{NumberInputSettings, PropertiesRow, WidgetOverride};
 
 const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::vector::vector_nodes::SamplePointsNode", "graphene_core::vector::SamplePolylineNode"),
@@ -456,11 +455,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				9,
 				network_path,
 				PropertiesRow::with_override(
-					"Shear",
-					"TODO",
+					"Tilt",
+					"Faux italics",
 					WidgetOverride::Number(NumberInputSettings {
 						min: Some(-85.),
-
 						max: Some(85.),
 						unit: Some("°".to_string()),
 						..Default::default()
@@ -472,7 +470,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				if inputs_count >= 9 {
 					old_inputs[8].clone()
 				} else {
-					NodeInput::value(TaggedValue::F64(TypesettingConfig::default().shear), false)
+					NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false)
 				},
 				network_path,
 			);
