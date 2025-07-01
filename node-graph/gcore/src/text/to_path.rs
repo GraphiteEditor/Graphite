@@ -1,4 +1,4 @@
-use crate::vector::PointId;
+use crate::vector::{PointId, VectorData};
 use bezier_rs::{ManipulatorGroup, Subpath};
 use core::cell::RefCell;
 use glam::{DAffine2, DVec2};
@@ -21,7 +21,7 @@ thread_local! {
 struct PathBuilder {
 	current_subpath: Subpath<PointId>,
 	glyph_subpaths: Vec<Subpath<PointId>>,
-	other_subpaths: Vec<Subpath<PointId>>,
+	other_subpaths: Vec<VectorData>,
 	origin: DVec2,
 	scale: f64,
 	id: PointId,
@@ -53,7 +53,7 @@ impl PathBuilder {
 		}
 
 		if !self.glyph_subpaths.is_empty() {
-			self.other_subpaths.extend(core::mem::take(&mut self.glyph_subpaths));
+			self.other_subpaths.push(VectorData::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false));
 		}
 	}
 }
@@ -187,7 +187,7 @@ fn layout_text(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 	Some(layout)
 }
 
-pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig) -> Vec<Subpath<PointId>> {
+pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig) -> Vec<VectorData> {
 	let Some(layout) = layout_text(str, font_data, typesetting) else { return Vec::new() };
 
 	let mut path_builder = PathBuilder {
