@@ -56,7 +56,7 @@ impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
 }
 
 #[node_macro::node(skip_impl)]
-fn brush_stamp_generator(diameter: f64, color: Color, hardness: f64, flow: f64) -> BrushStampGenerator<Color> {
+fn brush_stamp_generator(#[unit(" px")] diameter: f64, color: Color, hardness: f64, flow: f64) -> BrushStampGenerator<Color> {
 	// Diameter
 	let radius = diameter / 2.;
 
