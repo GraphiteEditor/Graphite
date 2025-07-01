@@ -134,7 +134,7 @@ impl<'a> ModifyInputsContext<'a> {
 		LayerNodeIdentifier::new(new_id, self.network_interface, &[])
 	}
 
-	pub fn insert_boolean_data(&mut self, operation: graphene_std::vector::misc::BooleanOperation, layer: LayerNodeIdentifier) {
+	pub fn insert_boolean_data(&mut self, operation: graphene_std::path_bool::BooleanOperation, layer: LayerNodeIdentifier) {
 		let boolean = resolve_document_node_type("Boolean Operation").expect("Boolean node does not exist").node_template_input_override([
 			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_std::GraphicGroupTable::default()), true)),
 			Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
@@ -190,6 +190,7 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::value(TaggedValue::F64(typesetting.character_spacing), false)),
 			Some(NodeInput::value(TaggedValue::OptionalF64(typesetting.max_width), false)),
 			Some(NodeInput::value(TaggedValue::OptionalF64(typesetting.max_height), false)),
+			Some(NodeInput::value(TaggedValue::F64(typesetting.tilt), false)),
 		]);
 
 		let text_id = NodeId::new();

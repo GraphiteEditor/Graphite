@@ -1,6 +1,6 @@
 use super::Color;
-use super::discrete_srgb::float_to_srgb_u8;
 use crate::AlphaBlending;
+use crate::color::float_to_srgb_u8;
 use crate::instances::{Instance, Instances};
 use crate::raster_types::Raster;
 use core::hash::{Hash, Hasher};
@@ -291,7 +291,15 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 			*image_frame_table.instance_mut_iter().next().unwrap().alpha_blending = alpha_blending;
 			image_frame_table
 		}
-		FormatVersions::ImageFrame(image_frame) => RasterDataTable::new(Raster::new_cpu(image_frame.instance_ref_iter().next().unwrap().instance.image.clone())),
+		FormatVersions::ImageFrame(image_frame) => RasterDataTable::new(Raster::new_cpu(
+			image_frame
+				.instance_ref_iter()
+				.next()
+				.unwrap_or(Instances::new(ImageFrame::default()).instance_ref_iter().next().unwrap())
+				.instance
+				.image
+				.clone(),
+		)),
 		FormatVersions::ImageFrameTable(image_frame_table) => RasterDataTable::new(Raster::new_cpu(image_frame_table.instance_ref_iter().next().unwrap().instance.clone())),
 		FormatVersions::RasterDataTable(raster_data_table) => raster_data_table,
 	})

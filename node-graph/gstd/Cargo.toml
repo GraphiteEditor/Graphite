@@ -7,13 +7,18 @@ authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "MIT OR Apache-2.0"
 
 [features]
-default = ["wasm", "imaginate"]
+default = ["wasm"]
 gpu = []
 wgpu = ["gpu", "graph-craft/wgpu", "graphene-application-io/wgpu"]
-wasm = ["wasm-bindgen", "web-sys", "graphene-application-io/wasm"]
-imaginate = ["image/png", "base64", "web-sys", "wasm-bindgen-futures"]
+wasm = [
+	"wasm-bindgen",
+	"wasm-bindgen-futures",
+	"web-sys",
+	"graphene-application-io/wasm",
+	"image/png",
+]
 image-compare = []
-vello = ["dep:vello", "gpu", "graphene-core/vello"]
+vello = ["dep:vello", "gpu"]
 resvg = []
 wayland = ["graph-craft/wayland"]
 
@@ -23,25 +28,25 @@ dyn-any = { workspace = true }
 graph-craft = { workspace = true }
 wgpu-executor = { workspace = true }
 graphene-core = { workspace = true }
+graphene-path-bool = { workspace = true }
+graphene-math-nodes = { workspace = true }
+graphene-svg-renderer = { workspace = true }
 graphene-application-io = { workspace = true }
 
 # Workspace dependencies
 fastnoise-lite = { workspace = true }
 log = { workspace = true }
-bezier-rs = { workspace = true }
-path-bool = { workspace = true }
 glam = { workspace = true }
 node-macro = { workspace = true }
 reqwest = { workspace = true }
 futures = { workspace = true }
-usvg = { workspace = true }
 rand_chacha = { workspace = true }
 rand = { workspace = true }
 bytemuck = { workspace = true }
 image = { workspace = true }
+base64 = { workspace = true }
 
 # Optional workspace dependencies
-base64 = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
 wasm-bindgen-futures = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
@@ -58,7 +63,7 @@ web-sys = { workspace = true, optional = true, features = [
 	"ImageBitmapRenderingContext",
 ] }
 
-# Optional dependencies
+# Required dependencies
 ndarray = "0.16.1"
 
 [dev-dependencies]

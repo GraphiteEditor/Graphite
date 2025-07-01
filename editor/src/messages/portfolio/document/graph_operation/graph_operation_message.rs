@@ -83,7 +83,7 @@ pub enum GraphOperationMessage {
 	},
 	NewBooleanOperationLayer {
 		id: NodeId,
-		operation: graphene_std::vector::misc::BooleanOperation,
+		operation: graphene_std::path_bool::BooleanOperation,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},

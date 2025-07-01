@@ -7,8 +7,8 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::{Comma, RArrow};
 use syn::{
-	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam, WhereClause,
-	parse_quote,
+	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam, Visibility,
+	WhereClause, parse_quote,
 };
 
 use crate::codegen::generate_node_code;
@@ -22,6 +22,7 @@ pub(crate) struct Implementation {
 
 #[derive(Debug)]
 pub(crate) struct ParsedNodeFn {
+	pub(crate) vis: Visibility,
 	pub(crate) attributes: NodeFnAttributes,
 	pub(crate) fn_name: Ident,
 	pub(crate) struct_name: Ident,
@@ -263,6 +264,7 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 	let attributes = syn::parse2::<NodeFnAttributes>(attr.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node_fn attributes: {}", e)))?;
 	let input_fn = syn::parse2::<ItemFn>(item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse function: {}. Make sure it's a valid Rust function.", e)))?;
 
+	let vis = input_fn.vis;
 	let fn_name = input_fn.sig.ident.clone();
 	let struct_name = format_ident!("{}", fn_name.to_string().to_case(Case::Pascal));
 	let mod_name = fn_name.clone();
@@ -297,6 +299,7 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 		.fold(String::new(), |acc, b| acc + &b + "\n");
 
 	Ok(ParsedNodeFn {
+		vis,
 		attributes,
 		fn_name,
 		struct_name,
@@ -748,6 +751,7 @@ mod tests {
 
 		let parsed = parse_node_fn(attr, input).unwrap();
 		let expected = ParsedNodeFn {
+			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
 				display_name: None,
@@ -808,6 +812,7 @@ mod tests {
 
 		let parsed = parse_node_fn(attr, input).unwrap();
 		let expected = ParsedNodeFn {
+			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("General")),
 				display_name: None,
@@ -879,6 +884,7 @@ mod tests {
 
 		let parsed = parse_node_fn(attr, input).unwrap();
 		let expected = ParsedNodeFn {
+			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Vector: Shape")),
 				display_name: None,
@@ -935,6 +941,7 @@ mod tests {
 
 		let parsed = parse_node_fn(attr, input).unwrap();
 		let expected = ParsedNodeFn {
+			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Raster: Adjustment")),
 				display_name: None,
@@ -1003,6 +1010,7 @@ mod tests {
 
 		let parsed = parse_node_fn(attr, input).unwrap();
 		let expected = ParsedNodeFn {
+			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
 				display_name: None,
@@ -1059,6 +1067,7 @@ mod tests {
 
 		let parsed = parse_node_fn(attr, input).unwrap();
 		let expected = ParsedNodeFn {
+			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("IO")),
 				display_name: None,
@@ -1115,6 +1124,7 @@ mod tests {
 
 		let parsed = parse_node_fn(attr, input).unwrap();
 		let expected = ParsedNodeFn {
+			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Custom")),
 				display_name: Some(parse_quote!("CustomNode2")),

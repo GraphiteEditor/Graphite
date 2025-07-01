@@ -1,5 +1,5 @@
+use super::color_traits::{Alpha, AlphaMut, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGB, RGBMut, Rec709Primaries, SRGB};
 use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
-use super::{Alpha, AlphaMut, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGB, RGBMut, Rec709Primaries, SRGB};
 use bytemuck::{Pod, Zeroable};
 use dyn_any::DynAny;
 use half::f16;
@@ -345,7 +345,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphene_core::raster::color::Color;
+	/// use graphene_core::color::Color;
 	/// let color = Color::from_rgbaf32(0.3, 0.14, 0.15, 0.92).unwrap();
 	/// assert!(color.components() == (0.3, 0.14, 0.15, 0.92));
 	///
@@ -383,7 +383,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphene_core::raster::color::Color;
+	/// use graphene_core::color::Color;
 	/// let color = Color::from_rgb8_srgb(0x72, 0x67, 0x62);
 	/// let color2 = Color::from_rgba8_srgb(0x72, 0x67, 0x62, 0xFF);
 	/// assert_eq!(color, color2)
@@ -398,7 +398,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphene_core::raster::color::Color;
+	/// use graphene_core::color::Color;
 	/// let color = Color::from_rgba8_srgb(0x72, 0x67, 0x62, 0x61);
 	/// ```
 	#[inline(always)]
@@ -416,7 +416,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphene_core::raster::color::Color;
+	/// use graphene_core::color::Color;
 	/// let color = Color::from_hsla(0.5, 0.2, 0.3, 1.);
 	/// ```
 	pub fn from_hsla(hue: f32, saturation: f32, lightness: f32, alpha: f32) -> Color {
@@ -458,7 +458,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphene_core::raster::color::Color;
+	/// use graphene_core::color::Color;
 	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
 	/// assert!(color.r() == 0.114);
 	/// ```
@@ -471,7 +471,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphene_core::raster::color::Color;
+	/// use graphene_core::color::Color;
 	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
 	/// assert!(color.g() == 0.103);
 	/// ```
@@ -484,7 +484,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphene_core::raster::color::Color;
+	/// use graphene_core::color::Color;
 	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
 	/// assert!(color.b() == 0.98);
 	/// ```
@@ -497,7 +497,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphene_core::raster::color::Color;
+	/// use graphene_core::color::Color;
 	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
 	/// assert!(color.a() == 0.97);
 	/// ```
@@ -773,7 +773,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphene_core::raster::color::Color;
+	/// use graphene_core::color::Color;
 	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
 	/// assert_eq!(color.components(),  (0.114, 0.103, 0.98, 0.97));
 	/// ```
@@ -786,7 +786,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphene_core::raster::color::Color;
+	/// use graphene_core::color::Color;
 	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
 	/// assert_eq!("3240a261", color.to_rgba_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
@@ -803,7 +803,7 @@ impl Color {
 
 	/// Return a 6-character RGB hex string (without a # prefix). Use this if the [`Color`] is in linear space.
 	/// ```
-	/// use graphene_core::raster::color::Color;
+	/// use graphene_core::color::Color;
 	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
 	/// assert_eq!("3240a2", color.to_rgb_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
@@ -813,7 +813,7 @@ impl Color {
 
 	/// Return a 6-character RGB hex string (without a # prefix). Use this if the [`Color`] is in gamma space.
 	/// ```
-	/// use graphene_core::raster::color::Color;
+	/// use graphene_core::color::Color;
 	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
 	/// assert_eq!("3240a2", color.to_rgb_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
@@ -825,7 +825,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphene_core::raster::color::Color;
+	/// use graphene_core::color::Color;
 	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
 	/// // TODO: Add test
 	/// ```
@@ -840,7 +840,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphene_core::raster::color::Color;
+	/// use graphene_core::color::Color;
 	/// let color = Color::from_hsla(0.5, 0.2, 0.3, 1.).to_hsla();
 	/// ```
 	pub fn to_hsla(&self) -> [f32; 4] {
@@ -876,7 +876,7 @@ impl Color {
 	///
 	/// # Examples
 	/// ```
-	/// use graphene_core::raster::color::Color;
+	/// use graphene_core::color::Color;
 	/// let color = Color::from_rgba_str("7C67FA61").unwrap();
 	/// ```
 	pub fn from_rgba_str(color_str: &str) -> Option<Color> {
@@ -894,7 +894,7 @@ impl Color {
 	/// Creates a color from a 6-character RGB hex string (without a # prefix).
 	///
 	/// ```
-	/// use graphene_core::raster::color::Color;
+	/// use graphene_core::color::Color;
 	/// let color = Color::from_rgb_str("7C67FA").unwrap();
 	/// ```
 	pub fn from_rgb_str(color_str: &str) -> Option<Color> {

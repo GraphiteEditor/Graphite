@@ -206,20 +206,13 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(ArrowUp); action_dispatch=ShapeToolMessage::IncreaseSides),
 		entry!(KeyDown(ArrowDown); action_dispatch=ShapeToolMessage::DecreaseSides),
 		//
-		// ImaginateToolMessage
-		// entry!(KeyDown(MouseLeft); action_dispatch=ImaginateToolMessage::DragStart),
-		// entry!(KeyUp(MouseLeft); action_dispatch=ImaginateToolMessage::DragStop),
-		// entry!(KeyDown(MouseRight); action_dispatch=ImaginateToolMessage::Abort),
-		// entry!(KeyDown(Escape); action_dispatch=ImaginateToolMessage::Abort),
-		// entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=ImaginateToolMessage::Resize { center: Alt, lock_ratio: Shift }),
-		//
 		// PathToolMessage
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=PathToolMessage::DeleteAndBreakPath),
 		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=PathToolMessage::DeleteAndBreakPath),
 		entry!(KeyDown(Delete); modifiers=[Shift], action_dispatch=PathToolMessage::BreakPath),
 		entry!(KeyDown(Backspace); modifiers=[Shift], action_dispatch=PathToolMessage::BreakPath),
 		entry!(KeyDownNoRepeat(Tab); action_dispatch=PathToolMessage::SwapSelectedHandles),
-		entry!(KeyDown(MouseLeft); action_dispatch=PathToolMessage::MouseDown { extend_selection: Shift, lasso_select: Control, handle_drag_from_anchor: Alt, drag_restore_handle: Control }),
+		entry!(KeyDown(MouseLeft); action_dispatch=PathToolMessage::MouseDown { extend_selection: Shift, lasso_select: Control, handle_drag_from_anchor: Alt, drag_restore_handle: Control, molding_in_segment_edit: KeyA }),
 		entry!(KeyDown(MouseRight); action_dispatch=PathToolMessage::RightClick),
 		entry!(KeyDown(Escape); action_dispatch=PathToolMessage::Escape),
 		entry!(KeyDown(KeyG); action_dispatch=PathToolMessage::GRS { key: KeyG }),

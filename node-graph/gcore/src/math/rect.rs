@@ -1,4 +1,4 @@
-use super::Quad;
+use crate::math::quad::Quad;
 use glam::{DAffine2, DVec2};
 
 #[derive(Debug, Clone, Default, Copy, PartialEq)]
@@ -41,11 +41,6 @@ impl Rect {
 	pub fn edges(&self) -> [[DVec2; 2]; 4] {
 		let corners = [self[0], DVec2::new(self[0].x, self[1].y), self[1], DVec2::new(self[1].y, self[0].x)];
 		[[corners[0], corners[1]], [corners[1], corners[2]], [corners[2], corners[3]], [corners[3], corners[0]]]
-	}
-
-	/// Get all the edges in the rect as linear bezier curves
-	pub fn bezier_lines(&self) -> impl Iterator<Item = bezier_rs::Bezier> + '_ {
-		self.edges().into_iter().map(|[start, end]| bezier_rs::Bezier::from_linear_dvec2(start, end))
 	}
 
 	/// Gets the center of a rect

@@ -2,7 +2,8 @@
 title = "Graphite features"
 
 [extra]
-css = ["/page/features.css", "/component/feature-box.css", "/component/feature-icons.css"]
+css = ["/page/features.css", "/component/feature-box.css", "/component/feature-icons.css", "/component/youtube-embed.css"]
+js = ["/js/youtube-embed.js"]
 +++
 
 <section>
@@ -13,6 +14,20 @@ css = ["/page/features.css", "/component/feature-box.css", "/component/feature-i
 The current alpha version of Graphite is a tool for vector art and graphic design. It also supports a limited, experimental raster editing toolset. This tooling is built around a procedural graphics engine, letting artists build complex graphics and animations in its visual scripting language.
 
 In 2025, stay tuned for performance improvements, native multiplatform desktop apps, and the beginnings of a full raster editing tool suite.
+
+</div>
+</section>
+
+<section>
+<div class="block">
+
+<div class="block video-container">
+<div>
+<div class="youtube-embed aspect-16x9">
+	<img data-youtube-embed="ZUbcwUC5lxA" loading="lazy" src="https://static.graphite.rs/content/features/podcast-interview-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Rust-Powered Graphics Editor: How Graphite's Syntax Trees Revolutionize Image Editing" />
+</div>
+</div>
+</div>
 
 </div>
 </section>
@@ -117,10 +132,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Procedural vector editing and usability</span>
 		</div>
-		<!-- <div class="feature-icon ongoing" title="Development Ongoing">
-			<img class="atlas" style="--atlas-index: 0" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Imaginate tool</span>
-		</div> -->
 		<!-- Alpha 4 -->
 		<div class="feature-icon ongoing heading" title="Began February 2025" data-year="2025">
 			<h3>— Alpha 4 —</h3>
@@ -209,6 +220,10 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Stable document format</span>
 		</div>
+		<!-- <div class="feature-icon ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 0" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Imaginate tool</span>
+		</div> -->
 		<!-- Beta -->
 		<div class="feature-icon heading">
 			<h3>— Beta —</h3>

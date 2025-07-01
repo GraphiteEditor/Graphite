@@ -12,8 +12,9 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graph_craft::{Type, concrete};
-use graphene_std::renderer::{ClickTarget, ClickTargetType, Quad};
+use graphene_std::math::quad::Quad;
 use graphene_std::transform::Footprint;
+use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::{PointId, VectorData, VectorModificationType};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use interpreted_executor::node_registry::NODE_REGISTRY;
@@ -1160,8 +1161,7 @@ impl NodeNetworkInterface {
 			.and_then(|node_metadata| node_metadata.persistent_metadata.input_properties.get(index))
 	}
 
-	pub fn insert_input_properties_row(&mut self, node_id: &NodeId, index: usize, network_path: &[NodeId]) {
-		let row = ("", "TODO").into();
+	pub fn insert_input_properties_row(&mut self, node_id: &NodeId, index: usize, network_path: &[NodeId], row: PropertiesRow) {
 		let _ = self
 			.node_metadata_mut(node_id, network_path)
 			.map(|node_metadata| node_metadata.persistent_metadata.input_properties.insert(index - 1, row));
@@ -6513,6 +6513,12 @@ impl PartialEq for LayerPersistentMetadata {
 pub struct NodePersistentMetadata {
 	/// Stores the position of a non layer node, which can either be Absolute or Chain
 	position: NodePosition,
+}
+
+impl NodePersistentMetadata {
+	pub fn new(position: NodePosition) -> Self {
+		Self { position }
+	}
 }
 
 /// A layer can either be position as Absolute or in a Stack

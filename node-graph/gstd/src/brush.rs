@@ -2,14 +2,14 @@ use crate::raster::{empty_image, extend_image_to_bounds};
 use glam::{DAffine2, DVec2};
 use graph_craft::generic::FnNode;
 use graph_craft::proto::FutureWrapperNode;
+use graphene_core::bounds::BoundingBox;
 use graphene_core::instances::Instance;
+use graphene_core::math::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::adjustments::blend_colors;
-use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::image::Image;
 use graphene_core::raster::{Alpha, BitmapMut, BlendMode, Color, Pixel, Sample};
 use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
-use graphene_core::renderer::GraphicElementRendered;
 use graphene_core::transform::Transform;
 use graphene_core::value::ClonedNode;
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
@@ -56,7 +56,7 @@ impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
 }
 
 #[node_macro::node(skip_impl)]
-fn brush_stamp_generator(diameter: f64, color: Color, hardness: f64, flow: f64) -> BrushStampGenerator<Color> {
+fn brush_stamp_generator(#[unit(" px")] diameter: f64, color: Color, hardness: f64, flow: f64) -> BrushStampGenerator<Color> {
 	// Diameter
 	let radius = diameter / 2.;
 

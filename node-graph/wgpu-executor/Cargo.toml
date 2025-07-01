@@ -11,8 +11,9 @@ passthrough = []
 
 [dependencies]
 # Local dependencies
-graphene-core = { workspace = true, features = ["wgpu", "vello"] }
+graphene-core = { workspace = true, features = ["wgpu"] }
 graphene-application-io = { workspace = true, features = ["wgpu"] }
+graphene-svg-renderer = { workspace = true, features = ["vello"] }
 dyn-any = { workspace = true }
 node-macro = { workspace = true }
 

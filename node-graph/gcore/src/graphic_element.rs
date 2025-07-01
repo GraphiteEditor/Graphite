@@ -1,5 +1,7 @@
+use crate::blending::AlphaBlending;
+use crate::bounds::BoundingBox;
 use crate::instances::{Instance, Instances};
-use crate::raster::BlendMode;
+use crate::math::quad::Quad;
 use crate::raster::image::Image;
 use crate::raster_types::{CPU, GPU, Raster, RasterDataTable};
 use crate::transform::TransformMut;
@@ -7,67 +9,8 @@ use crate::uuid::NodeId;
 use crate::vector::{VectorData, VectorDataTable};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use dyn_any::DynAny;
-use glam::{DAffine2, IVec2};
+use glam::{DAffine2, DVec2, IVec2};
 use std::hash::Hash;
-
-pub mod renderer;
-
-#[derive(Copy, Clone, Debug, PartialEq, DynAny, specta::Type, serde::Serialize, serde::Deserialize)]
-#[serde(default)]
-pub struct AlphaBlending {
-	pub blend_mode: BlendMode,
-	pub opacity: f32,
-	pub fill: f32,
-	pub clip: bool,
-}
-impl Default for AlphaBlending {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-impl Hash for AlphaBlending {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.opacity.to_bits().hash(state);
-		self.fill.to_bits().hash(state);
-		self.blend_mode.hash(state);
-		self.clip.hash(state);
-	}
-}
-impl std::fmt::Display for AlphaBlending {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let round = |x: f32| (x * 1e3).round() / 1e3;
-		write!(
-			f,
-			"Blend Mode: {} — Opacity: {}% — Fill: {}% — Clip: {}",
-			self.blend_mode,
-			round(self.opacity * 100.),
-			round(self.fill * 100.),
-			if self.clip { "Yes" } else { "No" }
-		)
-	}
-}
-
-impl AlphaBlending {
-	pub const fn new() -> Self {
-		Self {
-			opacity: 1.,
-			fill: 1.,
-			blend_mode: BlendMode::Normal,
-			clip: false,
-		}
-	}
-
-	pub fn lerp(&self, other: &Self, t: f32) -> Self {
-		let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
-
-		AlphaBlending {
-			opacity: lerp(self.opacity, other.opacity, t),
-			fill: lerp(self.fill, other.fill, t),
-			blend_mode: if t < 0.5 { self.blend_mode } else { other.blend_mode },
-			clip: if t < 0.5 { self.clip } else { other.clip },
-		}
-	}
-}
 
 // TODO: Eventually remove this migration document upgrade code
 pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GraphicGroupTable, D::Error> {
@@ -239,6 +182,25 @@ impl GraphicElement {
 	}
 }
 
+impl BoundingBox for GraphicElement {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
+		match self {
+			GraphicElement::VectorData(vector_data) => vector_data.bounding_box(transform, include_stroke),
+			GraphicElement::RasterDataCPU(raster) => raster.bounding_box(transform, include_stroke),
+			GraphicElement::RasterDataGPU(raster) => raster.bounding_box(transform, include_stroke),
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform, include_stroke),
+		}
+	}
+}
+
+impl BoundingBox for GraphicGroupTable {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
+		self.instance_ref_iter()
+			.filter_map(|element| element.instance.bounding_box(transform * *element.transform, include_stroke))
+			.reduce(Quad::combine_bounds)
+	}
+}
+
 impl<'de> serde::Deserialize<'de> for Raster<CPU> {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
@@ -304,6 +266,20 @@ impl Artboard {
 	}
 }
 
+impl BoundingBox for Artboard {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
+		let artboard_bounds = (transform * Quad::from_box([self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()])).bounding_box();
+		if self.clip {
+			Some(artboard_bounds)
+		} else {
+			[self.graphic_group.bounding_box(transform, include_stroke), Some(artboard_bounds)]
+				.into_iter()
+				.flatten()
+				.reduce(Quad::combine_bounds)
+		}
+	}
+}
+
 // TODO: Eventually remove this migration document upgrade code
 pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<ArtboardGroupTable, D::Error> {
 	use serde::Deserialize;
@@ -339,8 +315,21 @@ pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D)
 
 pub type ArtboardGroupTable = Instances<Artboard>;
 
+impl BoundingBox for ArtboardGroupTable {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
+		self.instance_ref_iter()
+			.filter_map(|instance| instance.instance.bounding_box(transform, include_stroke))
+			.reduce(Quad::combine_bounds)
+	}
+}
+
 #[node_macro::node(category(""))]
-async fn layer(_: impl Ctx, mut stack: GraphicGroupTable, element: GraphicElement, node_path: Vec<NodeId>) -> GraphicGroupTable {
+async fn layer<I: 'n + Send + Clone>(
+	_: impl Ctx,
+	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>, RasterDataTable<GPU>)] mut stack: Instances<I>,
+	#[implementations(GraphicElement, VectorData, Raster<CPU>, Raster<GPU>)] element: I,
+	node_path: Vec<NodeId>,
+) -> Instances<I> {
 	// Get the penultimate element of the node path, or None if the path is too short
 	let source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 
@@ -556,5 +545,59 @@ impl From<VectorDataTable> for GraphicElement {
 impl From<GraphicGroupTable> for GraphicElement {
 	fn from(graphic_group: GraphicGroupTable) -> Self {
 		GraphicElement::GraphicGroup(graphic_group)
+	}
+}
+
+pub trait ToGraphicElement {
+	fn to_graphic_element(&self) -> GraphicElement;
+}
+
+/// Returns the value at the specified index in the collection.
+/// If that index has no value, the type's default value is returned.
+#[node_macro::node(category("General"))]
+fn index<T: AtIndex + Clone + Default>(
+	_: impl Ctx,
+	/// The collection of data, such as a list or table.
+	#[implementations(
+		Vec<Color>,
+		Vec<Option<Color>>,
+		Vec<f64>, Vec<u64>,
+		Vec<DVec2>,
+		VectorDataTable,
+		RasterDataTable<CPU>,
+		GraphicGroupTable,
+	)]
+	collection: T,
+	/// The index of the item to retrieve, starting from 0 for the first item.
+	index: u32,
+) -> T::Output
+where
+	T::Output: Clone + Default,
+{
+	collection.at_index(index as usize).unwrap_or_default()
+}
+
+pub trait AtIndex {
+	type Output;
+	fn at_index(&self, index: usize) -> Option<Self::Output>;
+}
+impl<T: Clone> AtIndex for Vec<T> {
+	type Output = T;
+
+	fn at_index(&self, index: usize) -> Option<Self::Output> {
+		self.get(index).cloned()
+	}
+}
+impl<T: Clone> AtIndex for Instances<T> {
+	type Output = Instances<T>;
+
+	fn at_index(&self, index: usize) -> Option<Self::Output> {
+		let mut result_table = Self::default();
+		if let Some(row) = self.instance_ref_iter().nth(index) {
+			result_table.push(row.to_instance_cloned());
+			Some(result_table)
+		} else {
+			None
+		}
 	}
 }

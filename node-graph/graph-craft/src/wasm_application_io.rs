@@ -317,14 +317,10 @@ pub type WasmSurfaceHandleFrame = graphene_application_io::SurfaceHandleFrame<wg
 
 #[derive(Clone, Debug, PartialEq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct EditorPreferences {
-	// pub imaginate_hostname: String,
 	pub use_vello: bool,
 }
 
 impl graphene_application_io::GetEditorPreferences for EditorPreferences {
-	// fn hostname(&self) -> &str {
-	// 	&self.imaginate_hostname
-	// }
 	fn use_vello(&self) -> bool {
 		self.use_vello
 	}
@@ -333,7 +329,6 @@ impl graphene_application_io::GetEditorPreferences for EditorPreferences {
 impl Default for EditorPreferences {
 	fn default() -> Self {
 		Self {
-			// imaginate_hostname: "http://localhost:7860/".into(),
 			#[cfg(target_arch = "wasm32")]
 			use_vello: false,
 			#[cfg(not(target_arch = "wasm32"))]
