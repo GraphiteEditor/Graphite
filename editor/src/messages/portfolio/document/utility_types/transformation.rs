@@ -8,10 +8,8 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::ToolType;
 use glam::{DAffine2, DMat2, DVec2};
-use graphene_core::renderer::Quad;
-use graphene_core::vector::ManipulatorPointId;
-use graphene_core::vector::VectorModificationType;
-use graphene_std::vector::{HandleId, PointId};
+use graphene_std::renderer::Quad;
+use graphene_std::vector::{HandleExt, HandleId, ManipulatorPointId, PointId, VectorModificationType};
 use std::collections::{HashMap, VecDeque};
 use std::f64::consts::PI;
 
@@ -88,6 +86,18 @@ impl OriginalTransforms {
 					let Some(selected_points) = shape_editor.selected_points_in_layer(layer) else {
 						continue;
 					};
+					let Some(selected_segments) = shape_editor.selected_segments_in_layer(layer) else {
+						continue;
+					};
+
+					let mut selected_points = selected_points.clone();
+
+					for (segment_id, _, start, end) in vector_data.segment_bezier_iter() {
+						if selected_segments.contains(&segment_id) {
+							selected_points.insert(ManipulatorPointId::Anchor(start));
+							selected_points.insert(ManipulatorPointId::Anchor(end));
+						}
+					}
 
 					// Anchors also move their handles
 					let anchor_ids = selected_points.iter().filter_map(|point| point.as_anchor());
@@ -604,7 +614,7 @@ impl<'a> Selected<'a> {
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
 		}
 
-		if transform_operation.is_some_and(|transform_operation| matches!(transform_operation, TransformOperation::Scaling(_))) && initial_points.anchors.len() > 1 {
+		if transform_operation.is_some_and(|transform_operation| matches!(transform_operation, TransformOperation::Scaling(_))) && (initial_points.anchors.len() == 2) {
 			return;
 		}
 
@@ -635,17 +645,17 @@ impl<'a> Selected<'a> {
 	}
 
 	pub fn apply_transformation(&mut self, transformation: DAffine2, transform_operation: Option<TransformOperation>) {
-		if !self.selected.is_empty() {
-			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-			for layer in self.network_interface.shallowest_unique_layers(&[]) {
-				match &mut self.original_transforms {
-					OriginalTransforms::Layer(layer_transforms) => {
-						Self::transform_layer(self.network_interface.document_metadata(), layer, layer_transforms.get(&layer), transformation, self.responses)
-					}
-					OriginalTransforms::Path(path_transforms) => {
-						if let Some(initial_points) = path_transforms.get_mut(&layer) {
-							Self::transform_path(self.network_interface.document_metadata(), layer, initial_points, transformation, self.responses, transform_operation)
-						}
+		if self.selected.is_empty() {
+			return;
+		}
+
+		// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
+		for layer in self.network_interface.shallowest_unique_layers(&[]) {
+			match &mut self.original_transforms {
+				OriginalTransforms::Layer(layer_transforms) => Self::transform_layer(self.network_interface.document_metadata(), layer, layer_transforms.get(&layer), transformation, self.responses),
+				OriginalTransforms::Path(path_transforms) => {
+					if let Some(initial_points) = path_transforms.get_mut(&layer) {
+						Self::transform_path(self.network_interface.document_metadata(), layer, initial_points, transformation, self.responses, transform_operation)
 					}
 				}
 			}

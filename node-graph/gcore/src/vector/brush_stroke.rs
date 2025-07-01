@@ -1,13 +1,12 @@
 use crate::Color;
+use crate::math::bbox::AxisAlignedBbox;
 use crate::raster::BlendMode;
-use crate::raster::bbox::AxisAlignedBbox;
 use dyn_any::DynAny;
 use glam::DVec2;
 use std::hash::{Hash, Hasher};
 
 /// The style of a brush.
-#[derive(Clone, Debug, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct BrushStyle {
 	pub color: Color,
 	pub diameter: f64,
@@ -37,6 +36,7 @@ impl Hash for BrushStyle {
 		self.hardness.to_bits().hash(state);
 		self.flow.to_bits().hash(state);
 		self.spacing.to_bits().hash(state);
+		self.blend_mode.hash(state);
 	}
 }
 
@@ -54,8 +54,7 @@ impl PartialEq for BrushStyle {
 }
 
 /// A single sample of brush parameters across the brush stroke.
-#[derive(Clone, Debug, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct BrushInputSample {
 	// The position of the sample in layer space, in pixels.
 	// The origin of layer space is not specified.
@@ -71,8 +70,7 @@ impl Hash for BrushInputSample {
 }
 
 /// The parameters for a single stroke brush.
-#[derive(Clone, Debug, PartialEq, Hash, Default, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, Hash, Default, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct BrushStroke {
 	pub style: BrushStyle,
 	pub trace: Vec<BrushInputSample>,

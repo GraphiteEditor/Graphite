@@ -35,7 +35,9 @@ Comments should usually be placed on a separate line above the code they are ref
 
 ## Blank lines
 
-Please make a habit of grouping together related lines of code in blocks separated by blank lines. If you have dozens of lines comprising a single unbroken block of logic, you are likely not splitting it apart enough to aid readability. Find sensible places to partition the logic and insert blank lines between each. Roughly 10% of the code you write should ideally be blank lines, otherwise you are likely underutilizing them at the expense of readability.
+Please make a habit of grouping together related lines of code in blocks separated by blank lines. These are like your paragraphs if you were writing a novel — they greatly aid readability and your copy editor would have significant concerns with your writing if they were absent.
+
+If you have dozens of lines comprising a single unbroken block of logic, you are likely not splitting it apart enough to aid readability. Find sensible places to partition the logic and insert blank lines between each. Roughly 10% of the code you write should ideally be blank lines, otherwise you are likely underutilizing them at the expense of readability.
 
 ## Imports
 

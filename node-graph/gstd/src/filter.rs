@@ -1,7 +1,7 @@
 use graph_craft::proto::types::PixelLength;
-use graphene_core::raster::image::{Image, ImageFrameTable};
+use graphene_core::raster::image::Image;
 use graphene_core::raster::{Bitmap, BitmapMut};
-use graphene_core::transform::{Transform, TransformMut};
+use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::{Color, Ctx};
 
 /// Blurs the image with a Gaussian or blur kernel filter.
@@ -9,7 +9,7 @@ use graphene_core::{Color, Ctx};
 async fn blur(
 	_: impl Ctx,
 	/// The image to be blurred.
-	image_frame: ImageFrameTable<Color>,
+	image_frame: RasterDataTable<CPU>,
 	/// The radius of the blur kernel.
 	#[range((0., 100.))]
 	#[hard_min(0.)]
@@ -18,27 +18,28 @@ async fn blur(
 	box_blur: bool,
 	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
 	gamma: bool,
-) -> ImageFrameTable<Color> {
-	let image_frame_transform = image_frame.transform();
-	let image_frame_alpha_blending = image_frame.one_instance_ref().alpha_blending;
+) -> RasterDataTable<CPU> {
+	let mut result_table = RasterDataTable::default();
 
-	let image = image_frame.one_instance_ref().instance.clone();
+	for mut image_instance in image_frame.instance_iter() {
+		let image = image_instance.instance.clone();
 
-	// Run blur algorithm
-	let blurred_image = if radius < 0.1 {
-		// Minimum blur radius
-		image.clone()
-	} else if box_blur {
-		box_blur_algorithm(image, radius, gamma)
-	} else {
-		gaussian_blur_algorithm(image, radius, gamma)
-	};
+		// Run blur algorithm
+		let blurred_image = if radius < 0.1 {
+			// Minimum blur radius
+			image.clone()
+		} else if box_blur {
+			Raster::new_cpu(box_blur_algorithm(image.into_data(), radius, gamma))
+		} else {
+			Raster::new_cpu(gaussian_blur_algorithm(image.into_data(), radius, gamma))
+		};
 
-	let mut result = ImageFrameTable::new(blurred_image);
-	*result.transform_mut() = image_frame_transform;
-	*result.one_instance_mut().alpha_blending = *image_frame_alpha_blending;
+		image_instance.instance = blurred_image;
+		image_instance.source_node_id = None;
+		result_table.push(image_instance);
+	}
 
-	result
+	result_table
 }
 
 // 1D gaussian kernel

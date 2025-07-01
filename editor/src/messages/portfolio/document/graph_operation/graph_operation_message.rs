@@ -5,14 +5,14 @@ use crate::messages::prelude::*;
 use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::NodeId;
-use graphene_core::raster::BlendMode;
-use graphene_core::raster::image::ImageFrameTable;
-use graphene_core::text::{Font, TypesettingConfig};
-use graphene_core::vector::PointId;
-use graphene_core::vector::VectorModificationType;
-use graphene_core::vector::brush_stroke::BrushStroke;
-use graphene_core::vector::style::{Fill, Stroke};
-use graphene_core::{Artboard, Color};
+use graphene_std::Artboard;
+use graphene_std::raster::BlendMode;
+use graphene_std::raster_types::{CPU, RasterDataTable};
+use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::vector::PointId;
+use graphene_std::vector::VectorModificationType;
+use graphene_std::vector::brush_stroke::BrushStroke;
+use graphene_std::vector::style::{Fill, Stroke};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -21,6 +21,10 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		fill: Fill,
 	},
+	BlendingFillSet {
+		layer: LayerNodeIdentifier,
+		fill: f64,
+	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,
 		opacity: f64,
@@ -28,6 +32,9 @@ pub enum GraphOperationMessage {
 	BlendModeSet {
 		layer: LayerNodeIdentifier,
 		blend_mode: BlendMode,
+	},
+	ClipModeToggle {
+		layer: LayerNodeIdentifier,
 	},
 	StrokeSet {
 		layer: LayerNodeIdentifier,
@@ -66,13 +73,13 @@ pub enum GraphOperationMessage {
 	},
 	NewBitmapLayer {
 		id: NodeId,
-		image_frame: ImageFrameTable<Color>,
+		image_frame: RasterDataTable<CPU>,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
 	NewBooleanOperationLayer {
 		id: NodeId,
-		operation: graphene_std::vector::misc::BooleanOperation,
+		operation: graphene_std::path_bool::BooleanOperation,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},

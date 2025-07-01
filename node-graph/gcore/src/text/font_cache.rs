@@ -61,8 +61,8 @@ impl FontCache {
 	}
 }
 
-impl core::hash::Hash for FontCache {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl std::hash::Hash for FontCache {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.preview_urls.len().hash(state);
 		self.preview_urls.iter().for_each(|(font, url)| {
 			font.hash(state);

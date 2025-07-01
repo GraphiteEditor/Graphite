@@ -16,6 +16,4 @@ pub enum PreferencesMessage {
 	ModifyLayout { zoom_with_scroll: bool },
 	GraphWireStyle { style: GraphWireStyle },
 	ViewportZoomWheelRate { rate: f64 },
-	// ImaginateRefreshFrequency { seconds: f64 },
-	// ImaginateServerHostname { hostname: String },
 }

@@ -12,8 +12,9 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graph_craft::{Type, concrete};
-use graphene_std::renderer::{ClickTarget, Quad};
+use graphene_std::math::quad::Quad;
 use graphene_std::transform::Footprint;
+use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::{PointId, VectorData, VectorModificationType};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use interpreted_executor::node_registry::NODE_REGISTRY;
@@ -485,7 +486,7 @@ impl NodeNetworkInterface {
 			InputConnector::Export(export_index) => {
 				let Some((encapsulating_node_id, encapsulating_node_id_path)) = network_path.split_last() else {
 					// The outermost network export defaults to an ArtboardGroupTable.
-					return Some((concrete!(graphene_core::ArtboardGroupTable), TypeSource::OuterMostExportDefault));
+					return Some((concrete!(graphene_std::ArtboardGroupTable), TypeSource::OuterMostExportDefault));
 				};
 
 				let output_type = self.output_types(encapsulating_node_id, encapsulating_node_id_path).into_iter().nth(export_index).flatten();
@@ -1158,6 +1159,13 @@ impl NodeNetworkInterface {
 	pub fn input_properties_row(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&PropertiesRow> {
 		self.node_metadata(node_id, network_path)
 			.and_then(|node_metadata| node_metadata.persistent_metadata.input_properties.get(index))
+	}
+
+	pub fn insert_input_properties_row(&mut self, node_id: &NodeId, index: usize, network_path: &[NodeId]) {
+		let row = ("", "TODO").into();
+		let _ = self
+			.node_metadata_mut(node_id, network_path)
+			.map(|node_metadata| node_metadata.persistent_metadata.input_properties.insert(index - 1, row));
 	}
 
 	pub fn input_metadata(&self, node_id: &NodeId, index: usize, field: &str, network_path: &[NodeId]) -> Option<&Value> {
@@ -2120,7 +2128,7 @@ impl NodeNetworkInterface {
 			let bounding_box_top_right = DVec2::new((all_nodes_bounding_box[1].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + offset_from_top_right;
 			let export_top_right: DVec2 = DVec2::new(viewport_top_right.x.max(bounding_box_top_right.x), viewport_top_right.y.min(bounding_box_top_right.y));
 			let add_export_center = export_top_right + DVec2::new(0., network.exports.len() as f64 * 24.);
-			let add_export = ClickTarget::new(
+			let add_export = ClickTarget::new_with_subpath(
 				Subpath::new_rounded_rect(add_export_center - DVec2::new(12., 12.), add_export_center + DVec2::new(12., 12.), [3.; 4]),
 				0.,
 			);
@@ -2146,7 +2154,7 @@ impl NodeNetworkInterface {
 			let bounding_box_top_left = DVec2::new((all_nodes_bounding_box[0].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + offset_from_top_left;
 			let import_top_left = DVec2::new(viewport_top_left.x.min(bounding_box_top_left.x), viewport_top_left.y.min(bounding_box_top_left.y));
 			let add_import_center = import_top_left + DVec2::new(0., self.number_of_displayed_imports(network_path) as f64 * 24.);
-			let add_import = ClickTarget::new(
+			let add_import = ClickTarget::new_with_subpath(
 				Subpath::new_rounded_rect(add_import_center - DVec2::new(12., 12.), add_import_center + DVec2::new(12., 12.), [3.; 4]),
 				0.,
 			);
@@ -2165,8 +2173,8 @@ impl NodeNetworkInterface {
 				let reorder_import_center = (import_bounding_box[0] + import_bounding_box[1]) / 2. + DVec2::new(-12., 0.);
 				let remove_import_center = reorder_import_center + DVec2::new(-12., 0.);
 
-				let reorder_import = ClickTarget::new(Subpath::new_rect(reorder_import_center - DVec2::new(3., 4.), reorder_import_center + DVec2::new(3., 4.)), 0.);
-				let remove_import = ClickTarget::new(Subpath::new_rect(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
+				let reorder_import = ClickTarget::new_with_subpath(Subpath::new_rect(reorder_import_center - DVec2::new(3., 4.), reorder_import_center + DVec2::new(3., 4.)), 0.);
+				let remove_import = ClickTarget::new_with_subpath(Subpath::new_rect(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
 
 				reorder_imports_exports.insert_custom_output_port(*import_index, reorder_import);
 				remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
@@ -2180,8 +2188,8 @@ impl NodeNetworkInterface {
 				let reorder_export_center = (export_bounding_box[0] + export_bounding_box[1]) / 2. + DVec2::new(12., 0.);
 				let remove_export_center = reorder_export_center + DVec2::new(12., 0.);
 
-				let reorder_export = ClickTarget::new(Subpath::new_rect(reorder_export_center - DVec2::new(3., 4.), reorder_export_center + DVec2::new(3., 4.)), 0.);
-				let remove_export = ClickTarget::new(Subpath::new_rect(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
+				let reorder_export = ClickTarget::new_with_subpath(Subpath::new_rect(reorder_export_center - DVec2::new(3., 4.), reorder_export_center + DVec2::new(3., 4.)), 0.);
+				let remove_export = ClickTarget::new_with_subpath(Subpath::new_rect(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
 
 				reorder_imports_exports.insert_custom_input_port(*export_index, reorder_export);
 				remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
@@ -2572,7 +2580,7 @@ impl NodeNetworkInterface {
 
 			let radius = 3.;
 			let subpath = bezier_rs::Subpath::new_rounded_rect(node_click_target_top_left, node_click_target_bottom_right, [radius; 4]);
-			let node_click_target = ClickTarget::new(subpath, 0.);
+			let node_click_target = ClickTarget::new_with_subpath(subpath, 0.);
 
 			DocumentNodeClickTargets {
 				node_click_target,
@@ -2597,12 +2605,12 @@ impl NodeNetworkInterface {
 			// Update visibility button click target
 			let visibility_offset = node_top_left + DVec2::new(width as f64, 24.);
 			let subpath = Subpath::new_rounded_rect(DVec2::new(-12., -12.) + visibility_offset, DVec2::new(12., 12.) + visibility_offset, [3.; 4]);
-			let visibility_click_target = ClickTarget::new(subpath, 0.);
+			let visibility_click_target = ClickTarget::new_with_subpath(subpath, 0.);
 
 			// Update grip button click target, which is positioned to the left of the left most icon
 			let grip_offset_right_edge = node_top_left + DVec2::new(width as f64 - (GRID_SIZE as f64) / 2., 24.);
 			let subpath = Subpath::new_rounded_rect(DVec2::new(-8., -12.) + grip_offset_right_edge, DVec2::new(0., 12.) + grip_offset_right_edge, [0.; 4]);
-			let grip_click_target = ClickTarget::new(subpath, 0.);
+			let grip_click_target = ClickTarget::new_with_subpath(subpath, 0.);
 
 			// Create layer click target, which is contains the layer and the chain background
 			let chain_width_grid_spaces = self.chain_width(node_id, network_path);
@@ -2611,7 +2619,7 @@ impl NodeNetworkInterface {
 			let chain_top_left = node_top_left - DVec2::new((chain_width_grid_spaces * crate::consts::GRID_SIZE) as f64, 0.);
 			let radius = 10.;
 			let subpath = bezier_rs::Subpath::new_rounded_rect(chain_top_left, node_bottom_right, [radius; 4]);
-			let node_click_target = ClickTarget::new(subpath, 0.);
+			let node_click_target = ClickTarget::new_with_subpath(subpath, 0.);
 
 			DocumentNodeClickTargets {
 				node_click_target,
@@ -2804,20 +2812,29 @@ impl NodeNetworkInterface {
 			if let (Some(import_export_click_targets), Some(node_click_targets)) = (self.import_export_ports(network_path).cloned(), self.node_click_targets(&node_id, network_path)) {
 				let mut node_path = String::new();
 
-				let _ = node_click_targets.node_click_target.subpath().subpath_to_svg(&mut node_path, DAffine2::IDENTITY);
+				if let ClickTargetType::Subpath(subpath) = node_click_targets.node_click_target.target_type() {
+					let _ = subpath.subpath_to_svg(&mut node_path, DAffine2::IDENTITY);
+				}
 				all_node_click_targets.push((node_id, node_path));
 				for port in node_click_targets.port_click_targets.click_targets().chain(import_export_click_targets.click_targets()) {
-					let mut port_path = String::new();
-					let _ = port.subpath().subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
-					port_click_targets.push(port_path);
+					if let ClickTargetType::Subpath(subpath) = port.target_type() {
+						let mut port_path = String::new();
+						let _ = subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
+						port_click_targets.push(port_path);
+					}
 				}
 				if let NodeTypeClickTargets::Layer(layer_metadata) = &node_click_targets.node_type_metadata {
-					let mut port_path = String::new();
-					let _ = layer_metadata.visibility_click_target.subpath().subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
-					icon_click_targets.push(port_path);
-					let mut port_path = String::new();
-					let _ = layer_metadata.grip_click_target.subpath().subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
-					icon_click_targets.push(port_path);
+					if let ClickTargetType::Subpath(subpath) = layer_metadata.visibility_click_target.target_type() {
+						let mut port_path = String::new();
+						let _ = subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
+						icon_click_targets.push(port_path);
+					}
+
+					if let ClickTargetType::Subpath(subpath) = layer_metadata.grip_click_target.target_type() {
+						let mut port_path = String::new();
+						let _ = subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
+						icon_click_targets.push(port_path);
+					}
 				}
 			}
 		});
@@ -2872,9 +2889,11 @@ impl NodeNetworkInterface {
 				.chain(modify_import_export_click_targets.remove_imports_exports.click_targets())
 				.chain(modify_import_export_click_targets.reorder_imports_exports.click_targets())
 			{
-				let mut remove_string = String::new();
-				let _ = click_target.subpath().subpath_to_svg(&mut remove_string, DAffine2::IDENTITY);
-				modify_import_export.push(remove_string);
+				if let ClickTargetType::Subpath(subpath) = click_target.target_type() {
+					let mut remove_string = String::new();
+					let _ = subpath.subpath_to_svg(&mut remove_string, DAffine2::IDENTITY);
+					modify_import_export.push(remove_string);
+				}
 			}
 		}
 		FrontendClickTargets {
@@ -3113,7 +3132,7 @@ impl NodeNetworkInterface {
 				self.node_click_targets(node_id, network_path)
 					.and_then(|transient_node_metadata| transient_node_metadata.node_click_target.bounding_box())
 			})
-			.reduce(graphene_core::renderer::Quad::combine_bounds)
+			.reduce(graphene_std::renderer::Quad::combine_bounds)
 	}
 
 	/// Gets the bounding box in viewport coordinates for each node in the node graph
@@ -3174,8 +3193,8 @@ impl NodeNetworkInterface {
 		self.document_metadata
 			.click_targets
 			.get(&layer)
-			.map(|click| click.iter().map(ClickTarget::subpath))
-			.map(|subpaths| VectorData::from_subpaths(subpaths, true))
+			.map(|click| click.iter().map(ClickTarget::target_type))
+			.map(|target_types| VectorData::from_target_types(target_types, true))
 	}
 
 	/// Loads the structure of layer nodes from a node graph.
@@ -3803,6 +3822,15 @@ impl NodeNetworkInterface {
 			return;
 		};
 		node_metadata.persistent_metadata.network_metadata = metadata.network_metadata;
+	}
+
+	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
+	pub fn replace_reference_name(&mut self, node_id: &NodeId, network_path: &[NodeId], reference_name: String) {
+		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+			log::error!("Could not get node metadata in replace_reference_name");
+			return;
+		};
+		node_metadata.persistent_metadata.reference = Some(reference_name);
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
@@ -5884,7 +5912,7 @@ impl Ports {
 
 	fn insert_input_port_at_center(&mut self, input_index: usize, center: DVec2) {
 		let subpath = Subpath::new_ellipse(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
-		self.insert_custom_input_port(input_index, ClickTarget::new(subpath, 0.));
+		self.insert_custom_input_port(input_index, ClickTarget::new_with_subpath(subpath, 0.));
 	}
 
 	fn insert_custom_input_port(&mut self, input_index: usize, click_target: ClickTarget) {
@@ -5893,7 +5921,7 @@ impl Ports {
 
 	fn insert_output_port_at_center(&mut self, output_index: usize, center: DVec2) {
 		let subpath = Subpath::new_ellipse(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
-		self.insert_custom_output_port(output_index, ClickTarget::new(subpath, 0.));
+		self.insert_custom_output_port(output_index, ClickTarget::new_with_subpath(subpath, 0.));
 	}
 
 	fn insert_custom_output_port(&mut self, output_index: usize, click_target: ClickTarget) {
@@ -6486,6 +6514,12 @@ impl PartialEq for LayerPersistentMetadata {
 pub struct NodePersistentMetadata {
 	/// Stores the position of a non layer node, which can either be Absolute or Chain
 	position: NodePosition,
+}
+
+impl NodePersistentMetadata {
+	pub fn new(position: NodePosition) -> Self {
+		Self { position }
+	}
 }
 
 /// A layer can either be position as Absolute or in a Stack

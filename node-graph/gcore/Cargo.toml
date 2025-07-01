@@ -7,85 +7,43 @@ authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "MIT OR Apache-2.0"
 
 [features]
-default = ["serde", "kurbo", "log", "std", "rand_chacha", "wasm"]
-log = ["dep:log"]
-gpu = ["spirv-std", "glam/bytemuck", "dyn-any", "glam/libm"]
+default = ["serde"]
 nightly = []
-alloc = ["dyn-any", "bezier-rs"]
 type_id_logging = []
-wasm = ["web-sys"]
 wgpu = ["dep:wgpu"]
-vello = ["dep:vello", "bezier-rs/kurbo", "wgpu"]
-dealloc_nodes = ["reflections"]
-std = [
-	"dyn-any",
-	"dyn-any/std",
-	"alloc",
-	"glam/std",
-	"specta",
-	"num-traits/std",
-	"rustybuzz",
-	"image",
-	"reflections",
-]
-reflections = ["alloc", "ctor"]
-serde = [
-	"dep:serde",
-	"glam/serde",
-	"bezier-rs/serde",
-	"bezier-rs/serde",
-	"half/serde",
-	"base64",
-]
+dealloc_nodes = []
 
 [dependencies]
 # Workspace dependencies
-bytemuck = { workspace = true, features = ["derive"] }
+bytemuck = { workspace = true }
 node-macro = { workspace = true }
 num-derive = { workspace = true }
-num-traits = { workspace = true, default-features = false, features = ["i128"] }
-usvg = { workspace = true }
-rand = { workspace = true, default-features = false, features = ["std_rng"] }
-glam = { workspace = true, default-features = false, features = [
-	"scalar-math",
-] }
+num-traits = { workspace = true }
+rand = { workspace = true }
+glam = { workspace = true }
 serde_json = { workspace = true }
-petgraph = { workspace = true, default-features = false, features = [
-	"graphmap",
-] }
+petgraph = { workspace = true }
 rustc-hash = { workspace = true }
-math-parser = { path = "../../libraries/math-parser" }
-
-# Required dependencies
-half = { version = "2.4.1", default-features = false, features = ["bytemuck"] }
-tinyvec = { version = "1" }
+dyn-any = { workspace = true }
+ctor = { workspace = true }
+rand_chacha = { workspace = true }
+bezier-rs = { workspace = true }
+specta = { workspace = true }
+rustybuzz = { workspace = true }
+image = { workspace = true }
+half = { workspace = true }
+tinyvec = { workspace = true }
+kurbo = { workspace = true }
+log = { workspace = true }
+base64 = { workspace = true }
 
 # Optional workspace dependencies
-dyn-any = { workspace = true, optional = true }
-spirv-std = { workspace = true, optional = true }
-serde = { workspace = true, optional = true, features = ["derive"] }
-ctor = { workspace = true, optional = true }
-log = { workspace = true, optional = true }
-rand_chacha = { workspace = true, optional = true }
-bezier-rs = { workspace = true, optional = true, features = ["log"] }
-kurbo = { workspace = true, optional = true }
-base64 = { workspace = true, optional = true }
-vello = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
-specta = { workspace = true, optional = true }
-rustybuzz = { workspace = true, optional = true }
-wasm-bindgen = { workspace = true, optional = true }
-js-sys = { workspace = true, optional = true }
-web-sys = { workspace = true, optional = true, features = [
-	"HtmlCanvasElement",
-] }
-image = { workspace = true, optional = true, default-features = false, features = [
-	"png",
-] }
 
 [dev-dependencies]
 # Workspace dependencies
-tokio = { workspace = true, features = ["rt", "macros"] }
+tokio = { workspace = true }
 serde_json = { workspace = true }
 
 [lints.rust]

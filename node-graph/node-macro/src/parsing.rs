@@ -7,7 +7,8 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::{Comma, RArrow};
 use syn::{
-	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam, WhereClause, parse_quote,
+	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam, WhereClause,
+	parse_quote,
 };
 
 use crate::codegen::generate_node_code;
@@ -87,10 +88,10 @@ impl Parse for ParsedWidgetOverride {
 					let lit: LitStr = input.parse()?;
 					Ok(ParsedWidgetOverride::Custom(lit))
 				}
-				_ => Err(syn::Error::new(variant.span(), "Unknown ParsedWidgetOverride variant")),
+				_ => Err(Error::new(variant.span(), "Unknown ParsedWidgetOverride variant")),
 			}
 		} else {
-			Err(syn::Error::new(input.span(), "Expected ParsedWidgetOverride::<variant>"))
+			Err(Error::new(input.span(), "Expected ParsedWidgetOverride::<variant>"))
 		}
 	}
 }
@@ -110,7 +111,10 @@ pub(crate) enum ParsedField {
 		number_hard_min: Option<LitFloat>,
 		number_hard_max: Option<LitFloat>,
 		number_mode_range: Option<ExprTuple>,
+		number_display_decimal_places: Option<LitInt>,
+		number_step: Option<LitFloat>,
 		implementations: Punctuated<Type, Comma>,
+		unit: Option<LitStr>,
 	},
 	Node {
 		pat_ident: PatIdent,
@@ -119,7 +123,10 @@ pub(crate) enum ParsedField {
 		widget_override: ParsedWidgetOverride,
 		input_type: Type,
 		output_type: Type,
+		number_display_decimal_places: Option<LitInt>,
+		number_step: Option<LitFloat>,
 		implementations: Punctuated<Implementation, Comma>,
+		unit: Option<LitStr>,
 	},
 }
 #[derive(Debug)]
@@ -466,6 +473,35 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		}
 	}
 
+	let unit = extract_attribute(attrs, "unit")
+		.map(|attr| attr.parse_args::<LitStr>().map_err(|_e| Error::new_spanned(attr, format!("Expected a unit type as string"))))
+		.transpose()?;
+
+	let number_display_decimal_places = extract_attribute(attrs, "display_decimal_places")
+		.map(|attr| {
+			attr.parse_args::<LitInt>().map_err(|e| {
+				Error::new_spanned(
+					attr,
+					format!("Invalid `integer` for number of decimals for argument '{}': {}\nUSAGE EXAMPLE: #[display_decimal_places(2)]", ident, e),
+				)
+			})
+		})
+		.transpose()?
+		.map(|f| {
+			if let Err(e) = f.base10_parse::<u32>() {
+				Err(Error::new_spanned(f, format!("Expected a `u32` for `display_decimal_places` for '{}': {}", ident, e)))
+			} else {
+				Ok(f)
+			}
+		})
+		.transpose()?;
+	let number_step = extract_attribute(attrs, "step")
+		.map(|attr| {
+			attr.parse_args::<LitFloat>()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid `step` for argument '{}': {}\nUSAGE EXAMPLE: #[step(2.)]", ident, e)))
+		})
+		.transpose()?;
+
 	let (is_node, node_input_type, node_output_type) = parse_node_type(&ty);
 	let description = attrs
 		.iter()
@@ -502,7 +538,10 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			widget_override,
 			input_type,
 			output_type,
+			number_display_decimal_places,
+			number_step,
 			implementations,
+			unit,
 		})
 	} else {
 		let implementations = extract_attribute(attrs, "implementations")
@@ -520,9 +559,12 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			number_hard_min,
 			number_hard_max,
 			number_mode_range,
+			number_display_decimal_places,
+			number_step,
 			ty,
 			value_source,
 			implementations,
+			unit,
 		})
 	}
 }
@@ -738,7 +780,10 @@ mod tests {
 				number_hard_min: None,
 				number_hard_max: None,
 				number_mode_range: None,
+				number_display_decimal_places: None,
+				number_step: None,
 				implementations: Punctuated::new(),
+				unit: None,
 			}],
 			body: TokenStream2::new(),
 			crate_name: FoundCrate::Itself,
@@ -790,7 +835,10 @@ mod tests {
 					widget_override: ParsedWidgetOverride::None,
 					input_type: parse_quote!(Footprint),
 					output_type: parse_quote!(T),
+					number_display_decimal_places: None,
+					number_step: None,
 					implementations: Punctuated::new(),
+					unit: None,
 				},
 				ParsedField::Regular {
 					pat_ident: pat_ident("translate"),
@@ -805,7 +853,10 @@ mod tests {
 					number_hard_min: None,
 					number_hard_max: None,
 					number_mode_range: None,
+					number_display_decimal_places: None,
+					number_step: None,
 					implementations: Punctuated::new(),
+					unit: None,
 				},
 			],
 			body: TokenStream2::new(),
@@ -860,7 +911,10 @@ mod tests {
 				number_hard_min: None,
 				number_hard_max: None,
 				number_mode_range: None,
+				number_display_decimal_places: None,
+				number_step: None,
 				implementations: Punctuated::new(),
+				unit: None,
 			}],
 			body: TokenStream2::new(),
 			crate_name: FoundCrate::Itself,
@@ -874,7 +928,7 @@ mod tests {
 	fn test_node_with_implementations() {
 		let attr = quote!(category("Raster: Adjustment"));
 		let input = quote!(
-			fn levels<P: Pixel>(image: ImageFrameTable<P>, #[implementations(f32, f64)] shadows: f64) -> ImageFrameTable<P> {
+			fn levels<P: Pixel>(image: RasterDataTable<P>, #[implementations(f32, f64)] shadows: f64) -> RasterDataTable<P> {
 				// Implementation details...
 			}
 		);
@@ -895,10 +949,10 @@ mod tests {
 			where_clause: None,
 			input: Input {
 				pat_ident: pat_ident("image"),
-				ty: parse_quote!(ImageFrameTable<P>),
+				ty: parse_quote!(RasterDataTable<P>),
 				implementations: Punctuated::new(),
 			},
-			output_type: parse_quote!(ImageFrameTable<P>),
+			output_type: parse_quote!(RasterDataTable<P>),
 			is_async: false,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("shadows"),
@@ -913,12 +967,15 @@ mod tests {
 				number_hard_min: None,
 				number_hard_max: None,
 				number_mode_range: None,
+				number_display_decimal_places: None,
+				number_step: None,
 				implementations: {
 					let mut p = Punctuated::new();
 					p.push(parse_quote!(f32));
 					p.push(parse_quote!(f64));
 					p
 				},
+				unit: None,
 			}],
 			body: TokenStream2::new(),
 			crate_name: FoundCrate::Itself,
@@ -978,7 +1035,10 @@ mod tests {
 				number_hard_min: None,
 				number_hard_max: None,
 				number_mode_range: Some(parse_quote!((0., 100.))),
+				number_display_decimal_places: None,
+				number_step: None,
 				implementations: Punctuated::new(),
+				unit: None,
 			}],
 			body: TokenStream2::new(),
 			crate_name: FoundCrate::Itself,
@@ -992,7 +1052,7 @@ mod tests {
 	fn test_async_node() {
 		let attr = quote!(category("IO"));
 		let input = quote!(
-			async fn load_image(api: &WasmEditorApi, #[expose] path: String) -> ImageFrameTable<Color> {
+			async fn load_image(api: &WasmEditorApi, #[expose] path: String) -> RasterDataTable<CPU> {
 				// Implementation details...
 			}
 		);
@@ -1016,7 +1076,7 @@ mod tests {
 				ty: parse_quote!(&WasmEditorApi),
 				implementations: Punctuated::new(),
 			},
-			output_type: parse_quote!(ImageFrameTable<Color>),
+			output_type: parse_quote!(RasterDataTable<CPU>),
 			is_async: true,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("path"),
@@ -1031,7 +1091,10 @@ mod tests {
 				number_hard_min: None,
 				number_hard_max: None,
 				number_mode_range: None,
+				number_display_decimal_places: None,
+				number_step: None,
 				implementations: Punctuated::new(),
+				unit: None,
 			}],
 			body: TokenStream2::new(),
 			crate_name: FoundCrate::Itself,
@@ -1132,7 +1195,7 @@ mod tests {
 	fn test_invalid_implementation_syntax() {
 		let attr = quote!(category("Test"));
 		let input = quote!(
-			fn test_node(_: (), #[implementations((Footprint, Color), (Footprint, ImageFrameTable<Color>))] input: impl Node<Footprint, Output = T>) -> T {
+			fn test_node(_: (), #[implementations((Footprint, Color), (Footprint, RasterDataTable<CPU>))] input: impl Node<Footprint, Output = T>) -> T {
 				// Implementation details...
 			}
 		);
@@ -1151,17 +1214,17 @@ mod tests {
 		let attr = quote!(category("Test"));
 
 		// Use quote_spanned! to attach a specific span to the problematic part
-		let problem_span = proc_macro2::Span::call_site(); // You could create a custom span here if needed
+		let problem_span = Span::call_site(); // You could create a custom span here if needed
 		let tuples = quote_spanned!(problem_span=> () ());
 		let input = quote! {
 			fn test_node(
 				#[implementations((), #tuples, Footprint)] footprint: F,
 				#[implementations(
 				() -> Color,
-				() -> ImageFrameTable<Color>,
+				() -> RasterDataTable<CPU>,
 				() -> GradientStops,
 				Footprint -> Color,
-				Footprint -> ImageFrameTable<Color>,
+				Footprint -> RasterDataTable<CPU>,
 				Footprint -> GradientStops,
 			)]
 				image: impl Node<F, Output = T>,

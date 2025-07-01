@@ -7,8 +7,8 @@ use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, La
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 use graph_craft::document::NodeId;
-use graphene_core::raster::color::Color;
-use graphene_core::text::Font;
+use graphene_std::raster::color::Color;
+use graphene_std::text::Font;
 
 #[impl_message(Message, Frontend)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -98,19 +98,6 @@ pub enum FrontendMessage {
 	TriggerTextCopy {
 		#[serde(rename = "copyText")]
 		copy_text: String,
-	},
-	// TODO: Eventually remove this document upgrade code
-	TriggerUpgradeDocumentToVectorManipulationFormat {
-		#[serde(rename = "documentId")]
-		document_id: DocumentId,
-		#[serde(rename = "documentName")]
-		document_name: String,
-		#[serde(rename = "documentIsAutoSaved")]
-		document_is_auto_saved: bool,
-		#[serde(rename = "documentIsSaved")]
-		document_is_saved: bool,
-		#[serde(rename = "documentSerializedContent")]
-		document_serialized_content: String,
 	},
 	TriggerVisitLink {
 		url: String,

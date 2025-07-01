@@ -119,12 +119,12 @@ fn star<T: AsU64>(
 	#[hard_min(2.)]
 	#[implementations(u32, u64, f64)]
 	sides: T,
-	#[default(50)] radius: f64,
-	#[default(25)] inner_radius: f64,
+	#[default(50)] radius_1: f64,
+	#[default(25)] radius_2: f64,
 ) -> VectorDataTable {
 	let points = sides.as_u64();
-	let diameter: f64 = radius * 2.;
-	let inner_diameter = inner_radius * 2.;
+	let diameter: f64 = radius_1 * 2.;
+	let inner_diameter = radius_2 * 2.;
 
 	VectorDataTable::new(VectorData::from_subpath(Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
 }
@@ -158,13 +158,13 @@ fn grid<T: GridSpacing>(
 	#[implementations(f64, DVec2)]
 	spacing: T,
 	#[default(30., 30.)] angles: DVec2,
-	#[default(10)] rows: u32,
 	#[default(10)] columns: u32,
+	#[default(10)] rows: u32,
 ) -> VectorDataTable {
 	let (x_spacing, y_spacing) = spacing.as_dvec2().into();
 	let (angle_a, angle_b) = angles.into();
 
-	let mut vector_data = VectorData::empty();
+	let mut vector_data = VectorData::default();
 	let mut segment_id = SegmentId::ZERO;
 	let mut point_id = PointId::ZERO;
 
@@ -245,35 +245,39 @@ fn grid<T: GridSpacing>(
 	VectorDataTable::new(vector_data)
 }
 
-#[test]
-fn isometric_grid_test() {
-	// Doesn't crash with weird angles
-	grid((), (), GridType::Isometric, 0., (0., 0.).into(), 5, 5);
-	grid((), (), GridType::Isometric, 90., (90., 90.).into(), 5, 5);
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn isometric_grid_test() {
+		// Doesn't crash with weird angles
+		grid((), (), GridType::Isometric, 0., (0., 0.).into(), 5, 5);
+		grid((), (), GridType::Isometric, 90., (90., 90.).into(), 5, 5);
 
-	// Works properly
-	let grid = grid((), (), GridType::Isometric, 10., (30., 30.).into(), 5, 5);
-	assert_eq!(grid.one_instance_ref().instance.point_domain.ids().len(), 5 * 5);
-	assert_eq!(grid.one_instance_ref().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-	for (_, bezier, _, _) in grid.one_instance_ref().instance.segment_bezier_iter() {
-		assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
-		assert!(
-			((bezier.start - bezier.end).length() - 10.).abs() < 1e-5,
-			"Length of {} should be 10",
-			(bezier.start - bezier.end).length()
-		);
+		// Works properly
+		let grid = grid((), (), GridType::Isometric, 10., (30., 30.).into(), 5, 5);
+		assert_eq!(grid.instance_ref_iter().next().unwrap().instance.point_domain.ids().len(), 5 * 5);
+		assert_eq!(grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+		for (_, bezier, _, _) in grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter() {
+			assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
+			assert!(
+				((bezier.start - bezier.end).length() - 10.).abs() < 1e-5,
+				"Length of {} should be 10",
+				(bezier.start - bezier.end).length()
+			);
+		}
 	}
-}
 
-#[test]
-fn skew_isometric_grid_test() {
-	let grid = grid((), (), GridType::Isometric, 10., (40., 30.).into(), 5, 5);
-	assert_eq!(grid.one_instance_ref().instance.point_domain.ids().len(), 5 * 5);
-	assert_eq!(grid.one_instance_ref().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-	for (_, bezier, _, _) in grid.one_instance_ref().instance.segment_bezier_iter() {
-		assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
-		let vector = bezier.start - bezier.end;
-		let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
-		assert!([90., 150., 40.].into_iter().any(|target| (target - angle).abs() < 1e-10), "unexpected angle of {}", angle)
+	#[test]
+	fn skew_isometric_grid_test() {
+		let grid = grid((), (), GridType::Isometric, 10., (40., 30.).into(), 5, 5);
+		assert_eq!(grid.instance_ref_iter().next().unwrap().instance.point_domain.ids().len(), 5 * 5);
+		assert_eq!(grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+		for (_, bezier, _, _) in grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter() {
+			assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
+			let vector = bezier.start - bezier.end;
+			let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
+			assert!([90., 150., 40.].into_iter().any(|target| (target - angle).abs() < 1e-10), "unexpected angle of {}", angle)
+		}
 	}
 }

@@ -56,7 +56,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		.zip(field_names.iter())
 		.map(|zipped| match zipped {
 			(Some(name), _) => name.value(),
-			(_, name) => name.to_string().to_case(convert_case::Case::Title),
+			(_, name) => name.to_string().to_case(Case::Title),
 		})
 		.collect();
 
@@ -160,6 +160,41 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 				number_mode_range: Some(number_mode_range),
 				..
 			} => quote!(Some(#number_mode_range)),
+			_ => quote!(None),
+		})
+		.collect();
+	let number_display_decimal_places: Vec<_> = fields
+		.iter()
+		.map(|field| match field {
+			ParsedField::Regular {
+				number_display_decimal_places: Some(decimal_places),
+				..
+			}
+			| ParsedField::Node {
+				number_display_decimal_places: Some(decimal_places),
+				..
+			} => {
+				quote!(Some(#decimal_places))
+			}
+			_ => quote!(None),
+		})
+		.collect();
+	let number_step: Vec<_> = fields
+		.iter()
+		.map(|field| match field {
+			ParsedField::Regular { number_step: Some(step), .. } | ParsedField::Node { number_step: Some(step), .. } => {
+				quote!(Some(#step))
+			}
+			_ => quote!(None),
+		})
+		.collect();
+
+	let unit_suffix: Vec<_> = fields
+		.iter()
+		.map(|field| match field {
+			ParsedField::Regular { unit: Some(unit), .. } | ParsedField::Node { unit: Some(unit), .. } => {
+				quote!(Some(#unit))
+			}
 			_ => quote!(None),
 		})
 		.collect();
@@ -375,6 +410,9 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 								number_min: #number_min_values,
 								number_max: #number_max_values,
 								number_mode_range: #number_mode_range_values,
+								number_display_decimal_places: #number_display_decimal_places,
+								number_step: #number_step,
+								unit: #unit_suffix,
 							},
 						)*
 					],
@@ -472,7 +510,7 @@ fn generate_phantom_data<'a>(fn_generics: impl Iterator<Item = &'a crate::Generi
 	(fn_generic_params, phantom_data_declerations)
 }
 
-fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifier: &TokenStream2) -> Result<TokenStream2, syn::Error> {
+fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifier: &TokenStream2) -> Result<TokenStream2, Error> {
 	if parsed.attributes.skip_impl {
 		return Ok(quote!());
 	}
@@ -587,7 +625,7 @@ struct LifetimeReplacer(&'static str);
 
 impl VisitMut for LifetimeReplacer {
 	fn visit_lifetime_mut(&mut self, lifetime: &mut Lifetime) {
-		lifetime.ident = syn::Ident::new(self.0, lifetime.ident.span());
+		lifetime.ident = Ident::new(self.0, lifetime.ident.span());
 	}
 
 	fn visit_type_mut(&mut self, ty: &mut Type) {
@@ -624,7 +662,7 @@ struct FilterUsedGenerics {
 }
 
 impl VisitMut for FilterUsedGenerics {
-	fn visit_lifetime_mut(&mut self, used_lifetime: &mut syn::Lifetime) {
+	fn visit_lifetime_mut(&mut self, used_lifetime: &mut Lifetime) {
 		for (generic, used) in self.all.iter().zip(self.used.iter_mut()) {
 			let crate::GenericParam::Lifetime(lifetime_param) = generic else { continue };
 			if used_lifetime == &lifetime_param.lifetime {

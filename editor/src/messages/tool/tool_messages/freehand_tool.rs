@@ -9,8 +9,8 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::utility_functions::should_extend;
 use glam::DVec2;
 use graph_craft::document::NodeId;
-use graphene_core::Color;
-use graphene_core::vector::VectorModificationType;
+use graphene_std::Color;
+use graphene_std::vector::VectorModificationType;
 use graphene_std::vector::{PointId, SegmentId};
 
 #[derive(Default)]
@@ -349,7 +349,7 @@ mod test_freehand {
 	use crate::messages::tool::tool_messages::freehand_tool::FreehandOptionsUpdate;
 	use crate::test_utils::test_prelude::*;
 	use glam::{DAffine2, DVec2};
-	use graphene_core::vector::VectorData;
+	use graphene_std::vector::VectorData;
 
 	async fn get_vector_data(editor: &mut EditorTestUtils) -> Vec<(VectorData, DAffine2)> {
 		let document = editor.active_document();
@@ -416,7 +416,7 @@ mod test_freehand {
 		editor
 			.handle_message(GraphOperationMessage::TransformSet {
 				layer: artboard,
-				transform: DAffine2::from_scale_angle_translation(DVec2::new(1.5, 0.8), 0.3, DVec2::new(10.0, -5.0)),
+				transform: DAffine2::from_scale_angle_translation(DVec2::new(1.5, 0.8), 0.3, DVec2::new(10., -5.)),
 				transform_in: TransformIn::Local,
 				skip_rerender: false,
 			})
@@ -424,14 +424,14 @@ mod test_freehand {
 
 		editor.select_tool(ToolType::Freehand).await;
 
-		let mouse_points = [DVec2::new(150.0, 100.0), DVec2::new(200.0, 150.0), DVec2::new(250.0, 130.0), DVec2::new(300.0, 170.0)];
+		let mouse_points = [DVec2::new(150., 100.), DVec2::new(200., 150.), DVec2::new(250., 130.), DVec2::new(300., 170.)];
 
 		// Expected points that will actually be captured by the tool
 		let expected_captured_points = &mouse_points[1..];
 		editor.drag_path(&mouse_points, ModifierKeys::empty()).await;
 
 		let vector_data_list = get_vector_data(&mut editor).await;
-		verify_path_points(&vector_data_list, expected_captured_points, 1.0).expect("Path points verification failed");
+		verify_path_points(&vector_data_list, expected_captured_points, 1.).expect("Path points verification failed");
 	}
 
 	#[tokio::test]
@@ -439,7 +439,7 @@ mod test_freehand {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 
-		let initial_points = [DVec2::new(100.0, 100.0), DVec2::new(200.0, 200.0), DVec2::new(300.0, 100.0)];
+		let initial_points = [DVec2::new(100., 100.), DVec2::new(200., 200.), DVec2::new(300., 100.)];
 
 		editor.select_tool(ToolType::Freehand).await;
 
@@ -491,7 +491,7 @@ mod test_freehand {
 
 		assert!(endpoint_viewport_pos.is_finite(), "Endpoint position is not finite");
 
-		let extension_points = [DVec2::new(400.0, 200.0), DVec2::new(500.0, 100.0)];
+		let extension_points = [DVec2::new(400., 200.), DVec2::new(500., 100.)];
 
 		let layer_node_id = {
 			let document = editor.active_document();
@@ -558,7 +558,7 @@ mod test_freehand {
 
 		editor.select_tool(ToolType::Freehand).await;
 
-		let initial_points = [DVec2::new(100.0, 100.0), DVec2::new(200.0, 200.0), DVec2::new(300.0, 100.0)];
+		let initial_points = [DVec2::new(100., 100.), DVec2::new(200., 200.), DVec2::new(300., 100.)];
 
 		let first_point = initial_points[0];
 		editor.move_mouse(first_point.x, first_point.y, ModifierKeys::empty(), MouseKeys::empty()).await;
@@ -599,7 +599,7 @@ mod test_freehand {
 			})
 			.await;
 
-		let second_path_points = [DVec2::new(400.0, 100.0), DVec2::new(500.0, 200.0), DVec2::new(600.0, 100.0)];
+		let second_path_points = [DVec2::new(400., 100.), DVec2::new(500., 200.), DVec2::new(600., 100.)];
 
 		let first_second_point = second_path_points[0];
 		editor.move_mouse(first_second_point.x, first_second_point.y, ModifierKeys::SHIFT, MouseKeys::empty()).await;
@@ -677,12 +677,12 @@ mod test_freehand {
 
 		editor.select_tool(ToolType::Freehand).await;
 
-		let custom_line_weight = 5.0;
+		let custom_line_weight = 5.;
 		editor
 			.handle_message(ToolMessage::Freehand(FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::LineWeight(custom_line_weight))))
 			.await;
 
-		let points = [DVec2::new(100.0, 100.0), DVec2::new(200.0, 200.0), DVec2::new(300.0, 100.0)];
+		let points = [DVec2::new(100., 100.), DVec2::new(200., 200.), DVec2::new(300., 100.)];
 
 		let first_point = points[0];
 		editor.move_mouse(first_point.x, first_point.y, ModifierKeys::empty(), MouseKeys::empty()).await;

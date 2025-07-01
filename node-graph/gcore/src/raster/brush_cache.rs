@@ -1,37 +1,36 @@
-use crate::Color;
-use crate::graphene_core::raster::image::ImageFrameTable;
-use crate::raster::Image;
+use crate::instances::Instance;
+use crate::raster_types::CPU;
+use crate::raster_types::Raster;
 use crate::vector::brush_stroke::BrushStroke;
 use crate::vector::brush_stroke::BrushStyle;
-use core::hash::Hash;
 use dyn_any::DynAny;
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-#[derive(Clone, Debug, PartialEq, DynAny, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, DynAny, Default, serde::Serialize, serde::Deserialize)]
 struct BrushCacheImpl {
 	// The full previous input that was cached.
 	prev_input: Vec<BrushStroke>,
 
 	// The strokes that have been fully processed and blended into the background.
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame"))]
-	background: ImageFrameTable<Color>,
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame"))]
-	blended_image: ImageFrameTable<Color>,
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame"))]
-	last_stroke_texture: ImageFrameTable<Color>,
+	#[serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance")]
+	background: Instance<Raster<CPU>>,
+	#[serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance")]
+	blended_image: Instance<Raster<CPU>>,
+	#[serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance")]
+	last_stroke_texture: Instance<Raster<CPU>>,
 
 	// A cache for brush textures.
-	#[cfg_attr(feature = "serde", serde(skip))]
-	brush_texture_cache: HashMap<BrushStyle, Image<Color>>,
+	#[serde(skip)]
+	brush_texture_cache: HashMap<BrushStyle, Raster<CPU>>,
 }
 
 impl BrushCacheImpl {
-	fn compute_brush_plan(&mut self, mut background: ImageFrameTable<Color>, input: &[BrushStroke]) -> BrushPlan {
+	fn compute_brush_plan(&mut self, mut background: Instance<Raster<CPU>>, input: &[BrushStroke]) -> BrushPlan {
 		// Do background invalidation.
-		if background.one_instance_ref().instance != self.background.one_instance_ref().instance {
+		if background != self.background {
 			self.background = background.clone();
 			return BrushPlan {
 				strokes: input.to_vec(),
@@ -53,10 +52,14 @@ impl BrushCacheImpl {
 
 		// Take our previous blended image (and invalidate the cache).
 		// Since we're about to replace our cache anyway, this saves a clone.
-		background = core::mem::take(&mut self.blended_image);
+		background = std::mem::take(&mut self.blended_image);
 
 		// Check if the first non-blended stroke is an extension of the last one.
-		let mut first_stroke_texture = ImageFrameTable::one_empty_image();
+		let mut first_stroke_texture = Instance {
+			instance: Raster::<CPU>::default(),
+			transform: glam::DAffine2::ZERO,
+			..Default::default()
+		};
 		let mut first_stroke_point_skip = 0;
 		let strokes = input[num_blended_strokes..].to_vec();
 		if !strokes.is_empty() && self.prev_input.len() > num_blended_strokes {
@@ -66,7 +69,7 @@ impl BrushCacheImpl {
 			let new_points = strokes[0].compute_blit_points();
 			let is_point_prefix = new_points.get(..prev_points.len()) == Some(&prev_points);
 			if same_style && is_point_prefix {
-				first_stroke_texture = core::mem::take(&mut self.last_stroke_texture);
+				first_stroke_texture = std::mem::take(&mut self.last_stroke_texture);
 				first_stroke_point_skip = prev_points.len();
 			}
 		}
@@ -80,7 +83,7 @@ impl BrushCacheImpl {
 		}
 	}
 
-	pub fn cache_results(&mut self, input: Vec<BrushStroke>, blended_image: ImageFrameTable<Color>, last_stroke_texture: ImageFrameTable<Color>) {
+	pub fn cache_results(&mut self, input: Vec<BrushStroke>, blended_image: Instance<Raster<CPU>>, last_stroke_texture: Instance<Raster<CPU>>) {
 		self.prev_input = input;
 		self.blended_image = blended_image;
 		self.last_stroke_texture = last_stroke_texture;
@@ -89,19 +92,18 @@ impl BrushCacheImpl {
 
 impl Hash for BrushCacheImpl {
 	// Zero hash.
-	fn hash<H: core::hash::Hasher>(&self, _state: &mut H) {}
+	fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct BrushPlan {
 	pub strokes: Vec<BrushStroke>,
-	pub background: ImageFrameTable<Color>,
-	pub first_stroke_texture: ImageFrameTable<Color>,
+	pub background: Instance<Raster<CPU>>,
+	pub first_stroke_texture: Instance<Raster<CPU>>,
 	pub first_stroke_point_skip: usize,
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, DynAny)]
+#[derive(Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct BrushCache {
 	inner: Arc<Mutex<BrushCacheImpl>>,
 	proto: bool,
@@ -147,7 +149,7 @@ impl PartialEq for BrushCache {
 }
 
 impl Hash for BrushCache {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.inner.lock().unwrap().hash(state);
 	}
 }
@@ -160,22 +162,22 @@ impl BrushCache {
 		}
 	}
 
-	pub fn compute_brush_plan(&self, background: ImageFrameTable<Color>, input: &[BrushStroke]) -> BrushPlan {
+	pub fn compute_brush_plan(&self, background: Instance<Raster<CPU>>, input: &[BrushStroke]) -> BrushPlan {
 		let mut inner = self.inner.lock().unwrap();
 		inner.compute_brush_plan(background, input)
 	}
 
-	pub fn cache_results(&self, input: Vec<BrushStroke>, blended_image: ImageFrameTable<Color>, last_stroke_texture: ImageFrameTable<Color>) {
+	pub fn cache_results(&self, input: Vec<BrushStroke>, blended_image: Instance<Raster<CPU>>, last_stroke_texture: Instance<Raster<CPU>>) {
 		let mut inner = self.inner.lock().unwrap();
 		inner.cache_results(input, blended_image, last_stroke_texture)
 	}
 
-	pub fn get_cached_brush(&self, style: &BrushStyle) -> Option<Image<Color>> {
+	pub fn get_cached_brush(&self, style: &BrushStyle) -> Option<Raster<CPU>> {
 		let inner = self.inner.lock().unwrap();
 		inner.brush_texture_cache.get(style).cloned()
 	}
 
-	pub fn store_brush(&self, style: BrushStyle, brush: Image<Color>) {
+	pub fn store_brush(&self, style: BrushStyle, brush: Raster<CPU>) {
 		let mut inner = self.inner.lock().unwrap();
 		inner.brush_texture_cache.insert(style, brush);
 	}
