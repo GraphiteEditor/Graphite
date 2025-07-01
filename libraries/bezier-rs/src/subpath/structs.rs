@@ -144,3 +144,9 @@ pub enum ArcType {
 	Closed,
 	PieSlice,
 }
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+pub enum SpiralType {
+	Archimedean,
+	Logarithmic,
+}

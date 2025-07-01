@@ -1,9 +1,8 @@
-use std::f64::consts::{FRAC_PI_4, FRAC_PI_8, TAU};
-
 use super::misc::{ArcType, AsU64, GridType};
 use super::{PointId, SegmentId, StrokeId};
 use crate::Ctx;
 use crate::registry::types::{Angle, PixelSize};
+use crate::vector::misc::SpiralType;
 use crate::vector::{HandleId, VectorData, VectorDataTable};
 use bezier_rs::Subpath;
 use glam::DVec2;
@@ -67,45 +66,29 @@ fn arc(
 	)))
 }
 
-#[node_macro::node(category("Vector: Shape"))]
-fn archimedean_spiral(
+#[node_macro::node(category("Vector: Shape"), properties("spiral_properties"))]
+fn spiral(
 	_: impl Ctx,
 	_primary: (),
+	spiral_type: SpiralType,
+	#[default(0.5)] start_radius: f64,
 	#[default(1.)] inner_radius: f64,
+	#[default(0.2)] growth: f64,
 	#[default(1.)] tightness: f64,
-	#[default(6)]
-	#[hard_min(1.)]
-	turns: f64,
-	#[default(45.)]
-	#[range((1., 180.))]
-	angle_offset: f64,
+	#[default(6)] turns: f64,
+	#[default(45.)] angle_offset: f64,
 ) -> VectorDataTable {
-	VectorDataTable::new(VectorData::from_subpath(Subpath::generate_equal_arc_bezier_spiral2(
-		inner_radius,
-		tightness,
-		turns,
-		angle_offset.to_radians(),
-	)))
-}
+	let (a, b) = match spiral_type {
+		SpiralType::Archimedean => (inner_radius, tightness),
+		SpiralType::Logarithmic => (start_radius, growth),
+	};
 
-#[node_macro::node(category("Vector: Shape"))]
-fn logarithmic_spiral(
-	_: impl Ctx,
-	_primary: (),
-	#[range((0.1, 1.))]
-	#[default(0.5)]
-	start_radius: f64,
-	#[range((0.1, 1.))]
-	#[default(0.2)]
-	growth: f64,
-	#[default(3)]
-	#[hard_min(0.5)]
-	turns: f64,
-	#[default(45.)]
-	#[range((1., 180.))]
-	angle_offset: f64,
-) -> VectorDataTable {
-	VectorDataTable::new(VectorData::from_subpath(Subpath::generate_logarithmic_spiral(start_radius, growth, turns, angle_offset.to_radians())))
+	let spiral_type = match spiral_type {
+		SpiralType::Archimedean => bezier_rs::SpiralType::Archimedean,
+		SpiralType::Logarithmic => bezier_rs::SpiralType::Logarithmic,
+	};
+
+	VectorDataTable::new(VectorData::from_subpath(Subpath::new_spiral(a, b, turns, angle_offset.to_radians(), spiral_type)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]

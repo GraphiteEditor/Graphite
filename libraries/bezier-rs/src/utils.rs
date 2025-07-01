@@ -1,5 +1,5 @@
 use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
-use crate::{ManipulatorGroup, Subpath};
+use crate::{ManipulatorGroup, SpiralType, Subpath};
 use glam::{BVec2, DMat2, DVec2};
 use std::fmt::Write;
 
@@ -302,47 +302,91 @@ pub fn format_point(svg: &mut String, prefix: &str, x: f64, y: f64) -> std::fmt:
 	Ok(())
 }
 
-pub fn spiral_point(theta: f64, a: f64, b: f64) -> DVec2 {
+/// Returns a point on the given spiral type at angle `theta`.
+pub fn spiral_point(theta: f64, a: f64, b: f64, spiral_type: SpiralType) -> DVec2 {
+	match spiral_type {
+		SpiralType::Archimedean => archimedean_spiral_point(theta, a, b),
+		SpiralType::Logarithmic => log_spiral_point(theta, a, b),
+	}
+}
+
+/// Returns the tangent direction at angle `theta` for the given spiral type.
+pub fn spiral_tangent(theta: f64, a: f64, b: f64, spiral_type: SpiralType) -> DVec2 {
+	match spiral_type {
+		SpiralType::Archimedean => archimedean_spiral_tangent(theta, a, b),
+		SpiralType::Logarithmic => log_spiral_tangent(theta, a, b),
+	}
+}
+
+/// Computes arc length between two angles for the given spiral type.
+pub fn spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64, spiral_type: SpiralType) -> f64 {
+	match spiral_type {
+		SpiralType::Archimedean => archimedean_spiral_arc_length(theta_start, theta_end, a, b),
+		SpiralType::Logarithmic => log_spiral_arc_length(theta_start, theta_end, a, b),
+	}
+}
+
+/// Splits a cubic Bézier curve at parameter `t`, returning the first half.
+pub fn split_cubic_bezier(p0: DVec2, p1: DVec2, p2: DVec2, p3: DVec2, t: f64) -> (DVec2, DVec2, DVec2, DVec2) {
+	let p01 = p0.lerp(p1, t);
+	let p12 = p1.lerp(p2, t);
+	let p23 = p2.lerp(p3, t);
+
+	let p012 = p01.lerp(p12, t);
+	let p123 = p12.lerp(p23, t);
+
+	// final split point
+	let p0123 = p012.lerp(p123, t);
+
+	// First half of the Bézier
+	(p0, p01, p012, p0123)
+}
+
+/// Returns a point on a logarithmic spiral at angle `theta`.
+pub fn log_spiral_point(theta: f64, a: f64, b: f64) -> DVec2 {
+	let r = a * (b * theta).exp(); // a * e^(bθ)
+	DVec2::new(r * theta.cos(), -r * theta.sin())
+}
+
+/// Computes arc length along a logarithmic spiral between two angles.
+pub fn log_spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64) -> f64 {
+	let factor = (1. + b * b).sqrt();
+	(a / b) * factor * ((b * theta_end).exp() - (b * theta_start).exp())
+}
+
+/// Returns the tangent direction of a logarithmic spiral at angle `theta`.
+pub fn log_spiral_tangent(theta: f64, a: f64, b: f64) -> DVec2 {
+	let r = a * (b * theta).exp();
+	let dx = r * (b * theta.cos() - theta.sin());
+	let dy = r * (b * theta.sin() + theta.cos());
+
+	DVec2::new(dx, -dy).normalize()
+}
+
+/// Returns a point on an Archimedean spiral at angle `theta`.
+pub fn archimedean_spiral_point(theta: f64, a: f64, b: f64) -> DVec2 {
 	let r = a + b * theta;
 	DVec2::new(r * theta.cos(), -r * theta.sin())
 }
 
-pub fn spiral_tangent(theta: f64, b: f64) -> DVec2 {
-	let dx = b * (theta.cos() - theta * theta.sin());
-	let dy = b * (theta.sin() + theta * theta.cos());
-	DVec2::new(dx, dy).normalize()
+/// Returns the tangent direction of an Archimedean spiral at angle `theta`.
+pub fn archimedean_spiral_tangent(theta: f64, a: f64, b: f64) -> DVec2 {
+	let r = a + b * theta;
+	let dx = b * theta.cos() - r * theta.sin();
+	let dy = b * theta.sin() + r * theta.cos();
+	DVec2::new(dx, -dy).normalize()
 }
 
-pub fn wrap_angle(angle: f64) -> f64 {
-	(angle + std::f64::consts::PI).rem_euclid(2.0 * std::f64::consts::PI) - std::f64::consts::PI
+/// Computes arc length along an Archimedean spiral between two angles.
+pub fn archimedean_spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64) -> f64 {
+	archimedean_spiral_arc_length_origin(theta_end, a, b) - archimedean_spiral_arc_length_origin(theta_start, a, b)
 }
 
-pub fn bezier_point(p0: DVec2, p1: DVec2, p2: DVec2, p3: DVec2, t: f64) -> DVec2 {
-	let u = 1.0 - t;
-	p0 * u * u * u + p1 * 3.0 * u * u * t + p2 * 3.0 * u * t * t + p3 * t * t * t
-}
-
-pub fn bezier_derivative(p0: DVec2, p1: DVec2, p2: DVec2, p3: DVec2, t: f64) -> DVec2 {
-	let u = 1.0 - t;
-	-3.0 * u * u * p0 + 3.0 * (u * u - 2.0 * u * t) * p1 + 3.0 * (2.0 * u * t - t * t) * p2 + 3.0 * t * t * p3
-}
-
-pub fn esq_for_d(p0: DVec2, t0: DVec2, p3: DVec2, t1: DVec2, theta0: f64, theta1: f64, d: f64, a: f64, b: f64, samples: usize) -> f64 {
-	let p1 = p0 + d * t0;
-	let p2 = p3 - d * t1;
-	let mut total = 0.0;
-	for i in 1..samples {
-		let t = i as f64 / samples as f64;
-		let bez = bezier_point(p0, p1, p2, p3, t);
-		let bez_d = bezier_derivative(p0, p1, p2, p3, t);
-		let bez_angle = bez_d.y.atan2(bez_d.x);
-
-		let theta = theta0 + (theta1 - theta0) * t;
-		let spiral_angle = theta;
-		let diff = wrap_angle(bez_angle - spiral_angle);
-		total += diff * diff * bez_d.length();
-	}
-	total / samples as f64
+/// Computes arc length from origin to a point on Archimedean spiral at angle `theta`.
+pub fn archimedean_spiral_arc_length_origin(theta: f64, a: f64, b: f64) -> f64 {
+	let r = a + b * theta;
+	let sqrt_term = (r * r + b * b).sqrt();
+	(r * sqrt_term + b * b * ((r + sqrt_term).ln())) / (2.0 * b)
 }
 
 #[cfg(test)]
