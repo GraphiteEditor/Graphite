@@ -760,6 +760,8 @@
 
 						.text-input {
 							word-break: break-all;
+							unicode-bidi: plaintext;
+							text-align: left;
 						}
 
 						.text-input div {
@@ -773,6 +775,8 @@
 							overflow-wrap: anywhere;
 							white-space: pre-wrap;
 							word-break: normal;
+							unicode-bidi: plaintext;
+							text-align: left;
 							display: inline-block;
 							// Workaround to force Chrome to display the flashing text entry cursor when text is empty
 							padding-left: 1px;

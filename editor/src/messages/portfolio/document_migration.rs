@@ -1,6 +1,7 @@
 // TODO: Eventually remove this document upgrade code
 // This file contains lots of hacky code for upgrading old documents to the new format
 
+use super::document::utility_types::network_interface::{NumberInputSettings, PropertiesRow, WidgetOverride};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
@@ -308,8 +309,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			let node_definition = resolve_document_node_type(reference).unwrap();
 			let document_node = node_definition.default_node_template().document_node;
 			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
-			document.network_interface.insert_input_properties_row(node_id, 8, network_path);
-			document.network_interface.insert_input_properties_row(node_id, 9, network_path);
+			document.network_interface.insert_input_properties_row(node_id, 8, network_path, ("", "TODO").into());
+			document.network_interface.insert_input_properties_row(node_id, 9, network_path, ("", "TODO").into());
 
 			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
 			let align_input = NodeInput::value(TaggedValue::StrokeAlign(StrokeAlign::Center), false);
@@ -402,7 +403,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 
 		// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
-		if reference == "Text" && inputs_count != 8 {
+		if reference == "Text" && inputs_count != 9 {
 			let node_definition = resolve_document_node_type(reference).unwrap();
 			let document_node = node_definition.default_node_template().document_node;
 			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
@@ -433,12 +434,44 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			);
 			document.network_interface.set_input(
 				&InputConnector::node(*node_id, 6),
-				NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
+				if inputs_count >= 7 {
+					old_inputs[6].clone()
+				} else {
+					NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false)
+				},
 				network_path,
 			);
 			document.network_interface.set_input(
 				&InputConnector::node(*node_id, 7),
-				NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
+				if inputs_count >= 8 {
+					old_inputs[7].clone()
+				} else {
+					NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false)
+				},
+				network_path,
+			);
+			document.network_interface.insert_input_properties_row(
+				node_id,
+				9,
+				network_path,
+				PropertiesRow::with_override(
+					"Tilt",
+					"Faux italic",
+					WidgetOverride::Number(NumberInputSettings {
+						min: Some(-85.),
+						max: Some(85.),
+						unit: Some("°".to_string()),
+						..Default::default()
+					}),
+				),
+			);
+			document.network_interface.set_input(
+				&InputConnector::node(*node_id, 8),
+				if inputs_count >= 9 {
+					old_inputs[8].clone()
+				} else {
+					NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false)
+				},
 				network_path,
 			);
 		}
