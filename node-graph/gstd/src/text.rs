@@ -1,4 +1,5 @@
 use crate::vector::{VectorData, VectorDataTable};
+use glam::DAffine2;
 use graph_craft::wasm_application_io::WasmEditorApi;
 use graphene_core::Ctx;
 pub use graphene_core::text::*;
@@ -39,7 +40,23 @@ fn text<'i: 'n>(
 
 	let font_data = editor.font_cache.get(&font_name).map(|f| load_font(f));
 
-	let result = VectorData::from_subpaths(to_path(&text, font_data, typesetting), false);
+	let glyph_vectors = to_path(&text, font_data, typesetting);
 
-	VectorDataTable::new(result)
+	let mut glyph_table = if glyph_vectors.is_empty() {
+		VectorDataTable::new(VectorData::default())
+	} else {
+		VectorDataTable::default()
+	};
+
+	for glyph in glyph_vectors {
+		let instance = graphene_core::instances::Instance {
+			instance: glyph,
+			transform: DAffine2::IDENTITY,
+			..Default::default()
+		};
+
+		glyph_table.push(instance);
+	}
+
+	glyph_table
 }
