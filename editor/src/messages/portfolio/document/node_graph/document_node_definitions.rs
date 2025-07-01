@@ -16,8 +16,8 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
-use graphene_std::ops::XY;
-use graphene_std::raster::brush_cache::BrushCache;
+use graphene_std::brush::brush_cache::BrushCache;
+use graphene_std::extract_xy::XY;
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
 use graphene_std::raster_types::{CPU, RasterDataTable};
 use graphene_std::text::{Font, TypesettingConfig};
@@ -960,13 +960,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: [
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(RasterDataTable<CPU>), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::ExtractXyNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::extract_xy::ExtractXyNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(RasterDataTable<CPU>), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::ExtractXyNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::extract_xy::ExtractXyNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
@@ -1016,7 +1016,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("TODO"),
+			description: Cow::Borrowed(
+				"Decomposes the X and Y components of a 2D coordinate.\n\nThe inverse of this node is \"Coordinate Value\", which can have either or both its X and Y exposed as graph inputs.",
+			),
 			properties: None,
 		},
 		// TODO: Remove this and just use the proto node definition directly
@@ -1030,7 +1032,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: vec![DocumentNode {
 							inputs: vec![
 								NodeInput::network(concrete!(RasterDataTable<CPU>), 0),
-								NodeInput::network(concrete!(Vec<graphene_std::vector::brush_stroke::BrushStroke>), 1),
+								NodeInput::network(concrete!(Vec<brush::brush_stroke::BrushStroke>), 1),
 								NodeInput::network(concrete!(BrushCache), 2),
 							],
 							manual_composition: Some(concrete!(Context)),
@@ -1556,6 +1558,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().character_spacing), false),
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
+						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false),
 					],
 					..Default::default()
 				},
@@ -1577,6 +1580,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							"Line Height",
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
+								unit: Some("x".to_string()),
 								min: Some(0.),
 								step: Some(0.1),
 								..Default::default()
@@ -1586,6 +1590,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							"Character Spacing",
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
+								unit: Some(" px".to_string()),
 								min: Some(0.),
 								step: Some(0.1),
 								..Default::default()
@@ -1595,6 +1600,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							"Max Width",
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
+								unit: Some(" px".to_string()),
 								min: Some(1.),
 								blank_assist: false,
 								..Default::default()
@@ -1604,8 +1610,19 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							"Max Height",
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
+								unit: Some(" px".to_string()),
 								min: Some(1.),
 								blank_assist: false,
+								..Default::default()
+							}),
+						),
+						PropertiesRow::with_override(
+							"Tilt",
+							"Faux italic",
+							WidgetOverride::Number(NumberInputSettings {
+								min: Some(-85.),
+								max: Some(85.),
+								unit: Some("°".to_string()),
 								..Default::default()
 							}),
 						),
@@ -1841,7 +1858,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(graphene_std::vector::VectorDataTable), 0),
 									NodeInput::network(concrete!(vector::misc::PointSpacingType), 1),
 									NodeInput::network(concrete!(f64), 2),
-									NodeInput::network(concrete!(f64), 3),
+									NodeInput::network(concrete!(u32), 3),
 									NodeInput::network(concrete!(f64), 4),
 									NodeInput::network(concrete!(f64), 5),
 									NodeInput::network(concrete!(bool), 6),
@@ -1880,7 +1897,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorDataTable::default()), true),
 						NodeInput::value(TaggedValue::PointSpacingType(Default::default()), false),
 						NodeInput::value(TaggedValue::F64(100.), false),
-						NodeInput::value(TaggedValue::F64(100.), false),
+						NodeInput::value(TaggedValue::U32(100), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::Bool(false), false),

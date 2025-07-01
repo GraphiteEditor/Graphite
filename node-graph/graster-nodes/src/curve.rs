@@ -1,6 +1,7 @@
-use super::{Channel, Linear, LuminanceMut};
-use crate::Node;
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
+use graphene_core::Node;
+use graphene_core::color::{Channel, Linear, LuminanceMut};
+use std::hash::{Hash, Hasher};
 use std::ops::{Add, Mul, Sub};
 
 #[derive(Debug, Clone, PartialEq, DynAny, specta::Type, serde::Serialize, serde::Deserialize)]
@@ -23,8 +24,8 @@ impl Default for Curve {
 	}
 }
 
-impl std::hash::Hash for Curve {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl Hash for Curve {
+	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.manipulator_groups.hash(state);
 		[self.first_handle, self.last_handle].iter().flatten().for_each(|f| f.to_bits().hash(state));
 	}
@@ -36,8 +37,8 @@ pub struct CurveManipulatorGroup {
 	pub handles: [[f32; 2]; 2],
 }
 
-impl std::hash::Hash for CurveManipulatorGroup {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl Hash for CurveManipulatorGroup {
+	fn hash<H: Hasher>(&self, state: &mut H) {
 		for c in self.handles.iter().chain([&self.anchor]).flatten() {
 			c.to_bits().hash(state);
 		}

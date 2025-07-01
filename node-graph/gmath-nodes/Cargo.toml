@@ -1,0 +1,17 @@
+[package]
+name = "graphene-math-nodes"
+version = "0.1.0"
+edition = "2024"
+description = "graphene math nodes"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+graphene-core = { workspace = true }
+node-macro = { workspace = true }
+
+# Workspace dependencies
+glam = { workspace = true }
+rand = { workspace = true }
+math-parser = { workspace = true }
+log = { workspace = true }

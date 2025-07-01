@@ -1,6 +1,7 @@
 // TODO: Eventually remove this document upgrade code
 // This file contains lots of hacky code for upgrading old documents to the new format
 
+use super::document::utility_types::network_interface::{NumberInputSettings, PropertiesRow, WidgetOverride};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
@@ -24,38 +25,113 @@ const REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"),
 	("graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"),
 	("graphene_core::ToGraphicGroupNode", "graphene_core::graphic_element::ToGroupNode"),
+	// math_nodes
+	("graphene_core::ops::MathNode", "graphene_math_nodes::MathNode"),
+	("graphene_core::ops::AddNode", "graphene_math_nodes::AddNode"),
+	("graphene_core::ops::SubtractNode", "graphene_math_nodes::SubtractNode"),
+	("graphene_core::ops::MultiplyNode", "graphene_math_nodes::MultiplyNode"),
+	("graphene_core::ops::DivideNode", "graphene_math_nodes::DivideNode"),
+	("graphene_core::ops::ModuloNode", "graphene_math_nodes::ModuloNode"),
+	("graphene_core::ops::ExponentNode", "graphene_math_nodes::ExponentNode"),
+	("graphene_core::ops::RootNode", "graphene_math_nodes::RootNode"),
+	("graphene_core::ops::LogarithmNode", "graphene_math_nodes::LogarithmNode"),
+	("graphene_core::ops::SineNode", "graphene_math_nodes::SineNode"),
+	("graphene_core::ops::CosineNode", "graphene_math_nodes::CosineNode"),
+	("graphene_core::ops::TangentNode", "graphene_math_nodes::TangentNode"),
+	("graphene_core::ops::SineInverseNode", "graphene_math_nodes::SineInverseNode"),
+	("graphene_core::ops::CosineInverseNode", "graphene_math_nodes::CosineInverseNode"),
+	("graphene_core::ops::TangentInverseNode", "graphene_math_nodes::TangentInverseNode"),
+	("graphene_core::ops::RandomNode", "graphene_math_nodes::RandomNode"),
+	("graphene_core::ops::ToU32Node", "graphene_math_nodes::ToU32Node"),
+	("graphene_core::ops::ToU64Node", "graphene_math_nodes::ToU64Node"),
+	("graphene_core::ops::ToF64Node", "graphene_math_nodes::ToF64Node"),
+	("graphene_core::ops::RoundNode", "graphene_math_nodes::RoundNode"),
+	("graphene_core::ops::FloorNode", "graphene_math_nodes::FloorNode"),
+	("graphene_core::ops::CeilingNode", "graphene_math_nodes::CeilingNode"),
+	("graphene_core::ops::MinNode", "graphene_math_nodes::MinNode"),
+	("graphene_core::ops::MaxNode", "graphene_math_nodes::MaxNode"),
+	("graphene_core::ops::ClampNode", "graphene_math_nodes::ClampNode"),
+	("graphene_core::ops::EqualsNode", "graphene_math_nodes::EqualsNode"),
+	("graphene_core::ops::NotEqualsNode", "graphene_math_nodes::NotEqualsNode"),
+	("graphene_core::ops::LessThanNode", "graphene_math_nodes::LessThanNode"),
+	("graphene_core::ops::GreaterThanNode", "graphene_math_nodes::GreaterThanNode"),
+	("graphene_core::ops::LogicalOrNode", "graphene_math_nodes::LogicalOrNode"),
+	("graphene_core::ops::LogicalAndNode", "graphene_math_nodes::LogicalAndNode"),
+	("graphene_core::ops::LogicalNotNode", "graphene_math_nodes::LogicalNotNode"),
+	("graphene_core::ops::BoolValueNode", "graphene_math_nodes::BoolValueNode"),
+	("graphene_core::ops::NumberValueNode", "graphene_math_nodes::NumberValueNode"),
+	("graphene_core::ops::PercentageValueNode", "graphene_math_nodes::PercentageValueNode"),
+	("graphene_core::ops::CoordinateValueNode", "graphene_math_nodes::CoordinateValueNode"),
+	("graphene_core::ops::ColorValueNode", "graphene_math_nodes::ColorValueNode"),
+	("graphene_core::ops::GradientValueNode", "graphene_math_nodes::GradientValueNode"),
+	("graphene_core::ops::StringValueNode", "graphene_math_nodes::StringValueNode"),
+	("graphene_core::ops::DotProductNode", "graphene_math_nodes::DotProductNode"),
+	// debug
+	("graphene_core::ops::SizeOfNode", "graphene_core::debug::SizeOfNode"),
+	("graphene_core::ops::SomeNode", "graphene_core::debug::SomeNode"),
+	("graphene_core::ops::UnwrapNode", "graphene_core::debug::UnwrapNode"),
+	("graphene_core::ops::CloneNode", "graphene_core::debug::CloneNode"),
+	// ???
+	("graphene_core::ops::ExtractXyNode", "graphene_core::extract_xy::ExtractXyNode"),
 	("graphene_core::logic::LogicAndNode", "graphene_core::ops::LogicAndNode"),
 	("graphene_core::logic::LogicNotNode", "graphene_core::ops::LogicNotNode"),
 	("graphene_core::logic::LogicOrNode", "graphene_core::ops::LogicOrNode"),
 	("graphene_core::ops::ConstructVector2", "graphene_core::ops::CoordinateValueNode"),
 	("graphene_core::ops::Vector2ValueNode", "graphene_core::ops::CoordinateValueNode"),
-	("graphene_core::raster::BlackAndWhiteNode", "graphene_core::raster::adjustments::BlackAndWhiteNode"),
-	("graphene_core::raster::BlendNode", "graphene_core::raster::adjustments::BlendNode"),
 	("graphene_core::raster::BlendModeNode", "graphene_core::blending_nodes::BlendModeNode"),
 	("graphene_core::raster::OpacityNode", "graphene_core::blending_nodes::OpacityNode"),
 	("graphene_core::raster::BlendingNode", "graphene_core::blending_nodes::BlendingNode"),
-	("graphene_core::raster::ChannelMixerNode", "graphene_core::raster::adjustments::ChannelMixerNode"),
-	("graphene_core::raster::adjustments::ColorOverlayNode", "graphene_core::raster::adjustments::ColorOverlayNode"),
-	("graphene_core::raster::ExposureNode", "graphene_core::raster::adjustments::ExposureNode"),
-	("graphene_core::raster::ExtractChannelNode", "graphene_core::raster::adjustments::ExtractChannelNode"),
-	("graphene_core::raster::GradientMapNode", "graphene_core::raster::adjustments::GradientMapNode"),
-	("graphene_core::raster::HueSaturationNode", "graphene_core::raster::adjustments::HueSaturationNode"),
 	("graphene_core::vector::GenerateHandlesNode", "graphene_core::vector::AutoTangentsNode"),
 	("graphene_core::vector::RemoveHandlesNode", "graphene_core::vector::AutoTangentsNode"),
-	("graphene_core::raster::InvertNode", "graphene_core::raster::adjustments::InvertNode"),
-	("graphene_core::raster::InvertRGBNode", "graphene_core::raster::adjustments::InvertNode"),
-	("graphene_core::raster::LevelsNode", "graphene_core::raster::adjustments::LevelsNode"),
-	("graphene_core::raster::LuminanceNode", "graphene_core::raster::adjustments::LuminanceNode"),
-	("graphene_core::raster::ExtractOpaqueNode", "graphene_core::raster::adjustments::MakeOpaqueNode"),
-	("graphene_core::raster::PosterizeNode", "graphene_core::raster::adjustments::PosterizeNode"),
-	("graphene_core::raster::ThresholdNode", "graphene_core::raster::adjustments::ThresholdNode"),
-	("graphene_core::raster::VibranceNode", "graphene_core::raster::adjustments::VibranceNode"),
+	// raster::adjustments
+	("graphene_core::raster::adjustments::LuminanceNode", "graphene_raster_nodes::adjustments::LuminanceNode"),
+	("graphene_core::raster::LuminanceNode", "graphene_raster_nodes::adjustments::LuminanceNode"),
+	("graphene_core::raster::adjustments::ExtractChannelNode", "graphene_raster_nodes::adjustments::ExtractChannelNode"),
+	("graphene_core::raster::ExtractChannelNode", "graphene_raster_nodes::adjustments::ExtractChannelNode"),
+	("graphene_core::raster::adjustments::MakeOpaqueNode", "graphene_raster_nodes::adjustments::MakeOpaqueNode"),
+	("graphene_core::raster::ExtractOpaqueNode", "graphene_raster_nodes::adjustments::MakeOpaqueNode"),
+	(
+		"graphene_core::raster::adjustments::BrightnessContrastNode",
+		"graphene_raster_nodes::adjustments::BrightnessContrastNode",
+	),
+	("graphene_core::raster::adjustments::LevelsNode", "graphene_raster_nodes::adjustments::LevelsNode"),
+	("graphene_core::raster::LevelsNode", "graphene_raster_nodes::adjustments::LevelsNode"),
+	("graphene_core::raster::adjustments::BlackAndWhiteNode", "graphene_raster_nodes::adjustments::BlackAndWhiteNode"),
+	("graphene_core::raster::BlackAndWhiteNode", "graphene_raster_nodes::adjustments::BlackAndWhiteNode"),
+	("graphene_core::raster::adjustments::HueSaturationNode", "graphene_raster_nodes::adjustments::HueSaturationNode"),
+	("graphene_core::raster::HueSaturationNode", "graphene_raster_nodes::adjustments::HueSaturationNode"),
+	("graphene_core::raster::adjustments::InvertNode", "graphene_raster_nodes::adjustments::InvertNode"),
+	("graphene_core::raster::InvertNode", "graphene_raster_nodes::adjustments::InvertNode"),
+	("graphene_core::raster::InvertRGBNode", "graphene_raster_nodes::adjustments::InvertNode"),
+	("graphene_core::raster::adjustments::ThresholdNode", "graphene_raster_nodes::adjustments::ThresholdNode"),
+	("graphene_core::raster::ThresholdNode", "graphene_raster_nodes::adjustments::ThresholdNode"),
+	("graphene_core::raster::adjustments::BlendNode", "graphene_raster_nodes::adjustments::BlendNode"),
+	("graphene_core::raster::BlendNode", "graphene_raster_nodes::adjustments::BlendNode"),
+	("graphene_core::raster::BlendColorPairNode", "graphene_raster_nodes::adjustments::BlendColorPairNode"),
+	("graphene_core::raster::adjustments::BlendColorsNode", "graphene_raster_nodes::adjustments::BlendColorsNode"),
+	("graphene_core::raster::BlendColorsNode", "graphene_raster_nodes::adjustments::BlendColorsNode"),
+	("graphene_core::raster::adjustments::GradientMapNode", "graphene_raster_nodes::adjustments::GradientMapNode"),
+	("graphene_core::raster::GradientMapNode", "graphene_raster_nodes::adjustments::GradientMapNode"),
+	("graphene_core::raster::adjustments::VibranceNode", "graphene_raster_nodes::adjustments::VibranceNode"),
+	("graphene_core::raster::VibranceNode", "graphene_raster_nodes::adjustments::VibranceNode"),
+	("graphene_core::raster::adjustments::ChannelMixerNode", "graphene_raster_nodes::adjustments::ChannelMixerNode"),
+	("graphene_core::raster::ChannelMixerNode", "graphene_raster_nodes::adjustments::ChannelMixerNode"),
+	("graphene_core::raster::adjustments::SelectiveColorNode", "graphene_raster_nodes::adjustments::SelectiveColorNode"),
+	("graphene_core::raster::adjustments::PosterizeNode", "graphene_raster_nodes::adjustments::PosterizeNode"),
+	("graphene_core::raster::PosterizeNode", "graphene_raster_nodes::adjustments::PosterizeNode"),
+	("graphene_core::raster::adjustments::ExposureNode", "graphene_raster_nodes::adjustments::ExposureNode"),
+	("graphene_core::raster::ExposureNode", "graphene_raster_nodes::adjustments::ExposureNode"),
+	("graphene_core::raster::adjustments::GenerateCurvesNode", "graphene_raster_nodes::generate_curves::GenerateCurvesNode"),
+	("graphene_core::raster::adjustments::ColorOverlayNode", "graphene_raster_nodes::generate_curves::ColorOverlayNode"),
+	// text
 	("graphene_core::text::TextGeneratorNode", "graphene_core::text::TextNode"),
+	// transform
 	("graphene_core::transform::SetTransformNode", "graphene_core::transform_nodes::ReplaceTransformNode"),
 	("graphene_core::transform::ReplaceTransformNode", "graphene_core::transform_nodes::ReplaceTransformNode"),
 	("graphene_core::transform::TransformNode", "graphene_core::transform_nodes::TransformNode"),
 	("graphene_core::transform::BoundlessFootprintNode", "graphene_core::transform_nodes::BoundlessFootprintNode"),
 	("graphene_core::transform::FreezeRealTimeNode", "graphene_core::transform_nodes::FreezeRealTimeNode"),
+	// ???
 	("graphene_core::vector::SplinesFromPointsNode", "graphene_core::vector::SplineNode"),
 	("graphene_core::vector::generator_nodes::EllipseGenerator", "graphene_core::vector::generator_nodes::EllipseNode"),
 	("graphene_core::vector::generator_nodes::LineGenerator", "graphene_core::vector::generator_nodes::LineNode"),
@@ -71,6 +147,10 @@ const REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_std::raster::MaskImageNode", "graphene_std::raster::MaskNode"),
 	("graphene_core::vector::FlattenVectorElementsNode", "graphene_core::vector::FlattenPathNode"),
 	("graphene_std::vector::BooleanOperationNode", "graphene_path_bool::BooleanOperationNode"),
+	// brush
+	("graphene_std::brush::BrushStampGeneratorNode", "graphene_brush::brush::BrushStampGeneratorNode"),
+	("graphene_std::brush::BlitNode", "graphene_brush::brush::BlitNode"),
+	("graphene_std::brush::BrushNode", "graphene_brush::brush::BrushNode"),
 ];
 
 pub fn document_migration_string_preprocessing(document_serialized_content: String) -> String {
@@ -263,8 +343,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			let node_definition = resolve_document_node_type(reference).unwrap();
 			let document_node = node_definition.default_node_template().document_node;
 			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
-			document.network_interface.insert_input_properties_row(node_id, 8, network_path);
-			document.network_interface.insert_input_properties_row(node_id, 9, network_path);
+			document.network_interface.insert_input_properties_row(node_id, 8, network_path, ("", "TODO").into());
+			document.network_interface.insert_input_properties_row(node_id, 9, network_path, ("", "TODO").into());
 
 			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
 			let align_input = NodeInput::value(TaggedValue::StrokeAlign(StrokeAlign::Center), false);
@@ -357,7 +437,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 
 		// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
-		if reference == "Text" && inputs_count != 8 {
+		if reference == "Text" && inputs_count != 9 {
 			let node_definition = resolve_document_node_type(reference).unwrap();
 			let document_node = node_definition.default_node_template().document_node;
 			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
@@ -388,12 +468,44 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			);
 			document.network_interface.set_input(
 				&InputConnector::node(*node_id, 6),
-				NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
+				if inputs_count >= 7 {
+					old_inputs[6].clone()
+				} else {
+					NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false)
+				},
 				network_path,
 			);
 			document.network_interface.set_input(
 				&InputConnector::node(*node_id, 7),
-				NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
+				if inputs_count >= 8 {
+					old_inputs[7].clone()
+				} else {
+					NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false)
+				},
+				network_path,
+			);
+			document.network_interface.insert_input_properties_row(
+				node_id,
+				9,
+				network_path,
+				PropertiesRow::with_override(
+					"Tilt",
+					"Faux italic",
+					WidgetOverride::Number(NumberInputSettings {
+						min: Some(-85.),
+						max: Some(85.),
+						unit: Some("°".to_string()),
+						..Default::default()
+					}),
+				),
+			);
+			document.network_interface.set_input(
+				&InputConnector::node(*node_id, 8),
+				if inputs_count >= 9 {
+					old_inputs[8].clone()
+				} else {
+					NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false)
+				},
 				network_path,
 			);
 		}
@@ -666,16 +778,61 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
 			let new_spacing_value = NodeInput::value(TaggedValue::PointSpacingType(graphene_std::vector::misc::PointSpacingType::Separation), false);
+			let new_quantity_value = NodeInput::value(TaggedValue::U32(100), false);
 
 			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 1), new_spacing_value, network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[1].clone(), network_path);
-			document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[1].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node(*node_id, 3), new_quantity_value, network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[2].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 6), old_inputs[4].clone(), network_path);
 
 			document.network_interface.replace_reference_name(node_id, network_path, "Sample Polyline".to_string());
+		}
+
+		// Make the "Quantity" parameter a u32 instead of f64
+		if reference == "Sample Polyline" {
+			let node_definition = resolve_document_node_type("Sample Polyline").unwrap();
+			let new_node_template = node_definition.default_node_template();
+			let document_node = new_node_template.document_node;
+
+			// Get the inputs, obtain the quantity value, and put the inputs back
+			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+			let quantity_value = old_inputs.get(3).cloned();
+			let _ = document.network_interface.replace_inputs(node_id, old_inputs, network_path);
+
+			if let Some(NodeInput::Value { tagged_value, exposed }) = quantity_value {
+				if let TaggedValue::F64(value) = *tagged_value {
+					let new_quantity_value = NodeInput::value(TaggedValue::U32(value as u32), exposed);
+					document.network_interface.set_input(&InputConnector::node(*node_id, 3), new_quantity_value, network_path);
+				}
+			}
+		}
+
+		// Make the "Grid" node, if its input of index 3 is a DVec2 for "angles" instead of a u32 for the "columns" input that now succeeds "angles", move the angle to index 5 (after "columns" and "rows")
+		if reference == "Grid" && inputs_count == 6 {
+			let node_definition = resolve_document_node_type(reference).unwrap();
+			let new_node_template = node_definition.default_node_template();
+			let document_node = new_node_template.document_node;
+
+			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+			let index_3_value = old_inputs.get(3).cloned();
+
+			if let Some(NodeInput::Value { tagged_value, exposed: _ }) = index_3_value {
+				if matches!(*tagged_value, TaggedValue::DVec2(_)) {
+					// Move index 3 to the end
+					document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+					document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+					document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+					document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[4].clone(), network_path);
+					document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
+					document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
+				} else {
+					// Swap it back if we're not changing anything
+					let _ = document.network_interface.replace_inputs(node_id, old_inputs, network_path);
+				}
+			}
 		}
 	}
 

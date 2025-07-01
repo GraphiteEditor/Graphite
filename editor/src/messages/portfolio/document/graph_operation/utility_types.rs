@@ -9,10 +9,10 @@ use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Artboard;
+use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{CPU, RasterDataTable};
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::brush_stroke::BrushStroke;
 use graphene_std::vector::style::{Fill, Stroke};
 use graphene_std::vector::{PointId, VectorModificationType};
 use graphene_std::vector::{VectorData, VectorDataTable};
@@ -190,6 +190,7 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::value(TaggedValue::F64(typesetting.character_spacing), false)),
 			Some(NodeInput::value(TaggedValue::OptionalF64(typesetting.max_width), false)),
 			Some(NodeInput::value(TaggedValue::OptionalF64(typesetting.max_height), false)),
+			Some(NodeInput::value(TaggedValue::F64(typesetting.tilt), false)),
 		]);
 
 		let text_id = NodeId::new();

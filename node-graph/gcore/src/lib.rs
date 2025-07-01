@@ -8,6 +8,8 @@ pub mod bounds;
 pub mod color;
 pub mod consts;
 pub mod context;
+pub mod debug;
+pub mod extract_xy;
 pub mod generic;
 pub mod gradient;
 mod graphic_element;
