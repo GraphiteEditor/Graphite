@@ -270,6 +270,20 @@ impl GraphicElementRendered for GraphicGroupTable {
 
 						attributes.push(mask_type.to_attribute(), selector);
 					}
+
+					if let Some(mask) = instance.mask {
+						let uuid = generate_uuid();
+						let mask_type = if mask.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
+						let mut svg = SvgRender::new();
+						mask.render_svg(&mut svg, &render_params.for_clipper());
+
+						write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
+						mask_type.write_to_defs(&mut attributes.0.svg_defs, uuid, svg.svg.to_svg_string());
+						let id = format!("mask-{}", uuid);
+						let selector = format!("url(#{id})");
+
+						attributes.push(mask_type.to_attribute(), selector);
+					}
 				},
 				|render| {
 					instance.instance.render_svg(render, render_params);
@@ -314,6 +328,20 @@ impl GraphicElementRendered for GraphicGroupTable {
 				}
 			}
 
+			let mut masked = false;
+			if let Some(mask) = instance.mask {
+				let bounds = mask.bounding_box(transform, true);
+
+				if let Some(bounds) = bounds {
+					masked = true;
+					let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+
+					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+					mask.render_to_vello(scene, transform, context, &render_params.for_clipper());
+					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
+				}
+			}
+
 			let next_clips = iter.peek().is_some_and(|next_instance| next_instance.instance.had_clip_enabled());
 			if next_clips && mask_instance_state.is_none() {
 				mask_instance_state = Some((instance.instance, transform));
@@ -346,6 +374,11 @@ impl GraphicElementRendered for GraphicGroupTable {
 				}
 			} else {
 				instance.instance.render_to_vello(scene, transform, context, render_params);
+			}
+
+			if masked {
+				scene.pop_layer();
+				scene.pop_layer();
 			}
 
 			if layer {
@@ -450,6 +483,7 @@ impl GraphicElementRendered for VectorDataTable {
 
 					vector_row.push(Instance {
 						instance: fill_instance,
+						mask: None,
 						alpha_blending: *instance.alpha_blending,
 						transform: *instance.transform,
 						source_node_id: None,
@@ -570,6 +604,7 @@ impl GraphicElementRendered for VectorDataTable {
 
 				vector_data.push(Instance {
 					instance: fill_instance,
+					mask: None,
 					alpha_blending: *instance.alpha_blending,
 					transform: *instance.transform,
 					source_node_id: None,
