@@ -279,11 +279,11 @@ mod tests {
 	#[test]
 	fn isometric_grid_test() {
 		// Doesn't crash with weird angles
-		grid((), (), GridType::Isometric, 0., (0., 0.).into(), 5, 5);
-		grid((), (), GridType::Isometric, 90., (90., 90.).into(), 5, 5);
+		grid((), (), GridType::Isometric, 0., 5, 5, (0., 0.).into());
+		grid((), (), GridType::Isometric, 90., 5, 5, (90., 90.).into());
 
 		// Works properly
-		let grid = grid((), (), GridType::Isometric, 10., (30., 30.).into(), 5, 5);
+		let grid = grid((), (), GridType::Isometric, 10., 5, 5, (30., 30.).into());
 		assert_eq!(grid.instance_ref_iter().next().unwrap().instance.point_domain.ids().len(), 5 * 5);
 		assert_eq!(grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
 		for (_, bezier, _, _) in grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter() {
@@ -298,7 +298,7 @@ mod tests {
 
 	#[test]
 	fn skew_isometric_grid_test() {
-		let grid = grid((), (), GridType::Isometric, 10., (40., 30.).into(), 5, 5);
+		let grid = grid((), (), GridType::Isometric, 10., 5, 5, (40., 30.).into());
 		assert_eq!(grid.instance_ref_iter().next().unwrap().instance.point_domain.ids().len(), 5 * 5);
 		assert_eq!(grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
 		for (_, bezier, _, _) in grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter() {

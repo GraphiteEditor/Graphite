@@ -775,6 +775,31 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				}
 			}
 		}
+
+		// Make the "Grid" node, if its input of index 3 is a DVec2 for "angles" instead of a u32 for the "columns" input that now succeeds "angles", move the angle to index 5 (after "columns" and "rows")
+		if reference == "Grid" && inputs_count == 6 {
+			let node_definition = resolve_document_node_type(reference).unwrap();
+			let new_node_template = node_definition.default_node_template();
+			let document_node = new_node_template.document_node;
+
+			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+			let index_3_value = old_inputs.get(3).cloned();
+
+			if let Some(NodeInput::Value { tagged_value, exposed: _ }) = index_3_value {
+				if matches!(*tagged_value, TaggedValue::DVec2(_)) {
+					// Move index 3 to the end
+					document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+					document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+					document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+					document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[4].clone(), network_path);
+					document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
+					document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
+				} else {
+					// Swap it back if we're not changing anything
+					let _ = document.network_interface.replace_inputs(node_id, old_inputs, network_path);
+				}
+			}
+		}
 	}
 
 	// Ensure layers are positioned as stacks if they are upstream siblings of another layer
