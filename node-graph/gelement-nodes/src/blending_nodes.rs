@@ -1,8 +1,10 @@
-use crate::raster::Image;
-use crate::raster_types::{CPU, RasterDataTable};
-use crate::registry::types::Percentage;
-use crate::vector::VectorDataTable;
-use crate::{BlendMode, Color, Ctx, GraphicElement, GraphicGroupTable};
+use graphene_core::GraphicGroupTable;
+use graphene_core::blending::BlendMode;
+use graphene_core::color::Color;
+use graphene_core::context::Ctx;
+use graphene_core::raster_types::{CPU, RasterDataTable};
+use graphene_core::registry::types::Percentage;
+use graphene_core::vector::VectorDataTable;
 
 pub(super) trait MultiplyAlpha {
 	fn multiply_alpha(&mut self, factor: f64);
@@ -27,10 +29,7 @@ impl MultiplyAlpha for GraphicGroupTable {
 		}
 	}
 }
-impl MultiplyAlpha for RasterDataTable<CPU>
-where
-	GraphicElement: From<Image<Color>>,
-{
+impl MultiplyAlpha for RasterDataTable<CPU> {
 	fn multiply_alpha(&mut self, factor: f64) {
 		for instance in self.instance_mut_iter() {
 			instance.alpha_blending.opacity *= factor as f32;
