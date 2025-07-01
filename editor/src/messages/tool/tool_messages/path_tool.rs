@@ -2101,7 +2101,7 @@ impl Fsm for PathToolFsmState {
 
 					// Add all the selected points
 					for (point, position) in old_vector_data.point_domain.iter() {
-						if layer_selection_state.is_selected(ManipulatorPointId::Anchor(point)) {
+						if layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(point)) {
 							new_vector_data.point_domain.push(point, position);
 						}
 					}
@@ -2118,7 +2118,7 @@ impl Fsm for PathToolFsmState {
 
 					// Add segments which have selected ends
 					for ((segment_id, bezier, start, end), stroke) in old_vector_data.segment_bezier_iter().zip(old_vector_data.segment_domain.stroke().iter()) {
-						if layer_selection_state.is_selected(ManipulatorPointId::Anchor(start)) && layer_selection_state.is_selected(ManipulatorPointId::Anchor(end)) {
+						if layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(start)) && layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(end)) {
 							let start_index = find_index(start);
 							let end_index = find_index(end);
 							new_vector_data.segment_domain.push(segment_id, start_index, end_index, bezier.handles, *stroke);
