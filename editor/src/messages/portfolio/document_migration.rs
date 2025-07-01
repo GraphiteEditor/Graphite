@@ -456,7 +456,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				network_path,
 				PropertiesRow::with_override(
 					"Tilt",
-					"Faux italics",
+					"Faux italic",
 					WidgetOverride::Number(NumberInputSettings {
 						min: Some(-85.),
 						max: Some(85.),

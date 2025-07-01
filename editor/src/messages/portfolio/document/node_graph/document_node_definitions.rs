@@ -1578,6 +1578,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							"Line Height",
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
+								unit: Some("x".to_string()),
 								min: Some(0.),
 								step: Some(0.1),
 								..Default::default()
@@ -1587,6 +1588,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							"Character Spacing",
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
+								unit: Some(" px".to_string()),
 								min: Some(0.),
 								step: Some(0.1),
 								..Default::default()
@@ -1596,6 +1598,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							"Max Width",
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
+								unit: Some(" px".to_string()),
 								min: Some(1.),
 								blank_assist: false,
 								..Default::default()
@@ -1605,6 +1608,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							"Max Height",
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
+								unit: Some(" px".to_string()),
 								min: Some(1.),
 								blank_assist: false,
 								..Default::default()
@@ -1612,10 +1616,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						),
 						PropertiesRow::with_override(
 							"Tilt",
-							"TODO",
+							"Faux italic",
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(-85.),
-
 								max: Some(85.),
 								unit: Some("°".to_string()),
 								..Default::default()
