@@ -361,6 +361,7 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 	let Some(&TaggedValue::F64(character_spacing)) = inputs[5].as_value() else { return None };
 	let Some(&TaggedValue::OptionalF64(max_width)) = inputs[6].as_value() else { return None };
 	let Some(&TaggedValue::OptionalF64(max_height)) = inputs[7].as_value() else { return None };
+	let Some(&TaggedValue::F64(tilt)) = inputs[8].as_value() else { return None };
 
 	let typesetting = TypesettingConfig {
 		font_size,
@@ -368,6 +369,7 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 		max_width,
 		character_spacing,
 		max_height,
+		tilt,
 	};
 	Some((text, font, typesetting))
 }
