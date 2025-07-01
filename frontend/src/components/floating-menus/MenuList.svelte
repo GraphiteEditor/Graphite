@@ -566,7 +566,7 @@
 					background: var(--color-e-nearwhite);
 					color: var(--color-2-mildblack);
 
-					svg {
+					> .icon-label {
 						fill: var(--color-2-mildblack);
 					}
 				}

@@ -5,6 +5,7 @@ use crate::messages::portfolio::document::utility_types::misc::*;
 use crate::messages::prelude::*;
 use bezier_rs::{Bezier, Identifier, Subpath, TValue};
 use glam::{DAffine2, DVec2};
+use graphene_std::math::math_ext::QuadExt;
 use graphene_std::renderer::Quad;
 use graphene_std::vector::PointId;
 

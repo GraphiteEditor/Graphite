@@ -45,6 +45,9 @@ pub struct NodeRuntime {
 	/// Which node is inspected and which monitor node is used (if any) for the current execution
 	inspect_state: Option<InspectState>,
 
+	/// Mapping of the fully-qualified node paths to their preprocessor substitutions.
+	substitutions: HashMap<String, DocumentNode>,
+
 	// TODO: Remove, it doesn't need to be persisted anymore
 	/// The current renders of the thumbnails for layer nodes.
 	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
@@ -119,6 +122,8 @@ impl NodeRuntime {
 
 			node_graph_errors: Vec::new(),
 			monitor_nodes: Vec::new(),
+
+			substitutions: preprocessor::generate_node_substitutions(),
 
 			thumbnail_renders: Default::default(),
 			vector_modify: Default::default(),
@@ -221,11 +226,14 @@ impl NodeRuntime {
 		}
 	}
 
-	async fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, String> {
+	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, String> {
+		preprocessor::expand_network(&mut graph, &self.substitutions);
+
 		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 
 		// We assume only one output
 		assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
+
 		let c = Compiler {};
 		let proto_network = match c.compile_single(scoped_network) {
 			Ok(network) => network,

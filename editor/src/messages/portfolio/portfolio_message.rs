@@ -54,9 +54,6 @@ pub enum PortfolioMessage {
 		preview_url: String,
 		data: Vec<u8>,
 	},
-	// ImaginateCheckServerStatus,
-	// ImaginatePollServerStatus,
-	// ImaginateServerHostname,
 	Import,
 	LoadDocumentResources {
 		document_id: DocumentId,

@@ -693,5 +693,5 @@ impl PTZ {
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum GroupFolderType {
 	Layer,
-	BooleanOperation(graphene_std::vector::misc::BooleanOperation),
+	BooleanOperation(graphene_std::path_bool::BooleanOperation),
 }

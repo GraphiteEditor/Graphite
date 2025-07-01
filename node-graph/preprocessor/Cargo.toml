@@ -1,0 +1,14 @@
+[package]
+name = "preprocessor"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[features]
+
+[dependencies]
+
+# Workspace dependencies
+graphene-std = { workspace = true, features = ["gpu"] }
+graph-craft = { workspace = true }
+interpreted-executor = { workspace = true }

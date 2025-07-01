@@ -1,20 +1,18 @@
 use graph_craft::document::value::RenderOutput;
 pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
-#[cfg(target_arch = "wasm32")]
-use graphene_core::application_io::SurfaceHandle;
-use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig};
+use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
 #[cfg(target_arch = "wasm32")]
 use graphene_core::instances::Instances;
 #[cfg(target_arch = "wasm32")]
-use graphene_core::raster::bbox::Bbox;
+use graphene_core::math::bbox::Bbox;
 use graphene_core::raster::image::Image;
 use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
-use graphene_core::renderer::RenderMetadata;
-use graphene_core::renderer::{GraphicElementRendered, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorDataTable;
 use graphene_core::{Color, Context, Ctx, ExtractFootprint, GraphicGroupTable, OwnedContextImpl, WasmNotSend};
+use graphene_svg_renderer::RenderMetadata;
+use graphene_svg_renderer::{GraphicElementRendered, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 
 #[cfg(target_arch = "wasm32")]
 use base64::Engine;
@@ -27,6 +25,7 @@ use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
+#[cfg(feature = "wgpu")]
 #[node_macro::node(category("Debug: GPU"))]
 async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
 	Arc::new(editor.application_io.as_ref().unwrap().create_window())
@@ -61,7 +60,7 @@ async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<W
 // 	}
 // }
 
-#[node_macro::node(category("Network"))]
+#[node_macro::node(category("Web Request"))]
 async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] editor: &'a WasmEditorApi, #[name("URL")] url: String) -> Arc<[u8]> {
 	let Some(api) = editor.application_io.as_ref() else {
 		return Arc::from(include_bytes!("../../graph-craft/src/null.png").to_vec());
@@ -76,7 +75,7 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")]
 	data
 }
 
-#[node_macro::node(category("Network"))]
+#[node_macro::node(category("Web Request"))]
 fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> RasterDataTable<CPU> {
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
 		return RasterDataTable::default();
@@ -126,7 +125,7 @@ async fn render_canvas(
 	surface_handle: wgpu_executor::WgpuSurface,
 	render_params: RenderParams,
 ) -> RenderOutputType {
-	use graphene_core::SurfaceFrame;
+	use graphene_application_io::SurfaceFrame;
 
 	let footprint = render_config.viewport;
 	let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() else {
@@ -171,7 +170,7 @@ async fn rasterize<T: WasmNotSend + 'n>(
 	)]
 	mut data: Instances<T>,
 	footprint: Footprint,
-	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
+	surface_handle: Arc<graphene_application_io::SurfaceHandle<HtmlCanvasElement>>,
 ) -> RasterDataTable<CPU>
 where
 	Instances<T>: GraphicElementRendered,

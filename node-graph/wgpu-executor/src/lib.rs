@@ -4,8 +4,9 @@ use anyhow::Result;
 pub use context::Context;
 use dyn_any::StaticType;
 use glam::UVec2;
-use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
+use graphene_application_io::{ApplicationIo, EditorApi, SurfaceHandle};
 use graphene_core::{Color, Ctx};
+pub use graphene_svg_renderer::RenderContext;
 use std::sync::Arc;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::{Origin3d, SurfaceConfiguration, TextureAspect};
@@ -31,7 +32,7 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &
 pub type WgpuSurface = Arc<SurfaceHandle<Surface>>;
 pub type WgpuWindow = Arc<SurfaceHandle<WindowHandle>>;
 
-impl graphene_core::application_io::Size for Surface {
+impl graphene_application_io::Size for Surface {
 	fn size(&self) -> UVec2 {
 		self.resolution
 	}
@@ -49,8 +50,6 @@ pub type Window = Arc<winit::window::Window>;
 unsafe impl StaticType for Surface {
 	type Static = Surface;
 }
-
-pub use graphene_core::renderer::RenderContext;
 
 impl WgpuExecutor {
 	pub async fn render_vello_scene(&self, scene: &Scene, surface: &WgpuSurface, width: u32, height: u32, context: &RenderContext, background: Color) -> Result<()> {
@@ -104,7 +103,7 @@ impl WgpuExecutor {
 	}
 
 	#[cfg(target_arch = "wasm32")]
-	pub fn create_surface(&self, canvas: graphene_core::WasmSurfaceHandle) -> Result<SurfaceHandle<Surface>> {
+	pub fn create_surface(&self, canvas: graphene_application_io::WasmSurfaceHandle) -> Result<SurfaceHandle<Surface>> {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
 
 		Ok(SurfaceHandle {

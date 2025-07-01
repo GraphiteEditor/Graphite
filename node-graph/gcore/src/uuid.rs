@@ -43,9 +43,9 @@ mod u64_string {
 }
 
 mod uuid_generation {
-	use core::cell::Cell;
 	use rand_chacha::ChaCha20Rng;
 	use rand_chacha::rand_core::{RngCore, SeedableRng};
+	use std::cell::Cell;
 	use std::sync::Mutex;
 
 	static RNG: Mutex<Option<ChaCha20Rng>> = Mutex::new(None);
@@ -79,8 +79,8 @@ impl NodeId {
 	}
 }
 
-impl core::fmt::Display for NodeId {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl std::fmt::Display for NodeId {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}", self.0)
 	}
 }

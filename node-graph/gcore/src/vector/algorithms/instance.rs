@@ -99,7 +99,7 @@ async fn instance_index(ctx: impl Ctx + ExtractIndex) -> f64 {
 mod test {
 	use super::*;
 	use crate::Node;
-	use crate::ops::ExtractXyNode;
+	use crate::extract_xy::{ExtractXyNode, XY};
 	use crate::vector::VectorData;
 	use bezier_rs::Subpath;
 	use glam::DVec2;
@@ -109,7 +109,7 @@ mod test {
 	pub struct FutureWrapperNode<T: Clone>(T);
 
 	impl<'i, I: Ctx, T: 'i + Clone + Send> Node<'i, I> for FutureWrapperNode<T> {
-		type Output = Pin<Box<dyn core::future::Future<Output = T> + 'i + Send>>;
+		type Output = Pin<Box<dyn Future<Output = T> + 'i + Send>>;
 		fn eval(&'i self, _input: I) -> Self::Output {
 			let value = self.0.clone();
 			Box::pin(async move { value })
@@ -121,7 +121,7 @@ mod test {
 		let owned = OwnedContextImpl::default().into_context();
 		let rect = crate::vector::generator_nodes::RectangleNode::new(
 			FutureWrapperNode(()),
-			ExtractXyNode::new(InstancePositionNode {}, FutureWrapperNode(crate::ops::XY::Y)),
+			ExtractXyNode::new(InstancePositionNode {}, FutureWrapperNode(XY::Y)),
 			FutureWrapperNode(2_f64),
 			FutureWrapperNode(false),
 			FutureWrapperNode(0_f64),

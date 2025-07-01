@@ -3,14 +3,13 @@ use crate::Ctx;
 use crate::instances::Instance;
 use crate::uuid::generate_uuid;
 use bezier_rs::BezierHandles;
-use core::hash::BuildHasher;
 use dyn_any::DynAny;
 use kurbo::{BezPath, PathEl, Point};
 use std::collections::{HashMap, HashSet};
+use std::hash::BuildHasher;
 
 /// Represents a procedural change to the [`PointDomain`] in [`VectorData`].
-#[derive(Clone, Debug, Default, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PointModification {
 	add: Vec<PointId>,
 	remove: HashSet<PointId>,
@@ -81,8 +80,7 @@ impl PointModification {
 }
 
 /// Represents a procedural change to the [`SegmentDomain`] in [`VectorData`].
-#[derive(Clone, Debug, Default, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SegmentModification {
 	add: Vec<SegmentId>,
 	remove: HashSet<SegmentId>,
@@ -254,13 +252,12 @@ impl SegmentModification {
 }
 
 /// Represents a procedural change to the [`RegionDomain`] in [`VectorData`].
-#[derive(Clone, Debug, Default, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RegionModification {
 	add: Vec<RegionId>,
 	remove: HashSet<RegionId>,
 	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
-	segment_range: HashMap<RegionId, core::ops::RangeInclusive<SegmentId>>,
+	segment_range: HashMap<RegionId, std::ops::RangeInclusive<SegmentId>>,
 	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	fill: HashMap<RegionId, FillId>,
 }
@@ -299,8 +296,7 @@ impl RegionModification {
 }
 
 /// Represents a procedural change to the [`VectorData`].
-#[derive(Clone, Debug, Default, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Default, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct VectorModification {
 	points: PointModification,
 	segments: SegmentModification,
@@ -416,8 +412,8 @@ impl VectorModification {
 	}
 }
 
-impl core::hash::Hash for VectorModification {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl Hash for VectorModification {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		generate_uuid().hash(state)
 	}
 }
@@ -634,6 +630,33 @@ impl<'a> AppendBezpath<'a> {
 					this.reset();
 				}
 			}
+		}
+	}
+}
+
+pub trait VectorDataExt {
+	/// Appends a Kurbo BezPath to the vector data.
+	fn append_bezpath(&mut self, bezpath: BezPath);
+}
+
+impl VectorDataExt for VectorData {
+	fn append_bezpath(&mut self, bezpath: BezPath) {
+		AppendBezpath::append_bezpath(self, bezpath);
+	}
+}
+
+pub trait HandleExt {
+	/// Set the handle's position relative to the anchor which is the start anchor for the primary handle and end anchor for the end handle.
+	#[must_use]
+	fn set_relative_position(self, relative_position: DVec2) -> VectorModificationType;
+}
+
+impl HandleExt for HandleId {
+	fn set_relative_position(self, relative_position: DVec2) -> VectorModificationType {
+		let Self { ty, segment } = self;
+		match ty {
+			HandleType::Primary => VectorModificationType::SetPrimaryHandle { segment, relative_position },
+			HandleType::End => VectorModificationType::SetEndHandle { segment, relative_position },
 		}
 	}
 }

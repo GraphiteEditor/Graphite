@@ -3,12 +3,12 @@ use dyn_any::DynAny;
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
 use graphene_core::instances::Instance;
-use graphene_core::raster::bbox::Bbox;
+use graphene_core::math::bbox::Bbox;
 pub use graphene_core::raster::*;
 use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::transform::Transform;
 use graphene_core::vector::VectorDataTable;
-use graphene_core::{AlphaBlending, Ctx, ExtractFootprint};
+use graphene_core::{Ctx, ExtractFootprint};
 use graphene_core::{GraphicElement, GraphicGroupTable};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
@@ -94,7 +94,7 @@ fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: RasterDa
 	result_table
 }
 
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category("Raster: Channels"))]
 fn combine_channels(
 	_: impl Ctx,
 	_primary: (),
@@ -329,106 +329,7 @@ fn image_value(_: impl Ctx, _primary: (), image: RasterDataTable<CPU>) -> Raster
 	image
 }
 
-// #[cfg(feature = "serde")]
-// macro_rules! generate_imaginate_node {
-// 	($($val:ident: $t:ident: $o:ty,)*) => {
-// 		pub struct ImaginateNode<P: Pixel, E, C, G, $($t,)*> {
-// 			editor_api: E,
-// 			controller: C,
-// 			generation_id: G,
-// 			$($val: $t,)*
-// 			cache: std::sync::Arc<std::sync::Mutex<HashMap<u64, Image<P>>>>,
-// 			last_generation: std::sync::atomic::AtomicU64,
-// 		}
-
-// 		impl<'e, P: Pixel, E, C, G, $($t,)*> ImaginateNode<P, E, C, G, $($t,)*>
-// 		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
-// 			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, &'e WasmEditorApi>>,
-// 			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
-// 			G: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, u64>>,
-// 		{
-// 			#[allow(clippy::too_many_arguments)]
-// 			pub fn new(editor_api: E, controller: C, $($val: $t,)*  generation_id: G ) -> Self {
-// 				Self { editor_api, controller, generation_id, $($val,)* cache: Default::default(), last_generation: std::sync::atomic::AtomicU64::new(u64::MAX) }
-// 			}
-// 		}
-
-// 		impl<'i, 'e: 'i, P: Pixel + 'i + Hash + Default + Send, E: 'i, C: 'i, G: 'i, $($t: 'i,)*> Node<'i, RasterData<P>> for ImaginateNode<P, E, C, G, $($t,)*>
-// 		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
-// 			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, &'e WasmEditorApi>>,
-// 			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
-// 			G: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, u64>>,
-// 		{
-// 			type Output = DynFuture<'i, RasterData<P>>;
-
-// 			fn eval(&'i self, frame: RasterData<P>) -> Self::Output {
-// 				let controller = self.controller.eval(());
-// 				$(let $val = self.$val.eval(());)*
-
-// 				use std::hash::Hasher;
-// 				let mut hasher = rustc_hash::FxHasher::default();
-// 				frame.image.hash(&mut hasher);
-// 				let hash = hasher.finish();
-// 				let editor_api = self.editor_api.eval(());
-// 				let cache = self.cache.clone();
-// 				let generation_future = self.generation_id.eval(());
-// 				let last_generation = &self.last_generation;
-
-// 				Box::pin(async move {
-// 					let controller: ImaginateController = controller.await;
-// 					let generation_id = generation_future.await;
-// 					if generation_id !=  last_generation.swap(generation_id, std::sync::atomic::Ordering::SeqCst) {
-// 						let image = super::imaginate::imaginate(frame.image, editor_api, controller, $($val,)*).await;
-
-// 						cache.lock().unwrap().insert(hash, image.clone());
-
-// 						return wrap_image_frame(image, frame.transform);
-// 					}
-// 					let image = cache.lock().unwrap().get(&hash).cloned().unwrap_or_default();
-
-// 					return wrap_image_frame(image, frame.transform);
-// 				})
-// 			}
-// 		}
-// 	}
-// }
-
-// fn wrap_image_frame<P: Pixel>(image: Image<P>, transform: DAffine2) -> RasterData<P> {
-// 	if !transform.decompose_scale().abs_diff_eq(DVec2::ZERO, 0.00001) {
-// 		RasterData {
-// 			image,
-// 			transform,
-// 			alpha_blending: AlphaBlending::default(),
-// 		}
-// 	} else {
-// 		let resolution = DVec2::new(image.height as f64, image.width as f64);
-// 		RasterData {
-// 			image,
-// 			transform: DAffine2::from_scale_angle_translation(resolution, 0., transform.translation),
-// 			alpha_blending: AlphaBlending::default(),
-// 		}
-// 	}
-// }
-
-// #[cfg(feature = "serde")]
-// generate_imaginate_node! {
-// 	seed: Seed: f64,
-// 	res: Res: Option<DVec2>,
-// 	samples: Samples: u32,
-// 	sampling_method: SamplingMethod: ImaginateSamplingMethod,
-// 	prompt_guidance: PromptGuidance: f64,
-// 	prompt: Prompt: String,
-// 	negative_prompt: NegativePrompt: String,
-// 	adapt_input_image: AdaptInputImage: bool,
-// 	image_creativity: ImageCreativity: f64,
-// 	inpaint: Inpaint: bool,
-// 	mask_blur: MaskBlur: f64,
-// 	mask_starting_fill: MaskStartingFill: ImaginateMaskStartingFill,
-// 	improve_faces: ImproveFaces: bool,
-// 	tiling: Tiling: bool,
-// }
-
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category("Raster: Pattern"))]
 #[allow(clippy::too_many_arguments)]
 fn noise_pattern(
 	ctx: impl ExtractFootprint + Ctx,
@@ -585,7 +486,7 @@ fn noise_pattern(
 	result
 }
 
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category("Raster: Pattern"))]
 fn mandelbrot(ctx: impl ExtractFootprint + Send) -> RasterDataTable<CPU> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();

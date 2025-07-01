@@ -102,7 +102,7 @@ pub const MANIPULATOR_GROUP_MARKER_SIZE: f64 = 6.;
 pub const SELECTION_THRESHOLD: f64 = 10.;
 pub const HIDE_HANDLE_DISTANCE: f64 = 3.;
 pub const HANDLE_ROTATE_SNAP_ANGLE: f64 = 15.;
-pub const SEGMENT_INSERTION_DISTANCE: f64 = 8.;
+pub const SEGMENT_INSERTION_DISTANCE: f64 = 5.;
 pub const SEGMENT_OVERLAY_SIZE: f64 = 10.;
 pub const HANDLE_LENGTH_FACTOR: f64 = 0.5;
 
@@ -119,6 +119,13 @@ pub const LINE_ROTATE_SNAP_ANGLE: f64 = 15.;
 pub const BRUSH_SIZE_CHANGE_KEYBOARD: f64 = 5.;
 pub const DEFAULT_BRUSH_SIZE: f64 = 20.;
 
+// GIZMOS
+pub const POINT_RADIUS_HANDLE_SNAP_THRESHOLD: f64 = 8.;
+pub const POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD: f64 = 7.9;
+pub const NUMBER_OF_POINTS_DIAL_SPOKE_EXTENSION: f64 = 1.2;
+pub const NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH: f64 = 10.;
+pub const GIZMO_HIDE_THRESHOLD: f64 = 20.;
+
 // SCROLLBARS
 pub const SCROLLBAR_SPACING: f64 = 0.1;
 pub const ASYMPTOTIC_EFFECT: f64 = 0.5;
@@ -126,6 +133,7 @@ pub const SCALE_EFFECT: f64 = 0.5;
 
 // COLORS
 pub const COLOR_OVERLAY_BLUE: &str = "#00a8ff";
+pub const COLOR_OVERLAY_BLUE_50: &str = "rgba(0, 168, 255, 0.5)";
 pub const COLOR_OVERLAY_YELLOW: &str = "#ffc848";
 pub const COLOR_OVERLAY_GREEN: &str = "#63ce63";
 pub const COLOR_OVERLAY_RED: &str = "#ef5454";

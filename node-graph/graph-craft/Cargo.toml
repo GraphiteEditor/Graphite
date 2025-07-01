@@ -6,23 +6,21 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["dealloc_nodes"]
-serde = ["dep:serde", "graphene-core/serde", "glam/serde", "bezier-rs/serde"]
 dealloc_nodes = ["graphene-core/dealloc_nodes"]
-wgpu = []
+wgpu = ["wgpu-executor"]
 tokio = ["dep:tokio"]
 wayland = []
-loading = ["serde_json", "serde"]
+loading = ["serde_json"]
 
 [dependencies]
 # Local dependencies
-dyn-any = { path = "../../libraries/dyn-any", features = [
-	"log-bad-types",
-	"rc",
-	"glam",
-] }
+dyn-any = { workspace = true }
+graphene-core = { workspace = true }
+graphene-path-bool = { workspace = true }
+graphene-application-io = { workspace = true }
+graphene-svg-renderer = { workspace = true }
 
 # Workspace dependencies
-graphene-core = { workspace = true }
 log = { workspace = true }
 glam = { workspace = true }
 bezier-rs = { workspace = true }
@@ -30,16 +28,19 @@ specta = { workspace = true }
 rustc-hash = { workspace = true }
 url = { workspace = true }
 reqwest = { workspace = true }
-wgpu-executor = { workspace = true }
+serde = { workspace = true }
 
 # Optional workspace dependencies
-serde = { workspace = true, optional = true }
+wgpu-executor = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 
 # Workspace dependencies
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-web-sys = { workspace = true }
+web-sys = { workspace = true, features = [
+	"Navigator",
+	"Gpu",
+] }
 js-sys = { workspace = true }
 wasm-bindgen = { workspace = true }
 
@@ -50,10 +51,8 @@ winit = { workspace = true }
 # Workspace dependencies
 graph-craft = { workspace = true, features = ["loading"] }
 pretty_assertions = { workspace = true }
-
-# Required dependencies
-criterion = { version = "0.5", features = ["html_reports"] }
-iai-callgrind = { version = "0.12.3" }
+criterion = { workspace = true }
+iai-callgrind = { workspace = true }
 
 # Benchmarks
 [[bench]]

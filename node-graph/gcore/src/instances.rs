@@ -62,7 +62,7 @@ impl<T> Instances<T> {
 			})
 	}
 
-	pub fn instance_ref_iter(&self) -> impl DoubleEndedIterator<Item = InstanceRef<T>> + Clone {
+	pub fn instance_ref_iter(&self) -> impl DoubleEndedIterator<Item = InstanceRef<'_, T>> + Clone {
 		self.instance
 			.iter()
 			.zip(self.mask.iter())
@@ -78,7 +78,7 @@ impl<T> Instances<T> {
 			})
 	}
 
-	pub fn instance_mut_iter(&mut self) -> impl DoubleEndedIterator<Item = InstanceMut<T>> {
+	pub fn instance_mut_iter(&mut self) -> impl DoubleEndedIterator<Item = InstanceMut<'_, T>> {
 		self.instance
 			.iter_mut()
 			.zip(self.mask.iter_mut())
@@ -94,7 +94,7 @@ impl<T> Instances<T> {
 			})
 	}
 
-	pub fn get(&self, index: usize) -> Option<InstanceRef<T>> {
+	pub fn get(&self, index: usize) -> Option<InstanceRef<'_, T>> {
 		if index >= self.instance.len() {
 			return None;
 		}
@@ -108,7 +108,7 @@ impl<T> Instances<T> {
 		})
 	}
 
-	pub fn get_mut(&mut self, index: usize) -> Option<InstanceMut<T>> {
+	pub fn get_mut(&mut self, index: usize) -> Option<InstanceMut<'_, T>> {
 		if index >= self.instance.len() {
 			return None;
 		}
@@ -143,8 +143,8 @@ impl<T> Default for Instances<T> {
 	}
 }
 
-impl<T: Hash> core::hash::Hash for Instances<T> {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl<T: Hash> Hash for Instances<T> {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		for instance in &self.instance {
 			instance.hash(state);
 		}
@@ -230,7 +230,7 @@ impl<T> Instance<T> {
 		}
 	}
 
-	pub fn to_instance_ref(&self) -> InstanceRef<T> {
+	pub fn to_instance_ref(&self) -> InstanceRef<'_, T> {
 		InstanceRef {
 			instance: &self.instance,
 			mask: &self.mask,
@@ -240,7 +240,7 @@ impl<T> Instance<T> {
 		}
 	}
 
-	pub fn to_instance_mut(&mut self) -> InstanceMut<T> {
+	pub fn to_instance_mut(&mut self) -> InstanceMut<'_, T> {
 		InstanceMut {
 			instance: &mut self.instance,
 			mask: &mut self.mask,

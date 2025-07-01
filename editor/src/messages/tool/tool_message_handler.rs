@@ -1,4 +1,5 @@
 use super::common_functionality::shape_editor::ShapeState;
+use super::common_functionality::shapes::shape_utility::ShapeType::{self, Ellipse, Line, Rectangle};
 use super::utility_types::{ToolActionHandlerData, ToolFsmState, tool_message_to_tool_type};
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -58,21 +59,46 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			ToolMessage::ActivateToolPen => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Pen }),
 			ToolMessage::ActivateToolFreehand => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Freehand }),
 			ToolMessage::ActivateToolSpline => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Spline }),
-			ToolMessage::ActivateToolLine => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Line }),
-			ToolMessage::ActivateToolRectangle => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Rectangle }),
-			ToolMessage::ActivateToolEllipse => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Ellipse }),
-			ToolMessage::ActivateToolPolygon => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Polygon }),
-
+			ToolMessage::ActivateToolShape => {
+				if self.tool_state.tool_data.active_shape_type.is_some() {
+					self.tool_state.tool_data.active_shape_type = None;
+					self.tool_state.tool_data.active_tool_type = ToolType::Shape;
+				}
+				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
+				responses.add(ShapeToolMessage::SetShape(ShapeType::Polygon));
+				responses.add(ShapeToolMessage::HideShapeTypeWidget(false))
+			}
 			ToolMessage::ActivateToolBrush => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Brush }),
-			// ToolMessage::ActivateToolImaginate => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Imaginate }),
+			ToolMessage::ActivateToolShapeLine | ToolMessage::ActivateToolShapeRectangle | ToolMessage::ActivateToolShapeEllipse => {
+				let shape = match message {
+					ToolMessage::ActivateToolShapeLine => Line,
+					ToolMessage::ActivateToolShapeRectangle => Rectangle,
+					ToolMessage::ActivateToolShapeEllipse => Ellipse,
+					_ => unreachable!(),
+				};
+
+				self.tool_state.tool_data.active_shape_type = Some(shape.tool_type());
+				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
+				responses.add(ShapeToolMessage::HideShapeTypeWidget(true));
+				responses.add(ShapeToolMessage::SetShape(shape));
+			}
 			ToolMessage::ActivateTool { tool_type } => {
 				let tool_data = &mut self.tool_state.tool_data;
-				let old_tool = tool_data.active_tool_type;
+				let old_tool = tool_data.active_tool_type.get_tool();
+				let tool_type = tool_type.get_tool();
+
+				responses.add(ToolMessage::RefreshToolOptions);
+				tool_data.send_layout(responses, LayoutTarget::ToolShelf);
 
 				// Do nothing if switching to the same tool
 				if self.tool_is_active && tool_type == old_tool {
 					return;
 				}
+
+				if tool_type != ToolType::Shape {
+					tool_data.active_shape_type = None;
+				}
+
 				self.tool_is_active = true;
 
 				// Send the old and new tools a transition to their FSM Abort states
@@ -299,7 +325,6 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			ActivateToolArtboard,
 			ActivateToolNavigate,
 			ActivateToolEyedropper,
-			ActivateToolText,
 			ActivateToolFill,
 			ActivateToolGradient,
 
@@ -307,13 +332,13 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			ActivateToolPen,
 			ActivateToolFreehand,
 			ActivateToolSpline,
-			ActivateToolLine,
-			ActivateToolRectangle,
-			ActivateToolEllipse,
-			ActivateToolPolygon,
+			ActivateToolShapeLine,
+			ActivateToolShapeRectangle,
+			ActivateToolShapeEllipse,
+			ActivateToolShape,
+			ActivateToolText,
 
 			ActivateToolBrush,
-			// ActivateToolImaginate,
 
 			SelectRandomPrimaryColor,
 			ResetColors,
