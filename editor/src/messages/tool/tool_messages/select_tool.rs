@@ -4,7 +4,7 @@ use super::tool_prelude::*;
 use crate::consts::*;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, Pivot as OverlayPivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
@@ -835,6 +835,20 @@ impl Fsm for SelectToolFsmState {
 						(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, None, fill_color, Some(4.), Some(4.), Some(0.5)),
 						(SelectionShapeType::Box, _) => overlay_context.quad(quad, None, fill_color),
 						(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, None, fill_color),
+					}
+
+					if selection_shape == SelectionShapeType::Box {
+						let document_start = document.metadata().document_to_viewport.inverse().transform_point2(quad.top_left());
+						let document_current = document.metadata().document_to_viewport.inverse().transform_point2(quad.bottom_right());
+						let width = format!("{:.2}", document_current.x - document_start.x);
+						let height = format!("{:.2}", document_current.y - document_start.y);
+						let x_transform = DAffine2::from_translation((quad.top_left() + quad.top_right()) / 2.);
+						let y_transform = DAffine2::from_translation((quad.top_left() + quad.bottom_left()) / 2.);
+						let width_pivot = if document_current.y >= document_start.y { OverlayPivot::End } else { OverlayPivot::Start };
+						let height_pivot = if document_current.x >= document_start.x { OverlayPivot::End } else { OverlayPivot::Start };
+
+						overlay_context.text(&width, COLOR_OVERLAY_BLUE, None, x_transform, 4., [OverlayPivot::Middle, width_pivot]);
+						overlay_context.text(&height, COLOR_OVERLAY_BLUE, None, y_transform, 3., [height_pivot, OverlayPivot::Middle]);
 					}
 				}
 				self
