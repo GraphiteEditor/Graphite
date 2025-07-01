@@ -504,6 +504,13 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Paste vector data into a new layer from a serialized json representation
+	#[wasm_bindgen(js_name = pasteSerializedVector)]
+	pub fn paste_serialized_vector(&self, data: String) {
+		let message = PortfolioMessage::PasteSerializedVector { data };
+		self.dispatch(message);
+	}
+
 	#[wasm_bindgen(js_name = clipLayer)]
 	pub fn clip_layer(&self, id: u64) {
 		let id = NodeId(id);

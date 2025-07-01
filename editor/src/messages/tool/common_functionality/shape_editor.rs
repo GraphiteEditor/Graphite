@@ -54,6 +54,9 @@ pub struct SelectedLayerState {
 }
 
 impl SelectedLayerState {
+	pub fn is_empty(&self) -> bool {
+		self.selected_points.is_empty()
+	}
 	pub fn selected(&self) -> impl Iterator<Item = ManipulatorPointId> + '_ {
 		self.selected_points.iter().copied()
 	}

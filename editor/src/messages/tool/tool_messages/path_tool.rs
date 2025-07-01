@@ -6,6 +6,7 @@ use crate::consts::{
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
+use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::transformation::Axis;
@@ -105,6 +106,12 @@ pub enum PathToolMessage {
 	UpdateOptions(PathOptionsUpdate),
 	UpdateSelectedPointsStatus {
 		overlay_context: OverlayContext,
+	},
+	Copy {
+		clipboard: Clipboard,
+	},
+	Cut {
+		clipboard: Clipboard,
 	},
 }
 
@@ -286,6 +293,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeleteAndBreakPath,
 				ClosePath,
 				PointerMove,
+				Copy,
+				Cut
 			),
 			PathToolFsmState::Dragging(_) => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -297,6 +306,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				BreakPath,
 				DeleteAndBreakPath,
 				SwapSelectedHandles,
+				Copy,
+				Cut,
 			),
 			PathToolFsmState::Drawing { .. } => actions!(PathToolMessageDiscriminant;
 				FlipSmoothSharp,
@@ -1926,6 +1937,68 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::DeleteAndBreakPath) => {
 				shape_editor.delete_point_and_break_path(document, responses);
+				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::Copy { clipboard }) => {
+				// TODO: Add support for selected segments
+
+				let mut buffer = Vec::new();
+
+				for (&layer, layer_selection_state) in &shape_editor.selected_shape_state {
+					if layer_selection_state.is_empty() {
+						continue;
+					}
+
+					let Some(old_vector_data) = document.network_interface.compute_modified_vector(layer) else {
+						continue;
+					};
+
+					let mut new_vector_data = VectorData::default();
+
+					// Add all the selected points
+					for (point, position) in old_vector_data.point_domain.iter() {
+						if layer_selection_state.is_selected(ManipulatorPointId::Anchor(point)) {
+							new_vector_data.point_domain.push(point, position);
+						}
+					}
+
+					let find_index = |id: PointId| {
+						new_vector_data
+							.point_domain
+							.iter()
+							.enumerate()
+							.find(|(_, (point_id, _))| *point_id == id)
+							.expect("Point does not exist in point domain")
+							.0
+					};
+
+					// Add segments which have selected ends
+					for ((segment_id, bezier, start, end), stroke) in old_vector_data.segment_bezier_iter().zip(old_vector_data.segment_domain.stroke().iter()) {
+						if layer_selection_state.is_selected(ManipulatorPointId::Anchor(start)) && layer_selection_state.is_selected(ManipulatorPointId::Anchor(end)) {
+							let start_index = find_index(start);
+							let end_index = find_index(end);
+							new_vector_data.segment_domain.push(segment_id, start_index, end_index, bezier.handles, *stroke);
+						}
+					}
+
+					for handles in old_vector_data.colinear_manipulators {
+						if new_vector_data.segment_domain.ids().contains(&handles[0].segment) && new_vector_data.segment_domain.ids().contains(&handles[1].segment) {
+							new_vector_data.colinear_manipulators.push(handles);
+						}
+					}
+
+					buffer.push(new_vector_data);
+				}
+
+				if clipboard == Clipboard::Device {
+					let mut copy_text = String::from("graphite/vector: ");
+					copy_text += &serde_json::to_string(&buffer).expect("Could not serialize paste");
+
+					responses.add(FrontendMessage::TriggerTextCopy { copy_text });
+				} else {
+					//TODO: Add implementation for internal clipboard
+				}
+
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::FlipSmoothSharp) => {

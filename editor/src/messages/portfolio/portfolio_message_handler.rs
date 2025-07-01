@@ -3,7 +3,7 @@ use super::document::utility_types::network_interface;
 use super::spreadsheet::SpreadsheetMessageHandler;
 use super::utility_types::{PanelType, PersistentData};
 use crate::application::generate_uuid;
-use crate::consts::DEFAULT_DOCUMENT_NAME;
+use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH};
 use crate::messages::animation::TimingInformation;
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
@@ -11,17 +11,21 @@ use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageData;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document_migration::*;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
+use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::text::Font;
+use graphene_std::vector::{VectorData, VectorModificationType};
 use std::vec;
 
 pub struct PortfolioMessageData<'a> {
@@ -487,6 +491,37 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						responses.add(PortfolioMessage::CenterPastedLayers { layers });
 					}
 				}
+			}
+			// Custom paste implementation for path tool
+			PortfolioMessage::PasteSerializedVector { data } => {
+				if let Some(document) = self.active_document() {
+					if let Ok(data) = serde_json::from_str::<Vec<VectorData>>(&data) {
+						for new_vector in data {
+							let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
+							let nodes = vec![(NodeId(0), node_type.default_node_template())];
+
+							let parent = document.new_layer_parent(false);
+
+							let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
+
+							// Add default fill and stroke to the layer
+							let fill_color = Color::WHITE;
+							let stroke_color = Color::BLACK;
+
+							let fill = graphene_std::vector::style::Fill::solid(fill_color.to_gamma_srgb());
+							responses.add(GraphOperationMessage::FillSet { layer, fill });
+
+							let stroke = graphene_std::vector::style::Stroke::new(Some(stroke_color.to_gamma_srgb()), DEFAULT_STROKE_WIDTH);
+							responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+
+							// Set the new vector data to this layer
+							let modification_type = VectorModificationType::SetNewVectorData { new_vector_data: new_vector };
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+					}
+				}
+
+				// Make a new default layer for each of those vector datas and insert those layers in the node graph
 			}
 			PortfolioMessage::CenterPastedLayers { layers } => {
 				if let Some(document) = self.active_document_mut() {
