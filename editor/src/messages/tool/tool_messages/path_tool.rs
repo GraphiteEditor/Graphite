@@ -2126,7 +2126,6 @@ impl Fsm for PathToolFsmState {
 				}
 				// Double-clicked on a filled region
 				else if let Some(layer) = {
-					log::debug!("[PathTool] X-ray cycle");
 					if xray_layers.is_empty() {
 						tool_data.reset_xray_cycle();
 						None
@@ -2134,7 +2133,6 @@ impl Fsm for PathToolFsmState {
 						let total_count = xray_layers.len();
 						let cycle_index = tool_data.advance_xray_cycle(input.mouse.position, total_count);
 						let layer = xray_layers.get(cycle_index);
-						log::debug!("[PathTool] X-ray cycle index: {cycle_index} of {total_count}");
 						if cycle_index == 0 { xray_layers.first() } else { layer }
 					}
 				} {
