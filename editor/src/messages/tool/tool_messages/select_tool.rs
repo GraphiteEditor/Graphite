@@ -209,8 +209,8 @@ impl SelectTool {
 
 	fn pin_pivot_widget(&self) -> Vec<WidgetHolder> {
 		vec![
-			IconButton::new(if self.tool_data.pivot_pin_disabled() { "Overlays" } else { "Remove" }, 24)
-				.tooltip(if self.tool_data.pivot_pin_disabled() { "Unpin Transform Pivot" } else { "Pin Transform Pivot" })
+			IconButton::new(if self.tool_data.pin_inactive() { "PinInactive" } else { "PinActive" }, 24)
+				.tooltip(if self.tool_data.pin_inactive() { "Unpin Transform Pivot" } else { "Pin Transform Pivot" })
 				.on_update(|_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::TogglePivotPinned()).into())
 				.widget_holder(),
 		]
@@ -665,7 +665,7 @@ impl SelectToolData {
 		self.active_layer = self.orderer_layers.last().map(|x| *x)
 	}
 
-	fn pivot_pin_disabled(&self) -> bool {
+	fn pin_inactive(&self) -> bool {
 		!self.pivot_pinned || !self.dot_state.is_pivot()
 	}
 }
