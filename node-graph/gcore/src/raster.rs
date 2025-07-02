@@ -12,7 +12,6 @@ pub mod color {
 	pub use super::*;
 }
 
-pub mod brush_cache;
 pub mod image;
 
 pub use self::image::Image;
