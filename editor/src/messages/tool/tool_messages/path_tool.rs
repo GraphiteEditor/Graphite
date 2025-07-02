@@ -501,6 +501,16 @@ impl PathToolData {
 		self.xray_cycle_index
 	}
 
+	fn set_ghost_outline(&mut self, shape_editor: &ShapeState, document: &DocumentMessageHandler) {
+		self.ghost_outline.clear();
+		for &layer in shape_editor.selected_shape_state.keys() {
+			// We probably need to collect here
+			let outline = document.metadata().layer_with_free_points_outline(layer).cloned().collect();
+			let transform = document.metadata().transform_to_viewport(layer);
+			self.ghost_outline.push((outline, transform));
+		}
+	}
+
 	pub fn selection_quad(&self, metadata: &DocumentMetadata) -> Quad {
 		let bbox = self.selection_box(metadata);
 		Quad::from_box(bbox)
@@ -592,13 +602,7 @@ impl PathToolData {
 		) {
 			responses.add(DocumentMessage::StartTransaction);
 
-			self.ghost_outline.clear();
-			for &layer in shape_editor.selected_shape_state.keys() {
-				// We probably need to collect here
-				let outline = document.metadata().layer_with_free_points_outline(layer).cloned().collect();
-				let transform = document.metadata().transform_to_viewport(layer);
-				self.ghost_outline.push((outline, transform));
-			}
+			self.set_ghost_outline(shape_editor, document);
 
 			self.last_clicked_point_was_selected = already_selected;
 
@@ -684,6 +688,8 @@ impl PathToolData {
 		else if let Some(segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
 			responses.add(DocumentMessage::StartTransaction);
 
+			self.set_ghost_outline(shape_editor, document);
+
 			if segment_editing_mode && !molding_in_segment_edit {
 				let layer = segment.layer();
 				let segment_id = segment.segment();
@@ -704,15 +710,6 @@ impl PathToolData {
 				}
 
 				self.drag_start_pos = input.mouse.position;
-
-				self.ghost_outline.clear();
-				for &layer in shape_editor.selected_shape_state.keys() {
-					// We probably need to collect here
-					let outline = document.metadata().layer_with_free_points_outline(layer).cloned().collect();
-					let transform = document.metadata().transform_to_viewport(layer);
-					self.ghost_outline.push((outline, transform));
-				}
-
 				let viewport_to_document = document.metadata().document_to_viewport.inverse();
 				self.previous_mouse_position = viewport_to_document.transform_point2(input.mouse.position);
 
@@ -1391,7 +1388,7 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
-				if matches!(self, Self::Dragging(_)) {
+				if matches!(self, Self::Dragging(_) | Self::MoldingSegment) {
 					for (outline, transform) in &tool_data.ghost_outline {
 						overlay_context.outline(outline.iter(), *transform, Some(COLOR_OVERLAY_GRAY_25));
 					}
