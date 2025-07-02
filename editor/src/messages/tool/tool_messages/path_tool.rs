@@ -1,7 +1,7 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE,
 	SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
@@ -469,6 +469,7 @@ struct PathToolData {
 	stored_selection: Option<HashMap<LayerNodeIdentifier, SelectedLayerState>>,
 	last_xray_click_position: Option<DVec2>,
 	xray_cycle_index: usize,
+	hovered_layer: Option<LayerNodeIdentifier>,
 }
 
 impl PathToolData {
@@ -1432,6 +1433,16 @@ impl Fsm for PathToolFsmState {
 
 				match self {
 					Self::Ready => {
+						if let Some(hovered_layer) = tool_data.hovered_layer {
+							// If this isn't an artboard and the layer isn't selected
+							if !document.network_interface.is_artboard(&hovered_layer.to_node(), &[])
+								&& !document.network_interface.selected_nodes().selected_layers(document.metadata()).any(|l| l == hovered_layer)
+							{
+								let layer_to_viewport = document.metadata().transform_to_viewport(hovered_layer);
+								overlay_context.outline(document.metadata().layer_with_free_points_outline(hovered_layer), layer_to_viewport, Some(COLOR_OVERLAY_GRAY));
+							}
+						}
+
 						tool_data.update_closest_segment(shape_editor, input.mouse.position, document, tool_options.path_overlay_mode);
 
 						if let Some(closest_segment) = &tool_data.segment {
@@ -1753,7 +1764,17 @@ impl Fsm for PathToolFsmState {
 				if tool_data.adjacent_anchor_offset.is_some() {
 					tool_data.adjacent_anchor_offset = None;
 				}
+
 				tool_data.stored_selection = None;
+
+				// When moving the cursor around we want to update the hovered layer
+				let hovered_layer = document.click(input);
+				if tool_data.hovered_layer != hovered_layer {
+					// If the hovered layer is already selected we don't want to hover it
+					if hovered_layer.is_some() && !document.network_interface.selected_nodes().selected_layers(document.metadata()).any(|l| l == hovered_layer.unwrap()) {
+						tool_data.hovered_layer = hovered_layer;
+					}
+				}
 
 				responses.add(OverlaysMessage::Draw);
 
