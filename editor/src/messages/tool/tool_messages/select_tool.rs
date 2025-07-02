@@ -228,7 +228,6 @@ impl SelectTool {
 
 		vec![
 			CheckboxInput::new(self.tool_data.dot_state.enabled)
-				.icon("Overlays")
 				.tooltip("Disable Transform Pivot Point")
 				.on_update(|optional_input: &CheckboxInput| SelectToolMessage::SelectOptions(SelectOptionsUpdate::ToggleDotType(optional_input.checked)).into())
 				.widget_holder(),
