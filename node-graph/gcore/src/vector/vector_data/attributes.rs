@@ -437,6 +437,35 @@ impl SegmentDomain {
 		let handles = self.handles.iter_mut();
 		zip(ids, zip(start_point, zip(end_point, handles))).map(|(id, (start_point, (end_point, handles)))| (id, start_point, end_point, handles))
 	}
+
+	pub(crate) fn pair_handles_and_points_mut_by_index(
+		&mut self,
+		index1: usize,
+		index2: usize,
+	) -> (&mut bezier_rs::BezierHandles, &mut usize, &mut usize, &mut bezier_rs::BezierHandles, &mut usize, &mut usize) {
+		// Use split_at_mut to avoid multiple mutable borrows of the same slice
+		let (handles_first, handles_second) = self.handles.split_at_mut(index2.max(index1));
+		let (start_first, start_second) = self.start_point.split_at_mut(index2.max(index1));
+		let (end_first, end_second) = self.end_point.split_at_mut(index2.max(index1));
+
+		let (h1, h2) = if index1 < index2 {
+			(&mut handles_first[index1], &mut handles_second[0])
+		} else {
+			(&mut handles_second[0], &mut handles_first[index2])
+		};
+		let (sp1, sp2) = if index1 < index2 {
+			(&mut start_first[index1], &mut start_second[0])
+		} else {
+			(&mut start_second[0], &mut start_first[index2])
+		};
+		let (ep1, ep2) = if index1 < index2 {
+			(&mut end_first[index1], &mut end_second[0])
+		} else {
+			(&mut end_second[0], &mut end_first[index2])
+		};
+
+		(h1, sp1, ep1, h2, sp2, ep2)
+	}
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Hash, DynAny)]
