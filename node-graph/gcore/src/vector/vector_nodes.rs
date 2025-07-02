@@ -65,6 +65,7 @@ async fn assign_colors<T>(
 	randomize: bool,
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_seed")]
 	/// The seed used for randomization.
+	/// Seed to determine unique variations on the randomized color selection.
 	seed: SeedValue,
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every")]
 	/// The number of elements to span across the gradient before repeating. A 0 value will span the entire gradient once.
@@ -165,6 +166,7 @@ async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	#[default(Color::BLACK)]
 	/// The stroke color.
 	color: C,
+	#[unit(" px")]
 	#[default(2.)]
 	/// The stroke weight.
 	weight: f64,
@@ -183,6 +185,7 @@ async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
 	dash_lengths: Vec<f64>,
 	/// The phase offset distance from the starting point of the dash pattern.
+	#[unit(" px")]
 	dash_offset: f64,
 ) -> Instances<V>
 where
@@ -253,7 +256,9 @@ async fn circular_repeat<I: 'n + Send + Clone>(
 	// TODO: Implement other GraphicElementRendered types.
 	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Instances<I>,
 	angle_offset: Angle,
-	#[default(5)] radius: f64,
+	#[unit(" px")]
+	#[default(5)]
+	radius: f64,
 	#[default(5)] instances: IntegerCount,
 ) -> Instances<I> {
 	let count = instances.max(1);
@@ -362,7 +367,7 @@ async fn mirror<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Instances<I>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
-	offset: f64,
+	#[unit(" px")] offset: f64,
 	#[range((-90., 90.))] angle: Angle,
 	#[default(true)] keep_original: bool,
 ) -> Instances<I>
@@ -1138,10 +1143,10 @@ async fn sample_polyline(
 	_: impl Ctx,
 	vector_data: VectorDataTable,
 	spacing: PointSpacingType,
-	separation: f64,
-	quantity: f64,
-	start_offset: f64,
-	stop_offset: f64,
+	#[unit(" px")] separation: f64,
+	quantity: u32,
+	#[unit(" px")] start_offset: f64,
+	#[unit(" px")] stop_offset: f64,
 	adaptive_spacing: bool,
 	subpath_segment_lengths: Vec<f64>,
 ) -> VectorDataTable {
@@ -1181,7 +1186,7 @@ async fn sample_polyline(
 
 			let amount = match spacing {
 				PointSpacingType::Separation => separation,
-				PointSpacingType::Quantity => quantity,
+				PointSpacingType::Quantity => quantity as f64,
 			};
 			let Some(mut sample_bezpath) = sample_polyline_on_bezpath(bezpath, spacing, amount, start_offset, stop_offset, adaptive_spacing, current_bezpath_segments_length) else {
 				continue;
@@ -1387,6 +1392,7 @@ async fn tangent_on_path(
 async fn poisson_disk_points(
 	_: impl Ctx,
 	vector_data: VectorDataTable,
+	#[unit(" px")]
 	#[default(10.)]
 	#[hard_min(0.01)]
 	separation_disk_diameter: f64,
@@ -1497,7 +1503,14 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)] amount: f64, seed: SeedValue) -> VectorDataTable {
+async fn jitter_points(
+	_: impl Ctx,
+	vector_data: VectorDataTable,
+	#[unit(" px")]
+	#[default(5.)]
+	amount: f64,
+	seed: SeedValue,
+) -> VectorDataTable {
 	let mut result_table = VectorDataTable::default();
 
 	for mut vector_data_instance in vector_data.instance_iter() {
@@ -2079,7 +2092,7 @@ mod test {
 	#[tokio::test]
 	async fn sample_polyline() {
 		let path = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
-		let sample_polyline = super::sample_polyline(Footprint::default(), vector_node(path), PointSpacingType::Separation, 30., 0., 0., 0., false, vec![100.]).await;
+		let sample_polyline = super::sample_polyline(Footprint::default(), vector_node(path), PointSpacingType::Separation, 30., 0, 0., 0., false, vec![100.]).await;
 		let sample_polyline = sample_polyline.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 0., DVec2::X * 30., DVec2::X * 60., DVec2::X * 90.]) {
@@ -2089,7 +2102,7 @@ mod test {
 	#[tokio::test]
 	async fn sample_polyline_adaptive_spacing() {
 		let path = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
-		let sample_polyline = super::sample_polyline(Footprint::default(), vector_node(path), PointSpacingType::Separation, 18., 0., 45., 10., true, vec![100.]).await;
+		let sample_polyline = super::sample_polyline(Footprint::default(), vector_node(path), PointSpacingType::Separation, 18., 0, 45., 10., true, vec![100.]).await;
 		let sample_polyline = sample_polyline.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 45., DVec2::X * 60., DVec2::X * 75., DVec2::X * 90.]) {

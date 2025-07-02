@@ -19,9 +19,9 @@ async fn transform<T: 'n + 'static>(
 	translate: DVec2,
 	rotate: f64,
 	scale: DVec2,
-	shear: DVec2,
+	skew: DVec2,
 ) -> Instances<T> {
-	let matrix = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
+	let matrix = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., skew.y, skew.x, 1., 0., 0.]);
 
 	let footprint = ctx.try_footprint().copied();
 
@@ -69,6 +69,7 @@ async fn boundless_footprint<T: 'n + 'static>(
 
 	transform_target.eval(ctx.into_context()).await
 }
+
 #[node_macro::node(category("Debug"))]
 async fn freeze_real_time<T: 'n + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
