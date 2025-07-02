@@ -20,7 +20,6 @@ use bezier_rs::{Bezier, TValue};
 use graphene_std::renderer::Quad;
 use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, VectorData};
 use graphene_std::vector::{ManipulatorPointId, PointId, VectorModificationType};
-use std::vec;
 
 #[derive(Default)]
 pub struct PathTool {
@@ -2063,7 +2062,7 @@ impl Fsm for PathToolFsmState {
 				// Delete the selected points and clean up overlays
 				responses.add(DocumentMessage::AddTransaction);
 				shape_editor.delete_selected_points(document, responses, false);
-        shape_editor.delete_selected_segments(document, responses);
+				shape_editor.delete_selected_segments(document, responses);
 				responses.add(PathToolMessage::SelectionChanged);
 
 				PathToolFsmState::Ready
@@ -2440,9 +2439,9 @@ fn update_dynamic_hints(
 			let mut delete_selected_hints = vec![HintInfo::keys([Key::Delete], "Delete Selected")];
 
 			if at_least_one_anchor_selected {
-				delete_selected_hints.push(HintInfo::keys([Key::Accel], "No Dissolve").prepend_plus());
-				delete_selected_hints.push(HintInfo::keys([Key::Alt], "Cut Anchor").prepend_plus());
+				delete_selected_hints.push(HintInfo::keys([Key::Accel], "With Segments").prepend_plus());
 				delete_selected_hints.push(HintInfo::keys([Key::Shift], "Re-Fit").prepend_plus());
+				delete_selected_hints.push(HintInfo::keys([Key::Alt], "Cut Anchor").prepend_plus());
 			}
 
 			if single_colinear_anchor_selected {
