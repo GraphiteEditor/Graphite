@@ -46,6 +46,7 @@ pub enum SelectOptionsUpdate {
 	NestedSelectionBehavior(NestedSelectionBehavior),
 	DotType(DotType),
 	ToggleDotType(bool),
+	TogglePivotPinned(),
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -205,6 +206,16 @@ impl SelectTool {
 			.disabled(disabled)
 			.widget_holder()
 	}
+
+	fn pin_pivot_widget(&self) -> Vec<WidgetHolder> {
+		vec![
+			IconButton::new(if self.tool_data.pivot_pin_disabled() { "Overlays" } else { "Remove" }, 24)
+				.tooltip(if self.tool_data.pivot_pin_disabled() { "Unpin Transform Pivot" } else { "Pin Transform Pivot" })
+				.on_update(|_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::TogglePivotPinned()).into())
+				.widget_holder(),
+		]
+	}
+
 	fn dot_type_widget(&self) -> Vec<WidgetHolder> {
 		let dot_type_entries = [DotType::Pivot, DotType::Average, DotType::Active]
 			.iter()
@@ -312,6 +323,9 @@ impl LayoutHolder for SelectTool {
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(self.pivot_reference_point_widget(self.tool_data.selected_layers_count == 0 || !self.tool_data.dot_state.is_pivot()));
 
+		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+		widgets.extend(self.pin_pivot_widget());
+
 		// Align
 		let disabled = self.tool_data.selected_layers_count < 2;
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -368,6 +382,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 				}
 				SelectOptionsUpdate::ToggleDotType(state) => {
 					self.tool_data.dot_state.enabled = *state;
+					responses.add(ToolMessage::UpdateHints);
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					redraw_ref_pivot = true;
+				}
+				SelectOptionsUpdate::TogglePivotPinned() => {
+					self.tool_data.pivot_pinned = !self.tool_data.pivot_pinned;
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 					redraw_ref_pivot = true;
@@ -460,6 +480,7 @@ struct SelectToolData {
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
 	pivot: Pivot,
+	pivot_pinned: bool,
 	dot_state: DotState,
 	compass_rose: CompassRose,
 	line_center: DVec2,
@@ -629,7 +650,7 @@ impl SelectToolData {
 
 	fn state_from_dot(&self, mouse: DVec2) -> Option<SelectToolFsmState> {
 		match self.dot_state.dot {
-			DotType::Pivot => self.pivot.is_over(mouse).then_some(SelectToolFsmState::DraggingPivot),
+			DotType::Pivot if !self.pivot_pinned => self.pivot.is_over(mouse).then_some(SelectToolFsmState::DraggingPivot),
 			_ => None,
 		}
 	}
@@ -639,11 +660,13 @@ impl SelectToolData {
 	}
 
 	fn sync_history(&mut self) {
-		debug!("{:?}", self.layers_dragging);
 		self.orderer_layers.retain(|layer| self.layers_dragging.contains(layer));
 		self.orderer_layers.extend(self.layers_dragging.iter().find(|&layer| !self.orderer_layers.contains(layer)));
-		debug!("{:?}", self.orderer_layers);
 		self.active_layer = self.orderer_layers.last().map(|x| *x)
+	}
+
+	fn pivot_pin_disabled(&self) -> bool {
+		!self.pivot_pinned || !self.dot_state.is_pivot()
 	}
 }
 
