@@ -836,21 +836,26 @@ impl Fsm for SelectToolFsmState {
 						(SelectionShapeType::Box, _) => overlay_context.quad(quad, None, fill_color),
 						(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, None, fill_color),
 					}
-
-					if selection_shape == SelectionShapeType::Box {
-						let document_start = document.metadata().document_to_viewport.inverse().transform_point2(quad.top_left());
-						let document_current = document.metadata().document_to_viewport.inverse().transform_point2(quad.bottom_right());
-						let width = format!("{:.2}", document_current.x - document_start.x);
-						let height = format!("{:.2}", document_current.y - document_start.y);
-						let x_transform = DAffine2::from_translation((quad.top_left() + quad.top_right()) / 2.);
-						let y_transform = DAffine2::from_translation((quad.top_left() + quad.bottom_left()) / 2.);
-						let width_pivot = if document_current.y >= document_start.y { OverlayPivot::End } else { OverlayPivot::Start };
-						let height_pivot = if document_current.x >= document_start.x { OverlayPivot::End } else { OverlayPivot::Start };
-
-						overlay_context.text(&width, COLOR_OVERLAY_BLUE, None, x_transform, 4., [OverlayPivot::Middle, width_pivot]);
-						overlay_context.text(&height, COLOR_OVERLAY_BLUE, None, y_transform, 3., [height_pivot, OverlayPivot::Middle]);
-					}
 				}
+
+				if let Self::Dragging { .. } = self {
+					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
+
+					overlay_context.dashed_quad(quad, Some(COLOR_OVERLAY_BLUE), None, Some(4.), Some(4.), Some(0.5));
+
+					let document_start = document.metadata().document_to_viewport.inverse().transform_point2(quad.top_left());
+					let document_current = document.metadata().document_to_viewport.inverse().transform_point2(quad.bottom_right());
+					let width = format!("{:.2}", document_current.x - document_start.x);
+					let height = format!("{:.2}", document_current.y - document_start.y);
+					let x_transform = DAffine2::from_translation((quad.top_left() + quad.top_right()) / 2.);
+					let y_transform = DAffine2::from_translation((quad.top_left() + quad.bottom_left()) / 2.);
+					let width_pivot = if document_current.y >= document_start.y { OverlayPivot::End } else { OverlayPivot::Start };
+					let height_pivot = if document_current.x >= document_start.x { OverlayPivot::End } else { OverlayPivot::Start };
+
+					overlay_context.text(&width, COLOR_OVERLAY_BLUE, None, x_transform, 4., [OverlayPivot::Middle, width_pivot]);
+					overlay_context.text(&height, COLOR_OVERLAY_BLUE, None, y_transform, 3., [height_pivot, OverlayPivot::Middle]);
+				}
+
 				self
 			}
 			(_, SelectToolMessage::EditLayer) => {
