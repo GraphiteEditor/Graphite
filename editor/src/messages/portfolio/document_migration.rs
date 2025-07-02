@@ -1,7 +1,6 @@
 // TODO: Eventually remove this document upgrade code
 // This file contains lots of hacky code for upgrading old documents to the new format
 
-use super::document::utility_types::network_interface::{NumberInputSettings, PropertiesRow, WidgetOverride};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
@@ -316,12 +315,6 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 		// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
 		if reference == "Text" && inputs_count != 9 {
-			let node_definition = resolve_document_node_type(reference).unwrap();
-			let document_node = node_definition.default_node_template().document_node;
-			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
-
-			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
-		if reference == "Text" && inputs_count != 8 {
 			let mut template = resolve_document_node_type(reference).unwrap().default_node_template();
 			document.network_interface.replace_implementation(node_id, network_path, &mut template);
 			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template).unwrap();
@@ -365,21 +358,6 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 					NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false)
 				},
 				network_path,
-			);
-			document.network_interface.insert_input_properties_row(
-				node_id,
-				9,
-				network_path,
-				PropertiesRow::with_override(
-					"Tilt",
-					"Faux italic",
-					WidgetOverride::Number(NumberInputSettings {
-						min: Some(-85.),
-						max: Some(85.),
-						unit: Some("°".to_string()),
-						..Default::default()
-					}),
-				),
 			);
 			document.network_interface.set_input(
 				&InputConnector::node(*node_id, 8),
@@ -615,73 +593,46 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 			document.network_interface.replace_reference_name(node_id, network_path, "Sample Polyline".to_string());
 		}
-	// Make the "Quantity" parameter a u32 instead of f64
-	if reference == "Sample Polyline" {
-		let node_definition = resolve_document_node_type("Sample Polyline").unwrap();
-		let new_node_template = node_definition.default_node_template();
-		let document_node = new_node_template.document_node;
+		// Make the "Quantity" parameter a u32 instead of f64
+		if reference == "Sample Polyline" {
+			let node_definition = resolve_document_node_type("Sample Polyline").unwrap();
+			let mut new_node_template = node_definition.default_node_template();
 
-		// Get the inputs, obtain the quantity value, and put the inputs back
-		let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
-		let quantity_value = old_inputs.get(3).cloned();
-		let _ = document.network_interface.replace_inputs(node_id, old_inputs, network_path);
+			// Get the inputs, obtain the quantity value, and put the inputs back
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut new_node_template).unwrap();
+			let quantity_value = old_inputs.get(3).cloned();
 
-		if let Some(NodeInput::Value { tagged_value, exposed }) = quantity_value {
-			if let TaggedValue::F64(value) = *tagged_value {
-				let new_quantity_value = NodeInput::value(TaggedValue::U32(value as u32), exposed);
-				document.network_interface.set_input(&InputConnector::node(*node_id, 3), new_quantity_value, network_path);
+			if let Some(NodeInput::Value { tagged_value, exposed }) = quantity_value {
+				if let TaggedValue::F64(value) = *tagged_value {
+					let new_quantity_value = NodeInput::value(TaggedValue::U32(value as u32), exposed);
+					document.network_interface.set_input(&InputConnector::node(*node_id, 3), new_quantity_value, network_path);
+				}
 			}
 		}
-	}
 
-	// Make the "Grid" node, if its input of index 3 is a DVec2 for "angles" instead of a u32 for the "columns" input that now succeeds "angles", move the angle to index 5 (after "columns" and "rows")
-	if reference == "Grid" && inputs_count == 6 {
-		let node_definition = resolve_document_node_type(reference).unwrap();
-		let new_node_template = node_definition.default_node_template();
-		let document_node = new_node_template.document_node;
+		// Make the "Grid" node, if its input of index 3 is a DVec2 for "angles" instead of a u32 for the "columns" input that now succeeds "angles", move the angle to index 5 (after "columns" and "rows")
+		if reference == "Grid" && inputs_count == 6 {
+			let node_definition = resolve_document_node_type(reference).unwrap();
+			let mut new_node_template = node_definition.default_node_template();
 
-		let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
-		let index_3_value = old_inputs.get(3).cloned();
+			let mut current_node_template = document.network_interface.create_node_template(node_id, network_path).unwrap();
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut new_node_template).unwrap();
+			let index_3_value = old_inputs.get(3).cloned();
 
-		if let Some(NodeInput::Value { tagged_value, exposed: _ }) = index_3_value {
-			if matches!(*tagged_value, TaggedValue::DVec2(_)) {
-				// Move index 3 to the end
-				document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-				document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
-				document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
-				document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[4].clone(), network_path);
-				document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
-				document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
-			} else {
-				// Swap it back if we're not changing anything
-				let _ = document.network_interface.replace_inputs(node_id, old_inputs, network_path);
-			}
-		}
-	}
-}
+			if let Some(NodeInput::Value { tagged_value, exposed: _ }) = index_3_value {
+				if matches!(*tagged_value, TaggedValue::DVec2(_)) {
+					// Move index 3 to the end
+					document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+					document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+					document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+					document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[4].clone(), network_path);
+					document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
+					document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
+				} else {
+					// Swap it back if we're not changing anything
 
-	// Ensure layers are positioned as stacks if they are upstream siblings of another layer
-	document.network_interface.load_structure();
-	let all_layers = LayerNodeIdentifier::ROOT_PARENT.descendants(document.network_interface.document_metadata()).collect::<Vec<_>>();
-	for layer in all_layers {
-		let Some((downstream_node, input_index)) = document
-			.network_interface
-			.outward_wires(&[])
-			.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(layer.to_node(), 0)))
-			.and_then(|outward_wires| outward_wires.first())
-			.and_then(|input_connector| input_connector.node_id().map(|node_id| (node_id, input_connector.input_index())))
-		else {
-			continue;
-		};
-		// If the downstream node is a layer and the input is the first input and the current layer is not in a stack
-		if input_index == 0 && document.network_interface.is_layer(&downstream_node, &[]) && !document.network_interface.is_stack(&layer.to_node(), &[]) {
-			// Ensure the layer is horizontally aligned with the downstream layer to prevent changing the layout of old files
-			let (Some(layer_position), Some(downstream_position)) = (document.network_interface.position(&layer.to_node(), &[]), document.network_interface.position(&downstream_node, &[])) else {
-				log::error!("Could not get position for layer {:?} or downstream node {} when opening file", layer.to_node(), downstream_node);
-				continue;
-			};
-			if layer_position.x == downstream_position.x {
-				document.network_interface.set_stack_position_calculated_offset(&layer.to_node(), &downstream_node, &[]);
+					let _ = document.network_interface.replace_inputs(node_id, network_path, &mut current_node_template);
+				}
 			}
 		}
 	}

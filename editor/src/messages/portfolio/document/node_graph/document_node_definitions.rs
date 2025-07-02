@@ -1613,7 +1613,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						PropertiesRow::with_override(
+						InputMetadata::with_name_description_override(
 							"Tilt",
 							"Faux italic",
 							WidgetOverride::Number(NumberInputSettings {

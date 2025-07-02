@@ -180,7 +180,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
-			NodeGraphMessage::CreateNodeFromContextMenu { node_id, node_type, xy } => {
+			NodeGraphMessage::CreateNodeFromContextMenu {
+				node_id,
+				node_type,
+				xy,
+				add_transaction,
+			} => {
 				let (x, y) = if let Some((x, y)) = xy {
 					(x, y)
 				} else if let Some(node_graph_ptz) = network_interface.node_graph_ptz(breadcrumb_network_path) {
@@ -201,8 +206,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				let node_template = document_node_type.default_node_template();
 				self.context_menu = None;
-
-				responses.add(DocumentMessage::AddTransaction);
+				if add_transaction {
+					responses.add(DocumentMessage::AddTransaction);
+				}
 				responses.add(NodeGraphMessage::InsertNode {
 					node_id,
 					node_template: node_template.clone(),
@@ -975,6 +981,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 								node_id: Some(node_id),
 								node_type: "Identity".to_string(),
 								xy: Some(((position.x / 24.) as i32, (position.y / 24.) as i32)),
+								add_transaction: false,
 							});
 
 							responses.add(NodeGraphMessage::SetInput {
@@ -1885,6 +1892,7 @@ impl NodeGraphMessageHandler {
 									node_id: Some(node_id),
 									node_type: node_type.clone(),
 									xy: None,
+									add_transaction: true,
 								}
 								.into(),
 								NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }.into(),
