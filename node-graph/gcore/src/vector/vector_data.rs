@@ -11,13 +11,14 @@ use crate::transform::Transform;
 use crate::vector::click_target::{ClickTargetType, FreePoint};
 use crate::{AlphaBlending, Color, GraphicGroupTable};
 pub use attributes::*;
-use bezier_rs::ManipulatorGroup;
+use bezier_rs::{BezierHandles, ManipulatorGroup};
+use core::borrow::Borrow;
+use core::hash::Hash;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 pub use indexed::VectorDataIndex;
 use kurbo::{Affine, Rect, Shape};
 pub use modification::*;
-use std::borrow::Borrow;
 use std::collections::HashMap;
 
 // TODO: Eventually remove this migration document upgrade code
@@ -331,6 +332,13 @@ impl VectorData {
 	pub fn connected_points(&self, current: PointId) -> impl Iterator<Item = PointId> + '_ {
 		let index = [self.point_domain.resolve_id(current)].into_iter().flatten();
 		index.flat_map(|index| self.segment_domain.connected_points(index).map(|index| self.point_domain.ids()[index]))
+	}
+
+	/// Returns the number of linear segments connected to the given point.
+	pub fn connected_linear_segments(&self, point_id: PointId) -> usize {
+		self.segment_bezier_iter()
+			.filter(|(_, bez, start, end)| ((*start == point_id || *end == point_id) && matches!(bez.handles, BezierHandles::Linear)))
+			.count()
 	}
 
 	/// Get an array slice of all segment IDs.

@@ -1,6 +1,7 @@
 // TODO: Eventually remove this document upgrade code
 // This file contains lots of hacky code for upgrading old documents to the new format
 
+use super::document::utility_types::network_interface::{NumberInputSettings, PropertiesRow, WidgetOverride};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
@@ -23,6 +24,7 @@ const REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"),
 	("graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"),
 	("graphene_core::ToGraphicGroupNode", "graphene_core::graphic_element::ToGroupNode"),
+	// math_nodes
 	("graphene_core::ops::MathNode", "graphene_math_nodes::MathNode"),
 	("graphene_core::ops::AddNode", "graphene_math_nodes::AddNode"),
 	("graphene_core::ops::SubtractNode", "graphene_math_nodes::SubtractNode"),
@@ -63,43 +65,72 @@ const REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::ops::GradientValueNode", "graphene_math_nodes::GradientValueNode"),
 	("graphene_core::ops::StringValueNode", "graphene_math_nodes::StringValueNode"),
 	("graphene_core::ops::DotProductNode", "graphene_math_nodes::DotProductNode"),
+	// debug
 	("graphene_core::ops::SizeOfNode", "graphene_core::debug::SizeOfNode"),
 	("graphene_core::ops::SomeNode", "graphene_core::debug::SomeNode"),
 	("graphene_core::ops::UnwrapNode", "graphene_core::debug::UnwrapNode"),
 	("graphene_core::ops::CloneNode", "graphene_core::debug::CloneNode"),
+	// ???
 	("graphene_core::ops::ExtractXyNode", "graphene_core::extract_xy::ExtractXyNode"),
 	("graphene_core::logic::LogicAndNode", "graphene_core::ops::LogicAndNode"),
 	("graphene_core::logic::LogicNotNode", "graphene_core::ops::LogicNotNode"),
 	("graphene_core::logic::LogicOrNode", "graphene_core::ops::LogicOrNode"),
 	("graphene_core::ops::ConstructVector2", "graphene_core::ops::CoordinateValueNode"),
 	("graphene_core::ops::Vector2ValueNode", "graphene_core::ops::CoordinateValueNode"),
-	("graphene_core::raster::BlackAndWhiteNode", "graphene_core::raster::adjustments::BlackAndWhiteNode"),
-	("graphene_core::raster::BlendNode", "graphene_core::raster::adjustments::BlendNode"),
 	("graphene_core::raster::BlendModeNode", "graphene_core::blending_nodes::BlendModeNode"),
 	("graphene_core::raster::OpacityNode", "graphene_core::blending_nodes::OpacityNode"),
 	("graphene_core::raster::BlendingNode", "graphene_core::blending_nodes::BlendingNode"),
-	("graphene_core::raster::ChannelMixerNode", "graphene_core::raster::adjustments::ChannelMixerNode"),
-	("graphene_core::raster::adjustments::ColorOverlayNode", "graphene_core::raster::adjustments::ColorOverlayNode"),
-	("graphene_core::raster::ExposureNode", "graphene_core::raster::adjustments::ExposureNode"),
-	("graphene_core::raster::ExtractChannelNode", "graphene_core::raster::adjustments::ExtractChannelNode"),
-	("graphene_core::raster::GradientMapNode", "graphene_core::raster::adjustments::GradientMapNode"),
-	("graphene_core::raster::HueSaturationNode", "graphene_core::raster::adjustments::HueSaturationNode"),
 	("graphene_core::vector::GenerateHandlesNode", "graphene_core::vector::AutoTangentsNode"),
 	("graphene_core::vector::RemoveHandlesNode", "graphene_core::vector::AutoTangentsNode"),
-	("graphene_core::raster::InvertNode", "graphene_core::raster::adjustments::InvertNode"),
-	("graphene_core::raster::InvertRGBNode", "graphene_core::raster::adjustments::InvertNode"),
-	("graphene_core::raster::LevelsNode", "graphene_core::raster::adjustments::LevelsNode"),
-	("graphene_core::raster::LuminanceNode", "graphene_core::raster::adjustments::LuminanceNode"),
-	("graphene_core::raster::ExtractOpaqueNode", "graphene_core::raster::adjustments::MakeOpaqueNode"),
-	("graphene_core::raster::PosterizeNode", "graphene_core::raster::adjustments::PosterizeNode"),
-	("graphene_core::raster::ThresholdNode", "graphene_core::raster::adjustments::ThresholdNode"),
-	("graphene_core::raster::VibranceNode", "graphene_core::raster::adjustments::VibranceNode"),
+	// raster::adjustments
+	("graphene_core::raster::adjustments::LuminanceNode", "graphene_raster_nodes::adjustments::LuminanceNode"),
+	("graphene_core::raster::LuminanceNode", "graphene_raster_nodes::adjustments::LuminanceNode"),
+	("graphene_core::raster::adjustments::ExtractChannelNode", "graphene_raster_nodes::adjustments::ExtractChannelNode"),
+	("graphene_core::raster::ExtractChannelNode", "graphene_raster_nodes::adjustments::ExtractChannelNode"),
+	("graphene_core::raster::adjustments::MakeOpaqueNode", "graphene_raster_nodes::adjustments::MakeOpaqueNode"),
+	("graphene_core::raster::ExtractOpaqueNode", "graphene_raster_nodes::adjustments::MakeOpaqueNode"),
+	(
+		"graphene_core::raster::adjustments::BrightnessContrastNode",
+		"graphene_raster_nodes::adjustments::BrightnessContrastNode",
+	),
+	("graphene_core::raster::adjustments::LevelsNode", "graphene_raster_nodes::adjustments::LevelsNode"),
+	("graphene_core::raster::LevelsNode", "graphene_raster_nodes::adjustments::LevelsNode"),
+	("graphene_core::raster::adjustments::BlackAndWhiteNode", "graphene_raster_nodes::adjustments::BlackAndWhiteNode"),
+	("graphene_core::raster::BlackAndWhiteNode", "graphene_raster_nodes::adjustments::BlackAndWhiteNode"),
+	("graphene_core::raster::adjustments::HueSaturationNode", "graphene_raster_nodes::adjustments::HueSaturationNode"),
+	("graphene_core::raster::HueSaturationNode", "graphene_raster_nodes::adjustments::HueSaturationNode"),
+	("graphene_core::raster::adjustments::InvertNode", "graphene_raster_nodes::adjustments::InvertNode"),
+	("graphene_core::raster::InvertNode", "graphene_raster_nodes::adjustments::InvertNode"),
+	("graphene_core::raster::InvertRGBNode", "graphene_raster_nodes::adjustments::InvertNode"),
+	("graphene_core::raster::adjustments::ThresholdNode", "graphene_raster_nodes::adjustments::ThresholdNode"),
+	("graphene_core::raster::ThresholdNode", "graphene_raster_nodes::adjustments::ThresholdNode"),
+	("graphene_core::raster::adjustments::BlendNode", "graphene_raster_nodes::adjustments::BlendNode"),
+	("graphene_core::raster::BlendNode", "graphene_raster_nodes::adjustments::BlendNode"),
+	("graphene_core::raster::BlendColorPairNode", "graphene_raster_nodes::adjustments::BlendColorPairNode"),
+	("graphene_core::raster::adjustments::BlendColorsNode", "graphene_raster_nodes::adjustments::BlendColorsNode"),
+	("graphene_core::raster::BlendColorsNode", "graphene_raster_nodes::adjustments::BlendColorsNode"),
+	("graphene_core::raster::adjustments::GradientMapNode", "graphene_raster_nodes::adjustments::GradientMapNode"),
+	("graphene_core::raster::GradientMapNode", "graphene_raster_nodes::adjustments::GradientMapNode"),
+	("graphene_core::raster::adjustments::VibranceNode", "graphene_raster_nodes::adjustments::VibranceNode"),
+	("graphene_core::raster::VibranceNode", "graphene_raster_nodes::adjustments::VibranceNode"),
+	("graphene_core::raster::adjustments::ChannelMixerNode", "graphene_raster_nodes::adjustments::ChannelMixerNode"),
+	("graphene_core::raster::ChannelMixerNode", "graphene_raster_nodes::adjustments::ChannelMixerNode"),
+	("graphene_core::raster::adjustments::SelectiveColorNode", "graphene_raster_nodes::adjustments::SelectiveColorNode"),
+	("graphene_core::raster::adjustments::PosterizeNode", "graphene_raster_nodes::adjustments::PosterizeNode"),
+	("graphene_core::raster::PosterizeNode", "graphene_raster_nodes::adjustments::PosterizeNode"),
+	("graphene_core::raster::adjustments::ExposureNode", "graphene_raster_nodes::adjustments::ExposureNode"),
+	("graphene_core::raster::ExposureNode", "graphene_raster_nodes::adjustments::ExposureNode"),
+	("graphene_core::raster::adjustments::GenerateCurvesNode", "graphene_raster_nodes::generate_curves::GenerateCurvesNode"),
+	("graphene_core::raster::adjustments::ColorOverlayNode", "graphene_raster_nodes::generate_curves::ColorOverlayNode"),
+	// text
 	("graphene_core::text::TextGeneratorNode", "graphene_core::text::TextNode"),
+	// transform
 	("graphene_core::transform::SetTransformNode", "graphene_core::transform_nodes::ReplaceTransformNode"),
 	("graphene_core::transform::ReplaceTransformNode", "graphene_core::transform_nodes::ReplaceTransformNode"),
 	("graphene_core::transform::TransformNode", "graphene_core::transform_nodes::TransformNode"),
 	("graphene_core::transform::BoundlessFootprintNode", "graphene_core::transform_nodes::BoundlessFootprintNode"),
 	("graphene_core::transform::FreezeRealTimeNode", "graphene_core::transform_nodes::FreezeRealTimeNode"),
+	// ???
 	("graphene_core::vector::SplinesFromPointsNode", "graphene_core::vector::SplineNode"),
 	("graphene_core::vector::generator_nodes::EllipseGenerator", "graphene_core::vector::generator_nodes::EllipseNode"),
 	("graphene_core::vector::generator_nodes::LineGenerator", "graphene_core::vector::generator_nodes::LineNode"),
@@ -115,6 +146,10 @@ const REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_std::raster::MaskImageNode", "graphene_std::raster::MaskNode"),
 	("graphene_core::vector::FlattenVectorElementsNode", "graphene_core::vector::FlattenPathNode"),
 	("graphene_std::vector::BooleanOperationNode", "graphene_path_bool::BooleanOperationNode"),
+	// brush
+	("graphene_std::brush::BrushStampGeneratorNode", "graphene_brush::brush::BrushStampGeneratorNode"),
+	("graphene_std::brush::BlitNode", "graphene_brush::brush::BlitNode"),
+	("graphene_std::brush::BrushNode", "graphene_brush::brush::BrushNode"),
 ];
 
 pub fn document_migration_string_preprocessing(document_serialized_content: String) -> String {
@@ -280,6 +315,12 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 
 		// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
+		if reference == "Text" && inputs_count != 9 {
+			let node_definition = resolve_document_node_type(reference).unwrap();
+			let document_node = node_definition.default_node_template().document_node;
+			document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+
+			let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
 		if reference == "Text" && inputs_count != 8 {
 			let mut template = resolve_document_node_type(reference).unwrap().default_node_template();
 			document.network_interface.replace_implementation(node_id, network_path, &mut template);
@@ -309,12 +350,44 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			);
 			document.network_interface.set_input(
 				&InputConnector::node(*node_id, 6),
-				NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
+				if inputs_count >= 7 {
+					old_inputs[6].clone()
+				} else {
+					NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false)
+				},
 				network_path,
 			);
 			document.network_interface.set_input(
 				&InputConnector::node(*node_id, 7),
-				NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
+				if inputs_count >= 8 {
+					old_inputs[7].clone()
+				} else {
+					NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false)
+				},
+				network_path,
+			);
+			document.network_interface.insert_input_properties_row(
+				node_id,
+				9,
+				network_path,
+				PropertiesRow::with_override(
+					"Tilt",
+					"Faux italic",
+					WidgetOverride::Number(NumberInputSettings {
+						min: Some(-85.),
+						max: Some(85.),
+						unit: Some("°".to_string()),
+						..Default::default()
+					}),
+				),
+			);
+			document.network_interface.set_input(
+				&InputConnector::node(*node_id, 8),
+				if inputs_count >= 9 {
+					old_inputs[8].clone()
+				} else {
+					NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false)
+				},
 				network_path,
 			);
 		}
@@ -530,16 +603,86 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template).unwrap();
 			let new_spacing_value = NodeInput::value(TaggedValue::PointSpacingType(graphene_std::vector::misc::PointSpacingType::Separation), false);
+			let new_quantity_value = NodeInput::value(TaggedValue::U32(100), false);
 
 			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 1), new_spacing_value, network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[1].clone(), network_path);
-			document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[1].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node(*node_id, 3), new_quantity_value, network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[2].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 6), old_inputs[4].clone(), network_path);
 
 			document.network_interface.replace_reference_name(node_id, network_path, "Sample Polyline".to_string());
+		}
+	// Make the "Quantity" parameter a u32 instead of f64
+	if reference == "Sample Polyline" {
+		let node_definition = resolve_document_node_type("Sample Polyline").unwrap();
+		let new_node_template = node_definition.default_node_template();
+		let document_node = new_node_template.document_node;
+
+		// Get the inputs, obtain the quantity value, and put the inputs back
+		let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+		let quantity_value = old_inputs.get(3).cloned();
+		let _ = document.network_interface.replace_inputs(node_id, old_inputs, network_path);
+
+		if let Some(NodeInput::Value { tagged_value, exposed }) = quantity_value {
+			if let TaggedValue::F64(value) = *tagged_value {
+				let new_quantity_value = NodeInput::value(TaggedValue::U32(value as u32), exposed);
+				document.network_interface.set_input(&InputConnector::node(*node_id, 3), new_quantity_value, network_path);
+			}
+		}
+	}
+
+	// Make the "Grid" node, if its input of index 3 is a DVec2 for "angles" instead of a u32 for the "columns" input that now succeeds "angles", move the angle to index 5 (after "columns" and "rows")
+	if reference == "Grid" && inputs_count == 6 {
+		let node_definition = resolve_document_node_type(reference).unwrap();
+		let new_node_template = node_definition.default_node_template();
+		let document_node = new_node_template.document_node;
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+		let index_3_value = old_inputs.get(3).cloned();
+
+		if let Some(NodeInput::Value { tagged_value, exposed: _ }) = index_3_value {
+			if matches!(*tagged_value, TaggedValue::DVec2(_)) {
+				// Move index 3 to the end
+				document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+				document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+				document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+				document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[4].clone(), network_path);
+				document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
+				document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
+			} else {
+				// Swap it back if we're not changing anything
+				let _ = document.network_interface.replace_inputs(node_id, old_inputs, network_path);
+			}
+		}
+	}
+}
+
+	// Ensure layers are positioned as stacks if they are upstream siblings of another layer
+	document.network_interface.load_structure();
+	let all_layers = LayerNodeIdentifier::ROOT_PARENT.descendants(document.network_interface.document_metadata()).collect::<Vec<_>>();
+	for layer in all_layers {
+		let Some((downstream_node, input_index)) = document
+			.network_interface
+			.outward_wires(&[])
+			.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(layer.to_node(), 0)))
+			.and_then(|outward_wires| outward_wires.first())
+			.and_then(|input_connector| input_connector.node_id().map(|node_id| (node_id, input_connector.input_index())))
+		else {
+			continue;
+		};
+		// If the downstream node is a layer and the input is the first input and the current layer is not in a stack
+		if input_index == 0 && document.network_interface.is_layer(&downstream_node, &[]) && !document.network_interface.is_stack(&layer.to_node(), &[]) {
+			// Ensure the layer is horizontally aligned with the downstream layer to prevent changing the layout of old files
+			let (Some(layer_position), Some(downstream_position)) = (document.network_interface.position(&layer.to_node(), &[]), document.network_interface.position(&downstream_node, &[])) else {
+				log::error!("Could not get position for layer {:?} or downstream node {} when opening file", layer.to_node(), downstream_node);
+				continue;
+			};
+			if layer_position.x == downstream_position.x {
+				document.network_interface.set_stack_position_calculated_offset(&layer.to_node(), &downstream_node, &[]);
+			}
 		}
 	}
 }

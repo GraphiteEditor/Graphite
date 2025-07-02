@@ -957,11 +957,11 @@ impl PortfolioMessageHandler {
 		let result = self.executor.poll_node_graph_evaluation(active_document, responses);
 		if result.is_err() {
 			let error = r#"
-				<rect x="50%" y="50%" width="480" height="100" transform="translate(-240 -50)" rx="4" fill="var(--color-error-red)" />
+				<rect x="50%" y="50%" width="460" height="100" transform="translate(-230 -50)" rx="4" fill="var(--color-warning-yellow)" />
 				<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="18" fill="var(--color-2-mildblack)">
-					<tspan x="50%" dy="-24" font-weight="bold">The document cannot be rendered in its current state.</tspan>
-					<tspan x="50%" dy="24">Check for error details in the node graph, which can be</tspan>
-					<tspan x="50%" dy="24">opened with the viewport's top right <tspan font-style="italic">Node Graph</tspan> button.</tspan>
+					<tspan x="50%" dy="-24" font-weight="bold">The document cannot render in its current state.</tspan>
+					<tspan x="50%" dy="24">Undo to go back, if available, or check for error details</tspan>
+					<tspan x="50%" dy="24">by clicking the <tspan font-style="italic">Node Graph</tspan> button up at the top right.</tspan>
 				/text>"#
 				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
 				.to_string();

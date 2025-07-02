@@ -1364,6 +1364,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 		} else {
 			NumberInput::default()
 				.value(Some(uniform_val))
+				.unit(" px")
 				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, CornerRadiusInput::<f64>::INDEX))
 				.on_commit(commit_value)
 				.widget_holder()
