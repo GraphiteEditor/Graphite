@@ -1,6 +1,6 @@
 use glam::DVec2;
 use graphene_core::gradient::GradientStops;
-use graphene_core::registry::types::{Fraction, Percentage};
+use graphene_core::registry::types::{Fraction, Percentage, TextArea};
 use graphene_core::{Color, Ctx, num_traits};
 use log::warn;
 use math_parser::ast;
@@ -603,7 +603,7 @@ fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> Gradien
 
 /// Constructs a string value which may be set to any plain text.
 #[node_macro::node(category("Value"))]
-fn string_value(_: impl Ctx, _primary: (), string: String) -> String {
+fn string_value(_: impl Ctx, _primary: (), string: TextArea) -> String {
 	string
 }
 
