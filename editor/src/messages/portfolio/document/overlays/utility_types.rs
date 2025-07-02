@@ -341,6 +341,7 @@ impl OverlayContext {
 		self.render_context.rect(corner.x, corner.y, size, size);
 		self.render_context.set_fill_style_str(color_fill);
 		self.render_context.set_stroke_style_str(color_stroke);
+		self.render_context.set_line_width(1.);
 		self.render_context.fill();
 		self.render_context.stroke();
 
@@ -693,6 +694,7 @@ impl OverlayContext {
 
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 			self.render_context.set_stroke_style_str(color);
+			self.render_context.set_line_width(2.);
 			self.render_context.stroke();
 		}
 	}
