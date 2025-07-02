@@ -12,7 +12,6 @@ export class JsMessage {
 }
 
 const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
-const TupleToDOMRect = Transform(({ value }: { value: [number, number, number, number] }) => new DOMRect(value[0], value[1], value[2], value[3]));
 
 const ImportsToVec2Array = Transform(({ obj: { imports } }: { obj: { imports: [FrontendGraphOutput, number, number][] } }) =>
 	imports.map(([outputMetadata, x, y]) => ({ outputMetadata, position: { x, y } })),
@@ -302,47 +301,6 @@ export class FrontendNode {
 	readonly errors!: string | undefined;
 
 	readonly uiOnly!: boolean;
-}
-
-// const CreateOutputConnector = Transform(({ obj }) => {
-// 	if (obj.wireStart.export !== undefined) {
-// 		return { index: obj.wireStart.export };
-// 	} else if (obj.wireStart.import !== undefined) {
-// 		return { index: obj.wireStart.import };
-// 	} else {
-// 		if (obj.wireStart.node.inputIndex !== undefined) {
-// 			return { nodeId: obj.wireStart.node.nodeId, index: obj.wireStart.node.inputIndex };
-// 		} else {
-// 			return { nodeId: obj.wireStart.node.nodeId, index: obj.wireStart.node.outputIndex };
-// 		}
-// 	}
-// });
-
-// const CreateInputConnector = Transform(({ obj }) => {
-// 	if (obj.wireEnd.export !== undefined) {
-// 		return { index: obj.wireEnd.export };
-// 	} else if (obj.wireEnd.import !== undefined) {
-// 		return { index: obj.wireEnd.import };
-// 	} else {
-// 		if (obj.wireEnd.node.inputIndex !== undefined) {
-// 			return { nodeId: obj.wireEnd.node.nodeId, index: obj.wireEnd.node.inputIndex };
-// 		} else {
-// 			return { nodeId: obj.wireEnd.node.nodeId, index: obj.wireEnd.node.outputIndex };
-// 		}
-// 	}
-// });
-
-export class FrontendNodeWire {
-	@TupleToDOMRect
-	readonly wireStart!: DOMRect;
-	@TupleToDOMRect
-	readonly wireEnd!: DOMRect;
-
-	readonly verticalStart!: boolean;
-
-	readonly verticalEnd!: boolean;
-
-	readonly dashed!: boolean;
 }
 
 export class FrontendNodeType {

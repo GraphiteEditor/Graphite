@@ -12,7 +12,8 @@ use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	self, InputConnector, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing, TypeSource,
 };
-use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, GraphWireStyle, LayerPanelEntry, WirePath, WirePathUpdate, build_vector_wire};
+use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
+use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
@@ -934,70 +935,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							dashed: false,
 						};
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
-					}
-				} else if self.disconnecting.is_some() {
-					// Disconnecting with no upstream node, create new value node.
-					let to_connector = network_interface.input_connector_from_click(ipp.mouse.position, selection_network_path);
-					if let Some(to_connector) = &to_connector {
-						let Some(input_position) = network_interface.input_position(to_connector, selection_network_path) else {
-							log::error!("Could not get input position for connector: {to_connector:?}");
-							return;
-						};
-						self.wire_in_progress_to_connector = Some(input_position);
-					}
-					// Not hovering over a node input or node output, insert the node
-					else {
-						// Disconnect if the wire was previously connected to an input
-						if let Some(disconnecting) = self.disconnecting.take() {
-							let mut position = if let Some(to_connector) = self.wire_in_progress_to_connector { to_connector } else { point };
-							// Offset to drag from center of node
-							position = position - DVec2::new(24. * 3., 24.);
-
-							// Offset to account for division rounding error
-							if position.x < 0. {
-								position.x = position.x - 1.;
-							}
-							if position.y < 0. {
-								position.y = position.y - 1.;
-							}
-
-							let Some(input) = network_interface.take_input(&disconnecting, breadcrumb_network_path) else {
-								return;
-							};
-
-							let drag_start = DragStart {
-								start_x: point.x,
-								start_y: point.y,
-								round_x: 0,
-								round_y: 0,
-							};
-
-							self.drag_start = Some((drag_start, false));
-							self.node_has_moved_in_drag = false;
-							self.update_node_graph_hints(responses);
-
-							let node_id = NodeId::new();
-							responses.add(NodeGraphMessage::CreateNodeFromContextMenu {
-								node_id: Some(node_id),
-								node_type: "Identity".to_string(),
-								xy: Some(((position.x / 24.) as i32, (position.y / 24.) as i32)),
-								add_transaction: false,
-							});
-
-							responses.add(NodeGraphMessage::SetInput {
-								input_connector: InputConnector::node(node_id, 0),
-								input,
-							});
-
-							responses.add(NodeGraphMessage::CreateWire {
-								output_connector: OutputConnector::Node { node_id, output_index: 0 },
-								input_connector: disconnecting,
-							});
-							responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] });
-							// Update the frontend that the node is disconnected
-							responses.add(NodeGraphMessage::RunDocumentGraph);
-							responses.add(NodeGraphMessage::SendGraph);
-						}
 					}
 				} else if let Some((drag_start, dragged)) = &mut self.drag_start {
 					if drag_start.start_x != point.x || drag_start.start_y != point.y {
@@ -2327,7 +2264,7 @@ impl NodeGraphMessageHandler {
 					.get(output_index)
 					.cloned()
 					.filter(|output_name| !output_name.is_empty())
-					.unwrap_or_else(|| output_type.to_string());
+					.unwrap_or_else(|| output_type.nested_type().to_string());
 
 				let connected_to = outward_wires.get(&OutputConnector::node(node_id, output_index)).cloned().unwrap_or_default();
 				exposed_outputs.push(FrontendGraphOutput {

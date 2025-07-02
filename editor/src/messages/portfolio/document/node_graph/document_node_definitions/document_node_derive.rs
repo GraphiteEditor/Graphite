@@ -1,5 +1,5 @@
 use super::DocumentNodeDefinition;
-use crate::messages::portfolio::document::utility_types::network_interface::{InputMetadata, DocumentNodePersistentMetadata, NodeTemplate, WidgetOverride};
+use crate::messages::portfolio::document::utility_types::network_interface::{DocumentNodePersistentMetadata, InputMetadata, NodeTemplate, WidgetOverride};
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::*;
 use graphene_std::registry::*;

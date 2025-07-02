@@ -96,15 +96,6 @@ pub struct FrontendNode {
 	pub ui_only: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct FrontendNodeWire {
-	pub wire_start_rect: (f64, f64, f64, f64),
-	pub wire_end_rect: (f64, f64, f64, f64),
-	pub vertical_start: bool,
-	pub vertical_end: bool,
-	pub dashed: bool,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeType {
 	pub name: String,

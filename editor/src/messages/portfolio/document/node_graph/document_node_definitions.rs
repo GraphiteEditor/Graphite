@@ -44,13 +44,6 @@ impl NodePropertiesContext<'_> {
 				return None;
 			};
 			widget_override_lambda(*node_id, index, self)
-				// .map(|layout_group| {
-				// 	let Some(input_metadata) = self.network_interface.persistent_input_metadata(node_id, index, self.selection_network_path) else {
-				// 		log::error!("Could not get input properties row in call_widget_override");
-				// 		return Vec::new();
-				// 	};
-				// 	layout_group.into_iter().map(|widget| widget.with_tooltip(*input_metadata.input_description.clone())).collect::<Vec<_>>()
-				// })
 				.map_err(|error| {
 					log::error!("Error in widget override lambda: {}", error);
 				})

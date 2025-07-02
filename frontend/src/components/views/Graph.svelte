@@ -692,7 +692,6 @@
 				<div class="input ports">
 					{#if node.primaryInput?.dataType}
 						<svg
-							id={`input${node.id + 0n}`}
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
 							class="port primary-port"
@@ -712,7 +711,6 @@
 					{#each node.exposedInputs as secondary, index}
 						{#if index < node.exposedInputs.length}
 							<svg
-								id={`input${node.id + BigInt(index + 1)}`}
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 8 8"
 								class="port"
@@ -735,7 +733,6 @@
 				<div class="output ports">
 					{#if node.primaryOutput}
 						<svg
-							id={`output${node.id + 0n}`}
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
 							class="port primary-port"
@@ -752,9 +749,8 @@
 							{/if}
 						</svg>
 					{/if}
-					{#each node.exposedOutputs as secondary, outputIndex}
+					{#each node.exposedOutputs as secondary}
 						<svg
-							id={`output${node.id + BigInt(outputIndex)}`}
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
 							class="port"

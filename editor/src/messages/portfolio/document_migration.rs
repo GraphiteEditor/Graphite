@@ -2,6 +2,7 @@
 // This file contains lots of hacky code for upgrading old documents to the new format
 
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
 use bezier_rs::Subpath;
@@ -632,6 +633,32 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 					// Swap it back if we're not changing anything
 
 					let _ = document.network_interface.replace_inputs(node_id, network_path, &mut current_node_template);
+				}
+			}
+		}
+
+		// Ensure layers are positioned as stacks if they are upstream siblings of another layer
+		document.network_interface.load_structure();
+		let all_layers = LayerNodeIdentifier::ROOT_PARENT.descendants(document.network_interface.document_metadata()).collect::<Vec<_>>();
+		for layer in all_layers {
+			let Some((downstream_node, input_index)) = document
+				.network_interface
+				.outward_wires(&[])
+				.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(layer.to_node(), 0)))
+				.and_then(|outward_wires| outward_wires.first())
+				.and_then(|input_connector| input_connector.node_id().map(|node_id| (node_id, input_connector.input_index())))
+			else {
+				continue;
+			};
+			// If the downstream node is a layer and the input is the first input and the current layer is not in a stack
+			if input_index == 0 && document.network_interface.is_layer(&downstream_node, &[]) && !document.network_interface.is_stack(&layer.to_node(), &[]) {
+				// Ensure the layer is horizontally aligned with the downstream layer to prevent changing the layout of old files
+				let (Some(layer_position), Some(downstream_position)) = (document.network_interface.position(&layer.to_node(), &[]), document.network_interface.position(&downstream_node, &[])) else {
+					log::error!("Could not get position for layer {:?} or downstream node {} when opening file", layer.to_node(), downstream_node);
+					continue;
+				};
+				if layer_position.x == downstream_position.x {
+					document.network_interface.set_stack_position_calculated_offset(&layer.to_node(), &downstream_node, &[]);
 				}
 			}
 		}
