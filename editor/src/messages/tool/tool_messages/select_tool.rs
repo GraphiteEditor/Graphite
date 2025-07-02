@@ -931,7 +931,7 @@ impl Fsm for SelectToolFsmState {
 						remove: input.keyboard.key(extend_selection),
 					}
 				}
-				// Dragging near the transform cage bounding box to rotate it
+				// Dragging near the transform cage to rotate it
 				else if rotate {
 					SelectToolFsmState::RotatingBounds
 				}
@@ -1683,20 +1683,23 @@ fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<La
 /// If possible, the direct sibling of an old selected layer is the new selected layer.
 /// Otherwise, the first non-parent ancestor is selected.
 fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-	let Some(new_selected) = layer.ancestors(document.metadata()).filter(not_artboard(document)).find(|ancestor| {
+	let new_selected = layer.ancestors(document.metadata()).filter(not_artboard(document)).find(|ancestor| {
 		ancestor
 			.parent(document.metadata())
 			.is_some_and(|parent| document.network_interface.selected_nodes().selected_layers_contains(parent, document.metadata()))
-	}) else {
-		return;
-	};
+	});
 
-	if new_selected == LayerNodeIdentifier::ROOT_PARENT {
-		log::error!("new_selected cannot be ROOT_PARENT");
-		return;
+	if let Some(new_selected) = new_selected {
+		if new_selected == LayerNodeIdentifier::ROOT_PARENT {
+			log::error!("new_selected cannot be ROOT_PARENT");
+			return;
+		}
+
+		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_selected.to_node()] });
+	} else {
+		// At the deepest level, so switch to editing tool
+		edit_layer_deepest_manipulation(layer, &document.network_interface, responses);
 	}
-
-	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_selected.to_node()] });
 }
 
 /// Called when a double click on a layer in deep select mode.
@@ -1705,6 +1708,10 @@ fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, network_interface
 	if is_layer_fed_by_node_of_name(layer, network_interface, "Text") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 		responses.add(TextToolMessage::EditSelected);
+	} else if is_layer_fed_by_node_of_name(layer, network_interface, "Path") {
+		// abort current tool
+		responses.add(DocumentMessage::AbortTransaction);
+		responses.add_front(ToolMessage::ActivateToolPath);
 	}
 }
 
