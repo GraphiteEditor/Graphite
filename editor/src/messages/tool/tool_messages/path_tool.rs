@@ -1,8 +1,8 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE,
-	SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_25, COLOR_OVERLAY_GRAY_25, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD,
+	HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
@@ -18,6 +18,7 @@ use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandi
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate};
 use bezier_rs::{Bezier, TValue};
 use graphene_std::renderer::Quad;
+use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, VectorData};
 use graphene_std::vector::{ManipulatorPointId, PointId, VectorModificationType};
 use std::vec;
@@ -470,6 +471,7 @@ struct PathToolData {
 	last_xray_click_position: Option<DVec2>,
 	xray_cycle_index: usize,
 	hovered_layer: Option<LayerNodeIdentifier>,
+	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
 }
 
 impl PathToolData {
@@ -590,6 +592,14 @@ impl PathToolData {
 		) {
 			responses.add(DocumentMessage::StartTransaction);
 
+			self.ghost_outline.clear();
+			for &layer in shape_editor.selected_shape_state.keys() {
+				// We probably need to collect here
+				let outline = document.metadata().layer_with_free_points_outline(layer).cloned().collect();
+				let transform = document.metadata().transform_to_viewport(layer);
+				self.ghost_outline.push((outline, transform));
+			}
+
 			self.last_clicked_point_was_selected = already_selected;
 
 			// If the point is already selected and shift (`extend_selection`) is used, keep the selection unchanged.
@@ -695,6 +705,14 @@ impl PathToolData {
 
 				self.drag_start_pos = input.mouse.position;
 
+				self.ghost_outline.clear();
+				for &layer in shape_editor.selected_shape_state.keys() {
+					// We probably need to collect here
+					let outline = document.metadata().layer_with_free_points_outline(layer).cloned().collect();
+					let transform = document.metadata().transform_to_viewport(layer);
+					self.ghost_outline.push((outline, transform));
+				}
+
 				let viewport_to_document = document.metadata().document_to_viewport.inverse();
 				self.previous_mouse_position = viewport_to_document.transform_point2(input.mouse.position);
 
@@ -708,6 +726,7 @@ impl PathToolData {
 						self.molding_info = Some((pos1, pos2))
 					}
 				}
+
 				PathToolFsmState::MoldingSegment
 			}
 		}
@@ -1356,6 +1375,7 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible
 				let target_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect();
+
 				shape_editor.set_selected_layers(target_layers);
 
 				responses.add(OverlaysMessage::Draw);
@@ -1371,6 +1391,12 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
+				if matches!(self, Self::Dragging(_)) {
+					for (outline, transform) in &tool_data.ghost_outline {
+						overlay_context.outline(outline.iter(), *transform, Some(COLOR_OVERLAY_GRAY_25));
+					}
+				}
+
 				// TODO: find the segment ids of which the selected points are a part of
 
 				match tool_options.path_overlay_mode {
@@ -1439,7 +1465,7 @@ impl Fsm for PathToolFsmState {
 								&& !document.network_interface.selected_nodes().selected_layers(document.metadata()).any(|l| l == hovered_layer)
 							{
 								let layer_to_viewport = document.metadata().transform_to_viewport(hovered_layer);
-								overlay_context.outline(document.metadata().layer_with_free_points_outline(hovered_layer), layer_to_viewport, Some(COLOR_OVERLAY_GRAY));
+								overlay_context.outline(document.metadata().layer_with_free_points_outline(hovered_layer), layer_to_viewport, Some(COLOR_OVERLAY_BLUE_25));
 							}
 						}
 
@@ -1773,6 +1799,8 @@ impl Fsm for PathToolFsmState {
 					// If the hovered layer is already selected we don't want to hover it
 					if hovered_layer.is_some() && !document.network_interface.selected_nodes().selected_layers(document.metadata()).any(|l| l == hovered_layer.unwrap()) {
 						tool_data.hovered_layer = hovered_layer;
+					} else {
+						tool_data.hovered_layer = None;
 					}
 				}
 
@@ -1984,6 +2012,7 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::DragStop { extend_selection, .. }) => {
+				tool_data.ghost_outline.clear();
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let drag_occurred = tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD;
 
