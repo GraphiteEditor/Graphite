@@ -1251,11 +1251,17 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 		match spiral_type {
 			SpiralType::Archimedean => {
 				let start_radius = LayoutGroup::Row {
-					widgets: number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, InnerRadiusInput::INDEX, true, context), NumberInput::default()),
+					widgets: number_widget(
+						ParameterWidgetsInfo::from_index(document_node, node_id, InnerRadiusInput::INDEX, true, context),
+						NumberInput::default().min(0.01),
+					),
 				};
 
 				let tightness = LayoutGroup::Row {
-					widgets: number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, TightnessInput::INDEX, true, context), NumberInput::default()),
+					widgets: number_widget(
+						ParameterWidgetsInfo::from_index(document_node, node_id, TightnessInput::INDEX, true, context),
+						NumberInput::default().unit(" px"),
+					),
 				};
 
 				widgets.extend([start_radius, tightness]);
@@ -1264,14 +1270,14 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 				let start_radius = LayoutGroup::Row {
 					widgets: number_widget(
 						ParameterWidgetsInfo::from_index(document_node, node_id, StartRadiusInput::INDEX, true, context),
-						NumberInput::default().min(0.1),
+						NumberInput::default().min(0.001),
 					),
 				};
 
 				let growth = LayoutGroup::Row {
 					widgets: number_widget(
 						ParameterWidgetsInfo::from_index(document_node, node_id, GrowthInput::INDEX, true, context),
-						NumberInput::default().max(1.).min(0.1).increment_behavior(NumberInputIncrementBehavior::Add).increment_step(0.02),
+						NumberInput::default().max(0.5).min(0.1).increment_behavior(NumberInputIncrementBehavior::Add).increment_step(0.01),
 					),
 				};
 
@@ -1286,7 +1292,7 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 	);
 	let angle_offset = number_widget(
 		ParameterWidgetsInfo::from_index(document_node, node_id, AngleOffsetInput::INDEX, true, context),
-		NumberInput::default().min(0.1).max(180.),
+		NumberInput::default().min(0.1).max(180.).unit(" °"),
 	);
 
 	widgets.extend([LayoutGroup::Row { widgets: turns }, LayoutGroup::Row { widgets: angle_offset }]);

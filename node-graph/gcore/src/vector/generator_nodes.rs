@@ -80,7 +80,7 @@ fn spiral(
 	_primary: (),
 	spiral_type: SpiralType,
 	#[default(0.5)] start_radius: f64,
-	#[default(1.)] inner_radius: f64,
+	#[default(0.)] inner_radius: f64,
 	#[default(0.2)] growth: f64,
 	#[default(1.)] tightness: f64,
 	#[default(6)] turns: f64,
