@@ -2129,19 +2129,12 @@ impl NodeGraphMessageHandler {
 				let node_properties = context
 					.network_interface
 					.upstream_flow_back_from_nodes(vec![layer], context.selection_network_path, network_interface::FlowType::HorizontalFlow)
-					.enumerate()
-					.take_while(|(i, node_id)| {
-						if *i == 0 {
-							true
-						} else {
-							!context.network_interface.is_layer(node_id, context.selection_network_path)
-						}
-					})
-					.map(|(_, node_id)| node_id)
-					.collect::<Vec<_>>()
+					.skip(1) // Skip the actual merge node
+					.take_while(|node_id| !context.network_interface.is_layer(node_id, context.selection_network_path)) // Go until another layer is reached
+					.collect::<Vec<_>>() // Required to avoid borrowing context twice (for some reason generating a property requires &mut access?)
 					.into_iter()
-					.map(|node_id| node_properties::generate_node_properties(node_id, context))
-					.collect::<Vec<_>>();
+					.rev() // Go from first node in the chain
+					.map(|node_id| node_properties::generate_node_properties(node_id, context));
 
 				layer_properties.extend(node_properties);
 				layer_properties
