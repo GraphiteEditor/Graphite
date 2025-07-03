@@ -14,7 +14,7 @@ use bezier_rs::Subpath;
 use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::renderer::ClickTargetType;
+use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{ArcType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
 use std::collections::VecDeque;

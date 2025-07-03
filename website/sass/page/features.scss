@@ -1,3 +1,13 @@
+.video-container {
+	background: var(--color-fog);
+
+	> div {
+		margin: calc(20 * var(--variable-px)) auto;
+		width: 100%;
+		max-width: 800px;
+	}
+}
+
 #roadmap {
 	width: 100%;
 	text-align: center;

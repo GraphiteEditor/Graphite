@@ -8,8 +8,8 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Color;
+use graphene_std::brush::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
 use graphene_std::raster::BlendMode;
-use graphene_std::vector::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
 
 const BRUSH_MAX_SIZE: f64 = 5000.;
 

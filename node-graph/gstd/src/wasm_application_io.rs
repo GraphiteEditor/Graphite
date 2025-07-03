@@ -5,14 +5,14 @@ use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
 #[cfg(target_arch = "wasm32")]
 use graphene_core::instances::Instances;
 #[cfg(target_arch = "wasm32")]
-use graphene_core::raster::bbox::Bbox;
+use graphene_core::math::bbox::Bbox;
 use graphene_core::raster::image::Image;
 use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
-use graphene_core::renderer::RenderMetadata;
-use graphene_core::renderer::{GraphicElementRendered, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorDataTable;
 use graphene_core::{Color, Context, Ctx, ExtractFootprint, GraphicGroupTable, OwnedContextImpl, WasmNotSend};
+use graphene_svg_renderer::RenderMetadata;
+use graphene_svg_renderer::{GraphicElementRendered, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 
 #[cfg(target_arch = "wasm32")]
 use base64::Engine;

@@ -22,10 +22,10 @@ use crate::messages::tool::common_functionality::utility_functions::{resize_boun
 use bezier_rs::Subpath;
 use glam::DMat2;
 use graph_craft::document::NodeId;
+use graphene_std::path_bool::BooleanOperation;
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::transform::ReferencePoint;
-use graphene_std::vector::misc::BooleanOperation;
 use std::fmt;
 
 #[derive(Default)]
@@ -1402,6 +1402,7 @@ impl Fsm for SelectToolFsmState {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.axis_align = false;
+				tool_data.lasso_polygon.clear();
 				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;
@@ -1422,6 +1423,7 @@ impl Fsm for SelectToolFsmState {
 
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
+				tool_data.lasso_polygon.clear();
 				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;
