@@ -842,26 +842,25 @@ impl Fsm for SelectToolFsmState {
 					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
 					let document_start = document.metadata().document_to_viewport.inverse().transform_point2(quad.top_left());
 					let document_current = document.metadata().document_to_viewport.inverse().transform_point2(quad.bottom_right());
-					let width = format!("{:.2}", document_current.x - document_start.x);
-					let height = format!("{:.2}", document_current.y - document_start.y);
-					let x_transform = DAffine2::from_translation((quad.top_left() + quad.top_right()) / 2.);
-					let y_transform = DAffine2::from_translation((quad.top_left() + quad.bottom_left()) / 2.);
 
-					if tool_data.axis_align {
-						if document_current.x != document_start.x {
-							overlay_context.dashed_line(quad.top_left(), quad.top_right(), Some(COLOR_OVERLAY_BLUE), None, Some(4.), Some(4.), Some(0.5));
-							overlay_context.text(&width, COLOR_OVERLAY_BLUE, None, x_transform, 4., [OverlayPivot::Middle, OverlayPivot::End]);
-						} else {
-							overlay_context.dashed_line(quad.top_left(), quad.bottom_left(), Some(COLOR_OVERLAY_BLUE), None, Some(4.), Some(4.), Some(0.5));
-							overlay_context.text(&height, COLOR_OVERLAY_BLUE, None, y_transform, 4., [OverlayPivot::End, OverlayPivot::Middle]);
-						}
-					} else {
-						let width_pivot = if document_current.y >= document_start.y { OverlayPivot::End } else { OverlayPivot::Start };
-						let height_pivot = if document_current.x >= document_start.x { OverlayPivot::End } else { OverlayPivot::Start };
+					if document_current.x != document_start.x {
+						overlay_context.dashed_line(quad.top_left(), quad.top_right(), None, None, Some(2.), Some(2.), Some(0.5));
 
-						overlay_context.dashed_quad(quad, Some(COLOR_OVERLAY_BLUE), None, Some(4.), Some(4.), Some(0.5));
-						overlay_context.text(&width, COLOR_OVERLAY_BLUE, None, x_transform, 4., [OverlayPivot::Middle, width_pivot]);
-						overlay_context.text(&height, COLOR_OVERLAY_BLUE, None, y_transform, 3., [height_pivot, OverlayPivot::Middle]);
+						let width = format!("{:.2}", document_current.x - document_start.x);
+						let x_transform = DAffine2::from_translation((quad.top_left() + quad.top_right()) / 2.);
+						overlay_context.text(&width, COLOR_OVERLAY_BLUE, None, x_transform, 4., [OverlayPivot::Middle, OverlayPivot::End]);
+					}
+					if document_current.y != document_start.y {
+						overlay_context.dashed_line(quad.top_left(), quad.bottom_left(), None, None, Some(2.), Some(2.), Some(0.5));
+
+						let height = format!("{:.2}", document_current.y - document_start.y);
+						let y_transform = DAffine2::from_translation((quad.top_left() + quad.bottom_left()) / 2.);
+						let height_pivot = if document_current.x >= document_start.x { OverlayPivot::Start } else { OverlayPivot::End };
+						overlay_context.text(&height, COLOR_OVERLAY_BLUE, None, y_transform, 4., [height_pivot, OverlayPivot::Middle]);
+					}
+					if !tool_data.axis_align && document_start.x != document_current.x && document_start.y != document_current.y {
+						overlay_context.line(quad.top_right(), quad.bottom_right(), None, None);
+						overlay_context.line(quad.bottom_left(), quad.bottom_right(), None, None);
 					}
 				}
 
