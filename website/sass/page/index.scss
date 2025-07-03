@@ -18,24 +18,25 @@
 #tagline {
 	h1 {
 		span {
-		position: relative;
+			position: relative;
 
-		&::after {
-			content: "";
-			pointer-events: none;
-			position: absolute;
-			left: 0;
-			right: 0;
-			top: 100%;
-			// Dimensions: 480x40
-			height: 100%;
-			margin-top: -0.2em;
-			background: url("https://static.graphite.rs/textures/text-sketch-underline.png");
-			background-repeat: no-repeat;
-			background-size: contain;
+			&::after {
+				content: "";
+				pointer-events: none;
+				position: absolute;
+				left: 0;
+				right: 0;
+				top: 100%;
+				// Dimensions: 480x40
+				height: 100%;
+				margin-top: -0.2em;
+				background: url("https://static.graphite.rs/textures/text-sketch-underline.png");
+				background-repeat: no-repeat;
+				background-size: contain;
+			}
 		}
-	}}
-	
+	}
+
 	p {
 		font-size: 1.2rem;
 
@@ -112,15 +113,61 @@
 // ▛ OVERVIEW ▜
 #overview {
 	background-color: var(--color-cloud);
+
+	.sizzle-video {
+		display: flex;
+		flex-wrap: nowrap;
+		max-width: 100%;
+
+		.block {
+			min-width: 0;
+			flex-direction: row;
+
+			&.text {
+				flex: 1 4 100%;
+				flex-direction: column;
+
+				p:has(.button) {
+					margin-top: 20px;
+				}
+			}
+
+			&.video {
+				flex: 0 1 fit-content;
+			}
+		}
+
+		@media screen and (max-width: 900px) {
+			flex-wrap: wrap;
+
+			.block.video {
+				flex: 1 1 100%;
+				justify-content: center;
+			}
+		}
+
+		@media screen and (max-width: 1100px) {
+			p:has(.button) {
+				display: none;
+			}
+		}
+	}
 }
 // ▙ OVERVIEW ▟
+
+// ▛ DONATE ▜
+#donate {
+	h2 {
+		color: #cc304f;
+	}
+}
+// ▙ DONATE ▟
 
 // ▛ PROCEDURALISM ▜
 #proceduralism {
 	background-color: var(--color-slate);
 	color: white;
-	margin-top: 0;
-	
+
 	.diptych {
 		background: black;
 		color: var(--color-fog);
@@ -182,9 +229,6 @@
 	}
 }
 // ▙ PROCEDURALISM ▟
-
-// ▛ DONATE ▜
-// ▙ DONATE ▟
 
 // ▛ NEWSLETTER ▜
 #newsletter {
@@ -355,7 +399,7 @@
 			margin: calc(20 * var(--variable-px)) auto;
 			width: 100%;
 			max-width: 800px;
-	
+
 			+ p {
 				margin-top: 0;
 			}
@@ -377,7 +421,7 @@
 // ▛ RECENT NEWS ▜
 #recent-news {
 	background-color: var(--color-parchment);
-	
+
 	.banner img {
 		width: 100%;
 		height: auto;

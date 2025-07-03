@@ -1,17 +1,15 @@
+use crate::ArtboardGroupTable;
+use crate::Color;
+use crate::GraphicElement;
+use crate::GraphicGroupTable;
+use crate::gradient::GradientStops;
+use crate::raster_types::{CPU, GPU, RasterDataTable};
 use crate::vector::VectorDataTable;
-use crate::{Color, Context, Ctx};
+use crate::{Context, Ctx};
 use glam::{DAffine2, DVec2};
 
-#[node_macro::node(category("Debug"))]
-fn log_to_console<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2, Color, Option<Color>)] value: T) -> T {
-	#[cfg(not(target_arch = "spirv"))]
-	// KEEP THIS `debug!()` - It acts as the output for the debug node itself
-	debug!("{:#?}", value);
-	value
-}
-
 #[node_macro::node(category("Text"))]
-fn to_string<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2)] value: T) -> String {
+fn to_string<T: std::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2)] value: T) -> String {
 	format!("{:?}", value)
 }
 
@@ -38,18 +36,50 @@ fn string_length(_: impl Ctx, #[implementations(String)] string: String) -> usiz
 	string.len()
 }
 
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("Math: Logic"))]
 async fn switch<T, C: Send + 'n + Clone>(
 	#[implementations(Context)] ctx: C,
 	condition: bool,
 	#[expose]
 	#[implementations(
-		Context -> String, Context -> bool, Context -> f64, Context -> u32, Context -> u64, Context -> DVec2, Context -> VectorDataTable, Context -> DAffine2,
+		Context -> String,
+		Context -> bool,
+		Context -> f32,
+		Context -> f64,
+		Context -> u32,
+		Context -> u64,
+		Context -> DVec2,
+		Context -> DAffine2,
+		Context -> ArtboardGroupTable,
+		Context -> VectorDataTable,
+		Context -> GraphicGroupTable,
+		Context -> RasterDataTable<CPU>,
+		Context -> RasterDataTable<GPU>,
+		Context -> GraphicElement,
+		Context -> Color,
+		Context -> Option<Color>,
+		Context -> GradientStops,
 	)]
 	if_true: impl Node<C, Output = T>,
 	#[expose]
 	#[implementations(
-		Context -> String, Context -> bool, Context -> f64, Context -> u32, Context -> u64, Context -> DVec2, Context -> VectorDataTable, Context -> DAffine2,
+		Context -> String,
+		Context -> bool,
+		Context -> f32,
+		Context -> f64,
+		Context -> u32,
+		Context -> u64,
+		Context -> DVec2,
+		Context -> DAffine2,
+		Context -> ArtboardGroupTable,
+		Context -> VectorDataTable,
+		Context -> GraphicGroupTable,
+		Context -> RasterDataTable<CPU>,
+		Context -> RasterDataTable<GPU>,
+		Context -> GraphicElement,
+		Context -> Color,
+		Context -> Option<Color>,
+		Context -> GradientStops,
 	)]
 	if_false: impl Node<C, Output = T>,
 ) -> T {

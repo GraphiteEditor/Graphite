@@ -11,9 +11,10 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
 use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeType;
 use crate::node_graph_executor::NodeGraphExecutor;
-use graphene_core::raster::color::Color;
-use graphene_core::text::FontCache;
+use graphene_std::raster::color::Color;
+use graphene_std::text::FontCache;
 use std::borrow::Cow;
 use std::fmt::{self, Debug};
 
@@ -162,7 +163,7 @@ pub trait ToolTransition {
 					on: event,
 					send: Box::new(mapping.into()),
 				});
-			};
+			}
 		};
 
 		let event_to_tool_map = self.event_to_message_map();
@@ -182,7 +183,7 @@ pub trait ToolTransition {
 					on: event,
 					message: Box::new(mapping.into()),
 				});
-			};
+			}
 		};
 
 		let event_to_tool_map = self.event_to_message_map();
@@ -204,6 +205,7 @@ pub trait ToolMetadata {
 
 pub struct ToolData {
 	pub active_tool_type: ToolType,
+	pub active_shape_type: Option<ToolType>,
 	pub tools: HashMap<ToolType, Box<Tool>>,
 }
 
@@ -225,32 +227,51 @@ impl ToolData {
 
 impl LayoutHolder for ToolData {
 	fn layout(&self) -> Layout {
+		let active_tool = self.active_shape_type.unwrap_or(self.active_tool_type);
+
 		let tool_groups_layout = list_tools_in_groups()
 			.iter()
-			.map(|tool_group| tool_group.iter().map(|tool_availability| {
-				match tool_availability {
-					ToolAvailability::Available(tool) => ToolEntry::new(tool.tool_type(), tool.icon_name())
-						.tooltip(tool.tooltip())
-						.tooltip_shortcut(action_keys!(tool_type_to_activate_tool_message(tool.tool_type()))),
-					ToolAvailability::ComingSoon(tool) => tool.clone(),
-				}
-			})
-			.collect::<Vec<_>>())
+			.map(|tool_group|
+				tool_group
+					.iter()
+					.map(|tool_availability| {
+						match tool_availability {
+							ToolAvailability::Available(tool) =>
+								ToolEntry::new(tool.tool_type(), tool.icon_name())
+									.tooltip(tool.tooltip())
+									.tooltip_shortcut(action_keys!(tool_type_to_activate_tool_message(tool.tool_type()))),
+							ToolAvailability::AvailableAsShape(shape) =>
+								ToolEntry::new(shape.tool_type(), shape.icon_name())
+									.tooltip(shape.tooltip())
+									.tooltip_shortcut(action_keys!(tool_type_to_activate_tool_message(shape.tool_type()))),
+							ToolAvailability::ComingSoon(tool) => tool.clone(),
+						}
+					})
+					.collect::<Vec<_>>()
+			)
 			.flat_map(|group| {
 				let separator = std::iter::once(Separator::new(SeparatorType::Section).direction(SeparatorDirection::Vertical).widget_holder());
 				let buttons = group.into_iter().map(|ToolEntry { tooltip, tooltip_shortcut, tool_type, icon_name }| {
 					IconButton::new(icon_name, 32)
 						.disabled(false)
-						.active(self.active_tool_type == tool_type)
+						.active(match tool_type {
+							ToolType::Line | ToolType::Ellipse | ToolType::Rectangle => { self.active_shape_type.is_some() && active_tool == tool_type }
+							_ => active_tool == tool_type,
+						})
 						.tooltip(tooltip.clone())
 						.tooltip_shortcut(tooltip_shortcut)
 						.on_update(move |_| {
-							if !tooltip.contains("Coming Soon") {
-								ToolMessage::ActivateTool { tool_type }.into()
-							} else {
-								DialogMessage::RequestComingSoonDialog { issue: None }.into()
+							match tool_type {
+								ToolType::Line => ToolMessage::ActivateToolShapeLine.into(),
+								ToolType::Rectangle => ToolMessage::ActivateToolShapeRectangle.into(),
+								ToolType::Ellipse => ToolMessage::ActivateToolShapeEllipse.into(),
+								ToolType::Shape => ToolMessage::ActivateToolShape.into(),
+								_ => {
+									if !tooltip.contains("Coming Soon") { (ToolMessage::ActivateTool { tool_type }).into() } else { (DialogMessage::RequestComingSoonDialog { issue: None }).into() }
+								}
 							}
-						}).widget_holder()
+						})
+						.widget_holder()
 				});
 
 				separator.chain(buttons)
@@ -287,11 +308,13 @@ impl Default for ToolFsmState {
 		Self {
 			tool_data: ToolData {
 				active_tool_type: ToolType::Select,
+				active_shape_type: None,
 				tools: list_tools_in_groups()
 					.into_iter()
 					.flatten()
 					.filter_map(|tool| match tool {
 						ToolAvailability::Available(tool) => Some((tool.tool_type(), tool)),
+						ToolAvailability::AvailableAsShape(_) => None,
 						ToolAvailability::ComingSoon(_) => None,
 					})
 					.collect(),
@@ -327,10 +350,10 @@ pub enum ToolType {
 	Pen,
 	Freehand,
 	Spline,
-	Line,
-	Rectangle,
-	Ellipse,
-	Polygon,
+	Shape,
+	Line,      // Shape tool alias
+	Rectangle, // Shape tool alias
+	Ellipse,   // Shape tool alias
 	Text,
 
 	// Raster tool group
@@ -340,12 +363,25 @@ pub enum ToolType {
 	Patch,
 	Detail,
 	Relight,
-	Imaginate,
 	Frame,
+}
+
+impl ToolType {
+	pub fn get_shape(&self) -> Option<Self> {
+		match self {
+			Self::Rectangle | Self::Line | Self::Ellipse => Some(*self),
+			_ => None,
+		}
+	}
+
+	pub fn get_tool(self) -> Self {
+		if self.get_shape().is_some() { ToolType::Shape } else { self }
+	}
 }
 
 enum ToolAvailability {
 	Available(Box<Tool>),
+	AvailableAsShape(ShapeType),
 	ComingSoon(ToolEntry),
 }
 
@@ -367,10 +403,10 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 			ToolAvailability::Available(Box::<pen_tool::PenTool>::default()),
 			ToolAvailability::Available(Box::<freehand_tool::FreehandTool>::default()),
 			ToolAvailability::Available(Box::<spline_tool::SplineTool>::default()),
-			ToolAvailability::Available(Box::<line_tool::LineTool>::default()),
-			ToolAvailability::Available(Box::<rectangle_tool::RectangleTool>::default()),
-			ToolAvailability::Available(Box::<ellipse_tool::EllipseTool>::default()),
-			ToolAvailability::Available(Box::<polygon_tool::PolygonTool>::default()),
+			ToolAvailability::AvailableAsShape(ShapeType::Line),
+			ToolAvailability::AvailableAsShape(ShapeType::Rectangle),
+			ToolAvailability::AvailableAsShape(ShapeType::Ellipse),
+			ToolAvailability::Available(Box::<shape_tool::ShapeTool>::default()),
 			ToolAvailability::Available(Box::<text_tool::TextTool>::default()),
 		],
 		vec![
@@ -381,9 +417,6 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Patch, "RasterPatchTool").tooltip("Coming Soon: Patch Tool")),
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Detail, "RasterDetailTool").tooltip("Coming Soon: Detail Tool (D)")),
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Relight, "RasterRelightTool").tooltip("Coming Soon: Relight Tool (O)")),
-			// TODO: Fix and reenable Imaginate tool
-			// ToolAvailability::Available(Box::<imaginate_tool::ImaginateTool>::default()),
-			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Heal, "RasterImaginateTool").tooltip("Coming Soon: Imaginate Tool")),
 		],
 	]
 }
@@ -403,10 +436,7 @@ pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
 		ToolMessage::Pen(_) => ToolType::Pen,
 		ToolMessage::Freehand(_) => ToolType::Freehand,
 		ToolMessage::Spline(_) => ToolType::Spline,
-		ToolMessage::Line(_) => ToolType::Line,
-		ToolMessage::Rectangle(_) => ToolType::Rectangle,
-		ToolMessage::Ellipse(_) => ToolType::Ellipse,
-		ToolMessage::Polygon(_) => ToolType::Polygon,
+		ToolMessage::Shape(_) => ToolType::Shape, // Includes the Line, Rectangle, and Ellipse aliases
 		ToolMessage::Text(_) => ToolType::Text,
 
 		// Raster tool group
@@ -416,7 +446,6 @@ pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
 		// ToolMessage::Patch(_) => ToolType::Patch,
 		// ToolMessage::Detail(_) => ToolType::Detail,
 		// ToolMessage::Relight(_) => ToolType::Relight,
-		// ToolMessage::Imaginate(_) => ToolType::Imaginate,
 		_ => panic!("Conversion from ToolMessage to ToolType impossible because the given ToolMessage does not have a matching ToolType. Got: {tool_message:?}"),
 	}
 }
@@ -436,10 +465,10 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		ToolType::Pen => ToolMessageDiscriminant::ActivateToolPen,
 		ToolType::Freehand => ToolMessageDiscriminant::ActivateToolFreehand,
 		ToolType::Spline => ToolMessageDiscriminant::ActivateToolSpline,
-		ToolType::Line => ToolMessageDiscriminant::ActivateToolLine,
-		ToolType::Rectangle => ToolMessageDiscriminant::ActivateToolRectangle,
-		ToolType::Ellipse => ToolMessageDiscriminant::ActivateToolEllipse,
-		ToolType::Polygon => ToolMessageDiscriminant::ActivateToolPolygon,
+		ToolType::Line => ToolMessageDiscriminant::ActivateToolShapeLine,           // Shape tool alias
+		ToolType::Rectangle => ToolMessageDiscriminant::ActivateToolShapeRectangle, // Shape tool alias
+		ToolType::Ellipse => ToolMessageDiscriminant::ActivateToolShapeEllipse,     // Shape tool alias
+		ToolType::Shape => ToolMessageDiscriminant::ActivateToolShape,
 		ToolType::Text => ToolMessageDiscriminant::ActivateToolText,
 
 		// Raster tool group
@@ -449,7 +478,6 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		// ToolType::Patch => ToolMessageDiscriminant::ActivateToolPatch,
 		// ToolType::Detail => ToolMessageDiscriminant::ActivateToolDetail,
 		// ToolType::Relight => ToolMessageDiscriminant::ActivateToolRelight,
-		// ToolType::Imaginate => ToolMessageDiscriminant::ActivateToolImaginate,
 		_ => panic!("Conversion from ToolType to ToolMessage impossible because the given ToolType does not have a matching ToolMessage. Got: {tool_type:?}"),
 	}
 }

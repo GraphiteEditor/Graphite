@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext, onMount, tick } from "svelte";
+	import { getContext, onMount, onDestroy, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
 	import { beginDraggingElement } from "@graphite/io-managers/drag";
@@ -55,6 +55,10 @@
 	let fakeHighlightOfNotYetSelectedLayerBeingDragged: undefined | bigint = undefined;
 	let dragInPanel = false;
 
+	// Interactive clipping
+	let layerToClipUponClick: LayerListingInfo | undefined = undefined;
+	let layerToClipAltKeyPressed = false;
+
 	// Layouts
 	let layersPanelControlBarLeftLayout = defaultWidgetLayout();
 	let layersPanelControlBarRightLayout = defaultWidgetLayout();
@@ -87,6 +91,16 @@
 
 			updateLayerInTree(targetId, targetLayer);
 		});
+
+		addEventListener("pointermove", clippingHover);
+		addEventListener("keydown", clippingKeyPress);
+		addEventListener("keyup", clippingKeyPress);
+	});
+
+	onDestroy(() => {
+		removeEventListener("pointermove", clippingHover);
+		removeEventListener("keydown", clippingKeyPress);
+		removeEventListener("keyup", clippingKeyPress);
 	});
 
 	type DocumentLayerStructure = {
@@ -208,10 +222,56 @@
 		// Get the state of the platform's accel key and its opposite platform's accel key
 		const [accel, oppositeAccel] = platformIsMac() ? [meta, ctrl] : [ctrl, meta];
 
+		// Alt-clicking to make a clipping mask
+		if (layerToClipAltKeyPressed && layerToClipUponClick && layerToClipUponClick.entry.clippable) clipLayer(layerToClipUponClick);
 		// Select the layer only if the accel and/or shift keys are pressed
-		if (!oppositeAccel && !alt) selectLayer(listing, accel, shift);
+		else if (!oppositeAccel && !alt) selectLayer(listing, accel, shift);
 
 		e.stopPropagation();
+	}
+
+	function clipLayer(listing: LayerListingInfo) {
+		editor.handle.clipLayer(listing.entry.id);
+	}
+
+	function clippingKeyPress(e: KeyboardEvent) {
+		layerToClipAltKeyPressed = e.altKey;
+	}
+
+	function clippingHover(e: PointerEvent) {
+		// Don't do anything if the user is dragging to rearrange layers
+		if (dragInPanel) return;
+
+		// Get the layer below the cursor
+		const target = (e.target instanceof HTMLElement && e.target.closest("[data-layer]")) || undefined;
+		if (!target) {
+			layerToClipUponClick = undefined;
+			return;
+		}
+
+		// Check if the cursor is near the border btween two layers
+		const DISTANCE = 6;
+		const distanceFromTop = e.clientY - target.getBoundingClientRect().top;
+		const distanceFromBottom = target.getBoundingClientRect().bottom - e.clientY;
+
+		const nearTop = distanceFromTop < DISTANCE;
+		const nearBottom = distanceFromBottom < DISTANCE;
+
+		// If we are not near the border, we don't want to clip
+		if (!nearTop && !nearBottom) {
+			layerToClipUponClick = undefined;
+			return;
+		}
+
+		// If we are near the border, we want to clip the layer above the border
+		const indexAttribute = target?.getAttribute("data-index") ?? undefined;
+		const index = indexAttribute ? Number(indexAttribute) : undefined;
+		const layer = index !== undefined && layers[nearTop ? index - 1 : index];
+		if (!layer) return;
+
+		// Update the state used to show the clipping action
+		layerToClipUponClick = layer;
+		layerToClipAltKeyPressed = e.altKey;
 	}
 
 	function selectLayer(listing: LayerListingInfo, accel: boolean, shift: boolean) {
@@ -433,7 +493,16 @@
 		<WidgetLayout layout={layersPanelControlBarRightLayout} />
 	</LayoutRow>
 	<LayoutRow class="list-area" scrollableY={true}>
-		<LayoutCol class="list" data-layer-panel bind:this={list} on:click={() => deselectAllLayers()} on:dragover={updateInsertLine} on:dragend={drop} on:drop={drop}>
+		<LayoutCol
+			class="list"
+			styles={{ cursor: layerToClipUponClick && layerToClipAltKeyPressed && layerToClipUponClick.entry.clippable ? "alias" : "auto" }}
+			data-layer-panel
+			bind:this={list}
+			on:click={() => deselectAllLayers()}
+			on:dragover={updateInsertLine}
+			on:dragend={drop}
+			on:drop={drop}
+		>
 			{#each layers as listing, index}
 				{@const selected = fakeHighlightOfNotYetSelectedLayerBeingDragged !== undefined ? fakeHighlightOfNotYetSelectedLayerBeingDragged === listing.entry.id : listing.entry.selected}
 				<LayoutRow
@@ -464,6 +533,11 @@
 							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
 							tabindex="0"
 						></button>
+					{:else}
+						<div class="expand-arrow-none"></div>
+					{/if}
+					{#if listing.entry.clipped}
+						<IconLabel icon="Clipped" class="clipped-arrow" tooltip={"Clipping mask is active (Alt-click border to release)"} />
 					{/if}
 					<div class="thumbnail">
 						{#if $nodeGraph.thumbnails.has(listing.entry.id)}
@@ -589,6 +663,7 @@
 				.expand-arrow {
 					padding: 0;
 					margin: 0;
+					margin-right: 4px;
 					width: 16px;
 					height: 100%;
 					border: none;
@@ -625,20 +700,25 @@
 					}
 				}
 
+				.expand-arrow-none {
+					flex: 0 0 16px;
+					margin-right: 4px;
+				}
+
+				.clipped-arrow {
+					margin-left: 2px;
+					margin-right: 2px;
+				}
+
 				.thumbnail {
 					width: 36px;
 					height: 24px;
-					margin-left: 4px;
 					border-radius: 2px;
 					flex: 0 0 auto;
 					background-image: var(--color-transparent-checkered-background);
 					background-size: var(--color-transparent-checkered-background-size-mini);
 					background-position: var(--color-transparent-checkered-background-position-mini);
 					background-repeat: var(--color-transparent-checkered-background-repeat);
-
-					&:first-child {
-						margin-left: 20px;
-					}
 
 					svg {
 						width: calc(100% - 4px);

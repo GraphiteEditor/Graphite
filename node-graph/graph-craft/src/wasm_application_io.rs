@@ -1,12 +1,12 @@
 use dyn_any::StaticType;
-use graphene_core::application_io::SurfaceHandleFrame;
-use graphene_core::application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceId};
+use graphene_application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceId};
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;
 use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
 use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 #[cfg(feature = "tokio")]
 use tokio::io::AsyncReadExt;
 #[cfg(target_arch = "wasm32")]
@@ -17,6 +17,7 @@ use wasm_bindgen::JsValue;
 use web_sys::HtmlCanvasElement;
 #[cfg(target_arch = "wasm32")]
 use web_sys::window;
+#[cfg(feature = "wgpu")]
 use wgpu_executor::WgpuExecutor;
 
 #[derive(Debug)]
@@ -76,7 +77,7 @@ pub fn wgpu_available() -> Option<bool> {
 		}
 	}
 
-	match WGPU_AVAILABLE.load(::std::sync::atomic::Ordering::SeqCst) {
+	match WGPU_AVAILABLE.load(Ordering::SeqCst) {
 		-1 => None,
 		0 => Some(false),
 		_ => Some(true),
@@ -85,7 +86,7 @@ pub fn wgpu_available() -> Option<bool> {
 
 impl WasmApplicationIo {
 	pub async fn new() -> Self {
-		#[cfg(target_arch = "wasm32")]
+		#[cfg(all(feature = "wgpu", target_arch = "wasm32"))]
 		let executor = if let Some(gpu) = web_sys::window().map(|w| w.navigator().gpu()) {
 			let request_adapter = || {
 				let request_adapter = js_sys::Reflect::get(&gpu, &wasm_bindgen::JsValue::from_str("requestAdapter")).ok()?;
@@ -101,9 +102,14 @@ impl WasmApplicationIo {
 			None
 		};
 
-		#[cfg(not(target_arch = "wasm32"))]
+		#[cfg(all(feature = "wgpu", not(target_arch = "wasm32")))]
 		let executor = WgpuExecutor::new().await;
-		WGPU_AVAILABLE.store(executor.is_some() as i8, ::std::sync::atomic::Ordering::SeqCst);
+
+		#[cfg(not(feature = "wgpu"))]
+		let wgpu_available = false;
+		#[cfg(feature = "wgpu")]
+		let wgpu_available = executor.is_some();
+		WGPU_AVAILABLE.store(wgpu_available as i8, Ordering::SeqCst);
 
 		let mut io = Self {
 			#[cfg(target_arch = "wasm32")]
@@ -121,9 +127,14 @@ impl WasmApplicationIo {
 	}
 
 	pub async fn new_offscreen() -> Self {
+		#[cfg(feature = "wgpu")]
 		let executor = WgpuExecutor::new().await;
 
-		WGPU_AVAILABLE.store(executor.is_some() as i8, ::std::sync::atomic::Ordering::SeqCst);
+		#[cfg(not(feature = "wgpu"))]
+		let wgpu_available = false;
+		#[cfg(feature = "wgpu")]
+		let wgpu_available = executor.is_some();
+		WGPU_AVAILABLE.store(wgpu_available as i8, Ordering::SeqCst);
 
 		// Always enable wgpu when running with Tauri
 		let mut io = Self {
@@ -157,7 +168,7 @@ impl<'a> From<&'a WasmApplicationIo> for &'a WgpuExecutor {
 	}
 }
 
-pub type WasmEditorApi = graphene_core::application_io::EditorApi<WasmApplicationIo>;
+pub type WasmEditorApi = graphene_application_io::EditorApi<WasmApplicationIo>;
 
 impl ApplicationIo for WasmApplicationIo {
 	#[cfg(target_arch = "wasm32")]
@@ -175,7 +186,7 @@ impl ApplicationIo for WasmApplicationIo {
 			let document = window().expect("should have a window in this context").document().expect("window should have a document");
 
 			let canvas: HtmlCanvasElement = document.create_element("canvas")?.dyn_into::<HtmlCanvasElement>()?;
-			let id = self.ids.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+			let id = self.ids.fetch_add(1, Ordering::SeqCst);
 			// store the canvas in the global scope so it doesn't get garbage collected
 			let window = window().expect("should have a window in this context");
 			let window = Object::from(window);
@@ -197,7 +208,7 @@ impl ApplicationIo for WasmApplicationIo {
 			// Use Reflect API to set property
 			Reflect::set(&canvases, &js_key, &js_value)?;
 			Ok::<_, JsValue>(SurfaceHandle {
-				window_id: graphene_core::SurfaceId(id),
+				window_id: SurfaceId(id),
 				surface: canvas,
 			})
 		};
@@ -299,20 +310,17 @@ impl ApplicationIo for WasmApplicationIo {
 	}
 }
 
+#[cfg(feature = "wgpu")]
 pub type WasmSurfaceHandle = SurfaceHandle<wgpu_executor::Window>;
-pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<wgpu_executor::Window>;
+#[cfg(feature = "wgpu")]
+pub type WasmSurfaceHandleFrame = graphene_application_io::SurfaceHandleFrame<wgpu_executor::Window>;
 
-#[derive(Clone, Debug, PartialEq, Hash, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct EditorPreferences {
-	// pub imaginate_hostname: String,
 	pub use_vello: bool,
 }
 
-impl graphene_core::application_io::GetEditorPreferences for EditorPreferences {
-	// fn hostname(&self) -> &str {
-	// 	&self.imaginate_hostname
-	// }
+impl graphene_application_io::GetEditorPreferences for EditorPreferences {
 	fn use_vello(&self) -> bool {
 		self.use_vello
 	}
@@ -321,7 +329,6 @@ impl graphene_core::application_io::GetEditorPreferences for EditorPreferences {
 impl Default for EditorPreferences {
 	fn default() -> Self {
 		Self {
-			// imaginate_hostname: "http://localhost:7860/".into(),
 			#[cfg(target_arch = "wasm32")]
 			use_vello: false,
 			#[cfg(not(target_arch = "wasm32"))]
@@ -330,6 +337,6 @@ impl Default for EditorPreferences {
 	}
 }
 
-unsafe impl dyn_any::StaticType for EditorPreferences {
+unsafe impl StaticType for EditorPreferences {
 	type Static = EditorPreferences;
 }

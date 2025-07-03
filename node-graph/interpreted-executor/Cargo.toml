@@ -6,37 +6,28 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = []
-serde = ["dep:serde", "graphene-std/serde", "glam/serde"]
-gpu = ["graphene-std/gpu", "graphene-core/gpu", "graphene-std/wgpu"]
+gpu = ["graphene-std/gpu", "graphene-std/wgpu"]
 
 [dependencies]
 # Local dependencies
-graphene-std = { path = "../gstd", features = ["serde"] }
-graph-craft = { path = "../graph-craft" }
-gpu-executor = { path = "../gpu-executor" }
-wgpu-executor = { path = "../wgpu-executor" }
+graphene-std = { workspace = true }
+graph-craft = { workspace = true }
+wgpu-executor = { workspace = true }
+graphene-core = { workspace = true }
+graphene-path-bool = { workspace = true }
+dyn-any = { workspace = true }
 
 # Workspace dependencies
-graphene-core = { workspace = true, features = ["std"] }
-dyn-any = { workspace = true, features = ["log-bad-types", "glam"] }
-num-traits = { workspace = true }
 log = { workspace = true }
-wgpu = { workspace = true }
 glam = { workspace = true }
 futures = { workspace = true }
 once_cell = { workspace = true }
-
-# Optional workspace dependencies
-serde = { workspace = true, optional = true }
+serde = { workspace = true }
 
 [dev-dependencies]
 # Workspace dependencies
 graph-craft = { workspace = true, features = ["loading"] }
-
-# Required dependencies
-criterion = { version = "0.5", features = ["html_reports"]}
-glob = "0.3"
-iai-callgrind = { version = "0.12.3"}
+criterion = { workspace = true }
 
 # Benchmarks
 [[bench]]

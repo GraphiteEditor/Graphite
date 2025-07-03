@@ -7,9 +7,9 @@ use crate::messages::portfolio::document::utility_types::network_interface::Flow
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
-use graphene_core::Color;
-use graphene_core::raster::BlendMode;
-use graphene_core::vector::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
+use graphene_std::Color;
+use graphene_std::brush::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
+use graphene_std::raster::BlendMode;
 
 const BRUSH_MAX_SIZE: f64 = 5000.;
 
@@ -276,15 +276,16 @@ impl BrushToolData {
 			let Some(reference) = document.network_interface.reference(&node_id, &[]) else {
 				continue;
 			};
+
 			if *reference == Some("Brush".to_string()) && node_id != layer.to_node() {
-				let points_input = node.inputs.get(2)?;
-				let Some(TaggedValue::BrushStrokes(strokes)) = points_input.as_value() else {
-					continue;
-				};
+				let points_input = node.inputs.get(1)?;
+				let Some(TaggedValue::BrushStrokes(strokes)) = points_input.as_value() else { continue };
 				self.strokes.clone_from(strokes);
 
 				return Some(layer);
-			} else if *reference == Some("Transform".to_string()) {
+			}
+
+			if *reference == Some("Transform".to_string()) {
 				let upstream = document.metadata().upstream_transform(node_id);
 				let pivot = DAffine2::from_translation(upstream.transform_point2(get_current_normalized_pivot(&node.inputs)));
 				self.transform = pivot * get_current_transform(&node.inputs) * pivot.inverse() * self.transform;

@@ -7,8 +7,6 @@ use graph_craft::wasm_application_io::EditorPreferences;
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct PreferencesMessageHandler {
-	// pub imaginate_server_hostname: String,
-	// pub imaginate_refresh_frequency: f64,
 	pub selection_mode: SelectionMode,
 	pub zoom_with_scroll: bool,
 	pub use_vello: bool,
@@ -24,7 +22,6 @@ impl PreferencesMessageHandler {
 
 	pub fn editor_preferences(&self) -> EditorPreferences {
 		EditorPreferences {
-			// imaginate_hostname: self.imaginate_server_hostname.clone(),
 			use_vello: self.use_vello && self.supports_wgpu(),
 		}
 	}
@@ -37,8 +34,6 @@ impl PreferencesMessageHandler {
 impl Default for PreferencesMessageHandler {
 	fn default() -> Self {
 		Self {
-			// imaginate_server_hostname: EditorPreferences::default().imaginate_hostname,
-			// imaginate_refresh_frequency: 1.,
 			selection_mode: SelectionMode::Touched,
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
 			use_vello: EditorPreferences::default().use_vello,
@@ -56,10 +51,6 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			PreferencesMessage::Load { preferences } => {
 				if let Ok(deserialized_preferences) = serde_json::from_str::<PreferencesMessageHandler>(&preferences) {
 					*self = deserialized_preferences;
-
-					// TODO: Reenable when Imaginate is restored
-					// responses.add(PortfolioMessage::ImaginateServerHostname);
-					// responses.add(PortfolioMessage::ImaginateCheckServerStatus);
 
 					responses.add(PortfolioMessage::EditorPreferences);
 					responses.add(PortfolioMessage::UpdateVelloPreference);
@@ -101,27 +92,6 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				self.viewport_zoom_wheel_rate = rate;
 			}
 		}
-		// TODO: Reenable when Imaginate is restored (and move back up one line since the auto-formatter doesn't like it in that block)
-		// PreferencesMessage::ImaginateRefreshFrequency { seconds } => {
-		// 	self.imaginate_refresh_frequency = seconds;
-		// 	responses.add(PortfolioMessage::ImaginateCheckServerStatus);
-		// 	responses.add(PortfolioMessage::EditorPreferences);
-		// }
-		// PreferencesMessage::ImaginateServerHostname { hostname } => {
-		// 	let initial = hostname.clone();
-		// 	let has_protocol = hostname.starts_with("http://") || hostname.starts_with("https://");
-		// 	let hostname = if has_protocol { hostname } else { "http://".to_string() + &hostname };
-		// 	let hostname = if hostname.ends_with('/') { hostname } else { hostname + "/" };
-
-		// 	if hostname != initial {
-		// 		refresh_dialog(responses);
-		// 	}
-
-		//	self.imaginate_server_hostname = hostname;
-		//	responses.add(PortfolioMessage::ImaginateServerHostname);
-		//	responses.add(PortfolioMessage::ImaginateCheckServerStatus);
-		//	responses.add(PortfolioMessage::EditorPreferences);
-		//}
 
 		responses.add(FrontendMessage::TriggerSavePreferences { preferences: self.clone() });
 	}

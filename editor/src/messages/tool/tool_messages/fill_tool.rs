@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
-use graphene_core::vector::style::Fill;
+use graphene_std::vector::style::Fill;
 
 #[derive(Default)]
 pub struct FillTool {
@@ -157,11 +157,14 @@ impl Fsm for FillToolFsmState {
 #[cfg(test)]
 mod test_fill {
 	pub use crate::test_utils::test_prelude::*;
-	use graphene_core::vector::fill;
+	use graphene_std::vector::fill;
 	use graphene_std::vector::style::Fill;
 
 	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<Fill> {
-		let instrumented = editor.eval_graph().await;
+		let instrumented = match editor.eval_graph().await {
+			Ok(instrumented) => instrumented,
+			Err(e) => panic!("Failed to evaluate graph: {e}"),
+		};
 
 		instrumented.grab_all_input::<fill::FillInput<Fill>>(&editor.runtime).collect()
 	}
