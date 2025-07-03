@@ -14,31 +14,6 @@ pub enum CentroidType {
 	Length,
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
-#[widget(Radio)]
-pub enum BooleanOperation {
-	#[default]
-	#[icon("BooleanUnion")]
-	Union,
-	#[icon("BooleanSubtractFront")]
-	SubtractFront,
-	#[icon("BooleanSubtractBack")]
-	SubtractBack,
-	#[icon("BooleanIntersect")]
-	Intersect,
-	#[icon("BooleanDifference")]
-	Difference,
-}
-
-pub trait AsU32 {
-	fn as_u32(&self) -> u32;
-}
-impl AsU32 for u32 {
-	fn as_u32(&self) -> u32 {
-		*self
-	}
-}
-
 pub trait AsU64 {
 	fn as_u64(&self) -> u64;
 }
@@ -93,6 +68,26 @@ pub enum ArcType {
 	Open,
 	Closed,
 	PieSlice,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum MergeByDistanceAlgorithm {
+	#[default]
+	Spatial,
+	Topological,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum PointSpacingType {
+	#[default]
+	/// The desired spacing distance between points.
+	Separation,
+	/// The exact number of points to span the path.
+	Quantity,
 }
 
 pub fn point_to_dvec2(point: Point) -> DVec2 {

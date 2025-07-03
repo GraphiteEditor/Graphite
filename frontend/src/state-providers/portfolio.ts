@@ -10,7 +10,6 @@ import {
 	TriggerDownloadTextFile,
 	TriggerImport,
 	TriggerOpenDocument,
-	TriggerUpgradeDocumentToVectorManipulationFormat,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
 	UpdateSpreadsheetState,
@@ -103,11 +102,6 @@ export function createPortfolioState(editor: Editor) {
 		} catch {
 			// Fail silently if there's an error rasterizing the SVG, such as a zero-sized image
 		}
-	});
-	editor.subscriptions.subscribeJsMessage(TriggerUpgradeDocumentToVectorManipulationFormat, async (triggerUpgradeDocumentToVectorManipulationFormat) => {
-		// TODO: Eventually remove this document upgrade code
-		const { documentId, documentName, documentIsAutoSaved, documentIsSaved, documentSerializedContent } = triggerUpgradeDocumentToVectorManipulationFormat;
-		editor.handle.triggerUpgradeDocumentToVectorManipulationFormat(documentId, documentName, documentIsAutoSaved, documentIsSaved, documentSerializedContent);
 	});
 
 	editor.subscriptions.subscribeJsMessage(UpdateSpreadsheetState, async (updateSpreadsheetState) => {

@@ -1,8 +1,8 @@
 use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 use crate::consts::{
-	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_OVERLAY_WHITE, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS,
-	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE, SKEW_TRIANGLE_OFFSET,
-	SKEW_TRIANGLE_SIZE,
+	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_OVERLAY_WHITE, MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY,
+	MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY, RESIZE_HANDLE_SIZE,
+	SELECTION_DRAG_ANGLE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -11,7 +11,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::compass_rose::Axis;
 use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
 use glam::{DAffine2, DMat2, DVec2};
-use graphene_core::renderer::Quad;
+use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
 
 /// (top, bottom, left, right)
@@ -52,6 +52,8 @@ enum TransformCageSizeCategory {
 	Narrow,
 	/// - ![Diagram](https://files.keavon.com/-/OpenPaleturquoiseArthropods/capture.png)
 	Flat,
+	/// A single point in space with no width or height.
+	Point,
 }
 
 impl SelectedEdges {
@@ -431,46 +433,24 @@ impl BoundingBoxManager {
 	}
 
 	pub fn check_skew_handle(&self, cursor: DVec2, edge: EdgeBool) -> bool {
-		if let Some([start, end]) = self.edge_endpoints_vector_from_edge_bool(edge) {
-			if (end - start).length() < MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY {
-				return false;
-			}
+		let Some([start, end]) = self.edge_endpoints_vector_from_edge_bool(edge) else { return false };
+		if (end - start).length_squared() < MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY.powi(2) {
+			return false;
+		};
 
-			let touches_triangle = |base: DVec2, direction: DVec2, cursor: DVec2| -> bool {
-				let normal = direction.perp();
-				let top = base + direction * SKEW_TRIANGLE_SIZE;
-				let edge1 = base + normal * SKEW_TRIANGLE_SIZE / 2.;
-				let edge2 = base - normal * SKEW_TRIANGLE_SIZE / 2.;
+		let edge_dir = (end - start).normalize();
+		let mid = start.midpoint(end);
 
-				let v0 = edge1 - top;
-				let v1 = edge2 - top;
-				let v2 = cursor - top;
+		for direction in [-edge_dir, edge_dir] {
+			let base = mid + direction * (3. + SKEW_TRIANGLE_OFFSET + SKEW_TRIANGLE_SIZE / 2.);
+			let extension = cursor - base;
+			let along_edge = extension.dot(edge_dir).abs();
+			let along_perp = extension.perp_dot(edge_dir).abs();
 
-				let d00 = v0.dot(v0);
-				let d01 = v0.dot(v1);
-				let d11 = v1.dot(v1);
-				let d20 = v2.dot(v0);
-				let d21 = v2.dot(v1);
-
-				let denom = d00 * d11 - d01 * d01;
-				let v = (d11 * d20 - d01 * d21) / denom;
-				let w = (d00 * d21 - d01 * d20) / denom;
-				let u = 1. - v - w;
-
-				u >= 0. && v >= 0. && w >= 0.
-			};
-
-			let edge_dir = (end - start).normalize();
-			let mid = end.midpoint(start);
-
-			for direction in [edge_dir, -edge_dir] {
-				let base = mid + direction * (3. + SKEW_TRIANGLE_OFFSET);
-				if touches_triangle(base, direction, cursor) {
-					return true;
-				}
+			if along_edge <= SKEW_TRIANGLE_SIZE / 2. && along_perp <= BOUNDS_SELECT_THRESHOLD {
+				return true;
 			}
 		}
-
 		false
 	}
 
@@ -598,7 +578,9 @@ impl BoundingBoxManager {
 			category,
 			TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedLandscape
 		) {
-			horizontal_edges.map(|point| draw_handle(point, horizontal_angle));
+			for point in horizontal_edges {
+				draw_handle(point, horizontal_angle);
+			}
 		}
 
 		// Draw the vertical midpoint drag handles
@@ -606,7 +588,9 @@ impl BoundingBoxManager {
 			category,
 			TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedPortrait
 		) {
-			vertical_edges.map(|point| draw_handle(point, vertical_angle));
+			for point in vertical_edges {
+				draw_handle(point, vertical_angle);
+			}
 		}
 
 		let angle = quad
@@ -621,7 +605,9 @@ impl BoundingBoxManager {
 			category,
 			TransformCageSizeCategory::Full | TransformCageSizeCategory::ReducedBoth | TransformCageSizeCategory::ReducedLandscape | TransformCageSizeCategory::ReducedPortrait
 		) {
-			quad.0.map(|point| draw_handle(point, angle));
+			for point in quad.0 {
+				draw_handle(point, angle);
+			}
 		}
 
 		// Draw the flat line endpoint drag handles
@@ -635,7 +621,12 @@ impl BoundingBoxManager {
 	fn overlay_display_category(&self) -> TransformCageSizeCategory {
 		let quad = self.transform * Quad::from_box(self.bounds);
 
-		// Check if the area is essentially zero because either the width or height is smaller than an epsilon
+		// Check if the bounds are essentially the same because the width and height are smaller than MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT
+		if self.is_bounds_point() {
+			return TransformCageSizeCategory::Point;
+		}
+
+		// Check if the area is essentially zero because either the width or height is smaller than MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT
 		if self.is_bounds_flat() {
 			return TransformCageSizeCategory::Flat;
 		}
@@ -661,7 +652,12 @@ impl BoundingBoxManager {
 
 	/// Determine if these bounds are flat ([`TransformCageSizeCategory::Flat`]), which means that the width and/or height is essentially zero and the bounds are a line with effectively no area. This can happen on actual lines (axis-aligned, i.e. drawn horizontally or vertically) or when an element is scaled to zero in X or Y. A flat transform cage can still be rotated by a transformation, but its local space remains flat.
 	fn is_bounds_flat(&self) -> bool {
-		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any()
+		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT)).any()
+	}
+
+	/// Determine if these bounds are point ([`TransformCageSizeCategory::Point`]), which means that the width and height are essentially zero and the bounds are a point with no area. This can happen on points when an element is scaled to zero in both X and Y, or if an element is just a single anchor point. A point transform cage cannot be rotated by a transformation, and its local space remains a point.
+	fn is_bounds_point(&self) -> bool {
+		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT)).all()
 	}
 
 	/// Determine if the given point in viewport space falls within the bounds of `self`.
@@ -699,7 +695,7 @@ impl BoundingBoxManager {
 		let [edge_min_x, edge_min_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR);
 		let [midpoint_threshold_x, midpoint_threshold_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS);
 
-		if min.x - cursor.x < threshold_x && min.y - cursor.y < threshold_y && cursor.x - max.x < threshold_x && cursor.y - max.y < threshold_y {
+		if (min.x - cursor.x < threshold_x && min.y - cursor.y < threshold_y) && (cursor.x - max.x < threshold_x && cursor.y - max.y < threshold_y) {
 			let mut top = (cursor.y - min.y).abs() < threshold_y;
 			let mut bottom = (max.y - cursor.y).abs() < threshold_y;
 			let mut left = (cursor.x - min.x).abs() < threshold_x;
@@ -741,11 +737,11 @@ impl BoundingBoxManager {
 				}
 
 				// On bounds with no width/height, disallow transformation in the relevant axis
-				if width < f64::EPSILON * 1000. {
+				if width < MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT {
 					left = false;
 					right = false;
 				}
-				if height < f64::EPSILON * 1000. {
+				if height < MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT {
 					top = false;
 					bottom = false;
 				}
@@ -767,9 +763,12 @@ impl BoundingBoxManager {
 		let [threshold_x, threshold_y] = self.compute_viewport_threshold(BOUNDS_ROTATE_THRESHOLD);
 		let cursor = self.transform.inverse().transform_point2(cursor);
 
-		let flat = (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any();
+		let flat = self.is_bounds_flat();
+		let point = self.is_bounds_point();
 		let within_square_bounds = |center: &DVec2| center.x - threshold_x < cursor.x && cursor.x < center.x + threshold_x && center.y - threshold_y < cursor.y && cursor.y < center.y + threshold_y;
-		if flat {
+		if point {
+			false
+		} else if flat {
 			[self.bounds[0], self.bounds[1]].iter().any(within_square_bounds)
 		} else {
 			self.evaluate_transform_handle_positions().iter().any(within_square_bounds)
@@ -807,59 +806,64 @@ impl BoundingBoxManager {
 	}
 }
 
-#[test]
-fn skew_transform_singular() {
-	for edge in [
-		SelectedEdges::new(true, false, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
-		SelectedEdges::new(false, true, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
-		SelectedEdges::new(false, false, true, false, [DVec2::NEG_ONE, DVec2::ONE]),
-		SelectedEdges::new(false, false, false, true, [DVec2::NEG_ONE, DVec2::ONE]),
-	] {
-		// The determinant is 0.
-		let transform = DAffine2::from_cols_array(&[2.; 6]);
-		// This shouldn't panic. We don't really care about the behavior in this test.
-		let _ = edge.skew_transform(DVec2::new(1.5, 1.5), transform, false);
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn skew_transform_singular() {
+		for edge in [
+			SelectedEdges::new(true, false, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
+			SelectedEdges::new(false, true, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
+			SelectedEdges::new(false, false, true, false, [DVec2::NEG_ONE, DVec2::ONE]),
+			SelectedEdges::new(false, false, false, true, [DVec2::NEG_ONE, DVec2::ONE]),
+		] {
+			// The determinant is 0.
+			let transform = DAffine2::from_cols_array(&[2.; 6]);
+			// This shouldn't panic. We don't really care about the behavior in this test.
+			let _ = edge.skew_transform(DVec2::new(1.5, 1.5), transform, false);
+		}
 	}
-}
 
-#[test]
-fn skew_transform_correct() {
-	for edge in [
-		SelectedEdges::new(true, false, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
-		SelectedEdges::new(false, true, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
-		SelectedEdges::new(false, false, true, false, [DVec2::NEG_ONE, DVec2::ONE]),
-		SelectedEdges::new(false, false, false, true, [DVec2::NEG_ONE, DVec2::ONE]),
-	] {
-		// Random transform with det != 0.
-		let to_viewport_transform = DAffine2::from_cols_array(&[2., 1., 0., 1., 2., 3.]);
-		// Random mouse position.
-		let mouse = DVec2::new(1.5, 1.5);
-		let final_transform = edge.skew_transform(mouse, to_viewport_transform, false);
+	#[test]
+	fn skew_transform_correct() {
+		for edge in [
+			SelectedEdges::new(true, false, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
+			SelectedEdges::new(false, true, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
+			SelectedEdges::new(false, false, true, false, [DVec2::NEG_ONE, DVec2::ONE]),
+			SelectedEdges::new(false, false, false, true, [DVec2::NEG_ONE, DVec2::ONE]),
+		] {
+			// Random transform with det != 0.
+			let to_viewport_transform = DAffine2::from_cols_array(&[2., 1., 0., 1., 2., 3.]);
+			// Random mouse position.
+			let mouse = DVec2::new(1.5, 1.5);
+			let final_transform = edge.skew_transform(mouse, to_viewport_transform, false);
 
-		// This is the current handle that goes under the mouse.
-		let opposite = edge.pivot_from_bounds(edge.bounds[0], edge.bounds[1]);
-		let dragging_point = edge.pivot_from_bounds(edge.bounds[1], edge.bounds[0]);
+			// This is the current handle that goes under the mouse.
+			let opposite = edge.pivot_from_bounds(edge.bounds[0], edge.bounds[1]);
+			let dragging_point = edge.pivot_from_bounds(edge.bounds[1], edge.bounds[0]);
 
-		let viewport_dragging_point = to_viewport_transform.transform_point2(dragging_point);
-		let parallel_to_x = edge.top || edge.bottom;
-		let parallel_to_y = !parallel_to_x && (edge.left || edge.right);
+			let viewport_dragging_point = to_viewport_transform.transform_point2(dragging_point);
+			let parallel_to_x = edge.top || edge.bottom;
+			let parallel_to_y = !parallel_to_x && (edge.left || edge.right);
 
-		let drag_vector = mouse - viewport_dragging_point;
-		let document_drag_vector = to_viewport_transform.inverse().transform_vector2(drag_vector);
+			let drag_vector = mouse - viewport_dragging_point;
+			let document_drag_vector = to_viewport_transform.inverse().transform_vector2(drag_vector);
 
-		let sign = if edge.top || edge.left { -1. } else { 1. };
-		let scale_factor = (edge.bounds[1] - edge.bounds[0])[parallel_to_x as usize].abs().recip() * sign;
-		let scaled_document_drag = document_drag_vector * scale_factor;
+			let sign = if edge.top || edge.left { -1. } else { 1. };
+			let scale_factor = (edge.bounds[1] - edge.bounds[0])[parallel_to_x as usize].abs().recip() * sign;
+			let scaled_document_drag = document_drag_vector * scale_factor;
 
-		let skew = DAffine2::from_mat2(DMat2::from_cols_array(&[
-			1.,
-			if parallel_to_y { scaled_document_drag.y } else { 0. },
-			if parallel_to_x { scaled_document_drag.x } else { 0. },
-			1.,
-		]));
+			let skew = DAffine2::from_mat2(DMat2::from_cols_array(&[
+				1.,
+				if parallel_to_y { scaled_document_drag.y } else { 0. },
+				if parallel_to_x { scaled_document_drag.x } else { 0. },
+				1.,
+			]));
 
-		let constructed_transform = DAffine2::from_translation(opposite) * skew * DAffine2::from_translation(-opposite);
+			let constructed_transform = DAffine2::from_translation(opposite) * skew * DAffine2::from_translation(-opposite);
 
-		assert_eq!(constructed_transform, final_transform);
+			assert_eq!(constructed_transform, final_transform);
+		}
 	}
 }

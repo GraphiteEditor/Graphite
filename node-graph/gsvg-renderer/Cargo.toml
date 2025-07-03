@@ -1,0 +1,27 @@
+[package]
+name = "graphene-svg-renderer"
+version = "0.1.0"
+edition = "2024"
+description = "graphene svg renderer"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+[features]
+vello = ["dep:vello", "bezier-rs/kurbo"]
+
+[dependencies]
+# Local dependencies
+dyn-any = { workspace = true }
+graphene-core = { workspace = true }
+bezier-rs = { workspace = true }
+
+# Workspace dependencies
+glam = { workspace = true }
+serde = { workspace = true }
+base64 = { workspace = true }
+log = { workspace = true }
+num-traits = { workspace = true }
+usvg = { workspace = true }
+
+# Optional workspace dependencies
+vello = { workspace = true, optional = true }

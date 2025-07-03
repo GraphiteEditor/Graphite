@@ -104,6 +104,8 @@
 		--color-f-white-rgb: 255, 255, 255;
 		--color-error-red: #d6536e;
 		--color-error-red-rgb: 214, 83, 110;
+		--color-warning-yellow: #d5aa43;
+		--color-warning-yellow-rgb: 213, 170, 67;
 
 		--color-data-general: #cfcfcf;
 		--color-data-general-dim: #8a8a8a;

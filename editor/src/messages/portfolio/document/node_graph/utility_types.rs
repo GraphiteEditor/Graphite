@@ -1,7 +1,7 @@
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector, TypeSource};
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
-use graphene_core::Type;
+use graphene_std::Type;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
@@ -17,7 +17,7 @@ pub enum FrontendGraphDataType {
 impl FrontendGraphDataType {
 	fn with_type(input: &Type) -> Self {
 		match TaggedValue::from_type_or_none(input) {
-			TaggedValue::Image(_) | TaggedValue::ImageFrame(_) => Self::Raster,
+			TaggedValue::Image(_) | TaggedValue::RasterData(_) => Self::Raster,
 			TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::VectorData,
 			TaggedValue::U32(_)
 			| TaggedValue::U64(_)

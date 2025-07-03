@@ -1,5 +1,5 @@
 use crate::Node;
-use core::marker::PhantomData;
+use std::marker::PhantomData;
 
 /// This is how we can generically define composition of two nodes.
 /// This is done generically as shown: <https://files.keavon.com/-/SurprisedGaseousAnhinga/capture.png>
@@ -55,14 +55,13 @@ pub struct AsyncComposeNode<First, Second, I> {
 	phantom: PhantomData<I>,
 }
 
-#[cfg(feature = "alloc")]
 impl<'i, Input: 'static, First, Second> Node<'i, Input> for AsyncComposeNode<First, Second, Input>
 where
 	First: Node<'i, Input>,
-	First::Output: core::future::Future,
-	Second: Node<'i, <<First as Node<'i, Input>>::Output as core::future::Future>::Output> + 'i,
+	First::Output: Future,
+	Second: Node<'i, <<First as Node<'i, Input>>::Output as Future>::Output> + 'i,
 {
-	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = <Second as Node<'i, <<First as Node<'i, Input>>::Output as core::future::Future>::Output>>::Output> + 'i>>;
+	type Output = std::pin::Pin<Box<dyn Future<Output = <Second as Node<'i, <<First as Node<'i, Input>>::Output as Future>::Output>>::Output> + 'i>>;
 	fn eval(&'i self, input: Input) -> Self::Output {
 		Box::pin(async move {
 			let arg = self.first.eval(input).await;
@@ -71,12 +70,11 @@ where
 	}
 }
 
-#[cfg(feature = "alloc")]
 impl<'i, First, Second, Input: 'i> AsyncComposeNode<First, Second, Input>
 where
 	First: Node<'i, Input>,
-	First::Output: core::future::Future,
-	Second: Node<'i, <<First as Node<'i, Input>>::Output as core::future::Future>::Output> + 'i,
+	First::Output: Future,
+	Second: Node<'i, <<First as Node<'i, Input>>::Output as Future>::Output> + 'i,
 {
 	pub const fn new(first: First, second: Second) -> Self {
 		AsyncComposeNode::<First, Second, Input> { first, second, phantom: PhantomData }
@@ -95,19 +93,17 @@ pub trait Then<'i, Input: 'i>: Sized {
 
 impl<'i, First: Node<'i, Input>, Input: 'i> Then<'i, Input> for First {}
 
-#[cfg(feature = "alloc")]
 pub trait AndThen<'i, Input: 'i>: Sized {
 	fn and_then<Second>(self, second: Second) -> AsyncComposeNode<Self, Second, Input>
 	where
 		Self: Node<'i, Input>,
-		Self::Output: core::future::Future,
-		Second: Node<'i, <<Self as Node<'i, Input>>::Output as core::future::Future>::Output> + 'i,
+		Self::Output: Future,
+		Second: Node<'i, <<Self as Node<'i, Input>>::Output as Future>::Output> + 'i,
 	{
 		AsyncComposeNode::new(self, second)
 	}
 }
 
-#[cfg(feature = "alloc")]
 impl<'i, First: Node<'i, Input>, Input: 'i> AndThen<'i, Input> for First {}
 
 pub struct ConsNode<I: From<()>, Root>(pub Root, PhantomData<I>);

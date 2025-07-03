@@ -8,11 +8,12 @@ use glam::DVec2;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::Color;
-use graphene_core::raster::BlendMode;
-use graphene_core::raster::image::ImageFrameTable;
-use graphene_core::text::{Font, TypesettingConfig};
-use graphene_core::vector::style::Gradient;
+use graphene_std::Color;
+use graphene_std::NodeInputDecleration;
+use graphene_std::raster::BlendMode;
+use graphene_std::raster_types::{CPU, GPU, RasterDataTable};
+use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::vector::style::Gradient;
 use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 
@@ -57,8 +58,10 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 	}
 
 	// Move the `second_layer` below the `first_layer` for positioning purposes
-	let first_layer_parent = first_layer.parent(document.metadata()).unwrap();
-	let first_layer_index = first_layer_parent.children(document.metadata()).position(|child| child == first_layer).unwrap();
+	let Some(first_layer_parent) = first_layer.parent(document.metadata()) else { return };
+	let Some(first_layer_index) = first_layer_parent.children(document.metadata()).position(|child| child == first_layer) else {
+		return;
+	};
 	responses.add(NodeGraphMessage::MoveLayerToStack {
 		layer: second_layer,
 		parent: first_layer_parent,
@@ -91,9 +94,9 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		delete_children: false,
 	});
 
-	// Add a flatten vector elements node after the merge
+	// Add a Flatten Path node after the merge
 	let flatten_node_id = NodeId::new();
-	let flatten_node = document_node_definitions::resolve_document_node_type("Flatten Vector Elements")
+	let flatten_node = document_node_definitions::resolve_document_node_type("Flatten Path")
 		.expect("Failed to create flatten node")
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
@@ -207,7 +210,7 @@ pub fn new_vector_layer(subpaths: Vec<Subpath<PointId>>, id: NodeId, parent: Lay
 }
 
 /// Create a new bitmap layer.
-pub fn new_image_layer(image_frame: ImageFrameTable<Color>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+pub fn new_image_layer(image_frame: RasterDataTable<CPU>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	let insert_index = 0;
 	responses.add(GraphOperationMessage::NewBitmapLayer {
 		id,
@@ -256,7 +259,7 @@ pub fn get_viewport_pivot(layer: LayerNodeIdentifier, network_interface: &NodeNe
 	network_interface.document_metadata().transform_to_viewport(layer).transform_point2(min + (max - min) * pivot)
 }
 
-/// Get the current gradient of a layer from the closest Fill node
+/// Get the current gradient of a layer from the closest "Fill" node.
 pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	let fill_index = 1;
 
@@ -267,7 +270,7 @@ pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 	Some(gradient.clone())
 }
 
-/// Get the current fill of a layer from the closest Fill node
+/// Get the current fill of a layer from the closest "Fill" node.
 pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Color> {
 	let fill_index = 1;
 
@@ -278,16 +281,16 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 	Some(color.to_linear_srgb())
 }
 
-/// Get the current blend mode of a layer from the closest Blend Mode node
+/// Get the current blend mode of a layer from the closest "Blending" node.
 pub fn get_blend_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<BlendMode> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blend Mode")?;
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blending")?;
 	let TaggedValue::BlendMode(blend_mode) = inputs.get(1)?.as_value()? else {
 		return None;
 	};
 	Some(*blend_mode)
 }
 
-/// Get the current opacity of a layer from the closest Opacity node.
+/// Get the current opacity of a layer from the closest "Blending" node.
 /// This may differ from the actual opacity contained within the data type reaching this layer, because that actual opacity may be:
 /// - Multiplied with additional opacity nodes earlier in the chain
 /// - Set by an Opacity node with an exposed input value driven by another node
@@ -296,11 +299,27 @@ pub fn get_blend_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 ///
 /// With those limitations in mind, the intention of this function is to show just the value already present in an upstream Opacity node so that value can be directly edited.
 pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Opacity")?;
-	let TaggedValue::F64(opacity) = inputs.get(1)?.as_value()? else {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blending")?;
+	let TaggedValue::F64(opacity) = inputs.get(2)?.as_value()? else {
 		return None;
 	};
 	Some(*opacity)
+}
+
+pub fn get_clip_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<bool> {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blending")?;
+	let TaggedValue::Bool(clip) = inputs.get(4)?.as_value()? else {
+		return None;
+	};
+	Some(*clip)
+}
+
+pub fn get_fill(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blending")?;
+	let TaggedValue::F64(fill) = inputs.get(3)?.as_value()? else {
+		return None;
+	};
+	Some(*fill)
 }
 
 pub fn get_fill_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
@@ -342,6 +361,7 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 	let Some(&TaggedValue::F64(character_spacing)) = inputs[5].as_value() else { return None };
 	let Some(&TaggedValue::OptionalF64(max_width)) = inputs[6].as_value() else { return None };
 	let Some(&TaggedValue::OptionalF64(max_height)) = inputs[7].as_value() else { return None };
+	let Some(&TaggedValue::F64(tilt)) = inputs[8].as_value() else { return None };
 
 	let typesetting = TypesettingConfig {
 		font_size,
@@ -349,12 +369,13 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 		max_width,
 		character_spacing,
 		max_height,
+		tilt,
 	};
 	Some((text, font, typesetting))
 }
 
 pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
-	let weight_node_input_index = 2;
+	let weight_node_input_index = graphene_std::vector::stroke::WeightInput::INDEX;
 	if let TaggedValue::F64(width) = NodeGraphLayer::new(layer, network_interface).find_input("Stroke", weight_node_input_index)? {
 		Some(*width)
 	} else {
@@ -424,12 +445,7 @@ impl<'a> NodeGraphLayer<'a> {
 	/// Check if a layer is a raster layer
 	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
 		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]).0.nested_type().clone();
-		if layer_input_type == concrete!(graphene_core::raster::image::ImageFrameTable<graphene_core::Color>)
-			|| layer_input_type == concrete!(graphene_core::application_io::TextureFrameTable)
-			|| layer_input_type == concrete!(graphene_std::RasterFrame)
-		{
-			return true;
-		}
-		false
+
+		layer_input_type == concrete!(RasterDataTable<CPU>) || layer_input_type == concrete!(RasterDataTable<GPU>)
 	}
 }

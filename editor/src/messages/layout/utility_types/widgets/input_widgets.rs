@@ -1,8 +1,8 @@
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use derivative::*;
-use graphene_core::Color;
-use graphene_core::raster::curve::Curve;
+use graphene_std::Color;
+use graphene_std::raster::curve::Curve;
 use graphene_std::transform::ReferencePoint;
 use graphite_proc_macros::WidgetBuilder;
 use once_cell::sync::OnceCell;
@@ -56,7 +56,7 @@ pub struct CheckboxId(Arc<OnceCell<u64>>);
 
 impl CheckboxId {
 	pub fn fill(&mut self) {
-		let _ = self.0.set(graphene_core::uuid::generate_uuid());
+		let _ = self.0.set(graphene_std::uuid::generate_uuid());
 	}
 }
 impl specta::Type for CheckboxId {
