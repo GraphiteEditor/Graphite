@@ -2006,6 +2006,103 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: Some("sample_polyline_properties"),
 		},
 		DocumentNodeDefinition {
+			identifier: "Decimate",
+			category: "Vector: Modifier",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::Network(NodeNetwork {
+						exports: vec![NodeInput::node(NodeId(2), 0)],
+						nodes: [
+							DocumentNode {
+								inputs: vec![NodeInput::network(concrete!(graphene_std::vector::VectorDataTable), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MonitorNode")),
+								manual_composition: Some(generic!(T)),
+								skip_deduplication: true,
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::network(concrete!(f64), 1)],
+								manual_composition: Some(generic!(T)),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::DecimateNode")),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(1), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
+								manual_composition: Some(generic!(T)),
+								..Default::default()
+							},
+						]
+						.into_iter()
+						.enumerate()
+						.map(|(id, node)| (NodeId(id as u64), node))
+						.collect(),
+						..Default::default()
+					}),
+					inputs: vec![
+						NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorDataTable::default()), true),
+						NodeInput::value(TaggedValue::F64(1.0), false), // Tolerance
+					],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					network_metadata: Some(NodeNetworkMetadata {
+						persistent_metadata: NodeNetworkPersistentMetadata {
+							node_metadata: [
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Monitor".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Decimate".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Memoize".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+							]
+							.into_iter()
+							.enumerate()
+							.map(|(id, node)| (NodeId(id as u64), node))
+							.collect(),
+							..Default::default()
+						},
+						..Default::default()
+					}),
+					input_properties: vec![
+						("Vector Data", "The polyline to be simplified.").into(),
+						PropertiesRow::with_override(
+							"Tolerance",
+							"Maximum allowed deviation from the original polyline.",
+							WidgetOverride::Number(NumberInputSettings {
+								min: Some(0.0),
+								step: Some(0.1),
+								unit: Some(" px".to_string()),
+								..Default::default()
+							}),
+						),
+					],
+					output_names: vec!["Vector".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("Simplifies a polyline using the Ramer–Douglas–Peucker algorithm."),
+			properties: None,
+		},
+		DocumentNodeDefinition {
 			identifier: "Scatter Points",
 			category: "Vector: Modifier",
 			node_template: NodeTemplate {
