@@ -1250,10 +1250,10 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 	if let Some(&TaggedValue::SpiralType(spiral_type)) = spiral_type_input.as_non_exposed_value() {
 		match spiral_type {
 			SpiralType::Archimedean => {
-				let start_radius = LayoutGroup::Row {
+				let inner_radius = LayoutGroup::Row {
 					widgets: number_widget(
 						ParameterWidgetsInfo::from_index(document_node, node_id, InnerRadiusInput::INDEX, true, context),
-						NumberInput::default().min(0.01),
+						NumberInput::default().min(0.),
 					),
 				};
 
@@ -1264,7 +1264,7 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 					),
 				};
 
-				widgets.extend([start_radius, tightness]);
+				widgets.extend([inner_radius, tightness]);
 			}
 			SpiralType::Logarithmic => {
 				let start_radius = LayoutGroup::Row {
@@ -1292,7 +1292,7 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 	);
 	let angle_offset = number_widget(
 		ParameterWidgetsInfo::from_index(document_node, node_id, AngleOffsetInput::INDEX, true, context),
-		NumberInput::default().min(0.1).max(180.).unit(" °"),
+		NumberInput::default().min(0.1).max(180.).unit("°"),
 	);
 
 	widgets.extend([LayoutGroup::Row { widgets: turns }, LayoutGroup::Row { widgets: angle_offset }]);
