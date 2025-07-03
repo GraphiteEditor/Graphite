@@ -377,13 +377,15 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 					selected.pen_handle = None;
 					selected.responses.add(PenToolMessage::Confirm);
-				} else if using_path_tool {
-					self.ghost_outline.clear();
 				} else {
 					update_colinear_handles(&selected_layers, document, responses);
 					responses.add(DocumentMessage::EndTransaction);
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+
+				if using_path_tool {
+					self.ghost_outline.clear();
 				}
 
 				if final_transform {

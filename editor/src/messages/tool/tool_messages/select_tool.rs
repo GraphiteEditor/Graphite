@@ -1710,7 +1710,6 @@ fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, network_interface
 		responses.add(TextToolMessage::EditSelected);
 	} else {
 		// abort current tool
-		responses.add(DocumentMessage::AbortTransaction);
 		responses.add_front(ToolMessage::ActivateToolPath);
 	}
 }

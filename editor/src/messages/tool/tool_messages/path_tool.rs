@@ -1,8 +1,9 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_25, COLOR_OVERLAY_GRAY_25, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD,
-	HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	COLOR_OVERLAY_BLACK_25, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_25, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GRAY_25, COLOR_OVERLAY_GRAY_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED,
+	DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD,
+	SELECTION_TOLERANCE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
@@ -470,7 +471,8 @@ struct PathToolData {
 	stored_selection: Option<HashMap<LayerNodeIdentifier, SelectedLayerState>>,
 	last_xray_click_position: Option<DVec2>,
 	xray_cycle_index: usize,
-	hovered_layer: Option<LayerNodeIdentifier>,
+	xray_cycle_count: usize,
+	hovered_layers: Vec<LayerNodeIdentifier>,
 	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
 }
 
@@ -489,13 +491,17 @@ impl PathToolData {
 		self.xray_cycle_index = 0;
 	}
 
-	fn advance_xray_cycle(&mut self, position: DVec2, available_layers: usize) -> usize {
+	fn next_xray_index(&self, index: usize) -> usize {
+		if self.xray_cycle_count == 0 { 0 } else { (index + 1) % self.xray_cycle_count }
+	}
+
+	fn advance_xray_cycle(&mut self, position: DVec2) -> usize {
 		if self.last_xray_click_position.map_or(true, |last_pos| last_pos.distance(position) > SELECTION_THRESHOLD) {
 			// New position, reset cycle
 			self.xray_cycle_index = 0;
 		} else {
 			// Same position, advance cycle
-			self.xray_cycle_index = (self.xray_cycle_index + 1) % available_layers.max(1);
+			self.xray_cycle_index = (self.xray_cycle_index + 1) % self.xray_cycle_count.max(1);
 		}
 		self.last_xray_click_position = Some(position);
 		self.xray_cycle_index
@@ -1456,16 +1462,6 @@ impl Fsm for PathToolFsmState {
 
 				match self {
 					Self::Ready => {
-						if let Some(hovered_layer) = tool_data.hovered_layer {
-							// If this isn't an artboard and the layer isn't selected
-							if !document.network_interface.is_artboard(&hovered_layer.to_node(), &[])
-								&& !document.network_interface.selected_nodes().selected_layers(document.metadata()).any(|l| l == hovered_layer)
-							{
-								let layer_to_viewport = document.metadata().transform_to_viewport(hovered_layer);
-								overlay_context.outline(document.metadata().layer_with_free_points_outline(hovered_layer), layer_to_viewport, Some(COLOR_OVERLAY_BLUE_25));
-							}
-						}
-
 						tool_data.update_closest_segment(shape_editor, input.mouse.position, document, tool_options.path_overlay_mode);
 
 						if let Some(closest_segment) = &tool_data.segment {
@@ -1503,6 +1499,18 @@ impl Fsm for PathToolFsmState {
 								else {
 									overlay_context.line(point - perp * SEGMENT_OVERLAY_SIZE, point + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
 								}
+							}
+						}
+
+						// Show what layer will be next to cycle when double clicking, then draw the outlines of the hovered layers
+						let mut selected_index: usize = 0;
+						for (index, &hovered_layer) in tool_data.hovered_layers.iter().enumerate() {
+							if document.network_interface.selected_nodes().selected_layers(document.metadata()).any(|l| l == hovered_layer) {
+								selected_index = tool_data.next_xray_index(index);
+							} else {
+								let layer_to_viewport = document.metadata().transform_to_viewport(hovered_layer);
+								let color = if index == selected_index { COLOR_OVERLAY_GREEN } else { COLOR_OVERLAY_GRAY_25 };
+								overlay_context.outline(document.metadata().layer_with_free_points_outline(hovered_layer), layer_to_viewport, Some(&color));
 							}
 						}
 					}
@@ -1790,15 +1798,17 @@ impl Fsm for PathToolFsmState {
 
 				tool_data.stored_selection = None;
 
-				// When moving the cursor around we want to update the hovered layer
-				let hovered_layer = document.click(input);
-				if tool_data.hovered_layer != hovered_layer {
-					// If the hovered layer is already selected we don't want to hover it
-					if hovered_layer.is_some() && !document.network_interface.selected_nodes().selected_layers(document.metadata()).any(|l| l == hovered_layer.unwrap()) {
-						tool_data.hovered_layer = hovered_layer;
-					} else {
-						tool_data.hovered_layer = None;
-					}
+				// When moving the cursor around we want to update the hovered layers
+				let new_hovered_layers: Vec<LayerNodeIdentifier> = document
+					.click_list_no_parents(input)
+					.filter(|&layer| {
+						// Filter out artboards and parent holders, and already selected layers
+						!document.network_interface.is_artboard(&layer.to_node(), &[])
+					})
+					.collect();
+
+				if tool_data.hovered_layers != new_hovered_layers {
+					tool_data.hovered_layers = new_hovered_layers;
 				}
 
 				responses.add(OverlaysMessage::Draw);
@@ -2177,8 +2187,8 @@ impl Fsm for PathToolFsmState {
 						tool_data.reset_xray_cycle();
 						None
 					} else {
-						let total_count = xray_layers.len();
-						let cycle_index = tool_data.advance_xray_cycle(input.mouse.position, total_count);
+						tool_data.xray_cycle_count = xray_layers.len();
+						let cycle_index = tool_data.advance_xray_cycle(input.mouse.position);
 						let layer = xray_layers.get(cycle_index);
 						if cycle_index == 0 { xray_layers.first() } else { layer }
 					}
