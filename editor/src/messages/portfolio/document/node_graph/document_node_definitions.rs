@@ -2811,6 +2811,10 @@ impl DocumentNodeDefinition {
 
 		// Set the reference to the node definition
 		template.persistent_node_metadata.reference = Some(self.identifier.to_string());
+		// If the display name is empty and it is not a merge node, then set it to the reference
+		if template.persistent_node_metadata.display_name.is_empty() && self.identifier != "Merge" {
+			template.persistent_node_metadata.display_name = self.identifier.to_string();
+		}
 		template
 	}
 

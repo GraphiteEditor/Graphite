@@ -1101,6 +1101,7 @@ impl NodeNetworkInterface {
 			.expect("Could not get persistent node metadata in untitled_layer_label")
 			.persistent_metadata
 			.is_layer();
+
 		let Some(reference) = self.reference(node_id, network_path) else {
 			log::error!("Could not get reference in untitled_layer_label");
 			return "".to_string();
@@ -1113,7 +1114,7 @@ impl NodeNetworkInterface {
 			String::new()
 		};
 
-		if display_name.is_empty() && *reference == Some("Merge".to_string()) {
+		if display_name.is_empty() {
 			if is_layer {
 				"Untitled Layer".to_string()
 			} else {
@@ -4074,6 +4075,19 @@ impl NodeNetworkInterface {
 				.and_then(|definition| definition.node_template.persistent_node_metadata.input_metadata.get(added_input_index))
 				.cloned();
 			metadata.persistent_metadata.input_metadata.push(input_metadata.unwrap_or_default());
+		}
+	}
+
+	// Used to ensure the display name is the reference name in case it is empty
+	pub fn validate_display_name_metadata(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else { return };
+		if metadata.persistent_metadata.display_name.is_empty() {
+			if let Some(reference) = metadata.persistent_metadata.reference.clone() {
+				// Keep the name for merge nodes as empty
+				if reference != "Merge" {
+					metadata.persistent_metadata.display_name = reference;
+				}
+			}
 		}
 	}
 

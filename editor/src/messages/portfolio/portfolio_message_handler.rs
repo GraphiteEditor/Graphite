@@ -430,6 +430,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				// Ensure each node has the metadata for its inputs
 				for (node_id, node, path) in document.network_interface.document_network().clone().recursive_nodes() {
 					document.network_interface.validate_input_metadata(node_id, node, &path);
+					document.network_interface.validate_display_name_metadata(node_id, &path);
 				}
 
 				// Ensure layers are positioned as stacks if they are upstream siblings of another layer
