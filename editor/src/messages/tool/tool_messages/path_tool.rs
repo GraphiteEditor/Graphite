@@ -687,6 +687,18 @@ impl PathToolData {
 				PathToolFsmState::MoldingSegment
 			}
 		}
+		// If no other layers are selected and a single click, then also select the layer (exception)
+		else if let Some(layer) = document.click(input) {
+			if shape_editor.selected_shape_state.is_empty() {
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
+			}
+
+			self.drag_start_pos = input.mouse.position;
+			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+
+			let selection_shape = if lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
+			PathToolFsmState::Drawing { selection_shape }
+		}
 		// Start drawing
 		else {
 			self.drag_start_pos = input.mouse.position;
@@ -1880,10 +1892,9 @@ impl Fsm for PathToolFsmState {
 				};
 
 				if tool_data.drag_start_pos.distance(previous_mouse) < 1e-8 {
-					// If click happens inside of a shape then don't set selected nodes to empty
-					if document.click(input).is_none() {
-						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
-					}
+					//Clicked inside or outside the shape then deselect all of the points/segments
+					shape_editor.deselect_all_points();
+					shape_editor.deselect_all_segments();
 				} else {
 					match selection_shape {
 						SelectionShapeType::Box => {
@@ -2079,23 +2090,29 @@ impl Fsm for PathToolFsmState {
 					let shrink_selection = input.keyboard.get(shrink_selection as usize);
 					if shape_editor.is_selected_layer(layer) {
 						if extend_selection {
-							responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
-						} else if shrink_selection {
 							responses.add(NodeGraphMessage::SelectedNodesRemove { nodes: vec![layer.to_node()] });
+						} else if shrink_selection {
+							shape_editor.deselect_all_points();
+							shape_editor.deselect_all_segments();
 						} else {
-							shape_editor.select_connected_anchors(document, layer, input.mouse.position);
+							// Select according to the selected editing mode
+							let point_editing_mode = tool_options.path_editing_mode.point_editing_mode;
+							let segment_editing_mode = tool_options.path_editing_mode.segment_editing_mode;
+							shape_editor.select_connected(document, layer, input.mouse.position, point_editing_mode, segment_editing_mode);
 						}
 					} else {
 						if extend_selection {
 							responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
-						} else if shrink_selection {
-							responses.add(NodeGraphMessage::SelectedNodesRemove { nodes: vec![layer.to_node()] });
 						} else {
 							responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 						}
 					}
 
 					responses.add(OverlaysMessage::Draw);
+				}
+				// Double clicked on the background
+				else {
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				}
 
 				PathToolFsmState::Ready
