@@ -2,6 +2,7 @@ use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::TransformType;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::pivot::Dot;
 use glam::DVec2;
 
 #[impl_message(Message, ToolMessage, TransformLayer)]
@@ -15,6 +16,7 @@ pub enum TransformLayerMessage {
 	BeginGrab,
 	BeginRotate,
 	BeginScale,
+	SetDot { dot: Dot },
 	BeginGRS { transform_type: TransformType },
 	BeginGrabPen { last_point: DVec2, handle: DVec2 },
 	BeginRotatePen { last_point: DVec2, handle: DVec2 },

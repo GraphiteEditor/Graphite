@@ -5,6 +5,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, TransformType, Typing};
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::pivot::Dot;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
@@ -34,6 +35,7 @@ pub struct TransformLayerMessageHandler {
 	start_mouse: ViewportPosition,
 
 	original_transforms: OriginalTransforms,
+	dot: Dot,
 	pivot: ViewportPosition,
 
 	local_pivot: DocumentPosition,
@@ -177,18 +179,20 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			}
 
 			if !using_path_tool {
-				*selected.pivot = selected.mean_average_of_pivots();
+				self.dot.recalculate_transform(document);
+				let network_interface = &document.network_interface;
+				let mean_center_bbox = network_interface.selected_nodes().selected_visible_and_unlocked_layers_mean_average_origin(network_interface);
+				let dot_position = self.dot.position(document);
+				*selected.pivot = dot_position;
 				self.local_pivot = document.metadata().document_to_viewport.inverse().transform_point2(*selected.pivot);
-				self.grab_target = document.metadata().document_to_viewport.inverse().transform_point2(selected.mean_average_of_pivots());
+				self.grab_target = document.metadata().document_to_viewport.inverse().transform_point2(mean_center_bbox);
 			}
 			// Here vector data from all layers is not considered which can be a problem in pivot calculation
 			else if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
 				*selected.original_transforms = OriginalTransforms::default();
 
 				let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
-
 				let selected_segments = shape_editor.selected_segments().collect::<HashSet<_>>();
-
 				let mut affected_points = shape_editor.selected_points().copied().collect::<Vec<_>>();
 
 				for (segment_id, _, start, end) in vector_data.segment_bezier_iter() {
@@ -702,6 +706,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					self.initial_transform,
 				)
 			}
+			TransformLayerMessage::SetDot { dot } => self.dot = dot,
 		}
 	}
 

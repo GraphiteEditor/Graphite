@@ -11,6 +11,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::portfolio::document::utility_types::transformation::Axis;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
+use crate::messages::tool::common_functionality::pivot::{Dot, DotType, Source, dot_type_widget, pin_pivot_widget, pivot_reference_point_widget};
 use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
@@ -18,6 +19,7 @@ use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandi
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate};
 use bezier_rs::{Bezier, TValue};
 use graphene_std::renderer::Quad;
+use graphene_std::transform::ReferencePoint;
 use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, VectorData};
 use graphene_std::vector::{ManipulatorPointId, PointId, VectorModificationType};
 use std::vec;
@@ -103,6 +105,9 @@ pub enum PathToolMessage {
 	SelectedPointYChanged {
 		new_y: f64,
 	},
+	SetPivot {
+		position: ReferencePoint,
+	},
 	SwapSelectedHandles,
 	UpdateOptions(PathOptionsUpdate),
 	UpdateSelectedPointsStatus {
@@ -138,6 +143,9 @@ pub enum PathOptionsUpdate {
 	OverlayModeType(PathOverlayMode),
 	PointEditingMode { enabled: bool },
 	SegmentEditingMode { enabled: bool },
+	DotType(DotType),
+	ToggleDotType(bool),
+	TogglePivotPinned(),
 }
 
 impl ToolMetadata for PathTool {
@@ -252,6 +260,16 @@ impl LayoutHolder for PathTool {
 		.selected_index(Some(self.options.path_overlay_mode as u32))
 		.widget_holder();
 
+		let [checkbox, dropdown] = {
+			let dot_widget = dot_type_widget(self.tool_data.dot.state, Source::Path);
+			[dot_widget.get(0).unwrap().clone(), dot_widget.get(2).unwrap().clone()]
+		};
+
+		let has_somrthing = !self.tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty();
+		let pivot_reference = pivot_reference_point_widget(has_somrthing || !self.tool_data.dot.state.is_pivot(), self.tool_data.dot.pivot.to_pivot_position(), Source::Path);
+
+		let pin_pivot = pin_pivot_widget(self.tool_data.dot.pin_inactive(), Source::Path);
+
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				x_location,
@@ -265,8 +283,16 @@ impl LayoutHolder for PathTool {
 				point_editing_mode,
 				related_seperator.clone(),
 				segment_editing_mode,
-				unrelated_seperator,
+				unrelated_seperator.clone(),
 				path_overlay_mode_widget,
+				unrelated_seperator.clone(),
+				checkbox.clone(),
+				related_seperator.clone(),
+				dropdown.clone(),
+				unrelated_seperator,
+				pivot_reference,
+				related_seperator.clone(),
+				pin_pivot,
 			],
 		}]))
 	}
@@ -289,6 +315,29 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				PathOptionsUpdate::SegmentEditingMode { enabled } => {
 					self.options.path_editing_mode.segment_editing_mode = enabled;
 					responses.add(OverlaysMessage::Draw);
+				}
+				PathOptionsUpdate::DotType(dot_type) => {
+					if self.tool_data.dot.state.enabled {
+						self.tool_data.dot.state.dot = dot_type;
+						responses.add(ToolMessage::UpdateHints);
+						let dot = self.tool_data.get_as_dot();
+						responses.add(TransformLayerMessage::SetDot { dot });
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+						self.send_layout(responses, LayoutTarget::ToolOptions);
+					}
+				}
+				PathOptionsUpdate::ToggleDotType(state) => {
+					self.tool_data.dot.state.enabled = state;
+					responses.add(ToolMessage::UpdateHints);
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					self.send_layout(responses, LayoutTarget::ToolOptions);
+				}
+
+				PathOptionsUpdate::TogglePivotPinned() => {
+					self.tool_data.dot.pivot.pinned = !self.tool_data.dot.pivot.pinned;
+					responses.add(ToolMessage::UpdateHints);
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					self.send_layout(responses, LayoutTarget::ToolOptions);
 				}
 			},
 			ToolMessage::Path(PathToolMessage::ClosePath) => {
@@ -447,6 +496,7 @@ struct PathToolData {
 	last_click_time: u64,
 	dragging_state: DraggingState,
 	angle: f64,
+	dot: Dot,
 	opposite_handle_position: Option<DVec2>,
 	last_clicked_point_was_selected: bool,
 	last_clicked_segment_was_selected: bool,
@@ -1316,6 +1366,10 @@ impl PathToolData {
 			}
 		}
 	}
+
+	fn get_as_dot(&self) -> Dot {
+		self.dot.clone()
+	}
 }
 
 impl Fsm for PathToolFsmState {
@@ -1719,14 +1773,8 @@ impl Fsm for PathToolFsmState {
 			}
 			(PathToolFsmState::Ready, PathToolMessage::PointerMove { delete_segment, .. }) => {
 				tool_data.delete_segment_pressed = input.keyboard.get(delete_segment as usize);
-
-				if !tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty() {
-					tool_data.saved_points_before_anchor_convert_smooth_sharp.clear();
-				}
-
-				if tool_data.adjacent_anchor_offset.is_some() {
-					tool_data.adjacent_anchor_offset = None;
-				}
+				tool_data.saved_points_before_anchor_convert_smooth_sharp.clear();
+				tool_data.adjacent_anchor_offset = None;
 
 				responses.add(OverlaysMessage::Draw);
 
@@ -2162,6 +2210,18 @@ impl Fsm for PathToolFsmState {
 				shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
 				responses.add(DocumentMessage::EndTransaction);
 				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::SetPivot { position }) => {
+				responses.add(DocumentMessage::StartTransaction);
+
+				tool_data.dot.pivot.last_non_none_reference = position;
+				let pos: Option<DVec2> = position.into();
+				tool_data.dot.pivot.set_normalized_position(pos.unwrap());
+				let dot = tool_data.get_as_dot();
+				responses.add(TransformLayerMessage::SetDot { dot });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+
+				self
 			}
 			(_, _) => PathToolFsmState::Ready,
 		}
