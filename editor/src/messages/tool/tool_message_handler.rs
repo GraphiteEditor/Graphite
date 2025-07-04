@@ -240,14 +240,8 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 
 				document_data.update_working_colors(responses); // TODO: Make this an event
 			}
-			ToolMessage::SelectPrimaryColor { color } => {
-				let document_data = &mut self.tool_state.document_tool_data;
-				document_data.primary_color = color;
-
-				document_data.update_working_colors(responses); // TODO: Make this an event
-			}
-			ToolMessage::SelectRandomPrimaryColor => {
-				// Select a random primary color (rgba) based on an UUID
+			ToolMessage::SelectRandomWorkingColor { primary } => {
+				// Select a random working color (RGBA) based on an UUID
 				let document_data = &mut self.tool_state.document_tool_data;
 
 				let random_number = generate_uuid();
@@ -255,13 +249,23 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				let g = (random_number >> 8) as u8;
 				let b = random_number as u8;
 				let random_color = Color::from_rgba8_srgb(r, g, b, 255);
-				document_data.primary_color = random_color;
+
+				if primary {
+					document_data.primary_color = random_color;
+				} else {
+					document_data.secondary_color = random_color;
+				}
 
 				document_data.update_working_colors(responses); // TODO: Make this an event
 			}
-			ToolMessage::SelectSecondaryColor { color } => {
+			ToolMessage::SelectWorkingColor { color, primary } => {
 				let document_data = &mut self.tool_state.document_tool_data;
-				document_data.secondary_color = color;
+
+				if primary {
+					document_data.primary_color = color;
+				} else {
+					document_data.secondary_color = color;
+				}
 
 				document_data.update_working_colors(responses); // TODO: Make this an event
 			}
@@ -340,7 +344,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 
 			ActivateToolBrush,
 
-			SelectRandomPrimaryColor,
+			SelectRandomWorkingColor,
 			ResetColors,
 			SwapColors,
 			Undo,

@@ -227,11 +227,11 @@ impl EditorTestUtils {
 	}
 
 	pub async fn select_primary_color(&mut self, color: Color) {
-		self.handle_message(Message::Tool(ToolMessage::SelectPrimaryColor { color })).await;
+		self.handle_message(Message::Tool(ToolMessage::SelectWorkingColor { color, primary: true })).await;
 	}
 
 	pub async fn select_secondary_color(&mut self, color: Color) {
-		self.handle_message(Message::Tool(ToolMessage::SelectSecondaryColor { color })).await;
+		self.handle_message(Message::Tool(ToolMessage::SelectWorkingColor { color, primary: false })).await;
 	}
 
 	pub async fn create_raster_image(&mut self, image: graphene_std::raster::Image<Color>, mouse: Option<(f64, f64)>) {
