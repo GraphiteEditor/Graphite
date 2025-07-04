@@ -121,8 +121,24 @@ const REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::raster::PosterizeNode", "graphene_raster_nodes::adjustments::PosterizeNode"),
 	("graphene_core::raster::adjustments::ExposureNode", "graphene_raster_nodes::adjustments::ExposureNode"),
 	("graphene_core::raster::ExposureNode", "graphene_raster_nodes::adjustments::ExposureNode"),
+	("graphene_core::raster::adjustments::ColorOverlayNode", "graphene_raster_nodes::adjustments::ColorOverlayNode"),
+	("graphene_raster_nodes::generate_curves::ColorOverlayNode", "graphene_raster_nodes::adjustments::ColorOverlayNode"),
+	// raster
 	("graphene_core::raster::adjustments::GenerateCurvesNode", "graphene_raster_nodes::generate_curves::GenerateCurvesNode"),
-	("graphene_core::raster::adjustments::ColorOverlayNode", "graphene_raster_nodes::generate_curves::ColorOverlayNode"),
+	("graphene_std::dehaze::DehazeNode", "graphene_raster_nodes::dehaze::DehazeNode"),
+	("graphene_std::filter::BlurNode", "graphene_raster_nodes::filter::BlurNode"),
+	(
+		"graphene_std::image_color_palette::ImageColorPaletteNode",
+		"graphene_raster_nodes::image_color_palette::ImageColorPaletteNode",
+	),
+	("graphene_std::raster::SampleImageNode", "graphene_raster_nodes::std_nodes::SampleImageNode"),
+	("graphene_std::raster::CombineChannelsNode", "graphene_raster_nodes::std_nodes::CombineChannelsNode"),
+	("graphene_std::raster::MaskNode", "graphene_raster_nodes::std_nodes::MaskNode"),
+	("graphene_std::raster::ExtendImageToBoundsNode", "graphene_raster_nodes::std_nodes::ExtendImageToBoundsNode"),
+	("graphene_std::raster::EmptyImageNode", "graphene_raster_nodes::std_nodes::EmptyImageNode"),
+	("graphene_std::raster::ImageValueNode", "graphene_raster_nodes::std_nodes::ImageValueNode"),
+	("graphene_std::raster::NoisePatternNode", "graphene_raster_nodes::std_nodes::NoisePatternNode"),
+	("graphene_std::raster::MandelbrotNode", "graphene_raster_nodes::std_nodes::MandelbrotNode"),
 	// text
 	("graphene_core::text::TextGeneratorNode", "graphene_core::text::TextNode"),
 	// transform
