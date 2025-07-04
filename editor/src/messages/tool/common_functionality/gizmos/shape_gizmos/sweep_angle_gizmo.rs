@@ -13,6 +13,7 @@ use crate::messages::{
 	prelude::{DocumentMessageHandler, FrontendMessage},
 };
 use glam::DVec2;
+use graph_craft::document::NodeId;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use std::collections::VecDeque;
@@ -41,6 +42,7 @@ pub struct SweepAngleGizmo {
 	endpoint: EndpointType,
 	initial_start_angle: f64,
 	initial_sweep_angle: f64,
+	initial_start_point: DVec2,
 	previous_mouse_position: DVec2,
 	total_angle_delta: f64,
 	snap_angles: Vec<f64>,
@@ -203,6 +205,7 @@ impl SweepAngleGizmo {
 					let offset_angle = initial_vector.to_angle() + tilt_offset;
 
 					let angle = initial_vector.angle_to(final_vector).to_degrees();
+					log::info!("angle {:?}", angle);
 					let display_angle = calculate_display_angle(angle);
 
 					let text = format!("{}°", format_rounded(display_angle, 2));
@@ -224,52 +227,161 @@ impl SweepAngleGizmo {
 			return;
 		};
 
-		let Some((_, start_angle, _, _)) = extract_arc_parameters(Some(layer), document) else {
+		let Some((_, current_start_angle, current_sweep_angle, _)) = extract_arc_parameters(Some(layer), document) else {
 			return;
 		};
 
 		let viewport = document.metadata().transform_to_viewport(layer);
-		let angle = self.total_angle_delta
-			+ viewport
-				.inverse()
-				.transform_point2(self.previous_mouse_position)
-				.angle_to(viewport.inverse().transform_point2(input.mouse.position))
-				.to_degrees();
+		let angle_delta = viewport
+			.inverse()
+			.transform_point2(self.previous_mouse_position)
+			.angle_to(viewport.inverse().transform_point2(input.mouse.position))
+			.to_degrees();
+		let angle = self.total_angle_delta + angle_delta;
 
 		let Some(node_id) = graph_modification_utils::get_arc_id(layer, &document.network_interface) else {
 			return;
 		};
 
 		self.update_state(SweepAngleGizmoState::Dragging);
-		if self.endpoint == EndpointType::End {
-			let mut total = angle;
-			if let Some(snapped_delta) = self.check_snapping(start_angle, self.initial_sweep_angle + angle) {
-				total += snapped_delta;
-				self.update_state(SweepAngleGizmoState::Snapped);
-			}
-			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 3),
-				input: NodeInput::value(TaggedValue::F64(self.initial_sweep_angle + total), false),
-			});
-		} else {
-			let sign = angle.signum() * -1.;
-			let mut total = angle;
 
-			if let Some(snapped_delta) = self.check_snapping(self.initial_start_angle + angle, self.initial_sweep_angle + total.abs() * sign) {
-				total += snapped_delta;
-				self.update_state(SweepAngleGizmoState::Snapped);
+		match self.endpoint {
+			EndpointType::Start => {
+				// Dragging start changes both start and sweep
+
+				let sign = angle.signum() * -1.;
+				let mut total = angle;
+
+				let new_start_angle = self.initial_start_angle + total;
+				let new_sweep_angle = self.initial_sweep_angle + total.abs() * sign;
+
+				// Clamp sweep angle to 360°
+				if new_sweep_angle > 360. {
+					let wrapped = new_sweep_angle % 360.;
+					self.total_angle_delta = -wrapped;
+
+					// Remaining drag gets passed to the end endpoint
+					let rest_angle = angle_delta + wrapped;
+					self.endpoint = EndpointType::End;
+
+					self.initial_sweep_angle = 360.;
+					self.initial_start_angle = current_start_angle + rest_angle;
+
+					self.apply_arc_update(node_id, self.initial_start_angle, self.initial_sweep_angle - wrapped, input, responses);
+					return;
+				}
+
+				if new_sweep_angle < 0. {
+					let rest_angle = angle_delta + new_sweep_angle;
+
+					self.total_angle_delta = new_sweep_angle.abs();
+					self.endpoint = EndpointType::End;
+
+					self.initial_sweep_angle = 0.;
+					self.initial_start_angle = current_start_angle + rest_angle;
+
+					self.apply_arc_update(node_id, self.initial_start_angle, new_sweep_angle.abs(), input, responses);
+					return;
+				}
+
+				// Wrap start angle > 180° back into [-180°, 180°] and adjust sweep
+				if new_start_angle > 180. {
+					let overflow = new_start_angle % 180.;
+					let rest_angle = angle_delta - overflow;
+
+					// We wrap the angle back into [-180°, 180°] range by jumping from +180° to -180°
+					// Example: dragging past 190° becomes -170°, and we subtract the overshoot from sweep
+					// Sweep angle must shrink to maintain consistent arc
+					self.total_angle_delta = rest_angle;
+					self.initial_start_angle = -180.;
+					self.initial_sweep_angle = current_sweep_angle - rest_angle;
+
+					self.apply_arc_update(node_id, self.initial_start_angle + overflow, self.initial_sweep_angle - overflow, input, responses);
+					return;
+				}
+
+				// Wrap start angle < -180° back into [-180°, 180°] and adjust sweep
+				if new_start_angle < -180. {
+					let underflow = new_start_angle % 180.;
+					let rest_angle = angle_delta - underflow;
+
+					// We wrap the angle back into [-180°, 180°] by jumping from -190° to +170°
+					// Sweep must grow to reflect continued clockwise drag past -180°
+					// Start angle flips from -190° to +170°, and sweep increases accordingly
+					self.total_angle_delta = underflow;
+					self.initial_start_angle = 180.;
+					self.initial_sweep_angle = current_sweep_angle + rest_angle.abs();
+
+					self.apply_arc_update(node_id, self.initial_start_angle + underflow, self.initial_sweep_angle + underflow.abs(), input, responses);
+					return;
+				}
+
+				if let Some(snapped_delta) = self.check_snapping(self.initial_start_angle + angle, self.initial_sweep_angle + total.abs() * sign) {
+					total += snapped_delta;
+					self.update_state(SweepAngleGizmoState::Snapped);
+				}
+
+				self.total_angle_delta = angle;
+				self.apply_arc_update(node_id, self.initial_start_angle + total, self.initial_sweep_angle + total.abs() * sign, input, responses);
 			}
-			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 2),
-				input: NodeInput::value(TaggedValue::F64(self.initial_start_angle + total), false),
-			});
-			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 3),
-				input: NodeInput::value(TaggedValue::F64(self.initial_sweep_angle + total.abs() * sign), false),
-			});
+			EndpointType::End => {
+				// Dragging the end only changes sweep angle
+
+				let mut total = angle;
+				let new_sweep_angle = self.initial_sweep_angle + angle;
+
+				// Clamp sweep angle below 0°, switch to start
+				if new_sweep_angle < 0. {
+					let delta = angle_delta - current_sweep_angle;
+					let sign = delta.signum() * -1.;
+
+					self.initial_sweep_angle = 0.;
+					self.total_angle_delta = delta;
+					self.endpoint = EndpointType::Start;
+
+					self.apply_arc_update(node_id, self.initial_start_angle + delta, self.initial_sweep_angle + delta.abs() * sign, input, responses);
+					return;
+				}
+
+				// Clamp sweep angle above 360°, switch to start
+				if new_sweep_angle > 360. {
+					let delta = angle_delta - (360. - current_sweep_angle);
+					let sign = delta.signum() * -1.;
+
+					self.total_angle_delta = angle_delta;
+					self.initial_sweep_angle = 360.;
+					self.endpoint = EndpointType::Start;
+
+					self.apply_arc_update(node_id, self.initial_start_angle + angle_delta, self.initial_sweep_angle + angle_delta.abs() * sign, input, responses);
+					return;
+				}
+
+				if let Some(snapped_delta) = self.check_snapping(self.initial_start_angle, self.initial_sweep_angle + angle) {
+					total += snapped_delta;
+					self.update_state(SweepAngleGizmoState::Snapped);
+				}
+
+				self.total_angle_delta = angle;
+				self.apply_arc_update(node_id, self.initial_start_angle, self.initial_sweep_angle + total, input, responses);
+			}
+			EndpointType::None => {}
 		}
+	}
+
+	/// Applies the updated start and sweep angles to the arc.
+	fn apply_arc_update(&mut self, node_id: NodeId, start_angle: f64, sweep_angle: f64, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+		self.snap_angles = self.calculate_snap_angles(start_angle, sweep_angle);
+
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(node_id, 2),
+			input: NodeInput::value(TaggedValue::F64(start_angle), false),
+		});
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(node_id, 3),
+			input: NodeInput::value(TaggedValue::F64(sweep_angle), false),
+		});
+
 		self.previous_mouse_position = input.mouse.position;
-		self.total_angle_delta = angle;
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
@@ -299,7 +411,7 @@ impl SweepAngleGizmo {
 
 		if self.endpoint == EndpointType::End {
 			for i in 0..8 {
-				let snap_point = i as f64 * FRAC_PI_4;
+				let snap_point = wrap_to_tau(i as f64 * FRAC_PI_4 + initial_start_angle);
 				snap_points.push(snap_point.to_degrees());
 			}
 		}

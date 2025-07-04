@@ -1,7 +1,7 @@
 use super::misc::{ArcType, AsU64, GridType};
 use super::{PointId, SegmentId, StrokeId};
 use crate::Ctx;
-use crate::registry::types::PixelSize;
+use crate::registry::types::{Angle, PixelSize};
 use crate::vector::{HandleId, VectorData, VectorDataTable};
 use bezier_rs::Subpath;
 use glam::DVec2;
