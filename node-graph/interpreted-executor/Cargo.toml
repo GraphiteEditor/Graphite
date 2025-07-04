@@ -28,6 +28,7 @@ serde = { workspace = true }
 # Workspace dependencies
 graph-craft = { workspace = true, features = ["loading"] }
 criterion = { workspace = true }
+iai-callgrind = { workspace = true }
 
 # Benchmarks
 [[bench]]
@@ -40,5 +41,17 @@ harness = false
 
 [[bench]]
 name = "run_cached"
+harness = false
+
+[[bench]]
+name = "update_executor_iai"
+harness = false
+
+[[bench]]
+name = "run_once_iai"
+harness = false
+
+[[bench]]
+name = "run_cached_iai"
 harness = false
 
