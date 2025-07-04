@@ -467,8 +467,9 @@ impl EditorHandle {
 			return Err(Error::new("Invalid color").into());
 		};
 
-		let message = ToolMessage::SelectPrimaryColor {
+		let message = ToolMessage::SelectWorkingColor {
 			color: primary_color.to_linear_srgb(),
+			primary: true,
 		};
 		self.dispatch(message);
 
@@ -482,8 +483,9 @@ impl EditorHandle {
 			return Err(Error::new("Invalid color").into());
 		};
 
-		let message = ToolMessage::SelectSecondaryColor {
+		let message = ToolMessage::SelectWorkingColor {
 			color: secondary_color.to_linear_srgb(),
+			primary: false,
 		};
 		self.dispatch(message);
 
