@@ -2,9 +2,157 @@
 
 use crate::consts::PIVOT_DIAMETER;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::tool_messages::select_tool::SelectOptionsUpdate;
+use crate::messages::tool::tool_messages::path_tool::PathOptionsUpdate;
+use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{DAffine2, DVec2};
 use graphene_std::transform::ReferencePoint;
+use std::fmt;
+
+pub fn pin_pivot_widget(disabled: bool, source: Source) -> WidgetHolder {
+	IconButton::new(if disabled { "PinInactive" } else { "PinActive" }, 24)
+		.tooltip(if disabled { "Pin Transform Pivot" } else { "Unpin Transform Pivot" })
+		.on_update(move |_| match source {
+			Source::Select => SelectToolMessage::SelectOptions(SelectOptionsUpdate::TogglePivotPinned()).into(),
+			Source::Path => PathToolMessage::UpdateOptions(PathOptionsUpdate::TogglePivotPinned()).into(),
+		})
+		.widget_holder()
+}
+
+pub fn pivot_reference_point_widget(disabled: bool, reference_point: ReferencePoint, source: Source) -> WidgetHolder {
+	ReferencePointInput::new(reference_point)
+		.on_update(move |pivot_input: &ReferencePointInput| match source {
+			Source::Select => SelectToolMessage::SetPivot { position: pivot_input.value }.into(),
+			Source::Path => PathToolMessage::SetPivot { position: pivot_input.value }.into(),
+		})
+		.disabled(disabled)
+		.widget_holder()
+}
+
+pub fn dot_type_widget(state: DotState, source: Source) -> Vec<WidgetHolder> {
+	let dot_type_entries = [DotType::Pivot, DotType::Average, DotType::Active]
+		.iter()
+		.map(|dot_type| {
+			MenuListEntry::new(format!("{dot_type:?}")).label(dot_type.to_string()).on_commit({
+				let value = source.clone();
+				move |_| match value {
+					Source::Select => SelectToolMessage::SelectOptions(SelectOptionsUpdate::DotType(*dot_type)).into(),
+					Source::Path => PathToolMessage::UpdateOptions(PathOptionsUpdate::DotType(*dot_type)).into(),
+				}
+			})
+		})
+		.collect();
+
+	vec![
+		CheckboxInput::new(state.enabled)
+			.tooltip("Disable Transform Pivot Point")
+			.on_update(move |optional_input: &CheckboxInput| match source {
+				Source::Select => SelectToolMessage::SelectOptions(SelectOptionsUpdate::ToggleDotType(optional_input.checked)).into(),
+				Source::Path => PathToolMessage::UpdateOptions(PathOptionsUpdate::ToggleDotType(optional_input.checked)).into(),
+			})
+			.widget_holder(),
+		Separator::new(SeparatorType::Related).widget_holder(),
+		DropdownInput::new(vec![dot_type_entries])
+			.selected_index(Some(match state.dot {
+				DotType::Pivot => 0,
+				DotType::Average => 1,
+				DotType::Active => 2,
+			}))
+			.tooltip("Choose between type of Transform Pivot Point")
+			.disabled(!state.enabled)
+			.widget_holder(),
+	]
+}
+
+#[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub enum Source {
+	Path,
+	#[default]
+	Select,
+}
+
+#[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct Dot {
+	pub pivot: Pivot,
+	pub state: DotState,
+	pub layer: Option<LayerNodeIdentifier>,
+}
+
+impl Dot {
+	pub fn position(&self, document: &DocumentMessageHandler) -> DVec2 {
+		let network = &document.network_interface;
+		self.state
+			.enabled
+			.then_some({
+				match self.state.dot {
+					DotType::Average => Some(network.selected_nodes().selected_visible_and_unlocked_layers_mean_average_origin(network)),
+					DotType::Pivot => self.pivot.position(),
+					DotType::Active => self.layer.map(|layer| graph_modification_utils::get_viewport_origin(layer, network)),
+				}
+			})
+			.flatten()
+			.unwrap_or_else(|| self.pivot.transform_from_normalized.transform_point2(DVec2::splat(0.5)))
+	}
+
+	pub fn recalculate_transform(&mut self, document: &DocumentMessageHandler) -> DAffine2 {
+		self.pivot.recalculate_pivot(document);
+		self.pivot.transform_from_normalized
+	}
+
+	pub fn pin_inactive(&self) -> bool {
+		!self.pivot.pinned || !self.state.is_pivot()
+	}
+
+}
+
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum DotType {
+	// Pivot
+	#[default]
+	Pivot,
+	// Origin
+	// Indidual,
+	Average,
+	Active,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct DotState {
+	pub enabled: bool,
+	pub dot: DotType,
+}
+
+impl Default for DotState {
+	fn default() -> Self {
+		Self {
+			enabled: true,
+			dot: DotType::default(),
+		}
+	}
+}
+
+impl DotState {
+	pub fn is_pivot_type(&self) -> bool {
+		self.dot == DotType::Pivot || !self.enabled
+	}
+
+	pub fn is_pivot(&self) -> bool {
+		self.dot == DotType::Pivot && self.enabled
+	}
+}
+
+impl fmt::Display for DotType {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			DotType::Pivot => write!(f, "Draft Pivot"),
+			DotType::Average => write!(f, "Average of Origins"),
+			DotType::Active => write!(f, "Active Object Origin"),
+		}
+	}
+}
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Pivot {
@@ -20,6 +168,8 @@ pub struct Pivot {
 	pub last_non_none_reference: ReferencePoint,
 	/// Used to enable and disable the pivot
 	active: bool,
+	/// Used to enable and disable the pivot
+	pub pinned: bool,
 }
 
 impl Default for Pivot {
@@ -31,6 +181,7 @@ impl Default for Pivot {
 			old_pivot_position: ReferencePoint::Center,
 			last_non_none_reference: ReferencePoint::Center,
 			active: true,
+			pinned: false,
 		}
 	}
 }

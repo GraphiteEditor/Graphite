@@ -5,8 +5,8 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, TransformType, Typing};
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::pivot::Dot;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::tool_messages::select_tool::Dot;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 use glam::{DAffine2, DVec2};
@@ -192,9 +192,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				*selected.original_transforms = OriginalTransforms::default();
 
 				let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
-
 				let selected_segments = shape_editor.selected_segments().collect::<HashSet<_>>();
-
 				let mut affected_points = shape_editor.selected_points().copied().collect::<Vec<_>>();
 
 				for (segment_id, _, start, end) in vector_data.segment_bezier_iter() {
