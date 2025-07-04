@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
-	import { type KeyRaw, type LayoutKeysGroup, type Key, type MouseMotion } from "@graphite/messages";
+	import { type KeyRaw, type LayoutKeysGroup, type Key, type MouseMotion } from "@graphite/messages.svelte";
 	import type { FullscreenState } from "@graphite/state-providers/fullscreen";
 	import type { IconName } from "@graphite/utility-functions/icons";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
@@ -34,14 +34,21 @@
 
 	const fullscreen = getContext<FullscreenState>("fullscreen");
 
-	export let keysWithLabelsGroups: LayoutKeysGroup[] = [];
-	export let mouseMotion: MouseMotion | undefined = undefined;
-	export let requiresLock = false;
-	export let textOnly = false;
+	interface Props {
+		keysWithLabelsGroups?: LayoutKeysGroup[];
+		mouseMotion?: MouseMotion | undefined;
+		requiresLock?: boolean;
+		textOnly?: boolean;
+		children?: import('svelte').Snippet;
+	}
 
-	$: keyboardLockInfoMessage = watchKeyboardLockInfoMessage(fullscreen.keyboardLockApiSupported);
-
-	$: displayKeyboardLockNotice = requiresLock && !$fullscreen.keyboardLocked;
+	let {
+		keysWithLabelsGroups = [],
+		mouseMotion = undefined,
+		requiresLock = false,
+		textOnly = false,
+		children
+	}: Props = $props();
 
 	function watchKeyboardLockInfoMessage(keyboardLockApiSupported: boolean): string {
 		const RESERVED = "This hotkey is reserved by the browser. ";
@@ -114,6 +121,8 @@
 				return undefined;
 		}
 	}
+	let keyboardLockInfoMessage = $derived(watchKeyboardLockInfoMessage(fullscreen.keyboardLockApiSupported));
+	let displayKeyboardLockNotice = $derived(requiresLock && !$fullscreen.keyboardLocked);
 </script>
 
 {#if displayKeyboardLockNotice}
@@ -139,9 +148,9 @@
 				<IconLabel icon={mouseHintIcon(mouseMotion)} />
 			</div>
 		{/if}
-		{#if $$slots.default}
+		{#if children}
 			<div class="hint-text">
-				<slot />
+				{@render children?.()}
 			</div>
 		{/if}
 	</LayoutRow>

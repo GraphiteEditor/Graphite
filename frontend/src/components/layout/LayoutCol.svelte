@@ -1,23 +1,40 @@
 <script lang="ts">
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
-	let styleName = "";
-	export { styleName as style };
-	export let styles: Record<string, string | number | undefined> = {};
-	export let tooltip: string | undefined = undefined;
-	// TODO: Add middle-click drag scrolling
-	export let scrollableX = false;
-	export let scrollableY = false;
+	import type { SvelteHTMLElements } from 'svelte/elements';
 
-	let self: HTMLDivElement | undefined;
+	type DivHTMLElementProps = SvelteHTMLElements["div"];
+	
+	interface Props extends DivHTMLElementProps {
+		class?: string;
+		classes?: Record<string, boolean>;
+		style?: string;
+		styles?: Record<string, string | number | undefined>;
+		tooltip?: string | undefined;
+		// TODO: Add middle-click drag scrolling
+		scrollableX?: boolean;
+		scrollableY?: boolean;
+		children?: import('svelte').Snippet;
+	}
 
-	$: extraClasses = Object.entries(classes)
+	let {
+		class: className = "",
+		classes = {},
+		style: styleName = "",
+		styles = {},
+		tooltip = undefined,
+		scrollableX = false,
+		scrollableY = false,
+		children,
+		...rest
+	}: Props = $props();
+
+	let self: HTMLDivElement | undefined = $state();
+
+	let extraClasses = $derived(Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
-		.join(" ");
-	$: extraStyles = Object.entries(styles)
+		.join(" "));
+	let extraStyles = $derived(Object.entries(styles)
 		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
-		.join(" ");
+		.join(" "));
 
 	export function div(): HTMLDivElement | undefined {
 		return self;
@@ -34,26 +51,26 @@
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	title={tooltip}
 	bind:this={self}
-	on:auxclick
-	on:blur
-	on:click
-	on:dblclick
-	on:dragend
-	on:dragleave
-	on:dragover
-	on:dragstart
-	on:drop
-	on:mouseup
-	on:pointerdown
-	on:pointerenter
-	on:pointerleave
-	on:scroll
-	{...$$restProps}
+	{...rest}
 >
-	<slot />
+	{@render children?.()}
 </div>
 
 <!-- Unused (each impacts performance, see <https://github.com/GraphiteEditor/Graphite/issues/1877>):
+onauxclick={bubble('auxclick')}
+onblur={bubble('blur')}
+onclick={bubble('click')}
+ondblclick={bubble('dblclick')}
+ondragend={bubble('dragend')}
+ondragleave={bubble('dragleave')}
+ondragover={bubble('dragover')}
+ondragstart={bubble('dragstart')}
+ondrop={bubble('drop')}
+onmouseup={bubble('mouseup')}
+onpointerdown={bubble('pointerdown')}
+onpointerenter={bubble('pointerenter')}
+onpointerleave={bubble('pointerleave')}
+onscroll={bubble('scroll')}
 on:contextmenu
 on:copy
 on:cut

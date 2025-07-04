@@ -1407,11 +1407,17 @@ export function narrowWidgetProps<K extends WidgetPropsNames>(props: WidgetProps
 
 export class Widget {
 	constructor(props: WidgetPropsSet, widgetId: bigint) {
-		this.props = props;
-		this.widgetId = widgetId;
+		this.props = $state(props);
+		this.widgetId = $state(widgetId);
 	}
 
 	@Type(() => WidgetProps, { discriminator: { property: "kind", subTypes: [...widgetSubTypes] }, keepDiscriminatorProperty: true })
+	@Transform(({ value }) => {
+		if (value.kind === "PopoverButton") {
+			value.popoverLayout = value.popoverLayout.map(createLayoutGroup);
+		}
+		return value;
+	})
 	props!: WidgetPropsSet;
 
 	widgetId!: bigint;
@@ -1422,10 +1428,6 @@ function hoistWidgetHolder(widgetHolder: any): Widget {
 	const kind = Object.keys(widgetHolder.widget)[0];
 	const props = widgetHolder.widget[kind];
 	props.kind = kind;
-
-	if (kind === "PopoverButton") {
-		props.popoverLayout = props.popoverLayout.map(createLayoutGroup);
-	}
 
 	const { widgetId } = widgetHolder;
 
@@ -1463,13 +1465,18 @@ export function defaultWidgetLayout(): WidgetLayout {
 	};
 }
 
+function updateWidget(widget: Widget, newValues: Widget) {
+	widget.props = newValues.props;
+	widget.widgetId = newValues.widgetId;
+}
+
 // Updates a widget layout based on a list of updates, giving the new layout by mutating the `layout` argument
 export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: WidgetDiffUpdate) {
 	layout.layoutTarget = updates.layoutTarget;
 
 	updates.diff.forEach((update) => {
 		// Find the object where the diff applies to
-		const diffObject = update.widgetPath.reduce((targetLayout, index) => {
+		let diffObject = update.widgetPath.reduce((targetLayout, index) => {
 			if ("columnWidgets" in targetLayout) return targetLayout.columnWidgets[index];
 			if ("rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
 			if ("tableWidgets" in targetLayout) return targetLayout.tableWidgets[index];
@@ -1488,18 +1495,28 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 			return targetLayout[index];
 		}, layout.layout as UIItem);
 
-		// If this is a list with a length, then set the length to 0 to clear the list
-		if ("length" in diffObject) {
-			diffObject.length = 0;
-		}
-		// Remove all of the keys from the old object
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		Object.keys(diffObject).forEach((key) => delete (diffObject as any)[key]);
+		// Clear array length using Reflect to trigger reactivity
+		if (diffObject instanceof Widget) {
+			// For Widget instances, use direct property assignment
+			// The setters will handle the reactivity
+			updateWidget(diffObject, update.newValue as Widget);
+		} else {
+			if (Reflect.has(diffObject, "length")) {
+				Reflect.set(diffObject, "length", 0);
+			}
 
-		// Assign keys to the new object
-		// `Object.assign` works but `diffObject = update.newValue;` doesn't.
-		// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign
-		Object.assign(diffObject, update.newValue);
+			// Remove all enumerable properties using Reflect.deleteProperty to ensure proxy notifications
+			Object.keys(diffObject).forEach((key) => {
+				Reflect.deleteProperty(diffObject, key);
+			});
+
+			// Assign new properties
+			if (update.newValue && typeof update.newValue === "object") {
+				Object.entries(update.newValue).forEach(([key, value]) => {
+					Reflect.set(diffObject, key, value);
+				});
+			}
+		}
 	});
 }
 

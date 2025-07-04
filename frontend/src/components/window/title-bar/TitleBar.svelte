@@ -1,12 +1,8 @@
-<script lang="ts" context="module">
-	export type Platform = "Windows" | "Mac" | "Linux" | "Web";
-</script>
-
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@graphite/messages";
+	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@graphite/messages.svelte";
 	import type { PortfolioState } from "@graphite/state-providers/portfolio";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 
@@ -17,8 +13,12 @@
 	import WindowButtonsWindows from "@graphite/components/window/title-bar/WindowButtonsWindows.svelte";
 	import WindowTitle from "@graphite/components/window/title-bar/WindowTitle.svelte";
 
-	export let platform: Platform;
-	export let maximized: boolean;
+	interface Props {
+		platform: Graphite.Platform;
+		maximized: boolean;
+	}
+
+	let { platform, maximized }: Props = $props();
 
 	const editor = getContext<Editor>("editor");
 	const portfolio = getContext<PortfolioState>("portfolio");
@@ -33,11 +33,11 @@
 		[ACCEL_KEY, "Shift", "KeyT"],
 	];
 
-	let entries: MenuListEntry[] = [];
+	let entries: MenuListEntry[] = $state([]);
 
-	$: docIndex = $portfolio.activeDocumentIndex;
-	$: displayName = $portfolio.documents[docIndex]?.displayName || "";
-	$: windowTitle = `${displayName}${displayName && " - "}Graphite`;
+	let docIndex = $derived($portfolio.activeDocumentIndex);
+	let displayName = $derived($portfolio.documents[docIndex]?.displayName || "");
+	let windowTitle = $derived(`${displayName}${displayName && " - "}Graphite`);
 
 	onMount(() => {
 		const arraysEqual = (a: KeyRaw[], b: KeyRaw[]): boolean => a.length === b.length && a.every((aValue, i) => aValue === b[i]);
@@ -76,7 +76,7 @@
 			<WindowButtonsMac {maximized} />
 		{:else}
 			{#each entries as entry}
-				<TextButton label={entry.label} icon={entry.icon} menuListChildren={entry.children} action={entry.action} flush={true} />
+				<TextButton label={entry.label} icon={entry.icon} menuListChildren={entry.children} onclick={entry.action!} flush={true} />
 			{/each}
 		{/if}
 	</LayoutRow>

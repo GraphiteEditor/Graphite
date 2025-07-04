@@ -2,7 +2,7 @@
 	import { getContext, onMount } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { type HintData, type HintInfo, type LayoutKeysGroup, UpdateInputHints } from "@graphite/messages";
+	import { type HintData, type HintInfo, type LayoutKeysGroup, UpdateInputHints } from "@graphite/messages.svelte";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -11,7 +11,7 @@
 
 	const editor = getContext<Editor>("editor");
 
-	let hintData: HintData = [];
+	let hintData: HintData = $state([]);
 
 	function inputKeysForPlatform(hint: HintInfo): LayoutKeysGroup[] {
 		if (platformIsMac() && hint.keyGroupsMac) return hint.keyGroupsMac;

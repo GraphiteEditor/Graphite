@@ -5,7 +5,7 @@
 
 	import Editor from "@graphite/components/Editor.svelte";
 
-	let editor: GraphiteEditor | undefined = undefined;
+	let editor: GraphiteEditor | undefined = $state(undefined);
 
 	onMount(async () => {
 		await initWasm();

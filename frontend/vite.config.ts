@@ -2,7 +2,8 @@
 
 import { spawnSync } from "child_process";
 
-import fs from "fs";
+import { readFileSync } from "node:fs";
+import { minimatch } from "minimatch";
 import path from "path";
 
 import { svelte } from "@sveltejs/vite-plugin-svelte";
@@ -31,6 +32,16 @@ const ALLOWED_LICENSES = [
 	"Zlib",
 ];
 
+const runesGlobs = ["**/*.svelte"];
+
+function forceRunes(filePath: string): boolean {
+	const relativePath = filePath.slice(filePath.indexOf("src"));
+	// Test the file path against each glob pattern
+	return runesGlobs.some((min) => {
+		return minimatch(relativePath, min);
+	});
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
 	plugins: [
@@ -42,6 +53,15 @@ export default defineConfig({
 				if (suppressed.includes(warning.code)) return;
 
 				defaultHandler?.(warning);
+			},
+			dynamicCompileOptions({ filename, compileOptions }) {
+				if (forceRunes(filename) && !compileOptions.runes) {
+					console.log(`🚀 ~ runes ~`, filename, true);
+
+					return { runes: true };
+				} else {
+					console.log(`🚀 ~ runes ~`, filename, false);
+				}
 			},
 		}),
 		viteMultipleAssets(["../demo-artwork"]),
@@ -135,7 +155,7 @@ function formatThirdPartyLicenses(jsLicenses: Dependency[]): string {
 		const pkg = license.packages[foundPackagesIndex];
 
 		license.packages = license.packages.filter((pkg) => pkg.name !== "path-bool");
-		const noticeText = fs.readFileSync(path.resolve(__dirname, "../libraries/path-bool/NOTICE"), "utf8");
+		const noticeText = readFileSync(path.resolve(__dirname, "../libraries/path-bool/NOTICE"), "utf8");
 
 		licenses.push({
 			licenseName: license.licenseName,
