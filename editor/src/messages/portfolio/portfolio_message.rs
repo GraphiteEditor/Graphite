@@ -87,6 +87,9 @@ pub enum PortfolioMessage {
 	PasteSerializedData {
 		data: String,
 	},
+	PasteSerializedVector {
+		data: String,
+	},
 	CenterPastedLayers {
 		layers: Vec<LayerNodeIdentifier>,
 	},
