@@ -12,7 +12,7 @@ use crate::messages::portfolio::document::utility_types::transformation::Axis;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::shape_editor::{
-	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
+	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedLayerState, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate};
@@ -464,6 +464,9 @@ struct PathToolData {
 	frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
 	adjacent_anchor_offset: Option<DVec2>,
 	sliding_point_info: Option<SlidingPointInfo>,
+	started_drawing_from_inside: bool,
+	first_selected_with_single_click: bool,
+	stored_selection: Option<HashMap<LayerNodeIdentifier, SelectedLayerState>>,
 }
 
 impl PathToolData {
@@ -546,8 +549,9 @@ impl PathToolData {
 
 		self.drag_start_pos = input.mouse.position;
 
-		if !self.saved_points_before_anchor_convert_smooth_sharp.is_empty() && (input.time - self.last_click_time > 500) {
+		if input.time - self.last_click_time > 500 {
 			self.saved_points_before_anchor_convert_smooth_sharp.clear();
+			self.stored_selection = None;
 		}
 
 		self.last_click_time = input.time;
@@ -690,8 +694,11 @@ impl PathToolData {
 		// If no other layers are selected and a single click, then also select the layer (exception)
 		else if let Some(layer) = document.click(input) {
 			if shape_editor.selected_shape_state.is_empty() {
+				self.first_selected_with_single_click = true;
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 			}
+
+			self.started_drawing_from_inside = true;
 
 			self.drag_start_pos = input.mouse.position;
 			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
@@ -1462,12 +1469,13 @@ impl Fsm for PathToolFsmState {
 						let quad = tool_data.selection_quad(document.metadata());
 						let polygon = &tool_data.lasso_polygon;
 
-						match (selection_shape, selection_mode) {
+						match (selection_shape, selection_mode, tool_data.started_drawing_from_inside) {
 							// Don't draw box if it is from inside a shape and selection just began
-							(SelectionShapeType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, None, fill_color, Some(4.), Some(4.), Some(0.5)),
-							(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, None, fill_color, Some(4.), Some(4.), Some(0.5)),
-							(SelectionShapeType::Box, _) => overlay_context.quad(quad, None, fill_color),
-							(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, None, fill_color),
+							(SelectionShapeType::Box, SelectionMode::Enclosed, false) => overlay_context.dashed_quad(quad, None, fill_color, Some(4.), Some(4.), Some(0.5)),
+							(SelectionShapeType::Lasso, SelectionMode::Enclosed, _) => overlay_context.dashed_polygon(polygon, None, fill_color, Some(4.), Some(4.), Some(0.5)),
+							(SelectionShapeType::Box, _, false) => overlay_context.quad(quad, None, fill_color),
+							(SelectionShapeType::Lasso, _, _) => overlay_context.polygon(polygon, None, fill_color),
+							(SelectionShapeType::Box, _, _) => {}
 						}
 					}
 					Self::Dragging(_) => {
@@ -1554,6 +1562,9 @@ impl Fsm for PathToolFsmState {
 			) => {
 				tool_data.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 
+				tool_data.started_drawing_from_inside = false;
+				tool_data.stored_selection = None;
+
 				if selection_shape == SelectionShapeType::Lasso {
 					extend_lasso(&mut tool_data.lasso_polygon, input.mouse.position);
 				}
@@ -1599,6 +1610,7 @@ impl Fsm for PathToolFsmState {
 					break_colinear_molding,
 				},
 			) => {
+				tool_data.stored_selection = None;
 				let mut selected_only_handles = true;
 
 				let selected_points = shape_editor.selected_points();
@@ -1722,6 +1734,7 @@ impl Fsm for PathToolFsmState {
 				if tool_data.adjacent_anchor_offset.is_some() {
 					tool_data.adjacent_anchor_offset = None;
 				}
+				tool_data.stored_selection = None;
 
 				responses.add(OverlaysMessage::Draw);
 
@@ -1890,9 +1903,16 @@ impl Fsm for PathToolFsmState {
 					SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(document.metadata()),
 					selection_mode => selection_mode,
 				};
+				tool_data.started_drawing_from_inside = false;
 
 				if tool_data.drag_start_pos.distance(previous_mouse) < 1e-8 {
 					//Clicked inside or outside the shape then deselect all of the points/segments
+					if document.click(&input).is_some() {
+						if tool_data.stored_selection.is_none() {
+							tool_data.stored_selection = Some(shape_editor.selected_shape_state.clone());
+						}
+					}
+
 					shape_editor.deselect_all_points();
 					shape_editor.deselect_all_segments();
 				} else {
@@ -2089,20 +2109,53 @@ impl Fsm for PathToolFsmState {
 					let extend_selection = input.keyboard.get(extend_selection as usize);
 					let shrink_selection = input.keyboard.get(shrink_selection as usize);
 					if shape_editor.is_selected_layer(layer) {
-						if extend_selection {
+						if extend_selection && !tool_data.first_selected_with_single_click {
 							responses.add(NodeGraphMessage::SelectedNodesRemove { nodes: vec![layer.to_node()] });
-						} else if shrink_selection {
-							shape_editor.deselect_all_points();
-							shape_editor.deselect_all_segments();
-						} else {
+							if let Some(selection) = &tool_data.stored_selection {
+								let mut selection = selection.clone();
+								selection.remove(&layer);
+								shape_editor.selected_shape_state = selection;
+								tool_data.stored_selection = None;
+							}
+						} else if shrink_selection && !tool_data.first_selected_with_single_click {
+							// Only deselect all the points of the double clicked layer
+							if let Some(selection) = &tool_data.stored_selection {
+								let selection = selection.clone();
+								shape_editor.selected_shape_state = selection;
+								tool_data.stored_selection = None;
+							}
+
+							let state = shape_editor.selected_shape_state.get_mut(&layer).expect("No state for selected layer");
+							state.deselect_all_points_in_layer();
+							state.deselect_all_segments_in_layer();
+						} else if !tool_data.first_selected_with_single_click {
 							// Select according to the selected editing mode
 							let point_editing_mode = tool_options.path_editing_mode.point_editing_mode;
 							let segment_editing_mode = tool_options.path_editing_mode.segment_editing_mode;
 							shape_editor.select_connected(document, layer, input.mouse.position, point_editing_mode, segment_editing_mode);
+
+							// Select all the other layers back again
+							if let Some(selection) = &tool_data.stored_selection {
+								let mut selection = selection.clone();
+								selection.remove(&layer);
+
+								for (layer, state) in selection {
+									shape_editor.selected_shape_state.insert(layer, state);
+								}
+								tool_data.stored_selection = None;
+							}
 						}
+
+						// If it was first click without any selection then single click behaviour and double click behaviour should not collide
+						tool_data.first_selected_with_single_click = false;
 					} else {
 						if extend_selection {
 							responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
+
+							if let Some(selection) = &tool_data.stored_selection {
+								shape_editor.selected_shape_state = selection.clone();
+								tool_data.stored_selection = None;
+							}
 						} else {
 							responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 						}

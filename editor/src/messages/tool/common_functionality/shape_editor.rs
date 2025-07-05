@@ -96,6 +96,14 @@ impl SelectedLayerState {
 		self.selected_segments.remove(&segment);
 	}
 
+	pub fn deselect_all_points_in_layer(&mut self) {
+		self.selected_points.clear();
+	}
+
+	pub fn deselect_all_segments_in_layer(&mut self) {
+		self.selected_segments.clear();
+	}
+
 	pub fn clear_points(&mut self) {
 		self.selected_points.clear();
 	}
