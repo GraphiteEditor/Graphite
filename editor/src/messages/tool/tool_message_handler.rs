@@ -269,6 +269,16 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 
 				document_data.update_working_colors(responses); // TODO: Make this an event
 			}
+			ToolMessage::ToggleSelectVsPath => {
+				// If we have the select tool active, toggle to the path tool and vice versa
+				let tool_data = &mut self.tool_state.tool_data;
+				let active_tool_type = tool_data.active_tool_type;
+				if active_tool_type == ToolType::Select {
+					responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Path });
+				} else {
+					responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
+				}
+			}
 			ToolMessage::SwapColors => {
 				let document_data = &mut self.tool_state.document_tool_data;
 
@@ -344,9 +354,12 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 
 			ActivateToolBrush,
 
+			ToggleSelectVsPath,
+
 			SelectRandomWorkingColor,
 			ResetColors,
 			SwapColors,
+
 			Undo,
 		);
 		list.extend(self.tool_state.tool_data.active_tool().actions());

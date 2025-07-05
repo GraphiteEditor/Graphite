@@ -87,6 +87,7 @@ pub enum ToolMessage {
 	SelectRandomWorkingColor {
 		primary: bool,
 	},
+	ToggleSelectVsPath,
 	SwapColors,
 	Undo,
 	UpdateCursor,

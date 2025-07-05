@@ -1,8 +1,8 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE,
-	SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY_25, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD,
+	HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
@@ -18,6 +18,7 @@ use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandi
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate};
 use bezier_rs::{Bezier, TValue};
 use graphene_std::renderer::Quad;
+use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, VectorData};
 use graphene_std::vector::{ManipulatorPointId, PointId, VectorModificationType};
 use std::vec;
@@ -467,6 +468,11 @@ struct PathToolData {
 	started_drawing_from_inside: bool,
 	first_selected_with_single_click: bool,
 	stored_selection: Option<HashMap<LayerNodeIdentifier, SelectedLayerState>>,
+	last_xray_click_position: Option<DVec2>,
+	xray_cycle_index: usize,
+	xray_cycle_count: usize,
+	hovered_layers: Vec<LayerNodeIdentifier>,
+	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
 }
 
 impl PathToolData {
@@ -477,6 +483,37 @@ impl PathToolData {
 
 	fn remove_saved_points(&mut self) {
 		self.saved_points_before_anchor_select_toggle.clear();
+	}
+
+	fn reset_xray_cycle(&mut self) {
+		self.last_xray_click_position = None;
+		self.xray_cycle_index = 0;
+	}
+
+	fn next_xray_index(&self, index: usize) -> usize {
+		if self.xray_cycle_count == 0 { 0 } else { (index + 1) % self.xray_cycle_count }
+	}
+
+	fn advance_xray_cycle(&mut self, position: DVec2) -> usize {
+		if self.last_xray_click_position.map_or(true, |last_pos| last_pos.distance(position) > SELECTION_THRESHOLD) {
+			// New position, reset cycle
+			self.xray_cycle_index = 0;
+		} else {
+			// Same position, advance cycle
+			self.xray_cycle_index = (self.xray_cycle_index + 1) % self.xray_cycle_count.max(1);
+		}
+		self.last_xray_click_position = Some(position);
+		self.xray_cycle_index
+	}
+
+	fn set_ghost_outline(&mut self, shape_editor: &ShapeState, document: &DocumentMessageHandler) {
+		self.ghost_outline.clear();
+		for &layer in shape_editor.selected_shape_state.keys() {
+			// We probably need to collect here
+			let outline = document.metadata().layer_with_free_points_outline(layer).cloned().collect();
+			let transform = document.metadata().transform_to_viewport(layer);
+			self.ghost_outline.push((outline, transform));
+		}
 	}
 
 	pub fn selection_quad(&self, metadata: &DocumentMetadata) -> Quad {
@@ -570,6 +607,8 @@ impl PathToolData {
 		) {
 			responses.add(DocumentMessage::StartTransaction);
 
+			self.set_ghost_outline(shape_editor, document);
+
 			self.last_clicked_point_was_selected = already_selected;
 
 			// If the point is already selected and shift (`extend_selection`) is used, keep the selection unchanged.
@@ -654,6 +693,8 @@ impl PathToolData {
 		else if let Some(segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
 			responses.add(DocumentMessage::StartTransaction);
 
+			self.set_ghost_outline(shape_editor, document);
+
 			if segment_editing_mode && !molding_in_segment_edit {
 				let layer = segment.layer();
 				let segment_id = segment.segment();
@@ -674,7 +715,6 @@ impl PathToolData {
 				}
 
 				self.drag_start_pos = input.mouse.position;
-
 				let viewport_to_document = document.metadata().document_to_viewport.inverse();
 				self.previous_mouse_position = viewport_to_document.transform_point2(input.mouse.position);
 
@@ -688,6 +728,7 @@ impl PathToolData {
 						self.molding_info = Some((pos1, pos2))
 					}
 				}
+
 				PathToolFsmState::MoldingSegment
 			}
 		}
@@ -1336,6 +1377,7 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible
 				let target_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect();
+
 				shape_editor.set_selected_layers(target_layers);
 
 				responses.add(OverlaysMessage::Draw);
@@ -1351,6 +1393,12 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
+				if matches!(self, Self::Dragging(_) | Self::MoldingSegment) {
+					for (outline, transform) in &tool_data.ghost_outline {
+						overlay_context.outline(outline.iter(), *transform, Some(COLOR_OVERLAY_GRAY_25));
+					}
+				}
+
 				// TODO: find the segment ids of which the selected points are a part of
 
 				match tool_options.path_overlay_mode {
@@ -1450,6 +1498,18 @@ impl Fsm for PathToolFsmState {
 								else {
 									overlay_context.line(point - perp * SEGMENT_OVERLAY_SIZE, point + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
 								}
+							}
+						}
+
+						// Show what layer will be next to cycle when double clicking, then draw the outlines of the hovered layers
+						let mut selected_index: usize = 0;
+						for (index, &hovered_layer) in tool_data.hovered_layers.iter().enumerate() {
+							if document.network_interface.selected_nodes().selected_layers(document.metadata()).any(|l| l == hovered_layer) {
+								selected_index = tool_data.next_xray_index(index);
+							} else {
+								let layer_to_viewport = document.metadata().transform_to_viewport(hovered_layer);
+								let color = if index == selected_index { COLOR_OVERLAY_GREEN } else { COLOR_OVERLAY_GRAY_25 };
+								overlay_context.outline(document.metadata().layer_with_free_points_outline(hovered_layer), layer_to_viewport, Some(&color));
 							}
 						}
 					}
@@ -1734,7 +1794,21 @@ impl Fsm for PathToolFsmState {
 				if tool_data.adjacent_anchor_offset.is_some() {
 					tool_data.adjacent_anchor_offset = None;
 				}
+
 				tool_data.stored_selection = None;
+
+				// When moving the cursor around we want to update the hovered layers
+				let new_hovered_layers: Vec<LayerNodeIdentifier> = document
+					.click_list_no_parents(input)
+					.filter(|&layer| {
+						// Filter out artboards and parent holders, and already selected layers
+						!document.network_interface.is_artboard(&layer.to_node(), &[])
+					})
+					.collect();
+
+				if tool_data.hovered_layers != new_hovered_layers {
+					tool_data.hovered_layers = new_hovered_layers;
+				}
 
 				responses.add(OverlaysMessage::Draw);
 
@@ -1944,6 +2018,7 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::DragStop { extend_selection, .. }) => {
+				tool_data.ghost_outline.clear();
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let drag_occurred = tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD;
 
@@ -2087,6 +2162,9 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::DoubleClick { extend_selection, shrink_selection }) => {
 				// Double-clicked on a point (flip smooth/sharp behavior)
 				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD);
+				// Filter if this is a group parent or an artboard
+				let xray_layers = document.click_list_no_parents(input).collect::<Vec<LayerNodeIdentifier>>();
+
 				if nearest_point.is_some() {
 					// Flip the selected point between smooth and sharp
 					if !tool_data.double_click_handled && tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
@@ -2103,17 +2181,27 @@ impl Fsm for PathToolFsmState {
 					return PathToolFsmState::Ready;
 				}
 				// Double-clicked on a filled region
-				else if let Some(layer) = document.click(input) {
+				else if let Some(layer) = {
+					if xray_layers.is_empty() {
+						tool_data.reset_xray_cycle();
+						None
+					} else {
+						tool_data.xray_cycle_count = xray_layers.len();
+						let cycle_index = tool_data.advance_xray_cycle(input.mouse.position);
+						let layer = xray_layers.get(cycle_index);
+						if cycle_index == 0 { xray_layers.first() } else { layer }
+					}
+				} {
 					let extend_selection = input.keyboard.get(extend_selection as usize);
 					let shrink_selection = input.keyboard.get(shrink_selection as usize);
 
-					if shape_editor.is_selected_layer(layer) {
+					if shape_editor.is_selected_layer(*layer) {
 						if extend_selection && !tool_data.first_selected_with_single_click {
 							responses.add(NodeGraphMessage::SelectedNodesRemove { nodes: vec![layer.to_node()] });
 
 							if let Some(selection) = &tool_data.stored_selection {
 								let mut selection = selection.clone();
-								selection.remove(&layer);
+								selection.remove(layer);
 								shape_editor.selected_shape_state = selection;
 								tool_data.stored_selection = None;
 							}
@@ -2125,19 +2213,19 @@ impl Fsm for PathToolFsmState {
 								tool_data.stored_selection = None;
 							}
 
-							let state = shape_editor.selected_shape_state.get_mut(&layer).expect("No state for selected layer");
+							let state = shape_editor.selected_shape_state.get_mut(layer).expect("No state for selected layer");
 							state.deselect_all_points_in_layer();
 							state.deselect_all_segments_in_layer();
 						} else if !tool_data.first_selected_with_single_click {
 							// Select according to the selected editing mode
 							let point_editing_mode = tool_options.path_editing_mode.point_editing_mode;
 							let segment_editing_mode = tool_options.path_editing_mode.segment_editing_mode;
-							shape_editor.select_connected(document, layer, input.mouse.position, point_editing_mode, segment_editing_mode);
+							shape_editor.select_connected(document, *layer, input.mouse.position, point_editing_mode, segment_editing_mode);
 
 							// Select all the other layers back again
 							if let Some(selection) = &tool_data.stored_selection {
 								let mut selection = selection.clone();
-								selection.remove(&layer);
+								selection.remove(layer);
 
 								for (layer, state) in selection {
 									shape_editor.selected_shape_state.insert(layer, state);
