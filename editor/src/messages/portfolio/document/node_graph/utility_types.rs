@@ -15,7 +15,7 @@ pub enum FrontendGraphDataType {
 }
 
 impl FrontendGraphDataType {
-	fn with_type(input: &Type) -> Self {
+	pub fn from_type(input: &Type) -> Self {
 		match TaggedValue::from_type_or_none(input) {
 			TaggedValue::Image(_) | TaggedValue::RasterData(_) => Self::Raster,
 			TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::VectorData,
@@ -38,7 +38,7 @@ impl FrontendGraphDataType {
 	pub fn displayed_type(input: &Type, type_source: &TypeSource) -> Self {
 		match type_source {
 			TypeSource::Error(_) | TypeSource::RandomProtonodeImplementation => Self::General,
-			_ => Self::with_type(input),
+			_ => Self::from_type(input),
 		}
 	}
 }
@@ -50,7 +50,7 @@ pub struct FrontendGraphInput {
 	pub name: String,
 	pub description: String,
 	#[serde(rename = "resolvedType")]
-	pub resolved_type: Option<String>,
+	pub resolved_type: String,
 	#[serde(rename = "validTypes")]
 	pub valid_types: Vec<String>,
 	#[serde(rename = "connectedTo")]
@@ -64,7 +64,7 @@ pub struct FrontendGraphOutput {
 	pub name: String,
 	pub description: String,
 	#[serde(rename = "resolvedType")]
-	pub resolved_type: Option<String>,
+	pub resolved_type: String,
 	#[serde(rename = "connectedTo")]
 	pub connected_to: Vec<InputConnector>,
 }
@@ -94,15 +94,6 @@ pub struct FrontendNode {
 	pub errors: Option<String>,
 	#[serde(rename = "uiOnly")]
 	pub ui_only: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct FrontendNodeWire {
-	#[serde(rename = "wireStart")]
-	pub wire_start: OutputConnector,
-	#[serde(rename = "wireEnd")]
-	pub wire_end: InputConnector,
-	pub dashed: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -151,16 +142,6 @@ pub struct Transform {
 	pub scale: f64,
 	pub x: f64,
 	pub y: f64,
-}
-
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct WirePath {
-	#[serde(rename = "pathString")]
-	pub path_string: String,
-	#[serde(rename = "dataType")]
-	pub data_type: FrontendGraphDataType,
-	pub thick: bool,
-	pub dashed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -223,33 +204,4 @@ pub enum Direction {
 	Down,
 	Left,
 	Right,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
-pub enum GraphWireStyle {
-	#[default]
-	Direct = 0,
-	GridAligned = 1,
-}
-
-impl std::fmt::Display for GraphWireStyle {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			GraphWireStyle::GridAligned => write!(f, "Grid-Aligned"),
-			GraphWireStyle::Direct => write!(f, "Direct"),
-		}
-	}
-}
-
-impl GraphWireStyle {
-	pub fn tooltip_description(&self) -> &'static str {
-		match self {
-			GraphWireStyle::GridAligned => "Wires follow the grid, running in straight lines between nodes",
-			GraphWireStyle::Direct => "Wires bend to run at an angle directly between nodes",
-		}
-	}
-
-	pub fn is_direct(&self) -> bool {
-		*self == GraphWireStyle::Direct
-	}
 }
