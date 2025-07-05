@@ -324,8 +324,6 @@ pub enum VectorModificationType {
 	ApplyPointDelta { point: PointId, delta: DVec2 },
 	ApplyPrimaryDelta { segment: SegmentId, delta: DVec2 },
 	ApplyEndDelta { segment: SegmentId, delta: DVec2 },
-
-	SetNewVectorData { new_vector_data: VectorData },
 }
 
 impl VectorModification {
@@ -370,28 +368,6 @@ impl VectorModification {
 					self.add_g1_continuous.remove(handles);
 					self.add_g1_continuous.remove(&[handles[1], handles[0]]);
 				}
-			}
-			VectorModificationType::SetNewVectorData { new_vector_data } => {
-				new_vector_data.point_domain.iter().for_each(|(id, position)| self.points.push(id, position));
-				new_vector_data
-					.segment_bezier_iter()
-					.zip(new_vector_data.segment_domain.stroke().iter())
-					.for_each(|((id, bezier, start, end), stroke)| {
-						let handles = match bezier.handles {
-							BezierHandles::Linear => [None, None],
-							BezierHandles::Quadratic { handle } => [Some(handle - bezier.start), None],
-							BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start), Some(handle_end - bezier.end)],
-						};
-						self.segments.push(id, [start, end], handles, *stroke)
-					});
-
-				new_vector_data.colinear_manipulators.iter().for_each(|handles| {
-					self.add_g1_continuous.insert(*handles);
-					self.remove_g1_continuous.remove(handles);
-				});
-
-				self.add_g1_continuous = new_vector_data.colinear_manipulators.iter().copied().collect();
-				self.remove_g1_continuous = HashSet::new();
 			}
 			VectorModificationType::SetHandles { segment, handles } => {
 				self.segments.handle_primary.insert(*segment, handles[0]);
