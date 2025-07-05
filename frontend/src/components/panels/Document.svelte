@@ -22,6 +22,7 @@
 	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
+	import ImportImagePreview from "@graphite/components/floating-menus/ImportImagePreview.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import Graph from "@graphite/components/views/Graph.svelte";
