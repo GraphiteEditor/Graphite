@@ -1,8 +1,8 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE,
-	SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE,
+	SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
@@ -549,7 +549,7 @@ impl PathToolData {
 
 		self.drag_start_pos = input.mouse.position;
 
-		if input.time - self.last_click_time > 500 {
+		if input.time - self.last_click_time > DOUBLE_CLICK_MILLISECONDS {
 			self.saved_points_before_anchor_convert_smooth_sharp.clear();
 			self.stored_selection = None;
 		}
@@ -691,7 +691,7 @@ impl PathToolData {
 				PathToolFsmState::MoldingSegment
 			}
 		}
-		// If no other layers are selected and a single click, then also select the layer (exception)
+		// If no other layers are selected and this is a single-click, then also select the layer (exception)
 		else if let Some(layer) = document.click(input) {
 			if shape_editor.selected_shape_state.is_empty() {
 				self.first_selected_with_single_click = true;
@@ -1906,11 +1906,9 @@ impl Fsm for PathToolFsmState {
 				tool_data.started_drawing_from_inside = false;
 
 				if tool_data.drag_start_pos.distance(previous_mouse) < 1e-8 {
-					//Clicked inside or outside the shape then deselect all of the points/segments
-					if document.click(&input).is_some() {
-						if tool_data.stored_selection.is_none() {
-							tool_data.stored_selection = Some(shape_editor.selected_shape_state.clone());
-						}
+					// Clicked inside or outside the shape then deselect all of the points/segments
+					if document.click(input).is_some() && tool_data.stored_selection.is_none() {
+						tool_data.stored_selection = Some(shape_editor.selected_shape_state.clone());
 					}
 
 					shape_editor.deselect_all_points();
@@ -2087,7 +2085,7 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::DoubleClick { extend_selection, shrink_selection }) => {
-				// Double-clicked on a point (flip smooth sharp behaviour)
+				// Double-clicked on a point (flip smooth/sharp behavior)
 				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD);
 				if nearest_point.is_some() {
 					// Flip the selected point between smooth and sharp
@@ -2104,13 +2102,15 @@ impl Fsm for PathToolFsmState {
 
 					return PathToolFsmState::Ready;
 				}
-				// Double clicked on a filled region
+				// Double-clicked on a filled region
 				else if let Some(layer) = document.click(input) {
 					let extend_selection = input.keyboard.get(extend_selection as usize);
 					let shrink_selection = input.keyboard.get(shrink_selection as usize);
+
 					if shape_editor.is_selected_layer(layer) {
 						if extend_selection && !tool_data.first_selected_with_single_click {
 							responses.add(NodeGraphMessage::SelectedNodesRemove { nodes: vec![layer.to_node()] });
+
 							if let Some(selection) = &tool_data.stored_selection {
 								let mut selection = selection.clone();
 								selection.remove(&layer);
@@ -2146,19 +2146,18 @@ impl Fsm for PathToolFsmState {
 							}
 						}
 
-						// If it was first click without any selection then single click behaviour and double click behaviour should not collide
+						// If it was the very first click without there being an existing selection,
+						// then the single-click behavior and double-click behavior should not collide
 						tool_data.first_selected_with_single_click = false;
-					} else {
-						if extend_selection {
-							responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
+					} else if extend_selection {
+						responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
 
-							if let Some(selection) = &tool_data.stored_selection {
-								shape_editor.selected_shape_state = selection.clone();
-								tool_data.stored_selection = None;
-							}
-						} else {
-							responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
+						if let Some(selection) = &tool_data.stored_selection {
+							shape_editor.selected_shape_state = selection.clone();
+							tool_data.stored_selection = None;
 						}
+					} else {
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 					}
 
 					responses.add(OverlaysMessage::Draw);

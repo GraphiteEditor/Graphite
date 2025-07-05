@@ -669,7 +669,7 @@ impl ShapeState {
 		state.clear_points();
 
 		if selected_stack.is_empty() {
-			// Fall back on just selecting all points/ segments in the layer
+			// Fall back on just selecting all points/segments in the layer
 			if points {
 				for &point in vector_data.point_domain.ids() {
 					state.select_point(ManipulatorPointId::Anchor(point));
@@ -682,6 +682,7 @@ impl ShapeState {
 			}
 			return;
 		}
+
 		let mut connected_points = HashSet::new();
 
 		while let Some(point) = selected_stack.pop() {
