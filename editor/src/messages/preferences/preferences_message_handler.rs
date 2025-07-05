@@ -1,6 +1,6 @@
 use crate::consts::VIEWPORT_ZOOM_WHEEL_RATE;
 use crate::messages::input_mapper::key_mapping::MappingVariant;
-use crate::messages::portfolio::document::node_graph::utility_types::GraphWireStyle;
+use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use graph_craft::wasm_application_io::EditorPreferences;
@@ -86,7 +86,8 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			}
 			PreferencesMessage::GraphWireStyle { style } => {
 				self.graph_wire_style = style;
-				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::UnloadWires);
+				responses.add(NodeGraphMessage::SendWires);
 			}
 			PreferencesMessage::ViewportZoomWheelRate { rate } => {
 				self.viewport_zoom_wheel_rate = rate;

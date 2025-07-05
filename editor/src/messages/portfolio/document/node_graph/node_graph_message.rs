@@ -33,6 +33,7 @@ pub enum NodeGraphMessage {
 		node_id: Option<NodeId>,
 		node_type: String,
 		xy: Option<(i32, i32)>,
+		add_transaction: bool,
 	},
 	CreateWire {
 		output_connector: OutputConnector,
@@ -123,6 +124,9 @@ pub enum NodeGraphMessage {
 	},
 	SendClickTargets,
 	EndSendClickTargets,
+	UnloadWires,
+	SendWires,
+	UpdateVisibleNodes,
 	SendGraph,
 	SetGridAlignedEdges,
 	SetInputValue {
