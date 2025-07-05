@@ -2195,8 +2195,10 @@ dependencies = [
  "glam",
  "graph-craft",
  "graphene-application-io",
+ "graphene-brush",
  "graphene-core",
  "graphene-path-bool",
+ "graphene-raster-nodes",
  "graphene-svg-renderer",
  "iai-callgrind",
  "js-sys",
@@ -2226,6 +2228,19 @@ dependencies = [
  "serde",
  "web-sys",
  "wgpu",
+]
+
+[[package]]
+name = "graphene-brush"
+version = "0.1.0"
+dependencies = [
+ "dyn-any",
+ "glam",
+ "graphene-core",
+ "graphene-raster-nodes",
+ "node-macro",
+ "serde",
+ "tokio",
 ]
 
 [[package]]
@@ -2306,6 +2321,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphene-raster-nodes"
+version = "0.1.0"
+dependencies = [
+ "bezier-rs",
+ "bytemuck",
+ "dyn-any",
+ "fastnoise-lite",
+ "futures",
+ "glam",
+ "graphene-core",
+ "image",
+ "ndarray",
+ "node-macro",
+ "rand 0.9.0",
+ "rand_chacha 0.9.0",
+ "serde",
+ "specta",
+ "tokio",
+]
+
+[[package]]
 name = "graphene-std"
 version = "0.1.0"
 dependencies = [
@@ -2317,9 +2353,11 @@ dependencies = [
  "glam",
  "graph-craft",
  "graphene-application-io",
+ "graphene-brush",
  "graphene-core",
  "graphene-math-nodes",
  "graphene-path-bool",
+ "graphene-raster-nodes",
  "graphene-svg-renderer",
  "image",
  "log",
