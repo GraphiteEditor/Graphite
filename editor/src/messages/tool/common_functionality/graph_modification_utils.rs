@@ -346,6 +346,10 @@ pub fn get_star_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Star")
 }
 
+pub fn get_spiral_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Spiral")
+}
+
 pub fn get_text_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Text")
 }

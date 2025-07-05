@@ -2,6 +2,7 @@ use super::misc::{ArcType, AsU64, GridType};
 use super::{PointId, SegmentId, StrokeId};
 use crate::Ctx;
 use crate::registry::types::{Angle, PixelSize};
+use crate::vector::misc::SpiralType;
 use crate::vector::{HandleId, VectorData, VectorDataTable};
 use bezier_rs::Subpath;
 use glam::DVec2;
@@ -71,6 +72,31 @@ fn arc(
 			ArcType::PieSlice => bezier_rs::ArcType::PieSlice,
 		},
 	)))
+}
+
+#[node_macro::node(category("Vector: Shape"), properties("spiral_properties"))]
+fn spiral(
+	_: impl Ctx,
+	_primary: (),
+	spiral_type: SpiralType,
+	#[default(0.5)] start_radius: f64,
+	#[default(0.)] inner_radius: f64,
+	#[default(0.2)] growth: f64,
+	#[default(1.)] tightness: f64,
+	#[default(6)] turns: f64,
+	#[default(45.)] angle_offset: f64,
+) -> VectorDataTable {
+	let (a, b) = match spiral_type {
+		SpiralType::Archimedean => (inner_radius, tightness),
+		SpiralType::Logarithmic => (start_radius, growth),
+	};
+
+	let spiral_type = match spiral_type {
+		SpiralType::Archimedean => bezier_rs::SpiralType::Archimedean,
+		SpiralType::Logarithmic => bezier_rs::SpiralType::Logarithmic,
+	};
+
+	VectorDataTable::new(VectorData::from_subpath(Subpath::new_spiral(a, b, turns, angle_offset.to_radians(), spiral_type)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
