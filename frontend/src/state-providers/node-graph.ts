@@ -7,9 +7,9 @@ import {
 	type FrontendClickTargets,
 	type ContextMenuInformation,
 	type FrontendNode,
-	type FrontendNodeWire as FrontendNodeWire,
 	type FrontendNodeType,
 	type WirePath,
+	ClearAllNodeGraphWires,
 	SendUIMetadata,
 	UpdateBox,
 	UpdateClickTargets,
@@ -19,7 +19,9 @@ import {
 	UpdateExportReorderIndex,
 	UpdateImportsExports,
 	UpdateLayerWidths,
-	UpdateNodeGraph,
+	UpdateNodeGraphNodes,
+	UpdateVisibleNodes,
+	UpdateNodeGraphWires,
 	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
@@ -40,8 +42,9 @@ export function createNodeGraphState(editor: Editor) {
 		addImport: undefined as { x: number; y: number } | undefined,
 		addExport: undefined as { x: number; y: number } | undefined,
 		nodes: new Map<bigint, FrontendNode>(),
-		wires: [] as FrontendNodeWire[],
-		wiresDirectNotGridAligned: false,
+		visibleNodes: new Set<bigint>(),
+		/// The index is the exposed input index. The exports have a first key value of u32::MAX.
+		wires: new Map<bigint, Map<number, WirePath>>(),
 		wirePathInProgress: undefined as WirePath | undefined,
 		nodeDescriptions: new Map<string, string>(),
 		nodeTypes: [] as FrontendNodeType[],
@@ -114,15 +117,42 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
-	// TODO: Add a way to only update the nodes that have changed
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraph, (updateNodeGraph) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphNodes, (updateNodeGraphNodes) => {
 		update((state) => {
 			state.nodes.clear();
-			updateNodeGraph.nodes.forEach((node) => {
+			updateNodeGraphNodes.nodes.forEach((node) => {
 				state.nodes.set(node.id, node);
 			});
-			state.wires = updateNodeGraph.wires;
-			state.wiresDirectNotGridAligned = updateNodeGraph.wiresDirectNotGridAligned;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateVisibleNodes, (updateVisibleNodes) => {
+		update((state) => {
+			state.visibleNodes = new Set<bigint>(updateVisibleNodes.nodes);
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphWires, (updateNodeWires) => {
+		update((state) => {
+			updateNodeWires.wires.forEach((wireUpdate) => {
+				let inputMap = state.wires.get(wireUpdate.id);
+				// If it doesn't exist, create it and set it in the outer map
+				if (!inputMap) {
+					inputMap = new Map();
+					state.wires.set(wireUpdate.id, inputMap);
+				}
+				if (wireUpdate.wirePathUpdate !== undefined) {
+					inputMap.set(wireUpdate.inputIndex, wireUpdate.wirePathUpdate);
+				} else {
+					inputMap.delete(wireUpdate.inputIndex);
+				}
+			});
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(ClearAllNodeGraphWires, (_) => {
+		update((state) => {
+			state.wires.clear();
 			return state;
 		});
 	});
