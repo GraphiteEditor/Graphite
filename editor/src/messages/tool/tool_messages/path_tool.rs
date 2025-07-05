@@ -560,6 +560,7 @@ impl PathToolData {
 
 	fn update_selection_status(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler) {
 		let selection_status = get_selection_status(&document.network_interface, shape_editor);
+		// debug!("{:?}", selection_status);
 
 		self.can_toggle_colinearity = match &selection_status {
 			SelectionStatus::None => false,
@@ -601,6 +602,8 @@ impl PathToolData {
 		self.last_click_time = input.time;
 
 		let old_selection = shape_editor.selected_points().cloned().collect::<Vec<_>>();
+
+		debug!("{old_selection:?}");
 
 		// Check if the point is already selected; if not, select the first point within the threshold (in pixels)
 		// Don't select the points which are not shown currently in PathOverlayMode
@@ -1382,6 +1385,9 @@ impl Fsm for PathToolFsmState {
 		update_dynamic_hints(self, responses, shape_editor, document, tool_data, tool_options);
 
 		let ToolMessage::Path(event) = event else { return self };
+		if !matches!(event, PathToolMessage::Overlays(_) | PathToolMessage::UpdateSelectedPointsStatus { .. }) {
+			// debug!("{event:?}");
+		}
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible

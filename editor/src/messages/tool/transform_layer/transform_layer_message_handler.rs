@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, TransformType, Typing};
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::pivot::Dot;
+use crate::messages::tool::common_functionality::pivot::{Dot, DotType};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
@@ -63,13 +63,31 @@ impl TransformLayerMessageHandler {
 	}
 }
 
-fn calculate_pivot(selected_points: &Vec<&ManipulatorPointId>, vector_data: &VectorData, viewspace: DAffine2, get_location: impl Fn(&ManipulatorPointId) -> Option<DVec2>) -> Option<(DVec2, DVec2)> {
+fn calculate_pivot(
+	selected_points: &Vec<&ManipulatorPointId>,
+	vector_data: &VectorData,
+	viewspace: DAffine2,
+	get_location: impl Fn(&ManipulatorPointId) -> Option<DVec2>,
+	dot: &Dot,
+) -> Option<(DVec2, DVec2)> {
+	let average_position = || {
+		let mut point_count = 0;
+		selected_points.iter().filter_map(|p| get_location(p)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64
+	};
+	let position = || {
+		if !dot.state.enabled {
+			return average_position();
+		}
+		match dot.state.dot {
+			DotType::Average => average_position(),
+			DotType::Active => selected_points.first().map(|p| get_location(p)).flatten().unwrap_or_else(average_position),
+			DotType::Pivot => average_position(),
+		}
+	};
 	let [point] = selected_points.as_slice() else {
 		// Handle the case where there are multiple points
-		let mut point_count = 0;
-		let average_position = selected_points.iter().filter_map(|p| get_location(p)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
-
-		return Some((average_position, average_position));
+		let position = position();
+		return Some((position, position));
 	};
 
 	match point {
@@ -81,9 +99,8 @@ fn calculate_pivot(selected_points: &Vec<&ManipulatorPointId>, vector_data: &Vec
 		}
 		_ => {
 			// Calculate the average position of all selected points
-			let mut point_count = 0;
-			let average_position = selected_points.iter().filter_map(|p| get_location(p)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
-			Some((average_position, average_position))
+			let position = position();
+			Some((position, position))
 		}
 	}
 }
@@ -205,7 +222,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				let affected_point_refs = affected_points.iter().collect();
 
 				let get_location = |point: &&ManipulatorPointId| point.get_position(&vector_data).map(|position| viewspace.transform_point2(position));
-				if let Some((new_pivot, grab_target)) = calculate_pivot(&affected_point_refs, &vector_data, viewspace, |point: &ManipulatorPointId| get_location(&point)) {
+				if let Some((new_pivot, grab_target)) = calculate_pivot(&affected_point_refs, &vector_data, viewspace, |point: &ManipulatorPointId| get_location(&point), &self.dot) {
 					*selected.pivot = new_pivot;
 
 					self.local_pivot = document_to_viewport.inverse().transform_point2(*selected.pivot);
