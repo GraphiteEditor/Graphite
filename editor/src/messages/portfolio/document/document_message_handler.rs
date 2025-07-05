@@ -1884,6 +1884,7 @@ impl DocumentMessageHandler {
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
 		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
+		responses.add(NodeGraphMessage::UnloadWires);
 		responses.add(NodeGraphMessage::SetGridAlignedEdges);
 		responses.add(Message::StartBuffer);
 		Some(previous_network)
@@ -1915,7 +1916,8 @@ impl DocumentMessageHandler {
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
-
+		responses.add(NodeGraphMessage::UnloadWires);
+		responses.add(NodeGraphMessage::SendWires);
 		Some(previous_network)
 	}
 
