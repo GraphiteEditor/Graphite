@@ -27,12 +27,9 @@
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
 	let graph: HTMLDivElement | undefined;
-	let nodesContainer: HTMLDivElement | undefined;
 
 	// Key value is node id + input/output index
 	// Imports/Export are stored at a key value of 0
-
-	let nodeElements: HTMLDivElement[] = [];
 
 	$: gridSpacing = calculateGridSpacing($nodeGraph.transform.scale);
 	$: dotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
@@ -315,7 +312,8 @@
 			</svg>
 		</div>
 	{/if}
-	<!-- Layer connection wires -->
+
+	<!-- Thick vertical layer connection wires -->
 	<div class="wires" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		<svg>
 			{#each $nodeGraph.wires.values() as map}
@@ -483,12 +481,7 @@
 	</div>
 
 	<!-- Layers and nodes -->
-	<div
-		class="layers-and-nodes"
-		style:transform-origin={`0 0`}
-		style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}
-		bind:this={nodesContainer}
-	>
+	<div class="layers-and-nodes" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		<!-- Layers -->
 		{#each Array.from($nodeGraph.nodes)
 			.filter(([nodeId, node]) => node.isLayer && $nodeGraph.visibleNodes.has(nodeId))
@@ -514,7 +507,6 @@
 				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
 				title={`${node.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
 				data-node={node.id}
-				bind:this={nodeElements[nodeIndex]}
 			>
 				{#if node.errors}
 					<span class="node-error faded" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
@@ -664,7 +656,6 @@
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				title={`${node.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
 				data-node={node.id}
-				bind:this={nodeElements[nodeIndex]}
 			>
 				{#if node.errors}
 					<span class="node-error faded" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>

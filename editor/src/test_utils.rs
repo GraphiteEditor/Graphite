@@ -174,7 +174,7 @@ impl EditorTestUtils {
 			.network_interface
 			.document_network()
 			.recursive_nodes()
-			.inspect(|(_id, node, _path)| println!("{:#?}", node.implementation))
+			.inspect(|(_, node, _)| println!("{:#?}", node.implementation))
 			.filter_map(move |(_, document, _)| T::new_with_source(document))
 	}
 

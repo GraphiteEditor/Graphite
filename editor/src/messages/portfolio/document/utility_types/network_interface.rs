@@ -815,7 +815,7 @@ impl NodeNetworkInterface {
 			import_export_ports
 				.input_ports
 				.iter()
-				.filter_map(|(export_index, click_target)| {
+				.map(|(export_index, click_target)| {
 					let export_type = self.input_type(&InputConnector::Export(*export_index), network_path);
 					let data_type = FrontendGraphDataType::displayed_type(&export_type.0, &TypeSource::TaggedValue);
 
@@ -839,7 +839,7 @@ impl NodeNetworkInterface {
 						format!("Export {}", *export_index + 1)
 					};
 
-					Some((
+					(
 						FrontendGraphInput {
 							data_type,
 							name: export_name,
@@ -849,7 +849,7 @@ impl NodeNetworkInterface {
 							connected_to,
 						},
 						click_target,
-					))
+					)
 				})
 				.filter_map(|(export_metadata, output_port)| output_port.bounding_box().map(|bounding_box| (export_metadata, bounding_box[0].x as i32, bounding_box[0].y as i32)))
 				.collect::<Vec<_>>()
@@ -1081,7 +1081,7 @@ impl NodeNetworkInterface {
 
 	/// Returns the input name to display in the properties panel. If the name is empty then the type is used.
 	pub fn displayed_input_name_and_description(&mut self, node_id: &NodeId, input_index: usize, network_path: &[NodeId]) -> (String, String) {
-		let Some(input_metadata) = self.persistent_input_metadata(&node_id, input_index, network_path) else {
+		let Some(input_metadata) = self.persistent_input_metadata(node_id, input_index, network_path) else {
 			log::warn!("input metadata not found in displayed_input_name_and_description");
 			return (String::new(), String::new());
 		};
@@ -2603,7 +2603,7 @@ impl NodeNetworkInterface {
 			.collect()
 	}
 
-	// Maps to the frontend representation of a wire start. Includes disconnected value wire inputs
+	/// Maps to the frontend representation of a wire start. Includes disconnected value wire inputs.
 	pub fn node_graph_wire_inputs(&self, network_path: &[NodeId]) -> Vec<(NodeId, usize)> {
 		self.node_graph_input_connectors(network_path)
 			.iter()
@@ -2635,6 +2635,7 @@ impl NodeNetworkInterface {
 			self.unload_wire(&input, network_path);
 		}
 	}
+
 	pub fn unload_wire(&mut self, input: &InputConnector, network_path: &[NodeId]) {
 		match input {
 			InputConnector::Node { node_id, input_index } => {
@@ -2661,7 +2662,8 @@ impl NodeNetworkInterface {
 			}
 		}
 	}
-	// When previewing, there may be a second path to the root node
+
+	/// When previewing, there may be a second path to the root node.
 	pub fn wire_to_root(&mut self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
 		let input = InputConnector::Export(0);
 		let current_export = self.upstream_output_connector(&input, network_path)?;
@@ -2705,7 +2707,7 @@ impl NodeNetworkInterface {
 		})
 	}
 
-	// Returns the vector subpath and a boolean of whether the wire should be thick
+	/// Returns the vector subpath and a boolean of whether the wire should be thick.
 	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(Subpath<PointId>, bool)> {
 		let Some(input_position) = self.get_input_center(input, network_path) else {
 			log::error!("Could not get dom rect for wire end: {:?}", input);
@@ -4023,7 +4025,7 @@ impl NodeNetworkInterface {
 		self.unload_stack_dependents(network_path);
 	}
 
-	// Replaces the implementation and corresponding metadata
+	/// Replaces the implementation and corresponding metadata.
 	pub fn replace_implementation(&mut self, node_id: &NodeId, network_path: &[NodeId], new_template: &mut NodeTemplate) {
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in set_implementation");
@@ -4043,7 +4045,7 @@ impl NodeNetworkInterface {
 		let _ = std::mem::replace(&mut metadata.persistent_metadata.network_metadata, new_metadata);
 	}
 
-	// Replaces the inputs and corresponding metadata
+	/// Replaces the inputs and corresponding metadata.
 	pub fn replace_inputs(&mut self, node_id: &NodeId, network_path: &[NodeId], new_template: &mut NodeTemplate) -> Option<Vec<NodeInput>> {
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in set_implementation");
@@ -4064,7 +4066,7 @@ impl NodeNetworkInterface {
 		Some(old_inputs)
 	}
 
-	// Used when opening an old document to add the persistent metadata for each input if it doesnt exist, which is where the name/description are saved.
+	/// Used when opening an old document to add the persistent metadata for each input if it doesnt exist, which is where the name/description are saved.
 	pub fn validate_input_metadata(&mut self, node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId]) {
 		let number_of_inputs = node.inputs.len();
 		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else { return };
@@ -4078,7 +4080,7 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	// Used to ensure the display name is the reference name in case it is empty
+	/// Used to ensure the display name is the reference name in case it is empty.
 	pub fn validate_display_name_metadata(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
 		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else { return };
 		if metadata.persistent_metadata.display_name.is_empty() {
@@ -4427,7 +4429,7 @@ impl NodeNetworkInterface {
 		self.unload_outward_wires(network_path);
 	}
 
-	/// Used to insert a node template with no node/network inputs into the network and returns the a NodeTemplate with information from the previous node, if it existed
+	/// Used to insert a node template with no node/network inputs into the network and returns the a NodeTemplate with information from the previous node, if it existed.
 	pub fn insert_node(&mut self, node_id: NodeId, node_template: NodeTemplate, network_path: &[NodeId]) -> Option<NodeTemplate> {
 		let has_node_or_network_input = node_template
 			.document_node
@@ -5993,8 +5995,8 @@ impl Iterator for FlowIter<'_> {
 	}
 }
 
-/// Represents the source of a resolved type (for debugging)
-/// TODO: Refactor to be Unknown, Compiled(Type) for NodeInput::Node, or Value(Type) for NodeInput::Value
+// TODO: Refactor to be Unknown, Compiled(Type) for NodeInput::Node, or Value(Type) for NodeInput::Value
+/// Represents the source of a resolved type (for debugging).
 /// There will be two valid types list. One for the current valid types that will not cause a node graph error,
 /// based on the other inputs to that node and returned during compilation. THe other list will be all potential
 /// Valid types, based on the protonode implementation/downstream users.

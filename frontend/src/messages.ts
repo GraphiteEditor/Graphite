@@ -12,7 +12,6 @@ export class JsMessage {
 }
 
 const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
-
 const ImportsToVec2Array = Transform(({ obj: { imports } }: { obj: { imports: [FrontendGraphOutput, number, number][] } }) =>
 	imports.map(([outputMetadata, x, y]) => ({ outputMetadata, position: { x, y } })),
 );
@@ -328,7 +327,6 @@ export class WireUpdate {
 	readonly id!: bigint;
 	readonly inputIndex!: number;
 	readonly wirePathUpdate!: WirePath | undefined;
-	// readonly wireSNIUpdate!: number | undefined;
 }
 
 export class IndexedDbDocumentDetails extends DocumentDetails {

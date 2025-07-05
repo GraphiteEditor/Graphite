@@ -44,9 +44,7 @@ impl NodePropertiesContext<'_> {
 				return None;
 			};
 			widget_override_lambda(*node_id, index, self)
-				.map_err(|error| {
-					log::error!("Error in widget override lambda: {}", error);
-				})
+				.map_err(|error| log::error!("Error in widget override lambda: {}", error))
 				.ok()
 		} else {
 			None

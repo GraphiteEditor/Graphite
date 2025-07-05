@@ -1,8 +1,8 @@
+use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use bezier_rs::{ManipulatorGroup, Subpath};
 use glam::{DVec2, IVec2};
-use graphene_std::{uuid::NodeId, vector::PointId};
-
-use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
+use graphene_std::uuid::NodeId;
+use graphene_std::vector::PointId;
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct WirePath {
@@ -61,14 +61,14 @@ pub fn build_vector_wire(output_position: DVec2, input_position: DVec2, vertical
 			let vertical_gap = (output_position.y - input_position.y).abs();
 
 			let curve_length = grid_spacing;
-			let curve_falloff_rate = curve_length * std::f64::consts::PI * 2.;
+			let curve_falloff_rate = curve_length * std::f64::consts::TAU;
 
 			let horizontal_curve_amount = -(2_f64.powf((-10. * horizontal_gap) / curve_falloff_rate)) + 1.;
 			let vertical_curve_amount = -(2_f64.powf((-10. * vertical_gap) / curve_falloff_rate)) + 1.;
 			let horizontal_curve = horizontal_curve_amount * curve_length;
 			let vertical_curve = vertical_curve_amount * curve_length;
 
-			let locations = vec![
+			let locations = [
 				output_position,
 				DVec2::new(
 					if vertical_out { output_position.x } else { output_position.x + horizontal_curve },
@@ -224,12 +224,12 @@ fn straight_wire_paths(output_position: DVec2, input_position: DVec2, vertical_o
 			};
 
 			// `outConnector` point lying on vertical grid lines 3 and 2 units to the left of `inConnector` point
-			if -3 * grid_spacing <= out_x - in_x && out_x - in_x <= -1 * grid_spacing {
-				if -2 * grid_spacing <= out_y - in_y && out_y - in_y <= -1 * grid_spacing {
+			if -3 * grid_spacing <= out_x - in_x && out_x - in_x <= -grid_spacing {
+				if -2 * grid_spacing <= out_y - in_y && out_y - in_y <= -grid_spacing {
 					return vec![IVec2::new(x1, y1), IVec2::new(x1, y2), IVec2::new(x2, y2), IVec2::new(x2, y3), IVec2::new(x4, y3)];
 				};
 
-				if -1 * grid_spacing <= out_y - in_y && out_y - in_y <= 0 * grid_spacing {
+				if -grid_spacing <= out_y - in_y && out_y - in_y <= 0 {
 					return vec![IVec2::new(x1, y1), IVec2::new(x1, y4), IVec2::new(x6, y4), IVec2::new(x6, y3), IVec2::new(x4, y3)];
 				};
 
@@ -245,14 +245,14 @@ fn straight_wire_paths(output_position: DVec2, input_position: DVec2, vertical_o
 			}
 
 			// `outConnector` point lying on vertical grid line 1 units to the left of `inConnector` point
-			if -1 * grid_spacing < out_x - in_x && out_x - in_x <= 0 * grid_spacing {
+			if -grid_spacing < out_x - in_x && out_x - in_x <= 0 {
 				// `outConnector` point lying on horizontal grid line 1 unit above `inConnector` point
-				if -2 * grid_spacing <= out_y - in_y && out_y - in_y <= -1 * grid_spacing {
+				if -2 * grid_spacing <= out_y - in_y && out_y - in_y <= -grid_spacing {
 					return vec![IVec2::new(x1, y6), IVec2::new(x2, y6), IVec2::new(x8, y3)];
 				};
 
 				// `outConnector` point lying on the same horizontal grid line as `inConnector` point
-				if -1 * grid_spacing <= out_y - in_y && out_y - in_y <= 0 * grid_spacing {
+				if -grid_spacing <= out_y - in_y && out_y - in_y <= 0 {
 					return vec![IVec2::new(x1, y7), IVec2::new(x4, y3)];
 				};
 
@@ -272,9 +272,9 @@ fn straight_wire_paths(output_position: DVec2, input_position: DVec2, vertical_o
 
 		// `outConnector` point lies below `inConnector` point
 		// `outConnector` point lying on vertical grid line 1 unit to the left of `inConnector` point
-		if -1 * grid_spacing <= out_x - in_x && out_x - in_x <= 0 * grid_spacing {
+		if -grid_spacing <= out_x - in_x && out_x - in_x <= 0 {
 			// `outConnector` point lying on the horizontal grid lines 1 and 2 units below the `inConnector` point
-			if 0 * grid_spacing <= out_y - in_y && out_y - in_y <= 2 * grid_spacing {
+			if 0 <= out_y - in_y && out_y - in_y <= 2 * grid_spacing {
 				return vec![IVec2::new(x1, y6), IVec2::new(x11, y6), IVec2::new(x11, y3), IVec2::new(x4, y3)];
 			};
 
@@ -289,12 +289,12 @@ fn straight_wire_paths(output_position: DVec2, input_position: DVec2, vertical_o
 		// `outConnector` point lying on any horizontal grid line above `inConnector` point
 		if out_y < in_y {
 			// `outConnector` point lying on horizontal grid line 1 unit above `inConnector` point
-			if -2 * grid_spacing < out_y - in_y && out_y - in_y <= -1 * grid_spacing {
+			if -2 * grid_spacing < out_y - in_y && out_y - in_y <= -grid_spacing {
 				return wire1;
 			};
 
 			// `outConnector` point lying on the same horizontal grid line as `inConnector` point
-			if -1 * grid_spacing < out_y - in_y && out_y - in_y <= 0 * grid_spacing {
+			if -grid_spacing < out_y - in_y && out_y - in_y <= 0 {
 				return vec![IVec2::new(x1, y1), IVec2::new(x1, y8), IVec2::new(x5, y8), IVec2::new(x5, y3), IVec2::new(x4, y3)];
 			};
 
@@ -383,7 +383,7 @@ fn straight_wire_paths(output_position: DVec2, input_position: DVec2, vertical_o
 		// `out_y` lies on or above the `in_y` point
 		if -6 * grid_spacing < in_x - out_x && in_x - out_x < 4 * grid_spacing {
 			// edge case: `outConnector` point lying on vertical grid lines ranging from 4 units to left to 5 units to right of `inConnector` point
-			if -1 * grid_spacing < in_x - out_x && in_x - out_x < 4 * grid_spacing {
+			if -grid_spacing < in_x - out_x && in_x - out_x < 4 * grid_spacing {
 				return vec![
 					IVec2::new(x1, y1),
 					IVec2::new(x2, y1),
@@ -411,12 +411,12 @@ fn straight_wire_paths(output_position: DVec2, input_position: DVec2, vertical_o
 
 	// Both horizontal - use horizontal middle point
 	// When `inConnector` point is one of the two closest diagonally opposite points
-	if 0 <= in_x - out_x && in_x - out_x <= grid_spacing && in_y - out_y >= -1 * grid_spacing && in_y - out_y <= grid_spacing {
+	if 0 <= in_x - out_x && in_x - out_x <= grid_spacing && in_y - out_y >= -grid_spacing && in_y - out_y <= grid_spacing {
 		return vec![IVec2::new(x19, y1), IVec2::new(x19, y3), IVec2::new(x4, y3)];
 	}
 
 	// When `inConnector` point lies on the horizontal line 1 unit above and below the `outConnector` point
-	if -1 * grid_spacing <= out_y - in_y && out_y - in_y <= grid_spacing && out_x > in_x {
+	if -grid_spacing <= out_y - in_y && out_y - in_y <= grid_spacing && out_x > in_x {
 		// Horizontal line above `out_y`
 		if in_y < out_y {
 			return vec![IVec2::new(x1, y1), IVec2::new(x2, y1), IVec2::new(x2, y13), IVec2::new(x3, y13), IVec2::new(x3, y3), IVec2::new(x4, y3)];
@@ -443,13 +443,13 @@ fn straight_wire_paths(output_position: DVec2, input_position: DVec2, vertical_o
 		return vec![IVec2::new(x1, y1), IVec2::new(x18, y1), IVec2::new(x18, y3), IVec2::new(x4, y3)];
 	};
 
-	return vec![IVec2::new(x1, y1), IVec2::new(x20, y1), IVec2::new(x20, y3), IVec2::new(x4, y3)];
+	vec![IVec2::new(x1, y1), IVec2::new(x20, y1), IVec2::new(x20, y3), IVec2::new(x4, y3)]
 }
 
 fn straight_wire_subpath(locations: Vec<IVec2>) -> Subpath<PointId> {
-	if locations.len() == 0 {
+	if locations.is_empty() {
 		return Subpath::new(Vec::new(), false);
-	};
+	}
 
 	if locations.len() == 2 {
 		return Subpath::new(
@@ -469,7 +469,7 @@ fn straight_wire_subpath(locations: Vec<IVec2>) -> Subpath<PointId> {
 			],
 			false,
 		);
-	};
+	}
 
 	let corner_radius = 10;
 
@@ -487,42 +487,79 @@ fn straight_wire_subpath(locations: Vec<IVec2>) -> Subpath<PointId> {
 		let next = locations[i + 1];
 
 		let corner_start = IVec2::new(
-			curr.x + if curr.x == prev.x { 0 } else { if prev.x > curr.x { corner_radius } else { -corner_radius } },
-			curr.y + if curr.y == prev.y { 0 } else { if prev.y > curr.y { corner_radius } else { -corner_radius } },
+			curr.x
+				+ if curr.x == prev.x {
+					0
+				} else if prev.x > curr.x {
+					corner_radius
+				} else {
+					-corner_radius
+				},
+			curr.y
+				+ if curr.y == prev.y {
+					0
+				} else if prev.y > curr.y {
+					corner_radius
+				} else {
+					-corner_radius
+				},
 		);
 
 		let corner_start_mid = IVec2::new(
 			curr.x
 				+ if curr.x == prev.x {
 					0
+				} else if prev.x > curr.x {
+					corner_radius / 2
 				} else {
-					if prev.x > curr.x { corner_radius / 2 } else { -corner_radius / 2 }
+					-corner_radius / 2
 				},
 			curr.y
 				+ if curr.y == prev.y {
 					0
 				} else {
-					if prev.y > curr.y { corner_radius / 2 } else { -corner_radius / 2 }
+					match prev.y > curr.y {
+						true => corner_radius / 2,
+						false => -corner_radius / 2,
+					}
 				},
 		);
 
 		let corner_end = IVec2::new(
-			curr.x + if curr.x == next.x { 0 } else { if next.x > curr.x { corner_radius } else { -corner_radius } },
-			curr.y + if curr.y == next.y { 0 } else { if next.y > curr.y { corner_radius } else { -corner_radius } },
+			curr.x
+				+ if curr.x == next.x {
+					0
+				} else if next.x > curr.x {
+					corner_radius
+				} else {
+					-corner_radius
+				},
+			curr.y
+				+ if curr.y == next.y {
+					0
+				} else if next.y > curr.y {
+					corner_radius
+				} else {
+					-corner_radius
+				},
 		);
 
 		let corner_end_mid = IVec2::new(
 			curr.x
 				+ if curr.x == next.x {
 					0
+				} else if next.x > curr.x {
+					corner_radius / 2
 				} else {
-					if next.x > curr.x { corner_radius / 2 } else { -corner_radius / 2 }
+					-corner_radius / 2
 				},
 			curr.y
 				+ if curr.y == next.y {
 					0
+				} else if next.y > curr.y {
+					10 / 2
 				} else {
-					if next.y > curr.y { corner_radius / 2 } else { -corner_radius / 2 }
+					-corner_radius / 2
 				},
 		);
 
@@ -543,7 +580,7 @@ fn straight_wire_subpath(locations: Vec<IVec2>) -> Subpath<PointId> {
 	}
 
 	path.push(ManipulatorGroup {
-		anchor: locations.last().unwrap().clone().into(),
+		anchor: (*locations.last().unwrap()).into(),
 		in_handle: None,
 		out_handle: None,
 		id: PointId::generate(),

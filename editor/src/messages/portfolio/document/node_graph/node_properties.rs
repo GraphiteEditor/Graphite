@@ -371,11 +371,13 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 	let mut resolution_widgets = vec![TextLabel::new("").widget_holder()];
 	add_blank_assist(&mut resolution_widgets);
 	resolution_widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
 	let Some(document_node) = document_node else { return LayoutGroup::default() };
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return Vec::new().into();
 	};
+
 	if let Some(&TaggedValue::Footprint(footprint)) = input.as_non_exposed_value() {
 		let top_left = footprint.transform.transform_point2(DVec2::ZERO);
 		let bounds = footprint.scale();

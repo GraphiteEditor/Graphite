@@ -610,6 +610,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 			document.network_interface.replace_reference_name(node_id, network_path, "Sample Polyline".to_string());
 		}
+
 		// Make the "Quantity" parameter a u32 instead of f64
 		if reference == "Sample Polyline" {
 			let node_definition = resolve_document_node_type("Sample Polyline").unwrap();
@@ -647,7 +648,6 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 					document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
 				} else {
 					// Swap it back if we're not changing anything
-
 					let _ = document.network_interface.replace_inputs(node_id, network_path, &mut current_node_template);
 				}
 			}
