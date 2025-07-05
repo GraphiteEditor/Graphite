@@ -164,9 +164,23 @@ meta_description = "Open source free software. A vector graphics creativity suit
 
 ---
 
-<!-- As a new entrant to the open source digital content creation landscape, Graphite has a unique formula for success: -->
+<div class="diptych sizzle-video">
+<div class="block text">
 
-Starting life as a vector editor, Graphite is evolving into a generalized, all-in-one graphics toolbox that's built more like a game engine than a conventional creative app. The editor's tools wrap its node graph core, providing user-friendly workflows for vector, raster, and beyond.
+Starting life as a vector editor, Graphite is evolving into a generalized, all-in-one graphics toolbox that's built more like a game engine than a conventional creative app. The editor's tools wrap its node graph core, providing user-friendly workflows for vector, raster, animation, and beyond.
+
+<a href="https://editor.graphite.rs" class="button arrow">Start creating</a>
+
+</div>
+<div class="block video">
+
+<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play preload="none" poster="https://static.graphite.rs/content/index/sizzle-compilation-poster.avif">
+	<source src="https://static.graphite.rs/content/index/sizzle-compilation.webm" type="video/webm" />
+	<source src="https://static.graphite.rs/content/index/sizzle-compilation.mp4" type="video/mp4" />
+</video>
+
+</div>
+</div>
 
 </div>
 <div class="block workflows">
@@ -276,7 +290,23 @@ Once it's ready to shine, Graphite's code architecture is structured to deliver 
 </div>
 </section>
 <!-- ▙ OVERVIEW ▟ -->
-<!--                  -->
+<!--              -->
+<!-- ▛ DONATE ▜ -->
+<section id="donate" class="block">
+
+<div class="block">
+
+<h2 class="heart">Support the mission</h2>
+
+Free software doesn't grow on trees! Chip in your share of the (very real) development costs so you're not leaving others to pick up the tab. Becoming a member (or giving a one-time donation) lets you help maintain Graphite's sustainability and independence.
+
+<a href="/donate" class="button arrow">Become a member</a>
+
+</div>
+
+</section>
+<!-- ▙ DONATE ▟ -->
+<!--                 -->
 <!-- ▛ PROCEDURALISM ▜ -->
 <section id="proceduralism" class="feature-box-outer">
 <div class="feature-box-inner">
@@ -363,23 +393,7 @@ Graphite's representation of artwork as a node graph lets you customize, compose
 </div>
 </section>
 <!-- ▙ PROCEDURALISM ▟ -->
-<!--                 -->
-<!-- ▛ DONATE ▜ -->
-<section id="donate" class="block">
-
-<div class="block">
-
-## Support the mission
-
-Free software doesn't grow on trees! Chip in your share of the (very real) development costs so you're not leaving others to pick up the tab. Becoming a member (or giving a one-time donation) lets you help maintain Graphite's sustainability and independence.
-
-<a href="/donate" class="button arrow">Become a member</a>
-
-</div>
-
-</section>
-<!-- ▙ DONATE ▟ -->
-<!--                -->
+<!--                   -->
 <!-- ▛ NEWSLETTER ▜ -->
 <section id="newsletter" class="feature-box-narrow">
 <div id="newsletter-success"><!-- Used only as a URL hash fragment anchor --></div>

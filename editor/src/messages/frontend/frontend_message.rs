@@ -1,9 +1,10 @@
 use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
-	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, FrontendNodeWire, Transform, WirePath,
+	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, Transform,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
+use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 use graph_craft::document::NodeId;
@@ -250,12 +251,16 @@ pub enum FrontendMessage {
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,
 	},
-	UpdateNodeGraph {
+	UpdateNodeGraphNodes {
 		nodes: Vec<FrontendNode>,
-		wires: Vec<FrontendNodeWire>,
-		#[serde(rename = "wiresDirectNotGridAligned")]
-		wires_direct_not_grid_aligned: bool,
 	},
+	UpdateVisibleNodes {
+		nodes: Vec<NodeId>,
+	},
+	UpdateNodeGraphWires {
+		wires: Vec<WirePathUpdate>,
+	},
+	ClearAllNodeGraphWires,
 	UpdateNodeGraphControlBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,

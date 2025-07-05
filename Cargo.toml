@@ -5,12 +5,14 @@ members = [
 	"frontend/wasm",
 	"frontend/src-tauri",
 	"node-graph/gapplication-io",
+	"node-graph/gbrush",
 	"node-graph/gcore",
 	"node-graph/gstd",
 	"node-graph/gmath-nodes",
 	"node-graph/gpath-bool",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
+	"node-graph/graster-nodes",
 	"node-graph/gsvg-renderer",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
@@ -24,12 +26,14 @@ members = [
 default-members = [
 	"editor",
 	"frontend/wasm",
+	"node-graph/gbrush",
 	"node-graph/gcore",
 	"node-graph/gstd",
 	"node-graph/gmath-nodes",
 	"node-graph/gpath-bool",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
+	"node-graph/graster-nodes",
 	"node-graph/gsvg-renderer",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
@@ -44,10 +48,12 @@ preprocessor = { path = "node-graph/preprocessor"}
 math-parser = { path = "libraries/math-parser" }
 path-bool = { path = "libraries/path-bool" }
 graphene-application-io = { path = "node-graph/gapplication-io" }
+graphene-brush = { path = "node-graph/gbrush" }
 graphene-core = { path = "node-graph/gcore" }
 graphene-math-nodes = { path = "node-graph/gmath-nodes" }
 graphene-path-bool = { path = "node-graph/gpath-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
+graphene-raster-nodes = { path = "node-graph/graster-nodes" }
 graphene-std = { path = "node-graph/gstd" }
 graphene-svg-renderer = { path = "node-graph/gsvg-renderer" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
@@ -116,7 +122,8 @@ rand_chacha = "0.9"
 glam = { version = "0.29", default-features = false, features = ["serde", "scalar-math", "debug-glam-assert"] }
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp"] }
-rustybuzz = "0.20"
+parley = "0.5.0"
+skrifa = "0.32.0"
 pretty_assertions = "1.4.1"
 fern = { version = "0.7", features = ["colored"] }
 num_enum = "0.7"
@@ -143,9 +150,10 @@ petgraph = { version = "0.7.1", default-features = false, features = [
 	"graphmap",
 ] }
 half = { version = "2.4.1", default-features = false, features = ["bytemuck", "serde"] }
-tinyvec = { version = "1" }
+tinyvec = { version = "1", features = ["std"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 iai-callgrind = { version = "0.12.3" }
+ndarray = "0.16.1"
 
 [profile.dev]
 opt-level = 1

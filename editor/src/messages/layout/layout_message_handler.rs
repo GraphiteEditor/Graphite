@@ -342,7 +342,7 @@ impl LayoutMessageHandler {
 	}
 }
 
-impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage, F> for LayoutMessageHandler {
+impl<F: Fn(&MessageDiscriminant) -> Option<KeysGroup>> MessageHandler<LayoutMessage, F> for LayoutMessageHandler {
 	fn process_message(&mut self, message: LayoutMessage, responses: &mut std::collections::VecDeque<Message>, action_input_mapping: F) {
 		match message {
 			LayoutMessage::ResendActiveWidget { layout_target, widget_id } => {
@@ -385,7 +385,7 @@ impl LayoutMessageHandler {
 		layout_target: LayoutTarget,
 		new_layout: Layout,
 		responses: &mut VecDeque<Message>,
-		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>,
+		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>,
 	) {
 		match new_layout {
 			Layout::WidgetLayout(_) => {
@@ -419,7 +419,7 @@ impl LayoutMessageHandler {
 	}
 
 	/// Send a diff to the frontend based on the layout target.
-	fn send_diff(&self, mut diff: Vec<WidgetDiff>, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
+	fn send_diff(&self, mut diff: Vec<WidgetDiff>, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
 		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping));
 
 		let message = match layout_target {
