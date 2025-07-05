@@ -39,7 +39,17 @@ fn text<'i: 'n>(
 
 	let font_data = editor.font_cache.get(&font_name).map(|f| load_font(f));
 
-	let result = VectorData::from_subpaths(to_path(&text, font_data, typesetting), false);
+	let glyph_vectors = to_path(&text, font_data, typesetting);
 
-	VectorDataTable::new(result)
+	let mut glyph_table = if glyph_vectors.is_empty() {
+		VectorDataTable::new(VectorData::default())
+	} else {
+		VectorDataTable::default()
+	};
+
+	for glyph in glyph_vectors {
+		glyph_table.push(glyph);
+	}
+
+	glyph_table
 }
