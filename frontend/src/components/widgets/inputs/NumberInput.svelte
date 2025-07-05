@@ -127,9 +127,10 @@
 
 		// The simple `clamp()` function can't be used here since `undefined` values need to be boundless
 		let sanitized = value;
-		if (typeof min === "number") sanitized = Math.max(sanitized, min);
-		if (typeof max === "number") sanitized = Math.min(sanitized, max);
-
+		if (mode == "Increment") {
+			if (typeof min === "number") sanitized = Math.max(sanitized, min);
+			if (typeof max === "number") sanitized = Math.min(sanitized, max);
+		}
 		text = displayText(sanitized, unit);
 	}
 
@@ -141,8 +142,10 @@
 		let newValueValidated = newValue !== undefined ? newValue : oldValue;
 
 		if (newValueValidated !== undefined) {
-			if (typeof min === "number" && !Number.isNaN(min)) newValueValidated = Math.max(newValueValidated, min);
-			if (typeof max === "number" && !Number.isNaN(max)) newValueValidated = Math.min(newValueValidated, max);
+			if (mode == "Increment") {
+				if (typeof min === "number" && !Number.isNaN(min)) newValueValidated = Math.max(newValueValidated, min);
+				if (typeof max === "number" && !Number.isNaN(max)) newValueValidated = Math.min(newValueValidated, max);
+			}
 
 			if (isInteger) newValueValidated = Math.round(newValueValidated);
 
