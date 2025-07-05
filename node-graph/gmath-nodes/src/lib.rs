@@ -612,6 +612,30 @@ fn dot_product(_: impl Ctx, vector_a: DVec2, vector_b: DVec2) -> f64 {
 	vector_a.dot(vector_b)
 }
 
+/// Constructs a color from RGBA components. Clamped to 0 -> 1.
+#[node_macro::node(category("Color"))]
+fn construct_color_rgba(_: impl Ctx, _primary: (), red: f32, green: f32, blue: f32, alpha: f32) -> Color {
+	Color::from_rgbaf32_unchecked(red.clamp(0., 1.), green.clamp(0., 1.), blue.clamp(0., 1.), alpha.clamp(0., 1.))
+}
+
+/// Constructs a color from HSLA components. Clamped to 0 -> 1.
+#[node_macro::node(category("Color"))]
+fn construct_color_hsla(_: impl Ctx, _primary: (), hue: f32, saturation: f32, lightness: f32, alpha: f32) -> Color {
+	Color::from_hsla(hue.clamp(0.0, 1.0), saturation.clamp(0., 1.), lightness.clamp(0., 1.), alpha.clamp(0., 1.))
+}
+
+/// Constructs a color from a single grayscale value. Clamped to 0 -> 1.
+#[node_macro::node(category("Color"))]
+fn construct_color_grayscale(_: impl Ctx, _primary: (), luminance: f32) -> Color {
+	Color::from_luminance(luminance.clamp(0., 1.))
+}
+
+/// Constructs a color from CMYKA components. Clamped to 0 -> 1.
+#[node_macro::node(category("Color"))]
+fn construct_color_cmyka(_: impl Ctx, _primary: (), cyan: f32, magenta: f32, yellow: f32, key: f32, alpha: f32) -> Color {
+	Color::from_cmyka(cyan.clamp(0., 1.), magenta.clamp(0., 1.), yellow.clamp(0., 1.), key.clamp(0., 1.), alpha.clamp(0., 1.))
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;
