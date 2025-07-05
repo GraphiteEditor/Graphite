@@ -3,7 +3,7 @@ use glam::{DAffine2, DVec2};
 use graphene_core::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 use graphene_core::gradient::{Gradient, GradientType};
 use graphene_core::uuid::generate_uuid;
-use graphene_core::vector::style::{Fill, PaintOrder, PathStyle, Stroke, StrokeAlign, StrokeCap, StrokeJoin, ViewMode};
+use graphene_core::vector::style::{Fill, PaintOrder, PathStyle, ShapeRenderingModes, Stroke, StrokeAlign, StrokeCap, StrokeJoin, ViewMode};
 use std::fmt::Write;
 
 pub trait RenderExt {
@@ -200,6 +200,26 @@ impl RenderExt for Stroke {
 	}
 }
 
+impl RenderExt for ShapeRenderingModes {
+	type Output = String;
+
+	/// Provide the SVG attributes for the stroke.
+	fn render(
+		&self,
+		_svg_defs: &mut String,
+		_element_transform: DAffine2,
+		_stroke_transform: DAffine2,
+		_bounds: [DVec2; 2],
+		_transformed_bounds: [DVec2; 2],
+		_aligned_strokes: bool,
+		_override_paint_order: bool,
+		_render_params: &RenderParams,
+	) -> Self::Output {
+		let svg_name = self.svg_name();
+		format!(" shape-rendering=\"{svg_name}\"")
+	}
+}
+
 impl RenderExt for PathStyle {
 	type Output = String;
 
@@ -271,7 +291,19 @@ impl RenderExt for PathStyle {
 						)
 					})
 					.unwrap_or_default();
-				format!("{fill_attribute}{stroke_attribute}")
+
+				let shape_rendering_attribute = self.shape_rendering.render(
+					svg_defs,
+					element_transform,
+					stroke_transform,
+					bounds,
+					transformed_bounds,
+					aligned_strokes,
+					override_paint_order,
+					render_params,
+				);
+
+				format!("{fill_attribute}{stroke_attribute}{shape_rendering_attribute}")
 			}
 		}
 	}
