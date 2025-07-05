@@ -97,7 +97,7 @@ macro_rules! tagged_value {
 				}
 			}
 			/// Attempts to downcast the dynamic type to a tagged value
-			pub fn try_from_std_any_ref(input: &(dyn std::any::Any)) -> Result<Self, String> {
+			pub fn try_from_std_any_ref(input: &dyn std::any::Any) -> Result<Self, String> {
 				use std::any::TypeId;
 
 				match input.type_id() {

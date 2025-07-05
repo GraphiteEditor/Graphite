@@ -10,6 +10,7 @@ use graphene_core::instances::Instance;
 use graphene_core::math::quad::Quad;
 use graphene_core::raster::Image;
 use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
+use graphene_core::render_complexity::RenderComplexity;
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::uuid::{NodeId, generate_uuid};
 use graphene_core::vector::VectorDataTable;
@@ -203,7 +204,7 @@ pub struct RenderMetadata {
 }
 
 // TODO: Rename to "Graphical"
-pub trait GraphicElementRendered: BoundingBox {
+pub trait GraphicElementRendered: BoundingBox + RenderComplexity {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 
 	#[cfg(feature = "vello")]
@@ -1149,7 +1150,7 @@ impl GraphicElementRendered for GraphicElement {
 }
 
 /// Used to stop rust complaining about upstream traits adding display implementations to `Option<Color>`. This would not be an issue as we control that crate.
-trait Primitive: std::fmt::Display + BoundingBox {}
+trait Primitive: std::fmt::Display + BoundingBox + RenderComplexity {}
 impl Primitive for String {}
 impl Primitive for bool {}
 impl Primitive for f32 {}

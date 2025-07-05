@@ -328,6 +328,19 @@ impl NodeRuntime {
 			return;
 		}
 
+		// Skip thumbnails if the layer is too complex (for performance)
+		if graphic_element.render_complexity() > 1000 {
+			let old = thumbnail_renders.insert(parent_network_node_id, Vec::new());
+
+			if old.is_none_or(|v| !v.is_empty()) {
+				responses.push_back(FrontendMessage::UpdateNodeThumbnail {
+					id: parent_network_node_id,
+					value: "<svg viewBox=\"0 -10 10 10\"><title>Layer too complex for thumbnail</title><text>\u{2102}</text></svg>".to_string(),
+				});
+			}
+			return;
+		}
+
 		let bounds = graphic_element.bounding_box(DAffine2::IDENTITY, true);
 
 		// Render the thumbnail from a `GraphicElement` into an SVG string
