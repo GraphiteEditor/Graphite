@@ -1138,6 +1138,97 @@ where
 	output_table
 }
 
+/// Simplifies a polyline using the Ramer–Douglas–Peucker algorithm.
+#[node_macro::node(category("Vector: Modifier"), name("Decimate"), path(graphene_core::vector))]
+async fn decimate(
+	_: impl Ctx,
+	vector_data: VectorDataTable,
+	#[default(1.0)]
+	#[hard_min(0.0)]
+	tolerance: f64,
+) -> VectorDataTable {
+	let mut result_table = VectorDataTable::default();
+
+	for vector_data_instance in vector_data.instance_iter() {
+		let mut result = VectorData {
+			style: vector_data_instance.instance.style.clone(),
+			..Default::default()
+		};
+
+		for subpath in vector_data_instance.instance.stroke_bezier_paths() {
+			let points: Vec<DVec2> = subpath.manipulator_groups().iter().map(|g| g.anchor).collect();
+			let closed = subpath.closed();
+
+			let simplified = if points.len() > 2 { douglas_peucker(&points, tolerance, closed) } else { points };
+
+			// Rebuild the subpath from the simplified points
+			let mut new_groups = Vec::new();
+			let mut id_gen = PointId::generate();
+			for pt in simplified {
+				new_groups.push(bezier_rs::ManipulatorGroup {
+					anchor: pt,
+					in_handle: None,
+					out_handle: None,
+					id: id_gen,
+				});
+				id_gen = id_gen.next_id();
+			}
+			let new_subpath = Subpath::new(new_groups, closed);
+			result.append_subpath(new_subpath, closed);
+		}
+
+		result_table.push(Instance {
+			instance: result,
+			transform: vector_data_instance.transform,
+			alpha_blending: vector_data_instance.alpha_blending,
+			source_node_id: vector_data_instance.source_node_id,
+		});
+	}
+
+	result_table
+}
+
+fn douglas_peucker(points: &[DVec2], epsilon: f64, closed: bool) -> Vec<DVec2> {
+	if points.len() < 2 {
+		return points.to_vec();
+	}
+
+	let (_first, _lastt) = (0, points.len() - 1);
+
+	// For closed paths, treat as open for simplification, then close at the end
+	let (_first, _last, _is_closed) = if closed && points.len() > 2 { (0, points.len() - 1, true) } else { (0, points.len() - 1, false) };
+
+	let mut dmax = 0.0;
+	let mut index = 0;
+
+	for i in (_first + 1).._last {
+		let d = perpendicular_distance(points[i], points[_first], points[_last]);
+		if d > dmax {
+			index = i;
+			dmax = d;
+		}
+	}
+
+	if dmax > epsilon {
+		let mut rec_results1 = douglas_peucker(&points[_first..=index], epsilon, false);
+		let mut rec_results2 = douglas_peucker(&points[index..=_last], epsilon, false);
+
+		// Remove the last point of the first list to avoid duplication
+		rec_results1.pop();
+		rec_results1.append(&mut rec_results2);
+		rec_results1
+	} else {
+		vec![points[_first], points[_last]]
+	}
+}
+
+/// Calculates the perpendicular distance from a point to a line defined by two points.
+fn perpendicular_distance(point: DVec2, line_start: DVec2, line_end: DVec2) -> f64 {
+	let num = ((line_end.y - line_start.y) * point.x - (line_end.x - line_start.x) * point.y + line_end.x * line_start.y - line_end.y * line_start.x).abs();
+	let den = (line_end - line_start).length();
+	if den.abs() < 1e-10 { (point - line_start).length() } else { num / den }
+}
+
 /// Convert vector geometry into a polyline composed of evenly spaced points.
 #[node_macro::node(category(""), path(graphene_core::vector))]
 async fn sample_polyline(
