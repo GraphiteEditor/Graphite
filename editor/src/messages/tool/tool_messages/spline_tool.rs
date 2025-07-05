@@ -430,9 +430,14 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::MergingEndpoints
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::Abort) => {
-				delete_preview(tool_data, responses);
-
-				responses.add(DocumentMessage::EndTransaction);
+				if tool_data.points.len() < 2 {
+					// Delete layer if it is only a single point
+					responses.add(DocumentMessage::AbortTransaction);
+				} else {
+					// Delete the preview of the next stroke but commit the path
+					delete_preview(tool_data, responses);
+					responses.add(DocumentMessage::EndTransaction);
+				}
 				SplineToolFsmState::Ready
 			}
 			(_, SplineToolMessage::WorkingColorChanged) => {
