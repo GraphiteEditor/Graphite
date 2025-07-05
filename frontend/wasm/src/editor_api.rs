@@ -604,6 +604,7 @@ impl EditorHandle {
 			node_id: Some(id),
 			node_type,
 			xy: Some((x / 24, y / 24)),
+			add_transaction: true,
 		};
 		self.dispatch(message);
 	}
