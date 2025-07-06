@@ -1,6 +1,6 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_ORANGE, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER,
 	COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
@@ -431,10 +431,7 @@ impl OverlayContext {
 
 	pub fn draw_scale(&mut self, start: DVec2, scale: f64, radius: f64, text: &str) {
 		let sign = scale.signum();
-		let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap())
-			.unwrap()
-			.with_alpha(0.05)
-			.to_rgba_hex_srgb();
+		let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05).to_rgba_hex_srgb();
 		fill_color.insert(0, '#');
 		let fill_color = Some(fill_color.as_str());
 		self.line(start + DVec2::X * radius * sign, start + DVec2::X * (radius * scale), None, None);
@@ -471,10 +468,7 @@ impl OverlayContext {
 
 		// Hover ring
 		if show_hover_ring {
-			let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-				.unwrap()
-				.with_alpha(0.5)
-				.to_rgba_hex_srgb();
+			let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.5).to_rgba_hex_srgb();
 			fill_color.insert(0, '#');
 
 			self.render_context.set_line_width(HOVER_RING_STROKE_WIDTH);
@@ -560,7 +554,7 @@ impl OverlayContext {
 
 	pub fn dowel_pin(&mut self, position: DVec2, angle: f64, color: Option<&str>) {
 		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
-		let color = color.unwrap_or(COLOR_OVERLAY_YELLOW);
+		let color = color.unwrap_or(COLOR_OVERLAY_ORANGE);
 
 		self.start_dpi_aware_transform();
 
@@ -637,9 +631,11 @@ impl OverlayContext {
 	pub fn outline_overlay_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
+		let color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05).to_rgba_hex_srgb();
+
 		self.render_context.begin_path();
 		self.bezier_command(bezier, transform, true);
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE_50);
+		self.render_context.set_stroke_style_str(&color);
 		self.render_context.set_line_width(4.);
 		self.render_context.stroke();
 

@@ -214,7 +214,9 @@ impl LayoutHolder for SelectTool {
 
 		// Pivot pin
 		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
-		widgets.push(pin_pivot_widget(self.tool_data.dot.pin_inactive(), Source::Select));
+
+		let pin_enabled = self.tool_data.dot.pivot.old_pivot_position == ReferencePoint::None;
+		widgets.push(pin_pivot_widget(self.tool_data.dot.pin_inactive(), pin_enabled, Source::Select));
 
 		// Align
 		let disabled = self.tool_data.selected_layers_count < 2;
@@ -807,7 +809,7 @@ impl Fsm for SelectToolFsmState {
 					}
 				}
 				if let Some(origin) = active_origin {
-					overlay_context.dowel_pin(origin, origin_angle, Some(COLOR_OVERLAY_ORANGE));
+					overlay_context.dowel_pin(origin, origin_angle, Some(COLOR_OVERLAY_YELLOW));
 				}
 
 				let has_layers = document.network_interface.selected_nodes().has_selected_nodes();
