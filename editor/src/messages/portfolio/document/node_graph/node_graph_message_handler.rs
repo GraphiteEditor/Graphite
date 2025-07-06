@@ -180,7 +180,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::CreateNodeInLayerNoTransaction { node_type, layer });
 				responses.add(PropertiesPanelMessage::Refresh);
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 			}
 			NodeGraphMessage::CreateNodeFromContextMenu {
 				node_id,
@@ -241,7 +241,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							input_connector: InputConnector::node(node_id, input_index),
 						});
 
-						responses.add(NodeGraphMessage::RunDocumentGraph);
+						responses.add(PortfolioMessage::CompileActiveDocument);
 					}
 
 					self.wire_in_progress_from_connector = None;
@@ -283,7 +283,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					node_ids: selected_nodes.selected_nodes().cloned().collect::<Vec<_>>(),
 					delete_children,
 				});
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
@@ -560,7 +560,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				});
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![encapsulating_node_id] });
 				responses.add(NodeGraphMessage::SendGraph);
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 			}
 			NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index } => {
 				network_interface.move_layer_to_stack(layer, parent, insert_index, selection_network_path);
@@ -890,7 +890,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 								responses.add(NodeGraphMessage::DisconnectInput { input_connector: *disconnecting });
 							}
 							// Update the frontend that the node is disconnected
-							responses.add(NodeGraphMessage::RunDocumentGraph);
+							responses.add(PortfolioMessage::CompileActiveDocument);
 							responses.add(NodeGraphMessage::SendGraph);
 							self.disconnecting = None;
 						}
@@ -1064,7 +1064,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							output_connector: *output_connector,
 						});
 
-						responses.add(NodeGraphMessage::RunDocumentGraph);
+						responses.add(PortfolioMessage::CompileActiveDocument);
 
 						responses.add(NodeGraphMessage::SendGraph);
 					} else if output_connector.is_some() && input_connector.is_none() && !self.initial_disconnecting {
@@ -1222,7 +1222,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 										input_connector: *overlapping_wire,
 										insert_node_input_index: selected_node_input_connect_index,
 									});
-									responses.add(NodeGraphMessage::RunDocumentGraph);
+									responses.add(PortfolioMessage::CompileActiveDocument);
 									responses.add(NodeGraphMessage::SendGraph);
 								}
 							}
@@ -1273,24 +1273,24 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::RemoveImport { import_index: usize } => {
 				network_interface.remove_import(usize, selection_network_path);
 				responses.add(NodeGraphMessage::SendGraph);
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 			}
 			NodeGraphMessage::RemoveExport { export_index: usize } => {
 				network_interface.remove_export(usize, selection_network_path);
 				responses.add(NodeGraphMessage::SendGraph);
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 			}
 			NodeGraphMessage::ReorderImport { start_index, end_index } => {
 				network_interface.reorder_import(start_index, end_index, selection_network_path);
 				responses.add(NodeGraphMessage::SendGraph);
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 			}
 			NodeGraphMessage::ReorderExport { start_index, end_index } => {
 				network_interface.reorder_export(start_index, end_index, selection_network_path);
 				responses.add(NodeGraphMessage::SendGraph);
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 			}
-			NodeGraphMessage::RunDocumentGraph => {
+			PortfolioMessage::CompileActiveDocument => {
 				responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
 			}
 			NodeGraphMessage::ForceRunDocumentGraph => {
@@ -1340,10 +1340,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) else {
 					return;
 				};
-
-				let viewport_bbox = ipp.document_bounds();
-				let document_bbox: [DVec2; 2] = viewport_bbox.map(|p| network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(p));
-
+				let document_bbox: [DVec2; 2] = ipp.document_bounds();
 				let mut nodes = Vec::new();
 				for node_id in &self.frontend_nodes {
 					let Some(node_bbox) = network_interface.node_bounding_box(node_id, breadcrumb_network_path) else {
@@ -1395,7 +1392,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				});
 				responses.add(PropertiesPanelMessage::Refresh);
 				if !(network_interface.reference(&node_id, selection_network_path).is_none() || input_index == 0) && network_interface.connected_to_output(&node_id, selection_network_path) {
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 				}
 			}
 			NodeGraphMessage::SetInput { input_connector, input } => {
@@ -1468,7 +1465,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					});
 				}
 				if selected_nodes.selected_nodes().any(|node_id| network_interface.connected_to_output(node_id, selection_network_path)) {
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 				}
 			}
 			NodeGraphMessage::ShiftNodePosition { node_id, x, y } => {
@@ -1486,7 +1483,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(FrontendMessage::UpdateContextMenuInformation {
 					context_menu_information: self.context_menu.clone(),
 				});
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(NodeGraphMessage::SendWires);
 			}
@@ -1521,7 +1518,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::TogglePreviewImpl { node_id });
 				responses.add(NodeGraphMessage::UpdateActionButtons);
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 			}
 			NodeGraphMessage::TogglePreviewImpl { node_id } => {
 				network_interface.toggle_preview(node_id, selection_network_path);
@@ -1606,7 +1603,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids } => {
 				if node_ids.iter().any(|node_id| network_interface.connected_to_output(node_id, selection_network_path)) {
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 				}
 				responses.add(NodeGraphMessage::UpdateActionButtons);
 				responses.add(NodeGraphMessage::SendGraph);
@@ -1716,15 +1713,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(BroadcastEvent::SelectionChanged);
 
 				responses.add(NodeGraphMessage::SendGraph);
-			}
-			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
-				for (path, node_type) in resolved_types.add {
-					network_interface.resolved_types.types.insert(path.to_vec(), node_type);
-				}
-				for path in resolved_types.remove {
-					network_interface.resolved_types.types.remove(&path.to_vec());
-				}
-				self.node_graph_errors = node_graph_errors;
 			}
 			NodeGraphMessage::UpdateActionButtons => {
 				if selection_network_path == breadcrumb_network_path {

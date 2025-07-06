@@ -1,11 +1,17 @@
+use std::sync::Arc;
+
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::utility_types::PanelType;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
-use graphene_std::Color;
+use crate::node_graph_executor::CompilationResponse;
+use graph_craft::document::CompilationMetadata;
 use graphene_std::raster::Image;
+use graphene_std::renderer::RenderMetadata;
 use graphene_std::text::Font;
+use graphene_std::uuid::CompiledProtonodeInput;
+use graphene_std::{Color, IntrospectMode};
 
 #[impl_message(Message, Portfolio)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -18,8 +24,24 @@ pub enum PortfolioMessage {
 	#[child]
 	Spreadsheet(SpreadsheetMessage),
 
-	// Messages
-	Init,
+	// Sends a request to compile the network. Should occur when any value, preference, or font changes
+	CompileActiveDocument,
+	// Sends a request to evaluate the network. Should occur when any context value changes.2
+	EvaluateActiveDocument,
+
+	// Processes the compilation response and updates the data stored in the network interface for the active document
+	// TODO: Add document ID in response for stability
+	ProcessCompilationResponse {
+		compilation_metadata: CompilationMetadata,
+	},
+	ProcessEvaluationResponse {
+		evaluation_metadata: RenderMetadata,
+		#[serde(skip)]
+		introspected_inputs: Vec<(CompiledProtonodeInput, IntrospectMode, Box<dyn std::any::Any + Send + Sync>)>,
+	},
+	ProcessThumbnails {
+		inputs_to_render: HashSet<CompiledProtonodeInput>,
+	},
 	DocumentPassMessage {
 		document_id: DocumentId,
 		message: DocumentMessage,
@@ -48,7 +70,6 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 	},
 	DestroyAllDocuments,
-	EditorPreferences,
 	FontLoaded {
 		font_family: String,
 		font_style: String,
@@ -120,13 +141,7 @@ pub enum PortfolioMessage {
 		bounds: ExportBounds,
 		transparent_background: bool,
 	},
-	SubmitActiveGraphRender,
-	SubmitGraphRender {
-		document_id: DocumentId,
-		ignore_hash: bool,
-	},
 	ToggleRulers,
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
-	UpdateVelloPreference,
 }

@@ -14,6 +14,7 @@ use graphene_std::memo::IORecord;
 use graphene_std::renderer::{GraphicElementRendered, RenderParams, SvgRender};
 use graphene_std::renderer::{RenderSvgSegmentList, SvgSegment};
 use graphene_std::text::FontCache;
+use graphene_std::uuid::{CompiledProtonodeInput, NodeId};
 use graphene_std::vector::style::ViewMode;
 use graphene_std::vector::{VectorData, VectorDataTable};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
@@ -24,8 +25,9 @@ use spin::Mutex;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 
-/// Persistent data between graph executions. It's updated via message passing from the editor thread with [`GraphRuntimeRequest`]`.
-/// Some of these fields are put into a [`WasmEditorApi`] which is passed to the final compiled graph network upon each execution.
+/// Persistent data between graph evaluations. It's updated via message passing from the editor thread with [`GraphRuntimeRequest`]`.
+/// [`PortfolioMessage::CompileActiveDocument`] and [`PortfolioMessage::RenderActiveDocument`] are the two main entry points
+/// Some of these fields are inserted into the network at compile time using the scope system
 /// Once the implementation is finished, this will live in a separate thread. Right now it's part of the main JS thread, but its own separate JS stack frame independent from the editor.
 pub struct NodeRuntime {
 	#[cfg(test)]
@@ -33,14 +35,11 @@ pub struct NodeRuntime {
 	#[cfg(not(test))]
 	executor: DynamicExecutor,
 	receiver: Receiver<GraphRuntimeRequest>,
-	sender: InternalNodeGraphUpdateSender,
-	editor_preferences: EditorPreferences,
-	old_graph: Option<NodeNetwork>,
-	update_thumbnails: bool,
+	sender: NodeGraphRuntimeSender,
 
-	editor_api: Arc<WasmEditorApi>,
+	application_io: Option<Arc<WasmApplicationIo>>,
+
 	node_graph_errors: GraphErrors,
-	monitor_nodes: Vec<Vec<NodeId>>,
 
 	/// Which node is inspected and which monitor node is used (if any) for the current execution
 	inspect_state: Option<InspectState>,
@@ -48,26 +47,24 @@ pub struct NodeRuntime {
 	/// Mapping of the fully-qualified node paths to their preprocessor substitutions.
 	substitutions: HashMap<ProtoNodeIdentifier, DocumentNode>,
 
-	// TODO: Remove, it doesn't need to be persisted anymore
-	/// The current renders of the thumbnails for layer nodes.
-	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
-	vector_modify: HashMap<NodeId, VectorData>,
+	/// Stored in order to check for changes before sending to the frontend.
+	thumbnail_render_tagged_values: HashMap<CompiledProtonodeInput, TaggedValue>,
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum GraphRuntimeRequest {
-	GraphUpdate(GraphUpdate),
-	ExecutionRequest(ExecutionRequest),
-	FontCacheUpdate(FontCache),
-	EditorPreferencesUpdate(EditorPreferences),
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct GraphUpdate {
-	pub(super) network: NodeNetwork,
-	/// The node that should be temporary inspected during execution
-	pub(super) inspect_node: Option<NodeId>,
+	CompilationRequest(CompilationRequest),
+	// Makes a request to evaluate the network and stores data for the list of output connectors
+	// Should only monitor data for nodes which need their thumbnails.
+	EvaluationRequest(EvaluationRequest),
+	// Renders thumbnails for the data from the last execution
+	// If the upstream node stores data for the context override, then another evaluation must be performed at the input
+	// This is performed separately from execution requests, since thumbnails for animation should be updated once every 50ms or so.
+	ThumbnailRenderRequest(HashSet<CompiledProtonodeInput>),
+	// Request the data from a list of node inputs. For example, used by vector modify to get the data at the input of every Path node.
+	// Can also be used by the spreadsheet/introspection system
+	IntrospectionRequest(HashSet<(CompiledProtonodeInput, IntrospectMode)>),
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -81,21 +78,14 @@ pub struct ExportConfig {
 }
 
 #[derive(Clone)]
-struct InternalNodeGraphUpdateSender(Sender<NodeGraphUpdate>);
+struct NodeGraphRuntimeSender(Sender<NodeGraphUpdate>);
 
-impl InternalNodeGraphUpdateSender {
-	fn send_generation_response(&self, response: CompilationResponse) {
-		self.0.send(NodeGraphUpdate::CompilationResponse(response)).expect("Failed to send response")
+impl NodeGraphRuntimeSender {
+	fn send_compilation_response(&self, response: CompilationResponse) {
+		self.0.send(NodeGraphUpdate::CompilationResponse(response)).expect("Failed to send compilation response")
 	}
-
-	fn send_execution_response(&self, response: ExecutionResponse) {
-		self.0.send(NodeGraphUpdate::ExecutionResponse(response)).expect("Failed to send response")
-	}
-}
-
-impl NodeGraphUpdateSender for InternalNodeGraphUpdateSender {
-	fn send(&self, message: NodeGraphUpdateMessage) {
-		self.0.send(NodeGraphUpdate::NodeGraphUpdateMessage(message)).expect("Failed to send response")
+	fn send_evaluation_response(&self, response: EvaluationResponse) {
+		self.0.send(NodeGraphUpdate::EvaluationResponse(response)).expect("Failed to send evaluation response")
 	}
 }
 
@@ -106,151 +96,135 @@ impl NodeRuntime {
 		Self {
 			executor: DynamicExecutor::default(),
 			receiver,
-			sender: InternalNodeGraphUpdateSender(sender.clone()),
-			editor_preferences: EditorPreferences::default(),
-			old_graph: None,
-			update_thumbnails: true,
+			sender: NodeGraphRuntimeSender(sender.clone()),
 
-			editor_api: WasmEditorApi {
-				font_cache: FontCache::default(),
-				editor_preferences: Box::new(EditorPreferences::default()),
-				node_graph_message_sender: Box::new(InternalNodeGraphUpdateSender(sender)),
-
-				application_io: None,
-			}
-			.into(),
+			application_io: None,
 
 			node_graph_errors: Vec::new(),
-			monitor_nodes: Vec::new(),
 
 			substitutions: preprocessor::generate_node_substitutions(),
-
-			thumbnail_renders: Default::default(),
-			vector_modify: Default::default(),
+			thumbnail_render_tagged_values: HashSet::new(),
 			inspect_state: None,
 		}
 	}
 
 	pub async fn run(&mut self) {
-		if self.editor_api.application_io.is_none() {
-			self.editor_api = WasmEditorApi {
-				#[cfg(not(test))]
-				application_io: Some(WasmApplicationIo::new().await.into()),
-				#[cfg(test)]
-				application_io: Some(WasmApplicationIo::new_offscreen().await.into()),
-				font_cache: self.editor_api.font_cache.clone(),
-				node_graph_message_sender: Box::new(self.sender.clone()),
-				editor_preferences: Box::new(self.editor_preferences.clone()),
-			}
-			.into();
+		if self.application_io.is_none() {
+			#[cfg(not(test))]
+			self.application_io = Some(Arc::new(WasmApplicationIo::new().await));
+			#[cfg(test)]
+			self.application_io = Some(Arc::new(WasmApplicationIo::new_offscreen().await));
 		}
 
-		let mut font = None;
-		let mut preferences = None;
-		let mut graph = None;
-		let mut execution = None;
+		// TODO: This deduplication of messages will probably cause more issues than it solved
+		// let mut graph = None;
+		// let mut execution = None;
+		// let mut thumbnails = None;
+		// let mut introspection = None;
+		// for request in self.receiver.try_iter() {
+		// 	match request {
+		// 		GraphRuntimeRequest::CompilationRequest(_) => graph = Some(request),
+		// 		GraphRuntimeRequest::EvaluationRequest(_) => execution = Some(request),
+		// 		GraphRuntimeRequest::ThumbnailRenderResponse(_) => thumbnails = Some(request),
+		// 		GraphRuntimeRequest::IntrospectionResponse(_) => introspection = Some(request),
+		// 	}
+		// }
+		// let requests = [font, preferences, graph, execution].into_iter().flatten();
+
 		for request in self.receiver.try_iter() {
 			match request {
-				GraphRuntimeRequest::GraphUpdate(_) => graph = Some(request),
-				GraphRuntimeRequest::ExecutionRequest(_) => execution = Some(request),
-				GraphRuntimeRequest::FontCacheUpdate(_) => font = Some(request),
-				GraphRuntimeRequest::EditorPreferencesUpdate(_) => preferences = Some(request),
-			}
-		}
-		let requests = [font, preferences, graph, execution].into_iter().flatten();
-
-		for request in requests {
-			match request {
-				GraphRuntimeRequest::FontCacheUpdate(font_cache) => {
-					self.editor_api = WasmEditorApi {
-						font_cache,
-						application_io: self.editor_api.application_io.clone(),
-						node_graph_message_sender: Box::new(self.sender.clone()),
-						editor_preferences: Box::new(self.editor_preferences.clone()),
-					}
-					.into();
-					if let Some(graph) = self.old_graph.clone() {
-						// We ignore this result as compilation errors should have been reported in an earlier iteration
-						let _ = self.update_network(graph).await;
-					}
-				}
-				GraphRuntimeRequest::EditorPreferencesUpdate(preferences) => {
-					self.editor_preferences = preferences.clone();
-					self.editor_api = WasmEditorApi {
-						font_cache: self.editor_api.font_cache.clone(),
-						application_io: self.editor_api.application_io.clone(),
-						node_graph_message_sender: Box::new(self.sender.clone()),
-						editor_preferences: Box::new(preferences),
-					}
-					.into();
-					if let Some(graph) = self.old_graph.clone() {
-						// We ignore this result as compilation errors should have been reported in an earlier iteration
-						let _ = self.update_network(graph).await;
-					}
-				}
-				GraphRuntimeRequest::GraphUpdate(GraphUpdate { mut network, inspect_node }) => {
+				GraphRuntimeRequest::CompilationRequest(CompilationRequest {
+					mut network,
+					font_cache,
+					editor_metadata,
+				}) => {
 					// Insert the monitor node to manage the inspection
-					self.inspect_state = inspect_node.map(|inspect| InspectState::monitor_inspect_node(&mut network, inspect));
+					// self.inspect_state = inspect_node.map(|inspect| InspectState::monitor_inspect_node(&mut network, inspect));
 
-					self.old_graph = Some(network.clone());
 					self.node_graph_errors.clear();
 					let result = self.update_network(network).await;
-					self.update_thumbnails = true;
-					self.sender.send_generation_response(CompilationResponse {
+					self.sender.send_compilation_response(CompilationResponse {
 						result,
 						node_graph_errors: self.node_graph_errors.clone(),
 					});
 				}
-				GraphRuntimeRequest::ExecutionRequest(ExecutionRequest { execution_id, render_config, .. }) => {
-					let transform = render_config.viewport.transform;
+				GraphRuntimeRequest::EvaluationRequest(EvaluationRequest {
+					evaluation_id,
+					context,
+					inputs_to_monitor,
+					// custom_node_to_evaluate
+				}) => {
+					for (protonode_input, introspect_mode) in inputs_to_monitor {
+						self.executor.set_introspect(protonode_input, introspect_mode)
+					}
+					let transform = context.render_config.viewport.transform;
 
 					let result = self.execute_network(render_config).await;
-					let mut responses = VecDeque::new();
-					// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
-					self.process_monitor_nodes(&mut responses, self.update_thumbnails);
-					self.update_thumbnails = false;
 
-					// Resolve the result from the inspection by accessing the monitor node
-					let inspect_result = self.inspect_state.and_then(|state| state.access(&self.executor));
+					let introspected_inputs = Vec::new();
+					for (protonode_input, mode) in inputs_to_introspect {
+						let Ok(introspected_data) = self.executor.introspect(protonode_input, mode) else {
+							log::error!("Could not introspect node from input: {:?}", protonode_input);
+							continue;
+						};
+						introspected_inputs.push((protonode_input, mode, introspected_data));
+					}
 
-					self.sender.send_execution_response(ExecutionResponse {
-						execution_id,
+					self.sender.send_evaluation_response(EvaluationResponse {
+						evaluation_id,
 						result,
-						responses,
 						transform,
-						vector_modify: self.vector_modify.clone(),
-						inspect_result,
+						introspected_inputs,
 					});
+				}
+				GraphRuntimeRequest::ThumbnailRenderRequest(input_to_render) => {
+					let mut thumbnail_response = ThumbnailRenderResponse::default();
+					for input in input_to_render {}
+					self.sender.send_thumbnail_render_response(thumbnail_response);
+				}
+				GraphRuntimeRequest::IntrospectionRequest(inputs_to_introspect) => {
+					self.sender.send_introspection_response(introspection_response);
 				}
 			}
 		}
 	}
 
-	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, String> {
+	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<CompilationMetadata, String> {
 		preprocessor::expand_network(&mut graph, &self.substitutions);
 
+		// Creates a network where the node paths to the document network are prefixed with NodeId(0)
 		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 
 		// We assume only one output
 		assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
 
-		let c = Compiler {};
-		let proto_network = match c.compile_single(scoped_network) {
+		// Modifies the NodeNetwork so the tagged values are removed and the document nodes with protonode implementations have their protonode ids set
+		// Needs to return a mapping of absolute input connectors to protonode callers, types for protonodes, and callers for protonodes, add/remove delta for resolved types
+		let (proto_network, protonode_callers_for_value, protonode_callers_for_node) = match scoped_network.flatten() {
 			Ok(network) => network,
-			Err(e) => return Err(e),
+			Err(e) => {
+				log::error!("Error compiling network: {e:?}");
+				return;
+			}
 		};
-		self.monitor_nodes = proto_network
-			.nodes
-			.iter()
-			.filter(|(_, node)| node.identifier == "graphene_core::memo::MonitorNode".into())
-			.map(|(_, node)| node.original_location.path.clone().unwrap_or_default())
-			.collect::<Vec<_>>();
 
-		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
-		self.executor.update(proto_network).await.map_err(|e| {
-			self.node_graph_errors.clone_from(&e);
-			format!("{e:?}")
-		})
+		assert_ne!(proto_network.len(), 0, "No proto nodes exist?");
+		let result = match self.executor.update(proto_network).await {
+			Ok((types_to_add, types_to_remove)) => {
+				// Used to remove thumbnails from the mapping of SNI to rendered SVG strings on the frontend, which occurs when the SNI is removed
+				// When native frontend rendering is possible, the strings can just be stored in the network interface for each protonode with the rest of the type metadata
+				Ok(CompilationMetadata {
+					protonode_callers_for_value,
+					protonode_callers_for_node,
+					types_to_add,
+					types_to_remove,
+				})
+			}
+			Err(e) => {
+				self.node_graph_errors.clone_from(&e);
+				Err(format!("{e:?}"))
+			}
+		};
 	}
 
 	async fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
@@ -269,117 +243,6 @@ impl NodeRuntime {
 
 		Ok(result)
 	}
-
-	/// Updates state data
-	pub fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>, update_thumbnails: bool) {
-		// TODO: Consider optimizing this since it's currently O(m*n^2), with a sort it could be made O(m * n*log(n))
-		self.thumbnail_renders.retain(|id, _| self.monitor_nodes.iter().any(|monitor_node_path| monitor_node_path.contains(id)));
-
-		for monitor_node_path in &self.monitor_nodes {
-			// Skip the inspect monitor node
-			if self.inspect_state.is_some_and(|inspect_state| monitor_node_path.last().copied() == Some(inspect_state.monitor_node)) {
-				continue;
-			}
-			// The monitor nodes are located within a document node, and are thus children in that network, so this gets the parent document node's ID
-			let Some(parent_network_node_id) = monitor_node_path.len().checked_sub(2).and_then(|index| monitor_node_path.get(index)).copied() else {
-				warn!("Monitor node has invalid node id");
-
-				continue;
-			};
-
-			// Extract the monitor node's stored `GraphicElement` data.
-			let Ok(introspected_data) = self.executor.introspect(monitor_node_path) else {
-				// TODO: Fix the root of the issue causing the spam of this warning (this at least temporarily disables it in release builds)
-				#[cfg(debug_assertions)]
-				warn!("Failed to introspect monitor node {}", self.executor.introspect(monitor_node_path).unwrap_err());
-
-				continue;
-			};
-
-			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_std::GraphicElement>>() {
-				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
-			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_std::Artboard>>() {
-				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
-			// Insert the vector modify if we are dealing with vector data
-			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, VectorDataTable>>() {
-				let default = Instance::default();
-				self.vector_modify.insert(
-					parent_network_node_id,
-					record.output.instance_ref_iter().next().unwrap_or_else(|| default.to_instance_ref()).instance.clone(),
-				);
-			} else {
-				log::warn!("Failed to downcast monitor node output {parent_network_node_id:?}");
-			}
-		}
-	}
-
-	// If this is `GraphicElement` data:
-	// Regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
-	fn process_graphic_element(
-		thumbnail_renders: &mut HashMap<NodeId, Vec<SvgSegment>>,
-		parent_network_node_id: NodeId,
-		graphic_element: &impl GraphicElementRendered,
-		responses: &mut VecDeque<FrontendMessage>,
-		update_thumbnails: bool,
-	) {
-		// RENDER THUMBNAIL
-
-		if !update_thumbnails {
-			return;
-		}
-
-		// Skip thumbnails if the layer is too complex (for performance)
-		if graphic_element.render_complexity() > 1000 {
-			let old = thumbnail_renders.insert(parent_network_node_id, Vec::new());
-			if old.is_none_or(|v| !v.is_empty()) {
-				responses.push_back(FrontendMessage::UpdateNodeThumbnail {
-					id: parent_network_node_id,
-					value: "<svg viewBox=\"0 0 10 10\"><title>Dense thumbnail omitted for performance</title><line x1=\"0\" y1=\"10\" x2=\"10\" y2=\"0\" stroke=\"red\" /></svg>".to_string(),
-				});
-			}
-			return;
-		}
-
-		let bounds = graphic_element.bounding_box(DAffine2::IDENTITY, true);
-
-		// Render the thumbnail from a `GraphicElement` into an SVG string
-		let render_params = RenderParams {
-			view_mode: ViewMode::Normal,
-			culling_bounds: bounds,
-			thumbnail: true,
-			hide_artboards: false,
-			for_export: false,
-			for_mask: false,
-			alignment_parent_transform: None,
-		};
-		let mut render = SvgRender::new();
-		graphic_element.render_svg(&mut render, &render_params);
-
-		// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag
-		let [min, max] = bounds.unwrap_or_default();
-		render.format_svg(min, max);
-
-		// UPDATE FRONTEND THUMBNAIL
-
-		let new_thumbnail_svg = render.svg;
-		let old_thumbnail_svg = thumbnail_renders.entry(parent_network_node_id).or_default();
-
-		if old_thumbnail_svg != &new_thumbnail_svg {
-			responses.push_back(FrontendMessage::UpdateNodeThumbnail {
-				id: parent_network_node_id,
-				value: new_thumbnail_svg.to_svg_string(),
-			});
-			*old_thumbnail_svg = new_thumbnail_svg;
-		}
-	}
-}
-
-pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
-	let runtime = NODE_RUNTIME.lock();
-	if let Some(ref mut runtime) = runtime.as_ref() {
-		return runtime.executor.introspect(path);
-	}
-	Err(IntrospectError::RuntimeNotReady)
 }
 
 pub async fn run_node_graph() -> bool {
@@ -393,82 +256,4 @@ pub async fn run_node_graph() -> bool {
 pub async fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	node_runtime.replace(runtime)
-}
-
-/// Which node is inspected and which monitor node is used (if any) for the current execution
-#[derive(Debug, Clone, Copy)]
-struct InspectState {
-	inspect_node: NodeId,
-	monitor_node: NodeId,
-}
-/// The resulting value from the temporary inspected during execution
-#[derive(Clone, Debug, Default)]
-#[cfg_attr(feature = "decouple-execution", derive(serde::Serialize, serde::Deserialize))]
-pub struct InspectResult {
-	#[cfg(not(feature = "decouple-execution"))]
-	introspected_data: Option<Arc<dyn std::any::Any + Send + Sync + 'static>>,
-	#[cfg(feature = "decouple-execution")]
-	introspected_data: Option<TaggedValue>,
-	pub inspect_node: NodeId,
-}
-
-impl InspectResult {
-	pub fn take_data(&mut self) -> Option<Arc<dyn std::any::Any + Send + Sync + 'static>> {
-		#[cfg(not(feature = "decouple-execution"))]
-		return self.introspected_data.clone();
-
-		#[cfg(feature = "decouple-execution")]
-		return self.introspected_data.take().map(|value| value.to_any());
-	}
-}
-
-// This is very ugly but is required to be inside a message
-impl PartialEq for InspectResult {
-	fn eq(&self, other: &Self) -> bool {
-		self.inspect_node == other.inspect_node
-	}
-}
-
-impl InspectState {
-	/// Insert the monitor node to manage the inspection
-	pub fn monitor_inspect_node(network: &mut NodeNetwork, inspect_node: NodeId) -> Self {
-		let monitor_id = NodeId::new();
-
-		// It is necessary to replace the inputs before inserting the monitor node to avoid changing the input of the new monitor node
-		for input in network.nodes.values_mut().flat_map(|node| node.inputs.iter_mut()).chain(&mut network.exports) {
-			let NodeInput::Node { node_id, output_index, .. } = input else { continue };
-			// We only care about the primary output of our inspect node
-			if *output_index != 0 || *node_id != inspect_node {
-				continue;
-			}
-
-			*node_id = monitor_id;
-		}
-
-		let monitor_node = DocumentNode {
-			inputs: vec![NodeInput::node(inspect_node, 0)], // Connect to the primary output of the inspect node
-			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER),
-			manual_composition: Some(graph_craft::generic!(T)),
-			skip_deduplication: true,
-			..Default::default()
-		};
-		network.nodes.insert(monitor_id, monitor_node);
-
-		Self {
-			inspect_node,
-			monitor_node: monitor_id,
-		}
-	}
-	/// Resolve the result from the inspection by accessing the monitor node
-	fn access(&self, executor: &DynamicExecutor) -> Option<InspectResult> {
-		let introspected_data = executor.introspect(&[self.monitor_node]).inspect_err(|e| warn!("Failed to introspect monitor node {e}")).ok();
-		// TODO: Consider displaying the error instead of ignoring it
-		#[cfg(feature = "decouple-execution")]
-		let introspected_data = introspected_data.as_ref().and_then(|data| TaggedValue::try_from_std_any_ref(data).ok());
-
-		Some(InspectResult {
-			inspect_node: self.inspect_node,
-			introspected_data,
-		})
-	}
 }

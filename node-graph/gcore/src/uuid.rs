@@ -84,3 +84,12 @@ impl std::fmt::Display for NodeId {
 		write!(f, "{}", self.0)
 	}
 }
+
+// Stable Node Id of a protonode, generated during compilation based on the input values
+pub type SNI = NodeId;
+
+// An input of a compiled protonode, used to reference thumbnails, which are stored on a per input basis
+pub type CompiledProtonodeInput = (NodeId, usize);
+
+// Path to the protonode in the document network
+pub type ProtonodePath = Box<[NodeId]>;

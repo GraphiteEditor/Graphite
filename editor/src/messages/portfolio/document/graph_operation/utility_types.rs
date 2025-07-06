@@ -454,7 +454,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// Refresh the render and editor UI
 		self.responses.add(PropertiesPanelMessage::Refresh);
 		if !skip_rerender {
-			self.responses.add(NodeGraphMessage::RunDocumentGraph);
+			self.responses.add(PortfolioMessage::CompileActiveDocument);
 		}
 	}
 
@@ -462,7 +462,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(path_node_id) = self.existing_node_id("Path", true) else { return };
 		self.network_interface.vector_modify(&path_node_id, modification_type);
 		self.responses.add(PropertiesPanelMessage::Refresh);
-		self.responses.add(NodeGraphMessage::RunDocumentGraph);
+		self.responses.add(PortfolioMessage::CompileActiveDocument);
 	}
 
 	pub fn brush_modify(&mut self, strokes: Vec<BrushStroke>) {
@@ -495,7 +495,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.set_input(&input_connector, input, &[]);
 		self.responses.add(PropertiesPanelMessage::Refresh);
 		if !skip_rerender {
-			self.responses.add(NodeGraphMessage::RunDocumentGraph);
+			self.responses.add(PortfolioMessage::CompileActiveDocument);
 		}
 	}
 }

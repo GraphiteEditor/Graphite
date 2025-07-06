@@ -14,6 +14,9 @@ use graphene_std::text::Font;
 #[impl_message(Message, Frontend)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendMessage {
+	ClearNodeThumbnail {
+		sni: NodeId,
+	},
 	// Display prefix: make the frontend show something, like a dialog
 	DisplayDialog {
 		title: String,
@@ -272,10 +275,6 @@ pub enum FrontendMessage {
 	UpdateNodeGraphTransform {
 		transform: Transform,
 	},
-	UpdateNodeThumbnail {
-		id: NodeId,
-		value: String,
-	},
 	UpdateOpenDocumentsList {
 		#[serde(rename = "openDocuments")]
 		open_documents: Vec<FrontendDocumentDetails>,
@@ -284,6 +283,11 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
+	},
+	UpdateThumbnails {
+		add: Vec<(NodeId, String)>,
+		clear: Vec<NodeId>,
+		// remove: Vec<NodeId>,
 	},
 	UpdateToolOptionsLayout {
 		#[serde(rename = "layoutTarget")]

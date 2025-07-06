@@ -33,9 +33,11 @@ use graphene_std::math::quad::Quad;
 use graphene_std::path_bool::{boolean_intersect, path_bool_lib};
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{Raster, RasterDataTable};
+use graphene_std::uuid::NodeId;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::style::ViewMode;
+use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(ExtractField)]
@@ -43,10 +45,11 @@ pub struct DocumentMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub persistent_data: &'a PersistentData,
-	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub device_pixel_ratio: f64,
+	// pub introspected_inputs: &HashMap<CompiledProtonodeInput, Box<dyn std::any::Any + Send + Sync>>,
+	// pub downcasted_inputs: &mut HashMap<CompiledProtonodeInput, TaggedValue>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
@@ -104,10 +107,10 @@ pub struct DocumentMessageHandler {
 	//
 	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
 	#[serde(skip)]
-	breadcrumb_network_path: Vec<NodeId>,
+	pub breadcrumb_network_path: Vec<NodeId>,
 	/// Path to network that is currently selected. Updated based on the most recently clicked panel.
 	#[serde(skip)]
-	selection_network_path: Vec<NodeId>,
+	pub selection_network_path: Vec<NodeId>,
 	/// Stack of document network snapshots for previous history states.
 	#[serde(skip)]
 	document_undo_history: VecDeque<NodeNetworkInterface>,
@@ -176,11 +179,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			document_id,
 			ipp,
 			persistent_data,
-			executor,
 			current_tool,
 			preferences,
 			device_pixel_ratio,
-		} = context;
+			// introspected_inputs,
+			// downcasted_inputs
+		} = data;
 
 		let selected_nodes_bounding_box_viewport = self.network_interface.selected_nodes_bounding_box_viewport(&self.breadcrumb_network_path);
 		let selected_visible_layers_bounding_box_viewport = self.selected_visible_layers_bounding_box_viewport();
@@ -342,7 +346,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					node_ids: vec![node_id],
 					delete_children: true,
 				});
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::EndTransaction);
@@ -441,7 +445,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				let nodes = new_dragging.iter().map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 			}
 			DocumentMessage::EnterNestedNetwork { node_id } => {
 				self.breadcrumb_network_path.push(node_id);
@@ -713,7 +717,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					}
 				}
 
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::MoveSelectedLayersToGroup { parent } => {
@@ -729,7 +733,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![parent.to_node()] });
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
@@ -1152,7 +1156,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SetNodePinned { node_id, pinned } => {
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::SetPinned { node_id, pinned });
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
@@ -1215,7 +1219,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
-				responses.add_front(NodeGraphMessage::RunDocumentGraph);
+				responses.add_front(PortfolioMessage::CompileActiveDocument);
 			}
 			DocumentMessage::AddTransaction => {
 				// Reverse order since they are added to the front
@@ -1306,6 +1310,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.snapping_state.snapping_enabled = !self.snapping_state.snapping_enabled;
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
+			// DocumentMessage::ToggleAnimation => match self.animation_state {
+			// 	AnimationState::Stopped => {self.animation_state = AnimationState::Playing { start: ipp.time }; responses.add(PortfolioMessage::EvaluateActiveDocument)},
+			// 	AnimationState::Playing { start } => self.animation_state = AnimationState::Paused { start , pause_time: ipp.time },
+			// 	AnimationState::Paused { start, .. } => {self.animation_state = AnimationState::Playing { start }; responses.add(PortfolioMessage::EvaluateActiveDocument)},
+			// },
+			// DocumentMessage::RestartAnimation => {
+			// 	self.animation_state = match self.animation_state {
+			// 		AnimationState::Playing { .. } => AnimationState::Playing { start: ipp.time },
+			// 		_ => AnimationState::Stopped,
+			// 	};
+			// }
 			DocumentMessage::UpdateUpstreamTransforms {
 				upstream_footprints,
 				local_transforms,
@@ -1364,7 +1379,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(DocumentMessage::UngroupLayer { layer: folder });
 				}
 
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
@@ -1402,7 +1417,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					node_ids: vec![layer.to_node()],
 					delete_children: true,
 				});
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
@@ -1417,7 +1432,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						center: Key::Alt,
 						duplicate: Key::Alt,
 					}));
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 				} else {
 					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
 						return;
@@ -1901,11 +1916,11 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
-		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
 		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
 		responses.add(NodeGraphMessage::UnloadWires);
 		responses.add(NodeGraphMessage::SetGridAlignedEdges);
-		responses.add(Message::StartBuffer);
+		responses.add(PortfolioMessage::CompileActiveDocument);
+		responses.add(Message::StartQueue);
 		Some(previous_network)
 	}
 	pub fn redo_with_history(&mut self, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
@@ -1934,7 +1949,7 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
-		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
+		responses.add(PortfolioMessage::CompileActiveDocument);
 		responses.add(NodeGraphMessage::UnloadWires);
 		responses.add(NodeGraphMessage::SendWires);
 		Some(previous_network)
@@ -2062,7 +2077,7 @@ impl DocumentMessageHandler {
 				if let (Some(upstream_boolean_op), Some(only_selected_layer)) = (upstream_boolean_op, only_selected_layer) {
 					network_interface.set_input(&InputConnector::node(upstream_boolean_op, 1), NodeInput::value(TaggedValue::BooleanOperation(operation), false), &[]);
 
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 
 					return only_selected_layer.to_node();
 				}
@@ -2874,7 +2889,7 @@ impl DocumentMessageHandler {
 		}
 
 		if modified {
-			responses.add(NodeGraphMessage::RunDocumentGraph);
+			responses.add(PortfolioMessage::CompileActiveDocument);
 			responses.add(NodeGraphMessage::SendGraph);
 		}
 	}

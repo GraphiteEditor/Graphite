@@ -124,10 +124,10 @@ export class SendUIMetadata extends JsMessage {
 	readonly nodeTypes!: FrontendNodeType[];
 }
 
-export class UpdateNodeThumbnail extends JsMessage {
-	readonly id!: bigint;
+export class UpdateThumbnails extends JsMessage {
+	readonly add!: [bigint, string][];
 
-	readonly value!: string;
+	readonly clear!: bigint[];
 }
 
 export class UpdateNodeGraphSelection extends JsMessage {
@@ -1683,7 +1683,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeGraphTransform,
 	UpdateNodeGraphControlBarLayout,
 	UpdateNodeGraphSelection,
-	UpdateNodeThumbnail,
+	UpdateThumbnails: UpdateThumbnail,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelSectionsLayout,
 	UpdateSpreadsheetLayout,

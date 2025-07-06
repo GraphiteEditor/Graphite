@@ -298,7 +298,7 @@ impl TextToolData {
 			node_ids: vec![self.layer.to_node()],
 			delete_children: true,
 		});
-		responses.add(NodeGraphMessage::RunDocumentGraph);
+		responses.add(PortfolioMessage::CompileActiveDocument);
 
 		TextToolFsmState::Ready
 	}
@@ -362,7 +362,7 @@ impl TextToolData {
 				input_connector: InputConnector::node(graph_modification_utils::get_text_id(self.layer, &document.network_interface).unwrap(), 1),
 				input: NodeInput::value(TaggedValue::String("".to_string()), false),
 			});
-			responses.add(NodeGraphMessage::RunDocumentGraph);
+			responses.add(PortfolioMessage::CompileActiveDocument);
 		};
 	}
 
@@ -381,7 +381,7 @@ impl TextToolData {
 			parent: document.new_layer_parent(true),
 			insert_index: 0,
 		});
-		responses.add(Message::StartBuffer);
+		responses.add(Message::StartQueue);
 		responses.add(GraphOperationMessage::FillSet {
 			layer: self.layer,
 			fill: if editing_text.color.is_some() {
@@ -402,7 +402,7 @@ impl TextToolData {
 
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 
-		responses.add(NodeGraphMessage::RunDocumentGraph);
+		responses.add(PortfolioMessage::CompileActiveDocument);
 	}
 
 	fn check_click(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, font_cache: &FontCache) -> Option<LayerNodeIdentifier> {
@@ -649,7 +649,7 @@ impl Fsm for TextToolFsmState {
 						skip_rerender: false,
 					});
 
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 
 					// Auto-panning
 					let messages = [
@@ -710,7 +710,7 @@ impl Fsm for TextToolFsmState {
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
-						responses.add(NodeGraphMessage::RunDocumentGraph);
+						responses.add(PortfolioMessage::CompileActiveDocument);
 
 						// Auto-panning
 						let messages = [
@@ -830,7 +830,7 @@ impl Fsm for TextToolFsmState {
 						input_connector: InputConnector::node(graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface).unwrap(), 1),
 						input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
 					});
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 
 					TextToolFsmState::Ready
 				} else {

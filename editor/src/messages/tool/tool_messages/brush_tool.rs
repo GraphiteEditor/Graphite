@@ -378,8 +378,8 @@ impl Fsm for BrushToolFsmState {
 				// Create the new layer, wait for the render output to return its transform, and then create the rest of the layer
 				else {
 					new_brush_layer(document, responses);
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-					responses.add(Message::StartBuffer);
+					responses.add(PortfolioMessage::CompileActiveDocument);
+					responses.add(Message::StartQueue);
 					responses.add(BrushToolMessage::DragStart);
 					BrushToolFsmState::Ready
 				}

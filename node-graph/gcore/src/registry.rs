@@ -132,6 +132,7 @@ pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 pub type SharedNodeContainer = std::sync::Arc<NodeContainer>;
 
 pub type NodeConstructor = fn(Vec<SharedNodeContainer>) -> DynFuture<'static, TypeErasedBox<'static>>;
+pub type MonitorConstructor = fn(SharedNodeContainer) -> TypeErasedBox<'static>;
 
 #[derive(Clone)]
 pub struct NodeContainer {
@@ -208,11 +209,10 @@ where
 	#[inline]
 	fn eval(&'input self, input: I) -> Self::Output {
 		{
-			let node_name = self.node.node_name();
 			let input = Box::new(input);
 			let future = self.node.eval(input);
 			Box::pin(async move {
-				let out = dyn_any::downcast(future.await).unwrap_or_else(|e| panic!("DowncastBothNode Input {e} in: \n{node_name}"));
+				let out = dyn_any::downcast(future.await).unwrap_or_else(|e| panic!("DowncastBothNode Input {e} in: \n{:?}", self.node.node_name()));
 				*out
 			})
 		}
@@ -220,11 +220,8 @@ where
 	fn reset(&self) {
 		self.node.reset();
 	}
-
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.node.serialize()
-	}
 }
+
 impl<I, O> DowncastBothNode<I, O> {
 	pub const fn new(node: SharedNodeContainer) -> Self {
 		Self {
@@ -234,6 +231,11 @@ impl<I, O> DowncastBothNode<I, O> {
 		}
 	}
 }
+
+pub fn downcast_node<I: StaticType, O: StaticType>(n: SharedNodeContainer) -> DowncastBothNode<I, O> {
+	DowncastBothNode::new(n)
+}
+
 pub struct FutureWrapperNode<Node> {
 	node: Node,
 }
@@ -251,11 +253,6 @@ where
 	#[inline(always)]
 	fn reset(&self) {
 		self.node.reset();
-	}
-
-	#[inline(always)]
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.node.serialize()
 	}
 }
 
@@ -293,10 +290,6 @@ where
 
 	fn reset(&self) {
 		self.node.reset();
-	}
-
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.node.serialize()
 	}
 }
 impl<'input, I, O, N> DynAnyNode<I, O, N>

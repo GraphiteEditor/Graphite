@@ -3,6 +3,7 @@ use graph_craft::document::*;
 use graph_craft::proto::RegistryValueSource;
 use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::registry::*;
+use graphene_std::uuid::NodeId;
 use graphene_std::*;
 use std::collections::{HashMap, HashSet};
 

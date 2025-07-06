@@ -7,8 +7,8 @@ use graphene_std::transform::Footprint;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
 fn update_executor<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
-	let network = load_from_name(name);
-	let proto_network = compile(network);
+	let mut network = load_from_name(name);
+	let proto_network = network.flatten().unwrap().0;
 	let empty = ProtoNetwork::default();
 
 	let executor = futures::executor::block_on(DynamicExecutor::new(empty)).unwrap();
@@ -30,8 +30,8 @@ fn update_executor_demo(c: &mut Criterion) {
 }
 
 fn run_once<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
-	let network = load_from_name(name);
-	let proto_network = compile(network);
+	let mut network = load_from_name(name);
+	let proto_network = network.flatten().unwrap().0;
 
 	let executor = futures::executor::block_on(DynamicExecutor::new(proto_network)).unwrap();
 	let footprint = Footprint::default();

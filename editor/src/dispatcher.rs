@@ -5,7 +5,8 @@ use crate::messages::prelude::*;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {
-	buffered_queue: Option<Vec<VecDeque<Message>>>,
+	buffered_queue: Vec<Message>,
+	queueing_messages: bool,
 	message_queues: Vec<VecDeque<Message>>,
 	pub responses: Vec<FrontendMessage>,
 	pub message_handlers: DispatcherMessageHandlers,
@@ -90,11 +91,10 @@ impl Dispatcher {
 
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T, process_after_all_current: bool) {
 		let message = message.into();
-		// Add all additional messages to the buffer if it exists (except from the end buffer message)
-		if !matches!(message, Message::EndBuffer { .. }) {
-			if let Some(buffered_queue) = &mut self.buffered_queue {
-				Self::schedule_execution(buffered_queue, true, [message]);
-
+		// Add all additional messages to the queue if it exists (except from the end queue message)
+		if !matches!(message, Message::EndQueue) {
+			if self.queueing_messages {
+				self.buffered_queue.push(message);
 				return;
 			}
 		}
@@ -126,6 +126,41 @@ impl Dispatcher {
 
 			// Process the action by forwarding it to the relevant message handler, or saving the FrontendMessage to be sent to the frontend
 			match message {
+				Message::StartQueue => {
+					self.queueing_messages = true;
+				}
+				Message::EndQueue => {
+					self.queueing_messages = false;
+				}
+				Message::ProcessQueue((render_output_metadata, introspected_inputs)) => {
+					let message = PortfolioMessage::ProcessEvaluationResponse {
+						evaluation_metadata: render_output_metadata,
+						introspected_inputs,
+					};
+					// Add the message to update the state with the render output
+					Self::schedule_execution(&mut self.message_queues, true, [message]);
+
+					// Schedule all queued messages to be run (in the order they were added)
+					Self::schedule_execution(&mut self.message_queues, true, std::mem::take(&mut self.buffered_queue));
+				}
+				Message::NoOp => {}
+				Message::Init => {
+					// Load persistent data from the browser database
+					queue.add(FrontendMessage::TriggerLoadFirstAutoSaveDocument);
+					queue.add(FrontendMessage::TriggerLoadPreferences);
+
+					// Display the menu bar at the top of the window
+					queue.add(MenuBarMessage::SendLayout);
+
+					// Send the information for tooltips and categories for each node/input.
+					queue.add(FrontendMessage::SendUIMetadata {
+						node_descriptions: document_node_definitions::collect_node_descriptions(),
+						node_types: document_node_definitions::collect_node_types(),
+					});
+
+					// Finish loading persistent data from the browser database
+					queue.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
+				}
 				Message::Animation(message) => {
 					self.message_handlers.animation_message_handler.process_message(message, &mut queue, ());
 				}

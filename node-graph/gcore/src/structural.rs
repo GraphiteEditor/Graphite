@@ -1,4 +1,4 @@
-use crate::Node;
+use crate::registry::Node;
 use std::marker::PhantomData;
 
 /// This is how we can generically define composition of two nodes.

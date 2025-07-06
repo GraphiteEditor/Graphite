@@ -1,11 +1,27 @@
+use std::sync::Arc;
+
 use crate::messages::prelude::*;
-use graphene_std::renderer::RenderMetadata;
+use graphene_std::{IntrospectMode, uuid::CompiledProtonodeInput};
 use graphite_proc_macros::*;
 
 #[impl_message]
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Message {
-	// Sub-messages
+	NoOp,
+	Init,
+	Batched(Box<[Message]>),
+	// Adds any subsequent messages to the queue
+	StartQueue,
+	// Stop adding messages to the queue.
+	EndQueue,
+	// Processes all messages that are queued, which occurs on the evaluation response. This allows a message to be run with data from after the evaluation is complete
+	ProcessQueue(
+		(
+			graphene_std::renderer::RenderMetadata,
+			Vec<(CompiledProtonodeInput, IntrospectMode, Box<dyn std::any::Any + Send + Sync>)>,
+		),
+	),
+
 	#[child]
 	Animation(AnimationMessage),
 	#[child]

@@ -208,12 +208,6 @@ pub enum NodeGraphMessage {
 	UpdateImportsExports,
 	UpdateLayerPanel,
 	UpdateNewNodeGraph,
-	UpdateTypes {
-		#[serde(skip)]
-		resolved_types: ResolvedDocumentNodeTypesDelta,
-		#[serde(skip)]
-		node_graph_errors: GraphErrors,
-	},
 	UpdateActionButtons,
 	UpdateGraphBarRight,
 	UpdateInSelectedNetwork,

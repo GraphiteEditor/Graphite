@@ -2,8 +2,7 @@ use graphene_std::text::FontCache;
 
 #[derive(Debug, Default)]
 pub struct PersistentData {
-	pub font_cache: FontCache,
-	pub use_vello: bool,
+	pub font_cache: Arc<FontCache>,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]

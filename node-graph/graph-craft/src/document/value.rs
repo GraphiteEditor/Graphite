@@ -108,6 +108,16 @@ macro_rules! tagged_value {
 					_ => Err(format!("Cannot convert {:?} to TaggedValue",std::any::type_name_of_val(input))),
 				}
 			}
+			// Check for equality between a dynamic type and a tagged value without cloning
+			pub fn compare_value_to_dyn_any(&self, any: Box<dyn std::any::Any + Send + Sync>) -> bool {
+				match self {
+					TaggedValue::None => any.downcast_ref::<()>().is_some(),
+					$(TaggedValue::$identifier(value) => {any.downcast_ref::<$ty>().map_or(false, |v| v==value)}, )*
+					TaggedValue::RenderOutput(value) => any.downcast_ref::<RenderOutput>().map_or(false, |v| v==value),
+					TaggedValue::SurfaceFrame(value) => any.downcast_ref::<SurfaceFrame>().map_or(false, |v| v==value),
+					TaggedValue::EditorApi(value) => any.downcast_ref::<Arc<WasmEditorApi>>().map_or(false, |v| v==value),
+				}
+			}
 			pub fn from_type(input: &Type) -> Option<Self> {
 				match input {
 					Type::Generic(_) => None,
@@ -370,6 +380,18 @@ impl TaggedValue {
 		match self {
 			TaggedValue::U32(x) => *x,
 			_ => panic!("Passed value is not of type u32"),
+		}
+	}
+
+	pub fn as_renderable<'a>(value: &'a TaggedValue) -> Option<&'a dyn graphene_svg_renderer::GraphicElementRendered> {
+		match value {
+			TaggedValue::VectorData(v) => Some(v),
+			TaggedValue::RasterData(r) => Some(r),
+			TaggedValue::GraphicElement(e) => Some(e),
+			TaggedValue::GraphicGroup(g) => Some(g),
+			TaggedValue::ArtboardGroup(a) => Some(a),
+			TaggedValue::Artboard(a) => Some(a),
+			_ => None,
 		}
 	}
 }

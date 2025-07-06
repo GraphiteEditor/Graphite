@@ -174,7 +174,7 @@ impl PreferencesDialogMessageHandler {
 		let use_vello = vec![
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			CheckboxInput::new(preferences.use_vello && preferences.supports_wgpu())
+			CheckboxInput::new(preferences.use_vello())
 				.tooltip(vello_tooltip)
 				.disabled(!preferences.supports_wgpu())
 				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::UseVello { use_vello: checkbox_input.checked }.into())

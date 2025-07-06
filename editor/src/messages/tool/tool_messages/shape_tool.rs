@@ -491,7 +491,7 @@ impl Fsm for ShapeToolFsmState {
 						input_connector: InputConnector::node(node_id, 1),
 						input: NodeInput::value(TaggedValue::U32(n + 1), false),
 					});
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 				}
 
 				self
@@ -520,7 +520,7 @@ impl Fsm for ShapeToolFsmState {
 						input_connector: InputConnector::node(node_id, 1),
 						input: NodeInput::value(TaggedValue::U32((n - 1).max(3)), false),
 					});
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 				}
 
 				self
@@ -599,7 +599,7 @@ impl Fsm for ShapeToolFsmState {
 				let nodes = vec![(NodeId(0), node)];
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
 
-				responses.add(Message::StartBuffer);
+				responses.add(Message::StartQueue);
 
 				match tool_data.current_shape {
 					ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Polygon | ShapeType::Star => {

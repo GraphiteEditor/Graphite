@@ -14,7 +14,7 @@ pub struct InputPreprocessorMessageContext {
 #[derive(Debug, Default, ExtractField)]
 pub struct InputPreprocessorMessageHandler {
 	pub frame_time: FrameTimeInfo,
-	pub time: u64,
+	pub time: f64,
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
 	pub viewport_bounds: ViewportBounds,
@@ -98,9 +98,7 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext> f
 				self.translate_mouse_event(mouse_state, false, responses);
 			}
 			InputPreprocessorMessage::CurrentTime { timestamp } => {
-				responses.add(AnimationMessage::SetTime { time: timestamp as f64 });
-				self.time = timestamp;
-				self.frame_time.advance_timestamp(Duration::from_millis(timestamp));
+				self.time = timestamp as f64;
 			}
 			InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
@@ -187,9 +185,18 @@ impl InputPreprocessorMessageHandler {
 		}
 	}
 
-	pub fn document_bounds(&self) -> [DVec2; 2] {
+	pub fn viewport_bounds(&self) -> [DVec2; 2] {
 		// IPP bounds are relative to the entire application
 		[(0., 0.).into(), self.viewport_bounds.bottom_right - self.viewport_bounds.top_left]
+	}
+
+	pub fn document_bounds(&self, document_to_viewport: DAffine2) -> [DVec2; 2] {
+		// IPP bounds are relative to the entire application
+		let mut bounds = self.viewport_bounds();
+		for point in &mut bounds {
+			*point = document_to_viewport.transform_point2(*point);
+		}
+		bounds
 	}
 }
 

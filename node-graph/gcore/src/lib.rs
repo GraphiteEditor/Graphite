@@ -37,6 +37,7 @@ pub use context::*;
 pub use ctor;
 pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
 pub use graphic_element::{Artboard, ArtboardGroupTable, GraphicElement, GraphicGroupTable};
+pub use memo::IntrospectMode;
 pub use memo::MemoHash;
 pub use num_traits;
 pub use raster::Color;
@@ -58,10 +59,17 @@ pub trait Node<'i, Input> {
 	fn node_name(&self) -> &'static str {
 		std::any::type_name::<Self>()
 	}
-	/// Serialize the node which is used for the `introspect` function which can retrieve values from monitor nodes.
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		log::warn!("Node::serialize not implemented for {}", std::any::type_name::<Self>());
+
+	/// Get the call argument or output data for the monitor node on the next evaluation after set_introspect_input
+	/// Also returns a boolean of whether the node was evaluated
+	fn introspect(&self, _introspect_mode: IntrospectMode) -> Option<Box<dyn std::any::Any + Send + Sync>> {
+		log::warn!("Node::introspect not implemented for {}", std::any::type_name::<Self>());
 		None
+	}
+
+	// The introspect mode is set before the graph evaluation, and tells the monitor node what data to store
+	fn set_introspect(&self, _introspect_mode: IntrospectMode) {
+		log::warn!("Node::set_introspect not implemented for {}", std::any::type_name::<Self>());
 	}
 }
 

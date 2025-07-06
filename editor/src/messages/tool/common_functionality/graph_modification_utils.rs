@@ -13,6 +13,7 @@ use graphene_std::NodeInputDecleration;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{CPU, GPU, RasterDataTable};
 use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::uuid::NodeId;
 use graphene_std::vector::style::Gradient;
 use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
@@ -152,8 +153,8 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		parent: first_layer,
 	});
 
-	responses.add(NodeGraphMessage::RunDocumentGraph);
-	responses.add(Message::StartBuffer);
+	responses.add(PortfolioMessage::CompileActiveDocument);
+	responses.add(Message::StartQueue);
 	responses.add(PenToolMessage::RecalculateLatestPointsPosition);
 }
 

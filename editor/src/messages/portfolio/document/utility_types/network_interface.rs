@@ -11,12 +11,14 @@ use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
 use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, InputConnector, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork, OutputConnector};
 use graph_craft::{Type, concrete};
 use graphene_std::math::quad::Quad;
 use graphene_std::transform::Footprint;
+use graphene_std::uuid::{CompiledProtonodeInput, NodeId};
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::{PointId, VectorData, VectorModificationType};
+use graphene_std::{CompiledProtonodeInput, SNI};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use interpreted_executor::node_registry::NODE_REGISTRY;
 use serde_json::{Value, json};
@@ -40,6 +42,8 @@ pub struct NodeNetworkInterface {
 	pub resolved_types: ResolvedDocumentNodeTypes,
 	#[serde(skip)]
 	transaction_status: TransactionStatus,
+	#[serde(skip)]
+	current_hash: u64,
 }
 
 impl Clone for NodeNetworkInterface {
@@ -478,6 +482,13 @@ impl NodeNetworkInterface {
 		node_template
 	}
 
+	pub fn hash_changed(&mut self) -> bool {
+		let old_hash = self.current_hash;
+		let new_hash = self.network.current_hash();
+		self.current_hash = new_hash;
+		old_hash != new_hash
+	}
+
 	/// Try and get the [`DocumentNodeDefinition`] for a node
 	pub fn get_node_definition(&self, network_path: &[NodeId], node_id: NodeId) -> Option<&DocumentNodeDefinition> {
 		let metadata = self.node_metadata(&node_id, network_path)?;
@@ -501,66 +512,86 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// Try and get the [`Type`] for any [`InputConnector`] based on the `self.resolved_types`.
-	fn node_type_from_compiled(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<(Type, TypeSource)> {
-		let (node_id, input_index) = match *input_connector {
-			InputConnector::Node { node_id, input_index } => (node_id, input_index),
-			InputConnector::Export(export_index) => {
-				let Some((encapsulating_node_id, encapsulating_node_id_path)) = network_path.split_last() else {
-					// The outermost network export defaults to an ArtboardGroupTable.
-					return Some((concrete!(graphene_std::ArtboardGroupTable), TypeSource::OuterMostExportDefault));
-				};
-
-				let output_type = self.output_type(encapsulating_node_id, export_index, encapsulating_node_id_path);
-				return Some(output_type);
+	pub fn downstream_caller_from_output(&self, output_connector: OutputConnector, network_path: &[NodeId]) -> Option<&CompiledProtonodeInput> {
+		match output_connector {
+			OutputConnector::Node { node_id, output_index } => match self.implementation(&node_id, network_path)? {
+				DocumentNodeImplementation::Network(node_network) => {
+					let mut nested_path = network_path.to_vec();
+					nested_path.push(node_id);
+					self.downstream_caller_from_input(InputConnector::Export(output_index), &nested_path)
+				}
+				DocumentNodeImplementation::ProtoNode(_) => self.node_metadata(&node_id, network_path)?.transient_metadata.caller.as_ref(),
+				DocumentNodeImplementation::Extract => todo!(),
+			},
+			OutputConnector::Import(import_index) => {
+				let mut encapsulating_path = network_path.to_vec();
+				let node_id = encapsulating_path.pop().expect("No imports in document network");
+				self.downstream_caller_from_input(InputConnector::node(node_id, import_index), &encapsulating_path)
 			}
+		}
+	}
+	// Returns the path and input index to the protonode which called the input, which has to be the same every time is is called for a given input.
+	// This has to be done by iterating upstream, since a downstream traversal may lead to an uncompiled branch.
+	// This requires that value inputs store their caller. Caller input metadata from compilation has to be stored for
+	pub fn downstream_caller_from_input(&self, &input_connector: InputConnector, network_path: &[NodeId]) -> Option<&CompiledProtonodeInput> {
+		// Cases: Node/Value input to protonode, Node/Value input to network node
+		let input = self.input_from_connector(input_connector, network_path)?;
+		let caller_input = match input {
+			NodeInput::Node { node_id, output_index, lambda } => {
+				match self.implementation(node_id, network_path)? {
+					DocumentNodeImplementation::Network(node_network) => {
+						// Continue traversal within network
+						let mut nested_path = network_path.to_vec();
+						nested_path.push(*node_id);
+						self.downstream_caller_from_input(InputConnector::Export(*output_index), &nested_path)
+					}
+					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => self.node_metadata(node_id, network_path)?.transient_metadata.caller.as_ref(),
+					// If connected to a protonode, use the data in the node metadata
+					DocumentNodeImplementation::Extract => todo!(),
+				}
+			}
+			// Can either be an input to a protonode, network node, or export
+			NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Reflection(_) => match input_connector {
+				InputConnector::Node { node_id, input_index } => self.input_metadata(node_id, *index, network_path)?.transient_metadata.caller.as_ref(),
+				InputConnector::Export(export_index) => self.network_metadata(network_path)?.transient_metadata.callers.get(export_index)?.as_ref(),
+			},
+			NodeInput::Network { import_index } => {
+				let mut encapsulating_path = network_path.to_vec();
+				let node_id = encapsulating_path.pop().expect("No imports in document network");
+				self.downstream_caller_from_input(InputConnector::node(node_id, *import_index), &encapsulating_path)
+			}
+			NodeInput::Inline(inline_rust) => None,
 		};
-		let Some(node) = self.document_node(&node_id, network_path) else {
-			log::error!("Could not get node {node_id} in input_type");
+		let Some(caller_input) = caller_input else {
+			log::error!("Could not get compiled caller input for input: {:?}", input_connector);
 			return None;
 		};
-		// If the input_connector is a NodeInput::Value, return the type of the tagged value.
-		if let Some(value) = node.inputs.get(input_index).and_then(|input| input.as_value()) {
-			return Some((value.ty(), TypeSource::TaggedValue));
-		}
-		let node_id_path = [network_path, &[node_id]].concat();
-		match &node.implementation {
-			DocumentNodeImplementation::Network(_nested_network) => {
-				// Attempt to resolve where this import is within the nested network (it may be connected to the node or directly to an export)
-				let outwards_wires = self.outward_wires(&node_id_path);
-				let inputs_using_import = outwards_wires.and_then(|outwards_wires| outwards_wires.get(&OutputConnector::Import(input_index)));
-				let first_input = inputs_using_import.and_then(|input| input.first()).copied();
+		Some(caller_input)
+	}
 
-				if inputs_using_import.is_some_and(|inputs| inputs.len() > 1) {
-					warn!("Found multiple inputs using an import. Using the type of the first one.");
-				}
-
-				if let Some(input_connector) = first_input {
-					self.node_type_from_compiled(&input_connector, &node_id_path)
-				}
-				// Nothing is connected to the import
-				else {
-					None
-				}
+	pub fn take_input(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<NodeInput> {
+		let Some(network) = self.network_mut(network_path) else {
+			log::error!("Could not get network in input_from_connector");
+			return None;
+		};
+		let input = match input_connector {
+			InputConnector::Node { node_id, input_index } => {
+				let Some(node) = network.nodes.get_mut(node_id) else {
+					log::error!("Could not get node {node_id} in input_from_connector");
+					return None;
+				};
+				node.inputs.get_mut(*input_index)
 			}
-			DocumentNodeImplementation::ProtoNode(_) => {
-				// If a node has manual composition, then offset the input index by 1 since the proto node also includes the type of the input passed through manual composition.
-				let manual_composition_offset = if node.manual_composition.is_some() { 1 } else { 0 };
-				self.resolved_types
-					.types
-					.get(node_id_path.as_slice())
-					.and_then(|node_types| node_types.inputs.get(input_index + manual_composition_offset).cloned())
-					.map(|node_types| (node_types, TypeSource::Compiled))
-			}
-			DocumentNodeImplementation::Extract => None,
-		}
+			InputConnector::Export(export_index) => network.exports.get_mut(*export_index),
+		};
+		input.map(|input| std::mem::replace(input, NodeInput::value(TaggedValue::None, true)))
 	}
 
 	/// Guess the type from the node based on a document node default or a random protonode definition.
-	fn guess_type_from_node(&mut self, network_path: &mut Vec<NodeId>, node_id: NodeId, input_index: usize) -> (Type, TypeSource) {
+	fn guess_type_from_node(&mut self, node_id: NodeId, input_index: usize, network_path: &[NodeId]) -> (Type, TypeSource) {
 		// Try and get the default value from the document node definition
 		if let Some(value) = self
-			.get_node_definition(network_path, node_id)
+			.node_definition(node_id, network_path)
 			.and_then(|definition| definition.node_template.document_node.inputs.get(input_index))
 			.and_then(|input| input.as_value())
 		{
@@ -571,21 +602,21 @@ impl NodeNetworkInterface {
 			return (concrete!(()), TypeSource::Error("node id {node_id:?} not in network {network_path:?}"));
 		};
 
-		let node_id_path = [network_path.as_slice(), &[node_id]].concat();
+		let mut node_id_path = network_path.to_vec();
+		node_id_path.push(node_id);
+
 		match &node.implementation {
 			DocumentNodeImplementation::ProtoNode(protonode) => {
 				let Some(node_types) = random_protonode_implementation(protonode) else {
 					return (concrete!(()), TypeSource::Error("could not resolve protonode"));
 				};
 
-				let skip_footprint = if node.manual_composition.is_some() { 1 } else { 0 };
-
-				let Some(input_type) = std::iter::once(node_types.call_argument.clone()).chain(node_types.inputs.clone()).nth(input_index + skip_footprint) else {
+				let Some(input_type) = node_types.inputs.get(input_index) else {
 					log::error!("Could not get type");
 					return (concrete!(()), TypeSource::Error("could not get the protonode's input"));
 				};
 
-				(input_type, TypeSource::RandomProtonodeImplementation)
+				(input_type.clone(), TypeSource::RandomProtonodeImplementation)
 			}
 			DocumentNodeImplementation::Network(_network) => {
 				// Attempt to resolve where this import is within the nested network
@@ -598,9 +629,10 @@ impl NodeNetworkInterface {
 					input_index: child_input_index,
 				}) = first_input
 				{
-					network_path.push(node_id);
-					let result = self.guess_type_from_node(network_path, child_id, child_input_index);
-					network_path.pop();
+					let mut inner_path = network_path.to_vec();
+					inner_path.push(node_id);
+					let result = self.guess_type_from_node(child_id, child_input_index, inner_path);
+					inner_path.pop();
 					return result;
 				}
 
@@ -613,8 +645,11 @@ impl NodeNetworkInterface {
 
 	/// Get the [`Type`] for any InputConnector
 	pub fn input_type(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> (Type, TypeSource) {
-		if let Some(result) = self.node_type_from_compiled(input_connector, network_path) {
-			return result;
+		if let Some(compiled_type) = self
+			.downstream_caller_from_input(input_connector, network_path)
+			.and_then(|(sni, input_index)| self.resolved_types.get(sni).and_then(|protonode_input_types| protonode_input_types.get(*input_index)))
+		{
+			return (compiled_type.clone(), TypeSource::Compiled);
 		}
 
 		// Resolve types from proto nodes in node_registry
@@ -622,9 +657,57 @@ impl NodeNetworkInterface {
 			return (concrete!(()), TypeSource::Error("input connector is not a node"));
 		};
 
-		// TODO: Once there is type inference (#1621), replace this workaround approach when disconnecting node inputs with NodeInput::Node(ToDefaultNode),
-		// TODO: which would be a new node that implements the Default trait (i.e. `Default::default()`)
-		self.guess_type_from_node(&mut network_path.to_vec(), node_id, input_connector.input_index())
+		self.guess_type_from_node(node_id, input_connector.input_index(), network_path);
+	}
+
+	pub fn compiled_output_type(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Option<&Type> {
+		let (sni, input_index) = self.downstream_caller_from_output(output_connector, network_path)?;
+		let protonode_input_types = self.resolved_types.get(sni)?;
+		protonode_input_types.get(*input_index)
+	}
+
+	pub fn output_type(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> (Type, TypeSource) {
+		if let Some(output_type) = self.compiled_output_type(output_connector, network_path) {
+			return (output_type.clone(), TypeSource::Compiled);
+		}
+		(concrete!(()), TypeSource::Error("Not compiled"))
+	}
+
+	pub fn add_type(&mut self, sni: SNI, input_types: Vec<Type>) {
+		self.resolved_types.insert(sni, input_types);
+	}
+
+	pub fn remove_type(&mut self, sni: SNI) {
+		self.resolved_types.remove(sni);
+	}
+
+	pub fn set_node_caller(&mut self, node: &NodeId, caller: CompiledProtonodeInput, network_path: &[NodeId]) {
+		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
+			return;
+		};
+		metadata.transient_metadata.caller = Some(caller);
+	}
+
+	pub fn set_input_caller(&mut self, input_connector: &InputConnector, caller: CompiledProtonodeInput, network_path: &[NodeId]) {
+		match input_connector {
+			InputConnector::Node { node_id, input_index } => {
+				let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
+					return;
+				};
+				let Some(input_metadata) = metadata.persistent_metadata.input_metadata.get_mut(*input_index) else {
+					log::error!("input metadata must exist when setting input caller for node {}, input index {}", node_id, input_index);
+					return;
+				};
+				input_metadata.transient_metadata.caller = Some(caller);
+			}
+			InputConnector::Export(export_index) => {
+				let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+					return;
+				};
+				network_metadata.transient_metadata.callers.resize(*export_index + 1, None);
+				network_metadata.transient_metadata.callers[*export_index] = Some(caller);
+			}
+		}
 	}
 
 	pub fn valid_input_types(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Vec<Type> {
@@ -1496,10 +1579,7 @@ impl NodeNetworkInterface {
 				let mut node_metadata = DocumentNodeMetadata::default();
 
 				node.inputs = old_node.inputs;
-				node.manual_composition = old_node.manual_composition;
 				node.visible = old_node.visible;
-				node.skip_deduplication = old_node.skip_deduplication;
-				node.original_location = old_node.original_location;
 				node_metadata.persistent_metadata.display_name = old_node.alias;
 				node_metadata.persistent_metadata.reference = if old_node.name.is_empty() { None } else { Some(old_node.name) };
 				node_metadata.persistent_metadata.has_primary_output = old_node.has_primary_output;
@@ -1539,7 +1619,7 @@ impl NodeNetworkInterface {
 			network: node_network,
 			network_metadata,
 			document_metadata: DocumentMetadata::default(),
-			resolved_types: ResolvedDocumentNodeTypes::default(),
+			resolved_types: HashMap::new(),
 			transaction_status: TransactionStatus::Finished,
 		}
 	}
@@ -6060,94 +6140,6 @@ pub enum ImportOrExport {
 	Export(usize),
 }
 
-/// Represents an input connector with index based on the [`DocumentNode::inputs`] index, not the visible input index
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
-pub enum InputConnector {
-	#[serde(rename = "node")]
-	Node {
-		#[serde(rename = "nodeId")]
-		node_id: NodeId,
-		#[serde(rename = "inputIndex")]
-		input_index: usize,
-	},
-	#[serde(rename = "export")]
-	Export(usize),
-}
-
-impl Default for InputConnector {
-	fn default() -> Self {
-		InputConnector::Export(0)
-	}
-}
-
-impl InputConnector {
-	pub fn node(node_id: NodeId, input_index: usize) -> Self {
-		InputConnector::Node { node_id, input_index }
-	}
-
-	pub fn input_index(&self) -> usize {
-		match self {
-			InputConnector::Node { input_index, .. } => *input_index,
-			InputConnector::Export(input_index) => *input_index,
-		}
-	}
-
-	pub fn node_id(&self) -> Option<NodeId> {
-		match self {
-			InputConnector::Node { node_id, .. } => Some(*node_id),
-			_ => None,
-		}
-	}
-}
-
-/// Represents an output connector
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub enum OutputConnector {
-	#[serde(rename = "node")]
-	Node {
-		#[serde(rename = "nodeId")]
-		node_id: NodeId,
-		#[serde(rename = "outputIndex")]
-		output_index: usize,
-	},
-	#[serde(rename = "import")]
-	Import(usize),
-}
-
-impl Default for OutputConnector {
-	fn default() -> Self {
-		OutputConnector::Import(0)
-	}
-}
-
-impl OutputConnector {
-	pub fn node(node_id: NodeId, output_index: usize) -> Self {
-		OutputConnector::Node { node_id, output_index }
-	}
-
-	pub fn index(&self) -> usize {
-		match self {
-			OutputConnector::Node { output_index, .. } => *output_index,
-			OutputConnector::Import(output_index) => *output_index,
-		}
-	}
-
-	pub fn node_id(&self) -> Option<NodeId> {
-		match self {
-			OutputConnector::Node { node_id, .. } => Some(*node_id),
-			_ => None,
-		}
-	}
-
-	pub fn from_input(input: &NodeInput) -> Option<Self> {
-		match input {
-			NodeInput::Network { import_index, .. } => Some(Self::Import(*import_index)),
-			NodeInput::Node { node_id, output_index, .. } => Some(Self::node(*node_id, *output_index)),
-			_ => None,
-		}
-	}
-}
-
 #[derive(Debug, Clone)]
 pub struct Ports {
 	input_ports: Vec<(usize, ClickTarget)>,
@@ -6381,6 +6373,7 @@ pub struct NodeNetworkTransientMetadata {
 	pub rounded_network_edge_distance: TransientMetadata<NetworkEdgeDistance>,
 	// Wires from the exports
 	pub wires: Vec<TransientMetadata<WirePathUpdate>>,
+	pub callers: Vec<Option<CompiledProtonodeInput>>,
 }
 
 #[derive(Debug, Clone)]
@@ -6568,8 +6561,8 @@ impl InputPersistentMetadata {
 #[derive(Debug, Clone, Default)]
 struct InputTransientMetadata {
 	wire: TransientMetadata<WirePathUpdate>,
-	// downstream_protonode: populated for all inputs after each compile
-	// types: populated for each protonode after each
+	caller: Option<CompiledProtonodeInput>,
+	input_type: Option<Type>,
 }
 
 // TODO: Eventually remove this migration document upgrade code
@@ -6883,6 +6876,8 @@ pub struct DocumentNodeTransientMetadata {
 	pub click_targets: TransientMetadata<DocumentNodeClickTargets>,
 	// Metadata that is specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
 	pub node_type_metadata: NodeTypeTransientMetadata,
+	// Stores the caller input since it will be reached through an upstream traversal, but all data is stored per input.
+	pub caller: Option<CompiledProtonodeInput>,
 }
 
 #[derive(Debug, Clone)]

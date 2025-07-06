@@ -78,7 +78,7 @@ impl Line {
 			input_connector: InputConnector::node(node_id, 2),
 			input: NodeInput::value(TaggedValue::DVec2(document_points[1]), false),
 		});
-		responses.add(NodeGraphMessage::RunDocumentGraph);
+		responses.add(PortfolioMessage::CompileActiveDocument);
 	}
 
 	pub fn overlays(document: &DocumentMessageHandler, shape_tool_data: &mut ShapeToolData, overlay_context: &mut OverlayContext) {

@@ -107,47 +107,73 @@ pub mod impure_memo {
 	pub const IDENTIFIER: crate::ProtoNodeIdentifier = crate::ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode");
 }
 
-/// Stores both what a node was called with and what it returned.
-#[derive(Clone, Debug)]
-pub struct IORecord<I, O> {
-	pub input: I,
-	pub output: O,
+#[derive(Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub enum IntrospectMode {
+	Input,
+	Data,
 }
 
 /// Caches the output of the last graph evaluation for introspection
 #[derive(Default)]
-pub struct MonitorNode<I, T, N> {
+pub struct MonitorNode<I, O, N> {
 	#[allow(clippy::type_complexity)]
-	io: Arc<Mutex<Option<Arc<IORecord<I, T>>>>>,
+	input: Arc<Mutex<Option<Box<I>>>>,
+	output: Arc<Mutex<Option<Box<O>>>>,
+	// Gets set to true by the editor when before evaluating the network, then reset when the monitor node is evaluated
+	introspect_input: Arc<Mutex<bool>>,
+	introspect_output: Arc<Mutex<bool>>,
 	node: N,
 }
 
-impl<'i, T, I, N> Node<'i, I> for MonitorNode<I, T, N>
+impl<'i, I, O, N> Node<'i, I> for MonitorNode<I, O, N>
 where
 	I: Clone + 'static + Send + Sync,
-	T: Clone + 'static + Send + Sync,
-	for<'a> N: Node<'a, I, Output: Future<Output = T> + WasmNotSend> + 'i,
+	O: Clone + 'static + Send + Sync,
+	for<'a> N: Node<'a, I, Output: Future<Output = O> + WasmNotSend> + Send + Sync + 'i,
 {
-	type Output = DynFuture<'i, T>;
+	type Output = DynFuture<'i, O>;
 	fn eval(&'i self, input: I) -> Self::Output {
-		let io = self.io.clone();
-		let output_fut = self.node.eval(input.clone());
 		Box::pin(async move {
-			let output = output_fut.await;
-			*io.lock().unwrap() = Some(Arc::new(IORecord { input, output: output.clone() }));
+			let output = self.node.eval(input.clone()).await;
+			let mut introspect_input = self.introspect_input.lock().unwrap();
+			if *introspect_input {
+				*self.input.lock().unwrap() = Some(Box::new(input));
+				*introspect_input = false;
+			}
+			let mut introspect_output = self.introspect_output.lock().unwrap();
+			if *introspect_output {
+				*self.output.lock().unwrap() = Some(Box::new(output.clone()));
+				*introspect_output = false;
+			}
 			output
 		})
 	}
 
-	fn serialize(&self) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
-		let io = self.io.lock().unwrap();
-		(io).as_ref().map(|output| output.clone() as Arc<dyn std::any::Any + Send + Sync>)
+	// After introspecting, the input/output get set to None because the Arc is moved to the editor where it can be directly accessed.
+	fn introspect(&self, introspect_mode: IntrospectMode) -> Option<Box<dyn std::any::Any + Send + Sync>> {
+		match introspect_mode {
+			IntrospectMode::Input => self.input.lock().unwrap().take().map(|input| input as Box<dyn std::any::Any + Send + Sync>),
+			IntrospectMode::Data => self.output.lock().unwrap().take().map(|output| output as Box<dyn std::any::Any + Send + Sync>),
+		}
+	}
+
+	fn set_introspect(&self, introspect_mode: IntrospectMode) {
+		match introspect_mode {
+			IntrospectMode::Input => *self.introspect_input.lock().unwrap() = true,
+			IntrospectMode::Data => *self.introspect_output.lock().unwrap() = true,
+		}
 	}
 }
 
-impl<I, T, N> MonitorNode<I, T, N> {
-	pub fn new(node: N) -> MonitorNode<I, T, N> {
-		MonitorNode { io: Arc::new(Mutex::new(None)), node }
+impl<I, O, N> MonitorNode<I, O, N> {
+	pub fn new(node: N) -> MonitorNode<I, O, N> {
+		MonitorNode {
+			input: Arc::new(Mutex::new(None)),
+			output: Arc::new(Mutex::new(None)),
+			introspect_input: Arc::new(Mutex::new(false)),
+			introspect_output: Arc::new(Mutex::new(false)),
+			node,
+		}
 	}
 }
 

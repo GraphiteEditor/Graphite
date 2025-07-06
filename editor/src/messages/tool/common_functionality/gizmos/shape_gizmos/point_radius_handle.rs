@@ -450,6 +450,6 @@ impl PointRadiusHandle {
 			input_connector: InputConnector::node(node_id, radius_index),
 			input: NodeInput::value(TaggedValue::F64(original_radius + net_delta), false),
 		});
-		responses.add(NodeGraphMessage::RunDocumentGraph);
+		responses.add(PortfolioMessage::CompileActiveDocument);
 	}
 }

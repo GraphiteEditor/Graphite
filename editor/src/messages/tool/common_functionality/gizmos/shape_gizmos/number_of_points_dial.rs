@@ -204,6 +204,6 @@ impl NumberOfPointsDial {
 			input_connector: InputConnector::node(node_id, 1),
 			input: NodeInput::value(TaggedValue::U32(new_point_count as u32), false),
 		});
-		responses.add(NodeGraphMessage::RunDocumentGraph);
+		responses.add(PortfolioMessage::CompileActiveDocument);
 	}
 }

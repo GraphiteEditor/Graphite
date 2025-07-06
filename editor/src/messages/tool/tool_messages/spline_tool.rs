@@ -360,7 +360,7 @@ impl Fsm for SplineToolFsmState {
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
 				tool_data.current_layer = Some(layer);
 
-				responses.add(Message::StartBuffer);
+				responses.add(Message::StartQueue);
 
 				SplineToolFsmState::Drawing
 			}

@@ -126,7 +126,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					}
 				}
 				responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 			}
 			GraphOperationMessage::NewBitmapLayer {
 				id,
@@ -138,7 +138,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				let layer = modify_inputs.create_layer(id);
 				modify_inputs.insert_image_data(image_frame, layer);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 			}
 			GraphOperationMessage::NewBooleanOperationLayer { id, operation, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
@@ -149,7 +149,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					node_id: id,
 					alias: "Boolean Operation".to_string(),
 				});
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 			}
 			GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
@@ -169,14 +169,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				}
 				// Move the layer and all nodes to the correct position in the network
 				responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index });
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);
 				modify_inputs.insert_vector_data(subpaths, layer, true, true, true);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 			}
 			GraphOperationMessage::NewTextLayer {
 				id,
@@ -191,7 +191,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				modify_inputs.insert_text(text, font, typesetting, layer);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(GraphOperationMessage::StrokeSet { layer, stroke: Stroke::default() });
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 			}
 			GraphOperationMessage::ResizeArtboard { layer, location, dimensions } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
@@ -279,7 +279,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					});
 				}
 
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
 			}

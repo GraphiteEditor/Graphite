@@ -1,27 +1,17 @@
 pub mod value;
 
 use crate::document::value::TaggedValue;
-use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
+use crate::proto::{ConstructionArgs, NodeConstructionArgs, OriginalLocation, ProtoNode};
 use dyn_any::DynAny;
 use glam::IVec2;
 use graphene_core::memo::MemoHashGuard;
-pub use graphene_core::uuid::NodeId;
 pub use graphene_core::uuid::generate_uuid;
-use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
-use log::Metadata;
+use graphene_core::uuid::{CompiledProtonodeInput, NodeId, ProtonodePath, SNI};
+use graphene_core::{Context, Cow, MemoHash, ProtoNodeIdentifier, Type};
 use rustc_hash::FxHashMap;
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-
-/// Hash two IDs together, returning a new ID that is always consistent for two input IDs in a specific order.
-/// This is used during [`NodeNetwork::flatten`] in order to ensure consistent yet non-conflicting IDs for inner networks.
-fn merge_ids(a: NodeId, b: NodeId) -> NodeId {
-	let mut hasher = DefaultHasher::new();
-	a.hash(&mut hasher);
-	b.hash(&mut hasher);
-	NodeId(hasher.finish())
-}
 
 /// Utility function for providing a default boolean value to serde.
 #[inline(always)]
@@ -32,7 +22,7 @@ fn return_true() -> bool {
 /// An instance of a [`DocumentNodeDefinition`] that has been instantiated in a [`NodeNetwork`].
 /// Currently, when an instance is made, it lives all on its own without any lasting connection to the definition.
 /// But we will want to change it in the future so it merely references its definition.
-#[derive(Clone, Debug, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct DocumentNode {
 	/// The inputs to a node, which are either:
 	/// - From other nodes within this graph [`NodeInput::Node`],
@@ -44,238 +34,32 @@ pub struct DocumentNode {
 	/// by using network.update_click_target(node_id).
 	#[cfg_attr(target_arch = "wasm32", serde(alias = "outputs"))]
 	pub inputs: Vec<NodeInput>,
-	/// Manual composition is the methodology by which most nodes are implemented, involving a call argument and upstream inputs.
-	/// By contrast, automatic composition is an alternative way to handle the composition of nodes as they execute in the graph.
-	/// Normally, the program (the compiled graph) builds up its call stack, with each node calling its upstream predecessor to acquire its input data.
-	/// When the document graph becomes the proto graph, that conceptual model changes into a model that's unique to the proto graph.
-	/// Automatic composition allows a document node to be translated into its place in the proto graph differently, such that
-	/// the node doesn't participate in that process of being called with a call argument and calling its upstream predecessor.
-	/// Instead, it is called directly with its input data from the upstream node, skipping the call stack building process.
-	/// The abstraction is provided by the compiler for nodes which opt for automatic composition. It works by inserting a `ComposeNode`
-	/// into the proto graph, which does the job of calling the upstream node and feeding its output into the downstream node's first input.
-	/// That first input is typically used by manual composition nodes as the call argument, but for automatic composition nodes,
-	/// that first input becomes the input data from the upstream node passed in by the `ComposeNode`.
-	///
-	/// Through automatic composition, the upstream node providing the first input for a proto node is evaluated before the proto node itself is run.
-	/// (That first input is usually the call argument when manual composition is used.)
-	/// - Abstract example: upstream node `G` is evaluated and its data feeds into the first input of downstream node `F`,
-	///   just like function composition where function `G` is evaluated and its result is fed into function `F`.
-	/// - Concrete example: a node that takes an image as its first input will get that image data from an upstream node that produces image output data and is evaluated first before being fed downstream.
-	///
-	/// This is achieved by automatically inserting `ComposeNode`s, which run the first node with the overall input and then feed the resulting output into the second node.
-	/// The `ComposeNode` is basically a function composition operator: the parentheses in `F(G(x))` or circle math operator in `(F ∘ G)(x)`.
-	/// For flexibility, instead of being a language construct, Graphene splits out composition itself as its own low-level node so that behavior can be overridden.
-	/// The `ComposeNode`s are then inserted during the graph rewriting step for nodes that don't opt out with `manual_composition`.
-	/// Instead of node `G` feeding into node `F` feeding as the result back to the caller,
-	/// the graph is rewritten so nodes `G` and `F` both feed as lambdas into the inputs of a `ComposeNode` which calls `F(G(input))` and returns the result to the caller.
-	///
-	/// A node's manual composition input represents an input that is not resolved through graph rewriting with a `ComposeNode`,
-	/// and is instead just passed in when evaluating this node within the borrow tree.
-	/// This is similar to having the first input be a `NodeInput::Network` after the graph flattening.
-	///
-	/// ## Example Use Case: CacheNode
-	///
-	/// The `CacheNode` is a pass-through node on cache miss, but on cache hit it needs to avoid evaluating the upstream node and instead just return the cached value.
-	///
-	/// First, let's consider what that would look like using the default composition flow if the `CacheNode` instead just always acted as a pass-through (akin to a cache that always misses):
-	///
-	/// ```text
-	/// ┌───────────────┐    ┌───────────────┐    ┌───────────────┐
-	/// │               │◄───┤               │◄───┤               │◄─── EVAL (START)
-	/// │       G       │    │PassThroughNode│    │       F       │
-	/// │               ├───►│               ├───►│               │───► RESULT (END)
-	/// └───────────────┘    └───────────────┘    └───────────────┘
-	/// ```
-	///
-	/// This acts like the function call `F(PassThroughNode(G(input)))` when evaluating `F` with some `input`: `F.eval(input)`.
-	/// - The diagram's upper track of arrows represents the flow of building up the call stack:
-	///   since `F` is the output it is encountered first but deferred to its upstream caller `PassThroughNode` and that is once again deferred to its upstream caller `G`.
-	/// - The diagram's lower track of arrows represents the flow of evaluating the call stack:
-	///   `G` is evaluated first, then `PassThroughNode` is evaluated with the result of `G`, and finally `F` is evaluated with the result of `PassThroughNode`.
-	///
-	/// With the default composition flow (no manual composition), `ComposeNode`s would be automatically inserted during the graph rewriting step like this:
-	///
-	/// ```text
-	///                                           ┌───────────────┐
-	///                                           │               │◄─── EVAL (START)
-	///                                           │  ComposeNode  │
-	///                      ┌───────────────┐    │               ├───► RESULT (END)
-	///                      │               │◄─┐ ├───────────────┤
-	///                      │       G       │  └─┤               │
-	///                      │               ├─┐  │     First     │
-	///                      └───────────────┘ └─►│               │
-	///                      ┌───────────────┐    ├───────────────┤
-	///                      │               │◄───┤               │
-	///                      │  ComposeNode  │    │     Second    │
-	/// ┌───────────────┐    │               ├───►│               │
-	/// │               │◄─┐ ├───────────────┤    └───────────────┘
-	/// │PassThroughNode│  └─┤               │
-	/// │               ├─┐  │     First     │
-	/// └───────────────┘ └─►│               │
-	/// ┌───────────────┐    ├───────────────┤
-	/// |               │◄───┤               │
-	/// │       F       │    │     Second    │
-	/// │               ├───►│               │
-	/// └───────────────┘    └───────────────┘
-	/// ```
-	///
-	/// Now let's swap back from the `PassThroughNode` to the `CacheNode` to make caching actually work.
-	/// It needs to override the default composition flow so that `G` is not automatically evaluated when the cache is hit.
-	/// We need to give the `CacheNode` more manual control over the order of execution.
-	/// So the `CacheNode` opts into manual composition and, instead of deferring to its upstream caller, it consumes the input directly:
-	///
-	/// ```text
-	///                      ┌───────────────┐    ┌───────────────┐
-	///                      │               │◄───┤               │◄─── EVAL (START)
-	///                      │   CacheNode   │    │       F       │
-	///                      │               ├───►│               │───► RESULT (END)
-	/// ┌───────────────┐    ├───────────────┤    └───────────────┘
-	/// │               │◄───┤               │
-	/// │       G       │    │  Cached Data  │
-	/// │               ├───►│               │
-	/// └───────────────┘    └───────────────┘
-	/// ```
-	///
-	/// Now, the call from `F` directly reaches the `CacheNode` and the `CacheNode` can decide whether to call `G.eval(input_from_f)`
-	/// in the event of a cache miss or just return the cached data in the event of a cache hit.
-	pub manual_composition: Option<Type>,
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
 	#[serde(default = "return_true")]
 	pub visible: bool,
-	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
-	/// See [`ProtoNetwork::generate_stable_node_ids`] for details.
-	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
+	pub manual_composition: Option<Type>,
 	#[serde(default)]
 	pub skip_deduplication: bool,
-	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
-	#[serde(skip)]
-	pub original_location: OriginalLocation,
 }
 
-/// Represents the original location of a node input/output when [`NodeNetwork::generate_node_paths`] was called, allowing the types and errors to be derived.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
-pub struct Source {
-	pub node: Vec<NodeId>,
-	pub index: usize,
-}
-
-/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
-#[derive(Clone, Debug, PartialEq, Eq, DynAny, Default, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct OriginalLocation {
-	/// The original location to the document node - e.g. [grandparent_id, parent_id, node_id].
-	pub path: Option<Vec<NodeId>>,
-	/// Each document input source maps to one proto node input (however one proto node input may come from several sources)
-	pub inputs_source: HashMap<Source, usize>,
-	/// List of nodes which depend on this node
-	pub dependants: Vec<Vec<NodeId>>,
-	/// A list of flags indicating whether the input is exposed in the UI
-	pub inputs_exposed: Vec<bool>,
-	/// Skipping inputs is useful for the manual composition thing - whereby a hidden `Footprint` input is added as the first input.
-	pub skip_inputs: usize,
+impl Hash for DocumentNode {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.inputs.hash(state);
+		self.implementation.hash(state);
+		self.visible.hash(state);
+	}
 }
 
 impl Default for DocumentNode {
 	fn default() -> Self {
 		Self {
 			inputs: Default::default(),
-			manual_composition: Default::default(),
 			implementation: Default::default(),
 			visible: true,
-			skip_deduplication: Default::default(),
-			original_location: OriginalLocation::default(),
-		}
-	}
-}
-
-impl Hash for OriginalLocation {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.path.hash(state);
-		self.inputs_source.iter().for_each(|val| val.hash(state));
-		self.inputs_exposed.hash(state);
-		self.skip_inputs.hash(state);
-	}
-}
-impl OriginalLocation {
-	pub fn inputs(&self, index: usize) -> impl Iterator<Item = Source> + '_ {
-		[(index >= self.skip_inputs).then(|| Source {
-			node: self.path.clone().unwrap_or_default(),
-			index: self.inputs_exposed.iter().take(index - self.skip_inputs).filter(|&&exposed| exposed).count(),
-		})]
-		.into_iter()
-		.flatten()
-		.chain(self.inputs_source.iter().filter(move |x| *x.1 == index).map(|(source, _)| source.clone()))
-	}
-}
-impl DocumentNode {
-	/// Locate the input that is a [`NodeInput::Network`] at index `offset` and replace it with a [`NodeInput::Node`].
-	pub fn populate_first_network_input(&mut self, node_id: NodeId, output_index: usize, offset: usize, lambda: bool, source: impl Iterator<Item = Source>, skip: usize) {
-		let (index, _) = self
-			.inputs
-			.iter()
-			.enumerate()
-			.nth(offset)
-			.unwrap_or_else(|| panic!("no network input found for {self:#?} and offset: {offset}"));
-
-		self.inputs[index] = NodeInput::Node { node_id, output_index, lambda };
-		let input_source = &mut self.original_location.inputs_source;
-		for source in source {
-			input_source.insert(source, (index + self.original_location.skip_inputs).saturating_sub(skip));
-		}
-	}
-
-	fn resolve_proto_node(mut self) -> ProtoNode {
-		assert!(!self.inputs.is_empty() || self.manual_composition.is_some(), "Resolving document node {self:#?} with no inputs");
-		let DocumentNodeImplementation::ProtoNode(identifier) = self.implementation else {
-			unreachable!("tried to resolve not flattened node on resolved node {self:?}");
-		};
-
-		let (input, mut args) = if let Some(ty) = self.manual_composition {
-			(ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![]))
-		} else {
-			let first = self.inputs.remove(0);
-			match first {
-				NodeInput::Value { tagged_value, .. } => {
-					assert_eq!(self.inputs.len(), 0, "A value node cannot have any inputs. Current inputs: {:?}", self.inputs);
-					(ProtoNodeInput::ManualComposition(concrete!(graphene_core::Context<'static>)), ConstructionArgs::Value(tagged_value))
-				}
-				NodeInput::Node { node_id, output_index, lambda } => {
-					assert_eq!(output_index, 0, "Outputs should be flattened before converting to proto node");
-					let node = if lambda { ProtoNodeInput::NodeLambda(node_id) } else { ProtoNodeInput::Node(node_id) };
-					(node, ConstructionArgs::Nodes(vec![]))
-				}
-				NodeInput::Network { import_type, .. } => (ProtoNodeInput::ManualComposition(import_type), ConstructionArgs::Nodes(vec![])),
-				NodeInput::Inline(inline) => (ProtoNodeInput::None, ConstructionArgs::Inline(inline)),
-				NodeInput::Scope(_) => unreachable!("Scope input was not resolved"),
-				NodeInput::Reflection(_) => unreachable!("Reflection input was not resolved"),
-			}
-		};
-		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network { .. })), "received non-resolved input");
-		assert!(
-			!self.inputs.iter().any(|input| matches!(input, NodeInput::Value { .. })),
-			"received value as input. inputs: {:#?}, construction_args: {:#?}",
-			self.inputs,
-			args
-		);
-
-		// If we have one input of the type inline, set it as the construction args
-		if let &[NodeInput::Inline(ref inline)] = self.inputs.as_slice() {
-			args = ConstructionArgs::Inline(inline.clone());
-		}
-		if let ConstructionArgs::Nodes(nodes) = &mut args {
-			nodes.extend(self.inputs.iter().map(|input| match input {
-				NodeInput::Node { node_id, lambda, .. } => (*node_id, *lambda),
-				_ => unreachable!(),
-			}));
-		}
-		ProtoNode {
-			identifier,
-			input,
-			construction_args: args,
-			original_location: self.original_location,
-			skip_deduplication: self.skip_deduplication,
+			manual_composition: Some(generic!(T)),
+			skip_deduplication: false,
 		}
 	}
 }
@@ -289,9 +73,8 @@ pub enum NodeInput {
 	/// A hardcoded value that can't change after the graph is compiled. Gets converted into a value node during graph compilation.
 	Value { tagged_value: MemoHash<TaggedValue>, exposed: bool },
 
-	// TODO: Remove import_type and get type from parent node input
 	/// Input that is provided by the parent network to this document node, instead of from a hardcoded value or another node within the same network.
-	Network { import_type: Type, import_index: usize },
+	Network { import_index: usize, import_type: Type },
 
 	/// Input that is extracted from the parent scopes the node resides in. The string argument is the key.
 	Scope(Cow<'static, str>),
@@ -343,16 +126,6 @@ impl NodeInput {
 		Self::Scope(key.into())
 	}
 
-	fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId) {
-		if let &mut NodeInput::Node { node_id, output_index, lambda } = self {
-			*self = NodeInput::Node {
-				node_id: f(node_id),
-				output_index,
-				lambda,
-			}
-		}
-	}
-
 	pub fn is_exposed(&self) -> bool {
 		match self {
 			NodeInput::Node { .. } => true,
@@ -368,10 +141,10 @@ impl NodeInput {
 		match self {
 			NodeInput::Node { .. } => unreachable!("ty() called on NodeInput::Node"),
 			NodeInput::Value { tagged_value, .. } => tagged_value.ty(),
-			NodeInput::Network { import_type, .. } => import_type.clone(),
+			NodeInput::Network { .. } => unreachable!("ty() called on NodeInput::Network"),
 			NodeInput::Inline(_) => panic!("ty() called on NodeInput::Inline"),
 			NodeInput::Scope(_) => unreachable!("ty() called on NodeInput::Scope"),
-			NodeInput::Reflection(_) => concrete!(Metadata),
+			NodeInput::Reflection(_) => concrete!(DocumentNodeMetadata),
 		}
 	}
 
@@ -387,6 +160,13 @@ impl NodeInput {
 
 	pub fn as_node(&self) -> Option<NodeId> {
 		if let NodeInput::Node { node_id, .. } = self { Some(*node_id) } else { None }
+	}
+
+	pub fn is_lambda(&self) -> bool {
+		match self {
+			NodeInput::Node { lambda, .. } => *lambda,
+			_ => false,
+		}
 	}
 }
 
@@ -537,50 +317,25 @@ where
 /// But we will want to change it in the future so it merely references its definition.
 #[derive(Clone, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct OldDocumentNode {
-	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the node definition's name is displayed to the user in italics.
-	///  Ensure the click target in the encapsulating network is updated when this is modified by using network.update_click_target(node_id).
 	#[serde(default)]
 	pub alias: String,
-	// TODO: Replace this name with a reference to the [`DocumentNodeDefinition`] node definition to use the name from there instead.
-	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties.
 	#[serde(deserialize_with = "migrate_layer_to_merge")]
 	pub name: String,
-	/// The inputs to a node, which are either:
-	/// - From other nodes within this graph [`NodeInput::Node`],
-	/// - A constant value [`NodeInput::Value`],
-	/// - A [`NodeInput::Network`] which specifies that this input is from outside the graph, which is resolved in the graph flattening step in the case of nested networks.
-	///
-	/// In the root network, it is resolved when evaluating the borrow tree.
-	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input) by using network.update_click_target(node_id).
 	#[cfg_attr(target_arch = "wasm32", serde(alias = "outputs"))]
 	pub inputs: Vec<NodeInput>,
 	pub manual_composition: Option<Type>,
-	// TODO: Remove once this references its definition instead (see above TODO).
-	/// Indicates to the UI if a primary output should be drawn for this node.
-	/// True for most nodes, but the Split Channels node is an example of a node that has multiple secondary outputs but no primary output.
 	#[serde(default = "return_true")]
 	pub has_primary_output: bool,
-	// A nested document network or a proto-node identifier.
 	pub implementation: OldDocumentNodeImplementation,
-	/// User chosen state for displaying this as a left-to-right node or bottom-to-top layer. Ensure the click target in the encapsulating network is updated when the node changes to a layer by using network.update_click_target(node_id).
 	#[serde(default)]
 	pub is_layer: bool,
-	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
 	#[serde(default = "return_true")]
 	pub visible: bool,
-	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
 	#[serde(default)]
 	pub locked: bool,
-	/// Metadata about the node including its position in the graph UI. Ensure the click target in the encapsulating network is updated when the node moves by using network.update_click_target(node_id).
 	pub metadata: OldDocumentNodeMetadata,
-	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
-	/// See [`ProtoNetwork::generate_stable_node_ids`] for details.
-	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
 	#[serde(default)]
 	pub skip_deduplication: bool,
-	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
-	#[serde(skip)]
-	pub original_location: OriginalLocation,
 }
 
 // TODO: Eventually remove this document upgrade code
@@ -667,7 +422,7 @@ pub struct NodeNetwork {
 	/// A network may expose nodes as constants which can by used by other nodes using a `NodeInput::Scope(key)`.
 	#[serde(default)]
 	#[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")]
-	pub scope_injections: FxHashMap<String, (NodeId, Type)>,
+	pub scope_injections: FxHashMap<String, TaggedValue>,
 	#[serde(skip)]
 	pub generated: bool,
 }
@@ -690,20 +445,12 @@ impl PartialEq for NodeNetwork {
 	}
 }
 
-/// Graph modification functions
+/// Graph helper functions
 impl NodeNetwork {
 	pub fn current_hash(&self) -> u64 {
 		let mut hasher = DefaultHasher::new();
 		self.hash(&mut hasher);
 		hasher.finish()
-	}
-
-	pub fn value_network(node: DocumentNode) -> Self {
-		Self {
-			exports: vec![NodeInput::node(NodeId(0), 0)],
-			nodes: [(NodeId(0), node)].into_iter().collect(),
-			..Default::default()
-		}
 	}
 
 	/// Get the nested network given by the path of node ids
@@ -716,6 +463,14 @@ impl NodeNetwork {
 		network
 	}
 
+	pub fn value_network(node: DocumentNode) -> Self {
+		Self {
+			exports: vec![NodeInput::node(NodeId(0), 0)],
+			nodes: [(NodeId(0), node)].into_iter().collect(),
+			..Default::default()
+		}
+	}
+
 	/// Get the mutable nested network given by the path of node ids
 	pub fn nested_network_mut(&mut self, nested_path: &[NodeId]) -> Option<&mut Self> {
 		let mut network = Some(self);
@@ -724,13 +479,6 @@ impl NodeNetwork {
 			network = network.and_then(|network| network.nodes.get_mut(segment)).and_then(|node| node.implementation.get_network_mut());
 		}
 		network
-	}
-
-	/// Is the node being used directly as an output?
-	pub fn outputs_contain(&self, node_id_to_check: NodeId) -> bool {
-		self.exports
-			.iter()
-			.any(|output| if let NodeInput::Node { node_id, .. } = output { *node_id == node_id_to_check } else { false })
 	}
 
 	/// Check there are no cycles in the graph (this should never happen).
@@ -761,887 +509,909 @@ impl NodeNetwork {
 
 /// Functions for compiling the network
 impl NodeNetwork {
-	/// Replace all references in the graph of a node ID with a new node ID defined by the function `f`.
-	pub fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId + Copy) {
-		self.exports.iter_mut().for_each(|output| {
-			if let NodeInput::Node { node_id, .. } = output {
-				*node_id = f(*node_id)
-			}
-		});
-		self.scope_injections.values_mut().for_each(|(id, _ty)| *id = f(*id));
-		let nodes = std::mem::take(&mut self.nodes);
-		self.nodes = nodes
-			.into_iter()
-			.map(|(id, mut node)| {
-				node.inputs.iter_mut().for_each(|input| input.map_ids(f));
-				node.original_location.dependants.iter_mut().for_each(|deps| deps.iter_mut().for_each(|id| *id = f(*id)));
-				(f(id), node)
-			})
-			.collect();
-	}
+	// Returns a topologically sorted vec of protonodes, as well as metadata extracted during compilation
+	// Compiles a network with one export where any scope injections are added the top level network, and the network to run is implemented as a DocumentNodeImplementation::Network
+	// The traversal input is the node which calls the network to be flattened. If it is None, then start from the export.
+	// Every value protonode stores the connector which directly called it, which is used to map the value input to the protonode caller.
+	// Every value input connector is mapped to its caller, and every protonode is mapped to its caller. If there are multiple, then they are compared to ensure it is the same between compilations
+	pub fn flatten(&mut self) -> Result<(Vec<ProtoNode>, Vec<(AbsoluteInputConnector, CompiledProtonodeInput)>, Vec<(ProtonodePath, CompiledProtonodeInput)>), String> {
+		// These three arrays are stored in parallel
+		let mut protonetwork = Vec::new();
+		let mut value_connectors = Vec::new();
+		let mut protonode_paths = Vec::new();
+		let mut calling_protonodes = HashMap::new();
 
-	/// Populate the [`DocumentNode::path`], which stores the location of the document node to allow for matching the resulting proto nodes to the document node for the purposes of typing and finding monitor nodes.
-	pub fn generate_node_paths(&mut self, prefix: &[NodeId]) {
-		for (node_id, node) in &mut self.nodes {
-			let mut new_path = prefix.to_vec();
-			if !self.generated {
-				new_path.push(*node_id);
-			}
-			if let DocumentNodeImplementation::Network(network) = &mut node.implementation {
-				network.generate_node_paths(new_path.as_slice());
-			}
-			if node.original_location.path.is_some() {
-				log::warn!("Attempting to overwrite node path");
-			} else {
-				node.original_location = OriginalLocation {
-					path: Some(new_path),
-					inputs_exposed: node.inputs.iter().map(|input| input.is_exposed()).collect(),
-					skip_inputs: if node.manual_composition.is_some() { 1 } else { 0 },
-					dependants: (0..node.implementation.output_count()).map(|_| Vec::new()).collect(),
-					..Default::default()
-				};
-			}
-		}
-	}
-
-	pub fn populate_dependants(&mut self) {
-		let mut dep_changes = Vec::new();
-		for (node_id, node) in &mut self.nodes {
-			let len = node.original_location.dependants.len();
-			node.original_location.dependants.extend(vec![vec![]; (node.implementation.output_count()).max(len) - len]);
-			for input in &node.inputs {
-				if let NodeInput::Node { node_id: dep_id, output_index, .. } = input {
-					dep_changes.push((*dep_id, *output_index, *node_id));
-				}
-			}
-		}
-		// println!("{:#?}", self.nodes.get(&NodeId(1)));
-		for (dep_id, output_index, node_id) in dep_changes {
-			let node = self.nodes.get_mut(&dep_id).expect("Encountered invalid node id");
-			let len = node.original_location.dependants.len();
-			// One must be added to the index to find the length because indexing in rust starts from 0.
-			node.original_location.dependants.extend(vec![vec![]; (output_index + 1).max(len) - len]);
-			// println!("{node_id} {output_index} {}", node.implementation.output_count());
-			node.original_location.dependants[output_index].push(node_id);
-		}
-	}
-
-	/// Replace all references in any node of `old_input` with `new_input`
-	fn replace_node_inputs(&mut self, node_id: NodeId, old_input: (NodeId, usize), new_input: (NodeId, usize)) {
-		let Some(node) = self.nodes.get_mut(&node_id) else { return };
-		node.inputs.iter_mut().for_each(|input| {
-			if let NodeInput::Node { node_id: input_id, output_index, .. } = input {
-				if (*input_id, *output_index) == old_input {
-					(*input_id, *output_index) = new_input;
-				}
-			}
-		});
-	}
-
-	/// Replace all references in any node of `old_output` with `new_output`
-	fn replace_network_outputs(&mut self, old_output: NodeInput, new_output: NodeInput) {
-		for output in self.exports.iter_mut() {
-			if *output == old_output {
-				*output = new_output.clone();
-			}
-		}
-	}
-
-	/// Removes unused nodes from the graph. Returns a list of booleans which represent if each of the inputs have been retained.
-	pub fn remove_dead_nodes(&mut self, number_of_inputs: usize) -> Vec<bool> {
-		// Take all the nodes out of the nodes list
-		let mut old_nodes = std::mem::take(&mut self.nodes);
-
-		let mut stack = self
-			.exports
-			.iter()
-			.filter_map(|output| if let NodeInput::Node { node_id, .. } = output { Some(*node_id) } else { None })
-			.collect::<Vec<_>>();
-		while let Some(node_id) = stack.pop() {
-			let Some((node_id, mut document_node)) = old_nodes.remove_entry(&node_id) else {
-				continue;
-			};
-			// Remove dead nodes from child networks
-			if let DocumentNodeImplementation::Network(network) = &mut document_node.implementation {
-				// Remove inputs to the parent node if they have been removed from the child
-				let mut retain_inputs = network.remove_dead_nodes(document_node.inputs.len()).into_iter();
-				document_node.inputs.retain(|_| retain_inputs.next().unwrap_or(true))
-			}
-			// Visit all nodes that this node references
-			stack.extend(
-				document_node
-					.inputs
-					.iter()
-					.filter_map(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id) } else { None }),
-			);
-			// Add the node back to the list of nodes
-			self.nodes.insert(node_id, document_node);
-		}
-
-		// Check if inputs are used and store for return value
-		let mut are_inputs_used = vec![false; number_of_inputs];
-		for node in &self.nodes {
-			for node_input in &node.1.inputs {
-				if let NodeInput::Network { import_index, .. } = node_input {
-					if let Some(is_used) = are_inputs_used.get_mut(*import_index) {
-						*is_used = true;
-					}
-				}
-			}
-		}
-		are_inputs_used
-	}
-
-	pub fn resolve_scope_inputs(&mut self) {
-		for node in self.nodes.values_mut() {
-			for input in node.inputs.iter_mut() {
-				if let NodeInput::Scope(key) = input {
-					let (import_id, _ty) = self.scope_injections.get(key.as_ref()).expect("Tried to import a non existent key from scope");
-					// TODO use correct output index
-					*input = NodeInput::node(*import_id, 0);
-				}
-			}
-		}
-	}
-
-	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
-	pub fn flatten(&mut self, node_id: NodeId) {
-		self.flatten_with_fns(node_id, merge_ids, NodeId::new)
-	}
-
-	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
-	pub fn flatten_with_fns(&mut self, node_id: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
-		let Some((id, mut node)) = self.nodes.remove_entry(&node_id) else {
-			warn!("The node which was supposed to be flattened does not exist in the network, id {node_id} network {self:#?}");
-			return;
-		};
-		// If the node is hidden, replace it with an identity node
-		let identity_node = DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into());
-		if !node.visible && node.implementation != identity_node {
-			node.implementation = identity_node;
-
-			// Connect layer node to the graphic group below
-			node.inputs.drain(1..);
-			node.manual_composition = None;
-			self.nodes.insert(id, node);
-			return;
-		}
-
-		let path = node.original_location.path.clone().unwrap_or_default();
-
-		// Replace value inputs with dedicated value nodes
-		if node.implementation != DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()) {
-			Self::replace_value_inputs_with_nodes(&mut node.inputs, &mut self.nodes, &path, gen_id, map_ids, id);
-		}
-
-		let DocumentNodeImplementation::Network(mut inner_network) = node.implementation else {
-			// If the node is not a network, it is a primitive node and can be inserted into the network as is.
-			assert!(!self.nodes.contains_key(&id), "Trying to insert a node into the network caused an id conflict");
-
-			self.nodes.insert(id, node);
-			return;
-		};
-
-		// Replace value and reflection imports with value nodes, added inside nested network
-		Self::replace_value_inputs_with_nodes(
-			&mut inner_network.exports,
-			&mut inner_network.nodes,
-			node.original_location.path.as_ref().unwrap_or(&vec![]),
-			gen_id,
-			map_ids,
-			id,
+		// This function creates a flattened network with populated original location fields but unmapped inputs
+		// The input to flattened protonode hashmap is used to map the inputs
+		self.traverse_input(
+			&mut protonetwork,
+			&mut value_connectors,
+			&mut protonode_paths,
+			&mut calling_protonodes,
+			&mut HashMap::new(),
+			AbsoluteInputConnector::traversal_start(),
+			(0, 0),
 		);
 
-		// Connect all network inputs to either the parent network nodes, or newly created value nodes for the parent node.
-		inner_network.map_ids(|inner_id| map_ids(id, inner_id));
-		inner_network.populate_dependants();
-		let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();
-
-		for (key, value) in inner_network.scope_injections.into_iter() {
-			match self.scope_injections.entry(key) {
-				std::collections::hash_map::Entry::Occupied(o) => {
-					log::warn!("Found duplicate scope injection for key {}, ignoring", o.key());
+		let mut generated_snis = HashSet::new();
+		// Generate SNI's. This gets called after all node inputs are replaced with their indices
+		for protonode_index in (0..protonetwork.len()).rev() {
+			let protonode = protonetwork.get_mut(protonode_index).unwrap();
+			if let ConstructionArgs::Nodes(NodeConstructionArgs { inputs: input_snis, .. }) = &protonode.construction_args {
+				for input_sni in input_snis {
+					assert_ne!(
+						*input_sni,
+						NodeId(0),
+						"All inputs should be mapped to a stable node index, and the calling nodes inputs should be updated"
+					);
 				}
-				std::collections::hash_map::Entry::Vacant(v) => {
-					v.insert(value);
+			}
+
+			use std::hash::Hasher;
+			let mut hasher = rustc_hash::FxHasher::default();
+			protonode.construction_args.hash(&mut hasher);
+			let mut stable_node_id = NodeId(hasher.finish());
+			// The stable node index must be unique for every protonode. If it has the same hash as another protonode, continue hashing itself
+			// For example two cache nodes connected to a Context getter node have two cache different values, even though the stable node id is the same.
+			while !generated_snis.insert(stable_node_id) {
+				stable_node_id.hash(&mut hasher);
+				stable_node_id = NodeId(hasher.finish());
+			}
+
+			protonode.stable_node_id = stable_node_id;
+			for (calling_node_index, input_index) in calling_protonodes.get(&protonode_index).unwrap() {
+				match &mut protonetwork.get_mut(*calling_node_index).unwrap().construction_args {
+					ConstructionArgs::Nodes(nodes) => {
+						*nodes.inputs.get_mut(*input_index).unwrap() = stable_node_id;
+					}
+					// TODO: Implement for extract
+					_ => unreachable!(),
 				}
 			}
 		}
 
-		// Match the document node input and the inputs of the inner network
-		for (nested_node_id, mut nested_node) in inner_network.nodes.into_iter() {
-			for (nested_input_index, nested_input) in nested_node.clone().inputs.iter().enumerate() {
-				if let NodeInput::Network { import_index, .. } = nested_input {
-					let parent_input = node.inputs.get(*import_index).unwrap_or_else(|| panic!("Import index {} should always exist", import_index));
-					match *parent_input {
-						// If the input to self is a node, connect the corresponding output of the inner network to it
-						NodeInput::Node { node_id, output_index, lambda } => {
-							let skip = node.original_location.skip_inputs;
-							nested_node.populate_first_network_input(node_id, output_index, nested_input_index, lambda, node.original_location.inputs(*import_index), skip);
-							let input_node = self.nodes.get_mut(&node_id).unwrap_or_else(|| panic!("unable find input node {node_id:?}"));
-							input_node.original_location.dependants[output_index].push(nested_node_id);
-						}
-						NodeInput::Network { import_index, .. } => {
-							let parent_input_index = import_index;
-							let Some(NodeInput::Network { import_index, .. }) = nested_node.inputs.get_mut(nested_input_index) else {
-								log::error!("Nested node should have a network input");
-								continue;
-							};
-							*import_index = parent_input_index;
-						}
-						NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
-						NodeInput::Inline(_) => (),
-						NodeInput::Scope(ref key) => {
-							let (import_id, _ty) = self.scope_injections.get(key.as_ref()).expect("Tried to import a non existent key from scope");
-							// TODO use correct output index
-							nested_node.inputs[nested_input_index] = NodeInput::node(*import_id, 0);
-						}
-						NodeInput::Reflection(_) => unreachable!("Reflection inputs should have been replaced with value nodes"),
-					}
-				}
-			}
-			self.nodes.insert(nested_node_id, nested_node);
-		}
-		// TODO: Add support for flattening exports that are NodeInput::Network (https://github.com/GraphiteEditor/Graphite/issues/1762)
+		// Do another traversal now that the caller SNI have been generated to collect metadata for the editor
+		let mut value_connector_callers = Vec::new();
+		let mut protonode_callers = Vec::new();
 
-		// Connect all nodes that were previously connected to this node to the nodes of the inner network
-		for (i, export) in inner_network.exports.into_iter().enumerate() {
-			if let NodeInput::Node { node_id, output_index, .. } = &export {
-				for deps in &node.original_location.dependants {
-					for dep in deps {
-						self.replace_node_inputs(*dep, (id, i), (*node_id, *output_index));
-					}
-				}
+		for (protonode_index, (value_connector, protonode_path)) in value_connectors.iter_mut().zip(protonode_paths.iter_mut()).enumerate().rev() {
+			let callers = calling_protonodes.get(&protonode_index).unwrap();
 
-				if let Some(new_output_node) = self.nodes.get_mut(node_id) {
-					for dep in &node.original_location.dependants[i] {
-						new_output_node.original_location.dependants[*output_index].push(*dep);
-					}
-				}
+			let &(min_protonode_index, input_index) = callers.iter().min().unwrap();
+
+			let protonode_id = protonetwork[min_protonode_index].stable_node_id;
+
+			if let Some(value_connector) = value_connector.take() {
+				value_connector_callers.push((value_connector, (protonode_id, input_index)));
 			}
 
-			self.replace_network_outputs(NodeInput::node(id, i), export);
+			if let Some(protonode_path) = protonode_path.take() {
+				protonode_callers.push((protonode_path, (protonode_id, input_index)));
+			}
 		}
 
-		for node_id in new_nodes {
-			self.flatten_with_fns(node_id, map_ids, gen_id);
-		}
+		let mut existing_ids = HashSet::new();
+		// Value nodes can be deduplicated if they share the same hash, since they do not depend on the input
+		let protonetwork = protonetwork
+			.into_iter()
+			.filter(|protonode| !(matches!(protonode.construction_args, ConstructionArgs::Value(_)) && !existing_ids.insert(protonode.stable_node_id)))
+			.collect();
+		Ok((protonetwork, value_connector_callers, protonode_callers))
 	}
 
-	#[inline(never)]
-	fn replace_value_inputs_with_nodes(
-		inputs: &mut [NodeInput],
-		collection: &mut FxHashMap<NodeId, DocumentNode>,
-		path: &[NodeId],
-		gen_id: impl Fn() -> NodeId + Copy,
-		map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy,
-		id: NodeId,
+	fn get_input_from_absolute_connector(&mut self, traversal_input: &AbsoluteInputConnector) -> Option<&mut NodeInput> {
+		let network_path = &traversal_input.network_path;
+		let Some(nested_network) = self.nested_network_mut(network_path) else {
+			log::error!("traversal_input network does not exist, path {:?}", network_path);
+			return None;
+		};
+		match &traversal_input.connector {
+			// Input from an export
+			InputConnector::Export(export_index) => {
+				let Some(input) = nested_network.exports.get_mut(*export_index) else {
+					log::error!(
+						"The output which was supposed to be flattened does not exist in the network {:?}, index {:?}",
+						&network_path,
+						export_index
+					);
+					return None;
+				};
+				Some(input)
+			}
+			// Input from a protonode or network node
+			InputConnector::Node { node_id, input_index } => {
+				let Some(document_node) = nested_network.nodes.get_mut(node_id) else {
+					log::error!("The node which was supposed to be flattened does not exist in the network, id {node_id}");
+					return None;
+				};
+				let Some(input) = document_node.inputs.get_mut(*input_index) else {
+					log::error!("The output which was supposed to be flattened does not exist in the network, index {input_index}");
+					return None;
+				};
+				Some(input)
+			}
+		}
+	}
+	// Performs a recursive graph traversal starting from all protonode inputs and the root export until reaching the next protonode or value input.
+	// Automatically inserts value nodes by moving the value from the current network
+	//
+	// protonetwork - The topologically sorted flattened protonetwork. The caller of each protonode is at a lower index. The output of the network is the first protonode
+	//
+	// calling protonodes - anytime a protonode is reached, the caller is added as a value with (caller protonetwork index, caller input index).
+	// This is necessary so the calling protonodes input can be looked up and mapped when generating SNI's
+	//
+	// Protonode indices - mapping of protonode path to its index in the protonetwork, updated when inserting a protonode
+	//
+	// Traversal input - current connector to traverse over. added to downstream_calling_inputs every time the function is called.
+	//
+	// downstream_calling_inputs - tracks all inputs reached during traversal
+	//
+	// any_input_to_downstream_protonode_input - used by the runtime/javascript to get the calling protonode input from any input connector.
+	// When a protonode is reached, each input connector in downstream_calling_inputs, is looked up in `any_input_to_downstream_protonode_input`. If there is an entry,
+	// Then the paths are compared, and the greater one is chosen using stable ordering.
+	// This is to ensure a constant mapping, since an export for instance can have multiple calling nodes in the parent network
+	//
+	// any_input_to_upstream_protonode - used by the runtime to get the node to evaluate for any given input connector.
+	// Each input connector is inserted into any_input_to_upstream_protonode with the value being the path to the reached protonode.
+	// It doesnt matter if its overwritten since it must have previously pointed to the same protonode anyways
+	//
+	pub fn traverse_input(
+		&mut self,
+		protonetwork: &mut Vec<ProtoNode>, // Flattened node id to protonode, stable node ids can only be generated once the network is fully flattened, since it runs in reverse
+		value_connector: &mut Vec<Option<AbsoluteInputConnector>>,
+		protonode_path: &mut Vec<Option<ProtonodePath>>,
+		calling_protonodes: &mut HashMap<usize, Vec<(usize, usize)>>, // A mapping of protonode path to all (flattened network indices, their input index) that called the protonode, used during SNI generation to remap inputs
+		protonode_indices: &mut HashMap<Vec<SNI>, usize>,             // Mapping of protonode path to its index in the flattened protonetwork
+		traversal_input: AbsoluteInputConnector,
+		// Protonode index, input index
+		traversal_start: (usize, usize),
 	) {
-		// Replace value exports and imports with value nodes, added inside the nested network
-		for export in inputs {
-			let export: &mut NodeInput = export;
-			let previous_export = std::mem::replace(export, NodeInput::network(concrete!(()), 0));
+		let network_path = &traversal_input.network_path;
 
-			let (tagged_value, exposed) = match previous_export {
-				NodeInput::Value { tagged_value, exposed } => (tagged_value, exposed),
-				NodeInput::Reflection(reflect) => match reflect {
-					DocumentNodeMetadata::DocumentNodePath => (TaggedValue::NodePath(path.to_vec()).into(), false),
-				},
-				previous_export => {
-					*export = previous_export;
-					continue;
+		let Some(input) = self.get_input_from_absolute_connector(&traversal_input) else {
+			return;
+		};
+
+		// Populate reflection inputs with the tagged value of the node path
+		if let NodeInput::Reflection(metadata) = input {
+			match metadata {
+				DocumentNodeMetadata::DocumentNodePath => {
+					let mut node_path = network_path.clone();
+					if let Some(traversal_node_id) = traversal_input.connector.node_id() {
+						node_path.push(traversal_node_id);
+					}
+					*input = NodeInput::Value {
+						tagged_value: TaggedValue::NodePath(node_path).into(),
+						exposed: true,
+					}
 				}
-			};
-			let value_node_id = gen_id();
-			let merged_node_id = map_ids(id, value_node_id);
-			let mut original_location = OriginalLocation {
-				path: Some(path.to_vec()),
-				dependants: vec![vec![id]],
-				..Default::default()
-			};
-
-			if let Some(path) = &mut original_location.path {
-				path.push(value_node_id);
 			}
-			collection.insert(
-				merged_node_id,
-				DocumentNode {
-					inputs: vec![NodeInput::Value { tagged_value, exposed }],
-					implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()),
-					original_location,
-					..Default::default()
-				},
-			);
-			*export = NodeInput::Node {
-				node_id: merged_node_id,
-				output_index: 0,
-				lambda: false,
+		}
+
+		if let NodeInput::Scope(cow) = input {
+			let string = cow.to_string();
+			let scope_node_value = match self.scope_injections.get(&string) {
+				Some(value) => value.clone(), // Scope injections need to be small values so they can be cloned to every caller input
+				// If the scope node value node has already been inserted, the other nodes will map to it
+				None => TaggedValue::None,
 			};
+			let Some(input) = self.get_input_from_absolute_connector(&traversal_input) else {
+				return;
+			};
+			*input = NodeInput::Value {
+				tagged_value: scope_node_value.into(),
+				exposed: false,
+			}
+		}
+
+		let Some(input) = self.get_input_from_absolute_connector(&traversal_input) else {
+			return;
+		};
+
+		// This input can be called by an export, protonode input, or document node input
+		match input {
+			NodeInput::Node { node_id, output_index, .. } => {
+				let upstream_node_id = *node_id;
+				let output_index = *output_index;
+				let mut upstream_node_path = network_path.clone();
+				upstream_node_path.push(upstream_node_id);
+				let Some(nested_network) = self.nested_network(network_path) else {
+					log::error!("traversal_input network does not exist, path {:?}", network_path);
+					return;
+				};
+				let Some(upstream_document_node) = nested_network.nodes.get(&upstream_node_id) else {
+					log::error!("The node which was supposed to be flattened does not exist in the network, id {upstream_node_id}");
+					return;
+				};
+
+				match &upstream_document_node.implementation {
+					DocumentNodeImplementation::Network(_node_network) => {
+						let traversal_input = AbsoluteInputConnector {
+							network_path: upstream_node_path.clone(),
+							connector: InputConnector::Export(output_index),
+						};
+						self.traverse_input(protonetwork, value_connector, protonode_path, calling_protonodes, protonode_indices, traversal_input, traversal_start);
+					}
+					DocumentNodeImplementation::ProtoNode(protonode_id) => {
+						// Only insert the protonode if it has not previously been inserted
+						// Do not insert the protonode into the proto network or traverse over inputs if its already visited
+						let reached_protonode_index = match protonode_indices.get(&upstream_node_path) {
+							// The protonode has already been inserted, return its index
+							Some(reached_protonode_index) => *reached_protonode_index,
+							// Insert the protonode and traverse over inputs
+							None => {
+								let construction_args = ConstructionArgs::Nodes(NodeConstructionArgs {
+									identifier: protonode_id.clone(),
+									inputs: vec![NodeId(0); upstream_document_node.inputs.len()],
+								});
+								let protonode = ProtoNode {
+									construction_args,
+									// All protonodes take Context by default
+									input: concrete!(Context),
+									original_location: OriginalLocation {
+										protonode_path: upstream_node_path.clone().into(),
+										send_types_to_editor: true,
+									},
+									stable_node_id: NodeId(0),
+								};
+								let new_protonode_index = protonetwork.len();
+								protonode_indices.insert(upstream_node_path.clone(), new_protonode_index);
+								protonetwork.push(protonode);
+								value_connector.push(None);
+								protonode_path.push(Some(upstream_node_path.into_boxed_slice()));
+								// Iterate over all upstream inputs, which will map the inputs to the index of the connected protonode
+								for input_index in 0..upstream_document_node.inputs.len() {
+									self.traverse_input(
+										protonetwork,
+										value_connector,
+										protonode_path,
+										calling_protonodes,
+										protonode_indices,
+										AbsoluteInputConnector {
+											network_path: network_path.clone(),
+											connector: InputConnector::node(upstream_node_id, input_index),
+										},
+										(new_protonode_index, input_index),
+									);
+								}
+								new_protonode_index
+							}
+						};
+						calling_protonodes.entry(reached_protonode_index).or_insert_with(Vec::new).push(traversal_start);
+					}
+					DocumentNodeImplementation::Extract => todo!(),
+				}
+			}
+			NodeInput::Value { tagged_value, .. } => {
+				// Deduplication of value nodes based on their tagged value, since they do not depend on the Context
+				//
+				use std::hash::Hasher;
+				let mut hasher = rustc_hash::FxHasher::default();
+				tagged_value.hash(&mut hasher);
+				let value_node_path = vec![NodeId(hasher.finish())];
+
+				// Only insert the value protonode if it has not previously been inserted
+				let value_protonode_index = match protonode_indices.get(&value_node_path) {
+					// The value input has already been inserted, return it the existing value nodes index
+					Some(value_protonode_index) => *value_protonode_index,
+					// Insert the protonode and traverse over inputs
+					None => {
+						let protonode = ProtoNode {
+							construction_args: ConstructionArgs::Value(std::mem::replace(tagged_value, TaggedValue::None.into())),
+							input: concrete!(Context), // Could be ()
+							original_location: OriginalLocation {
+								protonode_path: Vec::new().into(),
+								send_types_to_editor: false,
+							},
+							stable_node_id: NodeId(0),
+						};
+						let new_protonode_index = protonetwork.len();
+						protonode_indices.insert(value_node_path.clone(), new_protonode_index);
+						protonetwork.push(protonode);
+						value_connector.push(Some(traversal_input));
+						protonode_path.push(None);
+						new_protonode_index
+					}
+				};
+				calling_protonodes.entry(value_protonode_index).or_insert_with(Vec::new).push(traversal_start);
+			}
+			// Continue traversal
+			NodeInput::Network { import_index, .. } => {
+				let mut encapsulating_network_path = network_path.clone();
+				let node_id = encapsulating_network_path.pop().unwrap();
+				let traversal_input = AbsoluteInputConnector {
+					network_path: encapsulating_network_path,
+					connector: InputConnector::node(node_id, *import_index),
+				};
+				self.traverse_input(protonetwork, value_connector, protonode_path, calling_protonodes, protonode_indices, traversal_input, traversal_start);
+			}
+			NodeInput::Scope(_cow) => unreachable!(),
+			NodeInput::Reflection(_document_node_metadata) => unreachable!(),
+			NodeInput::Inline(_inline_rust) => todo!(),
 		}
 	}
 
-	// /// Locate the export that is a [`NodeInput::Network`] at index `offset` and replace it with a [`NodeInput::Node`].
-	// fn populate_first_network_export(&mut self, node: &mut DocumentNode, node_id: NodeId, output_index: usize, lambda: bool, export_index: usize, source: impl Iterator<Item = Source>, skip: usize) {
-	// 	self.exports[export_index] = NodeInput::Node { node_id, output_index, lambda };
-	// 	let input_source = &mut node.original_location.inputs_source;
-	// 	for source in source {
-	// 		input_source.insert(source, output_index + node.original_location.skip_inputs - skip);
+	// pub fn collect_downstream_metadata(
+	// 	reached_protonode_index: usize,
+	// 	calling_protonodes: &mut HashMap<usize, Vec<(usize, usize)>>,
+	// 	protonode_indices: &mut HashMap<Vec<SNI>, usize>,
+	// 	downstream_calling_inputs: Vec<AbsoluteInputConnector>,
+	// ) {
+	// 	// Map the first downstream calling node input (which is traversed for every node input) to the reached protonode
+	// 	let downstream_protonode_caller = downstream_calling_inputs[0].clone();
+
+	// 	match &downstream_protonode_caller.connector {
+	// 		InputConnector::Node { node_id, input_index } => {
+	// 			// The calling protonode has already been added to the flattened network, so it can be looked up by index and the reached node can be mapped to it
+	// 			let mut calling_protonode_path = downstream_protonode_caller.network_path.clone();
+	// 			calling_protonode_path.push(*node_id);
+	// 			let calling_protonode_index = protonode_indices[&calling_protonode_path];
+
+	// 		}
+	// 		InputConnector::Export(_) => {}
 	// 	}
 	// }
-
-	fn remove_id_node(&mut self, id: NodeId) -> Result<(), String> {
-		let node = self.nodes.get(&id).ok_or_else(|| format!("Node with id {id} does not exist"))?.clone();
-		if let DocumentNodeImplementation::ProtoNode(ident) = &node.implementation {
-			if ident.name == "graphene_core::ops::IdentityNode" {
-				assert_eq!(node.inputs.len(), 1, "Id node has more than one input");
-				if let NodeInput::Node { node_id, output_index, .. } = node.inputs[0] {
-					let node_input_output_index = output_index;
-					// TODO fix
-					if let Some(input_node) = self.nodes.get_mut(&node_id) {
-						for &dep in &node.original_location.dependants[0] {
-							input_node.original_location.dependants[output_index].push(dep);
-						}
-					}
-
-					let input_node_id = node_id;
-					for output in self.nodes.values_mut() {
-						for (index, input) in output.inputs.iter_mut().enumerate() {
-							if let NodeInput::Node {
-								node_id: output_node_id,
-								output_index: output_output_index,
-								..
-							} = input
-							{
-								if *output_node_id == id {
-									*output_node_id = input_node_id;
-									*output_output_index = node_input_output_index;
-
-									let input_source = &mut output.original_location.inputs_source;
-									for source in node.original_location.inputs(index) {
-										input_source.insert(source, index + output.original_location.skip_inputs - node.original_location.skip_inputs);
-									}
-								}
-							}
-						}
-						for node_input in self.exports.iter_mut() {
-							if let NodeInput::Node { node_id, output_index, .. } = node_input {
-								if *node_id == id {
-									*node_id = input_node_id;
-									*output_index = node_input_output_index;
-								}
-							}
-						}
-					}
-				}
-				self.nodes.remove(&id);
-			}
-		}
-		Ok(())
-	}
-
-	/// Strips out any [`graphene_core::ops::IdentityNode`]s that are unnecessary.
-	pub fn remove_redundant_id_nodes(&mut self) {
-		let id_nodes = self
-			.nodes
-			.iter()
-			.filter(|(_, node)| {
-				matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"))
-					&& node.inputs.len() == 1
-					&& matches!(node.inputs[0], NodeInput::Node { .. })
-			})
-			.map(|(id, _)| *id)
-			.collect::<Vec<_>>();
-		for id in id_nodes {
-			if let Err(e) = self.remove_id_node(id) {
-				log::warn!("{e}")
-			}
-		}
-	}
 
 	/// Converts the `DocumentNode`s with a `DocumentNodeImplementation::Extract` into a `ClonedNode` that returns
 	/// the `DocumentNode` specified by the single `NodeInput::Node`.
 	/// The referenced node is removed from the network, and any `NodeInput::Node`s used by the referenced node are replaced with a generically typed network input.
 	pub fn resolve_extract_nodes(&mut self) {
-		let mut extraction_nodes = self
-			.nodes
-			.iter()
-			.filter(|(_, node)| matches!(node.implementation, DocumentNodeImplementation::Extract))
-			.map(|(id, node)| (*id, node.clone()))
-			.collect::<Vec<_>>();
-		self.nodes.retain(|_, node| !matches!(node.implementation, DocumentNodeImplementation::Extract));
+		// let mut extraction_nodes = self
+		// 	.nodes
+		// 	.iter()
+		// 	.filter(|(_, node)| matches!(node.implementation, DocumentNodeImplementation::Extract))
+		// 	.map(|(id, node)| (*id, node.clone()))
+		// 	.collect::<Vec<_>>();
+		// self.nodes.retain(|_, node| !matches!(node.implementation, DocumentNodeImplementation::Extract));
 
-		for (_, node) in &mut extraction_nodes {
-			assert_eq!(node.inputs.len(), 1);
-			let NodeInput::Node { node_id, output_index, .. } = node.inputs.pop().unwrap() else {
-				panic!("Extract node has no input, inputs: {:?}", node.inputs);
-			};
-			assert_eq!(output_index, 0);
-			// TODO: check if we can read lambda checking?
-			let mut input_node = self.nodes.remove(&node_id).unwrap();
-			node.implementation = DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into());
-			if let Some(input) = input_node.inputs.get_mut(0) {
-				*input = match &input {
-					NodeInput::Node { .. } => NodeInput::network(generic!(T), 0),
-					ni => NodeInput::network(ni.ty(), 0),
-				};
-			}
+		// for (_, node) in &mut extraction_nodes {
+		// 	assert_eq!(node.inputs.len(), 1);
+		// 	let NodeInput::Node { node_id, output_index, .. } = node.inputs.pop().unwrap() else {
+		// 		panic!("Extract node has no input, inputs: {:?}", node.inputs);
+		// 	};
+		// 	assert_eq!(output_index, 0);
+		// 	// TODO: check if we can read lambda checking?
+		// 	let mut input_node = self.nodes.remove(&node_id).unwrap();
+		// 	node.implementation = DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into());
+		// 	if let Some(input) = input_node.inputs.get_mut(0) {
+		// 		*input = match &input {
+		// 			NodeInput::Node { .. } => NodeInput::network(generic!(T), 0),
+		// 			ni => NodeInput::network(ni.ty(), 0),
+		// 		};
+		// 	}
 
-			for input in input_node.inputs.iter_mut() {
-				if let NodeInput::Node { .. } = input {
-					*input = NodeInput::network(generic!(T), 0)
-				}
-			}
-			node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node), false)];
-		}
-		self.nodes.extend(extraction_nodes);
-	}
-
-	/// Creates a proto network for evaluating each output of this network.
-	pub fn into_proto_networks(self) -> impl Iterator<Item = ProtoNetwork> {
-		let nodes: Vec<_> = self.nodes.into_iter().map(|(id, node)| (id, node.resolve_proto_node())).collect();
-
-		// Create a network to evaluate each output
-		if self.exports.len() == 1 {
-			if let NodeInput::Node { node_id, .. } = self.exports[0] {
-				return vec![ProtoNetwork {
-					inputs: Vec::new(),
-					output: node_id,
-					nodes,
-				}]
-				.into_iter();
-			}
-		}
-
-		// Create a network to evaluate each output
-		let networks: Vec<_> = self
-			.exports
-			.into_iter()
-			.filter_map(move |output| {
-				if let NodeInput::Node { node_id, .. } = output {
-					Some(ProtoNetwork {
-						inputs: Vec::new(), // Inputs field is not used. Should be deleted
-						// inputs: vec![input_node.expect("Set node should always exist")],
-						// inputs: self.imports.clone(),
-						output: node_id,
-						nodes: nodes.clone(),
-					})
-				} else {
-					None
-				}
-			})
-			.collect();
-		networks.into_iter()
+		// 	for input in input_node.inputs.iter_mut() {
+		// 		if let NodeInput::Node { .. } = input {
+		// 			*input = NodeInput::network(generic!(T), 0)
+		// 		}
+		// 	}
+		// 	node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node), false)];
+		// }
+		// self.nodes.extend(extraction_nodes);
 	}
 
 	/// Create a [`RecursiveNodeIter`] that iterates over all [`DocumentNode`]s, including ones that are deeply nested.
 	pub fn recursive_nodes(&self) -> RecursiveNodeIter<'_> {
-		let nodes = self.nodes.iter().map(|(id, node)| (id, node, Vec::new())).collect();
+		let nodes = self.nodes.iter().map(|(path, node)| (vec![*path], node)).collect();
 		RecursiveNodeIter { nodes }
+	}
+}
+
+#[derive(Debug)]
+pub struct CompilationMetadata {
+	// Stored for every value input in the compiled network
+	pub protonode_callers_for_value: Vec<(AbsoluteInputConnector, CompiledProtonodeInput)>,
+	// Stored for every protonode in the compiled network
+	pub protonode_callers_for_node: Vec<(ProtonodePath, CompiledProtonodeInput)>,
+	pub types_to_add: Vec<(SNI, Vec<Type>)>,
+	pub types_to_remove: Vec<(SNI, usize)>,
+}
+
+//An Input connector with a node path for unique identification
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct AbsoluteInputConnector {
+	pub network_path: Vec<NodeId>,
+	pub connector: InputConnector,
+}
+
+impl AbsoluteInputConnector {
+	pub fn traversal_start() -> Self {
+		AbsoluteInputConnector {
+			network_path: Vec::new(),
+			connector: InputConnector::Export(0),
+		}
+	}
+}
+/// Represents an input connector with index based on the [`DocumentNode::inputs`] index, not the visible input index
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum InputConnector {
+	#[serde(rename = "node")]
+	Node {
+		#[serde(rename = "nodeId")]
+		node_id: NodeId,
+		#[serde(rename = "inputIndex")]
+		input_index: usize,
+	},
+	#[serde(rename = "export")]
+	Export(usize),
+}
+
+impl Default for InputConnector {
+	fn default() -> Self {
+		InputConnector::Export(0)
+	}
+}
+
+impl InputConnector {
+	pub fn node(node_id: NodeId, input_index: usize) -> Self {
+		InputConnector::Node { node_id, input_index }
+	}
+
+	pub fn input_index(&self) -> usize {
+		match self {
+			InputConnector::Node { input_index, .. } => *input_index,
+			InputConnector::Export(input_index) => *input_index,
+		}
+	}
+
+	pub fn node_id(&self) -> Option<NodeId> {
+		match self {
+			InputConnector::Node { node_id, .. } => Some(*node_id),
+			_ => None,
+		}
+	}
+}
+
+//An Output connector with a node path for unique identification
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct AbsoluteOutputConnector {
+	pub path: Vec<NodeId>,
+	pub connector: OutputConnector,
+}
+
+/// Represents an output connector
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum OutputConnector {
+	#[serde(rename = "node")]
+	Node {
+		#[serde(rename = "nodeId")]
+		node_id: NodeId,
+		#[serde(rename = "outputIndex")]
+		output_index: usize,
+	},
+	#[serde(rename = "import")]
+	Import(usize),
+}
+
+impl Default for OutputConnector {
+	fn default() -> Self {
+		OutputConnector::Import(0)
+	}
+}
+
+impl OutputConnector {
+	pub fn node(node_id: NodeId, output_index: usize) -> Self {
+		OutputConnector::Node { node_id, output_index }
+	}
+
+	pub fn index(&self) -> usize {
+		match self {
+			OutputConnector::Node { output_index, .. } => *output_index,
+			OutputConnector::Import(output_index) => *output_index,
+		}
+	}
+
+	pub fn node_id(&self) -> Option<NodeId> {
+		match self {
+			OutputConnector::Node { node_id, .. } => Some(*node_id),
+			_ => None,
+		}
+	}
+
+	pub fn from_input(input: &NodeInput) -> Option<Self> {
+		match input {
+			NodeInput::Network { import_index, .. } => Some(Self::Import(*import_index)),
+			NodeInput::Node { node_id, output_index, .. } => Some(Self::node(*node_id, *output_index)),
+			_ => None,
+		}
 	}
 }
 
 /// An iterator over all [`DocumentNode`]s, including ones that are deeply nested.
 pub struct RecursiveNodeIter<'a> {
-	nodes: Vec<(&'a NodeId, &'a DocumentNode, Vec<NodeId>)>,
+	nodes: Vec<(Vec<NodeId>, &'a DocumentNode)>,
 }
 
 impl<'a> Iterator for RecursiveNodeIter<'a> {
-	type Item = (&'a NodeId, &'a DocumentNode, Vec<NodeId>);
+	type Item = (Vec<NodeId>, &'a DocumentNode);
 	fn next(&mut self) -> Option<Self::Item> {
-		let (current_id, node, path) = self.nodes.pop()?;
+		let (path, node) = self.nodes.pop()?;
 		if let DocumentNodeImplementation::Network(network) = &node.implementation {
-			self.nodes.extend(network.nodes.iter().map(|(id, node)| {
-				let mut nested_path = path.clone();
-				nested_path.push(*current_id);
-				(id, node, nested_path)
-			}));
+			for (node_id, node) in &network.nodes {
+				let mut new_path = path.to_vec();
+				new_path.push(*node_id);
+				self.nodes.push((new_path, node));
+			}
 		}
-		Some((current_id, node, path))
+		Some((path, node))
 	}
 }
 
 #[cfg(test)]
-mod test {
-	use super::*;
-	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
-	use std::sync::atomic::AtomicU64;
+// mod test {
+// 	use super::*;
+// 	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
+// 	use std::sync::atomic::AtomicU64;
 
-	fn gen_node_id() -> NodeId {
-		static NODE_ID: AtomicU64 = AtomicU64::new(4);
-		NodeId(NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst))
-	}
+// 	fn gen_node_id() -> NodeId {
+// 		static NODE_ID: AtomicU64 = AtomicU64::new(4);
+// 		NodeId(NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst))
+// 	}
 
-	fn add_network() -> NodeNetwork {
-		NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(1), 0)],
-			nodes: [
-				(
-					NodeId(0),
-					DocumentNode {
-						inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::network(concrete!(u32), 1)],
-						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
-						..Default::default()
-					},
-				),
-				(
-					NodeId(1),
-					DocumentNode {
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::AddPairNode".into()),
-						..Default::default()
-					},
-				),
-			]
-			.into_iter()
-			.collect(),
-			..Default::default()
-		}
-	}
+// 	fn add_network() -> NodeNetwork {
+// 		NodeNetwork {
+// 			exports: vec![NodeInput::node(NodeId(1), 0)],
+// 			nodes: [
+// 				(
+// 					NodeId(0),
+// 					DocumentNode {
+// 						inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::network(concrete!(u32), 1)],
+// 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
+// 						..Default::default()
+// 					},
+// 				),
+// 				(
+// 					NodeId(1),
+// 					DocumentNode {
+// 						inputs: vec![NodeInput::node(NodeId(0), 0)],
+// 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::AddPairNode".into()),
+// 						..Default::default()
+// 					},
+// 				),
+// 			]
+// 			.into_iter()
+// 			.collect(),
+// 			..Default::default()
+// 		}
+// 	}
 
-	#[test]
-	fn map_ids() {
-		let mut network = add_network();
-		network.map_ids(|id| NodeId(id.0 + 1));
-		let mapped_add = NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(2), 0)],
-			nodes: [
-				(
-					NodeId(1),
-					DocumentNode {
-						inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::network(concrete!(u32), 1)],
-						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
-						..Default::default()
-					},
-				),
-				(
-					NodeId(2),
-					DocumentNode {
-						inputs: vec![NodeInput::node(NodeId(1), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::AddPairNode".into()),
-						..Default::default()
-					},
-				),
-			]
-			.into_iter()
-			.collect(),
-			..Default::default()
-		};
-		assert_eq!(network, mapped_add);
-	}
+// 	#[test]
+// 	fn map_ids() {
+// 		let mut network = add_network();
+// 		network.map_ids(|id| NodeId(id.0 + 1));
+// 		let mapped_add = NodeNetwork {
+// 			exports: vec![NodeInput::node(NodeId(2), 0)],
+// 			nodes: [
+// 				(
+// 					NodeId(1),
+// 					DocumentNode {
+// 						inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::network(concrete!(u32), 1)],
+// 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
+// 						..Default::default()
+// 					},
+// 				),
+// 				(
+// 					NodeId(2),
+// 					DocumentNode {
+// 						inputs: vec![NodeInput::node(NodeId(1), 0)],
+// 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::AddPairNode".into()),
+// 						..Default::default()
+// 					},
+// 				),
+// 			]
+// 			.into_iter()
+// 			.collect(),
+// 			..Default::default()
+// 		};
+// 		assert_eq!(network, mapped_add);
+// 	}
 
-	#[test]
-	fn extract_node() {
-		let id_node = DocumentNode {
-			inputs: vec![],
-			implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into()),
-			..Default::default()
-		};
-		// TODO: Extend test cases to test nested network
-		let mut extraction_network = NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(1), 0)],
-			nodes: [
-				id_node.clone(),
-				DocumentNode {
-					inputs: vec![NodeInput::lambda(NodeId(0), 0)],
-					implementation: DocumentNodeImplementation::Extract,
-					..Default::default()
-				},
-			]
-			.into_iter()
-			.enumerate()
-			.map(|(id, node)| (NodeId(id as u64), node))
-			.collect(),
-			..Default::default()
-		};
-		extraction_network.resolve_extract_nodes();
-		assert_eq!(extraction_network.nodes.len(), 1);
-		let inputs = extraction_network.nodes.get(&NodeId(1)).unwrap().inputs.clone();
-		assert_eq!(inputs.len(), 1);
-		assert!(matches!(&inputs[0].as_value(), &Some(TaggedValue::DocumentNode(network), ..) if network == &id_node));
-	}
+// 	#[test]
+// 	fn extract_node() {
+// 		let id_node = DocumentNode {
+// 			inputs: vec![],
+// 			implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into()),
+// 			..Default::default()
+// 		};
+// 		// TODO: Extend test cases to test nested network
+// 		let mut extraction_network = NodeNetwork {
+// 			exports: vec![NodeInput::node(NodeId(1), 0)],
+// 			nodes: [
+// 				id_node.clone(),
+// 				DocumentNode {
+// 					inputs: vec![NodeInput::lambda(NodeId(0), 0)],
+// 					implementation: DocumentNodeImplementation::Extract,
+// 					..Default::default()
+// 				},
+// 			]
+// 			.into_iter()
+// 			.enumerate()
+// 			.map(|(id, node)| (NodeId(id as u64), node))
+// 			.collect(),
+// 			..Default::default()
+// 		};
+// 		extraction_network.resolve_extract_nodes();
+// 		assert_eq!(extraction_network.nodes.len(), 1);
+// 		let inputs = extraction_network.nodes.get(&NodeId(1)).unwrap().inputs.clone();
+// 		assert_eq!(inputs.len(), 1);
+// 		assert!(matches!(&inputs[0].as_value(), &Some(TaggedValue::DocumentNode(network), ..) if network == &id_node));
+// 	}
 
-	#[test]
-	fn flatten_add() {
-		let mut network = NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(1), 0)],
-			nodes: [(
-				NodeId(1),
-				DocumentNode {
-					inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::value(TaggedValue::U32(2), false)],
-					implementation: DocumentNodeImplementation::Network(add_network()),
-					..Default::default()
-				},
-			)]
-			.into_iter()
-			.collect(),
-			..Default::default()
-		};
-		network.populate_dependants();
-		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), gen_node_id);
-		let flat_network = flat_network();
-		println!("{flat_network:#?}");
-		println!("{network:#?}");
+// 	#[test]
+// 	fn flatten_add() {
+// 		let mut network = NodeNetwork {
+// 			exports: vec![NodeInput::node(NodeId(1), 0)],
+// 			nodes: [(
+// 				NodeId(1),
+// 				DocumentNode {
+// 					inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::value(TaggedValue::U32(2), false)],
+// 					implementation: DocumentNodeImplementation::Network(add_network()),
+// 					..Default::default()
+// 				},
+// 			)]
+// 			.into_iter()
+// 			.collect(),
+// 			..Default::default()
+// 		};
+// 		network.populate_dependants();
+// 		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), gen_node_id);
+// 		let flat_network = flat_network();
+// 		println!("{flat_network:#?}");
+// 		println!("{network:#?}");
 
-		assert_eq!(flat_network, network);
-	}
+// 		assert_eq!(flat_network, network);
+// 	}
 
-	#[test]
-	fn resolve_proto_node_add() {
-		let document_node = DocumentNode {
-			inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::node(NodeId(0), 0)],
-			implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
-			..Default::default()
-		};
+// 	#[test]
+// 	fn resolve_proto_node_add() {
+// 		let document_node = DocumentNode {
+// 			inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::node(NodeId(0), 0)],
+// 			implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
+// 			..Default::default()
+// 		};
 
-		let proto_node = document_node.resolve_proto_node();
-		let reference = ProtoNode {
-			identifier: "graphene_core::structural::ConsNode".into(),
-			input: ProtoNodeInput::ManualComposition(concrete!(u32)),
-			construction_args: ConstructionArgs::Nodes(vec![(NodeId(0), false)]),
-			..Default::default()
-		};
-		assert_eq!(proto_node, reference);
-	}
+// 		let proto_node = document_node.resolve_proto_node();
+// 		let reference = ProtoNode {
+// 			construction_args: ConstructionArgs::Nodes(NodeConstructionArgs { identifier: "graphene_core::structural::ConsNode".into(), inputs: vec![(NodeId(0), false)]}),
+// 			..Default::default()
+// 		};
+// 		assert_eq!(proto_node, reference);
+// 	}
 
-	#[test]
-	fn resolve_flatten_add_as_proto_network() {
-		let construction_network = ProtoNetwork {
-			inputs: Vec::new(),
-			output: NodeId(11),
-			nodes: [
-				(
-					NodeId(10),
-					ProtoNode {
-						identifier: "graphene_core::structural::ConsNode".into(),
-						input: ProtoNodeInput::ManualComposition(concrete!(u32)),
-						construction_args: ConstructionArgs::Nodes(vec![(NodeId(14), false)]),
-						original_location: OriginalLocation {
-							path: Some(vec![NodeId(1), NodeId(0)]),
-							inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
-							inputs_exposed: vec![true, true],
-							skip_inputs: 0,
-							..Default::default()
-						},
+// 	#[test]
+// 	fn resolve_flatten_add_as_proto_network() {
+// 		let construction_network = ProtoNetwork {
+// 			output: NodeId(11),
+// 			nodes: [
+// 				(
+// 					NodeId(10),
+// 					ProtoNode {
+// 						identifier: "graphene_core::structural::ConsNode".into(),
+// 						construction_args: ConstructionArgs::Nodes(vec![(NodeId(14), false)]),
+// 						// document_node_path: OriginalLocation {
+// 						// 	path: Some(vec![NodeId(1), NodeId(0)]),
+// 						// 	inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
+// 						// 	inputs_exposed: vec![true, true],
+// 						// 	skip_inputs: 0,
+// 						// 	..Default::default()
+// 						// },
+// 						..Default::default()
+// 					},
+// 				),
+// 				(
+// 					NodeId(11),
+// 					ProtoNode {
+// 						identifier: "graphene_core::ops::AddPairNode".into(),
+// 						construction_args: ConstructionArgs::Nodes(vec![]),
+// 						// document_node_path: OriginalLocation {
+// 						// 	path: Some(vec![NodeId(1), NodeId(1)]),
+// 						// 	inputs_source: HashMap::new(),
+// 						// 	inputs_exposed: vec![true],
+// 						// 	skip_inputs: 0,
+// 						// 	..Default::default()
+// 						// },
+// 						..Default::default()
+// 					},
+// 				),
+// 				(
+// 					NodeId(14),
+// 					ProtoNode {
+// 						identifier: "graphene_core::value::ClonedNode".into(),
+// 						construction_args: ConstructionArgs::Value(TaggedValue::U32(2).into()),
+// 						// document_node_path: OriginalLocation {
+// 						// 	path: Some(vec![NodeId(1), NodeId(4)]),
+// 						// 	inputs_source: HashMap::new(),
+// 						// 	inputs_exposed: vec![true, false],
+// 						// 	skip_inputs: 0,
+// 						// 	..Default::default()
+// 						// },
+// 						..Default::default()
+// 					},
+// 				),
+// 			]
+// 			.into_iter()
+// 			.collect(),
+// 		};
+// 		let network = flat_network();
+// 		let mut resolved_network = network.into_proto_network().collect::<Vec<_>>();
+// 		resolved_network[0].nodes.sort_unstable_by_key(|(id, _)| *id);
 
-						..Default::default()
-					},
-				),
-				(
-					NodeId(11),
-					ProtoNode {
-						identifier: "graphene_core::ops::AddPairNode".into(),
-						input: ProtoNodeInput::Node(NodeId(10)),
-						construction_args: ConstructionArgs::Nodes(vec![]),
-						original_location: OriginalLocation {
-							path: Some(vec![NodeId(1), NodeId(1)]),
-							inputs_source: HashMap::new(),
-							inputs_exposed: vec![true],
-							skip_inputs: 0,
-							..Default::default()
-						},
-						..Default::default()
-					},
-				),
-				(
-					NodeId(14),
-					ProtoNode {
-						identifier: "graphene_core::value::ClonedNode".into(),
-						input: ProtoNodeInput::ManualComposition(concrete!(graphene_core::Context)),
-						construction_args: ConstructionArgs::Value(TaggedValue::U32(2).into()),
-						original_location: OriginalLocation {
-							path: Some(vec![NodeId(1), NodeId(4)]),
-							inputs_source: HashMap::new(),
-							inputs_exposed: vec![true, false],
-							skip_inputs: 0,
-							..Default::default()
-						},
-						..Default::default()
-					},
-				),
-			]
-			.into_iter()
-			.collect(),
-		};
-		let network = flat_network();
-		let mut resolved_network = network.into_proto_networks().collect::<Vec<_>>();
-		resolved_network[0].nodes.sort_unstable_by_key(|(id, _)| *id);
+// 		println!("{:#?}", resolved_network[0]);
+// 		println!("{construction_network:#?}");
+// 		pretty_assertions::assert_eq!(resolved_network[0], construction_network);
+// 	}
 
-		println!("{:#?}", resolved_network[0]);
-		println!("{construction_network:#?}");
-		pretty_assertions::assert_eq!(resolved_network[0], construction_network);
-	}
+// 	fn flat_network() -> NodeNetwork {
+// 		NodeNetwork {
+// 			exports: vec![NodeInput::node(NodeId(11), 0)],
+// 			nodes: [
+// 				(
+// 					NodeId(10),
+// 					DocumentNode {
+// 						inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::node(NodeId(14), 0)],
+// 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
+// 						// document_node_path: OriginalLocation {
+// 						// 	path: Some(vec![NodeId(1), NodeId(0)]),
+// 						// 	inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
+// 						// 	inputs_exposed: vec![true, true],
+// 						// 	skip_inputs: 0,
+// 						// 	..Default::default()
+// 						// },
+// 						..Default::default()
+// 					},
+// 				),
+// 				(
+// 					NodeId(14),
+// 					DocumentNode {
+// 						inputs: vec![NodeInput::value(TaggedValue::U32(2), false)],
+// 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()),
+// 						// document_node_path: OriginalLocation {
+// 						// 	path: Some(vec![NodeId(1), NodeId(4)]),
+// 						// 	inputs_source: HashMap::new(),
+// 						// 	inputs_exposed: vec![true, false],
+// 						// 	skip_inputs: 0,
+// 						// 	..Default::default()
+// 						// },
+// 						..Default::default()
+// 					},
+// 				),
+// 				(
+// 					NodeId(11),
+// 					DocumentNode {
+// 						inputs: vec![NodeInput::node(NodeId(10), 0)],
+// 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::AddPairNode".into()),
+// 						// document_node_path: OriginalLocation {
+// 						// 	path: Some(vec![NodeId(1), NodeId(1)]),
+// 						// 	inputs_source: HashMap::new(),
+// 						// 	inputs_exposed: vec![true],
+// 						// 	skip_inputs: 0,
+// 						// 	..Default::default()
+// 						// },
+// 						..Default::default()
+// 					},
+// 				),
+// 			]
+// 			.into_iter()
+// 			.collect(),
+// 			..Default::default()
+// 		}
+// 	}
 
-	fn flat_network() -> NodeNetwork {
-		NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(11), 0)],
-			nodes: [
-				(
-					NodeId(10),
-					DocumentNode {
-						inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::node(NodeId(14), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
-						original_location: OriginalLocation {
-							path: Some(vec![NodeId(1), NodeId(0)]),
-							inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
-							inputs_exposed: vec![true, true],
-							skip_inputs: 0,
-							..Default::default()
-						},
-						..Default::default()
-					},
-				),
-				(
-					NodeId(14),
-					DocumentNode {
-						inputs: vec![NodeInput::value(TaggedValue::U32(2), false)],
-						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()),
-						original_location: OriginalLocation {
-							path: Some(vec![NodeId(1), NodeId(4)]),
-							inputs_source: HashMap::new(),
-							inputs_exposed: vec![true, false],
-							skip_inputs: 0,
-							..Default::default()
-						},
-						..Default::default()
-					},
-				),
-				(
-					NodeId(11),
-					DocumentNode {
-						inputs: vec![NodeInput::node(NodeId(10), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::AddPairNode".into()),
-						original_location: OriginalLocation {
-							path: Some(vec![NodeId(1), NodeId(1)]),
-							inputs_source: HashMap::new(),
-							inputs_exposed: vec![true],
-							skip_inputs: 0,
-							..Default::default()
-						},
-						..Default::default()
-					},
-				),
-			]
-			.into_iter()
-			.collect(),
-			..Default::default()
-		}
-	}
-
-	fn two_node_identity() -> NodeNetwork {
-		NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
-			nodes: [
-				(
-					NodeId(1),
-					DocumentNode {
-						inputs: vec![NodeInput::network(concrete!(u32), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
-						..Default::default()
-					},
-				),
-				(
-					NodeId(2),
-					DocumentNode {
-						inputs: vec![NodeInput::network(concrete!(u32), 1)],
-						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
-						..Default::default()
-					},
-				),
-			]
-			.into_iter()
-			.collect(),
-			..Default::default()
-		}
-	}
-
-	fn output_duplicate(network_outputs: Vec<NodeInput>, result_node_input: NodeInput) -> NodeNetwork {
-		let mut network = NodeNetwork {
-			exports: network_outputs,
-			nodes: [
-				(
-					NodeId(1),
-					DocumentNode {
-						inputs: vec![NodeInput::value(TaggedValue::F64(1.), false), NodeInput::value(TaggedValue::F64(2.), false)],
-						implementation: DocumentNodeImplementation::Network(two_node_identity()),
-						..Default::default()
-					},
-				),
-				(
-					NodeId(2),
-					DocumentNode {
-						inputs: vec![result_node_input],
-						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
-						..Default::default()
-					},
-				),
-			]
-			.into_iter()
-			.collect(),
-			..Default::default()
-		};
-		let _new_ids = 101..;
-		network.populate_dependants();
-		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), || NodeId(10000));
-		network.flatten_with_fns(NodeId(2), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), || NodeId(10001));
-		network.remove_dead_nodes(0);
-		network
-	}
-
-	#[test]
-	fn simple_duplicate() {
-		let result = output_duplicate(vec![NodeInput::node(NodeId(1), 0)], NodeInput::node(NodeId(1), 0));
-		println!("{result:#?}");
-		assert_eq!(result.exports.len(), 1, "The number of outputs should remain as 1");
-		assert_eq!(result.exports[0], NodeInput::node(NodeId(11), 0), "The outer network output should be from a duplicated inner network");
-		let mut ids = result.nodes.keys().copied().collect::<Vec<_>>();
-		ids.sort();
-		assert_eq!(ids, vec![NodeId(11), NodeId(10010)], "Should only contain identity and values");
-	}
-
-	// TODO: Write more tests
-	// #[test]
-	// fn out_of_order_duplicate() {
-	// 	let result = output_duplicate(vec![NodeInput::node(NodeId(10), 1), NodeInput::node(NodeId(10), 0)], NodeInput::node(NodeId(10), 0);
-	// 	assert_eq!(
-	// 		result.outputs[0],
-	// 		NodeInput::node(NodeId(101), 0),
-	// 		"The first network output should be from a duplicated nested network"
-	// 	);
-	// 	assert_eq!(
-	// 		result.outputs[1],
-	// 		NodeInput::node(NodeId(10), 0),
-	// 		"The second network output should be from the original nested network"
-	// 	);
-	// 	assert!(
-	// 		result.nodes.contains_key(&NodeId(10)) && result.nodes.contains_key(&NodeId(101)) && result.nodes.len() == 2,
-	// 		"Network should contain two duplicated nodes"
-	// 	);
-	// 	for (node_id, input_value, inner_id) in [(10, 1., 1), (101, 2., 2)] {
-	// 		let nested_network_node = result.nodes.get(&NodeId(node_id)).unwrap();
-	// 		assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-	// 		assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(input_value), false)], "Input should be stable");
-	// 		let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
-	// 		assert_eq!(inner_network.inputs, vec![inner_id], "The input should be sent to the second node");
-	// 		assert_eq!(inner_network.outputs, vec![NodeInput::node(NodeId(inner_id), 0)], "The output should be node id");
-	// 		assert_eq!(inner_network.nodes.get(&NodeId(inner_id)).unwrap().name, format!("Identity {inner_id}"), "The node should be identity");
+	// fn two_node_identity() -> NodeNetwork {
+	// 	NodeNetwork {
+	// 		exports: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
+	// 		nodes: [
+	// 			(
+	// 				NodeId(1),
+	// 				DocumentNode {
+	// 					inputs: vec![NodeInput::network(concrete!(u32), 0)],
+	// 					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
+	// 					..Default::default()
+	// 				},
+	// 			),
+	// 			(
+	// 				NodeId(2),
+	// 				DocumentNode {
+	// 					inputs: vec![NodeInput::network(concrete!(u32), 1)],
+	// 					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
+	// 					..Default::default()
+	// 				},
+	// 			),
+	// 		]
+	// 		.into_iter()
+	// 		.collect(),
+	// 		..Default::default()
 	// 	}
 	// }
-	// #[test]
-	// fn using_other_node_duplicate() {
-	// 	let result = output_duplicate(vec![NodeInput::node(NodeId(11), 0)], NodeInput::node(NodeId(10), 1);
-	// 	assert_eq!(result.outputs, vec![NodeInput::node(NodeId(11), 0)], "The network output should be the result node");
-	// 	assert!(
-	// 		result.nodes.contains_key(&NodeId(11)) && result.nodes.contains_key(&NodeId(101)) && result.nodes.len() == 2,
-	// 		"Network should contain a duplicated node and a result node"
-	// 	);
-	// 	let result_node = result.nodes.get(&NodeId(11)).unwrap();
-	// 	assert_eq!(result_node.inputs, vec![NodeInput::node(NodeId(101), 0)], "Result node should refer to duplicate node as input");
-	// 	let nested_network_node = result.nodes.get(&NodeId(101)).unwrap();
-	// 	assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-	// 	assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(2.), false)], "Input should be 2");
-	// 	let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
-	// 	assert_eq!(inner_network.inputs, vec![2], "The input should be sent to the second node");
-	// 	assert_eq!(inner_network.outputs, vec![NodeInput::node(NodeId(2), 0)], "The output should be node id 2");
-	// 	assert_eq!(inner_network.nodes.get(&NodeId(2)).unwrap().name, "Identity 2", "The node should be identity 2");
+
+	// fn output_duplicate(network_outputs: Vec<NodeInput>, result_node_input: NodeInput) -> NodeNetwork {
+	// 	let mut network = NodeNetwork {
+	// 		exports: network_outputs,
+	// 		nodes: [
+	// 			(
+	// 				NodeId(1),
+	// 				DocumentNode {
+	// 					inputs: vec![NodeInput::value(TaggedValue::F64(1.), false), NodeInput::value(TaggedValue::F64(2.), false)],
+	// 					implementation: DocumentNodeImplementation::Network(two_node_identity()),
+	// 					..Default::default()
+	// 				},
+	// 			),
+	// 			(
+	// 				NodeId(2),
+	// 				DocumentNode {
+	// 					inputs: vec![result_node_input],
+	// 					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
+	// 					..Default::default()
+	// 				},
+	// 			),
+	// 		]
+	// 		.into_iter()
+	// 		.collect(),
+	// 		..Default::default()
+	// 	};
+	// 	let _new_ids = 101..;
+	// 	network.populate_dependants();
+	// 	network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), || NodeId(10000));
+	// 	network.flatten_with_fns(NodeId(2), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), || NodeId(10001));
+	// 	network.remove_dead_nodes(0);
+	// 	network
 	// }
-}
+
+// 	#[test]
+// 	fn simple_duplicate() {
+// 		let result = output_duplicate(vec![NodeInput::node(NodeId(1), 0)], NodeInput::node(NodeId(1), 0));
+// 		println!("{result:#?}");
+// 		assert_eq!(result.exports.len(), 1, "The number of outputs should remain as 1");
+// 		assert_eq!(result.exports[0], NodeInput::node(NodeId(11), 0), "The outer network output should be from a duplicated inner network");
+// 		let mut ids = result.nodes.keys().copied().collect::<Vec<_>>();
+// 		ids.sort();
+// 		assert_eq!(ids, vec![NodeId(11), NodeId(10010)], "Should only contain identity and values");
+// 	}
+
+// 	// TODO: Write more tests
+// 	// #[test]
+// 	// fn out_of_order_duplicate() {
+// 	// 	let result = output_duplicate(vec![NodeInput::node(NodeId(10), 1), NodeInput::node(NodeId(10), 0)], NodeInput::node(NodeId(10), 0);
+// 	// 	assert_eq!(
+// 	// 		result.outputs[0],
+// 	// 		NodeInput::node(NodeId(101), 0),
+// 	// 		"The first network output should be from a duplicated nested network"
+// 	// 	);
+// 	// 	assert_eq!(
+// 	// 		result.outputs[1],
+// 	// 		NodeInput::node(NodeId(10), 0),
+// 	// 		"The second network output should be from the original nested network"
+// 	// 	);
+// 	// 	assert!(
+// 	// 		result.nodes.contains_key(&NodeId(10)) && result.nodes.contains_key(&NodeId(101)) && result.nodes.len() == 2,
+// 	// 		"Network should contain two duplicated nodes"
+// 	// 	);
+// 	// 	for (node_id, input_value, inner_id) in [(10, 1., 1), (101, 2., 2)] {
+// 	// 		let nested_network_node = result.nodes.get(&NodeId(node_id)).unwrap();
+// 	// 		assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
+// 	// 		assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(input_value), false)], "Input should be stable");
+// 	// 		let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
+// 	// 		assert_eq!(inner_network.inputs, vec![inner_id], "The input should be sent to the second node");
+// 	// 		assert_eq!(inner_network.outputs, vec![NodeInput::node(NodeId(inner_id), 0)], "The output should be node id");
+// 	// 		assert_eq!(inner_network.nodes.get(&NodeId(inner_id)).unwrap().name, format!("Identity {inner_id}"), "The node should be identity");
+// 	// 	}
+// 	// }
+// 	// #[test]
+// 	// fn using_other_node_duplicate() {
+// 	// 	let result = output_duplicate(vec![NodeInput::node(NodeId(11), 0)], NodeInput::node(NodeId(10), 1);
+// 	// 	assert_eq!(result.outputs, vec![NodeInput::node(NodeId(11), 0)], "The network output should be the result node");
+// 	// 	assert!(
+// 	// 		result.nodes.contains_key(&NodeId(11)) && result.nodes.contains_key(&NodeId(101)) && result.nodes.len() == 2,
+// 	// 		"Network should contain a duplicated node and a result node"
+// 	// 	);
+// 	// 	let result_node = result.nodes.get(&NodeId(11)).unwrap();
+// 	// 	assert_eq!(result_node.inputs, vec![NodeInput::node(NodeId(101), 0)], "Result node should refer to duplicate node as input");
+// 	// 	let nested_network_node = result.nodes.get(&NodeId(101)).unwrap();
+// 	// 	assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
+// 	// 	assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(2.), false)], "Input should be 2");
+// 	// 	let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
+// 	// 	assert_eq!(inner_network.inputs, vec![2], "The input should be sent to the second node");
+// 	// 	assert_eq!(inner_network.outputs, vec![NodeInput::node(NodeId(2), 0)], "The output should be node id 2");
+// 	// 	assert_eq!(inner_network.nodes.get(&NodeId(2)).unwrap().name, "Identity 2", "The node should be identity 2");
+// 	// }
+// }

@@ -517,7 +517,7 @@ impl SelectToolData {
 		}
 		let nodes = new_dragging.iter().map(|layer| layer.to_node()).collect();
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
-		responses.add(NodeGraphMessage::RunDocumentGraph);
+		responses.add(PortfolioMessage::CompileActiveDocument);
 		self.layers_dragging = new_dragging;
 	}
 
@@ -555,7 +555,7 @@ impl SelectToolData {
 			})
 			.collect();
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
-		responses.add(NodeGraphMessage::RunDocumentGraph);
+		responses.add(PortfolioMessage::CompileActiveDocument);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::SendGraph);
 		self.layers_dragging = original;

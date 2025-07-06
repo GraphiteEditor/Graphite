@@ -53,8 +53,6 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				if let Ok(deserialized_preferences) = serde_json::from_str::<PreferencesMessageHandler>(&preferences) {
 					*self = deserialized_preferences;
 
-					responses.add(PortfolioMessage::EditorPreferences);
-					responses.add(PortfolioMessage::UpdateVelloPreference);
 					responses.add(PreferencesMessage::ModifyLayout {
 						zoom_with_scroll: self.zoom_with_scroll,
 					});
@@ -70,8 +68,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			// Per-preference messages
 			PreferencesMessage::UseVello { use_vello } => {
 				self.use_vello = use_vello;
-				responses.add(PortfolioMessage::UpdateVelloPreference);
-				responses.add(PortfolioMessage::EditorPreferences);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 			}
 			PreferencesMessage::VectorMeshes { enabled } => {
 				self.vector_meshes = enabled;

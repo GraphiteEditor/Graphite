@@ -234,6 +234,7 @@ impl CloneVarArgs for Arc<OwnedContextImpl> {
 	}
 }
 
+// Lifetime isnt necessary?
 pub type Context<'a> = Option<Arc<OwnedContextImpl>>;
 type DynRef<'a> = &'a (dyn Any + Send + Sync);
 type DynBox = Box<dyn Any + Send + Sync>;

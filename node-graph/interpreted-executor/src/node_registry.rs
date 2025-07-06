@@ -1,7 +1,7 @@
 use dyn_any::StaticType;
 use glam::{DVec2, IVec2, UVec2};
 use graph_craft::document::value::RenderOutput;
-use graph_craft::proto::{NodeConstructor, TypeErasedBox};
+use graph_craft::proto::{MonitorConstructor, NodeConstructor, TypeErasedBox};
 use graphene_core::raster::color::Color;
 use graphene_core::raster::*;
 use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
@@ -18,7 +18,7 @@ use graphene_std::any::{ComposeTypeErased, DynAnyNode, IntoTypeErasedNode};
 use graphene_std::application_io::{ImageTexture, SurfaceFrame};
 #[cfg(feature = "gpu")]
 use graphene_std::wasm_application_io::{WasmEditorApi, WasmSurfaceHandle};
-use node_registry_macros::{async_node, convert_node, into_node};
+use node_registry_macros::{async_node, convert_node, into_node, monitor_node};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 #[cfg(feature = "gpu")]
@@ -192,6 +192,52 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 
 pub static NODE_REGISTRY: Lazy<HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>> = Lazy::new(|| node_registry());
 
+fn monitor_nodes() -> HashMap<Type, MonitorConstructor> {
+	let nodes: Vec<(Type, MonitorConstructor)> = vec![
+		monitor_node!(ImageTexture),
+		monitor_node!(VectorDataTable),
+		monitor_node!(GraphicGroupTable),
+		monitor_node!(GraphicElement),
+		monitor_node!(Artboard),
+		monitor_node!(RasterDataTable<CPU>),
+		monitor_node!(RasterDataTable<GPU>),
+		monitor_node!(graphene_core::instances::Instances<Artboard>),
+		monitor_node!(String),
+		monitor_node!(IVec2),
+		monitor_node!(DVec2),
+		monitor_node!(bool),
+		monitor_node!(f64),
+		monitor_node!(u32),
+		monitor_node!(u64),
+		monitor_node!(()),
+		monitor_node!(Vec<f64>),
+		monitor_node!(BlendMode),
+		monitor_node!(graphene_std::transform::ReferencePoint),
+		monitor_node!(graphene_path_bool::BooleanOperation),
+		monitor_node!(Option<Color>),
+		monitor_node!(graphene_core::vector::style::Fill),
+		monitor_node!(graphene_core::vector::style::StrokeCap),
+		monitor_node!(graphene_core::vector::style::StrokeJoin),
+		monitor_node!(graphene_core::vector::style::PaintOrder),
+		monitor_node!(graphene_core::vector::style::StrokeAlign),
+		monitor_node!(graphene_core::vector::style::Stroke),
+		monitor_node!(graphene_core::vector::style::Gradient),
+		monitor_node!(graphene_core::vector::style::GradientStops),
+		monitor_node!(Vec<graphene_core::uuid::NodeId>),
+		monitor_node!(Color),
+		monitor_node!(Box<graphene_core::vector::VectorModification>),
+		monitor_node!(graphene_std::vector::misc::CentroidType),
+		monitor_node!(graphene_std::vector::misc::PointSpacingType),
+	];
+	let mut monitor_nodes = HashMap::new();
+	for (monitor_type, constructor) in nodes {
+		monitor_nodes.insert(monitor_type, constructor);
+	}
+	monitor_nodes
+}
+
+pub static MONITOR_NODES: Lazy<HashMap<Type, MonitorConstructor>> = Lazy::new(|| monitor_nodes());
+
 mod node_registry_macros {
 	macro_rules! async_node {
 		// TODO: we currently need to annotate the type here because the compiler would otherwise (correctly)
@@ -207,7 +253,7 @@ mod node_registry_macros {
 				|mut args| {
 					Box::pin(async move {
 						args.reverse();
-						let node = <$path>::new($(graphene_std::any::downcast_node::<$arg, $type>(args.pop().expect("Not enough arguments provided to construct node"))),*);
+						let node = <$path>::new($(graphene_std::registry::downcast_node::<$arg, $type>(args.pop().expect("Not enough arguments provided to construct node"))),*);
 						let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(node);
 						Box::new(any) as TypeErasedBox
 					})
@@ -285,7 +331,18 @@ mod node_registry_macros {
 		};
 	}
 
+	macro_rules! monitor_node {
+		($type:ty) => {
+			(concrete!($type), |arg| {
+				let node = <graphene_core::memo::MonitorNode<graphene_std::Context, _, _>>::new(graphene_std::registry::downcast_node::<graphene_std::Context, $type>(arg));
+				let any: DynAnyNode<_, _, _> = graphene_std::any::DynAnyNode::new(node);
+				Box::new(any) as TypeErasedBox
+			})
+		};
+	}
+
 	pub(crate) use async_node;
 	pub(crate) use convert_node;
 	pub(crate) use into_node;
+	pub(crate) use monitor_node;
 }
