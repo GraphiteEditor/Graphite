@@ -10,7 +10,7 @@ pub trait RenderComplexity {
 
 impl<T: RenderComplexity> RenderComplexity for Instances<T> {
 	fn render_complexity(&self) -> usize {
-		self.instance_ref_iter().map(|instance| instance.instance.render_complexity()).sum()
+		self.instance_ref_iter().map(|instance| instance.instance.render_complexity()).fold(0, usize::saturating_add)
 	}
 }
 
@@ -45,7 +45,7 @@ impl RenderComplexity for Raster<CPU> {
 
 impl RenderComplexity for Raster<GPU> {
 	fn render_complexity(&self) -> usize {
-		(self.width() * self.height()) as usize
+		usize::MAX // GPU textures can't have a thumbnail
 	}
 }
 
