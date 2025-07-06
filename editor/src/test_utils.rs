@@ -11,8 +11,8 @@ use crate::node_graph_executor::NodeRuntime;
 use crate::test_utils::test_prelude::LayerNodeIdentifier;
 use glam::DVec2;
 use graph_craft::document::DocumentNode;
-use graphene_core::InputAccessor;
-use graphene_core::raster::color::Color;
+use graphene_std::InputAccessor;
+use graphene_std::raster::color::Color;
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub struct EditorTestUtils {
@@ -36,30 +36,35 @@ impl EditorTestUtils {
 		Self { editor, runtime }
 	}
 
-	pub fn eval_graph<'a>(&'a mut self) -> impl std::future::Future<Output = Instrumented> + 'a {
+	pub fn eval_graph<'a>(&'a mut self) -> impl std::future::Future<Output = Result<Instrumented, String>> + 'a {
 		// An inner function is required since async functions in traits are a bit weird
-		async fn run<'a>(editor: &'a mut Editor, runtime: &'a mut NodeRuntime) -> Instrumented {
+		async fn run<'a>(editor: &'a mut Editor, runtime: &'a mut NodeRuntime) -> Result<Instrumented, String> {
 			let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
 			let exector = &mut portfolio.executor;
 			let document = portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap();
 
-			let instrumented = exector.update_node_graph_instrumented(document).expect("update_node_graph_instrumented failed");
+			let instrumented = match exector.update_node_graph_instrumented(document) {
+				Ok(instrumented) => instrumented,
+				Err(e) => return Err(format!("update_node_graph_instrumented failed\n\n{e}")),
+			};
 
 			let viewport_resolution = glam::UVec2::ONE;
-			exector
-				.submit_current_node_graph_evaluation(document, viewport_resolution, Default::default())
-				.expect("submit_current_node_graph_evaluation failed");
+			if let Err(e) = exector.submit_current_node_graph_evaluation(document, viewport_resolution, Default::default()) {
+				return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
+			}
 			runtime.run().await;
 
 			let mut messages = VecDeque::new();
-			editor.poll_node_graph_evaluation(&mut messages).expect("Graph should render");
+			if let Err(e) = editor.poll_node_graph_evaluation(&mut messages) {
+				return Err(format!("Graph should render\n\n{e}"));
+			}
 			let frontend_messages = messages.into_iter().flat_map(|message| editor.handle_message(message));
 
 			for message in frontend_messages {
 				message.check_node_graph_error();
 			}
 
-			instrumented
+			Ok(instrumented)
 		}
 
 		run(&mut self.editor, &mut self.runtime)
@@ -69,7 +74,9 @@ impl EditorTestUtils {
 		self.editor.handle_message(message);
 
 		// Required to process any buffered messages
-		self.eval_graph().await;
+		if let Err(e) = self.eval_graph().await {
+			panic!("Failed to evaluate graph: {e}");
+		}
 	}
 
 	pub async fn new_document(&mut self) {
@@ -82,7 +89,7 @@ impl EditorTestUtils {
 	}
 
 	pub async fn draw_polygon(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
-		self.drag_tool(ToolType::Polygon, x1, y1, x2, y2, ModifierKeys::default()).await;
+		self.drag_tool(ToolType::Shape, x1, y1, x2, y2, ModifierKeys::default()).await;
 	}
 
 	pub async fn draw_ellipse(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
@@ -165,9 +172,10 @@ impl EditorTestUtils {
 	pub fn get_node<'a, T: InputAccessor<'a, DocumentNode>>(&'a self) -> impl Iterator<Item = T> + 'a {
 		self.active_document()
 			.network_interface
-			.iter_recursive()
-			.inspect(|node| println!("{:#?}", node.1.implementation))
-			.filter_map(move |(_, document)| T::new_with_source(document))
+			.document_network()
+			.recursive_nodes()
+			.inspect(|(_, node, _)| println!("{:#?}", node.implementation))
+			.filter_map(move |(_, document, _)| T::new_with_source(document))
 	}
 
 	pub async fn move_mouse(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys, mouse_keys: MouseKeys) {
@@ -211,18 +219,23 @@ impl EditorTestUtils {
 	}
 
 	pub async fn select_tool(&mut self, tool_type: ToolType) {
-		self.handle_message(Message::Tool(ToolMessage::ActivateTool { tool_type })).await;
+		match tool_type {
+			ToolType::Line => self.handle_message(Message::Tool(ToolMessage::ActivateToolShapeLine)).await,
+			ToolType::Rectangle => self.handle_message(Message::Tool(ToolMessage::ActivateToolShapeRectangle)).await,
+			ToolType::Ellipse => self.handle_message(Message::Tool(ToolMessage::ActivateToolShapeEllipse)).await,
+			_ => self.handle_message(Message::Tool(ToolMessage::ActivateTool { tool_type })).await,
+		}
 	}
 
 	pub async fn select_primary_color(&mut self, color: Color) {
-		self.handle_message(Message::Tool(ToolMessage::SelectPrimaryColor { color })).await;
+		self.handle_message(Message::Tool(ToolMessage::SelectWorkingColor { color, primary: true })).await;
 	}
 
 	pub async fn select_secondary_color(&mut self, color: Color) {
-		self.handle_message(Message::Tool(ToolMessage::SelectSecondaryColor { color })).await;
+		self.handle_message(Message::Tool(ToolMessage::SelectWorkingColor { color, primary: false })).await;
 	}
 
-	pub async fn create_raster_image(&mut self, image: graphene_core::raster::Image<Color>, mouse: Option<(f64, f64)>) {
+	pub async fn create_raster_image(&mut self, image: graphene_std::raster::Image<Color>, mouse: Option<(f64, f64)>) {
 		self.handle_message(PortfolioMessage::PasteImage {
 			name: None,
 			image,
@@ -288,7 +301,7 @@ pub trait FrontendMessageTestUtils {
 
 impl FrontendMessageTestUtils for FrontendMessage {
 	fn check_node_graph_error(&self) {
-		let FrontendMessage::UpdateNodeGraph { nodes, .. } = self else { return };
+		let FrontendMessage::UpdateNodeGraphNodes { nodes, .. } = self else { return };
 
 		for node in nodes {
 			if let Some(error) = &node.errors {
@@ -316,9 +329,9 @@ pub mod test_prelude {
 	pub use glam::DVec2;
 	pub use glam::IVec2;
 	pub use graph_craft::document::DocumentNode;
-	pub use graphene_core::raster::{Color, Image};
-	pub use graphene_core::{InputAccessor, InputAccessorSource};
+	pub use graphene_std::raster::{Color, Image};
 	pub use graphene_std::transform::Footprint;
+	pub use graphene_std::{InputAccessor, InputAccessorSource};
 
 	#[macro_export]
 	macro_rules! float_eq {

@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_gradient};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-use graphene_core::vector::style::{Fill, Gradient, GradientType};
+use graphene_std::vector::style::{Fill, Gradient, GradientType};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -536,17 +536,21 @@ impl Fsm for GradientToolFsmState {
 mod test_gradient {
 	use crate::messages::input_mapper::utility_types::input_mouse::EditorMouseState;
 	use crate::messages::input_mapper::utility_types::input_mouse::ScrollDelta;
-	use crate::messages::portfolio::document::{graph_operation::utility_types::TransformIn, utility_types::misc::GroupFolderType};
+	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
-	use graphene_core::vector::fill;
-	use graphene_core::vector::style::Gradient;
+	use graphene_std::vector::fill;
 	use graphene_std::vector::style::Fill;
+	use graphene_std::vector::style::Gradient;
 
 	use super::gradient_space_transform;
 
 	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<(Fill, DAffine2)> {
-		let instrumented = editor.eval_graph().await;
+		let instrumented = match editor.eval_graph().await {
+			Ok(instrumented) => instrumented,
+			Err(e) => panic!("Failed to evaluate graph: {}", e),
+		};
 
 		let document = editor.active_document();
 		let layers = document.metadata().all_layers();
@@ -715,7 +719,7 @@ mod test_gradient {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 
-		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2.0 }).await;
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2. }).await;
 
 		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
 
@@ -724,7 +728,7 @@ mod test_gradient {
 		editor
 			.handle_message(GraphOperationMessage::TransformSet {
 				layer: selected_layer,
-				transform: DAffine2::from_scale_angle_translation(DVec2::new(1.5, 0.8), 0.3, DVec2::new(10.0, -5.0)),
+				transform: DAffine2::from_scale_angle_translation(DVec2::new(1.5, 0.8), 0.3, DVec2::new(10., -5.)),
 				transform_in: TransformIn::Local,
 				skip_rerender: false,
 			})
@@ -800,7 +804,7 @@ mod test_gradient {
 		stops.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
 		let positions: Vec<f64> = stops.iter().map(|(pos, _)| *pos).collect();
-		assert_stops_at_positions(&positions, &[0.0, 0.5, 1.0], 0.1);
+		assert_stops_at_positions(&positions, &[0., 0.5, 1.], 0.1);
 
 		let middle_color = stops[1].1.to_rgba8_srgb();
 
@@ -840,7 +844,7 @@ mod test_gradient {
 
 		// Check positions are now correctly ordered
 		let updated_positions: Vec<f64> = updated_stops.iter().map(|(pos, _)| *pos).collect();
-		assert_stops_at_positions(&updated_positions, &[0.0, 0.8, 1.0], 0.1);
+		assert_stops_at_positions(&updated_positions, &[0., 0.8, 1.], 0.1);
 
 		// Colors should maintain their associations with the stop points
 		assert_eq!(updated_stops[0].1.to_rgba8_srgb(), Color::BLUE.to_rgba8_srgb());
@@ -874,7 +878,7 @@ mod test_gradient {
 		let positions: Vec<f64> = updated_gradient.stops.iter().map(|(pos, _)| *pos).collect();
 
 		// Use helper function to verify positions
-		assert_stops_at_positions(&positions, &[0.0, 0.25, 0.75, 1.0], 0.05);
+		assert_stops_at_positions(&positions, &[0., 0.25, 0.75, 1.], 0.05);
 
 		// Select the stop at position 0.75 and delete it
 		let position2 = DVec2::new(75., 0.);
@@ -900,7 +904,7 @@ mod test_gradient {
 		let final_positions: Vec<f64> = final_gradient.stops.iter().map(|(pos, _)| *pos).collect();
 
 		// Verify final positions with helper function
-		assert_stops_at_positions(&final_positions, &[0.0, 0.25, 1.0], 0.05);
+		assert_stops_at_positions(&final_positions, &[0., 0.25, 1.], 0.05);
 
 		// Additional verification that 0.75 stop is gone
 		assert!(!final_positions.iter().any(|pos| (pos - 0.75).abs() < 0.05), "Stop at position 0.75 should have been deleted");

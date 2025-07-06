@@ -3,12 +3,14 @@ use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup,
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeId;
-use graphene_core::Context;
-use graphene_core::GraphicGroupTable;
-use graphene_core::instances::Instances;
-use graphene_core::memo::IORecord;
-use graphene_core::vector::{VectorData, VectorDataTable};
-use graphene_core::{Artboard, ArtboardGroupTable, GraphicElement};
+use graphene_std::Color;
+use graphene_std::Context;
+use graphene_std::GraphicGroupTable;
+use graphene_std::instances::Instances;
+use graphene_std::memo::IORecord;
+use graphene_std::raster::Image;
+use graphene_std::vector::{VectorData, VectorDataTable};
+use graphene_std::{Artboard, ArtboardGroupTable, GraphicElement};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -155,7 +157,8 @@ impl InstanceLayout for GraphicElement {
 		match self {
 			Self::GraphicGroup(instances) => instances.identifier(),
 			Self::VectorData(instances) => instances.identifier(),
-			Self::RasterFrame(_) => "RasterFrame".to_string(),
+			Self::RasterDataCPU(_) => "RasterDataCPU".to_string(),
+			Self::RasterDataGPU(_) => "RasterDataGPU".to_string(),
 		}
 	}
 	// Don't put a breadcrumb for GraphicElement
@@ -166,7 +169,8 @@ impl InstanceLayout for GraphicElement {
 		match self {
 			Self::GraphicGroup(instances) => instances.layout_with_breadcrumb(data),
 			Self::VectorData(instances) => instances.layout_with_breadcrumb(data),
-			Self::RasterFrame(_) => label("Raster frame not supported"),
+			Self::RasterDataCPU(_) => label("Raster frame not supported"),
+			Self::RasterDataGPU(_) => label("Raster frame not supported"),
 		}
 	}
 }
@@ -179,19 +183,42 @@ impl InstanceLayout for VectorData {
 		format!("Vector Data (points={}, segments={})", self.point_domain.ids().len(), self.segment_domain.ids().len())
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let mut rows = Vec::new();
+		let colinear = self.colinear_manipulators.iter().map(|[a, b]| format!("[{a} / {b}]")).collect::<Vec<_>>().join(", ");
+		let colinear = if colinear.is_empty() { "None" } else { &colinear };
+		let style = vec![
+			TextLabel::new(format!(
+				"{}\n\nColinear Handle IDs: {}\n\nUpstream Graphic Group Table: {}",
+				self.style,
+				colinear,
+				if self.upstream_graphic_group.is_some() { "Yes" } else { "No" }
+			))
+			.multiline(true)
+			.widget_holder(),
+		];
+
+		let domain_entries = [VectorDataDomain::Points, VectorDataDomain::Segments, VectorDataDomain::Regions]
+			.into_iter()
+			.map(|domain| {
+				RadioEntryData::new(format!("{domain:?}"))
+					.label(format!("{domain:?}"))
+					.on_update(move |_| SpreadsheetMessage::ViewVectorDataDomain { domain }.into())
+			})
+			.collect();
+		let domain = vec![RadioInput::new(domain_entries).selected_index(Some(data.vector_data_domain as u32)).widget_holder()];
+
+		let mut table_rows = Vec::new();
 		match data.vector_data_domain {
 			VectorDataDomain::Points => {
-				rows.push(column_headings(&["", "position"]));
-				rows.extend(
+				table_rows.push(column_headings(&["", "position"]));
+				table_rows.extend(
 					self.point_domain
 						.iter()
 						.map(|(id, position)| vec![TextLabel::new(format!("{}", id.inner())).widget_holder(), TextLabel::new(format!("{}", position)).widget_holder()]),
 				);
 			}
 			VectorDataDomain::Segments => {
-				rows.push(column_headings(&["", "start_index", "end_index", "handles"]));
-				rows.extend(self.segment_domain.iter().map(|(id, start, end, handles)| {
+				table_rows.push(column_headings(&["", "start_index", "end_index", "handles"]));
+				table_rows.extend(self.segment_domain.iter().map(|(id, start, end, handles)| {
 					vec![
 						TextLabel::new(format!("{}", id.inner())).widget_holder(),
 						TextLabel::new(format!("{}", start)).widget_holder(),
@@ -201,8 +228,8 @@ impl InstanceLayout for VectorData {
 				}));
 			}
 			VectorDataDomain::Regions => {
-				rows.push(column_headings(&["", "segment_range", "fill"]));
-				rows.extend(self.region_domain.iter().map(|(id, segment_range, fill)| {
+				table_rows.push(column_headings(&["", "segment_range", "fill"]));
+				table_rows.extend(self.region_domain.iter().map(|(id, segment_range, fill)| {
 					vec![
 						TextLabel::new(format!("{}", id.inner())).widget_holder(),
 						TextLabel::new(format!("{:?}", segment_range)).widget_holder(),
@@ -212,17 +239,20 @@ impl InstanceLayout for VectorData {
 			}
 		}
 
-		let entries = [VectorDataDomain::Points, VectorDataDomain::Segments, VectorDataDomain::Regions]
-			.into_iter()
-			.map(|domain| {
-				RadioEntryData::new(format!("{domain:?}"))
-					.label(format!("{domain:?}"))
-					.on_update(move |_| SpreadsheetMessage::ViewVectorDataDomain { domain }.into())
-			})
-			.collect();
+		vec![LayoutGroup::Row { widgets: style }, LayoutGroup::Row { widgets: domain }, LayoutGroup::Table { rows: table_rows }]
+	}
+}
 
-		let domain = vec![RadioInput::new(entries).selected_index(Some(data.vector_data_domain as u32)).widget_holder()];
-		vec![LayoutGroup::Row { widgets: domain }, LayoutGroup::Table { rows }]
+impl InstanceLayout for Image<Color> {
+	fn type_name() -> &'static str {
+		"Image"
+	}
+	fn identifier(&self) -> String {
+		format!("Image (width={}, height={})", self.width, self.height)
+	}
+	fn compute_layout(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		let rows = vec![vec![TextLabel::new(format!("Image (width={}, height={})", self.width, self.height)).widget_holder()]];
+		vec![LayoutGroup::Table { rows }]
 	}
 }
 
@@ -262,13 +292,23 @@ impl<T: InstanceLayout> InstanceLayout for Instances<T> {
 			.instance_ref_iter()
 			.enumerate()
 			.map(|(index, instance)| {
+				let (scale, angle, translation) = instance.transform.to_scale_angle_translation();
+				let rotation = if angle == -0. { 0. } else { angle.to_degrees() };
+				let round = |x: f64| (x * 1e3).round() / 1e3;
 				vec![
 					TextLabel::new(format!("{}", index)).widget_holder(),
 					TextButton::new(instance.instance.identifier())
 						.on_update(move |_| SpreadsheetMessage::PushToInstancePath { index }.into())
 						.widget_holder(),
-					TextLabel::new(format!("{}", instance.transform)).widget_holder(),
-					TextLabel::new(format!("{:?}", instance.alpha_blending)).widget_holder(),
+					TextLabel::new(format!(
+						"Location: ({} px, {} px) — Rotation: {rotation:2}° — Scale: ({}x, {}x)",
+						round(translation.x),
+						round(translation.y),
+						round(scale.x),
+						round(scale.y)
+					))
+					.widget_holder(),
+					TextLabel::new(format!("{}", instance.alpha_blending)).widget_holder(),
 					TextLabel::new(instance.source_node_id.map_or_else(|| "-".to_string(), |id| format!("{}", id.0))).widget_holder(),
 				]
 			})

@@ -1,14 +1,15 @@
 use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
-	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, FrontendNodeWire, Transform, WirePath,
+	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, Transform,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
+use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 use graph_craft::document::NodeId;
-use graphene_core::raster::color::Color;
-use graphene_core::text::Font;
+use graphene_std::raster::color::Color;
+use graphene_std::text::Font;
 
 #[impl_message(Message, Frontend)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -98,19 +99,6 @@ pub enum FrontendMessage {
 	TriggerTextCopy {
 		#[serde(rename = "copyText")]
 		copy_text: String,
-	},
-	// TODO: Eventually remove this document upgrade code
-	TriggerUpgradeDocumentToVectorManipulationFormat {
-		#[serde(rename = "documentId")]
-		document_id: DocumentId,
-		#[serde(rename = "documentName")]
-		document_name: String,
-		#[serde(rename = "documentIsAutoSaved")]
-		document_is_auto_saved: bool,
-		#[serde(rename = "documentIsSaved")]
-		document_is_saved: bool,
-		#[serde(rename = "documentSerializedContent")]
-		document_serialized_content: String,
 	},
 	TriggerVisitLink {
 		url: String,
@@ -240,7 +228,17 @@ pub enum FrontendMessage {
 		#[serde(rename = "hintData")]
 		hint_data: HintData,
 	},
-	UpdateLayersPanelControlBarLayout {
+	UpdateLayersPanelControlBarLeftLayout {
+		#[serde(rename = "layoutTarget")]
+		layout_target: LayoutTarget,
+		diff: Vec<WidgetDiff>,
+	},
+	UpdateLayersPanelControlBarRightLayout {
+		#[serde(rename = "layoutTarget")]
+		layout_target: LayoutTarget,
+		diff: Vec<WidgetDiff>,
+	},
+	UpdateLayersPanelBottomBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
@@ -253,12 +251,16 @@ pub enum FrontendMessage {
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,
 	},
-	UpdateNodeGraph {
+	UpdateNodeGraphNodes {
 		nodes: Vec<FrontendNode>,
-		wires: Vec<FrontendNodeWire>,
-		#[serde(rename = "wiresDirectNotGridAligned")]
-		wires_direct_not_grid_aligned: bool,
 	},
+	UpdateVisibleNodes {
+		nodes: Vec<NodeId>,
+	},
+	UpdateNodeGraphWires {
+		wires: Vec<WirePathUpdate>,
+	},
+	ClearAllNodeGraphWires,
 	UpdateNodeGraphControlBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,

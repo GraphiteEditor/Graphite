@@ -9,8 +9,8 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 use glam::{DAffine2, DVec2};
-use graphene_core::renderer::Quad;
-use graphene_core::vector::ManipulatorPointId;
+use graphene_std::renderer::Quad;
+use graphene_std::vector::ManipulatorPointId;
 use graphene_std::vector::{VectorData, VectorModificationType};
 use std::f64::consts::{PI, TAU};
 
@@ -154,6 +154,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
 		let using_select_tool = tool_data.active_tool_type == ToolType::Select;
 		let using_pen_tool = tool_data.active_tool_type == ToolType::Pen;
+		let using_shape_tool = tool_data.active_tool_type == ToolType::Shape;
 
 		// TODO: Add support for transforming layer not in the document network
 		let selected_layers = document
@@ -194,14 +195,28 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				*selected.pivot = selected.mean_average_of_pivots();
 				self.local_pivot = document.metadata().document_to_viewport.inverse().transform_point2(*selected.pivot);
 				self.grab_target = document.metadata().document_to_viewport.inverse().transform_point2(selected.mean_average_of_pivots());
-			} else if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
+			}
+			// Here vector data from all layers is not considered which can be a problem in pivot calculation
+			else if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
 				*selected.original_transforms = OriginalTransforms::default();
 
 				let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
-				let selected_points = shape_editor.selected_points().collect::<Vec<_>>();
+
+				let selected_segments = shape_editor.selected_segments().collect::<HashSet<_>>();
+
+				let mut affected_points = shape_editor.selected_points().copied().collect::<Vec<_>>();
+
+				for (segment_id, _, start, end) in vector_data.segment_bezier_iter() {
+					if selected_segments.contains(&segment_id) {
+						affected_points.push(ManipulatorPointId::Anchor(start));
+						affected_points.push(ManipulatorPointId::Anchor(end));
+					}
+				}
+
+				let affected_point_refs = affected_points.iter().collect();
 
 				let get_location = |point: &&ManipulatorPointId| point.get_position(&vector_data).map(|position| viewspace.transform_point2(position));
-				if let Some((new_pivot, grab_target)) = calculate_pivot(&selected_points, &vector_data, viewspace, |point: &ManipulatorPointId| get_location(&point)) {
+				if let Some((new_pivot, grab_target)) = calculate_pivot(&affected_point_refs, &vector_data, viewspace, |point: &ManipulatorPointId| get_location(&point)) {
 					*selected.pivot = new_pivot;
 
 					self.local_pivot = document_to_viewport.inverse().transform_point2(*selected.pivot);
@@ -368,6 +383,15 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 				}
 			}
+			TransformLayerMessage::BeginTransformOperation { operation } => {
+				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse, &mut self.initial_transform);
+				self.transform_operation = match operation {
+					TransformType::Grab => TransformOperation::Grabbing(Default::default()),
+					TransformType::Rotate => TransformOperation::Rotating(Default::default()),
+					TransformType::Scale => TransformOperation::Scaling(Default::default()),
+				};
+				self.layer_bounding_box = selected.bounding_box();
+			}
 			TransformLayerMessage::BeginGrabPen { last_point, handle } | TransformLayerMessage::BeginRotatePen { last_point, handle } | TransformLayerMessage::BeginScalePen { last_point, handle } => {
 				self.typing.clear();
 
@@ -402,44 +426,46 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					increments_key: INCREMENTS_KEY,
 				});
 			}
-			TransformLayerMessage::BeginGRS { transform_type } => {
+			TransformLayerMessage::BeginGRS { operation: transform_type } => {
 				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
-				if (using_path_tool && selected_points.is_empty())
-					|| (!using_path_tool && !using_select_tool && !using_pen_tool)
+				let selected_segments = shape_editor.selected_segments().collect::<Vec<_>>();
+
+				if (using_path_tool && selected_points.is_empty() && selected_segments.is_empty())
+					|| (!using_path_tool && !using_select_tool && !using_pen_tool && !using_shape_tool)
 					|| selected_layers.is_empty()
 					|| transform_type.equivalent_to(self.transform_operation)
 				{
 					return;
 				}
 
-				let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) else {
-					selected.original_transforms.clear();
-					return;
-				};
+				if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
+					if let [point] = selected_points.as_slice() {
+						if matches!(point, ManipulatorPointId::Anchor(_)) {
+							if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
+								let handle1_length = handle1.length(&vector_data);
+								let handle2_length = handle2.length(&vector_data);
 
-				if let [point] = selected_points.as_slice() {
-					if matches!(point, ManipulatorPointId::Anchor(_)) {
-						if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
-							let handle1_length = handle1.length(&vector_data);
-							let handle2_length = handle2.length(&vector_data);
-
-							if (handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool) {
-								// G should work for this point but not R and S
-								if matches!(transform_type, TransformType::Rotate | TransformType::Scale) {
-									selected.original_transforms.clear();
-									return;
+								if (handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool) {
+									// G should work for this point but not R and S
+									if matches!(transform_type, TransformType::Rotate | TransformType::Scale) {
+										selected.original_transforms.clear();
+										return;
+									}
 								}
 							}
-						}
-					} else {
-						let handle_length = point.as_handle().map(|handle| handle.length(&vector_data));
+						} else {
+							let handle_length = point.as_handle().map(|handle| handle.length(&vector_data));
 
-						if handle_length == Some(0.) {
-							selected.original_transforms.clear();
-							return;
+							if handle_length == Some(0.) {
+								selected.original_transforms.clear();
+								return;
+							}
 						}
 					}
 				}
+
+				self.local = false;
+				self.operation_count += 1;
 
 				let chain_operation = self.transform_operation != TransformOperation::None;
 				if chain_operation {
@@ -447,36 +473,15 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				} else {
 					responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 				}
-
-				let response = match transform_type {
-					TransformType::Grab => TransformLayerMessage::BeginGrab,
-					TransformType::Rotate => TransformLayerMessage::BeginRotate,
-					TransformType::Scale => TransformLayerMessage::BeginScale,
-				};
-
-				self.local = false;
-				self.operation_count += 1;
-				responses.add(response);
+				responses.add(TransformLayerMessage::BeginTransformOperation { operation: transform_type });
 				responses.add(TransformLayerMessage::PointerMove {
 					slow_key: SLOW_KEY,
 					increments_key: INCREMENTS_KEY,
 				});
 			}
-			TransformLayerMessage::BeginGrab => {
-				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse, &mut self.initial_transform);
-				self.transform_operation = TransformOperation::Grabbing(Default::default());
-				self.layer_bounding_box = selected.bounding_box();
-			}
-			TransformLayerMessage::BeginRotate => {
-				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse, &mut self.initial_transform);
-				self.transform_operation = TransformOperation::Rotating(Default::default());
-				self.layer_bounding_box = selected.bounding_box();
-			}
-			TransformLayerMessage::BeginScale => {
-				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse, &mut self.initial_transform);
-				self.transform_operation = TransformOperation::Scaling(Default::default());
-				self.layer_bounding_box = selected.bounding_box();
-			}
+			TransformLayerMessage::BeginGrab => responses.add_front(TransformLayerMessage::BeginGRS { operation: TransformType::Grab }),
+			TransformLayerMessage::BeginRotate => responses.add_front(TransformLayerMessage::BeginGRS { operation: TransformType::Rotate }),
+			TransformLayerMessage::BeginScale => responses.add_front(TransformLayerMessage::BeginGRS { operation: TransformType::Scale }),
 			TransformLayerMessage::CancelTransformOperation => {
 				if using_pen_tool {
 					self.typing.clear();
@@ -709,7 +714,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(TransformLayerMessageDiscriminant;
-			BeginGRS,
+			BeginGrab,
+			BeginRotate,
+			BeginScale,
 		);
 
 		if self.transform_operation != TransformOperation::None {
@@ -733,13 +740,14 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 #[cfg(test)]
 mod test_transform_layer {
-	use crate::messages::portfolio::document::graph_operation::{transform_utils, utility_types::ModifyInputsContext};
+	use crate::messages::portfolio::document::graph_operation::transform_utils;
+	use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	use crate::messages::prelude::Message;
 	use crate::messages::tool::transform_layer::transform_layer_message_handler::VectorModificationType;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
-	use graphene_core::vector::PointId;
+	use graphene_std::vector::PointId;
 	use std::collections::VecDeque;
 
 	async fn get_layer_transform(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<DAffine2> {
@@ -1037,8 +1045,8 @@ mod test_transform_layer {
 		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
 		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
 
-		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2.0, got: {}", scale_x);
-		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2.0, got: {}", scale_y);
+		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {}", scale_x);
+		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {}", scale_y);
 	}
 
 	#[tokio::test]
@@ -1063,8 +1071,8 @@ mod test_transform_layer {
 		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
 		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
 
-		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2.0, got: {}", scale_x);
-		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2.0, got: {}", scale_y);
+		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {}", scale_x);
+		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {}", scale_y);
 	}
 
 	#[tokio::test]

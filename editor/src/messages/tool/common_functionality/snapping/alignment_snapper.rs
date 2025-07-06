@@ -1,7 +1,7 @@
 use super::*;
 use crate::messages::portfolio::document::utility_types::misc::*;
 use glam::{DAffine2, DVec2};
-use graphene_core::renderer::Quad;
+use graphene_std::renderer::Quad;
 
 #[derive(Clone, Debug, Default)]
 pub struct AlignmentSnapper {
@@ -70,7 +70,7 @@ impl AlignmentSnapper {
 			if let Some(quad) = target_point.quad.map(|q| q.0) {
 				if quad[0] == quad[3] && quad[1] == quad[2] && quad[0] == target_point.document_point {
 					let [p1, p2, ..] = quad;
-					let direction = (p2 - p1).normalize();
+					let Some(direction) = (p2 - p1).try_normalize() else { return };
 					let normal = DVec2::new(-direction.y, direction.x);
 
 					for endpoint in [p1, p2] {
@@ -90,7 +90,7 @@ impl AlignmentSnapper {
 									distance_to_align_target,
 									fully_constrained: false,
 									at_intersection: true,
-									alignment_target_x: Some(endpoint),
+									alignment_target_horizontal: Some(endpoint),
 									..Default::default()
 								};
 								snap_results.points.push(snap_point);
@@ -129,7 +129,7 @@ impl AlignmentSnapper {
 						distance: distance_to_snapped,
 						tolerance,
 						distance_to_align_target,
-						alignment_target_x: Some(target_position),
+						alignment_target_horizontal: Some(target_position),
 						fully_constrained: true,
 						at_intersection: matches!(constraint, SnapConstraint::Line { .. }),
 						..Default::default()
@@ -148,7 +148,7 @@ impl AlignmentSnapper {
 						distance: distance_to_snapped,
 						tolerance,
 						distance_to_align_target,
-						alignment_target_y: Some(target_position),
+						alignment_target_vertical: Some(target_position),
 						fully_constrained: true,
 						at_intersection: matches!(constraint, SnapConstraint::Line { .. }),
 						..Default::default()
@@ -174,8 +174,8 @@ impl AlignmentSnapper {
 					target_bounds: snap_x.target_bounds,
 					distance,
 					tolerance,
-					alignment_target_x: snap_x.alignment_target_x,
-					alignment_target_y: snap_y.alignment_target_y,
+					alignment_target_horizontal: snap_x.alignment_target_horizontal,
+					alignment_target_vertical: snap_y.alignment_target_vertical,
 					constrained: true,
 					at_intersection: true,
 					..Default::default()

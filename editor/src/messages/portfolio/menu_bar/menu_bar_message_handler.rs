@@ -4,7 +4,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::prelude::*;
-use graphene_std::vector::misc::BooleanOperation;
+use graphene_std::path_bool::BooleanOperation;
 
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct MenuBarMessageHandler {
@@ -417,7 +417,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							action: MenuBarEntry::no_action(),
 							disabled: no_active_document || !has_selected_layers,
 							children: MenuBarEntryChildren(vec![{
-								let list = <BooleanOperation as graphene_core::registry::ChoiceTypeStatic>::list();
+								let list = <BooleanOperation as graphene_std::registry::ChoiceTypeStatic>::list();
 								list.into_iter()
 									.map(|i| i.into_iter())
 									.flatten()

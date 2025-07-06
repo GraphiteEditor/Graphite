@@ -6,15 +6,15 @@ use graph_craft::document::value::{RenderOutput, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, generate_uuid};
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
-use graphene_core::application_io::{NodeGraphUpdateMessage, RenderConfig};
-use graphene_core::renderer::RenderSvgSegmentList;
-use graphene_core::renderer::{GraphicElementRendered, RenderParams, SvgRender};
-use graphene_core::text::FontCache;
-use graphene_core::transform::Footprint;
-use graphene_core::vector::style::ViewMode;
 use graphene_std::application_io::TimingInformation;
+use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig};
+use graphene_std::renderer::RenderSvgSegmentList;
+use graphene_std::renderer::{GraphicElementRendered, RenderParams, SvgRender};
 use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
+use graphene_std::text::FontCache;
+use graphene_std::transform::Footprint;
 use graphene_std::vector::VectorData;
+use graphene_std::vector::style::ViewMode;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 
 mod runtime_io;
@@ -152,9 +152,9 @@ impl NodeGraphExecutor {
 			},
 			time,
 			#[cfg(any(feature = "resvg", feature = "vello"))]
-			export_format: graphene_core::application_io::ExportFormat::Canvas,
+			export_format: graphene_std::application_io::ExportFormat::Canvas,
 			#[cfg(not(any(feature = "resvg", feature = "vello")))]
-			export_format: graphene_core::application_io::ExportFormat::Svg,
+			export_format: graphene_std::application_io::ExportFormat::Svg,
 			view_mode: document.view_mode,
 			hide_artboards: false,
 			for_export: false,
@@ -204,7 +204,7 @@ impl NodeGraphExecutor {
 				..Default::default()
 			},
 			time: Default::default(),
-			export_format: graphene_core::application_io::ExportFormat::Svg,
+			export_format: graphene_std::application_io::ExportFormat::Svg,
 			view_mode: document.view_mode,
 			hide_artboards: export_config.transparent_background,
 			for_export: true,
@@ -299,9 +299,6 @@ impl NodeGraphExecutor {
 						}
 					}
 				}
-				// NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {
-				// 	responses.add(DocumentMessage::PropertiesPanel(PropertiesPanelMessage::Refresh));
-				// }
 				NodeGraphUpdate::CompilationResponse(execution_response) => {
 					let CompilationResponse { node_graph_errors, result } = execution_response;
 					let type_delta = match result {
@@ -338,7 +335,15 @@ impl NodeGraphExecutor {
 	fn debug_render(render_object: impl GraphicElementRendered, transform: DAffine2, responses: &mut VecDeque<Message>) {
 		// Setup rendering
 		let mut render = SvgRender::new();
-		let render_params = RenderParams::new(ViewMode::Normal, None, false, false, false);
+		let render_params = RenderParams {
+			view_mode: ViewMode::Normal,
+			culling_bounds: None,
+			thumbnail: false,
+			hide_artboards: false,
+			for_export: false,
+			for_mask: false,
+			alignment_parent_transform: None,
+		};
 
 		// Render SVG
 		render_object.render_svg(&mut render, &render_params);
@@ -383,7 +388,7 @@ impl NodeGraphExecutor {
 			TaggedValue::OptionalColor(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::VectorData(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::GraphicGroup(render_object) => Self::debug_render(render_object, transform, responses),
-			TaggedValue::ImageFrame(render_object) => Self::debug_render(render_object, transform, responses),
+			TaggedValue::RasterData(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::Palette(render_object) => Self::debug_render(render_object, transform, responses),
 			_ => {
 				return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));

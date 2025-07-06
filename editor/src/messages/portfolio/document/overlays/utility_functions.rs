@@ -1,10 +1,11 @@
 use super::utility_types::{DrawHandles, OverlayContext};
 use crate::consts::HIDE_HANDLE_DISTANCE;
+use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
 use crate::messages::tool::tool_messages::tool_prelude::{DocumentMessageHandler, PreferencesMessageHandler};
 use bezier_rs::{Bezier, BezierHandles};
 use glam::{DAffine2, DVec2};
-use graphene_core::vector::ManipulatorPointId;
+use graphene_std::vector::ManipulatorPointId;
 use graphene_std::vector::{PointId, SegmentId};
 use wasm_bindgen::JsCast;
 
@@ -23,7 +24,7 @@ pub fn overlay_canvas_context() -> web_sys::CanvasRenderingContext2d {
 	create_context().expect("Failed to get canvas context")
 }
 
-pub fn selected_segments(document: &DocumentMessageHandler, shape_editor: &mut ShapeState) -> Vec<SegmentId> {
+pub fn selected_segments(network_interface: &NodeNetworkInterface, shape_editor: &ShapeState) -> Vec<SegmentId> {
 	let selected_points = shape_editor.selected_points();
 	let selected_anchors = selected_points
 		.filter_map(|point_id| if let ManipulatorPointId::Anchor(p) = point_id { Some(*p) } else { None })
@@ -40,8 +41,8 @@ pub fn selected_segments(document: &DocumentMessageHandler, shape_editor: &mut S
 
 	// TODO: Currently if there are two duplicate layers, both of their segments get overlays
 	// Adding segments which are are connected to selected anchors
-	for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
-		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+	for layer in network_interface.selected_nodes().selected_layers(network_interface.document_metadata()) {
+		let Some(vector_data) = network_interface.compute_modified_vector(layer) else { continue };
 
 		for (segment_id, _bezier, start, end) in vector_data.segment_bezier_iter() {
 			if selected_anchors.contains(&start) || selected_anchors.contains(&end) {
@@ -123,8 +124,19 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 			overlay_context.outline_vector(&vector_data, transform);
 		}
 
+		// Get the selected segments and then add a bold line overlay on them
+		for (segment_id, bezier, _, _) in vector_data.segment_bezier_iter() {
+			let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) else {
+				continue;
+			};
+
+			if selected_shape_state.is_segment_selected(segment_id) {
+				overlay_context.outline_select_bezier(bezier, transform);
+			}
+		}
+
 		let selected = shape_editor.selected_shape_state.get(&layer);
-		let is_selected = |point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_selected(point));
+		let is_selected = |point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_point_selected(point));
 
 		if display_handles {
 			let opposite_handles_data: Vec<(PointId, SegmentId)> = shape_editor.selected_points().filter_map(|point_id| vector_data.adjacent_segment(point_id)).collect();
@@ -186,7 +198,7 @@ pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &
 		//let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
 		let transform = document.metadata().transform_to_viewport(layer);
 		let selected = shape_editor.selected_shape_state.get(&layer);
-		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_selected(point));
+		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_point_selected(point));
 
 		for point in vector_data.extendable_points(preferences.vector_meshes) {
 			let Some(position) = vector_data.point_domain.position_from_id(point) else { continue };

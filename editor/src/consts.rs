@@ -89,6 +89,8 @@ pub const MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR: f64 = 40.;
 ///
 /// The motion of the user's cursor by an `x` pixel offset results in `x * scale_factor` pixels of offset on the other side.
 pub const MAXIMUM_ALT_SCALE_FACTOR: f64 = 25.;
+/// The width or height that the transform cage needs before it is considered to have no width or height.
+pub const MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT: f64 = 1e-4;
 
 // SKEW TRIANGLES
 pub const SKEW_TRIANGLE_SIZE: f64 = 7.;
@@ -100,7 +102,7 @@ pub const MANIPULATOR_GROUP_MARKER_SIZE: f64 = 6.;
 pub const SELECTION_THRESHOLD: f64 = 10.;
 pub const HIDE_HANDLE_DISTANCE: f64 = 3.;
 pub const HANDLE_ROTATE_SNAP_ANGLE: f64 = 15.;
-pub const SEGMENT_INSERTION_DISTANCE: f64 = 7.5;
+pub const SEGMENT_INSERTION_DISTANCE: f64 = 5.;
 pub const SEGMENT_OVERLAY_SIZE: f64 = 10.;
 pub const HANDLE_LENGTH_FACTOR: f64 = 0.5;
 
@@ -117,6 +119,13 @@ pub const LINE_ROTATE_SNAP_ANGLE: f64 = 15.;
 pub const BRUSH_SIZE_CHANGE_KEYBOARD: f64 = 5.;
 pub const DEFAULT_BRUSH_SIZE: f64 = 20.;
 
+// GIZMOS
+pub const POINT_RADIUS_HANDLE_SNAP_THRESHOLD: f64 = 8.;
+pub const POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD: f64 = 7.9;
+pub const NUMBER_OF_POINTS_DIAL_SPOKE_EXTENSION: f64 = 1.2;
+pub const NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH: f64 = 10.;
+pub const GIZMO_HIDE_THRESHOLD: f64 = 20.;
+
 // SCROLLBARS
 pub const SCROLLBAR_SPACING: f64 = 0.1;
 pub const ASYMPTOTIC_EFFECT: f64 = 0.5;
@@ -124,6 +133,7 @@ pub const SCALE_EFFECT: f64 = 0.5;
 
 // COLORS
 pub const COLOR_OVERLAY_BLUE: &str = "#00a8ff";
+pub const COLOR_OVERLAY_BLUE_50: &str = "rgba(0, 168, 255, 0.5)";
 pub const COLOR_OVERLAY_YELLOW: &str = "#ffc848";
 pub const COLOR_OVERLAY_GREEN: &str = "#63ce63";
 pub const COLOR_OVERLAY_RED: &str = "#ef5454";
@@ -136,3 +146,6 @@ pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
 pub const FILE_SAVE_SUFFIX: &str = ".graphite";
 pub const MAX_UNDO_HISTORY_LEN: usize = 100; // TODO: Add this to user preferences
 pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 15;
+
+// INPUT
+pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;

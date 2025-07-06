@@ -27,7 +27,7 @@ impl MessageHandler<KeyMappingMessage, KeyMappingMessageData<'_>> for KeyMapping
 }
 
 impl KeyMappingMessageHandler {
-	pub fn action_input_mapping(&self, action_to_find: &MessageDiscriminant) -> Vec<KeysGroup> {
+	pub fn action_input_mapping(&self, action_to_find: &MessageDiscriminant) -> Option<KeysGroup> {
 		self.mapping_handler.action_input_mapping(action_to_find)
 	}
 }

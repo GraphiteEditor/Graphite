@@ -21,14 +21,16 @@
 	export let interactive = true;
 	export let disabled = false;
 	export let tooltip: string | undefined = undefined;
+	export let minWidth = 0;
+	export let maxWidth = 0;
 
 	let activeEntry = makeActiveEntry();
 	let activeEntrySkipWatcher = false;
 	let initialSelectedIndex: number | undefined = undefined;
 	let open = false;
-	let minWidth = 0;
 
 	$: watchSelectedIndex(selectedIndex);
+	$: watchEntries(entries);
 	$: watchActiveEntry(activeEntry);
 	$: watchOpen(open);
 
@@ -37,7 +39,13 @@
 	}
 
 	// Called only when `selectedIndex` is changed from outside this component
-	function watchSelectedIndex(_?: number) {
+	function watchSelectedIndex(_?: typeof selectedIndex) {
+		activeEntrySkipWatcher = true;
+		activeEntry = makeActiveEntry();
+	}
+
+	// Called only when `entries` is changed from outside this component
+	function watchEntries(_?: typeof entries) {
 		activeEntrySkipWatcher = true;
 		activeEntry = makeActiveEntry();
 	}
@@ -76,11 +84,15 @@
 	}
 </script>
 
-<LayoutRow class="dropdown-input" bind:this={self} data-dropdown-input>
+<LayoutRow
+	class="dropdown-input"
+	styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}), ...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}) }}
+	bind:this={self}
+	data-dropdown-input
+>
 	<LayoutRow
 		class="dropdown-box"
 		classes={{ disabled, open }}
-		styles={{ "min-width": `${minWidth}px` }}
 		{tooltip}
 		on:click={() => !disabled && (open = true)}
 		on:blur={unFocusDropdownBox}
@@ -150,7 +162,7 @@
 			&.disabled {
 				background: var(--color-2-mildblack);
 
-				span {
+				.text-label {
 					color: var(--color-8-uppergray);
 				}
 

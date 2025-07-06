@@ -31,8 +31,12 @@ pub enum LayoutTarget {
 	DocumentBar,
 	/// Contains the dropdown for design / select / guide mode found on the top left of the canvas.
 	DocumentMode,
-	/// Options for opacity seen at the top of the Layers panel.
-	LayersPanelControlBar,
+	/// Blending options at the top of the Layers panel.
+	LayersPanelControlLeftBar,
+	/// Selected layer status (locked/hidden) at the top of the Layers panel.
+	LayersPanelControlRightBar,
+	/// Controls for adding, grouping, and deleting layers at the bottom of the Layers panel.
+	LayersPanelBottomBar,
 	/// The dropdown menu at the very top of the application: File, Edit, etc.
 	MenuBar,
 	/// Bar at the top of the node graph containing the location and the "Preview" and "Hide" buttons.
@@ -105,7 +109,7 @@ pub enum Layout {
 }
 
 impl Layout {
-	pub fn unwrap_menu_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) -> MenuLayout {
+	pub fn unwrap_menu_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) -> MenuLayout {
 		if let Self::MenuLayout(mut menu) = self {
 			menu.layout
 				.iter_mut()
@@ -585,7 +589,7 @@ pub enum DiffUpdate {
 
 impl DiffUpdate {
 	/// Append the keyboard shortcut to the tooltip where applicable
-	pub fn apply_keyboard_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
+	pub fn apply_keyboard_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
 		// Function used multiple times later in this code block to convert `ActionKeys::Action` to `ActionKeys::Keys` and append its shortcut to the tooltip
 		let apply_shortcut_to_tooltip = |tooltip_shortcut: &mut ActionKeys, tooltip: &mut String| {
 			let shortcut_text = tooltip_shortcut.to_keys(action_input_mapping);

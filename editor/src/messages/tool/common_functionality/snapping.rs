@@ -13,10 +13,10 @@ pub use alignment_snapper::*;
 use bezier_rs::TValue;
 pub use distribution_snapper::*;
 use glam::{DAffine2, DVec2};
-use graphene_core::renderer::Quad;
-use graphene_core::vector::PointId;
+use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::NoHashBuilder;
+use graphene_std::vector::PointId;
 pub use grid_snapper::*;
 pub use layer_snapper::*;
 pub use snap_results::*;
@@ -114,13 +114,13 @@ fn get_closest_point(points: Vec<SnappedPoint>) -> Option<SnappedPoint> {
 		(Some(result), None) | (None, Some(result)) => Some(result),
 		(Some(mut result), Some(align)) => {
 			let SnapTarget::DistributeEvenly(distribution) = result.target else { return Some(result) };
-			if distribution.is_x() && align.alignment_target_x.is_some() {
+			if distribution.is_x() && align.alignment_target_horizontal.is_some() {
 				result.snapped_point_document.y = align.snapped_point_document.y;
-				result.alignment_target_x = align.alignment_target_x;
+				result.alignment_target_horizontal = align.alignment_target_horizontal;
 			}
-			if distribution.is_y() && align.alignment_target_y.is_some() {
+			if distribution.is_y() && align.alignment_target_vertical.is_some() {
 				result.snapped_point_document.x = align.snapped_point_document.x;
-				result.alignment_target_y = align.alignment_target_y;
+				result.alignment_target_vertical = align.alignment_target_vertical;
 			}
 
 			Some(result)
@@ -248,6 +248,10 @@ impl SnapManager {
 		let point = SnapCandidatePoint::handle(snap_data.document.metadata().document_to_viewport.inverse().transform_point2(mouse));
 		let snapped = self.free_snap(snap_data, &point, SnapTypeConfiguration::default());
 		self.update_indicator(snapped);
+	}
+
+	pub fn indicator_pos(&self) -> Option<DVec2> {
+		self.indicator.as_ref().map(|point| point.snapped_point_document)
 	}
 
 	fn find_best_snap(snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: SnapResults, constrained: bool, off_screen: bool, to_path: bool) -> SnappedPoint {
@@ -449,17 +453,21 @@ impl SnapManager {
 		if let Some(ind) = &self.indicator {
 			for layer in &ind.outline_layers {
 				let &Some(layer) = layer else { continue };
-				overlay_context.outline(snap_data.document.metadata().layer_outline(layer), snap_data.document.metadata().transform_to_viewport(layer), None);
+				overlay_context.outline(
+					snap_data.document.metadata().layer_with_free_points_outline(layer),
+					snap_data.document.metadata().transform_to_viewport(layer),
+					None,
+				);
 			}
 			if let Some(quad) = ind.target_bounds {
 				overlay_context.quad(to_viewport * quad, None, None);
 			}
 			let viewport = to_viewport.transform_point2(ind.snapped_point_document);
 
-			Self::alignment_x_overlay(&ind.distribution_boxes_x, to_viewport, overlay_context);
-			Self::alignment_y_overlay(&ind.distribution_boxes_y, to_viewport, overlay_context);
+			Self::alignment_x_overlay(&ind.distribution_boxes_horizontal, to_viewport, overlay_context);
+			Self::alignment_y_overlay(&ind.distribution_boxes_vertical, to_viewport, overlay_context);
 
-			let align = [ind.alignment_target_x, ind.alignment_target_y].map(|target| target.map(|target| to_viewport.transform_point2(target)));
+			let align = [ind.alignment_target_horizontal, ind.alignment_target_vertical].map(|target| target.map(|target| to_viewport.transform_point2(target)));
 			let any_align = align.iter().flatten().next().is_some();
 			for &target in align.iter().flatten() {
 				overlay_context.line(viewport, target, None, None);
@@ -471,7 +479,7 @@ impl SnapManager {
 				overlay_context.manipulator_handle(viewport, false, None);
 			}
 
-			if !any_align && ind.distribution_equal_distance_x.is_none() && ind.distribution_equal_distance_y.is_none() {
+			if !any_align && ind.distribution_equal_distance_horizontal.is_none() && ind.distribution_equal_distance_vertical.is_none() {
 				let text = format!("[{}] from [{}]", ind.target, ind.source);
 				let transform = DAffine2::from_translation(viewport - DVec2::new(0., 4.));
 				overlay_context.text(&text, COLOR_OVERLAY_WHITE, Some(COLOR_OVERLAY_LABEL_BACKGROUND), transform, 4., [Pivot::Start, Pivot::End]);

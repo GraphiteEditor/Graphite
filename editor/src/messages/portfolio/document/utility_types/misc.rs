@@ -1,6 +1,6 @@
 use crate::consts::COLOR_OVERLAY_GRAY;
 use glam::DVec2;
-use graphene_core::raster::Color;
+use graphene_std::raster::Color;
 use std::fmt;
 
 #[repr(transparent)]
@@ -176,17 +176,11 @@ pub enum GridType {
 
 impl Default for GridType {
 	fn default() -> Self {
-		Self::RECTANGULAR
+		Self::Rectangular { spacing: DVec2::ONE }
 	}
 }
 
 impl GridType {
-	pub const RECTANGULAR: Self = GridType::Rectangular { spacing: DVec2::ONE };
-	pub const ISOMETRIC: Self = GridType::Isometric {
-		y_axis_spacing: 1.,
-		angle_a: 30.,
-		angle_b: 30.,
-	};
 	pub fn rectangular_spacing(&mut self) -> Option<&mut DVec2> {
 		match self {
 			Self::Rectangular { spacing } => Some(spacing),
@@ -218,6 +212,10 @@ impl GridType {
 pub struct GridSnapping {
 	pub origin: DVec2,
 	pub grid_type: GridType,
+	pub rectangular_spacing: DVec2,
+	pub isometric_y_spacing: f64,
+	pub isometric_angle_a: f64,
+	pub isometric_angle_b: f64,
 	pub grid_color: Color,
 	pub dot_display: bool,
 }
@@ -227,6 +225,10 @@ impl Default for GridSnapping {
 		Self {
 			origin: DVec2::ZERO,
 			grid_type: Default::default(),
+			rectangular_spacing: DVec2::ONE,
+			isometric_y_spacing: 1.,
+			isometric_angle_a: 30.,
+			isometric_angle_b: 30.,
 			grid_color: Color::from_rgb_str(COLOR_OVERLAY_GRAY.strip_prefix('#').unwrap()).unwrap(),
 			dot_display: false,
 		}
@@ -404,8 +406,7 @@ pub const SNAP_FUNCTIONS_FOR_BOUNDING_BOXES: [(&str, GetSnapState, &str); 5] = [
 	(
 		"Distribute Evenly",
 		(|snapping_state| &mut snapping_state.bounding_box.distribute_evenly) as GetSnapState,
-		// TODO: Fix the bug/limitation that requires 'Center Points' and 'Corner Points' to be enabled
-		"Snaps to a consistent distance offset established by the bounding boxes of nearby layers\n(due to a bug, 'Center Points' and 'Corner Points' must be enabled)",
+		"Snaps to a consistent distance offset established by the bounding boxes of nearby layers",
 	),
 ];
 pub const SNAP_FUNCTIONS_FOR_PATHS: [(&str, GetSnapState, &str); 7] = [
@@ -692,5 +693,5 @@ impl PTZ {
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum GroupFolderType {
 	Layer,
-	BooleanOperation(graphene_std::vector::misc::BooleanOperation),
+	BooleanOperation(graphene_std::path_bool::BooleanOperation),
 }

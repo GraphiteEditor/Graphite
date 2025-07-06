@@ -1,15 +1,16 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER,
-	COMPASS_ROSE_RING_INNER_DIAMETER, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER,
+	COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
 use bezier_rs::{Bezier, Subpath};
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, TAU};
 use glam::{DAffine2, DVec2};
-use graphene_core::Color;
-use graphene_core::renderer::Quad;
+use graphene_std::Color;
+use graphene_std::math::quad::Quad;
+use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::{PointId, SegmentId, VectorData};
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, JsValue};
@@ -580,6 +581,35 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
+	/// Used by the path tool segment mode in order to show the selected segments.
+	pub fn outline_select_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+		self.start_dpi_aware_transform();
+
+		self.render_context.begin_path();
+		self.bezier_command(bezier, transform, true);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		self.render_context.set_line_width(4.);
+		self.render_context.stroke();
+
+		self.render_context.set_line_width(1.);
+
+		self.end_dpi_aware_transform();
+	}
+
+	pub fn outline_overlay_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+		self.start_dpi_aware_transform();
+
+		self.render_context.begin_path();
+		self.bezier_command(bezier, transform, true);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE_50);
+		self.render_context.set_line_width(4.);
+		self.render_context.stroke();
+
+		self.render_context.set_line_width(1.);
+
+		self.end_dpi_aware_transform();
+	}
+
 	fn bezier_command(&self, bezier: Bezier, transform: DAffine2, move_to: bool) {
 		self.start_dpi_aware_transform();
 
@@ -647,13 +677,24 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	/// Used by the Select tool to outline a path selected or hovered.
-	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: Option<&str>) {
-		self.push_path(subpaths, transform);
+	/// Used by the Select tool to outline a path or a free point when selected or hovered.
+	pub fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
+		let mut subpaths: Vec<bezier_rs::Subpath<PointId>> = vec![];
 
-		let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
-		self.render_context.set_stroke_style_str(color);
-		self.render_context.stroke();
+		target_types.for_each(|target_type| match target_type.borrow() {
+			ClickTargetType::FreePoint(point) => {
+				self.manipulator_anchor(transform.transform_point2(point.position), false, None);
+			}
+			ClickTargetType::Subpath(subpath) => subpaths.push(subpath.clone()),
+		});
+
+		if !subpaths.is_empty() {
+			self.push_path(subpaths.iter(), transform);
+
+			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
+			self.render_context.set_stroke_style_str(color);
+			self.render_context.stroke();
+		}
 	}
 
 	/// Fills the area inside the path. Assumes `color` is in gamma space.

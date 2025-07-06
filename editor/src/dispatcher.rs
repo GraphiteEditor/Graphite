@@ -40,7 +40,6 @@ impl DispatcherMessageHandlers {
 /// The last occurrence of the message in the message queue is sufficient to ensure correct behavior.
 /// In addition, these messages do not change any state in the backend (aside from caches).
 const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
-	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(NodeGraphMessageDiscriminant::SendGraph))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
 		PropertiesPanelMessageDiscriminant::Refresh,
 	))),
@@ -319,12 +318,11 @@ impl Dispatcher {
 		}))
 	}
 
-	/// Logs a message that is about to be executed,
-	/// either as a tree with a discriminant or the entire payload (depending on settings)
+	/// Logs a message that is about to be executed, either as a tree
+	/// with a discriminant or the entire payload (depending on settings)
 	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], message_logging_verbosity: MessageLoggingVerbosity) {
 		let discriminant = MessageDiscriminant::from(message);
-		let is_blocked = DEBUG_MESSAGE_BLOCK_LIST.iter().any(|&blocked_discriminant| discriminant == blocked_discriminant)
-			|| DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
+		let is_blocked = DEBUG_MESSAGE_BLOCK_LIST.contains(&discriminant) || DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
 
 		if !is_blocked {
 			match message_logging_verbosity {
@@ -498,9 +496,14 @@ mod test {
 			println!("-------------------------------------------------");
 			println!("Failed test due to receiving a DisplayDialogError while loading a Graphite demo file.");
 			println!();
+			println!("NOTE:");
+			println!("Document upgrading isn't performed in tests like when opening in the actual editor.");
+			println!("You may need to open and re-save a document in the editor to apply its migrations.");
+			println!();
 			println!("DisplayDialogError details:");
 			println!();
-			println!("Description: {value}");
+			println!("Description:");
+			println!("{value}");
 			println!("-------------------------------------------------");
 			println!();
 
@@ -538,7 +541,9 @@ mod test {
 			});
 
 			// Check if the graph renders
-			editor.eval_graph().await;
+			if let Err(e) = editor.eval_graph().await {
+				print_problem_to_terminal_on_failure(&format!("Failed to evaluate the graph for document '{document_name}':\n{e}"));
+			}
 
 			for response in responses {
 				// Check for the existence of the file format incompatibility warning dialog after opening the test file

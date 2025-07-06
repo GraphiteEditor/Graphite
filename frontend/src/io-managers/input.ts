@@ -22,7 +22,7 @@ export const PRESS_REPEAT_DELAY_MS = 400;
 export const PRESS_REPEAT_INTERVAL_MS = 72;
 export const PRESS_REPEAT_INTERVAL_RAPID_MS = 10;
 
-type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield";
+type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield" | "pointerlockchange" | "pointerlockerror";
 type EventListenerTarget = {
 	addEventListener: typeof window.addEventListener;
 	removeEventListener: typeof window.removeEventListener;
@@ -35,6 +35,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	let viewportPointerInteractionOngoing = false;
 	let textToolInteractiveInputElement = undefined as undefined | HTMLDivElement;
 	let canvasFocused = true;
+	let inPointerLock = false;
 
 	// Event listeners
 
@@ -55,6 +56,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent) => onContextMenu(e) },
 		{ target: window.document, eventName: "fullscreenchange", action: () => fullscreen.fullscreenModeChanged() },
 		{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent) => onPaste(e) },
+		{ target: window.document, eventName: "pointerlockchange", action: onPointerLockChange },
+		{ target: window.document, eventName: "pointerlockerror", action: onPointerLockChange },
 	];
 
 	// Event bindings
@@ -101,6 +104,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (["KeyC", "KeyI", "KeyJ"].includes(key) && accelKey && e.shiftKey) return false;
 
 		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
+		potentiallyRestoreCanvasFocus(e);
 		if (!canvasFocused && !targetIsTextField(e.target || undefined) && ["Tab", "Enter", "NumpadEnter", "Space", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(key)) return false;
 
 		// Don't redirect if a MenuList is open
@@ -142,6 +146,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
 	function onPointerMove(e: PointerEvent) {
+		potentiallyRestoreCanvasFocus(e);
+
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
 		// Don't redirect pointer movement to the backend if there's no ongoing interaction and it's over a floating menu, or the graph overlay, on top of the canvas
@@ -152,25 +158,15 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		const inGraphOverlay = get(document).graphViewOverlayOpen;
 		if (!viewportPointerInteractionOngoing && (inFloatingMenu || inGraphOverlay)) return;
 
-		const { target } = e;
-		const newInCanvasArea = (target instanceof Element && target.closest("[data-viewport], [data-graph]")) instanceof Element && !targetIsTextField(window.document.activeElement || undefined);
-		if (newInCanvasArea && !canvasFocused) {
-			canvasFocused = true;
-			app?.focus();
-		}
-
 		const modifiers = makeKeyboardModifiersBitfield(e);
 		editor.handle.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
 	}
 
-	function onMouseDown(e: MouseEvent) {
-		// Block middle mouse button auto-scroll mode (the circlar gizmo that appears and allows quick scrolling by moving the cursor above or below it)
-		if (e.button === BUTTON_MIDDLE) e.preventDefault();
-	}
-
 	function onPointerDown(e: PointerEvent) {
+		potentiallyRestoreCanvasFocus(e);
+
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && (target.closest("[data-viewport]") || target.closest("[data-node-graph]"));
+		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-node-graph]");
 		const inDialog = target instanceof Element && target.closest("[data-dialog] [data-floating-menu-content]");
 		const inContextMenu = target instanceof Element && target.closest("[data-context-menu]");
 		const inTextInput = target === textToolInteractiveInputElement;
@@ -182,18 +178,23 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		}
 
 		if (!inTextInput && !inContextMenu) {
-			const isLeftOrRightClick = e.button === BUTTON_RIGHT || e.button === BUTTON_LEFT;
-			if (textToolInteractiveInputElement) editor.handle.onChangeText(textInputCleanup(textToolInteractiveInputElement.innerText), isLeftOrRightClick);
-			else viewportPointerInteractionOngoing = isTargetingCanvas instanceof Element;
+			if (textToolInteractiveInputElement) {
+				const isLeftOrRightClick = e.button === BUTTON_RIGHT || e.button === BUTTON_LEFT;
+				editor.handle.onChangeText(textInputCleanup(textToolInteractiveInputElement.innerText), isLeftOrRightClick);
+			} else {
+				viewportPointerInteractionOngoing = isTargetingCanvas instanceof Element;
+			}
 		}
 
-		if (viewportPointerInteractionOngoing) {
+		if (viewportPointerInteractionOngoing && isTargetingCanvas instanceof Element) {
 			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.handle.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers);
 		}
 	}
 
 	function onPointerUp(e: PointerEvent) {
+		potentiallyRestoreCanvasFocus(e);
+
 		// Don't let the browser navigate back or forward when using the buttons on some mice
 		// TODO: This works in Chrome but not in Firefox
 		// TODO: Possible workaround: use the browser's history API to block navigation:
@@ -208,11 +209,18 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		editor.handle.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers);
 	}
 
-	function onPotentialDoubleClick(e: MouseEvent) {
-		if (textToolInteractiveInputElement) return;
+	// Mouse events
 
-		// Allow only double-clicks
-		if (e.detail !== 2) return;
+	function onPotentialDoubleClick(e: MouseEvent) {
+		if (textToolInteractiveInputElement || inPointerLock) return;
+
+		// Allow only events within the viewport or node graph boundaries
+		const { target } = e;
+		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-node-graph]");
+		if (!(isTargetingCanvas instanceof Element)) return;
+
+		// Allow only repeated increments of double-clicks (not 1, 3, 5, etc.)
+		if (e.detail % 2 == 1) return;
 
 		// `e.buttons` is always 0 in the `mouseup` event, so we have to convert from `e.button` instead
 		let buttons = 1;
@@ -226,11 +234,26 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		editor.handle.onDoubleClick(e.clientX, e.clientY, buttons, modifiers);
 	}
 
-	// Mouse events
+	function onMouseDown(e: MouseEvent) {
+		// Block middle mouse button auto-scroll mode (the circlar gizmo that appears and allows quick scrolling by moving the cursor above or below it)
+		if (e.button === BUTTON_MIDDLE) e.preventDefault();
+	}
+
+	function onContextMenu(e: MouseEvent) {
+		if (!targetIsTextField(e.target || undefined) && e.target !== textToolInteractiveInputElement) {
+			e.preventDefault();
+		}
+	}
+
+	function onPointerLockChange() {
+		inPointerLock = Boolean(window.document.pointerLockElement);
+	}
+
+	// Wheel events
 
 	function onWheelScroll(e: WheelEvent) {
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && (target.closest("[data-viewport]") || target.closest("[data-node-graph]"));
+		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-node-graph]");
 
 		// Redirect vertical scroll wheel movement into a horizontal scroll on a horizontally scrollable element
 		// There seems to be no possible way to properly employ the browser's smooth scrolling interpolation
@@ -244,12 +267,6 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 			e.preventDefault();
 			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.handle.onWheelScroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
-		}
-	}
-
-	function onContextMenu(e: MouseEvent) {
-		if (!targetIsTextField(e.target || undefined) && e.target !== textToolInteractiveInputElement) {
-			e.preventDefault();
 		}
 	}
 
@@ -412,6 +429,17 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 			editor.handle.errorDialog("Cannot access clipboard", message);
 		}
 	});
+
+	// Helper functions
+
+	function potentiallyRestoreCanvasFocus(e: Event) {
+		const { target } = e;
+		const newInCanvasArea = (target instanceof Element && target.closest("[data-viewport], [data-graph]")) instanceof Element && !targetIsTextField(window.document.activeElement || undefined);
+		if (!canvasFocused && newInCanvasArea) {
+			canvasFocused = true;
+			app?.focus();
+		}
+	}
 
 	// Initialization
 

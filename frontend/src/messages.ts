@@ -96,15 +96,20 @@ export class UpdateLayerWidths extends JsMessage {
 	readonly hasLeftInputWire!: Map<bigint, boolean>;
 }
 
-export class UpdateNodeGraph extends JsMessage {
+export class UpdateNodeGraphNodes extends JsMessage {
 	@Type(() => FrontendNode)
 	readonly nodes!: FrontendNode[];
-
-	@Type(() => FrontendNodeWire)
-	readonly wires!: FrontendNodeWire[];
-
-	readonly wiresDirectNotGridAligned!: boolean;
 }
+
+export class UpdateVisibleNodes extends JsMessage {
+	readonly nodes!: bigint[];
+}
+
+export class UpdateNodeGraphWires extends JsMessage {
+	readonly wires!: WireUpdate[];
+}
+
+export class ClearAllNodeGraphWires extends JsMessage {}
 
 export class UpdateNodeGraphTransform extends JsMessage {
 	readonly transform!: NodeGraphTransform;
@@ -219,7 +224,7 @@ export class FrontendGraphInput {
 
 	readonly description!: string;
 
-	readonly resolvedType!: string | undefined;
+	readonly resolvedType!: string;
 
 	readonly validTypes!: string[];
 
@@ -252,7 +257,7 @@ export class FrontendGraphOutput {
 
 	readonly description!: string;
 
-	readonly resolvedType!: string | undefined;
+	readonly resolvedType!: string;
 
 	@CreateInputConnectorArray
 	connectedTo!: Node[];
@@ -297,44 +302,6 @@ export class FrontendNode {
 	readonly uiOnly!: boolean;
 }
 
-const CreateOutputConnector = Transform(({ obj }) => {
-	if (obj.wireStart.export !== undefined) {
-		return { index: obj.wireStart.export };
-	} else if (obj.wireStart.import !== undefined) {
-		return { index: obj.wireStart.import };
-	} else {
-		if (obj.wireStart.node.inputIndex !== undefined) {
-			return { nodeId: obj.wireStart.node.nodeId, index: obj.wireStart.node.inputIndex };
-		} else {
-			return { nodeId: obj.wireStart.node.nodeId, index: obj.wireStart.node.outputIndex };
-		}
-	}
-});
-
-const CreateInputConnector = Transform(({ obj }) => {
-	if (obj.wireEnd.export !== undefined) {
-		return { index: obj.wireEnd.export };
-	} else if (obj.wireEnd.import !== undefined) {
-		return { index: obj.wireEnd.import };
-	} else {
-		if (obj.wireEnd.node.inputIndex !== undefined) {
-			return { nodeId: obj.wireEnd.node.nodeId, index: obj.wireEnd.node.inputIndex };
-		} else {
-			return { nodeId: obj.wireEnd.node.nodeId, index: obj.wireEnd.node.outputIndex };
-		}
-	}
-});
-
-export class FrontendNodeWire {
-	@CreateOutputConnector
-	readonly wireStart!: Node;
-
-	@CreateInputConnector
-	readonly wireEnd!: Node;
-
-	readonly dashed!: boolean;
-}
-
 export class FrontendNodeType {
 	readonly name!: string;
 
@@ -354,6 +321,12 @@ export class WirePath {
 	readonly dataType!: FrontendGraphDataType;
 	readonly thick!: boolean;
 	readonly dashed!: boolean;
+}
+
+export class WireUpdate {
+	readonly id!: bigint;
+	readonly inputIndex!: number;
+	readonly wirePathUpdate!: WirePath | undefined;
 }
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
@@ -907,6 +880,10 @@ export class LayerPanelEntry {
 	ancestorOfSelected!: boolean;
 
 	descendantOfSelected!: boolean;
+
+	clipped!: boolean;
+
+	clippable!: boolean;
 }
 
 export class DisplayDialogDismiss extends JsMessage {}
@@ -936,15 +913,6 @@ export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
 	readonly commitDate!: string;
 }
 
-// TODO: Eventually remove this document upgrade code
-export class TriggerUpgradeDocumentToVectorManipulationFormat extends JsMessage {
-	readonly documentId!: bigint;
-	readonly documentName!: string;
-	readonly documentIsAutoSaved!: boolean;
-	readonly documentIsSaved!: boolean;
-	readonly documentSerializedContent!: string;
-}
-
 // WIDGET PROPS
 
 export abstract class WidgetProps {
@@ -960,6 +928,8 @@ export class CheckboxInput extends WidgetProps {
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
+
+	forLabel!: bigint | undefined;
 }
 
 export class ColorInput extends WidgetProps {
@@ -1085,6 +1055,12 @@ export class DropdownInput extends WidgetProps {
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
+
+	// Styling
+
+	minWidth!: number;
+
+	maxWidth!: number;
 }
 
 export class FontInput extends WidgetProps {
@@ -1185,6 +1161,8 @@ export class NumberInput extends WidgetProps {
 	// Styling
 
 	minWidth!: number;
+
+	maxWidth!: number;
 }
 
 export class NodeCatalog extends WidgetProps {
@@ -1193,6 +1171,8 @@ export class NodeCatalog extends WidgetProps {
 
 export class PopoverButton extends WidgetProps {
 	style!: PopoverButtonStyle | undefined;
+
+	menuDirection!: MenuDirection | undefined;
 
 	icon!: IconName | undefined;
 
@@ -1206,6 +1186,8 @@ export class PopoverButton extends WidgetProps {
 
 	popoverMinWidth: number | undefined;
 }
+
+export type MenuDirection = "Top" | "Bottom" | "Left" | "Right" | "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight" | "Center";
 
 export type RadioEntryData = {
 	value?: string;
@@ -1348,6 +1330,8 @@ export class TextLabel extends WidgetProps {
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
+
+	checkboxId!: bigint | undefined;
 }
 
 export type ReferencePoint = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";
@@ -1581,7 +1565,11 @@ export class UpdateDocumentBarLayout extends WidgetDiffUpdate {}
 
 export class UpdateDocumentModeLayout extends WidgetDiffUpdate {}
 
-export class UpdateLayersPanelControlBarLayout extends WidgetDiffUpdate {}
+export class UpdateLayersPanelControlBarLeftLayout extends WidgetDiffUpdate {}
+
+export class UpdateLayersPanelControlBarRightLayout extends WidgetDiffUpdate {}
+
+export class UpdateLayersPanelBottomBarLayout extends WidgetDiffUpdate {}
 
 // Extends JsMessage instead of WidgetDiffUpdate because the menu bar isn't diffed
 export class UpdateMenuBarLayout extends JsMessage {
@@ -1630,6 +1618,7 @@ type JSMessageFactory = (data: any, wasm: WebAssembly.Memory, handle: EditorHand
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageMakers: Record<string, MessageMaker> = {
+	ClearAllNodeGraphWires,
 	DisplayDialog,
 	DisplayDialogDismiss,
 	DisplayDialogPanic,
@@ -1655,7 +1644,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerSavePreferences,
 	TriggerTextCommit,
 	TriggerTextCopy,
-	TriggerUpgradeDocumentToVectorManipulationFormat,
 	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateBox,
@@ -1680,14 +1668,18 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateImportsExports,
 	UpdateInputHints,
 	UpdateInSelectedNetwork,
-	UpdateLayersPanelControlBarLayout,
+	UpdateLayersPanelControlBarLeftLayout,
+	UpdateLayersPanelControlBarRightLayout,
+	UpdateLayersPanelBottomBarLayout,
 	UpdateLayerWidths,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
-	UpdateNodeGraph,
+	UpdateNodeGraphNodes,
+	UpdateVisibleNodes,
+	UpdateNodeGraphWires,
+	UpdateNodeGraphTransform,
 	UpdateNodeGraphControlBarLayout,
 	UpdateNodeGraphSelection,
-	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelSectionsLayout,

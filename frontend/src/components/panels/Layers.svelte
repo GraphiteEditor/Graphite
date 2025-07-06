@@ -1,9 +1,17 @@
 <script lang="ts">
-	import { getContext, onMount, tick } from "svelte";
+	import { getContext, onMount, onDestroy, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
 	import { beginDraggingElement } from "@graphite/io-managers/drag";
-	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerStructureJs, UpdateLayersPanelControlBarLayout } from "@graphite/messages";
+	import {
+		defaultWidgetLayout,
+		patchWidgetLayout,
+		UpdateDocumentLayerDetails,
+		UpdateDocumentLayerStructureJs,
+		UpdateLayersPanelControlBarLeftLayout,
+		UpdateLayersPanelControlBarRightLayout,
+		UpdateLayersPanelBottomBarLayout,
+	} from "@graphite/messages";
 	import type { DataBuffer, LayerPanelEntry } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
@@ -13,6 +21,7 @@
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
 	type LayerListingInfo = {
@@ -46,13 +55,29 @@
 	let fakeHighlightOfNotYetSelectedLayerBeingDragged: undefined | bigint = undefined;
 	let dragInPanel = false;
 
+	// Interactive clipping
+	let layerToClipUponClick: LayerListingInfo | undefined = undefined;
+	let layerToClipAltKeyPressed = false;
+
 	// Layouts
-	let layersPanelControlBarLayout = defaultWidgetLayout();
+	let layersPanelControlBarLeftLayout = defaultWidgetLayout();
+	let layersPanelControlBarRightLayout = defaultWidgetLayout();
+	let layersPanelBottomBarLayout = defaultWidgetLayout();
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLayout, (updateLayersPanelControlBarLayout) => {
-			patchWidgetLayout(layersPanelControlBarLayout, updateLayersPanelControlBarLayout);
-			layersPanelControlBarLayout = layersPanelControlBarLayout;
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (updateLayersPanelControlBarLeftLayout) => {
+			patchWidgetLayout(layersPanelControlBarLeftLayout, updateLayersPanelControlBarLeftLayout);
+			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
+		});
+
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (updateLayersPanelControlBarRightLayout) => {
+			patchWidgetLayout(layersPanelControlBarRightLayout, updateLayersPanelControlBarRightLayout);
+			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
+		});
+
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (updateLayersPanelBottomBarLayout) => {
+			patchWidgetLayout(layersPanelBottomBarLayout, updateLayersPanelBottomBarLayout);
+			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (updateDocumentLayerStructure) => {
@@ -66,6 +91,16 @@
 
 			updateLayerInTree(targetId, targetLayer);
 		});
+
+		addEventListener("pointermove", clippingHover);
+		addEventListener("keydown", clippingKeyPress);
+		addEventListener("keyup", clippingKeyPress);
+	});
+
+	onDestroy(() => {
+		removeEventListener("pointermove", clippingHover);
+		removeEventListener("keydown", clippingKeyPress);
+		removeEventListener("keyup", clippingKeyPress);
 	});
 
 	type DocumentLayerStructure = {
@@ -187,10 +222,56 @@
 		// Get the state of the platform's accel key and its opposite platform's accel key
 		const [accel, oppositeAccel] = platformIsMac() ? [meta, ctrl] : [ctrl, meta];
 
+		// Alt-clicking to make a clipping mask
+		if (layerToClipAltKeyPressed && layerToClipUponClick && layerToClipUponClick.entry.clippable) clipLayer(layerToClipUponClick);
 		// Select the layer only if the accel and/or shift keys are pressed
-		if (!oppositeAccel && !alt) selectLayer(listing, accel, shift);
+		else if (!oppositeAccel && !alt) selectLayer(listing, accel, shift);
 
 		e.stopPropagation();
+	}
+
+	function clipLayer(listing: LayerListingInfo) {
+		editor.handle.clipLayer(listing.entry.id);
+	}
+
+	function clippingKeyPress(e: KeyboardEvent) {
+		layerToClipAltKeyPressed = e.altKey;
+	}
+
+	function clippingHover(e: PointerEvent) {
+		// Don't do anything if the user is dragging to rearrange layers
+		if (dragInPanel) return;
+
+		// Get the layer below the cursor
+		const target = (e.target instanceof HTMLElement && e.target.closest("[data-layer]")) || undefined;
+		if (!target) {
+			layerToClipUponClick = undefined;
+			return;
+		}
+
+		// Check if the cursor is near the border btween two layers
+		const DISTANCE = 6;
+		const distanceFromTop = e.clientY - target.getBoundingClientRect().top;
+		const distanceFromBottom = target.getBoundingClientRect().bottom - e.clientY;
+
+		const nearTop = distanceFromTop < DISTANCE;
+		const nearBottom = distanceFromBottom < DISTANCE;
+
+		// If we are not near the border, we don't want to clip
+		if (!nearTop && !nearBottom) {
+			layerToClipUponClick = undefined;
+			return;
+		}
+
+		// If we are near the border, we want to clip the layer above the border
+		const indexAttribute = target?.getAttribute("data-index") ?? undefined;
+		const index = indexAttribute ? Number(indexAttribute) : undefined;
+		const layer = index !== undefined && layers[nearTop ? index - 1 : index];
+		if (!layer) return;
+
+		// Update the state used to show the clipping action
+		layerToClipUponClick = layer;
+		layerToClipAltKeyPressed = e.altKey;
 	}
 
 	function selectLayer(listing: LayerListingInfo, accel: boolean, shift: boolean) {
@@ -407,10 +488,21 @@
 
 <LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
 	<LayoutRow class="control-bar" scrollableX={true}>
-		<WidgetLayout layout={layersPanelControlBarLayout} />
+		<WidgetLayout layout={layersPanelControlBarLeftLayout} />
+		<Separator />
+		<WidgetLayout layout={layersPanelControlBarRightLayout} />
 	</LayoutRow>
 	<LayoutRow class="list-area" scrollableY={true}>
-		<LayoutCol class="list" data-layer-panel bind:this={list} on:click={() => deselectAllLayers()} on:dragover={updateInsertLine} on:dragend={drop} on:drop={drop}>
+		<LayoutCol
+			class="list"
+			styles={{ cursor: layerToClipUponClick && layerToClipAltKeyPressed && layerToClipUponClick.entry.clippable ? "alias" : "auto" }}
+			data-layer-panel
+			bind:this={list}
+			on:click={() => deselectAllLayers()}
+			on:dragover={updateInsertLine}
+			on:dragend={drop}
+			on:drop={drop}
+		>
 			{#each layers as listing, index}
 				{@const selected = fakeHighlightOfNotYetSelectedLayerBeingDragged !== undefined ? fakeHighlightOfNotYetSelectedLayerBeingDragged === listing.entry.id : listing.entry.selected}
 				<LayoutRow
@@ -441,6 +533,11 @@
 							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
 							tabindex="0"
 						></button>
+					{:else}
+						<div class="expand-arrow-none"></div>
+					{/if}
+					{#if listing.entry.clipped}
+						<IconLabel icon="Clipped" class="clipped-arrow" tooltip={"Clipping mask is active (Alt-click border to release)"} />
 					{/if}
 					<div class="thumbnail">
 						{#if $nodeGraph.thumbnails.has(listing.entry.id)}
@@ -490,6 +587,9 @@
 			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`} />
 		{/if}
 	</LayoutRow>
+	<LayoutRow class="bottom-bar" scrollableX={true}>
+		<WidgetLayout layout={layersPanelBottomBarLayout} />
+	</LayoutRow>
 </LayoutCol>
 
 <style lang="scss" global>
@@ -499,40 +599,34 @@
 			height: 32px;
 			flex: 0 0 auto;
 			margin: 0 4px;
+			border-bottom: 1px solid var(--color-2-mildblack);
+			justify-content: space-between;
 
-			.widget-span {
-				width: 100%;
-				height: 100%;
-				min-width: 300px;
-			}
-
-			// Blend mode selector and opacity slider
-			.dropdown-input,
-			.number-input {
+			.widget-span:first-child {
 				flex: 1 1 auto;
 			}
+		}
 
-			// Blend mode selector
-			.dropdown-input {
-				max-width: 120px;
-				flex-basis: 120px;
-			}
+		// Bottom bar
+		.bottom-bar {
+			height: 24px;
+			padding-top: 4px;
+			flex: 0 0 auto;
+			margin: 0 4px;
+			justify-content: flex-end;
+			border-top: 1px solid var(--color-2-mildblack);
 
-			// Opacity slider
-			.number-input {
-				max-width: 180px;
-				flex-basis: 180px;
-
-				+ .separator ~ .separator {
-					flex-grow: 1;
-				}
+			.widget-span > * {
+				margin: 0;
 			}
 		}
 
 		// Layer hierarchy
 		.list-area {
-			margin: 4px 0;
 			position: relative;
+			margin-top: 4px;
+			// Combine with the bottom bar to avoid a double border
+			margin-bottom: -1px;
 
 			.layer {
 				flex: 0 0 auto;
@@ -569,6 +663,7 @@
 				.expand-arrow {
 					padding: 0;
 					margin: 0;
+					margin-right: 4px;
 					width: 16px;
 					height: 100%;
 					border: none;
@@ -605,20 +700,25 @@
 					}
 				}
 
+				.expand-arrow-none {
+					flex: 0 0 16px;
+					margin-right: 4px;
+				}
+
+				.clipped-arrow {
+					margin-left: 2px;
+					margin-right: 2px;
+				}
+
 				.thumbnail {
 					width: 36px;
 					height: 24px;
-					margin-left: 4px;
 					border-radius: 2px;
 					flex: 0 0 auto;
 					background-image: var(--color-transparent-checkered-background);
 					background-size: var(--color-transparent-checkered-background-size-mini);
 					background-position: var(--color-transparent-checkered-background-position-mini);
 					background-repeat: var(--color-transparent-checkered-background-repeat);
-
-					&:first-child {
-						margin-left: 20px;
-					}
 
 					svg {
 						width: calc(100% - 4px);

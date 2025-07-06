@@ -2,16 +2,22 @@ mod attributes;
 mod indexed;
 mod modification;
 
-use super::misc::point_to_dvec2;
+use super::misc::{dvec2_to_point, point_to_dvec2};
 use super::style::{PathStyle, Stroke};
+use crate::bounds::BoundingBox;
 use crate::instances::Instances;
+use crate::math::quad::Quad;
+use crate::transform::Transform;
+use crate::vector::click_target::{ClickTargetType, FreePoint};
 use crate::{AlphaBlending, Color, GraphicGroupTable};
 pub use attributes::*;
-use bezier_rs::ManipulatorGroup;
+use bezier_rs::{BezierHandles, ManipulatorGroup};
 use core::borrow::Borrow;
+use core::hash::Hash;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 pub use indexed::VectorDataIndex;
+use kurbo::{Affine, Rect, Shape};
 pub use modification::*;
 use std::collections::HashMap;
 
@@ -19,8 +25,7 @@ use std::collections::HashMap;
 pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<VectorDataTable, D::Error> {
 	use serde::Deserialize;
 
-	#[derive(Clone, Debug, PartialEq, DynAny)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 	pub struct OldVectorData {
 		pub transform: DAffine2,
 		pub alpha_blending: AlphaBlending,
@@ -59,8 +64,8 @@ pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 				region_domain: old.region_domain,
 				upstream_graphic_group: old.upstream_graphic_group,
 			});
-			*vector_data_table.one_instance_mut().transform = old.transform;
-			*vector_data_table.one_instance_mut().alpha_blending = old.alpha_blending;
+			*vector_data_table.instance_mut_iter().next().unwrap().transform = old.transform;
+			*vector_data_table.instance_mut_iter().next().unwrap().alpha_blending = old.alpha_blending;
 			vector_data_table
 		}
 		EitherFormat::VectorDataTable(vector_data_table) => vector_data_table,
@@ -73,8 +78,7 @@ pub type VectorDataTable = Instances<VectorData>;
 /// It contains a list of subpaths (that may be open or closed), a transform, and some style information.
 ///
 /// Segments are connected if they share endpoints.
-#[derive(Clone, Debug, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct VectorData {
 	pub style: PathStyle,
 
@@ -90,20 +94,8 @@ pub struct VectorData {
 	pub upstream_graphic_group: Option<GraphicGroupTable>,
 }
 
-impl core::hash::Hash for VectorData {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.point_domain.hash(state);
-		self.segment_domain.hash(state);
-		self.region_domain.hash(state);
-		self.style.hash(state);
-		self.colinear_manipulators.hash(state);
-	}
-}
-
-impl VectorData {
-	/// An empty subpath with no data, an identity transform, and a black fill.
-	// TODO: Replace with just `Default`
-	pub const fn empty() -> Self {
+impl Default for VectorData {
+	fn default() -> Self {
 		Self {
 			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None),
 			colinear_manipulators: Vec::new(),
@@ -113,12 +105,19 @@ impl VectorData {
 			upstream_graphic_group: None,
 		}
 	}
+}
 
-	/// Construct some new vector data from a single subpath with an identity transform and black fill.
-	pub fn from_subpath(subpath: impl Borrow<bezier_rs::Subpath<PointId>>) -> Self {
-		Self::from_subpaths([subpath], false)
+impl std::hash::Hash for VectorData {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.point_domain.hash(state);
+		self.segment_domain.hash(state);
+		self.region_domain.hash(state);
+		self.style.hash(state);
+		self.colinear_manipulators.hash(state);
 	}
+}
 
+impl VectorData {
 	/// Push a subpath to the vector data
 	pub fn append_subpath(&mut self, subpath: impl Borrow<bezier_rs::Subpath<PointId>>, preserve_id: bool) {
 		let subpath: &bezier_rs::Subpath<PointId> = subpath.borrow();
@@ -134,6 +133,8 @@ impl VectorData {
 		let mut segment_id = self.segment_domain.next_id();
 		let mut last_point = None;
 		let mut first_point = None;
+
+		// Construct a bezier segment from the two manipulators on the subpath.
 		for pair in subpath.manipulator_groups().windows(2) {
 			let start = last_point.unwrap_or_else(|| {
 				let id = if preserve_id && !self.point_domain.ids().contains(&pair[0].id) {
@@ -177,14 +178,26 @@ impl VectorData {
 		}
 	}
 
-	/// Appends a Kurbo BezPath to the vector data.
-	pub fn append_bezpath(&mut self, bezpath: kurbo::BezPath) {
-		AppendBezpath::append_bezpath(self, bezpath);
+	pub fn append_free_point(&mut self, point: &FreePoint, preserve_id: bool) {
+		let mut point_id = self.point_domain.next_id();
+
+		// Use the current point ID if it's not already in the domain, otherwise generate a new one
+		let id = if preserve_id && !self.point_domain.ids().contains(&point.id) {
+			point.id
+		} else {
+			point_id.next_id()
+		};
+		self.point_domain.push(id, point.position);
+	}
+
+	/// Construct some new vector data from a single subpath with an identity transform and black fill.
+	pub fn from_subpath(subpath: impl Borrow<bezier_rs::Subpath<PointId>>) -> Self {
+		Self::from_subpaths([subpath], false)
 	}
 
 	/// Construct some new vector data from subpaths with an identity transform and black fill.
 	pub fn from_subpaths(subpaths: impl IntoIterator<Item = impl Borrow<bezier_rs::Subpath<PointId>>>, preserve_id: bool) -> Self {
-		let mut vector_data = Self::empty();
+		let mut vector_data = Self::default();
 
 		for subpath in subpaths.into_iter() {
 			vector_data.append_subpath(subpath, preserve_id);
@@ -193,29 +206,62 @@ impl VectorData {
 		vector_data
 	}
 
+	pub fn from_target_types(target_types: impl IntoIterator<Item = impl Borrow<ClickTargetType>>, preserve_id: bool) -> Self {
+		let mut vector_data = Self::default();
+
+		for target_type in target_types.into_iter() {
+			match target_type.borrow() {
+				ClickTargetType::Subpath(subpath) => vector_data.append_subpath(subpath, preserve_id),
+				ClickTargetType::FreePoint(point) => vector_data.append_free_point(point, preserve_id),
+			}
+		}
+
+		vector_data
+	}
+
+	/// Compute the bounding boxes of the bezpaths without any transform
+	pub fn bounding_box_rect(&self) -> Option<Rect> {
+		self.bounding_box_with_transform_rect(DAffine2::IDENTITY)
+	}
+
+	pub fn close_subpaths(&mut self) {
+		let segments_to_add: Vec<_> = self
+			.stroke_bezier_paths()
+			.filter(|subpath| !subpath.closed)
+			.filter_map(|subpath| {
+				let (first, last) = subpath.manipulator_groups().first().zip(subpath.manipulator_groups().last())?;
+				let (start, end) = self.point_domain.resolve_id(first.id).zip(self.point_domain.resolve_id(last.id))?;
+				Some((start, end))
+			})
+			.collect();
+
+		for (start, end) in segments_to_add {
+			let segment_id = self.segment_domain.next_id().next_id();
+			self.segment_domain.push(segment_id, start, end, bezier_rs::BezierHandles::Linear, StrokeId::ZERO);
+		}
+	}
+
 	/// Compute the bounding boxes of the subpaths without any transform
 	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
-		self.bounding_box_with_transform(DAffine2::IDENTITY)
+		self.bounding_box_with_transform_rect(DAffine2::IDENTITY)
+			.map(|rect| [DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)])
 	}
 
 	/// Compute the bounding boxes of the subpaths with the specified transform
 	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		let combine = |[a_min, a_max]: [DVec2; 2], [b_min, b_max]: [DVec2; 2]| [a_min.min(b_min), a_max.max(b_max)];
+		self.bounding_box_with_transform_rect(transform)
+			.map(|rect| [DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)])
+	}
 
-		let anchor_bounds = self
-			.point_domain
-			.positions()
-			.iter()
-			.map(|&point| transform.transform_point2(point))
-			.map(|point| [point, point])
-			.reduce(combine);
-
-		let segment_bounds = self
-			.segment_bezier_iter()
-			.map(|(_, bezier, _, _)| bezier.apply_transformation(|point| transform.transform_point2(point)).bounding_box())
-			.reduce(combine);
-
-		anchor_bounds.iter().chain(segment_bounds.iter()).copied().reduce(combine)
+	/// Compute the bounding boxes of the bezpaths with the specified transform
+	pub fn bounding_box_with_transform_rect(&self, transform: DAffine2) -> Option<Rect> {
+		let combine = |r1: Rect, r2: Rect| r1.union(r2);
+		self.stroke_bezpath_iter()
+			.map(|mut bezpath| {
+				bezpath.apply_affine(Affine::new(transform.to_cols_array()));
+				bezpath.bounding_box()
+			})
+			.reduce(combine)
 	}
 
 	/// Calculate the corners of the bounding box but with a nonzero size.
@@ -288,6 +334,13 @@ impl VectorData {
 		index.flat_map(|index| self.segment_domain.connected_points(index).map(|index| self.point_domain.ids()[index]))
 	}
 
+	/// Returns the number of linear segments connected to the given point.
+	pub fn connected_linear_segments(&self, point_id: PointId) -> usize {
+		self.segment_bezier_iter()
+			.filter(|(_, bez, start, end)| ((*start == point_id || *end == point_id) && matches!(bez.handles, BezierHandles::Linear)))
+			.count()
+	}
+
 	/// Get an array slice of all segment IDs.
 	pub fn segment_ids(&self) -> &[SegmentId] {
 		self.segment_domain.ids()
@@ -316,6 +369,34 @@ impl VectorData {
 		self.point_domain.resolve_id(point).map_or(0, |point| self.segment_domain.connected_count(point))
 	}
 
+	pub fn check_point_inside_shape(&self, vector_data_transform: DAffine2, point: DVec2) -> bool {
+		let bez_paths: Vec<_> = self
+			.stroke_bezpath_iter()
+			.map(|mut bezpath| {
+				// TODO: apply transform to points instead of modifying the paths
+				bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
+				bezpath.close_path();
+				let bbox = bezpath.bounding_box();
+				(bezpath, bbox)
+			})
+			.collect();
+
+		// Check against all paths the point is contained in to compute the correct winding number
+		let mut number = 0;
+
+		for (shape, bbox) in bez_paths {
+			if bbox.x0 > point.x || bbox.y0 > point.y || bbox.x1 < point.x || bbox.y1 < point.y {
+				continue;
+			}
+
+			let winding = shape.winding(dvec2_to_point(point));
+			number += winding;
+		}
+
+		// Non-zero fill rule
+		number != 0
+	}
+
 	/// Points that can be extended from.
 	///
 	/// This is usually only points with exactly one connection unless vector meshes are enabled.
@@ -337,7 +418,7 @@ impl VectorData {
 	}
 
 	pub fn other_colinear_handle(&self, handle: HandleId) -> Option<HandleId> {
-		let pair = self.colinear_manipulators.iter().find(|pair| pair.iter().any(|&val| val == handle))?;
+		let pair = self.colinear_manipulators.iter().find(|pair| pair.contains(&handle))?;
 		let other = pair.iter().copied().find(|&val| val != handle)?;
 		if handle.to_manipulator_point().get_anchor(self) == other.to_manipulator_point().get_anchor(self) {
 			Some(other)
@@ -417,15 +498,31 @@ impl VectorData {
 	}
 }
 
-impl Default for VectorData {
-	fn default() -> Self {
-		Self::empty()
+impl BoundingBox for VectorDataTable {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
+		self.instance_ref_iter()
+			.flat_map(|instance| {
+				if !include_stroke {
+					return instance.instance.bounding_box_with_transform(transform * *instance.transform);
+				}
+
+				let stroke_width = instance.instance.style.stroke().map(|s| s.weight()).unwrap_or_default();
+
+				let miter_limit = instance.instance.style.stroke().map(|s| s.join_miter_limit).unwrap_or(1.);
+
+				let scale = transform.decompose_scale();
+
+				// We use the full line width here to account for different styles of stroke caps
+				let offset = DVec2::splat(stroke_width * scale.x.max(scale.y) * miter_limit);
+
+				instance.instance.bounding_box_with_transform(transform * *instance.transform).map(|[a, b]| [a - offset, b + offset])
+			})
+			.reduce(Quad::combine_bounds)
 	}
 }
 
 /// A selectable part of a curve, either an anchor (start or end of a bézier) or a handle (doesn't necessarily go through the bézier but influences curvature).
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum ManipulatorPointId {
 	/// A control anchor - the start or end point of a bézier.
 	Anchor(PointId),
@@ -512,8 +609,7 @@ impl ManipulatorPointId {
 }
 
 /// The type of handle found on a bézier curve.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum HandleType {
 	/// The first handle on a cubic bézier or the only handle on a quadratic bézier.
 	Primary,
@@ -522,11 +618,20 @@ pub enum HandleType {
 }
 
 /// Represents a primary or end handle found in a particular segment.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct HandleId {
 	pub ty: HandleType,
 	pub segment: SegmentId,
+}
+
+impl std::fmt::Display for HandleId {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self.ty {
+			// I haven't checked if "out" and "in" are reversed, or are accurate translations of the "primary" and "end" terms used in the `HandleType` enum, so this naming is an assumption.
+			HandleType::Primary => write!(f, "{} out", self.segment.inner()),
+			HandleType::End => write!(f, "{} in", self.segment.inner()),
+		}
+	}
 }
 
 impl HandleId {
@@ -561,16 +666,6 @@ impl HandleId {
 		handle_position.map(|pos| (pos - anchor_position).length()).unwrap_or(f64::MAX)
 	}
 
-	/// Set the handle's position relative to the anchor which is the start anchor for the primary handle and end anchor for the end handle.
-	#[must_use]
-	pub fn set_relative_position(self, relative_position: DVec2) -> VectorModificationType {
-		let Self { ty, segment } = self;
-		match ty {
-			HandleType::Primary => VectorModificationType::SetPrimaryHandle { segment, relative_position },
-			HandleType::End => VectorModificationType::SetEndHandle { segment, relative_position },
-		}
-	}
-
 	/// Convert an end handle to the primary handle and a primary handle to an end handle. Note that the new handle may not exist (e.g. for a quadratic bézier).
 	#[must_use]
 	pub fn opposite(self) -> Self {
@@ -595,45 +690,49 @@ fn assert_subpath_eq(generated: &[bezier_rs::Subpath<PointId>], expected: &[bezi
 	}
 }
 
-#[test]
-fn construct_closed_subpath() {
-	let circle = bezier_rs::Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
-	let vector_data = VectorData::from_subpath(&circle);
-	assert_eq!(vector_data.point_domain.ids().len(), 4);
-	let bezier_paths = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
-	assert_eq!(bezier_paths.len(), 4);
-	assert!(bezier_paths.iter().all(|&bezier| circle.iter().any(|original_bezier| original_bezier == bezier)));
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn construct_closed_subpath() {
+		let circle = bezier_rs::Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
+		let vector_data = VectorData::from_subpath(&circle);
+		assert_eq!(vector_data.point_domain.ids().len(), 4);
+		let bezier_paths = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
+		assert_eq!(bezier_paths.len(), 4);
+		assert!(bezier_paths.iter().all(|&bezier| circle.iter().any(|original_bezier| original_bezier == bezier)));
 
-	let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
-	assert_subpath_eq(&generated, &[circle]);
-}
+		let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
+		assert_subpath_eq(&generated, &[circle]);
+	}
 
-#[test]
-fn construct_open_subpath() {
-	let bezier = bezier_rs::Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::NEG_ONE, DVec2::ONE, DVec2::X);
-	let subpath = bezier_rs::Subpath::from_bezier(&bezier);
-	let vector_data = VectorData::from_subpath(&subpath);
-	assert_eq!(vector_data.point_domain.ids().len(), 2);
-	let bezier_paths = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
-	assert_eq!(bezier_paths, vec![bezier]);
+	#[test]
+	fn construct_open_subpath() {
+		let bezier = bezier_rs::Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::NEG_ONE, DVec2::ONE, DVec2::X);
+		let subpath = bezier_rs::Subpath::from_bezier(&bezier);
+		let vector_data = VectorData::from_subpath(&subpath);
+		assert_eq!(vector_data.point_domain.ids().len(), 2);
+		let bezier_paths = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
+		assert_eq!(bezier_paths, vec![bezier]);
 
-	let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
-	assert_subpath_eq(&generated, &[subpath]);
-}
+		let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
+		assert_subpath_eq(&generated, &[subpath]);
+	}
 
-#[test]
-fn construct_many_subpath() {
-	let curve = bezier_rs::Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::NEG_ONE, DVec2::ONE, DVec2::X);
-	let curve = bezier_rs::Subpath::from_bezier(&curve);
-	let circle = bezier_rs::Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
+	#[test]
+	fn construct_many_subpath() {
+		let curve = bezier_rs::Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::NEG_ONE, DVec2::ONE, DVec2::X);
+		let curve = bezier_rs::Subpath::from_bezier(&curve);
+		let circle = bezier_rs::Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
 
-	let vector_data = VectorData::from_subpaths([&curve, &circle], false);
-	assert_eq!(vector_data.point_domain.ids().len(), 6);
+		let vector_data = VectorData::from_subpaths([&curve, &circle], false);
+		assert_eq!(vector_data.point_domain.ids().len(), 6);
 
-	let bezier_paths = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
-	assert_eq!(bezier_paths.len(), 5);
-	assert!(bezier_paths.iter().all(|&bezier| circle.iter().chain(curve.iter()).any(|original_bezier| original_bezier == bezier)));
+		let bezier_paths = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
+		assert_eq!(bezier_paths.len(), 5);
+		assert!(bezier_paths.iter().all(|&bezier| circle.iter().chain(curve.iter()).any(|original_bezier| original_bezier == bezier)));
 
-	let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
-	assert_subpath_eq(&generated, &[curve, circle]);
+		let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
+		assert_subpath_eq(&generated, &[curve, circle]);
+	}
 }

@@ -1,8 +1,8 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
-use graphene_core::raster::color::Color;
-use graphene_core::text::Font;
+use graphene_std::raster::color::Color;
+use graphene_std::text::Font;
 use graphene_std::vector::style::{FillChoice, GradientStops};
 use serde_json::Value;
 
@@ -121,7 +121,10 @@ impl LayoutMessageHandler {
 						};
 
 						(|| {
-							let update_value = value.as_object().expect("ColorInput update was not of type: object");
+							let Some(update_value) = value.as_object() else {
+								warn!("ColorInput update was not of type: object");
+								return Message::NoOp;
+							};
 
 							// None
 							let is_none = update_value.get("none").and_then(|x| x.as_bool());
@@ -154,7 +157,8 @@ impl LayoutMessageHandler {
 								return (color_button.on_update.callback)(color_button);
 							}
 
-							panic!("ColorInput update was not able to be parsed with color data: {color_button:?}");
+							warn!("ColorInput update was not able to be parsed with color data: {color_button:?}");
+							Message::NoOp
 						})()
 					}
 				};
@@ -386,7 +390,7 @@ impl LayoutMessageHandler {
 		layout_target: LayoutTarget,
 		new_layout: Layout,
 		responses: &mut VecDeque<Message>,
-		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>,
+		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>,
 	) {
 		match new_layout {
 			Layout::WidgetLayout(_) => {
@@ -420,7 +424,7 @@ impl LayoutMessageHandler {
 	}
 
 	/// Send a diff to the frontend based on the layout target.
-	fn send_diff(&self, mut diff: Vec<WidgetDiff>, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
+	fn send_diff(&self, mut diff: Vec<WidgetDiff>, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
 		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping));
 
 		let message = match layout_target {
@@ -429,7 +433,9 @@ impl LayoutMessageHandler {
 			LayoutTarget::DialogColumn2 => FrontendMessage::UpdateDialogColumn2 { layout_target, diff },
 			LayoutTarget::DocumentBar => FrontendMessage::UpdateDocumentBarLayout { layout_target, diff },
 			LayoutTarget::DocumentMode => FrontendMessage::UpdateDocumentModeLayout { layout_target, diff },
-			LayoutTarget::LayersPanelControlBar => FrontendMessage::UpdateLayersPanelControlBarLayout { layout_target, diff },
+			LayoutTarget::LayersPanelControlLeftBar => FrontendMessage::UpdateLayersPanelControlBarLeftLayout { layout_target, diff },
+			LayoutTarget::LayersPanelControlRightBar => FrontendMessage::UpdateLayersPanelControlBarRightLayout { layout_target, diff },
+			LayoutTarget::LayersPanelBottomBar => FrontendMessage::UpdateLayersPanelBottomBarLayout { layout_target, diff },
 			LayoutTarget::MenuBar => unreachable!("Menu bar is not diffed"),
 			LayoutTarget::NodeGraphControlBar => FrontendMessage::UpdateNodeGraphControlBarLayout { layout_target, diff },
 			LayoutTarget::PropertiesSections => FrontendMessage::UpdatePropertyPanelSectionsLayout { layout_target, diff },

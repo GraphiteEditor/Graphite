@@ -1,6 +1,6 @@
 use crate::consts::{VIEWPORT_ZOOM_WHEEL_RATE, VIEWPORT_ZOOM_WHEEL_RATE_CHANGE};
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::utility_types::GraphWireStyle;
+use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 
@@ -68,6 +68,7 @@ impl PreferencesDialogMessageHandler {
 				.widget_holder(),
 		];
 
+		let mut checkbox_id = CheckboxId::default();
 		let zoom_with_scroll_tooltip = "Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads)";
 		let zoom_with_scroll = vec![
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
@@ -80,8 +81,13 @@ impl PreferencesDialogMessageHandler {
 					}
 					.into()
 				})
+				.for_label(checkbox_id.clone())
 				.widget_holder(),
-			TextLabel::new("Zoom with Scroll").table_align(true).tooltip(zoom_with_scroll_tooltip).widget_holder(),
+			TextLabel::new("Zoom with Scroll")
+				.table_align(true)
+				.tooltip(zoom_with_scroll_tooltip)
+				.for_checkbox(&mut checkbox_id)
+				.widget_holder(),
 		];
 
 		// =======
@@ -163,6 +169,7 @@ impl PreferencesDialogMessageHandler {
 			graph_wire_style,
 		];
 
+		let mut checkbox_id = CheckboxId::default();
 		let vello_tooltip = "Use the experimental Vello renderer (your browser must support WebGPU)";
 		let use_vello = vec![
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
@@ -171,45 +178,33 @@ impl PreferencesDialogMessageHandler {
 				.tooltip(vello_tooltip)
 				.disabled(!preferences.supports_wgpu())
 				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::UseVello { use_vello: checkbox_input.checked }.into())
+				.for_label(checkbox_id.clone())
 				.widget_holder(),
 			TextLabel::new("Vello Renderer")
 				.table_align(true)
 				.tooltip(vello_tooltip)
 				.disabled(!preferences.supports_wgpu())
+				.for_checkbox(&mut checkbox_id)
 				.widget_holder(),
 		];
 
-		let vector_mesh_tooltip = "Allow tools to produce vector meshes, where more than two segments can connect to an anchor point.\n\nCurrently this does not properly handle line joins and fills.";
+		let mut checkbox_id = CheckboxId::default();
+		let vector_mesh_tooltip =
+			"Allow tools to produce vector meshes, where more than two segments can connect to an anchor point.\n\nCurrently this does not properly handle stroke joins and fills.";
 		let vector_meshes = vec![
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(preferences.vector_meshes)
 				.tooltip(vector_mesh_tooltip)
 				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::VectorMeshes { enabled: checkbox_input.checked }.into())
+				.for_label(checkbox_id.clone())
 				.widget_holder(),
-			TextLabel::new("Vector Meshes").table_align(true).tooltip(vector_mesh_tooltip).widget_holder(),
+			TextLabel::new("Vector Meshes")
+				.table_align(true)
+				.tooltip(vector_mesh_tooltip)
+				.for_checkbox(&mut checkbox_id)
+				.widget_holder(),
 		];
-
-		// TODO: Reenable when Imaginate is restored
-		// let imaginate_server_hostname = vec![
-		// 	TextLabel::new("Imaginate").min_width(60).italic(true).widget_holder(),
-		// 	TextLabel::new("Server Hostname").table_align(true).widget_holder(),
-		// 	TextInput::new(&preferences.imaginate_server_hostname)
-		// 		.min_width(200)
-		// 		.on_update(|text_input: &TextInput| PreferencesMessage::ImaginateServerHostname { hostname: text_input.value.clone() }.into())
-		// 		.widget_holder(),
-		// ];
-		// let imaginate_refresh_frequency = vec![
-		// 	TextLabel::new("").min_width(60).widget_holder(),
-		// 	TextLabel::new("Refresh Frequency").table_align(true).widget_holder(),
-		// 	NumberInput::new(Some(preferences.imaginate_refresh_frequency))
-		// 		.unit(" seconds")
-		// 		.min(0.)
-		// 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		// 		.min_width(200)
-		// 		.on_update(|number_input: &NumberInput| PreferencesMessage::ImaginateRefreshFrequency { seconds: number_input.value.unwrap() }.into())
-		// 		.widget_holder(),
-		// ];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row { widgets: navigation_header },
@@ -224,8 +219,6 @@ impl PreferencesDialogMessageHandler {
 			LayoutGroup::Row { widgets: graph_wire_style },
 			LayoutGroup::Row { widgets: use_vello },
 			LayoutGroup::Row { widgets: vector_meshes },
-			// LayoutGroup::Row { widgets: imaginate_server_hostname },
-			// LayoutGroup::Row { widgets: imaginate_refresh_frequency },
 		]))
 	}
 
