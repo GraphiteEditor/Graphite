@@ -101,6 +101,25 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes."),
 			properties: Some("identity_properties"),
 		},
+		DocumentNodeDefinition {
+			identifier: "Value",
+			category: "General",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::proto("graphene_core::any::ValueNode"),
+					manual_composition: Some(generic!(T)),
+					inputs: vec![NodeInput::value(TaggedValue::None, false)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_metadata: vec![("", "Value").into()],
+					output_names: vec!["Out".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("Returns the value stored in its input"),
+			properties: Some("value_properties"),
+		},
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
 			identifier: "Monitor",
@@ -2149,6 +2168,7 @@ fn static_node_properties() -> NodeProperties {
 		"monitor_properties".to_string(),
 		Box::new(|_node_id, _context| node_properties::string_properties("The Monitor node is used by the editor to access the data flowing through it.")),
 	);
+	map.insert("value_properties".to_string(), Box::new(node_properties::value_properties));
 	map
 }
 
