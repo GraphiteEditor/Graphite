@@ -96,6 +96,14 @@ impl SelectedLayerState {
 		self.selected_segments.remove(&segment);
 	}
 
+	pub fn deselect_all_points_in_layer(&mut self) {
+		self.selected_points.clear();
+	}
+
+	pub fn deselect_all_segments_in_layer(&mut self) {
+		self.selected_segments.clear();
+	}
+
 	pub fn clear_points(&mut self) {
 		self.selected_points.clear();
 	}
@@ -388,6 +396,10 @@ impl ClosestSegment {
 
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
 impl ShapeState {
+	pub fn is_selected_layer(&self, layer: LayerNodeIdentifier) -> bool {
+		self.selected_shape_state.contains_key(&layer)
+	}
+
 	pub fn is_point_ignored(&self, point: &ManipulatorPointId) -> bool {
 		(point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors)
 	}
@@ -637,7 +649,7 @@ impl ShapeState {
 	}
 
 	/// Selects all anchors connected to the selected subpath, and deselects all handles, for the given layer.
-	pub fn select_connected_anchors(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, mouse: DVec2) {
+	pub fn select_connected(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, mouse: DVec2, points: bool, segments: bool) {
 		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 			return;
 		};
@@ -655,18 +667,39 @@ impl ShapeState {
 			}
 		}
 		state.clear_points();
+
 		if selected_stack.is_empty() {
-			// Fall back on just selecting all points in the layer
-			for &point in vector_data.point_domain.ids() {
-				state.select_point(ManipulatorPointId::Anchor(point))
+			// Fall back on just selecting all points/segments in the layer
+			if points {
+				for &point in vector_data.point_domain.ids() {
+					state.select_point(ManipulatorPointId::Anchor(point));
+				}
 			}
-		} else {
-			// Select all connected points
-			while let Some(point) = selected_stack.pop() {
-				let anchor_point = ManipulatorPointId::Anchor(point);
-				if !state.is_point_selected(anchor_point) {
-					state.select_point(anchor_point);
-					selected_stack.extend(vector_data.connected_points(point));
+			if segments {
+				for &segment in vector_data.segment_domain.ids() {
+					state.select_segment(segment);
+				}
+			}
+			return;
+		}
+
+		let mut connected_points = HashSet::new();
+
+		while let Some(point) = selected_stack.pop() {
+			if !connected_points.contains(&point) {
+				connected_points.insert(point);
+				selected_stack.extend(vector_data.connected_points(point));
+			}
+		}
+
+		if points {
+			connected_points.iter().for_each(|point| state.select_point(ManipulatorPointId::Anchor(*point)));
+		}
+
+		if segments {
+			for (id, _, start, end) in vector_data.segment_bezier_iter() {
+				if connected_points.contains(&start) || connected_points.contains(&end) {
+					state.select_segment(id);
 				}
 			}
 		}
