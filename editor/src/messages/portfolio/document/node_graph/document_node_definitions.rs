@@ -778,7 +778,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					manual_composition: Some(concrete!(Context)),
-					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::raster::NoisePatternNode")),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_raster_nodes::std_nodes::NoisePatternNode")),
 					inputs: vec![
 						NodeInput::value(TaggedValue::None, false),
 						NodeInput::value(TaggedValue::Bool(true), false),
@@ -1024,7 +1024,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								NodeInput::network(concrete!(BrushCache), 2),
 							],
 							manual_composition: Some(concrete!(Context)),
-							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::brush::BrushNode")),
+							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_brush::brush::BrushNode")),
 							..Default::default()
 						}]
 						.into_iter()
