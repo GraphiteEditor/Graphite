@@ -3513,6 +3513,11 @@ impl NodeNetworkInterface {
 		self.document_metadata.local_transforms = local_transforms;
 	}
 
+	/// Update the cached first instance source id of the layers
+	pub fn update_first_instance_source_id(&mut self, new: HashMap<NodeId, Option<NodeId>>) {
+		self.document_metadata.first_instance_source_ids = new;
+	}
+
 	/// Update the cached click targets of the layers
 	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>) {
 		self.document_metadata.click_targets = new_click_targets;

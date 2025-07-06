@@ -278,12 +278,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	#[cfg(all(feature = "vello", not(test)))]
 	let use_vello = use_vello && surface_handle.is_some();
 
-	let mut metadata = RenderMetadata {
-		upstream_footprints: HashMap::new(),
-		local_transforms: HashMap::new(),
-		click_targets: HashMap::new(),
-		clip_targets: HashSet::new(),
-	};
+	let mut metadata = RenderMetadata::default();
 	data.collect_metadata(&mut metadata, footprint, None);
 
 	let output_format = render_config.export_format;
