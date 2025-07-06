@@ -347,7 +347,7 @@ pub fn custom_data() -> MessageData {
 }
 
 #[message_handler_data(CustomData)]
-impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage, F> for LayoutMessageHandler {
+impl<F: Fn(&MessageDiscriminant) -> Option<KeysGroup>> MessageHandler<LayoutMessage, F> for LayoutMessageHandler {
 	fn process_message(&mut self, message: LayoutMessage, responses: &mut std::collections::VecDeque<Message>, action_input_mapping: F) {
 		match message {
 			LayoutMessage::ResendActiveWidget { layout_target, widget_id } => {
