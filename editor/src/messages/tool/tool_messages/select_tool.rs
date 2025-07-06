@@ -200,12 +200,12 @@ impl LayoutHolder for SelectTool {
 		// Select mode (Deep/Shallow)
 		widgets.push(self.deep_selection_widget());
 
-		// Dot Type (Pivot/Origin/Off)
+		// Dot Type (checkbox + dropdown for pivot/origin)
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.extend(dot_type_widget(self.tool_data.dot.state, Source::Select));
 
-		// Pivot
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		// Reference point 9-box widget
+		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 		widgets.push(pivot_reference_point_widget(
 			self.tool_data.selected_layers_count == 0 || !self.tool_data.dot.state.is_pivot(),
 			self.tool_data.dot.pivot.to_pivot_position(),
@@ -777,7 +777,7 @@ impl Fsm for SelectToolFsmState {
 					}
 				}
 				if let Some(origin) = active_origin {
-					overlay_context.dowel_pin(origin, Some(COLOR_OVERLAY_ORANGE));
+					overlay_context.dowel_pin(origin, Some(COLOR_OVERLAY_YELLOW));
 				}
 
 				let draw_pivot = tool_data.dot.state.is_pivot() && overlay_context.visibility_settings.pivot();

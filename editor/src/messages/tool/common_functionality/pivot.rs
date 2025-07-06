@@ -5,8 +5,8 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::tool_messages::select_tool::SelectOptionsUpdate;
 use crate::messages::tool::tool_messages::path_tool::PathOptionsUpdate;
+use crate::messages::tool::tool_messages::select_tool::SelectOptionsUpdate;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{DAffine2, DVec2};
 use graphene_std::transform::ReferencePoint;
@@ -105,7 +105,6 @@ impl Dot {
 	pub fn pin_inactive(&self) -> bool {
 		!self.pivot.pinned || !self.state.is_pivot()
 	}
-
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -114,9 +113,9 @@ pub enum DotType {
 	#[default]
 	Pivot,
 	// Origin
-	// Indidual,
 	Average,
 	Active,
+	// TODO: Add "Individual"
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -147,9 +146,10 @@ impl DotState {
 impl fmt::Display for DotType {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			DotType::Pivot => write!(f, "Draft Pivot"),
-			DotType::Average => write!(f, "Average of Origins"),
-			DotType::Active => write!(f, "Active Object Origin"),
+			DotType::Pivot => write!(f, "Custom Pivot"),
+			DotType::Average => write!(f, "Origin (Average Point)"),
+			DotType::Active => write!(f, "Origin (Active Object)"),
+			// TODO: Add "Origin (Individual)"
 		}
 	}
 }

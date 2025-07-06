@@ -61,7 +61,7 @@ pub const SELECTION_DRAG_ANGLE: f64 = 90.;
 pub const PIVOT_CROSSHAIR_THICKNESS: f64 = 1.;
 pub const PIVOT_CROSSHAIR_LENGTH: f64 = 9.;
 pub const PIVOT_DIAMETER: f64 = 5.;
-pub const DOWEL_PIN_RADIUS: f64 = 5.;
+pub const DOWEL_PIN_RADIUS: f64 = 4.;
 
 // COMPASS ROSE
 pub const COMPASS_ROSE_RING_INNER_DIAMETER: f64 = 13.;
