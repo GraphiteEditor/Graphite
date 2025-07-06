@@ -4273,11 +4273,21 @@ impl NodeNetworkInterface {
 		// Side effects
 		match (&old_input, &new_input) {
 			// If a node input is exposed or hidden reload the click targets and update the bounding box for all nodes
-			(NodeInput::Value { exposed: new_exposed, .. }, NodeInput::Value { exposed: old_exposed, .. }) => {
+			(NodeInput::Value { exposed: new_exposed, .. }, NodeInput::Value { exposed: old_exposed, tagged_value }) => {
 				if let InputConnector::Node { node_id, .. } = input_connector {
 					if new_exposed != old_exposed {
 						self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 						self.unload_all_nodes_bounding_box(network_path);
+					}
+				}
+				// Update the name of the value node
+				if let InputConnector::Node { node_id, .. } = input_connector {
+					let Some(reference) = self.reference(node_id, network_path) else {
+						log::error!("Could not get reference for {:?}", node_id);
+						return;
+					};
+					if reference.as_deref() == Some("Value") {
+						self.set_display_name(node_id, format!("{:?} Value", tagged_value.ty().nested_type()), network_path);
 					}
 				}
 			}

@@ -9,7 +9,7 @@ use choice::enum_choice;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graph_craft::Type;
-use graph_craft::document::value::TaggedValue;
+use graph_craft::document::value::{TaggedValue, TaggedValueChoice};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_std::animation::RealTimeMode;
 use graphene_std::extract_xy::XY;
@@ -89,7 +89,7 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 		description,
 		input_type,
 		blank_assist,
-		exposeable,
+		exposable: exposeable,
 	} = parameter_widgets_info;
 
 	let Some(document_node) = document_node else {
@@ -122,6 +122,7 @@ pub(crate) fn property_from_type(
 	unit: Option<&str>,
 	display_decimal_places: Option<u32>,
 	step: Option<f64>,
+	exposable: bool,
 	context: &mut NodePropertiesContext,
 ) -> Result<Vec<LayoutGroup>, Vec<LayoutGroup>> {
 	let (mut number_min, mut number_max, range) = number_options;
@@ -144,7 +145,8 @@ pub(crate) fn property_from_type(
 	let min = |x: f64| number_min.unwrap_or(x);
 	let max = |x: f64| number_max.unwrap_or(x);
 
-	let default_info = ParameterWidgetsInfo::new(node_id, index, true, context);
+	let mut default_info = ParameterWidgetsInfo::new(node_id, index, true, context);
+	default_info.exposable = exposable;
 
 	let mut extra_widgets = vec![];
 	let widgets = match ty {
@@ -251,8 +253,8 @@ pub(crate) fn property_from_type(
 			}
 		}
 		Type::Generic(_) => vec![TextLabel::new("Generic type (not supported)").widget_holder()].into(),
-		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
-		Type::Future(out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
+		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, exposable, context),
+		Type::Future(out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, exposable, context),
 	};
 
 	extra_widgets.push(widgets);
@@ -1115,7 +1117,7 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 
 	let is_monochrome = bool_widget(ParameterWidgetsInfo::new(node_id, MonochromeInput::INDEX, true, context), CheckboxInput::default());
 	let mut parameter_info = ParameterWidgetsInfo::new(node_id, OutputChannelInput::INDEX, true, context);
-	parameter_info.exposeable = false;
+	parameter_info.exposable = false;
 	let output_channel = enum_choice::<RedGreenBlue>().for_socket(parameter_info).property_row();
 
 	let document_node = match get_document_node(node_id, context) {
@@ -1172,7 +1174,7 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 	use graphene_std::raster::selective_color::*;
 
 	let mut default_info = ParameterWidgetsInfo::new(node_id, ColorsInput::INDEX, true, context);
-	default_info.exposeable = false;
+	default_info.exposable = false;
 	let colors = enum_choice::<SelectiveColorChoice>().for_socket(default_info).property_row();
 
 	let document_node = match get_document_node(node_id, context) {
@@ -1526,7 +1528,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 						let mut input_types = implementations
 							.keys()
 							.filter_map(|item| item.inputs.get(input_index))
-							.filter(|ty| property_from_type(node_id, input_index, ty, number_options, unit_suffix, display_decimal_places, step, context).is_ok())
+							.filter(|ty| property_from_type(node_id, input_index, ty, number_options, unit_suffix, display_decimal_places, step, true, context).is_ok())
 							.collect::<Vec<_>>();
 						input_types.sort_by_key(|ty| ty.type_name());
 						let input_type = input_types.first().cloned();
@@ -1540,7 +1542,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 					_ => context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path).0,
 				};
 
-				property_from_type(node_id, input_index, &input_type, number_options, unit_suffix, display_decimal_places, step, context).unwrap_or_else(|value| value)
+				property_from_type(node_id, input_index, &input_type, number_options, unit_suffix, display_decimal_places, step, true, context).unwrap_or_else(|value| value)
 			});
 
 			layout.extend(row);
@@ -1905,6 +1907,77 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 	]
 }
 
+pub fn value_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let Some(document_node) = context.network_interface.document_node(&node_id, context.selection_network_path) else {
+		log::warn!("Value properties failed to be built because its document node is invalid.");
+		return vec![];
+	};
+	let Some(input) = document_node.inputs.get(0) else {
+		log::warn!("Secondary value input could not be found on value properties");
+		return vec![];
+	};
+	let mut select_value_widgets = Vec::new();
+
+	select_value_widgets.push(TextLabel::new("Value type: ").tooltip("Select the type the value node should output").widget_holder());
+
+	let Some(input_value) = input.as_non_exposed_value() else {
+		log::error!("Primary value node input should be a hidden value input");
+		return Vec::new();
+	};
+
+	let input_type = input_value.ty();
+
+	let Some(choice) = TaggedValueChoice::from_tagged_value(input_value) else {
+		log::error!("Tagged value in value node should always have a choice. input: {:?}", input);
+		return Vec::new();
+	};
+
+	// let committer = || {|_| {
+	// 	let messages = vec![
+	// 		DocumentMessage::AddTransaction.into(),
+	// 		NodeGraphMessage::RunDocumentGraph.into(),
+	// 	];
+	// 	Message::Batched(messages.into_boxed_slice()).into()
+	// };
+	let updater = || {
+		move |v: &TaggedValueChoice| {
+			let value = v.to_tagged_value();
+
+			let messages = vec![NodeGraphMessage::SetInputValue { node_id, input_index: 0, value }.into(), NodeGraphMessage::SendGraph.into()];
+
+			Message::Batched(messages.into_boxed_slice()).into()
+		}
+	};
+	let value_dropdown = enum_choice::<TaggedValueChoice>().dropdown_menu(choice, updater, || commit_value);
+	select_value_widgets.extend_from_slice(&[Separator::new(SeparatorType::Unrelated).widget_holder(), value_dropdown]);
+
+	let mut type_widgets = match property_from_type(node_id, 0, &input_type, (None, None, None), None, None, None, false, context) {
+		Ok(type_widgets) => type_widgets,
+		Err(type_widgets) => type_widgets,
+	};
+
+	if type_widgets.len() <= 0 {
+		log::error!("Could not generate type widgets for value node");
+		return Vec::new();
+	}
+
+	let LayoutGroup::Row { widgets: mut type_widgets } = type_widgets.remove(0) else {
+		log::error!("Could not get autogenerated widgets for value node");
+		return Vec::new();
+	};
+
+	if type_widgets.len() <= 2 {
+		log::error!("Could not generate type widgets for value node");
+		return Vec::new();
+	}
+
+	//Remove the name and blank assist
+	type_widgets.remove(0);
+	type_widgets.remove(0);
+
+	vec![LayoutGroup::Row { widgets: select_value_widgets }, LayoutGroup::Row { widgets: type_widgets }]
+}
+
 pub struct ParameterWidgetsInfo<'a> {
 	document_node: Option<&'a DocumentNode>,
 	node_id: NodeId,
@@ -1913,7 +1986,7 @@ pub struct ParameterWidgetsInfo<'a> {
 	description: String,
 	input_type: FrontendGraphDataType,
 	blank_assist: bool,
-	exposeable: bool,
+	exposable: bool,
 }
 
 impl<'a> ParameterWidgetsInfo<'a> {
@@ -1930,7 +2003,7 @@ impl<'a> ParameterWidgetsInfo<'a> {
 			description,
 			input_type,
 			blank_assist,
-			exposeable: true,
+			exposable: true,
 		}
 	}
 }
@@ -1986,7 +2059,7 @@ pub mod choice {
 			todo!()
 		}
 
-		fn dropdown_menu<U, C>(&self, current: E, updater_factory: impl Fn() -> U, committer_factory: impl Fn() -> C) -> WidgetHolder
+		pub fn dropdown_menu<U, C>(&self, current: E, updater_factory: impl Fn() -> U, committer_factory: impl Fn() -> C) -> WidgetHolder
 		where
 			U: Fn(&E) -> Message + 'static + Send + Sync,
 			C: Fn(&()) -> Message + 'static + Send + Sync,

@@ -13,28 +13,28 @@ impl<'i, const N: u32, I> Node<'i, I> for IntNode<N> {
 	}
 }
 
-#[derive(Default, Debug, Clone, Copy)]
-pub struct ValueNode<T>(pub T);
+// #[derive(Default, Debug, Clone, Copy)]
+// pub struct ValueNode<T>(pub T);
 
-impl<'i, T: 'i, I> Node<'i, I> for ValueNode<T> {
-	type Output = &'i T;
-	#[inline(always)]
-	fn eval(&'i self, _input: I) -> Self::Output {
-		&self.0
-	}
-}
+// impl<'i, T: 'i, I> Node<'i, I> for ValueNode<T> {
+// 	type Output = &'i T;
+// 	#[inline(always)]
+// 	fn eval(&'i self, _input: I) -> Self::Output {
+// 		&self.0
+// 	}
+// }
 
-impl<T> ValueNode<T> {
-	pub const fn new(value: T) -> ValueNode<T> {
-		ValueNode(value)
-	}
-}
+// impl<T> ValueNode<T> {
+// 	pub const fn new(value: T) -> ValueNode<T> {
+// 		ValueNode(value)
+// 	}
+// }
 
-impl<T> From<T> for ValueNode<T> {
-	fn from(value: T) -> Self {
-		ValueNode::new(value)
-	}
-}
+// impl<T> From<T> for ValueNode<T> {
+// 	fn from(value: T) -> Self {
+// 		ValueNode::new(value)
+// 	}
+// }
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct AsRefNode<T: AsRef<U>, U>(pub T, PhantomData<U>);
