@@ -72,7 +72,6 @@ fn calculate_pivot(
 	viewspace: DAffine2,
 	get_location: impl Fn(&ManipulatorPointId) -> Option<DVec2>,
 	dot: &mut Dot,
-	layers: LayerNodeIdentifier,
 ) -> (Option<(DVec2, DVec2)>, Option<[DVec2; 2]>) {
 	let average_position = || {
 		let mut point_count = 0;
@@ -89,7 +88,7 @@ fn calculate_pivot(
 			Some([point, point])
 		}
 	});
-	dot.pivot.recalculate_pivot_for_layer(document, layers, bounds);
+	dot.pivot.recalculate_pivot_for_layer(document, bounds);
 	let position = || {
 		{
 			if dot.state.enabled {
@@ -254,7 +253,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					viewspace,
 					|point: &ManipulatorPointId| get_location(&point),
 					&mut self.dot,
-					selected_layers[0],
 				) {
 					*selected.pivot = new_pivot;
 					self.path_bounds = bounds;

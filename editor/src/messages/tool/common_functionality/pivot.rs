@@ -224,7 +224,7 @@ impl Pivot {
 		self.pivot = Some(self.transform_from_normalized.transform_point2(self.normalized_pivot));
 	}
 
-	pub fn recalculate_pivot_for_layer(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, bounds: Option<[DVec2; 2]>) {
+	pub fn recalculate_pivot_for_layer(&mut self, document: &DocumentMessageHandler, bounds: Option<[DVec2; 2]>) {
 		if !self.active {
 			return;
 		}
