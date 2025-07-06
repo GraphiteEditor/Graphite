@@ -12,6 +12,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageData;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
+use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document_migration::*;
 use crate::messages::preferences::SelectionMode;
@@ -426,6 +427,42 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				// Upgrade the document's nodes to be compatible with the latest version
 				document_migration_upgrades(&mut document, reset_node_definitions_on_open);
 
+				// Ensure each node has the metadata for its inputs
+				for (node_id, node, path) in document.network_interface.document_network().clone().recursive_nodes() {
+					document.network_interface.validate_input_metadata(node_id, node, &path);
+					document.network_interface.validate_display_name_metadata(node_id, &path);
+				}
+
+				// Ensure layers are positioned as stacks if they are upstream siblings of another layer
+				document.network_interface.load_structure();
+				let all_layers = LayerNodeIdentifier::ROOT_PARENT.descendants(document.network_interface.document_metadata()).collect::<Vec<_>>();
+				for layer in all_layers {
+					let Some((downstream_node, input_index)) = document
+						.network_interface
+						.outward_wires(&[])
+						.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(layer.to_node(), 0)))
+						.and_then(|outward_wires| outward_wires.first())
+						.and_then(|input_connector| input_connector.node_id().map(|node_id| (node_id, input_connector.input_index())))
+					else {
+						continue;
+					};
+
+					// If the downstream node is a layer and the input is the first input and the current layer is not in a stack
+					if input_index == 0 && document.network_interface.is_layer(&downstream_node, &[]) && !document.network_interface.is_stack(&layer.to_node(), &[]) {
+						// Ensure the layer is horizontally aligned with the downstream layer to prevent changing the layout of old files
+						let (Some(layer_position), Some(downstream_position)) =
+							(document.network_interface.position(&layer.to_node(), &[]), document.network_interface.position(&downstream_node, &[]))
+						else {
+							log::error!("Could not get position for layer {:?} or downstream node {} when opening file", layer.to_node(), downstream_node);
+							continue;
+						};
+
+						if layer_position.x == downstream_position.x {
+							document.network_interface.set_stack_position_calculated_offset(&layer.to_node(), &downstream_node, &[]);
+						}
+					}
+				}
+
 				// Set the save state of the document based on what's given to us by the caller to this message
 				document.set_auto_save_state(document_is_auto_saved);
 				document.set_save_state(document_is_saved);
@@ -709,7 +746,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				}
 
 				let Some(document) = self.documents.get_mut(&document_id) else {
-					warn!("Tried to read non existant document");
+					warn!("Tried to read non existent document");
 					return;
 				};
 				if !document.is_loaded {
@@ -924,11 +961,11 @@ impl PortfolioMessageHandler {
 		let result = self.executor.poll_node_graph_evaluation(active_document, responses);
 		if result.is_err() {
 			let error = r#"
-				<rect x="50%" y="50%" width="480" height="100" transform="translate(-240 -50)" rx="4" fill="var(--color-error-red)" />
+				<rect x="50%" y="50%" width="460" height="100" transform="translate(-230 -50)" rx="4" fill="var(--color-warning-yellow)" />
 				<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="18" fill="var(--color-2-mildblack)">
-					<tspan x="50%" dy="-24" font-weight="bold">The document cannot be rendered in its current state.</tspan>
-					<tspan x="50%" dy="24">Check for error details in the node graph, which can be</tspan>
-					<tspan x="50%" dy="24">opened with the viewport's top right <tspan font-style="italic">Node Graph</tspan> button.</tspan>
+					<tspan x="50%" dy="-24" font-weight="bold">The document cannot render in its current state.</tspan>
+					<tspan x="50%" dy="24">Undo to go back, if available, or check for error details</tspan>
+					<tspan x="50%" dy="24">by clicking the <tspan font-style="italic">Node Graph</tspan> button up at the top right.</tspan>
 				/text>"#
 				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
 				.to_string();

@@ -12,7 +12,7 @@ impl MenuBarEntryChildren {
 		Self(Vec::new())
 	}
 
-	pub fn fill_in_shortcut_actions_with_keys(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
+	pub fn fill_in_shortcut_actions_with_keys(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
 		let entries = self.0.iter_mut().flatten();
 
 		for entry in entries {

@@ -1,4 +1,4 @@
-use crate::messages::portfolio::document::node_graph::utility_types::GraphWireStyle;
+use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 

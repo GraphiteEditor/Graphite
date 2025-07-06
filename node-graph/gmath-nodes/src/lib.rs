@@ -1,6 +1,6 @@
 use glam::DVec2;
 use graphene_core::gradient::GradientStops;
-use graphene_core::registry::types::{Fraction, Percentage};
+use graphene_core::registry::types::{Fraction, Percentage, TextArea};
 use graphene_core::{Color, Ctx, num_traits};
 use log::warn;
 use math_parser::ast;
@@ -78,8 +78,12 @@ fn math<U: num_traits::float::Float>(
 #[node_macro::node(category("Math: Arithmetic"))]
 fn add<U: Add<T>, T>(
 	_: impl Ctx,
-	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, f64, DVec2)] augend: U,
-	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, DVec2, f64)] addend: T,
+	/// The left-hand side of the addition operation.
+	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
+	augend: U,
+	/// The right-hand side of the addition operation.
+	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
+	addend: T,
 ) -> <U as Add<T>>::Output {
 	augend + addend
 }
@@ -88,8 +92,12 @@ fn add<U: Add<T>, T>(
 #[node_macro::node(category("Math: Arithmetic"))]
 fn subtract<U: Sub<T>, T>(
 	_: impl Ctx,
-	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, f64, DVec2)] minuend: U,
-	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, DVec2, f64)] subtrahend: T,
+	/// The left-hand side of the subtraction operation.
+	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
+	minuend: U,
+	/// The right-hand side of the subtraction operation.
+	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
+	subtrahend: T,
 ) -> <U as Sub<T>>::Output {
 	minuend - subtrahend
 }
@@ -98,9 +106,12 @@ fn subtract<U: Sub<T>, T>(
 #[node_macro::node(category("Math: Arithmetic"))]
 fn multiply<U: Mul<T>, T>(
 	_: impl Ctx,
-	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, f64, DVec2)] multiplier: U,
+	/// The left-hand side of the multiplication operation.
+	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
+	multiplier: U,
+	/// The right-hand side of the multiplication operation.
 	#[default(1.)]
-	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, DVec2, f64)]
+	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
 	multiplicand: T,
 ) -> <U as Mul<T>>::Output {
 	multiplier * multiplicand
@@ -112,7 +123,10 @@ fn multiply<U: Mul<T>, T>(
 #[node_macro::node(category("Math: Arithmetic"))]
 fn divide<U: Div<T> + Default + PartialEq, T: Default + PartialEq>(
 	_: impl Ctx,
-	#[implementations(f64, f64, f32, f32, u32, u32, DVec2, DVec2, f64)] numerator: U,
+	/// The left-hand side of the division operation.
+	#[implementations(f64, f64, f32, f32, u32, u32, DVec2, DVec2, f64)]
+	numerator: U,
+	/// The right-hand side of the division operation.
 	#[default(1.)]
 	#[implementations(f64, f64, f32, f32, u32, u32, DVec2, f64, DVec2)]
 	denominator: T,
@@ -130,10 +144,15 @@ where
 #[node_macro::node(category("Math: Arithmetic"))]
 fn modulo<U: Rem<T, Output: Add<T, Output: Rem<T, Output = U::Output>>>, T: Copy>(
 	_: impl Ctx,
-	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, DVec2, f64)] numerator: U,
+	/// The left-hand side of the modulo operation.
+	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
+	numerator: U,
+	/// The right-hand side of the modulo operation.
 	#[default(2.)]
-	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, f64, DVec2)]
+	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
 	modulus: T,
+	/// Ensures the result will always be positive, even if the numerator is negative.
+	#[default(true)]
 	always_positive: bool,
 ) -> <U as Rem<T>>::Output {
 	if always_positive { (numerator % modulus + modulus) % modulus } else { numerator % modulus }
@@ -143,9 +162,12 @@ fn modulo<U: Rem<T, Output: Add<T, Output: Rem<T, Output = U::Output>>>, T: Copy
 #[node_macro::node(category("Math: Arithmetic"))]
 fn exponent<U: Pow<T>, T>(
 	_: impl Ctx,
-	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32)] base: U,
+	/// The base number that will be raised to the power.
+	#[implementations(f64, f32, u32)]
+	base: U,
+	/// The power to which the base number will be raised.
 	#[default(2.)]
-	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32)]
+	#[implementations(f64, f32, u32)]
 	power: T,
 ) -> <U as num_traits::Pow<T>>::Output {
 	base.pow(power)
@@ -155,9 +177,11 @@ fn exponent<U: Pow<T>, T>(
 #[node_macro::node(category("Math: Arithmetic"))]
 fn root<U: num_traits::float::Float>(
 	_: impl Ctx,
+	/// The number for which the nth root will be calculated.
 	#[default(2.)]
 	#[implementations(f64, f32)]
 	radicand: U,
+	/// The degree of the root to be calculated. Square root is 2, cube root is 3, and so on.
 	#[default(2.)]
 	#[implementations(f64, f32)]
 	degree: U,
@@ -175,7 +199,10 @@ fn root<U: num_traits::float::Float>(
 #[node_macro::node(category("Math: Arithmetic"))]
 fn logarithm<U: num_traits::float::Float>(
 	_: impl Ctx,
-	#[implementations(f64, f32)] value: U,
+	/// The number for which the logarithm will be calculated.
+	#[implementations(f64, f32)]
+	value: U,
+	/// The base of the logarithm, such as 2 (binary), 10 (decimal), and e (natural logarithm).
 	#[default(2.)]
 	#[implementations(f64, f32)]
 	base: U,
@@ -193,39 +220,83 @@ fn logarithm<U: num_traits::float::Float>(
 
 /// The sine trigonometric function (sin) calculates the ratio of the angle's opposite side length to its hypotenuse length.
 #[node_macro::node(category("Math: Trig"))]
-fn sine<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] theta: U, radians: bool) -> U {
+fn sine<U: num_traits::float::Float>(
+	_: impl Ctx,
+	/// The given angle.
+	#[implementations(f64, f32)]
+	theta: U,
+	/// Whether the given angle should be interpreted as radians instead of degrees.
+	radians: bool,
+) -> U {
 	if radians { theta.sin() } else { theta.to_radians().sin() }
 }
 
 /// The cosine trigonometric function (cos) calculates the ratio of the angle's adjacent side length to its hypotenuse length.
 #[node_macro::node(category("Math: Trig"))]
-fn cosine<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] theta: U, radians: bool) -> U {
+fn cosine<U: num_traits::float::Float>(
+	_: impl Ctx,
+	/// The given angle.
+	#[implementations(f64, f32)]
+	theta: U,
+	/// Whether the given angle should be interpreted as radians instead of degrees.
+	radians: bool,
+) -> U {
 	if radians { theta.cos() } else { theta.to_radians().cos() }
 }
 
 /// The tangent trigonometric function (tan) calculates the ratio of the angle's opposite side length to its adjacent side length.
 #[node_macro::node(category("Math: Trig"))]
-fn tangent<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] theta: U, radians: bool) -> U {
+fn tangent<U: num_traits::float::Float>(
+	_: impl Ctx,
+	/// The given angle.
+	#[implementations(f64, f32)]
+	theta: U,
+	/// Whether the given angle should be interpreted as radians instead of degrees.
+	radians: bool,
+) -> U {
 	if radians { theta.tan() } else { theta.to_radians().tan() }
 }
 
 /// The inverse sine trigonometric function (asin) calculates the angle whose sine is the specified value.
 #[node_macro::node(category("Math: Trig"))]
-fn sine_inverse<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U, radians: bool) -> U {
+fn sine_inverse<U: num_traits::float::Float>(
+	_: impl Ctx,
+	/// The given value for which the angle will be calculated. Must be in the range [-1, 1] or else the result will be NaN.
+	#[implementations(f64, f32)]
+	value: U,
+	/// Whether the resulting angle should be given in as radians instead of degrees.
+	radians: bool,
+) -> U {
 	if radians { value.asin() } else { value.asin().to_degrees() }
 }
 
 /// The inverse cosine trigonometric function (acos) calculates the angle whose cosine is the specified value.
 #[node_macro::node(category("Math: Trig"))]
-fn cosine_inverse<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U, radians: bool) -> U {
+fn cosine_inverse<U: num_traits::float::Float>(
+	_: impl Ctx,
+	/// The given value for which the angle will be calculated. Must be in the range [-1, 1] or else the result will be NaN.
+	#[implementations(f64, f32)]
+	value: U,
+	/// Whether the resulting angle should be given in as radians instead of degrees.
+	radians: bool,
+) -> U {
 	if radians { value.acos() } else { value.acos().to_degrees() }
 }
 
 /// The inverse tangent trigonometric function (atan or atan2, depending on input type) calculates:
 /// atan: the angle whose tangent is the specified scalar number.
 /// atan2: the angle of a ray from the origin to the specified coordinate.
+///
+/// The resulting angle is always in the range [0°, 180°] or, in radians, [-π/2, π/2].
 #[node_macro::node(category("Math: Trig"))]
-fn tangent_inverse<U: TangentInverse>(_: impl Ctx, #[implementations(f64, f32, DVec2)] value: U, radians: bool) -> U::Output {
+fn tangent_inverse<U: TangentInverse>(
+	_: impl Ctx,
+	/// The given value for which the angle will be calculated.
+	#[implementations(f64, f32, DVec2)]
+	value: U,
+	/// Whether the resulting angle should be given in as radians instead of degrees.
+	radians: bool,
+) -> U::Output {
 	value.atan(radians)
 }
 
@@ -257,10 +328,13 @@ impl TangentInverse for DVec2 {
 fn random<U: num_traits::float::Float>(
 	_: impl Ctx,
 	_primary: (),
+	/// Seed to determine the unique variation of which number will be generated.
 	seed: u64,
+	/// The smaller end of the range within which the random number will be generated.
 	#[implementations(f64, f32)]
 	#[default(0.)]
 	min: U,
+	/// The larger end of the range within which the random number will be generated.
 	#[implementations(f64, f32)]
 	#[default(1.)]
 	max: U,
@@ -294,37 +368,73 @@ fn to_f64<U: num_traits::int::PrimInt>(_: impl Ctx, #[implementations(u32, u64)]
 
 /// The rounding function (round) maps an input value to its nearest whole number. Halfway values are rounded away from zero.
 #[node_macro::node(category("Math: Numeric"))]
-fn round<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U) -> U {
+fn round<U: num_traits::float::Float>(
+	_: impl Ctx,
+	/// The number which will be rounded.
+	#[implementations(f64, f32)]
+	value: U,
+) -> U {
 	value.round()
 }
 
-/// The floor function (floor) reduces an input value to its nearest larger whole number, unless the input number is already whole.
+/// The floor function (floor) rounds down an input value to the nearest whole number, unless the input number is already whole.
 #[node_macro::node(category("Math: Numeric"))]
-fn floor<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U) -> U {
+fn floor<U: num_traits::float::Float>(
+	_: impl Ctx,
+	/// The number which will be rounded down.
+	#[implementations(f64, f32)]
+	value: U,
+) -> U {
 	value.floor()
 }
 
-/// The ceiling function (ceil) increases an input value to its nearest smaller whole number, unless the input number is already whole.
+/// The ceiling function (ceil) rounds up an input value to the nearest whole number, unless the input number is already whole.
 #[node_macro::node(category("Math: Numeric"))]
-fn ceiling<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U) -> U {
+fn ceiling<U: num_traits::float::Float>(
+	_: impl Ctx,
+	/// The number which will be rounded up.
+	#[implementations(f64, f32)]
+	value: U,
+) -> U {
 	value.ceil()
 }
 
 /// The absolute value function (abs) removes the negative sign from an input value, if present.
 #[node_macro::node(category("Math: Numeric"))]
-fn absolute_value<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U) -> U {
+fn absolute_value<U: num_traits::float::Float>(
+	_: impl Ctx,
+	/// The number which will be made positive.
+	#[implementations(f64, f32)]
+	value: U,
+) -> U {
 	value.abs()
 }
 
 /// The minimum function (min) picks the smaller of two numbers.
 #[node_macro::node(category("Math: Numeric"))]
-fn min<T: std::cmp::PartialOrd>(_: impl Ctx, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
+fn min<T: std::cmp::PartialOrd>(
+	_: impl Ctx,
+	/// One of the two numbers, of which the lesser will be returned.
+	#[implementations(f64, f32, u32, &str)]
+	value: T,
+	/// The other of the two numbers, of which the lesser will be returned.
+	#[implementations(f64, f32, u32, &str)]
+	other_value: T,
+) -> T {
 	if value < other_value { value } else { other_value }
 }
 
 /// The maximum function (max) picks the larger of two numbers.
 #[node_macro::node(category("Math: Numeric"))]
-fn max<T: std::cmp::PartialOrd>(_: impl Ctx, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
+fn max<T: std::cmp::PartialOrd>(
+	_: impl Ctx,
+	/// One of the two numbers, of which the greater will be returned.
+	#[implementations(f64, f32, u32, &str)]
+	value: T,
+	/// The other of the two numbers, of which the greater will be returned.
+	#[implementations(f64, f32, u32, &str)]
+	other_value: T,
+) -> T {
 	if value > other_value { value } else { other_value }
 }
 
@@ -332,9 +442,15 @@ fn max<T: std::cmp::PartialOrd>(_: impl Ctx, #[implementations(f64, &f64, f32, &
 #[node_macro::node(category("Math: Numeric"))]
 fn clamp<T: std::cmp::PartialOrd>(
 	_: impl Ctx,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] min: T,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] max: T,
+	/// The number to be clamped, which will be restricted to the range between the minimum and maximum values.
+	#[implementations(f64, f32, u32, &str)]
+	value: T,
+	/// The left (smaller) side of the range. The output will never be less than this number.
+	#[implementations(f64, f32, u32, &str)]
+	min: T,
+	/// The right (greater) side of the range. The output will never be greater than this number.
+	#[implementations(f64, f32, u32, &str)]
+	max: T,
 ) -> T {
 	let (min, max) = if min < max { (min, max) } else { (max, min) };
 	if value < min {
@@ -350,8 +466,12 @@ fn clamp<T: std::cmp::PartialOrd>(
 #[node_macro::node(category("Math: Logic"))]
 fn equals<U: std::cmp::PartialEq<T>, T>(
 	_: impl Ctx,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] other_value: U,
+	/// One of the two numbers to compare for equality.
+	#[implementations(f64, f32, u32, DVec2, &str)]
+	value: T,
+	/// The other of the two numbers to compare for equality.
+	#[implementations(f64, f32, u32, DVec2, &str)]
+	other_value: U,
 ) -> bool {
 	other_value == value
 }
@@ -360,8 +480,12 @@ fn equals<U: std::cmp::PartialEq<T>, T>(
 #[node_macro::node(category("Math: Logic"))]
 fn not_equals<U: std::cmp::PartialEq<T>, T>(
 	_: impl Ctx,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] other_value: U,
+	/// One of the two numbers to compare for inequality.
+	#[implementations(f64, f32, u32, DVec2, &str)]
+	value: T,
+	/// The other of the two numbers to compare for inequality.
+	#[implementations(f64, f32, u32, DVec2, &str)]
+	other_value: U,
 ) -> bool {
 	other_value != value
 }
@@ -371,8 +495,13 @@ fn not_equals<U: std::cmp::PartialEq<T>, T>(
 #[node_macro::node(category("Math: Logic"))]
 fn less_than<T: std::cmp::PartialOrd<T>>(
 	_: impl Ctx,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32)] value: T,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32)] other_value: T,
+	/// The number on the left-hand side of the comparison.
+	#[implementations(f64, f32, u32)]
+	value: T,
+	/// The number on the right-hand side of the comparison.
+	#[implementations(f64, f32, u32)]
+	other_value: T,
+	/// Uses the less-than-or-equal operation (<=) instead of the less-than operation (<).
 	or_equal: bool,
 ) -> bool {
 	if or_equal { value <= other_value } else { value < other_value }
@@ -383,8 +512,13 @@ fn less_than<T: std::cmp::PartialOrd<T>>(
 #[node_macro::node(category("Math: Logic"))]
 fn greater_than<T: std::cmp::PartialOrd<T>>(
 	_: impl Ctx,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32)] value: T,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32)] other_value: T,
+	/// The number on the left-hand side of the comparison.
+	#[implementations(f64, f32, u32)]
+	value: T,
+	/// The number on the right-hand side of the comparison.
+	#[implementations(f64, f32, u32)]
+	other_value: T,
+	/// Uses the greater-than-or-equal operation (>=) instead of the greater-than operation (>).
 	or_equal: bool,
 ) -> bool {
 	if or_equal { value >= other_value } else { value > other_value }
@@ -392,19 +526,35 @@ fn greater_than<T: std::cmp::PartialOrd<T>>(
 
 /// The logical or operation (||) returns true if either of the two inputs are true, or false if both are false.
 #[node_macro::node(category("Math: Logic"))]
-fn logical_or(_: impl Ctx, value: bool, other_value: bool) -> bool {
+fn logical_or(
+	_: impl Ctx,
+	/// One of the two boolean values, either of which may be true for the node to output true.
+	value: bool,
+	/// The other of the two boolean values, either of which may be true for the node to output true.
+	other_value: bool,
+) -> bool {
 	value || other_value
 }
 
 /// The logical and operation (&&) returns true if both of the two inputs are true, or false if any are false.
 #[node_macro::node(category("Math: Logic"))]
-fn logical_and(_: impl Ctx, value: bool, other_value: bool) -> bool {
+fn logical_and(
+	_: impl Ctx,
+	/// One of the two boolean values, both of which must be true for the node to output true.
+	value: bool,
+	/// The other of the two boolean values, both of which must be true for the node to output true.
+	other_value: bool,
+) -> bool {
 	value && other_value
 }
 
 /// The logical not operation (!) reverses true and false value of the input.
 #[node_macro::node(category("Math: Logic"))]
-fn logical_not(_: impl Ctx, input: bool) -> bool {
+fn logical_not(
+	_: impl Ctx,
+	/// The boolean value to be reversed.
+	input: bool,
+) -> bool {
 	!input
 }
 
@@ -453,7 +603,7 @@ fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> Gradien
 
 /// Constructs a string value which may be set to any plain text.
 #[node_macro::node(category("Value"))]
-fn string_value(_: impl Ctx, _primary: (), string: String) -> String {
+fn string_value(_: impl Ctx, _primary: (), string: TextArea) -> String {
 	string
 }
 
