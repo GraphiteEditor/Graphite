@@ -619,9 +619,11 @@ fn length(_: impl Ctx, vector: DVec2) -> f64 {
 }
 
 /// Scales the input vector to unit length while preserving it's direction. This is equivalent to dividing the input vector by it's own magnitude.
+///
+/// Returns zero when the input vector is zero.
 #[node_macro::node(category("Math: Vector"))]
 fn normalize(_: impl Ctx, vector: DVec2) -> DVec2 {
-	vector.normalize()
+	vector.normalize_or_zero()
 }
 
 #[cfg(test)]
