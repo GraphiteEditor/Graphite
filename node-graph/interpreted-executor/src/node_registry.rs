@@ -14,7 +14,7 @@ use graphene_std::Context;
 use graphene_std::GraphicElement;
 #[cfg(feature = "gpu")]
 use graphene_std::any::DowncastBothNode;
-use graphene_std::any::{ComposeTypeErased, DynAnyNode, IntoTypeErasedNode, Value};
+use graphene_std::any::{ComposeTypeErased, DynAnyNode, IdentityNode, IntoTypeErasedNode};
 use graphene_std::application_io::{ImageTexture, SurfaceFrame};
 #[cfg(feature = "gpu")]
 use graphene_std::wasm_application_io::{WasmEditorApi, WasmSurfaceHandle};
@@ -114,10 +114,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			),
 		),
 		(
-			ProtoNodeIdentifier::new("graphene_core::any::ValueNode"),
+			ProtoNodeIdentifier::new("graphene_std::any::IdentityNode"),
 			|args| {
 				Box::pin(async move {
-					let node = Value::new(args[0].clone());
+					let node = IdentityNode::new(args[0].clone());
 					node.into_type_erased()
 				})
 			},

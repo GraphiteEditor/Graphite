@@ -460,7 +460,7 @@ pub enum DocumentNodeImplementation {
 
 impl Default for DocumentNodeImplementation {
 	fn default() -> Self {
-		Self::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"))
+		Self::ProtoNode(ProtoNodeIdentifier::new("graphene_std::any::IdentityNode"))
 	}
 }
 
@@ -920,7 +920,7 @@ impl NodeNetwork {
 			return;
 		};
 		// If the node is hidden, replace it with an identity node
-		let identity_node = DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into());
+		let identity_node = DocumentNodeImplementation::ProtoNode("graphene_std::any::IdentityNode".into());
 		if !node.visible && node.implementation != identity_node {
 			node.implementation = identity_node;
 
@@ -1096,7 +1096,7 @@ impl NodeNetwork {
 	fn remove_id_node(&mut self, id: NodeId) -> Result<(), String> {
 		let node = self.nodes.get(&id).ok_or_else(|| format!("Node with id {id} does not exist"))?.clone();
 		if let DocumentNodeImplementation::ProtoNode(ident) = &node.implementation {
-			if ident.name == "graphene_core::ops::IdentityNode" {
+			if ident.name == "graphene_std::any::IdentityNode" {
 				assert_eq!(node.inputs.len(), 1, "Id node has more than one input");
 				if let NodeInput::Node { node_id, output_index, .. } = node.inputs[0] {
 					let node_input_output_index = output_index;
@@ -1143,13 +1143,13 @@ impl NodeNetwork {
 		Ok(())
 	}
 
-	/// Strips out any [`graphene_core::ops::IdentityNode`]s that are unnecessary.
+	/// Strips out any [`graphene_std::any::IdentityNode`]s that are unnecessary.
 	pub fn remove_redundant_id_nodes(&mut self) {
 		let id_nodes = self
 			.nodes
 			.iter()
 			.filter(|(_, node)| {
-				matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"))
+				matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &ProtoNodeIdentifier::new("graphene_std::any::IdentityNode"))
 					&& node.inputs.len() == 1
 					&& matches!(node.inputs[0], NodeInput::Node { .. })
 			})
@@ -1338,7 +1338,7 @@ mod test {
 	fn extract_node() {
 		let id_node = DocumentNode {
 			inputs: vec![],
-			implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into()),
+			implementation: DocumentNodeImplementation::ProtoNode("graphene_std::any::IdentityNode".into()),
 			..Default::default()
 		};
 		// TODO: Extend test cases to test nested network
@@ -1540,7 +1540,7 @@ mod test {
 					NodeId(1),
 					DocumentNode {
 						inputs: vec![NodeInput::network(concrete!(u32), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::any::IdentityNode")),
 						..Default::default()
 					},
 				),
@@ -1548,7 +1548,7 @@ mod test {
 					NodeId(2),
 					DocumentNode {
 						inputs: vec![NodeInput::network(concrete!(u32), 1)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::any::IdentityNode")),
 						..Default::default()
 					},
 				),
@@ -1575,7 +1575,7 @@ mod test {
 					NodeId(2),
 					DocumentNode {
 						inputs: vec![result_node_input],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::any::IdentityNode")),
 						..Default::default()
 					},
 				),

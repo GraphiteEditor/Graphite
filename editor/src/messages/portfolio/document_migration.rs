@@ -139,7 +139,7 @@ const REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_std::raster::NoisePatternNode", "graphene_raster_nodes::std_nodes::NoisePatternNode"),
 	("graphene_std::raster::MandelbrotNode", "graphene_raster_nodes::std_nodes::MandelbrotNode"),
 	// text
-	("graphene_core::text::TextGeneratorNode", "graphene_core::text::TextNode"),
+	("graphene_core::text::TextGeneratorNode", "graphene_std::text::TextNode"),
 	// transform
 	("graphene_core::transform::SetTransformNode", "graphene_core::transform_nodes::ReplaceTransformNode"),
 	("graphene_core::transform::ReplaceTransformNode", "graphene_core::transform_nodes::ReplaceTransformNode"),
@@ -158,7 +158,7 @@ const REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::vector::generator_nodes::StarGenerator", "graphene_core::vector::generator_nodes::StarNode"),
 	("graphene_std::executor::BlendGpuImageNode", "graphene_std::gpu_nodes::BlendGpuImageNode"),
 	("graphene_std::raster::SampleNode", "graphene_std::raster::SampleImageNode"),
-	("graphene_core::transform::CullNode", "graphene_core::ops::IdentityNode"),
+	("graphene_core::transform::CullNode", "graphene_std::any::IdentityNode"),
 	("graphene_std::raster::MaskImageNode", "graphene_std::raster::MaskNode"),
 	("graphene_core::vector::FlattenVectorElementsNode", "graphene_core::vector::FlattenPathNode"),
 	("graphene_std::vector::BooleanOperationNode", "graphene_path_bool::BooleanOperationNode"),

@@ -47,20 +47,19 @@ pub fn downcast_node<I: StaticType, O: StaticType>(n: SharedNodeContainer) -> Do
 	DowncastBothNode::new(n)
 }
 
-// Same idea as the identity node, but with a hidden primary input in order to have an auto generated properties widget for the value
-pub struct Value {
+pub struct IdentityNode {
 	value: SharedNodeContainer,
 }
 
-impl<'i> Node<'i, Any<'i>> for Value {
+impl<'i> Node<'i, Any<'i>> for IdentityNode {
 	type Output = DynFuture<'i, Any<'i>>;
 	fn eval(&'i self, input: Any<'i>) -> Self::Output {
 		Box::pin(async move { self.value.eval(input).await })
 	}
 }
 
-impl Value {
+impl IdentityNode {
 	pub const fn new(value: SharedNodeContainer) -> Self {
-		Value { value }
+		IdentityNode { value }
 	}
 }
