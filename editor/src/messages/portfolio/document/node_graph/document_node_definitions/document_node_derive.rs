@@ -1,5 +1,5 @@
 use super::DocumentNodeDefinition;
-use crate::messages::portfolio::document::utility_types::network_interface::{DocumentNodePersistentMetadata, NodeTemplate, PropertiesRow, WidgetOverride};
+use crate::messages::portfolio::document::utility_types::network_interface::{DocumentNodePersistentMetadata, InputMetadata, NodeTemplate, WidgetOverride};
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::*;
 use graphene_std::registry::*;
@@ -67,13 +67,13 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					// TODO: Store information for input overrides in the node macro
-					input_properties: fields
+					input_metadata: fields
 						.iter()
 						.map(|f| match f.widget_override {
 							RegistryWidgetOverride::None => (f.name, f.description).into(),
-							RegistryWidgetOverride::Hidden => PropertiesRow::with_override(f.name, f.description, WidgetOverride::Hidden),
-							RegistryWidgetOverride::String(str) => PropertiesRow::with_override(f.name, f.description, WidgetOverride::String(str.to_string())),
-							RegistryWidgetOverride::Custom(str) => PropertiesRow::with_override(f.name, f.description, WidgetOverride::Custom(str.to_string())),
+							RegistryWidgetOverride::Hidden => InputMetadata::with_name_description_override(f.name, f.description, WidgetOverride::Hidden),
+							RegistryWidgetOverride::String(str) => InputMetadata::with_name_description_override(f.name, f.description, WidgetOverride::String(str.to_string())),
+							RegistryWidgetOverride::Custom(str) => InputMetadata::with_name_description_override(f.name, f.description, WidgetOverride::Custom(str.to_string())),
 						})
 						.collect(),
 					output_names: vec![output_type.to_string()],

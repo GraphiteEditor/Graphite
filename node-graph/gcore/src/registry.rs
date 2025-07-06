@@ -30,6 +30,8 @@ pub mod types {
 	pub type Resolution = glam::UVec2;
 	/// DVec2 with px unit
 	pub type PixelSize = glam::DVec2;
+	/// String with one or more than one line
+	pub type TextArea = String;
 }
 
 // Translation struct between macro and definition
