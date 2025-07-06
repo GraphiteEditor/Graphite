@@ -617,6 +617,11 @@ fn length(_: impl Ctx, vector: DVec2) -> f64 {
 	vector.length()
 }
 
+#[node_macro::node(category("Math: Vector"))]
+fn normalize(_: impl Ctx, vector: DVec2) -> DVec2 {
+	vector.normalize()
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;
