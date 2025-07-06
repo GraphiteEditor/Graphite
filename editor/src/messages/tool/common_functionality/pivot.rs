@@ -9,7 +9,7 @@ use crate::messages::tool::tool_messages::path_tool::PathOptionsUpdate;
 use crate::messages::tool::tool_messages::select_tool::SelectOptionsUpdate;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{DAffine2, DVec2};
-use graphene_std::transform::ReferencePoint;
+use graphene_std::{transform::ReferencePoint, vector::ManipulatorPointId};
 use std::fmt;
 
 pub fn pin_pivot_widget(disabled: bool, source: Source) -> WidgetHolder {
@@ -79,6 +79,7 @@ pub struct Dot {
 	pub pivot: Pivot,
 	pub state: DotState,
 	pub layer: Option<LayerNodeIdentifier>,
+	pub point: Option<ManipulatorPointId>,
 }
 
 impl Dot {
@@ -220,6 +221,23 @@ impl Pivot {
 
 		let [min, max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
 		self.transform_from_normalized = transform * DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
+		self.pivot = Some(self.transform_from_normalized.transform_point2(self.normalized_pivot));
+	}
+
+	pub fn recalculate_pivot_for_layer(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, bounds: Option<[DVec2; 2]>) {
+		if !self.active {
+			return;
+		}
+
+		let selected = document.network_interface.selected_nodes();
+		if !selected.has_selected_nodes() {
+			self.normalized_pivot = DVec2::splat(0.5);
+			self.pivot = None;
+			return;
+		};
+
+		let [min, max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
+		self.transform_from_normalized = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
 		self.pivot = Some(self.transform_from_normalized.transform_point2(self.normalized_pivot));
 	}
 

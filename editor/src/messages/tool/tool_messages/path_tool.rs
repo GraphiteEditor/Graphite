@@ -500,6 +500,7 @@ struct PathToolData {
 	dragging_state: DraggingState,
 	angle: f64,
 	dot: Dot,
+	ordered_points: Vec<ManipulatorPointId>,
 	opposite_handle_position: Option<DVec2>,
 	last_clicked_point_was_selected: bool,
 	last_clicked_segment_was_selected: bool,
@@ -1377,6 +1378,12 @@ impl PathToolData {
 	fn get_as_dot(&self) -> Dot {
 		self.dot.clone()
 	}
+
+	fn sync_history(&mut self, points: &Vec<ManipulatorPointId>) {
+		self.ordered_points.retain(|layer| points.contains(layer));
+		self.ordered_points.extend(points.iter().find(|&layer| !self.ordered_points.contains(layer)));
+		self.dot.point = self.ordered_points.last().map(|x| *x)
+	}
 }
 
 impl Fsm for PathToolFsmState {
@@ -1389,9 +1396,6 @@ impl Fsm for PathToolFsmState {
 		update_dynamic_hints(self, responses, shape_editor, document, tool_data, tool_options);
 
 		let ToolMessage::Path(event) = event else { return self };
-		if !matches!(event, PathToolMessage::Overlays(_) | PathToolMessage::UpdateSelectedPointsStatus { .. }) {
-			// debug!("{event:?}");
-		}
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible
@@ -1407,6 +1411,9 @@ impl Fsm for PathToolFsmState {
 
 				shape_editor.update_selected_anchors_status(display_anchors);
 				shape_editor.update_selected_handles_status(display_handles);
+
+				let new_points = shape_editor.selected_points().copied().collect::<Vec<_>>();
+				tool_data.sync_history(&new_points);
 
 				self
 			}

@@ -38,6 +38,8 @@ pub struct TransformLayerMessageHandler {
 	dot: Dot,
 	pivot: ViewportPosition,
 
+	path_bounds: Option<[DVec2; 2]>,
+
 	local_pivot: DocumentPosition,
 	local_mouse_start: DocumentPosition,
 	grab_target: DocumentPosition,
@@ -64,43 +66,66 @@ impl TransformLayerMessageHandler {
 }
 
 fn calculate_pivot(
+	document: &DocumentMessageHandler,
 	selected_points: &Vec<&ManipulatorPointId>,
 	vector_data: &VectorData,
 	viewspace: DAffine2,
 	get_location: impl Fn(&ManipulatorPointId) -> Option<DVec2>,
-	dot: &Dot,
-) -> Option<(DVec2, DVec2)> {
+	dot: &mut Dot,
+	layers: LayerNodeIdentifier,
+) -> (Option<(DVec2, DVec2)>, Option<[DVec2; 2]>) {
 	let average_position = || {
 		let mut point_count = 0;
 		selected_points.iter().filter_map(|p| get_location(p)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64
 	};
+	let bounds = selected_points.iter().filter_map(|p| get_location(p)).fold(None, |acc: Option<[DVec2; 2]>, point| {
+		if let Some([mut min, mut max]) = acc {
+			min.x = min.x.min(point.x);
+			min.y = min.y.min(point.y);
+			max.x = max.x.max(point.x);
+			max.y = max.y.max(point.y);
+			Some([min, max])
+		} else {
+			Some([point, point])
+		}
+	});
+	dot.pivot.recalculate_pivot_for_layer(document, layers, bounds);
 	let position = || {
-		if !dot.state.enabled {
-			return average_position();
+		{
+			if dot.state.enabled {
+				match dot.state.dot {
+					DotType::Average => None,
+					DotType::Active => dot.point.and_then(|p| get_location(&p)),
+					DotType::Pivot => dot.pivot.position(),
+				}
+			} else {
+				None
+			}
 		}
-		match dot.state.dot {
-			DotType::Average => average_position(),
-			DotType::Active => selected_points.first().map(|p| get_location(p)).flatten().unwrap_or_else(average_position),
-			DotType::Pivot => average_position(),
-		}
+		.unwrap_or_else(average_position)
 	};
 	let [point] = selected_points.as_slice() else {
 		// Handle the case where there are multiple points
 		let position = position();
-		return Some((position, position));
+		return (Some((position, position)), bounds);
 	};
 
 	match point {
 		ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
 			// Get the anchor position and transform it to the pivot
-			let pivot_pos = point.get_anchor_position(vector_data).map(|anchor_position| viewspace.transform_point2(anchor_position))?;
-			let target = viewspace.transform_point2(point.get_position(vector_data)?);
-			Some((pivot_pos, target))
+			let (Some(pivot_pos), Some(position)) = (
+				point.get_anchor_position(vector_data).map(|anchor_position| viewspace.transform_point2(anchor_position)),
+				point.get_position(vector_data),
+			) else {
+				return (None, None);
+			};
+			let target = viewspace.transform_point2(position);
+			(Some((pivot_pos, target)), None)
 		}
 		_ => {
 			// Calculate the average position of all selected points
 			let position = position();
-			Some((position, position))
+			(Some((position, position)), bounds)
 		}
 	}
 }
@@ -222,8 +247,17 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				let affected_point_refs = affected_points.iter().collect();
 
 				let get_location = |point: &&ManipulatorPointId| point.get_position(&vector_data).map(|position| viewspace.transform_point2(position));
-				if let Some((new_pivot, grab_target)) = calculate_pivot(&affected_point_refs, &vector_data, viewspace, |point: &ManipulatorPointId| get_location(&point), &self.dot) {
+				if let (Some((new_pivot, grab_target)), bounds) = calculate_pivot(
+					document,
+					&affected_point_refs,
+					&vector_data,
+					viewspace,
+					|point: &ManipulatorPointId| get_location(&point),
+					&mut self.dot,
+					selected_layers[0],
+				) {
 					*selected.pivot = new_pivot;
+					self.path_bounds = bounds;
 
 					self.local_pivot = document_to_viewport.inverse().transform_point2(*selected.pivot);
 					self.grab_target = document_to_viewport.inverse().transform_point2(grab_target);
@@ -249,117 +283,115 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					return;
 				}
 
-				for layer in document.metadata().all_layers() {
-					if !document.network_interface.is_artboard(&layer.to_node(), &[]) {
-						continue;
-					};
+				let viewport_box = input.viewport_bounds.size();
+				let axis_constraint = self.transform_operation.axis_constraint();
 
-					let viewport_box = input.viewport_bounds.size();
-					let axis_constraint = self.transform_operation.axis_constraint();
+				let format_rounded = |value: f64, precision: usize| {
+					if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
+						format!("{:.*}", precision, value).trim_end_matches('0').trim_end_matches('.').to_string()
+					} else {
+						self.typing.string.clone()
+					}
+				};
 
-					let format_rounded = |value: f64, precision: usize| {
-						if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
-							format!("{:.*}", precision, value).trim_end_matches('0').trim_end_matches('.').to_string()
-						} else {
-							self.typing.string.clone()
+				// TODO: Ensure removing this and adding this doesn't change the position of layers under PTZ ops
+				// responses.add(TransformLayerMessage::PointerMove {
+				// 	slow_key: SLOW_KEY,
+				// 	increments_key: INCREMENTS_KEY,
+				// });
+
+				match self.transform_operation {
+					TransformOperation::None => (),
+					TransformOperation::Grabbing(translation) => {
+						let translation = translation.to_dvec(self.initial_transform, self.increments);
+						let viewport_translate = document_to_viewport.transform_vector2(translation);
+						let pivot = document_to_viewport.transform_point2(self.grab_target);
+						let quad = Quad::from_box([pivot, pivot + viewport_translate]).0;
+						let e1 = (self.layer_bounding_box.0[1] - self.layer_bounding_box.0[0]).normalize_or(DVec2::X);
+
+						if matches!(axis_constraint, Axis::Both | Axis::X) && translation.x != 0. {
+							let end = if self.local { (quad[1] - quad[0]).rotate(e1) + quad[0] } else { quad[1] };
+							overlay_context.dashed_line(quad[0], end, None, None, Some(2.), Some(2.), Some(0.5));
+
+							let x_transform = DAffine2::from_translation((quad[0] + end) / 2.);
+							overlay_context.text(&format_rounded(translation.x, 3), COLOR_OVERLAY_BLUE, None, x_transform, 4., [Pivot::Middle, Pivot::End]);
 						}
-					};
 
-					// TODO: Ensure removing this and adding this doesn't change the position of layers under PTZ ops
-					// responses.add(TransformLayerMessage::PointerMove {
-					// 	slow_key: SLOW_KEY,
-					// 	increments_key: INCREMENTS_KEY,
-					// });
-
-					match self.transform_operation {
-						TransformOperation::None => (),
-						TransformOperation::Grabbing(translation) => {
-							let translation = translation.to_dvec(self.initial_transform, self.increments);
-							let viewport_translate = document_to_viewport.transform_vector2(translation);
-							let pivot = document_to_viewport.transform_point2(self.grab_target);
-							let quad = Quad::from_box([pivot, pivot + viewport_translate]).0;
-							let e1 = (self.layer_bounding_box.0[1] - self.layer_bounding_box.0[0]).normalize_or(DVec2::X);
-
-							if matches!(axis_constraint, Axis::Both | Axis::X) && translation.x != 0. {
-								let end = if self.local { (quad[1] - quad[0]).rotate(e1) + quad[0] } else { quad[1] };
-								overlay_context.dashed_line(quad[0], end, None, None, Some(2.), Some(2.), Some(0.5));
-
-								let x_transform = DAffine2::from_translation((quad[0] + end) / 2.);
-								overlay_context.text(&format_rounded(translation.x, 3), COLOR_OVERLAY_BLUE, None, x_transform, 4., [Pivot::Middle, Pivot::End]);
-							}
-
-							if matches!(axis_constraint, Axis::Both | Axis::Y) && translation.y != 0. {
-								let end = if self.local { (quad[3] - quad[0]).rotate(e1) + quad[0] } else { quad[3] };
-								overlay_context.dashed_line(quad[0], end, None, None, Some(2.), Some(2.), Some(0.5));
-								let x_parameter = viewport_translate.x.clamp(-1., 1.);
-								let y_transform = DAffine2::from_translation((quad[0] + end) / 2. + x_parameter * DVec2::X * 0.);
-								let pivot_selection = if x_parameter >= -1e-3 { Pivot::Start } else { Pivot::End };
-								if axis_constraint != Axis::Both || self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
-									overlay_context.text(&format_rounded(translation.y, 2), COLOR_OVERLAY_BLUE, None, y_transform, 3., [pivot_selection, Pivot::Middle]);
-								}
-							}
-
-							if matches!(axis_constraint, Axis::Both) && translation.x != 0. && translation.y != 0. {
-								overlay_context.line(quad[1], quad[2], None, None);
-								overlay_context.line(quad[3], quad[2], None, None);
+						if matches!(axis_constraint, Axis::Both | Axis::Y) && translation.y != 0. {
+							let end = if self.local { (quad[3] - quad[0]).rotate(e1) + quad[0] } else { quad[3] };
+							overlay_context.dashed_line(quad[0], end, None, None, Some(2.), Some(2.), Some(0.5));
+							let x_parameter = viewport_translate.x.clamp(-1., 1.);
+							let y_transform = DAffine2::from_translation((quad[0] + end) / 2. + x_parameter * DVec2::X * 0.);
+							let pivot_selection = if x_parameter >= -1e-3 { Pivot::Start } else { Pivot::End };
+							if axis_constraint != Axis::Both || self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
+								overlay_context.text(&format_rounded(translation.y, 2), COLOR_OVERLAY_BLUE, None, y_transform, 3., [pivot_selection, Pivot::Middle]);
 							}
 						}
-						TransformOperation::Scaling(scale) => {
-							let scale = scale.to_f64(self.increments);
-							let text = format!("{}x", format_rounded(scale, 3));
-							let pivot = document_to_viewport.transform_point2(self.local_pivot);
-							let start_mouse = document_to_viewport.transform_point2(self.local_mouse_start);
-							let local_edge = start_mouse - pivot;
-							let local_edge = project_edge_to_quad(local_edge, &self.layer_bounding_box, self.local, axis_constraint);
-							let boundary_point = pivot + local_edge * scale.min(1.);
-							let end_point = pivot + local_edge * scale.max(1.);
 
-							if scale > 0. {
-								overlay_context.dashed_line(pivot, boundary_point, None, None, Some(2.), Some(2.), Some(0.5));
-							}
-							overlay_context.line(boundary_point, end_point, None, None);
-
-							let transform = DAffine2::from_translation(boundary_point.midpoint(pivot) + local_edge.perp().normalize_or(DVec2::X) * local_edge.element_product().signum() * 24.);
-							overlay_context.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
-						}
-						TransformOperation::Rotating(rotation) => {
-							let angle = rotation.to_f64(self.increments);
-							let pivot = document_to_viewport.transform_point2(self.local_pivot);
-							let start_mouse = document_to_viewport.transform_point2(self.local_mouse_start);
-							let offset_angle = if self.grs_pen_handle {
-								self.handle - self.last_point
-							} else if using_path_tool {
-								start_mouse - pivot
-							} else {
-								self.layer_bounding_box.top_right() - self.layer_bounding_box.top_right()
-							};
-							let tilt_offset = document.document_ptz.unmodified_tilt();
-							let offset_angle = offset_angle.to_angle() + tilt_offset;
-							let width = viewport_box.max_element();
-							let radius = start_mouse.distance(pivot);
-							let arc_radius = ANGLE_MEASURE_RADIUS_FACTOR * width;
-							let radius = radius.clamp(ARC_MEASURE_RADIUS_FACTOR_RANGE.0 * width, ARC_MEASURE_RADIUS_FACTOR_RANGE.1 * width);
-							let angle_in_degrees = angle.to_degrees();
-							let display_angle = if angle_in_degrees.is_sign_positive() {
-								angle_in_degrees - (angle_in_degrees / 360.).floor() * 360.
-							} else if angle_in_degrees.is_sign_negative() {
-								angle_in_degrees - ((angle_in_degrees / 360.).floor() + 1.) * 360.
-							} else {
-								angle_in_degrees
-							};
-							let text = format!("{}°", format_rounded(display_angle, 2));
-							let text_texture_width = overlay_context.get_width(&text) / 2.;
-							let text_texture_height = 12.;
-							let text_angle_on_unit_circle = DVec2::from_angle((angle % TAU) / 2. + offset_angle);
-							let text_texture_position = DVec2::new(
-								(arc_radius + 4. + text_texture_width) * text_angle_on_unit_circle.x,
-								(arc_radius + text_texture_height) * text_angle_on_unit_circle.y,
-							);
-							let transform = DAffine2::from_translation(text_texture_position + pivot);
-							overlay_context.draw_angle(pivot, radius, arc_radius, offset_angle, angle);
-							overlay_context.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
+						if matches!(axis_constraint, Axis::Both) && translation.x != 0. && translation.y != 0. {
+							overlay_context.line(quad[1], quad[2], None, None);
+							overlay_context.line(quad[3], quad[2], None, None);
 						}
 					}
+					TransformOperation::Scaling(scale) => {
+						let scale = scale.to_f64(self.increments);
+						let text = format!("{}x", format_rounded(scale, 3));
+						let pivot = document_to_viewport.transform_point2(self.local_pivot);
+						let start_mouse = document_to_viewport.transform_point2(self.local_mouse_start);
+						let local_edge = start_mouse - pivot;
+						let local_edge = project_edge_to_quad(local_edge, &self.layer_bounding_box, self.local, axis_constraint);
+						let boundary_point = pivot + local_edge * scale.min(1.);
+						let end_point = pivot + local_edge * scale.max(1.);
+
+						if scale > 0. {
+							overlay_context.dashed_line(pivot, boundary_point, None, None, Some(2.), Some(2.), Some(0.5));
+						}
+						overlay_context.line(boundary_point, end_point, None, None);
+
+						let transform = DAffine2::from_translation(boundary_point.midpoint(pivot) + local_edge.perp().normalize_or(DVec2::X) * local_edge.element_product().signum() * 24.);
+						overlay_context.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
+					}
+					TransformOperation::Rotating(rotation) => {
+						let angle = rotation.to_f64(self.increments);
+						let pivot = document_to_viewport.transform_point2(self.local_pivot);
+						let start_mouse = document_to_viewport.transform_point2(self.local_mouse_start);
+						let offset_angle = if self.grs_pen_handle {
+							self.handle - self.last_point
+						} else if using_path_tool {
+							start_mouse - pivot
+						} else {
+							self.layer_bounding_box.top_right() - self.layer_bounding_box.top_right()
+						};
+						let tilt_offset = document.document_ptz.unmodified_tilt();
+						let offset_angle = offset_angle.to_angle() + tilt_offset;
+						let width = viewport_box.max_element();
+						let radius = start_mouse.distance(pivot);
+						let arc_radius = ANGLE_MEASURE_RADIUS_FACTOR * width;
+						let radius = radius.clamp(ARC_MEASURE_RADIUS_FACTOR_RANGE.0 * width, ARC_MEASURE_RADIUS_FACTOR_RANGE.1 * width);
+						let angle_in_degrees = angle.to_degrees();
+						let display_angle = if angle_in_degrees.is_sign_positive() {
+							angle_in_degrees - (angle_in_degrees / 360.).floor() * 360.
+						} else if angle_in_degrees.is_sign_negative() {
+							angle_in_degrees - ((angle_in_degrees / 360.).floor() + 1.) * 360.
+						} else {
+							angle_in_degrees
+						};
+						let text = format!("{}°", format_rounded(display_angle, 2));
+						let text_texture_width = overlay_context.get_width(&text) / 2.;
+						let text_texture_height = 12.;
+						let text_angle_on_unit_circle = DVec2::from_angle((angle % TAU) / 2. + offset_angle);
+						let text_texture_position = DVec2::new(
+							(arc_radius + 4. + text_texture_width) * text_angle_on_unit_circle.x,
+							(arc_radius + text_texture_height) * text_angle_on_unit_circle.y,
+						);
+						let transform = DAffine2::from_translation(text_texture_position + pivot);
+						overlay_context.draw_angle(pivot, radius, arc_radius, offset_angle, angle);
+						overlay_context.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
+					}
+				}
+
+				if let Some(bounds) = self.path_bounds {
+					overlay_context.quad(Quad::from_box(bounds), None, None);
 				}
 			}
 

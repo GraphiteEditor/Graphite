@@ -361,7 +361,7 @@ struct SelectToolData {
 	lasso_polygon: Vec<ViewportPosition>,
 	selection_mode: Option<SelectionMode>,
 	layers_dragging: Vec<LayerNodeIdentifier>, // Unordered, often used as temporary buffer
-	orderer_layers: Vec<LayerNodeIdentifier>,  // Ordered list of layers
+	ordered_layers: Vec<LayerNodeIdentifier>,  // Ordered list of layers
 	layer_selected_on_start: Option<LayerNodeIdentifier>,
 	select_single_layer: Option<LayerNodeIdentifier>,
 	axis_align: bool,
@@ -548,9 +548,9 @@ impl SelectToolData {
 	}
 
 	fn sync_history(&mut self) {
-		self.orderer_layers.retain(|layer| self.layers_dragging.contains(layer));
-		self.orderer_layers.extend(self.layers_dragging.iter().find(|&layer| !self.orderer_layers.contains(layer)));
-		self.dot.layer = self.orderer_layers.last().map(|x| *x)
+		self.ordered_layers.retain(|layer| self.layers_dragging.contains(layer));
+		self.ordered_layers.extend(self.layers_dragging.iter().find(|&layer| !self.ordered_layers.contains(layer)));
+		self.dot.layer = self.ordered_layers.last().map(|x| *x)
 	}
 }
 
