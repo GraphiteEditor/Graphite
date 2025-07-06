@@ -1,8 +1,7 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_ORANGE, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COMPASS_ROSE_ARROW_SIZE,
-	COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH,
-	PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER,
+	COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
 use bezier_rs::{Bezier, Subpath};
@@ -559,9 +558,9 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn dowel_pin(&mut self, position: DVec2, color: Option<&str>) {
+	pub fn dowel_pin(&mut self, position: DVec2, angle: f64, color: Option<&str>) {
 		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
-		let color = color.unwrap_or(COLOR_OVERLAY_ORANGE);
+		let color = color.unwrap_or(COLOR_OVERLAY_YELLOW);
 
 		self.start_dpi_aware_transform();
 
@@ -577,11 +576,11 @@ impl OverlayContext {
 		self.render_context.begin_path();
 		// Top-left sector
 		self.render_context.move_to(x, y);
-		self.render_context.arc(x, y, DOWEL_PIN_RADIUS, FRAC_PI_2, PI).expect("Failed to draw arc");
+		self.render_context.arc(x, y, DOWEL_PIN_RADIUS, FRAC_PI_2 + angle, PI + angle).expect("Failed to draw arc");
 		self.render_context.close_path();
 		// Bottom-right sector
 		self.render_context.move_to(x, y);
-		self.render_context.arc(x, y, DOWEL_PIN_RADIUS, PI + FRAC_PI_2, TAU).expect("Failed to draw arc");
+		self.render_context.arc(x, y, DOWEL_PIN_RADIUS, PI + FRAC_PI_2 + angle, TAU + angle).expect("Failed to draw arc");
 		self.render_context.close_path();
 		self.render_context.set_fill_style_str(color);
 		self.render_context.fill();

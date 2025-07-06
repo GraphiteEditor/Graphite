@@ -538,7 +538,7 @@ impl SelectToolData {
 
 	fn state_from_dot(&self, mouse: DVec2) -> Option<SelectToolFsmState> {
 		match self.dot.state.dot {
-			DotType::Pivot if !self.dot.pivot.pinned => self.dot.pivot.is_over(mouse).then_some(SelectToolFsmState::DraggingPivot),
+			DotType::Pivot => self.dot.pivot.is_over(mouse).then_some(SelectToolFsmState::DraggingPivot),
 			_ => None,
 		}
 	}
@@ -766,21 +766,52 @@ impl Fsm for SelectToolFsmState {
 				});
 
 				let mut active_origin = None;
+				let mut origin_angle = 0.;
 				if overlay_context.visibility_settings.origin() && !tool_data.dot.state.is_pivot_type() {
+					let get_angle = |layer: LayerNodeIdentifier| -> f64 {
+						let quad = Quad::from_box([DVec2::ZERO, DVec2::ONE]);
+						let bounds = document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface) * quad;
+						(bounds.top_left() - bounds.top_right()).to_angle()
+					};
+					if tool_data.dot.state.dot == DotType::Average {
+						let mut count = 0;
+
+						let sum: f64 = document
+							.network_interface
+							.selected_nodes()
+							.selected_visible_and_unlocked_layers(&document.network_interface)
+							.map(get_angle)
+							.inspect(|_| count += 1)
+							.sum();
+						if count > 0 {
+							origin_angle = sum / count as f64;
+						}
+					} else if tool_data.dot.state.dot == DotType::Active {
+						origin_angle = document
+							.network_interface
+							.selected_nodes()
+							.selected_visible_and_unlocked_layers(&document.network_interface)
+							.find(|&layer| Some(layer) == tool_data.dot.layer)
+							.iter()
+							.map(|&layer| get_angle(layer))
+							.sum();
+					}
+
 					for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 						let origin = graph_modification_utils::get_viewport_origin(layer, &document.network_interface);
 						if Some(layer) == tool_data.dot.layer {
 							active_origin = Some(origin);
 							continue;
 						}
-						overlay_context.dowel_pin(origin, None);
+						overlay_context.dowel_pin(origin, origin_angle, None);
 					}
 				}
 				if let Some(origin) = active_origin {
-					overlay_context.dowel_pin(origin, Some(COLOR_OVERLAY_YELLOW));
+					overlay_context.dowel_pin(origin, origin_angle, Some(COLOR_OVERLAY_ORANGE));
 				}
 
-				let draw_pivot = tool_data.dot.state.is_pivot() && overlay_context.visibility_settings.pivot();
+				let has_layers = document.network_interface.selected_nodes().has_selected_nodes();
+				let draw_pivot = tool_data.dot.state.is_pivot() && overlay_context.visibility_settings.pivot() && has_layers;
 				tool_data.dot.pivot.update(document, &mut overlay_context, Some((angle,)), draw_pivot);
 
 				// Update compass rose
@@ -1009,8 +1040,10 @@ impl Fsm for SelectToolFsmState {
 					let extend = input.keyboard.key(extend_selection);
 					if !extend && !input.keyboard.key(remove_from_selection) {
 						responses.add(DocumentMessage::DeselectAllLayers);
-						let position = tool_data.dot.pivot.last_non_none_reference;
-						responses.add(SelectToolMessage::SetPivot { position });
+						if !tool_data.dot.pivot.pinned {
+							let position = tool_data.dot.pivot.last_non_none_reference;
+							responses.add(SelectToolMessage::SetPivot { position });
+						}
 						tool_data.layers_dragging.clear();
 					}
 

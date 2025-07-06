@@ -388,8 +388,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					}
 				}
 
-				if let Some(bounds) = self.path_bounds {
-					overlay_context.quad(Quad::from_box(bounds), None, None);
+				if let Some(_) = self.path_bounds {
+					// overlay_context.quad(Quad::from_box(bounds), None, None);
 				}
 			}
 

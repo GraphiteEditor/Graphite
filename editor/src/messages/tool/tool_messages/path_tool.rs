@@ -263,15 +263,15 @@ impl LayoutHolder for PathTool {
 		.selected_index(Some(self.options.path_overlay_mode as u32))
 		.widget_holder();
 
-		let [checkbox, dropdown] = {
+		let [_checkbox, _dropdown] = {
 			let dot_widget = dot_type_widget(self.tool_data.dot.state, Source::Path);
-			[dot_widget.get(0).unwrap().clone(), dot_widget.get(2).unwrap().clone()]
+			[dot_widget[0].clone(), dot_widget[2].clone()]
 		};
 
 		let has_somrthing = !self.tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty();
-		let pivot_reference = pivot_reference_point_widget(has_somrthing || !self.tool_data.dot.state.is_pivot(), self.tool_data.dot.pivot.to_pivot_position(), Source::Path);
+		let _pivot_reference = pivot_reference_point_widget(has_somrthing || !self.tool_data.dot.state.is_pivot(), self.tool_data.dot.pivot.to_pivot_position(), Source::Path);
 
-		let pin_pivot = pin_pivot_widget(self.tool_data.dot.pin_inactive(), Source::Path);
+		let _pin_pivot = pin_pivot_widget(self.tool_data.dot.pin_inactive(), Source::Path);
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
@@ -289,13 +289,13 @@ impl LayoutHolder for PathTool {
 				unrelated_seperator.clone(),
 				path_overlay_mode_widget,
 				unrelated_seperator.clone(),
-				checkbox.clone(),
-				related_seperator.clone(),
-				dropdown.clone(),
-				unrelated_seperator,
-				pivot_reference,
-				related_seperator.clone(),
-				pin_pivot,
+				// checkbox.clone(),
+				// related_seperator.clone(),
+				// dropdown.clone(),
+				// unrelated_seperator,
+				// pivot_reference,
+				// related_seperator.clone(),
+				// pin_pivot,
 			],
 		}]))
 	}
@@ -566,7 +566,6 @@ impl PathToolData {
 
 	fn update_selection_status(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler) {
 		let selection_status = get_selection_status(&document.network_interface, shape_editor);
-		// debug!("{:?}", selection_status);
 
 		self.can_toggle_colinearity = match &selection_status {
 			SelectionStatus::None => false,
@@ -609,8 +608,6 @@ impl PathToolData {
 		self.last_click_time = input.time;
 
 		let old_selection = shape_editor.selected_points().cloned().collect::<Vec<_>>();
-
-		debug!("{old_selection:?}");
 
 		// Check if the point is already selected; if not, select the first point within the threshold (in pixels)
 		// Don't select the points which are not shown currently in PathOverlayMode
@@ -1396,6 +1393,10 @@ impl Fsm for PathToolFsmState {
 		update_dynamic_hints(self, responses, shape_editor, document, tool_data, tool_options);
 
 		let ToolMessage::Path(event) = event else { return self };
+
+		// TODO(mTvare6): Remove it once dots are implemented for path_tool
+		tool_data.dot.state.enabled = false;
+
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible

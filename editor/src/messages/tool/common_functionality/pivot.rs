@@ -171,6 +171,8 @@ pub struct Pivot {
 	active: bool,
 	/// Used to enable and disable the pivot
 	pub pinned: bool,
+	/// Had selected_visible_and_unlocked_layers
+	pub empty: bool,
 }
 
 impl Default for Pivot {
@@ -183,6 +185,7 @@ impl Default for Pivot {
 			last_non_none_reference: ReferencePoint::Center,
 			active: true,
 			pinned: false,
+			empty: true,
 		}
 	}
 }
@@ -195,9 +198,9 @@ impl Pivot {
 		}
 
 		let selected = document.network_interface.selected_nodes();
+
+		self.empty = !selected.has_selected_nodes();
 		if !selected.has_selected_nodes() {
-			self.normalized_pivot = DVec2::splat(0.5);
-			self.pivot = None;
 			return;
 		};
 
@@ -221,7 +224,9 @@ impl Pivot {
 
 		let [min, max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
 		self.transform_from_normalized = transform * DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
-		self.pivot = Some(self.transform_from_normalized.transform_point2(self.normalized_pivot));
+		if self.old_pivot_position != ReferencePoint::None {
+			self.pivot = Some(self.transform_from_normalized.transform_point2(self.normalized_pivot));
+		}
 	}
 
 	pub fn recalculate_pivot_for_layer(&mut self, document: &DocumentMessageHandler, bounds: Option<[DVec2; 2]>) {
