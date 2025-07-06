@@ -18,7 +18,7 @@ pub fn pin_pivot_widget(inactive: bool, enabled: bool, source: Source) -> Widget
 		.on_update(move |_| match source {
 			Source::Select if enabled => SelectToolMessage::SelectOptions(SelectOptionsUpdate::TogglePivotPinned()).into(),
 			Source::Path if enabled => PathToolMessage::UpdateOptions(PathOptionsUpdate::TogglePivotPinned()).into(),
-			_ => Message::NoOp
+			_ => Message::NoOp,
 		})
 		.widget_holder()
 }
