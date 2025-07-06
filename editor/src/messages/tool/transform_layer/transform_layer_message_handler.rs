@@ -389,6 +389,15 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 				}
 			}
+			TransformLayerMessage::BeginTransformOperation { operation } => {
+				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse, &mut self.initial_transform);
+				self.transform_operation = match operation {
+					TransformType::Grab => TransformOperation::Grabbing(Default::default()),
+					TransformType::Rotate => TransformOperation::Rotating(Default::default()),
+					TransformType::Scale => TransformOperation::Scaling(Default::default()),
+				};
+				self.layer_bounding_box = selected.bounding_box();
+			}
 			TransformLayerMessage::BeginGrabPen { last_point, handle } | TransformLayerMessage::BeginRotatePen { last_point, handle } | TransformLayerMessage::BeginScalePen { last_point, handle } => {
 				self.typing.clear();
 
@@ -423,9 +432,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					increments_key: INCREMENTS_KEY,
 				});
 			}
-			TransformLayerMessage::BeginGRS { transform_type } => {
+			TransformLayerMessage::BeginGRS { operation: transform_type } => {
 				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
 				let selected_segments = shape_editor.selected_segments().collect::<Vec<_>>();
+
 				if (using_path_tool && selected_points.is_empty() && selected_segments.is_empty())
 					|| (!using_path_tool && !using_select_tool && !using_pen_tool && !using_shape_tool)
 					|| selected_layers.is_empty()
@@ -460,42 +470,24 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					}
 				}
 
+				self.local = false;
+				self.operation_count += 1;
+
 				let chain_operation = self.transform_operation != TransformOperation::None;
 				if chain_operation {
 					responses.add(TransformLayerMessage::ApplyTransformOperation { final_transform: false });
 				} else {
 					responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 				}
-
-				let response = match transform_type {
-					TransformType::Grab => TransformLayerMessage::BeginGrab,
-					TransformType::Rotate => TransformLayerMessage::BeginRotate,
-					TransformType::Scale => TransformLayerMessage::BeginScale,
-				};
-
-				self.local = false;
-				self.operation_count += 1;
-				responses.add(response);
+				responses.add(TransformLayerMessage::BeginTransformOperation { operation: transform_type });
 				responses.add(TransformLayerMessage::PointerMove {
 					slow_key: SLOW_KEY,
 					increments_key: INCREMENTS_KEY,
 				});
 			}
-			TransformLayerMessage::BeginGrab => {
-				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse, &mut self.initial_transform);
-				self.transform_operation = TransformOperation::Grabbing(Default::default());
-				self.layer_bounding_box = selected.bounding_box();
-			}
-			TransformLayerMessage::BeginRotate => {
-				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse, &mut self.initial_transform);
-				self.transform_operation = TransformOperation::Rotating(Default::default());
-				self.layer_bounding_box = selected.bounding_box();
-			}
-			TransformLayerMessage::BeginScale => {
-				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse, &mut self.initial_transform);
-				self.transform_operation = TransformOperation::Scaling(Default::default());
-				self.layer_bounding_box = selected.bounding_box();
-			}
+			TransformLayerMessage::BeginGrab => responses.add_front(TransformLayerMessage::BeginGRS { operation: TransformType::Grab }),
+			TransformLayerMessage::BeginRotate => responses.add_front(TransformLayerMessage::BeginGRS { operation: TransformType::Rotate }),
+			TransformLayerMessage::BeginScale => responses.add_front(TransformLayerMessage::BeginGRS { operation: TransformType::Scale }),
 			TransformLayerMessage::CancelTransformOperation => {
 				if using_pen_tool {
 					self.typing.clear();
@@ -729,7 +721,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(TransformLayerMessageDiscriminant;
-			BeginGRS,
+			BeginGrab,
+			BeginRotate,
+			BeginScale,
 		);
 
 		if self.transform_operation != TransformOperation::None {
