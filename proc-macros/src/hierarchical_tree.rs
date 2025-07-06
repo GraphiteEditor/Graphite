@@ -26,7 +26,8 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 					{
 						let mut variant_tree = DebugMessageTree::new(stringify!(#variant_type));
 						let field_name = stringify!(#field_type);
-						if "Message" == &field_name[field_name.len().saturating_sub(7)..] {
+						const message_string: &str = "Message";
+						if message_string == &field_name[field_name.len().saturating_sub(message_string.len())..] {
 							// The field is a Message type, recursively build its tree
 							let sub_tree = #field_type::build_message_tree();
 							variant_tree.add_variant(sub_tree);

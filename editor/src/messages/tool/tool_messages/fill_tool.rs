@@ -41,7 +41,7 @@ impl LayoutHolder for FillTool {
 	}
 }
 
-#[message_handler_data()]
+#[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FillTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		self.fsm_state.process_event(message, &mut (), tool_data, &(), responses, true);

@@ -1,8 +1,7 @@
+use crate::helpers::{call_site_ident, clean_rust_type_syntax};
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, quote};
 use syn::{ItemImpl, Type, parse2, spanned::Spanned};
-
-use crate::helpers::{call_site_ident, clean_rust_type_syntax};
 
 pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream) -> syn::Result<TokenStream> {
 	// Parse the input as an impl block

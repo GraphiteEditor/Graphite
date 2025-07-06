@@ -53,7 +53,7 @@ impl ToolMetadata for GradientTool {
 	}
 }
 
-#[message_handler_data()]
+#[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for GradientTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let ToolMessage::Gradient(GradientToolMessage::UpdateOptions(action)) = message else {

@@ -116,7 +116,7 @@ impl LayoutHolder for FreehandTool {
 	}
 }
 
-#[message_handler_data()]
+#[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FreehandTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let ToolMessage::Freehand(FreehandToolMessage::UpdateOptions(action)) = message else {

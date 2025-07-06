@@ -53,10 +53,10 @@ mod test {
 
 	#[test]
 	fn generate_message_tree() {
-		let res = Message::build_message_tree();
+		let result = Message::build_message_tree();
 		let mut file = std::fs::File::create("../hierarchical_message_system_tree.txt").unwrap();
-		file.write_all(format!("{} `{}`\n", res.name(), res.path()).as_bytes()).unwrap();
-		if let Some(variants) = res.variants() {
+		file.write_all(format!("{} `{}`\n", result.name(), result.path()).as_bytes()).unwrap();
+		if let Some(variants) = result.variants() {
 			for (i, variant) in variants.iter().enumerate() {
 				let is_last = i == variants.len() - 1;
 				print_tree_node(variant, "", is_last, &mut file);
