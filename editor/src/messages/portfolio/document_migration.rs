@@ -65,6 +65,7 @@ const REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::ops::Vector2ValueNode", "graphene_math_nodes::CoordinateValueNode"),
 	("graphene_core::ops::ColorValueNode", "graphene_math_nodes::ColorValueNode"),
 	("graphene_core::ops::GradientValueNode", "graphene_math_nodes::GradientValueNode"),
+	("graphene_core::ops::SampleGradientNode", "graphene_math_nodes::SampleGradientNode"),
 	("graphene_core::ops::StringValueNode", "graphene_math_nodes::StringValueNode"),
 	("graphene_core::ops::DotProductNode", "graphene_math_nodes::DotProductNode"),
 	// debug
