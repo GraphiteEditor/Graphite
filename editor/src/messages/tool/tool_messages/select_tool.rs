@@ -4,7 +4,7 @@ use super::tool_prelude::*;
 use crate::consts::*;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, Pivot as OverlayPivot};
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
@@ -843,25 +843,7 @@ impl Fsm for SelectToolFsmState {
 					let document_start = document.metadata().document_to_viewport.inverse().transform_point2(quad.top_left());
 					let document_current = document.metadata().document_to_viewport.inverse().transform_point2(quad.bottom_right());
 
-					if document_current.x != document_start.x {
-						overlay_context.dashed_line(quad.top_left(), quad.top_right(), None, None, Some(2.), Some(2.), Some(0.5));
-
-						let width = format!("{:.2}", document_current.x - document_start.x).trim_end_matches('0').trim_end_matches('.').to_string();
-						let x_transform = DAffine2::from_translation((quad.top_left() + quad.top_right()) / 2.);
-						overlay_context.text(&width, COLOR_OVERLAY_BLUE, None, x_transform, 4., [OverlayPivot::Middle, OverlayPivot::End]);
-					}
-					if document_current.y != document_start.y {
-						overlay_context.dashed_line(quad.top_left(), quad.bottom_left(), None, None, Some(2.), Some(2.), Some(0.5));
-
-						let height = format!("{:.2}", document_current.y - document_start.y).trim_end_matches('0').trim_end_matches('.').to_string();
-						let y_transform = DAffine2::from_translation((quad.top_left() + quad.bottom_left()) / 2.);
-						let height_pivot = if document_current.x >= document_start.x { OverlayPivot::Start } else { OverlayPivot::End };
-						overlay_context.text(&height, COLOR_OVERLAY_BLUE, None, y_transform, 3., [height_pivot, OverlayPivot::Middle]);
-					}
-					if !tool_data.axis_align && document_start.x != document_current.x && document_start.y != document_current.y {
-						overlay_context.line(quad.top_right(), quad.bottom_right(), None, None);
-						overlay_context.line(quad.bottom_left(), quad.bottom_right(), None, None);
-					}
+					overlay_context.grab_box(document_current - document_start, quad, None);
 				}
 
 				self

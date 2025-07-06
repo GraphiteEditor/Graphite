@@ -256,32 +256,14 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let translation = translation.to_dvec(self.initial_transform, self.increments);
 							let viewport_translate = document_to_viewport.transform_vector2(translation);
 							let pivot = document_to_viewport.transform_point2(self.grab_target);
-							let quad = Quad::from_box([pivot, pivot + viewport_translate]).0;
-							let e1 = (self.layer_bounding_box.0[1] - self.layer_bounding_box.0[0]).normalize_or(DVec2::X);
+							let quad = Quad::from_box([pivot, pivot + viewport_translate]);
+							let typed_string = if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
+								None
+							} else {
+								Some(self.typing.string.clone())
+							};
 
-							if matches!(axis_constraint, Axis::Both | Axis::X) && translation.x != 0. {
-								let end = if self.local { (quad[1] - quad[0]).rotate(e1) + quad[0] } else { quad[1] };
-								overlay_context.dashed_line(quad[0], end, None, None, Some(2.), Some(2.), Some(0.5));
-
-								let x_transform = DAffine2::from_translation((quad[0] + end) / 2.);
-								overlay_context.text(&format_rounded(translation.x, 3), COLOR_OVERLAY_BLUE, None, x_transform, 4., [Pivot::Middle, Pivot::End]);
-							}
-
-							if matches!(axis_constraint, Axis::Both | Axis::Y) && translation.y != 0. {
-								let end = if self.local { (quad[3] - quad[0]).rotate(e1) + quad[0] } else { quad[3] };
-								overlay_context.dashed_line(quad[0], end, None, None, Some(2.), Some(2.), Some(0.5));
-								let x_parameter = viewport_translate.x.clamp(-1., 1.);
-								let y_transform = DAffine2::from_translation((quad[0] + end) / 2. + x_parameter * DVec2::X * 0.);
-								let pivot_selection = if x_parameter >= -1e-3 { Pivot::Start } else { Pivot::End };
-								if axis_constraint != Axis::Both || self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
-									overlay_context.text(&format_rounded(translation.y, 2), COLOR_OVERLAY_BLUE, None, y_transform, 3., [pivot_selection, Pivot::Middle]);
-								}
-							}
-
-							if matches!(axis_constraint, Axis::Both) && translation.x != 0. && translation.y != 0. {
-								overlay_context.line(quad[1], quad[2], None, None);
-								overlay_context.line(quad[3], quad[2], None, None);
-							}
+							overlay_context.grab_box(translation, quad, typed_string);
 						}
 						TransformOperation::Scaling(scale) => {
 							let scale = scale.to_f64(self.increments);
