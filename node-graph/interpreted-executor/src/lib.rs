@@ -20,7 +20,13 @@ mod tests {
 					NodeId(0),
 					DocumentNode {
 						inputs: vec![NodeInput::network(concrete!(u32), 0)],
+<<<<<<< HEAD
 						implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
+||||||| parent of 8e045313 (Migrate pass through and value node to identity implementation)
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
+=======
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::any::IdentityNode")),
+>>>>>>> 8e045313 (Migrate pass through and value node to identity implementation)
 						..Default::default()
 					},
 				),

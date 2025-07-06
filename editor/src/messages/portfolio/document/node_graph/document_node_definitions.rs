@@ -85,11 +85,17 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	let custom = vec![
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
-			identifier: "Identity",
+			identifier: "Pass Through",
 			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
+<<<<<<< HEAD
 					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
+||||||| parent of 8e045313 (Migrate pass through and value node to identity implementation)
+					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
+=======
+					implementation: DocumentNodeImplementation::proto("graphene_std::any::IdentityNode"),
+>>>>>>> 8e045313 (Migrate pass through and value node to identity implementation)
 					inputs: vec![NodeInput::value(TaggedValue::None, true)],
 					..Default::default()
 				},
@@ -100,14 +106,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes."),
-			properties: Some("identity_properties"),
+			properties: Some("pass_through_properties"),
 		},
 		DocumentNodeDefinition {
 			identifier: "Value",
 			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::any::ValueNode"),
+					implementation: DocumentNodeImplementation::proto("graphene_std::any::IdentityNode"),
 					manual_composition: Some(generic!(T)),
 					inputs: vec![NodeInput::value(TaggedValue::None, false)],
 					..Default::default()
@@ -1918,8 +1924,8 @@ fn static_node_properties() -> NodeProperties {
 	map.insert("grid_properties".to_string(), Box::new(node_properties::grid_properties));
 	map.insert("sample_polyline_properties".to_string(), Box::new(node_properties::sample_polyline_properties));
 	map.insert(
-		"identity_properties".to_string(),
-		Box::new(|_node_id, _context| node_properties::string_properties("The identity node passes its data through.")),
+		"pass_through_properties".to_string(),
+		Box::new(|_node_id, _context| node_properties::string_properties("The Pass Through node can be used to organize wires.")),
 	);
 	map.insert(
 		"monitor_properties".to_string(),

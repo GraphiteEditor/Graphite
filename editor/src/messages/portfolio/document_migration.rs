@@ -979,31 +979,12 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[4].clone(), network_path);
 				document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
 				document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
-
-				upgraded = true;
+			} else {
+				// Swap it back if we're not changing anything
+				let _ = document.network_interface.replace_inputs(node_id, network_path, &mut current_node_template);
 			}
 		}
-
-		if !upgraded {
-			let _ = document.network_interface.replace_inputs(node_id, network_path, &mut current_node_template);
-		}
 	}
-
-	// Add the "Depth" parameter to the "Instance Index" node
-	if reference == "Instance Index" && inputs_count == 0 {
-		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
-		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
-
-		let mut node_path = network_path.to_vec();
-		node_path.push(*node_id);
-
-		document.network_interface.add_import(TaggedValue::None, false, 0, "Primary", "", &node_path);
-		document.network_interface.add_import(TaggedValue::U32(0), false, 1, "Loop Level", "TODO", &node_path);
-	}
-
-	// ==================================
-	// PUT ALL MIGRATIONS ABOVE THIS LINE
-	// ==================================
 
 	// Ensure layers are positioned as stacks if they are upstream siblings of another layer
 	document.network_interface.load_structure();
