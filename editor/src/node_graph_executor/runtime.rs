@@ -1,12 +1,12 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use glam::{DAffine2, DVec2};
-use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
+use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::Context;
 use graphene_std::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_std::instances::Instance;
@@ -46,7 +46,7 @@ pub struct NodeRuntime {
 	inspect_state: Option<InspectState>,
 
 	/// Mapping of the fully-qualified node paths to their preprocessor substitutions.
-	substitutions: HashMap<String, DocumentNode>,
+	substitutions: HashMap<ProtoNodeIdentifier, DocumentNode>,
 
 	// TODO: Remove, it doesn't need to be persisted anymore
 	/// The current renders of the thumbnails for layer nodes.

@@ -1,4 +1,4 @@
-use crate::{Node, NodeIO, NodeIOTypes, Type, WasmNotSend};
+use crate::{Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
 use dyn_any::{DynAny, StaticType};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -103,11 +103,11 @@ pub enum RegistryValueSource {
 	Scope(&'static str),
 }
 
-type NodeRegistry = LazyLock<Mutex<HashMap<String, Vec<(NodeConstructor, NodeIOTypes)>>>>;
+type NodeRegistry = LazyLock<Mutex<HashMap<ProtoNodeIdentifier, Vec<(NodeConstructor, NodeIOTypes)>>>>;
 
 pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::new()));
 
-pub static NODE_METADATA: LazyLock<Mutex<HashMap<String, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[cfg(not(target_arch = "wasm32"))]
 pub type DynFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n + Send>>;

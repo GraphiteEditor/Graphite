@@ -2649,11 +2649,11 @@ pub fn resolve_document_node_type(identifier: &str) -> Option<&DocumentNodeDefin
 
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
 	// Create a mapping from registry ID to document node identifier
-	let id_to_identifier_map: HashMap<String, &'static str> = DOCUMENT_NODE_TYPES
+	let id_to_identifier_map: HashMap<ProtoNodeIdentifier, &'static str> = DOCUMENT_NODE_TYPES
 		.iter()
 		.filter_map(|definition| {
-			if let DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) = &definition.node_template.document_node.implementation {
-				Some((name.to_string(), definition.identifier))
+			if let DocumentNodeImplementation::ProtoNode(name) = &definition.node_template.document_node.implementation {
+				Some((name.clone(), definition.identifier))
 			} else {
 				None
 			}
@@ -2661,12 +2661,12 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 		.collect();
 	let mut extracted_node_types = Vec::new();
 
-	let node_registry = graphene_std::registry::NODE_REGISTRY.lock().unwrap();
-	let node_metadata = graphene_std::registry::NODE_METADATA.lock().unwrap();
+	let node_registry = registry::NODE_REGISTRY.lock().unwrap();
+	let node_metadata = registry::NODE_METADATA.lock().unwrap();
 	for (id, metadata) in node_metadata.iter() {
 		if let Some(implementations) = node_registry.get(id) {
 			let identifier = match id_to_identifier_map.get(id) {
-				Some(&id) => id.to_string(),
+				Some(id) => id,
 				None => continue,
 			};
 
@@ -2682,7 +2682,7 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 				.collect::<Vec<String>>();
 
 			// Create a FrontendNodeType
-			let node_type = FrontendNodeType::with_owned_strings_and_input_types(identifier, category, input_types);
+			let node_type = FrontendNodeType::with_owned_strings_and_input_types(identifier.to_string(), category, input_types);
 
 			// Store the created node_type
 			extracted_node_types.push(node_type);

@@ -413,6 +413,7 @@ mod test {
 	use super::*;
 	use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 	use crate::test_utils::test_prelude::{self, NodeGraphLayer};
+	use graph_craft::ProtoNodeIdentifier;
 	use graph_craft::document::NodeNetwork;
 	use graphene_std::Context;
 	use graphene_std::NodeInputDecleration;
@@ -422,7 +423,7 @@ mod test {
 	/// Stores all of the monitor nodes that have been attached to a graph
 	#[derive(Default)]
 	pub struct Instrumented {
-		protonodes_by_name: HashMap<String, Vec<Vec<Vec<NodeId>>>>,
+		protonodes_by_name: HashMap<ProtoNodeIdentifier, Vec<Vec<Vec<NodeId>>>>,
 		protonodes_by_path: HashMap<Vec<NodeId>, Vec<Vec<NodeId>>>,
 	}
 
@@ -449,7 +450,7 @@ mod test {
 				}
 				if let DocumentNodeImplementation::ProtoNode(identifier) = &mut node.implementation {
 					path.push(*id);
-					self.protonodes_by_name.entry(identifier.name.to_string()).or_default().push(monitor_node_ids.clone());
+					self.protonodes_by_name.entry(identifier.clone()).or_default().push(monitor_node_ids.clone());
 					self.protonodes_by_path.insert(path.clone(), monitor_node_ids);
 					path.pop();
 				}
@@ -495,7 +496,7 @@ mod test {
 			Input::Result: Send + Sync + Clone + 'static,
 		{
 			self.protonodes_by_name
-				.get(Input::identifier())
+				.get(&Input::identifier())
 				.map_or([].as_slice(), |x| x.as_slice())
 				.iter()
 				.filter_map(|inputs| inputs.get(Input::INDEX))

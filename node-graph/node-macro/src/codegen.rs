@@ -2,7 +2,7 @@ use crate::parsing::*;
 use convert_case::{Case, Casing};
 use proc_macro_crate::FoundCrate;
 use proc_macro2::TokenStream as TokenStream2;
-use quote::{format_ident, quote, quote_spanned};
+use quote::{ToTokens, format_ident, quote, quote_spanned};
 use std::sync::atomic::AtomicU64;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -330,11 +330,15 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			})
 		}
 	};
-	let path = match parsed.attributes.path {
-		Some(ref path) => quote!(stringify!(#path).replace(' ', "")),
-		None => quote!(std::module_path!().rsplit_once("::").unwrap().0),
+
+	let identifier = format_ident!("{}_proto_ident", fn_name);
+	let identifier_path = match parsed.attributes.path.as_ref() {
+		Some(path) => {
+			let path = path.to_token_stream().to_string().replace(' ', "");
+			quote!(#path)
+		}
+		None => quote!(std::module_path!()),
 	};
-	let identifier = quote!(format!("{}::{}", #path, stringify!(#struct_name)));
 
 	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &identifier)?;
 	let import_name = format_ident!("_IMPORT_STUB_{}", mod_name.to_string().to_case(Case::UpperSnake));
@@ -354,6 +358,11 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		{
 			#eval_impl
 		}
+
+		fn #identifier() -> #graphene_core::ProtoNodeIdentifier {
+			#graphene_core::ProtoNodeIdentifier::from(std::concat!(#identifier_path, "::", std::stringify!(#struct_name)))
+		}
+
 		#[doc(inline)]
 		pub use #mod_name::#struct_name;
 
@@ -418,14 +427,14 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 						)*
 					],
 				};
-				NODE_METADATA.lock().unwrap().insert(#identifier, metadata);
+				NODE_METADATA.lock().unwrap().insert(#identifier(), metadata);
 			}
 		}
 	})
 }
 
 /// Generates strongly typed utilites to access inputs
-fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::GenericParam], field_idents: &[&PatIdent], graphene_core: &TokenStream2, identifier: &TokenStream2) -> TokenStream2 {
+fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::GenericParam], field_idents: &[&PatIdent], graphene_core: &TokenStream2, identifier: &Ident) -> TokenStream2 {
 	if parsed.attributes.skip_impl {
 		return quote! {};
 	}
@@ -462,8 +471,8 @@ fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::G
 		generated_input_accessor.push(quote! {
 			impl <#(#used),*> #graphene_core::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
 				const INDEX: usize = #input_index;
-				fn identifier() -> &'static str {
-					protonode_identifier()
+				fn identifier() -> #graphene_core::ProtoNodeIdentifier {
+					#identifier()
 				}
 				type Result = #ty;
 			}
@@ -474,10 +483,9 @@ fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::G
 		pub mod #inputs_module_name {
 			use super::*;
 
-			pub fn protonode_identifier() -> &'static str {
-				// Storing the string in a once lock should reduce allocations (since we call this in a loop)?
-				static NODE_NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-				NODE_NAME.get_or_init(|| #identifier )
+			/// The `ProtoNodeIdentifier` of this node without any generics attached to it
+			pub fn identifier() -> #graphene_core::ProtoNodeIdentifier {
+				#identifier()
 			}
 			#(#generated_input_accessor)*
 		}
@@ -511,7 +519,7 @@ fn generate_phantom_data<'a>(fn_generics: impl Iterator<Item = &'a crate::Generi
 	(fn_generic_params, phantom_data_declerations)
 }
 
-fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifier: &TokenStream2) -> Result<TokenStream2, Error> {
+fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifier: &Ident) -> Result<TokenStream2, Error> {
 	if parsed.attributes.skip_impl {
 		return Ok(quote!());
 	}
@@ -604,7 +612,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 		fn register_node() {
 			let mut registry = NODE_REGISTRY.lock().unwrap();
 			registry.insert(
-				#identifier,
+				#identifier(),
 				vec![
 					#(#constructors,)*
 				]

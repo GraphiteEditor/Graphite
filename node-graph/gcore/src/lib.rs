@@ -161,7 +161,7 @@ where
 
 pub trait NodeInputDecleration {
 	const INDEX: usize;
-	fn identifier() -> &'static str;
+	fn identifier() -> ProtoNodeIdentifier;
 	type Result;
 }
 
