@@ -2112,7 +2112,19 @@ impl NodeGraphMessageHandler {
 							.icon(Some("Node".to_string()))
 							.tooltip("Add an operation to the end of this layer's chain of nodes")
 							.popover_layout({
-								let node_chooser = NodeCatalog::new()
+								let input_connector = InputConnector::node(layer, 1);
+								let compatible_type =
+									if let Some(OutputConnector::Node { node_id, .. }) = context.network_interface.upstream_output_connector(&input_connector, &context.selection_network_path) {
+										let (output_type, _) = context.network_interface.output_type(&node_id, 0, &context.selection_network_path);
+										Some(format!("type:{}", output_type.nested_type()))
+									} else {
+										None
+									};
+
+								let mut node_chooser = NodeCatalog::new();
+								node_chooser.intial_search = compatible_type.unwrap_or("".to_string());
+
+								let node_chooser = node_chooser
 									.on_update(move |node_type| {
 										NodeGraphMessage::CreateNodeInLayerWithTransaction {
 											node_type: node_type.clone(),

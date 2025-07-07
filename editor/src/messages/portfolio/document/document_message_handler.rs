@@ -16,7 +16,7 @@ use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
@@ -2704,7 +2704,21 @@ impl DocumentMessageHandler {
 				.tooltip("Add an operation to the end of this layer's chain of nodes")
 				.disabled(!has_selection || has_multiple_selection)
 				.popover_layout({
-					let node_chooser = NodeCatalog::new()
+					// Showing only compatible types
+					let compatible_type = selected_layer.and_then(|layer| {
+						let input_connector = InputConnector::node(layer.to_node(), 1);
+						if let Some(OutputConnector::Node { node_id, .. }) = self.network_interface.upstream_output_connector(&input_connector, &self.selection_network_path) {
+							let (output_type, _) = self.network_interface.output_type(&node_id, 0, &self.selection_network_path);
+							Some(format!("type:{}", output_type.nested_type()))
+						} else {
+							None
+						}
+					});
+
+					let mut node_chooser = NodeCatalog::new();
+					node_chooser.intial_search = compatible_type.unwrap_or("".to_string());
+
+					let node_chooser = node_chooser
 						.on_update(move |node_type| {
 							if let Some(layer) = selected_layer {
 								NodeGraphMessage::CreateNodeInLayerWithTransaction {
