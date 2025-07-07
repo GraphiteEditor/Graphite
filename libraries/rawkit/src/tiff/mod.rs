@@ -26,8 +26,8 @@ pub enum TagId {
 	RowsPerStrip = 0x116,
 	StripByteCounts = 0x117,
 	SubIfd = 0x14a,
-	JpegOffset = 0x201,
-	JpegLength = 0x202,
+	ThumbnailOffset = 0x201,
+	ThumbnailLength = 0x202,
 	SonyToneCurve = 0x7010,
 	BlackLevel = 0x7310,
 	WhiteBalanceRggbLevels = 0x7313,
@@ -88,10 +88,10 @@ impl Ifd {
 		}
 
 		file.seek_from_start(offset)?;
-		let num = file.read_u16()?;
+		let num_entries = file.read_u16()?;
 
-		let mut ifd_entries = Vec::with_capacity(num.into());
-		for _ in 0..num {
+		let mut ifd_entries = Vec::with_capacity(num_entries.into());
+		for _ in 0..num_entries {
 			let tag = file.read_u16()?.into();
 			let the_type = file.read_u16()?.into();
 			let count = file.read_u32()?;
