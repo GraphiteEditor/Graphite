@@ -198,7 +198,7 @@ pub struct FrontendClickTargets {
 	pub modify_import_export: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum Direction {
 	Up,
 	Down,

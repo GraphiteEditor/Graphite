@@ -750,6 +750,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// Nudge translation without resizing
 				if !resize {
 					let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
+					responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });
 
 					for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
 						responses.add(GraphOperationMessage::TransformChange {

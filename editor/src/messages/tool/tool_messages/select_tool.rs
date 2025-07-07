@@ -100,6 +100,9 @@ pub enum SelectToolMessage {
 		position: ReferencePoint,
 	},
 	SyncHistory,
+	ShiftSelectedNodes {
+		offset: DVec2,
+	},
 }
 
 impl ToolMetadata for SelectTool {
@@ -570,7 +573,6 @@ impl Fsm for SelectToolFsmState {
 		let ToolActionHandlerData { document, input, font_cache, .. } = tool_action_data;
 
 		let ToolMessage::Select(event) = event else { return self };
-		debug!("{:?}", event);
 		match (self, event) {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
@@ -819,7 +821,6 @@ impl Fsm for SelectToolFsmState {
 					overlay_context.dowel_pin(origin, origin_angle, Some(COLOR_OVERLAY_YELLOW));
 				}
 
-				debug!("{:?}", tool_data.dot_start);
 				let has_layers = document.network_interface.selected_nodes().has_selected_nodes();
 				let draw_pivot = tool_data.dot.state.is_pivot() && overlay_context.visibility_settings.pivot() && has_layers;
 				tool_data.dot.pivot.recalculate_pivot(document);
@@ -1577,6 +1578,13 @@ impl Fsm for SelectToolFsmState {
 			}
 			(_, SelectToolMessage::SyncHistory) => {
 				tool_data.sync_history(&document);
+
+				self
+			}
+			(_, SelectToolMessage::ShiftSelectedNodes { offset }) => {
+				if tool_data.dot.pivot_disconnected() {
+					tool_data.dot.pivot.pivot.as_mut().map(|v| *v += offset);
+				}
 
 				self
 			}
