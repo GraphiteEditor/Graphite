@@ -17,9 +17,8 @@ pub fn pin_pivot_widget(inactive: bool, enabled: bool, source: Source) -> Widget
 		.tooltip(if inactive { "Pin Transform Pivot" } else { "Unpin Transform Pivot" })
 		.disabled(!enabled)
 		.on_update(move |_| match source {
-			Source::Select if enabled => SelectToolMessage::SelectOptions(SelectOptionsUpdate::TogglePivotPinned()).into(),
-			Source::Path if enabled => PathToolMessage::UpdateOptions(PathOptionsUpdate::TogglePivotPinned()).into(),
-			_ => Message::NoOp,
+			Source::Select => SelectToolMessage::SelectOptions(SelectOptionsUpdate::TogglePivotPinned()).into(),
+			Source::Path => PathToolMessage::UpdateOptions(PathOptionsUpdate::TogglePivotPinned()).into(),
 		})
 		.widget_holder()
 }
