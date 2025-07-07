@@ -21,6 +21,8 @@ use graphene_std::extract_xy::XY;
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
 use graphene_std::raster_types::{CPU, RasterDataTable};
 use graphene_std::text::{Font, TypesettingConfig};
+#[allow(unused_imports)]
+use graphene_std::transform::Footprint;
 use graphene_std::vector::VectorDataTable;
 use graphene_std::*;
 use std::collections::{HashMap, HashSet, VecDeque};
