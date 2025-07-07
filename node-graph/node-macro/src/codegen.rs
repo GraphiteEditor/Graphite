@@ -435,48 +435,47 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 /// Generates strongly typed utilites to access inputs
 fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::GenericParam], field_idents: &[&PatIdent], graphene_core: &TokenStream2, identifier: &Ident) -> TokenStream2 {
-	if parsed.attributes.skip_impl {
-		return quote! {};
-	}
 	let inputs_module_name = format_ident!("{}", parsed.struct_name.to_string().to_case(Case::Snake));
 
-	let (mut modified, mut generic_collector) = FilterUsedGenerics::new(fn_generics);
-
 	let mut generated_input_accessor = Vec::new();
-	for (input_index, (parsed_input, input_ident)) in parsed.fields.iter().zip(field_idents).enumerate() {
-		let mut ty = match parsed_input {
-			ParsedField::Regular { ty, .. } => ty,
-			ParsedField::Node { output_type, .. } => output_type,
+	if !parsed.attributes.skip_impl {
+		let (mut modified, mut generic_collector) = FilterUsedGenerics::new(fn_generics);
+
+		for (input_index, (parsed_input, input_ident)) in parsed.fields.iter().zip(field_idents).enumerate() {
+			let mut ty = match parsed_input {
+				ParsedField::Regular { ty, .. } => ty,
+				ParsedField::Node { output_type, .. } => output_type,
+			}
+			.clone();
+
+			// We only want the necessary generics.
+			let used = generic_collector.filter_unnecessary_generics(&mut modified, &mut ty);
+			// TODO: figure out a better name that doesn't conflict with so many types
+			let struct_name = format_ident!("{}Input", input_ident.ident.to_string().to_case(Case::Pascal));
+			let (fn_generic_params, phantom_data_declerations) = generate_phantom_data(used.iter());
+
+			// Only create structs with phantom data where necessary.
+			generated_input_accessor.push(if phantom_data_declerations.is_empty() {
+				quote! {
+					pub struct #struct_name;
+				}
+			} else {
+				quote! {
+					pub struct #struct_name <#(#used),*>{
+						#(#phantom_data_declerations,)*
+					}
+				}
+			});
+			generated_input_accessor.push(quote! {
+				impl <#(#used),*> #graphene_core::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
+					const INDEX: usize = #input_index;
+					fn identifier() -> #graphene_core::ProtoNodeIdentifier {
+						#identifier()
+					}
+					type Result = #ty;
+				}
+			})
 		}
-		.clone();
-
-		// We only want the necessary generics.
-		let used = generic_collector.filter_unnecessary_generics(&mut modified, &mut ty);
-		// TODO: figure out a better name that doesn't conflict with so many types
-		let struct_name = format_ident!("{}Input", input_ident.ident.to_string().to_case(Case::Pascal));
-		let (fn_generic_params, phantom_data_declerations) = generate_phantom_data(used.iter());
-
-		// Only create structs with phantom data where necessary.
-		generated_input_accessor.push(if phantom_data_declerations.is_empty() {
-			quote! {
-				pub struct #struct_name;
-			}
-		} else {
-			quote! {
-				pub struct #struct_name <#(#used),*>{
-					#(#phantom_data_declerations,)*
-				}
-			}
-		});
-		generated_input_accessor.push(quote! {
-			impl <#(#used),*> #graphene_core::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
-				const INDEX: usize = #input_index;
-				fn identifier() -> #graphene_core::ProtoNodeIdentifier {
-					#identifier()
-				}
-				type Result = #ty;
-			}
-		})
 	}
 
 	quote! {
