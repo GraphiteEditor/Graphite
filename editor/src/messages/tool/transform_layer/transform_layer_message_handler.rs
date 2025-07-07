@@ -95,7 +95,7 @@ fn calculate_pivot(
 				match dot.state.dot {
 					DotType::Average => None,
 					DotType::Active => dot.point.and_then(|p| get_location(&p)),
-					DotType::Pivot => dot.pivot.position(),
+					DotType::Pivot => dot.pivot.pivot,
 				}
 			} else {
 				None

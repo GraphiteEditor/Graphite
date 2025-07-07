@@ -376,6 +376,7 @@ struct SelectToolData {
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
 	dot: Dot,
+	dot_start: Option<DVec2>,
 	compass_rose: CompassRose,
 	line_center: DVec2,
 	skew_edge: EdgeBool,
@@ -569,6 +570,7 @@ impl Fsm for SelectToolFsmState {
 		let ToolActionHandlerData { document, input, font_cache, .. } = tool_action_data;
 
 		let ToolMessage::Select(event) = event else { return self };
+		debug!("{:?}", event);
 		match (self, event) {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
@@ -817,9 +819,18 @@ impl Fsm for SelectToolFsmState {
 					overlay_context.dowel_pin(origin, origin_angle, Some(COLOR_OVERLAY_YELLOW));
 				}
 
+				debug!("{:?}", tool_data.dot_start);
 				let has_layers = document.network_interface.selected_nodes().has_selected_nodes();
 				let draw_pivot = tool_data.dot.state.is_pivot() && overlay_context.visibility_settings.pivot() && has_layers;
-				tool_data.dot.pivot.update(document, &mut overlay_context, Some((angle,)), draw_pivot);
+				tool_data.dot.pivot.recalculate_pivot(document);
+				let pivot = draw_pivot.then_some(tool_data.dot.pivot.pivot).flatten();
+				if let Some(pivot) = pivot {
+					let offset = tool_data
+						.dot_start
+						.map(|offset| tool_data.dot.pivot_disconnected().then_some(tool_data.drag_current - offset).unwrap_or_default())
+						.unwrap_or_default();
+					overlay_context.pivot(pivot + offset, angle);
+				}
 
 				// Update compass rose
 				if overlay_context.visibility_settings.compass_rose() {
@@ -1029,6 +1040,8 @@ impl Fsm for SelectToolFsmState {
 						let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
 						(axis_state.unwrap_or_default(), axis_state.is_some())
 					};
+
+					tool_data.dot_start = Some(tool_data.drag_current);
 					SelectToolFsmState::Dragging {
 						axis,
 						using_compass,
@@ -1065,6 +1078,8 @@ impl Fsm for SelectToolFsmState {
 						tool_data.get_snap_candidates(document, input);
 
 						responses.add(DocumentMessage::StartTransaction);
+
+						tool_data.dot_start = Some(tool_data.drag_current);
 						SelectToolFsmState::Dragging {
 							axis: Axis::None,
 							using_compass: false,
@@ -1393,6 +1408,12 @@ impl Fsm for SelectToolFsmState {
 
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.select_single_layer = None;
+
+				if let Some(start) = tool_data.dot_start {
+					let offset = tool_data.dot.pivot_disconnected().then_some(tool_data.drag_current - start).unwrap_or_default();
+					tool_data.dot.pivot.pivot.as_mut().map(|v| *v += offset);
+				}
+				tool_data.dot_start = None;
 
 				let dot = tool_data.get_as_dot();
 				responses.add(TransformLayerMessage::SetDot { dot });

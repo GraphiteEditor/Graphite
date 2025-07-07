@@ -1,7 +1,6 @@
 //! Handler for the pivot overlay visible on the selected layer(s) whilst using the Select tool which controls the center of rotation/scale.
 
 use crate::consts::PIVOT_DIAMETER;
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -91,7 +90,7 @@ impl Dot {
 			.then_some({
 				match self.state.dot {
 					DotType::Average => Some(network.selected_nodes().selected_visible_and_unlocked_layers_mean_average_origin(network)),
-					DotType::Pivot => self.pivot.position(),
+					DotType::Pivot => self.pivot.pivot,
 					DotType::Active => self.layer.map(|layer| graph_modification_utils::get_viewport_origin(layer, network)),
 				}
 			})
@@ -106,6 +105,10 @@ impl Dot {
 
 	pub fn pin_active(&self) -> bool {
 		self.pivot.pinned && self.state.is_pivot_type()
+	}
+
+	pub fn pivot_disconnected(&self) -> bool {
+		self.pivot.old_pivot_position == ReferencePoint::None
 	}
 }
 
@@ -163,13 +166,11 @@ pub struct Pivot {
 	/// Transform to get from normalized pivot to viewspace
 	pub transform_from_normalized: DAffine2,
 	/// The viewspace pivot position
-	pivot: Option<DVec2>,
+	pub pivot: Option<DVec2>,
 	/// The old pivot position in the GUI, used to reduce refreshes of the document bar
 	pub old_pivot_position: ReferencePoint,
 	/// The last ReferencePoint which wasn't none
 	pub last_non_none_reference: ReferencePoint,
-	/// Used to enable and disable the pivot
-	active: bool,
 	/// Used to enable and disable the pivot
 	pub pinned: bool,
 	/// Had selected_visible_and_unlocked_layers
@@ -184,7 +185,6 @@ impl Default for Pivot {
 			pivot: Default::default(),
 			old_pivot_position: ReferencePoint::Center,
 			last_non_none_reference: ReferencePoint::Center,
-			active: true,
 			pinned: false,
 			empty: true,
 		}
@@ -194,12 +194,7 @@ impl Default for Pivot {
 impl Pivot {
 	/// Recomputes the pivot position and transform.
 	pub fn recalculate_pivot(&mut self, document: &DocumentMessageHandler) {
-		if !self.active {
-			return;
-		}
-
 		let selected = document.network_interface.selected_nodes();
-
 		self.empty = !selected.has_selected_nodes();
 		if !selected.has_selected_nodes() {
 			return;
@@ -231,10 +226,6 @@ impl Pivot {
 	}
 
 	pub fn recalculate_pivot_for_layer(&mut self, document: &DocumentMessageHandler, bounds: Option<[DVec2; 2]>) {
-		if !self.active {
-			return;
-		}
-
 		let selected = document.network_interface.selected_nodes();
 		if !selected.has_selected_nodes() {
 			self.normalized_pivot = DVec2::splat(0.5);
@@ -247,29 +238,8 @@ impl Pivot {
 		self.pivot = Some(self.transform_from_normalized.transform_point2(self.normalized_pivot));
 	}
 
-	pub fn update(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, draw_data: Option<(f64,)>, draw: bool) {
-		if !overlay_context.visibility_settings.pivot() {
-			self.active = false;
-			return;
-		} else {
-			self.active = true;
-		}
-
-		self.recalculate_pivot(document);
-		if !draw {
-			return;
-		};
-		if let (Some(pivot), Some(data)) = (self.pivot, draw_data) {
-			overlay_context.pivot(pivot, data.0);
-		}
-	}
-
 	/// Answers if the pivot widget has changed (so we should refresh the tool bar at the top of the canvas).
 	pub fn should_refresh_pivot_position(&mut self) -> bool {
-		if !self.active {
-			return false;
-		}
-
 		let new = self.to_pivot_position();
 		let should_refresh = new != self.old_pivot_position;
 		self.old_pivot_position = new;
@@ -280,16 +250,8 @@ impl Pivot {
 		self.normalized_pivot.into()
 	}
 
-	pub fn position(&self) -> Option<DVec2> {
-		self.pivot
-	}
-
 	/// Sets the viewport position of the pivot.
 	pub fn set_viewport_position(&mut self, position: DVec2) {
-		if !self.active {
-			return;
-		}
-
 		if self.transform_from_normalized.matrix2.determinant().abs() <= f64::EPSILON {
 			return;
 		};
@@ -300,18 +262,12 @@ impl Pivot {
 
 	/// Set the pivot using a normalized position.
 	pub fn set_normalized_position(&mut self, position: DVec2) {
-		if !self.active {
-			return;
-		}
 		self.normalized_pivot = position;
 		self.pivot = Some(self.transform_from_normalized.transform_point2(position));
 	}
 
 	/// Answers if the pointer is currently positioned over the pivot.
 	pub fn is_over(&self, mouse: DVec2) -> bool {
-		if !self.active {
-			return false;
-		}
 		self.pivot.filter(|&pivot| mouse.distance_squared(pivot) < (PIVOT_DIAMETER / 2.).powi(2)).is_some()
 	}
 }
