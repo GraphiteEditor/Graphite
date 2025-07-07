@@ -359,8 +359,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			#eval_impl
 		}
 
-		fn #identifier() -> #graphene_core::ProtoNodeIdentifier {
-			#graphene_core::ProtoNodeIdentifier::from(std::concat!(#identifier_path, "::", std::stringify!(#struct_name)))
+		const fn #identifier() -> #graphene_core::ProtoNodeIdentifier {
+			#graphene_core::ProtoNodeIdentifier::new(std::concat!(#identifier_path, "::", std::stringify!(#struct_name)))
 		}
 
 		#[doc(inline)]
@@ -470,7 +470,7 @@ fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::G
 				impl <#(#used),*> #graphene_core::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
 					const INDEX: usize = #input_index;
 					fn identifier() -> #graphene_core::ProtoNodeIdentifier {
-						#identifier()
+						#inputs_module_name::IDENTIFIER.clone()
 					}
 					type Result = #ty;
 				}
@@ -483,9 +483,7 @@ fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::G
 			use super::*;
 
 			/// The `ProtoNodeIdentifier` of this node without any generics attached to it
-			pub fn identifier() -> #graphene_core::ProtoNodeIdentifier {
-				#identifier()
-			}
+			pub const IDENTIFIER: #graphene_core::ProtoNodeIdentifier = #identifier();
 			#(#generated_input_accessor)*
 		}
 	}

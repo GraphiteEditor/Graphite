@@ -51,9 +51,7 @@ impl<T, CachedNode> MemoNode<T, CachedNode> {
 }
 
 pub mod memo {
-	pub fn identifier() -> crate::ProtoNodeIdentifier {
-		crate::ProtoNodeIdentifier::from("graphene_core::memo::MemoNode")
-	}
+	pub const IDENTIFIER: crate::ProtoNodeIdentifier = crate::ProtoNodeIdentifier::new("graphene_core::memo::MemoNode");
 }
 
 /// Caches the output of a given Node and acts as a proxy.
@@ -106,9 +104,7 @@ impl<T, I, CachedNode> ImpureMemoNode<I, T, CachedNode> {
 }
 
 pub mod impure_memo {
-	pub fn identifier() -> crate::ProtoNodeIdentifier {
-		crate::ProtoNodeIdentifier::from("graphene_core::memo::ImpureMemoNode")
-	}
+	pub const IDENTIFIER: crate::ProtoNodeIdentifier = crate::ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode");
 }
 
 /// Stores both what a node was called with and what it returned.
@@ -156,9 +152,7 @@ impl<I, T, N> MonitorNode<I, T, N> {
 }
 
 pub mod monitor {
-	pub fn identifier() -> crate::ProtoNodeIdentifier {
-		crate::ProtoNodeIdentifier::from("graphene_core::memo::MonitorNode")
-	}
+	pub const IDENTIFIER: crate::ProtoNodeIdentifier = crate::ProtoNodeIdentifier::new("graphene_core::memo::MonitorNode");
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]

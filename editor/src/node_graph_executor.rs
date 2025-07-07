@@ -458,7 +458,7 @@ mod test {
 			for (input, monitor_id) in monitor_nodes {
 				let monitor_node = DocumentNode {
 					inputs: vec![input],
-					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::identifier()),
+					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER),
 					manual_composition: Some(graph_craft::generic!(T)),
 					skip_deduplication: true,
 					..Default::default()
