@@ -9,10 +9,10 @@ use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Artboard;
+use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{CPU, RasterDataTable};
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::brush_stroke::BrushStroke;
 use graphene_std::vector::style::{Fill, Stroke};
 use graphene_std::vector::{PointId, VectorModificationType};
 use graphene_std::vector::{VectorData, VectorDataTable};
@@ -97,6 +97,8 @@ impl<'a> ModifyInputsContext<'a> {
 			};
 		}
 
+		let layer_input_connector = post_node_input_connector.clone();
+
 		// Sink post_node down to the end of the non layer chain that feeds into post_node, such that pre_node is the layer node at insert_index + 1, or None if insert_index is the last layer
 		loop {
 			let pre_node_output_connector = network_interface.upstream_output_connector(&post_node_input_connector, &[]);
@@ -105,6 +107,11 @@ impl<'a> ModifyInputsContext<'a> {
 				Some(OutputConnector::Node { node_id: pre_node_id, .. }) if !network_interface.is_layer(&pre_node_id, &[]) => {
 					// Update post_node_input_connector for the next iteration
 					post_node_input_connector = InputConnector::node(pre_node_id, 0);
+					// Insert directly under layer if moving to the end of a layer stack that ends with a non layer node that does not have an exposed primary input
+					let primary_is_exposed = network_interface.input_from_connector(&post_node_input_connector, &[]).is_some_and(|input| input.is_exposed());
+					if !primary_is_exposed {
+						return layer_input_connector;
+					}
 				}
 				_ => break, // Break if pre_node_output_connector is None or if pre_node_id is a layer
 			}
@@ -190,6 +197,7 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::value(TaggedValue::F64(typesetting.character_spacing), false)),
 			Some(NodeInput::value(TaggedValue::OptionalF64(typesetting.max_width), false)),
 			Some(NodeInput::value(TaggedValue::OptionalF64(typesetting.max_height), false)),
+			Some(NodeInput::value(TaggedValue::F64(typesetting.tilt), false)),
 		]);
 
 		let text_id = NodeId::new();
