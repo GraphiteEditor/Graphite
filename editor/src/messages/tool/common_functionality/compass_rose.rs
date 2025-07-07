@@ -1,5 +1,4 @@
 use crate::consts::{COMPASS_ROSE_ARROW_CLICK_TARGET_ANGLE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER};
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::DocumentMessageHandler;
 use glam::{DAffine2, DVec2};
 use std::f64::consts::FRAC_PI_2;
@@ -10,25 +9,33 @@ pub struct CompassRose {
 }
 
 impl CompassRose {
-	fn get_layer_pivot_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
-		let [min, max] = document.metadata().nonzero_bounding_box(layer);
-
-		let bounds_transform = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
-		let layer_transform = document.metadata().transform_to_viewport(layer);
-		layer_transform * bounds_transform
-	}
 	pub fn refresh_position(&mut self, document: &DocumentMessageHandler) {
-		let selected_nodes = document.network_interface.selected_nodes();
-		let mut layers = selected_nodes.selected_visible_and_unlocked_layers(&document.network_interface);
+		let selected = document.network_interface.selected_nodes();
 
-		let Some(first) = layers.next() else { return };
-		let count = layers.count() + 1;
-		let transform = if count == 1 {
-			Self::get_layer_pivot_transform(first, document)
-		} else {
-			let [min, max] = document.selected_visible_and_unlock_layers_bounding_box_viewport().unwrap_or([DVec2::ZERO, DVec2::ONE]);
-			DAffine2::from_translation(min) * DAffine2::from_scale(max - min)
+		if !selected.has_selected_nodes() {
+			return;
 		};
+
+		let transform = selected
+			.selected_visible_and_unlocked_layers(&document.network_interface)
+			.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+			.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
+			.unwrap_or_default();
+
+		let bounds = document
+			.network_interface
+			.selected_nodes()
+			.selected_visible_and_unlocked_layers(&document.network_interface)
+			.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+			.filter_map(|layer| {
+				document
+					.metadata()
+					.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))
+			})
+			.reduce(graphene_std::renderer::Quad::combine_bounds);
+
+		let [min, max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
+		let transform = transform * DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
 
 		self.compass_center = transform.transform_point2(DVec2::splat(0.5));
 	}
