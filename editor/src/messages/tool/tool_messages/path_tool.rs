@@ -17,7 +17,7 @@ use crate::messages::tool::common_functionality::shape_editor::{
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate};
-use bezier_rs::{Bezier, TValue};
+use bezier_rs::{Bezier, BezierHandles, TValue};
 use graphene_std::renderer::Quad;
 use graphene_std::transform::ReferencePoint;
 use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, VectorData};
@@ -725,13 +725,15 @@ impl PathToolData {
 				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Dragging(self.dragging_state)
 			} else {
-				let handle1 = ManipulatorPointId::PrimaryHandle(segment.segment());
-				let handle2 = ManipulatorPointId::EndHandle(segment.segment());
-				if let Some(vector_data) = document.network_interface.compute_modified_vector(segment.layer()) {
-					if let (Some(pos1), Some(pos2)) = (handle1.get_position(&vector_data), handle2.get_position(&vector_data)) {
-						self.molding_info = Some((pos1, pos2))
-					}
-				}
+				let start_pos = segment.bezier().start;
+				let end_pos = segment.bezier().end;
+
+				let [pos1, pos2] = match segment.bezier().handles {
+					BezierHandles::Cubic { handle_start, handle_end } => [handle_start, handle_end],
+					BezierHandles::Quadratic { handle } => [handle, end_pos],
+					BezierHandles::Linear => [start_pos + (end_pos - start_pos) / 3., end_pos + (start_pos - end_pos) / 3.],
+				};
+				self.molding_info = Some((pos1, pos2));
 				PathToolFsmState::Dragging(self.dragging_state)
 			}
 		}

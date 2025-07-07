@@ -4093,6 +4093,18 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	// When opening an old document to ensure the output names match the number of exports
+	pub fn validate_output_names(&mut self, node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId]) {
+		if let DocumentNodeImplementation::Network(network) = &node.implementation {
+			let number_of_exports = network.exports.len();
+			let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
+				log::error!("Could not get metadata for node: {:?}", node_id);
+				return;
+			};
+			metadata.persistent_metadata.output_names.resize(number_of_exports, "".to_string());
+		}
+	}
+
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
 	pub fn replace_reference_name(&mut self, node_id: &NodeId, network_path: &[NodeId], reference_name: String) {
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
@@ -5639,7 +5651,6 @@ impl NodeNetworkInterface {
 		self.unload_all_nodes_bounding_box(network_path);
 	}
 
-	// TODO: Run the auto layout system to make space for the new nodes
 	/// Disconnect the layers primary output and the input to the last non layer node feeding into it through primary flow, reconnects, then moves the layer to the new layer and stack index
 	pub fn move_layer_to_stack(&mut self, layer: LayerNodeIdentifier, mut parent: LayerNodeIdentifier, mut insert_index: usize, network_path: &[NodeId]) {
 		// Prevent moving an artboard anywhere but to the ROOT_PARENT child stack
