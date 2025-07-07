@@ -2666,23 +2666,23 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 	for (id, metadata) in node_metadata.iter() {
 		if let Some(implementations) = node_registry.get(id) {
 			let identifier = match id_to_identifier_map.get(id) {
-				Some(id) => id,
+				Some(&id) => id,
 				None => continue,
 			};
 
 			// Extract category from metadata (already creates an owned String)
-			let category = metadata.category.unwrap_or_default().to_string();
+			let category = metadata.category.unwrap_or_default();
 
 			// Extract input types (already creates owned Strings)
 			let input_types = implementations
 				.iter()
-				.flat_map(|(_, node_io)| node_io.inputs.iter().map(|ty| ty.nested_type().to_string()))
-				.collect::<HashSet<String>>()
+				.flat_map(|(_, node_io)| node_io.inputs.iter().map(|ty| ty.nested_type().to_cow_string()))
+				.collect::<HashSet<Cow<'static, str>>>()
 				.into_iter()
-				.collect::<Vec<String>>();
+				.collect::<Vec<Cow<'static, str>>>();
 
 			// Create a FrontendNodeType
-			let node_type = FrontendNodeType::with_owned_strings_and_input_types(identifier.to_string(), category, input_types);
+			let node_type = FrontendNodeType::with_input_types(identifier, category, input_types);
 
 			// Store the created node_type
 			extracted_node_types.push(node_type);
@@ -2698,8 +2698,8 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 				.document_node
 				.inputs
 				.iter()
-				.filter_map(|node_input| node_input.as_value().map(|node_value| node_value.ty().nested_type().to_string()))
-				.collect::<Vec<String>>();
+				.filter_map(|node_input| node_input.as_value().map(|node_value| node_value.ty().nested_type().to_cow_string()))
+				.collect::<Vec<Cow<'static, str>>>();
 
 			FrontendNodeType::with_input_types(definition.identifier, definition.category, input_types)
 		})

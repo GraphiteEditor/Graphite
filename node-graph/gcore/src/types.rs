@@ -332,6 +332,13 @@ impl Type {
 			Self::Future(output) => output.replace_nested(f),
 		}
 	}
+
+	pub fn to_cow_string(&self) -> Cow<'static, str> {
+		match self {
+			Type::Generic(name) => name.clone(),
+			_ => Cow::Owned(self.to_string()),
+		}
+	}
 }
 
 fn format_type(ty: &str) -> String {
