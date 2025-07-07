@@ -190,6 +190,8 @@ pub fn document_migration_reset_node_definition(document_serialized_content: &st
 }
 
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
+	document.network_interface.migrate_path_modify_node();
+
 	let network = document.network_interface.document_network().clone();
 
 	// Apply string replacements to each node

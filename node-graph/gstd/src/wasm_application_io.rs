@@ -18,7 +18,6 @@ use graphene_svg_renderer::{GraphicElementRendered, RenderParams, RenderSvgSegme
 use base64::Engine;
 #[cfg(target_arch = "wasm32")]
 use glam::DAffine2;
-use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;

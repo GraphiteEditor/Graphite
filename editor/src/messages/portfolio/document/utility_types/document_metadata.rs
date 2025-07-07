@@ -90,17 +90,15 @@ impl DocumentMetadata {
 
 		let mut use_local = true;
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
-		info!("feeds");
 		if let Some(path_node) = graph_layer.upstream_node_id_from_name("Path") {
-			info!("Path node {path_node:?} ");
 			if let Some(&source) = self.first_instance_source_ids.get(&layer.to_node()) {
 				if !network_interface
 					.upstream_flow_back_from_nodes(vec![path_node], &[], FlowType::HorizontalFlow)
 					.any(|upstream| Some(upstream) == source)
 				{
 					use_local = false;
+					info!("Local transform is invalid — using the identity for the local transform instead")
 				}
-				info!("Path node {path_node:?} source {source:?} {use_local}");
 			}
 		}
 		let local_transform = use_local.then(|| self.local_transforms.get(&layer.to_node()).copied()).flatten().unwrap_or_default();

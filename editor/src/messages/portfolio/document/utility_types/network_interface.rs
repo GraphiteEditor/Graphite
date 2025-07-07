@@ -60,6 +60,27 @@ impl PartialEq for NodeNetworkInterface {
 	}
 }
 
+impl NodeNetworkInterface {
+	/// Add DocumentNodePath input to the PathModifyNode protonode
+	pub fn migrate_path_modify_node(&mut self) {
+		fix_network(&mut self.network);
+		fn fix_network(network: &mut NodeNetwork) {
+			for node in network.nodes.values_mut() {
+				if let Some(network) = node.implementation.get_network_mut() {
+					fix_network(network);
+				}
+				if let DocumentNodeImplementation::ProtoNode(protonode) = &node.implementation {
+					if protonode.name.contains("PathModifyNode") {
+						if node.inputs.len() < 3 {
+							node.inputs.push(NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath));
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 // Public immutable getters for the network interface
 impl NodeNetworkInterface {
 	// TODO: Make private and use .field_name getter methods
