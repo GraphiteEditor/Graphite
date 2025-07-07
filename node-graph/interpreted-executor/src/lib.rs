@@ -20,7 +20,7 @@ mod tests {
 					NodeId(0),
 					DocumentNode {
 						inputs: vec![NodeInput::network(concrete!(u32), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
+						implementation: DocumentNodeImplementation::ProtoNode(ops::identity::identifier()),
 						..Default::default()
 					},
 				),

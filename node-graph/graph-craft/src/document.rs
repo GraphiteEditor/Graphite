@@ -486,10 +486,6 @@ impl DocumentNodeImplementation {
 		}
 	}
 
-	pub const fn proto(name: &'static str) -> Self {
-		Self::ProtoNode(ProtoNodeIdentifier::new(name))
-	}
-
 	pub fn output_count(&self) -> usize {
 		match self {
 			DocumentNodeImplementation::Network(network) => network.exports.len(),
@@ -1268,7 +1264,6 @@ impl<'a> Iterator for RecursiveNodeIter<'a> {
 mod test {
 	use super::*;
 	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
-	use graphene_core::ProtoNodeIdentifier;
 	use std::sync::atomic::AtomicU64;
 
 	fn gen_node_id() -> NodeId {
@@ -1540,7 +1535,7 @@ mod test {
 					NodeId(1),
 					DocumentNode {
 						inputs: vec![NodeInput::network(concrete!(u32), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::identifier()),
 						..Default::default()
 					},
 				),
@@ -1548,7 +1543,7 @@ mod test {
 					NodeId(2),
 					DocumentNode {
 						inputs: vec![NodeInput::network(concrete!(u32), 1)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::identifier()),
 						..Default::default()
 					},
 				),
@@ -1575,7 +1570,7 @@ mod test {
 					NodeId(2),
 					DocumentNode {
 						inputs: vec![result_node_input],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::identifier()),
 						..Default::default()
 					},
 				),

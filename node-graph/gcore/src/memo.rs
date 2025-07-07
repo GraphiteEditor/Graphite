@@ -2,6 +2,7 @@ use crate::{Node, WasmNotSend};
 use dyn_any::DynFuture;
 use std::future::Future;
 use std::hash::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -46,6 +47,12 @@ where
 impl<T, CachedNode> MemoNode<T, CachedNode> {
 	pub fn new(node: CachedNode) -> MemoNode<T, CachedNode> {
 		MemoNode { cache: Default::default(), node }
+	}
+}
+
+pub mod memo {
+	pub fn identifier() -> crate::ProtoNodeIdentifier {
+		crate::ProtoNodeIdentifier::from("graphene_core::memo::MemoNode")
 	}
 }
 
@@ -98,6 +105,12 @@ impl<T, I, CachedNode> ImpureMemoNode<I, T, CachedNode> {
 	}
 }
 
+pub mod impure_memo {
+	pub fn identifier() -> crate::ProtoNodeIdentifier {
+		crate::ProtoNodeIdentifier::from("graphene_core::memo::ImpureMemoNode")
+	}
+}
+
 /// Stores both what a node was called with and what it returned.
 #[derive(Clone, Debug)]
 pub struct IORecord<I, O> {
@@ -142,7 +155,12 @@ impl<I, T, N> MonitorNode<I, T, N> {
 	}
 }
 
-use std::hash::{Hash, Hasher};
+pub mod monitor {
+	pub fn identifier() -> crate::ProtoNodeIdentifier {
+		crate::ProtoNodeIdentifier::from("graphene_core::memo::MonitorNode")
+	}
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct MemoHash<T: Hash> {
 	hash: u64,
