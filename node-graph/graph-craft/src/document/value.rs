@@ -8,11 +8,13 @@ use graphene_application_io::SurfaceFrame;
 use graphene_brush::brush_cache::BrushCache;
 use graphene_brush::brush_stroke::BrushStroke;
 use graphene_core::raster_types::CPU;
+use graphene_core::registry::{ChoiceTypeStatic, ChoiceWidgetHint, VariantMetadata};
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
 use graphene_core::vector::style::Fill;
-use graphene_core::{Color, MemoHash, Node, Type};
+use graphene_core::{AsU32, Color, MemoHash, Node, Type};
 use graphene_svg_renderer::RenderMetadata;
+use std::borrow::Cow;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -34,6 +36,65 @@ macro_rules! tagged_value {
 			SurfaceFrame(SurfaceFrame),
 			#[serde(skip)]
 			EditorApi(Arc<WasmEditorApi>)
+		}
+
+		#[derive(Clone, Copy, Debug)]
+		#[repr(u32)]
+		pub enum TaggedValueChoice {
+			None,
+			$($identifier,)*
+		}
+
+		impl TaggedValueChoice {
+			pub fn to_tagged_value(&self) -> TaggedValue {
+				match self {
+					TaggedValueChoice::None => TaggedValue::None,
+					$(TaggedValueChoice::$identifier => TaggedValue::$identifier(Default::default()),)*
+				}
+			}
+			pub fn from_tagged_value(value: &TaggedValue) -> Option<Self> {
+				match value {
+					TaggedValue::None => Some(TaggedValueChoice::None),
+					$( TaggedValue::$identifier(_) => Some(TaggedValueChoice::$identifier), )*
+					_ => None
+				}
+			}
+		}
+
+		impl ChoiceTypeStatic for TaggedValueChoice {
+			const WIDGET_HINT: ChoiceWidgetHint = ChoiceWidgetHint::Dropdown; // or your preferred hint
+
+			const DESCRIPTION: Option<&'static str> = Some("Select a value");
+
+			fn list() -> &'static [&'static [(Self, VariantMetadata)]] {
+
+				const COUNT: usize = 0 $( + one!($identifier) )*;
+				// Define static array of (choice, metadata) tuples
+				static VALUES: [(TaggedValueChoice, VariantMetadata); 1 + COUNT] = [
+
+					(TaggedValueChoice::None, VariantMetadata {
+						name: Cow::Borrowed(stringify!(None)),
+						label: Cow::Borrowed(stringify!(None)),
+						docstring: None,
+						icon: None,
+					}),
+					$(
+						(TaggedValueChoice::$identifier, VariantMetadata {
+							name: Cow::Borrowed(stringify!($identifier)),
+							label: Cow::Borrowed(stringify!($identifier)),
+							docstring: None,
+							icon: None,
+						}),
+					)*
+				];
+
+				// Static reference to the slice of VALUES
+				static LIST: [&'static [(TaggedValueChoice, VariantMetadata)]; 1] = [
+					&VALUES,
+				];
+
+				&LIST
+			}
 		}
 
 		// We must manually implement hashing because some values are floats and so do not reproducibly hash (see FakeHash below)
@@ -152,6 +213,12 @@ macro_rules! tagged_value {
 				}
 			}
 		)*
+	};
+}
+
+macro_rules! one {
+	($anything:tt) => {
+		1
 	};
 }
 
@@ -384,6 +451,12 @@ impl Display for TaggedValue {
 			TaggedValue::Bool(x) => f.write_fmt(format_args!("{x}")),
 			_ => panic!("Cannot convert to string"),
 		}
+	}
+}
+
+impl AsU32 for TaggedValueChoice {
+	fn as_u32(&self) -> u32 {
+		*self as u32
 	}
 }
 

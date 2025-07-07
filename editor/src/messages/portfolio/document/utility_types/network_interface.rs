@@ -480,6 +480,24 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	pub fn take_input(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<NodeInput> {
+		let Some(network) = self.network_mut(network_path) else {
+			log::error!("Could not get network in input_from_connector");
+			return None;
+		};
+		let input = match input_connector {
+			InputConnector::Node { node_id, input_index } => {
+				let Some(node) = network.nodes.get_mut(node_id) else {
+					log::error!("Could not get node {node_id} in input_from_connector");
+					return None;
+				};
+				node.inputs.get_mut(*input_index)
+			}
+			InputConnector::Export(export_index) => network.exports.get_mut(*export_index),
+		};
+		input.map(|input| std::mem::replace(input, NodeInput::value(TaggedValue::None, true)))
+	}
+
 	/// Try and get the [`Type`] for any [`InputConnector`] based on the `self.resolved_types`.
 	fn node_type_from_compiled(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<(Type, TypeSource)> {
 		let (node_id, input_index) = match *input_connector {
@@ -4211,11 +4229,21 @@ impl NodeNetworkInterface {
 		// Side effects
 		match (&old_input, &new_input) {
 			// If a node input is exposed or hidden reload the click targets and update the bounding box for all nodes
-			(NodeInput::Value { exposed: new_exposed, .. }, NodeInput::Value { exposed: old_exposed, .. }) => {
+			(NodeInput::Value { exposed: new_exposed, .. }, NodeInput::Value { exposed: old_exposed, tagged_value }) => {
 				if let InputConnector::Node { node_id, .. } = input_connector {
 					if new_exposed != old_exposed {
 						self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 						self.unload_all_nodes_bounding_box(network_path);
+					}
+				}
+				// Update the name of the value node
+				if let InputConnector::Node { node_id, .. } = input_connector {
+					let Some(reference) = self.reference(node_id, network_path) else {
+						log::error!("Could not get reference for {:?}", node_id);
+						return;
+					};
+					if reference.as_deref() == Some("Value") {
+						self.set_display_name(node_id, format!("{:?} Value", tagged_value.ty().nested_type()), network_path);
 					}
 				}
 			}

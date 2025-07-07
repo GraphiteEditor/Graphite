@@ -498,7 +498,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Could not get center of selected_nodes");
 					return;
 				};
-				let center_of_selected_nodes_grid_space = IVec2::new((center_of_selected_nodes.x / 24. + 0.5).floor() as i32, (center_of_selected_nodes.y / 24. + 0.5).floor() as i32);
+				let center_of_selected_nodes_grid_space = IVec2::new(
+					(center_of_selected_nodes.x / GRID_SIZE as f64 + 0.5).floor() as i32,
+					(center_of_selected_nodes.y / GRID_SIZE as f64 + 0.5).floor() as i32,
+				);
 				default_node_template.persistent_node_metadata.node_type_metadata = NodeTypePersistentMetadata::node(center_of_selected_nodes_grid_space - IVec2::new(3, 1));
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::InsertNode {
@@ -603,7 +606,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Could not get network metadata in PointerDown");
 					return;
 				};
-
+				self.disconnecting = None;
 				let click = ipp.mouse.position;
 
 				let node_graph_point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
@@ -938,6 +941,24 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						};
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
 					}
+				}
+				// Dragging from an exposed value input
+				else if self.disconnecting.is_some() {
+					let to_connector = network_interface.input_connector_from_click(ipp.mouse.position, selection_network_path);
+					if let Some(to_connector) = &to_connector {
+						let Some(input_position) = network_interface.input_position(to_connector, selection_network_path) else {
+							log::error!("Could not get input position for connector: {to_connector:?}");
+							return;
+						};
+						self.wire_in_progress_to_connector = Some(input_position);
+					}
+					// Not hovering over a node input or node output, create the value node if alt is pressed
+					else if ipp.keyboard.get(Key::Alt as usize) {
+						self.preview_on_mouse_up = None;
+						self.create_value_node(network_interface, point, breadcrumb_network_path, responses);
+					} else {
+						//TODO: Start creating wire
+					}
 				} else if let Some((drag_start, dragged)) = &mut self.drag_start {
 					if drag_start.start_x != point.x || drag_start.start_y != point.y {
 						*dragged = true;
@@ -957,7 +978,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						}
 					}
 
-					let mut graph_delta = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
+					let mut graph_delta = IVec2::new(
+						((point.x - drag_start.start_x) / GRID_SIZE as f64).round() as i32,
+						((point.y - drag_start.start_y) / GRID_SIZE as f64).round() as i32,
+					);
 					let previous_round_x = drag_start.round_x;
 					let previous_round_y = drag_start.round_y;
 
@@ -1344,6 +1368,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let document_bbox: [DVec2; 2] = viewport_bbox.map(|p| network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(p));
 
 				let mut nodes = Vec::new();
+
 				for node_id in &self.frontend_nodes {
 					let Some(node_bbox) = network_interface.node_bounding_box(node_id, breadcrumb_network_path) else {
 						log::error!("Could not get bbox for node: {:?}", node_id);
@@ -1352,6 +1377,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 					if node_bbox[1].x >= document_bbox[0].x && node_bbox[0].x <= document_bbox[1].x && node_bbox[1].y >= document_bbox[0].y && node_bbox[0].y <= document_bbox[1].y {
 						nodes.push(*node_id);
+					}
+				}
+
+				// Always send nodes with errors
+				for error in &self.node_graph_errors {
+					let Some((id, path)) = error.node_path.split_last() else {
+						log::error!("Could not get node path in error: {:?}", error);
+						continue;
+					};
+					if breadcrumb_network_path == path {
+						nodes.push(*id);
 					}
 				}
 
@@ -1393,7 +1429,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					input,
 				});
 				responses.add(PropertiesPanelMessage::Refresh);
-				if !(network_interface.reference(&node_id, selection_network_path).is_none() || input_index == 0) && network_interface.connected_to_output(&node_id, selection_network_path) {
+				if network_interface.connected_to_output(&node_id, selection_network_path) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
@@ -1474,6 +1510,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				network_interface.shift_absolute_node_position(&node_id, IVec2::new(x, y), selection_network_path);
 
 				responses.add(NodeGraphMessage::SendWires);
+			}
+			NodeGraphMessage::SetReference { node_id, reference } => {
+				network_interface.set_reference(&node_id, breadcrumb_network_path, reference);
 			}
 			NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer } => {
 				if is_layer && !network_interface.is_eligible_to_be_layer(&node_id, selection_network_path) {
@@ -2152,6 +2191,69 @@ impl NodeGraphMessageHandler {
 			// If multiple layers and/or nodes are selected, show nothing
 			_ => Vec::new(),
 		}
+	}
+
+	fn create_value_node(&mut self, network_interface: &mut NodeNetworkInterface, point: DVec2, breadcrumb_network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+		let Some(disconnecting) = self.disconnecting.take() else {
+			log::error!("To connector must be initialized to create a value node");
+			return;
+		};
+		let Some(mut position) = self.wire_in_progress_to_connector.take() else {
+			log::error!("To connector must be initialized to create a value node");
+			return;
+		};
+		// Offset node insertion 3 grid spaces left and 1 grid space up so the center of the node is dragged
+		position = position - DVec2::new(GRID_SIZE as f64 * 3., GRID_SIZE as f64);
+
+		// Offset to account for division rounding error and place the selected node to the top left of the input
+		if position.x < 0. {
+			position.x = position.x - 1.;
+		}
+		if position.y < 0. {
+			position.y = position.y - 1.;
+		}
+
+		let Some(mut input) = network_interface.take_input(&disconnecting, breadcrumb_network_path) else {
+			return;
+		};
+
+		match &mut input {
+			NodeInput::Value { exposed, .. } => *exposed = false,
+			_ => return,
+		}
+
+		let drag_start = DragStart {
+			start_x: point.x,
+			start_y: point.y,
+			round_x: 0,
+			round_y: 0,
+		};
+
+		self.drag_start = Some((drag_start, false));
+		self.node_has_moved_in_drag = false;
+		self.update_node_graph_hints(responses);
+
+		let node_id = NodeId::new();
+		responses.add(NodeGraphMessage::CreateNodeFromContextMenu {
+			node_id: Some(node_id),
+			node_type: "Value".to_string(),
+			xy: Some(((position.x / GRID_SIZE as f64) as i32, (position.y / GRID_SIZE as f64) as i32)),
+			add_transaction: false,
+		});
+
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(node_id, 0),
+			input,
+		});
+
+		responses.add(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::Node { node_id, output_index: 0 },
+			input_connector: disconnecting,
+		});
+		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] });
+		// Update the frontend that the node is disconnected
+		responses.add(NodeGraphMessage::RunDocumentGraph);
+		responses.add(NodeGraphMessage::SendGraph);
 	}
 
 	fn collect_wires(&mut self, network_interface: &mut NodeNetworkInterface, graph_wire_style: GraphWireStyle, breadcrumb_network_path: &[NodeId]) -> Vec<WirePathUpdate> {

@@ -68,7 +68,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 		inner_network,
 		render_node,
 		DocumentNode {
-			implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
+			implementation: DocumentNodeImplementation::proto("graphene_std::any::IdentityNode"),
 			inputs: vec![NodeInput::value(TaggedValue::EditorApi(editor_api), false)],
 			..Default::default()
 		},
