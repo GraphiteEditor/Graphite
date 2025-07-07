@@ -99,6 +99,7 @@ pub enum SelectToolMessage {
 	SetPivot {
 		position: ReferencePoint,
 	},
+	SyncHistory,
 }
 
 impl ToolMetadata for SelectTool {
@@ -552,9 +553,10 @@ impl SelectToolData {
 		self.dot.clone()
 	}
 
-	fn sync_history(&mut self) {
-		self.ordered_layers.retain(|layer| self.layers_dragging.contains(layer));
-		self.ordered_layers.extend(self.layers_dragging.iter().find(|&layer| !self.ordered_layers.contains(layer)));
+	fn sync_history(&mut self, document: &DocumentMessageHandler) {
+		let layers: Vec<_> = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
+		self.ordered_layers.retain(|layer| layers.contains(layer));
+		self.ordered_layers.extend(layers.iter().find(|&layer| !self.ordered_layers.contains(layer)));
 		self.dot.layer = self.ordered_layers.last().map(|x| *x)
 	}
 }
@@ -1457,7 +1459,6 @@ impl Fsm for SelectToolFsmState {
 						NestedSelectionBehavior::Deepest => {
 							let filtered_selections = filter_nested_selection(document.metadata(), &new_selected);
 							tool_data.layers_dragging.extend(filtered_selections);
-							tool_data.sync_history();
 						}
 						NestedSelectionBehavior::Shallowest => {
 							// Find each new_selected's parent node
@@ -1466,7 +1467,6 @@ impl Fsm for SelectToolFsmState {
 								.map(|layer| layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer))
 								.collect();
 							tool_data.layers_dragging.extend(parent_selected.iter().copied());
-							tool_data.sync_history();
 						}
 					}
 				}
@@ -1551,6 +1551,11 @@ impl Fsm for SelectToolFsmState {
 				let dot = tool_data.get_as_dot();
 				responses.add(TransformLayerMessage::SetDot { dot });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+
+				self
+			}
+			(_, SelectToolMessage::SyncHistory) => {
+				tool_data.sync_history(&document);
 
 				self
 			}
@@ -1724,7 +1729,6 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 		}
 	}
 
-	tool_data.sync_history();
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
 			.layers_dragging
@@ -1779,10 +1783,8 @@ fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<La
 
 	if !remove {
 		tool_data.layers_dragging.extend(vec![layer]);
-		tool_data.sync_history();
 	} else {
 		tool_data.layers_dragging.retain(|&selected_layer| layer != selected_layer);
-		tool_data.sync_history();
 	}
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
