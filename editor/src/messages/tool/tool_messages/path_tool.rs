@@ -271,7 +271,7 @@ impl LayoutHolder for PathTool {
 		let has_somrthing = !self.tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty();
 		let _pivot_reference = pivot_reference_point_widget(has_somrthing || !self.tool_data.dot.state.is_pivot(), self.tool_data.dot.pivot.to_pivot_position(), Source::Path);
 
-		let _pin_pivot = pin_pivot_widget(self.tool_data.dot.pin_inactive(), false, Source::Path);
+		let _pin_pivot = pin_pivot_widget(self.tool_data.dot.pin_active(), false, Source::Path);
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![

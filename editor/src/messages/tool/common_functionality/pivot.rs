@@ -12,9 +12,9 @@ use glam::{DAffine2, DVec2};
 use graphene_std::{transform::ReferencePoint, vector::ManipulatorPointId};
 use std::fmt;
 
-pub fn pin_pivot_widget(inactive: bool, enabled: bool, source: Source) -> WidgetHolder {
-	IconButton::new(if inactive { "PinInactive" } else { "PinActive" }, 24)
-		.tooltip(if inactive { "Pin Transform Pivot" } else { "Unpin Transform Pivot" })
+pub fn pin_pivot_widget(active: bool, enabled: bool, source: Source) -> WidgetHolder {
+	IconButton::new(if active { "PinActive" } else { "PinInactive" }, 24)
+		.tooltip(if active { "Unpin Transform Pivot" } else { "Pin Transform Pivot" })
 		.disabled(!enabled)
 		.on_update(move |_| match source {
 			Source::Select => SelectToolMessage::SelectOptions(SelectOptionsUpdate::TogglePivotPinned()).into(),
@@ -104,8 +104,8 @@ impl Dot {
 		self.pivot.transform_from_normalized
 	}
 
-	pub fn pin_inactive(&self) -> bool {
-		!self.pivot.pinned || !self.state.is_pivot()
+	pub fn pin_active(&self) -> bool {
+		self.pivot.pinned && self.state.is_pivot_type()
 	}
 }
 

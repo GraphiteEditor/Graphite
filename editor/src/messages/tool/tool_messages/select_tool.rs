@@ -204,19 +204,22 @@ impl LayoutHolder for SelectTool {
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.extend(dot_type_widget(self.tool_data.dot.state, Source::Select));
 
-		// Reference point 9-box widget
-		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
-		widgets.push(pivot_reference_point_widget(
-			self.tool_data.selected_layers_count == 0 || !self.tool_data.dot.state.is_pivot(),
-			self.tool_data.dot.pivot.to_pivot_position(),
-			Source::Select,
-		));
+		if self.tool_data.dot.state.is_pivot_type() {
+			// Reference point 9-box widget
+			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+			widgets.push(pivot_reference_point_widget(
+				self.tool_data.selected_layers_count == 0 || !self.tool_data.dot.state.is_pivot(),
+				self.tool_data.dot.pivot.to_pivot_position(),
+				Source::Select,
+			));
 
-		// Pivot pin
-		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+			// Pivot pin
+			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 
-		let pin_enabled = self.tool_data.dot.pivot.old_pivot_position == ReferencePoint::None;
-		widgets.push(pin_pivot_widget(self.tool_data.dot.pin_inactive(), pin_enabled, Source::Select));
+			let pin_enabled = self.tool_data.dot.pivot.old_pivot_position == ReferencePoint::None || !self.tool_data.dot.state.enabled;
+
+			widgets.push(pin_pivot_widget(self.tool_data.dot.pin_active(), pin_enabled, Source::Select));
+		}
 
 		// Align
 		let disabled = self.tool_data.selected_layers_count < 2;
@@ -1542,6 +1545,7 @@ impl Fsm for SelectToolFsmState {
 				responses.add(DocumentMessage::StartTransaction);
 
 				tool_data.dot.pivot.last_non_none_reference = position;
+				tool_data.dot.pivot.pinned = false;
 				let pos: Option<DVec2> = position.into();
 				tool_data.dot.pivot.set_normalized_position(pos.unwrap());
 				let dot = tool_data.get_as_dot();
