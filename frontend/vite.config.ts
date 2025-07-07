@@ -21,6 +21,7 @@ const ALLOWED_LICENSES = [
 	"BSD-3-Clause",
 	"BSL-1.0",
 	"CC0-1.0",
+	"CDLA-Permissive-2.0",
 	"ISC",
 	"MIT-0",
 	"MIT",
@@ -29,6 +30,7 @@ const ALLOWED_LICENSES = [
 	"Unicode-3.0",
 	"Unicode-DFS-2016",
 	"Zlib",
+	"NCSA",
 ];
 
 // https://vitejs.dev/config/

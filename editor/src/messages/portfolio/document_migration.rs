@@ -65,6 +65,7 @@ const REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::ops::Vector2ValueNode", "graphene_math_nodes::CoordinateValueNode"),
 	("graphene_core::ops::ColorValueNode", "graphene_math_nodes::ColorValueNode"),
 	("graphene_core::ops::GradientValueNode", "graphene_math_nodes::GradientValueNode"),
+	("graphene_core::ops::SampleGradientNode", "graphene_math_nodes::SampleGradientNode"),
 	("graphene_core::ops::StringValueNode", "graphene_math_nodes::StringValueNode"),
 	("graphene_core::ops::DotProductNode", "graphene_math_nodes::DotProductNode"),
 	// debug
@@ -613,16 +614,15 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 		// Make the "Quantity" parameter a u32 instead of f64
 		if reference == "Sample Polyline" {
-			let node_definition = resolve_document_node_type("Sample Polyline").unwrap();
-			let mut new_node_template = node_definition.default_node_template();
-
 			// Get the inputs, obtain the quantity value, and put the inputs back
-			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut new_node_template).unwrap();
-			let quantity_value = old_inputs.get(3).cloned();
+			let quantity_value = document
+				.network_interface
+				.input_from_connector(&InputConnector::Node { node_id: *node_id, input_index: 3 }, network_path)
+				.unwrap();
 
-			if let Some(NodeInput::Value { tagged_value, exposed }) = quantity_value {
-				if let TaggedValue::F64(value) = *tagged_value {
-					let new_quantity_value = NodeInput::value(TaggedValue::U32(value as u32), exposed);
+			if let NodeInput::Value { tagged_value, exposed } = quantity_value {
+				if let TaggedValue::F64(value) = **tagged_value {
+					let new_quantity_value = NodeInput::value(TaggedValue::U32(value as u32), *exposed);
 					document.network_interface.set_input(&InputConnector::node(*node_id, 3), new_quantity_value, network_path);
 				}
 			}
