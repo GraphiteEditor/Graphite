@@ -60,6 +60,27 @@ impl PartialEq for NodeNetworkInterface {
 	}
 }
 
+impl NodeNetworkInterface {
+	/// Add DocumentNodePath input to the PathModifyNode protonode
+	pub fn migrate_path_modify_node(&mut self) {
+		fix_network(&mut self.network);
+		fn fix_network(network: &mut NodeNetwork) {
+			for node in network.nodes.values_mut() {
+				if let Some(network) = node.implementation.get_network_mut() {
+					fix_network(network);
+				}
+				if let DocumentNodeImplementation::ProtoNode(protonode) = &node.implementation {
+					if protonode.name.contains("PathModifyNode") {
+						if node.inputs.len() < 3 {
+							node.inputs.push(NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath));
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 // Public immutable getters for the network interface
 impl NodeNetworkInterface {
 	// TODO: Make private and use .field_name getter methods
@@ -3511,6 +3532,11 @@ impl NodeNetworkInterface {
 	pub fn update_transforms(&mut self, upstream_footprints: HashMap<NodeId, Footprint>, local_transforms: HashMap<NodeId, DAffine2>) {
 		self.document_metadata.upstream_footprints = upstream_footprints;
 		self.document_metadata.local_transforms = local_transforms;
+	}
+
+	/// Update the cached first instance source id of the layers
+	pub fn update_first_instance_source_id(&mut self, new: HashMap<NodeId, Option<NodeId>>) {
+		self.document_metadata.first_instance_source_ids = new;
 	}
 
 	/// Update the cached click targets of the layers
