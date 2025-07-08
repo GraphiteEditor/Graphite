@@ -562,7 +562,7 @@ impl SelectToolData {
 
 	fn state_from_pivot_gizmo(&self, mouse: DVec2) -> Option<SelectToolFsmState> {
 		match self.pivot_gizmo.state.gizmo_type {
-			PivotGizmoType::Pivot => self.pivot_gizmo.pivot.is_over(mouse).then_some(SelectToolFsmState::DraggingPivot),
+			PivotGizmoType::Pivot if self.pivot_gizmo.state.is_pivot() => self.pivot_gizmo.pivot.is_over(mouse).then_some(SelectToolFsmState::DraggingPivot),
 			_ => None,
 		}
 	}
@@ -1617,6 +1617,9 @@ impl Fsm for SelectToolFsmState {
 					if let Some(v) = tool_data.pivot_gizmo.pivot.pivot.as_mut() {
 						*v += offset;
 					}
+
+					let pivot_gizmo = tool_data.pivot_gizmo();
+					responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
 				}
 
 				self
@@ -1624,6 +1627,8 @@ impl Fsm for SelectToolFsmState {
 			(_, SelectToolMessage::PivotShift { offset, flush }) => {
 				if flush {
 					tool_data.pivot_gizmo.pivot.pivot.as_mut().map(|v| *v += tool_data.pivot_gizmo_shift.take().unwrap_or_default());
+					let pivot_gizmo = tool_data.pivot_gizmo();
+					responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
 					return self;
 				}
 				if tool_data.pivot_gizmo.pivot_disconnected() {
