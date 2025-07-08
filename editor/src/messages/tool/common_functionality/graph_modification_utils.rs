@@ -5,9 +5,9 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Flo
 use crate::messages::prelude::*;
 use bezier_rs::Subpath;
 use glam::DVec2;
-use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
+use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::Color;
 use graphene_std::NodeInputDecleration;
 use graphene_std::raster::BlendMode;
@@ -421,14 +421,14 @@ impl<'a> NodeGraphLayer<'a> {
 	}
 
 	/// Node id of a protonode if it exists in the layer's primary flow
-	pub fn upstream_node_id_from_protonode(&self, protonode_identifier: &'static str) -> Option<NodeId> {
+	pub fn upstream_node_id_from_protonode(&self, protonode_identifier: ProtoNodeIdentifier) -> Option<NodeId> {
 		self.horizontal_layer_flow()
 			// Take until a different layer is reached
 			.take_while(|&node_id| node_id == self.layer_node || !self.network_interface.is_layer(&node_id, &[]))
-			.find(move |node_id| {
+			.find(|node_id| {
 				self.network_interface
 					.implementation(node_id, &[])
-					.is_some_and(move |implementation| *implementation == graph_craft::document::DocumentNodeImplementation::proto(protonode_identifier))
+					.is_some_and(|implementation| *implementation == graph_craft::document::DocumentNodeImplementation::ProtoNode(protonode_identifier.clone()))
 			})
 	}
 

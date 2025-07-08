@@ -190,6 +190,8 @@ pub fn document_migration_reset_node_definition(document_serialized_content: &st
 }
 
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
+	document.network_interface.migrate_path_modify_node();
+
 	let network = document.network_interface.document_network().clone();
 
 	// Apply string replacements to each node
@@ -637,6 +639,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut new_node_template).unwrap();
 			let index_3_value = old_inputs.get(3).cloned();
 
+			let mut upgraded = false;
+
 			if let Some(NodeInput::Value { tagged_value, exposed: _ }) = index_3_value {
 				if matches!(*tagged_value, TaggedValue::DVec2(_)) {
 					// Move index 3 to the end
@@ -646,10 +650,13 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 					document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[4].clone(), network_path);
 					document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
 					document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
-				} else {
-					// Swap it back if we're not changing anything
-					let _ = document.network_interface.replace_inputs(node_id, network_path, &mut current_node_template);
+
+					upgraded = true;
 				}
+			}
+
+			if !upgraded {
+				let _ = document.network_interface.replace_inputs(node_id, network_path, &mut current_node_template);
 			}
 		}
 

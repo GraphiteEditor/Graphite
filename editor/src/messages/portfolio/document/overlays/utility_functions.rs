@@ -119,7 +119,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 
 	for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
 		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
-		let transform = document.metadata().transform_to_viewport(layer);
+		let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 		if display_path {
 			overlay_context.outline_vector(&vector_data, transform);
 		}
@@ -196,7 +196,7 @@ pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &
 			continue;
 		};
 		//let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
-		let transform = document.metadata().transform_to_viewport(layer);
+		let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 		let selected = shape_editor.selected_shape_state.get(&layer);
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_point_selected(point));
 

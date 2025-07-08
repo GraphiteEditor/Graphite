@@ -769,7 +769,7 @@ impl PathToolData {
 			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 				continue;
 			};
-			let transform = document.metadata().transform_to_document(layer);
+			let transform = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
 
 			let mut layer_manipulators = HashSet::with_hasher(NoHashBuilder);
 			for point in state.selected_points() {
@@ -879,7 +879,7 @@ impl PathToolData {
 		let selected_handle = selection.selected_points().next()?.as_handle()?;
 		let handle_id = selected_handle.to_manipulator_point();
 
-		let layer_to_document = document.metadata().transform_to_document(*layer);
+		let layer_to_document = document.metadata().transform_to_document_if_feeds(*layer, &document.network_interface);
 		let vector_data = document.network_interface.compute_modified_vector(*layer)?;
 
 		let handle_position_local = selected_handle.to_manipulator_point().get_position(&vector_data)?;
@@ -921,7 +921,7 @@ impl PathToolData {
 				let anchor = handle_id.get_anchor(&vector_data);
 				let (angle, anchor_position) = calculate_adjacent_anchor_tangent(handle_id, anchor, adjacent_anchor, &vector_data);
 
-				let layer_to_document = document.metadata().transform_to_document(*layer);
+				let layer_to_document = document.metadata().transform_to_document_if_feeds(*layer, &document.network_interface);
 
 				self.adjacent_anchor_offset = handle_id
 					.get_anchor_position(&vector_data)
@@ -1068,7 +1068,7 @@ impl PathToolData {
 		}
 		// If already hovering on a segment, then recalculate its closest point
 		else if let Some(closest_segment) = &mut self.segment {
-			closest_segment.update_closest_point(document.metadata(), position);
+			closest_segment.update_closest_point(document.metadata(), &document.network_interface, position);
 
 			if closest_segment.too_far(position, SEGMENT_INSERTION_DISTANCE) {
 				self.segment = None;
@@ -1135,7 +1135,7 @@ impl PathToolData {
 		let layer = sliding_point_info.layer;
 
 		let Some(vector_data) = network_interface.compute_modified_vector(layer) else { return };
-		let transform = network_interface.document_metadata().transform_to_viewport(layer);
+		let transform = network_interface.document_metadata().transform_to_viewport_if_feeds(layer, network_interface);
 		let layer_pos = transform.inverse().transform_point2(target_position);
 
 		let segments = sliding_point_info.connected_segments;
@@ -1480,7 +1480,7 @@ impl Fsm for PathToolFsmState {
 
 						if let Some(closest_segment) = &tool_data.segment {
 							if tool_options.path_editing_mode.segment_editing_mode {
-								let transform = document.metadata().transform_to_viewport(closest_segment.layer());
+								let transform = document.metadata().transform_to_viewport_if_feeds(closest_segment.layer(), &document.network_interface);
 
 								overlay_context.outline_overlay_bezier(closest_segment.bezier(), transform);
 
@@ -1498,7 +1498,7 @@ impl Fsm for PathToolFsmState {
 								}
 							} else {
 								let perp = closest_segment.calculate_perp(document);
-								let point = closest_segment.closest_point(document.metadata());
+								let point = closest_segment.closest_point(document.metadata(), &document.network_interface);
 
 								// Draw an X on the segment
 								if tool_data.delete_segment_pressed {
@@ -2354,7 +2354,10 @@ fn get_selection_status(network_interface: &NodeNetworkInterface, shape_state: &
 			return SelectionStatus::None;
 		};
 
-		let coordinates = network_interface.document_metadata().transform_to_document(layer).transform_point2(local_position);
+		let coordinates = network_interface
+			.document_metadata()
+			.transform_to_document_if_feeds(layer, network_interface)
+			.transform_point2(local_position);
 		let manipulator_angle = if vector_data.colinear(point) { ManipulatorAngle::Colinear } else { ManipulatorAngle::Free };
 
 		return SelectionStatus::One(SingleSelectedPoint {

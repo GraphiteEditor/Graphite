@@ -1307,8 +1307,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::UpdateUpstreamTransforms {
 				upstream_footprints,
 				local_transforms,
+				first_instance_source_id,
 			} => {
 				self.network_interface.update_transforms(upstream_footprints, local_transforms);
+				self.network_interface.update_first_instance_source_id(first_instance_source_id);
 			}
 			DocumentMessage::UpdateClickTargets { click_targets } => {
 				// TODO: Allow non layer nodes to have click targets

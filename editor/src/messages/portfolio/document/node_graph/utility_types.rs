@@ -2,6 +2,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Inp
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Type;
+use std::borrow::Cow;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
@@ -98,33 +99,25 @@ pub struct FrontendNode {
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeType {
-	pub name: String,
-	pub category: String,
+	pub name: Cow<'static, str>,
+	pub category: Cow<'static, str>,
 	#[serde(rename = "inputTypes")]
-	pub input_types: Option<Vec<String>>,
+	pub input_types: Option<Vec<Cow<'static, str>>>,
 }
 
 impl FrontendNodeType {
-	pub fn new(name: &'static str, category: &'static str) -> Self {
+	pub fn new(name: impl Into<Cow<'static, str>>, category: impl Into<Cow<'static, str>>) -> Self {
 		Self {
-			name: name.to_string(),
-			category: category.to_string(),
+			name: name.into(),
+			category: category.into(),
 			input_types: None,
 		}
 	}
 
-	pub fn with_input_types(name: &'static str, category: &'static str, input_types: Vec<String>) -> Self {
+	pub fn with_input_types(name: impl Into<Cow<'static, str>>, category: impl Into<Cow<'static, str>>, input_types: Vec<Cow<'static, str>>) -> Self {
 		Self {
-			name: name.to_string(),
-			category: category.to_string(),
-			input_types: Some(input_types),
-		}
-	}
-
-	pub fn with_owned_strings_and_input_types(name: String, category: String, input_types: Vec<String>) -> Self {
-		Self {
-			name,
-			category,
+			name: name.into(),
+			category: category.into(),
 			input_types: Some(input_types),
 		}
 	}
