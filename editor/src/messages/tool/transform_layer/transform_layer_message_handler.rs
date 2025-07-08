@@ -219,12 +219,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 			if !using_path_tool {
 				self.pivot_gizmo.recalculate_transform(document);
-				let network_interface = &document.network_interface;
-				let mean_center_bbox = network_interface.selected_nodes().selected_visible_and_unlocked_layers_mean_average_origin(network_interface);
-				let gizmo_position = self.pivot_gizmo.position(document);
-				*selected.pivot = gizmo_position;
+				*selected.pivot = self.pivot_gizmo.position(document);
 				self.local_pivot = document.metadata().document_to_viewport.inverse().transform_point2(*selected.pivot);
-				self.grab_target = document.metadata().document_to_viewport.inverse().transform_point2(mean_center_bbox);
+				self.grab_target = self.local_pivot;
 			}
 			// Here vector data from all layers is not considered which can be a problem in pivot calculation
 			else if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
@@ -301,7 +298,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					TransformOperation::Grabbing(translation) => {
 						let translation = translation.to_dvec(self.initial_transform, self.increments);
 						let viewport_translate = document_to_viewport.transform_vector2(translation);
-						let pivot = document_to_viewport.transform_point2(self.local_pivot);
+						let pivot = document_to_viewport.transform_point2(self.grab_target);
 						let quad = Quad::from_box([pivot, pivot + viewport_translate]).0;
 						let e1 = (self.layer_bounding_box.0[1] - self.layer_bounding_box.0[0]).normalize_or(DVec2::X);
 
