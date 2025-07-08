@@ -40,6 +40,7 @@ pub enum OverlaysType {
 }
 
 #[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(default)]
 pub struct OverlaysVisibilitySettings {
 	pub all: bool,
 	pub artboard_name: bool,
@@ -50,17 +51,10 @@ pub struct OverlaysVisibilitySettings {
 	pub hover_outline: bool,
 	pub selection_outline: bool,
 	pub pivot: bool,
-	#[serde(default = "return_true")]
 	pub origin: bool,
 	pub path: bool,
 	pub anchors: bool,
 	pub handles: bool,
-}
-
-/// Utility function for providing a default boolean value to serde.
-#[inline(always)]
-fn return_true() -> bool {
-	true
 }
 
 impl Default for OverlaysVisibilitySettings {
