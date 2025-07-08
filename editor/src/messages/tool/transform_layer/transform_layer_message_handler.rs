@@ -307,6 +307,12 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						let quad = Quad::from_box([pivot, pivot + viewport_translate]).0;
 						let e1 = (self.layer_bounding_box.0[1] - self.layer_bounding_box.0[0]).normalize_or(DVec2::X);
 
+						debug!("A");
+						responses.add(SelectToolMessage::PivotShift {
+							offset: Some(viewport_translate),
+							flush: false,
+						});
+
 						if matches!(axis_constraint, Axis::Both | Axis::X) && translation.x != 0. {
 							let end = if self.local { (quad[1] - quad[0]).rotate(e1) + quad[0] } else { quad[1] };
 							overlay_context.dashed_line(quad[0], end, None, None, Some(2.), Some(2.), Some(0.5));
@@ -414,6 +420,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
+
+				responses.add(SelectToolMessage::PivotShift { offset: None, flush: true });
 
 				if final_transform {
 					responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
@@ -538,6 +546,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					responses.add(ToolMessage::UpdateHints);
 				}
 
+				responses.add(SelectToolMessage::PivotShift { offset: None, flush: false });
 				responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 			}
 			TransformLayerMessage::ConstrainX => {

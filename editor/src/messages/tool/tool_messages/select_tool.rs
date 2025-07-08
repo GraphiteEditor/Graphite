@@ -103,6 +103,10 @@ pub enum SelectToolMessage {
 	ShiftSelectedNodes {
 		offset: DVec2,
 	},
+	PivotShift {
+		offset: Option<DVec2>,
+		flush: bool,
+	},
 }
 
 impl ToolMetadata for SelectTool {
@@ -380,6 +384,7 @@ struct SelectToolData {
 	cursor: MouseCursorIcon,
 	dot: Dot,
 	dot_start: Option<DVec2>,
+	dot_shift: Option<DVec2>,
 	compass_rose: CompassRose,
 	line_center: DVec2,
 	skew_edge: EdgeBool,
@@ -830,7 +835,8 @@ impl Fsm for SelectToolFsmState {
 						.dot_start
 						.map(|offset| tool_data.dot.pivot_disconnected().then_some(tool_data.drag_current - offset).unwrap_or_default())
 						.unwrap_or_default();
-					overlay_context.pivot(pivot + offset, angle);
+					let shift = tool_data.dot_shift.unwrap_or_default();
+					overlay_context.pivot(pivot + offset + shift, angle);
 				}
 
 				// Update compass rose
@@ -1582,8 +1588,20 @@ impl Fsm for SelectToolFsmState {
 				self
 			}
 			(_, SelectToolMessage::ShiftSelectedNodes { offset }) => {
+				let offset = document.metadata().document_to_viewport.transform_vector2(offset);
 				if tool_data.dot.pivot_disconnected() {
 					tool_data.dot.pivot.pivot.as_mut().map(|v| *v += offset);
+				}
+
+				self
+			}
+			(_, SelectToolMessage::PivotShift { offset, flush }) => {
+				if flush {
+					tool_data.dot.pivot.pivot.as_mut().map(|v| *v += tool_data.dot_shift.take().unwrap_or_default());
+					return self;
+				}
+				if tool_data.dot.pivot_disconnected() {
+					tool_data.dot_shift = offset;
 				}
 
 				self
