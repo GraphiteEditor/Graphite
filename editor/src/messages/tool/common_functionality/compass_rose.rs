@@ -14,7 +14,7 @@ impl CompassRose {
 
 		if !selected.has_selected_nodes() {
 			return;
-		};
+		}
 
 		let transform = selected
 			.selected_visible_and_unlocked_layers(&document.network_interface)

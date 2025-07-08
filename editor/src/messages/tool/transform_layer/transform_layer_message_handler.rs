@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, TransformType, Typing};
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::pivot::{Dot, DotType};
+use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
@@ -35,7 +35,7 @@ pub struct TransformLayerMessageHandler {
 	start_mouse: ViewportPosition,
 
 	original_transforms: OriginalTransforms,
-	dot: Dot,
+	pivot_gizmo: PivotGizmo,
 	pivot: ViewportPosition,
 
 	path_bounds: Option<[DVec2; 2]>,
@@ -71,10 +71,10 @@ fn calculate_pivot(
 	vector_data: &VectorData,
 	viewspace: DAffine2,
 	get_location: impl Fn(&ManipulatorPointId) -> Option<DVec2>,
-	dot: &mut Dot,
+	gizmo: &mut PivotGizmo,
 ) -> (Option<(DVec2, DVec2)>, Option<[DVec2; 2]>) {
 	let average_position = || {
-		let mut point_count = 0;
+		let mut point_count = 0_usize;
 		selected_points.iter().filter_map(|p| get_location(p)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64
 	};
 	let bounds = selected_points.iter().filter_map(|p| get_location(p)).fold(None, |acc: Option<[DVec2; 2]>, point| {
@@ -88,19 +88,17 @@ fn calculate_pivot(
 			Some([point, point])
 		}
 	});
-	dot.pivot.recalculate_pivot_for_layer(document, bounds);
+	gizmo.pivot.recalculate_pivot_for_layer(document, bounds);
 	let position = || {
-		{
-			if dot.state.enabled {
-				match dot.state.dot {
-					DotType::Average => None,
-					DotType::Active => dot.point.and_then(|p| get_location(&p)),
-					DotType::Pivot => dot.pivot.pivot,
-				}
-			} else {
-				None
+		(if !gizmo.state.disabled {
+			match gizmo.state.gizmo_type {
+				PivotGizmoType::Average => None,
+				PivotGizmoType::Active => gizmo.point.and_then(|p| get_location(&p)),
+				PivotGizmoType::Pivot => gizmo.pivot.pivot,
 			}
-		}
+		} else {
+			None
+		})
 		.unwrap_or_else(average_position)
 	};
 	let [point] = selected_points.as_slice() else {
@@ -112,14 +110,14 @@ fn calculate_pivot(
 	match point {
 		ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
 			// Get the anchor position and transform it to the pivot
-			let (Some(pivot_pos), Some(position)) = (
+			let (Some(pivot_position), Some(position)) = (
 				point.get_anchor_position(vector_data).map(|anchor_position| viewspace.transform_point2(anchor_position)),
 				point.get_position(vector_data),
 			) else {
 				return (None, None);
 			};
 			let target = viewspace.transform_point2(position);
-			(Some((pivot_pos, target)), None)
+			(Some((pivot_position, target)), None)
 		}
 		_ => {
 			// Calculate the average position of all selected points
@@ -220,11 +218,11 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			}
 
 			if !using_path_tool {
-				self.dot.recalculate_transform(document);
+				self.pivot_gizmo.recalculate_transform(document);
 				let network_interface = &document.network_interface;
 				let mean_center_bbox = network_interface.selected_nodes().selected_visible_and_unlocked_layers_mean_average_origin(network_interface);
-				let dot_position = self.dot.position(document);
-				*selected.pivot = dot_position;
+				let gizmo_position = self.pivot_gizmo.position(document);
+				*selected.pivot = gizmo_position;
 				self.local_pivot = document.metadata().document_to_viewport.inverse().transform_point2(*selected.pivot);
 				self.grab_target = document.metadata().document_to_viewport.inverse().transform_point2(mean_center_bbox);
 			}
@@ -252,7 +250,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					&vector_data,
 					viewspace,
 					|point: &ManipulatorPointId| get_location(&point),
-					&mut self.dot,
+					&mut self.pivot_gizmo,
 				) {
 					*selected.pivot = new_pivot;
 					self.path_bounds = bounds;
@@ -392,10 +390,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						overlay_context.draw_angle(pivot, radius, arc_radius, offset_angle, angle);
 						overlay_context.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 					}
-				}
-
-				if let Some(_) = self.path_bounds {
-					// overlay_context.quad(Quad::from_box(bounds), None, None);
 				}
 			}
 
@@ -754,7 +748,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					self.initial_transform,
 				)
 			}
-			TransformLayerMessage::SetDot { dot } => self.dot = dot,
+			TransformLayerMessage::SetPivotGizmo { pivot_gizmo } => {
+				self.pivot_gizmo = pivot_gizmo;
+			}
 		}
 	}
 

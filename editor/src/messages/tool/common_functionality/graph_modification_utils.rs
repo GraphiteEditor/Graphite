@@ -245,8 +245,9 @@ pub fn new_custom(id: NodeId, nodes: Vec<(NodeId, NodeTemplate)>, parent: LayerN
 
 /// Locate the origin of the transform node
 pub fn get_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DVec2> {
-	let origin_node_input_index = 1;
-	if let TaggedValue::DVec2(origin) = NodeGraphLayer::new(layer, network_interface).find_input("Transform", origin_node_input_index)? {
+	use graphene_std::transform_nodes::transform::TranslateInput;
+
+	if let TaggedValue::DVec2(origin) = NodeGraphLayer::new(layer, network_interface).find_input("Transform", TranslateInput::INDEX)? {
 		Some(*origin)
 	} else {
 		None

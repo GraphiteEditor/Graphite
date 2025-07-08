@@ -1,6 +1,6 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_ORANGE, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER,
 	COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
@@ -554,7 +554,7 @@ impl OverlayContext {
 
 	pub fn dowel_pin(&mut self, position: DVec2, angle: f64, color: Option<&str>) {
 		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
-		let color = color.unwrap_or(COLOR_OVERLAY_ORANGE);
+		let color = color.unwrap_or(COLOR_OVERLAY_YELLOW_DULL);
 
 		self.start_dpi_aware_transform();
 
@@ -765,11 +765,11 @@ impl OverlayContext {
 		// └──┴──┴──┴──┘
 		let pixels = [(0, 0), (2, 2)];
 		for &(x, y) in &pixels {
-			let index = (x + y * PATTERN_WIDTH as usize) * 4;
+			let index = (x + y * PATTERN_WIDTH) * 4;
 			data[index..index + 4].copy_from_slice(&color.to_rgba8_srgb());
 		}
 
-		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&mut data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
+		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
 		pattern_context.put_image_data(&image_data, 0., 0.).unwrap();
 		let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
 

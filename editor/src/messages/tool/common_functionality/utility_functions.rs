@@ -393,7 +393,7 @@ pub fn transforming_transform_cage(
 	input: &InputPreprocessorMessageHandler,
 	responses: &mut VecDeque<Message>,
 	layers_dragging: &mut Vec<LayerNodeIdentifier>,
-	pos: Option<DVec2>,
+	center_of_transformation: Option<DVec2>,
 ) -> (bool, bool, bool) {
 	let dragging_bounds = bounding_box_manager.as_mut().and_then(|bounding_box| {
 		let edges = bounding_box.check_selected_edges(input.mouse.position);
@@ -430,7 +430,7 @@ pub fn transforming_transform_cage(
 				}
 			});
 
-			bounds.center_of_transformation = pos.unwrap_or_else(|| {
+			bounds.center_of_transformation = center_of_transformation.unwrap_or_else(|| {
 				document
 					.network_interface
 					.selected_nodes()
@@ -465,7 +465,7 @@ pub fn transforming_transform_cage(
 				}
 			});
 
-			bounds.center_of_transformation = pos.unwrap_or_else(|| {
+			bounds.center_of_transformation = center_of_transformation.unwrap_or_else(|| {
 				document
 					.network_interface
 					.selected_nodes()

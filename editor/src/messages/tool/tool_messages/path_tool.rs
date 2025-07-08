@@ -11,7 +11,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::portfolio::document::utility_types::transformation::Axis;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::pivot::{Dot, DotType, Source, dot_type_widget, pin_pivot_widget, pivot_reference_point_widget};
+use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
 use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedLayerState, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
@@ -146,9 +146,9 @@ pub enum PathOptionsUpdate {
 	OverlayModeType(PathOverlayMode),
 	PointEditingMode { enabled: bool },
 	SegmentEditingMode { enabled: bool },
-	DotType(DotType),
-	ToggleDotType(bool),
-	TogglePivotPinned(),
+	PivotGizmoType(PivotGizmoType),
+	TogglePivotGizmoType(bool),
+	TogglePivotPinned,
 }
 
 impl ToolMetadata for PathTool {
@@ -264,14 +264,18 @@ impl LayoutHolder for PathTool {
 		.widget_holder();
 
 		let [_checkbox, _dropdown] = {
-			let dot_widget = dot_type_widget(self.tool_data.dot.state, Source::Path);
-			[dot_widget[0].clone(), dot_widget[2].clone()]
+			let pivot_gizmo_type_widget = pivot_gizmo_type_widget(self.tool_data.pivot_gizmo.state, PivotToolSource::Path);
+			[pivot_gizmo_type_widget[0].clone(), pivot_gizmo_type_widget[2].clone()]
 		};
 
-		let has_somrthing = !self.tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty();
-		let _pivot_reference = pivot_reference_point_widget(has_somrthing || !self.tool_data.dot.state.is_pivot(), self.tool_data.dot.pivot.to_pivot_position(), Source::Path);
+		let has_something = !self.tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty();
+		let _pivot_reference = pivot_reference_point_widget(
+			has_something || !self.tool_data.pivot_gizmo.state.is_pivot(),
+			self.tool_data.pivot_gizmo.pivot.to_pivot_position(),
+			PivotToolSource::Path,
+		);
 
-		let _pin_pivot = pin_pivot_widget(self.tool_data.dot.pin_active(), false, Source::Path);
+		let _pin_pivot = pin_pivot_widget(self.tool_data.pivot_gizmo.pin_active(), false, PivotToolSource::Path);
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
@@ -319,25 +323,25 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 					self.options.path_editing_mode.segment_editing_mode = enabled;
 					responses.add(OverlaysMessage::Draw);
 				}
-				PathOptionsUpdate::DotType(dot_type) => {
-					if self.tool_data.dot.state.enabled {
-						self.tool_data.dot.state.dot = dot_type;
+				PathOptionsUpdate::PivotGizmoType(gizmo_type) => {
+					if !self.tool_data.pivot_gizmo.state.disabled {
+						self.tool_data.pivot_gizmo.state.gizmo_type = gizmo_type;
 						responses.add(ToolMessage::UpdateHints);
-						let dot = self.tool_data.get_as_dot();
-						responses.add(TransformLayerMessage::SetDot { dot });
+						let pivot_gizmo = self.tool_data.pivot_gizmo();
+						responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 						self.send_layout(responses, LayoutTarget::ToolOptions);
 					}
 				}
-				PathOptionsUpdate::ToggleDotType(state) => {
-					self.tool_data.dot.state.enabled = state;
+				PathOptionsUpdate::TogglePivotGizmoType(state) => {
+					self.tool_data.pivot_gizmo.state.disabled = !state;
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 					self.send_layout(responses, LayoutTarget::ToolOptions);
 				}
 
-				PathOptionsUpdate::TogglePivotPinned() => {
-					self.tool_data.dot.pivot.pinned = !self.tool_data.dot.pivot.pinned;
+				PathOptionsUpdate::TogglePivotPinned => {
+					self.tool_data.pivot_gizmo.pivot.pinned = !self.tool_data.pivot_gizmo.pivot.pinned;
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 					self.send_layout(responses, LayoutTarget::ToolOptions);
@@ -492,7 +496,7 @@ struct PathToolData {
 	last_click_time: u64,
 	dragging_state: DraggingState,
 	angle: f64,
-	dot: Dot,
+	pivot_gizmo: PivotGizmo,
 	ordered_points: Vec<ManipulatorPointId>,
 	opposite_handle_position: Option<DVec2>,
 	last_clicked_point_was_selected: bool,
@@ -1367,14 +1371,14 @@ impl PathToolData {
 		}
 	}
 
-	fn get_as_dot(&self) -> Dot {
-		self.dot.clone()
+	fn pivot_gizmo(&self) -> PivotGizmo {
+		self.pivot_gizmo.clone()
 	}
 
-	fn sync_history(&mut self, points: &Vec<ManipulatorPointId>) {
+	fn sync_history(&mut self, points: &[ManipulatorPointId]) {
 		self.ordered_points.retain(|layer| points.contains(layer));
 		self.ordered_points.extend(points.iter().find(|&layer| !self.ordered_points.contains(layer)));
-		self.dot.point = self.ordered_points.last().map(|x| *x)
+		self.pivot_gizmo.point = self.ordered_points.last().copied()
 	}
 }
 
@@ -1389,8 +1393,8 @@ impl Fsm for PathToolFsmState {
 
 		let ToolMessage::Path(event) = event else { return self };
 
-		// TODO(mTvare6): Remove it once dots are implemented for path_tool
-		tool_data.dot.state.enabled = false;
+		// TODO(mTvare6): Remove once gizmos are implemented for path_tool
+		tool_data.pivot_gizmo.state.disabled = true;
 
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
@@ -2273,11 +2277,11 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::SetPivot { position }) => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				tool_data.dot.pivot.last_non_none_reference = position;
-				let pos: Option<DVec2> = position.into();
-				tool_data.dot.pivot.set_normalized_position(pos.unwrap());
-				let dot = tool_data.get_as_dot();
-				responses.add(TransformLayerMessage::SetDot { dot });
+				tool_data.pivot_gizmo.pivot.last_non_none_reference_point = position;
+				let position: Option<DVec2> = position.into();
+				tool_data.pivot_gizmo.pivot.set_normalized_position(position.unwrap());
+				let pivot_gizmo = tool_data.pivot_gizmo();
+				responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 
 				self

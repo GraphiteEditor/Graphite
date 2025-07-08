@@ -11,87 +11,100 @@ use glam::{DAffine2, DVec2};
 use graphene_std::{transform::ReferencePoint, vector::ManipulatorPointId};
 use std::fmt;
 
-pub fn pin_pivot_widget(active: bool, enabled: bool, source: Source) -> WidgetHolder {
+pub fn pin_pivot_widget(active: bool, enabled: bool, source: PivotToolSource) -> WidgetHolder {
 	IconButton::new(if active { "PinActive" } else { "PinInactive" }, 24)
-		.tooltip(if active { "Unpin Transform Pivot" } else { "Pin Transform Pivot" })
+		.tooltip(String::from(if active { "Unpin Custom Pivot" } else { "Pin Custom Pivot" }) + "\n\nUnless pinned, the pivot will return to its prior reference point when a new selection is made.")
 		.disabled(!enabled)
 		.on_update(move |_| match source {
-			Source::Select => SelectToolMessage::SelectOptions(SelectOptionsUpdate::TogglePivotPinned()).into(),
-			Source::Path => PathToolMessage::UpdateOptions(PathOptionsUpdate::TogglePivotPinned()).into(),
+			PivotToolSource::Select => SelectToolMessage::SelectOptions(SelectOptionsUpdate::TogglePivotPinned).into(),
+			PivotToolSource::Path => PathToolMessage::UpdateOptions(PathOptionsUpdate::TogglePivotPinned).into(),
 		})
 		.widget_holder()
 }
 
-pub fn pivot_reference_point_widget(disabled: bool, reference_point: ReferencePoint, source: Source) -> WidgetHolder {
+pub fn pivot_reference_point_widget(disabled: bool, reference_point: ReferencePoint, source: PivotToolSource) -> WidgetHolder {
 	ReferencePointInput::new(reference_point)
-		.on_update(move |pivot_input: &ReferencePointInput| match source {
-			Source::Select => SelectToolMessage::SetPivot { position: pivot_input.value }.into(),
-			Source::Path => PathToolMessage::SetPivot { position: pivot_input.value }.into(),
-		})
+		.tooltip("Custom Pivot Reference Point\n\nPlaces the pivot at a corner, edge, or center of the selection bounds, unless it is dragged elsewhere.")
 		.disabled(disabled)
+		.on_update(move |pivot_input: &ReferencePointInput| match source {
+			PivotToolSource::Select => SelectToolMessage::SetPivot { position: pivot_input.value }.into(),
+			PivotToolSource::Path => PathToolMessage::SetPivot { position: pivot_input.value }.into(),
+		})
 		.widget_holder()
 }
 
-pub fn dot_type_widget(state: DotState, source: Source) -> Vec<WidgetHolder> {
-	let dot_type_entries = [DotType::Pivot, DotType::Average, DotType::Active]
+pub fn pivot_gizmo_type_widget(state: PivotGizmoState, source: PivotToolSource) -> Vec<WidgetHolder> {
+	let gizmo_type_entries = [PivotGizmoType::Pivot, PivotGizmoType::Average, PivotGizmoType::Active]
 		.iter()
-		.map(|dot_type| {
-			MenuListEntry::new(format!("{dot_type:?}")).label(dot_type.to_string()).on_commit({
+		.map(|gizmo_type| {
+			MenuListEntry::new(format!("{gizmo_type:?}")).label(gizmo_type.to_string()).on_commit({
 				let value = source.clone();
 				move |_| match value {
-					Source::Select => SelectToolMessage::SelectOptions(SelectOptionsUpdate::DotType(*dot_type)).into(),
-					Source::Path => PathToolMessage::UpdateOptions(PathOptionsUpdate::DotType(*dot_type)).into(),
+					PivotToolSource::Select => SelectToolMessage::SelectOptions(SelectOptionsUpdate::PivotGizmoType(*gizmo_type)).into(),
+					PivotToolSource::Path => PathToolMessage::UpdateOptions(PathOptionsUpdate::PivotGizmoType(*gizmo_type)).into(),
 				}
 			})
 		})
 		.collect();
 
 	vec![
-		CheckboxInput::new(state.enabled)
-			.tooltip("Disable Transform Pivot Point")
+		CheckboxInput::new(!state.disabled)
+			.tooltip(
+				"Pivot Gizmo\n\
+				\n\
+				Enabled: the chosen gizmo type is shown and used to control rotation and scaling.\n\
+				Disabled: rotation and scaling occurs about the center of the selection bounds.",
+			)
 			.on_update(move |optional_input: &CheckboxInput| match source {
-				Source::Select => SelectToolMessage::SelectOptions(SelectOptionsUpdate::ToggleDotType(optional_input.checked)).into(),
-				Source::Path => PathToolMessage::UpdateOptions(PathOptionsUpdate::ToggleDotType(optional_input.checked)).into(),
+				PivotToolSource::Select => SelectToolMessage::SelectOptions(SelectOptionsUpdate::TogglePivotGizmoType(optional_input.checked)).into(),
+				PivotToolSource::Path => PathToolMessage::UpdateOptions(PathOptionsUpdate::TogglePivotGizmoType(optional_input.checked)).into(),
 			})
 			.widget_holder(),
 		Separator::new(SeparatorType::Related).widget_holder(),
-		DropdownInput::new(vec![dot_type_entries])
-			.selected_index(Some(match state.dot {
-				DotType::Pivot => 0,
-				DotType::Average => 1,
-				DotType::Active => 2,
+		DropdownInput::new(vec![gizmo_type_entries])
+			.selected_index(Some(match state.gizmo_type {
+				PivotGizmoType::Pivot => 0,
+				PivotGizmoType::Average => 1,
+				PivotGizmoType::Active => 2,
 			}))
-			.tooltip("Choose between type of Transform Pivot Point")
-			.disabled(!state.enabled)
+			.tooltip(
+				"Pivot Gizmo Type\n\
+				\n\
+				Selects which gizmo type is shown and used as the center of rotation/scaling transformations.\n\
+				\n\
+				Custom Pivot: rotates and scales relative to the selection bounds, or elsewhere if dragged.\n\
+				Origin (Average Point): rotates and scales about the average point of all selected layer origins.\n\
+				Origin (Active Object): rotates and scales about the origin of the most recently selected layer.",
+			)
+			.disabled(state.disabled)
 			.widget_holder(),
 	]
 }
 
 #[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
-pub enum Source {
+pub enum PivotToolSource {
 	Path,
 	#[default]
 	Select,
 }
 
 #[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
-pub struct Dot {
+pub struct PivotGizmo {
 	pub pivot: Pivot,
-	pub state: DotState,
+	pub state: PivotGizmoState,
 	pub layer: Option<LayerNodeIdentifier>,
 	pub point: Option<ManipulatorPointId>,
 }
 
-impl Dot {
+impl PivotGizmo {
 	pub fn position(&self, document: &DocumentMessageHandler) -> DVec2 {
 		let network = &document.network_interface;
-		self.state
-			.enabled
+		(!self.state.disabled)
 			.then_some({
-				match self.state.dot {
-					DotType::Average => Some(network.selected_nodes().selected_visible_and_unlocked_layers_mean_average_origin(network)),
-					DotType::Pivot => self.pivot.pivot,
-					DotType::Active => self.layer.map(|layer| graph_modification_utils::get_viewport_origin(layer, network)),
+				match self.state.gizmo_type {
+					PivotGizmoType::Average => Some(network.selected_nodes().selected_visible_and_unlocked_layers_mean_average_origin(network)),
+					PivotGizmoType::Pivot => self.pivot.pivot,
+					PivotGizmoType::Active => self.layer.map(|layer| graph_modification_utils::get_viewport_origin(layer, network)),
 				}
 			})
 			.flatten()
@@ -113,7 +126,7 @@ impl Dot {
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
-pub enum DotType {
+pub enum PivotGizmoType {
 	// Pivot
 	#[default]
 	Pivot,
@@ -123,37 +136,28 @@ pub enum DotType {
 	// TODO: Add "Individual"
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct DotState {
-	pub enabled: bool,
-	pub dot: DotType,
+#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct PivotGizmoState {
+	pub disabled: bool,
+	pub gizmo_type: PivotGizmoType,
 }
 
-impl Default for DotState {
-	fn default() -> Self {
-		Self {
-			enabled: true,
-			dot: DotType::default(),
-		}
-	}
-}
-
-impl DotState {
+impl PivotGizmoState {
 	pub fn is_pivot_type(&self) -> bool {
-		self.dot == DotType::Pivot || !self.enabled
+		self.gizmo_type == PivotGizmoType::Pivot || self.disabled
 	}
 
 	pub fn is_pivot(&self) -> bool {
-		self.dot == DotType::Pivot && self.enabled
+		self.gizmo_type == PivotGizmoType::Pivot && !self.disabled
 	}
 }
 
-impl fmt::Display for DotType {
+impl fmt::Display for PivotGizmoType {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			DotType::Pivot => write!(f, "Custom Pivot"),
-			DotType::Average => write!(f, "Origin (Average Point)"),
-			DotType::Active => write!(f, "Origin (Active Object)"),
+			PivotGizmoType::Pivot => write!(f, "Custom Pivot"),
+			PivotGizmoType::Average => write!(f, "Origin (Average Point)"),
+			PivotGizmoType::Active => write!(f, "Origin (Active Object)"),
 			// TODO: Add "Origin (Individual)"
 		}
 	}
@@ -170,7 +174,7 @@ pub struct Pivot {
 	/// The old pivot position in the GUI, used to reduce refreshes of the document bar
 	pub old_pivot_position: ReferencePoint,
 	/// The last ReferencePoint which wasn't none
-	pub last_non_none_reference: ReferencePoint,
+	pub last_non_none_reference_point: ReferencePoint,
 	/// Used to enable and disable the pivot
 	pub pinned: bool,
 	/// Had selected_visible_and_unlocked_layers
@@ -184,7 +188,7 @@ impl Default for Pivot {
 			transform_from_normalized: Default::default(),
 			pivot: Default::default(),
 			old_pivot_position: ReferencePoint::Center,
-			last_non_none_reference: ReferencePoint::Center,
+			last_non_none_reference_point: ReferencePoint::Center,
 			pinned: false,
 			empty: true,
 		}
@@ -198,7 +202,7 @@ impl Pivot {
 		self.empty = !selected.has_selected_nodes();
 		if !selected.has_selected_nodes() {
 			return;
-		};
+		}
 
 		let transform = selected
 			.selected_visible_and_unlocked_layers(&document.network_interface)
@@ -220,6 +224,7 @@ impl Pivot {
 
 		let [min, max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
 		self.transform_from_normalized = transform * DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
+
 		if self.old_pivot_position != ReferencePoint::None {
 			self.pivot = Some(self.transform_from_normalized.transform_point2(self.normalized_pivot));
 		}
