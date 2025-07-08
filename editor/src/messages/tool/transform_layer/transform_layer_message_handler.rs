@@ -301,11 +301,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					TransformOperation::Grabbing(translation) => {
 						let translation = translation.to_dvec(self.initial_transform, self.increments);
 						let viewport_translate = document_to_viewport.transform_vector2(translation);
-						let pivot = document_to_viewport.transform_point2(self.grab_target);
+						let pivot = document_to_viewport.transform_point2(self.local_pivot);
 						let quad = Quad::from_box([pivot, pivot + viewport_translate]).0;
 						let e1 = (self.layer_bounding_box.0[1] - self.layer_bounding_box.0[0]).normalize_or(DVec2::X);
 
-						debug!("A");
 						responses.add(SelectToolMessage::PivotShift {
 							offset: Some(viewport_translate),
 							flush: false,
