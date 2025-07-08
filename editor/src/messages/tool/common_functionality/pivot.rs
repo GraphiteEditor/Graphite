@@ -214,7 +214,6 @@ impl Pivot {
 			.network_interface
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(&document.network_interface)
-			.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 			.filter_map(|layer| {
 				document
 					.metadata()
