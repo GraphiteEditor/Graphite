@@ -299,6 +299,8 @@ impl<T: InstanceLayout> InstanceLayout for Instances<T> {
 					TextButton::new(instance.instance.identifier())
 						.on_update(move |_| SpreadsheetMessage::PushToInstancePath { index }.into())
 						.widget_holder(),
+					// Add the mask information here. We'll simply display "Yes" or "No".
+					TextLabel::new(if instance.mask.is_some() { "Yes" } else { "No" }.to_string()).widget_holder(),
 					TextLabel::new(format!(
 						"Location: ({} px, {} px) — Rotation: {rotation:2}° — Scale: ({}x, {}x)",
 						round(translation.x),
@@ -313,7 +315,8 @@ impl<T: InstanceLayout> InstanceLayout for Instances<T> {
 			})
 			.collect::<Vec<_>>();
 
-		rows.insert(0, column_headings(&["", "instance", "transform", "alpha_blending", "source_node_id"]));
+		// Add "mask" to the column headings
+		rows.insert(0, column_headings(&["", "instance", "mask", "transform", "alpha_blending", "source_node_id"]));
 
 		let instances = vec![TextLabel::new("Instances:").widget_holder()];
 		vec![LayoutGroup::Row { widgets: instances }, LayoutGroup::Table { rows }]
