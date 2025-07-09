@@ -24,7 +24,7 @@ use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, Vector
 use graphene_std::vector::{ManipulatorPointId, PointId, VectorModificationType};
 use std::vec;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct PathTool {
 	fsm_state: PathToolFsmState,
 	tool_data: PathToolData,
@@ -305,6 +305,7 @@ impl LayoutHolder for PathTool {
 	}
 }
 
+#[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);

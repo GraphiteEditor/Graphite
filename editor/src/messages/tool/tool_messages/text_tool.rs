@@ -20,7 +20,7 @@ use graphene_std::renderer::Quad;
 use graphene_std::text::{Font, FontCache, TypesettingConfig, lines_clipping, load_font};
 use graphene_std::vector::style::Fill;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct TextTool {
 	fsm_state: TextToolFsmState,
 	tool_data: TextToolData,
@@ -170,6 +170,7 @@ impl LayoutHolder for TextTool {
 	}
 }
 
+#[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let ToolMessage::Text(TextToolMessage::UpdateOptions(action)) = message else {

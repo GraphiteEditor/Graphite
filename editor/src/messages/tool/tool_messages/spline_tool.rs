@@ -14,7 +14,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct SplineTool {
 	fsm_state: SplineToolFsmState,
 	tool_data: SplineToolData,
@@ -123,6 +123,7 @@ impl LayoutHolder for SplineTool {
 	}
 }
 
+#[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SplineTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let ToolMessage::Spline(SplineToolMessage::UpdateOptions(action)) = message else {
