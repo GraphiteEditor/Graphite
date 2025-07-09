@@ -1079,7 +1079,7 @@ impl ShapeState {
 
 					let mut normalized = handle_directions[0].and_then(|a| handle_directions[1].and_then(|b| (a - b).try_normalize()));
 
-					if normalized.is_none() {
+					if normalized.is_none() || handle_directions.iter().any(|&d| d.is_some_and(|d| d.length_squared() < f64::EPSILON * 1e5)) {
 						handle_directions = anchor_positions.map(|relative_anchor| relative_anchor.map(|relative_anchor| (relative_anchor - anchor) / 3.));
 						normalized = handle_directions[0].and_then(|a| handle_directions[1].and_then(|b| (a - b).try_normalize()))
 					}
