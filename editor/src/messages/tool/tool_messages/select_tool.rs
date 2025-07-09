@@ -974,6 +974,14 @@ impl Fsm for SelectToolFsmState {
 					}
 				}
 
+				if let Self::Dragging { .. } = self {
+					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
+					let document_start = document.metadata().document_to_viewport.inverse().transform_point2(quad.top_left());
+					let document_current = document.metadata().document_to_viewport.inverse().transform_point2(quad.bottom_right());
+
+					overlay_context.translation_box(document_current - document_start, quad, None);
+				}
+
 				self
 			}
 			(_, SelectToolMessage::EditLayer) => {
