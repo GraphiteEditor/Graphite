@@ -318,19 +318,16 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					TransformOperation::Grabbing(translation) => {
 						let translation = translation.to_dvec(self.initial_transform, self.increments);
 						let viewport_translate = document_to_viewport.transform_vector2(translation);
+						let pivot = document_to_viewport.transform_point2(self.grab_target);
+						let quad = Quad::from_box([pivot, pivot + viewport_translate]);
+
 						responses.add(SelectToolMessage::PivotShift {
 							offset: Some(viewport_translate),
 							flush: false,
 						});
-						let pivot = document_to_viewport.transform_point2(self.grab_target);
-						let quad = Quad::from_box([pivot, pivot + viewport_translate]);
-						let typed_string = if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
-							None
-						} else {
-							Some(self.typing.string.clone())
-						};
 
-						overlay_context.grab_box(translation, quad, typed_string);
+						let typed_string = (!self.typing.digits.is_empty() && self.transform_operation.can_begin_typing()).then(|| self.typing.string.clone());
+						overlay_context.translation_box(translation, quad, typed_string);
 					}
 					TransformOperation::Scaling(scale) => {
 						let scale = scale.to_f64(self.increments);

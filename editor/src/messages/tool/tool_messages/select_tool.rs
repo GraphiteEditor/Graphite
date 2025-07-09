@@ -979,7 +979,7 @@ impl Fsm for SelectToolFsmState {
 					let document_start = document.metadata().document_to_viewport.inverse().transform_point2(quad.top_left());
 					let document_current = document.metadata().document_to_viewport.inverse().transform_point2(quad.bottom_right());
 
-					overlay_context.grab_box(document_current - document_start, quad, None);
+					overlay_context.translation_box(document_current - document_start, quad, None);
 				}
 
 				self

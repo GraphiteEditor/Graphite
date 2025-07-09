@@ -815,7 +815,7 @@ impl OverlayContext {
 		self.render_context.reset_transform().expect("Failed to reset the render context transform");
 	}
 
-	pub fn grab_box(&mut self, translation: DVec2, quad: Quad, typed_string: Option<String>) {
+	pub fn translation_box(&mut self, translation: DVec2, quad: Quad, typed_string: Option<String>) {
 		if translation.x.abs() > 1e-3 {
 			self.dashed_line(quad.top_left(), quad.top_right(), None, None, Some(2.), Some(2.), Some(0.5));
 
@@ -826,6 +826,7 @@ impl OverlayContext {
 			let x_transform = DAffine2::from_translation((quad.top_left() + quad.top_right()) / 2.);
 			self.text(width, COLOR_OVERLAY_BLUE, None, x_transform, 4., [Pivot::Middle, Pivot::End]);
 		}
+
 		if translation.y.abs() > 1e-3 {
 			self.dashed_line(quad.top_left(), quad.bottom_left(), None, None, Some(2.), Some(2.), Some(0.5));
 
@@ -837,6 +838,7 @@ impl OverlayContext {
 			let height_pivot = if translation.x > -1e-3 { Pivot::Start } else { Pivot::End };
 			self.text(height, COLOR_OVERLAY_BLUE, None, y_transform, 3., [height_pivot, Pivot::Middle]);
 		}
+
 		if translation.x.abs() > 1e-3 && translation.y.abs() > 1e-3 {
 			self.line(quad.top_right(), quad.bottom_right(), None, None);
 			self.line(quad.bottom_left(), quad.bottom_right(), None, None);
