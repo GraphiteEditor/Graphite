@@ -38,6 +38,7 @@ use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::style::ViewMode;
 use std::time::Duration;
 
+#[derive(ExtractField)]
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
@@ -48,7 +49,7 @@ pub struct DocumentMessageData<'a> {
 	pub device_pixel_ratio: f64,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
 #[serde(default)]
 pub struct DocumentMessageHandler {
 	// ======================
@@ -168,6 +169,7 @@ impl Default for DocumentMessageHandler {
 	}
 }
 
+#[message_handler_data]
 impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessageHandler {
 	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, data: DocumentMessageData) {
 		let DocumentMessageData {
@@ -750,6 +752,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// Nudge translation without resizing
 				if !resize {
 					let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
+					responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });
 
 					for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
 						responses.add(GraphOperationMessage::TransformChange {
@@ -1185,6 +1188,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					OverlaysType::HoverOutline => visibility_settings.hover_outline = visible,
 					OverlaysType::SelectionOutline => visibility_settings.selection_outline = visible,
 					OverlaysType::Pivot => visibility_settings.pivot = visible,
+					OverlaysType::Origin => visibility_settings.origin = visible,
 					OverlaysType::Path => visibility_settings.path = visible,
 					OverlaysType::Anchors => {
 						visibility_settings.anchors = visible;
@@ -1305,8 +1309,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::UpdateUpstreamTransforms {
 				upstream_footprints,
 				local_transforms,
+				first_instance_source_id,
 			} => {
 				self.network_interface.update_transforms(upstream_footprints, local_transforms);
+				self.network_interface.update_first_instance_source_id(first_instance_source_id);
 			}
 			DocumentMessage::UpdateClickTargets { click_targets } => {
 				// TODO: Allow non layer nodes to have click targets
@@ -1711,6 +1717,14 @@ impl DocumentMessageHandler {
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(&self.network_interface)
 			.filter_map(|layer| self.metadata().bounding_box_viewport(layer))
+			.reduce(graphene_std::renderer::Quad::combine_bounds)
+	}
+
+	pub fn selected_visible_and_unlock_layers_bounding_box_document(&self) -> Option<[DVec2; 2]> {
+		self.network_interface
+			.selected_nodes()
+			.selected_visible_and_unlocked_layers(&self.network_interface)
+			.map(|layer| self.metadata().nonzero_bounding_box(layer))
 			.reduce(graphene_std::renderer::Quad::combine_bounds)
 	}
 
@@ -2264,6 +2278,24 @@ impl DocumentMessageHandler {
 									.for_label(checkbox_id.clone())
 									.widget_holder(),
 								TextLabel::new("Transform Pivot".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+							]
+						},
+					},
+					LayoutGroup::Row {
+						widgets: {
+							let mut checkbox_id = CheckboxId::default();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.pivot)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::Origin),
+										}
+										.into()
+									})
+									.for_label(checkbox_id.clone())
+									.widget_holder(),
+								TextLabel::new("Transform Origin".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
 							]
 						},
 					},

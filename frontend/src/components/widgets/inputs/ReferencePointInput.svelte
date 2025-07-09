@@ -7,13 +7,14 @@
 
 	export let value: string;
 	export let disabled = false;
+	export let tooltip: string | undefined = undefined;
 
 	function setValue(newValue: ReferencePoint) {
 		dispatch("value", newValue);
 	}
 </script>
 
-<div class="reference-point-input" class:disabled>
+<div class="reference-point-input" class:disabled title={tooltip}>
 	<button on:click={() => setValue("TopLeft")} class="row-1 col-1" class:active={value === "TopLeft"} tabindex="-1" {disabled}><div /></button>
 	<button on:click={() => setValue("TopCenter")} class="row-1 col-2" class:active={value === "TopCenter"} tabindex="-1" {disabled}><div /></button>
 	<button on:click={() => setValue("TopRight")} class="row-1 col-3" class:active={value === "TopRight"} tabindex="-1" {disabled}><div /></button>

@@ -13,7 +13,7 @@ use crate::messages::tool::common_functionality::transformation_cage::*;
 use graph_craft::document::NodeId;
 use graphene_std::renderer::Quad;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct ArtboardTool {
 	fsm_state: ArtboardToolFsmState,
 	data: ArtboardToolData,
@@ -48,6 +48,7 @@ impl ToolMetadata for ArtboardTool {
 	}
 }
 
+#[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ArtboardTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		self.fsm_state.process_event(message, &mut self.data, tool_data, &(), responses, false);
@@ -567,7 +568,7 @@ mod test_artboard {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {}", e),
 		};
-		instrumented.grab_all_input::<graphene_std::append_artboard::ArtboardInput>(&editor.runtime).collect()
+		instrumented.grab_all_input::<graphene_std::graphic_element::append_artboard::ArtboardInput>(&editor.runtime).collect()
 	}
 
 	#[tokio::test]

@@ -25,6 +25,7 @@ use graphene_std::renderer::Quad;
 use graphene_std::text::Font;
 use std::vec;
 
+#[derive(ExtractField)]
 pub struct PortfolioMessageData<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
@@ -35,7 +36,7 @@ pub struct PortfolioMessageData<'a> {
 	pub animation: &'a AnimationMessageHandler,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, ExtractField)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
@@ -52,6 +53,7 @@ pub struct PortfolioMessageHandler {
 	pub reset_node_definitions_on_open: bool,
 }
 
+#[message_handler_data]
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, data: PortfolioMessageData) {
 		let PortfolioMessageData {
@@ -431,6 +433,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				for (node_id, node, path) in document.network_interface.document_network().clone().recursive_nodes() {
 					document.network_interface.validate_input_metadata(node_id, node, &path);
 					document.network_interface.validate_display_name_metadata(node_id, &path);
+					document.network_interface.validate_output_names(node_id, node, &path);
 				}
 
 				// Ensure layers are positioned as stacks if they are upstream siblings of another layer

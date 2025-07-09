@@ -17,7 +17,7 @@ use graphene_std::Color;
 use graphene_std::vector::{HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, StrokeId, VectorData};
 use graphene_std::vector::{PointId, VectorModificationType};
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct PenTool {
 	fsm_state: PenToolFsmState,
 	tool_data: PenToolData,
@@ -186,6 +186,7 @@ impl LayoutHolder for PenTool {
 	}
 }
 
+#[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let ToolMessage::Pen(PenToolMessage::UpdateOptions(action)) = message else {
