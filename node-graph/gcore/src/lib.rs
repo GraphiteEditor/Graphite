@@ -12,7 +12,7 @@ pub mod debug;
 pub mod extract_xy;
 pub mod generic;
 pub mod gradient;
-mod graphic_element;
+pub mod graphic_element;
 pub mod instances;
 pub mod logic;
 pub mod math;
@@ -36,7 +36,7 @@ pub use blending::*;
 pub use context::*;
 pub use ctor;
 pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
-pub use graphic_element::*;
+pub use graphic_element::{Artboard, ArtboardGroupTable, GraphicElement, GraphicGroupTable};
 pub use memo::MemoHash;
 pub use num_traits;
 pub use raster::Color;
@@ -162,7 +162,7 @@ where
 
 pub trait NodeInputDecleration {
 	const INDEX: usize;
-	fn identifier() -> &'static str;
+	fn identifier() -> ProtoNodeIdentifier;
 	type Result;
 }
 

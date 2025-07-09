@@ -1,5 +1,7 @@
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use super::network_interface::NodeNetworkInterface;
+use crate::messages::tool::common_functionality::graph_modification_utils;
+use glam::DVec2;
 use graph_craft::document::{NodeId, NodeNetwork};
 use serde::ser::SerializeStruct;
 
@@ -96,6 +98,22 @@ impl SelectedNodes {
 	pub fn selected_visible_and_unlocked_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		self.selected_layers(network_interface.document_metadata())
 			.filter(move |&layer| self.layer_visible(layer, network_interface) && !self.layer_locked(layer, network_interface))
+	}
+
+	pub fn selected_visible_and_unlocked_layers_mean_average_origin<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> DVec2 {
+		let (sum, count) = self
+			.selected_visible_and_unlocked_layers(network_interface)
+			.map(|layer| graph_modification_utils::get_viewport_origin(layer, network_interface))
+			.fold((glam::DVec2::ZERO, 0), |(sum, count), item| (sum + item, count + 1));
+		if count == 0 { DVec2::ZERO } else { sum / count as f64 }
+	}
+
+	pub fn selected_visible_and_unlocked_median_points<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> DVec2 {
+		let (sum, count) = self
+			.selected_visible_and_unlocked_layers(network_interface)
+			.map(|layer| graph_modification_utils::get_viewport_center(layer, network_interface))
+			.fold((glam::DVec2::ZERO, 0), |(sum, count), item| (sum + item, count + 1));
+		if count == 0 { DVec2::ZERO } else { sum / count as f64 }
 	}
 
 	pub fn selected_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {

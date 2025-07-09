@@ -6,16 +6,18 @@ use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 use std::fmt::Write;
 
+#[derive(ExtractField)]
 pub struct InputMapperMessageData<'a> {
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub actions: ActionList,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, ExtractField)]
 pub struct InputMapperMessageHandler {
 	mapping: Mapping,
 }
 
+#[message_handler_data]
 impl MessageHandler<InputMapperMessage, InputMapperMessageData<'_>> for InputMapperMessageHandler {
 	fn process_message(&mut self, message: InputMapperMessage, responses: &mut VecDeque<Message>, data: InputMapperMessageData) {
 		let InputMapperMessageData { input, actions } = data;

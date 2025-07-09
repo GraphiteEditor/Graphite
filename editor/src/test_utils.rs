@@ -172,9 +172,10 @@ impl EditorTestUtils {
 	pub fn get_node<'a, T: InputAccessor<'a, DocumentNode>>(&'a self) -> impl Iterator<Item = T> + 'a {
 		self.active_document()
 			.network_interface
-			.iter_recursive()
-			.inspect(|node| println!("{:#?}", node.1.implementation))
-			.filter_map(move |(_, document)| T::new_with_source(document))
+			.document_network()
+			.recursive_nodes()
+			.inspect(|(_, node, _)| println!("{:#?}", node.implementation))
+			.filter_map(move |(_, document, _)| T::new_with_source(document))
 	}
 
 	pub async fn move_mouse(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys, mouse_keys: MouseKeys) {
@@ -300,7 +301,7 @@ pub trait FrontendMessageTestUtils {
 
 impl FrontendMessageTestUtils for FrontendMessage {
 	fn check_node_graph_error(&self) {
-		let FrontendMessage::UpdateNodeGraph { nodes, .. } = self else { return };
+		let FrontendMessage::UpdateNodeGraphNodes { nodes, .. } = self else { return };
 
 		for node in nodes {
 			if let Some(error) = &node.errors {

@@ -1,6 +1,6 @@
 use super::tool_prelude::*;
 use crate::consts::DEFAULT_BRUSH_SIZE;
-use crate::messages::portfolio::document::graph_operation::transform_utils::{get_current_normalized_pivot, get_current_transform};
+use crate::messages::portfolio::document::graph_operation::transform_utils::get_current_transform;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
@@ -20,7 +20,7 @@ pub enum DrawMode {
 	Restore,
 }
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct BrushTool {
 	fsm_state: BrushToolFsmState,
 	data: BrushToolData,
@@ -185,6 +185,7 @@ impl LayoutHolder for BrushTool {
 	}
 }
 
+#[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let ToolMessage::Brush(BrushToolMessage::UpdateOptions(action)) = message else {
@@ -286,9 +287,7 @@ impl BrushToolData {
 			}
 
 			if *reference == Some("Transform".to_string()) {
-				let upstream = document.metadata().upstream_transform(node_id);
-				let pivot = DAffine2::from_translation(upstream.transform_point2(get_current_normalized_pivot(&node.inputs)));
-				self.transform = pivot * get_current_transform(&node.inputs) * pivot.inverse() * self.transform;
+				self.transform = get_current_transform(&node.inputs) * self.transform;
 			}
 		}
 

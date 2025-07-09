@@ -363,17 +363,6 @@ impl NodeInput {
 			NodeInput::Reflection(_) => false,
 		}
 	}
-	/// Network node inputs in the document network are not displayed, but still exist in the compiled network
-	pub fn is_exposed_to_frontend(&self, is_document_network: bool) -> bool {
-		match self {
-			NodeInput::Node { .. } => true,
-			NodeInput::Value { exposed, .. } => *exposed,
-			NodeInput::Network { .. } => !is_document_network,
-			NodeInput::Inline(_) => false,
-			NodeInput::Scope(_) => false,
-			NodeInput::Reflection(_) => false,
-		}
-	}
 
 	pub fn ty(&self) -> Type {
 		match self {
@@ -495,10 +484,6 @@ impl DocumentNodeImplementation {
 			DocumentNodeImplementation::ProtoNode(p) => Some(p),
 			_ => None,
 		}
-	}
-
-	pub const fn proto(name: &'static str) -> Self {
-		Self::ProtoNode(ProtoNodeIdentifier::new(name))
 	}
 
 	pub fn output_count(&self) -> usize {
@@ -1250,24 +1235,28 @@ impl NodeNetwork {
 
 	/// Create a [`RecursiveNodeIter`] that iterates over all [`DocumentNode`]s, including ones that are deeply nested.
 	pub fn recursive_nodes(&self) -> RecursiveNodeIter<'_> {
-		let nodes = self.nodes.iter().collect();
+		let nodes = self.nodes.iter().map(|(id, node)| (id, node, Vec::new())).collect();
 		RecursiveNodeIter { nodes }
 	}
 }
 
 /// An iterator over all [`DocumentNode`]s, including ones that are deeply nested.
 pub struct RecursiveNodeIter<'a> {
-	nodes: Vec<(&'a NodeId, &'a DocumentNode)>,
+	nodes: Vec<(&'a NodeId, &'a DocumentNode, Vec<NodeId>)>,
 }
 
 impl<'a> Iterator for RecursiveNodeIter<'a> {
-	type Item = (&'a NodeId, &'a DocumentNode);
+	type Item = (&'a NodeId, &'a DocumentNode, Vec<NodeId>);
 	fn next(&mut self) -> Option<Self::Item> {
-		let node = self.nodes.pop()?;
-		if let DocumentNodeImplementation::Network(network) = &node.1.implementation {
-			self.nodes.extend(network.nodes.iter());
+		let (current_id, node, path) = self.nodes.pop()?;
+		if let DocumentNodeImplementation::Network(network) = &node.implementation {
+			self.nodes.extend(network.nodes.iter().map(|(id, node)| {
+				let mut nested_path = path.clone();
+				nested_path.push(*current_id);
+				(id, node, nested_path)
+			}));
 		}
-		Some(node)
+		Some((current_id, node, path))
 	}
 }
 
@@ -1275,7 +1264,6 @@ impl<'a> Iterator for RecursiveNodeIter<'a> {
 mod test {
 	use super::*;
 	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
-	use graphene_core::ProtoNodeIdentifier;
 	use std::sync::atomic::AtomicU64;
 
 	fn gen_node_id() -> NodeId {
@@ -1547,7 +1535,7 @@ mod test {
 					NodeId(1),
 					DocumentNode {
 						inputs: vec![NodeInput::network(concrete!(u32), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
 						..Default::default()
 					},
 				),
@@ -1555,7 +1543,7 @@ mod test {
 					NodeId(2),
 					DocumentNode {
 						inputs: vec![NodeInput::network(concrete!(u32), 1)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
 						..Default::default()
 					},
 				),
@@ -1582,7 +1570,7 @@ mod test {
 					NodeId(2),
 					DocumentNode {
 						inputs: vec![result_node_input],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
 						..Default::default()
 					},
 				),
