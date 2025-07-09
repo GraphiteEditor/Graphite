@@ -111,7 +111,11 @@ pub fn segment_to_handles(segment: &PathSeg) -> BezierHandles {
 
 pub fn handles_to_segment(start: DVec2, handles: BezierHandles, end: DVec2) -> PathSeg {
 	match handles {
-		bezier_rs::BezierHandles::Linear => PathSeg::Line(Line::new(dvec2_to_point(start), dvec2_to_point(end))),
+		bezier_rs::BezierHandles::Linear => {
+			let p0 = dvec2_to_point(start);
+			let p1 = dvec2_to_point(end);
+			PathSeg::Line(Line::new(p0, p1))
+		}
 		bezier_rs::BezierHandles::Quadratic { handle } => {
 			let p0 = dvec2_to_point(start);
 			let p1 = dvec2_to_point(handle);

@@ -1678,9 +1678,7 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 			source_path.apply_affine(Affine::new(source_transform.to_cols_array()));
 
 			// Skip if the path has no segments else get the point at the end of the path.
-			let Some(end) = source_path.segments().last().and_then(|element| Some(element.end())) else {
-				continue;
-			};
+			let Some(end) = source_path.segments().last().map(|element| element.end()) else { continue };
 
 			for element in source_path.elements_mut() {
 				match element {
@@ -1705,9 +1703,7 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 			target_path.apply_affine(Affine::new(source_transform.to_cols_array()));
 
 			// Skip if the path has no segments else get the point at the start of the path.
-			let Some(start) = target_path.segments().next().and_then(|element| Some(element.start())) else {
-				continue;
-			};
+			let Some(start) = target_path.segments().next().map(|element| element.start()) else { continue };
 
 			for element in target_path.elements_mut() {
 				match element {
@@ -1787,93 +1783,90 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 			let v2 = (bezier1.end() - bezier2.end()).normalize();
 
 			let dot_product = v1.dot(v2);
-
 			let angle_rad = dot_product.acos();
 
-			bevel_length / ((angle_rad / 2.0).sin())
-		} else {
-			let length1 = bezier1.perimeter(DEFAULT_ACCURACY);
-			let length2 = bezier2.perimeter(DEFAULT_ACCURACY);
+			return bevel_length / ((angle_rad / 2.).sin());
+		}
 
-			let max_split = length1.min(length2);
+		let length1 = bezier1.perimeter(DEFAULT_ACCURACY);
+		let length2 = bezier2.perimeter(DEFAULT_ACCURACY);
 
-			let mut split_distance = 0.0;
-			let mut best_diff = f64::MAX;
-			let mut current_best_distance = 0.0;
+		let max_split = length1.min(length2);
 
-			let clamp_and_round = |value: f64| ((value * 1000.0).round() / 1000.0).clamp(0.0, 1.0);
+		let mut split_distance = 0.;
+		let mut best_diff = f64::MAX;
+		let mut current_best_distance = 0.;
 
-			const INITIAL_SAMPLES: usize = 50;
-			for i in 0..=INITIAL_SAMPLES {
-				let distance_sample = max_split * (i as f64 / INITIAL_SAMPLES as f64);
+		let clamp_and_round = |value: f64| ((value * 1000.).round() / 1000.).clamp(0., 1.);
 
-				let x_point_t = eval_pathseg_euclidean(bezier1, 1.0 - clamp_and_round(distance_sample / length1), DEFAULT_ACCURACY);
-				let y_point_t = eval_pathseg_euclidean(bezier2, clamp_and_round(distance_sample / length2), DEFAULT_ACCURACY);
+		const INITIAL_SAMPLES: usize = 50;
+		for i in 0..=INITIAL_SAMPLES {
+			let distance_sample = max_split * (i as f64 / INITIAL_SAMPLES as f64);
 
-				let x_point = bezier1.eval(x_point_t);
-				let y_point = bezier2.eval(y_point_t);
+			let x_point_t = eval_pathseg_euclidean(bezier1, 1. - clamp_and_round(distance_sample / length1), DEFAULT_ACCURACY);
+			let y_point_t = eval_pathseg_euclidean(bezier2, clamp_and_round(distance_sample / length2), DEFAULT_ACCURACY);
 
-				let distance = x_point.distance(y_point);
-				let diff = (bevel_length - distance).abs();
+			let x_point = bezier1.eval(x_point_t);
+			let y_point = bezier2.eval(y_point_t);
 
-				if diff < best_diff {
-					best_diff = diff;
-					current_best_distance = distance_sample;
-				}
+			let distance = x_point.distance(y_point);
+			let diff = (bevel_length - distance).abs();
 
-				if bevel_length - distance < 0.0 {
-					split_distance = distance_sample;
+			if diff < best_diff {
+				best_diff = diff;
+				current_best_distance = distance_sample;
+			}
 
-					if i > 0 {
-						let prev_sample = max_split * ((i - 1) as f64 / INITIAL_SAMPLES as f64);
+			if bevel_length - distance < 0. {
+				split_distance = distance_sample;
 
-						const REFINE_STEPS: usize = 10;
-						for j in 1..=REFINE_STEPS {
-							let refined_sample = prev_sample + (distance_sample - prev_sample) * (j as f64 / REFINE_STEPS as f64);
+				if i > 0 {
+					let prev_sample = max_split * ((i - 1) as f64 / INITIAL_SAMPLES as f64);
 
-							let x_point_t = eval_pathseg_euclidean(bezier1, 1.0 - (refined_sample / length1).clamp(0.0, 1.0), DEFAULT_ACCURACY);
-							let y_point_t = eval_pathseg_euclidean(bezier2, (refined_sample / length2).clamp(0.0, 1.0), DEFAULT_ACCURACY);
+					const REFINE_STEPS: usize = 10;
+					for j in 1..=REFINE_STEPS {
+						let refined_sample = prev_sample + (distance_sample - prev_sample) * (j as f64 / REFINE_STEPS as f64);
 
-							let x_point = bezier1.eval(x_point_t);
-							let y_point = bezier2.eval(y_point_t);
+						let x_point_t = eval_pathseg_euclidean(bezier1, 1. - (refined_sample / length1).clamp(0., 1.), DEFAULT_ACCURACY);
+						let y_point_t = eval_pathseg_euclidean(bezier2, (refined_sample / length2).clamp(0., 1.), DEFAULT_ACCURACY);
 
-							let distance = x_point.distance(y_point);
+						let x_point = bezier1.eval(x_point_t);
+						let y_point = bezier2.eval(y_point_t);
 
-							if bevel_length - distance < 0.0 {
-								split_distance = refined_sample;
-								break;
-							}
+						let distance = x_point.distance(y_point);
+
+						if bevel_length - distance < 0. {
+							split_distance = refined_sample;
+							break;
 						}
 					}
-					break;
 				}
+				break;
 			}
-
-			if split_distance == 0.0 && current_best_distance > 0.0 {
-				split_distance = current_best_distance;
-			}
-
-			split_distance
 		}
+
+		if split_distance == 0. && current_best_distance > 0. {
+			split_distance = current_best_distance;
+		}
+
+		split_distance
 	}
 
 	fn sort_segments(segment_domain: &SegmentDomain) -> Vec<usize> {
 		let start_points = segment_domain.start_point();
 		let end_points = segment_domain.end_point();
 
-		let mut sorted_segments = Vec::new();
-
-		sorted_segments.push(0);
+		let mut sorted_segments = vec![0];
 
 		for _ in 0..start_points.len() {
 			match sorted_segments.last() {
-				Some(last) => {
-					if let Some(index) = start_points.iter().position(|&p| p == end_points[*last as usize]) {
+				Some(&last) => {
+					if let Some(index) = start_points.iter().position(|&p| p == end_points[last]) {
 						if index == 0 {
 							break;
-						} else {
-							sorted_segments.push(index);
 						}
+
+						sorted_segments.push(index);
 					}
 				}
 				None => break,
@@ -1899,22 +1892,19 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 		for i in 0..segment_domain_length {
 			let (index, next_index) = if i == segment_domain_length - 1 { (i, 0) } else { (i, i + 1) };
 
-			let (handles, start_point, end_point, next_handles, next_start_point, next_end_point) =
-				segment_domain.pair_handles_and_points_mut_by_index(sorted_segments[index], sorted_segments[next_index]);
+			let pair_handles_and_points = segment_domain.pair_handles_and_points_mut_by_index(sorted_segments[index], sorted_segments[next_index]);
+			let (handles, start_point, end_point, next_handles, next_start_point, next_end_point) = pair_handles_and_points;
 
 			let start = vector_data.point_domain.positions()[*start_point];
-
 			let end = vector_data.point_domain.positions()[*end_point];
 
 			let mut bezier = handles_to_segment(start, *handles, end);
-
 			bezier = Affine::new(vector_data_transform.to_cols_array()) * bezier;
 
 			let next_start = vector_data.point_domain.positions()[*next_start_point];
 			let next_end = vector_data.point_domain.positions()[*next_end_point];
 
 			let mut next_bezier = handles_to_segment(next_start, *next_handles, next_end);
-
 			next_bezier = Affine::new(vector_data_transform.to_cols_array()) * next_bezier;
 
 			let spilt_distance = calculate_distance_to_spilt(bezier, next_bezier, distance);
@@ -1965,6 +1955,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 				let pos = inverse_transform.transform_point2(point_to_dvec2(bezier.end()));
 				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, end_point, &mut next_id, &mut new_segments);
 			}
+
 			// Update the handles
 			*handles = segment_to_handles(&bezier).apply_transformation(|p| inverse_transform.transform_point2(p));
 
@@ -1975,6 +1966,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 				let distance = spilt_distance.min(next_original_length.min(original_length) / 2.);
 				next_bezier = split_distance(next_bezier, distance, next_length);
 				next_length = (next_length - distance).max(0.);
+
 				// Update the start position
 				let pos = inverse_transform.transform_point2(point_to_dvec2(next_bezier.start()));
 
@@ -1987,6 +1979,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 			prev_original_length = next_original_length;
 			prev_length = next_length;
 		}
+
 		new_segments
 	}
 
@@ -1999,7 +1992,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 		}
 	}
 
-	if distance > 1.0 {
+	if distance > 1. {
 		let mut segments_connected = segments_connected_count(&vector_data);
 		let new_segments = update_existing_segments(&mut vector_data, vector_data_transform, distance, &mut segments_connected);
 		insert_new_segments(&mut vector_data, &new_segments);
