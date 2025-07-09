@@ -1436,7 +1436,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 						if let Some(field) = graphene_std::registry::NODE_METADATA
 							.lock()
 							.unwrap()
-							.get(&proto_node_identifier.name.clone().into_owned())
+							.get(&proto_node_identifier)
 							.and_then(|metadata| metadata.fields.get(input_index))
 						{
 							number_options = (field.number_min, field.number_max, field.number_mode_range);

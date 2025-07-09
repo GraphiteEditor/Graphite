@@ -140,6 +140,7 @@ impl Dispatcher {
 					let graphene_std::renderer::RenderMetadata {
 						upstream_footprints: footprints,
 						local_transforms,
+						first_instance_source_id,
 						click_targets,
 						clip_targets,
 					} = render_metadata;
@@ -149,6 +150,7 @@ impl Dispatcher {
 						DocumentMessage::UpdateUpstreamTransforms {
 							upstream_footprints: footprints,
 							local_transforms,
+							first_instance_source_id,
 						},
 						DocumentMessage::UpdateClickTargets { click_targets },
 						DocumentMessage::UpdateClipTargets { clip_targets },

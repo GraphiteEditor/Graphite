@@ -183,6 +183,11 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
 				});
 
+				responses.add(BroadcastMessage::SubscribeEvent {
+					on: BroadcastEvent::SelectionChanged,
+					send: Box::new(SelectToolMessage::SyncHistory.into()),
+				});
+
 				self.tool_is_active = true;
 
 				let tool_data = &mut self.tool_state.tool_data;

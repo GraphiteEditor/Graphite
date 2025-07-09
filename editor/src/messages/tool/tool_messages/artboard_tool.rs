@@ -568,7 +568,7 @@ mod test_artboard {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {}", e),
 		};
-		instrumented.grab_all_input::<graphene_std::append_artboard::ArtboardInput>(&editor.runtime).collect()
+		instrumented.grab_all_input::<graphene_std::graphic_element::append_artboard::ArtboardInput>(&editor.runtime).collect()
 	}
 
 	#[tokio::test]

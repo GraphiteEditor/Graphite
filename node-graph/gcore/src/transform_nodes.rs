@@ -20,7 +20,6 @@ async fn transform<T: 'n + 'static>(
 	rotate: f64,
 	scale: DVec2,
 	skew: DVec2,
-	_pivot: DVec2,
 ) -> Instances<T> {
 	let matrix = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., skew.y, skew.x, 1., 0., 0.]);
 
