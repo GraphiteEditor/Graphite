@@ -179,11 +179,16 @@ type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessa
 pub fn custom_data() -> MessageData {
 	MessageData::new(
 		String::from("TransformData<'a>"),
+		// TODO: When <https://github.com/dtolnay/proc-macro2/issues/503> is resolved and released,
+		// TODO: use <https://doc.rust-lang.org/stable/proc_macro/struct.Span.html#method.line> to get
+		// TODO: the line number instead of hardcoding it to the magic number on the following lines
+		// TODO: which points to the line of the `type TransformData<'a> = ...` definition above.
+		// TODO: Also, utilize the line number in the actual output, since it is currently unused.
 		vec![
-			(String::from("&'a DocumentMessageHandler"), 136),
-			(String::from("&'a InputPreprocessorMessageHandler"), 136),
-			(String::from("&'a ToolData"), 136),
-			(String::from("&'a mut ShapeState"), 136),
+			(String::from("&'a DocumentMessageHandler"), 177),
+			(String::from("&'a InputPreprocessorMessageHandler"), 177),
+			(String::from("&'a ToolData"), 177),
+			(String::from("&'a mut ShapeState"), 177),
 		],
 		file!(),
 	)

@@ -343,7 +343,11 @@ impl LayoutMessageHandler {
 }
 
 pub fn custom_data() -> MessageData {
-	MessageData::new(String::from("Function"), vec![(String::from("Fn(&MessageDiscriminant) -> Option<KeysGroup>"), 346)], file!())
+	// TODO: When <https://github.com/dtolnay/proc-macro2/issues/503> is resolved and released,
+	// TODO: use <https://doc.rust-lang.org/stable/proc_macro/struct.Span.html#method.line> to get
+	// TODO: the line number instead of hardcoding it to the magic number on the following line.
+	// TODO: Also, utilize the line number in the actual output, since it is currently unused.
+	MessageData::new(String::from("Function"), vec![(String::from("Fn(&MessageDiscriminant) -> Option<KeysGroup>"), 350)], file!())
 }
 
 #[message_handler_data(CustomData)]
