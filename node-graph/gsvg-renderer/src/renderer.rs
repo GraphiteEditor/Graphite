@@ -602,18 +602,16 @@ impl GraphicElementRendered for VectorDataTable {
 				);
 			}
 
-
 			let mut masked = false;
 			if let Some(mask) = instance.mask {
-				let transform = applied_stroke_transform;
-				let bounds = mask.bounding_box(transform, true);
+				let bounds = mask.bounding_box(element_transform, true);
 
 				if let Some(bounds) = bounds {
 					masked = true;
 					let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
 					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-					mask.render_to_vello(scene, transform, _context, &render_params.for_clipper());
+					mask.render_to_vello(scene, element_transform, _context, &render_params.for_clipper());
 					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
 				}
 			}
@@ -1039,12 +1037,26 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 				if instance.alpha_blending.blend_mode != BlendMode::default() {
 					attributes.push("style", instance.alpha_blending.blend_mode.render());
 				}
+
+				if let Some(mask) = instance.mask {
+					let uuid = generate_uuid();
+					let mask_type = if mask.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
+					let mut svg = SvgRender::new();
+					mask.render_svg(&mut svg, &render_params.for_clipper());
+
+					write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
+					mask_type.write_to_defs(&mut attributes.0.svg_defs, uuid, svg.svg.to_svg_string());
+					let id = format!("mask-{}", uuid);
+					let selector = format!("url(#{id})");
+
+					attributes.push(mask_type.to_attribute(), selector);
+				}
 			});
 		}
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext, _render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
 		for instance in self.instance_ref_iter() {
@@ -1055,7 +1067,26 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 			let image = peniko::Image::new(image.to_flat_u8().0.into(), peniko::Format::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
 			let transform = transform * *instance.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 
+			let mut masked = false;
+			if let Some(mask) = instance.mask {
+				let bounds = mask.bounding_box(transform, true);
+
+				if let Some(bounds) = bounds {
+					masked = true;
+					let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+
+					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+					mask.render_to_vello(scene, transform, _context, &render_params.for_clipper());
+					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
+				}
+			}
+
 			scene.draw_image(&image, kurbo::Affine::new(transform.to_cols_array()));
+
+			if masked {
+				scene.pop_layer();
+				scene.pop_layer();
+			}
 		}
 	}
 

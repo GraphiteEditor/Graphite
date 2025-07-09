@@ -195,13 +195,25 @@ pub fn mask<T, E>(
 	/// The image to be masked.
 	#[implementations(
 		VectorDataTable,
+		VectorDataTable,
+		VectorDataTable,
 		RasterDataTable<CPU>,
+		RasterDataTable<CPU>,
+		RasterDataTable<CPU>,
+		GraphicGroupTable,
+		GraphicGroupTable,
 		GraphicGroupTable
 	)]
 	mut image: Instances<T>,
 	/// The stencil to be used for masking.
 	#[expose]
 	#[implementations(
+		VectorDataTable,
+		RasterDataTable<CPU>,
+		GraphicGroupTable,
+		VectorDataTable,
+		RasterDataTable<CPU>,
+		GraphicGroupTable,
 		VectorDataTable,
 		RasterDataTable<CPU>,
 		GraphicGroupTable
