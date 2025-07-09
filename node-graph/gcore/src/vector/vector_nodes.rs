@@ -2423,11 +2423,12 @@ mod test {
 
 	#[tokio::test]
 	async fn bevel_repeated_point() {
-		let curve = Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::new(10., 0.), DVec2::new(10., 100.), DVec2::X * 100.);
+		let line = Bezier::from_linear_dvec2(DVec2::new(-100., 0), DVec2::ZERO);
 		let point = Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::ZERO, DVec2::ZERO);
-		let source = Subpath::from_beziers(&[Bezier::from_linear_dvec2(DVec2::X * -100., DVec2::ZERO), point, curve], false);
-		let beveled = super::bevel(Footprint::default(), vector_node(source), 5.);
-		let beveled = beveled.instance_ref_iter().next().unwrap().instance;
+		let curve = Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::new(10., 0.), DVec2::new(10., 100.), DVec2::new(100., 0));
+		let subpath = Subpath::from_beziers(&[line, point, curve], false);
+		let beveled_table = super::bevel(Footprint::default(), vector_node(subpath), 5.);
+		let beveled = beveled_table.instance_ref_iter().next().unwrap().instance;
 
 		assert_eq!(beveled.point_domain.positions().len(), 6);
 		assert_eq!(beveled.segment_domain.ids().len(), 5);
