@@ -669,6 +669,13 @@ impl EditorHandle {
 		};
 		self.dispatch(message);
 	}
+	/// Duplicate the selected layers
+	#[wasm_bindgen(js_name = duplicateLayer)]
+	pub fn duplicate_layer(&self, parent_id: Option<u64>, insert_index: usize) {
+		let parent = parent_id.map(|id| LayerNodeIdentifier::new_unchecked(NodeId(id))).unwrap_or_default();
+		let message = PortfolioMessage::DuplicateSelectedLayers { parent, insert_index };
+		self.dispatch(message);
+	}
 
 	/// Toggle visibility of a layer or node given its node ID
 	#[wasm_bindgen(js_name = toggleNodeVisibilityLayerPanel)]
