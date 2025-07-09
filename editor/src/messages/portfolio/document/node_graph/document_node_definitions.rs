@@ -946,7 +946,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					inputs: vec![
 						NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true),
 						NodeInput::value(TaggedValue::BrushStrokes(Vec::new()), false),
-						NodeInput::value(TaggedValue::BrushCache(BrushCache::new_proto()), false),
+						NodeInput::value(TaggedValue::BrushCache(BrushCache::default()), false),
 					],
 					..Default::default()
 				},

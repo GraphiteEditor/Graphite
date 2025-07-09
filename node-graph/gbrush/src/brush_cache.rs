@@ -6,11 +6,15 @@ use graphene_core::raster_types::CPU;
 use graphene_core::raster_types::Raster;
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::hash::Hasher;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
-#[derive(Clone, Debug, PartialEq, DynAny, Default, serde::Serialize, serde::Deserialize)]
+static NEXT_BRUSH_CACHE_IMPL_ID: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Clone, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 struct BrushCacheImpl {
+	unique_id: u64,
 	// The full previous input that was cached.
 	prev_input: Vec<BrushStroke>,
 
@@ -90,9 +94,29 @@ impl BrushCacheImpl {
 	}
 }
 
+impl Default for BrushCacheImpl {
+	fn default() -> Self {
+		Self {
+			unique_id: NEXT_BRUSH_CACHE_IMPL_ID.fetch_add(1, Ordering::SeqCst),
+			prev_input: Vec::new(),
+			background: Default::default(),
+			blended_image: Default::default(),
+			last_stroke_texture: Default::default(),
+			brush_texture_cache: HashMap::new(),
+		}
+	}
+}
+
+impl PartialEq for BrushCacheImpl {
+	fn eq(&self, other: &Self) -> bool {
+		self.unique_id == other.unique_id
+	}
+}
+
 impl Hash for BrushCacheImpl {
-	// Zero hash.
-	fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.unique_id.hash(state);
+	}
 }
 
 #[derive(Clone, Debug, Default)]
@@ -106,12 +130,11 @@ pub struct BrushPlan {
 #[derive(Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct BrushCache {
 	inner: Arc<Mutex<BrushCacheImpl>>,
-	proto: bool,
 }
 
 impl Default for BrushCache {
 	fn default() -> Self {
-		Self::new_proto()
+		Self { inner: Default::default() }
 	}
 }
 
@@ -120,17 +143,8 @@ impl Default for BrushCache {
 // new object. Any further clones however are all the same underlying cache object.
 impl Clone for BrushCache {
 	fn clone(&self) -> Self {
-		if self.proto {
-			let inner_val = self.inner.lock().unwrap();
-			Self {
-				inner: Arc::new(Mutex::new(inner_val.clone())),
-				proto: false,
-			}
-		} else {
-			Self {
-				inner: Arc::clone(&self.inner),
-				proto: false,
-			}
+		Self {
+			inner: Arc::new(Mutex::new(self.inner.lock().unwrap().clone())),
 		}
 	}
 }
@@ -155,13 +169,6 @@ impl Hash for BrushCache {
 }
 
 impl BrushCache {
-	pub fn new_proto() -> Self {
-		Self {
-			inner: Default::default(),
-			proto: true,
-		}
-	}
-
 	pub fn compute_brush_plan(&self, background: Instance<Raster<CPU>>, input: &[BrushStroke]) -> BrushPlan {
 		let mut inner = self.inner.lock().unwrap();
 		inner.compute_brush_plan(background, input)
