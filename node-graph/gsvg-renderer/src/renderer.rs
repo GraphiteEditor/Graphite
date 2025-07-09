@@ -531,6 +531,21 @@ impl GraphicElementRendered for VectorDataTable {
 					let selector = format!("url(#{id})");
 					attributes.push(mask_type.to_attribute(), selector);
 				}
+
+				if let Some(mask) = instance.mask {
+					let uuid = generate_uuid();
+					let mask_type = if mask.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
+					let mut svg = SvgRender::new();
+					mask.render_svg(&mut svg, &render_params.for_clipper());
+
+					write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
+					mask_type.write_to_defs(&mut attributes.0.svg_defs, uuid, svg.svg.to_svg_string());
+					let id = format!("mask-{}", uuid);
+					let selector = format!("url(#{id})");
+
+					attributes.push(mask_type.to_attribute(), selector);
+				}
+
 				attributes.push_val(fill_and_stroke);
 
 				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
@@ -585,6 +600,22 @@ impl GraphicElementRendered for VectorDataTable {
 					kurbo::Affine::new(multiplied_transform.to_cols_array()),
 					&kurbo::Rect::new(layer_bounds[0].x, layer_bounds[0].y, layer_bounds[1].x, layer_bounds[1].y),
 				);
+			}
+
+
+			let mut masked = false;
+			if let Some(mask) = instance.mask {
+				let transform = applied_stroke_transform;
+				let bounds = mask.bounding_box(transform, true);
+
+				if let Some(bounds) = bounds {
+					masked = true;
+					let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+
+					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+					mask.render_to_vello(scene, transform, _context, &render_params.for_clipper());
+					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
+				}
 			}
 
 			let can_draw_aligned_stroke = instance.instance.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
@@ -744,6 +775,11 @@ impl GraphicElementRendered for VectorDataTable {
 			}
 
 			if can_draw_aligned_stroke {
+				scene.pop_layer();
+				scene.pop_layer();
+			}
+
+			if masked {
 				scene.pop_layer();
 				scene.pop_layer();
 			}
