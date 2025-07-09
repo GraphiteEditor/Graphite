@@ -5,14 +5,14 @@ use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::SurfaceFrame;
-use graphene_core::raster::brush_cache::BrushCache;
-use graphene_core::raster::{BlendMode, LuminanceCalculation};
+use graphene_brush::brush_cache::BrushCache;
+use graphene_brush::brush_stroke::BrushStroke;
 use graphene_core::raster_types::CPU;
-use graphene_core::renderer::RenderMetadata;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
 use graphene_core::vector::style::Fill;
 use graphene_core::{Color, MemoHash, Node, Type};
+use graphene_svg_renderer::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -97,7 +97,7 @@ macro_rules! tagged_value {
 				}
 			}
 			/// Attempts to downcast the dynamic type to a tagged value
-			pub fn try_from_std_any_ref(input: &(dyn std::any::Any)) -> Result<Self, String> {
+			pub fn try_from_std_any_ref(input: &dyn std::any::Any) -> Result<Self, String> {
 				use std::any::TypeId;
 
 				match input.type_id() {
@@ -190,9 +190,9 @@ tagged_value! {
 	VectorData(graphene_core::vector::VectorDataTable),
 	#[cfg_attr(target_arch = "wasm32", serde(alias = "ImageFrame", deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
 	RasterData(graphene_core::raster_types::RasterDataTable<CPU>),
-	#[cfg_attr(target_arch = "wasm32", serde(deserialize_with = "graphene_core::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(target_arch = "wasm32", serde(deserialize_with = "graphene_core::graphic_element::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
 	GraphicGroup(graphene_core::GraphicGroupTable),
-	#[cfg_attr(target_arch = "wasm32", serde(deserialize_with = "graphene_core::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(target_arch = "wasm32", serde(deserialize_with = "graphene_core::graphic_element::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
 	ArtboardGroup(graphene_core::ArtboardGroupTable),
 	// ============
 	// STRUCT TYPES
@@ -209,29 +209,29 @@ tagged_value! {
 	#[serde(alias = "GradientPositions")] // TODO: Eventually remove this alias document upgrade code
 	GradientStops(graphene_core::vector::style::GradientStops),
 	Font(graphene_core::text::Font),
-	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
+	BrushStrokes(Vec<BrushStroke>),
 	BrushCache(BrushCache),
 	DocumentNode(DocumentNode),
-	Curve(graphene_core::raster::curve::Curve),
+	Curve(graphene_raster_nodes::curve::Curve),
 	Footprint(graphene_core::transform::Footprint),
 	VectorModification(Box<graphene_core::vector::VectorModification>),
 	FontCache(Arc<graphene_core::text::FontCache>),
 	// ==========
 	// ENUM TYPES
 	// ==========
-	BlendMode(BlendMode),
-	LuminanceCalculation(LuminanceCalculation),
-	XY(graphene_core::ops::XY),
-	RedGreenBlue(graphene_core::raster::RedGreenBlue),
-	RedGreenBlueAlpha(graphene_core::raster::RedGreenBlueAlpha),
+	BlendMode(graphene_core::blending::BlendMode),
+	LuminanceCalculation(graphene_raster_nodes::adjustments::LuminanceCalculation),
+	XY(graphene_core::extract_xy::XY),
+	RedGreenBlue(graphene_raster_nodes::adjustments::RedGreenBlue),
+	RedGreenBlueAlpha(graphene_raster_nodes::adjustments::RedGreenBlueAlpha),
 	RealTimeMode(graphene_core::animation::RealTimeMode),
-	NoiseType(graphene_core::raster::NoiseType),
-	FractalType(graphene_core::raster::FractalType),
-	CellularDistanceFunction(graphene_core::raster::CellularDistanceFunction),
-	CellularReturnType(graphene_core::raster::CellularReturnType),
-	DomainWarpType(graphene_core::raster::DomainWarpType),
-	RelativeAbsolute(graphene_core::raster::RelativeAbsolute),
-	SelectiveColorChoice(graphene_core::raster::SelectiveColorChoice),
+	NoiseType(graphene_raster_nodes::adjustments::NoiseType),
+	FractalType(graphene_raster_nodes::adjustments::FractalType),
+	CellularDistanceFunction(graphene_raster_nodes::adjustments::CellularDistanceFunction),
+	CellularReturnType(graphene_raster_nodes::adjustments::CellularReturnType),
+	DomainWarpType(graphene_raster_nodes::adjustments::DomainWarpType),
+	RelativeAbsolute(graphene_raster_nodes::adjustments::RelativeAbsolute),
+	SelectiveColorChoice(graphene_raster_nodes::adjustments::SelectiveColorChoice),
 	GridType(graphene_core::vector::misc::GridType),
 	ArcType(graphene_core::vector::misc::ArcType),
 	MergeByDistanceAlgorithm(graphene_core::vector::misc::MergeByDistanceAlgorithm),
@@ -247,7 +247,7 @@ tagged_value! {
 	GradientType(graphene_core::vector::style::GradientType),
 	ReferencePoint(graphene_core::transform::ReferencePoint),
 	CentroidType(graphene_core::vector::misc::CentroidType),
-	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
+	BooleanOperation(graphene_path_bool::BooleanOperation),
 }
 
 impl TaggedValue {

@@ -11,19 +11,14 @@ default = ["serde"]
 nightly = []
 type_id_logging = []
 wgpu = ["dep:wgpu"]
-vello = ["dep:vello", "bezier-rs/kurbo", "wgpu"]
 dealloc_nodes = []
 
 [dependencies]
-# Local dependencies
-math-parser = { workspace = true }
-
 # Workspace dependencies
 bytemuck = { workspace = true }
 node-macro = { workspace = true }
 num-derive = { workspace = true }
 num-traits = { workspace = true }
-usvg = { workspace = true }
 rand = { workspace = true }
 glam = { workspace = true }
 serde_json = { workspace = true }
@@ -34,17 +29,17 @@ ctor = { workspace = true }
 rand_chacha = { workspace = true }
 bezier-rs = { workspace = true }
 specta = { workspace = true }
-rustybuzz = { workspace = true }
 image = { workspace = true }
 half = { workspace = true }
 tinyvec = { workspace = true }
+parley = { workspace = true }
+skrifa = { workspace = true }
 kurbo = { workspace = true }
 log = { workspace = true }
 base64 = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
-vello = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
 
 [dev-dependencies]

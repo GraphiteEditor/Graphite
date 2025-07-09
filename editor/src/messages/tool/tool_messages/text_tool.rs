@@ -9,7 +9,6 @@ use crate::messages::portfolio::document::utility_types::network_interface::Inpu
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
-use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData};
 use crate::messages::tool::common_functionality::transformation_cage::*;
@@ -18,7 +17,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
-use graphene_std::text::{Font, FontCache, TypesettingConfig, lines_clipping, load_face};
+use graphene_std::text::{Font, FontCache, TypesettingConfig, lines_clipping, load_font};
 use graphene_std::vector::style::Fill;
 
 #[derive(Default)]
@@ -35,6 +34,7 @@ pub struct TextOptions {
 	font_name: String,
 	font_style: String,
 	fill: ToolColorOptions,
+	tilt: f64,
 }
 
 impl Default for TextOptions {
@@ -42,10 +42,11 @@ impl Default for TextOptions {
 		Self {
 			font_size: 24.,
 			line_height_ratio: 1.2,
-			character_spacing: 1.,
+			character_spacing: 0.,
 			font_name: graphene_std::consts::DEFAULT_FONT_FAMILY.into(),
 			font_style: graphene_std::consts::DEFAULT_FONT_STYLE.into(),
 			fill: ToolColorOptions::new_primary(),
+			tilt: 0.,
 		}
 	}
 }
@@ -281,7 +282,6 @@ struct TextToolData {
 	// Since the overlays must be drawn without knowledge of the inputs
 	cached_resize_bounds: [DVec2; 2],
 	bounding_box_manager: Option<BoundingBoxManager>,
-	pivot: Pivot,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	// TODO: Handle multiple layers in the future
 	layer_dragging: Option<ResizingLayer>,
@@ -468,8 +468,8 @@ impl Fsm for TextToolFsmState {
 					transform: document.metadata().transform_to_viewport(tool_data.layer).to_cols_array(),
 				});
 				if let Some(editing_text) = tool_data.editing_text.as_mut() {
-					let buzz_face = font_cache.get(&editing_text.font).map(|data| load_face(data));
-					let far = graphene_std::text::bounding_box(&tool_data.new_text, buzz_face.as_ref(), editing_text.typesetting, false);
+					let font_data = font_cache.get(&editing_text.font).map(|data| load_font(data));
+					let far = graphene_std::text::bounding_box(&tool_data.new_text, font_data, editing_text.typesetting, false);
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
@@ -517,14 +517,13 @@ impl Fsm for TextToolFsmState {
 						// Draw red overlay if text is clipped
 						let transformed_quad = layer_transform * bounds;
 						if let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
-							let buzz_face = font_cache.get(font).map(|data| load_face(data));
-							if lines_clipping(text.as_str(), buzz_face, typesetting) {
+							let font_data = font_cache.get(font).map(|data| load_font(data));
+							if lines_clipping(text.as_str(), font_data, typesetting) {
 								overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));
 							}
 						}
 
 						bounding_box_manager.render_overlays(&mut overlay_context, false);
-						tool_data.pivot.update_pivot(document, &mut overlay_context, None);
 					}
 				} else {
 					tool_data.bounding_box_manager.take();
@@ -784,6 +783,7 @@ impl Fsm for TextToolFsmState {
 						max_width: constraint_size.map(|size| size.x),
 						character_spacing: tool_options.character_spacing,
 						max_height: constraint_size.map(|size| size.y),
+						tilt: tool_options.tilt,
 					},
 					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
 					color: tool_options.fill.active_color(),

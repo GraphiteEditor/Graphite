@@ -1,29 +1,67 @@
 use crate::vector::PointId;
 use bezier_rs::{ManipulatorGroup, Subpath};
-use glam::DVec2;
-use rustybuzz::ttf_parser::{GlyphId, OutlineBuilder};
-use rustybuzz::{GlyphBuffer, UnicodeBuffer};
+use core::cell::RefCell;
+use glam::{DAffine2, DVec2};
+use parley::fontique::Blob;
+use parley::{Alignment, AlignmentOptions, FontContext, GlyphRun, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
+use skrifa::GlyphId;
+use skrifa::instance::{LocationRef, NormalizedCoord, Size};
+use skrifa::outline::{DrawSettings, OutlinePen};
+use skrifa::raw::FontRef as ReadFontsRef;
+use skrifa::{MetadataProvider, OutlineGlyph};
+use std::sync::Arc;
 
-struct Builder {
+// Thread-local storage avoids expensive re-initialization of font and layout contexts
+// across multiple text rendering operations within the same thread
+thread_local! {
+	static FONT_CONTEXT: RefCell<FontContext> = RefCell::new(FontContext::new());
+	static LAYOUT_CONTEXT: RefCell<LayoutContext<()>> = RefCell::new(LayoutContext::new());
+}
+
+struct PathBuilder {
 	current_subpath: Subpath<PointId>,
+	glyph_subpaths: Vec<Subpath<PointId>>,
 	other_subpaths: Vec<Subpath<PointId>>,
-	text_cursor: DVec2,
-	offset: DVec2,
-	ascender: f64,
+	origin: DVec2,
 	scale: f64,
 	id: PointId,
 }
 
-impl Builder {
+impl PathBuilder {
 	fn point(&self, x: f32, y: f32) -> DVec2 {
-		self.text_cursor + self.offset + DVec2::new(x as f64, self.ascender - y as f64) * self.scale
+		// Y-axis inversion converts from font coordinate system (Y-up) to graphics coordinate system (Y-down)
+		DVec2::new(self.origin.x + x as f64, self.origin.y - y as f64) * self.scale
+	}
+
+	fn set_origin(&mut self, x: f64, y: f64) {
+		self.origin = DVec2::new(x, y);
+	}
+
+	fn draw_glyph(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], style_skew: Option<DAffine2>, skew: DAffine2) {
+		let location_ref = LocationRef::new(normalized_coords);
+		let settings = DrawSettings::unhinted(Size::new(size), location_ref);
+		glyph.draw(settings, self).unwrap();
+
+		// Apply transforms in correct order: style-based skew first, then user-requested skew
+		// This ensures font synthesis (italic) is applied before user transformations
+		for glyph_subpath in &mut self.glyph_subpaths {
+			if let Some(style_skew) = style_skew {
+				glyph_subpath.apply_transform(style_skew);
+			}
+
+			glyph_subpath.apply_transform(skew);
+		}
+
+		if !self.glyph_subpaths.is_empty() {
+			self.other_subpaths.extend(core::mem::take(&mut self.glyph_subpaths));
+		}
 	}
 }
 
-impl OutlineBuilder for Builder {
+impl OutlinePen for PathBuilder {
 	fn move_to(&mut self, x: f32, y: f32) {
 		if !self.current_subpath.is_empty() {
-			self.other_subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
+			self.glyph_subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
 		}
 		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(self.point(x, y), self.id.next_id()));
 	}
@@ -47,34 +85,8 @@ impl OutlineBuilder for Builder {
 
 	fn close(&mut self) {
 		self.current_subpath.set_closed(true);
-		self.other_subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
+		self.glyph_subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
 	}
-}
-
-fn font_properties(buzz_face: &rustybuzz::Face, font_size: f64, line_height_ratio: f64) -> (f64, f64, UnicodeBuffer) {
-	let scale = (buzz_face.units_per_em() as f64).recip() * font_size;
-	let line_height = font_size * line_height_ratio;
-	let buffer = UnicodeBuffer::new();
-	(scale, line_height, buffer)
-}
-
-fn push_str(buffer: &mut UnicodeBuffer, word: &str) {
-	buffer.push_str(word);
-}
-
-fn wrap_word(max_width: Option<f64>, glyph_buffer: &GlyphBuffer, font_size: f64, character_spacing: f64, x_pos: f64, space_glyph: Option<GlyphId>) -> bool {
-	if let Some(max_width) = max_width {
-		// We don't word wrap spaces (to match the browser)
-		let all_glyphs = glyph_buffer.glyph_positions().iter().zip(glyph_buffer.glyph_infos());
-		let non_space_glyphs = all_glyphs.take_while(|(_, info)| space_glyph != Some(GlyphId(info.glyph_id as u16)));
-		let word_length: f64 = non_space_glyphs.map(|(pos, _)| pos.x_advance as f64 * character_spacing).sum();
-		let scaled_word_length = word_length * font_size;
-
-		if scaled_word_length + x_pos > max_width {
-			return true;
-		}
-	}
-	false
 }
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -84,6 +96,7 @@ pub struct TypesettingConfig {
 	pub character_spacing: f64,
 	pub max_width: Option<f64>,
 	pub max_height: Option<f64>,
+	pub tilt: f64,
 }
 
 impl Default for TypesettingConfig {
@@ -91,163 +104,130 @@ impl Default for TypesettingConfig {
 		Self {
 			font_size: 24.,
 			line_height_ratio: 1.2,
-			character_spacing: 1.,
+			character_spacing: 0.,
 			max_width: None,
 			max_height: None,
+			tilt: 0.,
 		}
 	}
 }
 
-pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: TypesettingConfig) -> Vec<Subpath<PointId>> {
-	let Some(buzz_face) = buzz_face else { return vec![] };
-	let space_glyph = buzz_face.glyph_index(' ');
+fn render_glyph_run(glyph_run: &GlyphRun<'_, ()>, path_builder: &mut PathBuilder, tilt: f64) {
+	let mut run_x = glyph_run.offset();
+	let run_y = glyph_run.baseline();
 
-	let (scale, line_height, mut buffer) = font_properties(&buzz_face, typesetting.font_size, typesetting.line_height_ratio);
+	let run = glyph_run.run();
 
-	let mut builder = Builder {
+	// User-requested tilt applied around baseline to avoid vertical displacement
+	// Translation ensures rotation point is at the baseline, not origin
+	let skew = DAffine2::from_translation(DVec2::new(0., run_y as f64))
+		* DAffine2::from_cols_array(&[1., 0., -tilt.to_radians().tan(), 1., 0., 0.])
+		* DAffine2::from_translation(DVec2::new(0., -run_y as f64));
+
+	let synthesis = run.synthesis();
+
+	// Font synthesis (e.g., synthetic italic) applied separately from user transforms
+	// This preserves the distinction between font styling and user transformations
+	let style_skew = synthesis.skew().map(|angle| {
+		DAffine2::from_translation(DVec2::new(0., run_y as f64))
+			* DAffine2::from_cols_array(&[1., 0., -angle.to_radians().tan() as f64, 1., 0., 0.])
+			* DAffine2::from_translation(DVec2::new(0., -run_y as f64))
+	});
+
+	let font = run.font();
+	let font_size = run.font_size();
+
+	let normalized_coords = run.normalized_coords().iter().map(|coord| NormalizedCoord::from_bits(*coord)).collect::<Vec<_>>();
+
+	// TODO: This can be cached for better performance
+	let font_collection_ref = font.data.as_ref();
+	let font_ref = ReadFontsRef::from_index(font_collection_ref, font.index).unwrap();
+	let outlines = font_ref.outline_glyphs();
+
+	for glyph in glyph_run.glyphs() {
+		let glyph_x = run_x + glyph.x;
+		let glyph_y = run_y - glyph.y;
+		run_x += glyph.advance;
+
+		let glyph_id = GlyphId::from(glyph.id);
+		if let Some(glyph_outline) = outlines.get(glyph_id) {
+			path_builder.set_origin(glyph_x as f64, glyph_y as f64);
+			path_builder.draw_glyph(&glyph_outline, font_size, &normalized_coords, style_skew, skew);
+		}
+	}
+}
+
+fn layout_text(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig) -> Option<Layout<()>> {
+	let font_cx = FONT_CONTEXT.with(Clone::clone);
+	let mut font_cx = font_cx.borrow_mut();
+	let layout_cx = LAYOUT_CONTEXT.with(Clone::clone);
+	let mut layout_cx = layout_cx.borrow_mut();
+
+	let font_family = font_data.and_then(|font_data| {
+		font_cx
+			.collection
+			.register_fonts(font_data, None)
+			.first()
+			.and_then(|(family_id, _)| font_cx.collection.family_name(*family_id).map(String::from))
+	})?;
+
+	const DISPLAY_SCALE: f32 = 1.;
+	let mut builder = layout_cx.ranged_builder(&mut font_cx, str, DISPLAY_SCALE, true);
+
+	builder.push_default(StyleProperty::FontSize(typesetting.font_size as f32));
+	builder.push_default(StyleProperty::LetterSpacing(typesetting.character_spacing as f32));
+	builder.push_default(StyleProperty::FontStack(parley::FontStack::Single(parley::FontFamily::Named(std::borrow::Cow::Owned(font_family)))));
+	builder.push_default(LineHeight::FontSizeRelative(typesetting.line_height_ratio as f32));
+
+	let mut layout: Layout<()> = builder.build(str);
+
+	layout.break_all_lines(typesetting.max_width.map(|mw| mw as f32));
+	layout.align(typesetting.max_width.map(|max_w| max_w as f32), Alignment::Left, AlignmentOptions::default());
+
+	Some(layout)
+}
+
+pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig) -> Vec<Subpath<PointId>> {
+	let Some(layout) = layout_text(str, font_data, typesetting) else { return Vec::new() };
+
+	let mut path_builder = PathBuilder {
 		current_subpath: Subpath::new(Vec::new(), false),
+		glyph_subpaths: Vec::new(),
 		other_subpaths: Vec::new(),
-		text_cursor: DVec2::ZERO,
-		offset: DVec2::ZERO,
-		ascender: (buzz_face.ascender() as f64 / buzz_face.height() as f64) * typesetting.font_size / scale,
-		scale,
+		origin: DVec2::ZERO,
+		scale: layout.scale() as f64,
 		id: PointId::ZERO,
 	};
 
-	for line in str.split('\n') {
-		for (index, word) in SplitWordsIncludingSpaces::new(line).enumerate() {
-			push_str(&mut buffer, word);
-			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
-
-			// Don't wrap the first word
-			if index != 0 && wrap_word(typesetting.max_width, &glyph_buffer, scale, typesetting.character_spacing, builder.text_cursor.x, space_glyph) {
-				builder.text_cursor = DVec2::new(0., builder.text_cursor.y + line_height);
+	for line in layout.lines() {
+		for item in line.items() {
+			if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
+				render_glyph_run(&glyph_run, &mut path_builder, typesetting.tilt);
 			}
-
-			for (glyph_position, glyph_info) in glyph_buffer.glyph_positions().iter().zip(glyph_buffer.glyph_infos()) {
-				let glyph_id = GlyphId(glyph_info.glyph_id as u16);
-				if let Some(max_width) = typesetting.max_width {
-					if space_glyph != Some(glyph_id) && builder.text_cursor.x + (glyph_position.x_advance as f64 * builder.scale * typesetting.character_spacing) >= max_width {
-						builder.text_cursor = DVec2::new(0., builder.text_cursor.y + line_height);
-					}
-				}
-				// Clip when the height is exceeded
-				if typesetting.max_height.is_some_and(|max_height| builder.text_cursor.y > max_height - line_height) {
-					return builder.other_subpaths;
-				}
-
-				builder.offset = DVec2::new(glyph_position.x_offset as f64, glyph_position.y_offset as f64) * builder.scale;
-				buzz_face.outline_glyph(glyph_id, &mut builder);
-				if !builder.current_subpath.is_empty() {
-					builder.other_subpaths.push(std::mem::replace(&mut builder.current_subpath, Subpath::new(Vec::new(), false)));
-				}
-
-				builder.text_cursor += DVec2::new(glyph_position.x_advance as f64 * typesetting.character_spacing, glyph_position.y_advance as f64) * builder.scale;
-			}
-
-			buffer = glyph_buffer.clear();
 		}
-
-		builder.text_cursor = DVec2::new(0., builder.text_cursor.y + line_height);
 	}
 
-	builder.other_subpaths
+	path_builder.other_subpaths
 }
 
-pub fn bounding_box(str: &str, buzz_face: Option<&rustybuzz::Face>, typesetting: TypesettingConfig, for_clipping_test: bool) -> DVec2 {
-	// Show blank layer if font has not loaded
-	let Some(buzz_face) = buzz_face else { return DVec2::ZERO };
-	let space_glyph = buzz_face.glyph_index(' ');
-
-	let (scale, line_height, mut buffer) = font_properties(buzz_face, typesetting.font_size, typesetting.line_height_ratio);
-
-	let [mut text_cursor, mut bounds] = [DVec2::ZERO; 2];
+pub fn bounding_box(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig, for_clipping_test: bool) -> DVec2 {
 	if !for_clipping_test {
 		if let (Some(max_height), Some(max_width)) = (typesetting.max_height, typesetting.max_width) {
 			return DVec2::new(max_width, max_height);
 		}
 	}
 
-	for line in str.split('\n') {
-		for (index, word) in SplitWordsIncludingSpaces::new(line).enumerate() {
-			push_str(&mut buffer, word);
+	let Some(layout) = layout_text(str, font_data, typesetting) else { return DVec2::ZERO };
 
-			let glyph_buffer = rustybuzz::shape(buzz_face, &[], buffer);
-
-			// Don't wrap the first word
-			if index != 0 && wrap_word(typesetting.max_width, &glyph_buffer, scale, typesetting.character_spacing, text_cursor.x, space_glyph) {
-				text_cursor = DVec2::new(0., text_cursor.y + line_height);
-			}
-
-			for (glyph_position, glyph_info) in glyph_buffer.glyph_positions().iter().zip(glyph_buffer.glyph_infos()) {
-				let glyph_id = GlyphId(glyph_info.glyph_id as u16);
-				if let Some(max_width) = typesetting.max_width {
-					if space_glyph != Some(glyph_id) && text_cursor.x + (glyph_position.x_advance as f64 * scale * typesetting.character_spacing) >= max_width {
-						text_cursor = DVec2::new(0., text_cursor.y + line_height);
-					}
-				}
-				text_cursor += DVec2::new(glyph_position.x_advance as f64 * typesetting.character_spacing, glyph_position.y_advance as f64) * scale;
-				bounds = bounds.max(text_cursor + DVec2::new(0., line_height));
-			}
-
-			buffer = glyph_buffer.clear();
-		}
-		text_cursor = DVec2::new(0., text_cursor.y + line_height);
-		bounds = bounds.max(text_cursor);
-	}
-
-	if !for_clipping_test {
-		if let Some(max_width) = typesetting.max_width {
-			bounds.x = max_width;
-		}
-		if let Some(max_height) = typesetting.max_height {
-			bounds.y = max_height;
-		}
-	}
-
-	bounds
+	DVec2::new(layout.full_width() as f64, layout.height() as f64)
 }
 
-pub fn load_face(data: &[u8]) -> rustybuzz::Face<'_> {
-	rustybuzz::Face::from_slice(data, 0).expect("Loading font failed")
+pub fn load_font(data: &[u8]) -> Blob<u8> {
+	Blob::new(Arc::new(data.to_vec()))
 }
 
-pub fn lines_clipping(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: TypesettingConfig) -> bool {
+pub fn lines_clipping(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig) -> bool {
 	let Some(max_height) = typesetting.max_height else { return false };
-	let bounds = bounding_box(str, buzz_face.as_ref(), typesetting, true);
+	let bounds = bounding_box(str, font_data, typesetting, true);
 	max_height < bounds.y
-}
-
-struct SplitWordsIncludingSpaces<'a> {
-	text: &'a str,
-	start_byte: usize,
-}
-
-impl<'a> SplitWordsIncludingSpaces<'a> {
-	pub fn new(text: &'a str) -> Self {
-		Self { text, start_byte: 0 }
-	}
-}
-
-impl<'a> Iterator for SplitWordsIncludingSpaces<'a> {
-	type Item = &'a str;
-	fn next(&mut self) -> Option<Self::Item> {
-		let mut eaten_chars = self.text[self.start_byte..].char_indices().skip_while(|(_, c)| *c != ' ').skip_while(|(_, c)| *c == ' ');
-		let start_byte = self.start_byte;
-		self.start_byte = eaten_chars.next().map_or(self.text.len(), |(offset, _)| self.start_byte + offset);
-		(self.start_byte > start_byte).then(|| self.text.get(start_byte..self.start_byte)).flatten()
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-	#[test]
-	fn split_words_including_spaces() {
-		let mut split_words = SplitWordsIncludingSpaces::new("hello  world     .");
-		assert_eq!(split_words.next(), Some("hello  "));
-		assert_eq!(split_words.next(), Some("world     "));
-		assert_eq!(split_words.next(), Some("."));
-		assert_eq!(split_words.next(), None);
-	}
 }

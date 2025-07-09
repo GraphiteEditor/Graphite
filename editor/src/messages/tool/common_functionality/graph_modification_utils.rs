@@ -5,9 +5,9 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Flo
 use crate::messages::prelude::*;
 use bezier_rs::Subpath;
 use glam::DVec2;
-use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
+use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::Color;
 use graphene_std::NodeInputDecleration;
 use graphene_std::raster::BlendMode;
@@ -243,20 +243,26 @@ pub fn new_custom(id: NodeId, nodes: Vec<(NodeId, NodeTemplate)>, parent: LayerN
 	LayerNodeIdentifier::new_unchecked(id)
 }
 
-/// Locate the final pivot from the transform (TODO: decide how the pivot should actually work)
-pub fn get_pivot(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DVec2> {
-	let pivot_node_input_index = 5;
-	if let TaggedValue::DVec2(pivot) = NodeGraphLayer::new(layer, network_interface).find_input("Transform", pivot_node_input_index)? {
-		Some(*pivot)
+/// Locate the origin of the transform node
+pub fn get_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DVec2> {
+	use graphene_std::transform_nodes::transform::TranslateInput;
+
+	if let TaggedValue::DVec2(origin) = NodeGraphLayer::new(layer, network_interface).find_input("Transform", TranslateInput::INDEX)? {
+		Some(*origin)
 	} else {
 		None
 	}
 }
 
-pub fn get_viewport_pivot(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DVec2 {
+pub fn get_viewport_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DVec2 {
+	let origin = get_origin(layer, network_interface).unwrap_or_default();
+	network_interface.document_metadata().document_to_viewport.transform_point2(origin)
+}
+
+pub fn get_viewport_center(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DVec2 {
 	let [min, max] = network_interface.document_metadata().nonzero_bounding_box(layer);
-	let pivot = get_pivot(layer, network_interface).unwrap_or(DVec2::splat(0.5));
-	network_interface.document_metadata().transform_to_viewport(layer).transform_point2(min + (max - min) * pivot)
+	let center = DVec2::splat(0.5);
+	network_interface.document_metadata().transform_to_viewport(layer).transform_point2(min + (max - min) * center)
 }
 
 /// Get the current gradient of a layer from the closest "Fill" node.
@@ -361,6 +367,7 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 	let Some(&TaggedValue::F64(character_spacing)) = inputs[5].as_value() else { return None };
 	let Some(&TaggedValue::OptionalF64(max_width)) = inputs[6].as_value() else { return None };
 	let Some(&TaggedValue::OptionalF64(max_height)) = inputs[7].as_value() else { return None };
+	let Some(&TaggedValue::F64(tilt)) = inputs[8].as_value() else { return None };
 
 	let typesetting = TypesettingConfig {
 		font_size,
@@ -368,6 +375,7 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 		max_width,
 		character_spacing,
 		max_height,
+		tilt,
 	};
 	Some((text, font, typesetting))
 }
@@ -414,14 +422,14 @@ impl<'a> NodeGraphLayer<'a> {
 	}
 
 	/// Node id of a protonode if it exists in the layer's primary flow
-	pub fn upstream_node_id_from_protonode(&self, protonode_identifier: &'static str) -> Option<NodeId> {
+	pub fn upstream_node_id_from_protonode(&self, protonode_identifier: ProtoNodeIdentifier) -> Option<NodeId> {
 		self.horizontal_layer_flow()
 			// Take until a different layer is reached
 			.take_while(|&node_id| node_id == self.layer_node || !self.network_interface.is_layer(&node_id, &[]))
-			.find(move |node_id| {
+			.find(|node_id| {
 				self.network_interface
 					.implementation(node_id, &[])
-					.is_some_and(move |implementation| *implementation == graph_craft::document::DocumentNodeImplementation::proto(protonode_identifier))
+					.is_some_and(|implementation| *implementation == graph_craft::document::DocumentNodeImplementation::ProtoNode(protonode_identifier.clone()))
 			})
 	}
 

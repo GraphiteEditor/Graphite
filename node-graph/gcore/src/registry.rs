@@ -1,4 +1,4 @@
-use crate::{Node, NodeIO, NodeIOTypes, Type, WasmNotSend};
+use crate::{Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
 use dyn_any::{DynAny, StaticType};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -30,6 +30,8 @@ pub mod types {
 	pub type Resolution = glam::UVec2;
 	/// DVec2 with px unit
 	pub type PixelSize = glam::DVec2;
+	/// String with one or more than one line
+	pub type TextArea = String;
 }
 
 // Translation struct between macro and definition
@@ -59,7 +61,7 @@ pub struct FieldMetadata {
 	pub unit: Option<&'static str>,
 }
 
-pub trait ChoiceTypeStatic: Sized + Copy + crate::vector::misc::AsU32 + Send + Sync {
+pub trait ChoiceTypeStatic: Sized + Copy + crate::AsU32 + Send + Sync {
 	const WIDGET_HINT: ChoiceWidgetHint;
 	const DESCRIPTION: Option<&'static str>;
 	fn list() -> &'static [&'static [(Self, VariantMetadata)]];
@@ -101,11 +103,11 @@ pub enum RegistryValueSource {
 	Scope(&'static str),
 }
 
-type NodeRegistry = LazyLock<Mutex<HashMap<String, Vec<(NodeConstructor, NodeIOTypes)>>>>;
+type NodeRegistry = LazyLock<Mutex<HashMap<ProtoNodeIdentifier, Vec<(NodeConstructor, NodeIOTypes)>>>>;
 
 pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::new()));
 
-pub static NODE_METADATA: LazyLock<Mutex<HashMap<String, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[cfg(not(target_arch = "wasm32"))]
 pub type DynFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n + Send>>;

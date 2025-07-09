@@ -1,7 +1,7 @@
 use super::*;
 use crate::Ctx;
 use crate::instances::Instance;
-use crate::uuid::generate_uuid;
+use crate::uuid::{NodeId, generate_uuid};
 use bezier_rs::BezierHandles;
 use dyn_any::DynAny;
 use kurbo::{BezPath, PathEl, Point};
@@ -420,12 +420,17 @@ impl Hash for VectorModification {
 
 /// A node that applies a procedural modification to some [`VectorData`].
 #[node_macro::node(category(""))]
-async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: Box<VectorModification>) -> VectorDataTable {
+async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: Box<VectorModification>, node_path: Vec<NodeId>) -> VectorDataTable {
 	if vector_data.is_empty() {
 		vector_data.push(Instance::default());
 	}
 	let vector_data_instance = vector_data.get_mut(0).expect("push should give one item");
 	modification.apply(vector_data_instance.instance);
+
+	// Update the source node id
+	let this_node_path = node_path.iter().rev().nth(1).copied();
+	*vector_data_instance.source_node_id = vector_data_instance.source_node_id.or(this_node_path);
+
 	if vector_data.len() > 1 {
 		warn!("The path modify ran on {} instances of vector data. Only the first can be modified.", vector_data.len());
 	}
@@ -630,6 +635,33 @@ impl<'a> AppendBezpath<'a> {
 					this.reset();
 				}
 			}
+		}
+	}
+}
+
+pub trait VectorDataExt {
+	/// Appends a Kurbo BezPath to the vector data.
+	fn append_bezpath(&mut self, bezpath: BezPath);
+}
+
+impl VectorDataExt for VectorData {
+	fn append_bezpath(&mut self, bezpath: BezPath) {
+		AppendBezpath::append_bezpath(self, bezpath);
+	}
+}
+
+pub trait HandleExt {
+	/// Set the handle's position relative to the anchor which is the start anchor for the primary handle and end anchor for the end handle.
+	#[must_use]
+	fn set_relative_position(self, relative_position: DVec2) -> VectorModificationType;
+}
+
+impl HandleExt for HandleId {
+	fn set_relative_position(self, relative_position: DVec2) -> VectorModificationType {
+		let Self { ty, segment } = self;
+		match ty {
+			HandleType::Primary => VectorModificationType::SetPrimaryHandle { segment, relative_position },
+			HandleType::End => VectorModificationType::SetEndHandle { segment, relative_position },
 		}
 	}
 }

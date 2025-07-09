@@ -10,8 +10,8 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
+use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::convert_usvg_path;
 use graphene_std::vector::style::{Fill, Gradient, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 
 #[derive(Debug, Clone)]
@@ -87,15 +87,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			} => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.transform_set(transform, transform_in, skip_rerender);
-				}
-			}
-			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
-				if layer == LayerNodeIdentifier::ROOT_PARENT {
-					log::error!("Cannot run TransformSetPivot on ROOT_PARENT");
-					return;
-				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.pivot_set(pivot);
 				}
 			}
 			GraphOperationMessage::Vector { layer, modification_type } => {

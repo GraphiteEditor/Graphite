@@ -3,15 +3,15 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
 use crate::messages::prelude::*;
 use bezier_rs::Subpath;
-use glam::{DAffine2, DVec2, IVec2};
+use glam::{DAffine2, IVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Artboard;
+use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{CPU, RasterDataTable};
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::PointId;
 use graphene_std::vector::VectorModificationType;
-use graphene_std::vector::brush_stroke::BrushStroke;
 use graphene_std::vector::style::{Fill, Stroke};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
@@ -52,10 +52,6 @@ pub enum GraphOperationMessage {
 		transform_in: TransformIn,
 		skip_rerender: bool,
 	},
-	TransformSetPivot {
-		layer: LayerNodeIdentifier,
-		pivot: DVec2,
-	},
 	Vector {
 		layer: LayerNodeIdentifier,
 		modification_type: VectorModificationType,
@@ -79,7 +75,7 @@ pub enum GraphOperationMessage {
 	},
 	NewBooleanOperationLayer {
 		id: NodeId,
-		operation: graphene_std::vector::misc::BooleanOperation,
+		operation: graphene_std::path_bool::BooleanOperation,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},

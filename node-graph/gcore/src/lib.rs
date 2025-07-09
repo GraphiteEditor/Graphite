@@ -1,38 +1,43 @@
 #[macro_use]
 extern crate log;
 
-pub use crate as graphene_core;
-pub use ctor;
-pub use num_traits;
-
 pub mod animation;
+pub mod blending;
+pub mod blending_nodes;
+pub mod bounds;
+pub mod color;
 pub mod consts;
 pub mod context;
+pub mod debug;
+pub mod extract_xy;
 pub mod generic;
+pub mod gradient;
+pub mod graphic_element;
 pub mod instances;
 pub mod logic;
+pub mod math;
+pub mod memo;
 pub mod misc;
 pub mod ops;
+pub mod raster;
 pub mod raster_types;
+pub mod registry;
 pub mod structural;
 pub mod text;
+pub mod transform;
+pub mod transform_nodes;
 pub mod uuid;
 pub mod value;
-
-pub mod memo;
-
-pub mod raster;
-pub mod transform;
-
-mod graphic_element;
-pub use graphic_element::*;
 pub mod vector;
 
-pub mod registry;
-
+pub use crate as graphene_core;
+pub use blending::*;
 pub use context::*;
+pub use ctor;
 pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
+pub use graphic_element::{Artboard, ArtboardGroupTable, GraphicElement, GraphicGroupTable};
 pub use memo::MemoHash;
+pub use num_traits;
 pub use raster::Color;
 use std::any::TypeId;
 use std::future::Future;
@@ -156,6 +161,15 @@ where
 
 pub trait NodeInputDecleration {
 	const INDEX: usize;
-	fn identifier() -> &'static str;
+	fn identifier() -> ProtoNodeIdentifier;
 	type Result;
+}
+
+pub trait AsU32 {
+	fn as_u32(&self) -> u32;
+}
+impl AsU32 for u32 {
+	fn as_u32(&self) -> u32 {
+		*self
+	}
 }

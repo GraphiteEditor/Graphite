@@ -86,6 +86,7 @@ async fn instance_position(ctx: impl Ctx + ExtractVarArgs) -> DVec2 {
 	Default::default()
 }
 
+// TODO: Make this return a u32 instead of an f64, but we ned to improve math-related compatibility with integer types first.
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn instance_index(ctx: impl Ctx + ExtractIndex) -> f64 {
 	match ctx.try_index() {
@@ -99,7 +100,7 @@ async fn instance_index(ctx: impl Ctx + ExtractIndex) -> f64 {
 mod test {
 	use super::*;
 	use crate::Node;
-	use crate::ops::ExtractXyNode;
+	use crate::extract_xy::{ExtractXyNode, XY};
 	use crate::vector::VectorData;
 	use bezier_rs::Subpath;
 	use glam::DVec2;
@@ -121,7 +122,7 @@ mod test {
 		let owned = OwnedContextImpl::default().into_context();
 		let rect = crate::vector::generator_nodes::RectangleNode::new(
 			FutureWrapperNode(()),
-			ExtractXyNode::new(InstancePositionNode {}, FutureWrapperNode(crate::ops::XY::Y)),
+			ExtractXyNode::new(InstancePositionNode {}, FutureWrapperNode(XY::Y)),
 			FutureWrapperNode(2_f64),
 			FutureWrapperNode(false),
 			FutureWrapperNode(0_f64),
