@@ -212,15 +212,15 @@ impl ClosestSegment {
 		self.bezier_point_to_viewport
 	}
 
-	pub fn closest_point(&self, document_metadata: &DocumentMetadata) -> DVec2 {
-		let transform = document_metadata.transform_to_viewport(self.layer);
+	pub fn closest_point(&self, document_metadata: &DocumentMetadata, network_interface: &NodeNetworkInterface) -> DVec2 {
+		let transform = document_metadata.transform_to_viewport_if_feeds(self.layer, network_interface);
 		let bezier_point = self.bezier.evaluate(TValue::Parametric(self.t));
 		transform.transform_point2(bezier_point)
 	}
 
 	/// Updates this [`ClosestSegment`] with the viewport-space location of the closest point on the segment to the given mouse position.
-	pub fn update_closest_point(&mut self, document_metadata: &DocumentMetadata, mouse_position: DVec2) {
-		let transform = document_metadata.transform_to_viewport(self.layer);
+	pub fn update_closest_point(&mut self, document_metadata: &DocumentMetadata, network_interface: &NodeNetworkInterface, mouse_position: DVec2) {
+		let transform = document_metadata.transform_to_viewport_if_feeds(self.layer, network_interface);
 		let layer_mouse_pos = transform.inverse().transform_point2(mouse_position);
 
 		let t = self.bezier.project(layer_mouse_pos).clamp(0., 1.);
@@ -239,9 +239,9 @@ impl ClosestSegment {
 		tolerance.powi(2) < self.distance_squared(mouse_position)
 	}
 
-	pub fn handle_positions(&self, document_metadata: &DocumentMetadata) -> (Option<DVec2>, Option<DVec2>) {
+	pub fn handle_positions(&self, document_metadata: &DocumentMetadata, network_interface: &NodeNetworkInterface) -> (Option<DVec2>, Option<DVec2>) {
 		// Transform to viewport space
-		let transform = document_metadata.transform_to_viewport(self.layer);
+		let transform = document_metadata.transform_to_viewport_if_feeds(self.layer, network_interface);
 
 		// Split the Bezier at the parameter `t`
 		let [first, second] = self.bezier.split(TValue::Parametric(self.t));
@@ -307,7 +307,7 @@ impl ClosestSegment {
 	}
 
 	pub fn calculate_perp(&self, document: &DocumentMessageHandler) -> DVec2 {
-		let tangent = if let (Some(handle1), Some(handle2)) = self.handle_positions(document.metadata()) {
+		let tangent = if let (Some(handle1), Some(handle2)) = self.handle_positions(document.metadata(), &document.network_interface) {
 			(handle1 - handle2).try_normalize()
 		} else {
 			let [first_point, last_point] = self.points();
@@ -339,7 +339,7 @@ impl ClosestSegment {
 		break_colinear_molding: bool,
 		temporary_adjacent_handles_while_molding: Option<[Option<HandleId>; 2]>,
 	) -> Option<[Option<HandleId>; 2]> {
-		let transform = document.metadata().transform_to_viewport(self.layer);
+		let transform = document.metadata().transform_to_viewport_if_feeds(self.layer, &document.network_interface);
 
 		let start = self.bezier.start;
 		let end = self.bezier.end;
@@ -507,7 +507,7 @@ impl ShapeState {
 				continue;
 			};
 
-			let to_document = document.metadata().transform_to_document(*layer);
+			let to_document = document.metadata().transform_to_document_if_feeds(*layer, &document.network_interface);
 
 			for &selected in &state.selected_points {
 				let source = match selected {
@@ -564,7 +564,11 @@ impl ShapeState {
 			let already_selected = selected_shape_state.is_point_selected(manipulator_point_id);
 
 			// Offset to snap the selected point to the cursor
-			let offset = mouse_position - network_interface.document_metadata().transform_to_viewport(layer).transform_point2(point_position);
+			let offset = mouse_position
+				- network_interface
+					.document_metadata()
+					.transform_to_viewport_if_feeds(layer, network_interface)
+					.transform_point2(point_position);
 
 			// This is selecting the manipulator only for now, next to generalize to points
 
@@ -621,7 +625,11 @@ impl ShapeState {
 			let already_selected = selected_shape_state.is_point_selected(manipulator_point_id);
 
 			// Offset to snap the selected point to the cursor
-			let offset = mouse_position - network_interface.document_metadata().transform_to_viewport(layer).transform_point2(point_position);
+			let offset = mouse_position
+				- network_interface
+					.document_metadata()
+					.transform_to_viewport_if_feeds(layer, network_interface)
+					.transform_point2(point_position);
 
 			// Gather current selection information
 			let points = self
@@ -653,7 +661,7 @@ impl ShapeState {
 		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 			return;
 		};
-		let to_viewport = document.metadata().transform_to_viewport(layer);
+		let to_viewport = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 		let layer_mouse = to_viewport.inverse().transform_point2(mouse);
 		let state = self.selected_shape_state.entry(layer).or_default();
 
@@ -875,7 +883,7 @@ impl ShapeState {
 		}
 
 		let vector_data = network_interface.compute_modified_vector(layer)?;
-		let transform = network_interface.document_metadata().transform_to_document(layer).inverse();
+		let transform = network_interface.document_metadata().transform_to_document_if_feeds(layer, network_interface).inverse();
 		let position = transform.transform_point2(new_position);
 		let current_position = point.get_position(&vector_data)?;
 		let delta = position - current_position;
@@ -1026,7 +1034,7 @@ impl ShapeState {
 			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 				continue;
 			};
-			let transform = document.metadata().transform_to_document(layer);
+			let transform = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
 
 			for &point in layer_state.selected_points.iter() {
 				let Some(handles) = point.get_handle_pair(&vector_data) else { continue };
@@ -1116,8 +1124,8 @@ impl ShapeState {
 
 			let opposing_handles = handle_lengths.as_ref().and_then(|handle_lengths| handle_lengths.get(&layer));
 
-			let transform_to_viewport_space = document.metadata().transform_to_viewport(layer);
-			let transform_to_document_space = document.metadata().transform_to_document(layer);
+			let transform_to_viewport_space = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
+			let transform_to_document_space = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
 			let delta_transform = if in_viewport_space {
 				transform_to_viewport_space
 			} else {
@@ -1210,7 +1218,7 @@ impl ShapeState {
 			.iter()
 			.filter_map(|(&layer, state)| {
 				let vector_data = document.network_interface.compute_modified_vector(layer)?;
-				let transform = document.metadata().transform_to_document(layer);
+				let transform = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
 				let opposing_handle_lengths = vector_data
 					.colinear_manipulators
 					.iter()
@@ -1575,7 +1583,7 @@ impl ShapeState {
 		let mut manipulator_point = None;
 
 		let vector_data = network_interface.compute_modified_vector(layer)?;
-		let viewspace = network_interface.document_metadata().transform_to_viewport(layer);
+		let viewspace = network_interface.document_metadata().transform_to_viewport_if_feeds(layer, network_interface);
 
 		// Handles
 		for (segment_id, bezier, _, _) in vector_data.segment_bezier_iter() {
@@ -1611,7 +1619,7 @@ impl ShapeState {
 
 	/// Find the `t` value along the path segment we have clicked upon, together with that segment ID.
 	fn closest_segment(&self, network_interface: &NodeNetworkInterface, layer: LayerNodeIdentifier, position: glam::DVec2, tolerance: f64) -> Option<ClosestSegment> {
-		let transform = network_interface.document_metadata().transform_to_viewport(layer);
+		let transform = network_interface.document_metadata().transform_to_viewport_if_feeds(layer, network_interface);
 		let layer_pos = transform.inverse().transform_point2(position);
 
 		let tolerance = tolerance + 0.5;
@@ -1785,7 +1793,7 @@ impl ShapeState {
 	pub fn flip_smooth_sharp(&self, network_interface: &NodeNetworkInterface, target: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) -> bool {
 		let mut process_layer = |layer| {
 			let vector_data = network_interface.compute_modified_vector(layer)?;
-			let transform_to_screenspace = network_interface.document_metadata().transform_to_viewport(layer);
+			let transform_to_screenspace = network_interface.document_metadata().transform_to_viewport_if_feeds(layer, network_interface);
 
 			let mut result = None;
 			let mut closest_distance_squared = tolerance * tolerance;
@@ -1889,7 +1897,7 @@ impl ShapeState {
 
 			let vector_data = network_interface.compute_modified_vector(layer);
 			let Some(vector_data) = vector_data else { continue };
-			let transform = network_interface.document_metadata().transform_to_viewport(layer);
+			let transform = network_interface.document_metadata().transform_to_viewport_if_feeds(layer, network_interface);
 
 			assert_eq!(vector_data.segment_domain.ids().len(), vector_data.start_point().count());
 			assert_eq!(vector_data.segment_domain.ids().len(), vector_data.end_point().count());

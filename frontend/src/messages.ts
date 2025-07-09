@@ -1340,6 +1340,9 @@ export class ReferencePointInput extends WidgetProps {
 	value!: ReferencePoint;
 
 	disabled!: boolean;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltip!: string | undefined;
 }
 
 // WIDGET
