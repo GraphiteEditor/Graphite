@@ -29,7 +29,7 @@ use graphene_std::renderer::Rect;
 use graphene_std::transform::ReferencePoint;
 use std::fmt;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct SelectTool {
 	fsm_state: SelectToolFsmState,
 	tool_data: SelectToolData,
@@ -272,6 +272,7 @@ impl LayoutHolder for SelectTool {
 	}
 }
 
+#[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let mut redraw_reference_pivot = false;

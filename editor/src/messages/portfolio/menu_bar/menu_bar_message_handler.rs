@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::prelude::*;
 use graphene_std::path_bool::BooleanOperation;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ExtractField)]
 pub struct MenuBarMessageHandler {
 	pub has_active_document: bool,
 	pub canvas_tilted: bool,
@@ -21,6 +21,7 @@ pub struct MenuBarMessageHandler {
 	pub reset_node_definitions_on_open: bool,
 }
 
+#[message_handler_data]
 impl MessageHandler<MenuBarMessage, ()> for MenuBarMessageHandler {
 	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {

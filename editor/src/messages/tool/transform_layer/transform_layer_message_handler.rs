@@ -21,7 +21,7 @@ const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayer
 const SLOW_KEY: Key = Key::Shift;
 const INCREMENTS_KEY: Key = Key::Control;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ExtractField)]
 pub struct TransformLayerMessageHandler {
 	pub transform_operation: TransformOperation,
 
@@ -175,6 +175,26 @@ fn update_colinear_handles(selected_layers: &[LayerNodeIdentifier], document: &D
 }
 
 type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessageHandler, &'a ToolData, &'a mut ShapeState);
+
+pub fn custom_data() -> MessageData {
+	MessageData::new(
+		String::from("TransformData<'a>"),
+		// TODO: When <https://github.com/dtolnay/proc-macro2/issues/503> is resolved and released,
+		// TODO: use <https://doc.rust-lang.org/stable/proc_macro/struct.Span.html#method.line> to get
+		// TODO: the line number instead of hardcoding it to the magic number on the following lines
+		// TODO: which points to the line of the `type TransformData<'a> = ...` definition above.
+		// TODO: Also, utilize the line number in the actual output, since it is currently unused.
+		vec![
+			(String::from("&'a DocumentMessageHandler"), 177),
+			(String::from("&'a InputPreprocessorMessageHandler"), 177),
+			(String::from("&'a ToolData"), 177),
+			(String::from("&'a mut ShapeState"), 177),
+		],
+		file!(),
+	)
+}
+
+#[message_handler_data(CustomData)]
 impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayerMessageHandler {
 	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, input, tool_data, shape_editor): TransformData) {
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
