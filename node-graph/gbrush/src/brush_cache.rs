@@ -10,6 +10,7 @@ use std::hash::Hasher;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+// TODO: This is a temporary hack, be sure to not reuse this when the brush is being rewritten.
 static NEXT_BRUSH_CACHE_IMPL_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug, DynAny, serde::Serialize, serde::Deserialize)]
@@ -127,36 +128,26 @@ pub struct BrushPlan {
 	pub first_stroke_point_skip: usize,
 }
 
-#[derive(Debug, DynAny, serde::Serialize, serde::Deserialize)]
-pub struct BrushCache {
-	inner: Arc<Mutex<BrushCacheImpl>>,
-}
-
-impl Default for BrushCache {
-	fn default() -> Self {
-		Self { inner: Default::default() }
-	}
-}
+#[derive(Debug, Default, DynAny, serde::Serialize, serde::Deserialize)]
+pub struct BrushCache(Arc<Mutex<BrushCacheImpl>>);
 
 // A bit of a cursed implementation to work around the current node system.
 // The original object is a 'prototype' that when cloned gives you a independent
 // new object. Any further clones however are all the same underlying cache object.
 impl Clone for BrushCache {
 	fn clone(&self) -> Self {
-		Self {
-			inner: Arc::new(Mutex::new(self.inner.lock().unwrap().clone())),
-		}
+		Self(Arc::new(Mutex::new(self.0.lock().unwrap().clone())))
 	}
 }
 
 impl PartialEq for BrushCache {
 	fn eq(&self, other: &Self) -> bool {
-		if Arc::ptr_eq(&self.inner, &other.inner) {
+		if Arc::ptr_eq(&self.0, &other.0) {
 			return true;
 		}
 
-		let s = self.inner.lock().unwrap();
-		let o = other.inner.lock().unwrap();
+		let s = self.0.lock().unwrap();
+		let o = other.0.lock().unwrap();
 
 		*s == *o
 	}
@@ -164,28 +155,28 @@ impl PartialEq for BrushCache {
 
 impl Hash for BrushCache {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.inner.lock().unwrap().hash(state);
+		self.0.lock().unwrap().hash(state);
 	}
 }
 
 impl BrushCache {
 	pub fn compute_brush_plan(&self, background: Instance<Raster<CPU>>, input: &[BrushStroke]) -> BrushPlan {
-		let mut inner = self.inner.lock().unwrap();
+		let mut inner = self.0.lock().unwrap();
 		inner.compute_brush_plan(background, input)
 	}
 
 	pub fn cache_results(&self, input: Vec<BrushStroke>, blended_image: Instance<Raster<CPU>>, last_stroke_texture: Instance<Raster<CPU>>) {
-		let mut inner = self.inner.lock().unwrap();
+		let mut inner = self.0.lock().unwrap();
 		inner.cache_results(input, blended_image, last_stroke_texture)
 	}
 
 	pub fn get_cached_brush(&self, style: &BrushStyle) -> Option<Raster<CPU>> {
-		let inner = self.inner.lock().unwrap();
+		let inner = self.0.lock().unwrap();
 		inner.brush_texture_cache.get(style).cloned()
 	}
 
 	pub fn store_brush(&self, style: BrushStyle, brush: Raster<CPU>) {
-		let mut inner = self.inner.lock().unwrap();
+		let mut inner = self.0.lock().unwrap();
 		inner.brush_texture_cache.insert(style, brush);
 	}
 }
