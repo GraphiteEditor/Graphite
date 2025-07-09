@@ -150,7 +150,7 @@ petgraph = { version = "0.7.1", default-features = false, features = [
 	"graphmap",
 ] }
 half = { version = "2.4.1", default-features = false, features = ["bytemuck", "serde"] }
-tinyvec = { version = "1" }
+tinyvec = { version = "1", features = ["std"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 iai-callgrind = { version = "0.12.3" }
 ndarray = "0.16.1"

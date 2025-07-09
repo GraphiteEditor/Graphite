@@ -12,6 +12,7 @@ use graphene_std::raster::color::Color;
 
 const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |context| DocumentMessage::DrawArtboardOverlays(context).into();
 
+#[derive(ExtractField)]
 pub struct ToolMessageData<'a> {
 	pub document_id: DocumentId,
 	pub document: &'a mut DocumentMessageHandler,
@@ -21,7 +22,7 @@ pub struct ToolMessageData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, ExtractField)]
 pub struct ToolMessageHandler {
 	pub tool_state: ToolFsmState,
 	pub transform_layer_handler: TransformLayerMessageHandler,
@@ -29,6 +30,7 @@ pub struct ToolMessageHandler {
 	pub tool_is_active: bool,
 }
 
+#[message_handler_data]
 impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, data: ToolMessageData) {
 		let ToolMessageData {
@@ -181,6 +183,11 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
 				});
 
+				responses.add(BroadcastMessage::SubscribeEvent {
+					on: BroadcastEvent::SelectionChanged,
+					send: Box::new(SelectToolMessage::SyncHistory.into()),
+				});
+
 				self.tool_is_active = true;
 
 				let tool_data = &mut self.tool_state.tool_data;
@@ -240,14 +247,8 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 
 				document_data.update_working_colors(responses); // TODO: Make this an event
 			}
-			ToolMessage::SelectPrimaryColor { color } => {
-				let document_data = &mut self.tool_state.document_tool_data;
-				document_data.primary_color = color;
-
-				document_data.update_working_colors(responses); // TODO: Make this an event
-			}
-			ToolMessage::SelectRandomPrimaryColor => {
-				// Select a random primary color (rgba) based on an UUID
+			ToolMessage::SelectRandomWorkingColor { primary } => {
+				// Select a random working color (RGBA) based on an UUID
 				let document_data = &mut self.tool_state.document_tool_data;
 
 				let random_number = generate_uuid();
@@ -255,13 +256,23 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				let g = (random_number >> 8) as u8;
 				let b = random_number as u8;
 				let random_color = Color::from_rgba8_srgb(r, g, b, 255);
-				document_data.primary_color = random_color;
+
+				if primary {
+					document_data.primary_color = random_color;
+				} else {
+					document_data.secondary_color = random_color;
+				}
 
 				document_data.update_working_colors(responses); // TODO: Make this an event
 			}
-			ToolMessage::SelectSecondaryColor { color } => {
+			ToolMessage::SelectWorkingColor { color, primary } => {
 				let document_data = &mut self.tool_state.document_tool_data;
-				document_data.secondary_color = color;
+
+				if primary {
+					document_data.primary_color = color;
+				} else {
+					document_data.secondary_color = color;
+				}
 
 				document_data.update_working_colors(responses); // TODO: Make this an event
 			}
@@ -340,7 +351,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 
 			ActivateToolBrush,
 
-			SelectRandomPrimaryColor,
+			SelectRandomWorkingColor,
 			ResetColors,
 			SwapColors,
 			Undo,

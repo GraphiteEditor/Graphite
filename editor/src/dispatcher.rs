@@ -40,7 +40,6 @@ impl DispatcherMessageHandlers {
 /// The last occurrence of the message in the message queue is sufficient to ensure correct behavior.
 /// In addition, these messages do not change any state in the backend (aside from caches).
 const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
-	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(NodeGraphMessageDiscriminant::SendGraph))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
 		PropertiesPanelMessageDiscriminant::Refresh,
 	))),
@@ -141,6 +140,7 @@ impl Dispatcher {
 					let graphene_std::renderer::RenderMetadata {
 						upstream_footprints: footprints,
 						local_transforms,
+						first_instance_source_id,
 						click_targets,
 						clip_targets,
 					} = render_metadata;
@@ -150,6 +150,7 @@ impl Dispatcher {
 						DocumentMessage::UpdateUpstreamTransforms {
 							upstream_footprints: footprints,
 							local_transforms,
+							first_instance_source_id,
 						},
 						DocumentMessage::UpdateClickTargets { click_targets },
 						DocumentMessage::UpdateClipTargets { clip_targets },
@@ -319,12 +320,11 @@ impl Dispatcher {
 		}))
 	}
 
-	/// Logs a message that is about to be executed,
-	/// either as a tree with a discriminant or the entire payload (depending on settings)
+	/// Logs a message that is about to be executed, either as a tree
+	/// with a discriminant or the entire payload (depending on settings)
 	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], message_logging_verbosity: MessageLoggingVerbosity) {
 		let discriminant = MessageDiscriminant::from(message);
-		let is_blocked = DEBUG_MESSAGE_BLOCK_LIST.iter().any(|&blocked_discriminant| discriminant == blocked_discriminant)
-			|| DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
+		let is_blocked = DEBUG_MESSAGE_BLOCK_LIST.contains(&discriminant) || DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
 
 		if !is_blocked {
 			match message_logging_verbosity {

@@ -24,43 +24,53 @@ macro_rules! modifiers {
 /// Each handler adds or removes actions in the form of message discriminants. Here, we tie an input condition (such as a hotkey) to an action's full message.
 /// When an action is currently available, and the user enters that input, the action's message is dispatched on the message bus.
 macro_rules! entry {
+	// Pattern with canonical parameter
+	($input:expr_2021; $(modifiers=[$($modifier:ident),*],)? $(refresh_keys=[$($refresh:ident),* $(,)?],)? canonical, action_dispatch=$action_dispatch:expr_2021$(,)?) => {
+		entry!($input; $($($modifier),*)?; $($($refresh),*)?; $action_dispatch; true)
+	};
+
+	// Pattern without canonical parameter
 	($input:expr_2021; $(modifiers=[$($modifier:ident),*],)? $(refresh_keys=[$($refresh:ident),* $(,)?],)? action_dispatch=$action_dispatch:expr_2021$(,)?) => {
+		entry!($input; $($($modifier),*)?; $($($refresh),*)?; $action_dispatch; false)
+	};
+
+	// Implementation macro to avoid code duplication
+	($input:expr; $($modifier:ident),*; $($refresh:ident),*; $action_dispatch:expr; $canonical:expr) => {
 		&[&[
 			// Cause the `action_dispatch` message to be sent when the specified input occurs.
 			MappingEntry {
 				action: $action_dispatch.into(),
 				input: $input,
-				modifiers: modifiers!($($($modifier),*)?),
+				modifiers: modifiers!($($modifier),*),
+				canonical: $canonical,
 			},
 
 			// Also cause the `action_dispatch` message to be sent when any of the specified refresh keys change.
-			//
-			// For example, a snapping state bound to the Shift key may change if the user presses or releases that key.
-			// In that case, we want to dispatch the action's message even though the pointer didn't necessarily move so
-			// the input handler can update the snapping state without making the user move the mouse to see the change.
-			$(
 			$(
 			MappingEntry {
 				action: $action_dispatch.into(),
 				input: InputMapperMessage::KeyDown(Key::$refresh),
 				modifiers: modifiers!(),
+				canonical: $canonical,
 			},
 			MappingEntry {
 				action: $action_dispatch.into(),
 				input: InputMapperMessage::KeyUp(Key::$refresh),
 				modifiers: modifiers!(),
+				canonical: $canonical,
 			},
 			MappingEntry {
 				action: $action_dispatch.into(),
 				input: InputMapperMessage::KeyDownNoRepeat(Key::$refresh),
 				modifiers: modifiers!(),
+				canonical: $canonical,
 			},
 			MappingEntry {
 				action: $action_dispatch.into(),
 				input: InputMapperMessage::KeyUpNoRepeat(Key::$refresh),
 				modifiers: modifiers!(),
+				canonical: $canonical,
 			},
-			)*
 			)*
 		]]
 	};

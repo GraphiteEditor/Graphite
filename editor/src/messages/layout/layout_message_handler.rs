@@ -6,7 +6,7 @@ use graphene_std::text::Font;
 use graphene_std::vector::style::{FillChoice, GradientStops};
 use serde_json::Value;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ExtractField)]
 pub struct LayoutMessageHandler {
 	layouts: [Layout; LayoutTarget::LayoutTargetLength as usize],
 }
@@ -342,7 +342,16 @@ impl LayoutMessageHandler {
 	}
 }
 
-impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage, F> for LayoutMessageHandler {
+pub fn custom_data() -> MessageData {
+	// TODO: When <https://github.com/dtolnay/proc-macro2/issues/503> is resolved and released,
+	// TODO: use <https://doc.rust-lang.org/stable/proc_macro/struct.Span.html#method.line> to get
+	// TODO: the line number instead of hardcoding it to the magic number on the following line.
+	// TODO: Also, utilize the line number in the actual output, since it is currently unused.
+	MessageData::new(String::from("Function"), vec![(String::from("Fn(&MessageDiscriminant) -> Option<KeysGroup>"), 350)], file!())
+}
+
+#[message_handler_data(CustomData)]
+impl<F: Fn(&MessageDiscriminant) -> Option<KeysGroup>> MessageHandler<LayoutMessage, F> for LayoutMessageHandler {
 	fn process_message(&mut self, message: LayoutMessage, responses: &mut std::collections::VecDeque<Message>, action_input_mapping: F) {
 		match message {
 			LayoutMessage::ResendActiveWidget { layout_target, widget_id } => {
@@ -385,7 +394,7 @@ impl LayoutMessageHandler {
 		layout_target: LayoutTarget,
 		new_layout: Layout,
 		responses: &mut VecDeque<Message>,
-		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>,
+		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>,
 	) {
 		match new_layout {
 			Layout::WidgetLayout(_) => {
@@ -419,7 +428,7 @@ impl LayoutMessageHandler {
 	}
 
 	/// Send a diff to the frontend based on the layout target.
-	fn send_diff(&self, mut diff: Vec<WidgetDiff>, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
+	fn send_diff(&self, mut diff: Vec<WidgetDiff>, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
 		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping));
 
 		let message = match layout_target {
