@@ -1868,6 +1868,10 @@ impl Fsm for PathToolFsmState {
 				tool_data.adjacent_anchor_offset = None;
 				tool_data.stored_selection = None;
 
+				if tool_data.has_drill_through_mouse_moved(input.mouse.position) {
+					tool_data.reset_drill_through_cycle();
+				}
+
 				// When moving the cursor around we want to update the hovered layers
 				let new_hovered_layers: Vec<LayerNodeIdentifier> = document
 					.click_list_no_parents(input)
