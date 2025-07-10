@@ -187,15 +187,11 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::coordinate_value::IDENTIFIER,
-		aliases: &["graphene_core::ops::CoordinateValueNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::math_nodes::coordinate_value::IDENTIFIER,
-		aliases: &["graphene_core::ops::ConstructVector2"],
-	},
-	NodeReplacement {
-		node: graphene_std::math_nodes::coordinate_value::IDENTIFIER,
-		aliases: &["graphene_core::ops::Vector2ValueNode"],
+		aliases: &[
+			"graphene_core::ops::CoordinateValueNode",
+			"graphene_core::ops::ConstructVector2",
+			"graphene_core::ops::Vector2ValueNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::color_value::IDENTIFIER,
@@ -253,11 +249,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::vector::auto_tangents::IDENTIFIER,
-		aliases: &["graphene_core::vector::GenerateHandlesNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::vector::auto_tangents::IDENTIFIER,
-		aliases: &["graphene_core::vector::RemoveHandlesNode"],
+		aliases: &["graphene_core::vector::GenerateHandlesNode", "graphene_core::vector::RemoveHandlesNode"],
 	},
 	// raster::adjustments
 	NodeReplacement {
@@ -357,7 +349,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::sample_image::IDENTIFIER,
-		aliases: &["graphene_std::raster::SampleImageNode"],
+		aliases: &["graphene_std::raster::SampleImageNode", "graphene_std::raster::SampleNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::combine_channels::IDENTIFIER,
@@ -365,7 +357,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::mask::IDENTIFIER,
-		aliases: &["graphene_std::raster::MaskNode"],
+		aliases: &["graphene_std::raster::MaskNode", "graphene_std::raster::MaskImageNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::extend_image_to_bounds::IDENTIFIER,
@@ -435,16 +427,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::generator_nodes::StarGenerator"],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::std_nodes::sample_image::IDENTIFIER,
-		aliases: &["graphene_std::raster::SampleNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::ops::identity::IDENTIFIER,
 		aliases: &["graphene_core::transform::CullNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::raster_nodes::std_nodes::mask::IDENTIFIER,
-		aliases: &["graphene_std::raster::MaskImageNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::flatten_path::IDENTIFIER,
@@ -497,11 +481,17 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 	let network = document.network_interface.document_network().clone();
 
 	// Apply string and node replacements to each node
-	let replacements: HashMap<&str, ProtoNodeIdentifier> = Iterator::chain(
+	let mut replacements = HashMap::<&str, ProtoNodeIdentifier>::new();
+	Iterator::chain(
 		NODE_REPLACEMENTS.iter().flat_map(|NodeReplacement { node, aliases }| aliases.iter().map(|old| (*old, node.clone()))),
 		REPLACEMENTS.iter().map(|(old, new)| (*old, ProtoNodeIdentifier::new(new))),
 	)
-	.collect();
+	.for_each(|(old, new)| {
+		if replacements.insert(old, new).is_some() {
+			panic!("Duplicate old name `{old}`");
+		}
+	});
+
 	for (node_id, node, network_path) in network.recursive_nodes() {
 		if let DocumentNodeImplementation::ProtoNode(protonode_id) = &node.implementation {
 			let node_path_without_type_args = protonode_id.name.split('<').next();
@@ -994,4 +984,21 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	Some(())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_no_duplicate_node_replacements() {
+		let mut hashmap = HashMap::<ProtoNodeIdentifier, u32>::new();
+		NODE_REPLACEMENTS.iter().for_each(|node| {
+			*hashmap.entry(node.node.clone()).or_default() += 1;
+		});
+		let duplicates = hashmap.iter().filter(|(_, count)| **count > 1).map(|(node, _)| &node.name).collect::<Vec<_>>();
+		if duplicates.len() > 0 {
+			panic!("Duplicate entries in `NODE_REPLACEMENTS`: {:?}", duplicates);
+		}
+	}
 }
