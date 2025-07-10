@@ -694,7 +694,7 @@ impl OverlayContext {
 
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 			self.render_context.set_stroke_style_str(color);
-			self.render_context.set_line_width(2.);
+			self.render_context.set_line_width(1.);
 			self.render_context.stroke();
 		}
 	}

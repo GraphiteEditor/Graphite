@@ -1,7 +1,7 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY_25, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, DRILL_THROUGH_THRESHOLD,
 	HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
@@ -468,9 +468,9 @@ struct PathToolData {
 	started_drawing_from_inside: bool,
 	first_selected_with_single_click: bool,
 	stored_selection: Option<HashMap<LayerNodeIdentifier, SelectedLayerState>>,
-	last_xray_click_position: Option<DVec2>,
-	xray_cycle_index: usize,
-	xray_cycle_count: usize,
+	last_drill_through_click_position: Option<DVec2>,
+	drill_through_cycle_index: usize,
+	drill_through_cycle_count: usize,
 	hovered_layers: Vec<LayerNodeIdentifier>,
 	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
 }
@@ -479,41 +479,6 @@ impl PathToolData {
 	fn save_points_before_anchor_toggle(&mut self, points: Vec<ManipulatorPointId>) -> PathToolFsmState {
 		self.saved_points_before_anchor_select_toggle = points;
 		PathToolFsmState::Dragging(self.dragging_state)
-	}
-
-	fn remove_saved_points(&mut self) {
-		self.saved_points_before_anchor_select_toggle.clear();
-	}
-
-	fn reset_xray_cycle(&mut self) {
-		self.last_xray_click_position = None;
-		self.xray_cycle_index = 0;
-	}
-
-	fn next_xray_index(&self, index: usize) -> usize {
-		if self.xray_cycle_count == 0 { 0 } else { (index + 1) % self.xray_cycle_count }
-	}
-
-	fn advance_xray_cycle(&mut self, position: DVec2) -> usize {
-		if self.last_xray_click_position.map_or(true, |last_pos| last_pos.distance(position) > SELECTION_THRESHOLD) {
-			// New position, reset cycle
-			self.xray_cycle_index = 0;
-		} else {
-			// Same position, advance cycle
-			self.xray_cycle_index = (self.xray_cycle_index + 1) % self.xray_cycle_count.max(1);
-		}
-		self.last_xray_click_position = Some(position);
-		self.xray_cycle_index
-	}
-
-	fn set_ghost_outline(&mut self, shape_editor: &ShapeState, document: &DocumentMessageHandler) {
-		self.ghost_outline.clear();
-		for &layer in shape_editor.selected_shape_state.keys() {
-			// We probably need to collect here
-			let outline = document.metadata().layer_with_free_points_outline(layer).cloned().collect();
-			let transform = document.metadata().transform_to_viewport(layer);
-			self.ghost_outline.push((outline, transform));
-		}
 	}
 
 	pub fn selection_quad(&self, metadata: &DocumentMetadata) -> Quad {
@@ -562,6 +527,49 @@ impl PathToolData {
 			SelectionStatus::Multiple(_) => true,
 		};
 		self.selection_status = selection_status;
+	}
+
+	fn remove_saved_points(&mut self) {
+		self.saved_points_before_anchor_select_toggle.clear();
+	}
+
+	fn reset_drill_through_cycle(&mut self) {
+		self.last_drill_through_click_position = None;
+		self.drill_through_cycle_index = 0;
+	}
+
+	fn next_drill_through_cycle(&mut self, position: DVec2) -> usize {
+		if self.last_drill_through_click_position.map_or(true, |last_pos| last_pos.distance(position) > DRILL_THROUGH_THRESHOLD) {
+			// New position, reset cycle
+			self.drill_through_cycle_index = 0;
+		} else {
+			// Same position, advance cycle
+			self.drill_through_cycle_index = (self.drill_through_cycle_index + 1) % self.drill_through_cycle_count.max(1);
+		}
+		self.last_drill_through_click_position = Some(position);
+		self.drill_through_cycle_index
+	}
+
+	fn peek_drill_through_index(&self) -> usize {
+		if self.drill_through_cycle_count == 0 {
+			0
+		} else {
+			(self.drill_through_cycle_index + 1) % self.drill_through_cycle_count.max(1)
+		}
+	}
+
+	fn has_drill_through_mouse_moved(&self, position: DVec2) -> bool {
+		self.last_drill_through_click_position.map_or(true, |last_pos| last_pos.distance(position) > DRILL_THROUGH_THRESHOLD)
+	}
+
+	fn set_ghost_outline(&mut self, shape_editor: &ShapeState, document: &DocumentMessageHandler) {
+		self.ghost_outline.clear();
+		for &layer in shape_editor.selected_shape_state.keys() {
+			// We probably need to collect here
+			let outline: Vec<ClickTargetType> = document.metadata().layer_with_free_points_outline(layer).cloned().collect();
+			let transform = document.metadata().transform_to_viewport(layer);
+			self.ghost_outline.push((outline, transform));
+		}
 	}
 
 	// TODO: This function is for basic point select mode. We definitely need to make a new one for the segment select mode.
@@ -1395,7 +1403,7 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
 				if matches!(self, Self::Dragging(_) | Self::MoldingSegment) {
 					for (outline, transform) in &tool_data.ghost_outline {
-						overlay_context.outline(outline.iter(), *transform, Some(COLOR_OVERLAY_GRAY_25));
+						overlay_context.outline(outline.iter(), *transform, Some(COLOR_OVERLAY_GRAY));
 					}
 				}
 
@@ -1501,16 +1509,28 @@ impl Fsm for PathToolFsmState {
 							}
 						}
 
-						// Show what layer will be next to cycle when double clicking, then draw the outlines of the hovered layers
-						let mut selected_index: usize = 0;
+						// Show outlines for hovered layers with appropriate highlighting
+						let currently_selected_layer = document.network_interface.selected_nodes().selected_layers(document.metadata()).next();
+						let next_selected_index = tool_data.peek_drill_through_index();
+						let mouse_has_moved = tool_data.has_drill_through_mouse_moved(input.mouse.position);
+
 						for (index, &hovered_layer) in tool_data.hovered_layers.iter().enumerate() {
-							if document.network_interface.selected_nodes().selected_layers(document.metadata()).any(|l| l == hovered_layer) {
-								selected_index = tool_data.next_xray_index(index);
-							} else {
-								let layer_to_viewport = document.metadata().transform_to_viewport(hovered_layer);
-								let color = if index == selected_index { COLOR_OVERLAY_GREEN } else { COLOR_OVERLAY_GRAY_25 };
-								overlay_context.outline(document.metadata().layer_with_free_points_outline(hovered_layer), layer_to_viewport, Some(&color));
+							// Skip already highlighted selected layer
+							if Some(hovered_layer) == currently_selected_layer {
+								continue;
 							}
+
+							let layer_to_viewport = document.metadata().transform_to_viewport(hovered_layer);
+							let outline = document.metadata().layer_with_free_points_outline(hovered_layer);
+
+							// Determine highlight color based on drill-through state
+							let color = match (index, mouse_has_moved) {
+								(i, false) if i == next_selected_index => COLOR_OVERLAY_BLUE, // If the layer is the next selected one and mouse has not moved, highlight it blue
+								(0, true) => COLOR_OVERLAY_BLUE,                              // If the layer is the first hovered one and mouse has moved, highlight it blue
+								_ => COLOR_OVERLAY_GRAY,                                      // Otherwise, use gray
+							};
+
+							overlay_context.outline(outline, layer_to_viewport, Some(color));
 						}
 					}
 					Self::Drawing { selection_shape } => {
@@ -2162,8 +2182,19 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::DoubleClick { extend_selection, shrink_selection }) => {
 				// Double-clicked on a point (flip smooth/sharp behavior)
 				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD);
-				// Filter if this is a group parent or an artboard
-				let xray_layers = document.click_list_no_parents(input).collect::<Vec<LayerNodeIdentifier>>();
+
+				let mut get_drill_through_layer = || -> Option<LayerNodeIdentifier> {
+					let drill_through_layers = document.click_list_no_parents(input).collect::<Vec<LayerNodeIdentifier>>();
+					if drill_through_layers.is_empty() {
+						tool_data.reset_drill_through_cycle();
+						None
+					} else {
+						tool_data.drill_through_cycle_count = drill_through_layers.len();
+						let cycle_index = tool_data.next_drill_through_cycle(input.mouse.position);
+						let layer = drill_through_layers.get(cycle_index);
+						if cycle_index == 0 { drill_through_layers.first().copied() } else { layer.copied() }
+					}
+				};
 
 				if nearest_point.is_some() {
 					// Flip the selected point between smooth and sharp
@@ -2181,17 +2212,7 @@ impl Fsm for PathToolFsmState {
 					return PathToolFsmState::Ready;
 				}
 				// Double-clicked on a filled region
-				else if let Some(layer) = {
-					if xray_layers.is_empty() {
-						tool_data.reset_xray_cycle();
-						None
-					} else {
-						tool_data.xray_cycle_count = xray_layers.len();
-						let cycle_index = tool_data.advance_xray_cycle(input.mouse.position);
-						let layer = xray_layers.get(cycle_index);
-						if cycle_index == 0 { xray_layers.first() } else { layer }
-					}
-				} {
+				else if let Some(layer) = &get_drill_through_layer() {
 					let extend_selection = input.keyboard.get(extend_selection as usize);
 					let shrink_selection = input.keyboard.get(shrink_selection as usize);
 
