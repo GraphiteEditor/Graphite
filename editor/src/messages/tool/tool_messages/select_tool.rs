@@ -2,7 +2,7 @@
 
 use super::tool_prelude::*;
 use crate::consts::*;
-use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
+use crate::messages::input_mapper::utility_types::input_mouse::{DocumentPosition, ViewportPosition};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
@@ -379,6 +379,7 @@ impl Default for SelectToolFsmState {
 
 #[derive(Clone, Debug, Default)]
 struct SelectToolData {
+	document_drag_start: DocumentPosition,
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
 	lasso_polygon: Vec<ViewportPosition>,
@@ -975,11 +976,12 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				if let Self::Dragging { .. } = self {
-					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
-					let document_start = document.metadata().document_to_viewport.inverse().transform_point2(quad.top_left());
-					let document_current = document.metadata().document_to_viewport.inverse().transform_point2(quad.bottom_right());
+					let viewport_translation = tool_data.drag_current - tool_data.drag_start;
+					let translation = document.metadata().document_to_viewport.inverse().transform_vector2(viewport_translation);
+					let pivot = document.metadata().document_to_viewport.transform_point2(tool_data.document_drag_start);
+					let quad = Quad::from_box([pivot, pivot + viewport_translation]);
 
-					overlay_context.translation_box(document_current - document_start, quad, None);
+					overlay_context.translation_box(translation, quad, None);
 				}
 
 				self
@@ -1008,6 +1010,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.drag_start = input.mouse.position;
 				tool_data.drag_current = input.mouse.position;
 				tool_data.selection_mode = None;
+				tool_data.document_drag_start = document.metadata().document_to_viewport.inverse().transform_point2(tool_data.drag_start);
 
 				let mut selected: Vec<_> = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
 				let intersection_list = document.click_list(input).collect::<Vec<_>>();
