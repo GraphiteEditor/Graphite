@@ -1,6 +1,7 @@
 use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
 use crate::{ManipulatorGroup, SpiralType, Subpath};
 use glam::{BVec2, DMat2, DVec2};
+use std::f64::consts::TAU;
 use std::fmt::Write;
 
 #[derive(Copy, Clone, PartialEq)]
@@ -302,6 +303,19 @@ pub fn format_point(svg: &mut String, prefix: &str, x: f64, y: f64) -> std::fmt:
 	Ok(())
 }
 
+pub fn calculate_b(a: f64, turns: f64, outer_radius: f64, spiral_type: SpiralType) -> f64 {
+	match spiral_type {
+		SpiralType::Archimedean => {
+			let total_theta = turns * TAU;
+			(outer_radius - a) / total_theta
+		}
+		SpiralType::Logarithmic => {
+			let total_theta = turns * TAU;
+			((outer_radius.abs() / a).ln()) / total_theta
+		}
+	}
+}
+
 /// Returns a point on the given spiral type at angle `theta`.
 pub fn spiral_point(theta: f64, a: f64, b: f64, spiral_type: SpiralType) -> DVec2 {
 	match spiral_type {
@@ -326,22 +340,6 @@ pub fn spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64, spira
 	}
 }
 
-/// Splits a cubic Bézier curve at parameter `t`, returning the first half.
-pub fn split_cubic_bezier(p0: DVec2, p1: DVec2, p2: DVec2, p3: DVec2, t: f64) -> (DVec2, DVec2, DVec2, DVec2) {
-	let p01 = p0.lerp(p1, t);
-	let p12 = p1.lerp(p2, t);
-	let p23 = p2.lerp(p3, t);
-
-	let p012 = p01.lerp(p12, t);
-	let p123 = p12.lerp(p23, t);
-
-	// final split point
-	let p0123 = p012.lerp(p123, t);
-
-	// First half of the Bézier
-	(p0, p01, p012, p0123)
-}
-
 /// Returns a point on a logarithmic spiral at angle `theta`.
 pub fn log_spiral_point(theta: f64, a: f64, b: f64) -> DVec2 {
 	let r = a * (b * theta).exp(); // a * e^(bθ)
@@ -360,7 +358,7 @@ pub fn log_spiral_tangent(theta: f64, a: f64, b: f64) -> DVec2 {
 	let dx = r * (b * theta.cos() - theta.sin());
 	let dy = r * (b * theta.sin() + theta.cos());
 
-	DVec2::new(dx, -dy).normalize()
+	DVec2::new(dx, -dy).normalize_or(DVec2::X)
 }
 
 /// Returns a point on an Archimedean spiral at angle `theta`.
@@ -374,7 +372,7 @@ pub fn archimedean_spiral_tangent(theta: f64, a: f64, b: f64) -> DVec2 {
 	let r = a + b * theta;
 	let dx = b * theta.cos() - r * theta.sin();
 	let dy = b * theta.sin() + r * theta.cos();
-	DVec2::new(dx, -dy).normalize()
+	DVec2::new(dx, -dy).normalize_or(DVec2::X)
 }
 
 /// Computes arc length along an Archimedean spiral between two angles.

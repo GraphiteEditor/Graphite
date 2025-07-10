@@ -79,24 +79,17 @@ fn spiral(
 	_: impl Ctx,
 	_primary: (),
 	spiral_type: SpiralType,
-	#[default(0.5)] start_radius: f64,
 	#[default(0.)] inner_radius: f64,
-	#[default(0.2)] growth: f64,
-	#[default(1.)] tightness: f64,
-	#[default(6)] turns: f64,
-	#[default(45.)] angle_offset: f64,
+	#[default(25)] outer_radius: f64,
+	#[default(5.)] turns: f64,
+	#[default(90.)] angle_offset: f64,
 ) -> VectorDataTable {
-	let (a, b) = match spiral_type {
-		SpiralType::Archimedean => (inner_radius, tightness),
-		SpiralType::Logarithmic => (start_radius, growth),
-	};
-
 	let spiral_type = match spiral_type {
 		SpiralType::Archimedean => bezier_rs::SpiralType::Archimedean,
 		SpiralType::Logarithmic => bezier_rs::SpiralType::Logarithmic,
 	};
 
-	VectorDataTable::new(VectorData::from_subpath(Subpath::new_spiral(a, b, turns, angle_offset.to_radians(), spiral_type)))
+	VectorDataTable::new(VectorData::from_subpath(Subpath::new_spiral(inner_radius, outer_radius, turns, angle_offset.to_radians(), spiral_type)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]

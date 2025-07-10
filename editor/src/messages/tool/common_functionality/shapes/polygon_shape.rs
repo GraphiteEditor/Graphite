@@ -30,16 +30,23 @@ pub struct PolygonGizmoHandler {
 
 impl ShapeGizmoHandler for PolygonGizmoHandler {
 	fn is_any_gizmo_hovered(&self) -> bool {
-		self.number_of_points_dial.is_hovering() || self.point_radius_handle.hovered()
+		self.number_of_points_dial.hovered() || self.point_radius_handle.hovered()
 	}
 
-	fn handle_state(&mut self, selected_star_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_state(
+		&mut self,
+		selected_star_layer: LayerNodeIdentifier,
+		mouse_position: DVec2,
+		document: &DocumentMessageHandler,
+		_input: &InputPreprocessorMessageHandler,
+		responses: &mut VecDeque<Message>,
+	) {
 		self.number_of_points_dial.handle_actions(selected_star_layer, mouse_position, document, responses);
 		self.point_radius_handle.handle_actions(selected_star_layer, document, mouse_position, responses);
 	}
 
 	fn handle_click(&mut self) {
-		if self.number_of_points_dial.is_hovering() {
+		if self.number_of_points_dial.hovered() {
 			self.number_of_points_dial.update_state(NumberOfPointsDialState::Dragging);
 			return;
 		}

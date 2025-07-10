@@ -41,7 +41,7 @@ impl NumberOfPointsDial {
 		self.handle_state = state;
 	}
 
-	pub fn is_hovering(&self) -> bool {
+	pub fn hovered(&self) -> bool {
 		self.handle_state == NumberOfPointsDialState::Hover
 	}
 
@@ -189,8 +189,8 @@ impl NumberOfPointsDial {
 	}
 
 	pub fn update_number_of_sides(&self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>, drag_start: DVec2) {
-		let delta = input.mouse.position - document.metadata().document_to_viewport.transform_point2(drag_start);
-		let sign = (input.mouse.position.x - document.metadata().document_to_viewport.transform_point2(drag_start).x).signum();
+		let delta = input.mouse.position - drag_start;
+		let sign = (input.mouse.position.x - drag_start.x).signum();
 		let net_delta = (delta.length() / 25.).round() * sign;
 
 		let Some(layer) = self.layer else { return };

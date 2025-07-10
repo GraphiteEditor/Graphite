@@ -1227,28 +1227,25 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 		match spiral_type {
 			SpiralType::Archimedean => {
 				let inner_radius = LayoutGroup::Row {
-					widgets: number_widget(ParameterWidgetsInfo::new(node_id, InnerRadiusInput::INDEX, true, context), NumberInput::default().min(0.)),
+					widgets: number_widget(ParameterWidgetsInfo::new(node_id, InnerRadiusInput::INDEX, true, context), NumberInput::default().min(0.).unit(" px")),
 				};
 
-				let tightness = LayoutGroup::Row {
-					widgets: number_widget(ParameterWidgetsInfo::new(node_id, TightnessInput::INDEX, true, context), NumberInput::default().unit(" px")),
+				let outer_radius = LayoutGroup::Row {
+					widgets: number_widget(ParameterWidgetsInfo::new(node_id, OuterRadiusInput::INDEX, true, context), NumberInput::default().unit(" px")),
 				};
 
-				widgets.extend([inner_radius, tightness]);
+				widgets.extend([inner_radius, outer_radius]);
 			}
 			SpiralType::Logarithmic => {
-				let start_radius = LayoutGroup::Row {
-					widgets: number_widget(ParameterWidgetsInfo::new(node_id, StartRadiusInput::INDEX, true, context), NumberInput::default().min(0.)),
+				let inner_radius = LayoutGroup::Row {
+					widgets: number_widget(ParameterWidgetsInfo::new(node_id, InnerRadiusInput::INDEX, true, context), NumberInput::default().min(0.).unit(" px")),
 				};
 
-				let growth = LayoutGroup::Row {
-					widgets: number_widget(
-						ParameterWidgetsInfo::new(node_id, GrowthInput::INDEX, true, context),
-						NumberInput::default().max(0.5).min(0.1).increment_behavior(NumberInputIncrementBehavior::Add).increment_step(0.01),
-					),
+				let outer_radius = LayoutGroup::Row {
+					widgets: number_widget(ParameterWidgetsInfo::new(node_id, OuterRadiusInput::INDEX, true, context), NumberInput::default().min(0.1).unit(" px")),
 				};
 
-				widgets.extend([start_radius, growth]);
+				widgets.extend([inner_radius, outer_radius]);
 			}
 		}
 	}

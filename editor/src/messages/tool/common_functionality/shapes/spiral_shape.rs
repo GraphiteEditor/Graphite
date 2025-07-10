@@ -1,33 +1,102 @@
 use super::*;
+use crate::consts::{SPIRAL_OUTER_RADIUS_INDEX, SPIRAL_TURNS_INDEX, SPIRAL_TYPE_INDEX};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::spiral_turns_handle::{SpiralTurns, SpiralTurnsState};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapTypeConfiguration};
 use crate::messages::tool::tool_messages::shape_tool::ShapeOptionsUpdate;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
-use graph_craft::document::NodeId;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::vector::misc::SpiralType;
 use std::collections::VecDeque;
-use std::f64::consts::TAU;
+
+#[derive(Clone, Debug, Default)]
+pub struct SpiralGizmoHandler {
+	turns_handle: SpiralTurns,
+}
+
+impl ShapeGizmoHandler for SpiralGizmoHandler {
+	fn is_any_gizmo_hovered(&self) -> bool {
+		self.turns_handle.hovered()
+	}
+
+	fn handle_state(
+		&mut self,
+		selected_spiral_layer: LayerNodeIdentifier,
+		_mouse_position: DVec2,
+		document: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+		responses: &mut VecDeque<Message>,
+	) {
+		self.turns_handle.handle_actions(selected_spiral_layer, input.mouse.position, document, responses);
+	}
+
+	fn handle_click(&mut self) {
+		if self.turns_handle.hovered() {
+			self.turns_handle.update_state(SpiralTurnsState::Dragging);
+		}
+	}
+
+	fn handle_update(&mut self, _drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+		if self.turns_handle.is_dragging() {
+			self.turns_handle.update_number_of_turns(document, input, responses);
+		}
+	}
+
+	fn overlays(
+		&self,
+		document: &DocumentMessageHandler,
+		selected_spiral_layer: Option<LayerNodeIdentifier>,
+		_input: &InputPreprocessorMessageHandler,
+		shape_editor: &mut &mut ShapeState,
+		mouse_position: DVec2,
+		overlay_context: &mut OverlayContext,
+	) {
+		self.turns_handle.overlays(document, selected_spiral_layer, shape_editor, mouse_position, overlay_context);
+	}
+
+	fn dragging_overlays(
+		&self,
+		document: &DocumentMessageHandler,
+		_input: &InputPreprocessorMessageHandler,
+		shape_editor: &mut &mut ShapeState,
+		mouse_position: DVec2,
+		overlay_context: &mut OverlayContext,
+	) {
+		if self.turns_handle.is_dragging() {
+			self.turns_handle.overlays(document, None, shape_editor, mouse_position, overlay_context);
+		}
+	}
+
+	fn cleanup(&mut self) {
+		self.turns_handle.cleanup();
+	}
+}
 
 #[derive(Default)]
 pub struct Spiral;
 
 impl Spiral {
 	pub fn create_node(spiral_type: SpiralType, turns: f64) -> NodeTemplate {
+		let inner_radius = match spiral_type {
+			SpiralType::Archimedean => 0.,
+			SpiralType::Logarithmic => 0.1,
+		};
+
 		let node_type = resolve_document_node_type("Spiral").expect("Spiral node can't be found");
 		node_type.node_template_input_override([
 			None,
 			Some(NodeInput::value(TaggedValue::SpiralType(spiral_type), false)),
-			Some(NodeInput::value(TaggedValue::F64(0.001), false)),
-			Some(NodeInput::value(TaggedValue::F64(0.1), false)),
-			None,
+			Some(NodeInput::value(TaggedValue::F64(inner_radius), false)),
 			Some(NodeInput::value(TaggedValue::F64(0.1), false)),
 			Some(NodeInput::value(TaggedValue::F64(turns), false)),
 		])
@@ -54,11 +123,14 @@ impl Spiral {
 			return;
 		};
 
-		let Some(&TaggedValue::F64(turns)) = node_inputs.get(6).unwrap().as_value() else {
+		let Some(&TaggedValue::SpiralType(spiral_type)) = node_inputs.get(SPIRAL_TYPE_INDEX).unwrap().as_value() else {
 			return;
 		};
 
-		Self::update_radius(node_id, dragged_distance, turns, responses);
+		let new_radius = match spiral_type {
+			SpiralType::Archimedean => dragged_distance,
+			SpiralType::Logarithmic => (dragged_distance).max(0.1),
+		};
 
 		responses.add(GraphOperationMessage::TransformSet {
 			layer,
@@ -66,38 +138,29 @@ impl Spiral {
 			transform_in: TransformIn::Viewport,
 			skip_rerender: false,
 		});
-	}
 
-	pub fn update_radius(node_id: NodeId, drag_length: f64, turns: f64, responses: &mut VecDeque<Message>) {
-		let archimedean_radius = drag_length / (turns * TAU);
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 5),
-			input: NodeInput::value(TaggedValue::F64(archimedean_radius), false),
-		});
-
-		// 0.2 is the default parameter
-		let factor = (0.2 * turns * TAU).exp();
-		let logarithmic_radius = drag_length / factor;
-		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 2),
-			input: NodeInput::value(TaggedValue::F64(logarithmic_radius), false),
+			input_connector: InputConnector::node(node_id, SPIRAL_OUTER_RADIUS_INDEX),
+			input: NodeInput::value(TaggedValue::F64(new_radius), false),
 		});
 	}
 
 	/// Updates the number of turns of a spiral node and recalculates its radius based on drag distance.
 	/// Also updates the Shape Tool's turns UI widget to reflect the change.
-	pub fn update_turns(drag_start: DVec2, decrease: bool, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn update_turns(decrease: bool, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		let Some(node_id) = graph_modification_utils::get_spiral_id(layer, &document.network_interface) else {
 			return;
 		};
-
 		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Spiral") else {
 			return;
 		};
 
-		let Some(&TaggedValue::F64(n)) = node_inputs.get(6).unwrap().as_value() else { return };
+		let Some(&TaggedValue::F64(n)) = node_inputs.get(SPIRAL_TURNS_INDEX).unwrap().as_value() else {
+			return;
+		};
 
 		let input: NodeInput;
+
 		let turns: f64;
 		if decrease {
 			turns = (n - 1.).max(1.);
@@ -108,14 +171,10 @@ impl Spiral {
 			input = NodeInput::value(TaggedValue::F64(turns), false);
 			responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Turns(turns)));
 		}
-
-		let drag_length = drag_start.distance(ipp.mouse.position);
-
-		Self::update_radius(node_id, drag_length, turns, responses);
-
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 6),
+			input_connector: InputConnector::node(node_id, SPIRAL_TURNS_INDEX),
 			input,
 		});
+		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 }

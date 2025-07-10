@@ -1,4 +1,5 @@
 use super::ShapeToolData;
+use crate::consts::{SPIRAL_INNER_RADIUS, SPIRAL_OUTER_RADIUS_INDEX, SPIRAL_TURNS_INDEX};
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -14,7 +15,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::misc::dvec2_to_point;
+use graphene_std::vector::misc::{SpiralType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
 use std::collections::VecDeque;
 use std::f64::consts::{PI, TAU};
@@ -81,7 +82,14 @@ pub trait ShapeGizmoHandler {
 	/// Called every frame to update the gizmo's interaction state based on the mouse position and selection.
 	///
 	/// This includes detecting hover states and preparing interaction flags or visual feedback (e.g., highlighting a hovered handle).
-	fn handle_state(&mut self, selected_shape_layers: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>);
+	fn handle_state(
+		&mut self,
+		selected_shape_layers: LayerNodeIdentifier,
+		mouse_position: DVec2,
+		document: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+		responses: &mut VecDeque<Message>,
+	);
 
 	/// Called when a mouse click occurs over the canvas and a gizmo handle is hovered.
 	///
@@ -222,6 +230,109 @@ pub fn extract_star_parameters(layer: Option<LayerNodeIdentifier>, document: &Do
 	};
 
 	Some((sides, radius_1, radius_2))
+}
+
+/// Extract the node input values of Archimedean spiral.
+/// Returns an option of (Inner radius, Outer radius, Turns, ).
+pub fn extract_arc_spiral_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<(f64, f64, f64)> {
+	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Spiral")?;
+
+	let Some(spiral_type) = get_spiral_type(layer, document) else {
+		return None;
+	};
+
+	if spiral_type == SpiralType::Archimedean {
+		let (Some(&TaggedValue::F64(inner_radius)), Some(&TaggedValue::F64(tightness)), Some(&TaggedValue::F64(turns))) = (
+			node_inputs.get(SPIRAL_INNER_RADIUS)?.as_value(),
+			node_inputs.get(SPIRAL_OUTER_RADIUS_INDEX)?.as_value(),
+			node_inputs.get(SPIRAL_TURNS_INDEX)?.as_value(),
+		) else {
+			return None;
+		};
+
+		return Some((inner_radius, tightness, turns));
+	}
+
+	None
+}
+
+/// Extract the node input values of Logarithmic spiral.
+/// Returns an option of (Start radius, Outer radius, Turns, ).
+pub fn extract_log_spiral_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<(f64, f64, f64)> {
+	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Spiral")?;
+
+	let Some(spiral_type) = get_spiral_type(layer, document) else {
+		return None;
+	};
+
+	if spiral_type == SpiralType::Logarithmic {
+		let (Some(&TaggedValue::F64(inner_radius)), Some(&TaggedValue::F64(tightness)), Some(&TaggedValue::F64(turns))) = (
+			node_inputs.get(SPIRAL_INNER_RADIUS)?.as_value(),
+			node_inputs.get(SPIRAL_OUTER_RADIUS_INDEX)?.as_value(),
+			node_inputs.get(SPIRAL_TURNS_INDEX)?.as_value(),
+		) else {
+			return None;
+		};
+
+		return Some((inner_radius, tightness, turns));
+	}
+
+	None
+}
+
+pub fn get_spiral_type(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<SpiralType> {
+	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Spiral")?;
+
+	let Some(&TaggedValue::SpiralType(spiral_type)) = node_inputs.get(1).expect("Failed to get Spiral Type").as_value() else {
+		return None;
+	};
+
+	Some(spiral_type)
+}
+
+pub fn get_arc_spiral_end_point(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, viewport: DAffine2, theta: f64) -> Option<DVec2> {
+	let Some((a, outer_radius, turns)) = extract_arc_spiral_parameters(layer, document) else {
+		return None;
+	};
+
+	let theta = turns * theta;
+	let b = calculate_b(a, turns, outer_radius, SpiralType::Archimedean);
+	let r = a + b * theta;
+
+	Some(viewport.transform_point2(DVec2::new(r * theta.cos(), -r * theta.sin())))
+}
+
+pub fn get_log_spiral_end_point(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, viewport: DAffine2, theta: f64) -> Option<DVec2> {
+	let Some((_start_radius, outer_radius, turns)) = extract_log_spiral_parameters(layer, document) else {
+		return None;
+	};
+
+	Some(viewport.transform_point2(outer_radius * DVec2::new((turns * theta).cos(), -(turns * theta).sin())))
+}
+
+pub fn calculate_b(a: f64, turns: f64, outer_radius: f64, spiral_type: SpiralType) -> f64 {
+	match spiral_type {
+		SpiralType::Archimedean => {
+			let total_theta = turns * TAU;
+			(outer_radius - a) / total_theta
+		}
+		SpiralType::Logarithmic => {
+			let total_theta = turns * TAU;
+			((outer_radius.abs() / a).ln()) / total_theta
+		}
+	}
+}
+
+/// Returns a point on an Archimedean spiral at angle `theta`.
+pub fn archimedean_spiral_point(theta: f64, a: f64, b: f64) -> DVec2 {
+	let r = a + b * theta;
+	DVec2::new(r * theta.cos(), -r * theta.sin())
+}
+
+/// Returns a point on a logarithmic spiral at angle `theta`.
+pub fn log_spiral_point(theta: f64, a: f64, b: f64) -> DVec2 {
+	let r = a * (b * theta).exp(); // a * e^(bθ)
+	DVec2::new(r * theta.cos(), -r * theta.sin())
 }
 
 /// Extract the node input values of Polygon.

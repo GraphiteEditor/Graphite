@@ -51,7 +51,7 @@ impl Default for ShapeToolOptions {
 			shape_type: ShapeType::Polygon,
 			arc_type: ArcType::Open,
 			spiral_type: SpiralType::Archimedean,
-			turns: 5.,
+			turns: 3.,
 		}
 	}
 }
@@ -370,14 +370,14 @@ impl ShapeToolData {
 		}
 	}
 
-	fn increase_no_sides_turns(&self, document: &DocumentMessageHandler, ipp: &InputPreprocessorMessageHandler, shape_type: ShapeType, responses: &mut VecDeque<Message>, decrease: bool) {
+	fn increase_no_sides_turns(&self, document: &DocumentMessageHandler, shape_type: ShapeType, responses: &mut VecDeque<Message>, decrease: bool) {
 		if let Some(layer) = self.data.layer {
 			match shape_type {
 				ShapeType::Star | ShapeType::Polygon => {
 					Polygon::update_sides(decrease, layer, document, responses);
 				}
 				ShapeType::Spiral => {
-					Spiral::update_turns(self.data.viewport_drag_start(document), decrease, layer, document, ipp, responses);
+					Spiral::update_turns(decrease, layer, document, responses);
 				}
 				_ => {}
 			}
@@ -425,7 +425,7 @@ impl Fsm for ShapeToolFsmState {
 				let is_resizing_or_rotating = matches!(self, ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::SkewingBounds { .. } | ShapeToolFsmState::RotatingBounds);
 
 				if matches!(self, Self::Ready(_)) && !input.keyboard.key(Key::Control) {
-					tool_data.gizmo_manger.handle_actions(mouse_position, document, responses);
+					tool_data.gizmo_manger.handle_actions(mouse_position, document, input, responses);
 					tool_data.gizmo_manger.overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
 				}
 
@@ -539,11 +539,11 @@ impl Fsm for ShapeToolFsmState {
 				self
 			}
 			(ShapeToolFsmState::Drawing(_), ShapeToolMessage::IncreaseSides) => {
-				tool_data.increase_no_sides_turns(document, input, tool_options.shape_type, responses, false);
+				tool_data.increase_no_sides_turns(document, tool_options.shape_type, responses, false);
 				self
 			}
 			(ShapeToolFsmState::Drawing(_), ShapeToolMessage::DecreaseSides) => {
-				tool_data.increase_no_sides_turns(document, input, tool_options.shape_type, responses, true);
+				tool_data.increase_no_sides_turns(document, tool_options.shape_type, responses, true);
 				self
 			}
 			(ShapeToolFsmState::Ready(_), ShapeToolMessage::DragStart) => {
@@ -680,7 +680,7 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(ShapeToolFsmState::ModifyingGizmo, ShapeToolMessage::PointerMove(..)) => {
 				responses.add(DocumentMessage::StartTransaction);
-				tool_data.gizmo_manger.handle_update(tool_data.data.drag_start, document, input, responses);
+				tool_data.gizmo_manger.handle_update(tool_data.data.viewport_drag_start(document), document, input, responses);
 
 				responses.add(OverlaysMessage::Draw);
 

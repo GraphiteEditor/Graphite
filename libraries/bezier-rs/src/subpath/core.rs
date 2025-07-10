@@ -1,7 +1,8 @@
 use super::*;
-use crate::utils::{format_point, spiral_arc_length, spiral_point, spiral_tangent, split_cubic_bezier};
-use crate::{BezierHandles, consts::*};
+use crate::utils::{calculate_b, format_point, spiral_arc_length, spiral_point, spiral_tangent};
+use crate::{BezierHandles, TValue, consts::*};
 use glam::DVec2;
+use std::f64::consts::TAU;
 use std::fmt::Write;
 
 /// Functionality relating to core `Subpath` operations, such as constructors and `iter`.
@@ -271,14 +272,16 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		)
 	}
 
-	pub fn new_spiral(a: f64, b: f64, turns: f64, delta_theta: f64, spiral_type: SpiralType) -> Self {
+	pub fn new_spiral(a: f64, outer_radius: f64, turns: f64, delta_theta: f64, spiral_type: SpiralType) -> Self {
 		let mut manipulator_groups = Vec::new();
 		let mut prev_in_handle = None;
 		let theta_end = turns * std::f64::consts::TAU;
 
+		let b = calculate_b(a, turns, outer_radius, spiral_type);
+
 		let mut theta = 0.0;
 		while theta < theta_end {
-			let theta_next = theta + delta_theta;
+			let theta_next = f64::min(theta + delta_theta, theta_end);
 
 			let p0 = spiral_point(theta, a, b, spiral_type);
 			let p3 = spiral_point(theta_next, a, b, spiral_type);
@@ -291,18 +294,13 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 			let p1 = p0 + d * t0;
 			let p2 = p3 - d * t1;
 
-			let is_last_segment = theta_next >= theta_end;
-			if is_last_segment {
-				let t = (theta_end - theta) / (theta_next - theta); // t in [0, 1]
-				let (trim_p0, trim_p1, trim_p2, trim_p3) = split_cubic_bezier(p0, p1, p2, p3, t);
+			manipulator_groups.push(ManipulatorGroup::new(p0, prev_in_handle, Some(p1)));
+			prev_in_handle = Some(p2);
 
-				manipulator_groups.push(ManipulatorGroup::new(trim_p0, prev_in_handle, Some(trim_p1)));
-				prev_in_handle = Some(trim_p2);
-				manipulator_groups.push(ManipulatorGroup::new(trim_p3, prev_in_handle, None));
+			// If final segment, end with anchor at theta_end
+			if (theta_next - theta_end).abs() < f64::EPSILON {
+				manipulator_groups.push(ManipulatorGroup::new(p3, prev_in_handle, None));
 				break;
-			} else {
-				manipulator_groups.push(ManipulatorGroup::new(p0, prev_in_handle, Some(p1)));
-				prev_in_handle = Some(p2);
 			}
 
 			theta = theta_next;
