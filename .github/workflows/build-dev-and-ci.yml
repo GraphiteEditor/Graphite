@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - master
-  pull_request:
+  pull_request: {}
 env:
   CARGO_TERM_COLOR: always
   INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="dev.graphite.rs" data-api="https://graphite.rs/visit/event" src="https://graphite.rs/visit/script.hash.js"></script>
@@ -13,9 +13,10 @@ jobs:
   build:
     runs-on: self-hosted
     permissions:
-      contents: read
+      contents: write
       deployments: write
       pull-requests: write
+      actions: write
     env:
       RUSTC_WRAPPER: /usr/bin/sccache
       CARGO_INCREMENTAL: 0
@@ -47,9 +48,11 @@ jobs:
           rustc --version
 
       - name: ✂ Replace template in <head> of index.html
+        if: github.ref != 'refs/heads/master'
+        env:
+          INDEX_HTML_HEAD_REPLACEMENT: ""
         run: |
           # Remove the INDEX_HTML_HEAD_REPLACEMENT environment variable for build links (not master deploys)
-          git rev-parse --abbrev-ref HEAD | grep master > /dev/null || export INDEX_HTML_HEAD_REPLACEMENT=""
           sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
 
       - name: 🌐 Build Graphite web code
@@ -69,6 +72,19 @@ jobs:
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
           projectName: graphite-dev
           directory: frontend/dist
+
+      - name: 💬 Comment build link URL to commit hash page on GitHub
+        if: github.ref == 'refs/heads/master'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            /repos/${{ github.repository }}/commits/$(git rev-parse HEAD)/comments \
+            -f body="| 📦 **Build Complete for** $(git rev-parse HEAD) |
+          |-|
+          | ${{ steps.cloudflare.outputs.url }} |"
 
       - name: 👕 Lint Graphite web formatting
         env:
@@ -90,6 +106,51 @@ jobs:
       - name: 🧪 Run Rust tests
         run: |
           mold -run cargo test --all-features --workspace
+
+      - name: 📃 Generate code documentation info for website
+        if: github.ref == 'refs/heads/master'
+        run: |
+          cargo test --package graphite-editor --lib -- messages::message::test::generate_message_tree
+          mkdir -p artifacts-generated
+          mv hierarchical_message_system_tree.txt artifacts-generated/hierarchical_message_system_tree.txt
+
+      - name: 💿 Obtain cache of auto-generated code docs artifacts, to check if they've changed
+        if: github.ref == 'refs/heads/master'
+        id: cache-website-code-docs
+        uses: actions/cache/restore@v3
+        with:
+          path: artifacts
+          key: website-code-docs
+
+      - name: 🔍 Check if auto-generated code docs artifacts changed
+        if: github.ref == 'refs/heads/master'
+        id: website-code-docs-changed
+        run: |
+          if ! diff --brief --recursive artifacts-generated artifacts; then
+            echo "Auto-generated code docs artifacts have changed."
+            rm -rf artifacts
+            mv artifacts-generated artifacts
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "Auto-generated code docs artifacts have not changed."
+            rm -rf artifacts
+            rm -rf artifacts-generated
+          fi
+
+      - name: 💾 Save cache of auto-generated code docs artifacts
+        if: steps.website-code-docs-changed.outputs.changed == 'true'
+        uses: actions/cache/save@v3
+        with:
+          path: artifacts
+          key: ${{ steps.cache-website-code-docs.outputs.cache-primary-key }}
+
+      - name: ♻️ Trigger website rebuild if the auto-generated code docs artifacts have changed
+        if: steps.website-code-docs-changed.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          rm -rf artifacts
+          gh workflow run website.yml --ref master
 
   # miri:
   #   runs-on: self-hosted
