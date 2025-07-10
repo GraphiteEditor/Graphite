@@ -1823,12 +1823,33 @@ impl NodeGraphMessageHandler {
 		let selection_all_locked = network_interface.selected_nodes().selected_unlocked_layers(network_interface).count() == 0;
 		let selection_all_visible = selected_nodes.selected_nodes().all(|node_id| network_interface.is_visible(node_id, breadcrumb_network_path));
 
+		let mut selected_layers = selected_nodes.selected_layers(network_interface.document_metadata());
+		let selected_layer = selected_layers.next();
+		let has_multiple_selection = selected_layers.next().is_some();
+
 		let mut widgets = vec![
 			PopoverButton::new()
 				.icon(Some("Node".to_string()))
 				.tooltip("New Node (Right Click)")
 				.popover_layout({
-					let node_chooser = NodeCatalog::new()
+					// Showing only compatible types
+					let compatible_type = match (selection_includes_layers, has_multiple_selection, selected_layer) {
+						(true, false, Some(layer)) => {
+							let input_connector = InputConnector::node(layer.to_node(), 1);
+							if let Some(OutputConnector::Node { node_id, .. }) = network_interface.upstream_output_connector(&input_connector, &breadcrumb_network_path) {
+								let (output_type, _) = network_interface.output_type(&node_id, 0, &breadcrumb_network_path);
+								Some(format!("type:{}", output_type.nested_type()))
+							} else {
+								None
+							}
+						}
+						_ => None,
+					};
+
+					let mut node_chooser = NodeCatalog::new();
+					node_chooser.intial_search = compatible_type.unwrap_or("".to_string());
+
+					let node_chooser = node_chooser
 						.on_update(move |node_type| {
 							let node_id = NodeId::new();
 
