@@ -91,5 +91,5 @@ pub type SNI = NodeId;
 // An input of a compiled protonode, used to reference thumbnails, which are stored on a per input basis
 pub type CompiledProtonodeInput = (NodeId, usize);
 
-// Path to the protonode in the document network
-pub type ProtonodePath = Box<[NodeId]>;
+// Path to the protonode in the wrapped network (document network prefixed with NodeId(0))
+pub type ProtonodePath = Vec<NodeId>;

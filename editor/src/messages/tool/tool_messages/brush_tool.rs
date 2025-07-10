@@ -5,11 +5,11 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Color;
 use graphene_std::brush::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
 use graphene_std::raster::BlendMode;
+use graphene_std::uuid::NodeId;
 
 const BRUSH_MAX_SIZE: f64 = 5000.;
 
@@ -379,8 +379,9 @@ impl Fsm for BrushToolFsmState {
 				else {
 					new_brush_layer(document, responses);
 					responses.add(PortfolioMessage::CompileActiveDocument);
-					responses.add(Message::StartQueue);
+					responses.add(Message::StartEvaluationQueue);
 					responses.add(BrushToolMessage::DragStart);
+					responses.add(Message::EndEvaluationQueue);
 					BrushToolFsmState::Ready
 				}
 			}

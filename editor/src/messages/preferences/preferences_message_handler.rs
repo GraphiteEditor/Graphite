@@ -20,10 +20,8 @@ impl PreferencesMessageHandler {
 		self.selection_mode
 	}
 
-	pub fn editor_preferences(&self) -> EditorPreferences {
-		EditorPreferences {
-			use_vello: self.use_vello && self.supports_wgpu(),
-		}
+	pub fn use_vello(&self) -> bool {
+		self.use_vello && self.supports_wgpu()
 	}
 
 	pub fn supports_wgpu(&self) -> bool {

@@ -1,3 +1,4 @@
+use crate::messages::prelude::*;
 use graph_craft::document::AbsoluteInputConnector;
 use graphene_std::uuid::CompiledProtonodeInput;
 
@@ -7,7 +8,7 @@ use graphene_std::uuid::CompiledProtonodeInput;
 pub enum SpreadsheetMessage {
 	ToggleOpen,
 
-	UpdateLayout { inpect_input: InspectInputConnector },
+	UpdateLayout { inspect_input: InspectInputConnector },
 
 	PushToInstancePath { index: usize },
 	TruncateInstancePath { len: usize },
@@ -15,7 +16,7 @@ pub enum SpreadsheetMessage {
 	ViewVectorDataDomain { domain: VectorDataDomain },
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Default, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
 pub enum VectorDataDomain {
 	#[default]
 	Points,

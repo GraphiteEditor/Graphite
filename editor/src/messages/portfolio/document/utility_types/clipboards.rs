@@ -1,5 +1,6 @@
+use graphene_std::uuid::NodeId;
+
 use super::network_interface::NodeTemplate;
-use graph_craft::document::NodeId;
 
 #[repr(u8)]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, PartialEq, Eq, Debug, specta::Type)]

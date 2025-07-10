@@ -1,32 +1,18 @@
 use std::sync::Arc;
 
-use crate::consts::FILE_SAVE_SUFFIX;
-use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::frontend::utility_types::FileType;
 use crate::messages::prelude::*;
 use dyn_any::DynAny;
-use glam::DAffine2;
-use graph_craft::document::value::{NetworkOutput, TaggedValue};
-use graph_craft::document::{
-	AbsoluteInputConnector, AbsoluteOutputConnector, CompilationMetadata, CompiledNodeMetadata, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, generate_uuid,
-};
+use graph_craft::document::value::{EditorMetadata, RenderOutput, TaggedValue};
+use graph_craft::document::{CompilationMetadata, DocumentNode, NodeNetwork, generate_uuid};
 use graph_craft::proto::GraphErrors;
-use graph_craft::wasm_application_io::{EditorCompilationMetadata, EditorEvaluationMetadata, EditorMetadata};
-use graphene_std::application_io::{CompilationMetadata, TimingInformation};
-use graphene_std::application_io::{EditorEvaluationMetadata, NodeGraphUpdateMessage};
+use graphene_std::any::EditorContext;
 use graphene_std::memo::IntrospectMode;
-use graphene_std::renderer::{EvaluationMetadata, format_transform_matrix};
-use graphene_std::renderer::{RenderMetadata, RenderSvgSegmentList};
-use graphene_std::renderer::{RenderParams, SvgRender};
+use graphene_std::renderer::format_transform_matrix;
 use graphene_std::text::FontCache;
-use graphene_std::transform::{Footprint, RenderQuality};
-use graphene_std::uuid::{CompiledProtonodeInput, ProtonodePath, SNI};
-use graphene_std::vector::VectorData;
-use graphene_std::vector::style::ViewMode;
-use graphene_std::wasm_application_io::NetworkOutput;
-use graphene_std::{CompiledProtonodeInput, OwnedContextImpl, SNI};
+use graphene_std::uuid::{CompiledProtonodeInput, NodeId, SNI};
 
 mod runtime_io;
-use interpreted_executor::dynamic_executor::{EditorContext, ResolvedDocumentNodeMetadata};
 pub use runtime_io::NodeRuntimeIO;
 
 mod runtime;
@@ -35,7 +21,7 @@ pub use runtime::*;
 #[derive(Clone, Debug, Default, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct CompilationRequest {
 	pub network: NodeNetwork,
-	// Data which is avaialable from scope inputs (currently WasmEditorApi, but will be split)
+	// Data which is available from scope inputs
 	pub font_cache: Arc<FontCache>,
 	pub editor_metadata: EditorMetadata,
 }
@@ -46,27 +32,34 @@ pub struct CompilationResponse {
 }
 
 // Metadata the editor sends when evaluating the network
-#[derive(Debug, Default, DynAny)]
+#[derive(Debug, Default, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct EvaluationRequest {
 	pub evaluation_id: u64,
-	pub inputs_to_monitor: Vec<(CompiledProtonodeInput, IntrospectMode)>,
+	#[serde(skip)]
 	pub context: EditorContext,
-	// pub custom_node_to_evaluate: Option<SNI>,
+	pub node_to_evaluate: Option<SNI>,
 }
 
 // #[cfg_attr(feature = "decouple-execution", derive(serde::Serialize, serde::Deserialize))]
 pub struct EvaluationResponse {
 	evaluation_id: u64,
 	result: Result<TaggedValue, String>,
-	introspected_inputs: Vec<(CompiledProtonodeInput, IntrospectMode, Box<dyn std::any::Any + Send + Sync>)>,
-	// TODO: Handle transforming node graph output in the node graph itself
-	transform: DAffine2,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct IntrospectionResponse(pub Vec<((NodeId, usize), IntrospectMode, Option<Arc<dyn std::any::Any + Send + Sync>>)>);
+
+impl PartialEq for IntrospectionResponse {
+	fn eq(&self, _other: &Self) -> bool {
+		false
+	}
 }
 
 // #[cfg_attr(feature = "decouple-execution", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeGraphUpdate {
 	CompilationResponse(CompilationResponse),
 	EvaluationResponse(EvaluationResponse),
+	IntrospectionResponse(IntrospectionResponse),
 }
 
 #[derive(Debug, Default)]
@@ -98,6 +91,7 @@ impl NodeGraphExecutor {
 		let node_runtime = NodeRuntime::new(request_receiver, response_sender);
 
 		let node_executor = Self {
+			busy: false,
 			futures: HashMap::new(),
 			runtime_io: NodeRuntimeIO::with_channels(request_sender, response_receiver),
 		};
@@ -118,34 +112,39 @@ impl NodeGraphExecutor {
 
 	/// Compile the network
 	pub fn submit_node_graph_compilation(&mut self, compilation_request: CompilationRequest) {
-		self.runtime_io.send(GraphRuntimeRequest::CompilationRequest(compilation_request)).map_err(|e| e.to_string());
+		if let Err(error) = self.runtime_io.send(GraphRuntimeRequest::CompilationRequest(compilation_request)) {
+			log::error!("Could not send evaluation request. {:?}", error);
+			return;
+		}
 	}
 
-	/// Adds an evaluate request for whatever current network is cached.
-	pub fn submit_node_graph_evaluation(
-		&mut self,
-		context: EditorContext,
-		inputs_to_monitor: Vec<(CompiledProtonodeInput, IntrospectMode)>,
-		custom_node_to_evaluate: Option<SNI>,
-		export_config: Option<ExportConfig>,
-	) {
+	/// Adds an evaluation request for whatever current network is cached.
+	pub fn submit_node_graph_evaluation(&mut self, context: EditorContext, node_to_evaluate: Option<SNI>, export_config: Option<ExportConfig>) {
 		let evaluation_id = generate_uuid();
-		self.runtime_io.send(GraphRuntimeRequest::EvaluationRequest(editor_evaluation_request)).map_err(|e| e.to_string());
+		if let Err(error) = self.runtime_io.send(GraphRuntimeRequest::EvaluationRequest(EvaluationRequest {
+			evaluation_id,
+			context,
+			node_to_evaluate,
+		})) {
+			log::error!("Could not send evaluation request. {:?}", error);
+			return;
+		}
 		let evaluation_context = EvaluationContext { export_config };
 		self.futures.insert(evaluation_id, evaluation_context);
 	}
 
+	pub fn submit_node_graph_introspection(&mut self, nodes_to_introspect: HashSet<CompiledProtonodeInput>) {
+		if let Err(error) = self.runtime_io.send(GraphRuntimeRequest::IntrospectionRequest(nodes_to_introspect)) {
+			log::error!("Could not send evaluation request. {:?}", error);
+			return;
+		}
+	}
+
 	// Continuously poll the executor (called by request animation frame)
 	pub fn poll_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		// Moved into portfolio message handler, since this is where the introspected inputs are saved
 		for response in self.runtime_io.receive() {
 			match response {
-				NodeGraphUpdate::EvaluationResponse(EvaluationResponse {
-					evaluation_id,
-					result,
-					transform,
-					introspected_inputs,
-				}) => {
+				NodeGraphUpdate::EvaluationResponse(EvaluationResponse { evaluation_id, result }) => {
 					responses.add(OverlaysMessage::Draw);
 
 					let node_graph_output = match result {
@@ -160,18 +159,14 @@ impl NodeGraphExecutor {
 					let render_output = match node_graph_output {
 						TaggedValue::RenderOutput(render_output) => render_output,
 						value => {
-							return Err("Incorrect render type for exporting (expected NetworkOutput)".to_string());
+							return Err(format!("Incorrect render type for exporting {:?} (expected NetworkOutput)", value.ty()));
 						}
 					};
 
 					let evaluation_context = self.futures.remove(&evaluation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					if let Some(export_config) = evaluation_context.export_config {
 						// Export
-						let TaggedValue::RenderOutput(RenderOutput {
-							data: graphene_std::wasm_application_io::RenderOutputType::Svg(svg),
-							..
-						}) = node_graph_output
-						else {
+						let graphene_std::wasm_application_io::RenderOutputType::Svg(svg) = render_output.data else {
 							return Err("Incorrect render type for exporting (expected RenderOutput::Svg)".to_string());
 						};
 
@@ -193,7 +188,7 @@ impl NodeGraphExecutor {
 						}
 					} else {
 						// Update artwork
-						self.process_node_graph_output(render_output, introspected_inputs, transform, responses);
+						self.process_node_graph_output(render_output, responses)?
 					}
 				}
 				NodeGraphUpdate::CompilationResponse(compilation_response) => {
@@ -213,58 +208,35 @@ impl NodeGraphExecutor {
 						Ok(result) => result,
 					};
 					responses.add(PortfolioMessage::ProcessCompilationResponse { compilation_metadata });
-					responses.add(NodeGraphMessage::SendGraph);
+				}
+				NodeGraphUpdate::IntrospectionResponse(introspection_response) => {
+					responses.add(Message::ProcessIntrospectionQueue(introspection_response));
 				}
 			}
 		}
 		Ok(())
 	}
 
-	fn process_node_graph_output(
-		&mut self,
-		node_graph_output: TaggedValue,
-		introspected_inputs: Vec<(CompiledProtonodeInput, IntrospectMode, Box<dyn std::any::Any + Send + Sync>)>,
-		transform: DAffine2,
-		responses: &mut VecDeque<Message>,
-	) -> Result<(), String> {
-		let mut render_output_metadata = RenderMetadata::default();
-		match node_graph_output {
-			TaggedValue::RenderOutput(render_output) => {
-				match render_output.data {
-					graphene_std::wasm_application_io::RenderOutputType::Svg(svg) => {
-						// Send to frontend
-						responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
-					}
-					graphene_std::wasm_application_io::RenderOutputType::CanvasFrame(frame) => {
-						let matrix = format_transform_matrix(frame.transform);
-						let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{}\"", matrix) };
-						let svg = format!(
-							r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="canvas{}"></div></foreignObject></svg>"#,
-							frame.resolution.x, frame.resolution.y, frame.surface_id.0
-						);
-						responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
-					}
-					_ => {
-						return Err(format!("Invalid node graph output type: {:#?}", render_output.data));
-					}
-				}
-
-				render_output_metadata = render_output.metadata;
+	fn process_node_graph_output(&self, render_output: RenderOutput, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		match render_output.data {
+			graphene_std::wasm_application_io::RenderOutputType::Svg(svg) => {
+				// Send to frontend
+				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
-			// TaggedValue::Bool(render_object) => Self::debug_render(render_object, transform, responses),
-			// TaggedValue::String(render_object) => Self::debug_render(render_object, transform, responses),
-			// TaggedValue::F64(render_object) => Self::debug_render(render_object, transform, responses),
-			// TaggedValue::DVec2(render_object) => Self::debug_render(render_object, transform, responses),
-			// TaggedValue::OptionalColor(render_object) => Self::debug_render(render_object, transform, responses),
-			// TaggedValue::VectorData(render_object) => Self::debug_render(render_object, transform, responses),
-			// TaggedValue::GraphicGroup(render_object) => Self::debug_render(render_object, transform, responses),
-			// TaggedValue::RasterData(render_object) => Self::debug_render(render_object, transform, responses),
-			// TaggedValue::Palette(render_object) => Self::debug_render(render_object, transform, responses),
+			graphene_std::wasm_application_io::RenderOutputType::CanvasFrame(frame) => {
+				let matrix = format_transform_matrix(frame.transform);
+				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{}\"", matrix) };
+				let svg = format!(
+					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="canvas{}"></div></foreignObject></svg>"#,
+					frame.resolution.x, frame.resolution.y, frame.surface_id.0
+				);
+				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
+			}
 			_ => {
-				return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
+				return Err(format!("Invalid node graph output type: {:#?}", render_output.data));
 			}
-		};
-		responses.add(Message::ProcessQueue((render_output_metadata, introspected_inputs)));
+		}
+		responses.add(Message::ProcessEvaluationQueue(render_output.metadata));
 		Ok(())
 	}
 }
@@ -404,3 +376,35 @@ impl NodeGraphExecutor {
 // 		}
 // 	}
 // }
+
+// Passed as a scope input
+#[derive(Clone, Debug, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct EditorMetadata {
+	// pub imaginate_hostname: String,
+	pub use_vello: bool,
+	pub hide_artboards: bool,
+	// If exporting, hide the artboard name and do not collect metadata
+	pub for_export: bool,
+	pub view_mode: graphene_core::vector::style::ViewMode,
+	pub transform_to_viewport: bool,
+}
+
+unsafe impl dyn_any::StaticType for EditorMetadata {
+	type Static = EditorMetadata;
+}
+
+impl Default for EditorMetadata {
+	fn default() -> Self {
+		Self {
+			// imaginate_hostname: "http://localhost:7860/".into(),
+			#[cfg(target_arch = "wasm32")]
+			use_vello: false,
+			#[cfg(not(target_arch = "wasm32"))]
+			use_vello: true,
+			hide_artboards: false,
+			for_export: false,
+			view_mode: graphene_core::vector::style::ViewMode::Normal,
+			transform_to_viewport: true,
+		}
+	}
+}

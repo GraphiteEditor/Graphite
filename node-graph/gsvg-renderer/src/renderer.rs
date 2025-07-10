@@ -211,6 +211,30 @@ pub trait GraphicElementRendered: BoundingBox + RenderComplexity {
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams);
 
+	fn render_thumbnail(&self) -> String {
+		let bounds = self.bounding_box(DAffine2::IDENTITY, true);
+
+		let render_params = RenderParams {
+			view_mode: ViewMode::Normal,
+			culling_bounds: bounds,
+			thumbnail: true,
+			hide_artboards: false,
+			for_export: false,
+			for_mask: false,
+			alignment_parent_transform: None,
+		};
+
+		// Render the thumbnail data into an SVG string
+		let mut render = SvgRender::new();
+		self.render_svg(&mut render, &render_params);
+
+		// Give the SVG a viewbox and outer <svg>...</svg> wrapper tag
+		// let [min, max] = bounds.unwrap_or_default();
+		// render.format_svg(min, max);
+
+		render.svg.to_svg_string()
+	}
+
 	/// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection.
 	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
 

@@ -10,7 +10,6 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 };
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
-use crate::node_graph_executor::NodeGraphExecutor;
 use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::concrete;
@@ -23,6 +22,7 @@ use graphene_std::raster_types::{CPU, RasterDataTable};
 use graphene_std::text::{Font, TypesettingConfig};
 #[allow(unused_imports)]
 use graphene_std::transform::Footprint;
+use graphene_std::uuid::NodeId;
 use graphene_std::vector::VectorDataTable;
 use graphene_std::*;
 use std::collections::{HashMap, HashSet, VecDeque};

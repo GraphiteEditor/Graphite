@@ -8,7 +8,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::utility_functions::should_extend;
 use glam::DVec2;
-use graph_craft::document::NodeId;
+use graphene_std::uuid::NodeId;
 use graphene_std::Color;
 use graphene_std::vector::VectorModificationType;
 use graphene_std::vector::{PointId, SegmentId};
@@ -251,7 +251,6 @@ impl Fsm for FreehandToolFsmState {
 				let nodes = vec![(NodeId(0), node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-				responses.add(Message::StartQueue);
 				tool_options.fill.apply_fill(layer, responses);
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
 				tool_data.layer = Some(layer);

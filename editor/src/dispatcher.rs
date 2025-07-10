@@ -5,8 +5,10 @@ use crate::messages::prelude::*;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {
-	buffered_queue: Vec<Message>,
-	queueing_messages: bool,
+	evaluation_queue: Vec<Message>,
+	introspection_queue: Vec<Message>,
+	queueing_evaluation_messages: bool,
+	queueing_introspection_messages: bool,
 	message_queues: Vec<VecDeque<Message>>,
 	pub responses: Vec<FrontendMessage>,
 	pub message_handlers: DispatcherMessageHandlers,
@@ -41,6 +43,9 @@ impl DispatcherMessageHandlers {
 /// The last occurrence of the message in the message queue is sufficient to ensure correct behavior.
 /// In addition, these messages do not change any state in the backend (aside from caches).
 const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::CompileActiveDocument),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::EvaluateActiveDocument),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::IntrospectActiveDocument),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
 		PropertiesPanelMessageDiscriminant::Refresh,
 	))),
@@ -91,13 +96,6 @@ impl Dispatcher {
 
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T, process_after_all_current: bool) {
 		let message = message.into();
-		// Add all additional messages to the queue if it exists (except from the end queue message)
-		if !matches!(message, Message::EndQueue) {
-			if self.queueing_messages {
-				self.buffered_queue.push(message);
-				return;
-			}
-		}
 
 		// If we are not maintaining the buffer, simply add to the current queue
 		Self::schedule_execution(&mut self.message_queues, process_after_all_current, [message]);
@@ -117,7 +115,21 @@ impl Dispatcher {
 					continue;
 				}
 			}
+			// Add all messages to the queue if queuing messages (except from the end queue message)
+			if !matches!(message, Message::EndEvaluationQueue) {
+				if self.queueing_evaluation_messages {
+					self.evaluation_queue.push(message);
+					return;
+				}
+			}
 
+			// Add all messages to the queue if queuing messages (except from the end queue message)
+			if !matches!(message, Message::EndIntrospectionQueue) {
+				if self.queueing_introspection_messages {
+					self.introspection_queue.push(message);
+					return;
+				}
+			}
 			// Print the message at a verbosity level of `info`
 			self.log_message(&message, &self.message_queues, self.message_handlers.debug_message_handler.message_logging_verbosity);
 
@@ -126,22 +138,40 @@ impl Dispatcher {
 
 			// Process the action by forwarding it to the relevant message handler, or saving the FrontendMessage to be sent to the frontend
 			match message {
-				Message::StartQueue => {
-					self.queueing_messages = true;
+				Message::StartEvaluationQueue => {
+					self.queueing_evaluation_messages = true;
 				}
-				Message::EndQueue => {
-					self.queueing_messages = false;
+				Message::EndEvaluationQueue => {
+					self.queueing_evaluation_messages = false;
 				}
-				Message::ProcessQueue((render_output_metadata, introspected_inputs)) => {
-					let message = PortfolioMessage::ProcessEvaluationResponse {
+				Message::ProcessEvaluationQueue(render_output_metadata) => {
+					let update_message = PortfolioMessage::ProcessEvaluationResponse {
 						evaluation_metadata: render_output_metadata,
-						introspected_inputs,
-					};
-					// Add the message to update the state with the render output
-					Self::schedule_execution(&mut self.message_queues, true, [message]);
+					}
+					.into();
+					// Update the state with the render output and introspected inputs
+					Self::schedule_execution(&mut self.message_queues, true, [update_message]);
 
-					// Schedule all queued messages to be run (in the order they were added)
-					Self::schedule_execution(&mut self.message_queues, true, std::mem::take(&mut self.buffered_queue));
+					// Schedule all queued messages to be run, which use the introspected inputs (in the order they were added)
+					Self::schedule_execution(&mut self.message_queues, true, std::mem::take(&mut self.evaluation_queue));
+				}
+				Message::StartIntrospectionQueue => {
+					self.queueing_introspection_messages = true;
+				}
+				Message::EndIntrospectionQueue => {
+					self.queueing_introspection_messages = false;
+				}
+				Message::ProcessIntrospectionQueue(introspected_inputs) => {
+					let update_message = PortfolioMessage::ProcessIntrospectionResponse { introspected_inputs }.into();
+					// Update the state with the render output and introspected inputs
+					Self::schedule_execution(&mut self.message_queues, true, [update_message]);
+
+					// Schedule all queued messages to be run, which use the introspected inputs (in the order they were added)
+					Self::schedule_execution(&mut self.message_queues, true, std::mem::take(&mut self.introspection_queue));
+
+					let clear_message = PortfolioMessage::ClearIntrospectedData.into();
+					// Clear the introspected inputs since they are no longer required, and will cause a memory leak if not removed
+					Self::schedule_execution(&mut self.message_queues, true, [clear_message]);
 				}
 				Message::NoOp => {}
 				Message::Init => {

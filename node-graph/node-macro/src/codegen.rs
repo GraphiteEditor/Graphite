@@ -7,7 +7,7 @@ use std::sync::atomic::AtomicU64;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Comma;
-use syn::{Error, Ident, PatIdent, Token, WhereClause, WherePredicate, parse_quote};
+use syn::{Error, Ident, PatIdent, Token, TypeParamBound, WhereClause, WherePredicate, parse_quote};
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
@@ -346,6 +346,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 
 	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, &graphene_core, &identifier);
+
+	let context_dependencies = input.context_dependency.clone();
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
 		#[inline]
@@ -373,10 +375,10 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		mod #mod_name {
 			use super::*;
 			use #graphene_core as gcore;
-			use gcore::{Node, NodeIOTypes, concrete, fn_type, fn_type_fut, future, ProtoNodeIdentifier, WasmNotSync, NodeIO};
+			use gcore::{Node, NodeIOTypes, concrete, fn_type, fn_type_fut, future, ProtoNodeIdentifier, WasmNotSync, NodeIO, ContextDependency};
 			use gcore::value::ClonedNode;
 			use gcore::ops::TypeNode;
-			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode, RegistryValueSource, RegistryWidgetOverride};
+			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, NODE_CONTEXT_DEPENDENCY, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode, RegistryValueSource, RegistryWidgetOverride};
 			use gcore::ctor::ctor;
 
 			// Use the types specified in the implementation
@@ -428,6 +430,17 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 					],
 				};
 				NODE_METADATA.lock().unwrap().insert(#identifier(), metadata);
+			}
+
+			#[cfg_attr(not(target_arch = "wasm32"), ctor)]
+			fn register_context_dependency() {
+				let mut context_dependency = NODE_CONTEXT_DEPENDENCY.lock().unwrap();
+				context_dependency.insert(
+					#identifier,
+					vec![
+						#(ContextDependency::#context_dependencies,)*
+					]
+				);
 			}
 		}
 	})
@@ -602,7 +615,6 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 		));
 	}
 	let registry_name = format_ident!("__node_registry_{}_{}", NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst), struct_name);
-
 	Ok(quote! {
 
 		#[cfg_attr(not(target_arch = "wasm32"), ctor)]
@@ -615,11 +627,13 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 				]
 			);
 		}
+
 		#[cfg(target_arch = "wasm32")]
 		#[unsafe(no_mangle)]
 		extern "C" fn #registry_name() {
 			register_node();
 			register_metadata();
+			register_context_dependency();
 		}
 	})
 }

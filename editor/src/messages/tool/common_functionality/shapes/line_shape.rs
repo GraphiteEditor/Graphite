@@ -3,14 +3,14 @@ use crate::consts::{BOUNDS_SELECT_THRESHOLD, LINE_ROTATE_SNAP_ANGLE};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 pub use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapTypeConfiguration};
 use crate::messages::tool::tool_messages::shape_tool::ShapeToolData;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DVec2;
-use graph_craft::document::NodeInput;
+use graph_craft::document::{InputConnector, NodeInput};
 use graph_craft::document::value::TaggedValue;
 use std::collections::VecDeque;
 

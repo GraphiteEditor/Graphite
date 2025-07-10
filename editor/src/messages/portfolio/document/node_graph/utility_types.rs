@@ -1,6 +1,7 @@
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector, TypeSource};
-use graph_craft::document::NodeId;
+use crate::messages::portfolio::document::utility_types::network_interface::{TypeSource};
+use graph_craft::document::{InputConnector, OutputConnector};
 use graph_craft::document::value::TaggedValue;
+use graphene_std::uuid::NodeId;
 use graphene_std::Type;
 use std::borrow::Cow;
 
@@ -72,7 +73,7 @@ pub struct FrontendGraphOutput {
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNode {
-	pub id: graph_craft::document::NodeId,
+	pub id: NodeId,
 	#[serde(rename = "isLayer")]
 	pub is_layer: bool,
 	#[serde(rename = "canBeLayer")]

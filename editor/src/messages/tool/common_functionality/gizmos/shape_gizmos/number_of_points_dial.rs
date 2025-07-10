@@ -3,16 +3,15 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
-use crate::messages::prelude::Responses;
+use crate::messages::prelude::{PortfolioMessage, Responses};
 use crate::messages::prelude::{DocumentMessageHandler, FrontendMessage, InputPreprocessorMessageHandler, NodeGraphMessage};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{extract_polygon_parameters, inside_polygon, inside_star, polygon_outline, polygon_vertex_position, star_outline};
 use crate::messages::tool::common_functionality::shapes::shape_utility::{extract_star_parameters, star_vertex_position};
 use glam::{DAffine2, DVec2};
-use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{InputConnector, NodeInput};
 use std::collections::VecDeque;
 use std::f64::consts::TAU;
 

@@ -123,6 +123,21 @@ pub fn downcast<'a, V: StaticType + 'a>(i: Box<dyn DynAny<'a> + 'a>) -> Result<B
 	}
 }
 
+#[cfg(feature = "alloc")]
+pub fn try_downcast<'a, V: StaticType + 'a>(i: Box<dyn DynAny<'a> + 'a>) -> Result<Box<V>, Box<dyn DynAny<'a> + 'a>> {
+	let type_id = DynAny::type_id(i.as_ref());
+	if type_id == core::any::TypeId::of::<<V as StaticType>::Static>() {
+		// SAFETY: caller guarantees that T is the correct type
+		let ptr = Box::into_raw(i) as *mut V;
+		Ok(unsafe { Box::from_raw(ptr) })
+	} else {
+		if type_id == core::any::TypeId::of::<&dyn DynAny<'static>>() {
+			panic!("downcast error: type_id == core::any::TypeId::of::<dyn DynAny<'a>>()");
+		}
+		Err(i)
+	}
+}
+
 pub unsafe trait StaticType {
 	type Static: 'static + ?Sized;
 	fn type_id(&self) -> core::any::TypeId {

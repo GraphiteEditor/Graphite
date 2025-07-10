@@ -1,16 +1,17 @@
 pub mod value;
 
 use crate::document::value::TaggedValue;
-use crate::proto::{ConstructionArgs, NodeConstructionArgs, OriginalLocation, ProtoNode};
+use crate::proto::{ConstructionArgs, NodeConstructionArgs, NodeValueArgs, ProtoNetwork, ProtoNode, UpstreamInputMetadata};
 use dyn_any::DynAny;
 use glam::IVec2;
 use graphene_core::memo::MemoHashGuard;
+use graphene_core::registry::NODE_CONTEXT_DEPENDENCY;
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::uuid::{CompiledProtonodeInput, NodeId, ProtonodePath, SNI};
 use graphene_core::{Context, Cow, MemoHash, ProtoNodeIdentifier, Type};
 use rustc_hash::FxHashMap;
+use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 /// Utility function for providing a default boolean value to serde.
@@ -509,94 +510,170 @@ impl NodeNetwork {
 
 /// Functions for compiling the network
 impl NodeNetwork {
-	// Returns a topologically sorted vec of protonodes, as well as metadata extracted during compilation
+	// Returns a topologically sorted vec of vec of protonodes, as well as metadata extracted during compilation
+	// The first index represents the greatest distance to the export
 	// Compiles a network with one export where any scope injections are added the top level network, and the network to run is implemented as a DocumentNodeImplementation::Network
 	// The traversal input is the node which calls the network to be flattened. If it is None, then start from the export.
 	// Every value protonode stores the connector which directly called it, which is used to map the value input to the protonode caller.
 	// Every value input connector is mapped to its caller, and every protonode is mapped to its caller. If there are multiple, then they are compared to ensure it is the same between compilations
-	pub fn flatten(&mut self) -> Result<(Vec<ProtoNode>, Vec<(AbsoluteInputConnector, CompiledProtonodeInput)>, Vec<(ProtonodePath, CompiledProtonodeInput)>), String> {
+	pub fn flatten(
+		&mut self,
+	) -> Result<
+		(
+			ProtoNetwork,
+			Vec<(Vec<AbsoluteInputConnector>, CompiledProtonodeInput)>,
+			Vec<(Vec<ProtonodePath>, CompiledProtonodeInput)>,
+		),
+		String,
+	> {
 		// These three arrays are stored in parallel
 		let mut protonetwork = Vec::new();
-		let mut value_connectors = Vec::new();
-		let mut protonode_paths = Vec::new();
-		let mut calling_protonodes = HashMap::new();
 
-		// This function creates a flattened network with populated original location fields but unmapped inputs
+		// This function creates a topologically flattened network with populated original location fields but unmapped inputs
 		// The input to flattened protonode hashmap is used to map the inputs
-		self.traverse_input(
-			&mut protonetwork,
-			&mut value_connectors,
-			&mut protonode_paths,
-			&mut calling_protonodes,
-			&mut HashMap::new(),
-			AbsoluteInputConnector::traversal_start(),
-			(0, 0),
-		);
+		let mut protonode_indices = HashMap::new();
+		self.traverse_input(&mut protonetwork, &mut HashMap::new(), &mut protonode_indices, AbsoluteInputConnector::traversal_start(), None);
 
-		let mut generated_snis = HashSet::new();
+		// If a node with the same sni is reached, then its original location metadata must be added to the one at the higher vec index
+		// The index will always be a ProtonodeEntry::Protonode
+		let mut generated_snis_to_index = HashMap::new();
 		// Generate SNI's. This gets called after all node inputs are replaced with their indices
-		for protonode_index in (0..protonetwork.len()).rev() {
-			let protonode = protonetwork.get_mut(protonode_index).unwrap();
-			if let ConstructionArgs::Nodes(NodeConstructionArgs { inputs: input_snis, .. }) = &protonode.construction_args {
-				for input_sni in input_snis {
-					assert_ne!(
-						*input_sni,
-						NodeId(0),
-						"All inputs should be mapped to a stable node index, and the calling nodes inputs should be updated"
-					);
-				}
-			}
-
-			use std::hash::Hasher;
-			let mut hasher = rustc_hash::FxHasher::default();
-			protonode.construction_args.hash(&mut hasher);
-			let mut stable_node_id = NodeId(hasher.finish());
-			// The stable node index must be unique for every protonode. If it has the same hash as another protonode, continue hashing itself
-			// For example two cache nodes connected to a Context getter node have two cache different values, even though the stable node id is the same.
-			while !generated_snis.insert(stable_node_id) {
-				stable_node_id.hash(&mut hasher);
-				stable_node_id = NodeId(hasher.finish());
-			}
-
-			protonode.stable_node_id = stable_node_id;
-			for (calling_node_index, input_index) in calling_protonodes.get(&protonode_index).unwrap() {
-				match &mut protonetwork.get_mut(*calling_node_index).unwrap().construction_args {
-					ConstructionArgs::Nodes(nodes) => {
-						*nodes.inputs.get_mut(*input_index).unwrap() = stable_node_id;
+		for protonode_index in 0..protonetwork.len() {
+			let ProtonodeEntry::Protonode(protonode) = protonetwork.get_mut(protonode_index).unwrap() else {
+				panic!("No protonode can be deduplicated during flattening");
+			};
+			// Generate context dependencies. If None, then it is a value node and does not require nullification
+			let mut protonode_context_dependencies = None;
+			if let ConstructionArgs::Nodes(NodeConstructionArgs { inputs, context_dependencies, .. }) = &mut protonode.construction_args {
+				for upstream_metadata in inputs.iter() {
+					let Some(upstream_metadata) = upstream_metadata else {
+						panic!("All inputs should be when the upstream SNI was generated");
+					};
+					for upstream_dependency in upstream_metadata.context_dependencies.iter().flatten() {
+						if !context_dependencies.contains(upstream_dependency) {
+							context_dependencies.push(upstream_dependency.clone());
+						}
 					}
-					// TODO: Implement for extract
-					_ => unreachable!(),
+				}
+				// The context_dependencies are now the union of all inputs and the dependencies of the protonode. Set the dependencies of each input to the difference, which represents the data to nullify
+				for upstream_metadata in inputs.iter_mut() {
+					let Some(upstream_metadata) = upstream_metadata else {
+						panic!("All inputs should be when the upstream SNI was generated");
+					};
+					match upstream_metadata.context_dependencies.as_ref() {
+						Some(upstream_dependencies) => {
+							upstream_metadata.context_dependencies = Some(
+								context_dependencies
+									.iter()
+									.filter(|protonode_dependency| !upstream_dependencies.contains(protonode_dependency))
+									.cloned()
+									.collect::<Vec<_>>(),
+							)
+						}
+						// If none then the upstream node is a Value node, so do not nullify the context
+						None => upstream_metadata.context_dependencies = Some(Vec::new()),
+					}
+				}
+				protonode_context_dependencies = Some(context_dependencies.clone());
+			}
+
+			protonode.generate_stable_node_id();
+			let current_stable_node_id = protonode.stable_node_id;
+
+			// If the stable node id is the same as a previous node, then deduplicate
+			let callers = if let Some(upstream_index) = generated_snis_to_index.get(&protonode.stable_node_id) {
+				let ProtonodeEntry::Protonode(deduplicated_protonode) = std::mem::replace(&mut protonetwork[protonode_index], ProtonodeEntry::Deduplicated(*upstream_index)) else {
+					panic!("Reached protonode must not be deduplicated");
+				};
+				let ProtonodeEntry::Protonode(upstream_protonode) = &mut protonetwork[*upstream_index] else {
+					panic!("Upstream protonode must not be deduplicated");
+				};
+				match deduplicated_protonode.construction_args {
+					ConstructionArgs::Value(node_value_args) => {
+						let ConstructionArgs::Value(upstream_value_args) = &mut upstream_protonode.construction_args else {
+							panic!("Upstream protonode must match current protonode construction args");
+						};
+						upstream_value_args.connector_paths.extend(node_value_args.connector_paths);
+					}
+					ConstructionArgs::Nodes(node_construction_args) => {
+						let ConstructionArgs::Nodes(upstream_value_args) = &mut upstream_protonode.construction_args else {
+							panic!("Upstream protonode must match current protonode construction args");
+						};
+						upstream_value_args.node_paths.extend(node_construction_args.node_paths);
+						// The dependencies of the deduplicated node and the upstream node are the same because all inputs are the same
+					}
+					ConstructionArgs::Inline(_) => todo!(),
+				}
+				// Set the caller of the upstream node to be the minimum of all deduplicated nodes and itself
+				upstream_protonode.caller = deduplicated_protonode.callers.iter().chain(upstream_protonode.caller.iter()).min().cloned();
+				deduplicated_protonode.callers
+			} else {
+				generated_snis_to_index.insert(protonode.stable_node_id, protonode_index);
+				protonode.caller = protonode.callers.iter().min().cloned();
+				std::mem::take(&mut protonode.callers)
+			};
+
+			// This runs for all protonodes
+			for (caller_path, input_index) in callers {
+				let caller_index = protonode_indices[&caller_path];
+				let ProtonodeEntry::Protonode(caller_protonode) = &mut protonetwork[caller_index] else {
+					panic!("Downstream caller cannot be deduplicated");
+				};
+				match &mut caller_protonode.construction_args {
+					ConstructionArgs::Nodes(nodes) => {
+						assert!(caller_index > protonode_index, "Caller index must be higher than current index");
+						let input_metadata: &mut Option<UpstreamInputMetadata> = &mut nodes.inputs[input_index];
+						if input_metadata.is_none() {
+							*input_metadata = Some(UpstreamInputMetadata {
+								input_sni: current_stable_node_id,
+								context_dependencies: protonode_context_dependencies.clone(),
+							})
+						}
+					}
+					// Value node cannot be a caller
+					ConstructionArgs::Value(_) => unreachable!(),
+					ConstructionArgs::Inline(_) => todo!(),
 				}
 			}
 		}
 
-		// Do another traversal now that the caller SNI have been generated to collect metadata for the editor
+		// Do another traversal now that the metadata has been accumulated after deduplication
+		// This includes the caller of all absolute value connections which have a NodeInput::Value, as well as the caller for each protonode
 		let mut value_connector_callers = Vec::new();
 		let mut protonode_callers = Vec::new();
+		// Collect caller ids into a separate vec so that the pronetwork can be mutably iterated over to take the connector/node paths rather than cloning
+		let calling_protonode_ids = protonetwork
+			.iter()
+			.map(|entry| match entry {
+				ProtonodeEntry::Protonode(proto_node) => proto_node.stable_node_id,
+				ProtonodeEntry::Deduplicated(upstream_protonode_index) => {
+					let ProtonodeEntry::Protonode(proto_node) = &protonetwork[*upstream_protonode_index] else {
+						panic!("Upstream protonode index must not be dedeuplicated");
+					};
+					proto_node.stable_node_id
+				}
+			})
+			.collect::<Vec<_>>();
 
-		for (protonode_index, (value_connector, protonode_path)) in value_connectors.iter_mut().zip(protonode_paths.iter_mut()).enumerate().rev() {
-			let callers = calling_protonodes.get(&protonode_index).unwrap();
-
-			let &(min_protonode_index, input_index) = callers.iter().min().unwrap();
-
-			let protonode_id = protonetwork[min_protonode_index].stable_node_id;
-
-			if let Some(value_connector) = value_connector.take() {
-				value_connector_callers.push((value_connector, (protonode_id, input_index)));
-			}
-
-			if let Some(protonode_path) = protonode_path.take() {
-				protonode_callers.push((protonode_path, (protonode_id, input_index)));
+		for protonode_entry in &mut protonetwork {
+			if let ProtonodeEntry::Protonode(protonode) = protonode_entry {
+				if let Some((caller_path, caller_input_index)) = protonode.caller.as_ref() {
+					let caller_index = protonode_indices[caller_path];
+					match &mut protonode.construction_args {
+						ConstructionArgs::Value(node_value_args) => {
+							value_connector_callers.push((std::mem::take(&mut node_value_args.connector_paths), (calling_protonode_ids[caller_index], *caller_input_index)))
+						}
+						ConstructionArgs::Nodes(node_construction_args) => {
+							protonode_callers.push((std::mem::take(&mut node_construction_args.node_paths), (calling_protonode_ids[caller_index], *caller_input_index)))
+						}
+						ConstructionArgs::Inline(_) => todo!(),
+					}
+				}
 			}
 		}
 
-		let mut existing_ids = HashSet::new();
-		// Value nodes can be deduplicated if they share the same hash, since they do not depend on the input
-		let protonetwork = protonetwork
-			.into_iter()
-			.filter(|protonode| !(matches!(protonode.construction_args, ConstructionArgs::Value(_)) && !existing_ids.insert(protonode.stable_node_id)))
-			.collect();
-		Ok((protonetwork, value_connector_callers, protonode_callers))
+		log::debug!("protonetwork: {:?}", protonetwork);
+		Ok((ProtoNetwork::from_vec(protonetwork), value_connector_callers, protonode_callers))
 	}
 
 	fn get_input_from_absolute_connector(&mut self, traversal_input: &AbsoluteInputConnector) -> Option<&mut NodeInput> {
@@ -632,39 +709,32 @@ impl NodeNetwork {
 			}
 		}
 	}
-	// Performs a recursive graph traversal starting from all protonode inputs and the root export until reaching the next protonode or value input.
-	// Automatically inserts value nodes by moving the value from the current network
+
+	// Performs a recursive graph traversal starting from the root export across all node inputs
+	// Inserts values into the protonetwork by moving the value from the current network
 	//
 	// protonetwork - The topologically sorted flattened protonetwork. The caller of each protonode is at a lower index. The output of the network is the first protonode
 	//
 	// calling protonodes - anytime a protonode is reached, the caller is added as a value with (caller protonetwork index, caller input index).
 	// This is necessary so the calling protonodes input can be looked up and mapped when generating SNI's
+	// None indicates that the caller is the traversal start, which is skipped
 	//
 	// Protonode indices - mapping of protonode path to its index in the protonetwork, updated when inserting a protonode
 	//
 	// Traversal input - current connector to traverse over. added to downstream_calling_inputs every time the function is called.
 	//
-	// downstream_calling_inputs - tracks all inputs reached during traversal
-	//
-	// any_input_to_downstream_protonode_input - used by the runtime/javascript to get the calling protonode input from any input connector.
-	// When a protonode is reached, each input connector in downstream_calling_inputs, is looked up in `any_input_to_downstream_protonode_input`. If there is an entry,
-	// Then the paths are compared, and the greater one is chosen using stable ordering.
-	// This is to ensure a constant mapping, since an export for instance can have multiple calling nodes in the parent network
-	//
-	// any_input_to_upstream_protonode - used by the runtime to get the node to evaluate for any given input connector.
-	// Each input connector is inserted into any_input_to_upstream_protonode with the value being the path to the reached protonode.
-	// It doesnt matter if its overwritten since it must have previously pointed to the same protonode anyways
 	//
 	pub fn traverse_input(
 		&mut self,
-		protonetwork: &mut Vec<ProtoNode>, // Flattened node id to protonode, stable node ids can only be generated once the network is fully flattened, since it runs in reverse
-		value_connector: &mut Vec<Option<AbsoluteInputConnector>>,
-		protonode_path: &mut Vec<Option<ProtonodePath>>,
-		calling_protonodes: &mut HashMap<usize, Vec<(usize, usize)>>, // A mapping of protonode path to all (flattened network indices, their input index) that called the protonode, used during SNI generation to remap inputs
-		protonode_indices: &mut HashMap<Vec<SNI>, usize>,             // Mapping of protonode path to its index in the flattened protonetwork
+		protonetwork: &mut Vec<ProtonodeEntry>, // None represents a deduplicated value node
+		// Every time a value input is reached, it is added to a mapping so if it reached again, it can be moved to the end of the protonetwork
+		value_protonode_indices: &mut HashMap<AbsoluteInputConnector, usize>,
+		// Every time a protonode is reached, is it added to a mapping so if it reached again, it can be moved to the end of the protonetwork
+		protonode_indices: &mut HashMap<ProtonodePath, usize>,
+		// The original location of the current traversal
 		traversal_input: AbsoluteInputConnector,
-		// Protonode index, input index
-		traversal_start: (usize, usize),
+		// The protnode input which started the traversal. None if it is called from the root export
+		traversal_start: Option<(ProtonodePath, usize)>,
 	) {
 		let network_path = &traversal_input.network_path;
 
@@ -730,90 +800,111 @@ impl NodeNetwork {
 							network_path: upstream_node_path.clone(),
 							connector: InputConnector::Export(output_index),
 						};
-						self.traverse_input(protonetwork, value_connector, protonode_path, calling_protonodes, protonode_indices, traversal_input, traversal_start);
+						self.traverse_input(protonetwork, value_protonode_indices, protonode_indices, traversal_input, traversal_start);
 					}
 					DocumentNodeImplementation::ProtoNode(protonode_id) => {
-						// Only insert the protonode if it has not previously been inserted
-						// Do not insert the protonode into the proto network or traverse over inputs if its already visited
-						let reached_protonode_index = match protonode_indices.get(&upstream_node_path) {
-							// The protonode has already been inserted, return its index
-							Some(reached_protonode_index) => *reached_protonode_index,
-							// Insert the protonode and traverse over inputs
-							None => {
-								let construction_args = ConstructionArgs::Nodes(NodeConstructionArgs {
-									identifier: protonode_id.clone(),
-									inputs: vec![NodeId(0); upstream_document_node.inputs.len()],
-								});
-								let protonode = ProtoNode {
-									construction_args,
-									// All protonodes take Context by default
-									input: concrete!(Context),
-									original_location: OriginalLocation {
-										protonode_path: upstream_node_path.clone().into(),
-										send_types_to_editor: true,
-									},
-									stable_node_id: NodeId(0),
+						// Check if the protonode has already been reached
+						let reached_protonode = match protonode_indices.get(&upstream_node_path) {
+							// The protonode has already been inserted, add the caller and node path to its metadata
+							Some(previous_protonode_index) => {
+								let ProtonodeEntry::Protonode(protonode) = &mut protonetwork[*previous_protonode_index] else {
+									panic!("Previously inserted protonode must exist at mapped protonode index");
 								};
-								let new_protonode_index = protonetwork.len();
-								protonode_indices.insert(upstream_node_path.clone(), new_protonode_index);
-								protonetwork.push(protonode);
-								value_connector.push(None);
-								protonode_path.push(Some(upstream_node_path.into_boxed_slice()));
-								// Iterate over all upstream inputs, which will map the inputs to the index of the connected protonode
+								protonode
+							}
+							// Construct the protonode and traverse over inputs
+							None => {
+								let number_of_inputs = upstream_document_node.inputs.len();
+								let identifier = protonode_id.clone();
 								for input_index in 0..upstream_document_node.inputs.len() {
 									self.traverse_input(
 										protonetwork,
-										value_connector,
-										protonode_path,
-										calling_protonodes,
+										value_protonode_indices,
 										protonode_indices,
 										AbsoluteInputConnector {
 											network_path: network_path.clone(),
 											connector: InputConnector::node(upstream_node_id, input_index),
 										},
-										(new_protonode_index, input_index),
+										Some((upstream_node_path.clone(), input_index)),
 									);
 								}
-								new_protonode_index
+								let context_dependencies = NODE_CONTEXT_DEPENDENCY.lock().unwrap().get(identifier.name.as_ref()).cloned().unwrap_or_default();
+								let construction_args = ConstructionArgs::Nodes(NodeConstructionArgs {
+									identifier,
+									inputs: vec![None; number_of_inputs],
+									context_dependencies,
+									node_paths: Vec::new(),
+								});
+								let protonode = ProtoNode {
+									construction_args,
+									// All protonodes take Context by default
+									input: concrete!(Context),
+									stable_node_id: NodeId(0),
+									callers: Vec::new(),
+									caller: None,
+								};
+								let new_protonode_index = protonetwork.len();
+								protonetwork.push(ProtonodeEntry::Protonode(protonode));
+								protonode_indices.insert(upstream_node_path.clone(), new_protonode_index);
+								let ProtonodeEntry::Protonode(protonode) = &mut protonetwork[new_protonode_index] else {
+									panic!("Inserted protonode must exist at new_protonode_index");
+								};
+								protonode
 							}
 						};
-						calling_protonodes.entry(reached_protonode_index).or_insert_with(Vec::new).push(traversal_start);
+						// Only add the traversal start if it is not the root export
+						if let Some(traversal_start) = traversal_start {
+							reached_protonode.callers.push(traversal_start);
+						}
+						let ConstructionArgs::Nodes(args) = &mut reached_protonode.construction_args else {
+							panic!("Reached protonode must have Nodes construction args");
+						};
+						args.node_paths.push(upstream_node_path);
 					}
 					DocumentNodeImplementation::Extract => todo!(),
 				}
 			}
 			NodeInput::Value { tagged_value, .. } => {
-				// Deduplication of value nodes based on their tagged value, since they do not depend on the Context
-				//
-				use std::hash::Hasher;
-				let mut hasher = rustc_hash::FxHasher::default();
-				tagged_value.hash(&mut hasher);
-				let value_node_path = vec![NodeId(hasher.finish())];
-
-				// Only insert the value protonode if it has not previously been inserted
-				let value_protonode_index = match protonode_indices.get(&value_node_path) {
-					// The value input has already been inserted, return it the existing value nodes index
-					Some(value_protonode_index) => *value_protonode_index,
+				// Check if the protonode has already been reached
+				let reached_protonode = match value_protonode_indices.get(&traversal_input) {
+					// The protonode has already been inserted, add the caller and node path to its metadata
+					Some(previous_protonode_index) => {
+						let ProtonodeEntry::Protonode(protonode) = &mut protonetwork[*previous_protonode_index] else {
+							panic!("Previously inserted protonode must exist at mapped protonode index");
+						};
+						protonode
+					}
 					// Insert the protonode and traverse over inputs
 					None => {
-						let protonode = ProtoNode {
-							construction_args: ConstructionArgs::Value(std::mem::replace(tagged_value, TaggedValue::None.into())),
+						let value_protonode = ProtoNode {
+							construction_args: ConstructionArgs::Value(NodeValueArgs {
+								value: std::mem::replace(tagged_value, TaggedValue::None.into()),
+								connector_paths: Vec::new(),
+							}),
 							input: concrete!(Context), // Could be ()
-							original_location: OriginalLocation {
-								protonode_path: Vec::new().into(),
-								send_types_to_editor: false,
-							},
 							stable_node_id: NodeId(0),
+							callers: Vec::new(),
+							caller: None,
 						};
 						let new_protonode_index = protonetwork.len();
-						protonode_indices.insert(value_node_path.clone(), new_protonode_index);
-						protonetwork.push(protonode);
-						value_connector.push(Some(traversal_input));
-						protonode_path.push(None);
-						new_protonode_index
+						protonetwork.push(ProtonodeEntry::Protonode(value_protonode));
+						value_protonode_indices.insert(traversal_input.clone(), new_protonode_index);
+
+						let ProtonodeEntry::Protonode(protonode) = &mut protonetwork[new_protonode_index] else {
+							panic!("Previously inserted protonode must exist at mapped protonode index");
+						};
+						protonode
 					}
 				};
-				calling_protonodes.entry(value_protonode_index).or_insert_with(Vec::new).push(traversal_start);
+
+				// Only add the traversal start if it is not the root export
+				if let Some(traversal_start) = traversal_start {
+					reached_protonode.callers.push(traversal_start);
+				}
+				let ConstructionArgs::Value(args) = &mut reached_protonode.construction_args else {
+					panic!("Reached protonode must have Nodes construction args");
+				};
+				args.connector_paths.push(traversal_input);
 			}
 			// Continue traversal
 			NodeInput::Network { import_index, .. } => {
@@ -823,34 +914,13 @@ impl NodeNetwork {
 					network_path: encapsulating_network_path,
 					connector: InputConnector::node(node_id, *import_index),
 				};
-				self.traverse_input(protonetwork, value_connector, protonode_path, calling_protonodes, protonode_indices, traversal_input, traversal_start);
+				self.traverse_input(protonetwork, value_protonode_indices, protonode_indices, traversal_input, traversal_start);
 			}
-			NodeInput::Scope(_cow) => unreachable!(),
-			NodeInput::Reflection(_document_node_metadata) => unreachable!(),
-			NodeInput::Inline(_inline_rust) => todo!(),
+			NodeInput::Scope(_) => unreachable!(),
+			NodeInput::Reflection(_) => unreachable!(),
+			NodeInput::Inline(_) => todo!(),
 		}
 	}
-
-	// pub fn collect_downstream_metadata(
-	// 	reached_protonode_index: usize,
-	// 	calling_protonodes: &mut HashMap<usize, Vec<(usize, usize)>>,
-	// 	protonode_indices: &mut HashMap<Vec<SNI>, usize>,
-	// 	downstream_calling_inputs: Vec<AbsoluteInputConnector>,
-	// ) {
-	// 	// Map the first downstream calling node input (which is traversed for every node input) to the reached protonode
-	// 	let downstream_protonode_caller = downstream_calling_inputs[0].clone();
-
-	// 	match &downstream_protonode_caller.connector {
-	// 		InputConnector::Node { node_id, input_index } => {
-	// 			// The calling protonode has already been added to the flattened network, so it can be looked up by index and the reached node can be mapped to it
-	// 			let mut calling_protonode_path = downstream_protonode_caller.network_path.clone();
-	// 			calling_protonode_path.push(*node_id);
-	// 			let calling_protonode_index = protonode_indices[&calling_protonode_path];
-
-	// 		}
-	// 		InputConnector::Export(_) => {}
-	// 	}
-	// }
 
 	/// Converts the `DocumentNode`s with a `DocumentNodeImplementation::Extract` into a `ClonedNode` that returns
 	/// the `DocumentNode` specified by the single `NodeInput::Node`.
@@ -898,11 +968,17 @@ impl NodeNetwork {
 }
 
 #[derive(Debug)]
+pub enum ProtonodeEntry {
+	Protonode(ProtoNode),
+	// If deduplicated, then any upstream node which this node previously called needs to map to the new protonode
+	Deduplicated(usize),
+}
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompilationMetadata {
 	// Stored for every value input in the compiled network
-	pub protonode_callers_for_value: Vec<(AbsoluteInputConnector, CompiledProtonodeInput)>,
+	pub protonode_caller_for_values: Vec<(Vec<AbsoluteInputConnector>, CompiledProtonodeInput)>,
 	// Stored for every protonode in the compiled network
-	pub protonode_callers_for_node: Vec<(ProtonodePath, CompiledProtonodeInput)>,
+	pub protonode_caller_for_nodes: Vec<(Vec<ProtonodePath>, CompiledProtonodeInput)>,
 	pub types_to_add: Vec<(SNI, Vec<Type>)>,
 	pub types_to_remove: Vec<(SNI, usize)>,
 }
@@ -970,7 +1046,7 @@ pub struct AbsoluteOutputConnector {
 }
 
 /// Represents an output connector
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OutputConnector {
 	#[serde(rename = "node")]
 	Node {

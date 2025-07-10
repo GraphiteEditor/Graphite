@@ -10,7 +10,8 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, find_spline, merge_layers, merge_points};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration, SnappedPoint};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
-use graph_craft::document::{NodeId, NodeInput};
+use graph_craft::document::NodeInput;
+use graphene_std::uuid::NodeId;
 use graphene_std::Color;
 use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
 
@@ -359,8 +360,6 @@ impl Fsm for SplineToolFsmState {
 				tool_options.fill.apply_fill(layer, responses);
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
 				tool_data.current_layer = Some(layer);
-
-				responses.add(Message::StartQueue);
 
 				SplineToolFsmState::Drawing
 			}

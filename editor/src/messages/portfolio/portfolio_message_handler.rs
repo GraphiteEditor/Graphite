@@ -6,24 +6,29 @@ use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX};
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
-use crate::messages::frontend::utility_types::FrontendDocumentDetails;
+use crate::messages::frontend::utility_types::{ExportBounds, FrontendDocumentDetails};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document_migration::*;
-use crate::messages::portfolio::spreadsheet::{InspectInputConnector, SpreadsheetMessageHandlerData};
+use crate::messages::portfolio::spreadsheet::SpreadsheetMessageHandlerData;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
-use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
+use crate::node_graph_executor::{CompilationRequest, ExportConfig, NodeGraphExecutor};
 use glam::{DAffine2, DVec2};
-use graph_craft::document::NodeId;
-use graphene_std::renderer::Quad;
+use graph_craft::document::value::EditorMetadata;
+use graph_craft::document::{AbsoluteInputConnector, InputConnector, NodeInput, OutputConnector};
+use graphene_std::any::EditorContext;
+use graphene_std::application_io::TimingInformation;
+use graphene_std::memo::IntrospectMode;
+use graphene_std::renderer::{Quad, RenderMetadata};
 use graphene_std::text::Font;
-use std::vec;
+use graphene_std::transform::{Footprint, RenderQuality};
+use graphene_std::uuid::{CompiledProtonodeInput, NodeId, SNI};
+use std::sync::Arc;
 
 #[derive(ExtractField)]
 pub struct PortfolioMessageContext<'a> {
@@ -54,9 +59,10 @@ pub struct PortfolioMessageHandler {
 	pub reset_node_definitions_on_open: bool,
 	// Data from the node graph. Data for inputs are set to be collected on each evaluation, and added on the evaluation response
 	// Data from old nodes get deleted after a compilation
-	pub introspected_input_data: HashMap<CompiledProtonodeInput, Box<dyn std::any::Any + Send + Sync>>,
-	pub downcasted_input_data: HashMap<CompiledProtonodeInput, TaggedValue>,
-	pub context_data: HashMap<CompiledProtonodeInput, Context>,
+	// Always take data after requesting it
+	pub introspected_data: HashMap<CompiledProtonodeInput, Option<Arc<dyn std::any::Any + Send + Sync>>>,
+	pub introspected_call_argument: HashMap<CompiledProtonodeInput, Option<Arc<dyn std::any::Any + Send + Sync>>>,
+	pub previous_thumbnail_data: HashMap<CompiledProtonodeInput, Arc<dyn std::any::Any + Send + Sync>>,
 }
 
 #[message_handler_data]
@@ -105,13 +111,18 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.menu_bar_message_handler.process_message(message, responses, ());
 			}
 			PortfolioMessage::Spreadsheet(message) => {
-				self.spreadsheet.process_message(message, responses, SpreadsheetMessageHandlerData {introspected_data});
+				self.spreadsheet.process_message(
+					message,
+					responses,
+					SpreadsheetMessageHandlerData {
+						introspected_data: &self.introspected_data,
+					},
+				);
 			}
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
 					if let Some(document) = self.documents.get_mut(&document_id) {
-						let document_inputs = DocumentMessageContext {
-							document_id,
+						let document_inputs = DocumentMessageData {
 							ipp,
 							persistent_data: &self.persistent_data,
 							current_tool,
@@ -143,8 +154,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {
-					let document_inputs = DocumentMessageContext {
-						document_id,
+					let document_inputs = DocumentMessageData {
 						ipp,
 						persistent_data: &self.persistent_data,
 						current_tool,
@@ -356,12 +366,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::NewDocumentWithName { name } => {
 				let mut new_document = DocumentMessageHandler::default();
 				new_document.name = name;
-				responses.add(DocumentMessage::PTZUpdate);
 
 				let document_id = DocumentId(generate_uuid());
 				if self.active_document().is_some() {
 					responses.add(BroadcastEvent::ToolAbort);
-					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
 				self.load_document(new_document, document_id, responses, false);
@@ -664,13 +672,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				if create_document {
 					// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
-					responses.add(Message::StartQueue);
+					responses.add(Message::StartEvaluationQueue);
 					responses.add(DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true });
-
-					// TODO: Figure out how to get StartBuffer to work here so we can delete this and use `DocumentMessage::ZoomCanvasToFitAll` instead
-					// Currently, it is necessary to use `FrontendMessage::TriggerDelayedZoomCanvasToFitAll` rather than `DocumentMessage::ZoomCanvasToFitAll` because the size of the viewport is not yet populated
-					responses.add(Message::StartQueue);
-					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
+					responses.add(DocumentMessage::ZoomCanvasToFitAll);
+					responses.add(Message::EndEvaluationQueue);
 				}
 			}
 			PortfolioMessage::PasteSvg {
@@ -696,13 +701,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				if create_document {
 					// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
-					responses.add(Message::StartQueue);
+					responses.add(Message::StartEvaluationQueue);
 					responses.add(DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true });
-
-					// TODO: Figure out how to get StartBuffer to work here so we can delete this and use `DocumentMessage::ZoomCanvasToFitAll` instead
-					// Currently, it is necessary to use `FrontendMessage::TriggerDelayedZoomCanvasToFitAll` rather than `DocumentMessage::ZoomCanvasToFitAll` because the size of the viewport is not yet populated
-					responses.add(Message::StartQueue);
-					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
+					responses.add(DocumentMessage::ZoomCanvasToFitAll);
+					responses.add(Message::EndEvaluationQueue);
 				}
 			}
 			PortfolioMessage::PrevDocument => {
@@ -747,7 +749,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(OverlaysMessage::Draw);
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(BroadcastEvent::SelectionChanged);
-				responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				responses.add(PortfolioMessage::CompileActiveDocument);
 				responses.add(DocumentMessage::GraphViewOverlay { open: node_graph_open });
 				if node_graph_open {
@@ -768,8 +769,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::CompileActiveDocument => {
-				let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get(&document_id)) else {
-					log::error!("Tried to render non-existent document: {:?}", document_id);
+				let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get_mut(&document_id)) else {
+					log::error!("Tried to render non-existent document: {:?}", self.active_document_id);
 					return;
 				};
 				if document.network_interface.hash_changed() {
@@ -788,37 +789,49 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						},
 					});
 				}
-				// Always evaluate after a recompile
-				responses.add(PortfolioMessage::EvaluateActiveDocument);
 			}
 			PortfolioMessage::ProcessCompilationResponse { compilation_metadata } => {
-				let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get(&document_id)) else {
+				let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get_mut(&document_id)) else {
 					log::error!("Tried to render non-existent document: {:?}", self.active_document_id);
 					return;
 				};
-				for (AbsoluteInputConnector { network_path, connector }, caller) in compilation_metadata.protonode_callers_for_value {
-					document.network_interface.set_input_caller(connector, caller, &network_path)
+				for (value_connectors, caller) in compilation_metadata.protonode_caller_for_values {
+					for AbsoluteInputConnector { network_path, connector } in value_connectors {
+						let (first, network_path) = network_path.split_first().unwrap();
+						if first != &NodeId(0) {
+							continue;
+						}
+						document.network_interface.set_input_caller(&connector, caller, network_path)
+					}
 				}
-				for (protonode_path, caller) in compilation_metadata.protonode_callers_for_node {
-					let (node_id, network_path) = protonode_path.to_vec().split_last().expect("Protonode path cannot be empty");
-					document.network_interface.set_node_caller(node_id, caller, &network_path)
+				for (protonode_paths, caller) in compilation_metadata.protonode_caller_for_nodes {
+					for protonode_path in protonode_paths {
+						let (first, node_path) = protonode_path.split_first().unwrap();
+						if first != &NodeId(0) {
+							continue;
+						}
+						let (node_id, network_path) = node_path.split_last().expect("Protonode path cannot be empty");
+						document.network_interface.set_node_caller(node_id, caller, &network_path)
+					}
 				}
 				for (sni, input_types) in compilation_metadata.types_to_add {
 					document.network_interface.add_type(sni, input_types);
 				}
-				for ((sni, number_of_inputs)) in compilation_metadata.types_to_remove {
-					// Removed saves type of the document node
+				let mut cleared_thumbnails = Vec::new();
+				for (sni, number_of_inputs) in compilation_metadata.types_to_remove {
+					// Removed saved type of the document node
 					document.network_interface.remove_type(sni);
-					// Remove introspection data for all monitor nodes and the thumbnails
-					let mut cleared_thumbnails = Vec::new(); 
-					for monitor_index in 0..number_of_inputs {
-						self.introspected_input_data.remove((sni, monitor_index));
-						self.downcasted_input_data.remove((sni, monitor_index));
-						self.context_data.remove((sni, monitor_index));
-						cleared_thumbnails.push(NodeId(sni.0+monitor_index as u64 +1));
+					// Remove all thumbnails
+					for input_index in 0..number_of_inputs {
+						cleared_thumbnails.push(NodeId(sni.0 + input_index as u64 + 1));
 					}
-					responses.add(FrontendMessage::UpdateThumbnails { add: Vec::new(), clear: cleared_thumbnails })
 				}
+				responses.add(FrontendMessage::UpdateThumbnails {
+					add: Vec::new(),
+					clear: cleared_thumbnails,
+				});
+				// Always evaluate after a recompile
+				responses.add(PortfolioMessage::EvaluateActiveDocument);
 			}
 			PortfolioMessage::EvaluateActiveDocument => {
 				let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get(&document_id)) else {
@@ -827,100 +840,54 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				};
 
 				// Get all the inputs to save data for. This includes vector modify, thumbnails, and spreadsheet data
-				let inputs_to_monitor = HashSet::new();
-				let inputs_to_render = HashSet::new();
-				let inspect_input = None;
-				
-				// Get the protonode input for all side layer inputs connected to the export in the document network for thumbnails in the layer panel
-				for caller in document
-					.network_interface
-					.document_metadata()
-					.all_layers()
-					.filter_map(|layer| {
-						let input = InputConnector::Node {
-							node_id: layer.to_node(),
-							input_index: 1,
-						};
-						document
-							.network_interface
-							.downstream_caller_from_input(&input, &[])
-					}) {
-						inputs_to_monitor.insert((*caller, IntrospectMode::Data));
-						inputs_to_render.insert(*caller);
-					}
-
-				// Save data for all inputs in the viewed node graph
-				if document.graph_view_overlay_open {
-					let Some(viewed_network) = document.network_interface.nested_network(&document.breadcrumb_network_path) else {
-						return;
-					};
-					for (export_index, export) in viewed_network.exports.iter().enumerate() {
-						if let Some(caller) = document
-							.network_interface
-							.downstream_caller_from_input(InputConnector::Export(export_index), &document.breadcrumb_network_path)
-						{
-							inputs_to_monitor.push((*caller, IntrospectMode::Data))
-						};
-						if let Some(NodeInput::Node { node_id, .. }) = export {
-							for upstream_node in document
-								.network_interface
-								.upstream_flow_back_from_nodes(vec![*node_id], &document.breadcrumb_network_path, network_interface::FlowType::UpstreamFlow)
-							{
-								let node = viewed_network.nodes[&upstream_node];
-								for (index, _) in node.inputs.iter().enumerate().filter(|(_, node_input)| node_input.is_exposed()) {
-									if let Some(caller) = document
-										.network_interface
-										.downstream_caller_from_input(InputConnector::Node(node_id, index), &document.breadcrumb_network_path)
-									{
-										inputs_to_monitor.insert((*caller, IntrospectMode::Data));
-										inputs_to_render.insert(*caller);
-									};
-								}
-							}
-						}
-					}
-				}
 
 				// Save vector data for all path/transform nodes in the document network
-				match document.network_interface.input_from_connector(&InputConnector::Export(0), &[]) {
-						Some(NodeInput::Node { node_id, .. }) => {
-							for upstream_node in document.network_interface.upstream_flow_back_from_nodes(vec![*node_id], &[], network_interface::FlowType::UpstreamFlow) {
-								let reference = document.network_interface.reference(node_id, &[]).unwrap_or_default().as_deref().unwrap_or_default();
-								if reference == "Path" || reference == "Transform" {
-									let input_connector = InputConnector::Node { node_id, input_index: 0 };
-									let Some(downstream_caller) = document.network_interface.downstream_caller_from_input(&input_connector, &[]) else{
-										log::error!("could not get downstream caller for node : {:?}", node_id);
-										continue;
-									};
-									inputs_to_monitor.push(*downstream_caller)
-								}
-							}
-						},
-						_ => {},
-					}
+				// match document.network_interface.input_from_connector(&InputConnector::Export(0), &[]) {
+				// 	Some(NodeInput::Node { node_id, .. }) => {
+				// 		for upstream_node in document.network_interface.upstream_flow_back_from_nodes(vec![*node_id], &[], network_interface::FlowType::UpstreamFlow) {
+				// 			let reference = document.network_interface.reference(&upstream_node, &[]).and_then(|reference| reference.as_deref());
+				// 			if reference == Some("Path") || reference == Some("Transform") {
+				// 				let input_connector = InputConnector::Node { node_id: *node_id, input_index: 0 };
+				// 				let Some(downstream_caller) = document.network_interface.downstream_caller_from_input(&input_connector, &[]) else {
+				// 					log::error!("could not get downstream caller for node : {:?}", node_id);
+				// 					continue;
+				// 				};
+				// 				inputs_to_monitor.insert((*downstream_caller, IntrospectMode::Data));
+				// 			}
+				// 		}
+				// 	}
+				// 	_ => {}
+				// }
 
 				// Introspect data for the currently selected node (eventually thumbnail) if the spreadsheet view is open
-				if self.spreadsheet.spreadsheet_view_open {
-					let selected_network_path = &document.selection_network_path;
-					// TODO: Replace with selected thumbnail
-					if let Some(selected_node) = document.network_interface.selected_nodes_in_nested_network(selected_network_path).and_then(|selected_nodes| {
-						if selected_nodes.0.len() == 1 {
-							selected_nodes.0.first().copied()
-						} else {
-							None
-						}
-					}) {
-						// TODO: Introspect any input rather than just the first input of the selected node
-						let selected_connector = InputConnector::Node { node_id: selected_node, input_index: 0 };
-						let Some(caller) = document
-							.network_interface
-							.downstream_caller_from_input(&selected_connector, selected_network_path) else {
-								log::error!("Could not get downstream caller for {:?}", selected_node);
-							};
-						inputs_to_monitor.push((*caller, IntrospectMode::Data));
-						inspect_input = Some(InspectInputConnector { input_connector: AbsoluteInputConnector { network_path: selected_network_path.clone(), connector: selected_connector }, protonode_input: *caller });
-					}
-				}
+				// if self.spreadsheet.spreadsheet_view_open {
+				// 	let selected_network_path = &document.selection_network_path;
+				// 	// TODO: Replace with selected thumbnail
+				// 	if let Some(selected_node) = document
+				// 		.network_interface
+				// 		.selected_nodes_in_nested_network(selected_network_path)
+				// 		.and_then(|selected_nodes| if selected_nodes.0.len() == 1 { selected_nodes.0.first().copied() } else { None })
+				// 	{
+				// 		// TODO: Introspect any input rather than just the first input of the selected node
+				// 		let selected_connector = InputConnector::Node {
+				// 			node_id: selected_node,
+				// 			input_index: 0,
+				// 		};
+				// 		match document.network_interface.downstream_caller_from_input(&selected_connector, selected_network_path) {
+				// 			Some(caller) => {
+				// 				inputs_to_monitor.insert((*caller, IntrospectMode::Data));
+				// 				inspect_input = Some(InspectInputConnector {
+				// 					input_connector: AbsoluteInputConnector {
+				// 						network_path: selected_network_path.clone(),
+				// 						connector: selected_connector,
+				// 					},
+				// 					protonode_input: *caller,
+				// 				});
+				// 			}
+				// 			None => log::error!("Could not get downstream caller for {:?}", selected_connector),
+				// 		}
+				// 	};
+				// }
 
 				// let animation_time = match animation.timing_information().animation_time {
 				// 	AnimationState::Stopped => 0.,
@@ -929,67 +896,18 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// };
 
 				let mut context = EditorContext::default();
-				// context.footprint = Some(Footprint {
-				// 	transform: document.metadata().document_to_viewport,
-				// 	resolution: ipp.viewport_bounds.size().as_uvec2(),
-				// 	quality: RenderQuality::Full,
-				// });
-				// context.animation_time = Some(animation_time);
-				// context.real_time = Some(ipp.time);
-				// context.downstream_transform = Some(DAffine2::IDENTITY);
-				let render_config = RenderConfig {
-					viewport: Footprint {
-						transform: document.metadata().document_to_viewport,
-						resolution: ipp.viewport_bounds.size().as_uvec2(),
-						..Default::default()
-					},
-					time: animation.timing_information(),
-					#[cfg(any(feature = "resvg", feature = "vello"))]
-					export_format: graphene_std::application_io::ExportFormat::Canvas,
-					#[cfg(not(any(feature = "resvg", feature = "vello")))]
-					export_format: graphene_std::application_io::ExportFormat::Svg,
-					view_mode: document.view_mode,
-					hide_artboards: false,
-					for_export: false,
-				};
+				context.footprint = Some(Footprint {
+					transform: document.metadata().document_to_viewport,
+					resolution: ipp.viewport_bounds.size().as_uvec2(),
+					quality: RenderQuality::Full,
+				});
+				context.animation_time = Some(timing_information.animation_time.as_secs_f64());
+				context.real_time = Some(ipp.time);
+				context.downstream_transform = Some(DAffine2::IDENTITY);
 
-				context.render_config = render_config;
-				
-				self.executor.submit_node_graph_evaluation(
-					context,
-					inputs_to_monitor,
-					None,
-					None,
-				);
-
-				// Queue messages to be run after the evaluation returns data for the inputs to monitor
-				responses.add(Message::StartQueue);
-				if let Some(inspect_input) = inspect_input {
-					responses.add(SpreadsheetMessage::UpdateLayout { inpect_input });
-				}
-				responses.add(PortfolioMessage::ProcessThumbnails {inputs_to_render});
-				responses.add(Message::EndQueue);
+				self.executor.submit_node_graph_evaluation(context, None, None);
 			}
-			PortfolioMessage::ProcessEvaluationResponse { evaluation_metadata, introspected_inputs } => {
-				let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get(&document_id)) else {
-					log::error!("Tried to render non-existent document: {:?}", self.active_document_id);
-					return;
-				};
-
-				for (input, mode, data) in introspected_inputs {
-
-					match mode {
-						IntrospectMode::Input => {
-							let Some(context) = data.downcast_ref()
-							self.introspected_input_data.extend(introspected_inputs);
-
-						},
-						IntrospectMode::Data => {
-							self.introspected_input_data.extend(introspected_inputs);
-						},
-					}
-				}
-
+			PortfolioMessage::ProcessEvaluationResponse { evaluation_metadata } => {
 				let RenderMetadata {
 					upstream_footprints: footprints,
 					local_transforms,
@@ -1009,25 +927,117 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// 	AnimationState::Playing { .. } => responses.add(PortfolioMessage::EvaluateActiveDocument),
 				// 	_ => {}
 				// };
-			},
-			PortfolioMessage::ProcessThumbnails { inputs_to_render } => {
-				let mut thumbnail_response = ThumbnailRenderResponse::default();
-				for thumbnail_input in inputs_to_render {
-					let monitor_node_id = thumbnail_input.0.0 + thumbnail_input.1 as u64 + 1;
-					match self.try_render_thumbnail(&thumbnail_input) {
-						ThumbnailRenderResult::NoChange => {}
-						ThumbnailRenderResult::ClearThumbnail => thumbnail_response.clear.push(NodeId(monitor_node_id)),
-						ThumbnailRenderResult::UpdateThumbnail(thumbnail) => {
-							thumbnail_response.add.push((NodeId(monitor_node_id), thumbnail));
-						},
+
+				// After an evaluation, always render all thumbnails
+				responses.add(PortfolioMessage::RenderThumbnails);
+			}
+			PortfolioMessage::IntrospectActiveDocument { inputs_to_introspect } => {
+				self.executor.submit_node_graph_introspection(inputs_to_introspect);
+			}
+			PortfolioMessage::ProcessIntrospectionResponse { introspected_inputs } => {
+				for (input, mode, data) in introspected_inputs.0.into_iter() {
+					match mode {
+						IntrospectMode::Input => {
+							self.introspected_call_argument.insert(input, data);
+						}
+						IntrospectMode::Data => {
+							self.introspected_data.insert(input, data);
+						}
 					}
 				}
-				responses.add(FrontendMessage::UpdateThumbnails { add: thumbnail_response.add, clear: thumbnail_response.clear })
-			},
-			PortfolioMessage::ActiveDocumentExport {
+			}
+			PortfolioMessage::ClearIntrospectedData => {
+				self.introspected_call_argument.clear();
+				self.introspected_data.clear()
+			}
+			PortfolioMessage::RenderThumbnails => {
+				let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get(&document_id)) else {
+					log::error!("Tried to render non-existent document: {:?}", self.active_document_id);
+					return;
+				};
+				let mut inputs_to_render = HashSet::new();
+
+				// Get the protonode input for all side layer inputs connected to the export in the document network for thumbnails in the layer panel
+				for caller in document.network_interface.document_metadata().all_layers().filter_map(|layer| {
+					let input = InputConnector::Node {
+						node_id: layer.to_node(),
+						input_index: 1,
+					};
+					document.network_interface.downstream_caller_from_input(&input, &[])
+				}) {
+					inputs_to_render.insert(*caller);
+				}
+
+				// Save data for all inputs in the viewed node graph
+				if document.graph_view_overlay_open {
+					let Some(viewed_network) = document.network_interface.nested_network(&document.breadcrumb_network_path) else {
+						return;
+					};
+					for (export_index, export) in viewed_network.exports.iter().enumerate() {
+						match document
+							.network_interface
+							.downstream_caller_from_input(&InputConnector::Export(export_index), &document.breadcrumb_network_path)
+						{
+							Some(caller) => {
+								// inputs_to_monitor.insert((*caller, IntrospectMode::Data));
+								inputs_to_render.insert(*caller);
+							}
+							None => {}
+						};
+						if let NodeInput::Node { node_id, .. } = export {
+							for upstream_node in document
+								.network_interface
+								.upstream_flow_back_from_nodes(vec![*node_id], &document.breadcrumb_network_path, network_interface::FlowType::UpstreamFlow)
+							{
+								let node = &viewed_network.nodes[&upstream_node];
+								for (index, _) in node.inputs.iter().enumerate().filter(|(_, node_input)| node_input.is_exposed()) {
+									if let Some(caller) = document
+										.network_interface
+										.downstream_caller_from_input(&InputConnector::node(upstream_node, index), &document.breadcrumb_network_path)
+									{
+										// inputs_to_monitor.insert((*caller, IntrospectMode::Data));
+										inputs_to_render.insert(*caller);
+									};
+								}
+							}
+						}
+					}
+				};
+
+				responses.add(PortfolioMessage::IntrospectActiveDocument {
+					inputs_to_introspect: inputs_to_render,
+				});
+				responses.add(Message::StartIntrospectionQueue);
+				responses.add(PortfolioMessage::ProcessThumbnails);
+				responses.add(Message::EndIntrospectionQueue);
+			}
+			PortfolioMessage::ProcessThumbnails => {
+				let mut thumbnail_response = ThumbnailRenderResponse::default();
+				for (thumbnail_input, introspected_data) in self.introspected_data.drain() {
+					let input_node_id = thumbnail_input.0.0 + thumbnail_input.1 as u64;
+
+					let Some(evaluated_data) = introspected_data else {
+						// Input was not evaluated, do not change its thumbnail
+						continue;
+					};
+
+					let previous_thumbnail_data = self.previous_thumbnail_data.get(&thumbnail_input);
+
+					match graph_craft::document::value::render_thumbnail_if_change(&evaluated_data, previous_thumbnail_data) {
+						graph_craft::document::value::ThumbnailRenderResult::NoChange => return,
+						graph_craft::document::value::ThumbnailRenderResult::ClearThumbnail => thumbnail_response.clear.push(NodeId(input_node_id)),
+						graph_craft::document::value::ThumbnailRenderResult::UpdateThumbnail(thumbnail) => thumbnail_response.add.push((NodeId(input_node_id), thumbnail)),
+					}
+					self.previous_thumbnail_data.insert(thumbnail_input, evaluated_data);
+				}
+				responses.add(FrontendMessage::UpdateThumbnails {
+					add: thumbnail_response.add,
+					clear: thumbnail_response.clear,
+				})
+			}
+			PortfolioMessage::ExportActiveDocument {
 				file_name,
 				file_type,
-				animation_export_data,
 				scale_factor,
 				bounds,
 				transparent_background,
@@ -1035,57 +1045,45 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let document = self.active_document_id.and_then(|id| self.documents.get_mut(&id)).expect("Tried to render non-existent document");
 
 				// Update the scope inputs with the render settings
-				// self.executor.submit_node_graph_compilation(CompilationRequest {
-				// 	network: document.network_interface.document_network().clone(),
-				// 	font_cache: self.persistent_data.font_cache.clone(),
-				// 	editor_metadata: EditorMetadata {
-				// 		#[cfg(any(feature = "resvg", feature = "vello"))]
-				// 		use_vello: preferences.use_vello(),
-				// 		#[cfg(not(any(feature = "resvg", feature = "vello")))]
-				// 		use_vello: false,
-				// 		hide_artboards: transparent_background,
-				// 		for_export: true,
-				// 		view_mode: document.view_mode,
-				// 		transform_to_viewport: true,
-				// 	},
-				// });
+				self.executor.submit_node_graph_compilation(CompilationRequest {
+					network: document.network_interface.document_network().clone(),
+					font_cache: self.persistent_data.font_cache.clone(),
+					editor_metadata: EditorMetadata {
+						#[cfg(any(feature = "resvg", feature = "vello"))]
+						use_vello: preferences.use_vello(),
+						#[cfg(not(any(feature = "resvg", feature = "vello")))]
+						use_vello: false,
+						hide_artboards: transparent_background,
+						for_export: true,
+						view_mode: document.view_mode,
+						transform_to_viewport: true,
+					},
+				});
 
-				let document_to_viewport = document.metadata().document_to_viewport;
 				// Calculate the bounding box of the region to be exported
-				let document_bounds = match bounds {
+				let Some(document_bounds) = (match bounds {
 					ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space(!transparent_background),
 					ExportBounds::Selection => document.network_interface.selected_bounds_document_space(!transparent_background, &[]),
 					ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
-					// ExportBounds::Viewport => ipp.document_bounds(document_to_viewport),
-				}
-				.ok_or_else(|| "No bounding box".to_string())?;
+					// ExportBounds::Viewport => ipp.document_bounds(document.metadata().document_to_viewport),
+				}) else {
+					log::error!("No bounding box when exporting");
+					return;
+				};
 
 				let size = document_bounds[1] - document_bounds[0];
 				let scaled_size = size * scale_factor;
 				let transform = DAffine2::from_translation(document_bounds[0]).inverse();
+
 				let mut context = EditorContext::default();
-				// context.footprint = Footprint {
-				// 	document_to_viewport: DAffine2::from_scale(DVec2::splat(scale_factor)) * transform,
-				// 	resolution: scaled_size.as_uvec2(),
-				// 	..Default::default()
-				// };
-				// context.real_time = Some(ipp.time);
-				// context.downstream_transform = Some(DAffine2::IDENTITY);
+				context.footprint = Some(Footprint {
+					transform: DAffine2::from_scale(DVec2::splat(scale_factor)) * transform,
+					resolution: scaled_size.as_uvec2(),
+					..Default::default()
+				});
+				context.real_time = Some(ipp.time);
+				context.downstream_transform = Some(DAffine2::IDENTITY);
 
-				let render_config = RenderConfig {
-					viewport: Footprint {
-						transform: DAffine2::from_scale(DVec2::splat(scale_factor)) * transform,
-						resolution: (size * scale_factor).as_uvec2(),
-						..Default::default()
-					},
-					time: Default::default(),
-					export_format: graphene_std::application_io::ExportFormat::Svg,
-					view_mode: document.view_mode,
-					hide_artboards: transparent_background,
-					for_export: true,
-				};
-
-				context.render_config = render_config;
 				// Special handling for exporting the artwork
 				let file_suffix = &format!(".{file_type:?}").to_lowercase();
 				let file_name = match file_name.ends_with(FILE_SAVE_SUFFIX) {
@@ -1093,28 +1091,18 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					false => file_name + file_suffix,
 				};
 
-				let export_config = ExportConfig {
-					file_name,
-					file_type,
-					scale_factor,
-					bounds,
-					transparent_background,
-					..Default::default()
-				};
-
 				self.executor.submit_node_graph_evaluation(
 					context,
-					Vec::new(),
-							None,
-						Some(ExportConfig {
-							file_name,
-							file_type,
-							scale_factor,
-							bounds,
-							transparent_background,
-							size: scaled_size,
-						}),
-					);
+					None,
+					Some(ExportConfig {
+						file_name,
+						file_type,
+						scale_factor,
+						bounds,
+						transparent_background,
+						size: scaled_size,
+					}),
+				);
 
 				// if let Some((start, end, fps)) = animation_export_data {
 				// 	let total_frames = ((start - end) * fps) as u32;
@@ -1155,20 +1143,20 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// }
 
 				// Reset the scope nodes for hide artboards/hide_artboard name
-				// self.executor.submit_node_graph_compilation(CompilationRequest {
-				// 	network: document.network_interface.document_network().clone(),
-				// 	font_cache: self.persistent_data.font_cache.clone(),
-				// 	editor_metadata: EditorMetadata {
-				// 		#[cfg(any(feature = "resvg", feature = "vello"))]
-				// 		use_vello: preferences.use_vello().use_vello,
-				// 		#[cfg(not(any(feature = "resvg", feature = "vello")))]
-				// 		use_vello: false,
-				// 		hide_artboards: false,
-				// 		for_export: false,
-				// 		view_mode: document.view_mode,
-				// 		transform_to_viewport: true,
-				// 	},
-				// });
+				self.executor.submit_node_graph_compilation(CompilationRequest {
+					network: document.network_interface.document_network().clone(),
+					font_cache: self.persistent_data.font_cache.clone(),
+					editor_metadata: EditorMetadata {
+						#[cfg(any(feature = "resvg", feature = "vello"))]
+						use_vello: preferences.use_vello(),
+						#[cfg(not(any(feature = "resvg", feature = "vello")))]
+						use_vello: false,
+						hide_artboards: false,
+						for_export: false,
+						view_mode: document.view_mode,
+						transform_to_viewport: true,
+					},
+				});
 			}
 
 			PortfolioMessage::ToggleRulers => {
@@ -1181,7 +1169,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::UpdateDocumentWidgets => {
 				if let Some(document) = self.active_document() {
-					document.update_document_widgets(responses, animation.is_playing(), animation_time);
+					document.update_document_widgets(responses, animation.is_playing(), timing_information.animation_time);
 				}
 			}
 			PortfolioMessage::UpdateOpenDocumentsList => {
@@ -1333,56 +1321,10 @@ impl PortfolioMessageHandler {
 				/text>"#
 				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
 				.to_string();
-			responses.add(Message::ProcessQueue((graphene_std::renderer::EvaluationMetadata::default(), Vec::new())));
+			responses.add(Message::ProcessEvaluationQueue(graphene_std::renderer::RenderMetadata::default()));
 			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
 		}
 		result
-	}
-
-	// Returns an error if the data could not be introspected, returns None if the data type could not be rendered.
-	fn try_render_thumbnail(&self, protonode_input: &CompiledProtonodeInput) -> ThumbnailRenderResult {
-		let Ok(introspected_data) = self.introspected_input_data.get(protonode_input) else {
-			log::error!("Could not introspect node from input: {:?}", protonode_input);
-			return ThumbnailRenderResult::ClearThumbnail;
-		};
-
-		if let Some(previous_tagged_value) = self.downcasted_input_data.get(protonode_input) {
-			if previous_tagged_value.compare_value_to_dyn_any(introspected_data) {
-				return ThumbnailRenderResult::NoChange;
-			}
-		}
-		
-		let Ok(new_tagged_value) = TaggedValue::try_from_std_any_ref(&introspected_data) else {
-			return ThumbnailRenderResult::ClearThumbnail;
-		};
-		
-		
-		let Some(renderable_data) = TaggedValue::as_renderable(&new_tagged_value) else {
-			// New value is not renderable
-			return ThumbnailRenderResult::ClearThumbnail;
-		};
-
-		let render_params = RenderParams {
-			view_mode: ViewMode::Normal,
-			culling_bounds: bounds,
-			thumbnail: true,
-			hide_artboards: false,
-			for_export: false,
-			for_mask: false,
-			alignment_parent_transform: None,
-		};
-
-		// Render the thumbnail data into an SVG string
-		let mut render = SvgRender::new();
-		renderable_data.render_svg(&mut render, &render_params);
-
-		// Give the SVG a viewbox and outer <svg>...</svg> wrapper tag
-		let [min, max] = renderable_data.bounding_box(DAffine2::IDENTITY, true).unwrap_or_default();
-		render.format_svg(min, max);
-
-		self.downcasted_input_data.insert(protonode_input, new_tagged_value);
-
-		ThumbnailRenderResult::UpdateThumbnail(render.svg.to_svg_string())
 	}
 }
 
@@ -1390,11 +1332,4 @@ impl PortfolioMessageHandler {
 pub struct ThumbnailRenderResponse {
 	add: Vec<(SNI, String)>,
 	clear: Vec<SNI>,
-}
-
-pub enum ThumbnailRenderResult {
-	NoChange,
-	// Cleared if there is an error or the data could not be rendered
-	ClearThumbnail,
-	UpdateThumbnail(String),
 }

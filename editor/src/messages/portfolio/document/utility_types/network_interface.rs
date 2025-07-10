@@ -11,15 +11,13 @@ use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
 use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, InputConnector, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork, OutputConnector};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, InputConnector, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork, OutputConnector};
 use graph_craft::{Type, concrete};
 use graphene_std::math::quad::Quad;
 use graphene_std::transform::Footprint;
-use graphene_std::uuid::{CompiledProtonodeInput, NodeId};
+use graphene_std::uuid::{CompiledProtonodeInput, NodeId, SNI};
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::{PointId, VectorData, VectorModificationType};
-use graphene_std::{CompiledProtonodeInput, SNI};
-use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use interpreted_executor::node_registry::NODE_REGISTRY;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -38,8 +36,9 @@ pub struct NodeNetworkInterface {
 	#[serde(skip)]
 	document_metadata: DocumentMetadata,
 	/// All input/output types based on the compiled network.
+	/// TODO: Move to portfolio message handler
 	#[serde(skip)]
-	pub resolved_types: ResolvedDocumentNodeTypes,
+	pub resolved_types: HashMap<SNI, Vec<Type>>,
 	#[serde(skip)]
 	transaction_status: TransactionStatus,
 	#[serde(skip)]
@@ -54,6 +53,7 @@ impl Clone for NodeNetworkInterface {
 			document_metadata: Default::default(),
 			resolved_types: Default::default(),
 			transaction_status: TransactionStatus::Finished,
+			current_hash: 0,
 		}
 	}
 }
@@ -490,7 +490,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Try and get the [`DocumentNodeDefinition`] for a node
-	pub fn get_node_definition(&self, network_path: &[NodeId], node_id: NodeId) -> Option<&DocumentNodeDefinition> {
+	pub fn node_definition(&self, node_id: NodeId, network_path: &[NodeId]) -> Option<&DocumentNodeDefinition> {
 		let metadata = self.node_metadata(&node_id, network_path)?;
 		resolve_document_node_type(metadata.persistent_metadata.reference.as_ref()?)
 	}
@@ -512,13 +512,13 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn downstream_caller_from_output(&self, output_connector: OutputConnector, network_path: &[NodeId]) -> Option<&CompiledProtonodeInput> {
+	pub fn downstream_caller_from_output(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Option<&CompiledProtonodeInput> {
 		match output_connector {
-			OutputConnector::Node { node_id, output_index } => match self.implementation(&node_id, network_path)? {
-				DocumentNodeImplementation::Network(node_network) => {
+			OutputConnector::Node { node_id, output_index } => match self.implementation(node_id, network_path)? {
+				DocumentNodeImplementation::Network(_) => {
 					let mut nested_path = network_path.to_vec();
-					nested_path.push(node_id);
-					self.downstream_caller_from_input(InputConnector::Export(output_index), &nested_path)
+					nested_path.push(*node_id);
+					self.downstream_caller_from_input(&InputConnector::Export(*output_index), &nested_path)
 				}
 				DocumentNodeImplementation::ProtoNode(_) => self.node_metadata(&node_id, network_path)?.transient_metadata.caller.as_ref(),
 				DocumentNodeImplementation::Extract => todo!(),
@@ -526,44 +526,44 @@ impl NodeNetworkInterface {
 			OutputConnector::Import(import_index) => {
 				let mut encapsulating_path = network_path.to_vec();
 				let node_id = encapsulating_path.pop().expect("No imports in document network");
-				self.downstream_caller_from_input(InputConnector::node(node_id, import_index), &encapsulating_path)
+				self.downstream_caller_from_input(&InputConnector::node(node_id, *import_index), &encapsulating_path)
 			}
 		}
 	}
 	// Returns the path and input index to the protonode which called the input, which has to be the same every time is is called for a given input.
 	// This has to be done by iterating upstream, since a downstream traversal may lead to an uncompiled branch.
 	// This requires that value inputs store their caller. Caller input metadata from compilation has to be stored for
-	pub fn downstream_caller_from_input(&self, &input_connector: InputConnector, network_path: &[NodeId]) -> Option<&CompiledProtonodeInput> {
+	pub fn downstream_caller_from_input(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<&CompiledProtonodeInput> {
 		// Cases: Node/Value input to protonode, Node/Value input to network node
 		let input = self.input_from_connector(input_connector, network_path)?;
 		let caller_input = match input {
-			NodeInput::Node { node_id, output_index, lambda } => {
+			NodeInput::Node { node_id, output_index, .. } => {
 				match self.implementation(node_id, network_path)? {
-					DocumentNodeImplementation::Network(node_network) => {
+					DocumentNodeImplementation::Network(_) => {
 						// Continue traversal within network
 						let mut nested_path = network_path.to_vec();
 						nested_path.push(*node_id);
-						self.downstream_caller_from_input(InputConnector::Export(*output_index), &nested_path)
+						self.downstream_caller_from_input(&InputConnector::Export(*output_index), &nested_path)
 					}
-					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => self.node_metadata(node_id, network_path)?.transient_metadata.caller.as_ref(),
+					DocumentNodeImplementation::ProtoNode(_) => self.node_metadata(node_id, network_path)?.transient_metadata.caller.as_ref(),
 					// If connected to a protonode, use the data in the node metadata
 					DocumentNodeImplementation::Extract => todo!(),
 				}
 			}
 			// Can either be an input to a protonode, network node, or export
 			NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Reflection(_) => match input_connector {
-				InputConnector::Node { node_id, input_index } => self.input_metadata(node_id, *index, network_path)?.transient_metadata.caller.as_ref(),
-				InputConnector::Export(export_index) => self.network_metadata(network_path)?.transient_metadata.callers.get(export_index)?.as_ref(),
+				InputConnector::Node { node_id, .. } => self.transient_input_metadata(node_id, input_connector.input_index(), network_path)?.caller.as_ref(),
+				InputConnector::Export(export_index) => self.network_metadata(network_path)?.transient_metadata.callers.get(*export_index)?.as_ref(),
 			},
-			NodeInput::Network { import_index } => {
+			NodeInput::Network { import_index, .. } => {
 				let mut encapsulating_path = network_path.to_vec();
 				let node_id = encapsulating_path.pop().expect("No imports in document network");
-				self.downstream_caller_from_input(InputConnector::node(node_id, *import_index), &encapsulating_path)
+				self.downstream_caller_from_input(&InputConnector::node(node_id, *import_index), &encapsulating_path)
 			}
-			NodeInput::Inline(inline_rust) => None,
+			NodeInput::Inline(_) => None,
 		};
 		let Some(caller_input) = caller_input else {
-			log::error!("Could not get compiled caller input for input: {:?}", input_connector);
+			log::error!("Could not get compiled caller input for input: {:?} in network: {:?}", input_connector, network_path);
 			return None;
 		};
 		Some(caller_input)
@@ -631,7 +631,7 @@ impl NodeNetworkInterface {
 				{
 					let mut inner_path = network_path.to_vec();
 					inner_path.push(node_id);
-					let result = self.guess_type_from_node(child_id, child_input_index, inner_path);
+					let result = self.guess_type_from_node(child_id, child_input_index, &inner_path);
 					inner_path.pop();
 					return result;
 				}
@@ -645,6 +645,10 @@ impl NodeNetworkInterface {
 
 	/// Get the [`Type`] for any InputConnector
 	pub fn input_type(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> (Type, TypeSource) {
+		if let Some(NodeInput::Value { tagged_value, .. }) = self.input_from_connector(input_connector, network_path) {
+			return (tagged_value.ty(), TypeSource::TaggedValue);
+		}
+
 		if let Some(compiled_type) = self
 			.downstream_caller_from_input(input_connector, network_path)
 			.and_then(|(sni, input_index)| self.resolved_types.get(sni).and_then(|protonode_input_types| protonode_input_types.get(*input_index)))
@@ -657,17 +661,14 @@ impl NodeNetworkInterface {
 			return (concrete!(()), TypeSource::Error("input connector is not a node"));
 		};
 
-		self.guess_type_from_node(node_id, input_connector.input_index(), network_path);
+		self.guess_type_from_node(node_id, input_connector.input_index(), network_path)
 	}
 
-	pub fn compiled_output_type(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Option<&Type> {
-		let (sni, input_index) = self.downstream_caller_from_output(output_connector, network_path)?;
-		let protonode_input_types = self.resolved_types.get(sni)?;
-		protonode_input_types.get(*input_index)
-	}
-
-	pub fn output_type(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> (Type, TypeSource) {
-		if let Some(output_type) = self.compiled_output_type(output_connector, network_path) {
+	pub fn output_type(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> (Type, TypeSource) {
+		if let Some(output_type) = self
+			.downstream_caller_from_output(output_connector, network_path)
+			.and_then(|(sni, input_index)| self.resolved_types.get(sni).and_then(|protonode_input_types| protonode_input_types.get(*input_index)))
+		{
 			return (output_type.clone(), TypeSource::Compiled);
 		}
 		(concrete!(()), TypeSource::Error("Not compiled"))
@@ -678,10 +679,10 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn remove_type(&mut self, sni: SNI) {
-		self.resolved_types.remove(sni);
+		self.resolved_types.remove(&sni);
 	}
 
-	pub fn set_node_caller(&mut self, node: &NodeId, caller: CompiledProtonodeInput, network_path: &[NodeId]) {
+	pub fn set_node_caller(&mut self, node_id: &NodeId, caller: CompiledProtonodeInput, network_path: &[NodeId]) {
 		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
 			return;
 		};
@@ -692,6 +693,7 @@ impl NodeNetworkInterface {
 		match input_connector {
 			InputConnector::Node { node_id, input_index } => {
 				let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
+					log::error!("node metadata must exist when setting input caller for node {}, input index {}", node_id, input_index);
 					return;
 				};
 				let Some(input_metadata) = metadata.persistent_metadata.input_metadata.get_mut(*input_index) else {
@@ -767,84 +769,6 @@ impl NodeNetworkInterface {
 				log::error!("Input types for extract node not supported");
 				Vec::new()
 			}
-		}
-	}
-
-	/// Retrieves the output types for a given document node and its exports.
-	///
-	/// This function traverses the node and its nested network structure (if applicable) to determine
-	/// the types of all outputs, including the primary output and any additional exports.
-	///
-	/// # Arguments
-	///
-	/// * `node` - A reference to the `DocumentNode` for which to determine output types.
-	/// * `resolved_types` - A reference to `ResolvedDocumentNodeTypes` containing pre-resolved type information.
-	/// * `node_id_path` - A slice of `NodeId`s representing the path to the current node in the document graph.
-	///
-	/// # Returns
-	///
-	/// A `Vec<Option<Type>>` where:
-	/// - The first element is the primary output type of the node.
-	/// - Subsequent elements are types of additional exports (if the node is a network).
-	/// - `None` values indicate that a type couldn't be resolved for a particular output.
-	///
-	/// # Behavior
-	///
-	/// 1. Retrieves the primary output type from `resolved_types`.
-	/// 2. If the node is a network:
-	///    - Iterates through its exports (skipping the first/primary export).
-	///    - For each export, traverses the network until reaching a protonode or terminal condition.
-	///    - Determines the output type based on the final node/value encountered.
-	/// 3. Collects and returns all resolved types.
-	///
-	/// # Note
-	///
-	/// This function assumes that export indices and node IDs always exist within their respective
-	/// collections. It will panic if these assumptions are violated.
-	///
-	pub fn output_type(&self, node_id: &NodeId, output_index: usize, network_path: &[NodeId]) -> (Type, TypeSource) {
-		let Some(implementation) = self.implementation(node_id, network_path) else {
-			log::error!("Could not get output type for node {node_id} output index {output_index}. This node is no longer supported, and needs to be upgraded.");
-			return (concrete!(()), TypeSource::Error("Could not get implementation"));
-		};
-
-		// If the node is not a protonode, get types by traversing across exports until a proto node is reached.
-		match &implementation {
-			graph_craft::document::DocumentNodeImplementation::Network(internal_network) => {
-				let Some(export) = internal_network.exports.get(output_index) else {
-					return (concrete!(()), TypeSource::Error("Could not get export index"));
-				};
-				match export {
-					NodeInput::Node {
-						node_id: nested_node_id,
-						output_index,
-						..
-					} => self.output_type(nested_node_id, *output_index, &[network_path, &[*node_id]].concat()),
-					NodeInput::Value { tagged_value, .. } => (tagged_value.ty(), TypeSource::TaggedValue),
-					NodeInput::Network { .. } => {
-						// let mut encapsulating_path = network_path.to_vec();
-						// let encapsulating_node = encapsulating_path.pop().expect("No imports exist in document network");
-						// self.input_type(&InputConnector::node(encapsulating_node, *import_index), network_path)
-						(concrete!(()), TypeSource::Error("Could not type from network"))
-					}
-					NodeInput::Scope(_) => todo!(),
-					NodeInput::Inline(_) => todo!(),
-					NodeInput::Reflection(_) => todo!(),
-				}
-			}
-			graph_craft::document::DocumentNodeImplementation::ProtoNode(protonode) => {
-				let node_id_path = &[network_path, &[*node_id]].concat();
-				self.resolved_types
-					.types
-					.get(node_id_path)
-					.map(|ty| (ty.output.clone(), TypeSource::Compiled))
-					.or_else(|| {
-						let node_types = random_protonode_implementation(protonode)?;
-						Some((node_types.return_value.clone(), TypeSource::RandomProtonodeImplementation))
-					})
-					.unwrap_or((concrete!(()), TypeSource::Error("Could not get protonode implementation")))
-			}
-			graph_craft::document::DocumentNodeImplementation::Extract => (concrete!(()), TypeSource::Error("extract node")),
 		}
 	}
 
@@ -1231,7 +1155,7 @@ impl NodeNetworkInterface {
 
 	/// Returns the description of the node, or an empty string if it is not set.
 	pub fn description(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
-		self.get_node_definition(network_path, *node_id)
+		self.node_definition(*node_id, network_path)
 			.map(|node_definition| node_definition.description.to_string())
 			.filter(|description| description != "TODO")
 			.unwrap_or_default()
@@ -1568,7 +1492,7 @@ impl NodeNetworkInterface {
 				continue;
 			};
 			nested_network.exports = old_network.exports;
-			nested_network.scope_injections = old_network.scope_injections.into_iter().collect();
+			// nested_network.scope_injections = old_network.scope_injections.into_iter().collect();
 			let Some(nested_network_metadata) = network_metadata.nested_metadata_mut(&network_path) else {
 				log::error!("Could not get nested network in from_old_network");
 				continue;
@@ -1621,6 +1545,7 @@ impl NodeNetworkInterface {
 			document_metadata: DocumentMetadata::default(),
 			resolved_types: HashMap::new(),
 			transaction_status: TransactionStatus::Finished,
+			current_hash: 0,
 		}
 	}
 }
@@ -2789,7 +2714,7 @@ impl NodeNetworkInterface {
 		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
 		let vertical_start: bool = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
 		let thick = vertical_end && vertical_start;
-		let vector_wire = build_vector_wire(output_position, input_position, vertical_start, vertical_end, graph_wire_style);
+		let (vector_wire, _) = build_vector_wire(output_position, input_position, vertical_start, vertical_end, graph_wire_style);
 
 		let mut path_string = String::new();
 		let _ = vector_wire.subpath_to_svg(&mut path_string, DAffine2::IDENTITY);
@@ -2799,6 +2724,8 @@ impl NodeNetworkInterface {
 			data_type,
 			thick,
 			dashed: false,
+			center: None,
+			input_sni: None,
 		});
 
 		Some(WirePathUpdate {
@@ -2809,14 +2736,14 @@ impl NodeNetworkInterface {
 	}
 
 	/// Returns the vector subpath and a boolean of whether the wire should be thick.
-	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(Subpath<PointId>, bool)> {
+	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(Subpath<PointId>, bool, DVec2)> {
 		let Some(input_position) = self.get_input_center(input, network_path) else {
 			log::error!("Could not get dom rect for wire end: {:?}", input);
 			return None;
 		};
 		// An upstream output could not be found, so the wire does not exist, but it should still be loaded as as empty vector
 		let Some(upstream_output) = self.upstream_output_connector(input, network_path) else {
-			return Some((Subpath::from_anchors(std::iter::empty(), false), false));
+			return Some((Subpath::from_anchors(std::iter::empty(), false), false, DVec2::default()));
 		};
 		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
 			log::error!("Could not get dom rect for wire start: {:?}", upstream_output);
@@ -2825,19 +2752,23 @@ impl NodeNetworkInterface {
 		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
 		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
 		let thick = vertical_end && vertical_start;
-		Some((build_vector_wire(output_position, input_position, vertical_start, vertical_end, wire_style), thick))
+		let (wire, center) = build_vector_wire(output_position, input_position, vertical_start, vertical_end, wire_style);
+		Some((wire, thick, center))
 	}
 
 	pub fn wire_path_from_input(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, dashed: bool, network_path: &[NodeId]) -> Option<WirePath> {
-		let (vector_wire, thick) = self.vector_wire_from_input(input, graph_wire_style, network_path)?;
+		let (vector_wire, thick, center) = self.vector_wire_from_input(input, graph_wire_style, network_path)?;
 		let mut path_string = String::new();
 		let _ = vector_wire.subpath_to_svg(&mut path_string, DAffine2::IDENTITY);
 		let data_type = FrontendGraphDataType::from_type(&self.input_type(input, network_path).0);
+		let input_sni = self.downstream_caller_from_input(input, network_path).map(|caller| NodeId(caller.0.0 + caller.1 as u64));
 		Some(WirePath {
 			path_string,
 			data_type,
 			thick,
 			dashed,
+			center: Some((center.x, center.y)),
+			input_sni,
 		})
 	}
 
@@ -6562,7 +6493,6 @@ impl InputPersistentMetadata {
 struct InputTransientMetadata {
 	wire: TransientMetadata<WirePathUpdate>,
 	caller: Option<CompiledProtonodeInput>,
-	input_type: Option<Type>,
 }
 
 // TODO: Eventually remove this migration document upgrade code

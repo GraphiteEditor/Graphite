@@ -1,14 +1,15 @@
 use clap::{Args, Parser, Subcommand};
 use fern::colors::{Color, ColoredLevelConfig};
 use futures::executor::block_on;
+use graph_craft::document::value::EditorMetadata;
 use graph_craft::document::*;
 use graph_craft::graphene_compiler::{Compiler, Executor};
 use graph_craft::proto::{ProtoNetwork, ProtoNode};
 use graph_craft::util::load_network;
-use graph_craft::wasm_application_io::EditorPreferences;
+use graph_craft::wasm_application_io::{EditorPreferences, WasmApplicationIoValue};
 use graphene_core::text::FontCache;
-use graphene_std::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
-use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
+use graphene_std::application_io::{ApplicationIo, ApplicationIoValue, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
+use graphene_std::wasm_application_io::WasmApplicationIo;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 use std::error::Error;
@@ -92,14 +93,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		use_vello: true,
 		..Default::default()
 	};
-	let editor_api = Arc::new(WasmEditorApi {
-		font_cache: FontCache::default(),
-		application_io: Some(application_io.into()),
-		node_graph_message_sender: Box::new(UpdateLogger {}),
-		editor_preferences: Box::new(preferences),
-	});
+	let application_io = Arc::new(ApplicationIoValue(Some(Arc::new(application_io))));
 
-	let proto_graph = compile_graph(document_string, editor_api)?;
+	let proto_graph = compile_graph(document_string, application_io)?;
 
 	match app.command {
 		Command::Compile { print_proto, .. } => {
@@ -180,17 +176,16 @@ fn fix_nodes(network: &mut NodeNetwork) {
 		}
 	}
 }
-fn compile_graph(document_string: String, editor_api: Arc<WasmEditorApi>) -> Result<Vec<ProtoNode>, Box<dyn Error>> {
+fn compile_graph(document_string: String, application_io: Arc<WasmApplicationIoValue>) -> Result<ProtoNetwork, Box<dyn Error>> {
 	let mut network = load_network(&document_string);
 	fix_nodes(&mut network);
 
-	let substitutions = preprocessor::generate_node_substitutions();
+	let substitutions: std::collections::HashMap<String, DocumentNode> = preprocessor::generate_node_substitutions();
 	preprocessor::expand_network(&mut network, &substitutions);
 
-	let mut wrapped_network = wrap_network_in_scope(network.clone(), editor_api);
+	let mut wrapped_network = wrap_network_in_scope(network, Arc::new(FontCache::default()), EditorMetadata::default(), application_io);
 
-	let compiler = Compiler {};
-	wrapped_network.flatten().map(|result|result.0).map_err(|x| x.into())
+	wrapped_network.flatten().map(|result| result.0).map_err(|x| x.into())
 }
 
 fn create_executor(proto_network: ProtoNetwork) -> Result<DynamicExecutor, Box<dyn Error>> {

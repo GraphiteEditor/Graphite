@@ -3,12 +3,13 @@
 
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
 use crate::messages::prelude::DocumentMessageHandler;
 use bezier_rs::Subpath;
 use glam::IVec2;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
+use graph_craft::document::{InputConnector, OutputConnector};
 use graphene_std::ProtoNodeIdentifier;
 use graphene_std::text::TypesettingConfig;
 use graphene_std::uuid::NodeId;
@@ -492,7 +493,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 	});
 
-	for (node_id, node, network_path) in network.recursive_nodes() {
+	for (node_path, node) in network.recursive_nodes() {
+		let (node_id, network_path) = node_path.split_last().unwrap();
 		if let DocumentNodeImplementation::ProtoNode(protonode_id) = &node.implementation {
 			let node_path_without_type_args = protonode_id.name.split('<').next();
 			if let Some(new) = node_path_without_type_args.and_then(|node_path| replacements.get(node_path)) {
@@ -509,9 +511,9 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		.network_interface
 		.document_network()
 		.recursive_nodes()
-		.map(|(node_id, node, path)| (*node_id, node.clone(), path))
-		.collect::<Vec<(NodeId, graph_craft::document::DocumentNode, Vec<NodeId>)>>();
-	for (node_id, node, network_path) in &nodes {
+		.map(|(node_path, node)| (node_path, node.clone()))
+		.collect::<Vec<(Vec<NodeId>, graph_craft::document::DocumentNode)>>();
+	for (node_path, node) in &nodes {
 		migrate_node(node_id, node, network_path, document, reset_node_definitions_on_open);
 	}
 }
@@ -523,7 +525,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
 		}
 	}
-
 	// Upgrade old nodes to use `Context` instead of `()` or `Footprint` for manual composition
 	if node.manual_composition == Some(graph_craft::concrete!(())) || node.manual_composition == Some(graph_craft::concrete!(graphene_std::transform::Footprint)) {
 		document

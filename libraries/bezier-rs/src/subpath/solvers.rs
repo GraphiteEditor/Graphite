@@ -486,6 +486,21 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		None
 	}
 
+	pub fn center(&self) -> Option<DVec2> {
+		let len = self.manipulator_groups.len();
+		if len == 0 {
+			return None;
+		} else if len % 2 == 1 {
+			return Some(self.manipulator_groups[len / 2].anchor);
+		} else {
+			let p0 = self.manipulator_groups[len / 2 - 1].anchor;
+			let p1 = self.manipulator_groups[len / 2 - 1].out_handle;
+			let p2 = self.manipulator_groups[len / 2].in_handle;
+			let p3 = self.manipulator_groups[len / 2].anchor;
+			Some(0.125 * p0 + 0.375 * p1.unwrap_or(p0) + 0.375 * p2.unwrap_or(p3) + 0.125 * p3)
+		}
+	}
+
 	/// Returns the necessary information to create a round join with the provided center.
 	/// The returned items correspond to:
 	/// - The `out_handle` for the last manipulator group of `self`

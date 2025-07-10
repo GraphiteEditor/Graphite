@@ -10,8 +10,8 @@ use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
-use graph_craft::document::NodeId;
 use graphene_std::renderer::Quad;
+use graphene_std::uuid::NodeId;
 
 #[derive(Default, ExtractField)]
 pub struct ArtboardTool {

@@ -1,12 +1,12 @@
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::prelude::*;
 use bezier_rs::Subpath;
 use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput};
+use graph_craft::document::{InputConnector, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::Color;
 use graphene_std::NodeInputDecleration;
@@ -154,8 +154,9 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 	});
 
 	responses.add(PortfolioMessage::CompileActiveDocument);
-	responses.add(Message::StartQueue);
+	responses.add(Message::StartEvaluationQueue);
 	responses.add(PenToolMessage::RecalculateLatestPointsPosition);
+	responses.add(Message::EndEvaluationQueue);
 }
 
 /// Merge the `first_endpoint` with `second_endpoint`.

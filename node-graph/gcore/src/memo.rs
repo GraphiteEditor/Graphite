@@ -9,6 +9,88 @@ use std::sync::Mutex;
 
 /// Caches the output of a given Node and acts as a proxy
 #[derive(Default)]
+pub struct MonitorMemoNode<T, CachedNode> {
+	// Introspection cache, uses the hash of the nullified context with default var args
+	// cache: Arc<Mutex<std::collections::HashMap<u64, Arc<T>>>>,
+	// Return value cache,
+	cache: Arc<Mutex<Option<(u64, Arc<T>)>>>,
+	node: CachedNode,
+	changed_since_last_eval: Arc<Mutex<bool>>,
+}
+impl<'i, I: Hash + 'i + std::fmt::Debug, T: 'static + Clone + Send + Sync, CachedNode: 'i> Node<'i, I> for MonitorMemoNode<T, CachedNode>
+where
+	CachedNode: for<'any_input> Node<'any_input, I>,
+	for<'a> <CachedNode as Node<'a, I>>::Output: Future<Output = T> + WasmNotSend,
+{
+	// TODO: This should return a reference to the cached cached_value
+	// but that requires a lot of lifetime magic <- This was suggested by copilot but is pretty accurate xD
+	type Output = DynFuture<'i, T>;
+	// fn eval(&'i self, input: I) -> Self::Output {
+	// 	let mut hasher = DefaultHasher::new();
+	// 	input.hash(&mut hasher);
+	// 	let hash = hasher.finish();
+
+	// 	if let Some(data) = self.cache.lock().unwrap().get(&hash) {
+	// 		let cloned_data = (**data).clone();
+	// 		Box::pin(async move { cloned_data })
+	// 	} else {
+	// 		let fut = self.node.eval(input);
+	// 		let cache = self.cache.clone();
+	// 		Box::pin(async move {
+	// 			let value = fut.await;
+	// 			cache.lock().unwrap().insert(hash, Arc::new(value.clone()));
+	// 			value
+	// 		})
+	// 	}
+	// }
+
+	// fn introspect(&self, _introspect_mode: IntrospectMode) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+	// 	let mut hasher = DefaultHasher::new();
+	// 	OwnedContextImpl::default().into_context().hash(&mut hasher);
+	// 	let hash = hasher.finish();
+	// 	self.cache.lock().unwrap().get(&hash).map(|data| (*data).clone() as Arc<dyn std::any::Any + Send + Sync>)
+	// }
+	fn eval(&'i self, input: I) -> Self::Output {
+		let mut hasher = DefaultHasher::new();
+		input.hash(&mut hasher);
+		let hash = hasher.finish();
+
+		if let Some(data) = self.cache.lock().as_ref().unwrap().as_ref().and_then(|data| (data.0 == hash).then_some(data.1.clone())) {
+			let cloned_data = (*data).clone();
+			Box::pin(async move { cloned_data })
+		} else {
+			let fut = self.node.eval(input);
+			let cache = self.cache.clone();
+			*self.changed_since_last_eval.lock().unwrap() = true;
+			Box::pin(async move {
+				let value = fut.await;
+				*cache.lock().unwrap() = Some((hash, Arc::new(value.clone())));
+				value
+			})
+		}
+	}
+	fn introspect(&self, _introspect_mode: IntrospectMode) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		if *self.changed_since_last_eval.lock().unwrap() {
+			*self.changed_since_last_eval.lock().unwrap() = false;
+			Some(self.cache.lock().unwrap().as_ref().expect("Cached data should always be evaluated before introspection").1.clone() as Arc<dyn std::any::Any + Send + Sync>)
+		} else {
+			None
+		}
+	}
+}
+
+impl<T, CachedNode> MonitorMemoNode<T, CachedNode> {
+	pub fn new(node: CachedNode) -> MonitorMemoNode<T, CachedNode> {
+		MonitorMemoNode {
+			cache: Default::default(),
+			node,
+			changed_since_last_eval: Arc::new(Mutex::new(true)),
+		}
+	}
+}
+
+/// Caches the output of a given Node and acts as a proxy
+#[derive(Default)]
 pub struct MemoNode<T, CachedNode> {
 	cache: Arc<Mutex<Option<(u64, T)>>>,
 	node: CachedNode,
@@ -107,7 +189,7 @@ pub mod impure_memo {
 	pub const IDENTIFIER: crate::ProtoNodeIdentifier = crate::ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode");
 }
 
-#[derive(Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum IntrospectMode {
 	Input,
 	Data,
@@ -117,8 +199,8 @@ pub enum IntrospectMode {
 #[derive(Default)]
 pub struct MonitorNode<I, O, N> {
 	#[allow(clippy::type_complexity)]
-	input: Arc<Mutex<Option<Box<I>>>>,
-	output: Arc<Mutex<Option<Box<O>>>>,
+	input: Arc<Mutex<Option<Arc<I>>>>,
+	output: Arc<Mutex<Option<Arc<O>>>>,
 	// Gets set to true by the editor when before evaluating the network, then reset when the monitor node is evaluated
 	introspect_input: Arc<Mutex<bool>>,
 	introspect_output: Arc<Mutex<bool>>,
@@ -137,12 +219,12 @@ where
 			let output = self.node.eval(input.clone()).await;
 			let mut introspect_input = self.introspect_input.lock().unwrap();
 			if *introspect_input {
-				*self.input.lock().unwrap() = Some(Box::new(input));
+				*self.input.lock().unwrap() = Some(Arc::new(input));
 				*introspect_input = false;
 			}
 			let mut introspect_output = self.introspect_output.lock().unwrap();
 			if *introspect_output {
-				*self.output.lock().unwrap() = Some(Box::new(output.clone()));
+				*self.output.lock().unwrap() = Some(Arc::new(output.clone()));
 				*introspect_output = false;
 			}
 			output
@@ -150,10 +232,10 @@ where
 	}
 
 	// After introspecting, the input/output get set to None because the Arc is moved to the editor where it can be directly accessed.
-	fn introspect(&self, introspect_mode: IntrospectMode) -> Option<Box<dyn std::any::Any + Send + Sync>> {
+	fn introspect(&self, introspect_mode: IntrospectMode) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
 		match introspect_mode {
-			IntrospectMode::Input => self.input.lock().unwrap().take().map(|input| input as Box<dyn std::any::Any + Send + Sync>),
-			IntrospectMode::Data => self.output.lock().unwrap().take().map(|output| output as Box<dyn std::any::Any + Send + Sync>),
+			IntrospectMode::Input => self.input.lock().unwrap().take().map(|input| input as Arc<dyn std::any::Any + Send + Sync>),
+			IntrospectMode::Data => self.output.lock().unwrap().take().map(|output| output as Arc<dyn std::any::Any + Send + Sync>),
 		}
 	}
 

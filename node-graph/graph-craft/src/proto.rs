@@ -1,4 +1,4 @@
-use crate::document::{InlineRust, value};
+use crate::document::{AbsoluteInputConnector, InlineRust, ProtonodeEntry, value};
 pub use graphene_core::registry::*;
 use graphene_core::uuid::{NodeId, ProtonodePath, SNI};
 use graphene_core::*;
@@ -6,18 +6,43 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::ops::Deref;
 
-// #[derive(Debug, Default, PartialEq, Clone, Hash, Eq, serde::Serialize, serde::Deserialize)]
-// /// A list of [`ProtoNode`]s, which is an intermediate step between the [`crate::document::NodeNetwork`] and the `BorrowTree` containing a single flattened network.
-// pub struct ProtoNetwork {
-// 	// TODO: remove this since it seems to be unused?
-// 	// Should a proto Network even allow inputs? Don't think so
-// 	pub inputs: Vec<NodeId>,
-// 	/// The node ID that provides the output. This node is then responsible for calling the rest of the graph.
-// 	pub output: NodeId,
-// 	/// A list of nodes stored in a Vec to allow for sorting.
-// 	pub nodes: Vec<(NodeId, ProtoNode)>,
-// }
+#[derive(Debug, Default)]
+/// A list of [`ProtoNode`]s, which is an intermediate step between the [`crate::document::NodeNetwork`] and the `BorrowTree` containing a single flattened network.
+pub struct ProtoNetwork {
+	/// A list of nodes stored in a Vec to allow for sorting.
+	nodes: Vec<ProtonodeEntry>,
+	/// The most downstream node in the protonetwork
+	pub output: NodeId,
+}
+
+impl ProtoNetwork {
+	pub fn from_vec(nodes: Vec<ProtonodeEntry>) -> Self {
+		let last_entry = nodes.last().expect("Cannot compile empty protonetwork");
+		let output = match last_entry {
+			ProtonodeEntry::Protonode(proto_node) => proto_node.stable_node_id,
+			ProtonodeEntry::Deduplicated(deduplicated_index) => {
+				let ProtonodeEntry::Protonode(protonode) = &nodes[*deduplicated_index] else {
+					panic!("Deduplicated protonode must point to valid protonode");
+				};
+				protonode.stable_node_id
+			}
+		};
+		ProtoNetwork { nodes, output }
+	}
+
+	pub fn nodes(&self) -> impl Iterator<Item = &ProtoNode> {
+		self.nodes
+			.iter()
+			.filter_map(|entry| if let ProtonodeEntry::Protonode(protonode) = entry { Some(protonode) } else { None })
+	}
+	pub fn into_nodes(self) -> impl Iterator<Item = ProtoNode> {
+		self.nodes
+			.into_iter()
+			.filter_map(|entry| if let ProtonodeEntry::Protonode(protonode) = entry { Some(protonode) } else { None })
+	}
+}
 
 // impl core::fmt::Display for ProtoNetwork {
 // 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -69,59 +94,57 @@ use std::hash::Hash;
 // 	}
 // }
 
-#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+#[derive(Clone, Debug)]
+pub struct UpstreamInputMetadata {
+	pub input_sni: SNI,
+	// Context dependencies are accumulated during compilation, then replaced with whatever needs to be nullified
+	// If None, then the upstream node is a value node, so replace with an empty vec
+	pub context_dependencies: Option<Vec<ContextDependency>>,
+}
+
+#[derive(Debug, Clone)]
 pub struct NodeConstructionArgs {
 	// Used to get the constructor from the function in `node_registry.rs`.
 	pub identifier: ProtoNodeIdentifier,
 	/// A list of stable node ids used as inputs to the constructor
-	pub inputs: Vec<SNI>,
+	// A node is dependent on whatever is marked in its implementation, as well as all inputs
+	// If a node is dependent on more than its input, then a context nullification node is placed on the input
+	// Starts as None, and is populated during stable node id generation
+	pub inputs: Vec<Option<UpstreamInputMetadata>>,
+	// The union of all input context dependencies and the nodes context dependency. Used to generate the context nullification for the editor entry point
+	pub context_dependencies: Vec<ContextDependency>,
+	// Stores the path of document nodes which correspond to it
+	pub node_paths: Vec<ProtonodePath>,
 }
-#[derive(Debug, Clone, PartialEq)]
+
+#[derive(Debug, Clone)]
+pub struct NodeValueArgs {
+	/// A value of a type that is known, allowing serialization (serde::Deserialize is not object safe)
+	/// Also stores its caller inputs, which is used to map the rendered thumbnail to the wire input
+	pub value: MemoHash<value::TaggedValue>,
+	// Stores all absolute input connectors which correspond to this value.
+	pub connector_paths: Vec<AbsoluteInputConnector>,
+}
+
+#[derive(Debug, Clone)]
 /// Defines the arguments used to construct the boxed node struct. This is used to call the constructor function in the `node_registry.rs` file - which is hidden behind a wall of macros.
 pub enum ConstructionArgs {
-	/// A value of a type that is known, allowing serialization (serde::Deserialize is not object safe)
-	Value(MemoHash<value::TaggedValue>),
+	Value(NodeValueArgs),
 	Nodes(NodeConstructionArgs),
 	/// Used for GPU computation to work around the limitations of rust-gpu.
 	Inline(InlineRust),
 }
 
-impl Eq for ConstructionArgs {}
-
-impl Hash for ConstructionArgs {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		core::mem::discriminant(self).hash(state);
-		match self {
-			Self::Nodes(nodes) => {
-				for node in &nodes.inputs {
-					node.hash(state);
-				}
-			}
-			Self::Value(value) => value.hash(state),
-			Self::Inline(inline) => inline.hash(state),
-		}
-	}
-}
-
-impl ConstructionArgs {
-	// TODO: what? Used in the gpu_compiler crate for something.
-	pub fn new_function_args(&self) -> Vec<String> {
-		match self {
-			ConstructionArgs::Nodes(nodes) => nodes.inputs.iter().map(|n| format!("n{:0x}", n.0)).collect(),
-			ConstructionArgs::Value(value) => vec![value.to_primitive_string()],
-			ConstructionArgs::Inline(inline) => vec![inline.expr.clone()],
-		}
-	}
-}
-
-#[derive(Clone, Debug, Default)]
-#[non_exhaustive]
-pub struct OriginalLocation {
-	/// The original location to the document node - e.g. [grandparent_id, parent_id, node_id].
-	pub protonode_path: ProtonodePath,
-	// // Types should not be sent for autogenerated nodes or value nodes, which are not visible and inserted during compilation
-	pub send_types_to_editor: bool,
-}
+// impl ConstructionArgs {
+// 	// TODO: what? Used in the gpu_compiler crate for something.
+// 	pub fn new_function_args(&self) -> Vec<String> {
+// 		match self {
+// 			ConstructionArgs::Nodes(nodes) => nodes.inputs.iter().map(|n| format!("n{:0x}", n.0)).collect(),
+// 			ConstructionArgs::Value(value) => vec![value.to_primitive_string()],
+// 			ConstructionArgs::Inline(inline) => vec![inline.expr.clone()],
+// 		}
+// 	}
+// }
 
 #[derive(Debug, Clone)]
 /// A proto node is an intermediate step between the `DocumentNode` and the boxed struct that actually runs the node (found in the [`BorrowTree`]).
@@ -130,43 +153,61 @@ pub struct OriginalLocation {
 pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
 	pub input: Type,
-	pub original_location: OriginalLocation,
 	pub stable_node_id: SNI,
+	// Each protonode stores the path and input index of the protonodes which called it
+	pub callers: Vec<(ProtonodePath, usize)>,
+	// Each protonode will finally store a single caller (the minimum of all callers), used by the editor
+	pub caller: Option<(ProtonodePath, usize)>,
 }
 
 impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
-			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0).into()),
+			construction_args: ConstructionArgs::Value(NodeValueArgs {
+				value: value::TaggedValue::U32(0).into(),
+				connector_paths: Vec::new(),
+			}),
 			input: concrete!(Context),
-			original_location: Default::default(),
 			stable_node_id: NodeId(0),
+			callers: Vec::new(),
+			caller: None,
 		}
 	}
 }
 
 impl ProtoNode {
 	/// Construct a new [`ProtoNode`] with the specified construction args and a `ClonedNode` implementation.
-	pub fn value(value: ConstructionArgs, path: Vec<NodeId>, stable_node_id: SNI) -> Self {
-		let inputs_exposed = match &value {
-			ConstructionArgs::Nodes(nodes) => nodes.inputs.len() + 1,
-			_ => 2,
-		};
+	pub fn value(value: ConstructionArgs, stable_node_id: SNI) -> Self {
 		Self {
 			construction_args: value,
 			input: concrete!(Context),
-			original_location: OriginalLocation {
-				protonode_path: path.into(),
-				send_types_to_editor: false,
-			},
 			stable_node_id,
+			callers: Vec::new(),
+			caller: None,
 		}
+	}
+
+	// Hashes the inputs and implementation of non value nodes, and the value for value nodes
+	pub fn generate_stable_node_id(&mut self) {
+		use std::hash::Hasher;
+		let mut hasher = rustc_hash::FxHasher::default();
+		match &self.construction_args {
+			ConstructionArgs::Nodes(nodes) => {
+				for upstream_input in &nodes.inputs {
+					upstream_input.as_ref().unwrap().input_sni.hash(&mut hasher);
+				}
+				nodes.identifier.hash(&mut hasher);
+			}
+			ConstructionArgs::Value(value) => value.value.hash(&mut hasher),
+			ConstructionArgs::Inline(_) => todo!(),
+		}
+
+		self.stable_node_id = NodeId(hasher.finish());
 	}
 }
 
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum GraphErrorType {
-	NodeNotFound(NodeId),
 	InputNodeNotFound(NodeId),
 	UnexpectedGenerics { index: usize, inputs: Vec<Type> },
 	NoImplementations,
@@ -178,7 +219,6 @@ impl Debug for GraphErrorType {
 	// TODO: format with the document graph context so the input index is the same as in the graph UI.
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			GraphErrorType::NodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
 			GraphErrorType::InputNodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
 			GraphErrorType::UnexpectedGenerics { index, inputs } => write!(f, "Generic inputs should not exist but found at {index}: {inputs:?}"),
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
@@ -222,7 +262,7 @@ impl Debug for GraphErrorType {
 }
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GraphError {
-	pub node_path: Vec<NodeId>,
+	pub stable_node_id: SNI,
 	pub identifier: Cow<'static, str>,
 	pub error: GraphErrorType,
 }
@@ -231,11 +271,11 @@ impl GraphError {
 		let identifier = match &node.construction_args {
 			ConstructionArgs::Nodes(node_construction_args) => node_construction_args.identifier.name.clone(),
 			// Values are inserted into upcast nodes
-			ConstructionArgs::Value(memo_hash) => "Value Node".into(),
-			ConstructionArgs::Inline(inline_rust) => "Inline".into(),
+			ConstructionArgs::Value(node_value_args) => format!("{:?} Value Node", node_value_args.value.deref().ty()).into(),
+			ConstructionArgs::Inline(_) => "Inline".into(),
 		};
 		Self {
-			node_path: node.original_location.protonode_path.to_vec(),
+			stable_node_id: node.stable_node_id,
 			identifier,
 			error: text.into(),
 		}
@@ -243,11 +283,7 @@ impl GraphError {
 }
 impl Debug for GraphError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("NodeGraphError")
-			.field("path", &self.node_path.iter().map(|id| id.0).collect::<Vec<_>>())
-			.field("identifier", &self.identifier.to_string())
-			.field("error", &self.error)
-			.finish()
+		f.debug_struct("NodeGraphError").field("identifier", &self.identifier.to_string()).field("error", &self.error).finish()
 	}
 }
 pub type GraphErrors = Vec<GraphError>;
@@ -256,17 +292,17 @@ pub type GraphErrors = Vec<GraphError>;
 #[derive(Default, Clone, dyn_any::DynAny)]
 pub struct TypingContext {
 	lookup: Cow<'static, HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>>,
-	monitor_lookup: Cow<'static, HashMap<Type, MonitorConstructor>>,
+	cache_lookup: Cow<'static, HashMap<Type, CacheConstructor>>,
 	inferred: HashMap<NodeId, NodeIOTypes>,
 	constructor: HashMap<NodeId, NodeConstructor>,
 }
 
 impl TypingContext {
 	/// Creates a new `TypingContext` with the given lookup table.
-	pub fn new(lookup: &'static HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>, monitor_lookup: &'static HashMap<Type, MonitorConstructor>) -> Self {
+	pub fn new(lookup: &'static HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>, cache_lookup: &'static HashMap<Type, CacheConstructor>) -> Self {
 		Self {
 			lookup: Cow::Borrowed(lookup),
-			monitor_lookup: Cow::Borrowed(monitor_lookup),
+			cache_lookup: Cow::Borrowed(cache_lookup),
 			..Default::default()
 		}
 	}
@@ -274,9 +310,9 @@ impl TypingContext {
 	/// Updates the `TypingContext` with a given proto network. This will infer the types of the nodes
 	/// and store them in the `inferred` field. The proto network has to be topologically sorted
 	/// and contain fully resolved stable node ids.
-	pub fn update(&mut self, network: &Vec<ProtoNode>) -> Result<(), GraphErrors> {
+	pub fn update(&mut self, network: &ProtoNetwork) -> Result<(), GraphErrors> {
 		// Update types from the most upstream nodes first
-		for node in network.iter().rev() {
+		for node in network.nodes() {
 			self.infer(node.stable_node_id, node)?;
 		}
 		Ok(())
@@ -292,9 +328,9 @@ impl TypingContext {
 		self.constructor.get(&node_id).copied()
 	}
 
-	// Returns the monitor node constructor for a given type {
-	pub fn monitor_constructor(&self, monitor_type: &Type) -> Option<MonitorConstructor> {
-		self.monitor_lookup.get(monitor_type).copied()
+	// Returns the cache node constructor for a given type {
+	pub fn cache_constructor(&self, cache_type: &Type) -> Option<CacheConstructor> {
+		self.cache_lookup.get(cache_type).copied()
 	}
 
 	/// Returns the type of a given node id if it exists
@@ -314,7 +350,7 @@ impl TypingContext {
 			ConstructionArgs::Value(ref v) => {
 				// assert!(matches!(node.input, ProtoNodeInput::None) || matches!(node.input, ProtoNodeInput::ManualComposition(ref x) if x == &concrete!(Context)));
 				// TODO: This should return a reference to the value
-				let types = NodeIOTypes::new(concrete!(Context), Type::Future(Box::new(v.ty())), vec![]);
+				let types = NodeIOTypes::new(concrete!(Context), Type::Future(Box::new(v.value.ty())), vec![]);
 				self.inferred.insert(node_id, types.clone());
 				return Ok(types);
 			}
@@ -323,10 +359,11 @@ impl TypingContext {
 				let inputs = construction_args
 					.inputs
 					.iter()
+					.map(|id| id.as_ref().unwrap().input_sni)
 					.map(|id| {
 						self.inferred
-							.get(id)
-							.ok_or_else(|| vec![GraphError::new(node, GraphErrorType::NodeNotFound(*id))])
+							.get(&id)
+							.ok_or_else(|| vec![GraphError::new(node, GraphErrorType::InputNodeNotFound(id))])
 							.map(|node| node.ty())
 					})
 					.collect::<Result<Vec<Type>, GraphErrors>>()?;

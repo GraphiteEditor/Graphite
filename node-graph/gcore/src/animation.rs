@@ -1,4 +1,4 @@
-use crate::{Ctx, ExtractAnimationTime, ExtractTime};
+use crate::{Ctx, ExtractAnimationTime, ExtractRealTime};
 
 const DAY: f64 = 1000. * 3600. * 24.;
 
@@ -21,8 +21,8 @@ pub enum AnimationTimeMode {
 }
 
 #[node_macro::node(category("Animation"))]
-fn real_time(ctx: impl Ctx + ExtractTime, _primary: (), mode: RealTimeMode) -> f64 {
-	let time = ctx.try_time().unwrap_or_default();
+fn real_time(ctx: impl Ctx + ExtractRealTime, _primary: (), mode: RealTimeMode) -> f64 {
+	let time = ctx.try_real_time().unwrap_or_default();
 	// TODO: Implement proper conversion using and existing time implementation
 	match mode {
 		RealTimeMode::Utc => time,

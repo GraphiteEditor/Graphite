@@ -62,7 +62,7 @@ pub trait Node<'i, Input> {
 
 	/// Get the call argument or output data for the monitor node on the next evaluation after set_introspect_input
 	/// Also returns a boolean of whether the node was evaluated
-	fn introspect(&self, _introspect_mode: IntrospectMode) -> Option<Box<dyn std::any::Any + Send + Sync>> {
+	fn introspect(&self, _introspect_mode: IntrospectMode) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
 		log::warn!("Node::introspect not implemented for {}", std::any::type_name::<Self>());
 		None
 	}

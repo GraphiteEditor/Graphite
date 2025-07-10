@@ -1,17 +1,15 @@
-use std::sync::Arc;
-
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::utility_types::PanelType;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
-use crate::node_graph_executor::CompilationResponse;
+use crate::node_graph_executor::IntrospectionResponse;
 use graph_craft::document::CompilationMetadata;
+use graphene_std::Color;
 use graphene_std::raster::Image;
 use graphene_std::renderer::RenderMetadata;
 use graphene_std::text::Font;
 use graphene_std::uuid::CompiledProtonodeInput;
-use graphene_std::{Color, IntrospectMode};
 
 #[impl_message(Message, Portfolio)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -24,11 +22,24 @@ pub enum PortfolioMessage {
 	#[child]
 	Spreadsheet(SpreadsheetMessage),
 
+	// Introspected data is cleared after all queued messages which relied on the introspection are complete
+	ClearIntrospectedData,
+
 	// Sends a request to compile the network. Should occur when any value, preference, or font changes
 	CompileActiveDocument,
-	// Sends a request to evaluate the network. Should occur when any context value changes.2
+	// Sends a request to evaluate the network. Should occur when any context value changes.
 	EvaluateActiveDocument,
-
+	// Sends a request to introspect data in the network, and return it to the editor
+	IntrospectActiveDocument {
+		inputs_to_introspect: HashSet<CompiledProtonodeInput>,
+	},
+	ExportActiveDocument {
+		file_name: String,
+		file_type: FileType,
+		scale_factor: f64,
+		bounds: ExportBounds,
+		transparent_background: bool,
+	},
 	// Processes the compilation response and updates the data stored in the network interface for the active document
 	// TODO: Add document ID in response for stability
 	ProcessCompilationResponse {
@@ -36,12 +47,13 @@ pub enum PortfolioMessage {
 	},
 	ProcessEvaluationResponse {
 		evaluation_metadata: RenderMetadata,
+	},
+	ProcessIntrospectionResponse {
 		#[serde(skip)]
-		introspected_inputs: Vec<(CompiledProtonodeInput, IntrospectMode, Box<dyn std::any::Any + Send + Sync>)>,
+		introspected_inputs: IntrospectionResponse,
 	},
-	ProcessThumbnails {
-		inputs_to_render: HashSet<CompiledProtonodeInput>,
-	},
+	RenderThumbnails,
+	ProcessThumbnails,
 	DocumentPassMessage {
 		document_id: DocumentId,
 		message: DocumentMessage,
@@ -133,13 +145,6 @@ pub enum PortfolioMessage {
 	},
 	SelectDocument {
 		document_id: DocumentId,
-	},
-	SubmitDocumentExport {
-		file_name: String,
-		file_type: FileType,
-		scale_factor: f64,
-		bounds: ExportBounds,
-		transparent_background: bool,
 	},
 	ToggleRulers,
 	UpdateDocumentWidgets,

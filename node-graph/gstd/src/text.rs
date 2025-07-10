@@ -1,12 +1,11 @@
-use crate::vector::VectorDataTable;
-use graph_craft::wasm_application_io::WasmEditorApi;
+use crate::vector::{VectorData, VectorDataTable};
 use graphene_core::Ctx;
 pub use graphene_core::text::*;
 
 #[node_macro::node(category(""))]
 fn text<'i: 'n>(
 	_: impl Ctx,
-	editor: &'i WasmEditorApi,
+	font_cache: std::sync::Arc<FontCache>,
 	text: String,
 	font_name: Font,
 	#[unit(" px")]
@@ -41,7 +40,7 @@ fn text<'i: 'n>(
 		tilt,
 	};
 
-	let font_data = editor.font_cache.get(&font_name).map(|f| load_font(f));
+	let font_data = font_cache.get(&font_name).map(|f| load_font(f));
 
 	to_path(&text, font_data, typesetting, per_glyph_instances)
 }

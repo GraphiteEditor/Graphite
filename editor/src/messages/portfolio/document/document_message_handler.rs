@@ -3,7 +3,7 @@ use super::node_graph::utility_types::Transform;
 use super::overlays::utility_types::Pivot;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
-use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
+use super::utility_types::network_interface::{NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
@@ -13,10 +13,9 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings};
-use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
@@ -24,11 +23,10 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{self
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
-use crate::node_graph_executor::NodeGraphExecutor;
 use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
+use graph_craft::document::{InputConnector, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool::{boolean_intersect, path_bool_lib};
 use graphene_std::raster::BlendMode;
@@ -37,18 +35,16 @@ use graphene_std::uuid::NodeId;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::style::ViewMode;
-use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(ExtractField)]
-pub struct DocumentMessageContext<'a> {
-	pub document_id: DocumentId,
+pub struct DocumentMessageData<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub persistent_data: &'a PersistentData,
 	pub current_tool: &'a ToolType,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub device_pixel_ratio: f64,
-	// pub introspected_inputs: &HashMap<CompiledProtonodeInput, Box<dyn std::any::Any + Send + Sync>>,
+	// pub introspected_inputs: &HashMap<CompiledProtonodeInput, Arc<dyn std::any::Any + Send + Sync>>,
 	// pub downcasted_inputs: &mut HashMap<CompiledProtonodeInput, TaggedValue>,
 }
 
@@ -173,10 +169,9 @@ impl Default for DocumentMessageHandler {
 }
 
 #[message_handler_data]
-impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMessageHandler {
-	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, context: DocumentMessageContext) {
-		let DocumentMessageContext {
-			document_id,
+impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessageHandler {
+	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, data: DocumentMessageData) {
+		let DocumentMessageData {
 			ipp,
 			persistent_data,
 			current_tool,
@@ -222,12 +217,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				);
 			}
 			DocumentMessage::PropertiesPanel(message) => {
-				let context = PropertiesPanelMessageContext {
+				let properties_panel_message_handler_data = super::properties_panel::PropertiesPanelMessageHandlerData {
 					network_interface: &mut self.network_interface,
 					selection_network_path: &self.selection_network_path,
 					document_name: self.name.as_str(),
-					executor,
-					persistent_data,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
 			}
@@ -239,7 +232,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						network_interface: &mut self.network_interface,
 						selection_network_path: &self.selection_network_path,
 						breadcrumb_network_path: &self.breadcrumb_network_path,
-						document_id,
 						collapsed: &mut self.collapsed,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
@@ -1432,7 +1424,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						center: Key::Alt,
 						duplicate: Key::Alt,
 					}));
-					responses.add(PortfolioMessage::CompileActiveDocument);
+					responses.add(PortfolioMessage::EvaluateActiveDocument);
 				} else {
 					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
 						return;
@@ -1492,7 +1484,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Connect the current output data to the artboard's input data, and the artboard's output to the document output
 				responses.add(NodeGraphMessage::InsertNodeBetween {
 					node_id,
-					input_connector: network_interface::InputConnector::Export(0),
+					input_connector: InputConnector::Export(0),
 					insert_node_input_index: 1,
 				});
 
@@ -1914,13 +1906,14 @@ impl DocumentMessageHandler {
 		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
 
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+		responses.add(PortfolioMessage::CompileActiveDocument);
+		responses.add(Message::StartEvaluationQueue);
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
-		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
-		responses.add(NodeGraphMessage::UnloadWires);
 		responses.add(NodeGraphMessage::SetGridAlignedEdges);
-		responses.add(PortfolioMessage::CompileActiveDocument);
-		responses.add(Message::StartQueue);
+		responses.add(NodeGraphMessage::UnloadWires);
+		responses.add(NodeGraphMessage::SendWires);
+		responses.add(Message::EndEvaluationQueue);
 		Some(previous_network)
 	}
 	pub fn redo_with_history(&mut self, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
@@ -1946,12 +1939,14 @@ impl DocumentMessageHandler {
 		network_interface.set_document_to_viewport_transform(transform);
 
 		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
+		responses.add(PortfolioMessage::CompileActiveDocument);
+		responses.add(Message::StartEvaluationQueue);
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
-		responses.add(PortfolioMessage::CompileActiveDocument);
 		responses.add(NodeGraphMessage::UnloadWires);
 		responses.add(NodeGraphMessage::SendWires);
+		responses.add(Message::EndEvaluationQueue);
 		Some(previous_network)
 	}
 
@@ -2108,7 +2103,7 @@ impl DocumentMessageHandler {
 	/// Loads all of the fonts in the document.
 	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
 		let mut fonts = HashSet::new();
-		for (_node_id, node, _) in self.document_network().recursive_nodes() {
+		for (_node_path, node) in self.document_network().recursive_nodes() {
 			for input in &node.inputs {
 				if let Some(TaggedValue::Font(font)) = input.as_value() {
 					fonts.insert(font.clone());
@@ -2581,7 +2576,7 @@ impl DocumentMessageHandler {
 			layout: Layout::WidgetLayout(document_bar_layout),
 			layout_target: LayoutTarget::DocumentBar,
 		});
-		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
+		responses.add(PortfolioMessage::EvaluateActiveDocument);
 	}
 
 	pub fn update_layers_panel_control_bar_widgets(&self, responses: &mut VecDeque<Message>) {

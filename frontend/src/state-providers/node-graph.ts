@@ -118,6 +118,7 @@ export function createNodeGraphState(editor: Editor) {
 		});
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphNodes, (updateNodeGraphNodes) => {
+		// console.log(updateNodeGraphNodes);
 		update((state) => {
 			state.nodes.clear();
 			updateNodeGraphNodes.nodes.forEach((node) => {
@@ -168,14 +169,16 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateThumbnails, (updateThumbnail) => {
+	editor.subscriptions.subscribeJsMessage(UpdateThumbnails, (updateThumbnails) => {
+		// console.log("thumbnail update: ", updateThumbnails);
 		update((state) => {
-			for (const [id, value] of updateThumbnail.add) {
+			for (const [id, value] of updateThumbnails.add) {
 				state.thumbnails.set(id, value);
 			}
-			for (const id of updateThumbnail.clear) {
+			for (const id of updateThumbnails.clear) {
 				state.thumbnails.set(id, "");
 			}
+			// console.log("thumbnails: ", state.thumbnails);
 			return state;
 		});
 	});

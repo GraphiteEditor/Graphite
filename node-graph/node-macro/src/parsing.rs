@@ -135,6 +135,7 @@ pub(crate) struct Input {
 	pub(crate) pat_ident: PatIdent,
 	pub(crate) ty: Type,
 	pub(crate) implementations: Punctuated<Type, Comma>,
+	pub(crate) context_dependency: Vec<proc_macro2::TokenStream>,
 }
 
 impl Parse for Implementation {
@@ -350,6 +351,7 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 					pat_ident,
 					ty: (**ty).clone(),
 					implementations,
+					context_dependency: Vec::new(),
 				});
 			} else if let Pat::Ident(pat_ident) = &**pat {
 				let field = parse_field(pat_ident.clone(), (**ty).clone(), attrs).map_err(|e| Error::new_spanned(pat_ident, format!("Failed to parse argument '{}': {}", pat_ident.ident, e)))?;
@@ -630,6 +632,24 @@ pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
 impl ParsedNodeFn {
 	fn replace_impl_trait_in_input(&mut self) {
 		if let Type::ImplTrait(impl_trait) = self.input.ty.clone() {
+			let mut dependency_tokens = Vec::new();
+			for bound in &impl_trait.bounds {
+				if let syn::TypeParamBound::Trait(trait_bound) = bound {
+					if let Some(ident) = trait_bound.path.get_ident() {
+						match ident.to_string().as_str() {
+							"ExtractFootprint" => dependency_tokens.push(quote::quote! {ExtractFootprint}),
+							"ExtractDownstreamTransform" => dependency_tokens.push(quote::quote! {ExtractDownstreamTransform}),
+							"ExtractRealTime" => dependency_tokens.push(quote::quote! {ExtractRealTime}),
+							"ExtractAnimationTime" => dependency_tokens.push(quote::quote! {ExtractAnimationTime}),
+							"ExtractIndex" => dependency_tokens.push(quote::quote! {ExtractIndex}),
+							"ExtractVarArgs" => dependency_tokens.push(quote::quote! {ExtractVarArgs}),
+							_ => {}
+						}
+					}
+				}
+			}
+			self.input.context_dependency = dependency_tokens;
+
 			let ident = Ident::new("_Input", impl_trait.span());
 			let mut bounds = impl_trait.bounds;
 			bounds.push(parse_quote!('n));
@@ -768,6 +788,7 @@ mod tests {
 				pat_ident: pat_ident("a"),
 				ty: parse_quote!(f64),
 				implementations: Punctuated::new(),
+				context_dependency: Vec::new(),
 			},
 			output_type: parse_quote!(f64),
 			is_async: false,
@@ -829,6 +850,7 @@ mod tests {
 				pat_ident: pat_ident("footprint"),
 				ty: parse_quote!(Footprint),
 				implementations: Punctuated::new(),
+				context_dependency: Vec::new(),
 			},
 			output_type: parse_quote!(T),
 			is_async: false,
@@ -901,6 +923,7 @@ mod tests {
 				pat_ident: pat_ident("_"),
 				ty: parse_quote!(impl Ctx),
 				implementations: Punctuated::new(),
+				context_dependency: Vec::new(),
 			},
 			output_type: parse_quote!(VectorData),
 			is_async: false,
@@ -958,6 +981,7 @@ mod tests {
 				pat_ident: pat_ident("image"),
 				ty: parse_quote!(RasterDataTable<P>),
 				implementations: Punctuated::new(),
+				context_dependency: Vec::new(),
 			},
 			output_type: parse_quote!(RasterDataTable<P>),
 			is_async: false,
@@ -1027,6 +1051,7 @@ mod tests {
 				pat_ident: pat_ident("a"),
 				ty: parse_quote!(f64),
 				implementations: Punctuated::new(),
+				context_dependency: Vec::new(),
 			},
 			output_type: parse_quote!(f64),
 			is_async: false,
@@ -1084,6 +1109,7 @@ mod tests {
 				pat_ident: pat_ident("api"),
 				ty: parse_quote!(&WasmEditorApi),
 				implementations: Punctuated::new(),
+				context_dependency: Vec::new(),
 			},
 			output_type: parse_quote!(RasterDataTable<CPU>),
 			is_async: true,
@@ -1141,6 +1167,7 @@ mod tests {
 				pat_ident: pat_ident("input"),
 				ty: parse_quote!(i32),
 				implementations: Punctuated::new(),
+				context_dependency: Vec::new(),
 			},
 			output_type: parse_quote!(i32),
 			is_async: false,

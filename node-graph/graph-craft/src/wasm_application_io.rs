@@ -1,8 +1,9 @@
 use dyn_any::StaticType;
-use graphene_application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceId};
+use graphene_application_io::{ApplicationError, ApplicationIo, ApplicationIoValue, ResourceFuture, SurfaceHandle, SurfaceId};
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
 use std::sync::atomic::AtomicU64;
@@ -55,6 +56,8 @@ impl Drop for WindowWrapper {
 unsafe impl Sync for WindowWrapper {}
 #[cfg(target_arch = "wasm32")]
 unsafe impl Send for WindowWrapper {}
+
+pub type WasmApplicationIoValue = ApplicationIoValue<WasmApplicationIo>;
 
 #[derive(Debug, Default)]
 pub struct WasmApplicationIo {
@@ -156,20 +159,12 @@ unsafe impl StaticType for WasmApplicationIo {
 	type Static = WasmApplicationIo;
 }
 
-impl<'a> From<&'a WasmEditorApi> for &'a WasmApplicationIo {
-	fn from(editor_api: &'a WasmEditorApi) -> Self {
-		editor_api.application_io.as_ref().unwrap()
-	}
-}
 #[cfg(feature = "wgpu")]
 impl<'a> From<&'a WasmApplicationIo> for &'a WgpuExecutor {
 	fn from(app_io: &'a WasmApplicationIo) -> Self {
 		app_io.gpu_executor.as_ref().unwrap()
 	}
 }
-
-pub type WasmEditorApi = graphene_application_io::EditorApi<WasmApplicationIo>;
-
 impl ApplicationIo for WasmApplicationIo {
 	#[cfg(target_arch = "wasm32")]
 	type Surface = HtmlCanvasElement;

@@ -1,24 +1,12 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use glam::{DAffine2, DVec2};
-use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeNetwork};
-use graph_craft::graphene_compiler::Compiler;
+use glam::DVec2;
+use graph_craft::document::NodeNetwork;
 use graph_craft::proto::GraphErrors;
-use graph_craft::wasm_application_io::EditorPreferences;
-use graph_craft::{ProtoNodeIdentifier, concrete};
-use graphene_std::Context;
-use graphene_std::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
-use graphene_std::instances::Instance;
-use graphene_std::memo::IORecord;
-use graphene_std::renderer::{GraphicElementRendered, RenderParams, SvgRender};
-use graphene_std::renderer::{RenderSvgSegmentList, SvgSegment};
 use graphene_std::text::FontCache;
-use graphene_std::uuid::{CompiledProtonodeInput, NodeId};
-use graphene_std::vector::style::ViewMode;
-use graphene_std::vector::{VectorData, VectorDataTable};
-use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
-use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
+use graphene_std::uuid::CompiledProtonodeInput;
+use graphene_std::wasm_application_io::WasmApplicationIo;
+use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 use once_cell::sync::Lazy;
 use spin::Mutex;
@@ -41,9 +29,6 @@ pub struct NodeRuntime {
 
 	node_graph_errors: GraphErrors,
 
-	/// Which node is inspected and which monitor node is used (if any) for the current execution
-	inspect_state: Option<InspectState>,
-
 	/// Mapping of the fully-qualified node paths to their preprocessor substitutions.
 	substitutions: HashMap<ProtoNodeIdentifier, DocumentNode>,
 
@@ -61,10 +46,10 @@ pub enum GraphRuntimeRequest {
 	// Renders thumbnails for the data from the last execution
 	// If the upstream node stores data for the context override, then another evaluation must be performed at the input
 	// This is performed separately from execution requests, since thumbnails for animation should be updated once every 50ms or so.
-	ThumbnailRenderRequest(HashSet<CompiledProtonodeInput>),
+	// ThumbnailRenderRequest(HashSet<CompiledProtonodeInput>),
 	// Request the data from a list of node inputs. For example, used by vector modify to get the data at the input of every Path node.
 	// Can also be used by the spreadsheet/introspection system
-	IntrospectionRequest(HashSet<(CompiledProtonodeInput, IntrospectMode)>),
+	IntrospectionRequest(HashSet<CompiledProtonodeInput>),
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -87,6 +72,9 @@ impl NodeGraphRuntimeSender {
 	fn send_evaluation_response(&self, response: EvaluationResponse) {
 		self.0.send(NodeGraphUpdate::EvaluationResponse(response)).expect("Failed to send evaluation response")
 	}
+	fn send_introspection_response(&self, response: IntrospectionResponse) {
+		self.0.send(NodeGraphUpdate::IntrospectionResponse(response)).expect("Failed to send introspection response")
+	}
 }
 
 pub static NODE_RUNTIME: Lazy<Mutex<Option<NodeRuntime>>> = Lazy::new(|| Mutex::new(None));
@@ -103,119 +91,103 @@ impl NodeRuntime {
 			node_graph_errors: Vec::new(),
 
 			substitutions: preprocessor::generate_node_substitutions(),
-			thumbnail_render_tagged_values: HashSet::new(),
-			inspect_state: None,
 		}
 	}
 
 	pub async fn run(&mut self) {
 		if self.application_io.is_none() {
-			#[cfg(not(test))]
+			// #[cfg(not(test))]
 			self.application_io = Some(Arc::new(WasmApplicationIo::new().await));
-			#[cfg(test)]
-			self.application_io = Some(Arc::new(WasmApplicationIo::new_offscreen().await));
+			// #[cfg(test)]
+			// self.application_io = Some(Arc::new(WasmApplicationIo::new_offscreen().await));
 		}
 
-		// TODO: This deduplication of messages will probably cause more issues than it solved
-		// let mut graph = None;
-		// let mut execution = None;
-		// let mut thumbnails = None;
-		// let mut introspection = None;
-		// for request in self.receiver.try_iter() {
-		// 	match request {
-		// 		GraphRuntimeRequest::CompilationRequest(_) => graph = Some(request),
-		// 		GraphRuntimeRequest::EvaluationRequest(_) => execution = Some(request),
-		// 		GraphRuntimeRequest::ThumbnailRenderResponse(_) => thumbnails = Some(request),
-		// 		GraphRuntimeRequest::IntrospectionResponse(_) => introspection = Some(request),
-		// 	}
-		// }
-		// let requests = [font, preferences, graph, execution].into_iter().flatten();
-
+		// TODO: This deduplication of messages will probably cause issues
+		let mut compilation = None;
+		let mut evaluation = None;
+		let mut introspection = None;
 		for request in self.receiver.try_iter() {
 			match request {
-				GraphRuntimeRequest::CompilationRequest(CompilationRequest {
-					mut network,
-					font_cache,
-					editor_metadata,
-				}) => {
+				GraphRuntimeRequest::CompilationRequest(_) => compilation = Some(request),
+				GraphRuntimeRequest::EvaluationRequest(_) => evaluation = Some(request),
+				GraphRuntimeRequest::IntrospectionRequest(_) => introspection = Some(request),
+			}
+		}
+		let requests = [compilation, evaluation, introspection].into_iter().flatten();
+
+		for request in requests {
+			match request {
+				GraphRuntimeRequest::CompilationRequest(CompilationRequest { network, font_cache, editor_metadata }) => {
 					// Insert the monitor node to manage the inspection
 					// self.inspect_state = inspect_node.map(|inspect| InspectState::monitor_inspect_node(&mut network, inspect));
 
 					self.node_graph_errors.clear();
-					let result = self.update_network(network).await;
+					let result = self.update_network(network, font_cache, editor_metadata).await;
 					self.sender.send_compilation_response(CompilationResponse {
 						result,
 						node_graph_errors: self.node_graph_errors.clone(),
 					});
 				}
+				// Inputs to monitor is sent from the editor, and represents a list of input connectors to track the data through
+				// During the execution. If the value is None, then the node was not evaluated, which can occur due to caching
 				GraphRuntimeRequest::EvaluationRequest(EvaluationRequest {
 					evaluation_id,
 					context,
-					inputs_to_monitor,
-					// custom_node_to_evaluate
+					node_to_evaluate,
 				}) => {
-					for (protonode_input, introspect_mode) in inputs_to_monitor {
-						self.executor.set_introspect(protonode_input, introspect_mode)
-					}
-					let transform = context.render_config.viewport.transform;
+					// for (protonode_input, introspect_mode) in &inputs_to_monitor {
+					// 	self.executor.set_introspect(*protonode_input, *introspect_mode)
+					// }
+					let result = self.executor.evaluate_from_node(context, node_to_evaluate).await;
 
-					let result = self.execute_network(render_config).await;
-
-					let introspected_inputs = Vec::new();
-					for (protonode_input, mode) in inputs_to_introspect {
-						let Ok(introspected_data) = self.executor.introspect(protonode_input, mode) else {
-							log::error!("Could not introspect node from input: {:?}", protonode_input);
-							continue;
+					self.sender.send_evaluation_response(EvaluationResponse { evaluation_id, result });
+				}
+				// GraphRuntimeRequest::ThumbnailRenderRequest(_) => {}
+				GraphRuntimeRequest::IntrospectionRequest(inputs) => {
+					let mut introspected_inputs = Vec::new();
+					for protonode_input in inputs {
+						let introspected_data = match self.executor.introspect(protonode_input, IntrospectMode::Data) {
+							Ok(introspected_data) => introspected_data,
+							Err(e) => {
+								log::error!("Could not introspect input: {:?}, error: {:?}", protonode_input, e);
+								continue;
+							}
 						};
-						introspected_inputs.push((protonode_input, mode, introspected_data));
+						introspected_inputs.push((protonode_input, IntrospectMode::Data, introspected_data));
 					}
 
-					self.sender.send_evaluation_response(EvaluationResponse {
-						evaluation_id,
-						result,
-						transform,
-						introspected_inputs,
-					});
-				}
-				GraphRuntimeRequest::ThumbnailRenderRequest(input_to_render) => {
-					let mut thumbnail_response = ThumbnailRenderResponse::default();
-					for input in input_to_render {}
-					self.sender.send_thumbnail_render_response(thumbnail_response);
-				}
-				GraphRuntimeRequest::IntrospectionRequest(inputs_to_introspect) => {
-					self.sender.send_introspection_response(introspection_response);
+					self.sender.send_introspection_response(IntrospectionResponse(introspected_inputs));
 				}
 			}
 		}
 	}
 
-	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<CompilationMetadata, String> {
+	async fn update_network(&mut self, mut graph: NodeNetwork, font_cache: Arc<FontCache>, editor_metadata: EditorMetadata) -> Result<CompilationMetadata, String> {
 		preprocessor::expand_network(&mut graph, &self.substitutions);
 
 		// Creates a network where the node paths to the document network are prefixed with NodeId(0)
-		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
+		let mut scoped_network = wrap_network_in_scope(graph, font_cache, editor_metadata, self.application_io.as_ref().unwrap().clone());
 
 		// We assume only one output
 		assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
 
 		// Modifies the NodeNetwork so the tagged values are removed and the document nodes with protonode implementations have their protonode ids set
 		// Needs to return a mapping of absolute input connectors to protonode callers, types for protonodes, and callers for protonodes, add/remove delta for resolved types
-		let (proto_network, protonode_callers_for_value, protonode_callers_for_node) = match scoped_network.flatten() {
+		let (proto_network, protonode_caller_for_values, protonode_caller_for_nodes) = match scoped_network.flatten() {
 			Ok(network) => network,
 			Err(e) => {
 				log::error!("Error compiling network: {e:?}");
-				return;
+				return Err(e);
 			}
 		};
 
-		assert_ne!(proto_network.len(), 0, "No proto nodes exist?");
 		let result = match self.executor.update(proto_network).await {
 			Ok((types_to_add, types_to_remove)) => {
 				// Used to remove thumbnails from the mapping of SNI to rendered SVG strings on the frontend, which occurs when the SNI is removed
 				// When native frontend rendering is possible, the strings can just be stored in the network interface for each protonode with the rest of the type metadata
 				Ok(CompilationMetadata {
-					protonode_callers_for_value,
-					protonode_callers_for_node,
+					protonode_caller_for_values,
+					protonode_caller_for_nodes,
 					types_to_add,
 					types_to_remove,
 				})
@@ -225,23 +197,8 @@ impl NodeRuntime {
 				Err(format!("{e:?}"))
 			}
 		};
-	}
-
-	async fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
-		use graph_craft::graphene_compiler::Executor;
-
-		let result = match self.executor.input_type() {
-			Some(t) if t == concrete!(RenderConfig) => (&self.executor).execute(render_config).await.map_err(|e| e.to_string()),
-			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
-			Some(t) => Err(format!("Invalid input type {t:?}")),
-			_ => Err(format!("No input type:\n{:?}", self.node_graph_errors)),
-		};
-		let result = match result {
-			Ok(value) => value,
-			Err(e) => return Err(e),
-		};
-
-		Ok(result)
+		// log::debug!("result: {:?}", result);
+		result
 	}
 }
 

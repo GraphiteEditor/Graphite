@@ -3,21 +3,17 @@ use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup,
 use crate::messages::portfolio::spreadsheet::InspectInputConnector;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::*;
-use graph_craft::document::{AbsoluteInputConnector, NodeId};
 use graphene_std::Color;
-use graphene_std::Context;
 use graphene_std::GraphicGroupTable;
 use graphene_std::instances::Instances;
-use graphene_std::memo::IORecord;
 use graphene_std::raster::Image;
 use graphene_std::uuid::CompiledProtonodeInput;
 use graphene_std::vector::{VectorData, VectorDataTable};
 use graphene_std::{Artboard, ArtboardGroupTable, GraphicElement};
-use std::any::Any;
 use std::sync::Arc;
 
-pub struct SpreadsheetMessageHandlerData {
-	pub introspected_data: &HashMap<CompiledProtonodeInput, Box<dyn std::any::Any + Send + Sync>>;
+pub struct SpreadsheetMessageHandlerData<'a> {
+	pub introspected_data: &'a HashMap<CompiledProtonodeInput, Option<Arc<dyn std::any::Any + Send + Sync>>>,
 }
 
 /// The spreadsheet UI allows for instance data to be previewed.
@@ -35,7 +31,7 @@ pub struct SpreadsheetMessageHandler {
 #[message_handler_data]
 impl MessageHandler<SpreadsheetMessage, SpreadsheetMessageHandlerData> for SpreadsheetMessageHandler {
 	fn process_message(&mut self, message: SpreadsheetMessage, responses: &mut VecDeque<Message>, data: SpreadsheetMessageHandlerData) {
-		let {introspected_data} = data;
+		let SpreadsheetMessageHandlerData { introspected_data } = data;
 		match message {
 			SpreadsheetMessage::ToggleOpen => {
 				self.spreadsheet_view_open = !self.spreadsheet_view_open;
@@ -48,12 +44,12 @@ impl MessageHandler<SpreadsheetMessage, SpreadsheetMessageHandlerData> for Sprea
 				}
 				// Update checked UI state for open
 				responses.add(MenuBarMessage::SendLayout);
-				self.update_layout(responses);
+				self.update_layout(introspected_data, responses);
 			}
 
 			// Queued on introspection request, runs on introspection response when the data has been sent back to the editor
-			SpreadsheetMessage::UpdateLayout { inpect_input } => {
-				self.inspect_input = Some(inpect_input);
+			SpreadsheetMessage::UpdateLayout { inspect_input } => {
+				self.inspect_input = Some(inspect_input);
 				self.update_layout(introspected_data, responses);
 			}
 
@@ -79,7 +75,7 @@ impl MessageHandler<SpreadsheetMessage, SpreadsheetMessageHandlerData> for Sprea
 }
 
 impl SpreadsheetMessageHandler {
-	fn update_layout(&mut self, introspected_data: &HashMap<CompiledProtonodeInput, Box<dyn std::any::Any + Send + Sync>>, responses: &mut VecDeque<Message>) {
+	fn update_layout(&mut self, introspected_data: &HashMap<CompiledProtonodeInput, Option<Arc<dyn std::any::Any + Send + Sync>>>, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateSpreadsheetState {
 			// The node is sent when the data is available
 			node: None,
@@ -94,18 +90,20 @@ impl SpreadsheetMessageHandler {
 			breadcrumbs: Vec::new(),
 			vector_data_domain: self.viewing_vector_data_domain,
 		};
-		let mut layout = match self.inspect_input {
+		let mut layout = match &self.inspect_input {
 			Some(inspect_input) => {
-				match introspected_data.get(&inspect_input.protonode_input){
-					Some(data) => {
-						match generate_layout(instrospected_data, &mut layout_data) {
+				match introspected_data.get(&inspect_input.protonode_input) {
+					Some(data) => match data {
+						Some(instrospected_data) => match generate_layout(instrospected_data, &mut layout_data) {
 							Some(layout) => layout,
 							None => label("The introspected data is not a supported type to be displayed."),
-						}
+						},
+						None => label("Introspected data is not available for this input. This input may be cached."),
 					},
-					None => label("Introspected data is not available for this input. This input may be cached."),
+					// There should always be an entry for each protonode input. If its empty then it was not requested or an error occured
+					None => label("Error getting introspected data"),
 				}
-			},
+			}
 			None => label("No input selected to show data for."),
 		};
 
@@ -130,7 +128,7 @@ struct LayoutData<'a> {
 	vector_data_domain: VectorDataDomain,
 }
 
-fn generate_layout(introspected_data: &Box<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
+fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
 	// We simply try random types. TODO: better strategy.
 	#[allow(clippy::manual_map)]
 	if let Some(io) = introspected_data.downcast_ref::<ArtboardGroupTable>() {

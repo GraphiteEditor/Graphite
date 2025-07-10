@@ -1,8 +1,9 @@
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
+use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput};
+use graph_craft::document::{InputConnector, NodeInput};
+use graphene_std::uuid::NodeId;
 use graphene_std::vector::PointId;
 
 /// Convert an affine transform into the tuple `(scale, angle, translation, shear)` assuming `shear.y = 0`.

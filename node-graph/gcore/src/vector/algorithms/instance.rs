@@ -22,7 +22,7 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + '
 		let mut iteration = async |index, point| {
 			let transformed_point = transform.transform_point2(point);
 
-			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_vararg(Box::new(transformed_point));
+			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_vararg(("Transformed point", Box::new(transformed_point)));
 			let generated_instance = instance.eval(new_ctx.into_context()).await;
 
 			for mut instanced in generated_instance.instance_iter() {

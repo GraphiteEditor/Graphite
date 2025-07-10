@@ -643,12 +643,12 @@ impl PathToolData {
 
 		self.drag_start_pos = input.mouse.position;
 
-		if input.time - self.last_click_time > DOUBLE_CLICK_MILLISECONDS {
+		if input.time as u64 - self.last_click_time > DOUBLE_CLICK_MILLISECONDS {
 			self.saved_points_before_anchor_convert_smooth_sharp.clear();
 			self.stored_selection = None;
 		}
 
-		self.last_click_time = input.time;
+		self.last_click_time = input.time as u64;
 
 		let old_selection = shape_editor.selected_points().cloned().collect::<Vec<_>>();
 

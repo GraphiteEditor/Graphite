@@ -321,6 +321,9 @@ export class WirePath {
 	readonly dataType!: FrontendGraphDataType;
 	readonly thick!: boolean;
 	readonly dashed!: boolean;
+	@TupleToVec2
+	readonly center!: XY | undefined;
+	readonly inputSni!: bigint;
 }
 
 export class WireUpdate {
@@ -1683,7 +1686,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeGraphTransform,
 	UpdateNodeGraphControlBarLayout,
 	UpdateNodeGraphSelection,
-	UpdateThumbnails: UpdateThumbnail,
+	UpdateThumbnails,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelSectionsLayout,
 	UpdateSpreadsheetLayout,

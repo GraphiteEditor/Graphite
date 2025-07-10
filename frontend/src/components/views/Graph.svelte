@@ -613,15 +613,24 @@
 		<div class="wires">
 			<svg>
 				{#each $nodeGraph.wires.values() as map}
-					{#each map.values() as { pathString, dataType, thick, dashed }}
+					{#each map.values() as { pathString, dataType, thick, dashed, center, monitorSni }}
 						{#if !thick}
 							<path
 								d={pathString}
+								class="wire-path"
 								style:--data-line-width={"2px"}
 								style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
 								style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
 								style:--data-dasharray={`3,${dashed ? 2 : 0}`}
 							/>
+						{/if}
+						<!-- {console.log("center: ", center)} -->
+						<!-- {console.log("monitorSni: ", monitorSni)} -->
+						{#if center && monitorSni}
+							<!-- {console.log("thumbnails: ", $nodeGraph.thumbnails.get(monitorSni))} -->
+							<g transform={`translate(${center[0]}, ${center[1]})`}>
+								{@html $nodeGraph.thumbnails.get(monitorSni)}
+							</g>
 						{/if}
 					{/each}
 				{/each}
@@ -888,7 +897,7 @@
 				height: 100%;
 				overflow: visible;
 
-				path {
+				.wire-path {
 					fill: none;
 					stroke: var(--data-color-dim);
 					stroke-width: var(--data-line-width);

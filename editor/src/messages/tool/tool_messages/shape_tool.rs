@@ -3,7 +3,6 @@ use crate::consts::{DEFAULT_STROKE_WIDTH, SNAP_POINT_TOLERANCE};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::gizmos::gizmo_manager::GizmoManager;
@@ -19,9 +18,10 @@ use crate::messages::tool::common_functionality::snapping::{self, SnapCandidateP
 use crate::messages::tool::common_functionality::transformation_cage::{BoundingBoxManager, EdgeBool};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, resize_bounds, rotate_bounds, skew_bounds, transforming_transform_cage};
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput};
+use graph_craft::document::{InputConnector, NodeInput};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
+use graphene_std::uuid::NodeId;
 use graphene_std::vector::misc::ArcType;
 use std::vec;
 
@@ -599,17 +599,16 @@ impl Fsm for ShapeToolFsmState {
 				let nodes = vec![(NodeId(0), node)];
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
 
-				responses.add(Message::StartQueue);
-
 				match tool_data.current_shape {
 					ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Polygon | ShapeType::Star => {
+						responses.add(Message::StartEvaluationQueue);
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
-
+						responses.add(Message::EndEvaluationQueue);
 						tool_options.fill.apply_fill(layer, responses);
 					}
 					ShapeType::Line => {
@@ -617,6 +616,7 @@ impl Fsm for ShapeToolFsmState {
 						tool_data.line_data.editing_layer = Some(layer);
 					}
 				}
+
 				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 
 				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
