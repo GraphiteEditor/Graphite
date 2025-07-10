@@ -438,6 +438,7 @@ impl Fsm for ShapeToolFsmState {
 
 				if !is_resizing_or_rotating && !matches!(self, ShapeToolFsmState::ModifyingGizmo) && !modifying_transform_cage && !hovering_over_gizmo {
 					tool_data.data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 				}
 
 				if modifying_transform_cage && !matches!(self, ShapeToolFsmState::ModifyingGizmo) {

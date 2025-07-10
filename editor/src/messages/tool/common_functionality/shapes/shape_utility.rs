@@ -303,7 +303,7 @@ pub fn get_arc_spiral_end_point(layer: LayerNodeIdentifier, document: &DocumentM
 }
 
 pub fn get_log_spiral_end_point(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, viewport: DAffine2, theta: f64) -> Option<DVec2> {
-	let Some((_start_radius, outer_radius, turns)) = extract_log_spiral_parameters(layer, document) else {
+	let Some((_, outer_radius, turns)) = extract_log_spiral_parameters(layer, document) else {
 		return None;
 	};
 

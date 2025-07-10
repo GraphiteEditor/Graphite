@@ -1,10 +1,12 @@
 use super::*;
-use crate::consts::{SPIRAL_OUTER_RADIUS_INDEX, SPIRAL_TURNS_INDEX, SPIRAL_TYPE_INDEX};
+use crate::consts::{SPIRAL_OUTER_RADIUS_INDEX, SPIRAL_TYPE_INDEX};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::arc_spiral_inner_radius_handle::{RadiusGizmo, RadiusGizmoState};
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::spiral_tightness_gizmo::{TightnessGizmo, TightnessGizmoState};
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::spiral_turns_handle::{SpiralTurns, SpiralTurnsState};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
@@ -21,34 +23,67 @@ use std::collections::VecDeque;
 
 #[derive(Clone, Debug, Default)]
 pub struct SpiralGizmoHandler {
+	radius_handle: RadiusGizmo,
 	turns_handle: SpiralTurns,
+	tightness_handle: TightnessGizmo,
 }
 
 impl ShapeGizmoHandler for SpiralGizmoHandler {
 	fn is_any_gizmo_hovered(&self) -> bool {
-		self.turns_handle.hovered()
+		self.radius_handle.hovered() || self.turns_handle.hovered() || self.tightness_handle.hovered()
 	}
 
 	fn handle_state(
 		&mut self,
 		selected_spiral_layer: LayerNodeIdentifier,
-		_mouse_position: DVec2,
+		mouse_position: DVec2,
 		document: &DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) {
-		self.turns_handle.handle_actions(selected_spiral_layer, input.mouse.position, document, responses);
+		self.radius_handle.handle_actions(selected_spiral_layer, document, input.mouse.position, responses);
+		self.turns_handle.handle_actions(selected_spiral_layer, mouse_position, document, responses);
+		self.tightness_handle.handle_actions(selected_spiral_layer, input.mouse.position, document, responses);
 	}
 
 	fn handle_click(&mut self) {
+		if self.radius_handle.hovered() {
+			self.radius_handle.update_state(RadiusGizmoState::Dragging);
+			return;
+		}
+
+		if self.turns_handle.hovered() && self.tightness_handle.hovered() {
+			self.turns_handle.update_state(SpiralTurnsState::Dragging);
+			self.tightness_handle.update_state(TightnessGizmoState::Inactive);
+			return;
+		}
+
+		if self.radius_handle.hovered() && self.tightness_handle.hovered() {
+			self.radius_handle.update_state(RadiusGizmoState::Dragging);
+			self.tightness_handle.update_state(TightnessGizmoState::Inactive);
+			return;
+		}
+
 		if self.turns_handle.hovered() {
 			self.turns_handle.update_state(SpiralTurnsState::Dragging);
 		}
+
+		if self.tightness_handle.hovered() {
+			self.tightness_handle.update_state(TightnessGizmoState::Dragging);
+		}
 	}
 
-	fn handle_update(&mut self, _drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+		if self.radius_handle.is_dragging() {
+			self.radius_handle.update_inner_radius(document, input, responses, drag_start);
+		}
+
 		if self.turns_handle.is_dragging() {
 			self.turns_handle.update_number_of_turns(document, input, responses);
+		}
+
+		if self.tightness_handle.is_dragging() {
+			self.tightness_handle.update_number_of_turns(document, input, responses, drag_start);
 		}
 	}
 
@@ -56,29 +91,48 @@ impl ShapeGizmoHandler for SpiralGizmoHandler {
 		&self,
 		document: &DocumentMessageHandler,
 		selected_spiral_layer: Option<LayerNodeIdentifier>,
-		_input: &InputPreprocessorMessageHandler,
+		input: &InputPreprocessorMessageHandler,
 		shape_editor: &mut &mut ShapeState,
 		mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
 	) {
+		if self.radius_handle.hovered() && self.tightness_handle.hovered() {
+			self.radius_handle.overlays(document, selected_spiral_layer, input, mouse_position, overlay_context);
+			return;
+		}
+		self.radius_handle.overlays(document, selected_spiral_layer, input, mouse_position, overlay_context);
 		self.turns_handle.overlays(document, selected_spiral_layer, shape_editor, mouse_position, overlay_context);
+		self.tightness_handle.overlays(document, selected_spiral_layer, shape_editor, mouse_position, overlay_context);
+
+		// polygon_outline(selected_polygon_layer, document, overlay_context);
 	}
 
 	fn dragging_overlays(
 		&self,
 		document: &DocumentMessageHandler,
-		_input: &InputPreprocessorMessageHandler,
+		input: &InputPreprocessorMessageHandler,
 		shape_editor: &mut &mut ShapeState,
 		mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
 	) {
-		if self.turns_handle.is_dragging() {
+		if self.radius_handle.is_dragging() {
+			self.radius_handle.overlays(document, None, input, mouse_position, overlay_context);
+		}
+
+		if self.radius_handle.is_dragging() {
 			self.turns_handle.overlays(document, None, shape_editor, mouse_position, overlay_context);
+		}
+
+		if self.tightness_handle.is_dragging() {
+			self.tightness_handle.overlays(document, None, shape_editor, mouse_position, overlay_context);
 		}
 	}
 
 	fn cleanup(&mut self) {
+		// self.number_of_points_dial.cleanup();
+		self.radius_handle.cleanup();
 		self.turns_handle.cleanup();
+		self.tightness_handle.cleanup();
 	}
 }
 
@@ -148,33 +202,19 @@ impl Spiral {
 	/// Updates the number of turns of a spiral node and recalculates its radius based on drag distance.
 	/// Also updates the Shape Tool's turns UI widget to reflect the change.
 	pub fn update_turns(decrease: bool, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		let Some(node_id) = graph_modification_utils::get_spiral_id(layer, &document.network_interface) else {
-			return;
-		};
 		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Spiral") else {
 			return;
 		};
 
-		let Some(&TaggedValue::F64(n)) = node_inputs.get(SPIRAL_TURNS_INDEX).unwrap().as_value() else {
-			return;
-		};
-
-		let input: NodeInput;
+		let Some(&TaggedValue::F64(n)) = node_inputs.get(6).unwrap().as_value() else { return };
 
 		let turns: f64;
 		if decrease {
 			turns = (n - 1.).max(1.);
-			input = NodeInput::value(TaggedValue::F64(turns), false);
 			responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Turns(turns)));
 		} else {
 			turns = n + 1.;
-			input = NodeInput::value(TaggedValue::F64(turns), false);
 			responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Turns(turns)));
 		}
-		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, SPIRAL_TURNS_INDEX),
-			input,
-		});
-		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 }
