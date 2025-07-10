@@ -58,6 +58,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::element_nodes::conversion::flatten_vector::IDENTIFIER,
 		aliases: &["graphene_core::graphic_element::FlattenVectorNode"],
 	},
+	NodeReplacement {
+		node: graphene_std::element_nodes::index::index::IDENTIFIER,
+		aliases: &["graphene_core::graphic_element::IndexNode"],
+	},
 	// -----------------------
 	// blending
 	// -----------------------
