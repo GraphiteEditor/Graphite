@@ -1205,6 +1205,12 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::generator_nodes::spiral::*;
 
+	let spiral_type = enum_choice::<SpiralType>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, SpiralTypeInput::INDEX, true, context))
+		.property_row();
+
+	let mut widgets = vec![spiral_type];
+
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
@@ -1212,11 +1218,6 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 			return Vec::new();
 		}
 	};
-	let spiral_type = enum_choice::<SpiralType>()
-		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, SpiralTypeInput::INDEX, true, context))
-		.property_row();
-
-	let mut widgets = vec![spiral_type];
 
 	let Some(spiral_type_input) = document_node.inputs.get(SpiralTypeInput::INDEX) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -1226,32 +1227,23 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 		match spiral_type {
 			SpiralType::Archimedean => {
 				let inner_radius = LayoutGroup::Row {
-					widgets: number_widget(
-						ParameterWidgetsInfo::from_index(document_node, node_id, InnerRadiusInput::INDEX, true, context),
-						NumberInput::default().min(0.),
-					),
+					widgets: number_widget(ParameterWidgetsInfo::new(node_id, InnerRadiusInput::INDEX, true, context), NumberInput::default().min(0.)),
 				};
 
 				let tightness = LayoutGroup::Row {
-					widgets: number_widget(
-						ParameterWidgetsInfo::from_index(document_node, node_id, TightnessInput::INDEX, true, context),
-						NumberInput::default().unit(" px"),
-					),
+					widgets: number_widget(ParameterWidgetsInfo::new(node_id, TightnessInput::INDEX, true, context), NumberInput::default().unit(" px")),
 				};
 
 				widgets.extend([inner_radius, tightness]);
 			}
 			SpiralType::Logarithmic => {
 				let start_radius = LayoutGroup::Row {
-					widgets: number_widget(
-						ParameterWidgetsInfo::from_index(document_node, node_id, StartRadiusInput::INDEX, true, context),
-						NumberInput::default().min(0.001),
-					),
+					widgets: number_widget(ParameterWidgetsInfo::new(node_id, StartRadiusInput::INDEX, true, context), NumberInput::default().min(0.)),
 				};
 
 				let growth = LayoutGroup::Row {
 					widgets: number_widget(
-						ParameterWidgetsInfo::from_index(document_node, node_id, GrowthInput::INDEX, true, context),
+						ParameterWidgetsInfo::new(node_id, GrowthInput::INDEX, true, context),
 						NumberInput::default().max(0.5).min(0.1).increment_behavior(NumberInputIncrementBehavior::Add).increment_step(0.01),
 					),
 				};
@@ -1261,12 +1253,9 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 		}
 	}
 
-	let turns = number_widget(
-		ParameterWidgetsInfo::from_index(document_node, node_id, TurnsInput::INDEX, true, context),
-		NumberInput::default().min(0.1),
-	);
+	let turns = number_widget(ParameterWidgetsInfo::new(node_id, TurnsInput::INDEX, true, context), NumberInput::default().min(0.1));
 	let angle_offset = number_widget(
-		ParameterWidgetsInfo::from_index(document_node, node_id, AngleOffsetInput::INDEX, true, context),
+		ParameterWidgetsInfo::new(node_id, AngleOffsetInput::INDEX, true, context),
 		NumberInput::default().min(0.1).max(180.).unit("°"),
 	);
 
