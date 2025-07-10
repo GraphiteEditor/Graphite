@@ -141,8 +141,6 @@ pub const COLOR_OVERLAY_GREEN: &str = "#63ce63";
 pub const COLOR_OVERLAY_RED: &str = "#ef5454";
 pub const COLOR_OVERLAY_GRAY: &str = "#cccccc";
 pub const COLOR_OVERLAY_GRAY_25: &str = "rgba(204, 204, 204, 0.25)";
-pub const COLOR_OVERLAY_GRAY_50: &str = "rgba(204, 204, 204, 0.5)";
-pub const COLOR_OVERLAY_BLACK_25: &str = "#00000040";
 pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
 pub const COLOR_OVERLAY_LABEL_BACKGROUND: &str = "#000000cc";
 
