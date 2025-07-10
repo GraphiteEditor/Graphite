@@ -31,20 +31,32 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	// graphic element
 	// -----------------------
 	NodeReplacement {
-		node: graphene_std::graphic_element::append_artboard::IDENTIFIER,
-		aliases: &["graphene_core::AddArtboardNode"],
+		node: graphene_std::element_nodes::conversion::append_artboard::IDENTIFIER,
+		aliases: &["graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic_element::to_artboard::IDENTIFIER,
-		aliases: &["graphene_core::ConstructArtboardNode"],
+		node: graphene_std::element_nodes::conversion::to_artboard::IDENTIFIER,
+		aliases: &["graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic_element::to_element::IDENTIFIER,
-		aliases: &["graphene_core::ToGraphicElementNode"],
+		node: graphene_std::element_nodes::conversion::to_element::IDENTIFIER,
+		aliases: &["graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic_element::to_group::IDENTIFIER,
-		aliases: &["graphene_core::ToGraphicGroupNode"],
+		node: graphene_std::element_nodes::conversion::to_group::IDENTIFIER,
+		aliases: &["graphene_core::ToGraphicGroupNode", "graphene_core::graphic_element::ToGroupNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::element_nodes::conversion::layer::IDENTIFIER,
+		aliases: &["graphene_core::graphic_element::LayerNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::element_nodes::conversion::flatten_group::IDENTIFIER,
+		aliases: &["graphene_core::graphic_element::FlattenGroupNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::element_nodes::conversion::flatten_vector::IDENTIFIER,
+		aliases: &["graphene_core::graphic_element::FlattenVectorNode"],
 	},
 	// -----------------------
 	// blending

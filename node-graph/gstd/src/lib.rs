@@ -9,7 +9,6 @@ pub use graphene_brush as brush;
 pub use graphene_core::vector;
 pub use graphene_core::*;
 pub use graphene_element_nodes as element_nodes;
-pub use graphene_element_nodes::animation;
 pub use graphene_math_nodes as math_nodes;
 pub use graphene_path_bool as path_bool;
 pub use graphene_raster_nodes as raster_nodes;
@@ -26,3 +25,11 @@ pub mod raster {
 	pub use graphene_raster_nodes::adjustments::*;
 	pub use graphene_raster_nodes::*;
 }
+
+pub mod graphic_element {
+	pub use graphene_core::graphic_element::*;
+	pub use graphene_element_nodes::conversion::*;
+	pub use graphene_element_nodes::*;
+}
+pub use graphene_element_nodes::animation;
+pub use graphene_element_nodes::transform_nodes;
