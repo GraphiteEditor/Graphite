@@ -794,6 +794,8 @@ impl PathToolData {
 		else if let Some(layer) = document.click(input) {
 			if shape_editor.selected_shape_state.is_empty() {
 				self.first_selected_with_single_click = true;
+				// This ensures we don't need to double click a second time to get the drill through to work
+				self.last_drill_through_click_position = Some(input.mouse.position);
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 			}
 
