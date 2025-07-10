@@ -198,6 +198,7 @@ pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 pub struct RenderMetadata {
 	pub upstream_footprints: HashMap<NodeId, Footprint>,
 	pub local_transforms: HashMap<NodeId, DAffine2>,
+	pub first_instance_source_id: HashMap<NodeId, Option<NodeId>>,
 	pub click_targets: HashMap<NodeId, Vec<ClickTarget>>,
 	pub clip_targets: HashSet<NodeId>,
 }
@@ -1192,6 +1193,7 @@ impl GraphicElementRendered for GraphicElement {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than one row of the graphical data table
 					if let Some(vector_data) = vector_data.instance_ref_iter().next() {
+						metadata.first_instance_source_id.insert(element_id, *vector_data.source_node_id);
 						metadata.local_transforms.insert(element_id, *vector_data.transform);
 					}
 				}

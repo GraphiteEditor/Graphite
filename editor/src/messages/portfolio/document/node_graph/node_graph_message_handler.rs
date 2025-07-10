@@ -27,7 +27,7 @@ use graphene_std::*;
 use renderer::Quad;
 use std::cmp::Ordering;
 
-#[derive(Debug)]
+#[derive(Debug, ExtractField)]
 pub struct NodeGraphHandlerData<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub selection_network_path: &'a [NodeId],
@@ -41,7 +41,7 @@ pub struct NodeGraphHandlerData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, ExtractField)]
 pub struct NodeGraphMessageHandler {
 	// TODO: Remove network and move to NodeNetworkInterface
 	pub network: Vec<NodeId>,
@@ -92,6 +92,7 @@ pub struct NodeGraphMessageHandler {
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
+#[message_handler_data]
 impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGraphMessageHandler {
 	fn process_message(&mut self, message: NodeGraphMessage, responses: &mut VecDeque<Message>, data: NodeGraphHandlerData<'a>) {
 		let NodeGraphHandlerData {

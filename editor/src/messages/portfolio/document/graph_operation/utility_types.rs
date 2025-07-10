@@ -4,7 +4,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
 use bezier_rs::Subpath;
-use glam::{DAffine2, DVec2, IVec2};
+use glam::{DAffine2, IVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
@@ -456,12 +456,6 @@ impl<'a> ModifyInputsContext<'a> {
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
-	}
-
-	pub fn pivot_set(&mut self, new_pivot: DVec2) {
-		let Some(transform_node_id) = self.existing_node_id("Transform", true) else { return };
-
-		self.set_input_with_refresh(InputConnector::node(transform_node_id, 5), NodeInput::value(TaggedValue::DVec2(new_pivot), false), false);
 	}
 
 	pub fn vector_modify(&mut self, modification_type: VectorModificationType) {
