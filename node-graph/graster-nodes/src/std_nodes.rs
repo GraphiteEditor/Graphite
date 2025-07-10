@@ -1,4 +1,3 @@
-use graphene_core::instances::Instances;
 use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
 use dyn_any::DynAny;
 use fastnoise_lite;
@@ -8,6 +7,7 @@ use graphene_core::color::Color;
 use graphene_core::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
 use graphene_core::context::{Ctx, ExtractFootprint};
 use graphene_core::instances::Instance;
+use graphene_core::instances::Instances;
 use graphene_core::math::bbox::Bbox;
 use graphene_core::raster::image::Image;
 use graphene_core::raster::{Bitmap, BitmapMut};
