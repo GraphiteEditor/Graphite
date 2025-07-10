@@ -1782,9 +1782,9 @@ impl Fsm for PathToolFsmState {
 							break_molding,
 							tool_data.temporary_adjacent_handles_while_molding,
 						);
-					}
 
-					return PathToolFsmState::Dragging(tool_data.dragging_state);
+						return PathToolFsmState::Dragging(tool_data.dragging_state);
+					}
 				}
 
 				let anchor_and_handle_toggled = input.keyboard.get(move_anchor_with_handles as usize);
