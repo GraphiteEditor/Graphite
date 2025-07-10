@@ -1,5 +1,7 @@
+use crate::instances::Instances;
 use crate::raster_types::{CPU, GPU, Raster};
-use crate::{Artboard, Color, GraphicElement, instances::Instances, vector::VectorData};
+use crate::vector::VectorData;
+use crate::{Artboard, Color, GraphicElement};
 use glam::DVec2;
 
 pub trait RenderComplexity {
@@ -39,13 +41,14 @@ impl RenderComplexity for VectorData {
 
 impl RenderComplexity for Raster<CPU> {
 	fn render_complexity(&self) -> usize {
-		(self.width * self.height) as usize
+		(self.width * self.height / 500) as usize
 	}
 }
 
 impl RenderComplexity for Raster<GPU> {
 	fn render_complexity(&self) -> usize {
-		usize::MAX // GPU textures can't have a thumbnail
+		// GPU textures currently can't have a thumbnail
+		usize::MAX
 	}
 }
 
