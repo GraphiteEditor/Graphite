@@ -11,19 +11,21 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::portfolio::document::utility_types::transformation::Axis;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
+use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
 use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedLayerState, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate};
-use bezier_rs::{Bezier, TValue};
+use bezier_rs::{Bezier, BezierHandles, TValue};
 use graphene_std::renderer::Quad;
+use graphene_std::transform::ReferencePoint;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, VectorData};
 use graphene_std::vector::{ManipulatorPointId, PointId, VectorModificationType};
 use std::vec;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct PathTool {
 	fsm_state: PathToolFsmState,
 	tool_data: PathToolData,
@@ -107,6 +109,9 @@ pub enum PathToolMessage {
 	SelectedPointYChanged {
 		new_y: f64,
 	},
+	SetPivot {
+		position: ReferencePoint,
+	},
 	SwapSelectedHandles,
 	UpdateOptions(PathOptionsUpdate),
 	UpdateSelectedPointsStatus {
@@ -142,6 +147,9 @@ pub enum PathOptionsUpdate {
 	OverlayModeType(PathOverlayMode),
 	PointEditingMode { enabled: bool },
 	SegmentEditingMode { enabled: bool },
+	PivotGizmoType(PivotGizmoType),
+	TogglePivotGizmoType(bool),
+	TogglePivotPinned,
 }
 
 impl ToolMetadata for PathTool {
@@ -256,6 +264,20 @@ impl LayoutHolder for PathTool {
 		.selected_index(Some(self.options.path_overlay_mode as u32))
 		.widget_holder();
 
+		let [_checkbox, _dropdown] = {
+			let pivot_gizmo_type_widget = pivot_gizmo_type_widget(self.tool_data.pivot_gizmo.state, PivotToolSource::Path);
+			[pivot_gizmo_type_widget[0].clone(), pivot_gizmo_type_widget[2].clone()]
+		};
+
+		let has_something = !self.tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty();
+		let _pivot_reference = pivot_reference_point_widget(
+			has_something || !self.tool_data.pivot_gizmo.state.is_pivot(),
+			self.tool_data.pivot_gizmo.pivot.to_pivot_position(),
+			PivotToolSource::Path,
+		);
+
+		let _pin_pivot = pin_pivot_widget(self.tool_data.pivot_gizmo.pin_active(), false, PivotToolSource::Path);
+
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				x_location,
@@ -269,13 +291,22 @@ impl LayoutHolder for PathTool {
 				point_editing_mode,
 				related_seperator.clone(),
 				segment_editing_mode,
-				unrelated_seperator,
+				unrelated_seperator.clone(),
 				path_overlay_mode_widget,
+				unrelated_seperator.clone(),
+				// checkbox.clone(),
+				// related_seperator.clone(),
+				// dropdown.clone(),
+				// unrelated_seperator,
+				// pivot_reference,
+				// related_seperator.clone(),
+				// pin_pivot,
 			],
 		}]))
 	}
 }
 
+#[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);
@@ -293,6 +324,29 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				PathOptionsUpdate::SegmentEditingMode { enabled } => {
 					self.options.path_editing_mode.segment_editing_mode = enabled;
 					responses.add(OverlaysMessage::Draw);
+				}
+				PathOptionsUpdate::PivotGizmoType(gizmo_type) => {
+					if !self.tool_data.pivot_gizmo.state.disabled {
+						self.tool_data.pivot_gizmo.state.gizmo_type = gizmo_type;
+						responses.add(ToolMessage::UpdateHints);
+						let pivot_gizmo = self.tool_data.pivot_gizmo();
+						responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+						self.send_layout(responses, LayoutTarget::ToolOptions);
+					}
+				}
+				PathOptionsUpdate::TogglePivotGizmoType(state) => {
+					self.tool_data.pivot_gizmo.state.disabled = !state;
+					responses.add(ToolMessage::UpdateHints);
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					self.send_layout(responses, LayoutTarget::ToolOptions);
+				}
+
+				PathOptionsUpdate::TogglePivotPinned => {
+					self.tool_data.pivot_gizmo.pivot.pinned = !self.tool_data.pivot_gizmo.pivot.pinned;
+					responses.add(ToolMessage::UpdateHints);
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					self.send_layout(responses, LayoutTarget::ToolOptions);
 				}
 			},
 			ToolMessage::Path(PathToolMessage::ClosePath) => {
@@ -363,12 +417,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Escape,
 				RightClick
 			),
-			PathToolFsmState::MoldingSegment => actions!(PathToolMessageDiscriminant;
-				PointerMove,
-				DragStop,
-				RightClick,
-				Escape,
-			),
 		}
 	}
 }
@@ -420,7 +468,6 @@ enum PathToolFsmState {
 		selection_shape: SelectionShapeType,
 	},
 	SlidingPoint,
-	MoldingSegment,
 }
 
 #[derive(Default)]
@@ -451,6 +498,8 @@ struct PathToolData {
 	last_click_time: u64,
 	dragging_state: DraggingState,
 	angle: f64,
+	pivot_gizmo: PivotGizmo,
+	ordered_points: Vec<ManipulatorPointId>,
 	opposite_handle_position: Option<DVec2>,
 	last_clicked_point_was_selected: bool,
 	last_clicked_segment_was_selected: bool,
@@ -729,15 +778,16 @@ impl PathToolData {
 				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Dragging(self.dragging_state)
 			} else {
-				let handle1 = ManipulatorPointId::PrimaryHandle(segment.segment());
-				let handle2 = ManipulatorPointId::EndHandle(segment.segment());
-				if let Some(vector_data) = document.network_interface.compute_modified_vector(segment.layer()) {
-					if let (Some(pos1), Some(pos2)) = (handle1.get_position(&vector_data), handle2.get_position(&vector_data)) {
-						self.molding_info = Some((pos1, pos2))
-					}
-				}
+				let start_pos = segment.bezier().start;
+				let end_pos = segment.bezier().end;
 
-				PathToolFsmState::MoldingSegment
+				let [pos1, pos2] = match segment.bezier().handles {
+					BezierHandles::Cubic { handle_start, handle_end } => [handle_start, handle_end],
+					BezierHandles::Quadratic { handle } => [handle, end_pos],
+					BezierHandles::Linear => [start_pos + (end_pos - start_pos) / 3., end_pos + (start_pos - end_pos) / 3.],
+				};
+				self.molding_info = Some((pos1, pos2));
+				PathToolFsmState::Dragging(self.dragging_state)
 			}
 		}
 		// If no other layers are selected and this is a single-click, then also select the layer (exception)
@@ -772,7 +822,7 @@ impl PathToolData {
 			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 				continue;
 			};
-			let transform = document.metadata().transform_to_document(layer);
+			let transform = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
 
 			let mut layer_manipulators = HashSet::with_hasher(NoHashBuilder);
 			for point in state.selected_points() {
@@ -882,7 +932,7 @@ impl PathToolData {
 		let selected_handle = selection.selected_points().next()?.as_handle()?;
 		let handle_id = selected_handle.to_manipulator_point();
 
-		let layer_to_document = document.metadata().transform_to_document(*layer);
+		let layer_to_document = document.metadata().transform_to_document_if_feeds(*layer, &document.network_interface);
 		let vector_data = document.network_interface.compute_modified_vector(*layer)?;
 
 		let handle_position_local = selected_handle.to_manipulator_point().get_position(&vector_data)?;
@@ -924,7 +974,7 @@ impl PathToolData {
 				let anchor = handle_id.get_anchor(&vector_data);
 				let (angle, anchor_position) = calculate_adjacent_anchor_tangent(handle_id, anchor, adjacent_anchor, &vector_data);
 
-				let layer_to_document = document.metadata().transform_to_document(*layer);
+				let layer_to_document = document.metadata().transform_to_document_if_feeds(*layer, &document.network_interface);
 
 				self.adjacent_anchor_offset = handle_id
 					.get_anchor_position(&vector_data)
@@ -1071,7 +1121,7 @@ impl PathToolData {
 		}
 		// If already hovering on a segment, then recalculate its closest point
 		else if let Some(closest_segment) = &mut self.segment {
-			closest_segment.update_closest_point(document.metadata(), position);
+			closest_segment.update_closest_point(document.metadata(), &document.network_interface, position);
 
 			if closest_segment.too_far(position, SEGMENT_INSERTION_DISTANCE) {
 				self.segment = None;
@@ -1138,7 +1188,7 @@ impl PathToolData {
 		let layer = sliding_point_info.layer;
 
 		let Some(vector_data) = network_interface.compute_modified_vector(layer) else { return };
-		let transform = network_interface.document_metadata().transform_to_viewport(layer);
+		let transform = network_interface.document_metadata().transform_to_viewport_if_feeds(layer, network_interface);
 		let layer_pos = transform.inverse().transform_point2(target_position);
 
 		let segments = sliding_point_info.connected_segments;
@@ -1369,6 +1419,16 @@ impl PathToolData {
 			}
 		}
 	}
+
+	fn pivot_gizmo(&self) -> PivotGizmo {
+		self.pivot_gizmo.clone()
+	}
+
+	fn sync_history(&mut self, points: &[ManipulatorPointId]) {
+		self.ordered_points.retain(|layer| points.contains(layer));
+		self.ordered_points.extend(points.iter().find(|&layer| !self.ordered_points.contains(layer)));
+		self.pivot_gizmo.point = self.ordered_points.last().copied()
+	}
 }
 
 impl Fsm for PathToolFsmState {
@@ -1381,6 +1441,10 @@ impl Fsm for PathToolFsmState {
 		update_dynamic_hints(self, responses, shape_editor, document, tool_data, tool_options);
 
 		let ToolMessage::Path(event) = event else { return self };
+
+		// TODO(mTvare6): Remove once gizmos are implemented for path_tool
+		tool_data.pivot_gizmo.state.disabled = true;
+
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible
@@ -1397,6 +1461,9 @@ impl Fsm for PathToolFsmState {
 
 				shape_editor.update_selected_anchors_status(display_anchors);
 				shape_editor.update_selected_handles_status(display_handles);
+
+				let new_points = shape_editor.selected_points().copied().collect::<Vec<_>>();
+				tool_data.sync_history(&new_points);
 
 				self
 			}
@@ -1473,7 +1540,7 @@ impl Fsm for PathToolFsmState {
 
 						if let Some(closest_segment) = &tool_data.segment {
 							if tool_options.path_editing_mode.segment_editing_mode {
-								let transform = document.metadata().transform_to_viewport(closest_segment.layer());
+								let transform = document.metadata().transform_to_viewport_if_feeds(closest_segment.layer(), &document.network_interface);
 
 								overlay_context.outline_overlay_bezier(closest_segment.bezier(), transform);
 
@@ -1491,7 +1558,7 @@ impl Fsm for PathToolFsmState {
 								}
 							} else {
 								let perp = closest_segment.calculate_perp(document);
-								let point = closest_segment.closest_point(document.metadata());
+								let point = closest_segment.closest_point(document.metadata(), &document.network_interface);
 
 								// Draw an X on the segment
 								if tool_data.delete_segment_pressed {
@@ -1585,7 +1652,6 @@ impl Fsm for PathToolFsmState {
 						}
 					}
 					Self::SlidingPoint => {}
-					Self::MoldingSegment => {}
 				}
 
 				responses.add(PathToolMessage::SelectedPointUpdated);
@@ -1690,20 +1756,33 @@ impl Fsm for PathToolFsmState {
 					break_colinear_molding,
 				},
 			) => {
+				let selected_only_handles = !shape_editor.selected_points().any(|point| matches!(point, ManipulatorPointId::Anchor(_)));
 				tool_data.stored_selection = None;
-				let mut selected_only_handles = true;
-
-				let selected_points = shape_editor.selected_points();
-
-				for point in selected_points {
-					if matches!(point, ManipulatorPointId::Anchor(_)) {
-						selected_only_handles = false;
-						break;
-					}
-				}
 
 				if !tool_data.saved_points_before_handle_drag.is_empty() && (tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD) && (selected_only_handles) {
 					tool_data.handle_drag_toggle = true;
+				}
+
+				if tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+					tool_data.molding_segment = true;
+				}
+
+				let break_molding = input.keyboard.get(break_colinear_molding as usize);
+
+				// Logic for molding segment
+				if let Some(segment) = &mut tool_data.segment {
+					if let Some(molding_segment_handles) = tool_data.molding_info {
+						tool_data.temporary_adjacent_handles_while_molding = segment.mold_handle_positions(
+							document,
+							responses,
+							molding_segment_handles,
+							input.mouse.position,
+							break_molding,
+							tool_data.temporary_adjacent_handles_while_molding,
+						);
+					}
+
+					return PathToolFsmState::Dragging(tool_data.dragging_state);
 				}
 
 				let anchor_and_handle_toggled = input.keyboard.get(move_anchor_with_handles as usize);
@@ -1781,40 +1860,10 @@ impl Fsm for PathToolFsmState {
 				tool_data.slide_point(input.mouse.position, responses, &document.network_interface, shape_editor);
 				PathToolFsmState::SlidingPoint
 			}
-			(PathToolFsmState::MoldingSegment, PathToolMessage::PointerMove { break_colinear_molding, .. }) => {
-				if tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
-					tool_data.molding_segment = true;
-				}
-
-				let break_colinear_molding = input.keyboard.get(break_colinear_molding as usize);
-
-				// Logic for molding segment
-				if let Some(segment) = &mut tool_data.segment {
-					if let Some(molding_segment_handles) = tool_data.molding_info {
-						tool_data.temporary_adjacent_handles_while_molding = segment.mold_handle_positions(
-							document,
-							responses,
-							molding_segment_handles,
-							input.mouse.position,
-							break_colinear_molding,
-							tool_data.temporary_adjacent_handles_while_molding,
-						);
-					}
-				}
-
-				PathToolFsmState::MoldingSegment
-			}
 			(PathToolFsmState::Ready, PathToolMessage::PointerMove { delete_segment, .. }) => {
 				tool_data.delete_segment_pressed = input.keyboard.get(delete_segment as usize);
-
-				if !tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty() {
-					tool_data.saved_points_before_anchor_convert_smooth_sharp.clear();
-				}
-
-				if tool_data.adjacent_anchor_offset.is_some() {
-					tool_data.adjacent_anchor_offset = None;
-				}
-
+				tool_data.saved_points_before_anchor_convert_smooth_sharp.clear();
+				tool_data.adjacent_anchor_offset = None;
 				tool_data.stored_selection = None;
 
 				// When moving the cursor around we want to update the hovered layers
@@ -1949,6 +1998,9 @@ impl Fsm for PathToolFsmState {
 					tool_data.saved_points_before_handle_drag.clear();
 					tool_data.handle_drag_toggle = false;
 				}
+				tool_data.molding_info = None;
+				tool_data.molding_segment = false;
+				tool_data.temporary_adjacent_handles_while_molding = None;
 				tool_data.angle_locked = false;
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
@@ -1960,17 +2012,6 @@ impl Fsm for PathToolFsmState {
 			}
 			(PathToolFsmState::SlidingPoint, PathToolMessage::Escape | PathToolMessage::RightClick) => {
 				tool_data.sliding_point_info = None;
-
-				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.snap_manager.cleanup(responses);
-
-				PathToolFsmState::Ready
-			}
-			(PathToolFsmState::MoldingSegment, PathToolMessage::Escape | PathToolMessage::RightClick) => {
-				// Undo the molding and go back to the state before
-				tool_data.molding_info = None;
-				tool_data.molding_segment = false;
-				tool_data.temporary_adjacent_handles_while_molding = None;
 
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
@@ -2341,6 +2382,18 @@ impl Fsm for PathToolFsmState {
 				responses.add(DocumentMessage::EndTransaction);
 				PathToolFsmState::Ready
 			}
+			(_, PathToolMessage::SetPivot { position }) => {
+				responses.add(DocumentMessage::StartTransaction);
+
+				tool_data.pivot_gizmo.pivot.last_non_none_reference_point = position;
+				let position: Option<DVec2> = position.into();
+				tool_data.pivot_gizmo.pivot.set_normalized_position(position.unwrap());
+				let pivot_gizmo = tool_data.pivot_gizmo();
+				responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+
+				self
+			}
 			(_, _) => PathToolFsmState::Ready,
 		}
 	}
@@ -2413,7 +2466,10 @@ fn get_selection_status(network_interface: &NodeNetworkInterface, shape_state: &
 			return SelectionStatus::None;
 		};
 
-		let coordinates = network_interface.document_metadata().transform_to_document(layer).transform_point2(local_position);
+		let coordinates = network_interface
+			.document_metadata()
+			.transform_to_document_if_feeds(layer, network_interface)
+			.transform_point2(local_position);
 		let manipulator_angle = if vector_data.colinear(point) { ManipulatorAngle::Colinear } else { ManipulatorAngle::Free };
 
 		return SelectionStatus::One(SingleSelectedPoint {
@@ -2707,7 +2763,40 @@ fn update_dynamic_hints(
 				dragging_hint_data.0.push(HintGroup(hold_group));
 			}
 
-			dragging_hint_data
+			if tool_data.molding_segment {
+				let mut has_colinear_anchors = false;
+
+				if let Some(segment) = &tool_data.segment {
+					let handle1 = HandleId::primary(segment.segment());
+					let handle2 = HandleId::end(segment.segment());
+
+					if let Some(vector_data) = document.network_interface.compute_modified_vector(segment.layer()) {
+						let other_handle1 = vector_data.other_colinear_handle(handle1);
+						let other_handle2 = vector_data.other_colinear_handle(handle2);
+						if other_handle1.is_some() || other_handle2.is_some() {
+							has_colinear_anchors = true;
+						}
+					};
+				}
+
+				let handles_stored = if let Some(other_handles) = tool_data.temporary_adjacent_handles_while_molding {
+					other_handles[0].is_some() || other_handles[1].is_some()
+				} else {
+					false
+				};
+
+				let molding_disable_possible = has_colinear_anchors || handles_stored;
+
+				let mut molding_hints = vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])];
+
+				if molding_disable_possible {
+					molding_hints.push(HintGroup(vec![HintInfo::keys([Key::Alt], "Break Colinear Handles")]));
+				}
+
+				HintData(molding_hints)
+			} else {
+				dragging_hint_data
+			}
 		}
 		PathToolFsmState::Drawing { .. } => HintData(vec![
 			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
@@ -2717,38 +2806,6 @@ fn update_dynamic_hints(
 				HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
 			]),
 		]),
-		PathToolFsmState::MoldingSegment => {
-			let mut has_colinear_anchors = false;
-
-			if let Some(segment) = &tool_data.segment {
-				let handle1 = HandleId::primary(segment.segment());
-				let handle2 = HandleId::end(segment.segment());
-
-				if let Some(vector_data) = document.network_interface.compute_modified_vector(segment.layer()) {
-					let other_handle1 = vector_data.other_colinear_handle(handle1);
-					let other_handle2 = vector_data.other_colinear_handle(handle2);
-					if other_handle1.is_some() || other_handle2.is_some() {
-						has_colinear_anchors = true;
-					}
-				};
-			}
-
-			let handles_stored = if let Some(other_handles) = tool_data.temporary_adjacent_handles_while_molding {
-				other_handles[0].is_some() || other_handles[1].is_some()
-			} else {
-				false
-			};
-
-			let molding_disable_possible = has_colinear_anchors || handles_stored;
-
-			let mut molding_hints = vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])];
-
-			if molding_disable_possible {
-				molding_hints.push(HintGroup(vec![HintInfo::keys([Key::Alt], "Break Colinear Handles")]));
-			}
-
-			HintData(molding_hints)
-		}
 		PathToolFsmState::SlidingPoint => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 	};
 	responses.add(FrontendMessage::UpdateInputHints { hint_data });

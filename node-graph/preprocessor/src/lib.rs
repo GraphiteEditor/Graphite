@@ -6,7 +6,7 @@ use graphene_std::registry::*;
 use graphene_std::*;
 use std::collections::{HashMap, HashSet};
 
-pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<String, DocumentNode>) {
+pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<ProtoNodeIdentifier, DocumentNode>) {
 	if network.generated {
 		return;
 	}
@@ -15,7 +15,7 @@ pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<String,
 		match &mut node.implementation {
 			DocumentNodeImplementation::Network(node_network) => expand_network(node_network, substitutions),
 			DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
-				if let Some(new_node) = substitutions.get(proto_node_identifier.name.as_ref()) {
+				if let Some(new_node) = substitutions.get(proto_node_identifier) {
 					node.implementation = new_node.implementation.clone();
 				}
 			}
@@ -24,7 +24,7 @@ pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<String,
 	}
 }
 
-pub fn generate_node_substitutions() -> HashMap<String, DocumentNode> {
+pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNode> {
 	let mut custom = HashMap::new();
 	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
 	for (id, metadata) in graphene_core::registry::NODE_METADATA.lock().unwrap().iter() {
@@ -49,7 +49,7 @@ pub fn generate_node_substitutions() -> HashMap<String, DocumentNode> {
 		let input_count = inputs.len();
 		let network_inputs = (0..input_count).map(|i| NodeInput::node(NodeId(i as u64), 0)).collect();
 
-		let identity_node = ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode");
+		let identity_node = ops::identity::IDENTIFIER;
 
 		let into_node_registry = &interpreted_executor::node_registry::NODE_REGISTRY;
 

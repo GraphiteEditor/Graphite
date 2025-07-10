@@ -60,6 +60,27 @@ impl PartialEq for NodeNetworkInterface {
 	}
 }
 
+impl NodeNetworkInterface {
+	/// Add DocumentNodePath input to the PathModifyNode protonode
+	pub fn migrate_path_modify_node(&mut self) {
+		fix_network(&mut self.network);
+		fn fix_network(network: &mut NodeNetwork) {
+			for node in network.nodes.values_mut() {
+				if let Some(network) = node.implementation.get_network_mut() {
+					fix_network(network);
+				}
+				if let DocumentNodeImplementation::ProtoNode(protonode) = &node.implementation {
+					if protonode.name.contains("PathModifyNode") {
+						if node.inputs.len() < 3 {
+							node.inputs.push(NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath));
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 // Public immutable getters for the network interface
 impl NodeNetworkInterface {
 	// TODO: Make private and use .field_name getter methods
@@ -653,7 +674,7 @@ impl NodeNetworkInterface {
 							let input_type = self.input_type(&InputConnector::node(*node_id, iterator_index), network_path).0;
 							// Value inputs are stored as concrete, so they are compared to the nested type. Node inputs are stored as fn, so they are compared to the entire type.
 							// For example a node input of (Footprint) -> VectorData would not be compatible with () -> VectorData
-							node_io.inputs[iterator_index].clone().nested_type() == &input_type || node_io.inputs[iterator_index] == input_type
+							node_io.inputs.get(iterator_index).map(|ty| ty.nested_type().clone()).as_ref() == Some(&input_type) || node_io.inputs.get(iterator_index) == Some(&input_type)
 						});
 						if valid_implementation { node_io.inputs.get(*input_index).cloned() } else { None }
 					})
@@ -3513,6 +3534,11 @@ impl NodeNetworkInterface {
 		self.document_metadata.local_transforms = local_transforms;
 	}
 
+	/// Update the cached first instance source id of the layers
+	pub fn update_first_instance_source_id(&mut self, new: HashMap<NodeId, Option<NodeId>>) {
+		self.document_metadata.first_instance_source_ids = new;
+	}
+
 	/// Update the cached click targets of the layers
 	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>) {
 		self.document_metadata.click_targets = new_click_targets;
@@ -4090,6 +4116,18 @@ impl NodeNetworkInterface {
 					metadata.persistent_metadata.display_name = reference;
 				}
 			}
+		}
+	}
+
+	// When opening an old document to ensure the output names match the number of exports
+	pub fn validate_output_names(&mut self, node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId]) {
+		if let DocumentNodeImplementation::Network(network) = &node.implementation {
+			let number_of_exports = network.exports.len();
+			let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
+				log::error!("Could not get metadata for node: {:?}", node_id);
+				return;
+			};
+			metadata.persistent_metadata.output_names.resize(number_of_exports, "".to_string());
 		}
 	}
 
@@ -5639,7 +5677,6 @@ impl NodeNetworkInterface {
 		self.unload_all_nodes_bounding_box(network_path);
 	}
 
-	// TODO: Run the auto layout system to make space for the new nodes
 	/// Disconnect the layers primary output and the input to the last non layer node feeding into it through primary flow, reconnects, then moves the layer to the new layer and stack index
 	pub fn move_layer_to_stack(&mut self, layer: LayerNodeIdentifier, mut parent: LayerNodeIdentifier, mut insert_index: usize, network_path: &[NodeId]) {
 		// Prevent moving an artboard anywhere but to the ROOT_PARENT child stack

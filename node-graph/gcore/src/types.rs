@@ -1,6 +1,7 @@
 use std::any::TypeId;
 
 pub use std::borrow::Cow;
+use std::ops::Deref;
 
 #[macro_export]
 macro_rules! concrete {
@@ -128,9 +129,34 @@ impl std::fmt::Debug for NodeIOTypes {
 pub struct ProtoNodeIdentifier {
 	pub name: Cow<'static, str>,
 }
+
 impl From<String> for ProtoNodeIdentifier {
 	fn from(value: String) -> Self {
 		Self { name: Cow::Owned(value) }
+	}
+}
+
+impl From<&'static str> for ProtoNodeIdentifier {
+	fn from(s: &'static str) -> Self {
+		ProtoNodeIdentifier { name: Cow::Borrowed(s) }
+	}
+}
+
+impl ProtoNodeIdentifier {
+	pub const fn new(name: &'static str) -> Self {
+		ProtoNodeIdentifier { name: Cow::Borrowed(name) }
+	}
+
+	pub const fn with_owned_string(name: String) -> Self {
+		ProtoNodeIdentifier { name: Cow::Owned(name) }
+	}
+}
+
+impl Deref for ProtoNodeIdentifier {
+	type Target = str;
+
+	fn deref(&self) -> &Self::Target {
+		self.name.as_ref()
 	}
 }
 
@@ -306,6 +332,13 @@ impl Type {
 			Self::Future(output) => output.replace_nested(f),
 		}
 	}
+
+	pub fn to_cow_string(&self) -> Cow<'static, str> {
+		match self {
+			Type::Generic(name) => name.clone(),
+			_ => Cow::Owned(self.to_string()),
+		}
+	}
 }
 
 fn format_type(ty: &str) -> String {
@@ -341,21 +374,5 @@ impl std::fmt::Display for Type {
 		};
 		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
 		write!(f, "{}", result)
-	}
-}
-
-impl From<&'static str> for ProtoNodeIdentifier {
-	fn from(s: &'static str) -> Self {
-		ProtoNodeIdentifier { name: Cow::Borrowed(s) }
-	}
-}
-
-impl ProtoNodeIdentifier {
-	pub const fn new(name: &'static str) -> Self {
-		ProtoNodeIdentifier { name: Cow::Borrowed(name) }
-	}
-
-	pub const fn with_owned_string(name: String) -> Self {
-		ProtoNodeIdentifier { name: Cow::Owned(name) }
 	}
 }

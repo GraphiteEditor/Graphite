@@ -12,6 +12,7 @@ use graphene_std::raster::color::Color;
 
 const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |context| DocumentMessage::DrawArtboardOverlays(context).into();
 
+#[derive(ExtractField)]
 pub struct ToolMessageData<'a> {
 	pub document_id: DocumentId,
 	pub document: &'a mut DocumentMessageHandler,
@@ -21,7 +22,7 @@ pub struct ToolMessageData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, ExtractField)]
 pub struct ToolMessageHandler {
 	pub tool_state: ToolFsmState,
 	pub transform_layer_handler: TransformLayerMessageHandler,
@@ -29,6 +30,7 @@ pub struct ToolMessageHandler {
 	pub tool_is_active: bool,
 }
 
+#[message_handler_data]
 impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, data: ToolMessageData) {
 		let ToolMessageData {
@@ -179,6 +181,11 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				responses.add(BroadcastMessage::SubscribeEvent {
 					on: BroadcastEvent::SelectionChanged,
 					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
+				});
+
+				responses.add(BroadcastMessage::SubscribeEvent {
+					on: BroadcastEvent::SelectionChanged,
+					send: Box::new(SelectToolMessage::SyncHistory.into()),
 				});
 
 				self.tool_is_active = true;
