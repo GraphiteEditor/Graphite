@@ -1,17 +1,19 @@
 use crate::consts::{VIEWPORT_ZOOM_WHEEL_RATE, VIEWPORT_ZOOM_WHEEL_RATE_CHANGE};
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::utility_types::GraphWireStyle;
+use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 
+#[derive(ExtractField)]
 pub struct PreferencesDialogMessageData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
 /// A dialog to allow users to customize Graphite editor options
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ExtractField)]
 pub struct PreferencesDialogMessageHandler {}
 
+#[message_handler_data]
 impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageData<'_>> for PreferencesDialogMessageHandler {
 	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, data: PreferencesDialogMessageData) {
 		let PreferencesDialogMessageData { preferences } = data;

@@ -97,7 +97,7 @@ macro_rules! tagged_value {
 				}
 			}
 			/// Attempts to downcast the dynamic type to a tagged value
-			pub fn try_from_std_any_ref(input: &(dyn std::any::Any)) -> Result<Self, String> {
+			pub fn try_from_std_any_ref(input: &dyn std::any::Any) -> Result<Self, String> {
 				use std::any::TypeId;
 
 				match input.type_id() {
@@ -190,9 +190,9 @@ tagged_value! {
 	VectorData(graphene_core::vector::VectorDataTable),
 	#[cfg_attr(target_arch = "wasm32", serde(alias = "ImageFrame", deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
 	RasterData(graphene_core::raster_types::RasterDataTable<CPU>),
-	#[cfg_attr(target_arch = "wasm32", serde(deserialize_with = "graphene_core::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(target_arch = "wasm32", serde(deserialize_with = "graphene_core::graphic_element::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
 	GraphicGroup(graphene_core::GraphicGroupTable),
-	#[cfg_attr(target_arch = "wasm32", serde(deserialize_with = "graphene_core::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(target_arch = "wasm32", serde(deserialize_with = "graphene_core::graphic_element::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
 	ArtboardGroup(graphene_core::ArtboardGroupTable),
 	// ============
 	// STRUCT TYPES
