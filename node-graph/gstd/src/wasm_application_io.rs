@@ -119,7 +119,6 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 async fn render_canvas(
 	footprint: Footprint,
-	hide_artboards: bool,
 	data: impl GraphicElementRendered,
 	application_io: Arc<WasmApplicationIoValue>,
 	surface_handle: wgpu_executor::WgpuSurface,
@@ -142,7 +141,7 @@ async fn render_canvas(
 	scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
 
 	let mut background = Color::from_rgb8_srgb(0x22, 0x22, 0x22);
-	if !data.contains_artboard() && !hide_artboards {
+	if !data.contains_artboard() && !render_params.hide_artboards {
 		background = Color::WHITE;
 	}
 	exec.render_vello_scene(&scene, &surface_handle, footprint.resolution.x, footprint.resolution.y, &context, background)
@@ -278,7 +277,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	let data = if use_vello {
 		#[cfg(all(feature = "vello", not(test)))]
 		return RenderOutput {
-			data: render_canvas(footprint, editor_metadata.hide_artboards, data, application_io, surface_handle.unwrap(), render_params).await,
+			data: render_canvas(footprint, data, application_io, surface_handle.unwrap(), render_params).await,
 			metadata,
 		};
 		#[cfg(any(not(feature = "vello"), test))]

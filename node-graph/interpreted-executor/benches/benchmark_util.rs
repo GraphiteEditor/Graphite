@@ -8,7 +8,7 @@ use interpreted_executor::dynamic_executor::DynamicExecutor;
 pub fn setup_network(name: &str) -> (DynamicExecutor, ProtoNetwork) {
 	let mut network = load_from_name(name);
 	let proto_network = network.flatten().unwrap().0;
-	let executor = block_on(DynamicExecutor::new(proto_network.0)).unwrap();
+	let executor = block_on(DynamicExecutor::new(proto_network.clone())).unwrap();
 	(executor, proto_network)
 }
 

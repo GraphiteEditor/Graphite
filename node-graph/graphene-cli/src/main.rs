@@ -3,11 +3,11 @@ use fern::colors::{Color, ColoredLevelConfig};
 use futures::executor::block_on;
 use graph_craft::document::value::EditorMetadata;
 use graph_craft::document::*;
-use graph_craft::graphene_compiler::{Compiler, Executor};
 use graph_craft::proto::{ProtoNetwork, ProtoNode};
 use graph_craft::util::load_network;
 use graph_craft::wasm_application_io::{EditorPreferences, WasmApplicationIoValue};
 use graphene_core::text::FontCache;
+use graphene_std::any::EditorContext;
 use graphene_std::application_io::{ApplicationIo, ApplicationIoValue, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_std::wasm_application_io::WasmApplicationIo;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
@@ -93,14 +93,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		use_vello: true,
 		..Default::default()
 	};
-	let application_io = Arc::new(ApplicationIoValue(Some(Arc::new(application_io))));
+	let application_io = Arc::new(application_io);
 
 	let proto_graph = compile_graph(document_string, application_io)?;
 
 	match app.command {
 		Command::Compile { print_proto, .. } => {
 			if print_proto {
-				println!("{}", proto_graph);
+				println!("{:?}", proto_graph);
 			}
 		}
 		Command::Run { run_loop, .. } => {
@@ -111,10 +111,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 				}
 			});
 			let executor = create_executor(proto_graph)?;
-			let render_config = RenderConfig::default();
+			let editor_context = EditorContext::default();
 
 			loop {
-				let result = (&executor).execute(render_config).await?;
+				let result = (&executor).evaluate_from_node(editor_context.clone(), None).await?;
 				if !run_loop {
 					println!("{:?}", result);
 					break;
@@ -176,7 +176,7 @@ fn fix_nodes(network: &mut NodeNetwork) {
 		}
 	}
 }
-fn compile_graph(document_string: String, application_io: Arc<WasmApplicationIoValue>) -> Result<ProtoNetwork, Box<dyn Error>> {
+fn compile_graph(document_string: String, application_io: Arc<WasmApplicationIo>) -> Result<ProtoNetwork, Box<dyn Error>> {
 	let mut network = load_network(&document_string);
 	fix_nodes(&mut network);
 

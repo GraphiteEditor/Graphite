@@ -7,7 +7,7 @@ use std::sync::atomic::AtomicU64;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Comma;
-use syn::{Error, Ident, PatIdent, Token, TypeParamBound, WhereClause, WherePredicate, parse_quote};
+use syn::{Error, Ident, PatIdent, Token, WhereClause, WherePredicate, parse_quote};
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {

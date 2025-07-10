@@ -1,7 +1,6 @@
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::concrete;
 use graph_craft::document::value::EditorMetadata;
-use graph_craft::document::value::RenderOutput;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 use graph_craft::generic;

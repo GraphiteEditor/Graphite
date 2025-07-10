@@ -1,5 +1,4 @@
 use crate::document::NodeNetwork;
-use crate::graphene_compiler::Compiler;
 
 pub fn load_network(document_string: &str) -> NodeNetwork {
 	let document: serde_json::Value = serde_json::from_str(document_string).expect("Failed to parse document");

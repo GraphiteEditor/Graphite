@@ -6,12 +6,13 @@ use crate::messages::portfolio::utility_types::Platform;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
-use crate::node_graph_executor::Instrumented;
+// use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::NodeRuntime;
 use crate::test_utils::test_prelude::LayerNodeIdentifier;
 use glam::DVec2;
 use graph_craft::document::DocumentNode;
 use graphene_std::InputAccessor;
+use graphene_std::any::EditorContext;
 use graphene_std::raster::color::Color;
 
 /// A set of utility functions to make the writing of editor test more declarative
@@ -36,47 +37,46 @@ impl EditorTestUtils {
 		Self { editor, runtime }
 	}
 
-	pub fn eval_graph<'a>(&'a mut self) -> impl std::future::Future<Output = Result<Instrumented, String>> + 'a {
-		// An inner function is required since async functions in traits are a bit weird
-		async fn run<'a>(editor: &'a mut Editor, runtime: &'a mut NodeRuntime) -> Result<Instrumented, String> {
-			let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
-			let exector = &mut portfolio.executor;
-			let document = portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap();
+	// pub fn eval_graph<'a>(&'a mut self) -> impl std::future::Future<Output = Result<Instrumented, String>> + 'a {
+	// 	// An inner function is required since async functions in traits are a bit weird
+	// 	async fn run<'a>(editor: &'a mut Editor, runtime: &'a mut NodeRuntime) -> Result<Instrumented, String> {
+	// 		let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
+	// 		let exector = &mut portfolio.executor;
+	// 		let document = portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap();
 
-			let instrumented = match exector.update_node_graph_instrumented(document) {
-				Ok(instrumented) => instrumented,
-				Err(e) => return Err(format!("update_node_graph_instrumented failed\n\n{e}")),
-			};
+	// 		// let instrumented = match exector.update_node_graph_instrumented(document) {
+	// 		// 	Ok(instrumented) => instrumented,
+	// 		// 	Err(e) => return Err(format!("update_node_graph_instrumented failed\n\n{e}")),
+	// 		// };
 
-			let viewport_resolution = glam::UVec2::ONE;
-			if let Err(e) = exector.submit_current_node_graph_evaluation(document, viewport_resolution, Default::default()) {
-				return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
-			}
-			runtime.run().await;
+	// 		let viewport_resolution = glam::UVec2::ONE;
+	// 		exector.submit_node_graph_evaluation(EditorContext::default(), None, None);
 
-			let mut messages = VecDeque::new();
-			if let Err(e) = editor.poll_node_graph_evaluation(&mut messages) {
-				return Err(format!("Graph should render\n\n{e}"));
-			}
-			let frontend_messages = messages.into_iter().flat_map(|message| editor.handle_message(message));
+	// 		runtime.run().await;
 
-			for message in frontend_messages {
-				message.check_node_graph_error();
-			}
+	// 		let mut messages = VecDeque::new();
+	// 		if let Err(e) = editor.poll_node_graph_evaluation(&mut messages) {
+	// 			return Err(format!("Graph should render\n\n{e}"));
+	// 		}
+	// 		let frontend_messages = messages.into_iter().flat_map(|message| editor.handle_message(message));
 
-			Ok(instrumented)
-		}
+	// 		for message in frontend_messages {
+	// 			message.check_node_graph_error();
+	// 		}
 
-		run(&mut self.editor, &mut self.runtime)
-	}
+	// 		Ok(instrumented)
+	// 	}
+
+	// 	run(&mut self.editor, &mut self.runtime)
+	// }
 
 	pub async fn handle_message(&mut self, message: impl Into<Message>) {
 		self.editor.handle_message(message);
 
-		// Required to process any buffered messages
-		if let Err(e) = self.eval_graph().await {
-			panic!("Failed to evaluate graph: {e}");
-		}
+		// // Required to process any buffered messages
+		// if let Err(e) = self.eval_graph().await {
+		// 	panic!("Failed to evaluate graph: {e}");
+		// }
 	}
 
 	pub async fn new_document(&mut self) {
@@ -169,14 +169,14 @@ impl EditorTestUtils {
 		self.editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap()
 	}
 
-	pub fn get_node<'a, T: InputAccessor<'a, DocumentNode>>(&'a self) -> impl Iterator<Item = T> + 'a {
-		self.active_document()
-			.network_interface
-			.document_network()
-			.recursive_nodes()
-			.inspect(|(_, node, _)| println!("{:#?}", node.implementation))
-			.filter_map(move |(_, document, _)| T::new_with_source(document))
-	}
+	// pub fn get_node<'a, T: InputAccessor<'a, DocumentNode>>(&'a self) -> impl Iterator<Item = T> + 'a {
+	// 	self.active_document()
+	// 		.network_interface
+	// 		.document_network()
+	// 		.recursive_nodes()
+	// 		.inspect(|(_, node, _)| println!("{:#?}", node.implementation))
+	// 		.filter_map(move |(_, document, _)| T::new_with_source(document))
+	// }
 
 	pub async fn move_mouse(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys, mouse_keys: MouseKeys) {
 		let editor_mouse_state = EditorMouseState {

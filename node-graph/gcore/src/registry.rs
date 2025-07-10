@@ -214,11 +214,12 @@ where
 			let input = Box::new(input);
 			let future = self.node.eval(input);
 			Box::pin(async move {
-				let out = dyn_any::downcast(future.await).unwrap_or_else(|e| panic!("DowncastBothNode Input {e} in: \n{:?}", self.node.node_name()));
+				let out = dyn_any::downcast(future.await).unwrap_or_else(|e| panic!("DowncastBothNode Error: {e}"));
 				*out
 			})
 		}
 	}
+
 	fn reset(&self) {
 		self.node.reset();
 	}

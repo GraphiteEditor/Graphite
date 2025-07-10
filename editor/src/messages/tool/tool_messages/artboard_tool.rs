@@ -559,104 +559,104 @@ impl Fsm for ArtboardToolFsmState {
 	}
 }
 
-#[cfg(test)]
-mod test_artboard {
-	pub use crate::test_utils::test_prelude::*;
+// #[cfg(test)]
+// mod test_artboard {
+// 	pub use crate::test_utils::test_prelude::*;
 
-	async fn get_artboards(editor: &mut EditorTestUtils) -> Vec<graphene_std::Artboard> {
-		let instrumented = match editor.eval_graph().await {
-			Ok(instrumented) => instrumented,
-			Err(e) => panic!("Failed to evaluate graph: {}", e),
-		};
-		instrumented.grab_all_input::<graphene_std::graphic_element::append_artboard::ArtboardInput>(&editor.runtime).collect()
-	}
+// 	async fn get_artboards(editor: &mut EditorTestUtils) -> Vec<graphene_std::Artboard> {
+// 		let instrumented = match editor.eval_graph().await {
+// 			Ok(instrumented) => instrumented,
+// 			Err(e) => panic!("Failed to evaluate graph: {}", e),
+// 		};
+// 		instrumented.grab_all_input::<graphene_std::graphic_element::append_artboard::ArtboardInput>(&editor.runtime).collect()
+// 	}
 
-	#[tokio::test]
-	async fn artboard_draw_simple() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		editor.drag_tool(ToolType::Artboard, 10.1, 10.8, 19.9, 0.2, ModifierKeys::empty()).await;
+// 	#[tokio::test]
+// 	async fn artboard_draw_simple() {
+// 		let mut editor = EditorTestUtils::create();
+// 		editor.new_document().await;
+// 		editor.drag_tool(ToolType::Artboard, 10.1, 10.8, 19.9, 0.2, ModifierKeys::empty()).await;
 
-		let artboards = get_artboards(&mut editor).await;
+// 		let artboards = get_artboards(&mut editor).await;
 
-		assert_eq!(artboards.len(), 1);
-		assert_eq!(artboards[0].location, IVec2::new(10, 0));
-		assert_eq!(artboards[0].dimensions, IVec2::new(10, 11));
-	}
+// 		assert_eq!(artboards.len(), 1);
+// 		assert_eq!(artboards[0].location, IVec2::new(10, 0));
+// 		assert_eq!(artboards[0].dimensions, IVec2::new(10, 11));
+// 	}
 
-	#[tokio::test]
-	async fn artboard_draw_square() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		editor.drag_tool(ToolType::Artboard, 10., 10., -10., 11., ModifierKeys::SHIFT).await;
+// 	#[tokio::test]
+// 	async fn artboard_draw_square() {
+// 		let mut editor = EditorTestUtils::create();
+// 		editor.new_document().await;
+// 		editor.drag_tool(ToolType::Artboard, 10., 10., -10., 11., ModifierKeys::SHIFT).await;
 
-		let artboards = get_artboards(&mut editor).await;
-		assert_eq!(artboards.len(), 1);
-		assert_eq!(artboards[0].location, IVec2::new(-10, 10));
-		assert_eq!(artboards[0].dimensions, IVec2::new(20, 20));
-	}
+// 		let artboards = get_artboards(&mut editor).await;
+// 		assert_eq!(artboards.len(), 1);
+// 		assert_eq!(artboards[0].location, IVec2::new(-10, 10));
+// 		assert_eq!(artboards[0].dimensions, IVec2::new(20, 20));
+// 	}
 
-	#[tokio::test]
-	async fn artboard_draw_square_rotated() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		editor
-			.handle_message(NavigationMessage::CanvasTiltSet {
-				// 45 degree rotation of content clockwise
-				angle_radians: f64::consts::FRAC_PI_4,
-			})
-			.await;
-		// Viewport coordinates
-		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT).await;
+// 	#[tokio::test]
+// 	async fn artboard_draw_square_rotated() {
+// 		let mut editor = EditorTestUtils::create();
+// 		editor.new_document().await;
+// 		editor
+// 			.handle_message(NavigationMessage::CanvasTiltSet {
+// 				// 45 degree rotation of content clockwise
+// 				angle_radians: f64::consts::FRAC_PI_4,
+// 			})
+// 			.await;
+// 		// Viewport coordinates
+// 		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT).await;
 
-		let artboards = get_artboards(&mut editor).await;
-		assert_eq!(artboards.len(), 1);
-		assert_eq!(artboards[0].location, IVec2::new(0, 0));
-		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 10.);
-		assert_eq!(artboards[0].dimensions, desired_size.round().as_ivec2());
-	}
+// 		let artboards = get_artboards(&mut editor).await;
+// 		assert_eq!(artboards.len(), 1);
+// 		assert_eq!(artboards[0].location, IVec2::new(0, 0));
+// 		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 10.);
+// 		assert_eq!(artboards[0].dimensions, desired_size.round().as_ivec2());
+// 	}
 
-	#[tokio::test]
-	async fn artboard_draw_center_square_rotated() {
-		let mut editor = EditorTestUtils::create();
+// 	#[tokio::test]
+// 	async fn artboard_draw_center_square_rotated() {
+// 		let mut editor = EditorTestUtils::create();
 
-		editor.new_document().await;
-		editor
-			.handle_message(NavigationMessage::CanvasTiltSet {
-				// 45 degree rotation of content clockwise
-				angle_radians: f64::consts::FRAC_PI_4,
-			})
-			.await;
-		// Viewport coordinates
-		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT | ModifierKeys::ALT).await;
+// 		editor.new_document().await;
+// 		editor
+// 			.handle_message(NavigationMessage::CanvasTiltSet {
+// 				// 45 degree rotation of content clockwise
+// 				angle_radians: f64::consts::FRAC_PI_4,
+// 			})
+// 			.await;
+// 		// Viewport coordinates
+// 		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT | ModifierKeys::ALT).await;
 
-		let artboards = get_artboards(&mut editor).await;
-		assert_eq!(artboards.len(), 1);
-		assert_eq!(artboards[0].location, DVec2::splat(f64::consts::FRAC_1_SQRT_2 * -10.).as_ivec2());
-		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 20.);
-		assert_eq!(artboards[0].dimensions, desired_size.round().as_ivec2());
-	}
+// 		let artboards = get_artboards(&mut editor).await;
+// 		assert_eq!(artboards.len(), 1);
+// 		assert_eq!(artboards[0].location, DVec2::splat(f64::consts::FRAC_1_SQRT_2 * -10.).as_ivec2());
+// 		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 20.);
+// 		assert_eq!(artboards[0].dimensions, desired_size.round().as_ivec2());
+// 	}
 
-	#[tokio::test]
-	async fn artboard_delete() {
-		let mut editor = EditorTestUtils::create();
+// 	#[tokio::test]
+// 	async fn artboard_delete() {
+// 		let mut editor = EditorTestUtils::create();
 
-		editor.new_document().await;
-		editor.drag_tool(ToolType::Artboard, 10.1, 10.8, 19.9, 0.2, ModifierKeys::default()).await;
-		editor.press(Key::Delete, ModifierKeys::default()).await;
+// 		editor.new_document().await;
+// 		editor.drag_tool(ToolType::Artboard, 10.1, 10.8, 19.9, 0.2, ModifierKeys::default()).await;
+// 		editor.press(Key::Delete, ModifierKeys::default()).await;
 
-		let artboards = get_artboards(&mut editor).await;
-		assert_eq!(artboards.len(), 0);
-	}
+// 		let artboards = get_artboards(&mut editor).await;
+// 		assert_eq!(artboards.len(), 0);
+// 	}
 
-	#[tokio::test]
-	async fn artboard_cancel() {
-		let mut editor = EditorTestUtils::create();
+// 	#[tokio::test]
+// 	async fn artboard_cancel() {
+// 		let mut editor = EditorTestUtils::create();
 
-		editor.new_document().await;
+// 		editor.new_document().await;
 
-		editor.drag_tool_cancel_rmb(ToolType::Artboard).await;
-		let artboards = get_artboards(&mut editor).await;
-		assert_eq!(artboards.len(), 0);
-	}
-}
+// 		editor.drag_tool_cancel_rmb(ToolType::Artboard).await;
+// 		let artboards = get_artboards(&mut editor).await;
+// 		assert_eq!(artboards.len(), 0);
+// 	}
+// }

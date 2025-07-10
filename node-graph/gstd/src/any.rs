@@ -61,7 +61,6 @@ impl<'i> Node<'i, Any<'i>> for EditorContextToContext {
 	fn eval(&'i self, input: Any<'i>) -> Self::Output {
 		Box::pin(async move {
 			let editor_context = dyn_any::downcast::<EditorContext>(input).unwrap();
-			log::debug!("evaluating with context: {:?}", editor_context.to_context());
 			self.first.eval(Box::new(editor_context.to_context())).await
 		})
 	}
@@ -141,7 +140,6 @@ impl<'i> Node<'i, Any<'i>> for NullificationNode {
 		let new_input = match dyn_any::try_downcast::<Context>(input) {
 			Ok(context) => match *context {
 				Some(context) => {
-					log::debug!("Nullifying inputs: {:?}", self.nullify);
 					let mut new_context = OwnedContextImpl::from(context);
 					new_context.nullify(&self.nullify);
 					Box::new(new_context.into_context()) as Any<'i>
@@ -153,7 +151,6 @@ impl<'i> Node<'i, Any<'i>> for NullificationNode {
 			},
 			Err(other_input) => other_input,
 		};
-
 		Box::pin(async move { self.first.eval(new_input).await })
 	}
 }

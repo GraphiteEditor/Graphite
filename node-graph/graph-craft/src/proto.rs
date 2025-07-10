@@ -8,7 +8,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Deref;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 /// A list of [`ProtoNode`]s, which is an intermediate step between the [`crate::document::NodeNetwork`] and the `BorrowTree` containing a single flattened network.
 pub struct ProtoNetwork {
 	/// A list of nodes stored in a Vec to allow for sorting.

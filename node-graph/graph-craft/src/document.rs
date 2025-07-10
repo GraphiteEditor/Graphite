@@ -672,7 +672,6 @@ impl NodeNetwork {
 			}
 		}
 
-		log::debug!("protonetwork: {:?}", protonetwork);
 		Ok((ProtoNetwork::from_vec(protonetwork), value_connector_callers, protonode_callers))
 	}
 
@@ -967,7 +966,7 @@ impl NodeNetwork {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ProtonodeEntry {
 	Protonode(ProtoNode),
 	// If deduplicated, then any upstream node which this node previously called needs to map to the new protonode

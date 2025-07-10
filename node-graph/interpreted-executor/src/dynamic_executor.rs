@@ -1,17 +1,15 @@
 use crate::node_registry::{CACHE_NODES, NODE_REGISTRY};
 use dyn_any::StaticType;
-use graph_craft::document::ProtonodeEntry;
 use graph_craft::document::value::{TaggedValue, UpcastNode};
 use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext, UpstreamInputMetadata};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::{Type, concrete};
+use graphene_std::Context;
 use graphene_std::any::{EditorContext, EditorContextToContext, NullificationNode};
 use graphene_std::memo::IntrospectMode;
 use graphene_std::uuid::{CompiledProtonodeInput, NodeId, SNI};
-use graphene_std::{Context, MemoHash};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::ptr::null;
 use std::sync::Arc;
 
 /// An executor of a node graph that does not require an online compilation server, and instead uses `Box<dyn ...>`.
@@ -365,13 +363,6 @@ impl BorrowTree {
 		// Move the value into the upcast node instead of cloning it
 		match proto_node.construction_args {
 			ConstructionArgs::Value(value_args) => {
-				// The constructor for nodes with value construction args (value nodes) is not called.
-				// let node = if let TaggedValue::ApplicationIo(api) = &*value {
-				// 	let editor_api = UpcastAsRefNode::new(api.clone());
-				// 	let node = Box::new(editor_api) as TypeErasedBox<'_>;
-				// 	NodeContainer::new(node)
-				// } else {
-
 				let upcasted = UpcastNode::new(value_args.value);
 				let node = Box::new(upcasted) as TypeErasedBox<'_>;
 				let value_node = NodeContainer::new(node);
@@ -477,17 +468,23 @@ impl BorrowTree {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use graph_craft::document::value::TaggedValue;
+	use graph_craft::{document::value::TaggedValue, proto::NodeValueArgs};
 	use graphene_std::uuid::NodeId;
 
 	#[test]
 	fn push_node_sync() {
 		let mut tree = BorrowTree::default();
-		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32).into()), NodeId(0));
+		let val_1_protonode = ProtoNode::value(
+			ConstructionArgs::Value(NodeValueArgs {
+				value: TaggedValue::U32(2u32).into(),
+				connector_paths: Vec::new(),
+			}),
+			NodeId(0),
+		);
 		let context = TypingContext::default();
 		let future = tree.push_node(val_1_protonode, &context);
 		futures::executor::block_on(future).unwrap();
-		let _node = tree.get(NodeId(0)).unwrap();
+		let _node = tree.nodes.get(&NodeId(0)).expect("Node should be added to tree");
 		let result = futures::executor::block_on(tree.eval(NodeId(0), ()));
 		assert_eq!(result, Some(2u32));
 	}

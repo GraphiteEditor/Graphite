@@ -91,7 +91,6 @@ impl NodeGraphExecutor {
 		let node_runtime = NodeRuntime::new(request_receiver, response_sender);
 
 		let node_executor = Self {
-			busy: false,
 			futures: HashMap::new(),
 			runtime_io: NodeRuntimeIO::with_channels(request_sender, response_receiver),
 		};
@@ -99,16 +98,16 @@ impl NodeGraphExecutor {
 	}
 
 	/// Updates the network to monitor all inputs. Useful for the testing.
-	#[cfg(test)]
-	pub(crate) fn update_node_graph_instrumented(&mut self, document: &mut DocumentMessageHandler) -> Result<Instrumented, String> {
-		let mut network = document.network_interface.document_network().clone();
-		let instrumented = Instrumented::new(&mut network);
+	// #[cfg(test)]
+	// pub(crate) fn update_node_graph_instrumented(&mut self, document: &mut DocumentMessageHandler) -> Result<Instrumented, String> {
+	// 	let mut network = document.network_interface.document_network().clone();
+	// 	let instrumented = Instrumented::new(&mut network);
 
-		self.runtime_io
-			.send(GraphRuntimeRequest::CompilationRequest(CompilationRequest { network, ..Default::default() }))
-			.map_err(|e| e.to_string())?;
-		Ok(instrumented)
-	}
+	// 	self.runtime_io
+	// 		.send(GraphRuntimeRequest::CompilationRequest(CompilationRequest { network, ..Default::default() }))
+	// 		.map_err(|e| e.to_string())?;
+	// 	Ok(instrumented)
+	// }
 
 	/// Compile the network
 	pub fn submit_node_graph_compilation(&mut self, compilation_request: CompilationRequest) {

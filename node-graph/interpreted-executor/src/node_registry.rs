@@ -24,7 +24,6 @@ use std::collections::HashMap;
 #[cfg(feature = "gpu")]
 use std::sync::Arc;
 #[cfg(feature = "gpu")]
-use wgpu_executor::WgpuExecutor;
 use wgpu_executor::{WgpuSurface, WindowHandle};
 
 // TODO: turn into hashmap

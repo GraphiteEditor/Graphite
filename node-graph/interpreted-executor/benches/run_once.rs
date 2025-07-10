@@ -11,7 +11,7 @@ fn run_once(c: &mut Criterion) {
 		g.bench_function(name, |b| {
 			b.iter_batched(
 				|| setup_network(name),
-				|(executor, _)| futures::executor::block_on(executor.tree().eval_tagged_value(executor.output(), criterion::black_box(context.clone()))).unwrap(),
+				|(executor, _)| futures::executor::block_on(executor.tree().eval_tagged_value(executor.output().unwrap(), criterion::black_box(context.clone()))).unwrap(),
 				criterion::BatchSize::SmallInput,
 			)
 		});
