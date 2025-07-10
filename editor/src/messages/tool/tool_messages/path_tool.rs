@@ -1468,7 +1468,7 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
-				if matches!(self, Self::Dragging(_) | Self::MoldingSegment) {
+				if matches!(self, Self::Dragging(_)) {
 					for (outline, transform) in &tool_data.ghost_outline {
 						overlay_context.outline(outline.iter(), *transform, Some(COLOR_OVERLAY_GRAY));
 					}

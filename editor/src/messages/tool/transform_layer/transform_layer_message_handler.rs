@@ -316,10 +316,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					}
 				}
 
-				for layer in document.metadata().all_layers() {
-					if !document.network_interface.is_artboard(&layer.to_node(), &[]) {
-						continue;
-					};
+				// for layer in document.metadata().all_layers() {
+				// 	if !document.network_interface.is_artboard(&layer.to_node(), &[]) {
+				// 		continue;
+				// 	};
 
 				let viewport_box = input.viewport_bounds.size();
 				let axis_constraint = self.transform_operation.axis_constraint();
