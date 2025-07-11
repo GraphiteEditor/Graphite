@@ -150,3 +150,9 @@ pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 15;
 
 // INPUT
 pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
+
+/// SPIRAL NODE INPUT INDICES
+pub const SPIRAL_TYPE_INDEX: usize = 1;
+pub const SPIRAL_INNER_RADIUS: usize = 2;
+pub const SPIRAL_OUTER_RADIUS_INDEX: usize = 3;
+pub const SPIRAL_TURNS_INDEX: usize = 4;

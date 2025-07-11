@@ -426,14 +426,12 @@ impl PointRadiusHandle {
 		};
 
 		let viewport_transform = document.network_interface.document_metadata().transform_to_viewport(layer);
-		let document_transform = document.network_interface.document_metadata().transform_to_document(layer);
-		let center = viewport_transform.transform_point2(DVec2::ZERO);
 		let radius_index = self.radius_index;
 
 		let original_radius = self.initial_radius;
 
-		let delta = viewport_transform.inverse().transform_point2(input.mouse.position) - document_transform.inverse().transform_point2(drag_start);
-		let radius = document.metadata().document_to_viewport.transform_point2(drag_start) - center;
+		let delta = viewport_transform.inverse().transform_point2(input.mouse.position) - viewport_transform.inverse().transform_point2(drag_start);
+		let radius = viewport_transform.inverse().transform_point2(drag_start);
 		let projection = delta.project_onto(radius);
 		let sign = radius.dot(delta).signum();
 

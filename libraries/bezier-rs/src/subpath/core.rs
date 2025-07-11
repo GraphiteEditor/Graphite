@@ -1,7 +1,8 @@
 use super::*;
-use crate::consts::*;
-use crate::utils::format_point;
+use crate::utils::{calculate_b, format_point, spiral_arc_length, spiral_point, spiral_tangent};
+use crate::{BezierHandles, TValue, consts::*};
 use glam::DVec2;
+use std::f64::consts::TAU;
 use std::fmt::Write;
 
 /// Functionality relating to core `Subpath` operations, such as constructors and `iter`.
@@ -269,6 +270,43 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 			.concat(),
 			true,
 		)
+	}
+
+	pub fn new_spiral(a: f64, outer_radius: f64, turns: f64, delta_theta: f64, spiral_type: SpiralType) -> Self {
+		let mut manipulator_groups = Vec::new();
+		let mut prev_in_handle = None;
+		let theta_end = turns * std::f64::consts::TAU;
+
+		let b = calculate_b(a, turns, outer_radius, spiral_type);
+
+		let mut theta = 0.0;
+		while theta < theta_end {
+			let theta_next = f64::min(theta + delta_theta, theta_end);
+
+			let p0 = spiral_point(theta, a, b, spiral_type);
+			let p3 = spiral_point(theta_next, a, b, spiral_type);
+			let t0 = spiral_tangent(theta, a, b, spiral_type);
+			let t1 = spiral_tangent(theta_next, a, b, spiral_type);
+
+			let arc_len = spiral_arc_length(theta, theta_next, a, b, spiral_type);
+			let d = arc_len / 3.0;
+
+			let p1 = p0 + d * t0;
+			let p2 = p3 - d * t1;
+
+			manipulator_groups.push(ManipulatorGroup::new(p0, prev_in_handle, Some(p1)));
+			prev_in_handle = Some(p2);
+
+			// If final segment, end with anchor at theta_end
+			if (theta_next - theta_end).abs() < f64::EPSILON {
+				manipulator_groups.push(ManipulatorGroup::new(p3, prev_in_handle, None));
+				break;
+			}
+
+			theta = theta_next;
+		}
+
+		Self::new(manipulator_groups, false)
 	}
 
 	/// Constructs an ellipse with `corner1` and `corner2` as the two corners of the bounding box.

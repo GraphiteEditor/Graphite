@@ -6,6 +6,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::polygon_shape::PolygonGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
+use crate::messages::tool::common_functionality::shapes::spiral_shape::SpiralGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::star_shape::StarGizmoHandler;
 use glam::DVec2;
 use std::collections::VecDeque;
@@ -23,6 +24,7 @@ pub enum ShapeGizmoHandlers {
 	None,
 	Star(StarGizmoHandler),
 	Polygon(PolygonGizmoHandler),
+	Spiral(SpiralGizmoHandler),
 }
 
 impl ShapeGizmoHandlers {
@@ -32,15 +34,17 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Star(_) => "star",
 			Self::Polygon(_) => "polygon",
+			Self::Spiral(_) => "spiral",
 			Self::None => "none",
 		}
 	}
 
 	/// Dispatches interaction state updates to the corresponding shape-specific handler.
-	pub fn handle_state(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn handle_state(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		match self {
-			Self::Star(h) => h.handle_state(layer, mouse_position, document, responses),
-			Self::Polygon(h) => h.handle_state(layer, mouse_position, document, responses),
+			Self::Star(h) => h.handle_state(layer, mouse_position, document, input, responses),
+			Self::Polygon(h) => h.handle_state(layer, mouse_position, document, input, responses),
+			Self::Spiral(h) => h.handle_state(layer, mouse_position, document, input, responses),
 			Self::None => {}
 		}
 	}
@@ -50,6 +54,7 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Star(h) => h.is_any_gizmo_hovered(),
 			Self::Polygon(h) => h.is_any_gizmo_hovered(),
+			Self::Spiral(h) => h.is_any_gizmo_hovered(),
 			Self::None => false,
 		}
 	}
@@ -59,6 +64,7 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Star(h) => h.handle_click(),
 			Self::Polygon(h) => h.handle_click(),
+			Self::Spiral(h) => h.handle_click(),
 			Self::None => {}
 		}
 	}
@@ -68,6 +74,7 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Star(h) => h.handle_update(drag_start, document, input, responses),
 			Self::Polygon(h) => h.handle_update(drag_start, document, input, responses),
+			Self::Spiral(h) => h.handle_update(drag_start, document, input, responses),
 			Self::None => {}
 		}
 	}
@@ -77,6 +84,7 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Star(h) => h.cleanup(),
 			Self::Polygon(h) => h.cleanup(),
+			Self::Spiral(h) => h.cleanup(),
 			Self::None => {}
 		}
 	}
@@ -94,6 +102,7 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Star(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Polygon(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
+			Self::Spiral(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::None => {}
 		}
 	}
@@ -110,6 +119,7 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Star(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Polygon(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
+			Self::Spiral(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::None => {}
 		}
 	}
@@ -147,6 +157,11 @@ impl GizmoManager {
 			return Some(ShapeGizmoHandlers::Polygon(PolygonGizmoHandler::default()));
 		}
 
+		// Spiral
+		if graph_modification_utils::get_spiral_id(layer, &document.network_interface).is_some() {
+			return Some(ShapeGizmoHandlers::Spiral(SpiralGizmoHandler::default()));
+		}
+
 		None
 	}
 
@@ -158,12 +173,12 @@ impl GizmoManager {
 	/// Called every frame to check selected layers and update the active shape gizmo, if hovered.
 	///
 	/// Also groups all shape layers with the same kind of gizmo to support overlays for multi-shape editing.
-	pub fn handle_actions(&mut self, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn handle_actions(&mut self, mouse_position: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		let mut handlers_layer: Vec<(ShapeGizmoHandlers, Vec<LayerNodeIdentifier>)> = Vec::new();
 
 		for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 			if let Some(mut handler) = Self::detect_shape_handler(layer, document) {
-				handler.handle_state(layer, mouse_position, document, responses);
+				handler.handle_state(layer, mouse_position, document, input, responses);
 				let is_hovered = handler.is_any_gizmo_hovered();
 
 				if is_hovered {

@@ -1,6 +1,7 @@
 use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
-use crate::{ManipulatorGroup, Subpath};
+use crate::{ManipulatorGroup, SpiralType, Subpath};
 use glam::{BVec2, DMat2, DVec2};
+use std::f64::consts::TAU;
 use std::fmt::Write;
 
 #[derive(Copy, Clone, PartialEq)]
@@ -300,6 +301,90 @@ pub fn format_point(svg: &mut String, prefix: &str, x: f64, y: f64) -> std::fmt:
 	svg.truncate(trimmed_length);
 
 	Ok(())
+}
+
+pub fn calculate_b(a: f64, turns: f64, outer_radius: f64, spiral_type: SpiralType) -> f64 {
+	match spiral_type {
+		SpiralType::Archimedean => {
+			let total_theta = turns * TAU;
+			(outer_radius - a) / total_theta
+		}
+		SpiralType::Logarithmic => {
+			let total_theta = turns * TAU;
+			((outer_radius.abs() / a).ln()) / total_theta
+		}
+	}
+}
+
+/// Returns a point on the given spiral type at angle `theta`.
+pub fn spiral_point(theta: f64, a: f64, b: f64, spiral_type: SpiralType) -> DVec2 {
+	match spiral_type {
+		SpiralType::Archimedean => archimedean_spiral_point(theta, a, b),
+		SpiralType::Logarithmic => log_spiral_point(theta, a, b),
+	}
+}
+
+/// Returns the tangent direction at angle `theta` for the given spiral type.
+pub fn spiral_tangent(theta: f64, a: f64, b: f64, spiral_type: SpiralType) -> DVec2 {
+	match spiral_type {
+		SpiralType::Archimedean => archimedean_spiral_tangent(theta, a, b),
+		SpiralType::Logarithmic => log_spiral_tangent(theta, a, b),
+	}
+}
+
+/// Computes arc length between two angles for the given spiral type.
+pub fn spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64, spiral_type: SpiralType) -> f64 {
+	match spiral_type {
+		SpiralType::Archimedean => archimedean_spiral_arc_length(theta_start, theta_end, a, b),
+		SpiralType::Logarithmic => log_spiral_arc_length(theta_start, theta_end, a, b),
+	}
+}
+
+/// Returns a point on a logarithmic spiral at angle `theta`.
+pub fn log_spiral_point(theta: f64, a: f64, b: f64) -> DVec2 {
+	let r = a * (b * theta).exp(); // a * e^(bθ)
+	DVec2::new(r * theta.cos(), -r * theta.sin())
+}
+
+/// Computes arc length along a logarithmic spiral between two angles.
+pub fn log_spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64) -> f64 {
+	let factor = (1. + b * b).sqrt();
+	(a / b) * factor * ((b * theta_end).exp() - (b * theta_start).exp())
+}
+
+/// Returns the tangent direction of a logarithmic spiral at angle `theta`.
+pub fn log_spiral_tangent(theta: f64, a: f64, b: f64) -> DVec2 {
+	let r = a * (b * theta).exp();
+	let dx = r * (b * theta.cos() - theta.sin());
+	let dy = r * (b * theta.sin() + theta.cos());
+
+	DVec2::new(dx, -dy).normalize_or(DVec2::X)
+}
+
+/// Returns a point on an Archimedean spiral at angle `theta`.
+pub fn archimedean_spiral_point(theta: f64, a: f64, b: f64) -> DVec2 {
+	let r = a + b * theta;
+	DVec2::new(r * theta.cos(), -r * theta.sin())
+}
+
+/// Returns the tangent direction of an Archimedean spiral at angle `theta`.
+pub fn archimedean_spiral_tangent(theta: f64, a: f64, b: f64) -> DVec2 {
+	let r = a + b * theta;
+	let dx = b * theta.cos() - r * theta.sin();
+	let dy = b * theta.sin() + r * theta.cos();
+	DVec2::new(dx, -dy).normalize_or(DVec2::X)
+}
+
+/// Computes arc length along an Archimedean spiral between two angles.
+pub fn archimedean_spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64) -> f64 {
+	archimedean_spiral_arc_length_origin(theta_end, a, b) - archimedean_spiral_arc_length_origin(theta_start, a, b)
+}
+
+/// Computes arc length from origin to a point on Archimedean spiral at angle `theta`.
+pub fn archimedean_spiral_arc_length_origin(theta: f64, a: f64, b: f64) -> f64 {
+	let r = a + b * theta;
+	let sqrt_term = (r * r + b * b).sqrt();
+	(r * sqrt_term + b * b * ((r + sqrt_term).ln())) / (2.0 * b)
 }
 
 #[cfg(test)]
