@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::messages::tool::utility_types::DocumentToolData;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct EyedropperTool {
 	fsm_state: EyedropperToolFsmState,
 	data: EyedropperToolData,
@@ -39,6 +39,7 @@ impl LayoutHolder for EyedropperTool {
 	}
 }
 
+#[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for EyedropperTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		self.fsm_state.process_event(message, &mut self.data, tool_data, &(), responses, true);

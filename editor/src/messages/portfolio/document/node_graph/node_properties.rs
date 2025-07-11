@@ -1280,6 +1280,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 
 	let mut corner_radius_row_2 = vec![Separator::new(SeparatorType::Unrelated).widget_holder()];
 	corner_radius_row_2.push(TextLabel::new("").widget_holder());
+	add_blank_assist(&mut corner_radius_row_2);
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
@@ -1387,8 +1388,6 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	// Size Y
 	let size_y = number_widget(ParameterWidgetsInfo::new(node_id, HeightInput::INDEX, true, context), NumberInput::default());
 
-	add_blank_assist(&mut corner_radius_row_2);
-
 	// Clamped
 	let clamped = bool_widget(ParameterWidgetsInfo::new(node_id, ClampedInput::INDEX, true, context), CheckboxInput::default());
 
@@ -1442,7 +1441,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 						if let Some(field) = graphene_std::registry::NODE_METADATA
 							.lock()
 							.unwrap()
-							.get(&proto_node_identifier)
+							.get(proto_node_identifier)
 							.and_then(|metadata| metadata.fields.get(input_index))
 						{
 							number_options = (field.number_min, field.number_max, field.number_hard_min, field.number_hard_max, field.number_mode_range);

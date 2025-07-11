@@ -29,7 +29,7 @@ use graphene_std::renderer::Rect;
 use graphene_std::transform::ReferencePoint;
 use std::fmt;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct SelectTool {
 	fsm_state: SelectToolFsmState,
 	tool_data: SelectToolData,
@@ -272,6 +272,7 @@ impl LayoutHolder for SelectTool {
 	}
 }
 
+#[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let mut redraw_reference_pivot = false;
@@ -971,6 +972,14 @@ impl Fsm for SelectToolFsmState {
 						(SelectionShapeType::Box, _) => overlay_context.quad(quad, None, fill_color),
 						(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, None, fill_color),
 					}
+				}
+
+				if let Self::Dragging { .. } = self {
+					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
+					let document_start = document.metadata().document_to_viewport.inverse().transform_point2(quad.top_left());
+					let document_current = document.metadata().document_to_viewport.inverse().transform_point2(quad.bottom_right());
+
+					overlay_context.translation_box(document_current - document_start, quad, None);
 				}
 
 				self

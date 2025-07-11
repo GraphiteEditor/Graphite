@@ -38,6 +38,7 @@ use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::style::ViewMode;
 use std::time::Duration;
 
+#[derive(ExtractField)]
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
@@ -48,7 +49,7 @@ pub struct DocumentMessageData<'a> {
 	pub device_pixel_ratio: f64,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
 #[serde(default)]
 pub struct DocumentMessageHandler {
 	// ======================
@@ -168,6 +169,7 @@ impl Default for DocumentMessageHandler {
 	}
 }
 
+#[message_handler_data]
 impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessageHandler {
 	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, data: DocumentMessageData) {
 		let DocumentMessageData {

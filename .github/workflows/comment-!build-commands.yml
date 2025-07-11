@@ -73,9 +73,10 @@ jobs:
           rustc --version
 
       - name: ✂ Replace template in <head> of index.html
+        env:
+          INDEX_HTML_HEAD_REPLACEMENT: ""
         run: |
           # Remove the INDEX_HTML_HEAD_REPLACEMENT environment variable for build links (not master deploys)
-          export INDEX_HTML_HEAD_REPLACEMENT=""
           sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
 
       - name: ⌨ Set build command based on comment

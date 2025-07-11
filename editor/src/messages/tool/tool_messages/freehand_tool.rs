@@ -13,7 +13,7 @@ use graphene_std::Color;
 use graphene_std::vector::VectorModificationType;
 use graphene_std::vector::{PointId, SegmentId};
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct FreehandTool {
 	fsm_state: FreehandToolFsmState,
 	data: FreehandToolData,
@@ -116,6 +116,7 @@ impl LayoutHolder for FreehandTool {
 	}
 }
 
+#[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FreehandTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let ToolMessage::Freehand(FreehandToolMessage::UpdateOptions(action)) = message else {
