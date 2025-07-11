@@ -1,0 +1,32 @@
+[package]
+name = "graphene-element-nodes"
+version = "0.1.0"
+edition = "2024"
+description = "graphene element nodes"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["serde"]
+serde = ["dep:serde"]
+
+[dependencies]
+# Local dependencies
+dyn-any = { workspace = true }
+graphene-core = { workspace = true }
+node-macro = { workspace = true }
+bezier-rs = { workspace = true }
+
+# Workspace dependencies
+glam = { workspace = true }
+specta = { workspace = true }
+rand = { workspace = true }
+log = { workspace = true }
+
+# Optional workspace dependencies
+serde = { workspace = true, optional = true, features = ["derive"] }
+
+[dev-dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+graphene-math-nodes = { workspace = true }

@@ -224,7 +224,7 @@ tagged_value! {
 	XY(graphene_core::extract_xy::XY),
 	RedGreenBlue(graphene_raster_nodes::adjustments::RedGreenBlue),
 	RedGreenBlueAlpha(graphene_raster_nodes::adjustments::RedGreenBlueAlpha),
-	RealTimeMode(graphene_core::animation::RealTimeMode),
+	RealTimeMode(graphene_element_nodes::animation::RealTimeMode),
 	NoiseType(graphene_raster_nodes::adjustments::NoiseType),
 	FractalType(graphene_raster_nodes::adjustments::FractalType),
 	CellularDistanceFunction(graphene_raster_nodes::adjustments::CellularDistanceFunction),

@@ -8,6 +8,7 @@ members = [
 	"node-graph/gbrush",
 	"node-graph/gcore",
 	"node-graph/gstd",
+	"node-graph/gelement-nodes",
 	"node-graph/gmath-nodes",
 	"node-graph/gpath-bool",
 	"node-graph/graph-craft",
@@ -29,6 +30,7 @@ default-members = [
 	"node-graph/gbrush",
 	"node-graph/gcore",
 	"node-graph/gstd",
+	"node-graph/gelement-nodes",
 	"node-graph/gmath-nodes",
 	"node-graph/gpath-bool",
 	"node-graph/graph-craft",
@@ -50,6 +52,7 @@ path-bool = { path = "libraries/path-bool" }
 graphene-application-io = { path = "node-graph/gapplication-io" }
 graphene-brush = { path = "node-graph/gbrush" }
 graphene-core = { path = "node-graph/gcore" }
+graphene-element-nodes = { path = "node-graph/gelement-nodes" }
 graphene-math-nodes = { path = "node-graph/gmath-nodes" }
 graphene-path-bool = { path = "node-graph/gpath-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
