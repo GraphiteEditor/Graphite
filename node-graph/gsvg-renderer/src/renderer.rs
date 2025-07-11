@@ -273,17 +273,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 					}
 
 					if let Some(mask) = instance.mask {
-						let uuid = generate_uuid();
-						let mask_type = if mask.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
-						let mut svg = SvgRender::new();
-						mask.render_svg(&mut svg, &render_params.for_clipper());
-
-						write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
-						mask_type.write_to_defs(&mut attributes.0.svg_defs, uuid, svg.svg.to_svg_string());
-						let id = format!("mask-{}", uuid);
-						let selector = format!("url(#{id})");
-
-						attributes.push(mask_type.to_attribute(), selector);
+						attributes.push_mask(mask, render_params.for_clipper());
 					}
 				},
 				|render| {
@@ -534,17 +524,7 @@ impl GraphicElementRendered for VectorDataTable {
 				}
 
 				if let Some(mask) = instance.mask {
-					let uuid = generate_uuid();
-					let mask_type = if mask.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
-					let mut svg = SvgRender::new();
-					mask.render_svg(&mut svg, &render_params.for_clipper());
-
-					write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
-					mask_type.write_to_defs(&mut attributes.0.svg_defs, uuid, svg.svg.to_svg_string());
-					let id = format!("mask-{}", uuid);
-					let selector = format!("url(#{id})");
-
-					attributes.push(mask_type.to_attribute(), selector);
+					attributes.push_mask(mask, render_params.for_clipper());
 				}
 
 				attributes.push_val(fill_and_stroke);
@@ -1046,23 +1026,7 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 			// Unlike path and g elements, the mask attribute of image element is broken and
 			// behaves differently across different browsers. And so we use g to have it work correctly.
 			if let Some(mask) = instance.mask {
-				render.parent_tag(
-					"g",
-					|attributes| {
-						let uuid = generate_uuid();
-						let mask_type = if mask.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
-						let mut svg = SvgRender::new();
-						mask.render_svg(&mut svg, &render_params.for_clipper());
-
-						write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
-						mask_type.write_to_defs(&mut attributes.0.svg_defs, uuid, svg.svg.to_svg_string());
-						let id = format!("mask-{}", uuid);
-						let selector = format!("url(#{id})");
-
-						attributes.push(mask_type.to_attribute(), selector);
-					},
-					render_image,
-				);
+				render.parent_tag("g", |attributes| attributes.push_mask(mask, render_params.for_clipper()), render_image);
 			} else {
 				render_image(render)
 			}
@@ -1382,5 +1346,18 @@ impl SvgRenderAttrs<'_> {
 	}
 	pub fn push_val(&mut self, value: impl Into<SvgSegment>) {
 		self.0.svg.push(value.into());
+	}
+	fn push_mask(&mut self, mask: &GraphicElement, render_params: RenderParams) {
+		let uuid = generate_uuid();
+		let mut svg = SvgRender::new();
+		mask.render_svg(&mut svg, &render_params);
+
+		let id = format!("mask-{}", uuid);
+		write!(&mut self.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
+		write!(&mut self.0.svg_defs, r##"<mask id="{id}" mask-type="lumninance">{}</mask>"##, svg.svg.to_svg_string()).unwrap();
+
+		let selector = format!("url(#{id})");
+
+		self.push("mask", selector);
 	}
 }
