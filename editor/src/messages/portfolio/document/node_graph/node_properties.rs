@@ -118,18 +118,24 @@ pub(crate) fn property_from_type(
 	node_id: NodeId,
 	index: usize,
 	ty: &Type,
-	number_options: (Option<f64>, Option<f64>, Option<(f64, f64)>),
+	number_options: (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<(f64, f64)>),
 	unit: Option<&str>,
 	display_decimal_places: Option<u32>,
 	step: Option<f64>,
 	context: &mut NodePropertiesContext,
 ) -> Result<Vec<LayoutGroup>, Vec<LayoutGroup>> {
-	let (mut number_min, mut number_max, range) = number_options;
+	let (mut number_min, mut number_max, number_hard_min, number_hard_max, range) = number_options;
 	let mut number_input = NumberInput::default();
 	if let Some((range_start, range_end)) = range {
 		number_min = Some(range_start);
 		number_max = Some(range_end);
 		number_input = number_input.mode_range().min(range_start).max(range_end);
+	}
+	if let Some(hard_min) = number_hard_min {
+		number_input = number_input.hard_min(hard_min)
+	}
+	if let Some(hard_max) = number_hard_max {
+		number_input = number_input.hard_max(hard_max)
 	}
 	if let Some(unit) = unit {
 		number_input = number_input.unit(unit);
@@ -1427,7 +1433,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 					return Vec::new();
 				};
 
-				let mut number_options = (None, None, None);
+				let mut number_options = (None, None, None, None, None);
 				let mut display_decimal_places = None;
 				let mut step = None;
 				let mut unit_suffix = None;
@@ -1439,7 +1445,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 							.get(&proto_node_identifier)
 							.and_then(|metadata| metadata.fields.get(input_index))
 						{
-							number_options = (field.number_min, field.number_max, field.number_mode_range);
+							number_options = (field.number_min, field.number_max, field.number_hard_min, field.number_hard_max, field.number_mode_range);
 							display_decimal_places = field.number_display_decimal_places;
 							unit_suffix = field.unit;
 							step = field.number_step;

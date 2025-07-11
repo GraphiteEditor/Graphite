@@ -255,6 +255,15 @@ pub struct NumberInput {
 	#[serde(rename = "rangeMax")]
 	pub range_max: Option<f64>,
 
+	// TODO: Make this (and range_max) apply to both Range and Increment modes when dragging with the mouse
+	#[serde(rename = "hardMin")]
+	#[widget_builder(skip)]
+	pub hard_min: Option<f64>,
+
+	#[serde(rename = "hardMax")]
+	#[widget_builder(skip)]
+	pub hard_max: Option<f64>,
+
 	// Styling
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
@@ -293,6 +302,14 @@ impl NumberInput {
 	pub fn max(mut self, val: f64) -> Self {
 		self.max = Some(val);
 		self.range_max = Some(val);
+		self
+	}
+	pub fn hard_min(mut self, val: f64) -> Self {
+		self.hard_min = Some(val);
+		self
+	}
+	pub fn hard_max(mut self, val: f64) -> Self {
+		self.hard_max = Some(val);
 		self
 	}
 	pub fn mode_range(mut self) -> Self {

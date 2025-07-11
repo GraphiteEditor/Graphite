@@ -162,8 +162,14 @@ fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill + SetClip>(
 	)]
 	mut value: T,
 	blend_mode: BlendMode,
-	#[default(100.)] opacity: Percentage,
-	#[default(100.)] fill: Percentage,
+	#[hard_min(0.)]
+	#[hard_max(100.)]
+	#[default(100.)]
+	opacity: Percentage,
+	#[hard_min(0.)]
+	#[hard_max(100.)]
+	#[default(100.)]
+	fill: Percentage,
 	#[default(false)] clip: bool,
 ) -> T {
 	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or Instance<T>) rather than applying to each row in its own table, which produces the undesired result

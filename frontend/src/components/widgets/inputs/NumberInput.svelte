@@ -25,8 +25,12 @@
 	// Value
 	// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.
 	export let value: number | undefined = undefined; // NOTE: Do not update this directly, do so by calling `updateValue()` instead.
+
 	export let min: number | undefined = undefined;
 	export let max: number | undefined = undefined;
+	export let hardMin: number | undefined = undefined;
+	export let hardMax: number | undefined = undefined;
+
 	export let isInteger = false;
 
 	// Number presentation
@@ -130,6 +134,9 @@
 		if (mode == "Increment") {
 			if (typeof min === "number") sanitized = Math.max(sanitized, min);
 			if (typeof max === "number") sanitized = Math.min(sanitized, max);
+		} else {
+			if (typeof hardMin === "number") sanitized = Math.max(sanitized, hardMin);
+			if (typeof hardMax === "number") sanitized = Math.min(sanitized, hardMax);
 		}
 		text = displayText(sanitized, unit);
 	}
@@ -145,6 +152,9 @@
 			if (mode == "Increment") {
 				if (typeof min === "number" && !Number.isNaN(min)) newValueValidated = Math.max(newValueValidated, min);
 				if (typeof max === "number" && !Number.isNaN(max)) newValueValidated = Math.min(newValueValidated, max);
+			} else {
+				if (typeof hardMin === "number" && !Number.isNaN(hardMin)) newValueValidated = Math.max(newValueValidated, hardMin);
+				if (typeof hardMax === "number" && !Number.isNaN(hardMax)) newValueValidated = Math.min(newValueValidated, hardMax);
 			}
 
 			if (isInteger) newValueValidated = Math.round(newValueValidated);
