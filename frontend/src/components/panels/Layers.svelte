@@ -54,6 +54,7 @@
 	let draggingData: undefined | DraggingData = undefined;
 	let fakeHighlightOfNotYetSelectedLayerBeingDragged: undefined | bigint = undefined;
 	let dragInPanel = false;
+	let isDuplicating = false;
 
 	// Interactive clipping
 	let layerToClipUponClick: LayerListingInfo | undefined = undefined;
@@ -382,8 +383,9 @@
 
 		// Set style of cursor for drag
 		if (event.dataTransfer) {
-			event.dataTransfer.dropEffect = "move";
-			event.dataTransfer.effectAllowed = "move";
+			isDuplicating = event.altKey;
+			event.dataTransfer.dropEffect = isDuplicating ? "copy" : "move";
+			event.dataTransfer.effectAllowed = isDuplicating ? "copy" : "move";
 		}
 
 		if (list) draggingData = calculateDragIndex(list, event.clientY, select);
@@ -406,11 +408,15 @@
 		e.preventDefault();
 
 		if (e.dataTransfer) {
-			// Moving layers
+			// Moving or duplicating layers
 			if (e.dataTransfer.items.length === 0) {
 				if (draggable && dragInPanel) {
 					select?.();
-					editor.handle.moveLayerInTree(insertParentId, insertIndex);
+					if (isDuplicating) {
+						editor.handle.duplicateLayer(insertParentId, insertIndex);
+					} else {
+						editor.handle.moveLayerInTree(insertParentId, insertIndex);
+					}
 				}
 			}
 			// Importing files
@@ -444,6 +450,7 @@
 		draggingData = undefined;
 		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;
 		dragInPanel = false;
+		isDuplicating = false;
 	}
 
 	function rebuildLayerHierarchy(updateDocumentLayerStructure: DocumentLayerStructure) {
