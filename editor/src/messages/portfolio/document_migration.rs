@@ -635,7 +635,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
-	if reference == "Text" && inputs_count != 9 {
+	if reference == "Text" && inputs_count != 10 {
 		let mut template = resolve_document_node_type(reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
@@ -686,6 +686,15 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				old_inputs[8].clone()
 			} else {
 				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false)
+			},
+			network_path,
+		);
+		document.network_interface.set_input(
+			&InputConnector::node(*node_id, 9),
+			if inputs_count >= 10 {
+				old_inputs[9].clone()
+			} else {
+				NodeInput::value(TaggedValue::Bool(false), false)
 			},
 			network_path,
 		);

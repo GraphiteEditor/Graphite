@@ -33,8 +33,8 @@ fn string_slice(_: impl Ctx, #[implementations(String)] string: String, start: f
 }
 
 #[node_macro::node(category("Text"))]
-fn string_length(_: impl Ctx, #[implementations(String)] string: String) -> usize {
-	string.len()
+fn string_length(_: impl Ctx, #[implementations(String)] string: String) -> u32 {
+	string.chars().count() as u32
 }
 
 #[node_macro::node(category("Math: Logic"))]
