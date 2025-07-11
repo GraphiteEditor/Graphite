@@ -223,6 +223,9 @@ name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "as-raw-xcb-connection"
@@ -2338,6 +2341,8 @@ dependencies = [
  "dyn-any",
  "glam",
  "graphene-core",
+ "kurbo",
+ "linesweeper",
  "log",
  "node-macro",
  "path-bool",
@@ -3431,6 +3436,15 @@ dependencies = [
  "bitflags 2.9.1",
  "libc",
  "redox_syscall 0.5.13",
+]
+
+[[package]]
+name = "linesweeper"
+version = "0.0.4"
+source = "git+https://github.com/jneem/linesweeper#e39ba9bb05ebbfb1b77646be495d42b2e9689d88"
+dependencies = [
+ "arrayvec",
+ "kurbo",
 ]
 
 [[package]]
