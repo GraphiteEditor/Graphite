@@ -1021,38 +1021,51 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 				base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
 				base64_string
 			});
-			render.leaf_tag("image", |attributes| {
-				attributes.push("width", 1.to_string());
-				attributes.push("height", 1.to_string());
-				attributes.push("preserveAspectRatio", "none");
-				attributes.push("href", base64_string);
-				let matrix = format_transform_matrix(transform);
-				if !matrix.is_empty() {
-					attributes.push("transform", matrix);
-				}
-				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
-				let opacity = instance.alpha_blending.opacity * factor;
-				if opacity < 1. {
-					attributes.push("opacity", opacity.to_string());
-				}
-				if instance.alpha_blending.blend_mode != BlendMode::default() {
-					attributes.push("style", instance.alpha_blending.blend_mode.render());
-				}
 
-				if let Some(mask) = instance.mask {
-					let uuid = generate_uuid();
-					let mask_type = if mask.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
-					let mut svg = SvgRender::new();
-					mask.render_svg(&mut svg, &render_params.for_clipper());
+			let render_image = |render: &mut SvgRender| {
+				render.leaf_tag("image", |attributes| {
+					attributes.push("width", 1.to_string());
+					attributes.push("height", 1.to_string());
+					attributes.push("preserveAspectRatio", "none");
+					attributes.push("href", base64_string);
+					let matrix = format_transform_matrix(transform);
+					if !matrix.is_empty() {
+						attributes.push("transform", matrix);
+					}
+					let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+					let opacity = instance.alpha_blending.opacity * factor;
+					if opacity < 1. {
+						attributes.push("opacity", opacity.to_string());
+					}
+					if instance.alpha_blending.blend_mode != BlendMode::default() {
+						attributes.push("style", instance.alpha_blending.blend_mode.render());
+					}
+				})
+			};
 
-					write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
-					mask_type.write_to_defs(&mut attributes.0.svg_defs, uuid, svg.svg.to_svg_string());
-					let id = format!("mask-{}", uuid);
-					let selector = format!("url(#{id})");
+			// Unlike path and g elements, the mask attribute of image element is broken and
+			// behaves differently across different browsers. And so we use g to have it work correctly.
+			if let Some(mask) = instance.mask {
+				render.parent_tag(
+					"g",
+					|attributes| {
+						let uuid = generate_uuid();
+						let mask_type = if mask.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
+						let mut svg = SvgRender::new();
+						mask.render_svg(&mut svg, &render_params.for_clipper());
 
-					attributes.push(mask_type.to_attribute(), selector);
-				}
-			});
+						write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
+						mask_type.write_to_defs(&mut attributes.0.svg_defs, uuid, svg.svg.to_svg_string());
+						let id = format!("mask-{}", uuid);
+						let selector = format!("url(#{id})");
+
+						attributes.push(mask_type.to_attribute(), selector);
+					},
+					render_image,
+				);
+			} else {
+				render_image(render)
+			}
 		}
 	}
 
