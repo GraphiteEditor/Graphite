@@ -1,4 +1,5 @@
-use crate::vector::{PointId, VectorData};
+use crate::instances::Instance;
+use crate::vector::{PointId, VectorData, VectorDataTable};
 use bezier_rs::{ManipulatorGroup, Subpath};
 use core::cell::RefCell;
 use glam::{DAffine2, DVec2};
@@ -20,18 +21,19 @@ thread_local! {
 
 struct PathBuilder {
 	current_subpath: Subpath<PointId>,
+	origin: DVec2,
 	glyph_subpaths: Vec<Subpath<PointId>>,
-	other_subpaths: Vec<crate::instances::Instance<VectorData>>,
+	vector_table: VectorDataTable,
 	scale: f64,
 	id: PointId,
 }
 
 impl PathBuilder {
 	fn point(&self, x: f32, y: f32) -> DVec2 {
-		DVec2::new(x as f64, -y as f64) * self.scale
+		DVec2::new(self.origin.x + x as f64, self.origin.y - y as f64) * self.scale
 	}
 
-	fn draw_glyph(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], glyph_offset: DVec2, style_skew: Option<DAffine2>, skew: DAffine2) {
+	fn draw_glyph(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], glyph_offset: DVec2, style_skew: Option<DAffine2>, skew: DAffine2, per_glyph_instances: bool) {
 		let location_ref = LocationRef::new(normalized_coords);
 		let settings = DrawSettings::unhinted(Size::new(size), location_ref);
 		glyph.draw(settings, self).unwrap();
@@ -46,12 +48,22 @@ impl PathBuilder {
 			glyph_subpath.apply_transform(skew);
 		}
 
-		if !self.glyph_subpaths.is_empty() {
-			self.other_subpaths.push(crate::instances::Instance {
-				instance: VectorData::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false),
-				transform: DAffine2::from_translation(glyph_offset),
-				..Default::default()
-			})
+		if per_glyph_instances {
+			if !self.glyph_subpaths.is_empty() {
+				self.vector_table.push(Instance {
+					instance: VectorData::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false),
+					transform: DAffine2::from_translation(glyph_offset),
+					..Default::default()
+				})
+			}
+		} else {
+			if !self.glyph_subpaths.is_empty() {
+				for subpath in self.glyph_subpaths.iter() {
+					// Unwrapping here is ok,
+					// since the check above guarantees there is at least one `VectorData`
+					self.vector_table.get_mut(0).unwrap().instance.append_subpath(subpath, false);
+				}
+			}
 		}
 	}
 }
@@ -110,7 +122,7 @@ impl Default for TypesettingConfig {
 	}
 }
 
-fn render_glyph_run(glyph_run: &GlyphRun<'_, ()>, path_builder: &mut PathBuilder, tilt: f64) {
+fn render_glyph_run(glyph_run: &GlyphRun<'_, ()>, path_builder: &mut PathBuilder, tilt: f64, per_glyph_instances: bool) {
 	let mut run_x = glyph_run.offset();
 	let run_y = glyph_run.baseline();
 
@@ -148,7 +160,10 @@ fn render_glyph_run(glyph_run: &GlyphRun<'_, ()>, path_builder: &mut PathBuilder
 
 		let glyph_id = GlyphId::from(glyph.id);
 		if let Some(glyph_outline) = outlines.get(glyph_id) {
-			path_builder.draw_glyph(&glyph_outline, font_size, &normalized_coords, glyph_offset, style_skew, skew);
+			if !per_glyph_instances {
+				path_builder.origin = glyph_offset;
+			}
+			path_builder.draw_glyph(&glyph_outline, font_size, &normalized_coords, glyph_offset, style_skew, skew, per_glyph_instances);
 		}
 	}
 }
@@ -183,26 +198,37 @@ fn layout_text(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 	Some(layout)
 }
 
-pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig) -> Vec<crate::instances::Instance<VectorData>> {
-	let Some(layout) = layout_text(str, font_data, typesetting) else { return Vec::new() };
+pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig, per_glyph_instances: bool) -> VectorDataTable {
+	let Some(layout) = layout_text(str, font_data, typesetting) else {
+		return VectorDataTable::new(VectorData::default());
+	};
 
 	let mut path_builder = PathBuilder {
 		current_subpath: Subpath::new(Vec::new(), false),
 		glyph_subpaths: Vec::new(),
-		other_subpaths: Vec::new(),
+		vector_table: if per_glyph_instances {
+			VectorDataTable::default()
+		} else {
+			VectorDataTable::new(VectorData::default())
+		},
 		scale: layout.scale() as f64,
 		id: PointId::ZERO,
+		origin: DVec2::default(),
 	};
 
 	for line in layout.lines() {
 		for item in line.items() {
 			if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
-				render_glyph_run(&glyph_run, &mut path_builder, typesetting.tilt);
+				render_glyph_run(&glyph_run, &mut path_builder, typesetting.tilt, per_glyph_instances);
 			}
 		}
 	}
 
-	path_builder.other_subpaths
+	if path_builder.vector_table.is_empty() {
+		path_builder.vector_table = VectorDataTable::new(VectorData::default());
+	}
+
+	path_builder.vector_table
 }
 
 pub fn bounding_box(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig, for_clipping_test: bool) -> DVec2 {

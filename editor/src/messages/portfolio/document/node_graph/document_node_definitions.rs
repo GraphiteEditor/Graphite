@@ -1222,6 +1222,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
 						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false),
+						NodeInput::value(TaggedValue::Bool(false), false),
 					],
 					..Default::default()
 				},
@@ -1289,6 +1290,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
+						("Per-Glyph Instances", "TODO").into(),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()

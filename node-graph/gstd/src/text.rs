@@ -1,4 +1,4 @@
-use crate::vector::{VectorData, VectorDataTable};
+use crate::vector::VectorDataTable;
 use graph_craft::wasm_application_io::WasmEditorApi;
 use graphene_core::Ctx;
 pub use graphene_core::text::*;
@@ -27,6 +27,7 @@ fn text<'i: 'n>(
 	#[unit("°")]
 	#[default(0.)]
 	tilt: f64,
+	#[default(false)] per_glyph_instances: bool,
 ) -> VectorDataTable {
 	let typesetting = TypesettingConfig {
 		font_size,
@@ -39,17 +40,5 @@ fn text<'i: 'n>(
 
 	let font_data = editor.font_cache.get(&font_name).map(|f| load_font(f));
 
-	let glyph_vectors = to_path(&text, font_data, typesetting);
-
-	let mut glyph_table = if glyph_vectors.is_empty() {
-		VectorDataTable::new(VectorData::default())
-	} else {
-		VectorDataTable::default()
-	};
-
-	for glyph in glyph_vectors {
-		glyph_table.push(glyph);
-	}
-
-	glyph_table
+	to_path(&text, font_data, typesetting, per_glyph_instances)
 }
