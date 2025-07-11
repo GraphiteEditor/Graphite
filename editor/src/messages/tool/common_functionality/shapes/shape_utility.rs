@@ -24,9 +24,10 @@ pub enum ShapeType {
 	#[default]
 	Polygon = 0,
 	Star = 1,
-	Rectangle = 2,
-	Ellipse = 3,
-	Line = 4,
+	Spiral = 2,
+	Rectangle = 3,
+	Ellipse = 4,
+	Line = 5,
 }
 
 impl ShapeType {
@@ -34,6 +35,7 @@ impl ShapeType {
 		(match self {
 			Self::Polygon => "Polygon",
 			Self::Star => "Star",
+			Self::Spiral => "Spiral",
 			Self::Rectangle => "Rectangle",
 			Self::Ellipse => "Ellipse",
 			Self::Line => "Line",

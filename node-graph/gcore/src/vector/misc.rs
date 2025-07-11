@@ -96,3 +96,11 @@ pub fn point_to_dvec2(point: Point) -> DVec2 {
 pub fn dvec2_to_point(value: DVec2) -> Point {
 	Point { x: value.x, y: value.y }
 }
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Dropdown)]
+pub enum SpiralType {
+	#[default]
+	Archimedean,
+	Logarithmic,
+}

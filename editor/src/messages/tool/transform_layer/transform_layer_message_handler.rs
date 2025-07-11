@@ -237,7 +237,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				return;
 			}
 
-			if !using_path_tool {
+			if !using_path_tool || !using_shape_tool {
 				self.pivot_gizmo.recalculate_transform(document);
 				*selected.pivot = self.pivot_gizmo.position(document);
 				self.local_pivot = document.metadata().document_to_viewport.inverse().transform_point2(*selected.pivot);
