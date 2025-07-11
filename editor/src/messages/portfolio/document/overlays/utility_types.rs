@@ -1,7 +1,8 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER,
-	COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE,
+	COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH,
+	PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
 use bezier_rs::{Bezier, Subpath};
@@ -318,6 +319,29 @@ impl OverlayContext {
 		self.square(position, None, Some(color_fill), Some(color_stroke));
 	}
 
+	pub fn hover_manipulator_handle(&mut self, position: DVec2) {
+		self.start_dpi_aware_transform();
+
+		let position = position.round() - DVec2::splat(0.5);
+
+		self.render_context.begin_path();
+		self.render_context.arc(position.x, position.y, 8. / 2., 0., TAU).expect("Failed to draw the circle");
+
+		let fill = COLOR_OVERLAY_BLUE_50;
+		self.render_context.set_fill_style_str(fill);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		self.render_context.fill();
+		self.render_context.stroke();
+
+		self.end_dpi_aware_transform();
+	}
+
+	pub fn hover_manipulator_anchor(&mut self, position: DVec2) {
+		let color_fill = COLOR_OVERLAY_BLUE_50;
+		let color_stroke = COLOR_OVERLAY_BLUE;
+		self.square(position, Some(8.), Some(&color_fill), Some(color_stroke));
+	}
+
 	/// Transforms the canvas context to adjust for DPI scaling
 	///
 	/// Overwrites all existing tranforms. This operation can be reversed with [`Self::reset_transform`].
@@ -631,11 +655,9 @@ impl OverlayContext {
 	pub fn outline_overlay_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
-		let color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05).to_rgba_hex_srgb();
-
 		self.render_context.begin_path();
 		self.bezier_command(bezier, transform, true);
-		self.render_context.set_stroke_style_str(&color);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE_50);
 		self.render_context.set_line_width(4.);
 		self.render_context.stroke();
 

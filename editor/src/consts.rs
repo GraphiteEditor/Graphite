@@ -134,6 +134,7 @@ pub const SCALE_EFFECT: f64 = 0.5;
 
 // COLORS
 pub const COLOR_OVERLAY_BLUE: &str = "#00a8ff";
+pub const COLOR_OVERLAY_BLUE_50: &str = "rgba(0, 168, 255, 0.5)";
 pub const COLOR_OVERLAY_YELLOW: &str = "#ffc848";
 pub const COLOR_OVERLAY_YELLOW_DULL: &str = "#d7ba8b";
 pub const COLOR_OVERLAY_GREEN: &str = "#63ce63";
