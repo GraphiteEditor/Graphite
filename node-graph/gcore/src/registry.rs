@@ -55,6 +55,8 @@ pub struct FieldMetadata {
 	pub default_type: Option<Type>,
 	pub number_min: Option<f64>,
 	pub number_max: Option<f64>,
+	pub number_hard_min: Option<f64>,
+	pub number_hard_max: Option<f64>,
 	pub number_mode_range: Option<(f64, f64)>,
 	pub number_display_decimal_places: Option<u32>,
 	pub number_step: Option<f64>,
