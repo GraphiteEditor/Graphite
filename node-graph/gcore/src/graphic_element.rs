@@ -490,7 +490,7 @@ async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
 }
 
 #[node_macro::node(category(""))]
-async fn append_artboard(_ctx: impl Ctx, mut artboards: ArtboardGroupTable, artboard: Artboard, node_path: Vec<NodeId>) -> ArtboardGroupTable {
+pub async fn append_artboard(_ctx: impl Ctx, mut artboards: ArtboardGroupTable, artboard: Artboard, node_path: Vec<NodeId>) -> ArtboardGroupTable {
 	// Get the penultimate element of the node path, or None if the path is too short.
 	// This is used to get the ID of the user-facing "Artboard" node (which encapsulates this internal "Append Artboard" node).
 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
