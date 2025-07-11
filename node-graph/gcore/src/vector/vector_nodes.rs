@@ -232,9 +232,13 @@ async fn repeat<I: 'n + Send + Clone>(
 	let mut result_table = Instances::<I>::default();
 
 	for index in 0..count {
-		let angle = index as f64 * angle / total;
-		let translation = index as f64 * direction / total;
-		let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
+		let transform = if total == 0. {
+			DAffine2::IDENTITY
+		} else {
+			let angle = index as f64 * angle / total;
+			let translation = index as f64 * direction / total;
+			DAffine2::from_angle(angle) * DAffine2::from_translation(translation)
+		};
 
 		for instance in instance.instance_ref_iter() {
 			let mut instance = instance.to_instance_cloned();
@@ -1904,7 +1908,7 @@ async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<
 		.instance_ref_iter()
 		.map(|vector_data_instance| {
 			let scale = vector_data_instance.transform.decompose_scale();
-			vector_data_instance.instance.stroke_bezier_paths().map(|subpath| subpath.area(Some(1e-3), Some(1e-3))).sum::<f64>() * scale.x * scale.y
+			vector_data_instance.instance.stroke_bezpath_iter().map(|bezpath| bezpath.area()).sum::<f64>() * scale.x * scale.y
 		})
 		.sum()
 }
