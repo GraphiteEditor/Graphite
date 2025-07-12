@@ -84,7 +84,7 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 			}
 			AnimationMessage::SetFrameIndex(frame) => {
 				self.frame_index = frame;
-				responses.add(PortfolioMessage::SubmitActiveGraphRender);
+				responses.add(PortfolioMessage::EvaluateActiveDocument);
 				// Update the restart and pause/play buttons
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
@@ -100,7 +100,7 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 			}
 			AnimationMessage::UpdateTime => {
 				if self.is_playing() {
-					responses.add(PortfolioMessage::SubmitActiveGraphRender);
+					responses.add(PortfolioMessage::EvaluateActiveDocument);
 
 					if self.live_preview_recently_zero {
 						// Update the restart and pause/play buttons
@@ -116,7 +116,7 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 					_ => AnimationState::Stopped,
 				};
 				self.live_preview_recently_zero = true;
-				responses.add(PortfolioMessage::SubmitActiveGraphRender);
+				responses.add(PortfolioMessage::EvaluateActiveDocument);
 				// Update the restart and pause/play buttons
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}

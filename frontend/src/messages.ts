@@ -124,10 +124,10 @@ export class SendUIMetadata extends JsMessage {
 	readonly nodeTypes!: FrontendNodeType[];
 }
 
-export class UpdateNodeThumbnail extends JsMessage {
-	readonly id!: bigint;
+export class UpdateThumbnails extends JsMessage {
+	readonly add!: [bigint, string][];
 
-	readonly value!: string;
+	readonly clear!: bigint[];
 }
 
 export class UpdateNodeGraphSelection extends JsMessage {
@@ -321,6 +321,9 @@ export class WirePath {
 	readonly dataType!: FrontendGraphDataType;
 	readonly thick!: boolean;
 	readonly dashed!: boolean;
+	@TupleToVec2
+	readonly center!: XY | undefined;
+	readonly inputSni!: bigint;
 }
 
 export class WireUpdate {
@@ -1683,7 +1686,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeGraphTransform,
 	UpdateNodeGraphControlBarLayout,
 	UpdateNodeGraphSelection,
-	UpdateNodeThumbnail,
+	UpdateThumbnails,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelSectionsLayout,
 	UpdateSpreadsheetLayout,

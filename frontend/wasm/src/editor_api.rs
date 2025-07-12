@@ -15,8 +15,8 @@ use editor::messages::portfolio::document::utility_types::network_interface::Imp
 use editor::messages::portfolio::utility_types::Platform;
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
-use graph_craft::document::NodeId;
 use graphene_std::raster::color::Color;
+use graphene_std::uuid::NodeId;
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;

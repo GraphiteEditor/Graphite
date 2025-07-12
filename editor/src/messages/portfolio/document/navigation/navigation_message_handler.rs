@@ -11,7 +11,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2};
-use graph_craft::document::NodeId;
+use graphene_std::uuid::NodeId;
 
 #[derive(ExtractField)]
 pub struct NavigationMessageData<'a> {

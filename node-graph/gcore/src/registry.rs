@@ -1,4 +1,4 @@
-use crate::{Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
+use crate::{ContextDependencies, Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
 use dyn_any::{DynAny, StaticType};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -109,6 +109,8 @@ pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::ne
 
 pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
+pub static NODE_CONTEXT_DEPENDENCY: LazyLock<Mutex<HashMap<String, ContextDependencies>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
 #[cfg(not(target_arch = "wasm32"))]
 pub type DynFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n + Send>>;
 #[cfg(target_arch = "wasm32")]
@@ -132,6 +134,7 @@ pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 pub type SharedNodeContainer = std::sync::Arc<NodeContainer>;
 
 pub type NodeConstructor = fn(Vec<SharedNodeContainer>) -> DynFuture<'static, TypeErasedBox<'static>>;
+pub type CacheConstructor = fn(SharedNodeContainer) -> TypeErasedBox<'static>;
 
 #[derive(Clone)]
 pub struct NodeContainer {
@@ -208,23 +211,20 @@ where
 	#[inline]
 	fn eval(&'input self, input: I) -> Self::Output {
 		{
-			let node_name = self.node.node_name();
 			let input = Box::new(input);
 			let future = self.node.eval(input);
 			Box::pin(async move {
-				let out = dyn_any::downcast(future.await).unwrap_or_else(|e| panic!("DowncastBothNode Input {e} in: \n{node_name}"));
+				let out = dyn_any::downcast(future.await).unwrap_or_else(|e| panic!("DowncastBothNode Error: {e}"));
 				*out
 			})
 		}
 	}
+
 	fn reset(&self) {
 		self.node.reset();
 	}
-
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.node.serialize()
-	}
 }
+
 impl<I, O> DowncastBothNode<I, O> {
 	pub const fn new(node: SharedNodeContainer) -> Self {
 		Self {
@@ -234,6 +234,11 @@ impl<I, O> DowncastBothNode<I, O> {
 		}
 	}
 }
+
+pub fn downcast_node<I: StaticType, O: StaticType>(n: SharedNodeContainer) -> DowncastBothNode<I, O> {
+	DowncastBothNode::new(n)
+}
+
 pub struct FutureWrapperNode<Node> {
 	node: Node,
 }
@@ -251,11 +256,6 @@ where
 	#[inline(always)]
 	fn reset(&self) {
 		self.node.reset();
-	}
-
-	#[inline(always)]
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.node.serialize()
 	}
 }
 
@@ -280,23 +280,22 @@ where
 	type Output = FutureAny<'input>;
 	#[inline]
 	fn eval(&'input self, input: Any<'input>) -> Self::Output {
-		let node_name = std::any::type_name::<N>();
 		let output = |input| {
 			let result = self.node.eval(input);
 			async move { Box::new(result.await) as Any<'input> }
 		};
 		match dyn_any::downcast(input) {
 			Ok(input) => Box::pin(output(*input)),
-			Err(e) => panic!("DynAnyNode Input, {0} in:\n{1}", e, node_name),
+			Err(e) => panic!("DynAnyNode Input, {0} in:\n{1}", e, std::any::type_name::<N>()),
 		}
+	}
+
+	fn introspect(&self, check_if_evaluated: bool) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		self.node.introspect(check_if_evaluated)
 	}
 
 	fn reset(&self) {
 		self.node.reset();
-	}
-
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.node.serialize()
 	}
 }
 impl<'input, I, O, N> DynAnyNode<I, O, N>

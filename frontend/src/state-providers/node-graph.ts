@@ -24,7 +24,7 @@ import {
 	UpdateNodeGraphWires,
 	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
-	UpdateNodeThumbnail,
+	UpdateThumbnails,
 	UpdateWirePathInProgress,
 } from "@graphite/messages";
 
@@ -118,6 +118,7 @@ export function createNodeGraphState(editor: Editor) {
 		});
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphNodes, (updateNodeGraphNodes) => {
+		// console.log(updateNodeGraphNodes);
 		update((state) => {
 			state.nodes.clear();
 			updateNodeGraphNodes.nodes.forEach((node) => {
@@ -168,9 +169,16 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeThumbnail, (updateNodeThumbnail) => {
+	editor.subscriptions.subscribeJsMessage(UpdateThumbnails, (updateThumbnails) => {
+		// console.log("thumbnail update: ", updateThumbnails);
 		update((state) => {
-			state.thumbnails.set(updateNodeThumbnail.id, updateNodeThumbnail.value);
+			for (const [id, value] of updateThumbnails.add) {
+				state.thumbnails.set(id, value);
+			}
+			for (const id of updateThumbnails.clear) {
+				state.thumbnails.set(id, "");
+			}
+			// console.log("thumbnails: ", state.thumbnails);
 			return state;
 		});
 	});

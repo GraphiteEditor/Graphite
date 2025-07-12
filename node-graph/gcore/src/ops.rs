@@ -24,10 +24,6 @@ where
 	fn reset(&self) {
 		self.0.reset();
 	}
-
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.0.serialize()
-	}
 }
 impl<'i, N: for<'a> Node<'a, I>, I: 'i> TypeNode<N, I, <N as Node<'i, I>>::Output> {
 	pub fn new(node: N) -> Self {

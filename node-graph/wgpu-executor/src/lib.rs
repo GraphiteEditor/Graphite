@@ -4,7 +4,7 @@ use anyhow::Result;
 pub use context::Context;
 use dyn_any::StaticType;
 use glam::UVec2;
-use graphene_application_io::{ApplicationIo, EditorApi, SurfaceHandle};
+use graphene_application_io::{ApplicationIo, ApplicationIoValue, SurfaceHandle};
 use graphene_core::{Color, Ctx};
 pub use graphene_svg_renderer::RenderContext;
 use std::sync::Arc;
@@ -23,9 +23,9 @@ impl std::fmt::Debug for WgpuExecutor {
 	}
 }
 
-impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &'a WgpuExecutor {
-	fn from(editor_api: &'a EditorApi<T>) -> Self {
-		editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap()
+impl<'a, Io: ApplicationIo<Executor = WgpuExecutor>> From<&'a Arc<ApplicationIoValue<Io>>> for &'a WgpuExecutor {
+	fn from(application_io: &'a Arc<ApplicationIoValue<Io>>) -> Self {
+		application_io.0.as_ref().unwrap().gpu_executor().unwrap()
 	}
 }
 
@@ -153,8 +153,8 @@ impl WgpuExecutor {
 pub type WindowHandle = Arc<SurfaceHandle<Window>>;
 
 #[node_macro::node(skip_impl)]
-fn create_gpu_surface<'a: 'n, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + 'a + Send + Sync>(_: impl Ctx + 'a, editor_api: &'a EditorApi<Io>) -> Option<WgpuSurface> {
-	let canvas = editor_api.application_io.as_ref()?.window()?;
-	let executor = editor_api.application_io.as_ref()?.gpu_executor()?;
+fn create_gpu_surface<'a: 'n, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + 'a + Send + Sync>(_: impl Ctx + 'a, application_io: Arc<ApplicationIoValue<Io>>) -> Option<WgpuSurface> {
+	let canvas = application_io.0.as_ref()?.window()?;
+	let executor = application_io.0.as_ref()?.gpu_executor()?;
 	Some(Arc::new(executor.create_surface(canvas).ok()?))
 }

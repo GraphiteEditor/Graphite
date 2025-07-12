@@ -330,21 +330,21 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 						responses.add(ToolMessage::UpdateHints);
 						let pivot_gizmo = self.tool_data.pivot_gizmo();
 						responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
-						responses.add(NodeGraphMessage::RunDocumentGraph);
+						responses.add(PortfolioMessage::CompileActiveDocument);
 						self.send_layout(responses, LayoutTarget::ToolOptions);
 					}
 				}
 				PathOptionsUpdate::TogglePivotGizmoType(state) => {
 					self.tool_data.pivot_gizmo.state.disabled = !state;
 					responses.add(ToolMessage::UpdateHints);
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 					self.send_layout(responses, LayoutTarget::ToolOptions);
 				}
 
 				PathOptionsUpdate::TogglePivotPinned => {
 					self.tool_data.pivot_gizmo.pivot.pinned = !self.tool_data.pivot_gizmo.pivot.pinned;
 					responses.add(ToolMessage::UpdateHints);
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 					self.send_layout(responses, LayoutTarget::ToolOptions);
 				}
 			},
@@ -598,12 +598,12 @@ impl PathToolData {
 
 		self.drag_start_pos = input.mouse.position;
 
-		if input.time - self.last_click_time > DOUBLE_CLICK_MILLISECONDS {
+		if input.time as u64 - self.last_click_time > DOUBLE_CLICK_MILLISECONDS {
 			self.saved_points_before_anchor_convert_smooth_sharp.clear();
 			self.stored_selection = None;
 		}
 
-		self.last_click_time = input.time;
+		self.last_click_time = input.time as u64;
 
 		let old_selection = shape_editor.selected_points().cloned().collect::<Vec<_>>();
 
@@ -2283,7 +2283,7 @@ impl Fsm for PathToolFsmState {
 				tool_data.pivot_gizmo.pivot.set_normalized_position(position.unwrap());
 				let pivot_gizmo = tool_data.pivot_gizmo();
 				responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 
 				self
 			}

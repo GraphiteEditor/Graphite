@@ -3,9 +3,13 @@ use super::utility_types::PanelType;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
+use crate::node_graph_executor::IntrospectionResponse;
+use graph_craft::document::CompilationMetadata;
 use graphene_std::Color;
 use graphene_std::raster::Image;
+use graphene_std::renderer::RenderMetadata;
 use graphene_std::text::Font;
+use graphene_std::uuid::{SNI};
 
 #[impl_message(Message, Portfolio)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -18,7 +22,38 @@ pub enum PortfolioMessage {
 	#[child]
 	Spreadsheet(SpreadsheetMessage),
 
-	// Messages
+	// Introspected data is cleared after all queued messages which relied on the introspection are complete
+	ClearIntrospectedData,
+
+	// Sends a request to compile the network. Should occur when any value, preference, or font changes
+	CompileActiveDocument,
+	// Sends a request to evaluate the network. Should occur when any context value changes.
+	EvaluateActiveDocument,
+	// Sends a request to introspect data in the network, and return it to the editor
+	IntrospectActiveDocument {
+		nodes_to_introspect: HashSet<SNI>,
+	},
+	ExportActiveDocument {
+		file_name: String,
+		file_type: FileType,
+		scale_factor: f64,
+		bounds: ExportBounds,
+		transparent_background: bool,
+	},
+	// Processes the compilation response and updates the data stored in the network interface for the active document
+	// TODO: Add document ID in response for stability
+	ProcessCompilationResponse {
+		compilation_metadata: CompilationMetadata,
+	},
+	ProcessEvaluationResponse {
+		evaluation_metadata: RenderMetadata,
+	},
+	ProcessIntrospectionResponse {
+		#[serde(skip)]
+		introspection_response: IntrospectionResponse,
+	},
+	RenderThumbnails,
+	ProcessThumbnails,
 	DocumentPassMessage {
 		document_id: DocumentId,
 		message: DocumentMessage,
@@ -47,7 +82,6 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 	},
 	DestroyAllDocuments,
-	EditorPreferences,
 	FontLoaded {
 		font_family: String,
 		font_style: String,
@@ -112,20 +146,7 @@ pub enum PortfolioMessage {
 	SelectDocument {
 		document_id: DocumentId,
 	},
-	SubmitDocumentExport {
-		file_name: String,
-		file_type: FileType,
-		scale_factor: f64,
-		bounds: ExportBounds,
-		transparent_background: bool,
-	},
-	SubmitActiveGraphRender,
-	SubmitGraphRender {
-		document_id: DocumentId,
-		ignore_hash: bool,
-	},
 	ToggleRulers,
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
-	UpdateVelloPreference,
 }

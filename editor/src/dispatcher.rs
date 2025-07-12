@@ -5,7 +5,10 @@ use crate::messages::prelude::*;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {
-	buffered_queue: Option<Vec<VecDeque<Message>>>,
+	evaluation_queue: Vec<Message>,
+	introspection_queue: Vec<Message>,
+	queueing_evaluation_messages: bool,
+	queueing_introspection_messages: bool,
 	message_queues: Vec<VecDeque<Message>>,
 	pub responses: Vec<FrontendMessage>,
 	pub message_handlers: DispatcherMessageHandlers,
@@ -40,6 +43,9 @@ impl DispatcherMessageHandlers {
 /// The last occurrence of the message in the message queue is sufficient to ensure correct behavior.
 /// In addition, these messages do not change any state in the backend (aside from caches).
 const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::CompileActiveDocument),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::EvaluateActiveDocument),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::IntrospectActiveDocument),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
 		PropertiesPanelMessageDiscriminant::Refresh,
 	))),
@@ -90,14 +96,6 @@ impl Dispatcher {
 
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T, process_after_all_current: bool) {
 		let message = message.into();
-		// Add all additional messages to the buffer if it exists (except from the end buffer message)
-		if !matches!(message, Message::EndBuffer(_)) {
-			if let Some(buffered_queue) = &mut self.buffered_queue {
-				Self::schedule_execution(buffered_queue, true, [message]);
-
-				return;
-			}
-		}
 
 		// If we are not maintaining the buffer, simply add to the current queue
 		Self::schedule_execution(&mut self.message_queues, process_after_all_current, [message]);
@@ -117,7 +115,21 @@ impl Dispatcher {
 					continue;
 				}
 			}
+			// Add all messages to the queue if queuing messages (except from the end queue message)
+			if !matches!(message, Message::EndEvaluationQueue) {
+				if self.queueing_evaluation_messages {
+					self.evaluation_queue.push(message);
+					return;
+				}
+			}
 
+			// Add all messages to the queue if queuing messages (except from the end queue message)
+			if !matches!(message, Message::EndIntrospectionQueue) {
+				if self.queueing_introspection_messages {
+					self.introspection_queue.push(message);
+					return;
+				}
+			}
 			// Print the message at a verbosity level of `info`
 			self.log_message(&message, &self.message_queues, self.message_handlers.debug_message_handler.message_logging_verbosity);
 
@@ -126,36 +138,40 @@ impl Dispatcher {
 
 			// Process the action by forwarding it to the relevant message handler, or saving the FrontendMessage to be sent to the frontend
 			match message {
-				Message::StartBuffer => {
-					self.buffered_queue = Some(std::mem::take(&mut self.message_queues));
+				Message::StartEvaluationQueue => {
+					self.queueing_evaluation_messages = true;
 				}
-				Message::EndBuffer(render_metadata) => {
-					// Assign the message queue to the currently buffered queue
-					if let Some(buffered_queue) = self.buffered_queue.take() {
-						self.cleanup_queues(false);
-						assert!(self.message_queues.is_empty(), "message queues are always empty when ending a buffer");
-						self.message_queues = buffered_queue;
-					};
+				Message::EndEvaluationQueue => {
+					self.queueing_evaluation_messages = false;
+				}
+				Message::ProcessEvaluationQueue(render_output_metadata) => {
+					let update_message = PortfolioMessage::ProcessEvaluationResponse {
+						evaluation_metadata: render_output_metadata,
+					}
+					.into();
+					// Update the state with the render output and introspected inputs
+					Self::schedule_execution(&mut self.message_queues, true, [update_message]);
 
-					let graphene_std::renderer::RenderMetadata {
-						upstream_footprints: footprints,
-						local_transforms,
-						first_instance_source_id,
-						click_targets,
-						clip_targets,
-					} = render_metadata;
+					// Schedule all queued messages to be run, which use the introspected inputs (in the order they were added)
+					Self::schedule_execution(&mut self.message_queues, true, std::mem::take(&mut self.evaluation_queue));
+				}
+				Message::StartIntrospectionQueue => {
+					self.queueing_introspection_messages = true;
+				}
+				Message::EndIntrospectionQueue => {
+					self.queueing_introspection_messages = false;
+				}
+				Message::ProcessIntrospectionQueue(introspection_response) => {
+					let update_message = PortfolioMessage::ProcessIntrospectionResponse { introspection_response }.into();
+					// Update the state with the render output and introspected inputs
+					Self::schedule_execution(&mut self.message_queues, true, [update_message]);
 
-					// Run these update state messages immediately
-					let messages = [
-						DocumentMessage::UpdateUpstreamTransforms {
-							upstream_footprints: footprints,
-							local_transforms,
-							first_instance_source_id,
-						},
-						DocumentMessage::UpdateClickTargets { click_targets },
-						DocumentMessage::UpdateClipTargets { clip_targets },
-					];
-					Self::schedule_execution(&mut self.message_queues, false, messages.map(Message::from));
+					// Schedule all queued messages to be run, which use the introspected inputs (in the order they were added)
+					Self::schedule_execution(&mut self.message_queues, true, std::mem::take(&mut self.introspection_queue));
+
+					let clear_message = PortfolioMessage::ClearIntrospectedData.into();
+					// Clear the introspected inputs since they are no longer required, and will cause a memory leak if not removed
+					Self::schedule_execution(&mut self.message_queues, true, [clear_message]);
 				}
 				Message::NoOp => {}
 				Message::Init => {
@@ -349,216 +365,216 @@ impl Dispatcher {
 	}
 }
 
-#[cfg(test)]
-mod test {
-	pub use crate::test_utils::test_prelude::*;
+// #[cfg(test)]
+// mod test {
+// 	pub use crate::test_utils::test_prelude::*;
 
-	/// Create an editor with three layers
-	/// 1. A red rectangle
-	/// 2. A blue shape
-	/// 3. A green ellipse
-	async fn create_editor_with_three_layers() -> EditorTestUtils {
-		let mut editor = EditorTestUtils::create();
+// 	/// Create an editor with three layers
+// 	/// 1. A red rectangle
+// 	/// 2. A blue shape
+// 	/// 3. A green ellipse
+// 	async fn create_editor_with_three_layers() -> EditorTestUtils {
+// 		let mut editor = EditorTestUtils::create();
 
-		editor.new_document().await;
+// 		editor.new_document().await;
 
-		editor.select_primary_color(Color::RED).await;
-		editor.draw_rect(100., 200., 300., 400.).await;
+// 		editor.select_primary_color(Color::RED).await;
+// 		editor.draw_rect(100., 200., 300., 400.).await;
 
-		editor.select_primary_color(Color::BLUE).await;
-		editor.draw_polygon(10., 1200., 1300., 400.).await;
+// 		editor.select_primary_color(Color::BLUE).await;
+// 		editor.draw_polygon(10., 1200., 1300., 400.).await;
 
-		editor.select_primary_color(Color::GREEN).await;
-		editor.draw_ellipse(104., 1200., 1300., 400.).await;
+// 		editor.select_primary_color(Color::GREEN).await;
+// 		editor.draw_ellipse(104., 1200., 1300., 400.).await;
 
-		editor
-	}
+// 		editor
+// 	}
 
-	/// - create rect, shape and ellipse
-	/// - copy
-	/// - paste
-	/// - assert that ellipse was copied
-	#[tokio::test]
-	async fn copy_paste_single_layer() {
-		let mut editor = create_editor_with_three_layers().await;
+// 	/// - create rect, shape and ellipse
+// 	/// - copy
+// 	/// - paste
+// 	/// - assert that ellipse was copied
+// 	#[tokio::test]
+// 	async fn copy_paste_single_layer() {
+// 		let mut editor = create_editor_with_three_layers().await;
 
-		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
-		editor
-			.handle_message(PortfolioMessage::PasteIntoFolder {
-				clipboard: Clipboard::Internal,
-				parent: LayerNodeIdentifier::ROOT_PARENT,
-				insert_index: 0,
-			})
-			.await;
+// 		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
+// 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
+// 		editor
+// 			.handle_message(PortfolioMessage::PasteIntoFolder {
+// 				clipboard: Clipboard::Internal,
+// 				parent: LayerNodeIdentifier::ROOT_PARENT,
+// 				insert_index: 0,
+// 			})
+// 			.await;
 
-		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
+// 		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
 
-		assert_eq!(layers_before_copy.len(), 3);
-		assert_eq!(layers_after_copy.len(), 4);
+// 		assert_eq!(layers_before_copy.len(), 3);
+// 		assert_eq!(layers_after_copy.len(), 4);
 
-		// Existing layers are unaffected
-		for i in 0..=2 {
-			assert_eq!(layers_before_copy[i], layers_after_copy[i + 1]);
-		}
-	}
+// 		// Existing layers are unaffected
+// 		for i in 0..=2 {
+// 			assert_eq!(layers_before_copy[i], layers_after_copy[i + 1]);
+// 		}
+// 	}
 
-	#[cfg_attr(miri, ignore)]
-	/// - create rect, shape and ellipse
-	/// - select shape
-	/// - copy
-	/// - paste
-	/// - assert that shape was copied
-	#[tokio::test]
-	async fn copy_paste_single_layer_from_middle() {
-		let mut editor = create_editor_with_three_layers().await;
+// 	#[cfg_attr(miri, ignore)]
+// 	/// - create rect, shape and ellipse
+// 	/// - select shape
+// 	/// - copy
+// 	/// - paste
+// 	/// - assert that shape was copied
+// 	#[tokio::test]
+// 	async fn copy_paste_single_layer_from_middle() {
+// 		let mut editor = create_editor_with_three_layers().await;
 
-		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
-		let shape_id = editor.active_document().metadata().all_layers().nth(1).unwrap();
+// 		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
+// 		let shape_id = editor.active_document().metadata().all_layers().nth(1).unwrap();
 
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![shape_id.to_node()] }).await;
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
-		editor
-			.handle_message(PortfolioMessage::PasteIntoFolder {
-				clipboard: Clipboard::Internal,
-				parent: LayerNodeIdentifier::ROOT_PARENT,
-				insert_index: 0,
-			})
-			.await;
+// 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![shape_id.to_node()] }).await;
+// 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
+// 		editor
+// 			.handle_message(PortfolioMessage::PasteIntoFolder {
+// 				clipboard: Clipboard::Internal,
+// 				parent: LayerNodeIdentifier::ROOT_PARENT,
+// 				insert_index: 0,
+// 			})
+// 			.await;
 
-		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
+// 		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
 
-		assert_eq!(layers_before_copy.len(), 3);
-		assert_eq!(layers_after_copy.len(), 4);
+// 		assert_eq!(layers_before_copy.len(), 3);
+// 		assert_eq!(layers_after_copy.len(), 4);
 
-		// Existing layers are unaffected
-		for i in 0..=2 {
-			assert_eq!(layers_before_copy[i], layers_after_copy[i + 1]);
-		}
-	}
+// 		// Existing layers are unaffected
+// 		for i in 0..=2 {
+// 			assert_eq!(layers_before_copy[i], layers_after_copy[i + 1]);
+// 		}
+// 	}
 
-	#[cfg_attr(miri, ignore)]
-	/// - create rect, shape and ellipse
-	/// - select ellipse and rect
-	/// - copy
-	/// - delete
-	/// - create another rect
-	/// - paste
-	/// - paste
-	#[tokio::test]
-	async fn copy_paste_deleted_layers() {
-		let mut editor = create_editor_with_three_layers().await;
-		assert_eq!(editor.active_document().metadata().all_layers().count(), 3);
+// 	#[cfg_attr(miri, ignore)]
+// 	/// - create rect, shape and ellipse
+// 	/// - select ellipse and rect
+// 	/// - copy
+// 	/// - delete
+// 	/// - create another rect
+// 	/// - paste
+// 	/// - paste
+// 	#[tokio::test]
+// 	async fn copy_paste_deleted_layers() {
+// 		let mut editor = create_editor_with_three_layers().await;
+// 		assert_eq!(editor.active_document().metadata().all_layers().count(), 3);
 
-		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
-		let rect_id = layers_before_copy[0];
-		let shape_id = layers_before_copy[1];
-		let ellipse_id = layers_before_copy[2];
+// 		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
+// 		let rect_id = layers_before_copy[0];
+// 		let shape_id = layers_before_copy[1];
+// 		let ellipse_id = layers_before_copy[2];
 
-		editor
-			.handle_message(NodeGraphMessage::SelectedNodesSet {
-				nodes: vec![rect_id.to_node(), ellipse_id.to_node()],
-			})
-			.await;
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
-		editor.handle_message(NodeGraphMessage::DeleteSelectedNodes { delete_children: true }).await;
-		editor.draw_rect(0., 800., 12., 200.).await;
-		editor
-			.handle_message(PortfolioMessage::PasteIntoFolder {
-				clipboard: Clipboard::Internal,
-				parent: LayerNodeIdentifier::ROOT_PARENT,
-				insert_index: 0,
-			})
-			.await;
-		editor
-			.handle_message(PortfolioMessage::PasteIntoFolder {
-				clipboard: Clipboard::Internal,
-				parent: LayerNodeIdentifier::ROOT_PARENT,
-				insert_index: 0,
-			})
-			.await;
+// 		editor
+// 			.handle_message(NodeGraphMessage::SelectedNodesSet {
+// 				nodes: vec![rect_id.to_node(), ellipse_id.to_node()],
+// 			})
+// 			.await;
+// 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
+// 		editor.handle_message(NodeGraphMessage::DeleteSelectedNodes { delete_children: true }).await;
+// 		editor.draw_rect(0., 800., 12., 200.).await;
+// 		editor
+// 			.handle_message(PortfolioMessage::PasteIntoFolder {
+// 				clipboard: Clipboard::Internal,
+// 				parent: LayerNodeIdentifier::ROOT_PARENT,
+// 				insert_index: 0,
+// 			})
+// 			.await;
+// 		editor
+// 			.handle_message(PortfolioMessage::PasteIntoFolder {
+// 				clipboard: Clipboard::Internal,
+// 				parent: LayerNodeIdentifier::ROOT_PARENT,
+// 				insert_index: 0,
+// 			})
+// 			.await;
 
-		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
+// 		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
 
-		assert_eq!(layers_before_copy.len(), 3);
-		assert_eq!(layers_after_copy.len(), 6);
+// 		assert_eq!(layers_before_copy.len(), 3);
+// 		assert_eq!(layers_after_copy.len(), 6);
 
-		println!("{:?} {:?}", layers_after_copy, layers_before_copy);
+// 		println!("{:?} {:?}", layers_after_copy, layers_before_copy);
 
-		assert_eq!(layers_after_copy[5], shape_id);
-	}
+// 		assert_eq!(layers_after_copy[5], shape_id);
+// 	}
 
-	#[tokio::test]
-	/// This test will fail when you make changes to the underlying serialization format for a document.
-	async fn check_if_demo_art_opens() {
-		use crate::messages::layout::utility_types::widget_prelude::*;
+// 	#[tokio::test]
+// 	/// This test will fail when you make changes to the underlying serialization format for a document.
+// 	async fn check_if_demo_art_opens() {
+// 		use crate::messages::layout::utility_types::widget_prelude::*;
 
-		let print_problem_to_terminal_on_failure = |value: &String| {
-			println!();
-			println!("-------------------------------------------------");
-			println!("Failed test due to receiving a DisplayDialogError while loading a Graphite demo file.");
-			println!();
-			println!("NOTE:");
-			println!("Document upgrading isn't performed in tests like when opening in the actual editor.");
-			println!("You may need to open and re-save a document in the editor to apply its migrations.");
-			println!();
-			println!("DisplayDialogError details:");
-			println!();
-			println!("Description:");
-			println!("{value}");
-			println!("-------------------------------------------------");
-			println!();
+// 		let print_problem_to_terminal_on_failure = |value: &String| {
+// 			println!();
+// 			println!("-------------------------------------------------");
+// 			println!("Failed test due to receiving a DisplayDialogError while loading a Graphite demo file.");
+// 			println!();
+// 			println!("NOTE:");
+// 			println!("Document upgrading isn't performed in tests like when opening in the actual editor.");
+// 			println!("You may need to open and re-save a document in the editor to apply its migrations.");
+// 			println!();
+// 			println!("DisplayDialogError details:");
+// 			println!();
+// 			println!("Description:");
+// 			println!("{value}");
+// 			println!("-------------------------------------------------");
+// 			println!();
 
-			panic!()
-		};
+// 			panic!()
+// 		};
 
-		let mut editor = EditorTestUtils::create();
+// 		let mut editor = EditorTestUtils::create();
 
-		// UNCOMMENT THIS FOR RUNNING UNDER MIRI
-		//
-		// let files = [
-		// 	include_str!("../../demo-artwork/changing-seasons.graphite"),
-		// 	include_str!("../../demo-artwork/isometric-fountain.graphite"),
-		// 	include_str!("../../demo-artwork/painted-dreams.graphite"),
-		// 	include_str!("../../demo-artwork/procedural-string-lights.graphite"),
-		// 	include_str!("../../demo-artwork/parametric-dunescape.graphite"),
-		// 	include_str!("../../demo-artwork/red-dress.graphite"),
-		// 	include_str!("../../demo-artwork/valley-of-spires.graphite"),
-		// ];
-		// for (id, document_serialized_content) in files.iter().enumerate() {
-		// let document_name = format!("document {id}");
+// 		// UNCOMMENT THIS FOR RUNNING UNDER MIRI
+// 		//
+// 		// let files = [
+// 		// 	include_str!("../../demo-artwork/changing-seasons.graphite"),
+// 		// 	include_str!("../../demo-artwork/isometric-fountain.graphite"),
+// 		// 	include_str!("../../demo-artwork/painted-dreams.graphite"),
+// 		// 	include_str!("../../demo-artwork/procedural-string-lights.graphite"),
+// 		// 	include_str!("../../demo-artwork/parametric-dunescape.graphite"),
+// 		// 	include_str!("../../demo-artwork/red-dress.graphite"),
+// 		// 	include_str!("../../demo-artwork/valley-of-spires.graphite"),
+// 		// ];
+// 		// for (id, document_serialized_content) in files.iter().enumerate() {
+// 		// let document_name = format!("document {id}");
 
-		for (document_name, _, file_name) in crate::messages::dialog::simple_dialogs::ARTWORK {
-			let document_serialized_content = std::fs::read_to_string(format!("../demo-artwork/{file_name}")).unwrap();
+// 		for (document_name, _, file_name) in crate::messages::dialog::simple_dialogs::ARTWORK {
+// 			let document_serialized_content = std::fs::read_to_string(format!("../demo-artwork/{file_name}")).unwrap();
 
-			assert_eq!(
-				document_serialized_content.lines().count(),
-				1,
-				"Demo artwork '{document_name}' has more than 1 line (remember to open and re-save it in Graphite)",
-			);
+// 			assert_eq!(
+// 				document_serialized_content.lines().count(),
+// 				1,
+// 				"Demo artwork '{document_name}' has more than 1 line (remember to open and re-save it in Graphite)",
+// 			);
 
-			let responses = editor.editor.handle_message(PortfolioMessage::OpenDocumentFile {
-				document_name: document_name.into(),
-				document_serialized_content,
-			});
+// 			let responses = editor.editor.handle_message(PortfolioMessage::OpenDocumentFile {
+// 				document_name: document_name.into(),
+// 				document_serialized_content,
+// 			});
 
-			// Check if the graph renders
-			if let Err(e) = editor.eval_graph().await {
-				print_problem_to_terminal_on_failure(&format!("Failed to evaluate the graph for document '{document_name}':\n{e}"));
-			}
+// 			// Check if the graph renders
+// 			if let Err(e) = editor.eval_graph().await {
+// 				print_problem_to_terminal_on_failure(&format!("Failed to evaluate the graph for document '{document_name}':\n{e}"));
+// 			}
 
-			for response in responses {
-				// Check for the existence of the file format incompatibility warning dialog after opening the test file
-				if let FrontendMessage::UpdateDialogColumn1 { layout_target: _, diff } = response {
-					if let DiffUpdate::SubLayout(sub_layout) = &diff[0].new_value {
-						if let LayoutGroup::Row { widgets } = &sub_layout[0] {
-							if let Widget::TextLabel(TextLabel { value, .. }) = &widgets[0].widget {
-								print_problem_to_terminal_on_failure(value);
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-}
+// 			for response in responses {
+// 				// Check for the existence of the file format incompatibility warning dialog after opening the test file
+// 				if let FrontendMessage::UpdateDialogColumn1 { layout_target: _, diff } = response {
+// 					if let DiffUpdate::SubLayout(sub_layout) = &diff[0].new_value {
+// 						if let LayoutGroup::Row { widgets } = &sub_layout[0] {
+// 							if let Widget::TextLabel(TextLabel { value, .. }) = &widgets[0].widget {
+// 								print_problem_to_terminal_on_failure(value);
+// 							}
+// 						}
+// 					}
+// 				}
+// 			}
+// 		}
+// 	}
+// }

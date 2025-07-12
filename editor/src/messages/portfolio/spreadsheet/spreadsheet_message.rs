@@ -1,5 +1,5 @@
 use crate::messages::prelude::*;
-use crate::node_graph_executor::InspectResult;
+use graphene_std::uuid::{NodeId, SNI};
 
 /// The spreadsheet UI allows for instance data to be previewed.
 #[impl_message(Message, PortfolioMessage, Spreadsheet)]
@@ -7,21 +7,13 @@ use crate::node_graph_executor::InspectResult;
 pub enum SpreadsheetMessage {
 	ToggleOpen,
 
-	UpdateLayout {
-		#[serde(skip)]
-		inspect_result: InspectResult,
-	},
+	RequestUpdateLayout,
+	ProcessUpdateLayout { node_to_inspect: NodeId, protonode_id: SNI },
 
-	PushToInstancePath {
-		index: usize,
-	},
-	TruncateInstancePath {
-		len: usize,
-	},
+	PushToInstancePath { index: usize },
+	TruncateInstancePath { len: usize },
 
-	ViewVectorDataDomain {
-		domain: VectorDataDomain,
-	},
+	ViewVectorDataDomain { domain: VectorDataDomain },
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]

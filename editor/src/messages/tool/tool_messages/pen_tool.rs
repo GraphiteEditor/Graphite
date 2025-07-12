@@ -12,8 +12,8 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, closest_point, should_extend};
 use bezier_rs::{Bezier, BezierHandles};
-use graph_craft::document::NodeId;
 use graphene_std::Color;
+use graphene_std::uuid::NodeId;
 use graphene_std::vector::{HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, StrokeId, VectorData};
 use graphene_std::vector::{PointId, VectorModificationType};
 
@@ -1258,9 +1258,10 @@ impl PenToolData {
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
 		// This causes the following message to be run only after the next graph evaluation runs and the transforms are updated
-		responses.add(Message::StartBuffer);
+		responses.add(Message::StartEvaluationQueue);
 		// It is necessary to defer this until the transform of the layer can be accurately computed (quite hacky)
 		responses.add(PenToolMessage::AddPointLayerPosition { layer, viewport });
+		responses.add(Message::EndEvaluationQueue);
 	}
 
 	/// Perform extension of an existing path
@@ -2078,7 +2079,7 @@ impl Fsm for PenToolFsmState {
 							node_ids: vec![layer.to_node()],
 							delete_children: true,
 						});
-						responses.add(NodeGraphMessage::RunDocumentGraph);
+						responses.add(PortfolioMessage::CompileActiveDocument);
 					} else if (latest_points && tool_data.prior_segment_endpoint.is_none())
 						|| (tool_data.prior_segment_endpoint.is_some() && tool_data.prior_segment_layer != Some(layer) && latest_points)
 					{
@@ -2137,7 +2138,7 @@ impl Fsm for PenToolFsmState {
 						node_ids: vec![layer.unwrap().to_node()],
 						delete_children: true,
 					});
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 				}
 				responses.add(OverlaysMessage::Draw);
 

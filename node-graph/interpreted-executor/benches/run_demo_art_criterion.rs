@@ -1,14 +1,13 @@
 use criterion::measurement::Measurement;
 use criterion::{BenchmarkGroup, Criterion, black_box, criterion_group, criterion_main};
-use graph_craft::graphene_compiler::Executor;
 use graph_craft::proto::ProtoNetwork;
-use graph_craft::util::{DEMO_ART, compile, load_from_name};
+use graph_craft::util::{DEMO_ART, load_from_name};
 use graphene_std::transform::Footprint;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
 fn update_executor<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
-	let network = load_from_name(name);
-	let proto_network = compile(network);
+	let mut network = load_from_name(name);
+	let proto_network = network.flatten().unwrap().0;
 	let empty = ProtoNetwork::default();
 
 	let executor = futures::executor::block_on(DynamicExecutor::new(empty)).unwrap();
@@ -30,13 +29,13 @@ fn update_executor_demo(c: &mut Criterion) {
 }
 
 fn run_once<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
-	let network = load_from_name(name);
-	let proto_network = compile(network);
+	let mut network = load_from_name(name);
+	let proto_network = network.flatten().unwrap().0;
 
 	let executor = futures::executor::block_on(DynamicExecutor::new(proto_network)).unwrap();
-	let footprint = Footprint::default();
+	let context = graphene_std::any::EditorContext::default();
 
-	c.bench_function(name, |b| b.iter(|| futures::executor::block_on((&executor).execute(footprint))));
+	c.bench_function(name, |b| b.iter(|| futures::executor::block_on((&executor).evaluate_from_node(context.clone(), None))));
 }
 fn run_once_demo(c: &mut Criterion) {
 	let mut g = c.benchmark_group("Run Once no render");

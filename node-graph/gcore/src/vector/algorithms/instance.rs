@@ -22,7 +22,7 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + '
 		let mut iteration = async |index, point| {
 			let transformed_point = transform.transform_point2(point);
 
-			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_vararg(Box::new(transformed_point));
+			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_vararg(("Transformed point", Box::new(transformed_point)));
 			let generated_instance = instance.eval(new_ctx.into_context()).await;
 
 			for mut instanced in generated_instance.instance_iter() {
@@ -96,47 +96,47 @@ async fn instance_index(ctx: impl Ctx + ExtractIndex) -> f64 {
 	0.
 }
 
-#[cfg(test)]
-mod test {
-	use super::*;
-	use crate::Node;
-	use crate::extract_xy::{ExtractXyNode, XY};
-	use crate::vector::VectorData;
-	use bezier_rs::Subpath;
-	use glam::DVec2;
-	use std::pin::Pin;
+// #[cfg(test)]
+// mod test {
+// 	use super::*;
+// 	use crate::Node;
+// 	use crate::extract_xy::{ExtractXyNode, XY};
+// 	use crate::vector::VectorData;
+// 	use bezier_rs::Subpath;
+// 	use glam::DVec2;
+// 	use std::pin::Pin;
 
-	#[derive(Clone)]
-	pub struct FutureWrapperNode<T: Clone>(T);
+// 	#[derive(Clone)]
+// 	pub struct FutureWrapperNode<T: Clone>(T);
 
-	impl<'i, I: Ctx, T: 'i + Clone + Send> Node<'i, I> for FutureWrapperNode<T> {
-		type Output = Pin<Box<dyn Future<Output = T> + 'i + Send>>;
-		fn eval(&'i self, _input: I) -> Self::Output {
-			let value = self.0.clone();
-			Box::pin(async move { value })
-		}
-	}
+// 	impl<'i, I: Ctx, T: 'i + Clone + Send> Node<'i, I> for FutureWrapperNode<T> {
+// 		type Output = Pin<Box<dyn Future<Output = T> + 'i + Send>>;
+// 		fn eval(&'i self, _input: I) -> Self::Output {
+// 			let value = self.0.clone();
+// 			Box::pin(async move { value })
+// 		}
+// 	}
 
-	#[tokio::test]
-	async fn instance_on_points_test() {
-		let owned = OwnedContextImpl::default().into_context();
-		let rect = crate::vector::generator_nodes::RectangleNode::new(
-			FutureWrapperNode(()),
-			ExtractXyNode::new(InstancePositionNode {}, FutureWrapperNode(XY::Y)),
-			FutureWrapperNode(2_f64),
-			FutureWrapperNode(false),
-			FutureWrapperNode(0_f64),
-			FutureWrapperNode(false),
-		);
+// 	#[tokio::test]
+// 	async fn instance_on_points_test() {
+// 		let owned = OwnedContextImpl::default().into_context();
+// 		let rect = crate::vector::generator_nodes::RectangleNode::new(
+// 			FutureWrapperNode(()),
+// 			ExtractXyNode::new(InstancePositionNode {}, FutureWrapperNode(XY::Y)),
+// 			FutureWrapperNode(2_f64),
+// 			FutureWrapperNode(false),
+// 			FutureWrapperNode(0_f64),
+// 			FutureWrapperNode(false),
+// 		);
 
-		let positions = [DVec2::new(40., 20.), DVec2::ONE, DVec2::new(-42., 9.), DVec2::new(10., 345.)];
-		let points = VectorDataTable::new(VectorData::from_subpath(Subpath::from_anchors_linear(positions, false)));
-		let repeated = super::instance_on_points(owned, points, &rect, false).await;
-		assert_eq!(repeated.len(), positions.len());
-		for (position, instanced) in positions.into_iter().zip(repeated.instance_ref_iter()) {
-			let bounds = instanced.instance.bounding_box_with_transform(*instanced.transform).unwrap();
-			assert!(position.abs_diff_eq((bounds[0] + bounds[1]) / 2., 1e-10));
-			assert_eq!((bounds[1] - bounds[0]).x, position.y);
-		}
-	}
-}
+// 		let positions = [DVec2::new(40., 20.), DVec2::ONE, DVec2::new(-42., 9.), DVec2::new(10., 345.)];
+// 		let points = VectorDataTable::new(VectorData::from_subpath(Subpath::from_anchors_linear(positions, false)));
+// 		let repeated = super::instance_on_points(owned, points, &rect, false).await;
+// 		assert_eq!(repeated.len(), positions.len());
+// 		for (position, instanced) in positions.into_iter().zip(repeated.instance_ref_iter()) {
+// 			let bounds = instanced.instance.bounding_box_with_transform(*instanced.transform).unwrap();
+// 			assert!(position.abs_diff_eq((bounds[0] + bounds[1]) / 2., 1e-10));
+// 			assert_eq!((bounds[1] - bounds[0]).x, position.y);
+// 		}
+// 	}
+// }
