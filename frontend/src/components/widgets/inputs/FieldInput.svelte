@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from "svelte";
 	import type { Snippet } from "svelte";
 	import type { SvelteHTMLElements } from "svelte/elements";
 
@@ -60,14 +61,20 @@
 	let inputOrTextarea: HTMLInputElement | HTMLTextAreaElement | undefined = $state();
 	let id = String(Math.random()).substring(2);
 	let macKeyboardLayout = platformIsMac();
+	let local = $state<string>();
+
+	$effect.pre(() => {
+		local = value;
+	});
 
 	// Select (highlight) all the text. For technical reasons, it is necessary to pass the current text.
 	export function selectAllText(currentText: string) {
 		if (!inputOrTextarea) return;
 
 		// Setting the value directly is required to make the following `select()` call work
-		inputOrTextarea.value = currentText;
-		inputOrTextarea.select();
+		local = currentText;
+		// Wait for UI to update
+		tick().then(() => inputOrTextarea.select());
 	}
 
 	export function focus() {
@@ -79,13 +86,7 @@
 	}
 
 	export function getValue(): string {
-		return inputOrTextarea?.value ?? "";
-	}
-
-	export function setInputElementValue(value: string) {
-		if (!inputOrTextarea) return;
-
-		inputOrTextarea.value = value;
+		return local ?? "";
 	}
 
 	export function element(): HTMLInputElement | HTMLTextAreaElement | undefined {
@@ -93,6 +94,7 @@
 	}
 
 	function cancel() {
+		local = value;
 		ontextChangeCanceled?.();
 
 		if (inputOrTextarea) preventEscapeClosingParentFloatingMenu(inputOrTextarea);
@@ -100,6 +102,7 @@
 
 	function onkeydownInput(e: KeyboardEvent & { currentTarget: HTMLInputElement }) {
 		if (e.key === "Enter") {
+			value = local;
 			onchange?.(e);
 		}
 		if (e.key === "Escape") {
@@ -109,6 +112,7 @@
 
 	function onkeydownTextArea(e: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) {
 		if ((macKeyboardLayout ? e.metaKey : e.ctrlKey) && e.key === "Enter") {
+			value = local;
 			onchange?.(e);
 		}
 		if (e.key === "Escape") {
@@ -128,7 +132,7 @@
 			{disabled}
 			{placeholder}
 			bind:this={inputOrTextarea}
-			bind:value
+			bind:value={local}
 			{onfocus}
 			onblur={onchange}
 			{onchange}
@@ -146,7 +150,7 @@
 			{spellcheck}
 			{disabled}
 			bind:this={inputOrTextarea}
-			bind:value
+			bind:value={local}
 			{onfocus}
 			onblur={onchange}
 			{onchange}
