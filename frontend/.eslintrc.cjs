@@ -19,7 +19,7 @@ module.exports = {
 	parserOptions: {
 		ecmaVersion: "latest",
 		project: "./tsconfig.json",
-		extraFileExtensions: [".svelte"],
+		extraFileExtensions: [".svelte", ".svelte.ts"],
 	},
 	ignorePatterns: [
 		// Ignore generated directories
@@ -33,7 +33,7 @@ module.exports = {
 	],
 	overrides: [
 		{
-			files: ["*.svelte"],
+			files: ["*.svelte", "*.svelte.ts"],
 			parser: "svelte-eslint-parser",
 			// Parse the `<script>` in `.svelte` as TypeScript by adding the following configuration.
 			parserOptions: { parser: "@typescript-eslint/parser" },
@@ -53,6 +53,9 @@ module.exports = {
 		"max-len": ["error", { code: 200, tabWidth: 4, ignorePattern: `d="([\\s\\S]*?)"` }],
 		"prefer-destructuring": "off",
 		"no-console": "warn",
+		// eslint recommended for ts project
+		// https://typescript-eslint.io/troubleshooting/faqs/eslint/#i-get-errors-from-the-no-undef-rule-about-global-variables-not-being-defined-even-though-there-are-no-typescript-errors
+		"no-undef": "off",
 		"no-debugger": "warn",
 		"no-param-reassign": ["error", { props: false }],
 		"no-bitwise": "off",

@@ -2,7 +2,7 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { FrontendDocumentDetails } from "@graphite/messages.svelte";
+
 	import type { DialogState } from "@graphite/state-providers/dialog";
 	import type { PortfolioState } from "@graphite/state-providers/portfolio";
 
@@ -10,6 +10,7 @@
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import Panel from "@graphite/components/window/workspace/Panel.svelte";
+	import type { FrontendDocumentDetails } from "@graphite/messages.svelte";
 
 	const MIN_PANEL_SIZE = 100;
 	const PANEL_SIZES = {
@@ -26,8 +27,6 @@
 	let documentPanel: Panel | undefined = $state();
 	let gutterResizeRestore: [number, number] | undefined = undefined;
 	let pointerCaptureId: number | undefined = undefined;
-
-
 
 	const editor = getContext<Editor>("editor");
 	const portfolio = getContext<PortfolioState>("portfolio");
@@ -124,14 +123,16 @@
 	$effect(() => {
 		documentPanel?.scrollTabIntoView($portfolio.activeDocumentIndex);
 	});
-	let documentTabLabels = $derived($portfolio.documents.map((doc: FrontendDocumentDetails) => {
-		const name = doc.displayName;
+	let documentTabLabels = $derived(
+		$portfolio.documents.map((doc: FrontendDocumentDetails) => {
+			const name = doc.displayName;
 
-		if (!editor.handle.inDevelopmentMode()) return { name };
+			if (!editor.handle.inDevelopmentMode()) return { name };
 
-		const tooltip = `Document ID: ${doc.id}`;
-		return { name, tooltip };
-	}));
+			const tooltip = `Document ID: ${doc.id}`;
+			return { name, tooltip };
+		}),
+	);
 </script>
 
 <LayoutRow class="workspace" data-workspace>

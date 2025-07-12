@@ -2,18 +2,18 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { Color } from "@graphite/messages.svelte";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import { Color } from "@graphite/messages.svelte";
 
 	const editor = getContext<Editor>("editor");
 
-	interface Props {
+	type Props = {
 		primary: Color;
 		secondary: Color;
-	}
+	};
 
 	let { primary, secondary }: Props = $props();
 
@@ -42,21 +42,11 @@
 <LayoutCol class="working-colors-button">
 	<LayoutRow class="primary swatch">
 		<button onclick={clickPrimarySwatch} class:open={primaryOpen} style:--swatch-color={primary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0"></button>
-		<ColorPicker
-			bind:open={primaryOpen}
-			colorOrGradient={primary}
-			oncolorOrGradient={(detail) => detail instanceof Color && primaryColorChanged(detail)}
-			direction="Right"
-		/>
+		<ColorPicker bind:open={primaryOpen} colorOrGradient={primary} oncolorOrGradient={(detail) => detail instanceof Color && primaryColorChanged(detail)} direction="Right" />
 	</LayoutRow>
 	<LayoutRow class="secondary swatch">
 		<button onclick={clickSecondarySwatch} class:open={secondaryOpen} style:--swatch-color={secondary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0"></button>
-		<ColorPicker
-			bind:open={secondaryOpen}
-			colorOrGradient={secondary}
-			oncolorOrGradient={(detail) => detail instanceof Color && secondaryColorChanged(detail)}
-			direction="Right"
-		/>
+		<ColorPicker bind:open={secondaryOpen} colorOrGradient={secondary} oncolorOrGradient={(detail) => detail instanceof Color && secondaryColorChanged(detail)} direction="Right" />
 	</LayoutRow>
 </LayoutCol>
 

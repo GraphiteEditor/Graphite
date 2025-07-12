@@ -2,9 +2,9 @@
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	interface Props {
+	type Props = {
 		text: string;
-	}
+	};
 
 	let { text }: Props = $props();
 </script>

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
 
-	interface Props {
+	type Props = {
 		// Label
 		label?: string | undefined;
 		tooltip?: string | undefined;
@@ -16,7 +16,7 @@
 		class?: string;
 		classes?: Record<string, boolean>;
 		oncommitText?: (arg1: string) => void;
-	}
+	};
 
 	let {
 		label = undefined,

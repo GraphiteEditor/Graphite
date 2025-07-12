@@ -1,20 +1,22 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 
+	import type { MouseEventHandler } from "svelte/elements";
+
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
-	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@graphite/messages.svelte";
+
 	import { evaluateMathExpression } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
-	import type { MouseEventHandler } from 'svelte/elements';
+	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@graphite/messages.svelte";
 
 	const BUTTONS_LEFT = 0b0000_0001;
 	const BUTTONS_RIGHT = 0b0000_0010;
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
-	
-	interface Props {
+
+	type Props = {
 		// Label
 		label?: string | undefined;
 		tooltip?: string | undefined;
@@ -54,8 +56,8 @@
 		incrementCallbackDecrease?: (() => void) | undefined;
 		onvalue?: (value: number | undefined) => void;
 		onstartHistoryTransaction?: () => void;
-		oncontextmenu?: MouseEventHandler<HTMLInputElement>
-	}
+		oncontextmenu?: MouseEventHandler<HTMLInputElement>;
+	};
 
 	let {
 		label = undefined,
@@ -107,8 +109,6 @@
 	// Track whether the Ctrl key is currently held down.
 	let ctrlKeyDown = false;
 
-
-
 	// Keep track of the Ctrl key being held down.
 	const trackCtrl = (e: KeyboardEvent | MouseEvent) => (ctrlKeyDown = e.ctrlKey);
 	onMount(() => {
@@ -120,10 +120,10 @@
 			removeEventListener("keydown", trackCtrl);
 			removeEventListener("keyup", trackCtrl);
 			removeEventListener("mousemove", trackCtrl);
-		}
+		};
 	});
 	// onDestroy(() => {
-		
+
 	// });
 
 	// ===============================
@@ -561,7 +561,7 @@
 	function startDragging() {
 		// This event is sent to the backend so it knows to start a transaction for the history system. See discussion for some explanation:
 		// <https://github.com/GraphiteEditor/Graphite/pull/1584#discussion_r1477592483>
-		onstartHistoryTransaction?.()
+		onstartHistoryTransaction?.();
 	}
 
 	// We want to let the user abort while dragging the slider by right clicking or pressing Escape.
@@ -708,7 +708,7 @@
 				class="slider"
 				class:hidden={rangeSliderClickDragState === "Deciding"}
 				{disabled}
-				min={rangeMin}	
+				min={rangeMin}
 				max={rangeMax}
 				step={sliderStepValue}
 				bind:value={rangeSliderValue}

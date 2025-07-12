@@ -13,7 +13,7 @@
 
 	const clamp01 = (value: number): number => Math.min(Math.max(value, 0), 1);
 
-	interface Props {
+	type Props = {
 		direction?: Graphite.Axis;
 		thumbPosition?: number;
 		thumbLength?: number;
@@ -22,18 +22,9 @@
 		onthumbDragEnd?: () => void;
 		onthumbDragStart?: () => void;
 		onthumbDragAbort?: () => void;
-	}
+	};
 
-	let { 
-		direction = "Vertical", 
-		thumbPosition = 0.5, 
-		thumbLength = 0.5,
-		ontrackShift,
-		onthumbPosition,
-		onthumbDragEnd,
-		onthumbDragStart,
-		onthumbDragAbort,
-	}: Props = $props();
+	let { direction = "Vertical", thumbPosition = 0.5, thumbLength = 0.5, ontrackShift, onthumbPosition, onthumbDragEnd, onthumbDragStart, onthumbDragAbort }: Props = $props();
 
 	let scrollTrack: HTMLDivElement | undefined = $state();
 	let dragging = $state(false);
@@ -71,7 +62,7 @@
 			if (!pressingArrow) return;
 
 			const distance = afterInitialDelay ? ARROW_REPEAT_DISTANCE : ARROW_CLICK_DISTANCE;
-			ontrackShift?.( -direction * distance);
+			ontrackShift?.(-direction * distance);
 
 			if (afterInitialDelay) repeatTimeout = setTimeout(sendMove, PRESS_REPEAT_INTERVAL_RAPID_MS);
 			afterInitialDelay = true;
@@ -178,7 +169,7 @@
 			const dragDelta = positionPositionThisFrame - pointerPositionLastFrame;
 			const movement = dragDelta / (length * (1 - thumbLength));
 			const newThumbPosition = clamp01(thumbPosition + movement);
-			onthumbPosition?.(newThumbPosition)
+			onthumbPosition?.(newThumbPosition);
 
 			pointerPositionLastFrame = positionPositionThisFrame;
 

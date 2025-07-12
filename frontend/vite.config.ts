@@ -3,10 +3,11 @@
 import { spawnSync } from "child_process";
 
 import { readFileSync } from "node:fs";
-import { minimatch } from "minimatch";
+
 import path from "path";
 
 import { svelte } from "@sveltejs/vite-plugin-svelte";
+import { minimatch } from "minimatch";
 import rollupPluginLicense, { type Dependency } from "rollup-plugin-license";
 import { sveltePreprocess } from "svelte-preprocess";
 import { defineConfig } from "vite";

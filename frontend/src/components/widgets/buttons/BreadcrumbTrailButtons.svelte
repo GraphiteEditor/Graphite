@@ -2,20 +2,15 @@
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 
-	interface Props {
+	type Props = {
 		labels: string[];
 		disabled?: boolean;
 		tooltip?: string | undefined;
 		// Callbacks
 		onclick: (index: number) => void;
-	}
+	};
 
-	let {
-		labels,
-		disabled = false,
-		tooltip = undefined,
-		onclick
-	}: Props = $props();
+	let { labels, disabled = false, tooltip = undefined, onclick }: Props = $props();
 </script>
 
 <LayoutRow class="breadcrumb-trail-buttons" {tooltip}>

@@ -2,6 +2,18 @@
 	import { getContext, onMount, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
+
+	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
+	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
+	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
+
+	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
+	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import Graph from "@graphite/components/views/Graph.svelte";
+	import RulerInput from "@graphite/components/widgets/inputs/RulerInput.svelte";
+	import ScrollbarInput from "@graphite/components/widgets/inputs/ScrollbarInput.svelte";
+	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 	import {
 		type MouseCursorIcon,
 		type XY,
@@ -17,17 +29,6 @@
 		isWidgetSpanRow,
 	} from "@graphite/messages.svelte";
 	import type { DocumentState } from "@graphite/state-providers/document.svelte";
-	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
-	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
-	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
-
-	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import Graph from "@graphite/components/views/Graph.svelte";
-	import RulerInput from "@graphite/components/widgets/inputs/RulerInput.svelte";
-	import ScrollbarInput from "@graphite/components/widgets/inputs/ScrollbarInput.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
 	let rulerHorizontal: RulerInput | undefined = $state();
 	let rulerVertical: RulerInput | undefined = $state();
@@ -92,39 +93,41 @@
 	let canvasWidthScaledRoundedToEven = $derived(canvasWidthScaled && (canvasWidthScaled % 2 === 1 ? canvasWidthScaled + 1 : canvasWidthScaled));
 	let canvasHeightScaledRoundedToEven = $derived(canvasHeightScaled && (canvasHeightScaled % 2 === 1 ? canvasHeightScaled + 1 : canvasHeightScaled));
 
-	let toolShelfTotalToolsAndSeparators = $derived(((layoutGroup) => {
-		if (!isWidgetSpanRow(layoutGroup)) return undefined;
+	let toolShelfTotalToolsAndSeparators = $derived(
+		((layoutGroup) => {
+			if (!isWidgetSpanRow(layoutGroup)) return undefined;
 
-		let totalSeparators = 0;
-		let totalToolRowsFor1Columns = 0;
-		let totalToolRowsFor2Columns = 0;
-		let totalToolRowsFor3Columns = 0;
+			let totalSeparators = 0;
+			let totalToolRowsFor1Columns = 0;
+			let totalToolRowsFor2Columns = 0;
+			let totalToolRowsFor3Columns = 0;
 
-		const tally = () => {
-			totalToolRowsFor1Columns += toolsInCurrentGroup;
-			totalToolRowsFor2Columns += Math.ceil(toolsInCurrentGroup / 2);
-			totalToolRowsFor3Columns += Math.ceil(toolsInCurrentGroup / 3);
-			toolsInCurrentGroup = 0;
-		};
+			const tally = () => {
+				totalToolRowsFor1Columns += toolsInCurrentGroup;
+				totalToolRowsFor2Columns += Math.ceil(toolsInCurrentGroup / 2);
+				totalToolRowsFor3Columns += Math.ceil(toolsInCurrentGroup / 3);
+				toolsInCurrentGroup = 0;
+			};
 
-		let toolsInCurrentGroup = 0;
-		layoutGroup.rowWidgets.forEach((widget) => {
-			if (widget.props.kind === "Separator") {
-				totalSeparators += 1;
-				tally();
-			} else {
-				toolsInCurrentGroup += 1;
-			}
-		});
-		tally();
+			let toolsInCurrentGroup = 0;
+			layoutGroup.rowWidgets.forEach((widget) => {
+				if (widget.props.kind === "Separator") {
+					totalSeparators += 1;
+					tally();
+				} else {
+					toolsInCurrentGroup += 1;
+				}
+			});
+			tally();
 
-		return {
-			totalSeparators,
-			totalToolRowsFor1Columns,
-			totalToolRowsFor2Columns,
-			totalToolRowsFor3Columns,
-		};
-	})(document.toolShelfLayout.layout[0]));
+			return {
+				totalSeparators,
+				totalToolRowsFor1Columns,
+				totalToolRowsFor2Columns,
+				totalToolRowsFor3Columns,
+			};
+		})(document.toolShelfLayout.layout[0]),
+	);
 
 	function dropFile(e: DragEvent) {
 		const { dataTransfer } = e;

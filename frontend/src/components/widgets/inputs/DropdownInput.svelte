@@ -1,17 +1,16 @@
 <script lang="ts">
-	import type { MenuListEntry } from "@graphite/messages.svelte";
-
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import type { MenuListEntry } from "@graphite/messages.svelte";
 
 	const DASH_ENTRY = { value: "", label: "-" };
 
 	let menuList: MenuList | undefined = $state();
 	let self: LayoutRow | undefined = $state();
 
-	interface Props {
+	type Props = {
 		entries: MenuListEntry[][];
 		selectedIndex?: number | undefined; // When not provided, a dash is displayed
 		drawIcon?: boolean;
@@ -20,10 +19,10 @@
 		tooltip?: string | undefined;
 		minWidth?: number;
 		maxWidth?: number;
-		onhoverOutEntry?: (index: number) => void; 
+		onhoverOutEntry?: (index: number) => void;
 		onhoverInEntry?: (index: number) => void;
 		onselectedIndex?: (index: number) => void;
-	}
+	};
 
 	let {
 		entries,
@@ -55,13 +54,13 @@
 	}
 
 	// Called only when `entries` is changed from outside this component
-	function watchEntries(_?: typeof entries) {
-		activeEntrySkipWatcher = true;
-		activeEntry = makeActiveEntry();
-	}
+	// function watchEntries(_?: typeof entries) {
+	// 	activeEntrySkipWatcher = true;
+	// 	activeEntry = makeActiveEntry();
+	// }
 
 	function getEntryIndex(entry: MenuListEntry): number {
-		return entries.flat().findIndex(item => item.value === entry.value);
+		return entries.flat().findIndex((item) => item.value === entry.value);
 	}
 
 	// Called when the `activeEntry` two-way binding on this component's MenuList component is changed, or by the `selectedIndex()` watcher above (but we want to skip that case)

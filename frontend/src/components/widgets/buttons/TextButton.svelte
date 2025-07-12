@@ -1,18 +1,19 @@
 <script lang="ts">
-	import type { MenuListEntry } from "@graphite/messages.svelte";
+	import type { MouseEventHandler } from "svelte/elements";
+
 	import type { IconName } from "@graphite/utility-functions/icons";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import ConditionalWrapper from "@graphite/components/layout/ConditionalWrapper.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import type { MouseEventHandler } from "svelte/elements";
+	import type { MenuListEntry } from "@graphite/messages.svelte";
 
 	let self: MenuList | undefined = $state();
 	let open: boolean = $state(false);
 	// Note: IconButton should be used if only an icon, but no label, is desired.
 	// However, if multiple TextButton widgets are used in a group with only some having no label, this component is able to accommodate that.
-	interface Props {
+	type Props = {
 		label: string;
 		icon?: IconName | undefined;
 		hoverIcon?: IconName | undefined;
@@ -23,7 +24,7 @@
 		tooltip?: string | undefined;
 		menuListChildren?: MenuListEntry[][] | undefined;
 		onclick: MouseEventHandler<HTMLButtonElement>;
-	}
+	};
 
 	let {
 		label,
@@ -41,7 +42,7 @@
 	let menuListChildrenExists = $derived((menuListChildren?.length ?? 0) > 0);
 
 	// Handles either a button click or, if applicable, the opening of the menu list floating menu
-	function onClick(e: MouseEvent & { currentTarget: EventTarget & HTMLButtonElement; }) {
+	function onClick(e: MouseEvent & { currentTarget: EventTarget & HTMLButtonElement }) {
 		// If there's no menu to open, trigger the action
 		if ((menuListChildren?.length ?? 0) === 0) {
 			// Call the action
@@ -63,7 +64,7 @@
 <ConditionalWrapper condition={menuListChildrenExists} wrapperClass="text-button-container">
 	<button
 		class="text-button"
-		class:open={open}
+		class:open
 		class:hover-icon={hoverIcon && !disabled}
 		class:emphasized
 		class:disabled
@@ -88,14 +89,7 @@
 		{/if}
 	</button>
 	{#if menuListChildrenExists}
-		<MenuList
-			bind:open={open}
-			entries={menuListChildren}
-			direction="Bottom"
-			minWidth={240}
-			drawIcon={true}
-			bind:this={self}
-		/>
+		<MenuList bind:open entries={menuListChildren} direction="Bottom" minWidth={240} drawIcon={true} bind:this={self} />
 	{/if}
 </ConditionalWrapper>
 

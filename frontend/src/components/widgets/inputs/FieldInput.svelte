@@ -1,9 +1,11 @@
 <script lang="ts">
+	import type { Snippet } from "svelte";
+	import type { SvelteHTMLElements } from "svelte/elements";
+
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import type { SvelteHTMLElements } from 'svelte/elements';
 
 	type InputHTMLElementProps = SvelteHTMLElements["input"];
 	type TextAreaHTMLElementProps = SvelteHTMLElements["textarea"];
@@ -21,20 +23,19 @@
 		tooltip?: string | undefined;
 		placeholder?: string | undefined;
 		hideContextMenu?: boolean;
-		children?: import('svelte').Snippet;
+		children?: Snippet;
 		onfocus?: (event: FocusEvent & { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => void;
-        onblur?: (event: FocusEvent & { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => void;
-        onchange?: (event: Event & { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => void;
-        onkeydown?: (event: KeyboardEvent & { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => void;
-        onpointerdown?: (event: PointerEvent & { currentTarget: HTMLInputElement | HTMLTextAreaElement | HTMLLabelElement }) => void;
+		onblur?: (event: FocusEvent & { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => void;
+		onchange?: (event: Event & { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => void;
+		onkeydown?: (event: KeyboardEvent & { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => void;
+		onpointerdown?: (event: PointerEvent & { currentTarget: HTMLInputElement | HTMLTextAreaElement | HTMLLabelElement }) => void;
 		ontextChangeCanceled?: () => void;
-	}
+	};
 
-	type Props = CommonProps & (
-		CommonProps['textarea'] extends true
+	type Props = CommonProps &
+		(CommonProps["textarea"] extends true
 			? TextAreaHTMLElementProps // If 'textarea' is explicitly true
-			: InputHTMLElementProps    // Otherwise (false, undefined, or missing)
-	);
+			: InputHTMLElementProps); // Otherwise (false, undefined, or missing)
 
 	let {
 		class: className = "",
@@ -97,9 +98,22 @@
 		if (inputOrTextarea) preventEscapeClosingParentFloatingMenu(inputOrTextarea);
 	}
 
-	function onkeydown(e: KeyboardEvent) {
-		e.key === "Enter" && onchange?.(e);
-		e.key === "Escape" && cancel();
+	function onkeydownInput(e: KeyboardEvent & { currentTarget: HTMLInputElement }) {
+		if (e.key === "Enter") {
+			onchange?.(e);
+		}
+		if (e.key === "Escape") {
+			cancel();
+		}
+	}
+
+	function onkeydownTextArea(e: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) {
+		if ((macKeyboardLayout ? e.metaKey : e.ctrlKey) && e.key === "Enter") {
+			onchange?.(e);
+		}
+		if (e.key === "Escape") {
+			cancel();
+		}
 	}
 </script>
 
@@ -114,12 +128,12 @@
 			{disabled}
 			{placeholder}
 			bind:this={inputOrTextarea}
-			bind:value={value}
-			onfocus={onfocus}
+			bind:value
+			{onfocus}
 			onblur={onchange}
-			onchange={onchange}
-			onkeydown={onkeydown}
-			onpointerdown={onpointerdown}
+			{onchange}
+			onkeydown={onkeydownInput}
+			{onpointerdown}
 			oncontextmenu={(e) => hideContextMenu && e.preventDefault()}
 			data-input-element
 		/>
@@ -132,17 +146,17 @@
 			{spellcheck}
 			{disabled}
 			bind:this={inputOrTextarea}
-			bind:value={value}
-			onfocus={onfocus}
+			bind:value
+			{onfocus}
 			onblur={onchange}
-			onchange={onchange}
-			onkeydown={onkeydown}
-			onpointerdown={onpointerdown}
+			{onchange}
+			onkeydown={onkeydownTextArea}
+			{onpointerdown}
 			oncontextmenu={(e) => hideContextMenu && e.preventDefault()}
 		></textarea>
 	{/if}
 	{#if label}
-		<label for={`field-input-${id}`} onpointerdown={onpointerdown}>{label}</label>
+		<label for={`field-input-${id}`} {onpointerdown}>{label}</label>
 	{/if}
 	{@render children?.()}
 </LayoutRow>

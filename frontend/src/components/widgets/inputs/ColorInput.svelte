@@ -1,14 +1,13 @@
 <script lang="ts">
-	import type { FillChoice } from "@graphite/messages.svelte";
-	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages.svelte";
-
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages.svelte";
+	import type { FillChoice } from "@graphite/messages.svelte";
 
 	let open = $state(false);
 
-	interface Props {
+	type Props = {
 		value: FillChoice;
 		disabled?: boolean;
 		allowNone?: boolean;
@@ -16,23 +15,15 @@
 		tooltip?: string | undefined;
 		onvalue?: (value: FillChoice) => void;
 		onstartHistoryTransaction?: () => void;
-	}
+	};
 
-	let {
-		value,
-		disabled = false,
-		allowNone = false,
-		tooltip = undefined,
-		onvalue,
-		onstartHistoryTransaction,
-	}: Props = $props();
+	let { value, disabled = false, allowNone = false, tooltip = undefined, onvalue, onstartHistoryTransaction }: Props = $props();
 
 	let outlineFactor = $derived(contrastingOutlineFactor(value, ["--color-1-nearblack", "--color-3-darkgray"], 0.01));
 	let outlined = $derived(outlineFactor > 0.0001);
 	let chosenGradient = $derived(value instanceof Gradient ? value.toLinearGradientCSS() : `linear-gradient(${value.toHexOptionalAlpha()}, ${value.toHexOptionalAlpha()})`);
 	let none = $derived(value instanceof Color ? value.none : false);
 	let transparency = $derived(value instanceof Gradient ? value.stops.some((stop) => stop.color.alpha < 1) : value.alpha < 1);
-
 </script>
 
 <LayoutCol class="color-button" classes={{ open, disabled, none, transparency, outlined }} {tooltip}>
@@ -48,7 +39,7 @@
 		onstartHistoryTransaction={() => {
 			// This event is sent to the backend so it knows to start a transaction for the history system. See discussion for some explanation:
 			// <https://github.com/GraphiteEditor/Graphite/pull/1584#discussion_r1477592483>
-			onstartHistoryTransaction?.()
+			onstartHistoryTransaction?.();
 		}}
 		{allowNone}
 	/>

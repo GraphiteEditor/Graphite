@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { type SeparatorDirection, type SeparatorType } from "@graphite/messages.svelte";
 
-	interface Props {
+	type Props = {
 		direction?: SeparatorDirection;
 		type?: SeparatorType;
-	}
+	};
 
 	let { direction = "Horizontal", type = "Unrelated" }: Props = $props();
 </script>

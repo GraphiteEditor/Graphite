@@ -1,33 +1,24 @@
 <script lang="ts">
-	import WidgetSection from './WidgetSection.svelte';
-
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { isWidgetSpanRow, isWidgetSpanColumn, isWidgetSection, type WidgetSection as WidgetSectionFromJsMessages } from "@graphite/messages.svelte";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import WidgetSection from "@graphite/components/widgets/WidgetSection.svelte";
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
+	import { isWidgetSpanRow, isWidgetSpanColumn, isWidgetSection, type WidgetSection as WidgetSectionFromJsMessages } from "@graphite/messages.svelte";
 
-	
-
-	
-	interface Props {
+	type Props = {
 		widgetData: WidgetSectionFromJsMessages;
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		layoutTarget: any; // TODO: Give type
 		class?: string;
 		classes?: Record<string, boolean>;
-	}
+	};
 
-	let {
-		widgetData,
-		layoutTarget,
-		class: className = "",
-		classes = {}
-	}: Props = $props();
+	let { widgetData, layoutTarget, class: className = "", classes = {} }: Props = $props();
 
 	let expanded = $state(true);
 
@@ -36,10 +27,15 @@
 
 <!-- TODO: Implement collapsable sections with properties system -->
 <LayoutCol class={`widget-section ${className}`.trim()} {classes}>
-	<button class="header" class:expanded onclick={(event) => {
-		event.stopPropagation();
-		expanded = !expanded;
-	}} tabindex="0">
+	<button
+		class="header"
+		class:expanded
+		onclick={(event) => {
+			event.stopPropagation();
+			expanded = !expanded;
+		}}
+		tabindex="0"
+	>
 		<div class="expand-arrow"></div>
 		<TextLabel tooltip={widgetData.description} bold={true}>{widgetData.name}</TextLabel>
 		<IconButton

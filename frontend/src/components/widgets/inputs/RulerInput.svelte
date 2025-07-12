@@ -6,28 +6,20 @@
 	const MINOR_MARK_THICKNESS = 6;
 	const MICRO_MARK_THICKNESS = 3;
 
-	interface Props {
+	type Props = {
 		direction?: Graphite.Axis;
 		origin: number;
 		numberInterval: number;
 		majorMarkSpacing: number;
 		minorDivisions?: number;
 		microDivisions?: number;
-	}
+	};
 
-	let {
-		direction = "Vertical",
-		origin,
-		numberInterval,
-		majorMarkSpacing,
-		minorDivisions = 5,
-		microDivisions = 2
-	}: Props = $props();
+	let { direction = "Vertical", origin, numberInterval, majorMarkSpacing, minorDivisions = 5, microDivisions = 2 }: Props = $props();
 
 	let rulerInput: HTMLDivElement | undefined = $state();
 	let rulerLength = $state(0);
 	let svgBounds = $state({ width: "0px", height: "0px" });
-
 
 	function computeSvgPath(direction: Graphite.Axis, origin: number, majorMarkSpacing: number, minorDivisions: number, microDivisions: number, rulerLength: number): string {
 		const isVertical = direction === "Vertical";
