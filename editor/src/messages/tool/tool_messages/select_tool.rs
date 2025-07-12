@@ -289,21 +289,21 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 						responses.add(ToolMessage::UpdateHints);
 						let pivot_gizmo = self.tool_data.pivot_gizmo();
 						responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
-						responses.add(NodeGraphMessage::RunDocumentGraph);
+						responses.add(PortfolioMessage::CompileActiveDocument);
 						redraw_reference_pivot = true;
 					}
 				}
 				SelectOptionsUpdate::TogglePivotGizmoType(state) => {
 					self.tool_data.pivot_gizmo.state.disabled = !state;
 					responses.add(ToolMessage::UpdateHints);
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 					redraw_reference_pivot = true;
 				}
 
 				SelectOptionsUpdate::TogglePivotPinned => {
 					self.tool_data.pivot_gizmo.pivot.pinned = !self.tool_data.pivot_gizmo.pivot.pinned;
 					responses.add(ToolMessage::UpdateHints);
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 					redraw_reference_pivot = true;
 				}
 			}
@@ -1255,7 +1255,7 @@ impl Fsm for SelectToolFsmState {
 
 				tool_data.pivot_gizmo.pivot.set_viewport_position(snapped_mouse_position);
 
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 
 				// Auto-panning
 				let messages = [
@@ -1611,7 +1611,7 @@ impl Fsm for SelectToolFsmState {
 				let pivot_gizmo = tool_data.pivot_gizmo();
 				responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
 
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 
 				self
 			}

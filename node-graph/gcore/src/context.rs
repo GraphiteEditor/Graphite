@@ -51,26 +51,52 @@ pub trait ExtractAll: ExtractFootprint + ExtractDownstreamTransform + ExtractInd
 impl<T: ?Sized + ExtractFootprint + ExtractDownstreamTransform + ExtractIndex + ExtractRealTime + ExtractAnimationTime + ExtractVarArgs> ExtractAll for T {}
 
 #[derive(Debug, Clone, PartialEq)]
+#[repr(u8)]
 pub enum ContextDependency {
-	ExtractFootprint,
+	ExtractFootprint = 0b10000000,
 	// Can be used by cull nodes to check if the final output would be outside the footprint viewport
-	ExtractDownstreamTransform,
-	ExtractRealTime,
-	ExtractAnimationTime,
-	ExtractIndex,
-	ExtractVarArgs,
+	ExtractDownstreamTransform = 0b01000000,
+	ExtractRealTime = 0b00100000,
+	ExtractAnimationTime = 0b00010000,
+	ExtractIndex = 0b00001000,
+	ExtractVarArgs = 0b00000100,
 }
 
-pub fn all_context_dependencies() -> Vec<ContextDependency> {
-	vec![
-		ContextDependency::ExtractFootprint,
-		// Can be used by cull nodes to check if the final output would be outside the footprint viewport
-		ContextDependency::ExtractDownstreamTransform,
-		ContextDependency::ExtractRealTime,
-		ContextDependency::ExtractAnimationTime,
-		ContextDependency::ExtractIndex,
-		ContextDependency::ExtractVarArgs,
-	]
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContextDependencies(pub u8);
+
+impl ContextDependencies {
+	pub fn all_context_dependencies() -> Self {
+		ContextDependencies(0b11111100)
+	}
+
+	pub fn none() -> Self {
+		ContextDependencies(0b00000000)
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.0 & Self::all_context_dependencies().0 == 0
+	}
+
+	pub fn from(dependencies: Vec<ContextDependency>) -> Self {
+		let mut new = Self::none();
+		for dependency in dependencies {
+			new.0 |= dependency as u8
+		}
+		new
+	}
+
+	pub fn inverse(self) -> Self {
+		Self(!self.0)
+	}
+
+	pub fn add_dependencies(&mut self, other: &Self) {
+		self.0 |= other.0
+	}
+
+	pub fn difference(&mut self, other: &Self) {
+		self.0 = (!self.0) & other.0
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -348,19 +374,25 @@ impl OwnedContextImpl {
 		}
 	}
 
-	pub fn nullify(&mut self, nullify: &Vec<ContextDependency>) {
-		for context_dependency in nullify {
-			match context_dependency {
-				ContextDependency::ExtractFootprint => self.footprint = None,
-				ContextDependency::ExtractDownstreamTransform => self.downstream_transform = None,
-				ContextDependency::ExtractRealTime => self.real_time = None,
-				ContextDependency::ExtractAnimationTime => self.animation_time = None,
-				ContextDependency::ExtractIndex => self.index = None,
-				ContextDependency::ExtractVarArgs => {
-					self.varargs = None;
-					self.parent = None
-				}
-			}
+	pub fn nullify(&mut self, nullify: &ContextDependencies) {
+		if nullify.0 & (ContextDependency::ExtractFootprint as u8) != 0 {
+			self.footprint = None;
+		}
+		if nullify.0 & (ContextDependency::ExtractDownstreamTransform as u8) != 0 {
+			self.downstream_transform = None;
+		}
+		if nullify.0 & (ContextDependency::ExtractRealTime as u8) != 0 {
+			self.real_time = None;
+		}
+		if nullify.0 & (ContextDependency::ExtractAnimationTime as u8) != 0 {
+			self.animation_time = None;
+		}
+		if nullify.0 & (ContextDependency::ExtractIndex as u8) != 0 {
+			self.index = None;
+		}
+		if nullify.0 & (ContextDependency::ExtractVarArgs as u8) != 0 {
+			self.varargs = None;
+			self.parent = None
 		}
 	}
 }

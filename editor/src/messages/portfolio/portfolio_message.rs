@@ -9,7 +9,7 @@ use graphene_std::Color;
 use graphene_std::raster::Image;
 use graphene_std::renderer::RenderMetadata;
 use graphene_std::text::Font;
-use graphene_std::uuid::CompiledProtonodeInput;
+use graphene_std::uuid::{SNI};
 
 #[impl_message(Message, Portfolio)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -31,7 +31,7 @@ pub enum PortfolioMessage {
 	EvaluateActiveDocument,
 	// Sends a request to introspect data in the network, and return it to the editor
 	IntrospectActiveDocument {
-		inputs_to_introspect: HashSet<CompiledProtonodeInput>,
+		nodes_to_introspect: HashSet<SNI>,
 	},
 	ExportActiveDocument {
 		file_name: String,
@@ -50,7 +50,7 @@ pub enum PortfolioMessage {
 	},
 	ProcessIntrospectionResponse {
 		#[serde(skip)]
-		introspected_inputs: IntrospectionResponse,
+		introspection_response: IntrospectionResponse,
 	},
 	RenderThumbnails,
 	ProcessThumbnails,

@@ -2279,18 +2279,23 @@ impl NodeGraphMessageHandler {
 			let locked = network_interface.is_locked(&node_id, breadcrumb_network_path);
 
 			let errors = None; // TODO: Recursive traversal from export over all protonodes and match metadata with error
-			// self
-			// 	.node_graph_errors
-			// 	.iter()
-			// 	.find(|error| error.stable_node_id == node_id_path)
-			// 	.map(|error| format!("{:?}", error.error.clone()))
-			// 	.or_else(|| {
-			// 		if self.node_graph_errors.iter().any(|error| error.node_path.starts_with(&node_id_path)) {
-			// 			Some("Node graph type error within this node".to_string())
-			// 		} else {
-			// 			None
-			// 		}
-			// 	});
+			self.node_graph_errors
+				.iter()
+				.find(|error| match &error.original_location {
+					graph_craft::proto::OriginalLocation::Value(_) => false,
+					graph_craft::proto::OriginalLocation::Node(node_ids) => node_ids == &node_id_path,
+				})
+				.map(|error| format!("{:?}", error.error.clone()))
+				.or_else(|| {
+					if self.node_graph_errors.iter().any(|error| match &error.original_location {
+						graph_craft::proto::OriginalLocation::Value(_) => false,
+						graph_craft::proto::OriginalLocation::Node(node_ids) => node_ids.starts_with(&node_id_path),
+					}) {
+						Some("Node graph type error within this node".to_string())
+					} else {
+						None
+					}
+				});
 
 			nodes.push(FrontendNode {
 				id: node_id,

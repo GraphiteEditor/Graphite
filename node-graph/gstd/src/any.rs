@@ -3,7 +3,7 @@ use glam::DAffine2;
 pub use graph_craft::proto::{Any, NodeContainer, TypeErasedBox, TypeErasedNode};
 use graph_craft::proto::{DynFuture, FutureAny, SharedNodeContainer};
 use graphene_core::Context;
-use graphene_core::ContextDependency;
+use graphene_core::ContextDependencies;
 use graphene_core::NodeIO;
 use graphene_core::OwnedContextImpl;
 use graphene_core::WasmNotSend;
@@ -52,25 +52,25 @@ pub fn downcast_node<I: StaticType, O: StaticType>(n: SharedNodeContainer) -> Do
 	DowncastBothNode::new(n)
 }
 
-pub struct EditorContextToContext {
-	first: SharedNodeContainer,
-}
+// pub struct EditorContextToContext {
+// 	first: SharedNodeContainer,
+// }
 
-impl<'i> Node<'i, Any<'i>> for EditorContextToContext {
-	type Output = DynFuture<'i, Any<'i>>;
-	fn eval(&'i self, input: Any<'i>) -> Self::Output {
-		Box::pin(async move {
-			let editor_context = dyn_any::downcast::<EditorContext>(input).unwrap();
-			self.first.eval(Box::new(editor_context.to_context())).await
-		})
-	}
-}
+// impl<'i> Node<'i, Any<'i>> for EditorContextToContext {
+// 	type Output = DynFuture<'i, Any<'i>>;
+// 	fn eval(&'i self, input: Any<'i>) -> Self::Output {
+// 		Box::pin(async move {
+// 			let editor_context = dyn_any::downcast::<EditorContext>(input).unwrap();
+// 			self.first.eval(Box::new(editor_context.to_context())).await
+// 		})
+// 	}
+// }
 
-impl EditorContextToContext {
-	pub const fn new(first: SharedNodeContainer) -> Self {
-		EditorContextToContext { first }
-	}
-}
+// impl EditorContextToContext {
+// 	pub const fn new(first: SharedNodeContainer) -> Self {
+// 		EditorContextToContext { first }
+// 	}
+// }
 
 #[derive(Debug, Clone, Default)]
 pub struct EditorContext {
@@ -101,7 +101,7 @@ unsafe impl StaticType for EditorContext {
 // }
 
 impl EditorContext {
-	pub fn to_context(&self) -> Context {
+	pub fn to_owned_context(&self) -> OwnedContextImpl {
 		let mut context = OwnedContextImpl::default();
 		if let Some(footprint) = self.footprint {
 			context.set_footprint(footprint);
@@ -121,42 +121,44 @@ impl EditorContext {
 		if let Some(index) = self.index {
 			context.set_index(index);
 		}
+		context
 		// if let Some(editor_var_args) = self.editor_var_args {
 		// 	let (variable_names, values)
 		// 	context.set_varargs((variable_names, values))
 		// }
-		context.into_context()
 	}
 }
 
 pub struct NullificationNode {
 	first: SharedNodeContainer,
-	nullify: Vec<ContextDependency>,
+	nullify: ContextDependencies,
 }
 impl<'i> Node<'i, Any<'i>> for NullificationNode {
 	type Output = DynFuture<'i, Any<'i>>;
 
 	fn eval(&'i self, input: Any<'i>) -> Self::Output {
-		let new_input = match dyn_any::try_downcast::<Context>(input) {
-			Ok(context) => match *context {
-				Some(context) => {
-					let mut new_context = OwnedContextImpl::from(context);
-					new_context.nullify(&self.nullify);
-					Box::new(new_context.into_context()) as Any<'i>
-				}
-				None => {
-					let none: Context = None;
-					Box::new(none) as Any<'i>
-				}
-			},
-			Err(other_input) => other_input,
-		};
-		Box::pin(async move { self.first.eval(new_input).await })
+		Box::pin(async move {
+			let new_input = match dyn_any::try_downcast::<Context>(input) {
+				Ok(context) => match *context {
+					Some(context) => {
+						let mut new_context: OwnedContextImpl = OwnedContextImpl::from(context);
+						new_context.nullify(&self.nullify);
+						Box::new(new_context.into_context()) as Any<'i>
+					}
+					None => {
+						let none: Context = None;
+						Box::new(none) as Any<'i>
+					}
+				},
+				Err(other_input) => other_input,
+			};
+			self.first.eval(new_input).await
+		})
 	}
 }
 
 impl NullificationNode {
-	pub fn new(first: SharedNodeContainer, nullify: Vec<ContextDependency>) -> Self {
+	pub fn new(first: SharedNodeContainer, nullify: ContextDependencies) -> Self {
 		Self { first, nullify }
 	}
 }

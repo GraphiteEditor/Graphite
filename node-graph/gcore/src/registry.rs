@@ -1,4 +1,4 @@
-use crate::{Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
+use crate::{ContextDependencies, Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
 use dyn_any::{DynAny, StaticType};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -109,7 +109,7 @@ pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::ne
 
 pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
-pub static NODE_CONTEXT_DEPENDENCY: LazyLock<Mutex<HashMap<String, Vec<crate::ContextDependency>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+pub static NODE_CONTEXT_DEPENDENCY: LazyLock<Mutex<HashMap<String, ContextDependencies>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[cfg(not(target_arch = "wasm32"))]
 pub type DynFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n + Send>>;
@@ -290,12 +290,8 @@ where
 		}
 	}
 
-	fn introspect(&self, introspect_mode: crate::IntrospectMode) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.node.introspect(introspect_mode)
-	}
-
-	fn set_introspect(&self, introspect_mode: crate::IntrospectMode) {
-		self.node.set_introspect(introspect_mode);
+	fn introspect(&self, check_if_evaluated: bool) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		self.node.introspect(check_if_evaluated)
 	}
 
 	fn reset(&self) {

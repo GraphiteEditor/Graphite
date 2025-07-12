@@ -514,6 +514,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		.map(|(node_path, node)| (node_path, node.clone()))
 		.collect::<Vec<(Vec<NodeId>, graph_craft::document::DocumentNode)>>();
 	for (node_path, node) in &nodes {
+		let (node_id, network_path) = node_path.split_last().unwrap();
 		migrate_node(node_id, node, network_path, document, reset_node_definitions_on_open);
 	}
 }

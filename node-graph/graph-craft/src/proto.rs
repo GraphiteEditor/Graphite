@@ -1,4 +1,5 @@
-use crate::document::{AbsoluteInputConnector, InlineRust, ProtonodeEntry, value};
+use crate::document::value::TaggedValue;
+use crate::document::{AbsoluteInputConnector, InlineRust, ProtonodeEntry};
 pub use graphene_core::registry::*;
 use graphene_core::uuid::{NodeId, ProtonodePath, SNI};
 use graphene_core::*;
@@ -22,11 +23,8 @@ impl ProtoNetwork {
 		let last_entry = nodes.last().expect("Cannot compile empty protonetwork");
 		let output = match last_entry {
 			ProtonodeEntry::Protonode(proto_node) => proto_node.stable_node_id,
-			ProtonodeEntry::Deduplicated(deduplicated_index) => {
-				let ProtonodeEntry::Protonode(protonode) = &nodes[*deduplicated_index] else {
-					panic!("Deduplicated protonode must point to valid protonode");
-				};
-				protonode.stable_node_id
+			ProtonodeEntry::Deduplicated => {
+				panic!("Not possible for the output protonode to be deduplicated");
 			}
 		};
 		ProtoNetwork { nodes, output }
@@ -97,9 +95,10 @@ impl ProtoNetwork {
 #[derive(Clone, Debug)]
 pub struct UpstreamInputMetadata {
 	pub input_sni: SNI,
-	// Context dependencies are accumulated during compilation, then replaced with whatever needs to be nullified
-	// If None, then the upstream node is a value node, so replace with an empty vec
-	pub context_dependencies: Option<Vec<ContextDependency>>,
+	// Context dependencies are accumulated during compilation, then replaced with the difference between the node's dependencies and the inputs dependencies
+	pub context_dependencies: ContextDependencies,
+	// If the upstream node is a value node, then do not nullify since the value nodes do not have a cache inserted after them
+	pub is_value: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -112,24 +111,14 @@ pub struct NodeConstructionArgs {
 	// Starts as None, and is populated during stable node id generation
 	pub inputs: Vec<Option<UpstreamInputMetadata>>,
 	// The union of all input context dependencies and the nodes context dependency. Used to generate the context nullification for the editor entry point
-	pub context_dependencies: Vec<ContextDependency>,
-	// Stores the path of document nodes which correspond to it
-	pub node_paths: Vec<ProtonodePath>,
-}
-
-#[derive(Debug, Clone)]
-pub struct NodeValueArgs {
-	/// A value of a type that is known, allowing serialization (serde::Deserialize is not object safe)
-	/// Also stores its caller inputs, which is used to map the rendered thumbnail to the wire input
-	pub value: MemoHash<value::TaggedValue>,
-	// Stores all absolute input connectors which correspond to this value.
-	pub connector_paths: Vec<AbsoluteInputConnector>,
+	pub context_dependencies: ContextDependencies,
 }
 
 #[derive(Debug, Clone)]
 /// Defines the arguments used to construct the boxed node struct. This is used to call the constructor function in the `node_registry.rs` file - which is hidden behind a wall of macros.
 pub enum ConstructionArgs {
-	Value(NodeValueArgs),
+	/// A value of a type that is known, allowing serialization (serde::Deserialize is not object safe)
+	Value(MemoHash<TaggedValue>),
 	Nodes(NodeConstructionArgs),
 	/// Used for GPU computation to work around the limitations of rust-gpu.
 	Inline(InlineRust),
@@ -152,25 +141,28 @@ pub enum ConstructionArgs {
 // If the the protonode has ConstructionArgs::Value, then its identifier is not used, and is replaced with an UpcastNode with a value of the tagged value
 pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
+	pub original_location: OriginalLocation,
 	pub input: Type,
 	pub stable_node_id: SNI,
-	// Each protonode stores the path and input index of the protonodes which called it
+	// Each protonode stores the input of the protonode which called it in order to map input SNI
 	pub callers: Vec<(ProtonodePath, usize)>,
-	// Each protonode will finally store a single caller (the minimum of all callers), used by the editor
-	pub caller: Option<(ProtonodePath, usize)>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+/// Stores the origin of the protonode in the document network``, which is either an inserted value protonode SNI for an input connector, or a protonode SNI for a protonode
+pub enum OriginalLocation {
+	Value(AbsoluteInputConnector),
+	Node(ProtonodePath),
 }
 
 impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
-			construction_args: ConstructionArgs::Value(NodeValueArgs {
-				value: value::TaggedValue::U32(0).into(),
-				connector_paths: Vec::new(),
-			}),
+			construction_args: ConstructionArgs::Value(TaggedValue::U32(0).into()),
 			input: concrete!(Context),
 			stable_node_id: NodeId(0),
 			callers: Vec::new(),
-			caller: None,
+			original_location: OriginalLocation::Node(Vec::new()),
 		}
 	}
 }
@@ -183,7 +175,10 @@ impl ProtoNode {
 			input: concrete!(Context),
 			stable_node_id,
 			callers: Vec::new(),
-			caller: None,
+			original_location: OriginalLocation::Value(AbsoluteInputConnector {
+				network_path: Vec::new(),
+				connector: crate::document::InputConnector::Export(0),
+			}),
 		}
 	}
 
@@ -198,7 +193,7 @@ impl ProtoNode {
 				}
 				nodes.identifier.hash(&mut hasher);
 			}
-			ConstructionArgs::Value(value) => value.value.hash(&mut hasher),
+			ConstructionArgs::Value(value) => value.hash(&mut hasher),
 			ConstructionArgs::Inline(_) => todo!(),
 		}
 
@@ -214,6 +209,7 @@ pub enum GraphErrorType {
 	NoConstructor,
 	InvalidImplementations { inputs: String, error_inputs: Vec<Vec<(usize, (Type, Type))>> },
 	MultipleImplementations { inputs: String, valid: Vec<NodeIOTypes> },
+	UnresolvedType,
 }
 impl Debug for GraphErrorType {
 	// TODO: format with the document graph context so the input index is the same as in the graph UI.
@@ -257,25 +253,27 @@ impl Debug for GraphErrorType {
 				)
 			}
 			GraphErrorType::MultipleImplementations { inputs, valid } => write!(f, "Multiple implementations found ({inputs}):\n{valid:#?}"),
+			GraphErrorType::UnresolvedType => write!(f, "Could not determine type of node"),
 		}
 	}
 }
+
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GraphError {
-	pub stable_node_id: SNI,
+	pub original_location: OriginalLocation,
 	pub identifier: Cow<'static, str>,
 	pub error: GraphErrorType,
 }
 impl GraphError {
-	pub fn new(node: &ProtoNode, text: impl Into<GraphErrorType>) -> Self {
-		let identifier = match &node.construction_args {
+	pub fn new(construction_args: &ConstructionArgs, original_location: OriginalLocation, text: impl Into<GraphErrorType>) -> Self {
+		let identifier = match &construction_args {
 			ConstructionArgs::Nodes(node_construction_args) => node_construction_args.identifier.name.clone(),
 			// Values are inserted into upcast nodes
-			ConstructionArgs::Value(node_value_args) => format!("{:?} Value Node", node_value_args.value.deref().ty()).into(),
+			ConstructionArgs::Value(value) => format!("{:?} Value Node", value.deref().ty()).into(),
 			ConstructionArgs::Inline(_) => "Inline".into(),
 		};
 		Self {
-			stable_node_id: node.stable_node_id,
+			original_location,
 			identifier,
 			error: text.into(),
 		}
@@ -339,10 +337,10 @@ impl TypingContext {
 	}
 
 	/// Returns the inferred types for a given node id.
-	pub fn infer(&mut self, node_id: NodeId, node: &ProtoNode) -> Result<NodeIOTypes, GraphErrors> {
+	pub fn infer(&mut self, node_id: NodeId, node: &ProtoNode) -> Result<(), GraphErrors> {
 		// Return the inferred type if it is already known
-		if let Some(inferred) = self.inferred.get(&node_id) {
-			return Ok(inferred.clone());
+		if self.inferred.contains_key(&node_id) {
+			return Ok(());
 		}
 
 		let (inputs, id) = match node.construction_args {
@@ -350,9 +348,9 @@ impl TypingContext {
 			ConstructionArgs::Value(ref v) => {
 				// assert!(matches!(node.input, ProtoNodeInput::None) || matches!(node.input, ProtoNodeInput::ManualComposition(ref x) if x == &concrete!(Context)));
 				// TODO: This should return a reference to the value
-				let types = NodeIOTypes::new(concrete!(Context), Type::Future(Box::new(v.value.ty())), vec![]);
-				self.inferred.insert(node_id, types.clone());
-				return Ok(types);
+				let types = NodeIOTypes::new(concrete!(Context), Type::Future(Box::new(v.ty())), vec![]);
+				self.inferred.insert(node_id, types);
+				return Ok(());
 			}
 			// If the node has nodes as inputs we can infer the types from the node outputs
 			ConstructionArgs::Nodes(ref construction_args) => {
@@ -363,7 +361,7 @@ impl TypingContext {
 					.map(|id| {
 						self.inferred
 							.get(&id)
-							.ok_or_else(|| vec![GraphError::new(node, GraphErrorType::InputNodeNotFound(id))])
+							.ok_or_else(|| vec![GraphError::new(&node.construction_args, node.original_location.clone(), GraphErrorType::InputNodeNotFound(id))])
 							.map(|node| node.ty())
 					})
 					.collect::<Result<Vec<Type>, GraphErrors>>()?;
@@ -372,18 +370,24 @@ impl TypingContext {
 			ConstructionArgs::Inline(ref inline) => (vec![inline.ty.clone()], &*Box::new(ProtoNodeIdentifier::new("Extract"))),
 		};
 
-		let impls = self.lookup.get(id).ok_or_else(|| vec![GraphError::new(node, GraphErrorType::NoImplementations)])?;
+		let Some(impls) = self.lookup.get(id) else {
+			return Err(vec![GraphError::new(&node.construction_args, node.original_location.clone(), GraphErrorType::NoImplementations)]);
+		};
 
 		if let Some(index) = inputs.iter().position(|p| {
 			matches!(p,
 			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)))
 		}) {
-			return Err(vec![GraphError::new(node, GraphErrorType::UnexpectedGenerics { index, inputs })]);
+			return Err(vec![GraphError::new(
+				&node.construction_args,
+				node.original_location.clone(),
+				GraphErrorType::UnexpectedGenerics { index, inputs },
+			)]);
 		}
 
 		/// Checks if a proposed input to a particular (primary or secondary) input connector is valid for its type signature.
 		/// `from` indicates the value given to a input, `to` indicates the input's allowed type as specified by its type signature.
-		fn valid_type(from: &Type, to: &Type) -> bool {
+		pub fn valid_type(from: &Type, to: &Type) -> bool {
 			match (from, to) {
 				// Direct comparison of two concrete types.
 				(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
@@ -464,15 +468,17 @@ impl TypingContext {
 					.map(|(i, t)| {let input_number = i + 1; format!("• Input {input_number}: {t}")})
 					.collect::<Vec<_>>()
 					.join("\n");
-				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { inputs, error_inputs })])
+				Err(vec![GraphError::new(
+					&node.construction_args,
+					node.original_location.clone(),
+					GraphErrorType::InvalidImplementations { inputs, error_inputs },
+				)])
 			}
 			[(node_io, org_nio)] => {
-				let node_io = node_io.clone();
-
 				// Save the inferred type
 				self.inferred.insert(node_id, node_io.clone());
 				self.constructor.insert(node_id, impls[org_nio]);
-				Ok(node_io)
+				Ok(())
 			}
 			// If two types are available and one of them accepts () an input, always choose that one
 			[first, second] => {
@@ -485,18 +491,25 @@ impl TypingContext {
 						// Save the inferred type
 						self.inferred.insert(node_id, node_io.clone());
 						self.constructor.insert(node_id, impls[orig_nio]);
-						return Ok(node_io.clone());
+						return Ok(());
 					}
 				}
 				let inputs = [&node.input].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
 				let valid = valid_output_types.into_iter().cloned().collect();
-				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
+				Err(vec![GraphError::new(
+					&node.construction_args,
+					node.original_location.clone(),
+					GraphErrorType::MultipleImplementations { inputs, valid },
+				)])
 			}
-
 			_ => {
 				let inputs = [&node.input].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
 				let valid = valid_output_types.into_iter().cloned().collect();
-				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
+				Err(vec![GraphError::new(
+					&node.construction_args,
+					node.original_location.clone(),
+					GraphErrorType::MultipleImplementations { inputs, valid },
+				)])
 			}
 		}
 	}

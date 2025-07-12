@@ -1,10 +1,10 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use glam::DVec2;
+use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::NodeNetwork;
 use graph_craft::proto::GraphErrors;
 use graphene_std::text::FontCache;
-use graphene_std::uuid::CompiledProtonodeInput;
 use graphene_std::wasm_application_io::WasmApplicationIo;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
@@ -31,9 +31,6 @@ pub struct NodeRuntime {
 
 	/// Mapping of the fully-qualified node paths to their preprocessor substitutions.
 	substitutions: HashMap<ProtoNodeIdentifier, DocumentNode>,
-
-	/// Stored in order to check for changes before sending to the frontend.
-	thumbnail_render_tagged_values: HashMap<CompiledProtonodeInput, TaggedValue>,
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
@@ -49,7 +46,7 @@ pub enum GraphRuntimeRequest {
 	// ThumbnailRenderRequest(HashSet<CompiledProtonodeInput>),
 	// Request the data from a list of node inputs. For example, used by vector modify to get the data at the input of every Path node.
 	// Can also be used by the spreadsheet/introspection system
-	IntrospectionRequest(HashSet<CompiledProtonodeInput>),
+	IntrospectionRequest(HashSet<SNI>),
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -102,7 +99,7 @@ impl NodeRuntime {
 			// self.application_io = Some(Arc::new(WasmApplicationIo::new_offscreen().await));
 		}
 
-		// TODO: This deduplication of messages will probably cause issues
+		// TODO: This deduplication of messages may cause issues
 		let mut compilation = None;
 		let mut evaluation = None;
 		let mut introspection = None;
@@ -143,20 +140,20 @@ impl NodeRuntime {
 					self.sender.send_evaluation_response(EvaluationResponse { evaluation_id, result });
 				}
 				// GraphRuntimeRequest::ThumbnailRenderRequest(_) => {}
-				GraphRuntimeRequest::IntrospectionRequest(inputs) => {
-					let mut introspected_inputs = Vec::new();
-					for protonode_input in inputs {
-						let introspected_data = match self.executor.introspect(protonode_input, IntrospectMode::Data) {
+				GraphRuntimeRequest::IntrospectionRequest(nodes) => {
+					let mut introspected_nodes = Vec::new();
+					for protonode in nodes {
+						let introspected_data = match self.executor.introspect(protonode, true) {
 							Ok(introspected_data) => introspected_data,
 							Err(e) => {
-								log::error!("Could not introspect input: {:?}, error: {:?}", protonode_input, e);
+								log::error!("Could not introspect protonode: {:?}, error: {:?}", protonode, e);
 								continue;
 							}
 						};
-						introspected_inputs.push((protonode_input, IntrospectMode::Data, introspected_data));
+						introspected_nodes.push((protonode, introspected_data));
 					}
 
-					self.sender.send_introspection_response(IntrospectionResponse(introspected_inputs));
+					self.sender.send_introspection_response(IntrospectionResponse(introspected_nodes));
 				}
 			}
 		}
@@ -173,8 +170,8 @@ impl NodeRuntime {
 
 		// Modifies the NodeNetwork so the tagged values are removed and the document nodes with protonode implementations have their protonode ids set
 		// Needs to return a mapping of absolute input connectors to protonode callers, types for protonodes, and callers for protonodes, add/remove delta for resolved types
-		let (proto_network, protonode_caller_for_values, protonode_caller_for_nodes) = match scoped_network.flatten() {
-			Ok(network) => network,
+		let (proto_network, original_locations) = match scoped_network.flatten() {
+			Ok(result) => result,
 			Err(e) => {
 				log::error!("Error compiling network: {e:?}");
 				return Err(e);
@@ -186,8 +183,7 @@ impl NodeRuntime {
 				// Used to remove thumbnails from the mapping of SNI to rendered SVG strings on the frontend, which occurs when the SNI is removed
 				// When native frontend rendering is possible, the strings can just be stored in the network interface for each protonode with the rest of the type metadata
 				Ok(CompilationMetadata {
-					protonode_caller_for_values,
-					protonode_caller_for_nodes,
+					original_locations,
 					types_to_add,
 					types_to_remove,
 				})

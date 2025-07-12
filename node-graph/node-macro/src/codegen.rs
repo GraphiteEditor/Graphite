@@ -375,7 +375,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		mod #mod_name {
 			use super::*;
 			use #graphene_core as gcore;
-			use gcore::{Node, NodeIOTypes, concrete, fn_type, fn_type_fut, future, ProtoNodeIdentifier, WasmNotSync, NodeIO, ContextDependency};
+			use gcore::{Node, NodeIOTypes, concrete, fn_type, fn_type_fut, future, ProtoNodeIdentifier, WasmNotSync, NodeIO, ContextDependency, ContextDependencies};
 			use gcore::value::ClonedNode;
 			use gcore::ops::TypeNode;
 			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, NODE_CONTEXT_DEPENDENCY, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode, RegistryValueSource, RegistryWidgetOverride};
@@ -436,10 +436,10 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			fn register_context_dependency() {
 				let mut context_dependency = NODE_CONTEXT_DEPENDENCY.lock().unwrap();
 				context_dependency.insert(
-					#identifier,
-					vec![
+					#identifier().to_string(),
+					ContextDependencies::from(vec![
 						#(ContextDependency::#context_dependencies,)*
-					]
+					])
 				);
 			}
 		}

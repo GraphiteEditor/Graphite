@@ -7,10 +7,9 @@ use graph_craft::document::value::{EditorMetadata, RenderOutput, TaggedValue};
 use graph_craft::document::{CompilationMetadata, DocumentNode, NodeNetwork, generate_uuid};
 use graph_craft::proto::GraphErrors;
 use graphene_std::any::EditorContext;
-use graphene_std::memo::IntrospectMode;
 use graphene_std::renderer::format_transform_matrix;
 use graphene_std::text::FontCache;
-use graphene_std::uuid::{CompiledProtonodeInput, NodeId, SNI};
+use graphene_std::uuid::SNI;
 
 mod runtime_io;
 pub use runtime_io::NodeRuntimeIO;
@@ -47,7 +46,7 @@ pub struct EvaluationResponse {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct IntrospectionResponse(pub Vec<((NodeId, usize), IntrospectMode, Option<Arc<dyn std::any::Any + Send + Sync>>)>);
+pub struct IntrospectionResponse(pub Vec<(SNI, Option<Arc<dyn std::any::Any + Send + Sync>>)>);
 
 impl PartialEq for IntrospectionResponse {
 	fn eq(&self, _other: &Self) -> bool {
@@ -132,7 +131,7 @@ impl NodeGraphExecutor {
 		self.futures.insert(evaluation_id, evaluation_context);
 	}
 
-	pub fn submit_node_graph_introspection(&mut self, nodes_to_introspect: HashSet<CompiledProtonodeInput>) {
+	pub fn submit_node_graph_introspection(&mut self, nodes_to_introspect: HashSet<SNI>) {
 		if let Err(error) = self.runtime_io.send(GraphRuntimeRequest::IntrospectionRequest(nodes_to_introspect)) {
 			log::error!("Could not send evaluation request. {:?}", error);
 			return;
@@ -375,35 +374,3 @@ impl NodeGraphExecutor {
 // 		}
 // 	}
 // }
-
-// Passed as a scope input
-#[derive(Clone, Debug, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct EditorMetadata {
-	// pub imaginate_hostname: String,
-	pub use_vello: bool,
-	pub hide_artboards: bool,
-	// If exporting, hide the artboard name and do not collect metadata
-	pub for_export: bool,
-	pub view_mode: graphene_core::vector::style::ViewMode,
-	pub transform_to_viewport: bool,
-}
-
-unsafe impl dyn_any::StaticType for EditorMetadata {
-	type Static = EditorMetadata;
-}
-
-impl Default for EditorMetadata {
-	fn default() -> Self {
-		Self {
-			// imaginate_hostname: "http://localhost:7860/".into(),
-			#[cfg(target_arch = "wasm32")]
-			use_vello: false,
-			#[cfg(not(target_arch = "wasm32"))]
-			use_vello: true,
-			hide_artboards: false,
-			for_export: false,
-			view_mode: graphene_core::vector::style::ViewMode::Normal,
-			transform_to_viewport: true,
-		}
-	}
-}

@@ -12,7 +12,6 @@ use std::sync::Mutex;
 pub struct MonitorMemoNode<T, CachedNode> {
 	// Introspection cache, uses the hash of the nullified context with default var args
 	// cache: Arc<Mutex<std::collections::HashMap<u64, Arc<T>>>>,
-	// Return value cache,
 	cache: Arc<Mutex<Option<(u64, Arc<T>)>>>,
 	node: CachedNode,
 	changed_since_last_eval: Arc<Mutex<bool>>,
@@ -25,31 +24,7 @@ where
 	// TODO: This should return a reference to the cached cached_value
 	// but that requires a lot of lifetime magic <- This was suggested by copilot but is pretty accurate xD
 	type Output = DynFuture<'i, T>;
-	// fn eval(&'i self, input: I) -> Self::Output {
-	// 	let mut hasher = DefaultHasher::new();
-	// 	input.hash(&mut hasher);
-	// 	let hash = hasher.finish();
 
-	// 	if let Some(data) = self.cache.lock().unwrap().get(&hash) {
-	// 		let cloned_data = (**data).clone();
-	// 		Box::pin(async move { cloned_data })
-	// 	} else {
-	// 		let fut = self.node.eval(input);
-	// 		let cache = self.cache.clone();
-	// 		Box::pin(async move {
-	// 			let value = fut.await;
-	// 			cache.lock().unwrap().insert(hash, Arc::new(value.clone()));
-	// 			value
-	// 		})
-	// 	}
-	// }
-
-	// fn introspect(&self, _introspect_mode: IntrospectMode) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-	// 	let mut hasher = DefaultHasher::new();
-	// 	OwnedContextImpl::default().into_context().hash(&mut hasher);
-	// 	let hash = hasher.finish();
-	// 	self.cache.lock().unwrap().get(&hash).map(|data| (*data).clone() as Arc<dyn std::any::Any + Send + Sync>)
-	// }
 	fn eval(&'i self, input: I) -> Self::Output {
 		let mut hasher = DefaultHasher::new();
 		input.hash(&mut hasher);
@@ -69,13 +44,20 @@ where
 			})
 		}
 	}
-	fn introspect(&self, _introspect_mode: IntrospectMode) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		if *self.changed_since_last_eval.lock().unwrap() {
-			*self.changed_since_last_eval.lock().unwrap() = false;
-			Some(self.cache.lock().unwrap().as_ref().expect("Cached data should always be evaluated before introspection").1.clone() as Arc<dyn std::any::Any + Send + Sync>)
-		} else {
-			None
+
+	// TODO: Consider returning a reference to the entire cache so the frontend reference is automatically updated as the context changes
+	fn introspect(&self, check_if_evaluated: bool) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		let mut changed = self.changed_since_last_eval.lock().unwrap();
+		if check_if_evaluated {
+			if !*changed {
+				return None;
+			}
 		}
+		*changed = false;
+
+		let cache_guard = self.cache.lock().unwrap();
+		let cached = cache_guard.as_ref().expect("Cached data should always be evaluated before introspection");
+		Some(cached.1.clone() as Arc<dyn std::any::Any + Send + Sync>)
 	}
 }
 
@@ -229,21 +211,6 @@ where
 			}
 			output
 		})
-	}
-
-	// After introspecting, the input/output get set to None because the Arc is moved to the editor where it can be directly accessed.
-	fn introspect(&self, introspect_mode: IntrospectMode) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
-		match introspect_mode {
-			IntrospectMode::Input => self.input.lock().unwrap().take().map(|input| input as Arc<dyn std::any::Any + Send + Sync>),
-			IntrospectMode::Data => self.output.lock().unwrap().take().map(|output| output as Arc<dyn std::any::Any + Send + Sync>),
-		}
-	}
-
-	fn set_introspect(&self, introspect_mode: IntrospectMode) {
-		match introspect_mode {
-			IntrospectMode::Input => *self.introspect_input.lock().unwrap() = true,
-			IntrospectMode::Data => *self.introspect_output.lock().unwrap() = true,
-		}
 	}
 }
 

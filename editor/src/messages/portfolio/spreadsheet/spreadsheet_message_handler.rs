@@ -1,19 +1,23 @@
 use super::VectorDataDomain;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, LayoutTarget, WidgetLayout};
-use crate::messages::portfolio::spreadsheet::InspectInputConnector;
+use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::*;
+use graph_craft::document::OutputConnector;
 use graphene_std::Color;
 use graphene_std::GraphicGroupTable;
 use graphene_std::instances::Instances;
 use graphene_std::raster::Image;
-use graphene_std::uuid::CompiledProtonodeInput;
+use graphene_std::uuid::{NodeId, SNI};
 use graphene_std::vector::{VectorData, VectorDataTable};
 use graphene_std::{Artboard, ArtboardGroupTable, GraphicElement};
 use std::sync::Arc;
 
+#[derive(ExtractField)]
 pub struct SpreadsheetMessageHandlerData<'a> {
-	pub introspected_data: &'a HashMap<CompiledProtonodeInput, Option<Arc<dyn std::any::Any + Send + Sync>>>,
+	pub introspected_data: &'a HashMap<SNI, Option<Arc<dyn std::any::Any + Send + Sync>>>,
+	// Network interface of the selected document
+	pub network_interface: &'a NodeNetworkInterface,
 }
 
 /// The spreadsheet UI allows for instance data to be previewed.
@@ -21,50 +25,78 @@ pub struct SpreadsheetMessageHandlerData<'a> {
 pub struct SpreadsheetMessageHandler {
 	/// Sets whether or not the spreadsheet is drawn.
 	pub spreadsheet_view_open: bool,
-	inspect_input: Option<InspectInputConnector>,
-	// Downcasted data is not saved because the spreadsheet is simply a window into the data flowing through the input
-	// introspected_data: Option<TaggedValue>,
+	// Path to the document node that is introspected. The protonode is found by traversing from the primary output
+	inspection_data: Option<Option<Arc<dyn std::any::Any + Send + Sync>>>,
+	node_to_inspect: Option<NodeId>,
+
 	instances_path: Vec<usize>,
 	viewing_vector_data_domain: VectorDataDomain,
 }
 
 #[message_handler_data]
-impl MessageHandler<SpreadsheetMessage, SpreadsheetMessageHandlerData> for SpreadsheetMessageHandler {
+impl MessageHandler<SpreadsheetMessage, SpreadsheetMessageHandlerData<'_>> for SpreadsheetMessageHandler {
 	fn process_message(&mut self, message: SpreadsheetMessage, responses: &mut VecDeque<Message>, data: SpreadsheetMessageHandlerData) {
-		let SpreadsheetMessageHandlerData { introspected_data } = data;
+		let SpreadsheetMessageHandlerData { introspected_data, network_interface } = data;
 		match message {
 			SpreadsheetMessage::ToggleOpen => {
 				self.spreadsheet_view_open = !self.spreadsheet_view_open;
 				if self.spreadsheet_view_open {
-					// TODO: This will not get always get data since the input could be cached, and the monitor node would not
-					// Be run on the evaluation. To solve this, pass in an AbsoluteNodeInput as a parameter to the compilation which tells the compiler
-					// to generate a random SNI in order to reset any downstream cache
-					// Run the graph to grab the data
-					responses.add(PortfolioMessage::EvaluateActiveDocument);
+					responses.add(SpreadsheetMessage::RequestUpdateLayout);
 				}
 				// Update checked UI state for open
 				responses.add(MenuBarMessage::SendLayout);
-				self.update_layout(introspected_data, responses);
+				self.update_layout(responses);
 			}
 
 			// Queued on introspection request, runs on introspection response when the data has been sent back to the editor
-			SpreadsheetMessage::UpdateLayout { inspect_input } => {
-				self.inspect_input = Some(inspect_input);
-				self.update_layout(introspected_data, responses);
-			}
+			SpreadsheetMessage::RequestUpdateLayout => {
+				// Spreadsheet not open, no need to request
+				if !self.spreadsheet_view_open {
+					self.node_to_inspect = None;
+					return;
+				}
 
+				let selected_nodes = network_interface.selected_nodes().0;
+
+				// Selected nodes != 1, skipping
+				if selected_nodes.len() != 1 {
+					self.node_to_inspect = None;
+					return;
+				}
+
+				let node_to_inspect = selected_nodes[0];
+
+				let Some(protonode_id) = network_interface.protonode_from_output(&OutputConnector::node(node_to_inspect, 0), &[]) else {
+					return;
+				};
+
+				let mut nodes_to_introspect = HashSet::new();
+				nodes_to_introspect.insert(protonode_id);
+
+				responses.add(PortfolioMessage::IntrospectActiveDocument { nodes_to_introspect });
+				responses.add(Message::StartIntrospectionQueue);
+				responses.add(SpreadsheetMessage::ProcessUpdateLayout { node_to_inspect, protonode_id });
+				responses.add(Message::EndIntrospectionQueue);
+
+				self.update_layout(responses);
+			}
+			// Runs after the introspection request has returned the Arc back to the editor
+			SpreadsheetMessage::ProcessUpdateLayout { node_to_inspect, protonode_id } => {
+				self.node_to_inspect = Some(node_to_inspect);
+				self.inspection_data = introspected_data.get(&protonode_id).cloned();
+			}
 			SpreadsheetMessage::PushToInstancePath { index } => {
 				self.instances_path.push(index);
-				self.update_layout(introspected_data, responses);
+				self.update_layout(responses);
 			}
 			SpreadsheetMessage::TruncateInstancePath { len } => {
 				self.instances_path.truncate(len);
-				self.update_layout(introspected_data, responses);
+				self.update_layout(responses);
 			}
 
 			SpreadsheetMessage::ViewVectorDataDomain { domain } => {
 				self.viewing_vector_data_domain = domain;
-				self.update_layout(introspected_data, responses);
+				self.update_layout(responses);
 			}
 		}
 	}
@@ -75,7 +107,7 @@ impl MessageHandler<SpreadsheetMessage, SpreadsheetMessageHandlerData> for Sprea
 }
 
 impl SpreadsheetMessageHandler {
-	fn update_layout(&mut self, introspected_data: &HashMap<CompiledProtonodeInput, Option<Arc<dyn std::any::Any + Send + Sync>>>, responses: &mut VecDeque<Message>) {
+	fn update_layout(&mut self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateSpreadsheetState {
 			// The node is sent when the data is available
 			node: None,
@@ -90,21 +122,21 @@ impl SpreadsheetMessageHandler {
 			breadcrumbs: Vec::new(),
 			vector_data_domain: self.viewing_vector_data_domain,
 		};
-		let mut layout = match &self.inspect_input {
-			Some(inspect_input) => {
-				match introspected_data.get(&inspect_input.protonode_input) {
+		let mut layout = match &self.node_to_inspect {
+			Some(_) => {
+				match &self.inspection_data {
 					Some(data) => match data {
-						Some(instrospected_data) => match generate_layout(instrospected_data, &mut layout_data) {
+						Some(inspected_data) => match generate_layout(&inspected_data, &mut layout_data) {
 							Some(layout) => layout,
 							None => label("The introspected data is not a supported type to be displayed."),
 						},
 						None => label("Introspected data is not available for this input. This input may be cached."),
 					},
 					// There should always be an entry for each protonode input. If its empty then it was not requested or an error occured
-					None => label("Error getting introspected data"),
+					None => label("The output of this node could not be determined"),
 				}
 			}
-			None => label("No input selected to show data for."),
+			None => label("No node selected to show data for."),
 		};
 
 		if layout_data.breadcrumbs.len() > 1 {

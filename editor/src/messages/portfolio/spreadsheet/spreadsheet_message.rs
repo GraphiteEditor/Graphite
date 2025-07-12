@@ -1,6 +1,5 @@
 use crate::messages::prelude::*;
-use graph_craft::document::AbsoluteInputConnector;
-use graphene_std::uuid::CompiledProtonodeInput;
+use graphene_std::uuid::{NodeId, SNI};
 
 /// The spreadsheet UI allows for instance data to be previewed.
 #[impl_message(Message, PortfolioMessage, Spreadsheet)]
@@ -8,7 +7,8 @@ use graphene_std::uuid::CompiledProtonodeInput;
 pub enum SpreadsheetMessage {
 	ToggleOpen,
 
-	UpdateLayout { inspect_input: InspectInputConnector },
+	RequestUpdateLayout,
+	ProcessUpdateLayout { node_to_inspect: NodeId, protonode_id: SNI },
 
 	PushToInstancePath { index: usize },
 	TruncateInstancePath { len: usize },
@@ -22,12 +22,4 @@ pub enum VectorDataDomain {
 	Points,
 	Segments,
 	Regions,
-}
-
-/// The mapping of input where the data is extracted from to the selected input to display data for
-#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-// #[cfg_attr(feature = "decouple-execution", derive(serde::Serialize, serde::Deserialize))]
-pub struct InspectInputConnector {
-	pub input_connector: AbsoluteInputConnector,
-	pub protonode_input: CompiledProtonodeInput,
 }

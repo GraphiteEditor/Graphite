@@ -20,14 +20,13 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{CompilationRequest, ExportConfig, NodeGraphExecutor};
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::EditorMetadata;
-use graph_craft::document::{AbsoluteInputConnector, InputConnector, NodeInput, OutputConnector};
+use graph_craft::document::{InputConnector, NodeInput, OutputConnector};
 use graphene_std::any::EditorContext;
 use graphene_std::application_io::TimingInformation;
-use graphene_std::memo::IntrospectMode;
 use graphene_std::renderer::{Quad, RenderMetadata};
 use graphene_std::text::Font;
 use graphene_std::transform::{Footprint, RenderQuality};
-use graphene_std::uuid::{CompiledProtonodeInput, NodeId, SNI};
+use graphene_std::uuid::{NodeId, SNI};
 use std::sync::Arc;
 
 #[derive(ExtractField)]
@@ -57,12 +56,11 @@ pub struct PortfolioMessageHandler {
 	pub spreadsheet: SpreadsheetMessageHandler,
 	device_pixel_ratio: Option<f64>,
 	pub reset_node_definitions_on_open: bool,
-	// Data from the node graph. Data for inputs are set to be collected on each evaluation, and added on the evaluation response
-	// Data from old nodes get deleted after a compilation
-	// Always take data after requesting it
-	pub introspected_data: HashMap<CompiledProtonodeInput, Option<Arc<dyn std::any::Any + Send + Sync>>>,
-	pub introspected_call_argument: HashMap<CompiledProtonodeInput, Option<Arc<dyn std::any::Any + Send + Sync>>>,
-	pub previous_thumbnail_data: HashMap<CompiledProtonodeInput, Arc<dyn std::any::Any + Send + Sync>>,
+	// Data from the node graph, which is populated after an introspection request.
+	// To access the data, schedule messages with StartIntrospectionQueue [messages] EndIntrospectionQueue
+	// The data is no longer accessible after EndIntrospectionQueue
+	pub introspected_data: HashMap<SNI, Option<Arc<dyn std::any::Any + Send + Sync>>>,
+	pub previous_thumbnail_data: HashMap<SNI, Arc<dyn std::any::Any + Send + Sync>>,
 }
 
 #[message_handler_data]
@@ -111,13 +109,18 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.menu_bar_message_handler.process_message(message, responses, ());
 			}
 			PortfolioMessage::Spreadsheet(message) => {
-				self.spreadsheet.process_message(
-					message,
-					responses,
-					SpreadsheetMessageHandlerData {
-						introspected_data: &self.introspected_data,
-					},
-				);
+				if let Some(document_id) = self.active_document_id {
+					if let Some(document) = self.documents.get_mut(&document_id) {
+						self.spreadsheet.process_message(
+							message,
+							responses,
+							SpreadsheetMessageHandlerData {
+								introspected_data: &self.introspected_data,
+								network_interface: &document.network_interface,
+							},
+						);
+					}
+				}
 			}
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
@@ -445,11 +448,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document_migration_upgrades(&mut document, reset_node_definitions_on_open);
 
 				// Ensure each node has the metadata for its inputs
-				for (mut path, node) in document.network_interface.document_network().clone().recursive_nodes() {
-					let node_id = path.pop().unwrap();
-					document.network_interface.validate_input_metadata(node_id, node, &path);
-					document.network_interface.validate_display_name_metadata(node_id, &path);
-					document.network_interface.validate_output_names(node_id, node, &path);
+				for (node_path, node) in document.network_interface.document_network().clone().recursive_nodes() {
+					let (node_id, path) = node_path.split_last().unwrap();
+					document.network_interface.validate_input_metadata(&node_id, node, &path);
+					document.network_interface.validate_display_name_metadata(&node_id, &path);
+					document.network_interface.validate_output_names(&node_id, node, &path);
 				}
 
 				// Ensure layers are positioned as stacks if they are upstream siblings of another layer
@@ -788,6 +791,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							transform_to_viewport: true,
 						},
 					});
+					// Also evaluate the document after compilation
+					responses.add_front(PortfolioMessage::EvaluateActiveDocument);
 				}
 			}
 			PortfolioMessage::ProcessCompilationResponse { compilation_metadata } => {
@@ -795,43 +800,24 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					log::error!("Tried to render non-existent document: {:?}", self.active_document_id);
 					return;
 				};
-				for (value_connectors, caller) in compilation_metadata.protonode_caller_for_values {
-					for AbsoluteInputConnector { network_path, connector } in value_connectors {
-						let (first, network_path) = network_path.split_first().unwrap();
-						if first != &NodeId(0) {
-							continue;
-						}
-						document.network_interface.set_input_caller(&connector, caller, network_path)
-					}
-				}
-				for (protonode_paths, caller) in compilation_metadata.protonode_caller_for_nodes {
-					for protonode_path in protonode_paths {
-						let (first, node_path) = protonode_path.split_first().unwrap();
-						if first != &NodeId(0) {
-							continue;
-						}
-						let (node_id, network_path) = node_path.split_last().expect("Protonode path cannot be empty");
-						document.network_interface.set_node_caller(node_id, caller, &network_path)
-					}
+				for (orignal_location, sni) in compilation_metadata.original_locations {
+					document.network_interface.update_sni(orignal_location, sni);
 				}
 				for (sni, input_types) in compilation_metadata.types_to_add {
 					document.network_interface.add_type(sni, input_types);
 				}
 				let mut cleared_thumbnails = Vec::new();
-				for (sni, number_of_inputs) in compilation_metadata.types_to_remove {
-					// Removed saved type of the document node
+				for sni in compilation_metadata.types_to_remove {
+					// Removed saved type of the protonode
 					document.network_interface.remove_type(sni);
+					// TODO: This does not remove thumbnails for wires to value inputs
 					// Remove all thumbnails
-					for input_index in 0..number_of_inputs {
-						cleared_thumbnails.push(NodeId(sni.0 + input_index as u64 + 1));
-					}
+					cleared_thumbnails.push(sni);
 				}
 				responses.add(FrontendMessage::UpdateThumbnails {
 					add: Vec::new(),
 					clear: cleared_thumbnails,
 				});
-				// Always evaluate after a recompile
-				responses.add(PortfolioMessage::EvaluateActiveDocument);
 			}
 			PortfolioMessage::EvaluateActiveDocument => {
 				let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get(&document_id)) else {
@@ -911,12 +897,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let RenderMetadata {
 					upstream_footprints: footprints,
 					local_transforms,
+					first_instance_source_id,
 					click_targets,
 					clip_targets,
 				} = evaluation_metadata;
 				responses.add(DocumentMessage::UpdateUpstreamTransforms {
 					upstream_footprints: footprints,
 					local_transforms,
+					first_instance_source_id,
 				});
 				responses.add(DocumentMessage::UpdateClickTargets { click_targets });
 				responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
@@ -931,41 +919,35 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// After an evaluation, always render all thumbnails
 				responses.add(PortfolioMessage::RenderThumbnails);
 			}
-			PortfolioMessage::IntrospectActiveDocument { inputs_to_introspect } => {
-				self.executor.submit_node_graph_introspection(inputs_to_introspect);
+			PortfolioMessage::IntrospectActiveDocument { nodes_to_introspect } => {
+				self.executor.submit_node_graph_introspection(nodes_to_introspect);
 			}
-			PortfolioMessage::ProcessIntrospectionResponse { introspected_inputs } => {
-				for (input, mode, data) in introspected_inputs.0.into_iter() {
-					match mode {
-						IntrospectMode::Input => {
-							self.introspected_call_argument.insert(input, data);
-						}
-						IntrospectMode::Data => {
-							self.introspected_data.insert(input, data);
-						}
-					}
+			PortfolioMessage::ProcessIntrospectionResponse { introspection_response } => {
+				for (protonode, data) in introspection_response.0.into_iter() {
+					self.introspected_data.insert(protonode, data);
 				}
 			}
-			PortfolioMessage::ClearIntrospectedData => {
-				self.introspected_call_argument.clear();
-				self.introspected_data.clear()
-			}
+			PortfolioMessage::ClearIntrospectedData => self.introspected_data.clear(),
 			PortfolioMessage::RenderThumbnails => {
 				let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get(&document_id)) else {
 					log::error!("Tried to render non-existent document: {:?}", self.active_document_id);
 					return;
 				};
-				let mut inputs_to_render = HashSet::new();
+				// All possible inputs, later check if they are connected to any nodes
+				let mut nodes_to_render = HashSet::new();
 
-				// Get the protonode input for all side layer inputs connected to the export in the document network for thumbnails in the layer panel
-				for caller in document.network_interface.document_metadata().all_layers().filter_map(|layer| {
-					let input = InputConnector::Node {
+				// Get all inputs to render thumbnails for
+				// Get all protonodes for all connected side layer inputs connected to the export in the document network
+				for layer in document.network_interface.document_metadata().all_layers() {
+					let connector = InputConnector::Node {
 						node_id: layer.to_node(),
 						input_index: 1,
 					};
-					document.network_interface.downstream_caller_from_input(&input, &[])
-				}) {
-					inputs_to_render.insert(*caller);
+					if document.network_interface.input_from_connector(&connector, &[]).is_some_and(|input| input.is_wire()) {
+						if let Some(compiled_input) = document.network_interface.protonode_from_input(&connector, &[]) {
+							nodes_to_render.insert(compiled_input);
+						}
+					}
 				}
 
 				// Save data for all inputs in the viewed node graph
@@ -973,62 +955,59 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let Some(viewed_network) = document.network_interface.nested_network(&document.breadcrumb_network_path) else {
 						return;
 					};
-					for (export_index, export) in viewed_network.exports.iter().enumerate() {
-						match document
-							.network_interface
-							.downstream_caller_from_input(&InputConnector::Export(export_index), &document.breadcrumb_network_path)
-						{
-							Some(caller) => {
-								// inputs_to_monitor.insert((*caller, IntrospectMode::Data));
-								inputs_to_render.insert(*caller);
-							}
-							None => {}
+					let mut wire_stack = viewed_network
+						.exports
+						.iter()
+						.enumerate()
+						.filter_map(|(export_index, export)| export.is_wire().then_some(InputConnector::Export(export_index)))
+						.collect::<Vec<_>>();
+					while let Some(input_connector) = wire_stack.pop() {
+						let Some(input) = document.network_interface.input_from_connector(&input_connector, &document.breadcrumb_network_path) else {
+							log::error!("Could not get input from connector: {:?}", input_connector);
+							continue;
 						};
-						if let NodeInput::Node { node_id, .. } = export {
-							for upstream_node in document
-								.network_interface
-								.upstream_flow_back_from_nodes(vec![*node_id], &document.breadcrumb_network_path, network_interface::FlowType::UpstreamFlow)
-							{
-								let node = &viewed_network.nodes[&upstream_node];
-								for (index, _) in node.inputs.iter().enumerate().filter(|(_, node_input)| node_input.is_exposed()) {
-									if let Some(caller) = document
-										.network_interface
-										.downstream_caller_from_input(&InputConnector::node(upstream_node, index), &document.breadcrumb_network_path)
-									{
-										// inputs_to_monitor.insert((*caller, IntrospectMode::Data));
-										inputs_to_render.insert(*caller);
-									};
-								}
+						if let NodeInput::Node { node_id, .. } = input {
+							let Some(node) = document.network_interface.document_node(node_id, &document.breadcrumb_network_path) else {
+								log::error!("Could not get node");
+								continue;
+							};
+							for (wire_input_index, _) in node.inputs.iter().enumerate().filter(|(_, input)| input.is_wire()) {
+								wire_stack.push(InputConnector::Node {
+									node_id: *node_id,
+									input_index: wire_input_index,
+								})
 							}
-						}
+						};
+						let Some(protonode) = document.network_interface.protonode_from_input(&input_connector, &document.breadcrumb_network_path) else {
+							// The protonode has not been compiled, so it is not connected to the export
+							wire_stack = Vec::new();
+							continue;
+						};
+						nodes_to_render.insert(protonode);
 					}
 				};
 
-				responses.add(PortfolioMessage::IntrospectActiveDocument {
-					inputs_to_introspect: inputs_to_render,
-				});
+				responses.add(PortfolioMessage::IntrospectActiveDocument { nodes_to_introspect: nodes_to_render });
 				responses.add(Message::StartIntrospectionQueue);
 				responses.add(PortfolioMessage::ProcessThumbnails);
 				responses.add(Message::EndIntrospectionQueue);
 			}
 			PortfolioMessage::ProcessThumbnails => {
 				let mut thumbnail_response = ThumbnailRenderResponse::default();
-				for (thumbnail_input, introspected_data) in self.introspected_data.drain() {
-					let input_node_id = thumbnail_input.0.0 + thumbnail_input.1 as u64;
-
+				for (thumbnail_node, introspected_data) in self.introspected_data.drain() {
 					let Some(evaluated_data) = introspected_data else {
 						// Input was not evaluated, do not change its thumbnail
 						continue;
 					};
 
-					let previous_thumbnail_data = self.previous_thumbnail_data.get(&thumbnail_input);
+					let previous_thumbnail_data = self.previous_thumbnail_data.get(&thumbnail_node);
 
 					match graph_craft::document::value::render_thumbnail_if_change(&evaluated_data, previous_thumbnail_data) {
 						graph_craft::document::value::ThumbnailRenderResult::NoChange => return,
-						graph_craft::document::value::ThumbnailRenderResult::ClearThumbnail => thumbnail_response.clear.push(NodeId(input_node_id)),
-						graph_craft::document::value::ThumbnailRenderResult::UpdateThumbnail(thumbnail) => thumbnail_response.add.push((NodeId(input_node_id), thumbnail)),
+						graph_craft::document::value::ThumbnailRenderResult::ClearThumbnail => thumbnail_response.clear.push(thumbnail_node),
+						graph_craft::document::value::ThumbnailRenderResult::UpdateThumbnail(thumbnail) => thumbnail_response.add.push((thumbnail_node, thumbnail)),
 					}
-					self.previous_thumbnail_data.insert(thumbnail_input, evaluated_data);
+					self.previous_thumbnail_data.insert(thumbnail_node, evaluated_data);
 				}
 				responses.add(FrontendMessage::UpdateThumbnails {
 					add: thumbnail_response.add,

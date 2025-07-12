@@ -123,8 +123,13 @@ pub fn downcast<'a, V: StaticType + 'a>(i: Box<dyn DynAny<'a> + 'a>) -> Result<B
 	}
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+pub type Any<'n> = Box<dyn DynAny<'n> + 'n + Send>;
+#[cfg(target_arch = "wasm32")]
+pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
+
 #[cfg(feature = "alloc")]
-pub fn try_downcast<'a, V: StaticType + 'a>(i: Box<dyn DynAny<'a> + 'a + Send>) -> Result<Box<V>, Box<dyn DynAny<'a> + 'a + Send>> {
+pub fn try_downcast<'a, V: StaticType + 'a>(i: Any<'a>) -> Result<Box<V>, Any<'a>> {
 	let type_id = DynAny::type_id(i.as_ref());
 	if type_id == core::any::TypeId::of::<<V as StaticType>::Static>() {
 		// SAFETY: caller guarantees that T is the correct type

@@ -1,13 +1,12 @@
 use crate::node_registry::{CACHE_NODES, NODE_REGISTRY};
-use dyn_any::StaticType;
+use dyn_any::{Any, StaticType};
 use graph_craft::document::value::{TaggedValue, UpcastNode};
 use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext, UpstreamInputMetadata};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::{Type, concrete};
-use graphene_std::Context;
-use graphene_std::any::{EditorContext, EditorContextToContext, NullificationNode};
-use graphene_std::memo::IntrospectMode;
-use graphene_std::uuid::{CompiledProtonodeInput, NodeId, SNI};
+use graphene_std::any::{EditorContext, NullificationNode};
+use graphene_std::uuid::{NodeId, SNI};
+use graphene_std::{Context, ContextDependencies, NodeIOTypes};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::sync::Arc;
@@ -46,18 +45,13 @@ impl DynamicExecutor {
 
 	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
 	#[cfg_attr(debug_assertions, inline(never))]
-	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<(Vec<(SNI, Vec<Type>)>, Vec<(SNI, usize)>), GraphErrors> {
+	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<(Vec<(SNI, NodeIOTypes)>, Vec<SNI>), GraphErrors> {
 		self.output = Some(proto_network.output);
 		self.typing_context.update(&proto_network)?;
-		// A protonode id can change while having the same document path, and the path can change while having the same stable node id.
-		// Either way, the mapping of paths to ids and ids to paths has to be kept in sync.
-		// The mapping of monitor node paths has to kept in sync as well.
 		let (add, orphaned_proto_nodes) = self.tree.update(proto_network, &self.typing_context).await?;
 		let mut remove = Vec::new();
 		for sni in orphaned_proto_nodes {
-			if let Some(number_of_inputs) = self.tree.free_node(&sni) {
-				remove.push((sni, number_of_inputs));
-			}
+			remove.push(sni);
 			self.typing_context.remove_inference(&sni);
 		}
 
@@ -65,37 +59,20 @@ impl DynamicExecutor {
 			.into_iter()
 			.filter_map(|sni| {
 				let Some(types) = self.typing_context.type_of(sni) else {
+					log::error!("Could not get type for sni: {:?}", sni);
 					return None;
 				};
-				Some((sni, types.inputs.clone()))
+				Some((sni, types.clone()))
 			})
 			.collect();
 
 		Ok((add_with_types, remove))
 	}
 
-	/// Intospect the value for that specific protonode input, returning for example the cached value for a monitor node.
-	pub fn introspect(&self, protonode_input: CompiledProtonodeInput, introspect_mode: IntrospectMode) -> Result<Option<Arc<dyn std::any::Any + Send + Sync>>, IntrospectError> {
-		let node = self.get_introspect_node_container(protonode_input)?;
-		Ok(node.introspect(introspect_mode))
-	}
-
-	pub fn set_introspect(&self, protonode_input: CompiledProtonodeInput, introspect_mode: IntrospectMode) {
-		let Ok(node) = self.get_introspect_node_container(protonode_input) else {
-			log::error!("Could not get monitor node for input: {:?}", protonode_input);
-			return;
-		};
-		node.set_introspect(introspect_mode);
-	}
-
-	pub fn get_introspect_node_container(&self, protonode_input: CompiledProtonodeInput) -> Result<SharedNodeContainer, IntrospectError> {
-		// The SNI of the monitor nodes are the ids of the protonode + input index
-		let inserted_node = self.tree.nodes.get(&protonode_input.0).ok_or(IntrospectError::ProtoNodeNotFound(protonode_input))?;
-		let node = inserted_node
-			.input_introspection_entrypoints
-			.get(protonode_input.1)
-			.ok_or(IntrospectError::InputIndexOutOfBounds(protonode_input))?;
-		Ok(node.clone())
+	// Introspect the cached output of any protonode
+	pub fn introspect(&self, protonode: SNI, check_if_evaluated: bool) -> Result<Option<Arc<dyn std::any::Any + Send + Sync>>, IntrospectError> {
+		let inserted_node = self.tree.nodes.get(&protonode).ok_or(IntrospectError::ProtoNodeNotFound(protonode))?;
+		Ok(inserted_node.cached_protonode.introspect(check_if_evaluated))
 	}
 
 	pub fn input_type(&self) -> Option<Type> {
@@ -124,6 +101,7 @@ impl DynamicExecutor {
 			.type_of(node_to_evaluate)
 			.map(|node_io| node_io.call_argument.clone())
 			.ok_or("Could not get input type of network to execute".to_string())?;
+
 		// A node to convert the EditorContext to the Context is automatically inserted for each node at id-1
 		let result = match input_type {
 			t if t == concrete!(Context) => self.execute(editor_context, node_to_evaluate).await.map_err(|e| e.to_string()),
@@ -162,9 +140,8 @@ impl DynamicExecutor {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum IntrospectError {
 	PathNotFound(Vec<NodeId>),
-	ProtoNodeNotFound(CompiledProtonodeInput),
-	InputIndexOutOfBounds(CompiledProtonodeInput),
-	InvalidInputType(CompiledProtonodeInput),
+	ProtoNodeNotFound(SNI),
+	// InvalidInputType(SNI),
 	NoData,
 	RuntimeNotReady,
 	IntrospectNotImplemented,
@@ -174,31 +151,21 @@ impl std::fmt::Display for IntrospectError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			IntrospectError::PathNotFound(path) => write!(f, "Path not found: {:?}", path),
-			IntrospectError::ProtoNodeNotFound(input) => write!(f, "ProtoNode not found: {:?}", input),
+			IntrospectError::ProtoNodeNotFound(node) => write!(f, "ProtoNode not found during: {:?}", node),
 			IntrospectError::NoData => write!(f, "No data found for this node"),
 			IntrospectError::RuntimeNotReady => write!(f, "Node runtime is not ready"),
 			IntrospectError::IntrospectNotImplemented => write!(f, "Intospect not implemented"),
-			IntrospectError::InputIndexOutOfBounds(input) => write!(f, "Invalid input index: {:?}", input),
-			IntrospectError::InvalidInputType(input) => write!(f, "Invalid input type: {:?}", input),
+			// IntrospectError::InvalidInputType(input) => write!(f, "Invalid input type: {:?}", input),
 		}
 	}
 }
 
 #[derive(Clone)]
 struct InsertedProtonode {
-	// If the inserted protonode is a value node, then do not clear types when removing
-	is_value: bool,
-	// Either the value node, cache node, or protonode if output is not clone
+	// Either the value node, cache node if output is clone, or protonode if output is not clone
 	cached_protonode: SharedNodeContainer,
-	// Value nodes are the entry points, since they can be directly evaluated
-	// Nodes with cloneable outputs have a cache, then editor entry point
-	// Nodes without cloneable outputs just have an editor entry point connected to their output
-	output_editor_entrypoint: SharedNodeContainer,
-	// Nodes with inputs store references to the entry points of the upstream node
-	// This is used to generate thumbnails
-	input_thumbnail_entrypoints: Vec<SharedNodeContainer>,
-	// They also store references to the upstream cache/value node, used for introspection
-	input_introspection_entrypoints: Vec<SharedNodeContainer>,
+	// A list of arguments in the context to nullify when executing the node
+	nullify_when_calling: ContextDependencies,
 }
 
 /// A store of dynamically typed nodes and their associated source map.
@@ -243,10 +210,7 @@ impl BorrowTree {
 			let sni = node.stable_node_id;
 			old_nodes.remove(&sni);
 			if !self.nodes.contains_key(&sni) {
-				// Do not send types for auto inserted value nodes
-				if matches!(node.construction_args, ConstructionArgs::Nodes(_)) {
-					nodes_with_new_type.push(sni)
-				}
+				nodes_with_new_type.push(sni);
 				self.push_node(node, typing_context).await?;
 			}
 		}
@@ -262,23 +226,35 @@ impl BorrowTree {
 	}
 
 	/// Evaluate any node in the borrow tree
-	pub async fn eval<'i, I, O>(&'i self, id: NodeId, input: I) -> Option<O>
-	where
-		I: StaticType + 'i + Send + Sync,
-		O: StaticType + 'i,
-	{
-		let node = self.nodes.get(&id)?;
-		let output = node.output_editor_entrypoint.eval(Box::new(input));
-		dyn_any::downcast::<O>(output.await).ok().map(|o| *o)
-	}
+	// pub async fn eval<'i, I, O>(&'i self, id: NodeId, input: I) -> Option<O>
+	// where
+	// 	I: StaticType + 'i + Send + Sync,
+	// 	O: StaticType + 'i,
+	// {
+	// 	let node = self.nodes.get(&id)?;
+	// 	let output = node.output_editor_entrypoint.eval(Box::new(input));
+	// 	dyn_any::downcast::<O>(output.await).ok().map(|o| *o)
+	// }
+
 	/// Evaluate the output node of the [`BorrowTree`] and cast it to a tagged value.
 	/// This ensures that no borrowed data can escape the node graph.
-	pub async fn eval_tagged_value<I>(&self, id: SNI, input: I) -> Result<TaggedValue, String>
+	pub async fn eval_tagged_value<'i, I>(&'i self, id: SNI, input: I) -> Result<TaggedValue, String>
 	where
 		I: StaticType + 'static + Send + Sync,
 	{
 		let inserted_node = self.nodes.get(&id).ok_or("Output node not found in executor")?;
-		let output = inserted_node.output_editor_entrypoint.eval(Box::new(input));
+
+		// Try convert the editor context to a nullified Context, since the Context is not StaticType
+		let new_input = match dyn_any::try_downcast::<EditorContext>(Box::new(input)) {
+			Ok(editor_context) => {
+				let mut context = editor_context.to_owned_context();
+				context.nullify(&inserted_node.nullify_when_calling);
+				Box::new(context.into_context()) as Any<'i>
+			}
+			Err(other_input) => other_input,
+		};
+
+		let output = inserted_node.cached_protonode.eval(new_input);
 		TaggedValue::try_from_any(output.await)
 	}
 
@@ -337,9 +313,8 @@ impl BorrowTree {
 	/// - Removes the node from `nodes` HashMap.
 	/// - If the node is the primary node for its path in the `source_map`, it's also removed from there.
 	/// - Returns `None` if the node is not found in the `nodes` HashMap.
-	pub fn free_node(&mut self, id: &SNI) -> Option<usize> {
-		let removed_node = self.nodes.remove(&id).expect(&format!("Could not remove node: {:?}", id));
-		removed_node.is_value.then_some(removed_node.input_thumbnail_entrypoints.len())
+	pub fn free_node(&mut self, id: &SNI) {
+		self.nodes.remove(&id).expect("Node could not be removed");
 	}
 
 	/// Inserts a new node into the [`BorrowTree`], calling the constructor function from `node_registry.rs`.
@@ -360,31 +335,37 @@ impl BorrowTree {
 	/// Thumbnails is a mapping of the protonode input to the rendered thumbnail through the monitor cache node
 	async fn push_node(&mut self, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), GraphErrors> {
 		let sni = proto_node.stable_node_id;
-		// Move the value into the upcast node instead of cloning it
 		match proto_node.construction_args {
-			ConstructionArgs::Value(value_args) => {
-				let upcasted = UpcastNode::new(value_args.value);
+			ConstructionArgs::Value(value) => {
+				let upcasted = UpcastNode::new(value);
 				let node = Box::new(upcasted) as TypeErasedBox<'_>;
-				let value_node = NodeContainer::new(node);
+				let cached_protonode = NodeContainer::new(node);
 
 				let inserted_protonode = InsertedProtonode {
-					is_value: true,
-					cached_protonode: value_node.clone(),
-					output_editor_entrypoint: value_node,
-					input_thumbnail_entrypoints: Vec::new(),
-					input_introspection_entrypoints: Vec::new(),
+					cached_protonode,
+					nullify_when_calling: ContextDependencies::none(),
 				};
 				self.nodes.insert(sni, inserted_protonode);
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(node_construction_args) => {
-				let construction_nodes = self.node_deps(&node_construction_args.inputs);
+				let Some(types) = typing_context.type_of(sni) else {
+					return Err(vec![GraphError::new(
+						&ConstructionArgs::Nodes(node_construction_args),
+						proto_node.original_location,
+						GraphErrorType::UnresolvedType,
+					)]);
+				};
 
-				let input_thumbnail_entrypoints = construction_nodes
-					.iter()
-					.map(|inserted_protonode| inserted_protonode.output_editor_entrypoint.clone())
-					.collect::<Vec<_>>();
-				let input_introspection_entrypoints = construction_nodes.iter().map(|inserted_protonode| inserted_protonode.cached_protonode.clone()).collect::<Vec<_>>();
+				let Some(constructor) = typing_context.constructor(sni) else {
+					return Err(vec![GraphError::new(
+						&ConstructionArgs::Nodes(node_construction_args),
+						proto_node.original_location,
+						GraphErrorType::NoConstructor,
+					)]);
+				};
+
+				let construction_nodes = self.node_deps(&node_construction_args.inputs);
 
 				// Insert nullification if necessary
 				let protonode_inputs = construction_nodes
@@ -392,35 +373,19 @@ impl BorrowTree {
 					.zip(node_construction_args.inputs.into_iter())
 					.map(|(inserted_protonode, input_metadata)| {
 						let previous_input = inserted_protonode.cached_protonode.clone();
-						let input_context_dependencies = input_metadata.unwrap().context_dependencies.unwrap();
-						let protonode_input = if !input_context_dependencies.is_empty() {
+						let input_context_dependencies = input_metadata.unwrap().context_dependencies;
+						if !input_context_dependencies.is_empty() {
 							let nullification_node = NullificationNode::new(previous_input, input_context_dependencies);
 							let node = Box::new(nullification_node) as TypeErasedBox<'_>;
 							NodeContainer::new(node)
 						} else {
 							previous_input
-						};
-						protonode_input
+						}
 					})
 					.collect::<Vec<_>>();
 
-				let constructor = typing_context.constructor(sni).ok_or_else(|| {
-					vec![GraphError {
-						stable_node_id: sni,
-						identifier: node_construction_args.identifier.name.clone(),
-						error: GraphErrorType::NoConstructor,
-					}]
-				})?;
 				let node = constructor(protonode_inputs).await;
 				let protonode = NodeContainer::new(node);
-
-				let types = typing_context.type_of(sni).ok_or_else(|| {
-					vec![GraphError {
-						stable_node_id: sni,
-						identifier: node_construction_args.identifier.name,
-						error: GraphErrorType::NoConstructor,
-					}]
-				})?;
 
 				// Insert cache nodes on the output if possible
 				let cached_protonode = if let Some(cache_constructor) = typing_context.cache_constructor(&types.return_value.nested_type()) {
@@ -431,36 +396,17 @@ impl BorrowTree {
 					protonode
 				};
 
-				// If the call argument is Context, insert a conversion node between EditorContext to Context so that it can be evaluated
-				// Also insert the nullification node to whatever the protonode is not dependent on
-				let mut editor_entrypoint_input = cached_protonode.clone();
-				if types.call_argument == concrete!(Context) {
-					let nullify = graphene_std::all_context_dependencies()
-						.into_iter()
-						.filter(|dependency| !node_construction_args.context_dependencies.contains(dependency))
-						.collect::<Vec<_>>();
-					if !nullify.is_empty() {
-						let nullification_node = NullificationNode::new(cached_protonode.clone(), nullify);
-						let node = Box::new(nullification_node) as TypeErasedBox<'_>;
-						editor_entrypoint_input = NodeContainer::new(node)
-					}
-				}
-
-				let editor_entry_point = EditorContextToContext::new(editor_entrypoint_input);
-				let node = Box::new(editor_entry_point) as TypeErasedBox;
-				let output_editor_entrypoint = NodeContainer::new(node);
+				// When evaluating the node from the editor, nullify all context fields it is not dependent on
+				let nullify_when_calling = node_construction_args.context_dependencies.inverse();
 
 				let inserted_protonode = InsertedProtonode {
-					is_value: false,
 					cached_protonode,
-					output_editor_entrypoint,
-					input_thumbnail_entrypoints,
-					input_introspection_entrypoints,
+					nullify_when_calling,
 				};
 
 				self.nodes.insert(sni, inserted_protonode);
 			}
-		};
+		}
 		Ok(())
 	}
 }
@@ -476,7 +422,7 @@ mod test {
 		let mut tree = BorrowTree::default();
 		let val_1_protonode = ProtoNode::value(
 			ConstructionArgs::Value(NodeValueArgs {
-				value: TaggedValue::U32(2u32).into(),
+				value: Some(TaggedValue::U32(2u32).into()),
 				connector_paths: Vec::new(),
 			}),
 			NodeId(0),
@@ -485,7 +431,7 @@ mod test {
 		let future = tree.push_node(val_1_protonode, &context);
 		futures::executor::block_on(future).unwrap();
 		let _node = tree.nodes.get(&NodeId(0)).expect("Node should be added to tree");
-		let result = futures::executor::block_on(tree.eval(NodeId(0), ()));
-		assert_eq!(result, Some(2u32));
+		let result = futures::executor::block_on(tree.eval_tagged_value(NodeId(0), ()));
+		assert_eq!(result, Some(TaggedValue::U32(2u32).into()));
 	}
 }

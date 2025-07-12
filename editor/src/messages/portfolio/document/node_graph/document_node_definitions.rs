@@ -455,73 +455,73 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("Creates a new Artboard which can be used as a working surface."),
 			properties: None,
 		},
-		DocumentNodeDefinition {
-			identifier: "Load Image",
-			category: "Web Request",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(1), 0)],
-						nodes: [
-							DocumentNode {
-								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::scope("editor-api"), NodeInput::network(concrete!(String), 1)],
-								manual_composition: Some(concrete!(Context)),
-								implementation: DocumentNodeImplementation::ProtoNode(wasm_application_io::load_resource::IDENTIFIER),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								manual_composition: Some(concrete!(Context)),
-								implementation: DocumentNodeImplementation::ProtoNode(wasm_application_io::decode_image::IDENTIFIER),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::String("graphite:null".to_string()), false)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Empty", "TODO").into(), ("URL", "TODO").into()],
-					output_names: vec!["Image".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Load Resource".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Decode Image".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("Loads an image from a given URL"),
-			properties: None,
-		},
+		// DocumentNodeDefinition {
+		// 	identifier: "Load Image",
+		// 	category: "Web Request",
+		// 	node_template: NodeTemplate {
+		// 		document_node: DocumentNode {
+		// 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+		// 				exports: vec![NodeInput::node(NodeId(1), 0)],
+		// 				nodes: [
+		// 					DocumentNode {
+		// 						inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::scope("editor-api"), NodeInput::network(concrete!(String), 1)],
+		// 						manual_composition: Some(concrete!(Context)),
+		// 						implementation: DocumentNodeImplementation::ProtoNode(wasm_application_io::load_resource::IDENTIFIER),
+		// 						..Default::default()
+		// 					},
+		// 					DocumentNode {
+		// 						inputs: vec![NodeInput::node(NodeId(0), 0)],
+		// 						manual_composition: Some(concrete!(Context)),
+		// 						implementation: DocumentNodeImplementation::ProtoNode(wasm_application_io::decode_image::IDENTIFIER),
+		// 						..Default::default()
+		// 					},
+		// 				]
+		// 				.into_iter()
+		// 				.enumerate()
+		// 				.map(|(id, node)| (NodeId(id as u64), node))
+		// 				.collect(),
+		// 				..Default::default()
+		// 			}),
+		// 			inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::String("graphite:null".to_string()), false)],
+		// 			..Default::default()
+		// 		},
+		// 		persistent_node_metadata: DocumentNodePersistentMetadata {
+		// 			input_metadata: vec![("Empty", "TODO").into(), ("URL", "TODO").into()],
+		// 			output_names: vec!["Image".to_string()],
+		// 			network_metadata: Some(NodeNetworkMetadata {
+		// 				persistent_metadata: NodeNetworkPersistentMetadata {
+		// 					node_metadata: [
+		// 						DocumentNodeMetadata {
+		// 							persistent_metadata: DocumentNodePersistentMetadata {
+		// 								display_name: "Load Resource".to_string(),
+		// 								node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+		// 								..Default::default()
+		// 							},
+		// 							..Default::default()
+		// 						},
+		// 						DocumentNodeMetadata {
+		// 							persistent_metadata: DocumentNodePersistentMetadata {
+		// 								display_name: "Decode Image".to_string(),
+		// 								node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
+		// 								..Default::default()
+		// 							},
+		// 							..Default::default()
+		// 						},
+		// 					]
+		// 					.into_iter()
+		// 					.enumerate()
+		// 					.map(|(id, node)| (NodeId(id as u64), node))
+		// 					.collect(),
+		// 					..Default::default()
+		// 				},
+		// 				..Default::default()
+		// 			}),
+		// 			..Default::default()
+		// 		},
+		// 	},
+		// 	description: Cow::Borrowed("Loads an image from a given URL"),
+		// 	properties: None,
+		// },
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "Create Canvas",

@@ -161,8 +161,8 @@ impl Dispatcher {
 				Message::EndIntrospectionQueue => {
 					self.queueing_introspection_messages = false;
 				}
-				Message::ProcessIntrospectionQueue(introspected_inputs) => {
-					let update_message = PortfolioMessage::ProcessIntrospectionResponse { introspected_inputs }.into();
+				Message::ProcessIntrospectionQueue(introspection_response) => {
+					let update_message = PortfolioMessage::ProcessIntrospectionResponse { introspection_response }.into();
 					// Update the state with the render output and introspected inputs
 					Self::schedule_execution(&mut self.message_queues, true, [update_message]);
 

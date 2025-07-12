@@ -1,14 +1,14 @@
 pub mod value;
 
 use crate::document::value::TaggedValue;
-use crate::proto::{ConstructionArgs, NodeConstructionArgs, NodeValueArgs, ProtoNetwork, ProtoNode, UpstreamInputMetadata};
+use crate::proto::{ConstructionArgs, NodeConstructionArgs, OriginalLocation, ProtoNetwork, ProtoNode, UpstreamInputMetadata};
 use dyn_any::DynAny;
 use glam::IVec2;
 use graphene_core::memo::MemoHashGuard;
 use graphene_core::registry::NODE_CONTEXT_DEPENDENCY;
 pub use graphene_core::uuid::generate_uuid;
-use graphene_core::uuid::{CompiledProtonodeInput, NodeId, ProtonodePath, SNI};
-use graphene_core::{Context, Cow, MemoHash, ProtoNodeIdentifier, Type};
+use graphene_core::uuid::{NodeId, ProtonodePath, SNI};
+use graphene_core::{Context, ContextDependencies, Cow, MemoHash, NodeIOTypes, ProtoNodeIdentifier, Type};
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
@@ -166,6 +166,13 @@ impl NodeInput {
 	pub fn is_lambda(&self) -> bool {
 		match self {
 			NodeInput::Node { lambda, .. } => *lambda,
+			_ => false,
+		}
+	}
+
+	pub fn is_wire(&self) -> bool {
+		match self {
+			NodeInput::Node { .. } | NodeInput::Network { .. } => true,
 			_ => false,
 		}
 	}
@@ -510,169 +517,96 @@ impl NodeNetwork {
 
 /// Functions for compiling the network
 impl NodeNetwork {
-	// Returns a topologically sorted vec of vec of protonodes, as well as metadata extracted during compilation
-	// The first index represents the greatest distance to the export
-	// Compiles a network with one export where any scope injections are added the top level network, and the network to run is implemented as a DocumentNodeImplementation::Network
-	// The traversal input is the node which calls the network to be flattened. If it is None, then start from the export.
-	// Every value protonode stores the connector which directly called it, which is used to map the value input to the protonode caller.
-	// Every value input connector is mapped to its caller, and every protonode is mapped to its caller. If there are multiple, then they are compared to ensure it is the same between compilations
-	pub fn flatten(
-		&mut self,
-	) -> Result<
-		(
-			ProtoNetwork,
-			Vec<(Vec<AbsoluteInputConnector>, CompiledProtonodeInput)>,
-			Vec<(Vec<ProtonodePath>, CompiledProtonodeInput)>,
-		),
-		String,
-	> {
+	// Returns a topologically sorted vec of protonodes, as well as metadata extracted during compilation
+	pub fn flatten(&mut self) -> Result<(ProtoNetwork, Vec<(OriginalLocation, SNI)>), String> {
 		// These three arrays are stored in parallel
 		let mut protonetwork = Vec::new();
 
 		// This function creates a topologically flattened network with populated original location fields but unmapped inputs
-		// The input to flattened protonode hashmap is used to map the inputs
+		// The protonode indices maps the node path to its index, used to map the caller inputs of any node to the new SNI
 		let mut protonode_indices = HashMap::new();
 		self.traverse_input(&mut protonetwork, &mut HashMap::new(), &mut protonode_indices, AbsoluteInputConnector::traversal_start(), None);
 
-		// If a node with the same sni is reached, then its original location metadata must be added to the one at the higher vec index
-		// The index will always be a ProtonodeEntry::Protonode
-		let mut generated_snis_to_index = HashMap::new();
-		// Generate SNI's. This gets called after all node inputs are replaced with their indices
-		for protonode_index in 0..protonetwork.len() {
-			let ProtonodeEntry::Protonode(protonode) = protonetwork.get_mut(protonode_index).unwrap() else {
+		// If a node with the same sni is reached, then it is deduplicated
+		let mut generated_snis = std::collections::HashSet::new();
+
+		// Editor metadata: map the original location to the stable node id for each inserted protonode
+		let mut original_locations = Vec::new();
+
+		for current_protonode_index in 0..protonetwork.len() {
+			let ProtonodeEntry::Protonode(protonode) = protonetwork.get_mut(current_protonode_index).unwrap() else {
 				panic!("No protonode can be deduplicated during flattening");
 			};
 			// Generate context dependencies. If None, then it is a value node and does not require nullification
-			let mut protonode_context_dependencies = None;
-			if let ConstructionArgs::Nodes(NodeConstructionArgs { inputs, context_dependencies, .. }) = &mut protonode.construction_args {
-				for upstream_metadata in inputs.iter() {
-					let Some(upstream_metadata) = upstream_metadata else {
-						panic!("All inputs should be when the upstream SNI was generated");
-					};
-					for upstream_dependency in upstream_metadata.context_dependencies.iter().flatten() {
-						if !context_dependencies.contains(upstream_dependency) {
-							context_dependencies.push(upstream_dependency.clone());
+			let (protonode_context_dependencies, upstream_is_value) = match &mut protonode.construction_args {
+				ConstructionArgs::Nodes(NodeConstructionArgs { inputs, context_dependencies, .. }) => {
+					for upstream_metadata in inputs.iter() {
+						let Some(upstream_metadata) = upstream_metadata else {
+							panic!("All inputs should be when the upstream SNI was generated");
+						};
+						if upstream_metadata.is_value {
+							context_dependencies.add_dependencies(&upstream_metadata.context_dependencies);
 						}
 					}
-				}
-				// The context_dependencies are now the union of all inputs and the dependencies of the protonode. Set the dependencies of each input to the difference, which represents the data to nullify
-				for upstream_metadata in inputs.iter_mut() {
-					let Some(upstream_metadata) = upstream_metadata else {
-						panic!("All inputs should be when the upstream SNI was generated");
-					};
-					match upstream_metadata.context_dependencies.as_ref() {
-						Some(upstream_dependencies) => {
-							upstream_metadata.context_dependencies = Some(
-								context_dependencies
-									.iter()
-									.filter(|protonode_dependency| !upstream_dependencies.contains(protonode_dependency))
-									.cloned()
-									.collect::<Vec<_>>(),
-							)
+					// The context_dependencies are now the union of all inputs and the dependencies of the protonode. Set the dependencies of each input to the difference, which represents the data to nullify
+					for upstream_metadata in inputs.iter_mut() {
+						let Some(upstream_metadata) = upstream_metadata else {
+							panic!("All inputs should be when the upstream SNI was generated");
+						};
+						match upstream_metadata.is_value {
+							true => upstream_metadata.context_dependencies.difference(&context_dependencies),
+							// If the upstream node is a Value node, do not nullify the context
+							false => upstream_metadata.context_dependencies = ContextDependencies::none(),
 						}
-						// If none then the upstream node is a Value node, so do not nullify the context
-						None => upstream_metadata.context_dependencies = Some(Vec::new()),
 					}
+					(context_dependencies.clone(), false)
 				}
-				protonode_context_dependencies = Some(context_dependencies.clone());
-			}
-
-			protonode.generate_stable_node_id();
-			let current_stable_node_id = protonode.stable_node_id;
-
-			// If the stable node id is the same as a previous node, then deduplicate
-			let callers = if let Some(upstream_index) = generated_snis_to_index.get(&protonode.stable_node_id) {
-				let ProtonodeEntry::Protonode(deduplicated_protonode) = std::mem::replace(&mut protonetwork[protonode_index], ProtonodeEntry::Deduplicated(*upstream_index)) else {
-					panic!("Reached protonode must not be deduplicated");
-				};
-				let ProtonodeEntry::Protonode(upstream_protonode) = &mut protonetwork[*upstream_index] else {
-					panic!("Upstream protonode must not be deduplicated");
-				};
-				match deduplicated_protonode.construction_args {
-					ConstructionArgs::Value(node_value_args) => {
-						let ConstructionArgs::Value(upstream_value_args) = &mut upstream_protonode.construction_args else {
-							panic!("Upstream protonode must match current protonode construction args");
-						};
-						upstream_value_args.connector_paths.extend(node_value_args.connector_paths);
-					}
-					ConstructionArgs::Nodes(node_construction_args) => {
-						let ConstructionArgs::Nodes(upstream_value_args) = &mut upstream_protonode.construction_args else {
-							panic!("Upstream protonode must match current protonode construction args");
-						};
-						upstream_value_args.node_paths.extend(node_construction_args.node_paths);
-						// The dependencies of the deduplicated node and the upstream node are the same because all inputs are the same
-					}
-					ConstructionArgs::Inline(_) => todo!(),
-				}
-				// Set the caller of the upstream node to be the minimum of all deduplicated nodes and itself
-				upstream_protonode.caller = deduplicated_protonode.callers.iter().chain(upstream_protonode.caller.iter()).min().cloned();
-				deduplicated_protonode.callers
-			} else {
-				generated_snis_to_index.insert(protonode.stable_node_id, protonode_index);
-				protonode.caller = protonode.callers.iter().min().cloned();
-				std::mem::take(&mut protonode.callers)
+				// If its a value node (or extract?) then do not nullify when calling since there is no cache node placed on the output
+				_ => (ContextDependencies::none(), true),
 			};
 
-			// This runs for all protonodes
-			for (caller_path, input_index) in callers {
-				let caller_index = protonode_indices[&caller_path];
+			protonode.generate_stable_node_id();
+			let stable_node_id = protonode.stable_node_id;
+
+			// If the stable node id is the same as a previous node, then deduplicate
+			let (callers, original_location) = if !generated_snis.insert(stable_node_id) {
+				let ProtonodeEntry::Protonode(deduplicated_protonode) = std::mem::replace(&mut protonetwork[current_protonode_index], ProtonodeEntry::Deduplicated) else {
+					panic!("Reached protonode cannot already be deduplicated");
+				};
+				(deduplicated_protonode.callers, deduplicated_protonode.original_location)
+			} else {
+				(
+					std::mem::take(&mut protonode.callers),
+					std::mem::replace(&mut protonode.original_location, OriginalLocation::Node(Vec::new())),
+				)
+			};
+
+			// Map the callers inputs to the generated stable node id
+			for (caller, input_index) in callers {
+				let caller_index = protonode_indices[&caller];
 				let ProtonodeEntry::Protonode(caller_protonode) = &mut protonetwork[caller_index] else {
 					panic!("Downstream caller cannot be deduplicated");
 				};
 				match &mut caller_protonode.construction_args {
 					ConstructionArgs::Nodes(nodes) => {
-						assert!(caller_index > protonode_index, "Caller index must be higher than current index");
-						let input_metadata: &mut Option<UpstreamInputMetadata> = &mut nodes.inputs[input_index];
-						if input_metadata.is_none() {
-							*input_metadata = Some(UpstreamInputMetadata {
-								input_sni: current_stable_node_id,
-								context_dependencies: protonode_context_dependencies.clone(),
-							})
-						}
+						assert!(caller_index > current_protonode_index, "Caller index must be higher than current index");
+						nodes.inputs[input_index] = Some(UpstreamInputMetadata {
+							input_sni: stable_node_id,
+							context_dependencies: protonode_context_dependencies.clone(),
+							is_value: upstream_is_value,
+						})
 					}
 					// Value node cannot be a caller
 					ConstructionArgs::Value(_) => unreachable!(),
 					ConstructionArgs::Inline(_) => todo!(),
 				}
 			}
+
+			// Map the original location to the stable node id
+			original_locations.push((original_location, stable_node_id));
 		}
 
-		// Do another traversal now that the metadata has been accumulated after deduplication
-		// This includes the caller of all absolute value connections which have a NodeInput::Value, as well as the caller for each protonode
-		let mut value_connector_callers = Vec::new();
-		let mut protonode_callers = Vec::new();
-		// Collect caller ids into a separate vec so that the pronetwork can be mutably iterated over to take the connector/node paths rather than cloning
-		let calling_protonode_ids = protonetwork
-			.iter()
-			.map(|entry| match entry {
-				ProtonodeEntry::Protonode(proto_node) => proto_node.stable_node_id,
-				ProtonodeEntry::Deduplicated(upstream_protonode_index) => {
-					let ProtonodeEntry::Protonode(proto_node) = &protonetwork[*upstream_protonode_index] else {
-						panic!("Upstream protonode index must not be dedeuplicated");
-					};
-					proto_node.stable_node_id
-				}
-			})
-			.collect::<Vec<_>>();
-
-		for protonode_entry in &mut protonetwork {
-			if let ProtonodeEntry::Protonode(protonode) = protonode_entry {
-				if let Some((caller_path, caller_input_index)) = protonode.caller.as_ref() {
-					let caller_index = protonode_indices[caller_path];
-					match &mut protonode.construction_args {
-						ConstructionArgs::Value(node_value_args) => {
-							value_connector_callers.push((std::mem::take(&mut node_value_args.connector_paths), (calling_protonode_ids[caller_index], *caller_input_index)))
-						}
-						ConstructionArgs::Nodes(node_construction_args) => {
-							protonode_callers.push((std::mem::take(&mut node_construction_args.node_paths), (calling_protonode_ids[caller_index], *caller_input_index)))
-						}
-						ConstructionArgs::Inline(_) => todo!(),
-					}
-				}
-			}
-		}
-
-		Ok((ProtoNetwork::from_vec(protonetwork), value_connector_callers, protonode_callers))
+		Ok((ProtoNetwork::from_vec(protonetwork), original_locations))
 	}
 
 	fn get_input_from_absolute_connector(&mut self, traversal_input: &AbsoluteInputConnector) -> Option<&mut NodeInput> {
@@ -728,7 +662,7 @@ impl NodeNetwork {
 		protonetwork: &mut Vec<ProtonodeEntry>, // None represents a deduplicated value node
 		// Every time a value input is reached, it is added to a mapping so if it reached again, it can be moved to the end of the protonetwork
 		value_protonode_indices: &mut HashMap<AbsoluteInputConnector, usize>,
-		// Every time a protonode is reached, is it added to a mapping so if it reached again, it can be moved to the end of the protonetwork
+		// Every time a protonode is reached, is it added to a mapping so if it reached again
 		protonode_indices: &mut HashMap<ProtonodePath, usize>,
 		// The original location of the current traversal
 		traversal_input: AbsoluteInputConnector,
@@ -827,12 +761,11 @@ impl NodeNetwork {
 										Some((upstream_node_path.clone(), input_index)),
 									);
 								}
-								let context_dependencies = NODE_CONTEXT_DEPENDENCY.lock().unwrap().get(identifier.name.as_ref()).cloned().unwrap_or_default();
+								let context_dependencies = NODE_CONTEXT_DEPENDENCY.lock().unwrap().get(identifier.name.as_ref()).cloned().unwrap_or(ContextDependencies::none());
 								let construction_args = ConstructionArgs::Nodes(NodeConstructionArgs {
 									identifier,
 									inputs: vec![None; number_of_inputs],
 									context_dependencies,
-									node_paths: Vec::new(),
 								});
 								let protonode = ProtoNode {
 									construction_args,
@@ -840,11 +773,11 @@ impl NodeNetwork {
 									input: concrete!(Context),
 									stable_node_id: NodeId(0),
 									callers: Vec::new(),
-									caller: None,
+									original_location: OriginalLocation::Node(upstream_node_path.clone()),
 								};
 								let new_protonode_index = protonetwork.len();
 								protonetwork.push(ProtonodeEntry::Protonode(protonode));
-								protonode_indices.insert(upstream_node_path.clone(), new_protonode_index);
+								protonode_indices.insert(upstream_node_path, new_protonode_index);
 								let ProtonodeEntry::Protonode(protonode) = &mut protonetwork[new_protonode_index] else {
 									panic!("Inserted protonode must exist at new_protonode_index");
 								};
@@ -855,10 +788,6 @@ impl NodeNetwork {
 						if let Some(traversal_start) = traversal_start {
 							reached_protonode.callers.push(traversal_start);
 						}
-						let ConstructionArgs::Nodes(args) = &mut reached_protonode.construction_args else {
-							panic!("Reached protonode must have Nodes construction args");
-						};
-						args.node_paths.push(upstream_node_path);
 					}
 					DocumentNodeImplementation::Extract => todo!(),
 				}
@@ -876,18 +805,15 @@ impl NodeNetwork {
 					// Insert the protonode and traverse over inputs
 					None => {
 						let value_protonode = ProtoNode {
-							construction_args: ConstructionArgs::Value(NodeValueArgs {
-								value: std::mem::replace(tagged_value, TaggedValue::None.into()),
-								connector_paths: Vec::new(),
-							}),
+							construction_args: ConstructionArgs::Value(std::mem::replace(tagged_value, TaggedValue::None.into())),
 							input: concrete!(Context), // Could be ()
 							stable_node_id: NodeId(0),
 							callers: Vec::new(),
-							caller: None,
+							original_location: OriginalLocation::Value(traversal_input.clone()),
 						};
 						let new_protonode_index = protonetwork.len();
 						protonetwork.push(ProtonodeEntry::Protonode(value_protonode));
-						value_protonode_indices.insert(traversal_input.clone(), new_protonode_index);
+						value_protonode_indices.insert(traversal_input, new_protonode_index);
 
 						let ProtonodeEntry::Protonode(protonode) = &mut protonetwork[new_protonode_index] else {
 							panic!("Previously inserted protonode must exist at mapped protonode index");
@@ -895,15 +821,10 @@ impl NodeNetwork {
 						protonode
 					}
 				};
-
 				// Only add the traversal start if it is not the root export
 				if let Some(traversal_start) = traversal_start {
 					reached_protonode.callers.push(traversal_start);
 				}
-				let ConstructionArgs::Value(args) = &mut reached_protonode.construction_args else {
-					panic!("Reached protonode must have Nodes construction args");
-				};
-				args.connector_paths.push(traversal_input);
 			}
 			// Continue traversal
 			NodeInput::Network { import_index, .. } => {
@@ -969,17 +890,15 @@ impl NodeNetwork {
 #[derive(Debug, Clone)]
 pub enum ProtonodeEntry {
 	Protonode(ProtoNode),
-	// If deduplicated, then any upstream node which this node previously called needs to map to the new protonode
-	Deduplicated(usize),
+	// A node is deduplicated if it has the same stable node id,
+	Deduplicated,
 }
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompilationMetadata {
 	// Stored for every value input in the compiled network
-	pub protonode_caller_for_values: Vec<(Vec<AbsoluteInputConnector>, CompiledProtonodeInput)>,
-	// Stored for every protonode in the compiled network
-	pub protonode_caller_for_nodes: Vec<(Vec<ProtonodePath>, CompiledProtonodeInput)>,
-	pub types_to_add: Vec<(SNI, Vec<Type>)>,
-	pub types_to_remove: Vec<(SNI, usize)>,
+	pub original_locations: Vec<(OriginalLocation, SNI)>,
+	pub types_to_add: Vec<(SNI, NodeIOTypes)>,
+	pub types_to_remove: Vec<SNI>,
 }
 
 //An Input connector with a node path for unique identification
@@ -1112,7 +1031,7 @@ impl<'a> Iterator for RecursiveNodeIter<'a> {
 	}
 }
 
-#[cfg(test)]
+// #[cfg(test)]
 // mod test {
 // 	use super::*;
 // 	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
@@ -1372,65 +1291,65 @@ impl<'a> Iterator for RecursiveNodeIter<'a> {
 // 		}
 // 	}
 
-	// fn two_node_identity() -> NodeNetwork {
-	// 	NodeNetwork {
-	// 		exports: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
-	// 		nodes: [
-	// 			(
-	// 				NodeId(1),
-	// 				DocumentNode {
-	// 					inputs: vec![NodeInput::network(concrete!(u32), 0)],
-	// 					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
-	// 					..Default::default()
-	// 				},
-	// 			),
-	// 			(
-	// 				NodeId(2),
-	// 				DocumentNode {
-	// 					inputs: vec![NodeInput::network(concrete!(u32), 1)],
-	// 					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
-	// 					..Default::default()
-	// 				},
-	// 			),
-	// 		]
-	// 		.into_iter()
-	// 		.collect(),
-	// 		..Default::default()
-	// 	}
-	// }
+// fn two_node_identity() -> NodeNetwork {
+// 	NodeNetwork {
+// 		exports: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
+// 		nodes: [
+// 			(
+// 				NodeId(1),
+// 				DocumentNode {
+// 					inputs: vec![NodeInput::network(concrete!(u32), 0)],
+// 					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
+// 					..Default::default()
+// 				},
+// 			),
+// 			(
+// 				NodeId(2),
+// 				DocumentNode {
+// 					inputs: vec![NodeInput::network(concrete!(u32), 1)],
+// 					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
+// 					..Default::default()
+// 				},
+// 			),
+// 		]
+// 		.into_iter()
+// 		.collect(),
+// 		..Default::default()
+// 	}
+// }
 
-	// fn output_duplicate(network_outputs: Vec<NodeInput>, result_node_input: NodeInput) -> NodeNetwork {
-	// 	let mut network = NodeNetwork {
-	// 		exports: network_outputs,
-	// 		nodes: [
-	// 			(
-	// 				NodeId(1),
-	// 				DocumentNode {
-	// 					inputs: vec![NodeInput::value(TaggedValue::F64(1.), false), NodeInput::value(TaggedValue::F64(2.), false)],
-	// 					implementation: DocumentNodeImplementation::Network(two_node_identity()),
-	// 					..Default::default()
-	// 				},
-	// 			),
-	// 			(
-	// 				NodeId(2),
-	// 				DocumentNode {
-	// 					inputs: vec![result_node_input],
-	// 					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
-	// 					..Default::default()
-	// 				},
-	// 			),
-	// 		]
-	// 		.into_iter()
-	// 		.collect(),
-	// 		..Default::default()
-	// 	};
-	// 	let _new_ids = 101..;
-	// 	network.populate_dependants();
-	// 	network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), || NodeId(10000));
-	// 	network.flatten_with_fns(NodeId(2), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), || NodeId(10001));
-	// 	network.remove_dead_nodes(0);
-	// 	network
-	// }
+// fn output_duplicate(network_outputs: Vec<NodeInput>, result_node_input: NodeInput) -> NodeNetwork {
+// 	let mut network = NodeNetwork {
+// 		exports: network_outputs,
+// 		nodes: [
+// 			(
+// 				NodeId(1),
+// 				DocumentNode {
+// 					inputs: vec![NodeInput::value(TaggedValue::F64(1.), false), NodeInput::value(TaggedValue::F64(2.), false)],
+// 					implementation: DocumentNodeImplementation::Network(two_node_identity()),
+// 					..Default::default()
+// 				},
+// 			),
+// 			(
+// 				NodeId(2),
+// 				DocumentNode {
+// 					inputs: vec![result_node_input],
+// 					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
+// 					..Default::default()
+// 				},
+// 			),
+// 		]
+// 		.into_iter()
+// 		.collect(),
+// 		..Default::default()
+// 	};
+// 	let _new_ids = 101..;
+// 	network.populate_dependants();
+// 	network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), || NodeId(10000));
+// 	network.flatten_with_fns(NodeId(2), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), || NodeId(10001));
+// 	network.remove_dead_nodes(0);
+// 	network
+// }
 
 // 	#[test]
 // 	fn simple_duplicate() {
