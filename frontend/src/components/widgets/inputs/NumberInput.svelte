@@ -86,8 +86,8 @@
 
 	let self: FieldInput | undefined = $state();
 	let inputRangeElement: HTMLInputElement | undefined = $state();
-	let text = $state(displayText(value, unit));
 	let editing = false;
+	let text = $state(displayText(value, unit));
 	let isDragging = false;
 	let pressingArrow = false;
 	let repeatTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
@@ -189,7 +189,7 @@
 		const roundingPower = 10 ** Math.max(displayDecimalPlaces, 0);
 
 		const unitlessDisplayValue = Math.round(displayValue * roundingPower) / roundingPower;
-		return `${unitlessDisplayValue}${unPluralize(unit, displayValue)}`;
+		return editing ? `${unitlessDisplayValue}` : `${unitlessDisplayValue}${unPluralize(unit, displayValue)}`;
 	}
 
 	// Removes the trailing "s" from a unit if the quantity is 1.
@@ -220,12 +220,11 @@
 
 	// Called only when `value` is changed from the <input> element via user input and committed, either with the
 	// enter key (via the `change` event) or when the <input> element is unfocused (with the `blur` event binding).
-	function onTextChanged() {
-		// The `unFocus()` call at the bottom of this function and in `onTextChangeCanceled()` causes this function to be run again, so this check skips a second run.
+	function onTextChanged(changedValue: string) {
 		if (!editing) return;
 
 		// Insert a leading zero before all decimal points lacking a preceding digit, since the library doesn't realize that "point" means "zero point".
-		const textWithLeadingZeroes = text.replaceAll(/(?<=^|[^0-9])\./g, "0."); // Match any "." that is preceded by the start of the string (^) or a non-digit character ([^0-9])
+		const textWithLeadingZeroes = changedValue.replaceAll(/(?<=^|[^0-9])\./g, "0."); // Match any "." that is preceded by the start of the string (^) or a non-digit character ([^0-9])
 
 		let newValue = evaluateMathExpression(textWithLeadingZeroes);
 		if (newValue !== undefined && isNaN(newValue)) newValue = undefined; // Rejects `sqrt(-1)`
@@ -234,22 +233,17 @@
 			const oldValue = value !== undefined && isInteger ? Math.round(value) : value;
 			if (newValue !== oldValue) onstartHistoryTransaction?.();
 		}
-		updateValue(newValue);
-
 		editing = false;
-		self?.unFocus();
+		updateValue(newValue);
 	}
 
 	function onTextChangeCanceled() {
+		editing = false;
 		updateValue(undefined);
 
 		const valueOrZero = value !== undefined ? value : 0;
 		rangeSliderValue = valueOrZero;
 		rangeSliderValueAsRendered = valueOrZero;
-
-		editing = false;
-
-		self?.unFocus();
 	}
 
 	// =============================
@@ -671,7 +665,7 @@
 	}}
 	bind:value={text}
 	onfocus={onTextFocused}
-	onchange={onTextChanged}
+	oncommitText={onTextChanged}
 	ontextChangeCanceled={onTextChangeCanceled}
 	onpointerdown={onDragPointerDown}
 	{label}
