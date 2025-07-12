@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from "svelte";
 	import type { Snippet } from "svelte";
 	import type { SvelteHTMLElements } from "svelte/elements";
 
@@ -25,8 +26,7 @@
 		hideContextMenu?: boolean;
 		children?: Snippet;
 		onfocus?: (event: FocusEvent & { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => void;
-		onblur?: (event: FocusEvent & { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => void;
-		onchange?: (event: Event & { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => void;
+		oncommitText?: (arg1: string) => void;
 		onkeydown?: (event: KeyboardEvent & { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => void;
 		onpointerdown?: (event: PointerEvent & { currentTarget: HTMLInputElement | HTMLTextAreaElement | HTMLLabelElement }) => void;
 		ontextChangeCanceled?: () => void;
@@ -42,7 +42,7 @@
 		classes = {},
 		style: styleName = "",
 		styles = {},
-		value = $bindable(),
+		value = $bindable(""),
 		label = undefined,
 		spellcheck = false,
 		disabled = false,
@@ -51,7 +51,7 @@
 		placeholder = undefined,
 		hideContextMenu = false,
 		onfocus,
-		onchange,
+		oncommitText,
 		children,
 		onpointerdown,
 		ontextChangeCanceled,
@@ -60,14 +60,20 @@
 	let inputOrTextarea: HTMLInputElement | HTMLTextAreaElement | undefined = $state();
 	let id = String(Math.random()).substring(2);
 	let macKeyboardLayout = platformIsMac();
+	let local = $state<string>(value);
+
+	$effect.pre(() => {
+		local = value;
+	});
 
 	// Select (highlight) all the text. For technical reasons, it is necessary to pass the current text.
 	export function selectAllText(currentText: string) {
 		if (!inputOrTextarea) return;
 
 		// Setting the value directly is required to make the following `select()` call work
-		inputOrTextarea.value = currentText;
-		inputOrTextarea.select();
+		local = currentText;
+		// Wait for UI to update
+		tick().then(() => inputOrTextarea?.select());
 	}
 
 	export function focus() {
@@ -78,29 +84,22 @@
 		inputOrTextarea?.blur();
 	}
 
-	export function getValue(): string {
-		return inputOrTextarea?.value ?? "";
-	}
-
-	export function setInputElementValue(value: string) {
-		if (!inputOrTextarea) return;
-
-		inputOrTextarea.value = value;
-	}
-
 	export function element(): HTMLInputElement | HTMLTextAreaElement | undefined {
 		return inputOrTextarea;
 	}
 
 	function cancel() {
+		local = value;
 		ontextChangeCanceled?.();
+		unFocus();
 
 		if (inputOrTextarea) preventEscapeClosingParentFloatingMenu(inputOrTextarea);
 	}
 
 	function onkeydownInput(e: KeyboardEvent & { currentTarget: HTMLInputElement }) {
 		if (e.key === "Enter") {
-			onchange?.(e);
+			oncommitText?.(local);
+			unFocus();
 		}
 		if (e.key === "Escape") {
 			cancel();
@@ -109,12 +108,34 @@
 
 	function onkeydownTextArea(e: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) {
 		if ((macKeyboardLayout ? e.metaKey : e.ctrlKey) && e.key === "Enter") {
-			onchange?.(e);
+			oncommitText?.(local ?? "");
+			unFocus();
 		}
 		if (e.key === "Escape") {
 			cancel();
 		}
 	}
+
+	function onblur() {
+		oncommitText?.(local ?? "");
+	}
+
+	// If oncommitText listener is defined
+	// let the text be bound to the local state
+	let textBind = $derived.by(() => {
+		return {
+			get current() {
+				return oncommitText ? local : value;
+			},
+			set current(v: string) {
+				if (oncommitText) {
+					local = v;
+				} else {
+					value = v;
+				}
+			},
+		};
+	});
 </script>
 
 <!-- This is a base component, extended by others like NumberInput and TextInput. It should not be used directly. -->
@@ -128,10 +149,9 @@
 			{disabled}
 			{placeholder}
 			bind:this={inputOrTextarea}
-			bind:value
+			bind:value={textBind.current}
 			{onfocus}
-			onblur={onchange}
-			{onchange}
+			{onblur}
 			onkeydown={onkeydownInput}
 			{onpointerdown}
 			oncontextmenu={(e) => hideContextMenu && e.preventDefault()}
@@ -146,10 +166,9 @@
 			{spellcheck}
 			{disabled}
 			bind:this={inputOrTextarea}
-			bind:value
+			bind:value={textBind.current}
 			{onfocus}
-			onblur={onchange}
-			{onchange}
+			{onblur}
 			onkeydown={onkeydownTextArea}
 			{onpointerdown}
 			oncontextmenu={(e) => hideContextMenu && e.preventDefault()}

@@ -32,33 +32,17 @@
 	}: Props = $props();
 
 	let self: FieldInput | undefined = $state();
-	let editing = false;
 
 	function onTextFocused() {
-		editing = true;
-
 		self?.selectAllText(value);
 	}
 
 	// Called only when `value` is changed from the <input> element via user input and committed, either with the
 	// enter key (via the `change` event) or when the <input> element is unfocused (with the `blur` event binding)
-	function onTextChanged() {
-		// The `unFocus()` call in `onTextChangeCanceled()` causes itself to be run again, so this if statement skips a second run
-		if (!editing) return;
+	function onTextChanged(commitValue: string) {
+		value = commitValue;
 
-		onTextChangeCanceled();
-
-		// TODO: Find a less hacky way to do this
-		if (self) oncommitText?.(self.getValue());
-
-		// Required if value is not changed by the parent component upon update:value event
-		self?.setInputElementValue(self.getValue());
-	}
-
-	function onTextChangeCanceled() {
-		editing = false;
-
-		self?.unFocus();
+		oncommitText?.(commitValue);
 	}
 
 	export function focus() {
@@ -76,8 +60,7 @@
 	styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}
 	bind:value
 	onfocus={onTextFocused}
-	onchange={onTextChanged}
-	ontextChangeCanceled={onTextChangeCanceled}
+	oncommitText={oncommitText ? onTextChanged : undefined}
 	spellcheck={true}
 	{label}
 	{disabled}
