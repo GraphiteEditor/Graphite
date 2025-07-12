@@ -1,48 +1,45 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
-
-	import type { FillChoice } from "@graphite/messages";
-	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
-
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages.svelte";
+	import type { FillChoice } from "@graphite/messages.svelte";
 
-	const dispatch = createEventDispatcher<{ value: FillChoice; startHistoryTransaction: undefined }>();
+	let open = $state(false);
 
-	let open = false;
+	type Props = {
+		value: FillChoice;
+		disabled?: boolean;
+		allowNone?: boolean;
+		// export let allowTransparency = false; // TODO: Implement
+		tooltip?: string | undefined;
+		onvalue?: (value: FillChoice) => void;
+		onstartHistoryTransaction?: () => void;
+	};
 
-	export let value: FillChoice;
-	export let disabled = false;
-	export let allowNone = false;
-	// export let allowTransparency = false; // TODO: Implement
-	export let tooltip: string | undefined = undefined;
+	let { value, disabled = false, allowNone = false, tooltip = undefined, onvalue, onstartHistoryTransaction }: Props = $props();
 
-	$: outlineFactor = contrastingOutlineFactor(value, ["--color-1-nearblack", "--color-3-darkgray"], 0.01);
-	$: outlined = outlineFactor > 0.0001;
-	$: chosenGradient = value instanceof Gradient ? value.toLinearGradientCSS() : `linear-gradient(${value.toHexOptionalAlpha()}, ${value.toHexOptionalAlpha()})`;
-	$: none = value instanceof Color ? value.none : false;
-	$: transparency = value instanceof Gradient ? value.stops.some((stop) => stop.color.alpha < 1) : value.alpha < 1;
+	let outlineFactor = $derived(contrastingOutlineFactor(value, ["--color-1-nearblack", "--color-3-darkgray"], 0.01));
+	let outlined = $derived(outlineFactor > 0.0001);
+	let chosenGradient = $derived(value instanceof Gradient ? value.toLinearGradientCSS() : `linear-gradient(${value.toHexOptionalAlpha()}, ${value.toHexOptionalAlpha()})`);
+	let none = $derived(value instanceof Color ? value.none : false);
+	let transparency = $derived(value instanceof Gradient ? value.stops.some((stop) => stop.color.alpha < 1) : value.alpha < 1);
 </script>
 
 <LayoutCol class="color-button" classes={{ open, disabled, none, transparency, outlined }} {tooltip}>
-	<button {disabled} style:--chosen-gradient={chosenGradient} style:--outline-amount={outlineFactor} on:click={() => (open = true)} tabindex="0" data-floating-menu-spawner>
+	<button {disabled} style:--chosen-gradient={chosenGradient} style:--outline-amount={outlineFactor} onclick={() => (open = true)} tabindex="0" data-floating-menu-spawner>
 		{#if disabled && value instanceof Color && !value.none}
 			<TextLabel>sRGB</TextLabel>
 		{/if}
 	</button>
 	<ColorPicker
-		{open}
-		on:open={({ detail }) => (open = detail)}
+		bind:open
 		colorOrGradient={value}
-		on:colorOrGradient={({ detail }) => {
-			value = detail;
-			dispatch("value", detail);
-		}}
-		on:startHistoryTransaction={() => {
+		oncolorOrGradient={onvalue}
+		onstartHistoryTransaction={() => {
 			// This event is sent to the backend so it knows to start a transaction for the history system. See discussion for some explanation:
 			// <https://github.com/GraphiteEditor/Graphite/pull/1584#discussion_r1477592483>
-			dispatch("startHistoryTransaction");
+			onstartHistoryTransaction?.();
 		}}
 		{allowNone}
 	/>

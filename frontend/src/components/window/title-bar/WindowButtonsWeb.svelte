@@ -9,7 +9,7 @@
 
 	const fullscreen = getContext<FullscreenState>("fullscreen");
 
-	$: requestFullscreenHotkeys = fullscreen.keyboardLockApiSupported && !$fullscreen.keyboardLocked;
+	let requestFullscreenHotkeys = $derived(fullscreen.keyboardLockApiSupported && !$fullscreen.keyboardLocked);
 
 	async function handleClick() {
 		if ($fullscreen.windowFullscreen) fullscreen.exitFullscreen();
@@ -17,7 +17,7 @@
 	}
 </script>
 
-<LayoutRow class="window-buttons-web" on:click={() => handleClick()} tooltip={($fullscreen.windowFullscreen ? "Exit" : "Enter") + " Fullscreen (F11)"}>
+<LayoutRow class="window-buttons-web" onclick={() => handleClick()} tooltip={($fullscreen.windowFullscreen ? "Exit" : "Enter") + " Fullscreen (F11)"}>
 	{#if requestFullscreenHotkeys}
 		<TextLabel italic={true}>Go fullscreen to access all hotkeys</TextLabel>
 	{/if}

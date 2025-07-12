@@ -1,16 +1,17 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
-
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
 
-	const dispatch = createEventDispatcher<{ commitText: string }>();
+	type Props = {
+		value: string;
+		label?: string | undefined;
+		tooltip?: string | undefined;
+		disabled?: boolean;
+		oncommitText?: (arg1: string) => void;
+	};
 
-	export let value: string;
-	export let label: string | undefined = undefined;
-	export let tooltip: string | undefined = undefined;
-	export let disabled = false;
+	let { value = $bindable(), label = undefined, tooltip = undefined, disabled = false, oncommitText }: Props = $props();
 
-	let self: FieldInput | undefined;
+	let self: FieldInput | undefined = $state();
 	let editing = false;
 
 	function onTextFocused() {
@@ -26,10 +27,10 @@
 		onTextChangeCanceled();
 
 		// TODO: Find a less hacky way to do this
-		if (self) dispatch("commitText", self.getValue());
+		if (self) oncommitText?.(self.getValue());
 
 		// Required if value is not changed by the parent component upon update:value event
-		self?.setInputElementValue(self.getValue());
+		// self?.setInputElementValue(self.getValue());
 	}
 
 	function onTextChangeCanceled() {
@@ -46,11 +47,10 @@
 <FieldInput
 	class="text-area-input"
 	classes={{ "has-label": Boolean(label) }}
-	{value}
-	on:value
-	on:textFocused={onTextFocused}
-	on:textChanged={onTextChanged}
-	on:textChangeCanceled={onTextChangeCanceled}
+	bind:value
+	onfocus={onTextFocused}
+	onchange={onTextChanged}
+	ontextChangeCanceled={onTextChangeCanceled}
 	textarea={true}
 	spellcheck={true}
 	{label}

@@ -1,7 +1,8 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import { TriggerFontLoad } from "@graphite/messages";
+
+import { TriggerFontLoad } from "@graphite/messages.svelte";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createFontsState(editor: Editor) {

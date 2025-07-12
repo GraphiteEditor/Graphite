@@ -1,26 +1,27 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
+	import type { Snippet } from "svelte";
 
-	import type { Curve, CurveManipulatorGroup } from "@graphite/messages";
 	import { clamp } from "@graphite/utility-functions/math";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import type { Curve, CurveManipulatorGroup } from "@graphite/messages.svelte";
 
-	const dispatch = createEventDispatcher<{
+	type Props = {
+		classes?: Record<string, boolean>;
+		style?: string;
+		styles?: Record<string, string | number | undefined>;
 		value: Curve;
-	}>();
+		disabled?: boolean;
+		tooltip?: string | undefined;
+		children?: Snippet;
+		onvalue?: (curve: Curve) => void;
+	};
 
-	export let classes: Record<string, boolean> = {};
-	let styleName = "";
-	export { styleName as style };
-	export let styles: Record<string, string | number | undefined> = {};
-	export let value: Curve;
-	export let disabled = false;
-	export let tooltip: string | undefined = undefined;
+	let { classes = {}, style: styleName = "", styles = {}, value, disabled = false, tooltip = undefined, children, onvalue }: Props = $props();
 
 	const GRID_SIZE = 4;
 
-	let groups: CurveManipulatorGroup[] = [
+	let groups: CurveManipulatorGroup[] = $state([
 		{
 			anchor: [0, 0],
 			handles: [
@@ -42,20 +43,13 @@
 				[2, 2],
 			],
 		},
-	];
-	let selectedNodeIndex: number | undefined = undefined;
+	]);
+	let selectedNodeIndex: number | undefined = $state(undefined);
 	let draggedNodeIndex: number | undefined = undefined;
-	let dAttribute = recalculateSvgPath();
-
-	$: {
-		groups = [groups[0]].concat(value.manipulatorGroups).concat([groups[groups.length - 1]]);
-		groups[0].handles[1] = value.firstHandle;
-		groups[groups.length - 1].handles[0] = value.lastHandle;
-		dAttribute = recalculateSvgPath();
-	}
+	let dAttribute = $state(recalculateSvgPath());
 
 	function updateCurve() {
-		dispatch("value", {
+		onvalue?.({
 			manipulatorGroups: groups.slice(1, groups.length - 1),
 			firstHandle: groups[0].handles[1],
 			lastHandle: groups[groups.length - 1].handles[0],
@@ -83,7 +77,6 @@
 			selectedNodeIndex = undefined;
 
 			groups.splice(i, 1);
-			groups = groups;
 
 			dAttribute = recalculateSvgPath();
 
@@ -186,10 +179,16 @@
 		dAttribute = recalculateSvgPath();
 		updateCurve();
 	}
+	$effect(() => {
+		groups = [groups[0]].concat(value.manipulatorGroups).concat([groups[groups.length - 1]]);
+		groups[0].handles[1] = value.firstHandle;
+		groups[groups.length - 1].handles[0] = value.lastHandle;
+		dAttribute = recalculateSvgPath();
+	});
 </script>
 
 <LayoutRow class={"curve-input"} classes={{ disabled, ...classes }} style={styleName} {styles} {tooltip}>
-	<svg viewBox="0 0 1 1" on:pointermove={handlePointerMove} on:pointerup={handlePointerUp}>
+	<svg viewBox="0 0 1 1" onpointermove={handlePointerMove} onpointerup={handlePointerUp}>
 		{#each { length: GRID_SIZE - 1 } as _, i}
 			<path class="grid" d={`M 0 ${(i + 1) / GRID_SIZE} L 1 ${(i + 1) / GRID_SIZE}`} />
 			<path class="grid" d={`M ${(i + 1) / GRID_SIZE} 0 L ${(i + 1) / GRID_SIZE} 1`} />
@@ -199,14 +198,14 @@
 			{@const group = groups[selectedNodeIndex]}
 			{#each [0, 1] as i}
 				<path d={`M ${group.anchor[0]} ${1 - group.anchor[1]} L ${group.handles[i][0]} ${1 - group.handles[i][1]}`} class="handle-line" />
-				<circle cx={group.handles[i][0]} cy={1 - group.handles[i][1]} class="manipulator handle" r="0.02" on:pointerdown={(e) => handleManipulatorPointerDown(e, -i - 1)} />
+				<circle cx={group.handles[i][0]} cy={1 - group.handles[i][1]} class="manipulator handle" r="0.02" onpointerdown={(e) => handleManipulatorPointerDown(e, -i - 1)} />
 			{/each}
 		{/if}
 		{#each groups as group, i}
-			<circle cx={group.anchor[0]} cy={1 - group.anchor[1]} class="manipulator" r="0.02" on:pointerdown={(e) => handleManipulatorPointerDown(e, i)} />
+			<circle cx={group.anchor[0]} cy={1 - group.anchor[1]} class="manipulator" r="0.02" onpointerdown={(e) => handleManipulatorPointerDown(e, i)} />
 		{/each}
 	</svg>
-	<slot />
+	{@render children?.()}
 </LayoutRow>
 
 <style lang="scss" global>

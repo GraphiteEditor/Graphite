@@ -1,6 +1,4 @@
-<script lang="ts" context="module">
-	export type MenuType = "Popover" | "Dropdown" | "Dialog" | "Cursor";
-
+<script lang="ts" module>
 	/// Prevents the escape key from closing the parent floating menu of the given element.
 	/// This works by momentarily setting the `data-escape-does-not-close` attribute on the parent floating menu element.
 	/// After checking for the Escape key, it checks (in one `setTimeout`) for the attribute and ignores the key if it's present.
@@ -19,37 +17,58 @@
 </script>
 
 <script lang="ts">
-	import { onMount, afterUpdate, createEventDispatcher, tick } from "svelte";
+	import { onMount, tick, type Snippet } from "svelte";
+	import type { SvelteHTMLElements } from "svelte/elements";
 
-	import type { MenuDirection } from "@graphite/messages";
 	import { browserVersion } from "@graphite/utility-functions/platform";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import type { MenuDirection } from "@graphite/messages.svelte";
 
 	const BUTTON_LEFT = 0;
 	const POINTER_STRAY_DISTANCE = 100;
 
-	const dispatch = createEventDispatcher<{ open: boolean; naturalWidth: number }>();
+	type DivHTMLElementProps = SvelteHTMLElements["div"];
 
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
-	let styleName = "";
-	export { styleName as style };
-	export let styles: Record<string, string | number | undefined> = {};
-	export let open: boolean;
-	export let type: MenuType;
-	export let direction: MenuDirection = "Bottom";
-	export let windowEdgeMargin = 6;
-	export let scrollableY = false;
-	export let minWidth = 0;
-	export let escapeCloses = true;
-	export let strayCloses = true;
+	type Props = {
+		class?: string;
+		classes?: Record<string, boolean>;
+		style?: string;
+		styles?: Record<string, string | number | undefined>;
+		open: boolean;
+		type: Graphite.MenuType;
+		direction?: MenuDirection;
+		windowEdgeMargin?: number;
+		scrollableY?: boolean;
+		minWidth?: number;
+		escapeCloses?: boolean;
+		strayCloses?: boolean;
+		children?: Snippet;
+		onnaturalWidth?: (naturalWidht: number) => void;
+	} & DivHTMLElementProps;
 
-	let tail: HTMLDivElement | undefined;
-	let self: HTMLDivElement | undefined;
-	let floatingMenuContainer: HTMLDivElement | undefined;
-	let floatingMenuContent: LayoutCol | undefined;
+	let {
+		class: className = "",
+		classes = {},
+		style: styleName = "",
+		styles = {},
+		open = $bindable(),
+		type,
+		direction = "Bottom",
+		windowEdgeMargin = 6,
+		scrollableY = false,
+		minWidth = 0,
+		escapeCloses = true,
+		strayCloses = true,
+		children,
+		onnaturalWidth,
+		...rest
+	}: Props = $props();
+
+	let tail: HTMLDivElement | undefined = $state();
+	let self: HTMLDivElement | undefined = $state();
+	let floatingMenuContainer: HTMLDivElement | undefined = $state();
+	let floatingMenuContent: LayoutCol | undefined = $state();
 
 	// The resize observer is attached to the floating menu container, which is the zero-height div of the width of the parent element's floating menu spawner.
 	// Since CSS doesn't let us make the floating menu (with `position: fixed`) have a 100% width of this container, we need to use JS to observe its size and
@@ -60,25 +79,13 @@
 		resizeObserverCallback(entries);
 	});
 	let wasOpen = open;
-	let measuringOngoing = false;
+	let measuringOngoing = $state(false);
 	let measuringOngoingGuard = false;
-	let minWidthParentWidth = 0;
+	let minWidthParentWidth = $state(0);
 	let pointerStillDown = false;
 	let workspaceBounds = new DOMRect();
 	let floatingMenuBounds = new DOMRect();
 	let floatingMenuContentBounds = new DOMRect();
-
-	$: watchOpenChange(open);
-
-	$: minWidthStyleValue = measuringOngoing ? "0" : `${Math.max(minWidth, minWidthParentWidth)}px`;
-	$: displayTail = open && type === "Popover";
-	$: displayContainer = open || measuringOngoing;
-	$: extraClasses = Object.entries(classes)
-		.flatMap(([className, stateName]) => (stateName ? [className] : []))
-		.join(" ");
-	$: extraStyles = Object.entries(styles)
-		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
-		.join(" ");
 
 	// Called only when `open` is changed from outside this component
 	async function watchOpenChange(isOpen: boolean) {
@@ -155,21 +162,6 @@
 			});
 			resizeObserver.observe(floatingMenuContentDiv);
 		}
-	});
-
-	afterUpdate(() => {
-		// Remove the size constraint after the content updates so the resize observer can measure the content and reapply a newly calculated one
-		const floatingMenuContentDiv = floatingMenuContent?.div?.();
-		if (type === "Dialog" && floatingMenuContentDiv) {
-			// We have to set the style properties directly because attempting to do it through a Svelte bound property results in `afterUpdate()` being triggered
-			floatingMenuContentDiv.style.setProperty("min-width", "unset");
-			floatingMenuContentDiv.style.setProperty("min-height", "unset");
-		}
-
-		// Gets the client bounds of the elements and apply relevant styles to them.
-		// TODO: Use DOM attribute bindings more whilst not causing recursive updates. Turning measuring on and off both causes the component to change,
-		// TODO: which causes the `afterUpdate()` Svelte event to fire extraneous times (hurting performance and sometimes causing an infinite loop).
-		if (!measuringOngoingGuard) positionAndStyleFloatingMenu();
 	});
 
 	function resizeObserverCallback(entries: ResizeObserverEntry[]) {
@@ -292,7 +284,7 @@
 
 		// Notify the parent about the measured natural width
 		if (naturalWidth !== undefined && naturalWidth >= 0) {
-			dispatch("naturalWidth", naturalWidth);
+			onnaturalWidth?.(naturalWidth);
 		}
 	}
 
@@ -316,7 +308,7 @@
 		if (strayCloses && notHoveringOverOwnSpawner && isPointerEventOutsideFloatingMenu(e, POINTER_STRAY_DISTANCE)) {
 			// TODO: Extend this rectangle bounds check to all submenu bounds up the DOM tree since currently submenus disappear
 			// TODO: with zero stray distance if the cursor is further than the stray distance from only the top-level menu
-			dispatch("open", false);
+			open = false;
 		}
 
 		// Clean up any messes from lost pointerup events
@@ -385,7 +377,7 @@
 				const foundTarget = filteredListOfDescendantSpawners.find((item: Element): boolean => item === targetSpawner);
 				// If the currently hovered spawner is one of the found valid hover-transferrable spawners, swap to it by clicking on it
 				if (foundTarget) {
-					dispatch("open", false);
+					open = false;
 					(foundTarget as HTMLElement).click();
 				}
 
@@ -399,7 +391,7 @@
 		if (escapeCloses && e.key === "Escape") {
 			setTimeout(() => {
 				if (!floatingMenuContainer?.querySelector("[data-floating-menu-content][data-escape-does-not-close]")) {
-					dispatch("open", false);
+					open = false;
 				}
 			}, 0);
 
@@ -411,7 +403,7 @@
 	function pointerDownHandler(e: PointerEvent) {
 		// Close the floating menu if the pointer clicked outside the floating menu (but within stray distance)
 		if (isPointerEventOutsideFloatingMenu(e)) {
-			dispatch("open", false);
+			open = false;
 
 			// Track if the left pointer button is now down so its later click event can be canceled
 			const eventIsForLmb = e.button === BUTTON_LEFT;
@@ -454,21 +446,49 @@
 
 		return false;
 	}
+
+	$effect(() => {
+		// Remove the size constraint after the content updates so the resize observer can measure the content and reapply a newly calculated one
+		const floatingMenuContentDiv = floatingMenuContent?.div?.();
+		if (type === "Dialog" && floatingMenuContentDiv) {
+			// We have to set the style properties directly because attempting to do it through a Svelte bound property results in `afterUpdate()` being triggered
+			floatingMenuContentDiv.style.setProperty("min-width", "unset");
+			floatingMenuContentDiv.style.setProperty("min-height", "unset");
+		}
+
+		// Gets the client bounds of the elements and apply relevant styles to them.
+		// TODO: Use DOM attribute bindings more whilst not causing recursive updates. Turning measuring on and off both causes the component to change,
+		// TODO: which causes the `afterUpdate()` Svelte event to fire extraneous times (hurting performance and sometimes causing an infinite loop).
+		if (!measuringOngoingGuard) positionAndStyleFloatingMenu();
+	});
+
+	$effect(() => {
+		watchOpenChange(open);
+	});
+
+	let minWidthStyleValue = $derived(measuringOngoing ? "0" : `${Math.max(minWidth, minWidthParentWidth)}px`);
+	let displayTail = $derived(open && type === "Popover");
+	let displayContainer = $derived(open || measuringOngoing);
+	let extraClasses = $derived(
+		Object.entries(classes)
+			.flatMap(([className, stateName]) => (stateName ? [className] : []))
+			.join(" "),
+	);
+	let extraStyles = $derived(
+		Object.entries(styles)
+			.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
+			.join(" "),
+	);
 </script>
 
-<div
-	class={`floating-menu ${direction.toLowerCase()} ${type.toLowerCase()} ${className} ${extraClasses}`.trim()}
-	style={`${styleName} ${extraStyles}`.trim() || undefined}
-	bind:this={self}
-	{...$$restProps}
->
+<div class={`floating-menu ${direction.toLowerCase()} ${type.toLowerCase()} ${className} ${extraClasses}`.trim()} style={`${styleName} ${extraStyles}`.trim() || undefined} bind:this={self} {...rest}>
 	{#if displayTail}
-		<div class="tail" bind:this={tail} />
+		<div class="tail" bind:this={tail}></div>
 	{/if}
 	{#if displayContainer}
 		<div class="floating-menu-container" bind:this={floatingMenuContainer}>
 			<LayoutCol class="floating-menu-content" styles={{ "min-width": minWidthStyleValue }} {scrollableY} bind:this={floatingMenuContent} data-floating-menu-content>
-				<slot />
+				{@render children?.()}
 			</LayoutCol>
 		</div>
 	{/if}
