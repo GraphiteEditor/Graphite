@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { IMAGE_BASE64_STRINGS } from "@graphite/utility-functions/images";
 
-	interface Props {
+	type Props = {
 		class?: string;
 		classes?: Record<string, boolean>;
 		image: string;
@@ -10,21 +10,15 @@
 		tooltip?: string | undefined;
 		// Callbacks
 		action: (e?: MouseEvent) => void;
-	}
+	};
 
-	let {
-		class: className = "",
-		classes = {},
-		image,
-		width,
-		height,
-		tooltip = undefined,
-		action
-	}: Props = $props();
+	let { class: className = "", classes = {}, image, width, height, tooltip = undefined, action }: Props = $props();
 
-	let extraClasses = $derived(Object.entries(classes)
-		.flatMap(([className, stateName]) => (stateName ? [className] : []))
-		.join(" "));
+	let extraClasses = $derived(
+		Object.entries(classes)
+			.flatMap(([className, stateName]) => (stateName ? [className] : []))
+			.join(" "),
+	);
 </script>
 
 <img src={IMAGE_BASE64_STRINGS[image]} style:width style:height class={`image-label ${className} ${extraClasses}`.trim()} title={tooltip} alt="" onclick={action} />

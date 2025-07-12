@@ -15,23 +15,22 @@
 		}
 	}
 </script>
+
 <script lang="ts">
-	import type { SvelteHTMLElements } from 'svelte/elements';
+	import { onMount, tick, type Snippet } from "svelte";
+	import type { SvelteHTMLElements } from "svelte/elements";
 
-
-	import { onMount, tick } from "svelte";
-
-	import type { MenuDirection } from "@graphite/messages.svelte";
 	import { browserVersion } from "@graphite/utility-functions/platform";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import type { MenuDirection } from "@graphite/messages.svelte";
 
 	const BUTTON_LEFT = 0;
 	const POINTER_STRAY_DISTANCE = 100;
 
 	type DivHTMLElementProps = SvelteHTMLElements["div"];
-	
-	interface Props extends DivHTMLElementProps {
+
+	type Props = {
 		class?: string;
 		classes?: Record<string, boolean>;
 		style?: string;
@@ -44,9 +43,9 @@
 		minWidth?: number;
 		escapeCloses?: boolean;
 		strayCloses?: boolean;
-		children?: import('svelte').Snippet;
+		children?: Snippet;
 		onnaturalWidth?: (naturalWidht: number) => void;
-	}
+	} & DivHTMLElementProps;
 
 	let {
 		class: className = "",
@@ -87,8 +86,6 @@
 	let workspaceBounds = new DOMRect();
 	let floatingMenuBounds = new DOMRect();
 	let floatingMenuContentBounds = new DOMRect();
-
-
 
 	// Called only when `open` is changed from outside this component
 	async function watchOpenChange(isOpen: boolean) {
@@ -166,7 +163,6 @@
 			resizeObserver.observe(floatingMenuContentDiv);
 		}
 	});
-
 
 	function resizeObserverCallback(entries: ResizeObserverEntry[]) {
 		minWidthParentWidth = entries[0].contentRect.width;
@@ -312,7 +308,7 @@
 		if (strayCloses && notHoveringOverOwnSpawner && isPointerEventOutsideFloatingMenu(e, POINTER_STRAY_DISTANCE)) {
 			// TODO: Extend this rectangle bounds check to all submenu bounds up the DOM tree since currently submenus disappear
 			// TODO: with zero stray distance if the cursor is further than the stray distance from only the top-level menu
-			open = false
+			open = false;
 		}
 
 		// Clean up any messes from lost pointerup events
@@ -473,20 +469,19 @@
 	let minWidthStyleValue = $derived(measuringOngoing ? "0" : `${Math.max(minWidth, minWidthParentWidth)}px`);
 	let displayTail = $derived(open && type === "Popover");
 	let displayContainer = $derived(open || measuringOngoing);
-	let extraClasses = $derived(Object.entries(classes)
-		.flatMap(([className, stateName]) => (stateName ? [className] : []))
-		.join(" "));
-	let extraStyles = $derived(Object.entries(styles)
-		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
-		.join(" "));
+	let extraClasses = $derived(
+		Object.entries(classes)
+			.flatMap(([className, stateName]) => (stateName ? [className] : []))
+			.join(" "),
+	);
+	let extraStyles = $derived(
+		Object.entries(styles)
+			.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
+			.join(" "),
+	);
 </script>
 
-<div
-	class={`floating-menu ${direction.toLowerCase()} ${type.toLowerCase()} ${className} ${extraClasses}`.trim()}
-	style={`${styleName} ${extraStyles}`.trim() || undefined}
-	bind:this={self}
-	{...rest}
->
+<div class={`floating-menu ${direction.toLowerCase()} ${type.toLowerCase()} ${className} ${extraClasses}`.trim()} style={`${styleName} ${extraStyles}`.trim() || undefined} bind:this={self} {...rest}>
 	{#if displayTail}
 		<div class="tail" bind:this={tail}></div>
 	{/if}

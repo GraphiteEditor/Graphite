@@ -1,6 +1,7 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
+
 import type { FrontendGraphOutput, FrontendGraphInput } from "@graphite/messages.svelte";
 import {
 	type Box,

@@ -1,19 +1,19 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
 
-	import type { MenuListEntry } from "@graphite/messages.svelte";
 	import type { FontsState } from "@graphite/state-providers/fonts";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import type { MenuListEntry } from "@graphite/messages.svelte";
 
 	const fonts = getContext<FontsState>("fonts");
 
 	let menuList: MenuList | undefined = $state();
 
-	interface Props {
+	type Props = {
 		fontFamily: string;
 		fontStyle: string;
 		isStyle?: boolean;
@@ -22,24 +22,14 @@
 		onchangeFont?: (arg1: { fontFamily: string; fontStyle: string; fontFileUrl: string | undefined }) => void;
 		onfontFamily?: (fontFamily: string) => void;
 		onfontStyle?: (fontStyle: string) => void;
-	}
+	};
 
-	let {
-		fontFamily,
-		fontStyle,
-		isStyle = false,
-		disabled = false,
-		tooltip = undefined,
-		onchangeFont,
-		onfontFamily,
-		onfontStyle,
-	}: Props = $props();
+	let { fontFamily, fontStyle, isStyle = false, disabled = false, tooltip = undefined, onchangeFont, onfontFamily, onfontStyle }: Props = $props();
 
 	let open = $state(false);
 	let entries: MenuListEntry[] = $state([]);
 	let activeEntry: MenuListEntry | undefined = $state(undefined);
 	let minWidth = $state(isStyle ? 0 : 300);
-
 
 	async function watchFont(..._: string[]) {
 		// We set this function's result to a local variable to avoid reading from `entries` which causes Svelte to trigger an update that results in an infinite loop

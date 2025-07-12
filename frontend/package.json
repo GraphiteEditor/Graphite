@@ -46,7 +46,7 @@
 		"eslint-import-resolver-typescript": "^3.6.3",
 		"eslint-plugin-import": "^2.30.0",
 		"eslint-plugin-prettier": "^5.2.1",
-		"eslint-plugin-svelte": "^3.9.2",
+		"eslint-plugin-svelte": "^2.46.0",
 		"minimatch": "^10.0.3",
 		"postcss": "^8.4.47",
 		"prettier": "^3.3.3",

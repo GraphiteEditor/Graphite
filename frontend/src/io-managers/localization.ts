@@ -1,4 +1,5 @@
 import { type Editor } from "@graphite/editor";
+
 import { TriggerAboutGraphiteLocalizedCommitDate } from "@graphite/messages.svelte";
 
 export function createLocalizationManager(editor: Editor) {

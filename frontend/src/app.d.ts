@@ -8,4 +8,4 @@ declare global {
 	}
 }
 
-export {};
+export { Graphite };

@@ -1,11 +1,11 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
 
-	interface Props {
+	type Props = {
 		condition: boolean;
 		wrapperClass?: string;
 		children?: Snippet;
-	}
+	};
 
 	let { condition, wrapperClass = "", children }: Props = $props();
 </script>

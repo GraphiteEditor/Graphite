@@ -1,9 +1,10 @@
 <script lang="ts">
-	import type { SvelteHTMLElements } from 'svelte/elements';
+	import type { Snippet } from "svelte";
+	import type { SvelteHTMLElements } from "svelte/elements";
 
 	type DivHTMLElementProps = SvelteHTMLElements["div"];
-	
-	interface Props extends DivHTMLElementProps {
+
+	type Props = {
 		class?: string;
 		classes?: Record<string, boolean>;
 		style?: string;
@@ -12,29 +13,23 @@
 		// TODO: Add middle-click drag scrolling
 		scrollableX?: boolean;
 		scrollableY?: boolean;
-		children?: import('svelte').Snippet;
-	}
+		children?: Snippet;
+	} & DivHTMLElementProps;
 
-	let {
-		class: className = "",
-		classes = {},
-		style: styleName = "",
-		styles = {},
-		tooltip = undefined,
-		scrollableX = false,
-		scrollableY = false,
-		children,
-		...rest
-	}: Props = $props();
+	let { class: className = "", classes = {}, style: styleName = "", styles = {}, tooltip = undefined, scrollableX = false, scrollableY = false, children, ...rest }: Props = $props();
 
 	let self: HTMLDivElement | undefined = $state();
 
-	let extraClasses = $derived(Object.entries(classes)
-		.flatMap(([className, stateName]) => (stateName ? [className] : []))
-		.join(" "));
-	let extraStyles = $derived(Object.entries(styles)
-		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
-		.join(" "));
+	let extraClasses = $derived(
+		Object.entries(classes)
+			.flatMap(([className, stateName]) => (stateName ? [className] : []))
+			.join(" "),
+	);
+	let extraStyles = $derived(
+		Object.entries(styles)
+			.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
+			.join(" "),
+	);
 
 	export function div(): HTMLDivElement | undefined {
 		return self;

@@ -1,12 +1,13 @@
 <script lang="ts">
+	import type { SvelteHTMLElements } from "svelte/elements";
+
 	import { type IconName, type IconSize } from "@graphite/utility-functions/icons";
-	import type { SvelteHTMLElements } from 'svelte/elements';
 
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 
 	type ButtonHTMLElementProps = SvelteHTMLElements["button"];
-	
-	interface Props extends ButtonHTMLElementProps {
+
+	type Props = {
 		class?: string;
 		classes?: Record<string, boolean>;
 		icon: IconName;
@@ -15,23 +16,15 @@
 		disabled?: boolean;
 		active?: boolean;
 		tooltip?: string | undefined;
-	}
+	} & ButtonHTMLElementProps;
 
-	let {
-		class: className = "",
-		classes = {},
-		icon,
-		hoverIcon = undefined,
-		size,
-		disabled = false,
-		active = false,
-		tooltip = undefined,
-		...rest
-	}: Props = $props();
+	let { class: className = "", classes = {}, icon, hoverIcon = undefined, size, disabled = false, active = false, tooltip = undefined, ...rest }: Props = $props();
 
-	let extraClasses = $derived(Object.entries(classes)
-		.flatMap(([className, stateName]) => (stateName ? [className] : []))
-		.join(" "));
+	let extraClasses = $derived(
+		Object.entries(classes)
+			.flatMap(([className, stateName]) => (stateName ? [className] : []))
+			.join(" "),
+	);
 </script>
 
 <button

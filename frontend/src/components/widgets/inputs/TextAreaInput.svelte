@@ -1,21 +1,15 @@
 <script lang="ts">
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
 
-	interface Props {
+	type Props = {
 		value: string;
 		label?: string | undefined;
 		tooltip?: string | undefined;
 		disabled?: boolean;
 		oncommitText?: (arg1: string) => void;
-	}
+	};
 
-	let {
-		value = $bindable(),
-		label = undefined,
-		tooltip = undefined,
-		disabled = false,
-		oncommitText
-	}: Props = $props();
+	let { value = $bindable(), label = undefined, tooltip = undefined, disabled = false, oncommitText }: Props = $props();
 
 	let self: FieldInput | undefined = $state();
 	let editing = false;

@@ -1,12 +1,12 @@
 <script lang="ts">
 	import type { ReferencePoint } from "@graphite/messages.svelte";
 
-	interface Props {
+	type Props = {
 		value: string;
 		disabled?: boolean;
 		onvalue?: (point: ReferencePoint) => void;
 		tooltip?: string;
-	}
+	};
 
 	let { value, disabled = false, onvalue, tooltip }: Props = $props();
 

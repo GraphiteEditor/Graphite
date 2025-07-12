@@ -109,7 +109,7 @@ export class UpdateNodeGraphWires extends JsMessage {
 	readonly wires!: WireUpdate[];
 }
 
-export class ClearAllNodeGraphWires extends JsMessage { }
+export class ClearAllNodeGraphWires extends JsMessage {}
 
 export class UpdateNodeGraphTransform extends JsMessage {
 	readonly transform!: NodeGraphTransform;
@@ -759,10 +759,10 @@ export class UpdateMouseCursor extends JsMessage {
 	readonly cursor!: MouseCursorIcon;
 }
 
-export class TriggerLoadFirstAutoSaveDocument extends JsMessage { }
-export class TriggerLoadRestAutoSaveDocuments extends JsMessage { }
+export class TriggerLoadFirstAutoSaveDocument extends JsMessage {}
+export class TriggerLoadRestAutoSaveDocuments extends JsMessage {}
 
-export class TriggerLoadPreferences extends JsMessage { }
+export class TriggerLoadPreferences extends JsMessage {}
 
 export class TriggerFetchAndOpenDocument extends JsMessage {
 	readonly name!: string;
@@ -770,13 +770,13 @@ export class TriggerFetchAndOpenDocument extends JsMessage {
 	readonly filename!: string;
 }
 
-export class TriggerOpenDocument extends JsMessage { }
+export class TriggerOpenDocument extends JsMessage {}
 
-export class TriggerImport extends JsMessage { }
+export class TriggerImport extends JsMessage {}
 
-export class TriggerPaste extends JsMessage { }
+export class TriggerPaste extends JsMessage {}
 
-export class TriggerDelayedZoomCanvasToFitAll extends JsMessage { }
+export class TriggerDelayedZoomCanvasToFitAll extends JsMessage {}
 
 export class TriggerDownloadImage extends JsMessage {
 	readonly svg!: string;
@@ -803,7 +803,7 @@ export class TriggerSaveActiveDocument extends JsMessage {
 	readonly documentId!: bigint;
 }
 
-export class DocumentChanged extends JsMessage { }
+export class DocumentChanged extends JsMessage {}
 
 export type DataBuffer = {
 	pointer: bigint;
@@ -837,7 +837,7 @@ export class DisplayEditableTextboxTransform extends JsMessage {
 	readonly transform!: number[];
 }
 
-export class DisplayRemoveEditableTextbox extends JsMessage { }
+export class DisplayRemoveEditableTextbox extends JsMessage {}
 
 export class UpdateDocumentLayerDetails extends JsMessage {
 	@Type(() => LayerPanelEntry)
@@ -886,7 +886,7 @@ export class LayerPanelEntry {
 	clippable!: boolean;
 }
 
-export class DisplayDialogDismiss extends JsMessage { }
+export class DisplayDialogDismiss extends JsMessage {}
 
 export class Font {
 	fontFamily!: string;
@@ -903,7 +903,7 @@ export class TriggerVisitLink extends JsMessage {
 	url!: string;
 }
 
-export class TriggerTextCommit extends JsMessage { }
+export class TriggerTextCommit extends JsMessage {}
 
 export class TriggerTextCopy extends JsMessage {
 	readonly copyText!: string;
@@ -1014,7 +1014,7 @@ export type MenuBarEntry = MenuEntryCommon & {
 export type MenuListEntry = MenuEntryCommon & {
 	action?: () => void;
 	children?: MenuListEntry[][];
-
+	open?: boolean;
 	value: string;
 	shortcutRequiresLock?: boolean;
 	disabled?: boolean;
@@ -1383,12 +1383,15 @@ export function narrowWidgetProps<K extends WidgetPropsNames>(props: WidgetProps
 
 export class Widget {
 	constructor(props: WidgetPropsSet, widgetId: bigint) {
+		// These properites are reactive to make it work with deeply nested bind's located at root level components and layers above
 		this.props = $state(props);
 		this.widgetId = $state(widgetId);
 	}
 
 	@Type(() => WidgetProps, { discriminator: { property: "kind", subTypes: [...widgetSubTypes] }, keepDiscriminatorProperty: true })
 	@Transform(({ value }) => {
+		// This protects the reactive state objects created by the Widget class
+		// to be converted back into POJO during recursion by the transformer
 		if (value.kind === "PopoverButton") {
 			value.popoverLayout = value.popoverLayout.map(createLayoutGroup);
 		}
@@ -1447,7 +1450,7 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 
 	updates.diff.forEach((update) => {
 		// Find the object where the diff applies to
-		let diffObject = update.widgetPath.reduce((targetLayout, index) => {
+		const diffObject = update.widgetPath.reduce((targetLayout, index) => {
 			if ("columnWidgets" in targetLayout) return targetLayout.columnWidgets[index];
 			if ("rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
 			if ("tableWidgets" in targetLayout) return targetLayout.tableWidgets[index];
@@ -1571,21 +1574,21 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 }
 
 // WIDGET LAYOUTS
-export class UpdateDialogButtons extends WidgetDiffUpdate { }
+export class UpdateDialogButtons extends WidgetDiffUpdate {}
 
-export class UpdateDialogColumn1 extends WidgetDiffUpdate { }
+export class UpdateDialogColumn1 extends WidgetDiffUpdate {}
 
-export class UpdateDialogColumn2 extends WidgetDiffUpdate { }
+export class UpdateDialogColumn2 extends WidgetDiffUpdate {}
 
-export class UpdateDocumentBarLayout extends WidgetDiffUpdate { }
+export class UpdateDocumentBarLayout extends WidgetDiffUpdate {}
 
-export class UpdateDocumentModeLayout extends WidgetDiffUpdate { }
+export class UpdateDocumentModeLayout extends WidgetDiffUpdate {}
 
-export class UpdateLayersPanelControlBarLeftLayout extends WidgetDiffUpdate { }
+export class UpdateLayersPanelControlBarLeftLayout extends WidgetDiffUpdate {}
 
-export class UpdateLayersPanelControlBarRightLayout extends WidgetDiffUpdate { }
+export class UpdateLayersPanelControlBarRightLayout extends WidgetDiffUpdate {}
 
-export class UpdateLayersPanelBottomBarLayout extends WidgetDiffUpdate { }
+export class UpdateLayersPanelBottomBarLayout extends WidgetDiffUpdate {}
 
 // Extends JsMessage instead of WidgetDiffUpdate because the menu bar isn't diffed
 export class UpdateMenuBarLayout extends JsMessage {
@@ -1597,17 +1600,17 @@ export class UpdateMenuBarLayout extends JsMessage {
 	layout!: MenuBarEntry[];
 }
 
-export class UpdateNodeGraphControlBarLayout extends WidgetDiffUpdate { }
+export class UpdateNodeGraphControlBarLayout extends WidgetDiffUpdate {}
 
-export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate { }
+export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate {}
 
-export class UpdateSpreadsheetLayout extends WidgetDiffUpdate { }
+export class UpdateSpreadsheetLayout extends WidgetDiffUpdate {}
 
-export class UpdateToolOptionsLayout extends WidgetDiffUpdate { }
+export class UpdateToolOptionsLayout extends WidgetDiffUpdate {}
 
-export class UpdateToolShelfLayout extends WidgetDiffUpdate { }
+export class UpdateToolShelfLayout extends WidgetDiffUpdate {}
 
-export class UpdateWorkingColorsLayout extends WidgetDiffUpdate { }
+export class UpdateWorkingColorsLayout extends WidgetDiffUpdate {}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createMenuLayout(menuBarEntry: any[]): MenuBarEntry[] {

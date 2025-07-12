@@ -2,7 +2,7 @@
 	import { getContext, onMount } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@graphite/messages.svelte";
+
 	import type { PortfolioState } from "@graphite/state-providers/portfolio";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 
@@ -12,11 +12,12 @@
 	import WindowButtonsWeb from "@graphite/components/window/title-bar/WindowButtonsWeb.svelte";
 	import WindowButtonsWindows from "@graphite/components/window/title-bar/WindowButtonsWindows.svelte";
 	import WindowTitle from "@graphite/components/window/title-bar/WindowTitle.svelte";
+	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@graphite/messages.svelte";
 
-	interface Props {
+	type Props = {
 		platform: Graphite.Platform;
 		maximized: boolean;
-	}
+	};
 
 	let { platform, maximized }: Props = $props();
 

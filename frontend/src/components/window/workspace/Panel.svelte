@@ -17,7 +17,7 @@
 	import { getContext, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { type LayoutKeysGroup, type Key } from "@graphite/messages.svelte";
+
 	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
 
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
@@ -29,12 +29,13 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
+	import { type LayoutKeysGroup, type Key } from "@graphite/messages.svelte";
 
 	const BUTTON_MIDDLE = 1;
 
 	const editor = getContext<Editor>("editor");
 
-	interface Props {
+	type Props = {
 		tabMinWidths?: boolean;
 		tabCloseButtons?: boolean;
 		tabLabels: { name: string; tooltip?: string }[];
@@ -42,17 +43,9 @@
 		panelType?: PanelType | undefined;
 		clickAction?: ((index: number) => void) | undefined;
 		closeAction?: ((index: number) => void) | undefined;
-	}
+	};
 
-	let {
-		tabMinWidths = false,
-		tabCloseButtons = false,
-		tabLabels,
-		tabActiveIndex,
-		panelType = undefined,
-		clickAction = undefined,
-		closeAction = undefined
-	}: Props = $props();
+	let { tabMinWidths = false, tabCloseButtons = false, tabLabels, tabActiveIndex, panelType = undefined, clickAction = undefined, closeAction = undefined }: Props = $props();
 
 	let tabElements: (LayoutRow | undefined)[] = $state([]);
 

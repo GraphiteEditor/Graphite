@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { getContext } from "svelte";
+	import { getContext, type Snippet } from "svelte";
 
-	import { type KeyRaw, type LayoutKeysGroup, type Key, type MouseMotion } from "@graphite/messages.svelte";
 	import type { FullscreenState } from "@graphite/state-providers/fullscreen";
 	import type { IconName } from "@graphite/utility-functions/icons";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
@@ -10,6 +9,7 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import { type KeyRaw, type LayoutKeysGroup, type Key, type MouseMotion } from "@graphite/messages.svelte";
 
 	type LabelData = { label?: string; icon?: IconName; width: string };
 
@@ -34,21 +34,15 @@
 
 	const fullscreen = getContext<FullscreenState>("fullscreen");
 
-	interface Props {
+	type Props = {
 		keysWithLabelsGroups?: LayoutKeysGroup[];
 		mouseMotion?: MouseMotion | undefined;
 		requiresLock?: boolean;
 		textOnly?: boolean;
-		children?: import('svelte').Snippet;
-	}
+		children?: Snippet;
+	};
 
-	let {
-		keysWithLabelsGroups = [],
-		mouseMotion = undefined,
-		requiresLock = false,
-		textOnly = false,
-		children
-	}: Props = $props();
+	let { keysWithLabelsGroups = [], mouseMotion = undefined, requiresLock = false, textOnly = false, children }: Props = $props();
 
 	function watchKeyboardLockInfoMessage(keyboardLockApiSupported: boolean): string {
 		const RESERVED = "This hotkey is reserved by the browser. ";

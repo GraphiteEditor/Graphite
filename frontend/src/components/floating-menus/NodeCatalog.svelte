@@ -1,23 +1,24 @@
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
 
-	import type { FrontendNodeType } from "@graphite/messages.svelte";
+	import type { WheelEventHandler } from "svelte/elements";
+
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import type { WheelEventHandler } from 'svelte/elements';
+	import type { FrontendNodeType } from "@graphite/messages.svelte";
 
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
-	let nodeTypes: FrontendNodeType[] = [ ...$nodeGraph.nodeTypes ];
+	let nodeTypes: FrontendNodeType[] = [...$nodeGraph.nodeTypes];
 
-	interface Props {
+	type Props = {
 		disabled?: boolean;
 		initialSearchTerm?: string;
 		onselectNodeType?: (selectNodeType: string) => void;
 		onwheel?: WheelEventHandler<HTMLDivElement>;
-	}
+	};
 
 	let { disabled = false, initialSearchTerm = "", onselectNodeType, onwheel }: Props = $props();
 
@@ -117,18 +118,20 @@
 
 	$effect.pre(() => {
 		nodeCategories = buildNodeCategories(searchTerm);
-	})
-
+	});
 </script>
 
 <div class="node-catalog">
 	<TextInput placeholder="Search Nodes..." bind:value={searchTerm} bind:this={nodeSearchInput} />
-	<div class="list-results" onwheel={(event) => {
+	<div
+		class="list-results"
+		onwheel={(event) => {
 			// onwheel events are passive by default
 			// https://svelte.dev/docs/svelte/v5-migration-guide#Breaking-changes-in-runes-mode-Touch-and-wheel-events-are-passive
 			event.stopPropagation();
 			onwheel?.(event);
-		}}>
+		}}
+	>
 		{#each nodeCategories as nodeCategory}
 			<details open={nodeCategory[1].open}>
 				<summary>

@@ -16,24 +16,16 @@
 
 	let zoomPreviewCanvas: HTMLCanvasElement | undefined = $state();
 
-	interface Props {
+	type Props = {
 		imageData?: ImageData | undefined;
 		colorChoice: string;
 		primaryColor: string;
 		secondaryColor: string;
 		x: number;
 		y: number;
-	}
+	};
 
-	let {
-		imageData = undefined,
-		colorChoice,
-		primaryColor,
-		secondaryColor,
-		x,
-		y
-	}: Props = $props();
-
+	let { imageData = undefined, colorChoice, primaryColor, secondaryColor, x, y }: Props = $props();
 
 	function displayImageDataPreview(imageData: ImageData | undefined) {
 		if (!zoomPreviewCanvas) return;

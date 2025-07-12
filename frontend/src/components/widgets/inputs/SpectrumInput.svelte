@@ -1,30 +1,23 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 
-	import { Color, type Gradient } from "@graphite/messages.svelte";
-
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import { Color, type Gradient } from "@graphite/messages.svelte";
 
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
 
-	interface Props {
+	type Props = {
 		activeMarkerIndex: number | undefined;
 		drag: boolean;
 		gradient: Gradient;
 		ongradient?: (gradient: Gradient) => void;
 		onactiveMarkerIndexChange?: (index: number | undefined) => void;
-	}
+	};
 
-	let { 
-		activeMarkerIndex = 0,
-		drag = $bindable(), 
-		gradient,
-		ongradient,
-		onactiveMarkerIndexChange,
-	}: Props = $props();
+	let { activeMarkerIndex = 0, drag = $bindable(), gradient, ongradient, onactiveMarkerIndexChange }: Props = $props();
 	// export let disabled = false;
 	// export let tooltip: string | undefined = undefined;
 
@@ -82,7 +75,7 @@
 		gradient.stops.splice(index, 0, { position, color });
 		deletionRestore = true;
 		onactiveMarkerIndexChange?.(index);
-		ongradient?.(gradient)
+		ongradient?.(gradient);
 
 		addEvents();
 	}
@@ -100,7 +93,7 @@
 		if (gradient.stops.length <= 2) return;
 
 		gradient.stops.splice(index, 1);
-		let newMarkerIndex = gradient.stops.length === 0 ? undefined : Math.max(0, Math.min(gradient.stops.length - 1, index)); 
+		let newMarkerIndex = gradient.stops.length === 0 ? undefined : Math.max(0, Math.min(gradient.stops.length - 1, index));
 		deletionRestore = undefined;
 		onactiveMarkerIndexChange?.(newMarkerIndex);
 		ongradient?.(gradient);
@@ -196,8 +189,8 @@
 		return () => {
 			removeEvents();
 			document.removeEventListener("keydown", deleteStop);
-		}
-	})
+		};
+	});
 
 	// # Backend -> Frontend
 	// Populate(gradient, { position, color }[], active) // The only way indexes get changed. Frontend drops marker if it's being dragged.

@@ -2,8 +2,7 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { Widget, WidgetSpanColumn, WidgetSpanRow } from "@graphite/messages.svelte";
-	import { narrowWidgetProps, isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/messages.svelte";
+
 	import { debouncer } from "@graphite/utility-functions/debounce";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
@@ -28,23 +27,20 @@
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import { narrowWidgetProps, isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/messages.svelte";
+	import type { Widget, WidgetSpanColumn, WidgetSpanRow } from "@graphite/messages.svelte";
 
 	const editor = getContext<Editor>("editor");
-	
-	interface Props {
+
+	type Props = {
 		widgetData: WidgetSpanRow | WidgetSpanColumn;
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		layoutTarget: any;
 		class?: string;
 		classes?: Record<string, boolean>;
-	}
+	};
 
-	let {
-		widgetData,
-		layoutTarget,
-		class: className = "",
-		classes = {}
-	}: Props = $props();
+	let { widgetData, layoutTarget, class: className = "", classes = {} }: Props = $props();
 
 	function watchDirection(widgetData: WidgetSpanRow | WidgetSpanColumn): "row" | "column" | undefined {
 		if (isWidgetSpanRow(widgetData)) return "row";
@@ -77,9 +73,11 @@
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		return Object.fromEntries(Object.entries(props).filter((entry) => !exclusions.includes(entry[0]))) as any;
 	}
-	let extraClasses = $derived(Object.entries(classes)
-		.flatMap(([className, stateName]) => (stateName ? [className] : []))
-		.join(" "));
+	let extraClasses = $derived(
+		Object.entries(classes)
+			.flatMap(([className, stateName]) => (stateName ? [className] : []))
+			.join(" "),
+	);
 
 	let direction = $derived(watchDirection(widgetData));
 	let widgets = $derived(watchWidgets(widgetData));
