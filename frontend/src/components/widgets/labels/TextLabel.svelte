@@ -1,9 +1,10 @@
 <script lang="ts">
-	import type { SvelteHTMLElements } from 'svelte/elements';
-	
+	import type { Snippet } from "svelte";
+	import type { SvelteHTMLElements } from "svelte/elements";
+
 	type LabelHTMLElementProps = SvelteHTMLElements["label"];
-	
-	interface Props extends LabelHTMLElementProps {
+
+	type Props = {
 		class?: string;
 		classes?: Record<string, boolean>;
 		style?: string;
@@ -17,8 +18,8 @@
 		multiline?: boolean;
 		tooltip?: string | undefined;
 		checkboxId?: bigint | undefined;
-		children?: import('svelte').Snippet;
-	}
+		children?: Snippet;
+	} & LabelHTMLElementProps;
 
 	let {
 		class: className = "",
@@ -34,15 +35,19 @@
 		multiline = false,
 		tooltip = undefined,
 		checkboxId = undefined,
-		children
+		children,
 	}: Props = $props();
 
-	let extraClasses = $derived(Object.entries(classes)
-		.flatMap(([className, stateName]) => (stateName ? [className] : []))
-		.join(" "));
-	let extraStyles = $derived(Object.entries(styles)
-		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
-		.join(" "));
+	let extraClasses = $derived(
+		Object.entries(classes)
+			.flatMap(([className, stateName]) => (stateName ? [className] : []))
+			.join(" "),
+	);
+	let extraStyles = $derived(
+		Object.entries(styles)
+			.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
+			.join(" "),
+	);
 </script>
 
 <label

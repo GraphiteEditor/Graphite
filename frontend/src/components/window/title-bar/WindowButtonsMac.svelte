@@ -1,9 +1,9 @@
 <script lang="ts">
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
-	interface Props {
+	type Props = {
 		maximized?: boolean;
-	}
+	};
 
 	let { maximized = false }: Props = $props();
 </script>

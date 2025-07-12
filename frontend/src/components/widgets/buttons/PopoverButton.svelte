@@ -1,13 +1,15 @@
 <script lang="ts">
-	import type { MenuDirection } from "@graphite/messages.svelte";
+	import type { Snippet } from "svelte";
+
 	import { type IconName, type PopoverButtonStyle } from "@graphite/utility-functions/icons";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import type { MenuDirection } from "@graphite/messages.svelte";
 
-	interface Props {
+	type Props = {
 		style?: PopoverButtonStyle;
 		menuDirection?: MenuDirection;
 		icon?: IconName | undefined;
@@ -16,19 +18,10 @@
 		popoverMinWidth?: number;
 		// Callbacks
 		action?: (() => void) | undefined;
-		children?: import('svelte').Snippet;
-	}
+		children?: Snippet;
+	};
 
-	let {
-		style = "DropdownArrow",
-		menuDirection = "Bottom",
-		icon = undefined,
-		tooltip = undefined,
-		disabled = false,
-		popoverMinWidth = 1,
-		action = undefined,
-		children
-	}: Props = $props();
+	let { style = "DropdownArrow", menuDirection = "Bottom", icon = undefined, tooltip = undefined, disabled = false, popoverMinWidth = 1, action = undefined, children }: Props = $props();
 
 	let open = $state(false);
 

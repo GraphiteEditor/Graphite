@@ -1,22 +1,16 @@
 <script lang="ts">
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import type { FrontendGraphDataType } from "@graphite/messages.svelte";
 
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-
-	interface Props {
+	type Props = {
 		exposed: boolean;
 		dataType: FrontendGraphDataType;
 		tooltip?: string | undefined;
 		// Callbacks
 		action: (e?: MouseEvent) => void;
-	}
+	};
 
-	let {
-		exposed,
-		dataType,
-		tooltip = undefined,
-		action
-	}: Props = $props();
+	let { exposed, dataType, tooltip = undefined, action }: Props = $props();
 </script>
 
 <LayoutRow class="parameter-expose-button">

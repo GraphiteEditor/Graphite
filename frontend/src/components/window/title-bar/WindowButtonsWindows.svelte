@@ -2,9 +2,9 @@
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 
-	interface Props {
+	type Props = {
 		maximized?: boolean;
-	}
+	};
 
 	let { maximized = false }: Props = $props();
 </script>

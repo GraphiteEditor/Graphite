@@ -3,37 +3,34 @@
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
-	interface Props {
+	type Props = {
 		class?: string;
 		classes?: Record<string, boolean>;
 		icon: IconName;
 		iconSizeOverride?: number | undefined;
 		disabled?: boolean;
 		tooltip?: string | undefined;
-	}
+	};
 
-	let {
-		class: className = "",
-		classes = {},
-		icon,
-		iconSizeOverride = undefined,
-		disabled = false,
-		tooltip = undefined
-	}: Props = $props();
+	let { class: className = "", classes = {}, icon, iconSizeOverride = undefined, disabled = false, tooltip = undefined }: Props = $props();
 
-	let iconSizeClass = $derived(((icon: IconName) => {
-		const iconData = ICONS[icon];
-		if (!iconData) {
-			// eslint-disable-next-line no-console
-			console.warn(`Icon "${icon}" does not exist.`);
-			return "size-24";
-		}
-		if (iconData.size === undefined) return "";
-		return `size-${iconSizeOverride || iconData.size}`;
-	})(icon));
-	let extraClasses = $derived(Object.entries(classes)
-		.flatMap(([className, stateName]) => (stateName ? [className] : []))
-		.join(" "));
+	let iconSizeClass = $derived(
+		((icon: IconName) => {
+			const iconData = ICONS[icon];
+			if (!iconData) {
+				// eslint-disable-next-line no-console
+				console.warn(`Icon "${icon}" does not exist.`);
+				return "size-24";
+			}
+			if (iconData.size === undefined) return "";
+			return `size-${iconSizeOverride || iconData.size}`;
+		})(icon),
+	);
+	let extraClasses = $derived(
+		Object.entries(classes)
+			.flatMap(([className, stateName]) => (stateName ? [className] : []))
+			.join(" "),
+	);
 </script>
 
 <LayoutRow class={`icon-label ${iconSizeClass} ${className} ${extraClasses}`.trim()} classes={{ disabled }} {tooltip}>

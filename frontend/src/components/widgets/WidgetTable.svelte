@@ -1,14 +1,12 @@
 <script lang="ts">
+	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 	import { type WidgetTable as WidgetTableFromJsMessages } from "@graphite/messages.svelte";
 
-	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
-
-	
-	interface Props {
+	type Props = {
 		widgetData: WidgetTableFromJsMessages;
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		layoutTarget: any; // TODO: Give this a real type
-	}
+	};
 
 	let { widgetData, layoutTarget }: Props = $props();
 </script>

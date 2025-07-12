@@ -1,8 +1,6 @@
 <script lang="ts">
 	import { tick, onDestroy, onMount } from "svelte";
 
-	import type { MenuListEntry, MenuDirection } from "@graphite/messages.svelte";
-
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -12,12 +10,13 @@
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
+	import type { MenuListEntry, MenuDirection } from "@graphite/messages.svelte";
 
 	let self: FloatingMenu | undefined = $state();
 	let scroller: LayoutCol | undefined = $state();
 	let searchTextInput: TextInput | undefined = $state();
 
-	interface Props {
+	type Props = {
 		entries: MenuListEntry[][];
 		activeEntry?: MenuListEntry | undefined;
 		open: boolean;
@@ -32,7 +31,7 @@
 		onhoverInEntry?: (entry: MenuListEntry) => void;
 		onnaturalWidth?: (width: number) => void;
 		onactiveEntry?: (activeEntry: MenuListEntry) => void;
-	}
+	};
 
 	let {
 		entries = $bindable(),
@@ -57,7 +56,6 @@
 
 	let highlighted = $state(activeEntry as MenuListEntry | undefined);
 	let virtualScrollingEntriesStart = $state(0);
-
 
 	// TODO: Move keyboard input handling entirely to the unified system in `input.ts`.
 	// TODO: The current approach is hacky and blocks the allowances for shortcuts like the key to open the browser's dev tools.
@@ -125,7 +123,7 @@
 	}
 
 	function watchOpen(value: boolean) {
-		if (open && !inNestedMenuList()) addEventListener("keydown", keydown);
+		if (value && !inNestedMenuList()) addEventListener("keydown", keydown);
 		else if (!inNestedMenuList()) removeEventListener("keydown", keydown);
 
 		highlighted = activeEntry;
@@ -414,18 +412,7 @@
 	let virtualScrollingEndIndex = $derived(filteredEntries.length === 0 ? 0 : Math.min(filteredEntries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight));
 	let startIndex = $derived(virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0);
 
-	export {
-		entries,
-		activeEntry,
-		open,
-		direction,
-		minWidth,
-		drawIcon,
-		interactive,
-		scrollableY,
-		virtualScrollingEntryHeight,
-		tooltip,
-	}
+	export { entries, activeEntry, open, direction, minWidth, drawIcon, interactive, scrollableY, virtualScrollingEntryHeight, tooltip };
 </script>
 
 <FloatingMenu
@@ -493,7 +480,7 @@
 					{#if entry.children}
 						<MenuList
 							{onnaturalWidth}
-							open={entry?.open}
+							open={entry?.open ?? false}
 							direction="TopRight"
 							entries={entry.children}
 							{minWidth}

@@ -3,6 +3,19 @@
 
 	import type { Editor } from "@graphite/editor";
 	import { beginDraggingElement } from "@graphite/io-managers/drag";
+
+	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
+	import { platformIsMac } from "@graphite/utility-functions/platform";
+	import { extractPixelData } from "@graphite/utility-functions/rasterization";
+
+	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
+	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
+	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import type { WidgetLayout as WidgetLayoutState } from "@graphite/messages.svelte";
+	import type { DataBuffer, LayerPanelEntry } from "@graphite/messages.svelte";
 	import {
 		defaultWidgetLayout,
 		patchWidgetLayout,
@@ -12,18 +25,6 @@
 		UpdateLayersPanelControlBarRightLayout,
 		UpdateLayersPanelBottomBarLayout,
 	} from "@graphite/messages.svelte";
-	import type { DataBuffer, LayerPanelEntry } from "@graphite/messages.svelte";
-	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
-	import { platformIsMac } from "@graphite/utility-functions/platform";
-	import { extractPixelData } from "@graphite/utility-functions/rasterization";
-	import type { WidgetLayout as WidgetLayoutState } from "@graphite/messages.svelte";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
 	type LayerListingInfo = {
 		folderIndex: number;
@@ -554,8 +555,8 @@
 							disabled={!listing.editingName}
 							onblur={() => onEditLayerNameDeselect(listing)}
 							onkeydown={(e) => {
-								e.key === "Escape" && onEditLayerNameDeselect(listing);
-								e.key === "Enter" && onEditLayerNameChange(listing, e);
+								if (e.key === "Escape") onEditLayerNameDeselect(listing);
+								if (e.key === "Enter") onEditLayerNameChange(listing, e);
 							}}
 							onchange={(e) => onEditLayerNameChange(listing, e)}
 						/>

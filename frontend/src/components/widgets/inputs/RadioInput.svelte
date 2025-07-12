@@ -1,25 +1,18 @@
 <script lang="ts">
-	import { type RadioEntries, type RadioEntryData } from "@graphite/messages.svelte";
-
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import { type RadioEntries, type RadioEntryData } from "@graphite/messages.svelte";
 
-	interface Props {
+	type Props = {
 		entries: RadioEntries;
 		selectedIndex?: number | undefined;
 		disabled?: boolean;
 		minWidth?: number;
 		onselect?: (position: number) => void;
-	}
+	};
 
-	let {
-		entries,
-		selectedIndex = undefined,
-		disabled = false,
-		minWidth = 0,
-		onselect
-	}: Props = $props();
+	let { entries, selectedIndex = undefined, disabled = false, minWidth = 0, onselect }: Props = $props();
 
 	let mixed = $derived(selectedIndex === undefined && !disabled);
 

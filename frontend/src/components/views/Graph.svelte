@@ -4,8 +4,7 @@
 	import { fade } from "svelte/transition";
 
 	import type { Editor } from "@graphite/editor";
-	import type { Node } from "@graphite/messages.svelte";
-	import { type FrontendNode, type FrontendGraphInput, FrontendGraphOutput, } from "@graphite/messages.svelte";
+
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 
@@ -18,6 +17,8 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import { type FrontendNode, type FrontendGraphInput, FrontendGraphOutput } from "@graphite/messages.svelte";
+	import type { Node } from "@graphite/messages.svelte";
 
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
@@ -28,10 +29,9 @@
 
 	let graph: HTMLDivElement | undefined = $state();
 
-
-	let inputElement  = $state<HTMLInputElement>();
+	let inputElement = $state<HTMLInputElement>();
 	let hoveringImportIndex = $state<number>();
-	let hoveringExportIndex = $state<number>()
+	let hoveringExportIndex = $state<number>();
 
 	let editingNameImportIndex = $state<number>();
 	let editingNameExportIndex = $state<number>();
@@ -340,43 +340,43 @@
 
 	<!-- Import and Export ports -->
 	<div class="imports-and-exports" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
- 		{#each $nodeGraph.imports as { outputMetadata, position }, index}
+		{#each $nodeGraph.imports as { outputMetadata, position }, index}
 			{@render port("port", "output", outputMetadata, position.x / 24, position.y / 24)}
- 			<div
- 				class="edit-import-export import"
- 				onpointerenter={() => (hoveringImportIndex = index)}
- 				onpointerleave={() => (hoveringImportIndex = undefined)}
- 				style:--offset-left={position.x / 24}
- 				style:--offset-top={position.y / 24}
- 			>
- 				{#if editingNameImportIndex == index}
- 					<input
- 						class="import-text-input"
- 						type="text"
- 						style:width={importsToEdgeTextInputWidth()}
- 						bind:this={inputElement}
- 						bind:value={editingNameText}
- 						onblur={setEditingImportName}
- 						onkeydown={(e) => e.key === "Enter" && setEditingImportName(e)}
- 					/>
- 				{:else}
- 					<p class="import-text" ondblclick={() => setEditingImportNameIndex(index, outputMetadata.name)}>{outputMetadata.name}</p>
- 				{/if}
- 				{#if hoveringImportIndex === index || editingNameImportIndex === index}
- 					<IconButton
- 						size={16}
- 						icon={"Remove"}
- 						class="remove-button-import"
- 						data-index={index}
- 						data-import-text-edge
- 						onclick={() => {
- 							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
- 						}}
- 					/>
- 					<div class="reorder-drag-grip" title="Reorder this import"></div>
- 				{/if}
- 			</div>
- 		{/each}
+			<div
+				class="edit-import-export import"
+				onpointerenter={() => (hoveringImportIndex = index)}
+				onpointerleave={() => (hoveringImportIndex = undefined)}
+				style:--offset-left={position.x / 24}
+				style:--offset-top={position.y / 24}
+			>
+				{#if editingNameImportIndex == index}
+					<input
+						class="import-text-input"
+						type="text"
+						style:width={importsToEdgeTextInputWidth()}
+						bind:this={inputElement}
+						bind:value={editingNameText}
+						onblur={setEditingImportName}
+						onkeydown={(e) => e.key === "Enter" && setEditingImportName(e)}
+					/>
+				{:else}
+					<p class="import-text" ondblclick={() => setEditingImportNameIndex(index, outputMetadata.name)}>{outputMetadata.name}</p>
+				{/if}
+				{#if hoveringImportIndex === index || editingNameImportIndex === index}
+					<IconButton
+						size={16}
+						icon={"Remove"}
+						class="remove-button-import"
+						data-index={index}
+						data-import-text-edge
+						onclick={() => {
+							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+						}}
+					/>
+					<div class="reorder-drag-grip" title="Reorder this import"></div>
+				{/if}
+			</div>
+		{/each}
 
 		{#if $nodeGraph.reorderImportIndex !== undefined}
 			{@const position = {
@@ -650,7 +650,7 @@
 				<!-- Output ports -->
 				<div class="output ports">
 					{@render port("port primary-port", "output", node.primaryOutput)}
-					{#each node.exposedOutputs as secondary, outputIndex}
+					{#each node.exposedOutputs as secondary}
 						{@render port("port", "output", secondary)}
 					{/each}
 				</div>
@@ -684,7 +684,7 @@
 {#snippet port(className: string, dataPort: string, node?: FrontendGraphInput | FrontendGraphOutput, offsetLeft?: number, offsetTop?: number)}
 	{#if node}
 		{@const color = node.dataType.toLowerCase()}
-    <svg
+		<svg
 			xmlns="http://www.w3.org/2000/svg"
 			viewBox="0 0 8 8"
 			class={className}
@@ -694,7 +694,7 @@
 			style:--data-color-dim={`var(--color-data-${color}-dim)`}
 			style:--offset-left={offsetLeft}
 			style:--offset-top={offsetTop}
-			>
+		>
 			{#if node instanceof FrontendGraphOutput}
 				<title>{`${dataTypeTooltip(node)}\n\n${outputConnectedToText(node)}`}</title>
 			{:else}

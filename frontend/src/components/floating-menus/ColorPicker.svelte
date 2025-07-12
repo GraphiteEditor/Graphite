@@ -2,9 +2,7 @@
 	import { onDestroy, getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { HSV, RGB, FillChoice } from "@graphite/messages.svelte";
-	import type { MenuDirection } from "@graphite/messages.svelte";
-	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages.svelte";
+
 	import { clamp } from "@graphite/utility-functions/math";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
@@ -17,6 +15,9 @@
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages.svelte";
+	import type { MenuDirection } from "@graphite/messages.svelte";
+	import type { HSV, RGB, FillChoice } from "@graphite/messages.svelte";
 
 	type PresetColors = "none" | "black" | "white" | "red" | "yellow" | "green" | "cyan" | "blue" | "magenta";
 
@@ -33,7 +34,7 @@
 	};
 
 	const editor = getContext<Editor>("editor");
-	interface Props {
+	type Props = {
 		colorOrGradient: FillChoice;
 		allowNone?: boolean;
 		// export let allowTransparency = false; // TODO: Implement
@@ -42,16 +43,9 @@
 		open: boolean;
 		oncolorOrGradient?: (colorOrGradient: FillChoice) => void;
 		onstartHistoryTransaction?: () => void;
-	}
+	};
 
-	let {
-		colorOrGradient,
-		allowNone = false,
-		direction = "Bottom",
-		open = $bindable(),
-		oncolorOrGradient,
-		onstartHistoryTransaction,
-	}: Props = $props();
+	let { colorOrGradient, allowNone = false, direction = "Bottom", open = $bindable(), oncolorOrGradient, onstartHistoryTransaction }: Props = $props();
 
 	const hsvaOrNone = colorOrGradient instanceof Color ? colorOrGradient.toHSVA() : colorOrGradient.firstColor()?.toHSVA();
 	const hsva = hsvaOrNone ?? { h: 0, s: 0, v: 0, a: 1 };
@@ -331,7 +325,7 @@
 	}
 
 	function setColorPreset(preset: PresetColors) {
-		onstartHistoryTransaction?.()
+		onstartHistoryTransaction?.();
 		if (preset === "none") {
 			setNewHSVA(0, 0, 0, 1, true);
 			setColor(new Color("none"));
@@ -409,8 +403,8 @@
 	$effect(() => {
 		if (colorOrGradient instanceof Gradient) {
 			gradient = colorOrGradient;
-		} 
-	})
+		}
+	});
 	let oldColor = $derived(generateColor(oldHue, oldSaturation, oldValue, oldAlpha, oldIsNone));
 	let newColor = $derived(generateColor(hue, saturation, value, alpha, isNone));
 	let rgbChannels = $derived(Object.entries(newColor.toRgb255() || { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][]);
@@ -421,7 +415,7 @@
 	let transparency = $derived(newColor.alpha < 1 || oldColor.alpha < 1);
 </script>
 
-<FloatingMenu class="color-picker" bind:open={open} {strayCloses} escapeCloses={strayCloses && !gradientSpectrumDragging} {direction} type="Popover" bind:this={self}>
+<FloatingMenu class="color-picker" bind:open {strayCloses} escapeCloses={strayCloses && !gradientSpectrumDragging} {direction} type="Popover" bind:this={self}>
 	<LayoutRow
 		styles={{
 			"--new-color": newColor.toHexOptionalAlpha(),
@@ -464,7 +458,7 @@
 			{#if gradient}
 				<LayoutRow class="gradient">
 					<SpectrumInput
-						gradient={gradient}
+						{gradient}
 						ongradient={(detail) => {
 							gradient = detail;
 							if (gradient) oncolorOrGradient?.(gradient);
@@ -518,7 +512,7 @@
 				<LayoutRow>
 					<TextInput
 						value={newColor.toHexOptionalAlpha() ?? "-"}
-						oncommitText={(detail ) => {
+						oncommitText={(detail) => {
 							onstartHistoryTransaction?.();
 							setColorCode(detail);
 						}}
@@ -532,7 +526,7 @@
 				<TextLabel tooltip="Red/Green/Blue channels of the color, integers 0–255">RGB</TextLabel>
 				<Separator type="Related" />
 				<LayoutRow>
-					{#each rgbChannels as [channel, strength], index}
+					{#each rgbChannels as [channel, _strength], index}
 						{#if index > 0}
 							<Separator type="Related" />
 						{/if}
@@ -557,7 +551,7 @@
 				</TextLabel>
 				<Separator type="Related" />
 				<LayoutRow>
-					{#each hsvChannels as [channel, strength], index}
+					{#each hsvChannels as [channel, _strength], index}
 						{#if index > 0}
 							<Separator type="Related" />
 						{/if}

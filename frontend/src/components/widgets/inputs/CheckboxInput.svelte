@@ -4,24 +4,16 @@
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 
-
-	interface Props {
+	type Props = {
 		checked?: boolean;
 		disabled?: boolean;
 		icon?: IconName;
 		tooltip?: string | undefined;
 		forLabel?: bigint | undefined;
 		onchecked?: (checked: boolean) => void;
-	}
- 
-	let {
-		checked = false,
-		disabled = false,
-		icon = "Checkmark",
-		tooltip = undefined,
-		forLabel = undefined,
-		onchecked,
-	}: Props = $props();
+	};
+
+	let { checked = false, disabled = false, icon = "Checkmark", tooltip = undefined, forLabel = undefined, onchecked }: Props = $props();
 
 	let inputElement: HTMLInputElement | undefined = $state();
 
@@ -46,15 +38,7 @@
 </script>
 
 <LayoutRow class="checkbox-input">
-	<input
-		type="checkbox"
-		id={`checkbox-input-${id}`}
-		bind:checked
-		onchange={(_) => onchecked?.(inputElement?.checked ?? false)}
-		{disabled}
-		tabindex={disabled ? -1 : 0}
-		bind:this={inputElement}
-	/>
+	<input type="checkbox" id={`checkbox-input-${id}`} bind:checked onchange={(_) => onchecked?.(inputElement?.checked ?? false)} {disabled} tabindex={disabled ? -1 : 0} bind:this={inputElement} />
 	<label class:disabled class:checked for={`checkbox-input-${id}`} onkeydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)} title={tooltip}>
 		<LayoutRow class="checkbox-box">
 			<IconLabel icon={displayIcon} />

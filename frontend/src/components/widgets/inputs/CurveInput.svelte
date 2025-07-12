@@ -1,30 +1,23 @@
 <script lang="ts">
-	import type { Curve, CurveManipulatorGroup } from "@graphite/messages.svelte";
+	import type { Snippet } from "svelte";
+
 	import { clamp } from "@graphite/utility-functions/math";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	
-	interface Props {
+	import type { Curve, CurveManipulatorGroup } from "@graphite/messages.svelte";
+
+	type Props = {
 		classes?: Record<string, boolean>;
 		style?: string;
 		styles?: Record<string, string | number | undefined>;
 		value: Curve;
 		disabled?: boolean;
 		tooltip?: string | undefined;
-		children?: import('svelte').Snippet;
+		children?: Snippet;
 		onvalue?: (curve: Curve) => void;
-	}
+	};
 
-	let {
-		classes = {},
-		style: styleName = "",
-		styles = {},
-		value,
-		disabled = false,
-		tooltip = undefined,
-		children,
-		onvalue,
-	}: Props = $props();
+	let { classes = {}, style: styleName = "", styles = {}, value, disabled = false, tooltip = undefined, children, onvalue }: Props = $props();
 
 	const GRID_SIZE = 4;
 
@@ -54,7 +47,6 @@
 	let selectedNodeIndex: number | undefined = $state(undefined);
 	let draggedNodeIndex: number | undefined = undefined;
 	let dAttribute = $state(recalculateSvgPath());
-
 
 	function updateCurve() {
 		onvalue?.({
