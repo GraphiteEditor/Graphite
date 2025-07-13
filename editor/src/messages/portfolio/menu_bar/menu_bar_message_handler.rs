@@ -23,7 +23,7 @@ pub struct MenuBarMessageHandler {
 
 #[message_handler_data]
 impl MessageHandler<MenuBarMessage, ()> for MenuBarMessageHandler {
-	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, _data: ()) {
+	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, _: ()) {
 		match message {
 			MenuBarMessage::SendLayout => self.send_layout(responses, LayoutTarget::MenuBar),
 		}

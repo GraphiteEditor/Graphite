@@ -273,8 +273,8 @@ impl LayoutHolder for SelectTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for SelectTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let mut redraw_reference_pivot = false;
 
 		if let ToolMessage::Select(SelectToolMessage::SelectOptions(ref option_update)) = message {
@@ -309,7 +309,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 			}
 		}
 
-		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
+		self.fsm_state.process_event(message, &mut self.tool_data, context, &(), responses, false);
 
 		if self.tool_data.pivot_gizmo.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed || redraw_reference_pivot {
 			// Send the layout containing the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
@@ -584,8 +584,8 @@ impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
 	type ToolOptions = ();
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData { document, input, font_cache, .. } = tool_action_data;
+	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionMessageContext, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
+		let ToolActionMessageContext { document, input, font_cache, .. } = tool_action_data;
 
 		let ToolMessage::Select(event) = event else { return self };
 		match (self, event) {
