@@ -786,18 +786,18 @@ impl PathToolData {
 						// If in segment editing mode then also select the points for which both of the connected segments are also selected
 						let only_segment_editing_mode = segment_editing_mode && !point_editing_mode;
 
-						match (only_segment_editing_mode, document.network_interface.compute_modified_vector(layer)) {
-							(true, Some(vector_data)) => {
-								let mut start_connected_segments = vector_data.all_connected(segment.points()[0]);
-								if start_connected_segments.any(|handle| selected_shape_state.is_segment_selected(handle.segment) && handle.segment != segment_id) {
-									selected_shape_state.select_point(ManipulatorPointId::Anchor(segment.points()[0]));
-								}
-								let mut end_connected_segments = vector_data.all_connected(segment.points()[1]);
-								if end_connected_segments.any(|handle| selected_shape_state.is_segment_selected(handle.segment) && handle.segment != segment_id) {
-									selected_shape_state.select_point(ManipulatorPointId::Anchor(segment.points()[1]));
-								}
+						if let (true, Some(vector_data)) = (only_segment_editing_mode, document.network_interface.compute_modified_vector(layer)) {
+							let [segment_end1, segment_end2] = segment.points();
+
+							let mut start_connected_segments = vector_data.all_connected(segment_end1);
+							if start_connected_segments.any(|handle| selected_shape_state.is_segment_selected(handle.segment) && handle.segment != segment_id) {
+								selected_shape_state.select_point(ManipulatorPointId::Anchor(segment_end1));
 							}
-							_ => {}
+
+							let mut end_connected_segments = vector_data.all_connected(segment_end2);
+							if end_connected_segments.any(|handle| selected_shape_state.is_segment_selected(handle.segment) && handle.segment != segment_id) {
+								selected_shape_state.select_point(ManipulatorPointId::Anchor(segment_end2));
+							}
 						}
 					}
 
@@ -1526,9 +1526,7 @@ impl Fsm for PathToolFsmState {
 					let selected_layers = shape_editor.selected_layers().cloned().collect::<Vec<_>>();
 
 					for layer in selected_layers {
-						let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
-							continue;
-						};
+						let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 						let selected_state = shape_editor.selected_shape_state.entry(layer).or_default();
 
@@ -1560,9 +1558,7 @@ impl Fsm for PathToolFsmState {
 					let selected_layers = shape_editor.selected_layers().cloned().collect::<Vec<_>>();
 
 					for layer in selected_layers {
-						let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
-							continue;
-						};
+						let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 						let selected_state = shape_editor.selected_shape_state.entry(layer).or_default();
 
@@ -1649,17 +1645,19 @@ impl Fsm for PathToolFsmState {
 					Self::Ready => {
 						tool_data.update_closest_segment(shape_editor, input.mouse.position, document, tool_options.path_overlay_mode);
 
-						// If there exist an underlying anchor, we show a hover overlay
-
+						// If there exists an underlying anchor, we show a hover overlay
 						if tool_options.path_editing_mode.point_editing_mode {
 							if let Some((layer, manipulator_point_id)) = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
 								if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-									let position = manipulator_point_id.get_position(&vector_data).expect("No position for hovered point");
-									let transform = document.metadata().transform_to_viewport(layer);
-									let position = transform.transform_point2(position);
-									match manipulator_point_id {
-										ManipulatorPointId::Anchor(_) => overlay_context.hover_manipulator_anchor(position),
-										_ => overlay_context.hover_manipulator_handle(position),
+									if let Some(position) = manipulator_point_id.get_position(&vector_data) {
+										let transform = document.metadata().transform_to_viewport(layer);
+										let position = transform.transform_point2(position);
+										match manipulator_point_id {
+											ManipulatorPointId::Anchor(_) => overlay_context.hover_manipulator_anchor(position),
+											_ => overlay_context.hover_manipulator_handle(position),
+										}
+									} else {
+										error!("No position for hovered point");
 									}
 								}
 							}
@@ -1684,7 +1682,7 @@ impl Fsm for PathToolFsmState {
 									}
 								}
 							} else {
-								// We want this overlays also when segment_editing_mode
+								// We want this overlay also when in segment_editing_mode
 								let perp = closest_segment.calculate_perp(document);
 								let point = closest_segment.closest_point(document.metadata(), &document.network_interface);
 
@@ -2307,7 +2305,7 @@ impl Fsm for PathToolFsmState {
 									.or_default()
 									.deselect_segment(nearest_segment.segment());
 
-								// If only in segement editing mode and deselected a segment then deselect both of its anchors
+								// If in segment editing mode only, and upon deselecting a segment, then deselect both of its anchors
 								if segment_mode && !point_mode {
 									nearest_segment.points().iter().for_each(|point_id| {
 										shape_editor
@@ -2845,8 +2843,8 @@ fn update_dynamic_hints(
 					// Hovering a segment in segment editing mode
 					vec![
 						HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Segment"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
-						HintGroup(vec![HintInfo::keys_and_mouse([Key::KeyA], MouseMotion::Lmb, "Insert Point on Segment")]),
-						HintGroup(vec![HintInfo::keys_and_mouse([Key::KeyA], MouseMotion::LmbDrag, "Mold Segment")]),
+						HintGroup(vec![HintInfo::keys_and_mouse([Key::Control], MouseMotion::Lmb, "Insert Point on Segment")]),
+						HintGroup(vec![HintInfo::keys_and_mouse([Key::Control], MouseMotion::LmbDrag, "Mold Segment")]),
 					]
 				} else {
 					// Hovering a segment in point editing mode
@@ -2865,10 +2863,10 @@ fn update_dynamic_hints(
 					])]
 				} else {
 					// Hovering over a point in segment selection mode (will select a nearby segment)
-					vec![
-						HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Segment"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
-						HintGroup(vec![HintInfo::keys_and_mouse([Key::KeyA], MouseMotion::Lmb, "Mold Segment")]),
-					]
+					vec![HintGroup(vec![
+						HintInfo::mouse(MouseMotion::Lmb, "Select Segment"),
+						HintInfo::keys([Key::Shift], "Extend").prepend_plus(),
+					])]
 				}
 			} else {
 				vec![HintGroup(vec![

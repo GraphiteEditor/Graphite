@@ -327,8 +327,7 @@ impl OverlayContext {
 		self.render_context.begin_path();
 		self.render_context.arc(position.x, position.y, 8. / 2., 0., TAU).expect("Failed to draw the circle");
 
-		let fill = COLOR_OVERLAY_BLUE_50;
-		self.render_context.set_fill_style_str(fill);
+		self.render_context.set_fill_style_str(COLOR_OVERLAY_BLUE_50);
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.fill();
 		self.render_context.stroke();
@@ -339,7 +338,7 @@ impl OverlayContext {
 	pub fn hover_manipulator_anchor(&mut self, position: DVec2) {
 		let color_fill = COLOR_OVERLAY_BLUE_50;
 		let color_stroke = COLOR_OVERLAY_BLUE;
-		self.square(position, Some(8.), Some(&color_fill), Some(color_stroke));
+		self.square(position, Some(8.), Some(color_fill), Some(color_stroke));
 	}
 
 	/// Transforms the canvas context to adjust for DPI scaling
