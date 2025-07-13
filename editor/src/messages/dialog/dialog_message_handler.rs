@@ -3,7 +3,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
 #[derive(ExtractField)]
-pub struct DialogMessageData<'a> {
+pub struct DialogMessageContext<'a> {
 	pub portfolio: &'a PortfolioMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 }
@@ -17,14 +17,14 @@ pub struct DialogMessageHandler {
 }
 
 #[message_handler_data]
-impl MessageHandler<DialogMessage, DialogMessageData<'_>> for DialogMessageHandler {
-	fn process_message(&mut self, message: DialogMessage, responses: &mut VecDeque<Message>, data: DialogMessageData) {
-		let DialogMessageData { portfolio, preferences } = data;
+impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHandler {
+	fn process_message(&mut self, message: DialogMessage, responses: &mut VecDeque<Message>, context: DialogMessageContext) {
+		let DialogMessageContext { portfolio, preferences } = context;
 
 		match message {
-			DialogMessage::ExportDialog(message) => self.export_dialog.process_message(message, responses, ExportDialogMessageData { portfolio }),
+			DialogMessage::ExportDialog(message) => self.export_dialog.process_message(message, responses, ExportDialogMessageContext { portfolio }),
 			DialogMessage::NewDocumentDialog(message) => self.new_document_dialog.process_message(message, responses, ()),
-			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, responses, PreferencesDialogMessageData { preferences }),
+			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, responses, PreferencesDialogMessageContext { preferences }),
 
 			DialogMessage::CloseAllDocumentsWithConfirmation => {
 				let dialog = simple_dialogs::CloseAllDocumentsDialog {

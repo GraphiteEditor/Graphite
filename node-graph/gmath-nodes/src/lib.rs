@@ -467,10 +467,10 @@ fn clamp<T: std::cmp::PartialOrd>(
 fn equals<U: std::cmp::PartialEq<T>, T>(
 	_: impl Ctx,
 	/// One of the two numbers to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, &str)]
+	#[implementations(f64, f32, u32, DVec2, &str, String)]
 	value: T,
 	/// The other of the two numbers to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, &str)]
+	#[implementations(f64, f32, u32, DVec2, &str, String)]
 	other_value: U,
 ) -> bool {
 	other_value == value
