@@ -1601,11 +1601,15 @@ impl Fsm for PathToolFsmState {
 
 							// Determine highlight color based on drill-through state
 							let color = match (index, mouse_has_moved) {
-								(i, false) if i == next_selected_index => COLOR_OVERLAY_BLUE, // If the layer is the next selected one and mouse has not moved, highlight it blue
-								(0, true) => COLOR_OVERLAY_BLUE,                              // If the layer is the first hovered one and mouse has moved, highlight it blue
-								_ => COLOR_OVERLAY_GRAY,                                      // Otherwise, use gray
+								// If the layer is the next selected one and mouse has not moved, highlight it blue
+								(i, false) if i == next_selected_index => COLOR_OVERLAY_BLUE,
+								// If the layer is the first hovered one and mouse has moved, highlight it blue
+								(0, true) => COLOR_OVERLAY_BLUE,
+								// Otherwise, use gray
+								_ => COLOR_OVERLAY_GRAY,
 							};
 
+							// TODO: Make this draw underneath all other overlays
 							overlay_context.outline(outline, layer_to_viewport, Some(color));
 						}
 					}
