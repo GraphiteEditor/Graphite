@@ -187,10 +187,10 @@ impl LayoutHolder for ShapeTool {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ShapeTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for ShapeTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Shape(ShapeToolMessage::UpdateOptions(action)) = message else {
-			self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
+			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			return;
 		};
 		match action {
@@ -361,14 +361,14 @@ impl Fsm for ShapeToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		ToolActionHandlerData {
+		ToolActionMessageContext {
 			document,
 			global_tool_data,
 			input,
 			preferences,
 			shape_editor,
 			..
-		}: &mut ToolActionHandlerData,
+		}: &mut ToolActionMessageContext,
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -581,7 +581,7 @@ impl Fsm for ShapeToolFsmState {
 					}
 				}
 
-				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging);
+				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, None);
 
 				if !input.keyboard.key(Key::Control) {
 					match (resize, rotate, skew) {

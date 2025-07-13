@@ -13,7 +13,8 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 
-pub struct NavigationMessageData<'a> {
+#[derive(ExtractField)]
+pub struct NavigationMessageContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub breadcrumb_network_path: &'a [NodeId],
 	pub ipp: &'a InputPreprocessorMessageHandler,
@@ -23,7 +24,7 @@ pub struct NavigationMessageData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, ExtractField)]
 pub struct NavigationMessageHandler {
 	navigation_operation: NavigationOperation,
 	mouse_position: ViewportPosition,
@@ -31,9 +32,10 @@ pub struct NavigationMessageHandler {
 	abortable_pan_start: Option<f64>,
 }
 
-impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for NavigationMessageHandler {
-	fn process_message(&mut self, message: NavigationMessage, responses: &mut VecDeque<Message>, data: NavigationMessageData) {
-		let NavigationMessageData {
+#[message_handler_data]
+impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for NavigationMessageHandler {
+	fn process_message(&mut self, message: NavigationMessage, responses: &mut VecDeque<Message>, context: NavigationMessageContext) {
+		let NavigationMessageContext {
 			network_interface,
 			breadcrumb_network_path,
 			ipp,
@@ -41,7 +43,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			document_ptz,
 			graph_view_overlay_open,
 			preferences,
-		} = data;
+		} = context;
 
 		fn get_ptz<'a>(document_ptz: &'a PTZ, network_interface: &'a NodeNetworkInterface, graph_view_overlay_open: bool, breadcrumb_network_path: &[NodeId]) -> Option<&'a PTZ> {
 			if !graph_view_overlay_open {

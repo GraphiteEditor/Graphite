@@ -1,32 +1,32 @@
 // Root
-pub use crate::utility_traits::{ActionList, AsMessage, MessageHandler, ToDiscriminant, TransitiveChild};
-
+pub use crate::utility_traits::{ActionList, AsMessage, HierarchicalTree, MessageHandler, ToDiscriminant, TransitiveChild};
+pub use crate::utility_types::{DebugMessageTree, MessageData};
 // Message, MessageData, MessageDiscriminant, MessageHandler
 pub use crate::messages::animation::{AnimationMessage, AnimationMessageDiscriminant, AnimationMessageHandler};
 pub use crate::messages::broadcast::{BroadcastMessage, BroadcastMessageDiscriminant, BroadcastMessageHandler};
 pub use crate::messages::debug::{DebugMessage, DebugMessageDiscriminant, DebugMessageHandler};
-pub use crate::messages::dialog::export_dialog::{ExportDialogMessage, ExportDialogMessageData, ExportDialogMessageDiscriminant, ExportDialogMessageHandler};
+pub use crate::messages::dialog::export_dialog::{ExportDialogMessage, ExportDialogMessageContext, ExportDialogMessageDiscriminant, ExportDialogMessageHandler};
 pub use crate::messages::dialog::new_document_dialog::{NewDocumentDialogMessage, NewDocumentDialogMessageDiscriminant, NewDocumentDialogMessageHandler};
-pub use crate::messages::dialog::preferences_dialog::{PreferencesDialogMessage, PreferencesDialogMessageData, PreferencesDialogMessageDiscriminant, PreferencesDialogMessageHandler};
-pub use crate::messages::dialog::{DialogMessage, DialogMessageData, DialogMessageDiscriminant, DialogMessageHandler};
+pub use crate::messages::dialog::preferences_dialog::{PreferencesDialogMessage, PreferencesDialogMessageContext, PreferencesDialogMessageDiscriminant, PreferencesDialogMessageHandler};
+pub use crate::messages::dialog::{DialogMessage, DialogMessageContext, DialogMessageDiscriminant, DialogMessageHandler};
 pub use crate::messages::frontend::{FrontendMessage, FrontendMessageDiscriminant};
 pub use crate::messages::globals::{GlobalsMessage, GlobalsMessageDiscriminant, GlobalsMessageHandler};
-pub use crate::messages::input_mapper::key_mapping::{KeyMappingMessage, KeyMappingMessageData, KeyMappingMessageDiscriminant, KeyMappingMessageHandler};
-pub use crate::messages::input_mapper::{InputMapperMessage, InputMapperMessageData, InputMapperMessageDiscriminant, InputMapperMessageHandler};
-pub use crate::messages::input_preprocessor::{InputPreprocessorMessage, InputPreprocessorMessageData, InputPreprocessorMessageDiscriminant, InputPreprocessorMessageHandler};
+pub use crate::messages::input_mapper::key_mapping::{KeyMappingMessage, KeyMappingMessageContext, KeyMappingMessageDiscriminant, KeyMappingMessageHandler};
+pub use crate::messages::input_mapper::{InputMapperMessage, InputMapperMessageContext, InputMapperMessageDiscriminant, InputMapperMessageHandler};
+pub use crate::messages::input_preprocessor::{InputPreprocessorMessage, InputPreprocessorMessageContext, InputPreprocessorMessageDiscriminant, InputPreprocessorMessageHandler};
 pub use crate::messages::layout::{LayoutMessage, LayoutMessageDiscriminant, LayoutMessageHandler};
-pub use crate::messages::portfolio::document::graph_operation::{GraphOperationMessage, GraphOperationMessageData, GraphOperationMessageDiscriminant, GraphOperationMessageHandler};
-pub use crate::messages::portfolio::document::navigation::{NavigationMessage, NavigationMessageData, NavigationMessageDiscriminant, NavigationMessageHandler};
+pub use crate::messages::portfolio::document::graph_operation::{GraphOperationMessage, GraphOperationMessageContext, GraphOperationMessageDiscriminant, GraphOperationMessageHandler};
+pub use crate::messages::portfolio::document::navigation::{NavigationMessage, NavigationMessageContext, NavigationMessageDiscriminant, NavigationMessageHandler};
 pub use crate::messages::portfolio::document::node_graph::{NodeGraphMessage, NodeGraphMessageDiscriminant, NodeGraphMessageHandler};
-pub use crate::messages::portfolio::document::overlays::{OverlaysMessage, OverlaysMessageData, OverlaysMessageDiscriminant, OverlaysMessageHandler};
+pub use crate::messages::portfolio::document::overlays::{OverlaysMessage, OverlaysMessageContext, OverlaysMessageDiscriminant, OverlaysMessageHandler};
 pub use crate::messages::portfolio::document::properties_panel::{PropertiesPanelMessage, PropertiesPanelMessageDiscriminant, PropertiesPanelMessageHandler};
-pub use crate::messages::portfolio::document::{DocumentMessage, DocumentMessageData, DocumentMessageDiscriminant, DocumentMessageHandler};
+pub use crate::messages::portfolio::document::{DocumentMessage, DocumentMessageContext, DocumentMessageDiscriminant, DocumentMessageHandler};
 pub use crate::messages::portfolio::menu_bar::{MenuBarMessage, MenuBarMessageDiscriminant, MenuBarMessageHandler};
 pub use crate::messages::portfolio::spreadsheet::{SpreadsheetMessage, SpreadsheetMessageDiscriminant};
-pub use crate::messages::portfolio::{PortfolioMessage, PortfolioMessageData, PortfolioMessageDiscriminant, PortfolioMessageHandler};
+pub use crate::messages::portfolio::{PortfolioMessage, PortfolioMessageContext, PortfolioMessageDiscriminant, PortfolioMessageHandler};
 pub use crate::messages::preferences::{PreferencesMessage, PreferencesMessageDiscriminant, PreferencesMessageHandler};
 pub use crate::messages::tool::transform_layer::{TransformLayerMessage, TransformLayerMessageDiscriminant, TransformLayerMessageHandler};
-pub use crate::messages::tool::{ToolMessage, ToolMessageData, ToolMessageDiscriminant, ToolMessageHandler};
+pub use crate::messages::tool::{ToolMessage, ToolMessageContext, ToolMessageDiscriminant, ToolMessageHandler};
 pub use crate::messages::workspace::{WorkspaceMessage, WorkspaceMessageDiscriminant, WorkspaceMessageHandler};
 
 // Message, MessageDiscriminant

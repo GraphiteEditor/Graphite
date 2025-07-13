@@ -2,7 +2,7 @@ use crate::parsing::*;
 use convert_case::{Case, Casing};
 use proc_macro_crate::FoundCrate;
 use proc_macro2::TokenStream as TokenStream2;
-use quote::{format_ident, quote, quote_spanned};
+use quote::{ToTokens, format_ident, quote, quote_spanned};
 use std::sync::atomic::AtomicU64;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -330,11 +330,15 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			})
 		}
 	};
-	let path = match parsed.attributes.path {
-		Some(ref path) => quote!(stringify!(#path).replace(' ', "")),
-		None => quote!(std::module_path!().rsplit_once("::").unwrap().0),
+
+	let identifier = format_ident!("{}_proto_ident", fn_name);
+	let identifier_path = match parsed.attributes.path.as_ref() {
+		Some(path) => {
+			let path = path.to_token_stream().to_string().replace(' ', "");
+			quote!(#path)
+		}
+		None => quote!(std::module_path!()),
 	};
-	let identifier = quote!(format!("{}::{}", #path, stringify!(#struct_name)));
 
 	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &identifier)?;
 	let import_name = format_ident!("_IMPORT_STUB_{}", mod_name.to_string().to_case(Case::UpperSnake));
@@ -354,6 +358,11 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		{
 			#eval_impl
 		}
+
+		const fn #identifier() -> #graphene_core::ProtoNodeIdentifier {
+			#graphene_core::ProtoNodeIdentifier::new(std::concat!(#identifier_path, "::", std::stringify!(#struct_name)))
+		}
+
 		#[doc(inline)]
 		pub use #mod_name::#struct_name;
 
@@ -418,67 +427,63 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 						)*
 					],
 				};
-				NODE_METADATA.lock().unwrap().insert(#identifier, metadata);
+				NODE_METADATA.lock().unwrap().insert(#identifier(), metadata);
 			}
 		}
 	})
 }
 
 /// Generates strongly typed utilites to access inputs
-fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::GenericParam], field_idents: &[&PatIdent], graphene_core: &TokenStream2, identifier: &TokenStream2) -> TokenStream2 {
-	if parsed.attributes.skip_impl {
-		return quote! {};
-	}
+fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::GenericParam], field_idents: &[&PatIdent], graphene_core: &TokenStream2, identifier: &Ident) -> TokenStream2 {
 	let inputs_module_name = format_ident!("{}", parsed.struct_name.to_string().to_case(Case::Snake));
 
-	let (mut modified, mut generic_collector) = FilterUsedGenerics::new(fn_generics);
-
 	let mut generated_input_accessor = Vec::new();
-	for (input_index, (parsed_input, input_ident)) in parsed.fields.iter().zip(field_idents).enumerate() {
-		let mut ty = match parsed_input {
-			ParsedField::Regular { ty, .. } => ty,
-			ParsedField::Node { output_type, .. } => output_type,
+	if !parsed.attributes.skip_impl {
+		let (mut modified, mut generic_collector) = FilterUsedGenerics::new(fn_generics);
+
+		for (input_index, (parsed_input, input_ident)) in parsed.fields.iter().zip(field_idents).enumerate() {
+			let mut ty = match parsed_input {
+				ParsedField::Regular { ty, .. } => ty,
+				ParsedField::Node { output_type, .. } => output_type,
+			}
+			.clone();
+
+			// We only want the necessary generics.
+			let used = generic_collector.filter_unnecessary_generics(&mut modified, &mut ty);
+			// TODO: figure out a better name that doesn't conflict with so many types
+			let struct_name = format_ident!("{}Input", input_ident.ident.to_string().to_case(Case::Pascal));
+			let (fn_generic_params, phantom_data_declerations) = generate_phantom_data(used.iter());
+
+			// Only create structs with phantom data where necessary.
+			generated_input_accessor.push(if phantom_data_declerations.is_empty() {
+				quote! {
+					pub struct #struct_name;
+				}
+			} else {
+				quote! {
+					pub struct #struct_name <#(#used),*>{
+						#(#phantom_data_declerations,)*
+					}
+				}
+			});
+			generated_input_accessor.push(quote! {
+				impl <#(#used),*> #graphene_core::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
+					const INDEX: usize = #input_index;
+					fn identifier() -> #graphene_core::ProtoNodeIdentifier {
+						#inputs_module_name::IDENTIFIER.clone()
+					}
+					type Result = #ty;
+				}
+			})
 		}
-		.clone();
-
-		// We only want the necessary generics.
-		let used = generic_collector.filter_unnecessary_generics(&mut modified, &mut ty);
-		// TODO: figure out a better name that doesn't conflict with so many types
-		let struct_name = format_ident!("{}Input", input_ident.ident.to_string().to_case(Case::Pascal));
-		let (fn_generic_params, phantom_data_declerations) = generate_phantom_data(used.iter());
-
-		// Only create structs with phantom data where necessary.
-		generated_input_accessor.push(if phantom_data_declerations.is_empty() {
-			quote! {
-				pub struct #struct_name;
-			}
-		} else {
-			quote! {
-				pub struct #struct_name <#(#used),*>{
-					#(#phantom_data_declerations,)*
-				}
-			}
-		});
-		generated_input_accessor.push(quote! {
-			impl <#(#used),*> #graphene_core::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
-				const INDEX: usize = #input_index;
-				fn identifier() -> &'static str {
-					protonode_identifier()
-				}
-				type Result = #ty;
-			}
-		})
 	}
 
 	quote! {
 		pub mod #inputs_module_name {
 			use super::*;
 
-			pub fn protonode_identifier() -> &'static str {
-				// Storing the string in a once lock should reduce allocations (since we call this in a loop)?
-				static NODE_NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-				NODE_NAME.get_or_init(|| #identifier )
-			}
+			/// The `ProtoNodeIdentifier` of this node without any generics attached to it
+			pub const IDENTIFIER: #graphene_core::ProtoNodeIdentifier = #identifier();
 			#(#generated_input_accessor)*
 		}
 	}
@@ -511,7 +516,7 @@ fn generate_phantom_data<'a>(fn_generics: impl Iterator<Item = &'a crate::Generi
 	(fn_generic_params, phantom_data_declerations)
 }
 
-fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifier: &TokenStream2) -> Result<TokenStream2, Error> {
+fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifier: &Ident) -> Result<TokenStream2, Error> {
 	if parsed.attributes.skip_impl {
 		return Ok(quote!());
 	}
@@ -604,7 +609,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 		fn register_node() {
 			let mut registry = NODE_REGISTRY.lock().unwrap();
 			registry.insert(
-				#identifier,
+				#identifier(),
 				vec![
 					#(#constructors,)*
 				]

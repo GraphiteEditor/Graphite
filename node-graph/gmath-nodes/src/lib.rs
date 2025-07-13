@@ -1,6 +1,6 @@
 use glam::DVec2;
 use graphene_core::gradient::GradientStops;
-use graphene_core::registry::types::{Fraction, Percentage};
+use graphene_core::registry::types::{Fraction, Percentage, TextArea};
 use graphene_core::{Color, Ctx, num_traits};
 use log::warn;
 use math_parser::ast;
@@ -467,10 +467,10 @@ fn clamp<T: std::cmp::PartialOrd>(
 fn equals<U: std::cmp::PartialEq<T>, T>(
 	_: impl Ctx,
 	/// One of the two numbers to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, &str)]
+	#[implementations(f64, f32, u32, DVec2, &str, String)]
 	value: T,
 	/// The other of the two numbers to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, &str)]
+	#[implementations(f64, f32, u32, DVec2, &str, String)]
 	other_value: U,
 ) -> bool {
 	other_value == value
@@ -603,13 +603,27 @@ fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> Gradien
 
 /// Constructs a string value which may be set to any plain text.
 #[node_macro::node(category("Value"))]
-fn string_value(_: impl Ctx, _primary: (), string: String) -> String {
+fn string_value(_: impl Ctx, _primary: (), string: TextArea) -> String {
 	string
 }
 
 #[node_macro::node(category("Math: Vector"))]
 fn dot_product(_: impl Ctx, vector_a: DVec2, vector_b: DVec2) -> f64 {
 	vector_a.dot(vector_b)
+}
+
+/// Gets the length or magnitude of a vector.
+#[node_macro::node(category("Math: Vector"))]
+fn length(_: impl Ctx, vector: DVec2) -> f64 {
+	vector.length()
+}
+
+/// Scales the input vector to unit length while preserving it's direction. This is equivalent to dividing the input vector by it's own magnitude.
+///
+/// Returns zero when the input vector is zero.
+#[node_macro::node(category("Math: Vector"))]
+fn normalize(_: impl Ctx, vector: DVec2) -> DVec2 {
+	vector.normalize_or_zero()
 }
 
 #[cfg(test)]
@@ -623,6 +637,12 @@ mod test {
 		let vector_a = DVec2::new(1., 2.);
 		let vector_b = DVec2::new(3., 4.);
 		assert_eq!(dot_product((), vector_a, vector_b), 11.);
+	}
+
+	#[test]
+	pub fn length_function() {
+		let vector = DVec2::new(3., 4.);
+		assert_eq!(length((), vector), 5.);
 	}
 
 	#[test]

@@ -80,13 +80,14 @@ pub enum ToolMessage {
 	Redo,
 	RefreshToolOptions,
 	ResetColors,
-	SelectPrimaryColor {
+	SelectWorkingColor {
 		color: Color,
+		primary: bool,
 	},
-	SelectRandomPrimaryColor,
-	SelectSecondaryColor {
-		color: Color,
+	SelectRandomWorkingColor {
+		primary: bool,
 	},
+	ToggleSelectVsPath,
 	SwapColors,
 	Undo,
 	UpdateCursor,

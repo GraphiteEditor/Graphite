@@ -356,7 +356,7 @@ pub struct ContextImpl<'a> {
 }
 
 impl<'a> ContextImpl<'a> {
-	pub fn with_footprint<'f>(&self, new_footprint: &'f Footprint, varargs: Option<&'f impl (Borrow<[DynRef<'f>]>)>) -> ContextImpl<'f>
+	pub fn with_footprint<'f>(&self, new_footprint: &'f Footprint, varargs: Option<&'f impl Borrow<[DynRef<'f>]>>) -> ContextImpl<'f>
 	where
 		'a: 'f,
 	{

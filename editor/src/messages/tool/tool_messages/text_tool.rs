@@ -9,7 +9,6 @@ use crate::messages::portfolio::document::utility_types::network_interface::Inpu
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
-use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData};
 use crate::messages::tool::common_functionality::transformation_cage::*;
@@ -21,7 +20,7 @@ use graphene_std::renderer::Quad;
 use graphene_std::text::{Font, FontCache, TypesettingConfig, lines_clipping, load_font};
 use graphene_std::vector::style::Fill;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct TextTool {
 	fsm_state: TextToolFsmState,
 	tool_data: TextToolData,
@@ -171,10 +170,11 @@ impl LayoutHolder for TextTool {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
+#[message_handler_data]
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for TextTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Text(TextToolMessage::UpdateOptions(action)) = message else {
-			self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
+			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			return;
 		};
 		match action {
@@ -283,7 +283,6 @@ struct TextToolData {
 	// Since the overlays must be drawn without knowledge of the inputs
 	cached_resize_bounds: [DVec2; 2],
 	bounding_box_manager: Option<BoundingBoxManager>,
-	pivot: Pivot,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	// TODO: Handle multiple layers in the future
 	layer_dragging: Option<ResizingLayer>,
@@ -450,8 +449,15 @@ impl Fsm for TextToolFsmState {
 	type ToolData = TextToolData;
 	type ToolOptions = TextOptions;
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, transition_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData {
+	fn transition(
+		self,
+		event: ToolMessage,
+		tool_data: &mut Self::ToolData,
+		transition_data: &mut ToolActionMessageContext,
+		tool_options: &Self::ToolOptions,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
+		let ToolActionMessageContext {
 			document,
 			global_tool_data,
 			input,
@@ -526,7 +532,6 @@ impl Fsm for TextToolFsmState {
 						}
 
 						bounding_box_manager.render_overlays(&mut overlay_context, false);
-						tool_data.pivot.update_pivot(document, &mut overlay_context, None);
 					}
 				} else {
 					tool_data.bounding_box_manager.take();

@@ -3,6 +3,7 @@ use crate::Color;
 use crate::GraphicElement;
 use crate::GraphicGroupTable;
 use crate::gradient::GradientStops;
+use crate::graphene_core::registry::types::TextArea;
 use crate::raster_types::{CPU, GPU, RasterDataTable};
 use crate::vector::VectorDataTable;
 use crate::{Context, Ctx};
@@ -14,12 +15,12 @@ fn to_string<T: std::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f6
 }
 
 #[node_macro::node(category("Text"))]
-fn string_concatenate(_: impl Ctx, #[implementations(String)] first: String, #[implementations(String)] second: String) -> String {
+fn string_concatenate(_: impl Ctx, #[implementations(String)] first: String, second: TextArea) -> String {
 	first.clone() + &second
 }
 
 #[node_macro::node(category("Text"))]
-fn string_replace(_: impl Ctx, #[implementations(String)] string: String, from: String, to: String) -> String {
+fn string_replace(_: impl Ctx, #[implementations(String)] string: String, from: TextArea, to: TextArea) -> String {
 	string.replace(&from, &to)
 }
 
@@ -32,8 +33,8 @@ fn string_slice(_: impl Ctx, #[implementations(String)] string: String, start: f
 }
 
 #[node_macro::node(category("Text"))]
-fn string_length(_: impl Ctx, #[implementations(String)] string: String) -> usize {
-	string.len()
+fn string_length(_: impl Ctx, #[implementations(String)] string: String) -> u32 {
+	string.len() as u32
 }
 
 #[node_macro::node(category("Math: Logic"))]

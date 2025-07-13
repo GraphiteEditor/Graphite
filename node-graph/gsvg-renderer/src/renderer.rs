@@ -10,6 +10,7 @@ use graphene_core::instances::Instance;
 use graphene_core::math::quad::Quad;
 use graphene_core::raster::Image;
 use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
+use graphene_core::render_complexity::RenderComplexity;
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::uuid::{NodeId, generate_uuid};
 use graphene_core::vector::VectorDataTable;
@@ -198,12 +199,13 @@ pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 pub struct RenderMetadata {
 	pub upstream_footprints: HashMap<NodeId, Footprint>,
 	pub local_transforms: HashMap<NodeId, DAffine2>,
+	pub first_instance_source_id: HashMap<NodeId, Option<NodeId>>,
 	pub click_targets: HashMap<NodeId, Vec<ClickTarget>>,
 	pub clip_targets: HashSet<NodeId>,
 }
 
 // TODO: Rename to "Graphical"
-pub trait GraphicElementRendered: BoundingBox {
+pub trait GraphicElementRendered: BoundingBox + RenderComplexity {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 
 	#[cfg(feature = "vello")]
@@ -1090,6 +1092,7 @@ impl GraphicElementRendered for GraphicElement {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than one row of the graphical data table
 					if let Some(vector_data) = vector_data.instance_ref_iter().next() {
+						metadata.first_instance_source_id.insert(element_id, *vector_data.source_node_id);
 						metadata.local_transforms.insert(element_id, *vector_data.transform);
 					}
 				}
@@ -1149,7 +1152,7 @@ impl GraphicElementRendered for GraphicElement {
 }
 
 /// Used to stop rust complaining about upstream traits adding display implementations to `Option<Color>`. This would not be an issue as we control that crate.
-trait Primitive: std::fmt::Display + BoundingBox {}
+trait Primitive: std::fmt::Display + BoundingBox + RenderComplexity {}
 impl Primitive for String {}
 impl Primitive for bool {}
 impl Primitive for f32 {}
