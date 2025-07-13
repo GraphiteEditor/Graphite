@@ -315,8 +315,8 @@
 		// Don't drag the text value from is input element
 		e.preventDefault();
 
-		// Get the click target and set the requestPointerLock immediately
-		// Safari and Firefox Nightly require requestPointerLock() to be called directly inside the pointerdown handler.
+		// Get the event target and set the requestPointerLock immediately
+		// Safari and Firefox Nightly require requestPointerLock() to be called directly inside the pointerdown handler instead of later in beginDrag().
 		const target = e.target || undefined;
 		if (!(target instanceof HTMLElement)) return;
 
