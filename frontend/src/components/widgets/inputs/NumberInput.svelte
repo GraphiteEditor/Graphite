@@ -315,6 +315,13 @@
 		// Don't drag the text value from is input element
 		e.preventDefault();
 
+		// Get the click target and set the requestPointerLock immediately
+		// Safari and Firefox Nightly require requestPointerLock() to be called directly inside the pointerdown handler.
+		const target = e.target || undefined;
+		if (!(target instanceof HTMLElement)) return;
+
+		target.requestPointerLock();
+
 		// Now we need to wait and see if the user follows this up with a mousemove or mouseup.
 
 		// For some reason, both events can get fired before their event listeners are removed, so we need to guard against both running.
@@ -325,7 +332,7 @@
 			if (alreadyActedGuard) return;
 			alreadyActedGuard = true;
 			isDragging = true;
-			beginDrag(e);
+			beginDrag();
 			removeEventListener("pointermove", onMove);
 		};
 		// If it's a mouseup, we'll begin editing the text field.
@@ -340,13 +347,7 @@
 		addEventListener("pointerup", onUp);
 	}
 
-	function beginDrag(e: PointerEvent) {
-		// Get the click target
-		const target = e.target || undefined;
-		if (!(target instanceof HTMLElement)) return;
-
-		// Enter dragging state
-		target.requestPointerLock();
+	function beginDrag() {
 		initialValueBeforeDragging = value;
 		cumulativeDragDelta = 0;
 
