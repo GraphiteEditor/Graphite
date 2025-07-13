@@ -9,7 +9,7 @@ use crate::messages::prelude::{DocumentMessageHandler, FrontendMessage, InputPre
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{
-	calculate_b, extract_arc_spiral_parameters, extract_log_spiral_parameters, get_arc_spiral_end_point, get_log_spiral_end_point,
+	calculate_b, extract_arc_or_log_spiral_parameters, get_arc_spiral_end_point, get_log_spiral_end_point, get_spiral_type, spiral_point,
 };
 use glam::DVec2;
 use graph_craft::document::NodeInput;
@@ -75,17 +75,11 @@ impl SpiralTurns {
 		match &self.handle_state {
 			SpiralTurnsState::Inactive => {
 				// Archimedean
-				if let Some(((inner_radius, outer_radius, turns), end_point)) = extract_arc_spiral_parameters(layer, document).zip(get_arc_spiral_end_point(layer, document, viewport, TAU)) {
+				if let Some(((inner_radius, outer_radius, turns, _), spiral_type)) = extract_arc_or_log_spiral_parameters(layer, document).zip(get_spiral_type(layer, document)) {
+					let b = calculate_b(inner_radius, turns, outer_radius, spiral_type);
+					let end_point = viewport.transform_point2(spiral_point(turns * TAU, inner_radius, b, spiral_type));
 					if mouse_position.distance(end_point) < POINT_RADIUS_HANDLE_SNAP_THRESHOLD {
-						self.store_initial_parameters(layer, inner_radius, turns, outer_radius, mouse_position, SpiralType::Archimedean);
-						responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
-					}
-				}
-
-				// Logarithmic
-				if let Some(((inner_radius, outer_radius, turns), end_point)) = extract_log_spiral_parameters(layer, document).zip(get_log_spiral_end_point(layer, document, viewport, TAU)) {
-					if mouse_position.distance(end_point) < POINT_RADIUS_HANDLE_SNAP_THRESHOLD {
-						self.store_initial_parameters(layer, inner_radius, turns, outer_radius, mouse_position, SpiralType::Logarithmic);
+						self.store_initial_parameters(layer, inner_radius, turns, outer_radius, mouse_position, spiral_type);
 						responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 					}
 				}

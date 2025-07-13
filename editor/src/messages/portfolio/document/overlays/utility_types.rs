@@ -390,7 +390,7 @@ impl OverlayContext {
 
 		if let Some(transform) = transform {
 			let [a, b, c, d, e, f] = transform.to_cols_array();
-			self.render_context.transform(a, b, c, d, e, f);
+			self.render_context.transform(a, b, c, d, e, f).expect("Failed to transform circle");
 		}
 
 		if let Some(dash_width) = dash_width {

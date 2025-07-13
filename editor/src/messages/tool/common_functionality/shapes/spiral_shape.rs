@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::arc_spiral_inner_radius_handle::{RadiusGizmo, RadiusGizmoState};
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::spiral_inner_radius_handle::{RadiusGizmo, RadiusGizmoState};
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::spiral_tightness_gizmo::{TightnessGizmo, TightnessGizmoState};
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::spiral_turns_handle::{SpiralTurns, SpiralTurnsState};
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -52,6 +52,12 @@ impl ShapeGizmoHandler for SpiralGizmoHandler {
 			return;
 		}
 
+		if self.turns_handle.hovered() && self.radius_handle.hovered() {
+			self.turns_handle.update_state(SpiralTurnsState::Dragging);
+			self.radius_handle.update_state(RadiusGizmoState::Inactive);
+			return;
+		}
+
 		if self.turns_handle.hovered() && self.tightness_handle.hovered() {
 			self.turns_handle.update_state(SpiralTurnsState::Dragging);
 			self.tightness_handle.update_state(TightnessGizmoState::Inactive);
@@ -75,7 +81,7 @@ impl ShapeGizmoHandler for SpiralGizmoHandler {
 
 	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		if self.radius_handle.is_dragging() {
-			self.radius_handle.update_inner_radius(document, input, responses, drag_start);
+			self.radius_handle.update_inner_radius(drag_start, document, input, responses);
 		}
 
 		if self.turns_handle.is_dragging() {
@@ -83,7 +89,7 @@ impl ShapeGizmoHandler for SpiralGizmoHandler {
 		}
 
 		if self.tightness_handle.is_dragging() {
-			self.tightness_handle.update_number_of_turns(document, input, responses, drag_start);
+			self.tightness_handle.update_outer_radius(document, input, responses, drag_start);
 		}
 	}
 
@@ -91,32 +97,36 @@ impl ShapeGizmoHandler for SpiralGizmoHandler {
 		&self,
 		document: &DocumentMessageHandler,
 		selected_spiral_layer: Option<LayerNodeIdentifier>,
-		input: &InputPreprocessorMessageHandler,
+		_input: &InputPreprocessorMessageHandler,
 		shape_editor: &mut &mut ShapeState,
 		mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
 	) {
 		if self.radius_handle.hovered() && self.tightness_handle.hovered() {
-			self.radius_handle.overlays(document, selected_spiral_layer, input, mouse_position, overlay_context);
+			self.radius_handle.overlays(document, selected_spiral_layer, overlay_context);
 			return;
 		}
-		self.radius_handle.overlays(document, selected_spiral_layer, input, mouse_position, overlay_context);
-		self.turns_handle.overlays(document, selected_spiral_layer, shape_editor, mouse_position, overlay_context);
-		self.tightness_handle.overlays(document, selected_spiral_layer, shape_editor, mouse_position, overlay_context);
 
-		// polygon_outline(selected_polygon_layer, document, overlay_context);
+		if (self.turns_handle.hovered() && self.radius_handle.hovered()) || (self.turns_handle.hovered() && self.tightness_handle.hovered()) {
+			self.turns_handle.overlays(document, selected_spiral_layer, shape_editor, mouse_position, overlay_context);
+			return;
+		}
+
+		self.radius_handle.overlays(document, selected_spiral_layer, overlay_context);
+		self.turns_handle.overlays(document, selected_spiral_layer, shape_editor, mouse_position, overlay_context);
+		self.tightness_handle.overlays(document, selected_spiral_layer, shape_editor, overlay_context);
 	}
 
 	fn dragging_overlays(
 		&self,
 		document: &DocumentMessageHandler,
-		input: &InputPreprocessorMessageHandler,
+		_input: &InputPreprocessorMessageHandler,
 		shape_editor: &mut &mut ShapeState,
 		mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
 	) {
 		if self.radius_handle.is_dragging() {
-			self.radius_handle.overlays(document, None, input, mouse_position, overlay_context);
+			self.radius_handle.overlays(document, None, overlay_context);
 		}
 
 		if self.radius_handle.is_dragging() {
@@ -124,7 +134,7 @@ impl ShapeGizmoHandler for SpiralGizmoHandler {
 		}
 
 		if self.tightness_handle.is_dragging() {
-			self.tightness_handle.overlays(document, None, shape_editor, mouse_position, overlay_context);
+			self.tightness_handle.overlays(document, None, shape_editor, overlay_context);
 		}
 	}
 

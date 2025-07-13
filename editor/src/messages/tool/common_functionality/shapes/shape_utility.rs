@@ -1,5 +1,5 @@
 use super::ShapeToolData;
-use crate::consts::{SPIRAL_INNER_RADIUS, SPIRAL_OUTER_RADIUS_INDEX, SPIRAL_TURNS_INDEX};
+use crate::consts::{SPIRAL_INNER_RADIUS_INDEX, SPIRAL_OUTER_RADIUS_INDEX, SPIRAL_START_ANGLE, SPIRAL_TURNS_INDEX};
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -232,33 +232,9 @@ pub fn extract_star_parameters(layer: Option<LayerNodeIdentifier>, document: &Do
 	Some((sides, radius_1, radius_2))
 }
 
-/// Extract the node input values of Archimedean spiral.
-/// Returns an option of (Inner radius, Outer radius, Turns, ).
-pub fn extract_arc_spiral_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<(f64, f64, f64)> {
-	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Spiral")?;
-
-	let Some(spiral_type) = get_spiral_type(layer, document) else {
-		return None;
-	};
-
-	if spiral_type == SpiralType::Archimedean {
-		let (Some(&TaggedValue::F64(inner_radius)), Some(&TaggedValue::F64(tightness)), Some(&TaggedValue::F64(turns))) = (
-			node_inputs.get(SPIRAL_INNER_RADIUS)?.as_value(),
-			node_inputs.get(SPIRAL_OUTER_RADIUS_INDEX)?.as_value(),
-			node_inputs.get(SPIRAL_TURNS_INDEX)?.as_value(),
-		) else {
-			return None;
-		};
-
-		return Some((inner_radius, tightness, turns));
-	}
-
-	None
-}
-
 /// Extract the node input values of Logarithmic spiral.
 /// Returns an option of (Start radius, Outer radius, Turns, ).
-pub fn extract_log_spiral_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<(f64, f64, f64)> {
+pub fn extract_arc_or_log_spiral_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<(f64, f64, f64, f64)> {
 	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Spiral")?;
 
 	let Some(spiral_type) = get_spiral_type(layer, document) else {
@@ -266,15 +242,16 @@ pub fn extract_log_spiral_parameters(layer: LayerNodeIdentifier, document: &Docu
 	};
 
 	if spiral_type == SpiralType::Logarithmic {
-		let (Some(&TaggedValue::F64(inner_radius)), Some(&TaggedValue::F64(tightness)), Some(&TaggedValue::F64(turns))) = (
-			node_inputs.get(SPIRAL_INNER_RADIUS)?.as_value(),
+		let (Some(&TaggedValue::F64(inner_radius)), Some(&TaggedValue::F64(tightness)), Some(&TaggedValue::F64(turns)), Some(&TaggedValue::F64(start_angle))) = (
+			node_inputs.get(SPIRAL_INNER_RADIUS_INDEX)?.as_value(),
 			node_inputs.get(SPIRAL_OUTER_RADIUS_INDEX)?.as_value(),
 			node_inputs.get(SPIRAL_TURNS_INDEX)?.as_value(),
+			node_inputs.get(SPIRAL_START_ANGLE)?.as_value(),
 		) else {
 			return None;
 		};
 
-		return Some((inner_radius, tightness, turns));
+		return Some((inner_radius, tightness, turns, start_angle));
 	}
 
 	None
@@ -291,7 +268,7 @@ pub fn get_spiral_type(layer: LayerNodeIdentifier, document: &DocumentMessageHan
 }
 
 pub fn get_arc_spiral_end_point(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, viewport: DAffine2, theta: f64) -> Option<DVec2> {
-	let Some((a, outer_radius, turns)) = extract_arc_spiral_parameters(layer, document) else {
+	let Some((a, outer_radius, turns, _)) = extract_arc_or_log_spiral_parameters(layer, document) else {
 		return None;
 	};
 
@@ -303,7 +280,7 @@ pub fn get_arc_spiral_end_point(layer: LayerNodeIdentifier, document: &DocumentM
 }
 
 pub fn get_log_spiral_end_point(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, viewport: DAffine2, theta: f64) -> Option<DVec2> {
-	let Some((_, outer_radius, turns)) = extract_log_spiral_parameters(layer, document) else {
+	let Some((_, outer_radius, turns, _)) = extract_arc_or_log_spiral_parameters(layer, document) else {
 		return None;
 	};
 
@@ -320,6 +297,14 @@ pub fn calculate_b(a: f64, turns: f64, outer_radius: f64, spiral_type: SpiralTyp
 			let total_theta = turns * TAU;
 			((outer_radius.abs() / a).ln()) / total_theta
 		}
+	}
+}
+
+/// Returns a point on the given spiral type at angle `theta`.
+pub fn spiral_point(theta: f64, a: f64, b: f64, spiral_type: SpiralType) -> DVec2 {
+	match spiral_type {
+		SpiralType::Archimedean => archimedean_spiral_point(theta, a, b),
+		SpiralType::Logarithmic => log_spiral_point(theta, a, b),
 	}
 }
 

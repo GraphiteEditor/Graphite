@@ -272,14 +272,14 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		)
 	}
 
-	pub fn new_spiral(a: f64, outer_radius: f64, turns: f64, delta_theta: f64, spiral_type: SpiralType) -> Self {
+	pub fn new_spiral(a: f64, outer_radius: f64, turns: f64, start_angle: f64, delta_theta: f64, spiral_type: SpiralType) -> Self {
 		let mut manipulator_groups = Vec::new();
 		let mut prev_in_handle = None;
-		let theta_end = turns * std::f64::consts::TAU;
+		let theta_end = turns * std::f64::consts::TAU + start_angle;
 
 		let b = calculate_b(a, turns, outer_radius, spiral_type);
 
-		let mut theta = 0.0;
+		let mut theta = start_angle;
 		while theta < theta_end {
 			let theta_next = f64::min(theta + delta_theta, theta_end);
 
