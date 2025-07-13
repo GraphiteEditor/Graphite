@@ -1683,6 +1683,11 @@ impl DocumentMessageHandler {
 			})
 	}
 
+	pub fn click_list_no_parents<'a>(&'a self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
+		self.click_xray(ipp)
+			.filter(move |&layer| !self.network_interface.is_artboard(&layer.to_node(), &[]) && !layer.has_children(self.network_interface.document_metadata()))
+	}
+
 	/// Find the deepest layer that has been clicked on from a location in viewport space.
 	pub fn click(&self, ipp: &InputPreprocessorMessageHandler) -> Option<LayerNodeIdentifier> {
 		self.click_list(ipp).last()

@@ -1,4 +1,4 @@
-use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, SLOWING_DIVISOR};
+use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY_25, SLOWING_DIVISOR};
 use crate::messages::input_mapper::utility_types::input_mouse::{DocumentPosition, ViewportPosition};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -12,6 +12,7 @@ use crate::messages::tool::utility_types::{ToolData, ToolType};
 use glam::{DAffine2, DVec2};
 use graphene_std::renderer::Quad;
 use graphene_std::vector::ManipulatorPointId;
+use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::{VectorData, VectorModificationType};
 use std::f64::consts::{PI, TAU};
 
@@ -61,6 +62,9 @@ pub struct TransformLayerMessageHandler {
 	handle: DVec2,
 	last_point: DVec2,
 	grs_pen_handle: bool,
+
+	// Ghost outlines for Path Tool
+	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
 }
 
 impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for TransformLayerMessageHandler {
@@ -169,6 +173,12 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 			TransformLayerMessage::Overlays(mut overlay_context) => {
 				if !overlay_context.visibility_settings.transform_measurement() {
 					return;
+				}
+
+				if using_path_tool {
+					for (outline, transform) in &self.ghost_outline {
+						overlay_context.outline(outline.iter(), *transform, Some(COLOR_OVERLAY_GRAY_25));
+					}
 				}
 
 				let viewport_box = input.viewport_bounds.size();
@@ -284,6 +294,10 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 
+				if using_path_tool {
+					self.ghost_outline.clear();
+				}
+
 				responses.add(SelectToolMessage::PivotShift { offset: None, flush: true });
 
 				if final_transform {
@@ -337,12 +351,15 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
 				let selected_segments = shape_editor.selected_segments().collect::<Vec<_>>();
 
-				if (using_path_tool && selected_points.is_empty() && selected_segments.is_empty())
-					|| (!using_path_tool && !using_select_tool && !using_pen_tool && !using_shape_tool)
-					|| selected_layers.is_empty()
-					|| transform_type.equivalent_to(self.transform_operation)
-				{
-					return;
+				if using_path_tool {
+					Self::set_ghost_outline(&mut self.ghost_outline, shape_editor, document);
+					if (selected_points.is_empty() && selected_segments.is_empty())
+						|| (!using_path_tool && !using_select_tool && !using_pen_tool && !using_shape_tool)
+						|| selected_layers.is_empty()
+						|| transform_type.equivalent_to(self.transform_operation)
+					{
+						return;
+					}
 				}
 
 				if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
@@ -399,6 +416,8 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 					responses.add(PenToolMessage::Abort);
 					responses.add(ToolMessage::UpdateHints);
+				} else if using_path_tool {
+					self.ghost_outline.clear();
 				} else {
 					selected.original_transforms.clear();
 					self.typing.clear();
@@ -656,6 +675,16 @@ impl TransformLayerMessageHandler {
 
 	pub fn hints(&self, responses: &mut VecDeque<Message>) {
 		self.transform_operation.hints(responses, self.local);
+	}
+
+	fn set_ghost_outline(ghost_outline: &mut Vec<(Vec<ClickTargetType>, DAffine2)>, shape_editor: &ShapeState, document: &DocumentMessageHandler) {
+		ghost_outline.clear();
+		for &layer in shape_editor.selected_shape_state.keys() {
+			// We probably need to collect here
+			let outline = document.metadata().layer_with_free_points_outline(layer).cloned().collect();
+			let transform = document.metadata().transform_to_viewport(layer);
+			ghost_outline.push((outline, transform));
+		}
 	}
 }
 
