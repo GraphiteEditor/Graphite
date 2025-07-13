@@ -1,7 +1,8 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER,
-	COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE,
+	COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH,
+	PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
 use bezier_rs::{Bezier, Subpath};
@@ -349,6 +350,7 @@ impl OverlayContext {
 		self.render_context.rect(corner.x, corner.y, size, size);
 		self.render_context.set_fill_style_str(color_fill);
 		self.render_context.set_stroke_style_str(color_stroke);
+		self.render_context.set_line_width(1.);
 		self.render_context.fill();
 		self.render_context.stroke();
 
@@ -631,11 +633,9 @@ impl OverlayContext {
 	pub fn outline_overlay_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
-		let color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05).to_rgba_hex_srgb();
-
 		self.render_context.begin_path();
 		self.bezier_command(bezier, transform, true);
-		self.render_context.set_stroke_style_str(&color);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE_50);
 		self.render_context.set_line_width(4.);
 		self.render_context.stroke();
 
@@ -727,6 +727,7 @@ impl OverlayContext {
 
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 			self.render_context.set_stroke_style_str(color);
+			self.render_context.set_line_width(1.);
 			self.render_context.stroke();
 		}
 	}
@@ -813,6 +814,36 @@ impl OverlayContext {
 		self.render_context.set_fill_style_str(font_color);
 		self.render_context.fill_text(text, 0., 0.).expect("Failed to draw the text at the calculated position");
 		self.render_context.reset_transform().expect("Failed to reset the render context transform");
+	}
+
+	pub fn translation_box(&mut self, translation: DVec2, quad: Quad, typed_string: Option<String>) {
+		if translation.x.abs() > 1e-3 {
+			self.dashed_line(quad.top_left(), quad.top_right(), None, None, Some(2.), Some(2.), Some(0.5));
+
+			let width = match typed_string {
+				Some(ref typed_string) => typed_string,
+				None => &format!("{:.2}", translation.x).trim_end_matches('0').trim_end_matches('.').to_string(),
+			};
+			let x_transform = DAffine2::from_translation((quad.top_left() + quad.top_right()) / 2.);
+			self.text(width, COLOR_OVERLAY_BLUE, None, x_transform, 4., [Pivot::Middle, Pivot::End]);
+		}
+
+		if translation.y.abs() > 1e-3 {
+			self.dashed_line(quad.top_left(), quad.bottom_left(), None, None, Some(2.), Some(2.), Some(0.5));
+
+			let height = match typed_string {
+				Some(ref typed_string) => typed_string,
+				None => &format!("{:.2}", translation.y).trim_end_matches('0').trim_end_matches('.').to_string(),
+			};
+			let y_transform = DAffine2::from_translation((quad.top_left() + quad.bottom_left()) / 2.);
+			let height_pivot = if translation.x > -1e-3 { Pivot::Start } else { Pivot::End };
+			self.text(height, COLOR_OVERLAY_BLUE, None, y_transform, 3., [height_pivot, Pivot::Middle]);
+		}
+
+		if translation.x.abs() > 1e-3 && translation.y.abs() > 1e-3 {
+			self.line(quad.top_right(), quad.bottom_right(), None, None);
+			self.line(quad.bottom_left(), quad.bottom_right(), None, None);
+		}
 	}
 }
 
