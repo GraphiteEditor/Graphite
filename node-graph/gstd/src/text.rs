@@ -24,10 +24,13 @@ fn text<'i: 'n>(
 	#[unit(" px")]
 	#[default(None)]
 	max_height: Option<f64>,
+	/// Faux italic.
 	#[unit("°")]
 	#[default(0.)]
 	tilt: f64,
-	#[default(false)] per_glyph_instances: bool,
+	/// Splits each text glyph into its own instance, i.e. row in the table of vector data.
+	#[default(false)]
+	per_glyph_instances: bool,
 ) -> VectorDataTable {
 	let typesetting = TypesettingConfig {
 		font_size,

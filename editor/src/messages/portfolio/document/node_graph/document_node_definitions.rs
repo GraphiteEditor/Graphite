@@ -1282,7 +1282,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						),
 						InputMetadata::with_name_description_override(
 							"Tilt",
-							"Faux italic",
+							"Faux italic.",
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(-85.),
 								max: Some(85.),
@@ -1290,7 +1290,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						("Per-Glyph Instances", "TODO").into(),
+						("Per-Glyph Instances", "Splits each text glyph into its own instance, i.e. row in the table of vector data.").into(),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()

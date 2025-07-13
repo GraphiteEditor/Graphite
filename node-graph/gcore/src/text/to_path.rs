@@ -33,6 +33,7 @@ impl PathBuilder {
 		DVec2::new(self.origin.x + x as f64, self.origin.y - y as f64) * self.scale
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	fn draw_glyph(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], glyph_offset: DVec2, style_skew: Option<DAffine2>, skew: DAffine2, per_glyph_instances: bool) {
 		let location_ref = LocationRef::new(normalized_coords);
 		let settings = DrawSettings::unhinted(Size::new(size), location_ref);
@@ -56,13 +57,10 @@ impl PathBuilder {
 					..Default::default()
 				})
 			}
-		} else {
-			if !self.glyph_subpaths.is_empty() {
-				for subpath in self.glyph_subpaths.iter() {
-					// Unwrapping here is ok,
-					// since the check above guarantees there is at least one `VectorData`
-					self.vector_table.get_mut(0).unwrap().instance.append_subpath(subpath, false);
-				}
+		} else if !self.glyph_subpaths.is_empty() {
+			for subpath in self.glyph_subpaths.iter() {
+				// Unwrapping here is ok, since the check above guarantees there is at least one `VectorData`
+				self.vector_table.get_mut(0).unwrap().instance.append_subpath(subpath, false);
 			}
 		}
 	}
