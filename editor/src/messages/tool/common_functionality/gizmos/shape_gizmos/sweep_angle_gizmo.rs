@@ -3,9 +3,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{
-	arc_end_points, arc_end_points_ignore_layer, calculate_arc_text_transform, calculate_display_angle, extract_arc_parameters, wrap_to_tau,
-};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{arc_end_points, calculate_arc_text_transform, extract_arc_parameters, format_rounded};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use crate::messages::{
 	frontend::utility_types::MouseCursorIcon,
@@ -42,7 +40,7 @@ pub struct SweepAngleGizmo {
 	endpoint: EndpointType,
 	initial_start_angle: f64,
 	initial_sweep_angle: f64,
-	initial_start_point: DVec2,
+	position_before_rotation: DVec2,
 	previous_mouse_position: DVec2,
 	total_angle_delta: f64,
 	snap_angles: Vec<f64>,
@@ -76,30 +74,25 @@ impl SweepAngleGizmo {
 					return;
 				}
 
-				if mouse_position.distance(start) < 5. {
+				let (close_to_gizmo, endpoint_type) = if mouse_position.distance(start) < 5. {
+					(true, EndpointType::Start)
+				} else if mouse_position.distance(end) < 5. {
+					(true, EndpointType::End)
+				} else {
+					(false, EndpointType::None)
+				};
+
+				if close_to_gizmo {
 					self.layer = Some(layer);
 					self.initial_start_angle = start_angle;
 					self.initial_sweep_angle = sweep_angle;
 					self.previous_mouse_position = mouse_position;
 					self.total_angle_delta = 0.;
-					self.endpoint = EndpointType::Start;
-					self.snap_angles = self.calculate_snap_angles(start_angle, sweep_angle);
+					self.position_before_rotation = if endpoint_type == EndpointType::End { end } else { start };
+					self.endpoint = endpoint_type;
+					self.snap_angles = Self::calculate_snap_angles();
 					self.update_state(SweepAngleGizmoState::Hover);
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
-					return;
-				}
-
-				if mouse_position.distance(end) < 5. {
-					self.layer = Some(layer);
-					self.initial_start_angle = start_angle;
-					self.initial_sweep_angle = sweep_angle;
-					self.previous_mouse_position = mouse_position;
-					self.total_angle_delta = 0.;
-					self.endpoint = EndpointType::End;
-					self.snap_angles = self.calculate_snap_angles(start_angle, sweep_angle);
-					self.update_state(SweepAngleGizmoState::Hover);
-					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
-
 					return;
 				}
 			}
@@ -118,16 +111,17 @@ impl SweepAngleGizmo {
 		_mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
 	) {
-		let format_rounded = |value: f64, precision: usize| format!("{:.*}", precision, value).trim_end_matches('0').trim_end_matches('.').to_string();
 		let tilt_offset = document.document_ptz.unmodified_tilt();
 
 		match self.handle_state {
 			SweepAngleGizmoState::Inactive => {
+				// Draw both endpoint handles if an arc is selected
 				let Some((point1, point2)) = arc_end_points(selected_arc_layer, document) else { return };
 				overlay_context.manipulator_handle(point1, false, Some(COLOR_OVERLAY_RED));
 				overlay_context.manipulator_handle(point2, false, Some(COLOR_OVERLAY_RED));
 			}
 			SweepAngleGizmoState::Hover => {
+				// Highlight the currently hovered endpoint only
 				let Some((point1, point2)) = arc_end_points(self.layer, document) else { return };
 
 				if matches!(self.endpoint, EndpointType::Start) {
@@ -137,89 +131,63 @@ impl SweepAngleGizmo {
 				}
 			}
 			SweepAngleGizmoState::Dragging => {
+				// Show snapping guides and angle arc while dragging
 				let Some(layer) = self.layer else { return };
-				let Some((start, end)) = arc_end_points(self.layer, document) else { return };
-
+				let Some((current_start, current_end)) = arc_end_points(self.layer, document) else { return };
 				let viewport = document.metadata().transform_to_viewport(layer);
-				let center = viewport.transform_point2(DVec2::ZERO);
 
-				let Some((radius, _, _, _)) = extract_arc_parameters(self.layer, document) else {
-					return;
-				};
-
-				let Some((initial_start, initial_end)) = arc_end_points_ignore_layer(radius, self.initial_start_angle, self.initial_sweep_angle, Some(viewport)) else {
-					return;
-				};
-
-				let angle = self.total_angle_delta;
-
-				let display_angle = calculate_display_angle(angle);
-
-				let text = format!("{}°", format_rounded(display_angle, 2));
-				let text_texture_width = overlay_context.get_width(&text) / 2.;
-
+				// Depending on which endpoint is being dragged, draw guides relative to the static point
 				if self.endpoint == EndpointType::End {
-					let initial_vector = initial_end - center;
-					let offset_angle = initial_vector.to_angle() + tilt_offset;
-
-					let transform = calculate_arc_text_transform(angle, offset_angle, center, text_texture_width);
-
-					overlay_context.arc_sweep_angle(offset_angle, angle, end, radius, center, &text, transform);
+					self.dragging_snapping_overlays(self.position_before_rotation, current_end, tilt_offset, viewport, overlay_context);
 				} else {
-					let initial_vector = initial_start - center;
-					let offset_angle = initial_vector.to_angle() + tilt_offset;
-
-					let transform = calculate_arc_text_transform(angle, offset_angle, center, text_texture_width);
-
-					overlay_context.arc_sweep_angle(offset_angle, angle, start, radius, center, &text, transform);
+					self.dragging_snapping_overlays(self.position_before_rotation, current_start, tilt_offset, viewport, overlay_context);
 				}
 			}
-
 			SweepAngleGizmoState::Snapped => {
-				let Some((current_start, current_end)) = arc_end_points(self.layer, document) else {
-					return;
-				};
-				let Some((radius, _, _, _)) = extract_arc_parameters(self.layer, document) else { return };
+				// When snapping is active, draw snapping arcs and angular guidelines
+				let Some((current_start, current_end)) = arc_end_points(self.layer, document) else { return };
 				let Some(layer) = self.layer else { return };
 				let viewport = document.metadata().transform_to_viewport(layer);
-
 				let center = viewport.transform_point2(DVec2::ZERO);
 
+				// Draw snapping arc and angle overlays between the two points
 				if self.endpoint == EndpointType::Start {
-					let initial_vector = current_end - center;
-					let final_vector = current_start - center;
-					let offset_angle = initial_vector.to_angle() + tilt_offset;
-
-					let angle = initial_vector.angle_to(final_vector).to_degrees();
-					let display_angle = calculate_display_angle(angle);
-
-					let text = format!("{}°", format_rounded(display_angle, 2));
-					let text_texture_width = overlay_context.get_width(&text) / 2.;
-
-					let transform = calculate_arc_text_transform(angle, offset_angle, center, text_texture_width);
-
-					overlay_context.arc_sweep_angle(offset_angle, angle, current_start, radius, center, &text, transform);
+					self.dragging_snapping_overlays(current_end, current_start, tilt_offset, viewport, overlay_context);
 				} else {
-					let initial_vector = current_start - center;
-					let final_vector = current_end - center;
-					let offset_angle = initial_vector.to_angle() + tilt_offset;
-
-					let angle = initial_vector.angle_to(final_vector).to_degrees();
-					log::info!("angle {:?}", angle);
-					let display_angle = calculate_display_angle(angle);
-
-					let text = format!("{}°", format_rounded(display_angle, 2));
-					let text_texture_width = overlay_context.get_width(&text) / 2.;
-
-					let transform = calculate_arc_text_transform(angle, offset_angle, center, text_texture_width);
-
-					overlay_context.arc_sweep_angle(offset_angle, angle, current_end, radius, center, &text, transform);
+					self.dragging_snapping_overlays(current_start, current_end, tilt_offset, viewport, overlay_context);
 				}
 
+				// Draw lines from endpoints to the arc center
 				overlay_context.line(current_start, center, Some(COLOR_OVERLAY_RED), Some(2.0));
 				overlay_context.line(current_end, center, Some(COLOR_OVERLAY_RED), Some(2.0));
 			}
 		}
+	}
+
+	/// Draws the visual overlay during arc handle dragging or snapping interactions.
+	/// This includes the dynamic arc sweep, angle label, and visual guides centered around the arc's origin.
+	pub fn dragging_snapping_overlays(&self, initial_point: DVec2, final_point: DVec2, tilt_offset: f64, viewport: DAffine2, overlay_context: &mut OverlayContext) {
+		let center = viewport.transform_point2(DVec2::ZERO);
+		let initial_vector = initial_point - center;
+		let final_vector = final_point - center;
+		let offset_angle = initial_vector.to_angle() + tilt_offset;
+
+		let dash_radius = initial_point.distance(center);
+		let bold_radius = final_point.distance(center);
+
+		let angle = initial_vector.angle_to(final_vector).to_degrees();
+		let display_angle = viewport
+			.inverse()
+			.transform_point2(final_point)
+			.angle_to(viewport.inverse().transform_point2(initial_point))
+			.to_degrees();
+
+		let text = format!("{}°", format_rounded(display_angle, 2));
+		let text_texture_width = overlay_context.get_width(&text) / 2.;
+
+		let transform = calculate_arc_text_transform(angle, offset_angle, center, text_texture_width);
+
+		overlay_context.arc_sweep_angle(offset_angle, angle, final_point, bold_radius, dash_radius, center, &text, transform);
 	}
 
 	pub fn update_arc(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
@@ -316,7 +284,7 @@ impl SweepAngleGizmo {
 					return;
 				}
 
-				if let Some(snapped_delta) = self.check_snapping(self.initial_start_angle + angle, self.initial_sweep_angle + total.abs() * sign) {
+				if let Some(snapped_delta) = self.check_snapping(self.initial_sweep_angle + total.abs() * sign) {
 					total += snapped_delta;
 					self.update_state(SweepAngleGizmoState::Snapped);
 				}
@@ -356,7 +324,7 @@ impl SweepAngleGizmo {
 					return;
 				}
 
-				if let Some(snapped_delta) = self.check_snapping(self.initial_start_angle, self.initial_sweep_angle + angle) {
+				if let Some(snapped_delta) = self.check_snapping(self.initial_sweep_angle + angle) {
 					total += snapped_delta;
 					self.update_state(SweepAngleGizmoState::Snapped);
 				}
@@ -370,7 +338,7 @@ impl SweepAngleGizmo {
 
 	/// Applies the updated start and sweep angles to the arc.
 	fn apply_arc_update(&mut self, node_id: NodeId, start_angle: f64, sweep_angle: f64, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		self.snap_angles = self.calculate_snap_angles(start_angle, sweep_angle);
+		self.snap_angles = Self::calculate_snap_angles();
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 2),
@@ -385,42 +353,19 @@ impl SweepAngleGizmo {
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	pub fn check_snapping(&self, new_start_angle: f64, new_sweep_angle: f64) -> Option<f64> {
-		let wrapped_sweep_angle = wrap_to_tau(new_sweep_angle.to_radians()).to_degrees();
-		let wrapped_start_angle = wrap_to_tau(new_start_angle.to_radians()).to_degrees();
-		if self.endpoint == EndpointType::End {
-			return self
-				.snap_angles
-				.iter()
-				.find(|angle| ((**angle) - (wrapped_sweep_angle)).abs() < ARC_SNAP_THRESHOLD)
-				.map(|angle| angle - wrapped_sweep_angle);
-		} else {
-			return self
-				.snap_angles
-				.iter()
-				.find(|angle| ((**angle) - (wrapped_start_angle)).abs() < ARC_SNAP_THRESHOLD)
-				.map(|angle| angle - wrapped_start_angle);
-		}
+	pub fn check_snapping(&self, new_sweep_angle: f64) -> Option<f64> {
+		return self.snap_angles.iter().find(|angle| (**angle - new_sweep_angle).abs() <= ARC_SNAP_THRESHOLD).map(|angle| {
+			let delta = angle - new_sweep_angle;
+			if self.endpoint == EndpointType::End { delta } else { -delta }
+		});
 	}
 
-	pub fn calculate_snap_angles(&self, initial_start_angle: f64, initial_sweep_angle: f64) -> Vec<f64> {
+	pub fn calculate_snap_angles() -> Vec<f64> {
 		let mut snap_points = Vec::new();
-		let sign = initial_start_angle.signum() * -1.;
-		let end_angle = initial_start_angle.abs().to_radians() * sign - initial_sweep_angle.to_radians();
-		let wrapped_end_angle = wrap_to_tau(-end_angle);
 
-		if self.endpoint == EndpointType::End {
-			for i in 0..8 {
-				let snap_point = wrap_to_tau(i as f64 * FRAC_PI_4 + initial_start_angle);
-				snap_points.push(snap_point.to_degrees());
-			}
-		}
-
-		if self.endpoint == EndpointType::Start {
-			for i in 0..8 {
-				let snap_point = wrap_to_tau(wrapped_end_angle + i as f64 * FRAC_PI_4);
-				snap_points.push(snap_point.to_degrees());
-			}
+		for i in 0..8 {
+			let snap_point = i as f64 * FRAC_PI_4;
+			snap_points.push(snap_point.to_degrees());
 		}
 
 		snap_points

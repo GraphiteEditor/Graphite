@@ -237,7 +237,8 @@ pub fn extract_polygon_parameters(layer: Option<LayerNodeIdentifier>, document: 
 	Some((n, radius))
 }
 
-/// Extract the node input values of Arc
+/// Extract the node input values of Arc.
+/// Returns an option of (radius, start angle, sweep angle, arc type).
 pub fn extract_arc_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(f64, f64, f64, ArcType)> {
 	let Some(layer) = layer else {
 		return None;
@@ -271,11 +272,10 @@ pub fn arc_end_points(layer: Option<LayerNodeIdentifier>, document: &DocumentMes
 }
 
 pub fn arc_end_points_ignore_layer(radius: f64, start_angle: f64, sweep_angle: f64, viewport: Option<DAffine2>) -> Option<(DVec2, DVec2)> {
-	let sign = start_angle.signum() * -1.;
-	let end_angle = start_angle.abs().to_radians() * sign - sweep_angle.to_radians();
+	let end_angle = start_angle.to_radians() + sweep_angle.to_radians();
 
 	let start_point = radius * DVec2::from_angle(start_angle.to_radians());
-	let end_point = radius * DVec2::from_angle(-end_angle);
+	let end_point = radius * DVec2::from_angle(end_angle);
 
 	if let Some(transform) = viewport {
 		return Some((transform.transform_point2(start_point), transform.transform_point2(end_point)));
@@ -442,6 +442,10 @@ pub fn draw_snapping_ticks(snap_radii: &[f64], direction: DVec2, viewport: DAffi
 /// Wraps an angle (in radians) into the range [0, 2π).
 pub fn wrap_to_tau(angle: f64) -> f64 {
 	(angle % TAU + TAU) % TAU
+}
+
+pub fn format_rounded(value: f64, precision: usize) -> String {
+	format!("{:.*}", precision, value).trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
 // Give the approximated angle to display in degrees(Note : The input is in degrees)

@@ -414,6 +414,14 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
+	pub fn draw_arc_gizmo_angle(&mut self, pivot: DVec2, bold_radius: f64, dash_radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
+		let end_point1 = pivot + bold_radius * DVec2::from_angle(angle + offset_angle);
+		let end_point2 = pivot + dash_radius * DVec2::from_angle(offset_angle);
+		self.line(pivot, end_point1, None, None);
+		self.dashed_line(pivot, end_point2, None, None, Some(2.), Some(2.), Some(0.5));
+		self.draw_arc(pivot, arc_radius, offset_angle, (angle) % TAU + offset_angle);
+	}
+
 	pub fn draw_angle(&mut self, pivot: DVec2, radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
 		let end_point1 = pivot + radius * DVec2::from_angle(angle + offset_angle);
 		let end_point2 = pivot + radius * DVec2::from_angle(offset_angle);
@@ -551,9 +559,9 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn arc_sweep_angle(&mut self, offset_angle: f64, angle: f64, end_point_position: DVec2, radius: f64, pivot: DVec2, text: &str, transform: DAffine2) {
+	pub fn arc_sweep_angle(&mut self, offset_angle: f64, angle: f64, end_point_position: DVec2, bold_radius: f64, dash_radius: f64, pivot: DVec2, text: &str, transform: DAffine2) {
 		self.manipulator_handle(end_point_position, true, Some(COLOR_OVERLAY_RED));
-		self.draw_angle(pivot, radius, ARC_SWEEP_GIZMO_RADIUS, offset_angle, angle.to_radians());
+		self.draw_arc_gizmo_angle(pivot, bold_radius, dash_radius, ARC_SWEEP_GIZMO_RADIUS, offset_angle, angle.to_radians());
 		self.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 	}
 
