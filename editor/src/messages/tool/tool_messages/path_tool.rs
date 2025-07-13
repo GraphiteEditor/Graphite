@@ -306,8 +306,8 @@ impl LayoutHolder for PathTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PathTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);
 
 		match message {
@@ -350,20 +350,20 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 			},
 			ToolMessage::Path(PathToolMessage::ClosePath) => {
 				responses.add(DocumentMessage::AddTransaction);
-				tool_data.shape_editor.close_selected_path(tool_data.document, responses);
+				context.shape_editor.close_selected_path(context.document, responses);
 				responses.add(DocumentMessage::EndTransaction);
 				responses.add(OverlaysMessage::Draw);
 			}
 			ToolMessage::Path(PathToolMessage::SwapSelectedHandles) => {
-				if tool_data.shape_editor.handle_with_pair_selected(&tool_data.document.network_interface) {
-					tool_data.shape_editor.alternate_selected_handles(&tool_data.document.network_interface);
+				if context.shape_editor.handle_with_pair_selected(&context.document.network_interface) {
+					context.shape_editor.alternate_selected_handles(&context.document.network_interface);
 					responses.add(PathToolMessage::SelectedPointUpdated);
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::None });
 					responses.add(OverlaysMessage::Draw);
 				}
 			}
 			_ => {
-				self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
+				self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			}
 		}
 
@@ -1387,8 +1387,15 @@ impl Fsm for PathToolFsmState {
 	type ToolData = PathToolData;
 	type ToolOptions = PathToolOptions;
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData { document, input, shape_editor, .. } = tool_action_data;
+	fn transition(
+		self,
+		event: ToolMessage,
+		tool_data: &mut Self::ToolData,
+		tool_action_data: &mut ToolActionMessageContext,
+		tool_options: &Self::ToolOptions,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
+		let ToolActionMessageContext { document, input, shape_editor, .. } = tool_action_data;
 
 		update_dynamic_hints(self, responses, shape_editor, document, tool_data, tool_options);
 

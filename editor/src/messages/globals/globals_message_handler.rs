@@ -5,7 +5,7 @@ pub struct GlobalsMessageHandler {}
 
 #[message_handler_data]
 impl MessageHandler<GlobalsMessage, ()> for GlobalsMessageHandler {
-	fn process_message(&mut self, message: GlobalsMessage, _responses: &mut VecDeque<Message>, _data: ()) {
+	fn process_message(&mut self, message: GlobalsMessage, _responses: &mut VecDeque<Message>, _: ()) {
 		match message {
 			GlobalsMessage::SetPlatform { platform } => {
 				if GLOBAL_PLATFORM.get() != Some(&platform) {

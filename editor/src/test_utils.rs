@@ -31,7 +31,7 @@ impl EditorTestUtils {
 		// It isn't sufficient to guard the message dispatch here with a check if the once_cell is empty, because that isn't atomic and the time between checking and handling the dispatch can let multiple through.
 		let _ = GLOBAL_PLATFORM.set(Platform::Windows).is_ok();
 
-		editor.handle_message(Message::Init);
+		editor.handle_message(PortfolioMessage::Init);
 
 		Self { editor, runtime }
 	}

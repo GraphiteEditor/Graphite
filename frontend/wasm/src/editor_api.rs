@@ -123,7 +123,7 @@ impl EditorHandle {
 			_ => Platform::Unknown,
 		};
 		self.dispatch(GlobalsMessage::SetPlatform { platform });
-		self.dispatch(Message::Init);
+		self.dispatch(PortfolioMessage::Init);
 
 		// Poll node graph evaluation on `requestAnimationFrame`
 		{

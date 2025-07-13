@@ -4,4 +4,4 @@ mod input_preprocessor_message_handler;
 #[doc(inline)]
 pub use input_preprocessor_message::{InputPreprocessorMessage, InputPreprocessorMessageDiscriminant};
 #[doc(inline)]
-pub use input_preprocessor_message_handler::{InputPreprocessorMessageData, InputPreprocessorMessageHandler};
+pub use input_preprocessor_message_handler::{InputPreprocessorMessageContext, InputPreprocessorMessageHandler};
