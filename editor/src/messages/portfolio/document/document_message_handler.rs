@@ -10,10 +10,10 @@ use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
+use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings};
-use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
+use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
@@ -39,7 +39,7 @@ use graphene_std::vector::style::ViewMode;
 use std::time::Duration;
 
 #[derive(ExtractField)]
-pub struct DocumentMessageData<'a> {
+pub struct DocumentMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub persistent_data: &'a PersistentData,
@@ -170,9 +170,9 @@ impl Default for DocumentMessageHandler {
 }
 
 #[message_handler_data]
-impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessageHandler {
-	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, data: DocumentMessageData) {
-		let DocumentMessageData {
+impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMessageHandler {
+	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, context: DocumentMessageContext) {
+		let DocumentMessageContext {
 			document_id,
 			ipp,
 			persistent_data,
@@ -180,14 +180,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			current_tool,
 			preferences,
 			device_pixel_ratio,
-		} = data;
+		} = context;
 
 		let selected_nodes_bounding_box_viewport = self.network_interface.selected_nodes_bounding_box_viewport(&self.breadcrumb_network_path);
 		let selected_visible_layers_bounding_box_viewport = self.selected_visible_layers_bounding_box_viewport();
 		match message {
 			// Sub-messages
 			DocumentMessage::Navigation(message) => {
-				let data = NavigationMessageData {
+				let context = NavigationMessageContext {
 					network_interface: &mut self.network_interface,
 					breadcrumb_network_path: &self.breadcrumb_network_path,
 					ipp,
@@ -201,7 +201,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					preferences,
 				};
 
-				self.navigation_handler.process_message(message, responses, data);
+				self.navigation_handler.process_message(message, responses, context);
 			}
 			DocumentMessage::Overlays(message) => {
 				let visibility_settings = self.overlays_visibility_settings;
@@ -210,7 +210,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.overlays_message_handler.process_message(
 					message,
 					responses,
-					OverlaysMessageData {
+					OverlaysMessageContext {
 						visibility_settings,
 						ipp,
 						device_pixel_ratio,
@@ -218,20 +218,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				);
 			}
 			DocumentMessage::PropertiesPanel(message) => {
-				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
+				let context = PropertiesPanelMessageContext {
 					network_interface: &mut self.network_interface,
 					selection_network_path: &self.selection_network_path,
 					document_name: self.name.as_str(),
 					executor,
+					persistent_data,
 				};
-				self.properties_panel_message_handler
-					.process_message(message, responses, (persistent_data, properties_panel_message_handler_data));
+				self.properties_panel_message_handler.process_message(message, responses, context);
 			}
 			DocumentMessage::NodeGraph(message) => {
 				self.node_graph_handler.process_message(
 					message,
 					responses,
-					NodeGraphHandlerData {
+					NodeGraphMessageContext {
 						network_interface: &mut self.network_interface,
 						selection_network_path: &self.selection_network_path,
 						breadcrumb_network_path: &self.breadcrumb_network_path,
@@ -246,13 +246,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				);
 			}
 			DocumentMessage::GraphOperation(message) => {
-				let data = GraphOperationMessageData {
+				let context = GraphOperationMessageContext {
 					network_interface: &mut self.network_interface,
 					collapsed: &mut self.collapsed,
 					node_graph: &mut self.node_graph_handler,
 				};
 				let mut graph_operation_message_handler = GraphOperationMessageHandler {};
-				graph_operation_message_handler.process_message(message, responses, data);
+				graph_operation_message_handler.process_message(message, responses, context);
 			}
 			DocumentMessage::AlignSelectedLayers { axis, aggregate } => {
 				let axis = match axis {

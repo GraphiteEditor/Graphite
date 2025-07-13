@@ -1,6 +1,6 @@
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
-use crate::messages::dialog::DialogMessageData;
-use crate::messages::portfolio::document::node_graph::document_node_definitions;
+use crate::messages::dialog::DialogMessageContext;
+use crate::messages::layout::layout_message_handler::LayoutMessageContext;
 use crate::messages::prelude::*;
 
 #[derive(Debug, Default)]
@@ -91,7 +91,7 @@ impl Dispatcher {
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T, process_after_all_current: bool) {
 		let message = message.into();
 		// Add all additional messages to the buffer if it exists (except from the end buffer message)
-		if !matches!(message, Message::EndBuffer(_)) {
+		if !matches!(message, Message::EndBuffer { .. }) {
 			if let Some(buffered_queue) = &mut self.buffered_queue {
 				Self::schedule_execution(buffered_queue, true, [message]);
 
@@ -126,10 +126,112 @@ impl Dispatcher {
 
 			// Process the action by forwarding it to the relevant message handler, or saving the FrontendMessage to be sent to the frontend
 			match message {
+				Message::Animation(message) => {
+					self.message_handlers.animation_message_handler.process_message(message, &mut queue, ());
+				}
+				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
+				Message::Debug(message) => {
+					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
+				}
+				Message::Dialog(message) => {
+					let context = DialogMessageContext {
+						portfolio: &self.message_handlers.portfolio_message_handler,
+						preferences: &self.message_handlers.preferences_message_handler,
+					};
+					self.message_handlers.dialog_message_handler.process_message(message, &mut queue, context);
+				}
+				Message::Frontend(message) => {
+					// Handle these messages immediately by returning early
+					if let FrontendMessage::TriggerFontLoad { .. } = message {
+						self.responses.push(message);
+						self.cleanup_queues(false);
+
+						// Return early to avoid running the code after the match block
+						return;
+					} else {
+						// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
+						self.responses.push(message);
+					}
+				}
+				Message::Globals(message) => {
+					self.message_handlers.globals_message_handler.process_message(message, &mut queue, ());
+				}
+				Message::InputPreprocessor(message) => {
+					let keyboard_platform = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
+
+					self.message_handlers
+						.input_preprocessor_message_handler
+						.process_message(message, &mut queue, InputPreprocessorMessageContext { keyboard_platform });
+				}
+				Message::KeyMapping(message) => {
+					let input = &self.message_handlers.input_preprocessor_message_handler;
+					let actions = self.collect_actions();
+
+					self.message_handlers
+						.key_mapping_message_handler
+						.process_message(message, &mut queue, KeyMappingMessageContext { input, actions });
+				}
+				Message::Layout(message) => {
+					let action_input_mapping = &|action_to_find: &MessageDiscriminant| self.message_handlers.key_mapping_message_handler.action_input_mapping(action_to_find);
+					let context = LayoutMessageContext { action_input_mapping };
+
+					self.message_handlers.layout_message_handler.process_message(message, &mut queue, context);
+				}
+				Message::Portfolio(message) => {
+					let ipp = &self.message_handlers.input_preprocessor_message_handler;
+					let preferences = &self.message_handlers.preferences_message_handler;
+					let current_tool = &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type;
+					let message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
+					let reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
+					let timing_information = self.message_handlers.animation_message_handler.timing_information();
+					let animation = &self.message_handlers.animation_message_handler;
+
+					self.message_handlers.portfolio_message_handler.process_message(
+						message,
+						&mut queue,
+						PortfolioMessageContext {
+							ipp,
+							preferences,
+							current_tool,
+							message_logging_verbosity,
+							reset_node_definitions_on_open,
+							timing_information,
+							animation,
+						},
+					);
+				}
+				Message::Preferences(message) => {
+					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());
+				}
+				Message::Tool(message) => {
+					let document_id = self.message_handlers.portfolio_message_handler.active_document_id().unwrap();
+					let Some(document) = self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id) else {
+						warn!("Called ToolMessage without an active document.\nGot {message:?}");
+						return;
+					};
+
+					let context = ToolMessageContext {
+						document_id,
+						document,
+						input: &self.message_handlers.input_preprocessor_message_handler,
+						persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
+						node_graph: &self.message_handlers.portfolio_message_handler.executor,
+						preferences: &self.message_handlers.preferences_message_handler,
+					};
+
+					self.message_handlers.tool_message_handler.process_message(message, &mut queue, context);
+				}
+				Message::Workspace(message) => {
+					self.message_handlers.workspace_message_handler.process_message(message, &mut queue, ());
+				}
+				Message::NoOp => {}
+				Message::Batched { messages } => {
+					messages.iter().for_each(|message| self.handle_message(message.to_owned(), false));
+				}
 				Message::StartBuffer => {
 					self.buffered_queue = Some(std::mem::take(&mut self.message_queues));
 				}
-				Message::EndBuffer(render_metadata) => {
+				Message::EndBuffer { render_metadata } => {
 					// Assign the message queue to the currently buffered queue
 					if let Some(buffered_queue) = self.buffered_queue.take() {
 						self.cleanup_queues(false);
@@ -156,124 +258,6 @@ impl Dispatcher {
 						DocumentMessage::UpdateClipTargets { clip_targets },
 					];
 					Self::schedule_execution(&mut self.message_queues, false, messages.map(Message::from));
-				}
-				Message::NoOp => {}
-				Message::Init => {
-					// Load persistent data from the browser database
-					queue.add(FrontendMessage::TriggerLoadFirstAutoSaveDocument);
-					queue.add(FrontendMessage::TriggerLoadPreferences);
-
-					// Display the menu bar at the top of the window
-					queue.add(MenuBarMessage::SendLayout);
-
-					// Send the information for tooltips and categories for each node/input.
-					queue.add(FrontendMessage::SendUIMetadata {
-						node_descriptions: document_node_definitions::collect_node_descriptions(),
-						node_types: document_node_definitions::collect_node_types(),
-					});
-
-					// Finish loading persistent data from the browser database
-					queue.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
-				}
-				Message::Animation(message) => {
-					self.message_handlers.animation_message_handler.process_message(message, &mut queue, ());
-				}
-				Message::Batched(messages) => {
-					messages.iter().for_each(|message| self.handle_message(message.to_owned(), false));
-				}
-				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
-				Message::Debug(message) => {
-					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
-				}
-				Message::Dialog(message) => {
-					let data = DialogMessageData {
-						portfolio: &self.message_handlers.portfolio_message_handler,
-						preferences: &self.message_handlers.preferences_message_handler,
-					};
-					self.message_handlers.dialog_message_handler.process_message(message, &mut queue, data);
-				}
-				Message::Frontend(message) => {
-					// Handle these messages immediately by returning early
-					if let FrontendMessage::TriggerFontLoad { .. } = message {
-						self.responses.push(message);
-						self.cleanup_queues(false);
-
-						// Return early to avoid running the code after the match block
-						return;
-					} else {
-						// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
-						self.responses.push(message);
-					}
-				}
-				Message::Globals(message) => {
-					self.message_handlers.globals_message_handler.process_message(message, &mut queue, ());
-				}
-				Message::InputPreprocessor(message) => {
-					let keyboard_platform = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
-
-					self.message_handlers
-						.input_preprocessor_message_handler
-						.process_message(message, &mut queue, InputPreprocessorMessageData { keyboard_platform });
-				}
-				Message::KeyMapping(message) => {
-					let input = &self.message_handlers.input_preprocessor_message_handler;
-					let actions = self.collect_actions();
-
-					self.message_handlers
-						.key_mapping_message_handler
-						.process_message(message, &mut queue, KeyMappingMessageData { input, actions });
-				}
-				Message::Layout(message) => {
-					let action_input_mapping = &|action_to_find: &MessageDiscriminant| self.message_handlers.key_mapping_message_handler.action_input_mapping(action_to_find);
-
-					self.message_handlers.layout_message_handler.process_message(message, &mut queue, action_input_mapping);
-				}
-				Message::Portfolio(message) => {
-					let ipp = &self.message_handlers.input_preprocessor_message_handler;
-					let preferences = &self.message_handlers.preferences_message_handler;
-					let current_tool = &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type;
-					let message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
-					let reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
-					let timing_information = self.message_handlers.animation_message_handler.timing_information();
-					let animation = &self.message_handlers.animation_message_handler;
-
-					self.message_handlers.portfolio_message_handler.process_message(
-						message,
-						&mut queue,
-						PortfolioMessageData {
-							ipp,
-							preferences,
-							current_tool,
-							message_logging_verbosity,
-							reset_node_definitions_on_open,
-							timing_information,
-							animation,
-						},
-					);
-				}
-				Message::Preferences(message) => {
-					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());
-				}
-				Message::Tool(message) => {
-					let document_id = self.message_handlers.portfolio_message_handler.active_document_id().unwrap();
-					let Some(document) = self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id) else {
-						warn!("Called ToolMessage without an active document.\nGot {message:?}");
-						return;
-					};
-
-					let data = ToolMessageData {
-						document_id,
-						document,
-						input: &self.message_handlers.input_preprocessor_message_handler,
-						persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
-						node_graph: &self.message_handlers.portfolio_message_handler.executor,
-						preferences: &self.message_handlers.preferences_message_handler,
-					};
-
-					self.message_handlers.tool_message_handler.process_message(message, &mut queue, data);
-				}
-				Message::Workspace(message) => {
-					self.message_handlers.workspace_message_handler.process_message(message, &mut queue, ());
 				}
 			}
 

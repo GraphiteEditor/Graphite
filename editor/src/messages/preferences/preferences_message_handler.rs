@@ -46,7 +46,7 @@ impl Default for PreferencesMessageHandler {
 
 #[message_handler_data]
 impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
-	fn process_message(&mut self, message: PreferencesMessage, responses: &mut VecDeque<Message>, _data: ()) {
+	fn process_message(&mut self, message: PreferencesMessage, responses: &mut VecDeque<Message>, _: ()) {
 		match message {
 			// Management messages
 			PreferencesMessage::Load { preferences } => {
