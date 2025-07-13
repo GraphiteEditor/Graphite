@@ -316,7 +316,7 @@
 		e.preventDefault();
 
 		// Get the event target and set the requestPointerLock immediately
-		// Safari and Firefox Nightly require requestPointerLock() to be called directly inside the pointerdown handler instead of later in beginDrag().
+		// Safari seems to require requestPointerLock() to be called directly inside the pointerdown handler instead of later in beginDrag().
 		const target = e.target || undefined;
 		if (!(target instanceof HTMLElement)) return;
 
