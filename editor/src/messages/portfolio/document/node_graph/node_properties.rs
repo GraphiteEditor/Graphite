@@ -59,13 +59,13 @@ pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphData
 		} else {
 			"Expose this parameter as a node input in the graph"
 		})
-		.on_update(move |_parameter| {
-			Message::Batched(Box::new([NodeGraphMessage::ExposeInput {
+		.on_update(move |_parameter| Message::Batched {
+			messages: Box::new([NodeGraphMessage::ExposeInput {
 				input_connector: InputConnector::node(node_id, index),
 				set_to_exposed: !exposed,
 				start_transaction: true,
 			}
-			.into()]))
+			.into()]),
 		})
 		.widget_holder()
 }
@@ -1307,8 +1307,8 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 		// Uniform/individual radio input widget
 		let uniform = RadioEntryData::new("Uniform")
 			.label("Uniform")
-			.on_update(move |_| {
-				Message::Batched(Box::new([
+			.on_update(move |_| Message::Batched {
+				messages: Box::new([
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: IndividualCornerRadiiInput::INDEX,
@@ -1321,13 +1321,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 						value: TaggedValue::F64(uniform_val),
 					}
 					.into(),
-				]))
+				]),
 			})
 			.on_commit(commit_value);
 		let individual = RadioEntryData::new("Individual")
 			.label("Individual")
-			.on_update(move |_| {
-				Message::Batched(Box::new([
+			.on_update(move |_| Message::Batched {
+				messages: Box::new([
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: IndividualCornerRadiiInput::INDEX,
@@ -1340,7 +1340,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 						value: TaggedValue::F64Array4(individual_val),
 					}
 					.into(),
-				]))
+				]),
 			})
 			.on_commit(commit_value);
 		let radio_input = RadioInput::new(vec![uniform, individual]).selected_index(Some(is_individual as u32)).widget_holder();
@@ -1539,8 +1539,8 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	widgets_first_row.push(
 		ColorInput::default()
 			.value(fill.clone().into())
-			.on_update(move |x: &ColorInput| {
-				Message::Batched(Box::new([
+			.on_update(move |x: &ColorInput| Message::Batched {
+				messages: Box::new([
 					match &fill2 {
 						Fill::None => NodeGraphMessage::SetInputValue {
 							node_id,
@@ -1567,7 +1567,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						value: TaggedValue::Fill(x.value.to_fill(fill2.as_gradient())),
 					}
 					.into(),
-				]))
+				]),
 			})
 			.on_commit(commit_value)
 			.widget_holder(),

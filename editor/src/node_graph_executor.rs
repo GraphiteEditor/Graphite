@@ -53,7 +53,7 @@ pub enum NodeGraphUpdate {
 	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct NodeGraphExecutor {
 	runtime_io: NodeRuntimeIO,
 	futures: HashMap<u64, ExecutionContext>,
@@ -64,17 +64,6 @@ pub struct NodeGraphExecutor {
 #[derive(Debug, Clone)]
 struct ExecutionContext {
 	export_config: Option<ExportConfig>,
-}
-
-impl Default for NodeGraphExecutor {
-	fn default() -> Self {
-		Self {
-			futures: Default::default(),
-			runtime_io: NodeRuntimeIO::new(),
-			node_graph_hash: 0,
-			old_inspect_node: None,
-		}
-	}
 }
 
 impl NodeGraphExecutor {
@@ -394,7 +383,9 @@ impl NodeGraphExecutor {
 				return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
 			}
 		};
-		responses.add(Message::EndBuffer(render_output_metadata));
+		responses.add(Message::EndBuffer {
+			render_metadata: render_output_metadata,
+		});
 		responses.add(DocumentMessage::RenderScrollbars);
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);

@@ -21,6 +21,14 @@ const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayer
 const SLOW_KEY: Key = Key::Shift;
 const INCREMENTS_KEY: Key = Key::Control;
 
+#[derive(ExtractField)]
+pub struct TransformLayerMessageContext<'a> {
+	pub document: &'a DocumentMessageHandler,
+	pub input: &'a InputPreprocessorMessageHandler,
+	pub tool_data: &'a ToolData,
+	pub shape_editor: &'a mut ShapeState,
+}
+
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct TransformLayerMessageHandler {
 	pub transform_operation: TransformOperation,
@@ -55,148 +63,15 @@ pub struct TransformLayerMessageHandler {
 	grs_pen_handle: bool,
 }
 
-impl TransformLayerMessageHandler {
-	pub fn is_transforming(&self) -> bool {
-		self.transform_operation != TransformOperation::None
-	}
+impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for TransformLayerMessageHandler {
+	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, context: TransformLayerMessageContext) {
+		let TransformLayerMessageContext {
+			document,
+			input,
+			tool_data,
+			shape_editor,
+		} = context;
 
-	pub fn hints(&self, responses: &mut VecDeque<Message>) {
-		self.transform_operation.hints(responses, self.local);
-	}
-}
-
-fn calculate_pivot(
-	document: &DocumentMessageHandler,
-	selected_points: &Vec<&ManipulatorPointId>,
-	vector_data: &VectorData,
-	viewspace: DAffine2,
-	get_location: impl Fn(&ManipulatorPointId) -> Option<DVec2>,
-	gizmo: &mut PivotGizmo,
-) -> (Option<(DVec2, DVec2)>, Option<[DVec2; 2]>) {
-	let average_position = || {
-		let mut point_count = 0_usize;
-		selected_points.iter().filter_map(|p| get_location(p)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64
-	};
-	let bounds = selected_points.iter().filter_map(|p| get_location(p)).fold(None, |acc: Option<[DVec2; 2]>, point| {
-		if let Some([mut min, mut max]) = acc {
-			min.x = min.x.min(point.x);
-			min.y = min.y.min(point.y);
-			max.x = max.x.max(point.x);
-			max.y = max.y.max(point.y);
-			Some([min, max])
-		} else {
-			Some([point, point])
-		}
-	});
-	gizmo.pivot.recalculate_pivot_for_layer(document, bounds);
-	let position = || {
-		(if !gizmo.state.disabled {
-			match gizmo.state.gizmo_type {
-				PivotGizmoType::Average => None,
-				PivotGizmoType::Active => gizmo.point.and_then(|p| get_location(&p)),
-				PivotGizmoType::Pivot => gizmo.pivot.pivot,
-			}
-		} else {
-			None
-		})
-		.unwrap_or_else(average_position)
-	};
-	let [point] = selected_points.as_slice() else {
-		// Handle the case where there are multiple points
-		let position = position();
-		return (Some((position, position)), bounds);
-	};
-
-	match point {
-		ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
-			// Get the anchor position and transform it to the pivot
-			let (Some(pivot_position), Some(position)) = (
-				point.get_anchor_position(vector_data).map(|anchor_position| viewspace.transform_point2(anchor_position)),
-				point.get_position(vector_data),
-			) else {
-				return (None, None);
-			};
-			let target = viewspace.transform_point2(position);
-			(Some((pivot_position, target)), None)
-		}
-		_ => {
-			// Calculate the average position of all selected points
-			let position = position();
-			(Some((position, position)), bounds)
-		}
-	}
-}
-
-fn project_edge_to_quad(edge: DVec2, quad: &Quad, local: bool, axis_constraint: Axis) -> DVec2 {
-	match axis_constraint {
-		Axis::X => {
-			if local {
-				edge.project_onto(quad.top_right() - quad.top_left())
-			} else {
-				edge.with_y(0.)
-			}
-		}
-		Axis::Y => {
-			if local {
-				edge.project_onto(quad.bottom_left() - quad.top_left())
-			} else {
-				edge.with_x(0.)
-			}
-		}
-		_ => edge,
-	}
-}
-
-fn update_colinear_handles(selected_layers: &[LayerNodeIdentifier], document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-	for &layer in selected_layers {
-		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
-
-		for [handle1, handle2] in &vector_data.colinear_manipulators {
-			let manipulator1 = handle1.to_manipulator_point();
-			let manipulator2 = handle2.to_manipulator_point();
-
-			let Some(anchor) = manipulator1.get_anchor_position(&vector_data) else { continue };
-			let Some(pos1) = manipulator1.get_position(&vector_data).map(|pos| pos - anchor) else { continue };
-			let Some(pos2) = manipulator2.get_position(&vector_data).map(|pos| pos - anchor) else { continue };
-
-			let angle = pos1.angle_to(pos2);
-
-			// Check if handles are not colinear (not approximately equal to +/- PI)
-			if (angle - PI).abs() > 1e-6 && (angle + PI).abs() > 1e-6 {
-				let modification_type = VectorModificationType::SetG1Continuous {
-					handles: [*handle1, *handle2],
-					enabled: false,
-				};
-
-				responses.add(GraphOperationMessage::Vector { layer, modification_type });
-			}
-		}
-	}
-}
-
-type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessageHandler, &'a ToolData, &'a mut ShapeState);
-
-pub fn custom_data() -> MessageData {
-	MessageData::new(
-		String::from("TransformData<'a>"),
-		// TODO: When <https://github.com/dtolnay/proc-macro2/issues/503> is resolved and released,
-		// TODO: use <https://doc.rust-lang.org/stable/proc_macro/struct.Span.html#method.line> to get
-		// TODO: the line number instead of hardcoding it to the magic number on the following lines
-		// TODO: which points to the line of the `type TransformData<'a> = ...` definition above.
-		// TODO: Also, utilize the line number in the actual output, since it is currently unused.
-		vec![
-			(String::from("&'a DocumentMessageHandler"), 177),
-			(String::from("&'a InputPreprocessorMessageHandler"), 177),
-			(String::from("&'a ToolData"), 177),
-			(String::from("&'a mut ShapeState"), 177),
-		],
-		file!(),
-	)
-}
-
-#[message_handler_data(CustomData)]
-impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayerMessageHandler {
-	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, input, tool_data, shape_editor): TransformData) {
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
 		let using_select_tool = tool_data.active_tool_type == ToolType::Select;
 		let using_pen_tool = tool_data.active_tool_type == ToolType::Pen;
@@ -771,6 +646,125 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 		}
 
 		common
+	}
+}
+
+impl TransformLayerMessageHandler {
+	pub fn is_transforming(&self) -> bool {
+		self.transform_operation != TransformOperation::None
+	}
+
+	pub fn hints(&self, responses: &mut VecDeque<Message>) {
+		self.transform_operation.hints(responses, self.local);
+	}
+}
+
+fn calculate_pivot(
+	document: &DocumentMessageHandler,
+	selected_points: &Vec<&ManipulatorPointId>,
+	vector_data: &VectorData,
+	viewspace: DAffine2,
+	get_location: impl Fn(&ManipulatorPointId) -> Option<DVec2>,
+	gizmo: &mut PivotGizmo,
+) -> (Option<(DVec2, DVec2)>, Option<[DVec2; 2]>) {
+	let average_position = || {
+		let mut point_count = 0_usize;
+		selected_points.iter().filter_map(|p| get_location(p)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64
+	};
+	let bounds = selected_points.iter().filter_map(|p| get_location(p)).fold(None, |acc: Option<[DVec2; 2]>, point| {
+		if let Some([mut min, mut max]) = acc {
+			min.x = min.x.min(point.x);
+			min.y = min.y.min(point.y);
+			max.x = max.x.max(point.x);
+			max.y = max.y.max(point.y);
+			Some([min, max])
+		} else {
+			Some([point, point])
+		}
+	});
+	gizmo.pivot.recalculate_pivot_for_layer(document, bounds);
+	let position = || {
+		(if !gizmo.state.disabled {
+			match gizmo.state.gizmo_type {
+				PivotGizmoType::Average => None,
+				PivotGizmoType::Active => gizmo.point.and_then(|p| get_location(&p)),
+				PivotGizmoType::Pivot => gizmo.pivot.pivot,
+			}
+		} else {
+			None
+		})
+		.unwrap_or_else(average_position)
+	};
+	let [point] = selected_points.as_slice() else {
+		// Handle the case where there are multiple points
+		let position = position();
+		return (Some((position, position)), bounds);
+	};
+
+	match point {
+		ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
+			// Get the anchor position and transform it to the pivot
+			let (Some(pivot_position), Some(position)) = (
+				point.get_anchor_position(vector_data).map(|anchor_position| viewspace.transform_point2(anchor_position)),
+				point.get_position(vector_data),
+			) else {
+				return (None, None);
+			};
+			let target = viewspace.transform_point2(position);
+			(Some((pivot_position, target)), None)
+		}
+		_ => {
+			// Calculate the average position of all selected points
+			let position = position();
+			(Some((position, position)), bounds)
+		}
+	}
+}
+
+fn project_edge_to_quad(edge: DVec2, quad: &Quad, local: bool, axis_constraint: Axis) -> DVec2 {
+	match axis_constraint {
+		Axis::X => {
+			if local {
+				edge.project_onto(quad.top_right() - quad.top_left())
+			} else {
+				edge.with_y(0.)
+			}
+		}
+		Axis::Y => {
+			if local {
+				edge.project_onto(quad.bottom_left() - quad.top_left())
+			} else {
+				edge.with_x(0.)
+			}
+		}
+		_ => edge,
+	}
+}
+
+fn update_colinear_handles(selected_layers: &[LayerNodeIdentifier], document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	for &layer in selected_layers {
+		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+
+		for [handle1, handle2] in &vector_data.colinear_manipulators {
+			let manipulator1 = handle1.to_manipulator_point();
+			let manipulator2 = handle2.to_manipulator_point();
+
+			let Some(anchor) = manipulator1.get_anchor_position(&vector_data) else { continue };
+			let Some(pos1) = manipulator1.get_position(&vector_data).map(|pos| pos - anchor) else { continue };
+			let Some(pos2) = manipulator2.get_position(&vector_data).map(|pos| pos - anchor) else { continue };
+
+			let angle = pos1.angle_to(pos2);
+
+			// Check if handles are not colinear (not approximately equal to +/- PI)
+			if (angle - PI).abs() > 1e-6 && (angle + PI).abs() > 1e-6 {
+				let modification_type = VectorModificationType::SetG1Continuous {
+					handles: [*handle1, *handle2],
+					enabled: false,
+				};
+
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			}
+		}
 	}
 }
 

@@ -1,7 +1,5 @@
 mod properties_panel_message;
-mod properties_panel_message_handler;
-
-pub mod utility_types;
+pub mod properties_panel_message_handler;
 
 #[doc(inline)]
 pub use properties_panel_message::{PropertiesPanelMessage, PropertiesPanelMessageDiscriminant};

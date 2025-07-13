@@ -1,19 +1,20 @@
 use super::common_functionality::shape_editor::ShapeState;
 use super::common_functionality::shapes::shape_utility::ShapeType::{self, Ellipse, Line, Rectangle};
-use super::utility_types::{ToolActionHandlerData, ToolFsmState, tool_message_to_tool_type};
+use super::utility_types::{ToolActionMessageContext, ToolFsmState, tool_message_to_tool_type};
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
+use crate::messages::tool::transform_layer::transform_layer_message_handler::TransformLayerMessageContext;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use graphene_std::raster::color::Color;
 
-const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |context| DocumentMessage::DrawArtboardOverlays(context).into();
+const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |overlay_context| DocumentMessage::DrawArtboardOverlays(overlay_context).into();
 
 #[derive(ExtractField)]
-pub struct ToolMessageData<'a> {
+pub struct ToolMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub document: &'a mut DocumentMessageHandler,
 	pub input: &'a InputPreprocessorMessageHandler,
@@ -31,23 +32,30 @@ pub struct ToolMessageHandler {
 }
 
 #[message_handler_data]
-impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, data: ToolMessageData) {
-		let ToolMessageData {
+impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: ToolMessageContext) {
+		let ToolMessageContext {
 			document_id,
 			document,
 			input,
 			persistent_data,
 			node_graph,
 			preferences,
-		} = data;
+		} = context;
 		let font_cache = &persistent_data.font_cache;
 
 		match message {
 			// Messages
-			ToolMessage::TransformLayer(message) => self
-				.transform_layer_handler
-				.process_message(message, responses, (document, input, &self.tool_state.tool_data, &mut self.shape_editor)),
+			ToolMessage::TransformLayer(message) => self.transform_layer_handler.process_message(
+				message,
+				responses,
+				TransformLayerMessageContext {
+					document,
+					input,
+					tool_data: &self.tool_state.tool_data,
+					shape_editor: &mut self.shape_editor,
+				},
+			),
 
 			ToolMessage::ActivateToolSelect => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Select }),
 			ToolMessage::ActivateToolArtboard => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Artboard }),
@@ -106,7 +114,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				// Send the old and new tools a transition to their FSM Abort states
 				let mut send_abort_to_tool = |old_tool: ToolType, new_tool: ToolType, update_hints_and_cursor: bool| {
 					if let Some(tool) = tool_data.tools.get_mut(&new_tool) {
-						let mut data = ToolActionHandlerData {
+						let mut data = ToolActionMessageContext {
 							document,
 							document_id,
 							global_tool_data: &self.tool_state.document_tool_data,
@@ -206,7 +214,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				// Notify the frontend about the initial working colors
 				document_data.update_working_colors(responses);
 
-				let mut data = ToolActionHandlerData {
+				let mut data = ToolActionMessageContext {
 					document,
 					document_id,
 					global_tool_data: &self.tool_state.document_tool_data,
@@ -302,7 +310,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 					let graph_view_overlay_open = document.graph_view_overlay_open();
 
 					if tool_type == tool_data.active_tool_type {
-						let mut data = ToolActionHandlerData {
+						let mut data = ToolActionMessageContext {
 							document,
 							document_id,
 							global_tool_data: &self.tool_state.document_tool_data,

@@ -22,14 +22,14 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 		None => return Err(syn::Error::new(Span::call_site(), "Expected trait implementation")),
 	};
 
-	// Get the trait generics (should be MessageHandler<M, D>)
+	// Get the trait generics (should be MessageHandler<M, C>)
 	if let Some(segment) = trait_path.segments.last() {
 		if segment.ident != "MessageHandler" {
 			return Err(syn::Error::new(segment.ident.span(), "Expected MessageHandler trait"));
 		}
 		if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
 			if args.args.len() >= 2 {
-				// Extract the message type (M) and data type (D) from the trait params
+				// Extract the message type (M) and context struct type (C) from the trait params
 				let message_type = &args.args[0];
 				let data_type = &args.args[1];
 
