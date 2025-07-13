@@ -33,9 +33,6 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 				let message_type = &args.args[0];
 				let data_type = &args.args[1];
 
-				// Check if the attribute is "CustomData"
-				let is_custom_data = attr.to_string().contains("CustomData");
-
 				let impl_item = match data_type {
 					syn::GenericArgument::Type(t) => {
 						match t {
@@ -43,32 +40,17 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 								// Get just the base identifier (ToolMessageData) without generics
 								let type_name = &type_path.path.segments.first().unwrap().ident;
 
-								if is_custom_data {
-									quote! {
-										#input_item
-										impl #message_type {
-											pub fn message_handler_data_str() -> MessageData {
-												custom_data()
-											}
-											pub fn message_handler_str() -> MessageData {
-												MessageData::new(format!("{}",stringify!(#input_type)), #input_type::field_types(), #input_type::path())
+								quote! {
+									#input_item
+									impl #message_type {
+										pub fn message_handler_data_str() -> MessageData
+											{
+											MessageData::new(format!("{}", stringify!(#type_name)), #type_name::field_types(), #type_name::path())
 
-											}
 										}
-									}
-								} else {
-									quote! {
-										#input_item
-										impl #message_type {
-											pub fn message_handler_data_str() -> MessageData
-											 {
-												MessageData::new(format!("{}",stringify!(#type_name)), #type_name::field_types(), #type_name::path())
+										pub fn message_handler_str() -> MessageData {
+											MessageData::new(format!("{}", stringify!(#input_type)), #input_type::field_types(), #input_type::path())
 
-											}
-											pub fn message_handler_str() -> MessageData {
-												MessageData::new(format!("{}",stringify!(#input_type)), #input_type::field_types(), #input_type::path())
-
-											}
 										}
 									}
 								}
@@ -77,7 +59,7 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 								#input_item
 								impl #message_type {
 										pub fn message_handler_str() -> MessageData {
-											MessageData::new(format!("{}",stringify!(#input_type)), #input_type::field_types(), #input_type::path())
+											MessageData::new(format!("{}", stringify!(#input_type)), #input_type::field_types(), #input_type::path())
 										}
 									}
 							},
@@ -92,11 +74,11 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 									#input_item
 									impl #message_type {
 										pub fn message_handler_data_str() -> MessageData {
-											MessageData::new(format!("{}", #tr),#type_ident::field_types(), #type_ident::path())
+											MessageData::new(format!("{}", #tr), #type_ident::field_types(), #type_ident::path())
 										}
 
 										pub fn message_handler_str() -> MessageData {
-											MessageData::new(format!("{}",stringify!(#input_type)), #input_type::field_types(), #input_type::path())
+											MessageData::new(format!("{}", stringify!(#input_type)), #input_type::field_types(), #input_type::path())
 
 										}
 									}
