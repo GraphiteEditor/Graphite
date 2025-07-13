@@ -1785,7 +1785,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 			let dot_product = v1.dot(v2);
 			let angle_rad = dot_product.acos();
 
-			return bevel_length / (2.0 * (angle_rad / 2.).sin());
+			return bevel_length / (2. * (angle_rad / 2.).sin());
 		}
 
 		let length1 = bezier1.perimeter(DEFAULT_ACCURACY);
@@ -2347,7 +2347,7 @@ mod test {
 	#[tokio::test]
 	async fn bevel_rect() {
 		let source = Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.);
-		let beveled = super::bevel(Footprint::default(), vector_node(source), 2.0f64.sqrt() * 10.);
+		let beveled = super::bevel(Footprint::default(), vector_node(source), 2_f64.sqrt() * 10.);
 		let beveled = beveled.instance_ref_iter().next().unwrap().instance;
 
 		assert_eq!(beveled.point_domain.positions().len(), 8);
@@ -2370,7 +2370,7 @@ mod test {
 	async fn bevel_open_curve() {
 		let curve = Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::new(10., 0.), DVec2::new(10., 100.), DVec2::X * 100.);
 		let source = Subpath::from_beziers(&[Bezier::from_linear_dvec2(DVec2::X * -100., DVec2::ZERO), curve], false);
-		let beveled = super::bevel((), vector_node(source), 2.0f64.sqrt() * 10.);
+		let beveled = super::bevel((), vector_node(source), 2_f64.sqrt() * 10.);
 		let beveled = beveled.instance_ref_iter().next().unwrap().instance;
 
 		assert_eq!(beveled.point_domain.positions().len(), 4);
@@ -2394,7 +2394,7 @@ mod test {
 
 		*vector_data_table.get_mut(0).unwrap().transform = DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.));
 
-		let beveled = super::bevel((), VectorDataTable::new(vector_data), 2.0f64.sqrt() * 10.);
+		let beveled = super::bevel((), VectorDataTable::new(vector_data), 2_f64.sqrt() * 10.);
 		let beveled = beveled.instance_ref_iter().next().unwrap().instance;
 
 		assert_eq!(beveled.point_domain.positions().len(), 4);
