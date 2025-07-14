@@ -24,11 +24,12 @@ use std::f64::consts::{PI, TAU};
 pub enum ShapeType {
 	#[default]
 	Polygon = 0,
-	Star,
-	Arc,
-	Rectangle,
-	Ellipse,
-	Line,
+	Star = 1,
+	Circle = 2,
+	Arc = 3,
+	Rectangle = 4,
+	Ellipse = 5,
+	Line = 6,
 }
 
 impl ShapeType {
@@ -40,6 +41,7 @@ impl ShapeType {
 			Self::Rectangle => "Rectangle",
 			Self::Ellipse => "Ellipse",
 			Self::Line => "Line",
+			Self::Circle => "Circle",
 		})
 		.into()
 	}
@@ -277,6 +279,19 @@ pub fn arc_end_points_ignore_layer(radius: f64, start_angle: f64, sweep_angle: f
 }
 
 /// Calculate the viewport position of a star vertex given its index
+/// Extract the node input values of Circle.
+/// Returns an option of (radius).
+pub fn extract_circle_radius(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<f64> {
+	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Circle")?;
+
+	let Some(&TaggedValue::F64(radius)) = node_inputs.get(1)?.as_value() else {
+		return None;
+	};
+
+	Some(radius)
+}
+
+/// Calculate the viewport position of as a star vertex given its index
 pub fn star_vertex_position(viewport: DAffine2, vertex_index: i32, n: u32, radius1: f64, radius2: f64) -> DVec2 {
 	let angle = ((vertex_index as f64) * PI) / (n as f64);
 	let radius = if vertex_index % 2 == 0 { radius1 } else { radius2 };

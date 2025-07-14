@@ -294,6 +294,73 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
+	pub fn dashed_circle(
+		&mut self,
+		position: DVec2,
+		radius: f64,
+		color_fill: Option<&str>,
+		color_stroke: Option<&str>,
+		dash_width: Option<f64>,
+		dash_gap_width: Option<f64>,
+		dash_offset: Option<f64>,
+		transform: Option<DAffine2>,
+	) {
+		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
+		let position = position.round();
+
+		self.start_dpi_aware_transform();
+
+		if let Some(transform) = transform {
+			let [a, b, c, d, e, f] = transform.to_cols_array();
+			self.render_context.transform(a, b, c, d, e, f).expect("Failed to transform circle");
+		}
+
+		if let Some(dash_width) = dash_width {
+			let dash_gap_width = dash_gap_width.unwrap_or(1.);
+			let array = js_sys::Array::new();
+			array.push(&JsValue::from(dash_width));
+			array.push(&JsValue::from(dash_gap_width));
+
+			if let Some(dash_offset) = dash_offset {
+				if dash_offset != 0. {
+					self.render_context.set_line_dash_offset(dash_offset);
+				}
+			}
+
+			self.render_context
+				.set_line_dash(&JsValue::from(array))
+				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
+				.ok();
+		}
+
+		self.render_context.begin_path();
+		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
+		self.render_context.set_stroke_style_str(color_stroke);
+
+		if let Some(fill_color) = color_fill {
+			self.render_context.set_fill_style_str(fill_color);
+			self.render_context.fill();
+		}
+		self.render_context.stroke();
+
+		// Reset the dash pattern back to solid
+		if dash_width.is_some() {
+			self.render_context
+				.set_line_dash(&JsValue::from(js_sys::Array::new()))
+				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
+				.ok();
+		}
+		if dash_offset.is_some() && dash_offset != Some(0.) {
+			self.render_context.set_line_dash_offset(0.);
+		}
+
+		self.end_dpi_aware_transform();
+	}
+
+	pub fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
+		self.dashed_circle(position, radius, color_fill, color_stroke, None, None, None, None);
+	}
+
 	pub fn manipulator_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
 		self.start_dpi_aware_transform();
 
@@ -370,23 +437,6 @@ impl OverlayContext {
 		self.render_context.rect(corner.x, corner.y, size, size);
 		self.render_context.set_fill_style_str(color_fill);
 		self.render_context.fill();
-
-		self.end_dpi_aware_transform();
-	}
-
-	pub fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
-		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
-		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
-		let position = position.round();
-
-		self.start_dpi_aware_transform();
-
-		self.render_context.begin_path();
-		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
-		self.render_context.set_fill_style_str(color_fill);
-		self.render_context.set_stroke_style_str(color_stroke);
-		self.render_context.fill();
-		self.render_context.stroke();
 
 		self.end_dpi_aware_transform();
 	}

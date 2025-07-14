@@ -4,6 +4,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::circle_radius_handle::{RadiusHandle, RadiusHandleState};
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::sweep_angle_gizmo::{SweepAngleGizmo, SweepAngleGizmoState};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, arc_outline};
@@ -17,6 +18,7 @@ use std::collections::VecDeque;
 #[derive(Clone, Debug, Default)]
 pub struct ArcGizmoHandler {
 	sweep_angle_gizmo: SweepAngleGizmo,
+	arc_radius_handle: RadiusHandle,
 }
 
 impl ArcGizmoHandler {
@@ -26,23 +28,32 @@ impl ArcGizmoHandler {
 }
 
 impl ShapeGizmoHandler for ArcGizmoHandler {
-	fn handle_state(&mut self, selected_shape_layers: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		self.sweep_angle_gizmo.handle_actions(selected_shape_layers, document, mouse_position, responses);
+	fn handle_state(&mut self, selected_shape_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		self.sweep_angle_gizmo.handle_actions(selected_shape_layer, document, mouse_position, responses);
+		self.arc_radius_handle.handle_actions(selected_shape_layer, document, mouse_position, responses);
 	}
 
 	fn is_any_gizmo_hovered(&self) -> bool {
-		self.sweep_angle_gizmo.hovered()
+		self.sweep_angle_gizmo.hovered() || self.arc_radius_handle.hovered()
 	}
 
 	fn handle_click(&mut self) {
 		if self.sweep_angle_gizmo.hovered() {
 			self.sweep_angle_gizmo.update_state(SweepAngleGizmoState::Dragging);
 		}
+
+		if self.arc_radius_handle.hovered() {
+			self.arc_radius_handle.update_state(RadiusHandleState::Dragging);
+		}
 	}
 
-	fn handle_update(&mut self, _drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		if self.sweep_angle_gizmo.is_dragging_or_snapped() {
 			self.sweep_angle_gizmo.update_arc(document, input, responses);
+		}
+
+		if self.arc_radius_handle.is_dragging_or_snapped() {
+			self.arc_radius_handle.update_inner_radius(document, input, responses, drag_start);
 		}
 	}
 
@@ -58,6 +69,10 @@ impl ShapeGizmoHandler for ArcGizmoHandler {
 			self.sweep_angle_gizmo.overlays(None, document, input, mouse_position, overlay_context);
 			arc_outline(self.sweep_angle_gizmo.layer, document, overlay_context);
 		}
+
+		if self.arc_radius_handle.is_dragging_or_snapped() {
+			self.arc_radius_handle.overlays(document, overlay_context);
+		}
 	}
 
 	fn overlays(
@@ -70,12 +85,14 @@ impl ShapeGizmoHandler for ArcGizmoHandler {
 		overlay_context: &mut crate::messages::portfolio::document::overlays::utility_types::OverlayContext,
 	) {
 		self.sweep_angle_gizmo.overlays(selected_shape_layers, document, input, mouse_position, overlay_context);
+		self.arc_radius_handle.overlays(document, overlay_context);
 
 		arc_outline(selected_shape_layers.or(self.sweep_angle_gizmo.layer), document, overlay_context);
 	}
 
 	fn cleanup(&mut self) {
 		self.sweep_angle_gizmo.cleanup();
+		self.arc_radius_handle.cleanup();
 	}
 }
 #[derive(Default)]
