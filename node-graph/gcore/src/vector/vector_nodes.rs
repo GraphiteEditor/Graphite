@@ -2041,7 +2041,7 @@ fn point_inside(_: impl Ctx, source: VectorDataTable, point: DVec2) -> bool {
 
 #[node_macro::node(category("General"), path(graphene_core::vector))]
 async fn count_elements<I>(_: impl Ctx, #[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>, RasterDataTable<GPU>)] source: Instances<I>) -> u64 {
-	source.instance_iter().count() as u64
+	source.len() as u64
 }
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]

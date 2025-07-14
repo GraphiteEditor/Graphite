@@ -329,7 +329,7 @@ impl TextToolData {
 	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler) -> Option<()> {
 		let transform = document.metadata().transform_to_viewport(self.layer);
 		let color = graph_modification_utils::get_fill_color(self.layer, &document.network_interface).unwrap_or(Color::BLACK);
-		let (text, font, typesetting) = graph_modification_utils::get_text(self.layer, &document.network_interface)?;
+		let (text, font, typesetting, _) = graph_modification_utils::get_text(self.layer, &document.network_interface)?;
 		self.editing_text = Some(EditingText {
 			text: text.clone(),
 			font: font.clone(),
@@ -524,7 +524,7 @@ impl Fsm for TextToolFsmState {
 						bounding_box_manager.render_quad(&mut overlay_context);
 						// Draw red overlay if text is clipped
 						let transformed_quad = layer_transform * bounds;
-						if let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
+						if let Some((text, font, typesetting, _)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
 							let font_data = font_cache.get(font).map(|data| load_font(data));
 							if lines_clipping(text.as_str(), font_data, typesetting) {
 								overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));

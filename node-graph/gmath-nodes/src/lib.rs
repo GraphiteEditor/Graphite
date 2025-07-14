@@ -462,6 +462,80 @@ fn clamp<T: std::cmp::PartialOrd>(
 	}
 }
 
+/// The greatest common divisor (GCD) calculates the largest positive integer that divides both of the two input numbers without leaving a remainder.
+#[node_macro::node(category("Math: Numeric"))]
+fn greatest_common_divisor<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32> + std::ops::SubAssign>(
+	_: impl Ctx,
+	/// One of the two numbers for which the GCD will be calculated.
+	#[implementations(u32, u64, i32)]
+	value: T,
+	/// The other of the two numbers for which the GCD will be calculated.
+	#[implementations(u32, u64, i32)]
+	other_value: T,
+) -> T {
+	if value == T::zero() {
+		return other_value;
+	}
+	if other_value == T::zero() {
+		return value;
+	}
+	binary_gcd(value, other_value)
+}
+
+/// The least common multiple (LCM) calculates the smallest positive integer that is a multiple of both of the two input numbers.
+#[node_macro::node(category("Math: Numeric"))]
+fn least_common_multiple<T: num_traits::ToPrimitive + num_traits::FromPrimitive + num_traits::identities::Zero>(
+	_: impl Ctx,
+	/// One of the two numbers for which the LCM will be calculated.
+	#[implementations(u32, u64, i32)]
+	value: T,
+	/// The other of the two numbers for which the LCM will be calculated.
+	#[implementations(u32, u64, i32)]
+	other_value: T,
+) -> T {
+	let value = value.to_i128().unwrap();
+	let other_value = other_value.to_i128().unwrap();
+
+	if value == 0 || other_value == 0 {
+		return T::zero();
+	}
+	let gcd = binary_gcd(value, other_value);
+
+	T::from_i128((value * other_value).abs() / gcd).unwrap()
+}
+
+fn binary_gcd<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32> + std::ops::SubAssign>(mut a: T, mut b: T) -> T {
+	if a == T::zero() {
+		return b;
+	}
+	if b == T::zero() {
+		return a;
+	}
+
+	let mut shift = 0;
+	while (a | b) & T::one() == T::zero() {
+		a >>= 1;
+		b >>= 1;
+		shift += 1;
+	}
+
+	while a & T::one() == T::zero() {
+		a >>= 1;
+	}
+
+	while b != T::zero() {
+		while b & T::one() == T::zero() {
+			b >>= 1;
+		}
+		if a > b {
+			std::mem::swap(&mut a, &mut b);
+		}
+		b -= a;
+	}
+
+	a << shift
+}
+
 /// The equality operation (==) compares two values and returns true if they are equal, or false if they are not.
 #[node_macro::node(category("Math: Logic"))]
 fn equals<U: std::cmp::PartialEq<T>, T>(
