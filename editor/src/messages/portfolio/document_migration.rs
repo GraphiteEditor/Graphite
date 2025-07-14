@@ -969,6 +969,19 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
+	// Add the "Depth" parameter to the "Instance Index" node
+	if reference == "Instance Index" && inputs_count == 0 {
+		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		document.network_interface.add_import(TaggedValue::None, false, 0, "Primary", "", &[*node_id]);
+		document.network_interface.add_import(TaggedValue::U32(0), false, 1, "Loop Level", "TODO", &[*node_id]);
+	}
+
+	// ==================================
+	// PUT ALL MIGRATIONS ABOVE THIS LINE
+	// ==================================
+
 	// Ensure layers are positioned as stacks if they are upstream siblings of another layer
 	document.network_interface.load_structure();
 	let all_layers = LayerNodeIdentifier::ROOT_PARENT.descendants(document.network_interface.document_metadata()).collect::<Vec<_>>();
