@@ -44,7 +44,7 @@
 		bind:checked
 		on:change={(_) => dispatch("checked", inputElement?.checked || false)}
 		disabled={disabled || frozen}
-		tabindex={(disabled || frozen) ? -1 : 0}
+		tabindex={disabled || frozen ? -1 : 0}
 		bind:this={inputElement}
 	/>
 	<label class:disabled class:frozen={frozen && !disabled} class:checked for={`checkbox-input-${id}`} on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)} title={tooltip}>
