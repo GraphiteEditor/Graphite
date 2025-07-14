@@ -10,6 +10,7 @@ use crate::messages::tool::common_functionality::gizmos::gizmo_manager::GizmoMan
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::resize::Resize;
+use crate::messages::tool::common_functionality::shapes::circle_shape::Circle;
 use crate::messages::tool::common_functionality::shapes::line_shape::{LineToolData, clicked_on_line_endpoints};
 use crate::messages::tool::common_functionality::shapes::polygon_shape::Polygon;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeToolModifierKey, ShapeType, anchor_overlays, transform_cage_overlays};
@@ -109,6 +110,9 @@ fn create_shape_option_widget(shape_type: ShapeType) -> WidgetHolder {
 		MenuListEntry::new("Star")
 			.label("Star")
 			.on_commit(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ShapeType(ShapeType::Star)).into()),
+		MenuListEntry::new("Circle")
+			.label("Circle")
+			.on_commit(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ShapeType(ShapeType::Circle)).into()),
 	]];
 	DropdownInput::new(entries).selected_index(Some(shape_type as u32)).widget_holder()
 }
@@ -422,6 +426,9 @@ impl Fsm for ShapeToolFsmState {
 
 				if matches!(self, ShapeToolFsmState::Drawing(_) | ShapeToolFsmState::DraggingLineEndpoints) {
 					Line::overlays(document, tool_data, &mut overlay_context);
+					if matches!(tool_options.shape_type, ShapeType::Circle) {
+						tool_data.gizmo_manger.overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
+					}
 				}
 
 				self
@@ -578,7 +585,7 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Ellipse | ShapeType::Rectangle => tool_data.data.start(document, input),
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Circle => tool_data.data.start(document, input),
 					ShapeType::Line => {
 						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 						let snapped = tool_data.data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
@@ -594,6 +601,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
 					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
+					ShapeType::Circle => Circle::create_node(),
 				};
 
 				let nodes = vec![(NodeId(0), node)];
@@ -602,7 +610,7 @@ impl Fsm for ShapeToolFsmState {
 				responses.add(Message::StartBuffer);
 
 				match tool_data.current_shape {
-					ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Polygon | ShapeType::Star => {
+					ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Polygon | ShapeType::Star | ShapeType::Circle => {
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
@@ -635,6 +643,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Line => Line::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Polygon => Polygon::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Star => Star::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Circle => Circle::update_shape(document, input, layer, responses),
 				}
 
 				// Auto-panning
@@ -814,6 +823,7 @@ impl Fsm for ShapeToolFsmState {
 				tool_data.data.cleanup(responses);
 				tool_data.current_shape = shape;
 
+				responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ShapeType(shape)));
 				ShapeToolFsmState::Ready(shape)
 			}
 			(_, ShapeToolMessage::HideShapeTypeWidget(hide)) => {
@@ -853,6 +863,7 @@ impl Fsm for ShapeToolFsmState {
 						HintInfo::keys([Key::Shift], "Constrain Square").prepend_plus(),
 						HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 					])],
+					ShapeType::Circle => vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Circle")])],
 				};
 				HintData(hint_groups)
 			}
@@ -867,6 +878,7 @@ impl Fsm for ShapeToolFsmState {
 						HintInfo::keys([Key::Alt], "From Center"),
 						HintInfo::keys([Key::Control], "Lock Angle"),
 					]),
+					ShapeType::Circle => HintGroup(vec![]),
 				};
 
 				common_hint_group.push(tool_hint_group);

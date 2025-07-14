@@ -24,9 +24,10 @@ pub enum ShapeType {
 	#[default]
 	Polygon = 0,
 	Star = 1,
-	Rectangle = 2,
-	Ellipse = 3,
-	Line = 4,
+	Circle = 2,
+	Rectangle = 3,
+	Ellipse = 4,
+	Line = 5,
 }
 
 impl ShapeType {
@@ -37,6 +38,7 @@ impl ShapeType {
 			Self::Rectangle => "Rectangle",
 			Self::Ellipse => "Ellipse",
 			Self::Line => "Line",
+			Self::Circle => "Circle",
 		})
 		.into()
 	}
@@ -232,6 +234,18 @@ pub fn extract_polygon_parameters(layer: Option<LayerNodeIdentifier>, document: 
 	};
 
 	Some((n, radius))
+}
+
+/// Extract the node input values of Circle.
+/// Returns an option of (radius).
+pub fn extract_circle_radius(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<f64> {
+	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Circle")?;
+
+	let Some(&TaggedValue::F64(radius)) = node_inputs.get(1)?.as_value() else {
+		return None;
+	};
+
+	Some(radius)
 }
 
 /// Calculate the viewport position of as a star vertex given its index
