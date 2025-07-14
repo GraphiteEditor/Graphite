@@ -1,4 +1,4 @@
-use crate::vector::{VectorData, VectorDataTable};
+use crate::vector::VectorDataTable;
 use graph_craft::wasm_application_io::WasmEditorApi;
 use graphene_core::Ctx;
 pub use graphene_core::text::*;
@@ -24,9 +24,13 @@ fn text<'i: 'n>(
 	#[unit(" px")]
 	#[default(None)]
 	max_height: Option<f64>,
+	/// Faux italic.
 	#[unit("°")]
 	#[default(0.)]
 	tilt: f64,
+	/// Splits each text glyph into its own instance, i.e. row in the table of vector data.
+	#[default(false)]
+	per_glyph_instances: bool,
 ) -> VectorDataTable {
 	let typesetting = TypesettingConfig {
 		font_size,
@@ -39,7 +43,5 @@ fn text<'i: 'n>(
 
 	let font_data = editor.font_cache.get(&font_name).map(|f| load_font(f));
 
-	let result = VectorData::from_subpaths(to_path(&text, font_data, typesetting), false);
-
-	VectorDataTable::new(result)
+	to_path(&text, font_data, typesetting, per_glyph_instances)
 }
