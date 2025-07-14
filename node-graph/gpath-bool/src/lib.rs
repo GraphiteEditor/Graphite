@@ -376,12 +376,24 @@ type Path = Vec<path_bool::PathSegment>;
 
 fn path_to_bezpath(path: Path) -> kurbo::BezPath {
 	let p = |p: DVec2| -> kurbo::Point { kurbo::Point::new(p.x, p.y) };
-	kurbo::BezPath::from_path_segments(path.into_iter().map(|s| match s {
-		path_bool::PathSegment::Line(p0, p1) => kurbo::Line::new(p(p0), p(p1)).into(),
-		path_bool::PathSegment::Cubic(p0, p1, p2, p3) => kurbo::CubicBez::new(p(p0), p(p1), p(p2), p(p3)).into(),
-		path_bool::PathSegment::Quadratic(p0, p1, p2) => kurbo::QuadBez::new(p(p0), p(p1), p(p2)).into(),
-		path_bool::PathSegment::Arc(..) => unimplemented!(),
-	}))
+	let mut ret = kurbo::BezPath::new();
+	let mut last_point = None;
+
+	for s in path {
+		let p0 = p(s.start());
+		if last_point != Some(p0) {
+			ret.move_to(p0);
+		}
+
+		match s {
+			path_bool::PathSegment::Line(_, p1) => ret.line_to(p(p1)),
+			path_bool::PathSegment::Cubic(_, p1, p2, p3) => ret.curve_to(p(p1), p(p2), p(p3)),
+			path_bool::PathSegment::Quadratic(_, p1, p2) => ret.quad_to(p(p1), p(p2)),
+			path_bool::PathSegment::Arc(..) => unimplemented!(),
+		}
+		last_point = Some(p(s.end()));
+	}
+	ret
 }
 
 fn boolean_union(a: Path, b: Path) -> Vec<Path> {
