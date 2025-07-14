@@ -974,8 +974,11 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
-		document.network_interface.add_import(TaggedValue::None, false, 0, "Primary", "", &[*node_id]);
-		document.network_interface.add_import(TaggedValue::U32(0), false, 1, "Loop Level", "TODO", &[*node_id]);
+		let mut node_path = network_path.to_vec();
+		node_path.push(*node_id);
+
+		document.network_interface.add_import(TaggedValue::None, false, 0, "Primary", "", &node_path);
+		document.network_interface.add_import(TaggedValue::U32(0), false, 1, "Loop Level", "TODO", &node_path);
 	}
 
 	// ==================================

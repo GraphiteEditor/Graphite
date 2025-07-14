@@ -181,7 +181,7 @@ fn layout_text(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 	})?;
 
 	const DISPLAY_SCALE: f32 = 1.;
-	let mut builder = layout_cx.ranged_builder(&mut font_cx, str, DISPLAY_SCALE, true);
+	let mut builder = layout_cx.ranged_builder(&mut font_cx, str, DISPLAY_SCALE, false);
 
 	builder.push_default(StyleProperty::FontSize(typesetting.font_size as f32));
 	builder.push_default(StyleProperty::LetterSpacing(typesetting.character_spacing as f32));

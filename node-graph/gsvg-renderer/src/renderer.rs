@@ -756,7 +756,7 @@ impl GraphicElementRendered for VectorDataTable {
 					.chain(single_anchors_targets.into_iter())
 					.collect::<Vec<ClickTarget>>();
 
-				metadata.click_targets.insert(element_id, click_targets);
+				metadata.click_targets.entry(element_id).or_insert(click_targets);
 			}
 
 			if let Some(upstream_graphic_group) = &instance.upstream_graphic_group {
