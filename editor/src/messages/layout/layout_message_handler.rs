@@ -123,7 +123,10 @@ impl LayoutMessageHandler {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (breadcrumb_trail_buttons.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
-						let update_value = value.as_u64().expect("BreadcrumbTrailButtons update was not of type: u64");
+						let Some(update_value) = value.as_u64() else {
+							error!("BreadcrumbTrailButtons update was not of type: u64");
+							return;
+						};
 						(breadcrumb_trail_buttons.on_update.callback)(&update_value)
 					}
 				};
@@ -133,7 +136,10 @@ impl LayoutMessageHandler {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (checkbox_input.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
-						let update_value = value.as_bool().expect("CheckboxInput update was not of type: bool");
+						let Some(update_value) = value.as_bool() else {
+							error!("CheckboxInput update was not of type: bool");
+							return;
+						};
 						checkbox_input.checked = update_value;
 						(checkbox_input.on_update.callback)(checkbox_input)
 					}
@@ -208,7 +214,10 @@ impl LayoutMessageHandler {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (curve_input.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
-						let curve = serde_json::from_value(value).expect("CurveInput event data could not be deserialized");
+						let Some(curve) = serde_json::from_value(value).ok() else {
+							error!("CurveInput event data could not be deserialized");
+							return;
+						};
 						curve_input.value = curve;
 						(curve_input.on_update.callback)(curve_input)
 					}
@@ -219,13 +228,27 @@ impl LayoutMessageHandler {
 			Widget::DropdownInput(dropdown_input) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => {
-						let update_value = value.as_u64().unwrap_or_else(|| panic!("DropdownInput commit was not of type `u64`, found {value:?}"));
-						(dropdown_input.entries.iter().flatten().nth(update_value as usize).unwrap().on_commit.callback)(&())
+						let Some(update_value) = value.as_u64() else {
+							error!("DropdownInput commit was not of type `u64`, found {value:?}");
+							return;
+						};
+						let Some(entry) = dropdown_input.entries.iter().flatten().nth(update_value as usize) else {
+							error!("DropdownInput commit was not able to find entry for index {update_value}");
+							return;
+						};
+						(entry.on_commit.callback)(&())
 					}
 					WidgetValueAction::Update => {
-						let update_value = value.as_u64().unwrap_or_else(|| panic!("DropdownInput update was not of type `u64`, found {value:?}"));
+						let Some(update_value) = value.as_u64() else {
+							error!("DropdownInput update was not of type `u64`, found {value:?}");
+							return;
+						};
 						dropdown_input.selected_index = Some(update_value as u32);
-						(dropdown_input.entries.iter().flatten().nth(update_value as usize).unwrap().on_update.callback)(&())
+						let Some(entry) = dropdown_input.entries.iter().flatten().nth(update_value as usize) else {
+							error!("DropdownInput update was not able to find entry for index {update_value}");
+							return;
+						};
+						(entry.on_update.callback)(&())
 					}
 				};
 
@@ -235,12 +258,27 @@ impl LayoutMessageHandler {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (font_input.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
-						let update_value = value.as_object().expect("FontInput update was not of type: object");
-						let font_family_value = update_value.get("fontFamily").expect("FontInput update does not have a fontFamily");
-						let font_style_value = update_value.get("fontStyle").expect("FontInput update does not have a fontStyle");
+						let Some(update_value) = value.as_object() else {
+							error!("FontInput update was not of type: object");
+							return;
+						};
+						let Some(font_family_value) = update_value.get("fontFamily") else {
+							error!("FontInput update does not have a fontFamily");
+							return;
+						};
+						let Some(font_style_value) = update_value.get("fontStyle") else {
+							error!("FontInput update does not have a fontStyle");
+							return;
+						};
 
-						let font_family = font_family_value.as_str().expect("FontInput update fontFamily was not of type: string");
-						let font_style = font_style_value.as_str().expect("FontInput update fontStyle was not of type: string");
+						let Some(font_family) = font_family_value.as_str() else {
+							error!("FontInput update fontFamily was not of type: string");
+							return;
+						};
+						let Some(font_style) = font_style_value.as_str() else {
+							error!("FontInput update fontStyle was not of type: string");
+							return;
+						};
 
 						font_input.font_family = font_family.into();
 						font_input.font_style = font_style.into();
@@ -285,7 +323,10 @@ impl LayoutMessageHandler {
 					responses.add(callback_message);
 				}
 				WidgetValueAction::Update => {
-					let value = value.as_str().expect("NodeCatalog update was not of type String").to_string();
+					let Some(value) = value.as_str().map(|s| s.to_string()) else {
+						error!("NodeCatalog update was not of type String");
+						return;
+					};
 					let callback_message = (node_type_input.on_update.callback)(&value);
 					responses.add(callback_message);
 				}
@@ -296,8 +337,11 @@ impl LayoutMessageHandler {
 					responses.add(callback_message);
 				}
 				WidgetValueAction::Update => match value {
-					Value::Number(num) => {
-						let update_value = num.as_f64().unwrap();
+					Value::Number(ref num) => {
+						let Some(update_value) = num.as_f64() else {
+							error!("NumberInput update was not of type: f64, found {value:?}");
+							return;
+						};
 						number_input.value = Some(update_value);
 						let callback_message = (number_input.on_update.callback)(number_input);
 						responses.add(callback_message);
@@ -323,7 +367,10 @@ impl LayoutMessageHandler {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (reference_point_input.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
-						let update_value = value.as_str().expect("ReferencePointInput update was not of type: u64");
+						let Some(update_value) = value.as_str() else {
+							error!("ReferencePointInput update was not of type: u64");
+							return;
+						};
 						reference_point_input.value = update_value.into();
 						(reference_point_input.on_update.callback)(reference_point_input)
 					}
@@ -333,7 +380,10 @@ impl LayoutMessageHandler {
 			}
 			Widget::PopoverButton(_) => {}
 			Widget::RadioInput(radio_input) => {
-				let update_value = value.as_u64().expect("RadioInput update was not of type: u64");
+				let Some(update_value) = value.as_u64() else {
+					error!("RadioInput update was not of type: u64");
+					return;
+				};
 				radio_input.selected_index = Some(update_value as u32);
 				let callback_message = match action {
 					WidgetValueAction::Commit => (radio_input.entries[update_value as usize].on_commit.callback)(&()),
@@ -347,7 +397,10 @@ impl LayoutMessageHandler {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (text_area_input.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
-						let update_value = value.as_str().expect("TextAreaInput update was not of type: string");
+						let Some(update_value) = value.as_str() else {
+							error!("TextAreaInput update was not of type: string");
+							return;
+						};
 						text_area_input.value = update_value.into();
 						(text_area_input.on_update.callback)(text_area_input)
 					}
@@ -367,7 +420,10 @@ impl LayoutMessageHandler {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (text_input.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
-						let update_value = value.as_str().expect("TextInput update was not of type: string");
+						let Some(update_value) = value.as_str() else {
+							error!("TextInput update was not of type: string");
+							return;
+						};
 						text_input.value = update_value.into();
 						(text_input.on_update.callback)(text_input)
 					}
@@ -411,10 +467,11 @@ impl LayoutMessageHandler {
 				self.layouts[layout_target as usize] = new_layout;
 
 				// Update the UI
-				responses.add(FrontendMessage::UpdateMenuBarLayout {
-					layout_target,
-					layout: self.layouts[layout_target as usize].clone().unwrap_menu_layout(action_input_mapping).layout,
-				});
+				let Some(layout) = self.layouts[layout_target as usize].clone().as_menu_layout(action_input_mapping).map(|x| x.layout) else {
+					error!("Called unwrap_menu_layout on a widget layout");
+					return;
+				};
+				responses.add(FrontendMessage::UpdateMenuBarLayout { layout_target, layout });
 			}
 		}
 	}
