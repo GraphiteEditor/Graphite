@@ -167,7 +167,7 @@ pub fn is_visible_point(
 	manipulator_point_id: ManipulatorPointId,
 	vector_data: &VectorData,
 	path_overlay_mode: PathOverlayMode,
-	frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+	frontier_handles_info: &Option<HashMap<SegmentId, Vec<PointId>>>,
 	selected_segments: Vec<SegmentId>,
 	selected_points: &HashSet<ManipulatorPointId>,
 ) -> bool {
@@ -193,7 +193,7 @@ pub fn is_visible_point(
 						warn!("No anchor for selected handle");
 						return false;
 					};
-					let Some(frontier_handles) = &frontier_handles_info else {
+					let Some(frontier_handles) = frontier_handles_info else {
 						warn!("No frontier handles info provided");
 						return false;
 					};

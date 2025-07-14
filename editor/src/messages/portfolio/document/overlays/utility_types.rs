@@ -319,7 +319,7 @@ impl OverlayContext {
 		self.square(position, None, Some(color_fill), Some(color_stroke));
 	}
 
-	pub fn hover_manipulator_handle(&mut self, position: DVec2) {
+	pub fn hover_manipulator_handle(&mut self, position: DVec2, selected: bool) {
 		self.start_dpi_aware_transform();
 
 		let position = position.round() - DVec2::splat(0.5);
@@ -339,7 +339,9 @@ impl OverlayContext {
 			.arc(position.x, position.y, MANIPULATOR_GROUP_MARKER_SIZE / 2., 0., TAU)
 			.expect("Failed to draw the circle");
 
-		self.render_context.set_fill_style_str(COLOR_OVERLAY_WHITE);
+		let color_fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
+
+		self.render_context.set_fill_style_str(color_fill);
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.fill();
 		self.render_context.stroke();
@@ -347,9 +349,10 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn hover_manipulator_anchor(&mut self, position: DVec2) {
+	pub fn hover_manipulator_anchor(&mut self, position: DVec2, selected: bool) {
 		self.square(position, Some(MANIPULATOR_GROUP_MARKER_SIZE + 2.), Some(COLOR_OVERLAY_BLUE_50), Some(COLOR_OVERLAY_BLUE_50));
-		self.square(position, None, Some(COLOR_OVERLAY_WHITE), Some(COLOR_OVERLAY_BLUE));
+		let color_fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
+		self.square(position, None, Some(color_fill), Some(COLOR_OVERLAY_BLUE));
 	}
 
 	/// Transforms the canvas context to adjust for DPI scaling
