@@ -1222,6 +1222,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
 						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false),
+						NodeInput::value(TaggedValue::Bool(false), false),
 					],
 					..Default::default()
 				},
@@ -1281,7 +1282,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						),
 						InputMetadata::with_name_description_override(
 							"Tilt",
-							"Faux italic",
+							"Faux italic.",
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(-85.),
 								max: Some(85.),
@@ -1289,6 +1290,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
+						("Per-Glyph Instances", "Splits each text glyph into its own instance, i.e. row in the table of vector data.").into(),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
