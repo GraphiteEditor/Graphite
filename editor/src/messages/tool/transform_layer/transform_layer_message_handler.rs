@@ -1,4 +1,4 @@
-use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY_25, SLOWING_DIVISOR};
+use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, SLOWING_DIVISOR};
 use crate::messages::input_mapper::utility_types::input_mouse::{DocumentPosition, ViewportPosition};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -177,7 +177,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 				if using_path_tool {
 					for (outline, transform) in &self.ghost_outline {
-						overlay_context.outline(outline.iter(), *transform, Some(COLOR_OVERLAY_GRAY_25));
+						overlay_context.outline(outline.iter(), *transform, Some(COLOR_OVERLAY_GRAY));
 					}
 				}
 
@@ -407,6 +407,10 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 			TransformLayerMessage::BeginRotate => responses.add_front(TransformLayerMessage::BeginGRS { operation: TransformType::Rotate }),
 			TransformLayerMessage::BeginScale => responses.add_front(TransformLayerMessage::BeginGRS { operation: TransformType::Scale }),
 			TransformLayerMessage::CancelTransformOperation => {
+				if using_path_tool {
+					self.ghost_outline.clear();
+				}
+
 				if using_pen_tool {
 					self.typing.clear();
 
@@ -416,8 +420,6 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 					responses.add(PenToolMessage::Abort);
 					responses.add(ToolMessage::UpdateHints);
-				} else if using_path_tool {
-					self.ghost_outline.clear();
 				} else {
 					selected.original_transforms.clear();
 					self.typing.clear();
