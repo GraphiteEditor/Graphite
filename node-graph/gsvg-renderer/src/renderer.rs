@@ -212,11 +212,13 @@ pub trait GraphicElementRendered: BoundingBox + RenderComplexity {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams);
 
 	fn render_thumbnail(&self) -> String {
-		let bounds = self.bounding_box(DAffine2::IDENTITY, true);
+		let Some(bounds) = self.bounding_box(DAffine2::IDENTITY, true) else {
+			return String::new();
+		};
 
 		let render_params = RenderParams {
 			view_mode: ViewMode::Normal,
-			culling_bounds: bounds,
+			culling_bounds: Some(bounds),
 			thumbnail: true,
 			hide_artboards: false,
 			for_export: false,
@@ -224,15 +226,22 @@ pub trait GraphicElementRendered: BoundingBox + RenderComplexity {
 			alignment_parent_transform: None,
 		};
 
-		// Render the thumbnail data into an SVG string
 		let mut render = SvgRender::new();
 		self.render_svg(&mut render, &render_params);
+		
+		// let center = (bounds[0] + bounds[1]) / 2.;
 
+		// let size = bounds[1] - bounds[0];
+
+		// let scale_x = 32.0 / size.x;
+		// let scale_y = 24.0 / size.y;
+		// let scale = scale_x.min(scale_y);
+
+		// render.wrap_with_transform()
 		// Give the SVG a viewbox and outer <svg>...</svg> wrapper tag
-		// let [min, max] = bounds.unwrap_or_default();
-		// render.format_svg(min, max);
-
+		render.format_svg(bounds[0], bounds[1]);
 		render.svg.to_svg_string()
+		// format!(r#"<g transform="scale({}) translate({}, {})">{}</g>"#, scale, -center.x, -center.y, render.svg.to_svg_string())
 	}
 
 	/// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection.

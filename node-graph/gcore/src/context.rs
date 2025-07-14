@@ -1,7 +1,9 @@
+use dyn_any::StaticType;
 use glam::{DAffine2, UVec2};
 
 use crate::transform::Footprint;
 use std::any::Any;
+use std::fmt;
 use std::panic::Location;
 use std::sync::Arc;
 
@@ -24,6 +26,14 @@ pub trait ExtractDownstreamTransform {
 
 pub trait ExtractRealTime {
 	fn try_real_time(&self) -> Option<f64>;
+}
+
+pub trait ModifyDownstreamTransform: ExtractAll + CloneVarArgs {
+	fn apply_modification(self, modification: &DAffine2) -> Context;
+}
+
+pub trait WithIndex: ExtractAll + CloneVarArgs {
+	fn with_index(&self, index: usize) -> Context;
 }
 
 pub trait ExtractAnimationTime {
@@ -50,7 +60,7 @@ pub trait ExtractAll: ExtractFootprint + ExtractDownstreamTransform + ExtractInd
 
 impl<T: ?Sized + ExtractFootprint + ExtractDownstreamTransform + ExtractIndex + ExtractRealTime + ExtractAnimationTime + ExtractVarArgs> ExtractAll for T {}
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 #[repr(u8)]
 pub enum ContextDependency {
 	ExtractFootprint = 0b10000000,
@@ -62,7 +72,7 @@ pub enum ContextDependency {
 	ExtractVarArgs = 0b00000100,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct ContextDependencies(pub u8);
 
 impl ContextDependencies {
@@ -99,6 +109,34 @@ impl ContextDependencies {
 	}
 }
 
+impl fmt::Debug for ContextDependencies {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let mut set = Vec::new();
+		let bits = self.0;
+
+		if bits & ContextDependency::ExtractFootprint as u8 != 0 {
+			set.push("ExtractFootprint");
+		}
+		if bits & ContextDependency::ExtractDownstreamTransform as u8 != 0 {
+			set.push("ExtractDownstreamTransform");
+		}
+		if bits & ContextDependency::ExtractRealTime as u8 != 0 {
+			set.push("ExtractRealTime");
+		}
+		if bits & ContextDependency::ExtractAnimationTime as u8 != 0 {
+			set.push("ExtractAnimationTime");
+		}
+		if bits & ContextDependency::ExtractIndex as u8 != 0 {
+			set.push("ExtractIndex");
+		}
+		if bits & ContextDependency::ExtractVarArgs as u8 != 0 {
+			set.push("ExtractVarArgs");
+		}
+
+		f.debug_list().entries(set).finish()
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VarArgsResult {
 	IndexOutOfBounds,
@@ -110,7 +148,7 @@ impl Ctx for () {}
 impl Ctx for Footprint {}
 impl ExtractFootprint for () {
 	fn try_footprint(&self) -> Option<&Footprint> {
-		log::error!("tried to extract footprint form (), {}", Location::caller());
+		log::error!("tried to extract footprint from (), {}", Location::caller());
 		None
 	}
 }
@@ -129,7 +167,7 @@ impl<T: ExtractFootprint + Sync> ExtractFootprint for Option<T> {
 
 impl ExtractDownstreamTransform for () {
 	fn try_downstream_transform(&self) -> Option<&DAffine2> {
-		log::error!("tried to extract downstream transform form (), {}", Location::caller());
+		log::error!("tried to extract downstream transform from (), {}", Location::caller());
 		None
 	}
 }
@@ -143,6 +181,42 @@ impl<T: ExtractDownstreamTransform + Ctx + Sync + Send> ExtractDownstreamTransfo
 impl<T: ExtractDownstreamTransform + Sync> ExtractDownstreamTransform for Option<T> {
 	fn try_downstream_transform(&self) -> Option<&DAffine2> {
 		self.as_ref().and_then(|x| x.try_downstream_transform())
+	}
+}
+
+impl<T: ExtractDownstreamTransform + Sync> ExtractDownstreamTransform for Arc<T> {
+	fn try_downstream_transform(&self) -> Option<&DAffine2> {
+		(**self).try_downstream_transform()
+	}
+}
+
+impl ExtractDownstreamTransform for OwnedContextImpl {
+	fn try_downstream_transform(&self) -> Option<&DAffine2> {
+		self.downstream_transform.as_ref()
+	}
+}
+
+impl<T: ExtractAll + CloneVarArgs + Sync> ModifyDownstreamTransform for Option<T> {
+	fn apply_modification(self, modification: &DAffine2) -> Context {
+		if let Some(inner) = self {
+			let mut context = OwnedContextImpl::from(inner);
+			context.try_apply_downstream_transform(modification);
+			context.into_context()
+		} else {
+			None
+		}
+	}
+}
+
+impl<T: Ctx + ExtractAll + CloneVarArgs + Sync> WithIndex for Option<T> {
+	fn with_index(&self, index: usize) -> Context {
+		if let Some(inner) = self {
+			let mut context = OwnedContextImpl::from(inner.clone());
+			context.set_index(index);
+			context.into_context()
+		} else {
+			None
+		}
 	}
 }
 
@@ -175,12 +249,6 @@ impl<T: ExtractVarArgs + Sync> ExtractVarArgs for Option<T> {
 impl<T: ExtractFootprint + Sync> ExtractFootprint for Arc<T> {
 	fn try_footprint(&self) -> Option<&Footprint> {
 		(**self).try_footprint()
-	}
-}
-
-impl<T: ExtractDownstreamTransform + Sync> ExtractDownstreamTransform for Arc<T> {
-	fn try_downstream_transform(&self) -> Option<&DAffine2> {
-		(**self).try_downstream_transform()
 	}
 }
 
@@ -234,12 +302,6 @@ impl Ctx for Arc<OwnedContextImpl> {}
 impl ExtractFootprint for OwnedContextImpl {
 	fn try_footprint(&self) -> Option<&Footprint> {
 		self.footprint.as_ref()
-	}
-}
-
-impl ExtractDownstreamTransform for OwnedContextImpl {
-	fn try_downstream_transform(&self) -> Option<&DAffine2> {
-		self.downstream_transform.as_ref()
 	}
 }
 
@@ -395,6 +457,16 @@ impl OwnedContextImpl {
 			self.parent = None
 		}
 	}
+
+	pub fn to_editor_context(&self) -> EditorContext {
+		EditorContext {
+			footprint: self.footprint,
+			downstream_transform: self.downstream_transform,
+			real_time: self.real_time,
+			animation_time: self.animation_time,
+			index: self.index,
+		}
+	}
 }
 
 impl OwnedContextImpl {
@@ -404,9 +476,9 @@ impl OwnedContextImpl {
 	pub fn set_downstream_transform(&mut self, transform: DAffine2) {
 		self.downstream_transform = Some(transform);
 	}
-	pub fn try_apply_downstream_transform(&mut self, transform: DAffine2) {
+	pub fn try_apply_downstream_transform(&mut self, transform: &DAffine2) {
 		if let Some(downstream_transform) = self.downstream_transform {
-			self.downstream_transform = Some(downstream_transform * transform);
+			self.downstream_transform = Some(downstream_transform * *transform);
 		}
 	}
 	pub fn set_real_time(&mut self, time: f64) {
@@ -434,14 +506,10 @@ impl OwnedContextImpl {
 		self.animation_time = Some(animation_time);
 		self
 	}
-	pub fn with_index(mut self, index: usize) -> Self {
-		if let Some(current_index) = &mut self.index {
-			current_index.push(index);
-		} else {
-			self.index = Some(vec![index]);
-		}
-		self
-	}
+	// pub fn with_index(mut self, index: usize) -> Self {
+	// 	self.index = Some(index);
+	// 	self
+	// }
 	pub fn into_context(self) -> Option<Arc<Self>> {
 		Some(Arc::new(self))
 	}
@@ -462,6 +530,50 @@ impl OwnedContextImpl {
 	pub fn erase_parent(mut self) -> Self {
 		self.parent = None;
 		self
+	}
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct EditorContext {
+	pub footprint: Option<Footprint>,
+	pub downstream_transform: Option<DAffine2>,
+	pub real_time: Option<f64>,
+	pub animation_time: Option<f64>,
+	pub index: Option<usize>,
+	// #[serde(skip)]
+	// pub editor_var_args: Option<(Vec<String>, Vec<Arc<Box<[dyn std::any::Any + 'static + std::panic::UnwindSafe]>>>)>,
+}
+
+unsafe impl StaticType for EditorContext {
+	type Static = EditorContext;
+}
+
+impl EditorContext {
+	pub fn to_owned_context(&self) -> OwnedContextImpl {
+		let mut context = OwnedContextImpl::default();
+		if let Some(footprint) = self.footprint {
+			context.set_footprint(footprint);
+		}
+		if let Some(footprint) = self.footprint {
+			context.set_footprint(footprint);
+		}
+		// if let Some(downstream_transform) = self.downstream_transform {
+		// 	context.set_downstream_transform(downstream_transform);
+		// }
+		if let Some(real_time) = self.real_time {
+			context.set_real_time(real_time);
+		}
+		if let Some(animation_time) = self.animation_time {
+			context.set_animation_time(animation_time);
+		}
+		if let Some(index) = self.index {
+			context.set_index(index);
+		}
+		context
+		// if let Some(editor_var_args) = self.editor_var_args {
+		// 	let (variable_names, values)
+		// 	context.set_varargs((variable_names, values))
+		// }
 	}
 }
 

@@ -40,6 +40,9 @@ pub struct DocumentNode {
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
 	#[serde(default = "return_true")]
 	pub visible: bool,
+	// Represents whether the output of the node should be cached. This is set to true whenever a node feeds into another node with more context dependencies
+	#[serde(default)]
+	pub cache_output: bool,
 	pub manual_composition: Option<Type>,
 	#[serde(default)]
 	pub skip_deduplication: bool,
@@ -50,6 +53,7 @@ impl Hash for DocumentNode {
 		self.inputs.hash(state);
 		self.implementation.hash(state);
 		self.visible.hash(state);
+		self.cache_output.hash(state);
 	}
 }
 
@@ -59,6 +63,7 @@ impl Default for DocumentNode {
 			inputs: Default::default(),
 			implementation: Default::default(),
 			visible: true,
+			cache_output: false,
 			manual_composition: Some(generic!(T)),
 			skip_deduplication: false,
 		}
@@ -518,7 +523,7 @@ impl NodeNetwork {
 /// Functions for compiling the network
 impl NodeNetwork {
 	// Returns a topologically sorted vec of protonodes, as well as metadata extracted during compilation
-	pub fn flatten(&mut self) -> Result<(ProtoNetwork, Vec<(OriginalLocation, SNI)>), String> {
+	pub fn compile(&mut self) -> Result<(ProtoNetwork, Vec<(OriginalLocation, SNI)>), String> {
 		// These three arrays are stored in parallel
 		let mut protonetwork = Vec::new();
 
@@ -544,8 +549,8 @@ impl NodeNetwork {
 						let Some(upstream_metadata) = upstream_metadata else {
 							panic!("All inputs should be when the upstream SNI was generated");
 						};
-						if upstream_metadata.is_value {
-							context_dependencies.add_dependencies(&upstream_metadata.context_dependencies);
+						if !upstream_metadata.is_value {
+							context_dependencies.add_dependencies(&upstream_metadata.nullify);
 						}
 					}
 					// The context_dependencies are now the union of all inputs and the dependencies of the protonode. Set the dependencies of each input to the difference, which represents the data to nullify
@@ -554,9 +559,9 @@ impl NodeNetwork {
 							panic!("All inputs should be when the upstream SNI was generated");
 						};
 						match upstream_metadata.is_value {
-							true => upstream_metadata.context_dependencies.difference(&context_dependencies),
+							false => upstream_metadata.nullify.difference(&context_dependencies),
 							// If the upstream node is a Value node, do not nullify the context
-							false => upstream_metadata.context_dependencies = ContextDependencies::none(),
+							true => upstream_metadata.nullify = ContextDependencies::none(),
 						}
 					}
 					(context_dependencies.clone(), false)
@@ -575,10 +580,7 @@ impl NodeNetwork {
 				};
 				(deduplicated_protonode.callers, deduplicated_protonode.original_location)
 			} else {
-				(
-					std::mem::take(&mut protonode.callers),
-					std::mem::replace(&mut protonode.original_location, OriginalLocation::Node(Vec::new())),
-				)
+				(std::mem::take(&mut protonode.callers), protonode.original_location.clone())
 			};
 
 			// Map the callers inputs to the generated stable node id
@@ -592,7 +594,7 @@ impl NodeNetwork {
 						assert!(caller_index > current_protonode_index, "Caller index must be higher than current index");
 						nodes.inputs[input_index] = Some(UpstreamInputMetadata {
 							input_sni: stable_node_id,
-							context_dependencies: protonode_context_dependencies.clone(),
+							nullify: protonode_context_dependencies.clone(),
 							is_value: upstream_is_value,
 						})
 					}
@@ -726,7 +728,7 @@ impl NodeNetwork {
 					log::error!("The node which was supposed to be flattened does not exist in the network, id {upstream_node_id}");
 					return;
 				};
-
+				let cache_output = upstream_document_node.cache_output;
 				match &upstream_document_node.implementation {
 					DocumentNodeImplementation::Network(_node_network) => {
 						let traversal_input = AbsoluteInputConnector {
@@ -766,6 +768,7 @@ impl NodeNetwork {
 									identifier,
 									inputs: vec![None; number_of_inputs],
 									context_dependencies,
+									cache_output,
 								});
 								let protonode = ProtoNode {
 									construction_args,

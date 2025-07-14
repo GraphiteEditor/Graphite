@@ -7,7 +7,7 @@ use interpreted_executor::dynamic_executor::DynamicExecutor;
 
 fn update_executor<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
 	let mut network = load_from_name(name);
-	let proto_network = network.flatten().unwrap().0;
+	let proto_network = network.compile().unwrap().0;
 	let empty = ProtoNetwork::default();
 
 	let executor = futures::executor::block_on(DynamicExecutor::new(empty)).unwrap();
@@ -15,7 +15,7 @@ fn update_executor<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
 	c.bench_function(name, |b| {
 		b.iter_batched(
 			|| (executor.clone(), proto_network.clone()),
-			|(mut executor, network)| futures::executor::block_on(executor.update(black_box(network))),
+			|(mut executor, network)| futures::executor::block_on(executor.update(black_box(network, None))),
 			criterion::BatchSize::SmallInput,
 		)
 	});
@@ -30,7 +30,7 @@ fn update_executor_demo(c: &mut Criterion) {
 
 fn run_once<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
 	let mut network = load_from_name(name);
-	let proto_network = network.flatten().unwrap().0;
+	let proto_network = network.compile().unwrap().0;
 
 	let executor = futures::executor::block_on(DynamicExecutor::new(proto_network)).unwrap();
 	let context = graphene_std::any::EditorContext::default();

@@ -9,7 +9,7 @@ use graphene_std::Color;
 use graphene_std::raster::Image;
 use graphene_std::renderer::RenderMetadata;
 use graphene_std::text::Font;
-use graphene_std::uuid::{SNI};
+use graphene_std::uuid::SNI;
 
 #[impl_message(Message, Portfolio)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -22,17 +22,18 @@ pub enum PortfolioMessage {
 	#[child]
 	Spreadsheet(SpreadsheetMessage),
 
-	// Introspected data is cleared after all queued messages which relied on the introspection are complete
-	ClearIntrospectedData,
-
 	// Sends a request to compile the network. Should occur when any value, preference, or font changes
 	CompileActiveDocument,
 	// Sends a request to evaluate the network. Should occur when any context value changes.
-	EvaluateActiveDocument,
-	// Sends a request to introspect data in the network, and return it to the editor
-	IntrospectActiveDocument {
+	// Nodes to introspect is in addition to all nodes to render thumbnails for
+	EvaluateActiveDocumentWithThumbnails,
+	EvaluateActiveDocument {
 		nodes_to_introspect: HashSet<SNI>,
 	},
+	// Sends a request to introspect data in the network, and return it to the editor
+	// IntrospectActiveDocument {
+	// 	nodes_to_introspect: HashSet<SNI>,
+	// },
 	ExportActiveDocument {
 		file_name: String,
 		file_type: FileType,
@@ -47,12 +48,11 @@ pub enum PortfolioMessage {
 	},
 	ProcessEvaluationResponse {
 		evaluation_metadata: RenderMetadata,
-	},
-	ProcessIntrospectionResponse {
 		#[serde(skip)]
-		introspection_response: IntrospectionResponse,
+		introspected_nodes: IntrospectionResponse,
 	},
-	RenderThumbnails,
+	// Introspected data is cleared after queued messages are complete
+	ClearIntrospectedData,
 	ProcessThumbnails,
 	DocumentPassMessage {
 		document_id: DocumentId,

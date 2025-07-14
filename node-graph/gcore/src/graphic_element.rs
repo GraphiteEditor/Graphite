@@ -4,10 +4,9 @@ use crate::instances::{Instance, Instances};
 use crate::math::quad::Quad;
 use crate::raster::image::Image;
 use crate::raster_types::{CPU, GPU, Raster, RasterDataTable};
-use crate::transform::TransformMut;
 use crate::uuid::NodeId;
 use crate::vector::{VectorData, VectorDataTable};
-use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use crate::{ Color, Context, Ctx, ModifyDownstreamTransform};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2, IVec2};
 use std::hash::Hash;
@@ -457,7 +456,7 @@ async fn flatten_vector(_: impl Ctx, group: GraphicGroupTable) -> VectorDataTabl
 
 #[node_macro::node(category(""))]
 async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
-	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+	ctx: impl Ctx + ModifyDownstreamTransform,
 	#[implementations(
 		Context -> GraphicGroupTable,
 		Context -> VectorDataTable,
@@ -471,13 +470,8 @@ async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
 	background: Color,
 	clip: bool,
 ) -> Artboard {
-	let footprint = ctx.try_footprint().copied();
-	let mut new_ctx = OwnedContextImpl::from(ctx);
-	if let Some(mut footprint) = footprint {
-		footprint.translate(location.as_dvec2());
-		new_ctx = new_ctx.with_footprint(footprint);
-	}
-	let graphic_group = contents.eval(new_ctx.into_context()).await;
+	let modified_ctx = ctx.apply_modification(&DAffine2::from_translation(location.as_dvec2()));
+	let graphic_group = contents.eval(modified_ctx).await;
 
 	Artboard {
 		graphic_group: graphic_group.into(),

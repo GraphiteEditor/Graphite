@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::mpsc::TryRecvError;
 use std::sync::mpsc::{Receiver, Sender};
 use wasm_bindgen::prelude::*;
 
@@ -14,12 +15,13 @@ extern "C" {
 /// Handles communication with the NodeRuntime, either locally or via Tauri
 #[derive(Debug)]
 pub struct NodeRuntimeIO {
-	// Send to
+	pub busy: bool,
 	#[cfg(any(not(feature = "tauri"), test))]
 	sender: Sender<GraphRuntimeRequest>,
 	#[cfg(all(feature = "tauri", not(test)))]
 	sender: Sender<NodeGraphUpdate>,
 	receiver: Receiver<NodeGraphUpdate>,
+	pub context_receiver: Receiver<(SNI, usize, EditorContext)>,
 }
 
 impl Default for NodeRuntimeIO {
@@ -35,11 +37,14 @@ impl NodeRuntimeIO {
 		{
 			let (response_sender, response_receiver) = std::sync::mpsc::channel();
 			let (request_sender, request_receiver) = std::sync::mpsc::channel();
-			futures::executor::block_on(replace_node_runtime(NodeRuntime::new(request_receiver, response_sender)));
+			let (context_sender, context_receiver) = std::sync::mpsc::channel();
+			futures::executor::block_on(replace_node_runtime(NodeRuntime::new(request_receiver, response_sender, context_sender)));
 
 			Self {
+				busy: false,
 				sender: request_sender,
 				receiver: response_receiver,
+				context_receiver,
 			}
 		}
 
@@ -49,19 +54,25 @@ impl NodeRuntimeIO {
 			Self {
 				sender: response_sender,
 				receiver: response_receiver,
+				context_receiver,
 			}
 		}
 	}
-	#[cfg(test)]
-	pub fn with_channels(sender: Sender<GraphRuntimeRequest>, receiver: Receiver<NodeGraphUpdate>) -> Self {
-		Self { sender, receiver }
-	}
+	// #[cfg(test)]
+	// pub fn with_channels(sender: Sender<GraphRuntimeRequest>, receiver: Receiver<NodeGraphUpdate>) -> Self {
+	// 	Self { sender, receiver }
+	// }
 
 	/// Sends a message to the NodeRuntime
-	pub fn send(&self, message: GraphRuntimeRequest) -> Result<(), String> {
+	pub fn try_send(&mut self, message: GraphRuntimeRequest) -> Result<(), String> {
 		#[cfg(any(not(feature = "tauri"), test))]
 		{
-			self.sender.send(message).map_err(|e| e.to_string())
+			if !self.busy {
+				self.busy = true;
+				self.sender.send(message).map_err(|e| e.to_string())
+			} else {
+				Err("Executor busy".to_string())
+			}
 		}
 
 		#[cfg(all(feature = "tauri", not(test)))]
@@ -76,7 +87,7 @@ impl NodeRuntimeIO {
 	}
 
 	/// Receives any pending updates from the NodeRuntime
-	pub fn receive(&self) -> impl Iterator<Item = NodeGraphUpdate> + use<'_> {
+	pub fn receive(&mut self) -> Result<NodeGraphUpdate, TryRecvError> {
 		// TODO: This introduces extra latency
 		#[cfg(all(feature = "tauri", not(test)))]
 		{
@@ -90,7 +101,7 @@ impl NodeRuntimeIO {
 				}
 			});
 		}
-		self.receiver.try_iter()
+		self.receiver.try_recv()
 	}
 }
 

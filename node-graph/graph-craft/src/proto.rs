@@ -96,7 +96,7 @@ impl ProtoNetwork {
 pub struct UpstreamInputMetadata {
 	pub input_sni: SNI,
 	// Context dependencies are accumulated during compilation, then replaced with the difference between the node's dependencies and the inputs dependencies
-	pub context_dependencies: ContextDependencies,
+	pub nullify: ContextDependencies,
 	// If the upstream node is a value node, then do not nullify since the value nodes do not have a cache inserted after them
 	pub is_value: bool,
 }
@@ -112,6 +112,7 @@ pub struct NodeConstructionArgs {
 	pub inputs: Vec<Option<UpstreamInputMetadata>>,
 	// The union of all input context dependencies and the nodes context dependency. Used to generate the context nullification for the editor entry point
 	pub context_dependencies: ContextDependencies,
+	pub cache_output: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -258,7 +259,7 @@ impl Debug for GraphErrorType {
 	}
 }
 
-#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct GraphError {
 	pub original_location: OriginalLocation,
 	pub identifier: Cow<'static, str>,
@@ -279,11 +280,7 @@ impl GraphError {
 		}
 	}
 }
-impl Debug for GraphError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("NodeGraphError").field("identifier", &self.identifier.to_string()).field("error", &self.error).finish()
-	}
-}
+
 pub type GraphErrors = Vec<GraphError>;
 
 /// The `TypingContext` is used to store the types of the nodes indexed by their stable node id.

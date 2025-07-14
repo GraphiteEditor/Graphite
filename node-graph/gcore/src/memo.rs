@@ -7,14 +7,37 @@ use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+#[derive(Debug)]
+pub enum MonitorMemoNodeState {
+	Disabled,
+	// Stores the first execution, then gets set first execution result, which stores if the value changed
+	StoreFirstEvaluation,
+	// Gets set back to disabled on introspection, and stores a boolean for if the value changed since the last introspection
+	FirstEvaluationResult(bool),
+	// Acts as a normal cache node, and stores a boolean for if the value changed since the last introspection
+	Enabled(bool),
+}
+
+#[derive(Clone, Debug)]
+pub enum MonitorIntrospectResult {
+	// If trying to inspect a none that cannot be introspected
+	Error,
+	Disabled,
+	// The cache node has not been evaluated since the state was set to StoreFirstEvaluation/Enabled
+	NotEvaluated,
+	// If the monitor node was evaluated, then its data must exist, so it is not an option.
+	// The boolean represents if the data changed since the last introspection
+	Evaluated((std::sync::Arc<dyn std::any::Any + Send + Sync>, bool)),
+}
+
 /// Caches the output of a given Node and acts as a proxy
-#[derive(Default)]
 pub struct MonitorMemoNode<T, CachedNode> {
 	// Introspection cache, uses the hash of the nullified context with default var args
 	// cache: Arc<Mutex<std::collections::HashMap<u64, Arc<T>>>>,
 	cache: Arc<Mutex<Option<(u64, Arc<T>)>>>,
 	node: CachedNode,
-	changed_since_last_eval: Arc<Mutex<bool>>,
+	hash_on_last_introspection: Arc<Mutex<u64>>,
+	state: Arc<Mutex<MonitorMemoNodeState>>,
 }
 impl<'i, I: Hash + 'i + std::fmt::Debug, T: 'static + Clone + Send + Sync, CachedNode: 'i> Node<'i, I> for MonitorMemoNode<T, CachedNode>
 where
@@ -26,47 +49,110 @@ where
 	type Output = DynFuture<'i, T>;
 
 	fn eval(&'i self, input: I) -> Self::Output {
-		let mut hasher = DefaultHasher::new();
-		input.hash(&mut hasher);
-		let hash = hasher.finish();
+		let mut state = self.state.lock().unwrap();
 
-		if let Some(data) = self.cache.lock().as_ref().unwrap().as_ref().and_then(|data| (data.0 == hash).then_some(data.1.clone())) {
-			let cloned_data = (*data).clone();
-			Box::pin(async move { cloned_data })
-		} else {
-			let fut = self.node.eval(input);
-			let cache = self.cache.clone();
-			*self.changed_since_last_eval.lock().unwrap() = true;
-			Box::pin(async move {
-				let value = fut.await;
-				*cache.lock().unwrap() = Some((hash, Arc::new(value.clone())));
-				value
-			})
+		// log::debug!("Monitor memo node state: {:?}", *state);
+
+		if matches!(*state, MonitorMemoNodeState::Disabled | MonitorMemoNodeState::FirstEvaluationResult(_)) {
+			return Box::pin(self.node.eval(input));
+		}
+
+		let hash = {
+			let mut hasher = DefaultHasher::new();
+			input.hash(&mut hasher);
+			hasher.finish()
+		};
+
+		// log::debug!(
+		// 	"Monitor memo node input: {:?}, hash: {:?}, previous_hash: {:?}",
+		// 	input,
+		// 	hash,
+		// 	self.cache.lock().unwrap().as_ref().map(|(h, _)| *h)
+		// );
+
+		let last_hash = *self.hash_on_last_introspection.lock().unwrap();
+
+		match &mut *state {
+			MonitorMemoNodeState::Enabled(changed) => {
+				*changed = last_hash != hash;
+			}
+			MonitorMemoNodeState::StoreFirstEvaluation => {
+				*state = MonitorMemoNodeState::FirstEvaluationResult(last_hash != hash);
+			}
+			_ => {}
+		}
+
+		let cache_guard = self.cache.lock().unwrap();
+
+		if let Some((cached_hash, cached_data)) = cache_guard.as_ref() {
+			if *cached_hash == hash {
+				let cloned_data = (**cached_data).clone();
+				return Box::pin(async move { cloned_data });
+			}
+		}
+
+		drop(cache_guard);
+
+		Box::pin(async move {
+			let value = self.node.eval(input).await;
+			*self.cache.lock().unwrap() = Some((hash, Arc::new(value.clone())));
+			value
+		})
+	}
+
+	fn introspect(&self) -> MonitorIntrospectResult {
+		let mut state_guard = self.state.lock().unwrap();
+		match *state_guard {
+			MonitorMemoNodeState::Disabled => {
+				// Make sure to set the state to "StoreFirstEvaluation" or "Enabled" before trying to introspect
+				log::error!("Cannot introspect disabled monitor memo node");
+				MonitorIntrospectResult::Disabled
+			}
+			MonitorMemoNodeState::StoreFirstEvaluation => MonitorIntrospectResult::NotEvaluated,
+			MonitorMemoNodeState::FirstEvaluationResult(changed_since_last_introspection) => {
+				let (hash, cache_value) = self
+					.cache
+					.lock()
+					.unwrap()
+					.as_ref()
+					.map(|(hash, data)| (*hash, (*data).clone() as Arc<dyn std::any::Any + Send + Sync>))
+					.expect("Evaluated cache node must store data");
+				*self.hash_on_last_introspection.lock().unwrap() = hash;
+				*state_guard = MonitorMemoNodeState::Disabled;
+				MonitorIntrospectResult::Evaluated((cache_value, changed_since_last_introspection))
+			}
+			MonitorMemoNodeState::Enabled(changed_since_last_introspection) => {
+				let cache = self.cache.lock().unwrap().as_ref().map(|(hash, data)| (*hash, (*data).clone() as Arc<dyn std::any::Any + Send + Sync>));
+				match cache {
+					Some((hash, cache_value)) => {
+						*self.hash_on_last_introspection.lock().unwrap() = hash;
+						MonitorIntrospectResult::Evaluated((cache_value, changed_since_last_introspection))
+					}
+					None => MonitorIntrospectResult::NotEvaluated,
+				}
+			}
 		}
 	}
 
-	// TODO: Consider returning a reference to the entire cache so the frontend reference is automatically updated as the context changes
-	fn introspect(&self, check_if_evaluated: bool) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		let mut changed = self.changed_since_last_eval.lock().unwrap();
-		if check_if_evaluated {
-			if !*changed {
-				return None;
-			}
-		}
-		*changed = false;
+	fn permanently_enable_cache(&self) {
+		*self.state.lock().unwrap() = MonitorMemoNodeState::Enabled(false);
+	}
 
-		let cache_guard = self.cache.lock().unwrap();
-		let cached = cache_guard.as_ref().expect("Cached data should always be evaluated before introspection");
-		Some(cached.1.clone() as Arc<dyn std::any::Any + Send + Sync>)
+	fn cache_first_evaluation(&self) {
+		if matches!(*self.state.lock().unwrap(), MonitorMemoNodeState::Enabled(_)) {
+			return;
+		}
+		*self.state.lock().unwrap() = MonitorMemoNodeState::StoreFirstEvaluation;
 	}
 }
 
 impl<T, CachedNode> MonitorMemoNode<T, CachedNode> {
-	pub fn new(node: CachedNode) -> MonitorMemoNode<T, CachedNode> {
+	pub fn new(node: CachedNode, state: MonitorMemoNodeState) -> MonitorMemoNode<T, CachedNode> {
 		MonitorMemoNode {
 			cache: Default::default(),
 			node,
-			changed_since_last_eval: Arc::new(Mutex::new(true)),
+			hash_on_last_introspection: Arc::new(Mutex::new(0)),
+			state: Arc::new(Mutex::new(state)),
 		}
 	}
 }

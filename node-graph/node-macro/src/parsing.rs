@@ -643,6 +643,14 @@ impl ParsedNodeFn {
 							"ExtractAnimationTime" => dependency_tokens.push(quote::quote! {ExtractAnimationTime}),
 							"ExtractIndex" => dependency_tokens.push(quote::quote! {ExtractIndex}),
 							"ExtractVarArgs" => dependency_tokens.push(quote::quote! {ExtractVarArgs}),
+							"ExtractAll" => {
+								dependency_tokens.push(quote::quote! {ExtractFootprint});
+								dependency_tokens.push(quote::quote! {ExtractDownstreamTransform});
+								dependency_tokens.push(quote::quote! {ExtractRealTime});
+								dependency_tokens.push(quote::quote! {ExtractAnimationTime});
+								dependency_tokens.push(quote::quote! {ExtractIndex});
+								dependency_tokens.push(quote::quote! {ExtractVarArgs});
+							}
 							_ => {}
 						}
 					}

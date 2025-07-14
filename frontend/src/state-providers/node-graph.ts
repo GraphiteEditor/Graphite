@@ -9,11 +9,13 @@ import {
 	type FrontendNode,
 	type FrontendNodeType,
 	type WirePath,
-	ClearAllNodeGraphWires,
+	ClearAllNodeGraphWirePaths,
 	SendUIMetadata,
 	UpdateBox,
+	UpdateGraphBreadcrumbPath,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
+	UpdateContextDuringEvaluation,
 	UpdateInSelectedNetwork,
 	UpdateImportReorderIndex,
 	UpdateExportReorderIndex,
@@ -32,6 +34,7 @@ import {
 export function createNodeGraphState(editor: Editor) {
 	const { subscribe, update } = writable({
 		box: undefined as Box | undefined,
+		breadcrumbPath: [] as bigint[],
 		clickTargets: undefined as FrontendClickTargets | undefined,
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
 		layerWidths: new Map<bigint, number>(),
@@ -43,8 +46,9 @@ export function createNodeGraphState(editor: Editor) {
 		addExport: undefined as { x: number; y: number } | undefined,
 		nodes: new Map<bigint, FrontendNode>(),
 		visibleNodes: new Set<bigint>(),
-		/// The index is the exposed input index. The exports have a first key value of u32::MAX.
+		/// The first key is the document node id. The index is the actual input index. The exports have a first key value of u32::MAX.
 		wires: new Map<bigint, Map<number, WirePath>>(),
+		/// The first key is the caller stable node id
 		wirePathInProgress: undefined as WirePath | undefined,
 		nodeDescriptions: new Map<string, string>(),
 		nodeTypes: [] as FrontendNodeType[],
@@ -70,6 +74,13 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
+	editor.subscriptions.subscribeJsMessage(UpdateGraphBreadcrumbPath, (updateGraphBreadcrumbPath) => {
+		update((state) => {
+			state.breadcrumbPath = updateGraphBreadcrumbPath.breadcrumbPath;
+			return state;
+		});
+	});
+
 	editor.subscriptions.subscribeJsMessage(UpdateClickTargets, (UpdateClickTargets) => {
 		update((state) => {
 			state.clickTargets = UpdateClickTargets.clickTargets;
@@ -82,6 +93,11 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
+	// editor.subscriptions.subscribeJsMessage(UpdateContextDuringEvaluation, (updateContextDuringEvaluation) => {
+	// 	update((state) => {
+	// 		return state;
+	// 	});
+	// });
 	editor.subscriptions.subscribeJsMessage(UpdateImportReorderIndex, (updateImportReorderIndex) => {
 		update((state) => {
 			state.reorderImportIndex = updateImportReorderIndex.importIndex;
@@ -118,7 +134,6 @@ export function createNodeGraphState(editor: Editor) {
 		});
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphNodes, (updateNodeGraphNodes) => {
-		// console.log(updateNodeGraphNodes);
 		update((state) => {
 			state.nodes.clear();
 			updateNodeGraphNodes.nodes.forEach((node) => {
@@ -127,6 +142,7 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeJsMessage(UpdateVisibleNodes, (updateVisibleNodes) => {
 		update((state) => {
 			state.visibleNodes = new Set<bigint>(updateVisibleNodes.nodes);
@@ -143,17 +159,33 @@ export function createNodeGraphState(editor: Editor) {
 					state.wires.set(wireUpdate.id, inputMap);
 				}
 				if (wireUpdate.wirePathUpdate !== undefined) {
-					inputMap.set(wireUpdate.inputIndex, wireUpdate.wirePathUpdate);
+					const existing = inputMap.get(wireUpdate.inputIndex);
+					if (existing) {
+						inputMap.set(wireUpdate.inputIndex, {
+							...wireUpdate.wirePathUpdate,
+							sni: existing.sni,
+						});
+					} else {
+						inputMap.set(wireUpdate.inputIndex, wireUpdate.wirePathUpdate);
+					}
 				} else {
-					inputMap.delete(wireUpdate.inputIndex);
+					const existing = inputMap.get(wireUpdate.inputIndex);
+					if (existing) {
+						existing.pathString = "";
+					}
 				}
 			});
+
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(ClearAllNodeGraphWires, (_) => {
+	editor.subscriptions.subscribeJsMessage(ClearAllNodeGraphWirePaths, (_) => {
 		update((state) => {
-			state.wires.clear();
+			for (const [, innerMap] of state.wires) {
+				for (const [, wirePath] of innerMap) {
+					wirePath.pathString = "";
+				}
+			}
 			return state;
 		});
 	});
@@ -178,7 +210,22 @@ export function createNodeGraphState(editor: Editor) {
 			for (const id of updateThumbnails.clear) {
 				state.thumbnails.set(id, "");
 			}
-			// console.log("thumbnails: ", state.thumbnails);
+			updateThumbnails.wireSNIUpdates.forEach((wireUpdate) => {
+				const inputMap = state.wires.get(wireUpdate.id);
+				if (inputMap) {
+					const wire = inputMap.get(wireUpdate.inputIndex);
+					if (wire) {
+						wire.sni = wireUpdate.sni;
+					}
+				}
+			});
+			updateThumbnails.layerSNIUpdates.forEach((wireUpdate) => {
+				const node = state.nodes.get(wireUpdate.id);
+				if (node) {
+					node.layerThumbnailSNI = wireUpdate.sni;
+				}
+			});
+
 			return state;
 		});
 	});

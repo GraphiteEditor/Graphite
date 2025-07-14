@@ -1,3 +1,4 @@
+use crate::memo::MonitorMemoNodeState;
 use crate::{ContextDependencies, Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
 use dyn_any::{DynAny, StaticType};
 use std::borrow::Cow;
@@ -134,7 +135,7 @@ pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 pub type SharedNodeContainer = std::sync::Arc<NodeContainer>;
 
 pub type NodeConstructor = fn(Vec<SharedNodeContainer>) -> DynFuture<'static, TypeErasedBox<'static>>;
-pub type CacheConstructor = fn(SharedNodeContainer) -> TypeErasedBox<'static>;
+pub type CacheConstructor = fn(SharedNodeContainer, MonitorMemoNodeState) -> TypeErasedBox<'static>;
 
 #[derive(Clone)]
 pub struct NodeContainer {
@@ -290,8 +291,16 @@ where
 		}
 	}
 
-	fn introspect(&self, check_if_evaluated: bool) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.node.introspect(check_if_evaluated)
+	fn introspect(&self) -> crate::memo::MonitorIntrospectResult {
+		self.node.introspect()
+	}
+
+	fn permanently_enable_cache(&self) {
+		self.node.permanently_enable_cache();
+	}
+
+	fn cache_first_evaluation(&self) {
+		self.node.cache_first_evaluation();
 	}
 
 	fn reset(&self) {

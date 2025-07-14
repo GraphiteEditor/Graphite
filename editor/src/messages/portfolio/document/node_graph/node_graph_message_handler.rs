@@ -6,12 +6,12 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
-use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType};
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, FrontendNodeSNIUpdate};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, Previewing, TypeSource};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
-use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
+use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, WireSNIUpdate, build_vector_wire};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
@@ -84,7 +84,7 @@ pub struct NodeGraphMessageHandler {
 	/// The end index of the moved port
 	end_index: Option<usize>,
 	/// Used to keep track of what nodes are sent to the front end so that only visible ones are sent to the frontend
-	frontend_nodes: Vec<NodeId>,
+	pub frontend_nodes: Vec<NodeId>,
 	/// Used to keep track of what wires are sent to the front end so the old ones can be removed
 	frontend_wires: HashSet<(NodeId, usize)>,
 }
@@ -918,7 +918,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							wire_in_progress_to_connector,
 							from_connector_is_layer,
 							to_connector_is_layer,
-							GraphWireStyle::Direct,
+							&GraphWireStyle::Direct,
 						);
 						let mut path_string = String::new();
 						let _ = vector_wire.subpath_to_svg(&mut path_string, DAffine2::IDENTITY);
@@ -928,7 +928,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							thick: false,
 							dashed: false,
 							center: None,
-							input_sni: None,
 						};
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
 					}
@@ -1179,7 +1178,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 										{
 											return None;
 										}
-										let (wire, is_stack, _) = network_interface.vector_wire_from_input(&input, preferences.graph_wire_style, selection_network_path)?;
+										let (wire, is_stack, _) = network_interface.vector_wire_from_input(&input, &preferences.graph_wire_style, selection_network_path)?;
 										wire.rectangle_intersections_exist(bounding_box[0], bounding_box[1]).then_some((input, is_stack))
 									})
 									.collect::<Vec<_>>();
@@ -1310,15 +1309,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				click_targets: Some(network_interface.collect_frontend_click_targets(breadcrumb_network_path)),
 			}),
 			NodeGraphMessage::EndSendClickTargets => responses.add(FrontendMessage::UpdateClickTargets { click_targets: None }),
-			NodeGraphMessage::UnloadWires => {
+			NodeGraphMessage::UnloadWirePaths => {
 				for input in network_interface.node_graph_input_connectors(breadcrumb_network_path) {
 					network_interface.unload_wire(&input, breadcrumb_network_path);
 				}
 
-				responses.add(FrontendMessage::ClearAllNodeGraphWires);
+				responses.add(FrontendMessage::ClearAllNodeGraphWirePaths);
 			}
-			NodeGraphMessage::SendWires => {
-				let wires = self.collect_wires(network_interface, preferences.graph_wire_style, breadcrumb_network_path);
+			NodeGraphMessage::SendWirePaths => {
+				let wires = self.collect_wires_paths(network_interface, &preferences.graph_wire_style, breadcrumb_network_path);
 				responses.add(FrontendMessage::UpdateNodeGraphWires { wires });
 			}
 			NodeGraphMessage::UpdateVisibleNodes => {
@@ -1347,8 +1346,20 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
 					self.frontend_nodes = nodes.iter().map(|node| node.id).collect();
 					responses.add(FrontendMessage::UpdateNodeGraphNodes { nodes });
-					responses.add(NodeGraphMessage::UpdateVisibleNodes);
+					let (layer_sni_updates, wire_sni_updates) = NodeGraphMessageHandler::graph_sni_updates(network_interface, breadcrumb_network_path);
+					responses.add(FrontendMessage::UpdateThumbnails {
+						add: Vec::new(),
+						clear: Vec::new(),
+						wire_sni_updates,
+						layer_sni_updates,
+					});
 
+					responses.add(NodeGraphMessage::UpdateVisibleNodes);
+					responses.add(NodeGraphMessage::UnloadWirePaths);
+					responses.add(NodeGraphMessage::SendWirePaths);
+					responses.add(FrontendMessage::UpdateGraphBreadcrumbPath {
+						breadcrumb_path: breadcrumb_network_path.to_vec(),
+					});
 					let (layer_widths, chain_widths, has_left_input_wire) = network_interface.collect_layer_widths(breadcrumb_network_path);
 
 					responses.add(NodeGraphMessage::UpdateImportsExports);
@@ -1366,6 +1377,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					network_interface.set_grid_aligned_edges(DVec2::new(ipp.viewport_bounds.bottom_right.x - ipp.viewport_bounds.top_left.x, 0.), breadcrumb_network_path);
 					// Send the new edges to the frontend
 					responses.add(NodeGraphMessage::UpdateImportsExports);
+					responses.add(NodeGraphMessage::SendWirePaths);
 				}
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
@@ -1378,7 +1390,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				if !(network_interface.reference(&node_id, selection_network_path).is_none() || input_index == 0) && network_interface.connected_to_output(&node_id, selection_network_path) {
 					responses.add(PortfolioMessage::CompileActiveDocument);
 					responses.add(Message::StartEvaluationQueue);
-					responses.add(NodeGraphMessage::SendWires);
+					responses.add(NodeGraphMessage::SendWirePaths);
 					responses.add(Message::EndEvaluationQueue);
 				}
 			}
@@ -1437,7 +1449,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 				}
 
-				responses.add(NodeGraphMessage::SendWires);
+				responses.add(NodeGraphMessage::SendWirePaths);
 			}
 			NodeGraphMessage::ToggleSelectedAsLayersOrNodes => {
 				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
@@ -1458,7 +1470,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::ShiftNodePosition { node_id, x, y } => {
 				network_interface.shift_absolute_node_position(&node_id, IVec2::new(x, y), selection_network_path);
 
-				responses.add(NodeGraphMessage::SendWires);
+				responses.add(NodeGraphMessage::SendWirePaths);
 			}
 			NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer } => {
 				if is_layer && !network_interface.is_eligible_to_be_layer(&node_id, selection_network_path) {
@@ -1472,7 +1484,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				});
 				responses.add(PortfolioMessage::CompileActiveDocument);
 				responses.add(NodeGraphMessage::SendGraph);
-				responses.add(NodeGraphMessage::SendWires);
+				responses.add(NodeGraphMessage::SendWirePaths);
 			}
 			NodeGraphMessage::SetDisplayName {
 				node_id,
@@ -2130,7 +2142,30 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	fn collect_wires(&mut self, network_interface: &mut NodeNetworkInterface, graph_wire_style: GraphWireStyle, breadcrumb_network_path: &[NodeId]) -> Vec<WirePathUpdate> {
+	pub fn graph_sni_updates(network_interface: &NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> (Vec<FrontendNodeSNIUpdate>, Vec<WireSNIUpdate>) {
+		let mut layer_updates = Vec::new();
+		let wires = network_interface
+			.node_graph_input_connectors(breadcrumb_network_path)
+			.iter()
+			.map(|input_connector| {
+				if let Some(node_id) = input_connector.node_id() {
+					if network_interface.is_layer(&node_id, breadcrumb_network_path) {
+						layer_updates.push(FrontendNodeSNIUpdate {
+							id: node_id,
+							sni: network_interface.protonode_from_output(&OutputConnector::node(node_id, 0), breadcrumb_network_path),
+						})
+					}
+				}
+				WireSNIUpdate {
+					id: input_connector.node_id().unwrap_or(NodeId(u64::MAX)),
+					input_index: input_connector.input_index(),
+					sni: network_interface.protonode_from_input(input_connector, breadcrumb_network_path),
+				}
+			})
+			.collect::<Vec<_>>();
+		(layer_updates, wires)
+	}
+	fn collect_wires_paths(&mut self, network_interface: &mut NodeNetworkInterface, graph_wire_style: &GraphWireStyle, breadcrumb_network_path: &[NodeId]) -> Vec<WirePathUpdate> {
 		let mut added_wires = network_interface
 			.node_graph_input_connectors(breadcrumb_network_path)
 			.iter()
@@ -2278,18 +2313,24 @@ impl NodeGraphMessageHandler {
 
 			let locked = network_interface.is_locked(&node_id, breadcrumb_network_path);
 
-			let errors = None; // TODO: Recursive traversal from export over all protonodes and match metadata with error
-			self.node_graph_errors
+			let errors: Option<String> = self
+				.node_graph_errors
 				.iter()
 				.find(|error| match &error.original_location {
 					graph_craft::proto::OriginalLocation::Value(_) => false,
-					graph_craft::proto::OriginalLocation::Node(node_ids) => node_ids == &node_id_path,
+					graph_craft::proto::OriginalLocation::Node(prefixed_node_path) => {
+						let (prefix, node_path) = prefixed_node_path.split_first().unwrap();
+						node_path == &node_id_path
+					}
 				})
 				.map(|error| format!("{:?}", error.error.clone()))
 				.or_else(|| {
 					if self.node_graph_errors.iter().any(|error| match &error.original_location {
 						graph_craft::proto::OriginalLocation::Value(_) => false,
-						graph_craft::proto::OriginalLocation::Node(node_ids) => node_ids.starts_with(&node_id_path),
+						graph_craft::proto::OriginalLocation::Node(prefixed_node_path) => {
+							let (prefix, node_path) = prefixed_node_path.split_first().unwrap();
+							node_path.starts_with(&node_id_path)
+						}
 					}) {
 						Some("Node graph type error within this node".to_string())
 					} else {
@@ -2297,11 +2338,16 @@ impl NodeGraphMessageHandler {
 					}
 				});
 
+			let is_layer = network_interface
+				.node_metadata(&node_id, breadcrumb_network_path)
+				.is_some_and(|node_metadata| node_metadata.persistent_metadata.is_layer());
+
 			nodes.push(FrontendNode {
 				id: node_id,
-				is_layer: network_interface
-					.node_metadata(&node_id, breadcrumb_network_path)
-					.is_some_and(|node_metadata| node_metadata.persistent_metadata.is_layer()),
+				is_layer,
+				layer_thumbnail_sni: is_layer
+					.then(|| network_interface.protonode_from_input(&InputConnector::Node { node_id, input_index: 1 }, breadcrumb_network_path))
+					.flatten(),
 				can_be_layer: can_be_layer_lookup.contains(&node_id),
 				reference: network_interface.reference(&node_id, breadcrumb_network_path).cloned().unwrap_or_default(),
 				display_name: network_interface.display_name(&node_id, breadcrumb_network_path),

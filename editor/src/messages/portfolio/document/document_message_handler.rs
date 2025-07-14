@@ -442,7 +442,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::EnterNestedNetwork { node_id } => {
 				self.breadcrumb_network_path.push(node_id);
 				self.selection_network_path.clone_from(&self.breadcrumb_network_path);
-				responses.add(NodeGraphMessage::UnloadWires);
+				responses.add(NodeGraphMessage::UnloadWirePaths);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
@@ -472,7 +472,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					self.breadcrumb_network_path.pop();
 					self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				}
-				responses.add(NodeGraphMessage::UnloadWires);
+				responses.add(NodeGraphMessage::UnloadWirePaths);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
@@ -539,7 +539,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				if opened {
-					responses.add(NodeGraphMessage::UnloadWires);
+					responses.add(NodeGraphMessage::UnloadWirePaths);
 				}
 				if open {
 					responses.add(ToolMessage::DeactivateTools);
@@ -1424,7 +1424,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						center: Key::Alt,
 						duplicate: Key::Alt,
 					}));
-					responses.add(PortfolioMessage::EvaluateActiveDocument);
+					responses.add(PortfolioMessage::EvaluateActiveDocumentWithThumbnails);
 				} else {
 					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
 						return;
@@ -1440,7 +1440,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::UpdateEdges);
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
 					responses.add(NodeGraphMessage::UpdateImportsExports);
-
+					responses.add(NodeGraphMessage::UpdateVisibleNodes);
+					responses.add(NodeGraphMessage::SendWirePaths);
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
 						transform: Transform {
 							scale: transform.matrix2.x_axis.x,
@@ -1909,10 +1910,7 @@ impl DocumentMessageHandler {
 		responses.add(PortfolioMessage::CompileActiveDocument);
 		responses.add(Message::StartEvaluationQueue);
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-		responses.add(NodeGraphMessage::SelectedNodesUpdated);
-		responses.add(NodeGraphMessage::SetGridAlignedEdges);
-		responses.add(NodeGraphMessage::UnloadWires);
-		responses.add(NodeGraphMessage::SendWires);
+		responses.add(NodeGraphMessage::SendGraph);
 		responses.add(Message::EndEvaluationQueue);
 		Some(previous_network)
 	}
@@ -1944,8 +1942,8 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
-		responses.add(NodeGraphMessage::UnloadWires);
-		responses.add(NodeGraphMessage::SendWires);
+		responses.add(NodeGraphMessage::UnloadWirePaths);
+		responses.add(NodeGraphMessage::SendWirePaths);
 		responses.add(Message::EndEvaluationQueue);
 		Some(previous_network)
 	}
@@ -2576,7 +2574,7 @@ impl DocumentMessageHandler {
 			layout: Layout::WidgetLayout(document_bar_layout),
 			layout_target: LayoutTarget::DocumentBar,
 		});
-		responses.add(PortfolioMessage::EvaluateActiveDocument);
+		responses.add(PortfolioMessage::EvaluateActiveDocumentWithThumbnails);
 	}
 
 	pub fn update_layers_panel_control_bar_widgets(&self, responses: &mut VecDeque<Message>) {

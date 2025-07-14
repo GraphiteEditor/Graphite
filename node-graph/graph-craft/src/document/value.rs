@@ -13,6 +13,7 @@ use graphene_core::uuid::NodeId;
 use graphene_core::vector::style::Fill;
 use graphene_core::{Color, MemoHash, Node, Type};
 use graphene_svg_renderer::{GraphicElementRendered, RenderMetadata};
+use std::cell::Cell;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -396,6 +397,7 @@ impl Display for TaggedValue {
 
 pub struct UpcastNode {
 	value: MemoHash<TaggedValue>,
+	inspected: Cell<bool>,
 }
 impl<'input> Node<'input, DAny<'input>> for UpcastNode {
 	type Output = FutureAny<'input>;
@@ -403,10 +405,15 @@ impl<'input> Node<'input, DAny<'input>> for UpcastNode {
 	fn eval(&'input self, _: DAny<'input>) -> Self::Output {
 		Box::pin(async move { self.value.clone().into_inner().to_dynany() })
 	}
+
+	fn introspect(&self) -> graphene_core::memo::MonitorIntrospectResult {
+		let inspected = self.inspected.replace(true);
+		graphene_core::memo::MonitorIntrospectResult::Evaluated((Arc::new(self.value.clone().into_inner()) as Arc<dyn std::any::Any + Send + Sync>, !inspected))
+	}
 }
 impl UpcastNode {
 	pub fn new(value: MemoHash<TaggedValue>) -> Self {
-		Self { value }
+		Self { value, inspected: Cell::new(false) }
 	}
 }
 #[derive(Default, Debug, Clone, Copy)]
@@ -425,8 +432,6 @@ impl<T: AsRef<U> + Sync + Send, U: Sync + Send> UpcastAsRefNode<T, U> {
 		UpcastAsRefNode(value, PhantomData)
 	}
 }
-
-
 
 #[derive(Debug, Clone, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub struct RenderOutput {
@@ -540,25 +545,13 @@ mod fake_hash {
 
 macro_rules! thumbnail_render {
 	( $( $ty:ty ),* $(,)? ) => {
-		pub fn render_thumbnail_if_change(new_value: &Arc<dyn std::any::Any + Send + Sync>, old_value: Option<&Arc<dyn std::any::Any + Send + Sync>>) -> ThumbnailRenderResult {
+		pub fn render_thumbnail(new_value: &Arc<dyn std::any::Any + Send + Sync>) -> Option<String> {
 			$(
 				if let Some(new_value) = new_value.downcast_ref::<$ty>() {
-					match old_value {
-						None => return ThumbnailRenderResult::UpdateThumbnail(new_value.render_thumbnail()),
-						Some(old_value) => {
-							if let Some(old_value) = old_value.downcast_ref::<$ty>() {
-								match new_value == old_value {
-									true => return ThumbnailRenderResult::NoChange,
-									false => return ThumbnailRenderResult::UpdateThumbnail(new_value.render_thumbnail())
-								}
-							} else {
-								return ThumbnailRenderResult::UpdateThumbnail(new_value.render_thumbnail())
-							}
-						},
-					}
+					return Some(new_value.render_thumbnail());
 				}
 			)*
-			return ThumbnailRenderResult::ClearThumbnail;
+			return None;
 		}
     };
 }

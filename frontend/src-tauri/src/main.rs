@@ -79,6 +79,6 @@ fn runtime_message(message: String) -> Result<(), String> {
 			return Err("Failed to deserialize message".into());
 		}
 	};
-	let response = NODE_RUNTIME_IO.lock().as_ref().unwrap().as_ref().unwrap().send(message);
+	let response = NODE_RUNTIME_IO.lock().as_ref().unwrap().as_ref().unwrap().try_send(message);
 	response
 }

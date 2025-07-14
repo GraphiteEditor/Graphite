@@ -185,7 +185,7 @@ fn compile_graph(document_string: String, application_io: Arc<WasmApplicationIo>
 
 	let mut wrapped_network = wrap_network_in_scope(network, Arc::new(FontCache::default()), EditorMetadata::default(), application_io);
 
-	wrapped_network.flatten().map(|result| result.0).map_err(|x| x.into())
+	wrapped_network.compile().map(|result| result.0).map_err(|x| x.into())
 }
 
 fn create_executor(proto_network: ProtoNetwork) -> Result<DynamicExecutor, Box<dyn Error>> {

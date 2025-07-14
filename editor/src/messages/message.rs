@@ -13,12 +13,7 @@ pub enum Message {
 	EndEvaluationQueue,
 	// Processes all messages that are queued to be run after evaluation, which occurs on the evaluation response. This allows a message to be run with data from after the evaluation is complete
 	#[serde(skip)]
-	ProcessEvaluationQueue(graphene_std::renderer::RenderMetadata),
-	StartIntrospectionQueue,
-	EndIntrospectionQueue,
-	// Processes all messages that are queued to be run after introspection, which occurs on the evaluation response. This allows a message to be run with data from after the evaluation is complete
-	#[serde(skip)]
-	ProcessIntrospectionQueue(IntrospectionResponse),
+	ProcessEvaluationQueue(graphene_std::renderer::RenderMetadata, IntrospectionResponse),
 	#[child]
 	Animation(AnimationMessage),
 	#[child]

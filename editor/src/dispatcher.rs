@@ -44,8 +44,11 @@ impl DispatcherMessageHandlers {
 /// In addition, these messages do not change any state in the backend (aside from caches).
 const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::CompileActiveDocument),
-	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::EvaluateActiveDocument),
-	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::IntrospectActiveDocument),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::EvaluateActiveDocumentWithThumbnails),
+	// MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::IntrospectActiveDocument),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
+		PropertiesPanelMessageDiscriminant::Refresh,
+	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
 		PropertiesPanelMessageDiscriminant::Refresh,
 	))),
@@ -123,13 +126,13 @@ impl Dispatcher {
 				}
 			}
 
-			// Add all messages to the queue if queuing messages (except from the end queue message)
-			if !matches!(message, Message::EndIntrospectionQueue) {
-				if self.queueing_introspection_messages {
-					self.introspection_queue.push(message);
-					return;
-				}
-			}
+			// // Add all messages to the queue if queuing messages (except from the end queue message)
+			// if !matches!(message, Message::EndIntrospectionQueue) {
+			// 	if self.queueing_introspection_messages {
+			// 		self.introspection_queue.push(message);
+			// 		return;
+			// 	}
+			// }
 			// Print the message at a verbosity level of `info`
 			self.log_message(&message, &self.message_queues, self.message_handlers.debug_message_handler.message_logging_verbosity);
 
@@ -144,9 +147,10 @@ impl Dispatcher {
 				Message::EndEvaluationQueue => {
 					self.queueing_evaluation_messages = false;
 				}
-				Message::ProcessEvaluationQueue(render_output_metadata) => {
+				Message::ProcessEvaluationQueue(render_output_metadata, introspected_nodes) => {
 					let update_message = PortfolioMessage::ProcessEvaluationResponse {
 						evaluation_metadata: render_output_metadata,
+						introspected_nodes,
 					}
 					.into();
 					// Update the state with the render output and introspected inputs
@@ -154,23 +158,9 @@ impl Dispatcher {
 
 					// Schedule all queued messages to be run, which use the introspected inputs (in the order they were added)
 					Self::schedule_execution(&mut self.message_queues, true, std::mem::take(&mut self.evaluation_queue));
-				}
-				Message::StartIntrospectionQueue => {
-					self.queueing_introspection_messages = true;
-				}
-				Message::EndIntrospectionQueue => {
-					self.queueing_introspection_messages = false;
-				}
-				Message::ProcessIntrospectionQueue(introspection_response) => {
-					let update_message = PortfolioMessage::ProcessIntrospectionResponse { introspection_response }.into();
-					// Update the state with the render output and introspected inputs
-					Self::schedule_execution(&mut self.message_queues, true, [update_message]);
 
-					// Schedule all queued messages to be run, which use the introspected inputs (in the order they were added)
-					Self::schedule_execution(&mut self.message_queues, true, std::mem::take(&mut self.introspection_queue));
-
+					// Clear all introspected data after the queued messages are execucted
 					let clear_message = PortfolioMessage::ClearIntrospectedData.into();
-					// Clear the introspected inputs since they are no longer required, and will cause a memory leak if not removed
 					Self::schedule_execution(&mut self.message_queues, true, [clear_message]);
 				}
 				Message::NoOp => {}

@@ -1,12 +1,12 @@
 use crate::instances::{InstanceRef, Instances};
 use crate::raster_types::{CPU, RasterDataTable};
 use crate::vector::VectorDataTable;
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, OwnedContextImpl};
+use crate::{ Context, Ctx, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, WithIndex};
 use glam::DVec2;
 
 #[node_macro::node(name("Instance on Points"), category("Instancing"), path(graphene_core::vector))]
 async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + 'static>(
-	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx,
+	ctx: impl Ctx + WithIndex,
 	points: VectorDataTable,
 	#[implementations(
 		Context -> GraphicGroupTable,
@@ -22,8 +22,7 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + '
 		let mut iteration = async |index, point| {
 			let transformed_point = transform.transform_point2(point);
 
-			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_vararg(("Transformed point", Box::new(transformed_point)));
-			let generated_instance = instance.eval(new_ctx.into_context()).await;
+			let generated_instance = instance.eval(ctx.with_index(index)).await;
 
 			for mut instanced in generated_instance.instance_iter() {
 				instanced.transform.translation = transformed_point;
@@ -48,7 +47,7 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + '
 
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn instance_repeat<T: Into<GraphicElement> + Default + Send + Clone + 'static>(
-	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+	ctx: impl Ctx + WithIndex,
 	#[implementations(
 		Context -> GraphicGroupTable,
 		Context -> VectorDataTable,
@@ -65,8 +64,7 @@ async fn instance_repeat<T: Into<GraphicElement> + Default + Send + Clone + 'sta
 	for index in 0..count {
 		let index = if reverse { count - index - 1 } else { index };
 
-		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index);
-		let generated_instance = instance.eval(new_ctx.into_context()).await;
+		let generated_instance = instance.eval(ctx.with_index(index)).await;
 
 		for instanced in generated_instance.instance_iter() {
 			result_table.push(instanced);

@@ -12,9 +12,7 @@ pub struct WirePath {
 	pub data_type: FrontendGraphDataType,
 	pub thick: bool,
 	pub dashed: bool,
-	pub center: Option<(f64, f64)>,
-	#[serde(rename = "inputSni")]
-	pub input_sni: Option<NodeId>,
+	pub center: Option<(i32, i32)>,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -25,6 +23,14 @@ pub struct WirePathUpdate {
 	// If none, then remove the wire from the map
 	#[serde(rename = "wirePathUpdate")]
 	pub wire_path_update: Option<WirePath>,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct WireSNIUpdate {
+	pub id: NodeId,
+	#[serde(rename = "inputIndex")]
+	pub input_index: usize,
+	pub sni: Option<NodeId>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -56,7 +62,7 @@ impl GraphWireStyle {
 	}
 }
 
-pub fn build_vector_wire(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool, graph_wire_style: GraphWireStyle) -> (Subpath<PointId>, DVec2) {
+pub fn build_vector_wire(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool, graph_wire_style: &GraphWireStyle) -> (Subpath<PointId>, DVec2) {
 	let grid_spacing = 24.;
 	match graph_wire_style {
 		GraphWireStyle::Direct => {

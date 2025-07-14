@@ -32,6 +32,7 @@ pub mod value;
 pub mod vector;
 
 pub use crate as graphene_core;
+use crate::memo::MonitorIntrospectResult;
 pub use blending::*;
 pub use context::*;
 pub use ctor;
@@ -61,10 +62,14 @@ pub trait Node<'i, Input> {
 	}
 
 	// If check if evaluated is true, then it returns None if the node has not been evaluated since the last introspection
-	fn introspect(&self, _check_if_evaluated: bool) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+	fn introspect(&self) -> MonitorIntrospectResult {
 		log::warn!("Node::introspect not implemented for {}", std::any::type_name::<Self>());
-		None
+		MonitorIntrospectResult::Error
 	}
+
+	fn permanently_enable_cache(&self) {}
+
+	fn cache_first_evaluation(&self) {}
 }
 
 mod types;

@@ -230,6 +230,22 @@
 		}
 		return result;
 	}
+
+	function generateCheckerboardString() {
+		let rects = "";
+
+		for (let y = 0; y < 6; y++) {
+			for (let x = 0; x < 8; x++) {
+				const isDark = (x + y) % 2 === 0;
+				const fill = isDark ? "#cccccc" : "#ffffff";
+				rects += `<rect x="${x * 4 - 16}" y="${y * 4 - 12}" width="${4.1}" height="${4.1}" fill="${fill}" />`;
+			}
+		}
+
+		rects += ``;
+
+		return rects;
+	}
 </script>
 
 <div
@@ -317,10 +333,11 @@
 	<div class="wires" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		<svg>
 			{#each $nodeGraph.wires.values() as map}
-				{#each map.values() as { pathString, dataType, thick, dashed }}
+				{#each map.values() as { pathString, dataType, thick, dashed, center, sni }}
 					{#if thick}
 						<path
 							d={pathString}
+							class="wire-path"
 							style:--data-line-width={"8px"}
 							style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
@@ -513,8 +530,8 @@
 					<span class="node-error hover" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
 				{/if}
 				<div class="thumbnail">
-					{#if $nodeGraph.thumbnails.has(node.id)}
-						{@html $nodeGraph.thumbnails.get(node.id)}
+					{#if node.layerThumbnailSNI && $nodeGraph.thumbnails.has(node.layerThumbnailSNI)}
+						{@html $nodeGraph.thumbnails.get(node.layerThumbnailSNI)}
 					{/if}
 					<!-- Layer stacking top output -->
 					{#if node.primaryOutput}
@@ -613,8 +630,8 @@
 		<div class="wires">
 			<svg>
 				{#each $nodeGraph.wires.values() as map}
-					{#each map.values() as { pathString, dataType, thick, dashed, center, monitorSni }}
-						{#if !thick}
+					{#each map.values() as { pathString, dataType, thick, dashed, center, sni }}
+						{#if !thick && pathString}
 							<path
 								d={pathString}
 								class="wire-path"
@@ -623,20 +640,16 @@
 								style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
 								style:--data-dasharray={`3,${dashed ? 2 : 0}`}
 							/>
-						{/if}
-						<!-- {console.log("center: ", center)} -->
-						<!-- {console.log("monitorSni: ", monitorSni)} -->
-						{#if center && monitorSni}
-							<!-- {console.log("thumbnails: ", $nodeGraph.thumbnails.get(monitorSni))} -->
-							<g transform={`translate(${center[0]}, ${center[1]})`}>
-								{@html $nodeGraph.thumbnails.get(monitorSni)}
-							</g>
+							<!-- <g transform={`translate(${center[0] - 30}, ${center[1] - 10})`}>
+								<text fill="white">{sni}</text>
+							</g> -->
 						{/if}
 					{/each}
 				{/each}
 				{#if $nodeGraph.wirePathInProgress}
 					<path
 						d={$nodeGraph.wirePathInProgress?.pathString}
+						class="wire-path"
 						style:--data-line-width={`${$nodeGraph.wirePathInProgress.thick ? 8 : 2}px`}
 						style:--data-color={`var(--color-data-${$nodeGraph.wirePathInProgress.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${$nodeGraph.wirePathInProgress.dataType.toLowerCase()}-dim)`}
@@ -644,6 +657,22 @@
 					/>
 				{/if}
 			</svg>
+			{#each $nodeGraph.wires.values() as map}
+				{#each map.values() as { pathString, center, sni, dataType, thick }}
+					{#if !thick && pathString && sni && center !== undefined}
+						<div
+							class="wire-thumbnail"
+							style:--offset-left-px={`${center[0] - 12}px`}
+							style:--offset-top-px={`${center[1] - 8}px`}
+							style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
+						>
+							{#if sni && $nodeGraph.thumbnails.has(sni)}
+								{@html $nodeGraph.thumbnails.get(sni)}
+							{/if}
+						</div>
+					{/if}
+				{/each}
+			{/each}
 		</div>
 
 		<!-- Nodes -->
@@ -891,7 +920,6 @@
 			position: absolute;
 			width: 100%;
 			height: 100%;
-
 			svg {
 				width: 100%;
 				height: 100%;
@@ -903,6 +931,23 @@
 					stroke-width: var(--data-line-width);
 					stroke-dasharray: var(--data-dasharray);
 				}
+			}
+
+			.wire-thumbnail {
+				// background: var(--color-2-mildblack);
+				border: 1px solid var(--data-color-dim);
+				border-radius: 2px;
+				position: absolute;
+				left: var(--offset-left-px);
+				top: var(--offset-top-px);
+				box-sizing: border-box;
+				width: 24px;
+				height: 16px;
+				// background-color: white;
+				background-image: var(--color-transparent-checkered-background);
+				background-size: var(--color-transparent-checkered-background-size-mini);
+				background-position: var(--color-transparent-checkered-background-position-mini);
+				background-repeat: var(--color-transparent-checkered-background-repeat);
 			}
 		}
 

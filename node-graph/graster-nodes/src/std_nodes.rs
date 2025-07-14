@@ -2,6 +2,7 @@ use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWar
 use dyn_any::DynAny;
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
+use graphene_core::ExtractDownstreamTransform;
 use graphene_core::blending::AlphaBlending;
 use graphene_core::color::Color;
 use graphene_core::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
@@ -30,7 +31,7 @@ impl From<std::io::Error> for Error {
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: RasterDataTable<CPU>) -> RasterDataTable<CPU> {
+pub fn sample_image(ctx: impl ExtractFootprint + ExtractDownstreamTransform + Clone + Send, image_frame: RasterDataTable<CPU>) -> RasterDataTable<CPU> {
 	let mut result_table = RasterDataTable::default();
 
 	for mut image_frame_instance in image_frame.instance_iter() {
@@ -40,8 +41,17 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Rast
 		// Resize the image using the image crate
 		let data = bytemuck::cast_vec(image.data.clone());
 
-		let footprint = ctx.footprint();
-		let viewport_bounds = footprint.viewport_bounds_in_local_space();
+		// TODO: Feed as input for error handling
+		let Some(footprint) = ctx.try_footprint().cloned() else {
+			continue;
+		};
+
+		let Some(downstream_transform) = ctx.try_downstream_transform() else {
+			continue;
+		};
+
+		let viewport_bounds = footprint.viewport_bounds_in_local_space(downstream_transform);
+
 		let image_bounds = Bbox::from_transform(image_frame_transform).to_axis_aligned_bbox();
 		let intersection = viewport_bounds.intersect(&image_bounds);
 		let image_size = DAffine2::from_scale(DVec2::new(image.width as f64, image.height as f64));
@@ -313,7 +323,7 @@ pub fn image_value(_: impl Ctx, _primary: (), image: RasterDataTable<CPU>) -> Ra
 #[node_macro::node(category("Raster: Pattern"))]
 #[allow(clippy::too_many_arguments)]
 pub fn noise_pattern(
-	ctx: impl ExtractFootprint + Ctx,
+	ctx: impl ExtractFootprint + ExtractDownstreamTransform + Ctx,
 	_primary: (),
 	clip: bool,
 	seed: u32,
@@ -331,8 +341,15 @@ pub fn noise_pattern(
 	cellular_return_type: CellularReturnType,
 	cellular_jitter: f64,
 ) -> RasterDataTable<CPU> {
-	let footprint = ctx.footprint();
-	let viewport_bounds = footprint.viewport_bounds_in_local_space();
+	// TODO: Feed as input for error handling
+	let Some(footprint) = ctx.try_footprint().copied() else {
+		return RasterDataTable::default();
+	};
+	let Some(downstream_transform) = ctx.try_downstream_transform() else {
+		return RasterDataTable::default();
+	};
+
+	let viewport_bounds = footprint.viewport_bounds_in_local_space(downstream_transform);
 
 	let mut size = viewport_bounds.size();
 	let mut offset = viewport_bounds.start;
@@ -468,9 +485,17 @@ pub fn noise_pattern(
 }
 
 #[node_macro::node(category("Raster: Pattern"))]
-pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> RasterDataTable<CPU> {
-	let footprint = ctx.footprint();
-	let viewport_bounds = footprint.viewport_bounds_in_local_space();
+pub fn mandelbrot(ctx: impl ExtractFootprint + ExtractDownstreamTransform + Send) -> RasterDataTable<CPU> {
+	// TODO: Feed as input for error handling
+	let Some(footprint) = ctx.try_footprint().cloned() else {
+		return RasterDataTable::default();
+	};
+
+	let Some(downstream_transform) = ctx.try_downstream_transform() else {
+		return RasterDataTable::default();
+	};
+
+	let viewport_bounds = footprint.viewport_bounds_in_local_space(downstream_transform);
 
 	let image_bounds = Bbox::from_transform(DAffine2::IDENTITY).to_axis_aligned_bbox();
 	let intersection = viewport_bounds.intersect(&image_bounds);

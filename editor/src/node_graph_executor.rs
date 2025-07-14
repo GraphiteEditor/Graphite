@@ -6,7 +6,8 @@ use dyn_any::DynAny;
 use graph_craft::document::value::{EditorMetadata, RenderOutput, TaggedValue};
 use graph_craft::document::{CompilationMetadata, DocumentNode, NodeNetwork, generate_uuid};
 use graph_craft::proto::GraphErrors;
-use graphene_std::any::EditorContext;
+use graphene_std::EditorContext;
+use graphene_std::memo::MonitorIntrospectResult;
 use graphene_std::renderer::format_transform_matrix;
 use graphene_std::text::FontCache;
 use graphene_std::uuid::SNI;
@@ -30,6 +31,11 @@ pub struct CompilationResponse {
 	node_graph_errors: GraphErrors,
 }
 
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct CacheEnableRequest {
+	nodes_to_enable: HashSet<SNI>,
+}
+
 // Metadata the editor sends when evaluating the network
 #[derive(Debug, Default, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct EvaluationRequest {
@@ -37,16 +43,18 @@ pub struct EvaluationRequest {
 	#[serde(skip)]
 	pub context: EditorContext,
 	pub node_to_evaluate: Option<SNI>,
+	pub nodes_to_introspect: HashSet<SNI>,
 }
 
 // #[cfg_attr(feature = "decouple-execution", derive(serde::Serialize, serde::Deserialize))]
 pub struct EvaluationResponse {
 	evaluation_id: u64,
 	result: Result<TaggedValue, String>,
+	introspected_nodes: IntrospectionResponse,
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct IntrospectionResponse(pub Vec<(SNI, Option<Arc<dyn std::any::Any + Send + Sync>>)>);
+pub struct IntrospectionResponse(pub Vec<(SNI, MonitorIntrospectResult)>);
 
 impl PartialEq for IntrospectionResponse {
 	fn eq(&self, _other: &Self) -> bool {
@@ -58,7 +66,6 @@ impl PartialEq for IntrospectionResponse {
 pub enum NodeGraphUpdate {
 	CompilationResponse(CompilationResponse),
 	EvaluationResponse(EvaluationResponse),
-	IntrospectionResponse(IntrospectionResponse),
 }
 
 #[derive(Debug, Default)]
@@ -83,18 +90,18 @@ impl Default for NodeGraphExecutor {
 
 impl NodeGraphExecutor {
 	/// A local runtime is useful on threads since having global state causes flakes
-	#[cfg(test)]
-	pub(crate) fn new_with_local_runtime() -> (NodeRuntime, Self) {
-		let (request_sender, request_receiver) = std::sync::mpsc::channel();
-		let (response_sender, response_receiver) = std::sync::mpsc::channel();
-		let node_runtime = NodeRuntime::new(request_receiver, response_sender);
+	// #[cfg(test)]
+	// pub(crate) fn new_with_local_runtime() -> (NodeRuntime, Self) {
+	// 	let (request_sender, request_receiver) = std::sync::mpsc::channel();
+	// 	let (response_sender, response_receiver) = std::sync::mpsc::channel();
+	// 	let node_runtime = NodeRuntime::new(request_receiver, response_sender);
 
-		let node_executor = Self {
-			futures: HashMap::new(),
-			runtime_io: NodeRuntimeIO::with_channels(request_sender, response_receiver),
-		};
-		(node_runtime, node_executor)
-	}
+	// 	let node_executor = Self {
+	// 		futures: HashMap::new(),
+	// 		runtime_io: NodeRuntimeIO::with_channels(request_sender, response_receiver),
+	// 	};
+	// 	(node_runtime, node_executor)
+	// }
 
 	/// Updates the network to monitor all inputs. Useful for the testing.
 	// #[cfg(test)]
@@ -110,19 +117,28 @@ impl NodeGraphExecutor {
 
 	/// Compile the network
 	pub fn submit_node_graph_compilation(&mut self, compilation_request: CompilationRequest) {
-		if let Err(error) = self.runtime_io.send(GraphRuntimeRequest::CompilationRequest(compilation_request)) {
+		if let Err(error) = self.runtime_io.try_send(GraphRuntimeRequest::CompilationRequest(compilation_request)) {
 			log::error!("Could not send evaluation request. {:?}", error);
 			return;
 		}
 	}
 
+	// // Adds a request to set disabled cache nodes (automatically placed on the output of each node) to save the value of their first exeuction
+	// pub fn submit_node_graph_cache_enable(&mut self, nodes_to_enable: HashSet<SNI>) {
+	// 	if let Err(error) = self.runtime_io.try_send(GraphRuntimeRequest::CacheEnableRequest(CacheEnableRequest { nodes_to_enable })) {
+	// 		log::error!("Could not send evaluation request. {:?}", error);
+	// 		return;
+	// 	}
+	// }
+
 	/// Adds an evaluation request for whatever current network is cached.
-	pub fn submit_node_graph_evaluation(&mut self, context: EditorContext, node_to_evaluate: Option<SNI>, export_config: Option<ExportConfig>) {
+	pub fn submit_node_graph_evaluation(&mut self, context: EditorContext, node_to_evaluate: Option<SNI>, export_config: Option<ExportConfig>, nodes_to_introspect: HashSet<SNI>) {
 		let evaluation_id = generate_uuid();
-		if let Err(error) = self.runtime_io.send(GraphRuntimeRequest::EvaluationRequest(EvaluationRequest {
+		if let Err(error) = self.runtime_io.try_send(GraphRuntimeRequest::EvaluationRequest(EvaluationRequest {
 			evaluation_id,
 			context,
 			node_to_evaluate,
+			nodes_to_introspect,
 		})) {
 			log::error!("Could not send evaluation request. {:?}", error);
 			return;
@@ -131,18 +147,43 @@ impl NodeGraphExecutor {
 		self.futures.insert(evaluation_id, evaluation_context);
 	}
 
-	pub fn submit_node_graph_introspection(&mut self, nodes_to_introspect: HashSet<SNI>) {
-		if let Err(error) = self.runtime_io.send(GraphRuntimeRequest::IntrospectionRequest(nodes_to_introspect)) {
-			log::error!("Could not send evaluation request. {:?}", error);
-			return;
-		}
-	}
+	// pub fn submit_node_graph_introspection(&mut self, nodes_to_introspect: HashSet<SNI>) {
+	// 	if let Err(error) = self.runtime_io.try_send(GraphRuntimeRequest::IntrospectionRequest(nodes_to_introspect)) {
+	// 		log::error!("Could not send evaluation request. {:?}", error);
+	// 		return;
+	// 	}
+	// }
 
 	// Continuously poll the executor (called by request animation frame)
 	pub fn poll_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		for response in self.runtime_io.receive() {
+		if let Ok(response) = self.runtime_io.receive() {
+			self.runtime_io.busy = false;
 			match response {
-				NodeGraphUpdate::EvaluationResponse(EvaluationResponse { evaluation_id, result }) => {
+				NodeGraphUpdate::CompilationResponse(compilation_response) => {
+					let CompilationResponse { node_graph_errors, result } = compilation_response;
+					let compilation_metadata = match result {
+						Err(e) => {
+							// Clear the click targets while the graph is in an un-renderable state
+							document.network_interface.update_click_targets(HashMap::new());
+							document.network_interface.update_vector_modify(HashMap::new());
+
+							document.node_graph_handler.node_graph_errors = node_graph_errors;
+							responses.add(NodeGraphMessage::SendGraph);
+
+							log::trace!("{e}");
+							return Err(format!("Node graph evaluation failed:\n{e}"));
+						}
+						Ok(result) => result,
+					};
+					// Always evaluate after a compilation
+					responses.add_front(PortfolioMessage::EvaluateActiveDocumentWithThumbnails);
+					responses.add_front(PortfolioMessage::ProcessCompilationResponse { compilation_metadata });
+				}
+				NodeGraphUpdate::EvaluationResponse(EvaluationResponse {
+					evaluation_id,
+					result,
+					introspected_nodes,
+				}) => {
 					responses.add(OverlaysMessage::Draw);
 
 					let node_graph_output = match result {
@@ -186,36 +227,17 @@ impl NodeGraphExecutor {
 						}
 					} else {
 						// Update artwork
-						self.process_node_graph_output(render_output, responses)?
+						self.process_node_graph_output(render_output, introspected_nodes, responses)?
 					}
-				}
-				NodeGraphUpdate::CompilationResponse(compilation_response) => {
-					let CompilationResponse { node_graph_errors, result } = compilation_response;
-					let compilation_metadata = match result {
-						Err(e) => {
-							// Clear the click targets while the graph is in an un-renderable state
-							document.network_interface.update_click_targets(HashMap::new());
-							document.network_interface.update_vector_modify(HashMap::new());
-
-							document.node_graph_handler.node_graph_errors = node_graph_errors;
-							responses.add(NodeGraphMessage::SendGraph);
-
-							log::trace!("{e}");
-							return Err(format!("Node graph evaluation failed:\n{e}"));
-						}
-						Ok(result) => result,
-					};
-					responses.add(PortfolioMessage::ProcessCompilationResponse { compilation_metadata });
-				}
-				NodeGraphUpdate::IntrospectionResponse(introspection_response) => {
-					responses.add(Message::ProcessIntrospectionQueue(introspection_response));
-				}
+				} // NodeGraphUpdate::IntrospectionResponse(introspection_response) => {
+				  // 	responses.add_front(Message::ProcessIntrospectionQueue(introspection_response));
+				  // }
 			}
 		}
 		Ok(())
 	}
 
-	fn process_node_graph_output(&self, render_output: RenderOutput, responses: &mut VecDeque<Message>) -> Result<(), String> {
+	fn process_node_graph_output(&self, render_output: RenderOutput, introspected_nodes: IntrospectionResponse, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		match render_output.data {
 			graphene_std::wasm_application_io::RenderOutputType::Svg(svg) => {
 				// Send to frontend
@@ -234,7 +256,16 @@ impl NodeGraphExecutor {
 				return Err(format!("Invalid node graph output type: {:#?}", render_output.data));
 			}
 		}
-		responses.add(Message::ProcessEvaluationQueue(render_output.metadata));
+		let context_during_evaluation = self
+			.runtime_io
+			.context_receiver
+			.try_iter()
+			.map(|(ids, index, context)| (ids, index, format!("{:?}", context)))
+			.collect::<Vec<_>>();
+		if context_during_evaluation.len() != 0 {
+			responses.add_front(FrontendMessage::UpdateContextDuringEvaluation { context_during_evaluation });
+		}
+		responses.add_front(Message::ProcessEvaluationQueue(render_output.metadata, introspected_nodes));
 		Ok(())
 	}
 }

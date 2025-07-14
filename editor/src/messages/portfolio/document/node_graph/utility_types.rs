@@ -1,8 +1,8 @@
-use crate::messages::portfolio::document::utility_types::network_interface::{TypeSource};
-use graph_craft::document::{InputConnector, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::TypeSource;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::uuid::NodeId;
+use graph_craft::document::{InputConnector, OutputConnector};
 use graphene_std::Type;
+use graphene_std::uuid::NodeId;
 use std::borrow::Cow;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -76,6 +76,8 @@ pub struct FrontendNode {
 	pub id: NodeId,
 	#[serde(rename = "isLayer")]
 	pub is_layer: bool,
+	#[serde(rename = "layerThumbnailSNI")]
+	pub layer_thumbnail_sni: Option<NodeId>,
 	#[serde(rename = "canBeLayer")]
 	pub can_be_layer: bool,
 	pub reference: Option<String>,
@@ -96,6 +98,12 @@ pub struct FrontendNode {
 	pub errors: Option<String>,
 	#[serde(rename = "uiOnly")]
 	pub ui_only: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontendNodeSNIUpdate {
+	pub id: NodeId,
+	pub sni: Option<NodeId>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]

@@ -12,6 +12,7 @@ export class JsMessage {
 }
 
 const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
+
 const ImportsToVec2Array = Transform(({ obj: { imports } }: { obj: { imports: [FrontendGraphOutput, number, number][] } }) =>
 	imports.map(([outputMetadata, x, y]) => ({ outputMetadata, position: { x, y } })),
 );
@@ -36,6 +37,10 @@ export class UpdateBox extends JsMessage {
 	readonly box!: Box | undefined;
 }
 
+export class UpdateGraphBreadcrumbPath extends JsMessage {
+	readonly breadcrumbPath!: bigint[];
+}
+
 export class UpdateClickTargets extends JsMessage {
 	readonly clickTargets!: FrontendClickTargets | undefined;
 }
@@ -55,6 +60,10 @@ const ContextTupleToVec2 = Transform((data) => {
 export class UpdateContextMenuInformation extends JsMessage {
 	@ContextTupleToVec2
 	readonly contextMenuInformation!: ContextMenuInformation | undefined;
+}
+
+export class UpdateContextDuringEvaluation extends JsMessage {
+	readonly contextDuringEvaluation!: [bigint, number, string][];
 }
 
 export class UpdateImportsExports extends JsMessage {
@@ -109,7 +118,7 @@ export class UpdateNodeGraphWires extends JsMessage {
 	readonly wires!: WireUpdate[];
 }
 
-export class ClearAllNodeGraphWires extends JsMessage {}
+export class ClearAllNodeGraphWirePaths extends JsMessage {}
 
 export class UpdateNodeGraphTransform extends JsMessage {
 	readonly transform!: NodeGraphTransform;
@@ -128,6 +137,10 @@ export class UpdateThumbnails extends JsMessage {
 	readonly add!: [bigint, string][];
 
 	readonly clear!: bigint[];
+
+	readonly wireSNIUpdates!: WireSNIUpdate[];
+
+	readonly layerSNIUpdates!: FrontendLayerSNIUpdate[];
 }
 
 export class UpdateNodeGraphSelection extends JsMessage {
@@ -266,6 +279,8 @@ export class FrontendGraphOutput {
 export class FrontendNode {
 	readonly isLayer!: boolean;
 
+	layerThumbnailSNI!: bigint | undefined;
+
 	readonly canBeLayer!: boolean;
 
 	readonly id!: bigint;
@@ -302,6 +317,12 @@ export class FrontendNode {
 	readonly uiOnly!: boolean;
 }
 
+export class FrontendLayerSNIUpdate {
+	readonly id!: bigint;
+
+	readonly sni!: bigint | undefined;
+}
+
 export class FrontendNodeType {
 	readonly name!: string;
 
@@ -317,19 +338,24 @@ export class NodeGraphTransform {
 }
 
 export class WirePath {
-	readonly pathString!: string;
+	pathString!: string;
 	readonly dataType!: FrontendGraphDataType;
 	readonly thick!: boolean;
 	readonly dashed!: boolean;
-	@TupleToVec2
-	readonly center!: XY | undefined;
-	readonly inputSni!: bigint;
+	readonly center!: [number, number] | undefined;
+	sni!: bigint | undefined;
 }
 
 export class WireUpdate {
 	readonly id!: bigint;
 	readonly inputIndex!: number;
 	readonly wirePathUpdate!: WirePath | undefined;
+}
+
+export class WireSNIUpdate {
+	readonly id!: bigint;
+	readonly inputIndex!: number;
+	readonly sni!: bigint | undefined;
 }
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
@@ -1624,7 +1650,7 @@ type JSMessageFactory = (data: any, wasm: WebAssembly.Memory, handle: EditorHand
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageMakers: Record<string, MessageMaker> = {
-	ClearAllNodeGraphWires,
+	ClearAllNodeGraphWirePaths,
 	DisplayDialog,
 	DisplayDialogDismiss,
 	DisplayDialogPanic,
@@ -1653,8 +1679,10 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateBox,
+	UpdateGraphBreadcrumbPath,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
+	UpdateContextDuringEvaluation,
 	UpdateDialogButtons,
 	UpdateDialogColumn1,
 	UpdateDialogColumn2,

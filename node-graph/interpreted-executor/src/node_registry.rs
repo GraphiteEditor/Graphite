@@ -332,8 +332,8 @@ mod node_registry_macros {
 
 	macro_rules! cache_node {
 		($type:ty) => {
-			(concrete!($type), |arg| {
-				let node = <graphene_core::memo::MonitorMemoNode<_, _>>::new(graphene_std::registry::downcast_node::<graphene_std::Context, $type>(arg));
+			(concrete!($type), |arg, state| {
+				let node = <graphene_core::memo::MonitorMemoNode<_, _>>::new(graphene_std::registry::downcast_node::<graphene_std::Context, $type>(arg), state);
 				let any: DynAnyNode<_, _, _> = graphene_std::any::DynAnyNode::new(node);
 				Box::new(any) as TypeErasedBox
 			})

@@ -1,14 +1,14 @@
 use crate::instances::Instances;
 use crate::raster_types::{CPU, GPU, RasterDataTable};
-use crate::transform::{ApplyTransform, Footprint, Transform};
+use crate::transform::{Transform};
 use crate::vector::VectorDataTable;
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, GraphicGroupTable, OwnedContextImpl};
+use crate::{ Context, Ctx, GraphicGroupTable, ModifyDownstreamTransform, };
 use core::f64;
 use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category(""))]
 async fn transform<T: 'n + 'static>(
-	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	ctx: impl Ctx + ModifyDownstreamTransform,
 	#[implementations(
 		Context -> VectorDataTable,
 		Context -> GraphicGroupTable,
@@ -23,15 +23,9 @@ async fn transform<T: 'n + 'static>(
 ) -> Instances<T> {
 	let matrix = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., skew.y, skew.x, 1., 0., 0.]);
 
-	let footprint = ctx.try_footprint().copied();
+	let modified_ctx = ctx.apply_modification(&matrix);
 
-	let mut ctx = OwnedContextImpl::from(ctx);
-	if let Some(mut footprint) = footprint {
-		footprint.apply_transform(&matrix);
-		ctx = ctx.with_footprint(footprint);
-	}
-
-	let mut transform_target = transform_target.eval(ctx.into_context()).await;
+	let mut transform_target = transform_target.eval(modified_ctx).await;
 
 	for data_transform in transform_target.instance_mut_iter() {
 		*data_transform.transform = matrix * *data_transform.transform;
@@ -50,40 +44,4 @@ fn replace_transform<Data, TransformInput: Transform>(
 		*data_transform.transform = transform.transform();
 	}
 	data
-}
-
-#[node_macro::node(category("Debug"))]
-async fn boundless_footprint<T: 'n + 'static>(
-	ctx: impl Ctx + CloneVarArgs + ExtractAll,
-	#[implementations(
-		Context -> VectorDataTable,
-		Context -> GraphicGroupTable,
-		Context -> RasterDataTable<CPU>,
-		Context -> RasterDataTable<GPU>,
-		Context -> String,
-		Context -> f64,
-	)]
-	transform_target: impl Node<Context<'static>, Output = T>,
-) -> T {
-	let ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::BOUNDLESS);
-
-	transform_target.eval(ctx.into_context()).await
-}
-
-#[node_macro::node(category("Debug"))]
-async fn freeze_real_time<T: 'n + 'static>(
-	ctx: impl Ctx + CloneVarArgs + ExtractAll,
-	#[implementations(
-		Context -> VectorDataTable,
-		Context -> GraphicGroupTable,
-		Context -> RasterDataTable<CPU>,
-		Context -> RasterDataTable<GPU>,
-		Context -> String,
-		Context -> f64,
-	)]
-	transform_target: impl Node<Context<'static>, Output = T>,
-) -> T {
-	let ctx = OwnedContextImpl::from(ctx).with_real_time(0.);
-
-	transform_target.eval(ctx.into_context()).await
 }

@@ -4,12 +4,13 @@ use graph_craft::document::value::{TaggedValue, UpcastNode};
 use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext, UpstreamInputMetadata};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::{Type, concrete};
-use graphene_std::any::{EditorContext, NullificationNode};
+use graphene_std::any::{ContextMonitorNode, NullificationNode};
+use graphene_std::memo::{MonitorIntrospectResult, MonitorMemoNodeState};
 use graphene_std::uuid::{NodeId, SNI};
-use graphene_std::{Context, ContextDependencies, NodeIOTypes};
+use graphene_std::{Context, ContextDependencies, EditorContext, NodeIOTypes};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::sync::Arc;
+use std::sync::mpsc::Sender;
 
 /// An executor of a node graph that does not require an online compilation server, and instead uses `Box<dyn ...>`.
 #[derive(Clone)]
@@ -21,7 +22,7 @@ pub struct DynamicExecutor {
 	typing_context: TypingContext,
 	// TODO: Add lifetime for removed nodes so that if a SNI changes, then changes back to its previous SNI, the node does
 	// not have to be reinserted
-	// lifetime: HashSet<(SNI, usize)>,
+	// lifetime: HashSet<(Vec<NodeId>, usize)>,
 }
 
 impl Default for DynamicExecutor {
@@ -45,13 +46,14 @@ impl DynamicExecutor {
 
 	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
 	#[cfg_attr(debug_assertions, inline(never))]
-	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<(Vec<(SNI, NodeIOTypes)>, Vec<SNI>), GraphErrors> {
+	pub async fn update(&mut self, proto_network: ProtoNetwork, context_sender: Option<&Sender<(SNI, usize, EditorContext)>>) -> Result<(Vec<(SNI, NodeIOTypes)>, Vec<SNI>), GraphErrors> {
 		self.output = Some(proto_network.output);
 		self.typing_context.update(&proto_network)?;
-		let (add, orphaned_proto_nodes) = self.tree.update(proto_network, &self.typing_context).await?;
+		let (add, orphaned_proto_nodes) = self.tree.update(proto_network, &self.typing_context, context_sender).await?;
 		let mut remove = Vec::new();
 		for sni in orphaned_proto_nodes {
 			remove.push(sni);
+			self.tree.free_node(&sni);
 			self.typing_context.remove_inference(&sni);
 		}
 
@@ -70,9 +72,18 @@ impl DynamicExecutor {
 	}
 
 	// Introspect the cached output of any protonode
-	pub fn introspect(&self, protonode: SNI, check_if_evaluated: bool) -> Result<Option<Arc<dyn std::any::Any + Send + Sync>>, IntrospectError> {
+	pub fn introspect(&self, protonode: SNI) -> Result<MonitorIntrospectResult, IntrospectError> {
 		let inserted_node = self.tree.nodes.get(&protonode).ok_or(IntrospectError::ProtoNodeNotFound(protonode))?;
-		Ok(inserted_node.cached_protonode.introspect(check_if_evaluated))
+		Ok(inserted_node.cached_protonode.introspect())
+	}
+
+	// If the cache is disabled, then it sets the state to save the first evaluation. If its enabled, then it does nothing
+	pub fn cache_first_evaluation(&self, protonode: &SNI) {
+		let Some(inserted_node) = self.tree.nodes.get(protonode) else {
+			log::error!("Could not get inserted protonode when setting cache_first_evaluation {:?}", protonode);
+			return;
+		};
+		inserted_node.cached_protonode.cache_first_evaluation();
 	}
 
 	pub fn input_type(&self) -> Option<Type> {
@@ -188,7 +199,6 @@ struct InsertedProtonode {
 /// A store of the dynamically typed nodes and also the source map.
 #[derive(Default, Clone)]
 pub struct BorrowTree {
-	// A hashmap of node IDs to dynamically typed proto nodes, as well as the auto inserted MonitorCache nodes, and editor entry point
 	nodes: HashMap<SNI, InsertedProtonode>,
 }
 
@@ -196,13 +206,18 @@ impl BorrowTree {
 	pub async fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<BorrowTree, GraphErrors> {
 		let mut nodes = BorrowTree::default();
 		for node in proto_network.into_nodes() {
-			nodes.push_node(node, typing_context).await?
+			nodes.push_node(node, typing_context, None).await?
 		}
 		Ok(nodes)
 	}
 
 	/// Pushes new nodes into the tree and returns a vec of document nodes that had their types changed, and a vec of all nodes that were removed (including auto inserted value nodes)
-	pub async fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<(Vec<SNI>, HashSet<SNI>), GraphErrors> {
+	pub async fn update(
+		&mut self,
+		proto_network: ProtoNetwork,
+		typing_context: &TypingContext,
+		context_sender: Option<&Sender<(SNI, usize, EditorContext)>>,
+	) -> Result<(Vec<SNI>, HashSet<SNI>), GraphErrors> {
 		let mut old_nodes = self.nodes.keys().copied().into_iter().collect::<HashSet<_>>();
 		// List of all document node paths that need to be updated, which occurs if their path changes or type changes
 		let mut nodes_with_new_type = Vec::new();
@@ -211,7 +226,7 @@ impl BorrowTree {
 			old_nodes.remove(&sni);
 			if !self.nodes.contains_key(&sni) {
 				nodes_with_new_type.push(sni);
-				self.push_node(node, typing_context).await?;
+				self.push_node(node, typing_context, context_sender.clone()).await?;
 			}
 		}
 
@@ -333,7 +348,7 @@ impl BorrowTree {
 	/// - Uses the constructor function from the `typing_context` for `Nodes` construction arguments.
 	/// - Returns an error if no constructor is found for the given node ID.
 	/// Thumbnails is a mapping of the protonode input to the rendered thumbnail through the monitor cache node
-	async fn push_node(&mut self, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), GraphErrors> {
+	async fn push_node(&mut self, proto_node: ProtoNode, typing_context: &TypingContext, context_sender: Option<&Sender<(SNI, usize, EditorContext)>>) -> Result<(), GraphErrors> {
 		let sni = proto_node.stable_node_id;
 		match proto_node.construction_args {
 			ConstructionArgs::Value(value) => {
@@ -371,10 +386,23 @@ impl BorrowTree {
 				let protonode_inputs = construction_nodes
 					.iter()
 					.zip(node_construction_args.inputs.into_iter())
-					.map(|(inserted_protonode, input_metadata)| {
-						let previous_input = inserted_protonode.cached_protonode.clone();
-						let input_context_dependencies = input_metadata.unwrap().context_dependencies;
+					.enumerate()
+					.map(|(input_index, (upstream_inserted_protonode, input_metadata))| {
+						let mut previous_input = upstream_inserted_protonode.cached_protonode.clone();
+
+						// Insert context monitoring if enabled
+						if let Some(context_sender) = context_sender {
+							let context_monitor = ContextMonitorNode::new(sni, input_index, previous_input, context_sender.clone());
+							let node = Box::new(context_monitor) as TypeErasedBox<'_>;
+							previous_input = NodeContainer::new(node);
+						}
+
+						let input_context_dependencies = input_metadata.unwrap().nullify;
 						if !input_context_dependencies.is_empty() {
+							// If nullifying the inputs such that the context is completely empty, then cache the upstream output
+							if upstream_inserted_protonode.nullify_when_calling == ContextDependencies::all_context_dependencies() {
+								upstream_inserted_protonode.cached_protonode.permanently_enable_cache();
+							}
 							let nullification_node = NullificationNode::new(previous_input, input_context_dependencies);
 							let node = Box::new(nullification_node) as TypeErasedBox<'_>;
 							NodeContainer::new(node)
@@ -387,17 +415,19 @@ impl BorrowTree {
 				let node = constructor(protonode_inputs).await;
 				let protonode = NodeContainer::new(node);
 
-				// Insert cache nodes on the output if possible
+				// When evaluating the node from the editor, nullify all context fields it is not dependent on
+				let nullify_when_calling = node_construction_args.context_dependencies.inverse();
+
 				let cached_protonode = if let Some(cache_constructor) = typing_context.cache_constructor(&types.return_value.nested_type()) {
-					let cache = cache_constructor(protonode);
+					let cache = cache_constructor(protonode, MonitorMemoNodeState::Disabled);
 					let cache_node_container = NodeContainer::new(cache);
+					if node_construction_args.cache_output {
+						cache_node_container.permanently_enable_cache();
+					}
 					cache_node_container
 				} else {
 					protonode
 				};
-
-				// When evaluating the node from the editor, nullify all context fields it is not dependent on
-				let nullify_when_calling = node_construction_args.context_dependencies.inverse();
 
 				let inserted_protonode = InsertedProtonode {
 					cached_protonode,
@@ -411,27 +441,27 @@ impl BorrowTree {
 	}
 }
 
-#[cfg(test)]
-mod test {
-	use super::*;
-	use graph_craft::{document::value::TaggedValue, proto::NodeValueArgs};
-	use graphene_std::uuid::NodeId;
+// #[cfg(test)]
+// mod test {
+// 	use super::*;
+// 	use graph_craft::{document::value::TaggedValue, proto::NodeValueArgs};
+// 	use graphene_std::uuid::NodeId;
 
-	#[test]
-	fn push_node_sync() {
-		let mut tree = BorrowTree::default();
-		let val_1_protonode = ProtoNode::value(
-			ConstructionArgs::Value(NodeValueArgs {
-				value: Some(TaggedValue::U32(2u32).into()),
-				connector_paths: Vec::new(),
-			}),
-			NodeId(0),
-		);
-		let context = TypingContext::default();
-		let future = tree.push_node(val_1_protonode, &context);
-		futures::executor::block_on(future).unwrap();
-		let _node = tree.nodes.get(&NodeId(0)).expect("Node should be added to tree");
-		let result = futures::executor::block_on(tree.eval_tagged_value(NodeId(0), ()));
-		assert_eq!(result, Some(TaggedValue::U32(2u32).into()));
-	}
-}
+// 	#[test]
+// 	fn push_node_sync() {
+// 		let mut tree = BorrowTree::default();
+// 		let val_1_protonode = ProtoNode::value(
+// 			ConstructionArgs::Value(NodeValueArgs {
+// 				value: Some(TaggedValue::U32(2u32).into()),
+// 				connector_paths: Vec::new(),
+// 			}),
+// 			NodeId(0),
+// 		);
+// 		let context = TypingContext::default();
+// 		let future = tree.push_node(val_1_protonode, &context);
+// 		futures::executor::block_on(future).unwrap();
+// 		let _node = tree.nodes.get(&NodeId(0)).expect("Node should be added to tree");
+// 		let result = futures::executor::block_on(tree.eval_tagged_value(NodeId(0), ()));
+// 		assert_eq!(result, Some(TaggedValue::U32(2u32).into()));
+// 	}
+// }

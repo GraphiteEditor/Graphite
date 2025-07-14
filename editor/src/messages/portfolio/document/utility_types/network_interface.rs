@@ -2521,56 +2521,48 @@ impl NodeNetworkInterface {
 			.find_map(|(input_index, click_target)| if index == input_index { click_target.bounding_box_center() } else { None })
 	}
 
-	pub fn newly_loaded_input_wire(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
-		if !self.wire_is_loaded(input, network_path) {
-			self.load_wire(input, graph_wire_style, network_path);
-		} else {
+	pub fn viewport_loaded_thumbnail_position(&mut self, input: &InputConnector, graph_wire_style: &GraphWireStyle, network_path: &[NodeId]) -> Option<DVec2> {
+		let wire = self.wire_path_from_input(input, graph_wire_style, false, network_path)?;
+		let network_metadata = self.network_metadata(network_path)?;
+		if wire.thick {
 			return None;
-		}
+		};
+		wire.center.map(|center| {
+			let node_graph_position = DVec2::new(center.0 as f64, center.1 as f64);
+			network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.transform_point2(node_graph_position)
+		})
+	}
 
-		let wire = match input {
+	pub fn newly_loaded_input_wire(&mut self, input: &InputConnector, graph_wire_style: &GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
+		match self.cached_wire(input, network_path) {
+			Some(loaded) => None,
+			None => {
+				self.load_wire(input, graph_wire_style, network_path);
+				self.cached_wire(input, network_path).cloned()
+			}
+		}
+	}
+
+	pub fn cached_wire(&self, input: &InputConnector, network_path: &[NodeId]) -> Option<&WirePathUpdate> {
+		match input {
 			InputConnector::Node { node_id, input_index } => {
 				let input_metadata = self.transient_input_metadata(node_id, *input_index, network_path)?;
 				let TransientMetadata::Loaded(wire) = &input_metadata.wire else {
-					log::error!("Could not load wire for input: {:?}", input);
 					return None;
 				};
-				wire.clone()
+				Some(wire)
 			}
 			InputConnector::Export(export_index) => {
 				let network_metadata = self.network_metadata(network_path)?;
 				let Some(TransientMetadata::Loaded(wire)) = network_metadata.transient_metadata.wires.get(*export_index) else {
-					log::error!("Could not load wire for input: {:?}", input);
 					return None;
 				};
-				wire.clone()
-			}
-		};
-		Some(wire)
-	}
-
-	pub fn wire_is_loaded(&mut self, input: &InputConnector, network_path: &[NodeId]) -> bool {
-		match input {
-			InputConnector::Node { node_id, input_index } => {
-				let Some(input_metadata) = self.transient_input_metadata(node_id, *input_index, network_path) else {
-					log::error!("Input metadata should always exist for input");
-					return false;
-				};
-				input_metadata.wire.is_loaded()
-			}
-			InputConnector::Export(export_index) => {
-				let Some(network_metadata) = self.network_metadata(network_path) else {
-					return false;
-				};
-				match network_metadata.transient_metadata.wires.get(*export_index) {
-					Some(wire) => wire.is_loaded(),
-					None => false,
-				}
+				Some(wire)
 			}
 		}
 	}
 
-	fn load_wire(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) {
+	fn load_wire(&mut self, input: &InputConnector, graph_wire_style: &GraphWireStyle, network_path: &[NodeId]) {
 		let dashed = match self.previewing(network_path) {
 			Previewing::Yes { .. } => match input {
 				InputConnector::Node { .. } => false,
@@ -2698,7 +2690,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// When previewing, there may be a second path to the root node.
-	pub fn wire_to_root(&mut self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
+	pub fn wire_to_root(&mut self, graph_wire_style: &GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
 		let input = InputConnector::Export(0);
 		let current_export = self.upstream_output_connector(&input, network_path)?;
 
@@ -2733,7 +2725,6 @@ impl NodeNetworkInterface {
 			thick,
 			dashed: false,
 			center: None,
-			input_sni: None,
 		});
 
 		Some(WirePathUpdate {
@@ -2744,7 +2735,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Returns the vector subpath and a boolean of whether the wire should be thick.
-	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(Subpath<PointId>, bool, DVec2)> {
+	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: &GraphWireStyle, network_path: &[NodeId]) -> Option<(Subpath<PointId>, bool, DVec2)> {
 		let Some(input_position) = self.get_input_center(input, network_path) else {
 			log::error!("Could not get dom rect for wire end: {:?}", input);
 			return None;
@@ -2760,23 +2751,21 @@ impl NodeNetworkInterface {
 		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
 		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
 		let thick = vertical_end && vertical_start;
-		let (wire, center) = build_vector_wire(output_position, input_position, vertical_start, vertical_end, wire_style);
+		let (wire, center) = build_vector_wire(output_position, input_position, vertical_start, vertical_end, &wire_style);
 		Some((wire, thick, center))
 	}
 
-	pub fn wire_path_from_input(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, dashed: bool, network_path: &[NodeId]) -> Option<WirePath> {
+	pub fn wire_path_from_input(&mut self, input: &InputConnector, graph_wire_style: &GraphWireStyle, dashed: bool, network_path: &[NodeId]) -> Option<WirePath> {
 		let (vector_wire, thick, center) = self.vector_wire_from_input(input, graph_wire_style, network_path)?;
 		let mut path_string = String::new();
 		let _ = vector_wire.subpath_to_svg(&mut path_string, DAffine2::IDENTITY);
 		let data_type = FrontendGraphDataType::from_type(&self.input_type(input, network_path).0);
-		let input_sni = self.protonode_from_input(input, network_path);
 		Some(WirePath {
 			path_string,
 			data_type,
 			thick,
 			dashed,
-			center: Some((center.x, center.y)),
-			input_sni,
+			center: Some((center.x as i32, center.y as i32)),
 		})
 	}
 

@@ -42,7 +42,7 @@ mod tests {
 
 		use crate::dynamic_executor::DynamicExecutor;
 
-		let protonetwork = network.flatten().map(|result| result.0).expect("Graph should be generated");
+		let protonetwork = network.compile().map(|result| result.0).expect("Graph should be generated");
 
 		let _exec = block_on(DynamicExecutor::new(protonetwork)).map(|_e| panic!("The network should not type check ")).unwrap_err();
 	}

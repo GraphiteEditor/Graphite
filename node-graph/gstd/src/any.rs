@@ -1,15 +1,16 @@
 use dyn_any::StaticType;
-use glam::DAffine2;
 pub use graph_craft::proto::{Any, NodeContainer, TypeErasedBox, TypeErasedNode};
 use graph_craft::proto::{DynFuture, FutureAny, SharedNodeContainer};
 use graphene_core::Context;
 use graphene_core::ContextDependencies;
+use graphene_core::EditorContext;
 use graphene_core::NodeIO;
 use graphene_core::OwnedContextImpl;
 use graphene_core::WasmNotSend;
 pub use graphene_core::registry::{DowncastBothNode, DynAnyNode, FutureWrapperNode, PanicNode};
-use graphene_core::transform::Footprint;
+use graphene_core::uuid::SNI;
 pub use graphene_core::{Node, generic, ops};
+use std::sync::mpsc::Sender;
 
 pub trait IntoTypeErasedNode<'n> {
 	fn into_type_erased(self) -> TypeErasedBox<'n>;
@@ -72,63 +73,6 @@ pub fn downcast_node<I: StaticType, O: StaticType>(n: SharedNodeContainer) -> Do
 // 	}
 // }
 
-#[derive(Debug, Clone, Default)]
-pub struct EditorContext {
-	pub footprint: Option<Footprint>,
-	pub downstream_transform: Option<DAffine2>,
-	pub real_time: Option<f64>,
-	pub animation_time: Option<f64>,
-	pub index: Option<usize>,
-	// #[serde(skip)]
-	// pub editor_var_args: Option<(Vec<String>, Vec<Arc<Box<[dyn std::any::Any + 'static + std::panic::UnwindSafe]>>>)>,
-}
-
-unsafe impl StaticType for EditorContext {
-	type Static = EditorContext;
-}
-
-// impl Default for EditorContext {
-// 	fn default() -> Self {
-// 		EditorContext {
-// 			footprint: None,
-// 			downstream_transform: None,
-// 			real_time: None,
-// 			animation_time: None,
-// 			index: None,
-// 			// editor_var_args: None,
-// 		}
-// 	}
-// }
-
-impl EditorContext {
-	pub fn to_owned_context(&self) -> OwnedContextImpl {
-		let mut context = OwnedContextImpl::default();
-		if let Some(footprint) = self.footprint {
-			context.set_footprint(footprint);
-		}
-		if let Some(footprint) = self.footprint {
-			context.set_footprint(footprint);
-		}
-		// if let Some(downstream_transform) = self.downstream_transform {
-		// 	context.set_downstream_transform(downstream_transform);
-		// }
-		if let Some(real_time) = self.real_time {
-			context.set_real_time(real_time);
-		}
-		if let Some(animation_time) = self.animation_time {
-			context.set_animation_time(animation_time);
-		}
-		if let Some(index) = self.index {
-			context.set_index(index);
-		}
-		context
-		// if let Some(editor_var_args) = self.editor_var_args {
-		// 	let (variable_names, values)
-		// 	context.set_varargs((variable_names, values))
-		// }
-	}
-}
-
 pub struct NullificationNode {
 	first: SharedNodeContainer,
 	nullify: ContextDependencies,
@@ -142,7 +86,9 @@ impl<'i> Node<'i, Any<'i>> for NullificationNode {
 				Ok(context) => match *context {
 					Some(context) => {
 						let mut new_context: OwnedContextImpl = OwnedContextImpl::from(context);
+						// log::debug!("Nullifying context: {:?} fields: {:?}", new_context, self.nullify);
 						new_context.nullify(&self.nullify);
+						// log::debug!("Evaluating input with: {:?}", new_context);
 						Box::new(new_context.into_context()) as Any<'i>
 					}
 					None => {
@@ -160,5 +106,42 @@ impl<'i> Node<'i, Any<'i>> for NullificationNode {
 impl NullificationNode {
 	pub fn new(first: SharedNodeContainer, nullify: ContextDependencies) -> Self {
 		Self { first, nullify }
+	}
+}
+
+pub struct ContextMonitorNode {
+	sni: SNI,
+	input_index: usize,
+	first: SharedNodeContainer,
+	sender: Sender<(SNI, usize, EditorContext)>,
+}
+
+impl<'i> Node<'i, Any<'i>> for ContextMonitorNode {
+	type Output = DynFuture<'i, Any<'i>>;
+	fn eval(&'i self, input: Any<'i>) -> Self::Output {
+		Box::pin(async move {
+			let new_input = match dyn_any::try_downcast::<Context>(input) {
+				Ok(context) => match *context {
+					Some(context) => {
+						let editor_context = context.to_editor_context();
+						let _ = self.sender.clone().send((self.sni, self.input_index, editor_context));
+						Box::new(Some(context)) as Any<'i>
+					}
+					None => {
+						let none: Context = None;
+						// self.sender.clone().send((self.sni, self.input_index, editor_context));
+						Box::new(none) as Any<'i>
+					}
+				},
+				Err(other_input) => other_input,
+			};
+			self.first.eval(new_input).await
+		})
+	}
+}
+
+impl ContextMonitorNode {
+	pub fn new(sni: SNI, input_index: usize, first: SharedNodeContainer, sender: Sender<(SNI, usize, EditorContext)>) -> ContextMonitorNode {
+		ContextMonitorNode { sni, input_index, first, sender }
 	}
 }

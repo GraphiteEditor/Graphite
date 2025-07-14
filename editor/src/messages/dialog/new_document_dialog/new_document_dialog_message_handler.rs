@@ -31,8 +31,8 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 				}
 				responses.add(Message::StartEvaluationQueue);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
-				responses.add(Message::EndEvaluationQueue);
 				responses.add(DocumentMessage::DeselectAllLayers);
+				responses.add(Message::EndEvaluationQueue);
 			}
 		}
 

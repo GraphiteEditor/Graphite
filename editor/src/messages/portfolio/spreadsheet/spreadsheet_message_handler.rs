@@ -7,6 +7,7 @@ use graph_craft::document::OutputConnector;
 use graphene_std::Color;
 use graphene_std::GraphicGroupTable;
 use graphene_std::instances::Instances;
+use graphene_std::memo::MonitorIntrospectResult;
 use graphene_std::raster::Image;
 use graphene_std::uuid::{NodeId, SNI};
 use graphene_std::vector::{VectorData, VectorDataTable};
@@ -15,7 +16,7 @@ use std::sync::Arc;
 
 #[derive(ExtractField)]
 pub struct SpreadsheetMessageHandlerData<'a> {
-	pub introspected_data: &'a HashMap<SNI, Option<Arc<dyn std::any::Any + Send + Sync>>>,
+	pub introspected_data: &'a HashMap<SNI, MonitorIntrospectResult>,
 	// Network interface of the selected document
 	pub network_interface: &'a NodeNetworkInterface,
 }
@@ -26,7 +27,7 @@ pub struct SpreadsheetMessageHandler {
 	/// Sets whether or not the spreadsheet is drawn.
 	pub spreadsheet_view_open: bool,
 	// Path to the document node that is introspected. The protonode is found by traversing from the primary output
-	inspection_data: Option<Option<Arc<dyn std::any::Any + Send + Sync>>>,
+	inspection_data: Option<MonitorIntrospectResult>,
 	node_to_inspect: Option<NodeId>,
 
 	instances_path: Vec<usize>,
@@ -73,10 +74,10 @@ impl MessageHandler<SpreadsheetMessage, SpreadsheetMessageHandlerData<'_>> for S
 				let mut nodes_to_introspect = HashSet::new();
 				nodes_to_introspect.insert(protonode_id);
 
-				responses.add(PortfolioMessage::IntrospectActiveDocument { nodes_to_introspect });
-				responses.add(Message::StartIntrospectionQueue);
+				responses.add(PortfolioMessage::EvaluateActiveDocument { nodes_to_introspect });
+				responses.add(Message::StartEvaluationQueue);
 				responses.add(SpreadsheetMessage::ProcessUpdateLayout { node_to_inspect, protonode_id });
-				responses.add(Message::EndIntrospectionQueue);
+				responses.add(Message::EndEvaluationQueue);
 
 				self.update_layout(responses);
 			}
@@ -93,7 +94,6 @@ impl MessageHandler<SpreadsheetMessage, SpreadsheetMessageHandlerData<'_>> for S
 				self.instances_path.truncate(len);
 				self.update_layout(responses);
 			}
-
 			SpreadsheetMessage::ViewVectorDataDomain { domain } => {
 				self.viewing_vector_data_domain = domain;
 				self.update_layout(responses);
@@ -126,11 +126,13 @@ impl SpreadsheetMessageHandler {
 			Some(_) => {
 				match &self.inspection_data {
 					Some(data) => match data {
-						Some(inspected_data) => match generate_layout(&inspected_data, &mut layout_data) {
+						MonitorIntrospectResult::Error => label("The introspected node is a type that cannot be cloned"),
+						MonitorIntrospectResult::Disabled => label("Error: The introspected node must be set to StoreFirstEvaluation before introspection"),
+						MonitorIntrospectResult::NotEvaluated => label("Introspected data is not available for this input. This input may be cached."),
+						MonitorIntrospectResult::Evaluated((data, _)) => match generate_layout(data, &mut layout_data) {
 							Some(layout) => layout,
 							None => label("The introspected data is not a supported type to be displayed."),
 						},
-						None => label("Introspected data is not available for this input. This input may be cached."),
 					},
 					// There should always be an entry for each protonode input. If its empty then it was not requested or an error occured
 					None => label("The output of this node could not be determined"),
