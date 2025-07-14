@@ -419,7 +419,8 @@ impl BorrowTree {
 				let nullify_when_calling = node_construction_args.context_dependencies.inverse();
 
 				let cached_protonode = if let Some(cache_constructor) = typing_context.cache_constructor(&types.return_value.nested_type()) {
-					let cache = cache_constructor(protonode, MonitorMemoNodeState::Disabled);
+					// Every cache stores its first evaluation, because if it acts as a pass through on the first evaluation, it can become cached and it wont be possible to know its value for its thumbnail
+					let cache = cache_constructor(protonode, MonitorMemoNodeState::StoreFirstEvaluation);
 					let cache_node_container = NodeContainer::new(cache);
 					if node_construction_args.cache_output {
 						cache_node_container.permanently_enable_cache();

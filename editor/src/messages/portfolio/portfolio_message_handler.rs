@@ -819,7 +819,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::EvaluateActiveDocumentWithThumbnails => {
 				responses.add(PortfolioMessage::EvaluateActiveDocument {
-					nodes_to_introspect: self.nodes_to_try_render(ipp.viewport_bounds()[1], &preferences.graph_wire_style),
+					nodes_to_introspect: self.visible_nodes_to_try_render(ipp, &preferences.graph_wire_style),
 				});
 				responses.add(Message::StartEvaluationQueue);
 				responses.add(PortfolioMessage::ProcessThumbnails);
@@ -847,7 +847,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				context.real_time = Some(ipp.time);
 				context.downstream_transform = Some(DAffine2::IDENTITY);
 
-				let nodes_to_try_render = self.nodes_to_try_render(ipp.viewport_bounds()[1], &preferences.graph_wire_style);
+				let nodes_to_try_render = self.visible_nodes_to_try_render(ipp, &preferences.graph_wire_style);
 
 				self.executor.submit_node_graph_evaluation(context, None, None, nodes_to_try_render);
 			}
@@ -1242,7 +1242,7 @@ impl PortfolioMessageHandler {
 		result
 	}
 
-	pub fn nodes_to_try_render(&mut self, viewport_size: DVec2, graph_wire_style: &GraphWireStyle) -> HashSet<SNI> {
+	pub fn visible_nodes_to_try_render(&mut self, ipp: &InputPreprocessorMessageHandler, graph_wire_style: &GraphWireStyle) -> HashSet<SNI> {
 		let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get_mut(&document_id)) else {
 			log::error!("Tried to render non-existent document: {:?}", self.active_document_id);
 			return HashSet::new();
@@ -1284,7 +1284,8 @@ impl PortfolioMessageHandler {
 					.viewport_loaded_thumbnail_position(&input_connector, graph_wire_style, &document.breadcrumb_network_path)
 				{
 					log::debug!("viewport position: {:?}, input: {:?}", viewport_position, input_connector);
-					let in_view = viewport_position.x < 0.0 || viewport_position.y < 0.0 || viewport_position.x > viewport_size.x || viewport_position.y > viewport_size.y;
+
+					let in_view = viewport_position.x > 0.0 && viewport_position.y > 0.0 && viewport_position.x < ipp.viewport_bounds()[1].x && viewport_position.y < ipp.viewport_bounds()[1].y;
 					if in_view {
 						let Some(protonode) = document.network_interface.protonode_from_input(&input_connector, &document.breadcrumb_network_path) else {
 							// The input is not connected to the export, which occurs if inside a disconnected node
@@ -1299,12 +1300,11 @@ impl PortfolioMessageHandler {
 		};
 
 		// Get thumbnails for all visible layer
-		for visible_node in &document.node_graph_handler.frontend_nodes {
+		for visible_node in &document.node_graph_handler.visible_nodes(&mut document.network_interface, &document.breadcrumb_network_path, ipp) {
 			if document.network_interface.is_layer(&visible_node, &document.breadcrumb_network_path) {
-				log::debug!("visible_node: {:?}", visible_node);
 				let Some(protonode) = document
 					.network_interface
-					.protonode_from_output(&OutputConnector::node(*visible_node, 1), &document.breadcrumb_network_path)
+					.protonode_from_output(&OutputConnector::node(*visible_node, 0), &document.breadcrumb_network_path)
 				else {
 					continue;
 				};
@@ -1312,8 +1312,15 @@ impl PortfolioMessageHandler {
 			}
 		}
 
-		// Get all protonodes for all connected side layer inputs connected to the export in the document network
+		// Get all protonodes for all connected side layer inputs visible in the layer panel
 		for layer in document.network_interface.document_metadata().all_layers() {
+			if layer
+				.ancestors(document.network_interface.document_metadata())
+				.skip(1)
+				.any(|ancestor| document.collapsed.0.contains(&ancestor))
+			{
+				continue;
+			};
 			let connector = InputConnector::Node {
 				node_id: layer.to_node(),
 				input_index: 1,

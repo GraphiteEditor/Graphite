@@ -1321,21 +1321,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(FrontendMessage::UpdateNodeGraphWires { wires });
 			}
 			NodeGraphMessage::UpdateVisibleNodes => {
-				let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) else {
-					return;
-				};
-				let document_bbox = ipp.document_bounds(network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse());
-				let mut nodes = Vec::new();
-				for node_id in &self.frontend_nodes {
-					let Some(node_bbox) = network_interface.node_bounding_box(node_id, breadcrumb_network_path) else {
-						log::error!("Could not get bbox for node: {:?}", node_id);
-						continue;
-					};
-					if node_bbox[1].x >= document_bbox[0].x && node_bbox[0].x <= document_bbox[1].x && node_bbox[1].y >= document_bbox[0].y && node_bbox[0].y <= document_bbox[1].y {
-						nodes.push(*node_id);
-					}
-				}
-
+				let nodes = self.visible_nodes(network_interface, breadcrumb_network_path, ipp);
 				responses.add(FrontendMessage::UpdateVisibleNodes { nodes });
 			}
 			NodeGraphMessage::SendGraph => {
@@ -2364,6 +2350,24 @@ impl NodeGraphMessageHandler {
 			});
 		}
 
+		nodes
+	}
+
+	pub fn visible_nodes(&self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId], ipp: &InputPreprocessorMessageHandler) -> Vec<NodeId> {
+		let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) else {
+			return Vec::new();
+		};
+		let document_bbox = ipp.document_bounds(network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse());
+		let mut nodes = Vec::new();
+		for node_id in &self.frontend_nodes {
+			let Some(node_bbox) = network_interface.node_bounding_box(node_id, breadcrumb_network_path) else {
+				log::error!("Could not get bbox for node: {:?}", node_id);
+				continue;
+			};
+			if node_bbox[1].x >= document_bbox[0].x && node_bbox[0].x <= document_bbox[1].x && node_bbox[1].y >= document_bbox[0].y && node_bbox[0].y <= document_bbox[1].y {
+				nodes.push(*node_id);
+			}
+		}
 		nodes
 	}
 
