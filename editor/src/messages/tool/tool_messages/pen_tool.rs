@@ -18,7 +18,7 @@ use graphene_std::vector::{HandleId, ManipulatorPointId, NoHashBuilder, SegmentI
 use graphene_std::vector::{PointId, VectorModificationType};
 
 #[derive(Default, ExtractField)]
-pub struct PenTool {
+pub struct PenToolMessageHandler {
 	fsm_state: PenToolFsmState,
 	tool_data: PenToolData,
 	options: PenOptions,
@@ -119,7 +119,7 @@ pub enum PenOptionsUpdate {
 	OverlayModeType(PenOverlayMode),
 }
 
-impl ToolMetadata for PenTool {
+impl ToolMetadata for PenToolMessageHandler {
 	fn icon_name(&self) -> String {
 		"VectorPenTool".into()
 	}
@@ -141,7 +141,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.widget_holder()
 }
 
-impl LayoutHolder for PenTool {
+impl LayoutHolder for PenToolMessageHandler {
 	fn layout(&self) -> Layout {
 		let mut widgets = self.options.fill.create_widgets(
 			"Fill",
@@ -187,7 +187,7 @@ impl LayoutHolder for PenTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenTool {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenToolMessageHandler {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Pen(PenToolMessage::UpdateOptions(action)) = message else {
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
@@ -246,7 +246,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenT
 	}
 }
 
-impl ToolTransition for PenTool {
+impl ToolTransition for PenToolMessageHandler {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(PenToolMessage::Abort.into()),

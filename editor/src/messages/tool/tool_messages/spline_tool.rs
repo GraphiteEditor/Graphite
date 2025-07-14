@@ -15,7 +15,7 @@ use graphene_std::Color;
 use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
 
 #[derive(Default, ExtractField)]
-pub struct SplineTool {
+pub struct SplineToolMessageHandler {
 	fsm_state: SplineToolFsmState,
 	tool_data: SplineToolData,
 	options: SplineOptions,
@@ -75,7 +75,7 @@ pub enum SplineOptionsUpdate {
 	WorkingColors(Option<Color>, Option<Color>),
 }
 
-impl ToolMetadata for SplineTool {
+impl ToolMetadata for SplineToolMessageHandler {
 	fn icon_name(&self) -> String {
 		"VectorSplineTool".into()
 	}
@@ -97,7 +97,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.widget_holder()
 }
 
-impl LayoutHolder for SplineTool {
+impl LayoutHolder for SplineToolMessageHandler {
 	fn layout(&self) -> Layout {
 		let mut widgets = self.options.fill.create_widgets(
 			"Fill",
@@ -124,7 +124,7 @@ impl LayoutHolder for SplineTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for SplineTool {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for SplineToolMessageHandler {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Spline(SplineToolMessage::UpdateOptions(action)) = message else {
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
@@ -176,7 +176,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Spli
 	}
 }
 
-impl ToolTransition for SplineTool {
+impl ToolTransition for SplineToolMessageHandler {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			overlay_provider: Some(|overlay_context: OverlayContext| SplineToolMessage::Overlays(overlay_context).into()),

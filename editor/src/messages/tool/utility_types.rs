@@ -391,28 +391,28 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 	vec![
 		vec![
 			// General tool group
-			ToolAvailability::Available(Box::<select_tool::SelectTool>::default()),
-			ToolAvailability::Available(Box::<artboard_tool::ArtboardTool>::default()),
-			ToolAvailability::Available(Box::<navigate_tool::NavigateTool>::default()),
-			ToolAvailability::Available(Box::<eyedropper_tool::EyedropperTool>::default()),
-			ToolAvailability::Available(Box::<fill_tool::FillTool>::default()),
-			ToolAvailability::Available(Box::<gradient_tool::GradientTool>::default()),
+			ToolAvailability::Available(Box::<select_tool::SelectToolMessageHandler>::default()),
+			ToolAvailability::Available(Box::<artboard_tool::ArtboardToolMessageHandler>::default()),
+			ToolAvailability::Available(Box::<navigate_tool::NavigateToolMessageHandler>::default()),
+			ToolAvailability::Available(Box::<eyedropper_tool::EyedropperToolMessageHandler>::default()),
+			ToolAvailability::Available(Box::<fill_tool::FillToolMessageHandler>::default()),
+			ToolAvailability::Available(Box::<gradient_tool::GradientToolMessageHandler>::default()),
 		],
 		vec![
 			// Vector tool group
-			ToolAvailability::Available(Box::<path_tool::PathTool>::default()),
-			ToolAvailability::Available(Box::<pen_tool::PenTool>::default()),
-			ToolAvailability::Available(Box::<freehand_tool::FreehandTool>::default()),
-			ToolAvailability::Available(Box::<spline_tool::SplineTool>::default()),
+			ToolAvailability::Available(Box::<path_tool::PathToolMessageHandler>::default()),
+			ToolAvailability::Available(Box::<pen_tool::PenToolMessageHandler>::default()),
+			ToolAvailability::Available(Box::<freehand_tool::FreehandToolMessageHandler>::default()),
+			ToolAvailability::Available(Box::<spline_tool::SplineToolMessageHandler>::default()),
 			ToolAvailability::AvailableAsShape(ShapeType::Line),
 			ToolAvailability::AvailableAsShape(ShapeType::Rectangle),
 			ToolAvailability::AvailableAsShape(ShapeType::Ellipse),
-			ToolAvailability::Available(Box::<shape_tool::ShapeTool>::default()),
-			ToolAvailability::Available(Box::<text_tool::TextTool>::default()),
+			ToolAvailability::Available(Box::<shape_tool::ShapeToolMessageHandler>::default()),
+			ToolAvailability::Available(Box::<text_tool::TextToolMessageHandler>::default()),
 		],
 		vec![
 			// Raster tool group
-			ToolAvailability::Available(Box::<brush_tool::BrushTool>::default()),
+			ToolAvailability::Available(Box::<brush_tool::BrushToolMessageHandler>::default()),
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Heal, "RasterHealTool").tooltip("Coming Soon: Heal Tool (J)")),
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Clone, "RasterCloneTool").tooltip("Coming Soon: Clone Tool (C)")),
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Patch, "RasterPatchTool").tooltip("Coming Soon: Patch Tool")),

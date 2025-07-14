@@ -64,7 +64,9 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 									}
 							},
 							syn::Type::Reference(type_reference) => {
-								let message_type = call_site_ident(format!("{input_type}Message"));
+								const handler_string: &str = "Handler";
+								let ident_string = format!("{input_type}");
+								let message_type = call_site_ident(ident_string[..ident_string.len().wrapping_sub(handler_string.len())].to_owned());
 								let type_ident = match &*type_reference.elem {
 									syn::Type::Path(type_path) => &type_path.path.segments.first().unwrap().ident,
 									_ => return Err(syn::Error::new(type_reference.elem.span(), "Expected type path")),

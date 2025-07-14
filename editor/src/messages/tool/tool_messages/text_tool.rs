@@ -21,7 +21,7 @@ use graphene_std::text::{Font, FontCache, TypesettingConfig, lines_clipping, loa
 use graphene_std::vector::style::Fill;
 
 #[derive(Default, ExtractField)]
-pub struct TextTool {
+pub struct TextToolMessageHandler {
 	fsm_state: TextToolFsmState,
 	tool_data: TextToolData,
 	options: TextOptions,
@@ -82,7 +82,7 @@ pub enum TextOptionsUpdate {
 	WorkingColors(Option<Color>, Option<Color>),
 }
 
-impl ToolMetadata for TextTool {
+impl ToolMetadata for TextToolMessageHandler {
 	fn icon_name(&self) -> String {
 		"VectorTextTool".into()
 	}
@@ -94,7 +94,7 @@ impl ToolMetadata for TextTool {
 	}
 }
 
-fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
+fn create_text_widgets(tool: &TextToolMessageHandler) -> Vec<WidgetHolder> {
 	let font = FontInput::new(&tool.options.font_name, &tool.options.font_style)
 		.is_style_picker(false)
 		.on_update(|font_input: &FontInput| {
@@ -152,7 +152,7 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 	]
 }
 
-impl LayoutHolder for TextTool {
+impl LayoutHolder for TextToolMessageHandler {
 	fn layout(&self) -> Layout {
 		let mut widgets = create_text_widgets(self);
 
@@ -171,7 +171,7 @@ impl LayoutHolder for TextTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for TextTool {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for TextToolMessageHandler {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Text(TextToolMessage::UpdateOptions(action)) = message else {
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
@@ -228,7 +228,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 	}
 }
 
-impl ToolTransition for TextTool {
+impl ToolTransition for TextToolMessageHandler {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			canvas_transformed: None,

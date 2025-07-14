@@ -21,7 +21,7 @@ pub enum DrawMode {
 }
 
 #[derive(Default, ExtractField)]
-pub struct BrushTool {
+pub struct BrushToolMessageHandler {
 	fsm_state: BrushToolFsmState,
 	data: BrushToolData,
 	options: BrushOptions,
@@ -89,7 +89,7 @@ enum BrushToolFsmState {
 	Drawing,
 }
 
-impl ToolMetadata for BrushTool {
+impl ToolMetadata for BrushToolMessageHandler {
 	fn icon_name(&self) -> String {
 		"RasterBrushTool".into()
 	}
@@ -101,7 +101,7 @@ impl ToolMetadata for BrushTool {
 	}
 }
 
-impl LayoutHolder for BrushTool {
+impl LayoutHolder for BrushToolMessageHandler {
 	fn layout(&self) -> Layout {
 		let mut widgets = vec![
 			NumberInput::new(Some(self.options.diameter))
@@ -186,7 +186,7 @@ impl LayoutHolder for BrushTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for BrushTool {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for BrushToolMessageHandler {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Brush(BrushToolMessage::UpdateOptions(action)) = message else {
 			self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, true);
@@ -243,7 +243,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Brus
 	}
 }
 
-impl ToolTransition for BrushTool {
+impl ToolTransition for BrushToolMessageHandler {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(BrushToolMessage::Abort.into()),

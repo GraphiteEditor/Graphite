@@ -14,7 +14,7 @@ use graph_craft::document::NodeId;
 use graphene_std::renderer::Quad;
 
 #[derive(Default, ExtractField)]
-pub struct ArtboardTool {
+pub struct ArtboardToolMessageHandler {
 	fsm_state: ArtboardToolFsmState,
 	data: ArtboardToolData,
 }
@@ -36,7 +36,7 @@ pub enum ArtboardToolMessage {
 	PointerUp,
 }
 
-impl ToolMetadata for ArtboardTool {
+impl ToolMetadata for ArtboardToolMessageHandler {
 	fn icon_name(&self) -> String {
 		"GeneralArtboardTool".into()
 	}
@@ -49,7 +49,7 @@ impl ToolMetadata for ArtboardTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for ArtboardTool {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for ArtboardToolMessageHandler {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		self.fsm_state.process_event(message, &mut self.data, context, &(), responses, false);
 	}
@@ -71,13 +71,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Artb
 	}
 }
 
-impl LayoutHolder for ArtboardTool {
+impl LayoutHolder for ArtboardToolMessageHandler {
 	fn layout(&self) -> Layout {
 		Layout::WidgetLayout(WidgetLayout::default())
 	}
 }
 
-impl ToolTransition for ArtboardTool {
+impl ToolTransition for ArtboardToolMessageHandler {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(ArtboardToolMessage::Abort.into()),

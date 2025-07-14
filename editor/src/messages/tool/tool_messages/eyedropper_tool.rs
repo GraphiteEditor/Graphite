@@ -2,7 +2,7 @@ use super::tool_prelude::*;
 use crate::messages::tool::utility_types::DocumentToolData;
 
 #[derive(Default, ExtractField)]
-pub struct EyedropperTool {
+pub struct EyedropperToolMessageHandler {
 	fsm_state: EyedropperToolFsmState,
 	data: EyedropperToolData,
 }
@@ -21,7 +21,7 @@ pub enum EyedropperToolMessage {
 	SampleSecondaryColorEnd,
 }
 
-impl ToolMetadata for EyedropperTool {
+impl ToolMetadata for EyedropperToolMessageHandler {
 	fn icon_name(&self) -> String {
 		"GeneralEyedropperTool".into()
 	}
@@ -33,14 +33,14 @@ impl ToolMetadata for EyedropperTool {
 	}
 }
 
-impl LayoutHolder for EyedropperTool {
+impl LayoutHolder for EyedropperToolMessageHandler {
 	fn layout(&self) -> Layout {
 		Layout::WidgetLayout(WidgetLayout::default())
 	}
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for EyedropperTool {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for EyedropperToolMessageHandler {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		self.fsm_state.process_event(message, &mut self.data, context, &(), responses, true);
 	}
@@ -55,7 +55,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Eyed
 	);
 }
 
-impl ToolTransition for EyedropperTool {
+impl ToolTransition for EyedropperToolMessageHandler {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(EyedropperToolMessage::Abort.into()),
