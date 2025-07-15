@@ -1,8 +1,8 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DEFAULT_STROKE_WIDTH, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, DRILL_THROUGH_THRESHOLD,
-	HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DEFAULT_STROKE_WIDTH, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD,
+	DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
@@ -24,8 +24,8 @@ use crate::messages::tool::common_functionality::utility_functions::{calculate_s
 use bezier_rs::{Bezier, BezierHandles, TValue};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
-use graphene_std::uuid::NodeId;
 use graphene_std::transform::ReferencePoint;
+use graphene_std::uuid::NodeId;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, VectorData};
 use graphene_std::vector::{ManipulatorPointId, PointId, VectorModificationType};
