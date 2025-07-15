@@ -256,7 +256,6 @@ pub(crate) fn property_from_type(
 		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, exposable, context),
 		Type::Future(out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, exposable, context),
 	};
-
 	extra_widgets.push(widgets);
 
 	Ok(extra_widgets)
@@ -837,6 +836,17 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 			number_props
 				.value(Some(x))
 				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
+				.on_commit(commit_value)
+				.widget_holder(),
+		]),
+		Some(&TaggedValue::Percentage(x)) => widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			number_props
+				.percentage()
+				.min(0.)
+				.max(100.)
+				.value(Some(x))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::Percentage(x.value.unwrap()), node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
 		]),

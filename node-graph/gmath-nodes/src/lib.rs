@@ -1,5 +1,6 @@
 use glam::{DAffine2, DVec2};
 use graphene_core::gradient::GradientStops;
+use graphene_core::registry::types::Fraction;
 use graphene_core::registry::types::{Fraction, Percentage, PixelSize, TextArea};
 use graphene_core::transform::Footprint;
 use graphene_core::{Color, Ctx, num_traits};
@@ -633,35 +634,7 @@ fn logical_not(
 	!input
 }
 
-/// Constructs a bool value which may be set to true or false.
-#[node_macro::node(category("Value"))]
-fn bool_value(_: impl Ctx, _primary: (), #[name("Bool")] bool_value: bool) -> bool {
-	bool_value
-}
-
-/// Constructs a number value which may be set to any real number.
-#[node_macro::node(category("Value"))]
-fn number_value(_: impl Ctx, _primary: (), number: f64) -> f64 {
-	number
-}
-
-/// Constructs a number value which may be set to any value from 0% to 100% by dragging the slider.
-#[node_macro::node(category("Value"))]
-fn percentage_value(_: impl Ctx, _primary: (), percentage: Percentage) -> f64 {
-	percentage
-}
-
 /// Constructs a two-dimensional vector value which may be set to any XY coordinate.
-#[node_macro::node(category("Value"))]
-fn coordinate_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
-	DVec2::new(x, y)
-}
-
-/// Constructs a color value which may be set to any color, or no color.
-#[node_macro::node(category("Value"))]
-fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Option<Color>) -> Option<Color> {
-	color
-}
 
 /// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
 #[node_macro::node(category("Color"))]
@@ -670,26 +643,9 @@ fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position:
 	gradient.evaluate(position)
 }
 
-/// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
-#[node_macro::node(category("Value"))]
-fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> GradientStops {
-	gradient
-}
-
-/// Constructs a string value which may be set to any plain text.
-#[node_macro::node(category("Value"))]
-fn string_value(_: impl Ctx, _primary: (), string: TextArea) -> String {
-	string
-}
-
-/// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.
-#[node_macro::node(category("Value"))]
-fn footprint_value(_: impl Ctx, _primary: (), transform: DAffine2, #[default(100., 100.)] resolution: PixelSize) -> Footprint {
-	Footprint {
-		transform,
-		resolution: resolution.max(DVec2::ONE).as_uvec2(),
-		..Default::default()
-	}
+#[node_macro::node(category("Math: Vector"))]
+fn coordinate_from_numbers(_: impl Ctx, _primary: (), #[expose] x: f64, #[expose] y: f64) -> DVec2 {
+	DVec2::new(x, y)
 }
 
 #[node_macro::node(category("Math: Vector"))]

@@ -4087,20 +4087,32 @@ impl NodeNetworkInterface {
 		self.unload_stack_dependents(network_path);
 	}
 
-	/// Replaces the implementation and corresponding metadata.
-	pub fn replace_implementation(&mut self, node_id: &NodeId, network_path: &[NodeId], new_template: &mut NodeTemplate) {
+	pub fn set_implementation(&mut self, node_id: &NodeId, network_path: &[NodeId], implementation: DocumentNodeImplementation) {
 		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in set_implementation");
+			log::error!("Could not get nested network in replace_implementation");
 			return;
 		};
 		let Some(node) = network.nodes.get_mut(node_id) else {
-			log::error!("Could not get node in set_implementation");
+			log::error!("Could not get node in replace_implementation");
+			return;
+		};
+		node.implementation = implementation;
+	}
+
+	/// Replaces the implementation and corresponding metadata.
+	pub fn replace_implementation(&mut self, node_id: &NodeId, network_path: &[NodeId], new_template: &mut NodeTemplate) {
+		let Some(network) = self.network_mut(network_path) else {
+			log::error!("Could not get nested network in replace_implementation");
+			return;
+		};
+		let Some(node) = network.nodes.get_mut(node_id) else {
+			log::error!("Could not get node in replace_implementation");
 			return;
 		};
 		let new_implementation = std::mem::take(&mut new_template.document_node.implementation);
 		let _ = std::mem::replace(&mut node.implementation, new_implementation);
 		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
-			log::error!("Could not get metadata in set_implementation");
+			log::error!("Could not get metadata in replace_implementation");
 			return;
 		};
 		let new_metadata = std::mem::take(&mut new_template.persistent_node_metadata.network_metadata);
@@ -4110,17 +4122,17 @@ impl NodeNetworkInterface {
 	/// Replaces the inputs and corresponding metadata.
 	pub fn replace_inputs(&mut self, node_id: &NodeId, network_path: &[NodeId], new_template: &mut NodeTemplate) -> Option<Vec<NodeInput>> {
 		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in set_implementation");
+			log::error!("Could not get nested network in replace_inputs");
 			return None;
 		};
 		let Some(node) = network.nodes.get_mut(node_id) else {
-			log::error!("Could not get node in set_implementation");
+			log::error!("Could not get node in replace_inputs");
 			return None;
 		};
 		let new_inputs = std::mem::take(&mut new_template.document_node.inputs);
 		let old_inputs = std::mem::replace(&mut node.inputs, new_inputs);
 		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
-			log::error!("Could not get metadata in set_implementation");
+			log::error!("Could not get metadata in replace_inputs");
 			return None;
 		};
 		let new_metadata = std::mem::take(&mut new_template.persistent_node_metadata.input_metadata);
@@ -4177,13 +4189,13 @@ impl NodeNetworkInterface {
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
-	pub fn set_manual_compostion(&mut self, node_id: &NodeId, network_path: &[NodeId], manual_composition: Option<Type>) {
+	pub fn set_manual_composition(&mut self, node_id: &NodeId, network_path: &[NodeId], manual_composition: Option<Type>) {
 		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in set_implementation");
+			log::error!("Could not get nested network in set_manual_composition");
 			return;
 		};
 		let Some(node) = network.nodes.get_mut(node_id) else {
-			log::error!("Could not get node in set_implementation");
+			log::error!("Could not get node in set_manual_composition");
 			return;
 		};
 		node.manual_composition = manual_composition;
