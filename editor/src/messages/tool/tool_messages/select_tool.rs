@@ -2,7 +2,7 @@
 
 use super::tool_prelude::*;
 use crate::consts::*;
-use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
+use crate::messages::input_mapper::utility_types::input_mouse::{DocumentPosition, ViewportPosition};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
@@ -379,6 +379,7 @@ impl Default for SelectToolFsmState {
 
 #[derive(Clone, Debug, Default)]
 struct SelectToolData {
+	document_drag_start: DocumentPosition,
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
 	lasso_polygon: Vec<ViewportPosition>,
@@ -419,13 +420,13 @@ impl SelectToolData {
 		}
 	}
 
-	pub fn selection_quad(&self) -> Quad {
-		let bbox = self.selection_box();
+	pub fn selection_quad(&self, document: &DocumentMessageHandler) -> Quad {
+		let bbox = self.selection_box(document);
 		Quad::from_box(bbox)
 	}
 
-	pub fn calculate_selection_mode_from_direction(&mut self) -> SelectionMode {
-		let bbox: [DVec2; 2] = self.selection_box();
+	pub fn calculate_selection_mode_from_direction(&mut self, document: &DocumentMessageHandler) -> SelectionMode {
+		let bbox: [DVec2; 2] = self.selection_box(document);
 		let above_threshold = bbox[1].distance_squared(bbox[0]) > DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD.powi(2);
 
 		if self.selection_mode.is_none() && above_threshold {
@@ -441,12 +442,14 @@ impl SelectToolData {
 		self.selection_mode.unwrap_or(SelectionMode::Touched)
 	}
 
-	pub fn selection_box(&self) -> [DVec2; 2] {
-		if self.drag_current == self.drag_start {
+	pub fn selection_box(&self, document: &DocumentMessageHandler) -> [DVec2; 2] {
+		let viewport_translation = self.drag_current - self.drag_start;
+		let pivot = document.metadata().document_to_viewport.transform_point2(self.document_drag_start);
+		if viewport_translation == DVec2::ZERO {
 			let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-			[self.drag_start - tolerance, self.drag_start + tolerance]
+			[pivot, pivot + tolerance]
 		} else {
-			[self.drag_start, self.drag_current]
+			[pivot, pivot + viewport_translation]
 		}
 	}
 
@@ -923,10 +926,10 @@ impl Fsm for SelectToolFsmState {
 				// Check if the tool is in selection mode
 				if let Self::Drawing { selection_shape, .. } = self {
 					// Get the updated selection box bounds
-					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
+					let quad = tool_data.selection_quad(document);
 
 					let current_selection_mode = match tool_action_data.preferences.get_selection_mode() {
-						SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(),
+						SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(document),
 						SelectionMode::Touched => SelectionMode::Touched,
 						SelectionMode::Enclosed => SelectionMode::Enclosed,
 					};
@@ -975,11 +978,12 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				if let Self::Dragging { .. } = self {
-					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
-					let document_start = document.metadata().document_to_viewport.inverse().transform_point2(quad.top_left());
-					let document_current = document.metadata().document_to_viewport.inverse().transform_point2(quad.bottom_right());
+					let viewport_translation = tool_data.drag_current - tool_data.drag_start;
+					let translation = document.metadata().document_to_viewport.inverse().transform_vector2(viewport_translation);
+					let pivot = document.metadata().document_to_viewport.transform_point2(tool_data.document_drag_start);
+					let quad = Quad::from_box([pivot, pivot + viewport_translation]);
 
-					overlay_context.translation_box(document_current - document_start, quad, None);
+					overlay_context.translation_box(translation, quad, None);
 				}
 
 				self
@@ -1008,6 +1012,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.drag_start = input.mouse.position;
 				tool_data.drag_current = input.mouse.position;
 				tool_data.selection_mode = None;
+				tool_data.document_drag_start = document.metadata().document_to_viewport.inverse().transform_point2(tool_data.drag_start);
 
 				let mut selected: Vec<_> = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
 				let intersection_list = document.click_list(input).collect::<Vec<_>>();
@@ -1381,7 +1386,7 @@ impl Fsm for SelectToolFsmState {
 
 				if !has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					// When you click on the layer with remove from selection key (shift) pressed, we deselect all nodes that are children.
-					let quad = tool_data.selection_quad();
+					let quad = tool_data.selection_quad(document);
 					let intersection = document.intersect_quad_no_artboards(quad, input);
 
 					if let Some(path) = intersection.last() {
@@ -1479,10 +1484,10 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Drawing { selection_shape, .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
-				let quad = tool_data.selection_quad();
+				let quad = tool_data.selection_quad(document);
 
 				let selection_mode = match tool_action_data.preferences.get_selection_mode() {
-					SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(),
+					SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(document),
 					selection_mode => selection_mode,
 				};
 
