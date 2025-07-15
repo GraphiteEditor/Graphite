@@ -128,11 +128,11 @@ impl<'i, Root: Node<'i, I>, I: 'i + From<()>> ConsNode<I, Root> {
 mod test {
 	use super::*;
 	use crate::generic::FnNode;
-	use crate::value::ClonedNode;
+	use crate::value::ValueRefNode;
 
 	#[test]
 	fn compose() {
-		let value = ClonedNode::new(4u32);
+		let value = ValueRefNode::new(4u32);
 		let compose = value.then(FnNode::new(|x| x));
 		assert_eq!(compose.eval(()), &4u32);
 		let type_erased = &compose as &dyn Node<'_, (), Output = &'_ u32>;
@@ -141,7 +141,7 @@ mod test {
 
 	#[test]
 	fn test_ref_eval() {
-		let value = ClonedNode::new(5);
+		let value = ValueRefNode::new(5);
 
 		assert_eq!(value.eval(()), &5);
 		let id = FnNode::new(|x| x);
