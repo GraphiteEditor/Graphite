@@ -54,7 +54,11 @@ fn math<U: num_traits::float::Float>(
 	let node = match ast::Node::try_parse_from_str(&expression) {
 		Ok(expr) => expr,
 		Err(e) => {
-			warn!("Invalid expression: `{expression}`\n{e:?}");
+			warn!("Invalid expression: `{expression}`\n");
+			// print colored error
+			e.print();
+			// render error as html
+			_ = e.render_html(&Default::default());
 			return U::from(0.).unwrap();
 		}
 	};

@@ -1,4 +1,3 @@
-// ── lexer.rs ───────────────────────────────────────────────────────────
 use crate::ast::Literal;
 use chumsky::input::{Input, ValueInput};
 use chumsky::prelude::*;
@@ -6,6 +5,7 @@ use chumsky::span::SimpleSpan;
 use chumsky::text::{ident, int};
 use core::f64;
 use num_complex::Complex64;
+use std::fmt;
 use std::iter::Peekable;
 use std::ops::Range;
 use std::str::Chars;
@@ -14,10 +14,10 @@ pub type Span = SimpleSpan;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token<'src> {
-	// literals ----------------------------------------------------------------
-	Const(Literal), // numeric or complex constants recognised at lex‑time
+	Float(f64),
+	Const(Constant),
 	Ident(&'src str),
-	// punctuation -------------------------------------------------------------
+
 	LParen,
 	RParen,
 	Comma,
@@ -26,29 +26,97 @@ pub enum Token<'src> {
 	Star,
 	Slash,
 	Caret,
-	// comparison --------------------------------------------------------------
+
 	Lt,
 	Le,
 	Gt,
 	Ge,
 	EqEq,
-	// keywords ----------------------------------------------------------------
+
 	If,
 }
 
-fn const_lit(name: &str) -> Option<Literal> {
-	use std::f64::consts::*;
+impl<'src> fmt::Display for Token<'src> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Token::Float(x) => write!(f, "{x}"),
+			Token::Const(c) => write!(f, "{c}"),
+			Token::Ident(name) => write!(f, "{name}"),
 
-	Some(match name {
-		"pi" | "π" => Literal::Float(PI),
-		"tau" | "τ" => Literal::Float(TAU),
-		"e" => Literal::Float(E),
-		"phi" | "φ" => Literal::Float(1.618_033_988_75),
-		"inf" | "∞" => Literal::Float(f64::INFINITY),
-		"i" => Literal::Complex(Complex64::new(0.0, 1.0)),
-		"G" => Literal::Float(9.80665),
-		_ => return None,
-	})
+			Token::LParen => f.write_str("("),
+			Token::RParen => f.write_str(")"),
+			Token::Comma => f.write_str(","),
+			Token::Plus => f.write_str("+"),
+			Token::Minus => f.write_str("-"),
+			Token::Star => f.write_str("*"),
+			Token::Slash => f.write_str("/"),
+			Token::Caret => f.write_str("^"),
+
+			Token::Lt => f.write_str("<"),
+			Token::Le => f.write_str("<="),
+			Token::Gt => f.write_str(">"),
+			Token::Ge => f.write_str(">="),
+			Token::EqEq => f.write_str("=="),
+
+			Token::If => f.write_str("if"),
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Constant {
+	Pi,
+	Tau,
+	E,
+	Phi,
+	Inf,
+	I,
+	G,
+}
+
+impl Constant {
+	pub fn value(self) -> Literal {
+		use Constant::*;
+		use std::f64::consts;
+		match self {
+			Pi => Literal::Float(consts::PI),
+			Tau => Literal::Float(consts::TAU),
+			E => Literal::Float(consts::E),
+			Phi => Literal::Float(1.618_033_988_75),
+			Inf => Literal::Float(f64::INFINITY),
+			I => Literal::Complex(Complex64::new(0.0, 1.0)),
+			G => Literal::Float(9.80665),
+		}
+	}
+
+	pub fn from_str(name: &str) -> Option<Constant> {
+		use Constant::*;
+		Some(match name {
+			"pi" | "π" => Pi,
+			"tau" | "τ" => Tau,
+			"e" => E,
+			"phi" | "φ" => Phi,
+			"inf" | "∞" => Inf,
+			"i" => I,
+			"G" => G,
+			_ => return None,
+		})
+	}
+}
+
+impl fmt::Display for Constant {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		use Constant::*;
+		f.write_str(match self {
+			Pi => "pi",
+			Tau => "tau",
+			E => "e",
+			Phi => "phi",
+			Inf => "inf",
+			I => "i",
+			G => "G",
+		})
+	}
 }
 
 pub struct Lexer<'a> {
@@ -182,7 +250,7 @@ impl<'a> Lexer<'a> {
 
 			c if c.is_ascii_digit() || (c == '.' && self.peek().is_some_and(|c| c.is_ascii_digit())) => {
 				self.pos = start;
-				Const(Literal::Float(self.lex_number()?))
+				Float(self.lex_number()?)
 			}
 
 			_ => {
@@ -191,7 +259,7 @@ impl<'a> Lexer<'a> {
 
 				if ident == "if" {
 					If
-				} else if let Some(lit) = const_lit(ident) {
+				} else if let Some(lit) = Constant::from_str(ident) {
 					Const(lit)
 				} else if ch.is_alphanumeric() {
 					Ident(ident)
@@ -202,6 +270,14 @@ impl<'a> Lexer<'a> {
 		};
 
 		Some(tok)
+	}
+}
+
+impl<'a> Iterator for Lexer<'a> {
+	type Item = Token<'a>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		self.next_token()
 	}
 }
 

@@ -12,6 +12,7 @@ thiserror = "2.0"
 lazy_static = "1.5"
 num-complex = "0.4"
 chumsky = { version = "0.10", default-features = false, features = ["std"] }
+codespan-reporting = { git = "https://github.com/urisinger/codespan-style-writer.git"}
 
 [dev-dependencies]
 criterion = "0.5"

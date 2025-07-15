@@ -3,6 +3,7 @@
 pub mod ast;
 mod constants;
 pub mod context;
+pub mod diagnostic;
 pub mod executer;
 pub mod lexer;
 pub mod parser;
@@ -10,11 +11,11 @@ pub mod value;
 
 use ast::Unit;
 use context::{EvalContext, ValueMap};
+use diagnostic::CompileError;
 use executer::EvalError;
-use parser::ParseError;
 use value::Value;
 
-pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, ParseError<'_>> {
+pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, CompileError> {
 	let expr = ast::Node::try_parse_from_str(expression);
 	let context = EvalContext::default();
 	expr.map(|node| node.eval(&context))
@@ -24,67 +25,79 @@ pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, ParseError
 mod tests {
 	use super::*;
 	use ast::Unit;
+	use codespan_reporting::term::{
+		self,
+		termcolor::{ColorChoice, StandardStream},
+	};
 	use value::Number;
 
 	const EPSILON: f64 = 1e-10_f64;
 
-	macro_rules! test_end_to_end{
-		($($name:ident: $input:expr_2021 => $expected_value:expr_2021),* $(,)?) => {
-			$(
-				#[test]
-				fn $name() {
-					let expected_value = $expected_value;
-
-					let expr = ast::Node::try_parse_from_str($input);
-					let context = EvalContext::default();
-
-					dbg!(&expr);
-
-					let actual_value = expr.map(|node| node.eval(&context)).unwrap();
-					let actual_value = actual_value.unwrap();
-
-
-
-					let expected_value = expected_value.into();
-
-					match (actual_value, expected_value) {
-						(Value::Number(Number::Complex(actual_c)), Value::Number(Number::Complex(expected_c))) => {
-							assert!(
-								(actual_c.re.is_infinite() && expected_c.re.is_infinite()) || (actual_c.re - expected_c.re).abs() < EPSILON,
-								"Expected real part {}, but got {}",
-								expected_c.re,
-								actual_c.re
-							);
-							assert!(
-								(actual_c.im.is_infinite() && expected_c.im.is_infinite()) || (actual_c.im - expected_c.im).abs() < EPSILON,
-								"Expected imaginary part {}, but got {}",
-								expected_c.im,
-								actual_c.im
-							);
-						}
-						(Value::Number(Number::Real(actual_f)), Value::Number(Number::Real(expected_f))) => {
-							if actual_f.is_infinite() || expected_f.is_infinite() {
-								assert!(
-									actual_f.is_infinite() && expected_f.is_infinite() && actual_f == expected_f,
-									"Expected infinite value {}, but got {}",
-									expected_f,
-									actual_f
-								);
-							} else if actual_f.is_nan() || expected_f.is_nan() {
-								assert!(actual_f.is_nan() && expected_f.is_nan(), "Expected NaN, but got {}", actual_f);
-							} else {
-								assert!((actual_f - expected_f).abs() < EPSILON, "Expected {}, but got {}", expected_f, actual_f);
-							}
-						}
-						// Handle mismatched types
-						_ => panic!("Mismatched types: expected {:?}, got {:?}", expected_value, actual_value),
-					}
-
-				}
-			)*
+	fn run_end_to_end_test(input: &str, expected_value: Value) {
+		// parse + pretty‐print any parse errors
+		let expr = match ast::Node::try_parse_from_str(input) {
+			Ok(expr) => expr,
+			Err(err) => {
+				err.print();
+				panic!("failed to parse `{input}`");
+			}
 		};
+		let context = EvalContext::default();
+
+		let actual_value = match expr.eval(&context) {
+			Ok(v) => v,
+			Err(err) => panic!("failed to evaluate {input} becuase of error {err}"),
+		};
+
+		// compare
+		match (actual_value, expected_value) {
+			(Value::Number(Number::Complex(a)), Value::Number(Number::Complex(e))) => {
+				// real part
+				if a.re.is_infinite() || e.re.is_infinite() {
+					assert!(a.re == e.re, "`{}` → real part: expected {:?}, got {:?}", input, e.re, a.re);
+				} else {
+					assert!((a.re - e.re).abs() < EPSILON, "`{}` → real part: expected {}, got {}", input, e.re, a.re);
+				}
+
+				// imag part
+				if a.im.is_infinite() || e.im.is_infinite() {
+					assert!(a.im == e.im, "`{}` → imag part: expected {:?}, got {:?}", input, e.im, a.im);
+				} else {
+					assert!((a.im - e.im).abs() < EPSILON, "`{}` → imag part: expected {}, got {}", input, e.im, a.im);
+				}
+			}
+
+			(Value::Number(Number::Real(a)), Value::Number(Number::Real(e))) => {
+				if a.is_infinite() || e.is_infinite() {
+					// both must be infinite and equal (i.e. both +∞ or both −∞)
+					assert!(a == e, "`{input}` → expected infinite {e:?}, got {a:?}");
+				} else if a.is_nan() || e.is_nan() {
+					// both must be NaN
+					assert!(a.is_nan() && e.is_nan(), "`{input}` → expected NaN, got {a:?}");
+				} else {
+					let diff = (a - e).abs();
+					assert!(diff < EPSILON, "`{input}` → expected {e}, got {a}, Δ={diff}");
+				}
+			}
+
+			(got, expect) => {
+				panic!("`{input}` → mismatched types: expected {expect:?}, got {got:?}");
+			}
+		}
 	}
 
+	macro_rules! test_end_to_end {
+        ($($name:ident: $input:expr => $expected:expr),* $(,)?) => {
+            $(
+                #[test]
+                fn $name() {
+                    // note the `.into()` here, so we still accept
+                    // any `T: Into<Value>` in our macro
+                    run_end_to_end_test($input, $expected.into());
+                }
+            )*
+        };
+    }
 	test_end_to_end! {
 		// Basic arithmetic
 		infix_addition: "5 + 5" => 10.,

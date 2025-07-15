@@ -1,5 +1,6 @@
 use crate::ast::{BinaryOp, Literal, Node, UnaryOp, Unit};
 use crate::context::EvalContext;
+use crate::diagnostic::{CompileError, make_compile_error};
 use crate::lexer::{Lexer, Span, Token};
 use crate::value::{Complex, Number, Value};
 use chumsky::container::Seq;
@@ -10,21 +11,23 @@ use num_complex::ComplexFloat;
 use std::num::{ParseFloatError, ParseIntError};
 use thiserror::Error;
 
-#[derive(Error, Debug)]
-pub enum ParseError<'src> {
-	#[error("syntax error(s): {0:#?}")]
-	Parse(Vec<Rich<'src, Token<'src>, Span>>),
-}
-
 impl Node {
-	/// Lex + parse the source and either return an AST `Node`
-	/// or a typed `ParseError`.
-	pub fn try_parse_from_str(src: &str) -> Result<Node, ParseError<'_>> {
+	pub fn try_parse_from_str(src: &str) -> Result<Node, CompileError> {
 		let tokens = Lexer::new(src);
 
 		match parser().parse(tokens).into_result() {
 			Ok(ast) => Ok(ast),
-			Err(errs) => Err(ParseError::Parse(errs)),
+			Err(parse_errs) => {
+				let errs = parse_errs.into_iter().map(|e| {
+					let primary = e.span();
+					let mut secondary = Vec::new();
+					for (msg, ctx_span) in e.contexts() {
+						secondary.push((msg.to_string(), *ctx_span));
+					}
+					(e.to_string(), *primary, secondary)
+				});
+				Err(make_compile_error("expression", src, errs))
+			}
 		}
 	}
 }
@@ -34,35 +37,39 @@ where
 	I: ValueInput<'src, Token = Token<'src>, Span = Span>,
 {
 	recursive(|expr| {
-		let constant = select! {Token::Const(x) => Node::Lit(x)};
+		let constant = select! {
+			Token::Float(f) => Node::Lit(Literal::Float(f)),
+			Token::Const(c) => Node::Lit(c.value())
+		};
 
 		let args = expr.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LParen), just(Token::RParen));
 
 		let if_expr = just(Token::If)
-    .ignore_then(args.clone()) // Parses (cond, a, b)
-    .try_map(|args: Vec<Node>, span| {
-        if args.len() != 3 {
-            return Err(Rich::custom(span, "Expected 3 arguments in if(cond, a, b)"));
-        }
-        let mut iter = args.into_iter();
-        let cond = iter.next().unwrap();
-        let if_b = iter.next().unwrap();
-        let else_b = iter.next().unwrap();
-        Ok(Node::Conditional {
-            condition: Box::new(cond),
-            if_block: Box::new(if_b),
-            else_block: Box::new(else_b),
-        })
-    });
+			.ignore_then(args.clone()) // Parses (cond, a, b)
+			.try_map(|args: Vec<Node>, span| {
+				if args.len() != 3 {
+        		    return Err(Rich::custom(span, "Expected 3 arguments in if(cond, a, b)"));
+        		}
+        		let mut iter = args.into_iter();
+        		let cond = iter.next().unwrap();
+        		let if_b = iter.next().unwrap();
+        		let else_b = iter.next().unwrap();
+        		Ok(Node::Conditional {
+        		    condition: Box::new(cond),
+        		    if_block: Box::new(if_b),
+        		    else_block: Box::new(else_b),
+        		})
+			}
+		);
 
-		let call = select! {Token::Ident(s) => s}
-			.then(args)
-			.try_map(|(name, args): (&str, Vec<Node>), span| Ok(Node::FnCall { name: name.to_string(), expr: args }));
+		let ident = select! {Token::Ident(s) => s}.labelled("ident");
 
-		let parens = expr.clone().clone().delimited_by(just(Token::LParen), just(Token::RParen));
-		let var = select! { Token::Ident(name) => Node::Var(name.to_string()) };
+		let call = ident.then(args).map(|(name, args): (&str, Vec<Node>)| Node::FnCall { name: name.to_string(), expr: args });
 
-		let atom = choice((constant, if_expr, call, parens, var)).boxed();
+		let parens = expr.clone().delimited_by(just(Token::LParen), just(Token::RParen));
+		let var = ident.map(|s| Node::Var(s.to_string()));
+
+		let atom = choice((constant, if_expr, call, parens, var)).labelled("atom").boxed();
 
 		let add_op = choice((just(Token::Plus).to(BinaryOp::Add), just(Token::Minus).to(BinaryOp::Sub)));
 		let mul_op = choice((just(Token::Star).to(BinaryOp::Mul), just(Token::Slash).to(BinaryOp::Div)));
@@ -78,7 +85,7 @@ where
 
 		let unary = unary_op.repeated().foldr(atom, |op, expr| Node::UnaryOp { op, expr: Box::new(expr) }).boxed();
 
-		let cmp = unary.clone().foldl(cmp_op.then(unary).repeated(), |lhs: Node, (op, rhs)| Node::BinOp {
+		let cmp = unary.clone().clone().foldl(cmp_op.then(unary).repeated(), |lhs: Node, (op, rhs)| Node::BinOp {
 			lhs: Box::new(lhs),
 			op,
 			rhs: Box::new(rhs),
@@ -105,9 +112,9 @@ where
 			rhs: Box::new(rhs),
 		});
 
-		add.clone().foldl(add.map(|rhs| (BinaryOp::Mul, rhs)).repeated(), |lhs, (op, rhs)| Node::BinOp {
+		add.clone().foldl(add.repeated(), |lhs, rhs| Node::BinOp {
 			lhs: Box::new(lhs),
-			op,
+			op: BinaryOp::Mul,
 			rhs: Box::new(rhs),
 		})
 	})
@@ -121,7 +128,14 @@ mod tests {
 			$(
 				#[test]
 				fn $name() {
-					let result = Node::try_parse_from_str($input).unwrap();
+
+					let result = match Node::try_parse_from_str($input){
+						Ok(expr) => expr,
+						Err(err) => {
+							err.print();
+							panic!(concat!("failed to parse `", $input, "`"));
+						}
+					};
 					assert_eq!(result, $expected);
 				}
 			)*
