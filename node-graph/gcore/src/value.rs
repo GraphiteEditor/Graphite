@@ -14,6 +14,29 @@ impl<'i, const N: u32, I> Node<'i, I> for IntNode<N> {
 }
 
 #[derive(Default, Debug, Clone, Copy)]
+pub struct ValueRefNode<T>(pub T);
+
+impl<'i, T: 'i, I> Node<'i, I> for ValueRefNode<T> {
+	type Output = &'i T;
+	#[inline(always)]
+	fn eval(&'i self, _input: I) -> Self::Output {
+		&self.0
+	}
+}
+
+impl<T> ValueRefNode<T> {
+	pub const fn new(value: T) -> ValueRefNode<T> {
+		ValueRefNode(value)
+	}
+}
+
+impl<T> From<T> for ValueRefNode<T> {
+	fn from(value: T) -> Self {
+		ValueRefNode::new(value)
+	}
+}
+
+#[derive(Default, Debug, Clone, Copy)]
 pub struct AsRefNode<T: AsRef<U>, U>(pub T, PhantomData<U>);
 
 impl<'i, T: 'i + AsRef<U>, U: 'i> Node<'i, ()> for AsRefNode<T, U> {
