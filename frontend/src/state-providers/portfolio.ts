@@ -71,7 +71,8 @@ export function createPortfolioState(editor: Editor) {
 
 		if (data.type.includes("svg")) {
 			const svg = new TextDecoder().decode(data.content.data);
-			editor.handle.pasteSvg(data.filename, svg);
+			//editor.handle.pasteSvg(data.filename, svg); //calls to the backend for a immediate image paste
+			editor.handle.previewImage(data.filename, svg);
 			return;
 		}
 
@@ -82,6 +83,7 @@ export function createPortfolioState(editor: Editor) {
 		}
 
 		const imageData = await extractPixelData(new Blob([data.content.data], { type: data.type }));
+		console.debug("editor paste Image ");
 		editor.handle.pasteImage(data.filename, new Uint8Array(imageData.data), imageData.width, imageData.height);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerDownloadTextFile, (triggerFileDownload) => {

@@ -351,6 +351,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
 			PortfolioMessage::Import => {
+				//this is where itheppend
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
 				responses.add(FrontendMessage::TriggerImport);
 			}
@@ -714,6 +715,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(Message::StartBuffer);
 					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
 				}
+			}
+			PortfolioMessage::PreviewImage { name, svg } => {
+				debug!("PortfolioMessage Preview Image")
+				//TODO: draw a preview image following cursor
+
+				//TODO: get a preview
 			}
 			PortfolioMessage::PrevDocument => {
 				if let Some(active_document_id) = self.active_document_id {
