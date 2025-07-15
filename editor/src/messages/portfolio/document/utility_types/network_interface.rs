@@ -503,7 +503,7 @@ impl NodeNetworkInterface {
 
 	pub fn take_input(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<NodeInput> {
 		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get network in input_from_connector");
+			log::error!("Could not get network in take_input");
 			return None;
 		};
 		let input = match input_connector {

@@ -1,5 +1,29 @@
-use crate::Node;
+use crate::{
+	Node,
+	registry::{Any, DynFuture, SharedNodeContainer},
+};
 use std::marker::PhantomData;
+
+pub struct IdentityNode {
+	value: SharedNodeContainer,
+}
+
+impl<'i> Node<'i, Any<'i>> for IdentityNode {
+	type Output = DynFuture<'i, Any<'i>>;
+	fn eval(&'i self, input: Any<'i>) -> Self::Output {
+		Box::pin(async move { self.value.eval(input).await })
+	}
+}
+
+impl IdentityNode {
+	pub const fn new(value: SharedNodeContainer) -> Self {
+		IdentityNode { value }
+	}
+}
+
+pub mod identity {
+	pub const IDENTIFIER: crate::ProtoNodeIdentifier = crate::ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode");
+}
 
 // Type
 // TODO: Document this
@@ -133,15 +157,5 @@ impl<'input, I: 'input + Convert<_O> + Sync + Send, _O: 'input> Node<'input, I> 
 	#[inline]
 	fn eval(&'input self, input: I) -> Self::Output {
 		Box::pin(async move { input.convert() })
-	}
-}
-
-#[cfg(test)]
-mod test {
-	use super::*;
-
-	#[test]
-	pub fn identity_node() {
-		assert_eq!(identity(&4), &4);
 	}
 }

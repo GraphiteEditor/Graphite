@@ -89,13 +89,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-<<<<<<< HEAD
 					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
-||||||| parent of 8e045313 (Migrate pass through and value node to identity implementation)
-					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
-=======
-					implementation: DocumentNodeImplementation::proto("graphene_std::any::IdentityNode"),
->>>>>>> 8e045313 (Migrate pass through and value node to identity implementation)
 					inputs: vec![NodeInput::value(TaggedValue::None, true)],
 					..Default::default()
 				},
@@ -113,7 +107,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_std::any::IdentityNode"),
+					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
 					manual_composition: Some(generic!(T)),
 					inputs: vec![NodeInput::value(TaggedValue::None, false)],
 					..Default::default()

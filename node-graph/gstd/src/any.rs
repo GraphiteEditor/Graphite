@@ -46,20 +46,3 @@ pub fn input_node<O: StaticType>(n: SharedNodeContainer) -> DowncastBothNode<(),
 pub fn downcast_node<I: StaticType, O: StaticType>(n: SharedNodeContainer) -> DowncastBothNode<I, O> {
 	DowncastBothNode::new(n)
 }
-
-pub struct IdentityNode {
-	value: SharedNodeContainer,
-}
-
-impl<'i> Node<'i, Any<'i>> for IdentityNode {
-	type Output = DynFuture<'i, Any<'i>>;
-	fn eval(&'i self, input: Any<'i>) -> Self::Output {
-		Box::pin(async move { self.value.eval(input).await })
-	}
-}
-
-impl IdentityNode {
-	pub const fn new(value: SharedNodeContainer) -> Self {
-		IdentityNode { value }
-	}
-}

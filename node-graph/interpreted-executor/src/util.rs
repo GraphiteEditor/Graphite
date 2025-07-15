@@ -68,13 +68,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 		inner_network,
 		render_node,
 		DocumentNode {
-<<<<<<< HEAD
 			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::ops::identity::IDENTIFIER),
-||||||| parent of 8e045313 (Migrate pass through and value node to identity implementation)
-			implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
-=======
-			implementation: DocumentNodeImplementation::proto("graphene_std::any::IdentityNode"),
->>>>>>> 8e045313 (Migrate pass through and value node to identity implementation)
 			inputs: vec![NodeInput::value(TaggedValue::EditorApi(editor_api), false)],
 			..Default::default()
 		},

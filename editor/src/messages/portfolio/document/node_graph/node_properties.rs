@@ -89,7 +89,7 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 		description,
 		input_type,
 		blank_assist,
-		exposable: exposeable,
+		exposable,
 	} = parameter_widgets_info;
 
 	let Some(document_node) = document_node else {
@@ -103,7 +103,7 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 	};
 	let description = if description != "TODO" { description } else { String::new() };
 	let mut widgets = Vec::with_capacity(6);
-	if exposeable {
+	if exposable {
 		widgets.push(expose_widget(node_id, index, input_type, input.is_exposed()));
 	}
 	widgets.push(TextLabel::new(name).tooltip(description).widget_holder());
@@ -1913,7 +1913,7 @@ pub fn value_properties(node_id: NodeId, context: &mut NodePropertiesContext) ->
 		return vec![];
 	};
 	let Some(input) = document_node.inputs.get(0) else {
-		log::warn!("Secondary value input could not be found on value properties");
+		log::warn!("Value input could not be found in value properties");
 		return vec![];
 	};
 	let mut select_value_widgets = Vec::new();
@@ -1932,20 +1932,16 @@ pub fn value_properties(node_id: NodeId, context: &mut NodePropertiesContext) ->
 		return Vec::new();
 	};
 
-	// let committer = || {|_| {
-	// 	let messages = vec![
-	// 		DocumentMessage::AddTransaction.into(),
-	// 		NodeGraphMessage::RunDocumentGraph.into(),
-	// 	];
-	// 	Message::Batched(messages.into_boxed_slice()).into()
-	// };
 	let updater = || {
 		move |v: &TaggedValueChoice| {
 			let value = v.to_tagged_value();
 
 			let messages = vec![NodeGraphMessage::SetInputValue { node_id, input_index: 0, value }.into(), NodeGraphMessage::SendGraph.into()];
 
-			Message::Batched(messages.into_boxed_slice()).into()
+			Message::Batched {
+				messages: messages.into_boxed_slice(),
+			}
+			.into()
 		}
 	};
 	let value_dropdown = enum_choice::<TaggedValueChoice>().dropdown_menu(choice, updater, || commit_value);

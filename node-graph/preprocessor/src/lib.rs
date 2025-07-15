@@ -49,13 +49,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 		let input_count = inputs.len();
 		let network_inputs = (0..input_count).map(|i| NodeInput::node(NodeId(i as u64), 0)).collect();
 
-<<<<<<< HEAD
 		let identity_node = ops::identity::IDENTIFIER;
-||||||| parent of 8e045313 (Migrate pass through and value node to identity implementation)
-		let identity_node = ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode");
-=======
-		let identity_node = ProtoNodeIdentifier::new("graphene_std::any::IdentityNode");
->>>>>>> 8e045313 (Migrate pass through and value node to identity implementation)
 
 		let into_node_registry = &interpreted_executor::node_registry::NODE_REGISTRY;
 

@@ -152,10 +152,6 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		alias: String,
 	},
-	SetReference {
-		node_id: NodeId,
-		reference: Option<String>,
-	},
 	SetToNodeOrLayer {
 		node_id: NodeId,
 		is_layer: bool,

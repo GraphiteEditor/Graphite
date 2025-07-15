@@ -1582,7 +1582,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let document_bbox: [DVec2; 2] = viewport_bbox.map(|p| network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(p));
 
 				let mut nodes = Vec::new();
-
 				for node_id in &self.frontend_nodes {
 					let Some(node_bbox) = network_interface.node_bounding_box(node_id, breadcrumb_network_path) else {
 						log::error!("Could not get bbox for node: {:?}", node_id);
@@ -1729,9 +1728,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				network_interface.shift_absolute_node_position(&node_id, IVec2::new(x, y), selection_network_path);
 
 				responses.add(NodeGraphMessage::SendWires);
-			}
-			NodeGraphMessage::SetReference { node_id, reference } => {
-				network_interface.set_reference(&node_id, breadcrumb_network_path, reference);
 			}
 			NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer } => {
 				if is_layer && !network_interface.is_eligible_to_be_layer(&node_id, selection_network_path) {
@@ -2484,21 +2480,16 @@ impl NodeGraphMessageHandler {
 		// Offset node insertion 3 grid spaces left and 1 grid space up so the center of the node is dragged
 		position = position - DVec2::new(GRID_SIZE as f64 * 3., GRID_SIZE as f64);
 
-		// Offset to account for division rounding error and place the selected node to the top left of the input
-		if position.x < 0. {
-			position.x = position.x - 1.;
-		}
-		if position.y < 0. {
-			position.y = position.y - 1.;
-		}
-
 		let Some(mut input) = network_interface.take_input(&disconnecting, breadcrumb_network_path) else {
 			return;
 		};
 
 		match &mut input {
 			NodeInput::Value { exposed, .. } => *exposed = false,
-			_ => return,
+			_ => {
+				network_interface.set_input(&disconnecting, input, breadcrumb_network_path);
+				return;
+			}
 		}
 
 		let drag_start = DragStart {
