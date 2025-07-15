@@ -1,6 +1,6 @@
 use glam::DVec2;
 use graphene_core::gradient::GradientStops;
-use graphene_core::registry::types::{Fraction, Percentage};
+use graphene_core::registry::types::{Fraction, Percentage, TextArea};
 use graphene_core::{Color, Ctx, num_traits};
 use log::warn;
 use math_parser::ast;
@@ -462,15 +462,89 @@ fn clamp<T: std::cmp::PartialOrd>(
 	}
 }
 
+/// The greatest common divisor (GCD) calculates the largest positive integer that divides both of the two input numbers without leaving a remainder.
+#[node_macro::node(category("Math: Numeric"))]
+fn greatest_common_divisor<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32> + std::ops::SubAssign>(
+	_: impl Ctx,
+	/// One of the two numbers for which the GCD will be calculated.
+	#[implementations(u32, u64, i32)]
+	value: T,
+	/// The other of the two numbers for which the GCD will be calculated.
+	#[implementations(u32, u64, i32)]
+	other_value: T,
+) -> T {
+	if value == T::zero() {
+		return other_value;
+	}
+	if other_value == T::zero() {
+		return value;
+	}
+	binary_gcd(value, other_value)
+}
+
+/// The least common multiple (LCM) calculates the smallest positive integer that is a multiple of both of the two input numbers.
+#[node_macro::node(category("Math: Numeric"))]
+fn least_common_multiple<T: num_traits::ToPrimitive + num_traits::FromPrimitive + num_traits::identities::Zero>(
+	_: impl Ctx,
+	/// One of the two numbers for which the LCM will be calculated.
+	#[implementations(u32, u64, i32)]
+	value: T,
+	/// The other of the two numbers for which the LCM will be calculated.
+	#[implementations(u32, u64, i32)]
+	other_value: T,
+) -> T {
+	let value = value.to_i128().unwrap();
+	let other_value = other_value.to_i128().unwrap();
+
+	if value == 0 || other_value == 0 {
+		return T::zero();
+	}
+	let gcd = binary_gcd(value, other_value);
+
+	T::from_i128((value * other_value).abs() / gcd).unwrap()
+}
+
+fn binary_gcd<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32> + std::ops::SubAssign>(mut a: T, mut b: T) -> T {
+	if a == T::zero() {
+		return b;
+	}
+	if b == T::zero() {
+		return a;
+	}
+
+	let mut shift = 0;
+	while (a | b) & T::one() == T::zero() {
+		a >>= 1;
+		b >>= 1;
+		shift += 1;
+	}
+
+	while a & T::one() == T::zero() {
+		a >>= 1;
+	}
+
+	while b != T::zero() {
+		while b & T::one() == T::zero() {
+			b >>= 1;
+		}
+		if a > b {
+			std::mem::swap(&mut a, &mut b);
+		}
+		b -= a;
+	}
+
+	a << shift
+}
+
 /// The equality operation (==) compares two values and returns true if they are equal, or false if they are not.
 #[node_macro::node(category("Math: Logic"))]
 fn equals<U: std::cmp::PartialEq<T>, T>(
 	_: impl Ctx,
 	/// One of the two numbers to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, &str)]
+	#[implementations(f64, f32, u32, DVec2, &str, String)]
 	value: T,
 	/// The other of the two numbers to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, &str)]
+	#[implementations(f64, f32, u32, DVec2, &str, String)]
 	other_value: U,
 ) -> bool {
 	other_value == value
@@ -603,13 +677,27 @@ fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> Gradien
 
 /// Constructs a string value which may be set to any plain text.
 #[node_macro::node(category("Value"))]
-fn string_value(_: impl Ctx, _primary: (), string: String) -> String {
+fn string_value(_: impl Ctx, _primary: (), string: TextArea) -> String {
 	string
 }
 
 #[node_macro::node(category("Math: Vector"))]
 fn dot_product(_: impl Ctx, vector_a: DVec2, vector_b: DVec2) -> f64 {
 	vector_a.dot(vector_b)
+}
+
+/// Gets the length or magnitude of a vector.
+#[node_macro::node(category("Math: Vector"))]
+fn length(_: impl Ctx, vector: DVec2) -> f64 {
+	vector.length()
+}
+
+/// Scales the input vector to unit length while preserving it's direction. This is equivalent to dividing the input vector by it's own magnitude.
+///
+/// Returns zero when the input vector is zero.
+#[node_macro::node(category("Math: Vector"))]
+fn normalize(_: impl Ctx, vector: DVec2) -> DVec2 {
+	vector.normalize_or_zero()
 }
 
 #[cfg(test)]
@@ -623,6 +711,12 @@ mod test {
 		let vector_a = DVec2::new(1., 2.);
 		let vector_b = DVec2::new(3., 4.);
 		assert_eq!(dot_product((), vector_a, vector_b), 11.);
+	}
+
+	#[test]
+	pub fn length_function() {
+		let vector = DVec2::new(3., 4.);
+		assert_eq!(length((), vector), 5.);
 	}
 
 	#[test]

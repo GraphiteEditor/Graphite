@@ -59,13 +59,13 @@ pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphData
 		} else {
 			"Expose this parameter as a node input in the graph"
 		})
-		.on_update(move |_parameter| {
-			Message::Batched(Box::new([NodeGraphMessage::ExposeInput {
+		.on_update(move |_parameter| Message::Batched {
+			messages: Box::new([NodeGraphMessage::ExposeInput {
 				input_connector: InputConnector::node(node_id, index),
 				set_to_exposed: !exposed,
 				start_transaction: true,
 			}
-			.into()]))
+			.into()]),
 		})
 		.widget_holder()
 }
@@ -162,6 +162,7 @@ pub(crate) fn property_from_type(
 				Some("SeedValue") => number_widget(default_info, number_input.int().min(min(0.))).into(),
 				Some("Resolution") => coordinate_widget(default_info, "W", "H", unit.unwrap_or(" px"), Some(64.)),
 				Some("PixelSize") => coordinate_widget(default_info, "X", "Y", unit.unwrap_or(" px"), None),
+				Some("TextArea") => text_area_widget(default_info).into(),
 
 				// For all other types, use TypeId-based matching
 				_ => {
@@ -1273,6 +1274,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 
 	let mut corner_radius_row_2 = vec![Separator::new(SeparatorType::Unrelated).widget_holder()];
 	corner_radius_row_2.push(TextLabel::new("").widget_holder());
+	add_blank_assist(&mut corner_radius_row_2);
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
@@ -1305,8 +1307,8 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 		// Uniform/individual radio input widget
 		let uniform = RadioEntryData::new("Uniform")
 			.label("Uniform")
-			.on_update(move |_| {
-				Message::Batched(Box::new([
+			.on_update(move |_| Message::Batched {
+				messages: Box::new([
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: IndividualCornerRadiiInput::INDEX,
@@ -1319,13 +1321,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 						value: TaggedValue::F64(uniform_val),
 					}
 					.into(),
-				]))
+				]),
 			})
 			.on_commit(commit_value);
 		let individual = RadioEntryData::new("Individual")
 			.label("Individual")
-			.on_update(move |_| {
-				Message::Batched(Box::new([
+			.on_update(move |_| Message::Batched {
+				messages: Box::new([
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: IndividualCornerRadiiInput::INDEX,
@@ -1338,7 +1340,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 						value: TaggedValue::F64Array4(individual_val),
 					}
 					.into(),
-				]))
+				]),
 			})
 			.on_commit(commit_value);
 		let radio_input = RadioInput::new(vec![uniform, individual]).selected_index(Some(is_individual as u32)).widget_holder();
@@ -1379,8 +1381,6 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 
 	// Size Y
 	let size_y = number_widget(ParameterWidgetsInfo::new(node_id, HeightInput::INDEX, true, context), NumberInput::default());
-
-	add_blank_assist(&mut corner_radius_row_2);
 
 	// Clamped
 	let clamped = bool_widget(ParameterWidgetsInfo::new(node_id, ClampedInput::INDEX, true, context), CheckboxInput::default());
@@ -1435,7 +1435,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 						if let Some(field) = graphene_std::registry::NODE_METADATA
 							.lock()
 							.unwrap()
-							.get(&proto_node_identifier.name.clone().into_owned())
+							.get(proto_node_identifier)
 							.and_then(|metadata| metadata.fields.get(input_index))
 						{
 							number_options = (field.number_min, field.number_max, field.number_mode_range);
@@ -1539,8 +1539,8 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	widgets_first_row.push(
 		ColorInput::default()
 			.value(fill.clone().into())
-			.on_update(move |x: &ColorInput| {
-				Message::Batched(Box::new([
+			.on_update(move |x: &ColorInput| Message::Batched {
+				messages: Box::new([
 					match &fill2 {
 						Fill::None => NodeGraphMessage::SetInputValue {
 							node_id,
@@ -1567,7 +1567,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						value: TaggedValue::Fill(x.value.to_fill(fill2.as_gradient())),
 					}
 					.into(),
-				]))
+				]),
 			})
 			.on_commit(commit_value)
 			.widget_holder(),

@@ -27,8 +27,8 @@ use graphene_std::*;
 use renderer::Quad;
 use std::cmp::Ordering;
 
-#[derive(Debug)]
-pub struct NodeGraphHandlerData<'a> {
+#[derive(Debug, ExtractField)]
+pub struct NodeGraphMessageContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub selection_network_path: &'a [NodeId],
 	pub breadcrumb_network_path: &'a [NodeId],
@@ -41,7 +41,7 @@ pub struct NodeGraphHandlerData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, ExtractField)]
 pub struct NodeGraphMessageHandler {
 	// TODO: Remove network and move to NodeNetworkInterface
 	pub network: Vec<NodeId>,
@@ -92,9 +92,10 @@ pub struct NodeGraphMessageHandler {
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
-impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGraphMessageHandler {
-	fn process_message(&mut self, message: NodeGraphMessage, responses: &mut VecDeque<Message>, data: NodeGraphHandlerData<'a>) {
-		let NodeGraphHandlerData {
+#[message_handler_data]
+impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeGraphMessageHandler {
+	fn process_message(&mut self, message: NodeGraphMessage, responses: &mut VecDeque<Message>, context: NodeGraphMessageContext<'a>) {
+		let NodeGraphMessageContext {
 			network_interface,
 			selection_network_path,
 			breadcrumb_network_path,
@@ -105,7 +106,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			graph_fade_artwork_percentage,
 			navigation_handler,
 			preferences,
-		} = data;
+		} = context;
 
 		match message {
 			// TODO: automatically remove broadcast messages.
@@ -1832,16 +1833,18 @@ impl NodeGraphMessageHandler {
 						.on_update(move |node_type| {
 							let node_id = NodeId::new();
 
-							Message::Batched(Box::new([
-								NodeGraphMessage::CreateNodeFromContextMenu {
-									node_id: Some(node_id),
-									node_type: node_type.clone(),
-									xy: None,
-									add_transaction: true,
-								}
-								.into(),
-								NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }.into(),
-							]))
+							Message::Batched {
+								messages: Box::new([
+									NodeGraphMessage::CreateNodeFromContextMenu {
+										node_id: Some(node_id),
+										node_type: node_type.clone(),
+										xy: None,
+										add_transaction: true,
+									}
+									.into(),
+									NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }.into(),
+								]),
+							}
 						})
 						.widget_holder();
 					vec![LayoutGroup::Row { widgets: vec![node_chooser] }]

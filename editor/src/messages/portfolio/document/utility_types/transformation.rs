@@ -4,7 +4,6 @@ use crate::messages::portfolio::document::graph_operation::transform_utils;
 use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::ToolType;
 use glam::{DAffine2, DMat2, DVec2};
@@ -535,17 +534,6 @@ impl<'a> Selected<'a> {
 			tool_type,
 			pen_handle,
 		}
-	}
-
-	pub fn mean_average_of_pivots(&mut self) -> DVec2 {
-		let xy_summation = self
-			.selected
-			.iter()
-			.map(|&layer| graph_modification_utils::get_viewport_pivot(layer, self.network_interface))
-			.reduce(|a, b| a + b)
-			.unwrap_or_default();
-
-		xy_summation / self.selected.len() as f64
 	}
 
 	pub fn center_of_aabb(&mut self) -> DVec2 {

@@ -2,27 +2,29 @@ use super::simple_dialogs::{self, AboutGraphiteDialog, ComingSoonDialog, DemoArt
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
-pub struct DialogMessageData<'a> {
+#[derive(ExtractField)]
+pub struct DialogMessageContext<'a> {
 	pub portfolio: &'a PortfolioMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
 /// Stores the dialogs which require state. These are the ones that have their own message handlers, and are not the ones defined in `simple_dialogs`.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, ExtractField)]
 pub struct DialogMessageHandler {
 	export_dialog: ExportDialogMessageHandler,
 	new_document_dialog: NewDocumentDialogMessageHandler,
 	preferences_dialog: PreferencesDialogMessageHandler,
 }
 
-impl MessageHandler<DialogMessage, DialogMessageData<'_>> for DialogMessageHandler {
-	fn process_message(&mut self, message: DialogMessage, responses: &mut VecDeque<Message>, data: DialogMessageData) {
-		let DialogMessageData { portfolio, preferences } = data;
+#[message_handler_data]
+impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHandler {
+	fn process_message(&mut self, message: DialogMessage, responses: &mut VecDeque<Message>, context: DialogMessageContext) {
+		let DialogMessageContext { portfolio, preferences } = context;
 
 		match message {
-			DialogMessage::ExportDialog(message) => self.export_dialog.process_message(message, responses, ExportDialogMessageData { portfolio }),
+			DialogMessage::ExportDialog(message) => self.export_dialog.process_message(message, responses, ExportDialogMessageContext { portfolio }),
 			DialogMessage::NewDocumentDialog(message) => self.new_document_dialog.process_message(message, responses, ()),
-			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, responses, PreferencesDialogMessageData { preferences }),
+			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, responses, PreferencesDialogMessageContext { preferences }),
 
 			DialogMessage::CloseAllDocumentsWithConfirmation => {
 				let dialog = simple_dialogs::CloseAllDocumentsDialog {

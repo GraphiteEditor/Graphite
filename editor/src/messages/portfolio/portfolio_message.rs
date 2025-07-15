@@ -19,6 +19,7 @@ pub enum PortfolioMessage {
 	Spreadsheet(SpreadsheetMessage),
 
 	// Messages
+	Init,
 	DocumentPassMessage {
 		document_id: DocumentId,
 		message: DocumentMessage,

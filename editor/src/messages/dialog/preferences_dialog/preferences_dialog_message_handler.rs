@@ -4,17 +4,19 @@ use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 
-pub struct PreferencesDialogMessageData<'a> {
+#[derive(ExtractField)]
+pub struct PreferencesDialogMessageContext<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
 /// A dialog to allow users to customize Graphite editor options
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ExtractField)]
 pub struct PreferencesDialogMessageHandler {}
 
-impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageData<'_>> for PreferencesDialogMessageHandler {
-	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, data: PreferencesDialogMessageData) {
-		let PreferencesDialogMessageData { preferences } = data;
+#[message_handler_data]
+impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageContext<'_>> for PreferencesDialogMessageHandler {
+	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, context: PreferencesDialogMessageContext) {
+		let PreferencesDialogMessageContext { preferences } = context;
 
 		match message {
 			PreferencesDialogMessage::Confirm => {}

@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use graphene_std::vector::style::Fill;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct FillTool {
 	fsm_state: FillToolFsmState,
 }
@@ -41,9 +41,10 @@ impl LayoutHolder for FillTool {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FillTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		self.fsm_state.process_event(message, &mut (), tool_data, &(), responses, true);
+#[message_handler_data]
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for FillTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		self.fsm_state.process_event(message, &mut (), context, &(), responses, true);
 	}
 	fn actions(&self) -> ActionList {
 		match self.fsm_state {
@@ -84,8 +85,15 @@ impl Fsm for FillToolFsmState {
 	type ToolData = ();
 	type ToolOptions = ();
 
-	fn transition(self, event: ToolMessage, _tool_data: &mut Self::ToolData, handler_data: &mut ToolActionHandlerData, _tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData {
+	fn transition(
+		self,
+		event: ToolMessage,
+		_tool_data: &mut Self::ToolData,
+		handler_data: &mut ToolActionMessageContext,
+		_tool_options: &Self::ToolOptions,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
+		let ToolActionMessageContext {
 			document, global_tool_data, input, ..
 		} = handler_data;
 
