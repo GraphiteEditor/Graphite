@@ -54,8 +54,8 @@
 					// Quick and dirty hack to alias "Layer" to "Merge" in the search
 					const layerAliasMatch = node.name === "Merge" && "layer".includes(term);
 
-					// Alias "Identity" to "Pass Through"
-					const identityAliasMatch = node.name === "Pass Through" && "identity".includes(term);
+					// Alias "Identity" to "Passthrough"
+					const identityAliasMatch = node.name === "Passthrough" && "identity".includes(term);
 
 					return nameMatch || categoryMatch || layerAliasMatch || identityAliasMatch;
 				});

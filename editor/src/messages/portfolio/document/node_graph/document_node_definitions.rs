@@ -85,7 +85,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	let custom = vec![
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
-			identifier: "Pass Through",
+			identifier: "Passthrough",
 			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
@@ -2071,7 +2071,7 @@ fn static_node_properties() -> NodeProperties {
 	map.insert("sample_polyline_properties".to_string(), Box::new(node_properties::sample_polyline_properties));
 	map.insert(
 		"pass_through_properties".to_string(),
-		Box::new(|_node_id, _context| node_properties::string_properties("The Pass Through node can be used to organize wires.")),
+		Box::new(|_node_id, _context| node_properties::string_properties("The Passthrough node can be used to organize wires.")),
 	);
 	map.insert(
 		"monitor_properties".to_string(),
