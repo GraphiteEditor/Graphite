@@ -1,0 +1,35 @@
+[package]
+name = "graphene-raster-nodes"
+version = "0.1.0"
+edition = "2024"
+description = "graphene raster data format"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["serde"]
+serde = ["dep:serde"]
+
+[dependencies]
+# Local dependencies
+dyn-any = { workspace = true }
+graphene-core = { workspace = true }
+node-macro = { workspace = true }
+
+# Workspace dependencies
+glam = { workspace = true }
+specta = { workspace = true }
+image = { workspace = true }
+bytemuck = { workspace = true }
+ndarray = { workspace = true }
+bezier-rs = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+fastnoise-lite = { workspace = true }
+
+# Optional workspace dependencies
+serde = { workspace = true, optional = true, features = ["derive"] }
+
+[dev-dependencies]
+tokio = { workspace = true }
+futures = { workspace = true }

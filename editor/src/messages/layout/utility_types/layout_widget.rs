@@ -109,14 +109,14 @@ pub enum Layout {
 }
 
 impl Layout {
-	pub fn unwrap_menu_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) -> MenuLayout {
+	pub fn as_menu_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) -> Option<MenuLayout> {
 		if let Self::MenuLayout(mut menu) = self {
 			menu.layout
 				.iter_mut()
 				.for_each(|menu_column| menu_column.children.fill_in_shortcut_actions_with_keys(action_input_mapping));
-			menu
+			Some(menu)
 		} else {
-			panic!("Called unwrap_menu_layout on a widget layout");
+			None
 		}
 	}
 
@@ -589,7 +589,7 @@ pub enum DiffUpdate {
 
 impl DiffUpdate {
 	/// Append the keyboard shortcut to the tooltip where applicable
-	pub fn apply_keyboard_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
+	pub fn apply_keyboard_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
 		// Function used multiple times later in this code block to convert `ActionKeys::Action` to `ActionKeys::Keys` and append its shortcut to the tooltip
 		let apply_shortcut_to_tooltip = |tooltip_shortcut: &mut ActionKeys, tooltip: &mut String| {
 			let shortcut_text = tooltip_shortcut.to_keys(action_input_mapping);

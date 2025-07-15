@@ -42,6 +42,72 @@ pub fn two_segment_path(left_ident: Ident, right_ident: Ident) -> Path {
 	Path { leading_colon: None, segments }
 }
 
+pub fn clean_rust_type_syntax(input: String) -> String {
+	let mut result = String::new();
+	let mut chars = input.chars().peekable();
+
+	while let Some(c) = chars.next() {
+		match c {
+			'&' => {
+				result.push('&');
+				while let Some(' ') = chars.peek() {
+					chars.next();
+				}
+			}
+			'<' => {
+				while let Some(' ') = result.chars().rev().next() {
+					result.pop();
+				}
+				result.push('<');
+				while let Some(' ') = chars.peek() {
+					chars.next();
+				}
+			}
+			'>' => {
+				while let Some(' ') = result.chars().rev().next() {
+					result.pop();
+				}
+				result.push('>');
+				while let Some(' ') = chars.peek() {
+					chars.next();
+				}
+			}
+			'-' => {
+				if let Some('>') = chars.peek() {
+					while let Some(' ') = result.chars().rev().next() {
+						result.pop();
+					}
+					result.push_str(" -> ");
+					chars.next();
+					while let Some(' ') = chars.peek() {
+						chars.next();
+					}
+				} else {
+					result.push(c);
+				}
+			}
+			':' => {
+				if let Some(':') = chars.peek() {
+					while let Some(' ') = result.chars().rev().next() {
+						result.pop();
+					}
+				}
+				result.push(':');
+				chars.next();
+				result.push(':');
+				while let Some(' ') = chars.peek() {
+					chars.next();
+				}
+			}
+			_ => {
+				result.push(c);
+			}
+		}
+	}
+
+	result
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

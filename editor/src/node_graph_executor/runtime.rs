@@ -1,12 +1,12 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use glam::{DAffine2, DVec2};
-use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
+use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::Context;
 use graphene_std::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_std::instances::Instance;
@@ -44,6 +44,9 @@ pub struct NodeRuntime {
 
 	/// Which node is inspected and which monitor node is used (if any) for the current execution
 	inspect_state: Option<InspectState>,
+
+	/// Mapping of the fully-qualified node paths to their preprocessor substitutions.
+	substitutions: HashMap<ProtoNodeIdentifier, DocumentNode>,
 
 	// TODO: Remove, it doesn't need to be persisted anymore
 	/// The current renders of the thumbnails for layer nodes.
@@ -119,6 +122,8 @@ impl NodeRuntime {
 
 			node_graph_errors: Vec::new(),
 			monitor_nodes: Vec::new(),
+
+			substitutions: preprocessor::generate_node_substitutions(),
 
 			thumbnail_renders: Default::default(),
 			vector_modify: Default::default(),
@@ -221,11 +226,14 @@ impl NodeRuntime {
 		}
 	}
 
-	async fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, String> {
+	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, String> {
+		preprocessor::expand_network(&mut graph, &self.substitutions);
+
 		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 
 		// We assume only one output
 		assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
+
 		let c = Compiler {};
 		let proto_network = match c.compile_single(scoped_network) {
 			Ok(network) => network,
@@ -317,6 +325,18 @@ impl NodeRuntime {
 		// RENDER THUMBNAIL
 
 		if !update_thumbnails {
+			return;
+		}
+
+		// Skip thumbnails if the layer is too complex (for performance)
+		if graphic_element.render_complexity() > 1000 {
+			let old = thumbnail_renders.insert(parent_network_node_id, Vec::new());
+			if old.is_none_or(|v| !v.is_empty()) {
+				responses.push_back(FrontendMessage::UpdateNodeThumbnail {
+					id: parent_network_node_id,
+					value: "<svg viewBox=\"0 0 10 10\"><title>Dense thumbnail omitted for performance</title><line x1=\"0\" y1=\"10\" x2=\"10\" y2=\"0\" stroke=\"red\" /></svg>".to_string(),
+				});
+			}
 			return;
 		}
 
@@ -427,7 +447,7 @@ impl InspectState {
 
 		let monitor_node = DocumentNode {
 			inputs: vec![NodeInput::node(inspect_node, 0)], // Connect to the primary output of the inspect node
-			implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
+			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER),
 			manual_composition: Some(graph_craft::generic!(T)),
 			skip_deduplication: true,
 			..Default::default()

@@ -61,7 +61,7 @@ pub fn combined_message_attrs_impl(attr: TokenStream, input_item: TokenStream) -
 		<#parent as ToDiscriminant>::Discriminant
 	};
 
-	input.attrs.push(syn::parse_quote! { #[derive(ToDiscriminant, TransitiveChild)] });
+	input.attrs.push(syn::parse_quote! { #[derive(ToDiscriminant, TransitiveChild, HierarchicalTree)] });
 	input.attrs.push(syn::parse_quote! { #[parent(#parent, #parent::#variant)] });
 	if parent_is_top {
 		input.attrs.push(syn::parse_quote! { #[parent_is_top] });
@@ -97,7 +97,7 @@ pub fn combined_message_attrs_impl(attr: TokenStream, input_item: TokenStream) -
 fn top_level_impl(input_item: TokenStream) -> syn::Result<TokenStream> {
 	let mut input = syn::parse2::<ItemEnum>(input_item)?;
 
-	input.attrs.push(syn::parse_quote! { #[derive(ToDiscriminant)] });
+	input.attrs.push(syn::parse_quote! { #[derive(ToDiscriminant, HierarchicalTree)] });
 	input.attrs.push(syn::parse_quote! { #[discriminant_attr(derive(Debug, Copy, Clone, PartialEq, Eq, Hash, AsMessage))] });
 
 	for var in &mut input.variants {

@@ -55,6 +55,15 @@
 		}
 	}
 
+	&.three-wide .feature-icon {
+		flex: 1 0 calc((100% / 3) - (16px * 4) - (16px / 4));
+
+		@media screen and (max-width: 800px) {
+			// Quarter width, minus own padding on both sides
+			flex: 1 0 calc(100% - (16px * 2));
+		}
+	}
+
 	&.stacked {
 		justify-content: space-between;
 		margin: 0 -10px;

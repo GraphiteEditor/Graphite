@@ -2,7 +2,7 @@
 
 The Graphite frontend is a web app that provides the presentation for the editor. It displays the GUI based on state from the backend and provides users with interactive widgets that send updates to the backend, which is the source of truth for state information. The frontend is built out of reactive components using the [Svelte](https://svelte.dev/) framework. The backend is written in Rust and compiled to WebAssembly (WASM) to be run in the browser alongside the JS code.
 
-For lack of other options, the frontend is currently written as a web app. Maintaining web compatibility will always be a requirement, but the long-term plan is to port this code to a Rust-based native GUI framework, either written by the Rust community or created by our project if necessary. As a medium-term compromise, we may wrap the web-based frontend in a desktop webview windowing solution like Electron (probably not) or [Tauri](https://tauri.studio/) (probably).
+For lack of other options, the frontend is currently written as a web app. Maintaining web compatibility will always be a requirement, but the long-term plan is to port this code to a Rust-based native GUI framework, either written by the Rust community or created by our project if necessary. As a medium-term compromise, we may wrap the web-based frontend in a desktop webview windowing solution like Electron (probably not) or [Tauri](https://tauri.app/) (probably).
 
 ## Bundled assets: `assets/`
 

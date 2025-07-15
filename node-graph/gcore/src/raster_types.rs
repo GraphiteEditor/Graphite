@@ -1,8 +1,11 @@
 use crate::Color;
+use crate::bounds::BoundingBox;
 use crate::instances::Instances;
+use crate::math::quad::Quad;
 use crate::raster::Image;
 use core::ops::Deref;
 use dyn_any::DynAny;
+use glam::{DAffine2, DVec2};
 #[cfg(feature = "wgpu")]
 use std::sync::Arc;
 
@@ -11,18 +14,18 @@ pub struct CPU;
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Copy)]
 pub struct GPU;
 
-trait Storage {}
+trait Storage: 'static {}
 impl Storage for CPU {}
 impl Storage for GPU {}
 
 #[derive(Clone, Debug, Hash, PartialEq)]
 #[allow(private_bounds)]
-pub struct Raster<T: 'static + Storage> {
+pub struct Raster<T: Storage> {
 	data: RasterStorage,
 	storage: T,
 }
 
-unsafe impl<T: 'static + Storage> dyn_any::StaticType for Raster<T> {
+unsafe impl<T: Storage> dyn_any::StaticType for Raster<T> {
 	type Static = Raster<T>;
 }
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
@@ -53,6 +56,10 @@ impl Raster<CPU> {
 	pub fn into_data(self) -> Image<Color> {
 		let RasterStorage::Cpu(cpu) = self.data else { unreachable!() };
 		cpu
+	}
+	pub fn is_empty(&self) -> bool {
+		let data = self.data();
+		data.height == 0 || data.width == 0
 	}
 }
 impl Default for Raster<CPU> {
@@ -91,6 +98,19 @@ impl Raster<GPU> {
 		gpu.clone()
 	}
 }
+
+impl Raster<GPU> {
+	#[cfg(feature = "wgpu")]
+	pub fn is_empty(&self) -> bool {
+		let data = self.data();
+		data.width() == 0 || data.height() == 0
+	}
+	#[cfg(not(feature = "wgpu"))]
+	pub fn is_empty(&self) -> bool {
+		true
+	}
+}
+
 #[cfg(feature = "wgpu")]
 impl Deref for Raster<GPU> {
 	type Target = wgpu::Texture;
@@ -99,4 +119,30 @@ impl Deref for Raster<GPU> {
 		self.data()
 	}
 }
+
 pub type RasterDataTable<Storage> = Instances<Raster<Storage>>;
+
+// TODO: Make this not dupliated
+impl BoundingBox for RasterDataTable<CPU> {
+	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
+		self.instance_ref_iter()
+			.filter(|instance| !instance.instance.is_empty()) // Eliminate empty images
+			.flat_map(|instance| {
+				let transform = transform * *instance.transform;
+				(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
+			})
+			.reduce(Quad::combine_bounds)
+	}
+}
+
+impl BoundingBox for RasterDataTable<GPU> {
+	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
+		self.instance_ref_iter()
+			.filter(|instance| !instance.instance.is_empty()) // Eliminate empty images
+			.flat_map(|instance| {
+				let transform = transform * *instance.transform;
+				(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
+			})
+			.reduce(Quad::combine_bounds)
+	}
+}

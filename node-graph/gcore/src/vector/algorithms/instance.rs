@@ -86,20 +86,19 @@ async fn instance_position(ctx: impl Ctx + ExtractVarArgs) -> DVec2 {
 	Default::default()
 }
 
+// TODO: Make this return a u32 instead of an f64, but we ned to improve math-related compatibility with integer types first.
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
-async fn instance_index(ctx: impl Ctx + ExtractIndex) -> f64 {
-	match ctx.try_index() {
-		Some(index) => return index as f64,
-		None => warn!("Extracted value of incorrect type"),
-	}
-	0.
+async fn instance_index(ctx: impl Ctx + ExtractIndex, _primary: (), loop_level: u32) -> f64 {
+	ctx.try_index()
+		.and_then(|indexes| indexes.get(indexes.len().wrapping_sub(1).wrapping_sub(loop_level as usize)).copied())
+		.unwrap_or_default() as f64
 }
 
 #[cfg(test)]
 mod test {
 	use super::*;
 	use crate::Node;
-	use crate::ops::ExtractXyNode;
+	use crate::extract_xy::{ExtractXyNode, XY};
 	use crate::vector::VectorData;
 	use bezier_rs::Subpath;
 	use glam::DVec2;
@@ -109,7 +108,7 @@ mod test {
 	pub struct FutureWrapperNode<T: Clone>(T);
 
 	impl<'i, I: Ctx, T: 'i + Clone + Send> Node<'i, I> for FutureWrapperNode<T> {
-		type Output = Pin<Box<dyn core::future::Future<Output = T> + 'i + Send>>;
+		type Output = Pin<Box<dyn Future<Output = T> + 'i + Send>>;
 		fn eval(&'i self, _input: I) -> Self::Output {
 			let value = self.0.clone();
 			Box::pin(async move { value })
@@ -121,7 +120,7 @@ mod test {
 		let owned = OwnedContextImpl::default().into_context();
 		let rect = crate::vector::generator_nodes::RectangleNode::new(
 			FutureWrapperNode(()),
-			ExtractXyNode::new(InstancePositionNode {}, FutureWrapperNode(crate::ops::XY::Y)),
+			ExtractXyNode::new(InstancePositionNode {}, FutureWrapperNode(XY::Y)),
 			FutureWrapperNode(2_f64),
 			FutureWrapperNode(false),
 			FutureWrapperNode(0_f64),

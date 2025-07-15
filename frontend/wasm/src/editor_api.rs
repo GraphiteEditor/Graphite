@@ -11,12 +11,12 @@ use editor::consts::FILE_SAVE_SUFFIX;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use editor::messages::portfolio::document::utility_types::network_interface::{ImportOrExport, NodeTemplate};
+use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
 use editor::messages::portfolio::utility_types::Platform;
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
-use graphene_core::raster::color::Color;
+use graphene_std::raster::color::Color;
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
@@ -123,7 +123,7 @@ impl EditorHandle {
 			_ => Platform::Unknown,
 		};
 		self.dispatch(GlobalsMessage::SetPlatform { platform });
-		self.dispatch(Message::Init);
+		self.dispatch(PortfolioMessage::Init);
 
 		// Poll node graph evaluation on `requestAnimationFrame`
 		{
@@ -467,8 +467,9 @@ impl EditorHandle {
 			return Err(Error::new("Invalid color").into());
 		};
 
-		let message = ToolMessage::SelectPrimaryColor {
+		let message = ToolMessage::SelectWorkingColor {
 			color: primary_color.to_linear_srgb(),
+			primary: true,
 		};
 		self.dispatch(message);
 
@@ -482,8 +483,9 @@ impl EditorHandle {
 			return Err(Error::new("Invalid color").into());
 		};
 
-		let message = ToolMessage::SelectSecondaryColor {
+		let message = ToolMessage::SelectWorkingColor {
 			color: secondary_color.to_linear_srgb(),
+			primary: false,
 		};
 		self.dispatch(message);
 
@@ -602,6 +604,7 @@ impl EditorHandle {
 			node_id: Some(id),
 			node_type,
 			xy: Some((x / 24, y / 24)),
+			add_transaction: true,
 		};
 		self.dispatch(message);
 	}
@@ -627,7 +630,7 @@ impl EditorHandle {
 		insert_index: Option<usize>,
 	) {
 		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
-		let image = graphene_core::raster::Image::from_image_data(&image_data, width, height);
+		let image = graphene_std::raster::Image::from_image_data(&image_data, width, height);
 
 		let parent_and_insert_index = if let (Some(insert_parent_id), Some(insert_index)) = (insert_parent_id, insert_index) {
 			let insert_parent_id = NodeId(insert_parent_id);
@@ -734,227 +737,6 @@ impl EditorHandle {
 		};
 		self.dispatch(message);
 	}
-
-	// #[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
-	// pub fn inject_imaginate_poll_server_status(&self) {
-	// 	self.dispatch(PortfolioMessage::ImaginatePollServerStatus);
-	// }
-
-	// TODO: Eventually remove this document upgrade code
-	#[wasm_bindgen(js_name = triggerUpgradeDocumentToVectorManipulationFormat)]
-	pub async fn upgrade_document_to_vector_manipulation_format(
-		&self,
-		document_id: u64,
-		document_name: String,
-		document_is_auto_saved: bool,
-		document_is_saved: bool,
-		document_serialized_content: String,
-	) {
-		use editor::messages::portfolio::document::graph_operation::transform_utils::*;
-		use editor::messages::portfolio::document::graph_operation::utility_types::*;
-		use editor::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
-		use editor::node_graph_executor::NodeRuntime;
-		use editor::node_graph_executor::replace_node_runtime;
-		use graph_craft::document::DocumentNodeImplementation;
-		use graph_craft::document::NodeInput;
-		use graph_craft::document::value::TaggedValue;
-		use graphene_core::vector::*;
-
-		let (_, request_receiver) = std::sync::mpsc::channel();
-		let (response_sender, _) = std::sync::mpsc::channel();
-		let old_runtime = replace_node_runtime(NodeRuntime::new(request_receiver, response_sender)).await;
-
-		let mut editor = Editor::new();
-		let document_id = DocumentId(document_id);
-		editor.handle_message(PortfolioMessage::OpenDocumentFileWithId {
-			document_id,
-			document_name: document_name.clone(),
-			document_is_auto_saved,
-			document_is_saved,
-			document_serialized_content: document_serialized_content.clone(),
-			to_front: false,
-		});
-
-		let Some(document) = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut() else {
-			warn!("Document wasn't loaded");
-			return;
-		};
-		for node in document
-			.network_interface
-			.document_network_metadata()
-			.persistent_metadata
-			.node_metadata
-			.iter()
-			.filter(|(_, d)| d.persistent_metadata.reference.as_ref().is_some_and(|reference| reference == "Artboard"))
-			.map(|(id, _)| *id)
-			.collect::<Vec<_>>()
-		{
-			let Some(document_node) = document.network_interface.document_network().nodes.get(&node) else {
-				log::error!("Could not get document node in document network");
-				return;
-			};
-			if let Some(network) = document_node.implementation.get_network() {
-				let mut nodes_to_upgrade = Vec::new();
-				for (node_id, _) in network.nodes.iter().collect::<Vec<_>>() {
-					if document
-						.network_interface
-						.reference(node_id, &[])
-						.is_some_and(|reference| *reference == Some("To Artboard".to_string()))
-						&& document
-							.network_interface
-							.document_network()
-							.nodes
-							.get(node_id)
-							.is_some_and(|document_node| document_node.inputs.len() != 6)
-					{
-						nodes_to_upgrade.push(*node_id);
-					}
-				}
-				for node_id in nodes_to_upgrade {
-					document
-						.network_interface
-						.replace_implementation(&node_id, &[], DocumentNodeImplementation::proto("graphene_core::ToArtboardNode"));
-					document.network_interface.add_import(TaggedValue::IVec2(glam::IVec2::default()), false, 2, "", "", &[node_id]);
-				}
-			}
-		}
-
-		let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
-		portfolio
-			.executor
-			.submit_node_graph_evaluation(
-				portfolio.documents.get_mut(&portfolio.active_document_id().unwrap()).unwrap(),
-				glam::UVec2::ONE,
-				Default::default(),
-				None,
-				true,
-			)
-			.unwrap();
-		editor::node_graph_executor::run_node_graph().await;
-
-		let mut messages = VecDeque::new();
-		if let Err(err) = editor.poll_node_graph_evaluation(&mut messages) {
-			log::warn!(
-				"While attempting to upgrade the old document format, the graph evaluation failed which is necessary for the upgrade process:\n{:#?}",
-				err
-			);
-
-			replace_node_runtime(old_runtime.unwrap()).await;
-
-			let document_name = document_name.clone() + "__DO_NOT_UPGRADE__";
-			self.dispatch(PortfolioMessage::OpenDocumentFileWithId {
-				document_id,
-				document_name,
-				document_is_auto_saved,
-				document_is_saved,
-				document_serialized_content,
-				to_front: false,
-			});
-			return;
-		}
-
-		let mut updated_nodes = HashSet::new();
-		let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
-		document.network_interface.load_structure();
-		for node in document
-			.network_interface
-			.document_network_metadata()
-			.persistent_metadata
-			.node_metadata
-			.iter()
-			.filter(|(_, d)| d.persistent_metadata.reference.as_ref().is_some_and(|reference| reference == "Merge"))
-			.map(|(id, _)| *id)
-			.collect::<Vec<_>>()
-		{
-			let layer = LayerNodeIdentifier::new(node, &document.network_interface, &[]);
-			if layer.has_children(document.metadata()) {
-				continue;
-			}
-
-			let bounds = LayerBounds::new(document.metadata(), layer);
-
-			let mut responses = VecDeque::new();
-			let mut shape = None;
-
-			if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, &mut document.network_interface, &mut responses) {
-				let Some(transform_node_id) = modify_inputs.existing_node_id("Transform", true) else {
-					return;
-				};
-				if !updated_nodes.insert(transform_node_id) {
-					return;
-				}
-				let Some(inputs) = modify_inputs.network_interface.document_network().nodes.get(&transform_node_id).map(|node| &node.inputs) else {
-					log::error!("Could not get transform node in document network");
-					return;
-				};
-				let transform = get_current_transform(inputs);
-				let upstream_transform = modify_inputs.network_interface.document_metadata().upstream_transform(transform_node_id);
-				let pivot_transform = glam::DAffine2::from_translation(upstream_transform.transform_point2(bounds.local_pivot(get_current_normalized_pivot(inputs))));
-
-				update_transform(&mut document.network_interface, &transform_node_id, pivot_transform * transform * pivot_transform.inverse());
-			}
-			if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, &mut document.network_interface, &mut responses) {
-				let Some(shape_node_id) = modify_inputs.existing_node_id("Shape", true) else {
-					return;
-				};
-				if !updated_nodes.insert(shape_node_id) {
-					return;
-				}
-				let Some(shape_node) = modify_inputs.network_interface.document_network().nodes.get(&shape_node_id) else {
-					log::error!("Could not get shape node in document network");
-					return;
-				};
-				let path_data = match &shape_node.inputs[0].as_value() {
-					Some(TaggedValue::Subpaths(translation)) => translation,
-					_ => &Vec::new(),
-				};
-
-				let colinear_manipulators = match &shape_node.inputs[1].as_value() {
-					Some(TaggedValue::PointIds(translation)) => translation,
-					_ => &Vec::new(),
-				};
-
-				let mut vector_data = VectorData::from_subpaths(path_data, false);
-				vector_data.colinear_manipulators = colinear_manipulators
-					.iter()
-					.filter_map(|&point| ManipulatorPointId::Anchor(point).get_handle_pair(&vector_data))
-					.collect();
-
-				shape = Some((shape_node_id, VectorModification::create_from_vector(&vector_data)));
-			}
-
-			if let Some((node_id, modification)) = shape {
-				let node_type = resolve_document_node_type("Path").unwrap();
-				let document_node = node_type
-					.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VectorModification(Box::new(modification)), false))])
-					.document_node;
-
-				let node_metadata = document.network_interface.node_metadata(&node_id, &[]).cloned().unwrap_or_default();
-
-				document.network_interface.insert_node(
-					node_id,
-					NodeTemplate {
-						document_node,
-						persistent_node_metadata: node_metadata.persistent_metadata,
-					},
-					&[],
-				);
-			}
-		}
-
-		let document_serialized_content = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap().serialize_document();
-
-		replace_node_runtime(old_runtime.unwrap()).await;
-
-		self.dispatch(PortfolioMessage::OpenDocumentFileWithId {
-			document_id,
-			document_name,
-			document_is_auto_saved,
-			document_is_saved,
-			document_serialized_content,
-			to_front: false,
-		});
-	}
 }
 
 // ============================================================================
@@ -962,7 +744,8 @@ impl EditorHandle {
 #[wasm_bindgen(js_name = evaluateMathExpression)]
 pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
 	let value = math_parser::evaluate(expression)
-		.inspect_err(|err| error!("Math parser error on \"{expression}\": {err}"))
+		// TODO: Render to html here
+		.inspect_err(|err| error!("Math parser error on \"{expression}\""))
 		.ok()?
 		.inspect_err(|err| error!("Math evaluate error on \"{expression}\": {err} "))
 		.ok()?;

@@ -1,10 +1,13 @@
 use super::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::graph_operation::transform_utils;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
+use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
-use graphene_std::renderer::{ClickTarget, ClickTargetType, Quad};
+use graphene_std::math::quad::Quad;
 use graphene_std::transform::Footprint;
+use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::{PointId, VectorData};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
@@ -15,30 +18,17 @@ use std::num::NonZeroU64;
 
 // TODO: To avoid storing a stateful snapshot of some other system's state (which is easily to accidentally get out of sync),
 // TODO: it might be better to have a system that can query the state of the node network on demand.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DocumentMetadata {
 	pub upstream_footprints: HashMap<NodeId, Footprint>,
 	pub local_transforms: HashMap<NodeId, DAffine2>,
+	pub first_instance_source_ids: HashMap<NodeId, Option<NodeId>>,
 	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
 	pub click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_modify: HashMap<NodeId, VectorData>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
-}
-
-impl Default for DocumentMetadata {
-	fn default() -> Self {
-		Self {
-			upstream_footprints: HashMap::new(),
-			local_transforms: HashMap::new(),
-			structure: HashMap::new(),
-			vector_modify: HashMap::new(),
-			click_targets: HashMap::new(),
-			clip_targets: HashSet::new(),
-			document_to_viewport: DAffine2::IDENTITY,
-		}
-	}
 }
 
 // =================================
@@ -88,6 +78,36 @@ impl DocumentMetadata {
 		let local_transform = self.local_transforms.get(&layer.to_node()).copied().unwrap_or_default();
 
 		footprint * local_transform
+	}
+
+	pub fn transform_to_viewport_if_feeds(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DAffine2 {
+		// We're not allowed to convert the root parent to a node id
+		if layer == LayerNodeIdentifier::ROOT_PARENT {
+			return self.document_to_viewport;
+		}
+
+		let footprint = self.upstream_footprints.get(&layer.to_node()).map(|footprint| footprint.transform).unwrap_or(self.document_to_viewport);
+
+		let mut use_local = true;
+		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
+		if let Some(path_node) = graph_layer.upstream_node_id_from_name("Path") {
+			if let Some(&source) = self.first_instance_source_ids.get(&layer.to_node()) {
+				if !network_interface
+					.upstream_flow_back_from_nodes(vec![path_node], &[], FlowType::HorizontalFlow)
+					.any(|upstream| Some(upstream) == source)
+				{
+					use_local = false;
+					info!("Local transform is invalid — using the identity for the local transform instead")
+				}
+			}
+		}
+		let local_transform = use_local.then(|| self.local_transforms.get(&layer.to_node()).copied()).flatten().unwrap_or_default();
+
+		footprint * local_transform
+	}
+
+	pub fn transform_to_document_if_feeds(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DAffine2 {
+		self.document_to_viewport.inverse() * self.transform_to_viewport_if_feeds(layer, network_interface)
 	}
 
 	pub fn transform_to_viewport_with_first_transform_node_if_group(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DAffine2 {
@@ -294,7 +314,7 @@ impl LayerNodeIdentifier {
 	}
 
 	/// Iterator over all direct children (excluding self and recursive children)
-	pub fn children(self, metadata: &DocumentMetadata) -> AxisIter {
+	pub fn children(self, metadata: &DocumentMetadata) -> AxisIter<'_> {
 		AxisIter {
 			layer_node: self.first_child(metadata),
 			next_node: Self::next_sibling,
@@ -302,7 +322,7 @@ impl LayerNodeIdentifier {
 		}
 	}
 
-	pub fn downstream_siblings(self, metadata: &DocumentMetadata) -> AxisIter {
+	pub fn downstream_siblings(self, metadata: &DocumentMetadata) -> AxisIter<'_> {
 		AxisIter {
 			layer_node: Some(self),
 			next_node: Self::previous_sibling,
@@ -311,7 +331,7 @@ impl LayerNodeIdentifier {
 	}
 
 	/// All ancestors of this layer, including self, going to the document root
-	pub fn ancestors(self, metadata: &DocumentMetadata) -> AxisIter {
+	pub fn ancestors(self, metadata: &DocumentMetadata) -> AxisIter<'_> {
 		AxisIter {
 			layer_node: Some(self),
 			next_node: Self::parent,
@@ -320,7 +340,7 @@ impl LayerNodeIdentifier {
 	}
 
 	/// Iterator through all the last children, starting from self
-	pub fn last_children(self, metadata: &DocumentMetadata) -> AxisIter {
+	pub fn last_children(self, metadata: &DocumentMetadata) -> AxisIter<'_> {
 		AxisIter {
 			layer_node: Some(self),
 			next_node: Self::last_child,
@@ -329,7 +349,7 @@ impl LayerNodeIdentifier {
 	}
 
 	/// Iterator through all descendants, including recursive children (not including self)
-	pub fn descendants(self, metadata: &DocumentMetadata) -> DescendantsIter {
+	pub fn descendants(self, metadata: &DocumentMetadata) -> DescendantsIter<'_> {
 		DescendantsIter {
 			front: self.first_child(metadata),
 			back: self.last_child(metadata).and_then(|child| child.last_children(metadata).last()),

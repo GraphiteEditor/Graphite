@@ -3,14 +3,12 @@ use crate::document::{NodeId, OriginalLocation};
 pub use graphene_core::registry::*;
 use graphene_core::*;
 use rustc_hash::FxHashMap;
-#[cfg(feature = "serde")]
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, PartialEq, Clone, Hash, Eq)]
+#[derive(Debug, Default, PartialEq, Clone, Hash, Eq, serde::Serialize, serde::Deserialize)]
 /// A list of [`ProtoNode`]s, which is an intermediate step between the [`crate::document::NodeNetwork`] and the `BorrowTree` containing a single flattened network.
 pub struct ProtoNetwork {
 	// TODO: remove this since it seems to be unused?
@@ -72,8 +70,7 @@ impl core::fmt::Display for ProtoNetwork {
 	}
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 /// Defines the arguments used to construct the boxed node struct. This is used to call the constructor function in the `node_registry.rs` file - which is hidden behind a wall of macros.
 pub enum ConstructionArgs {
 	/// A value of a type that is known, allowing serialization (serde::Deserialize is not object safe)
@@ -132,8 +129,7 @@ impl ConstructionArgs {
 	}
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq, serde::Serialize, serde::Deserialize)]
 /// A proto node is an intermediate step between the `DocumentNode` and the boxed struct that actually runs the node (found in the [`BorrowTree`]).
 /// At different stages in the compilation process, this struct will be transformed into a reduced (more restricted) form acting as a subset of its original form, but that restricted form is still valid in the earlier stage in the compilation process before it was transformed.
 pub struct ProtoNode {
@@ -157,8 +153,7 @@ impl Default for ProtoNode {
 }
 
 /// Similar to the document node's [`crate::document::NodeInput`].
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ProtoNodeInput {
 	/// This input will be converted to `()` as the call argument.
 	None,
@@ -373,7 +368,7 @@ impl ProtoNetwork {
 		(inwards_edges, id_map)
 	}
 
-	/// Inserts a [`graphene_core::structural::ComposeNode`] for each node that has a [`ProtoNodeInput::Node`]. The compose node evaluates the first node, and then sends the result into the second node.
+	/// Inserts a [`structural::ComposeNode`] for each node that has a [`ProtoNodeInput::Node`]. The compose node evaluates the first node, and then sends the result into the second node.
 	pub fn resolve_inputs(&mut self) -> Result<(), String> {
 		// Perform topological sort once
 		self.reorder_ids()?;
@@ -542,7 +537,7 @@ pub enum GraphErrorType {
 	InvalidImplementations { inputs: String, error_inputs: Vec<Vec<(usize, (Type, Type))>> },
 	MultipleImplementations { inputs: String, valid: Vec<NodeIOTypes> },
 }
-impl core::fmt::Debug for GraphErrorType {
+impl Debug for GraphErrorType {
 	// TODO: format with the document graph context so the input index is the same as in the graph UI.
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
@@ -603,7 +598,7 @@ impl GraphError {
 		}
 	}
 }
-impl core::fmt::Debug for GraphError {
+impl Debug for GraphError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("NodeGraphError")
 			.field("path", &self.node_path.iter().map(|id| id.0).collect::<Vec<_>>())

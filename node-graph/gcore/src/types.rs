@@ -1,25 +1,26 @@
-use core::any::TypeId;
+use std::any::TypeId;
 
 pub use std::borrow::Cow;
+use std::ops::Deref;
 
 #[macro_export]
 macro_rules! concrete {
 	($type:ty) => {
 		$crate::Type::Concrete($crate::TypeDescriptor {
-			id: Some(core::any::TypeId::of::<$type>()),
-			name: $crate::Cow::Borrowed(core::any::type_name::<$type>()),
+			id: Some(std::any::TypeId::of::<$type>()),
+			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
 			alias: None,
-			size: core::mem::size_of::<$type>(),
-			align: core::mem::align_of::<$type>(),
+			size: std::mem::size_of::<$type>(),
+			align: std::mem::align_of::<$type>(),
 		})
 	};
 	($type:ty, $name:ty) => {
 		$crate::Type::Concrete($crate::TypeDescriptor {
-			id: Some(core::any::TypeId::of::<$type>()),
-			name: $crate::Cow::Borrowed(core::any::type_name::<$type>()),
+			id: Some(std::any::TypeId::of::<$type>()),
+			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
 			alias: Some($crate::Cow::Borrowed(stringify!($name))),
-			size: core::mem::size_of::<$type>(),
-			align: core::mem::align_of::<$type>(),
+			size: std::mem::size_of::<$type>(),
+			align: std::mem::align_of::<$type>(),
 		})
 	};
 }
@@ -28,11 +29,11 @@ macro_rules! concrete {
 macro_rules! concrete_with_name {
 	($type:ty, $name:expr_2021) => {
 		$crate::Type::Concrete($crate::TypeDescriptor {
-			id: Some(core::any::TypeId::of::<$type>()),
+			id: Some(std::any::TypeId::of::<$type>()),
 			name: $crate::Cow::Borrowed($name),
 			alias: None,
-			size: core::mem::size_of::<$type>(),
-			align: core::mem::align_of::<$type>(),
+			size: std::mem::size_of::<$type>(),
+			align: std::mem::align_of::<$type>(),
 		})
 	};
 }
@@ -114,8 +115,8 @@ impl NodeIOTypes {
 	}
 }
 
-impl core::fmt::Debug for NodeIOTypes {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl std::fmt::Debug for NodeIOTypes {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.write_fmt(format_args!(
 			"node({}) → {}",
 			[&self.call_argument].into_iter().chain(&self.inputs).map(|input| input.to_string()).collect::<Vec<_>>().join(", "),
@@ -124,14 +125,38 @@ impl core::fmt::Debug for NodeIOTypes {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct ProtoNodeIdentifier {
 	pub name: Cow<'static, str>,
 }
+
 impl From<String> for ProtoNodeIdentifier {
 	fn from(value: String) -> Self {
 		Self { name: Cow::Owned(value) }
+	}
+}
+
+impl From<&'static str> for ProtoNodeIdentifier {
+	fn from(s: &'static str) -> Self {
+		ProtoNodeIdentifier { name: Cow::Borrowed(s) }
+	}
+}
+
+impl ProtoNodeIdentifier {
+	pub const fn new(name: &'static str) -> Self {
+		ProtoNodeIdentifier { name: Cow::Borrowed(name) }
+	}
+
+	pub const fn with_owned_string(name: String) -> Self {
+		ProtoNodeIdentifier { name: Cow::Owned(name) }
+	}
+}
+
+impl Deref for ProtoNodeIdentifier {
+	type Target = str;
+
+	fn deref(&self) -> &Self::Target {
+		self.name.as_ref()
 	}
 }
 
@@ -141,7 +166,7 @@ fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer:
 	let name = String::deserialize(deserializer)?;
 	let name = match name.as_str() {
 		"f32" => "f64".to_string(),
-		"graphene_core::transform::Footprint" => "core::option::Option<alloc::sync::Arc<graphene_core::context::OwnedContextImpl>>".to_string(),
+		"graphene_core::transform::Footprint" => "std::option::Option<std::sync::Arc<graphene_core::context::OwnedContextImpl>>".to_string(),
 		"graphene_core::graphic_element::GraphicGroup" => "graphene_core::instances::Instances<graphene_core::graphic_element::GraphicGroup>".to_string(),
 		"graphene_core::vector::vector_data::VectorData" => "graphene_core::instances::Instances<graphene_core::vector::vector_data::VectorData>".to_string(),
 		"graphene_core::raster::image::ImageFrame<Color>"
@@ -156,10 +181,9 @@ fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer:
 	Ok(Cow::Owned(name))
 }
 
-#[derive(Clone, Debug, Eq, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Eq, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct TypeDescriptor {
-	#[cfg_attr(feature = "serde", serde(skip))]
+	#[serde(skip)]
 	#[specta(skip)]
 	pub id: Option<TypeId>,
 	#[serde(deserialize_with = "migrate_type_descriptor_names")]
@@ -172,8 +196,8 @@ pub struct TypeDescriptor {
 	pub align: usize,
 }
 
-impl core::hash::Hash for TypeDescriptor {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl std::hash::Hash for TypeDescriptor {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.name.hash(state);
 	}
 }
@@ -192,8 +216,7 @@ impl PartialEq for TypeDescriptor {
 }
 
 /// Graph runtime type information used for type inference.
-#[derive(Clone, PartialEq, Eq, Hash, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, PartialEq, Eq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 pub enum Type {
 	/// A wrapper for some type variable used within the inference system. Resolved at inference time and replaced with a concrete type.
 	Generic(Cow<'static, str>),
@@ -264,10 +287,10 @@ impl Type {
 	pub fn new<T: dyn_any::StaticType + Sized>() -> Self {
 		Self::Concrete(TypeDescriptor {
 			id: Some(TypeId::of::<T::Static>()),
-			name: Cow::Borrowed(core::any::type_name::<T::Static>()),
+			name: Cow::Borrowed(std::any::type_name::<T::Static>()),
 			alias: None,
-			size: core::mem::size_of::<T>(),
-			align: core::mem::align_of::<T>(),
+			size: size_of::<T>(),
+			align: align_of::<T>(),
 		})
 	}
 
@@ -309,6 +332,13 @@ impl Type {
 			Self::Future(output) => output.replace_nested(f),
 		}
 	}
+
+	pub fn to_cow_string(&self) -> Cow<'static, str> {
+		match self {
+			Type::Generic(name) => name.clone(),
+			_ => Cow::Owned(self.to_string()),
+		}
+	}
 }
 
 fn format_type(ty: &str) -> String {
@@ -318,8 +348,8 @@ fn format_type(ty: &str) -> String {
 		.join("<")
 }
 
-impl core::fmt::Debug for Type {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl std::fmt::Debug for Type {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let result = match self {
 			Self::Generic(name) => name.to_string(),
 			#[cfg(feature = "type_id_logging")]
@@ -344,21 +374,5 @@ impl std::fmt::Display for Type {
 		};
 		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
 		write!(f, "{}", result)
-	}
-}
-
-impl From<&'static str> for ProtoNodeIdentifier {
-	fn from(s: &'static str) -> Self {
-		ProtoNodeIdentifier { name: Cow::Borrowed(s) }
-	}
-}
-
-impl ProtoNodeIdentifier {
-	pub const fn new(name: &'static str) -> Self {
-		ProtoNodeIdentifier { name: Cow::Borrowed(name) }
-	}
-
-	pub const fn with_owned_string(name: String) -> Self {
-		ProtoNodeIdentifier { name: Cow::Owned(name) }
 	}
 }

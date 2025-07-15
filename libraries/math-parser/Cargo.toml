@@ -15,7 +15,7 @@ chumsky = { version = "0.10", default-features = false, features = ["std"] }
 codespan-reporting = { git = "https://github.com/urisinger/codespan-style-writer.git"}
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = { workspace = true }
 
 [[bench]]
 name = "bench"

@@ -1,10 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COMPASS_ROSE_HOVER_RING_DIAMETER, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, RESIZE_HANDLE_SIZE, ROTATE_INCREMENT,
-	SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE,
-};
+use crate::consts::*;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -12,27 +9,27 @@ use crate::messages::portfolio::document::utility_types::document_metadata::{Doc
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
-use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::compass_rose::{Axis, CompassRose};
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::measure;
-use crate::messages::tool::common_functionality::pivot::Pivot;
+use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
 use crate::messages::tool::common_functionality::shape_editor::SelectionShapeType;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
-use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
+use crate::messages::tool::common_functionality::utility_functions::{resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_transform_cage};
 use bezier_rs::Subpath;
 use glam::DMat2;
 use graph_craft::document::NodeId;
+use graphene_std::path_bool::BooleanOperation;
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::transform::ReferencePoint;
-use graphene_std::vector::misc::BooleanOperation;
 use std::fmt;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct SelectTool {
 	fsm_state: SelectToolFsmState,
 	tool_data: SelectToolData,
@@ -47,6 +44,9 @@ pub struct SelectOptions {
 #[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum SelectOptionsUpdate {
 	NestedSelectionBehavior(NestedSelectionBehavior),
+	PivotGizmoType(PivotGizmoType),
+	TogglePivotGizmoType(bool),
+	TogglePivotPinned,
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -99,6 +99,14 @@ pub enum SelectToolMessage {
 	SetPivot {
 		position: ReferencePoint,
 	},
+	SyncHistory,
+	ShiftSelectedNodes {
+		offset: DVec2,
+	},
+	PivotShift {
+		offset: Option<DVec2>,
+		flush: bool,
+	},
 }
 
 impl ToolMetadata for SelectTool {
@@ -126,14 +134,12 @@ impl SelectTool {
 
 		DropdownInput::new(vec![layer_selection_behavior_entries])
 			.selected_index(Some((self.tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest) as u32))
-			.tooltip("Choose if clicking nested layers directly selects the deepest, or selects the shallowest and deepens by double clicking")
-			.widget_holder()
-	}
-
-	fn pivot_reference_point_widget(&self, disabled: bool) -> WidgetHolder {
-		ReferencePointInput::new(self.tool_data.pivot.to_pivot_position())
-			.on_update(|pivot_input: &ReferencePointInput| SelectToolMessage::SetPivot { position: pivot_input.value }.into())
-			.disabled(disabled)
+			.tooltip(
+				"Selection Mode\n\
+				\n\
+				Shallow Select: clicks initially select the least-nested layers and double clicks drill deeper into the folder hierarchy.\n\
+				Deep Select: clicks directly select the most-nested layers in the folder hierarchy.",
+			)
 			.widget_holder()
 	}
 
@@ -182,7 +188,7 @@ impl SelectTool {
 
 	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetHolder> + use<> {
 		let list = <BooleanOperation as graphene_std::registry::ChoiceTypeStatic>::list();
-		list.into_iter().map(|i| i.into_iter()).flatten().map(move |(operation, info)| {
+		list.iter().flat_map(|i| i.iter()).map(move |(operation, info)| {
 			let mut tooltip = info.label.to_string();
 			if let Some(doc) = info.docstring.as_deref() {
 				tooltip.push_str("\n\n");
@@ -207,9 +213,29 @@ impl LayoutHolder for SelectTool {
 		// Select mode (Deep/Shallow)
 		widgets.push(self.deep_selection_widget());
 
-		// Pivot
+		// Pivot gizmo type (checkbox + dropdown for pivot/origin)
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.push(self.pivot_reference_point_widget(self.tool_data.selected_layers_count == 0));
+		widgets.extend(pivot_gizmo_type_widget(self.tool_data.pivot_gizmo.state, PivotToolSource::Select));
+
+		if self.tool_data.pivot_gizmo.state.is_pivot_type() {
+			// Nine-position reference point widget
+			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+			widgets.push(pivot_reference_point_widget(
+				self.tool_data.selected_layers_count == 0 || !self.tool_data.pivot_gizmo.state.is_pivot(),
+				self.tool_data.pivot_gizmo.pivot.to_pivot_position(),
+				PivotToolSource::Select,
+			));
+
+			// Pivot pin button
+			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+
+			let pin_active = self.tool_data.pivot_gizmo.pin_active();
+			let pin_enabled = self.tool_data.pivot_gizmo.pivot.old_pivot_position == ReferencePoint::None && !self.tool_data.pivot_gizmo.state.disabled;
+
+			if pin_active || pin_enabled {
+				widgets.push(pin_pivot_widget(pin_active, pin_enabled, PivotToolSource::Select));
+			}
+		}
 
 		// Align
 		let disabled = self.tool_data.selected_layers_count < 2;
@@ -246,16 +272,46 @@ impl LayoutHolder for SelectTool {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		if let ToolMessage::Select(SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(nested_selection_behavior))) = message {
-			self.tool_data.nested_selection_behavior = nested_selection_behavior;
-			responses.add(ToolMessage::UpdateHints);
+#[message_handler_data]
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for SelectTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		let mut redraw_reference_pivot = false;
+
+		if let ToolMessage::Select(SelectToolMessage::SelectOptions(ref option_update)) = message {
+			match option_update {
+				SelectOptionsUpdate::NestedSelectionBehavior(nested_selection_behavior) => {
+					self.tool_data.nested_selection_behavior = *nested_selection_behavior;
+					responses.add(ToolMessage::UpdateHints);
+				}
+				SelectOptionsUpdate::PivotGizmoType(gizmo_type) => {
+					if !self.tool_data.pivot_gizmo.state.disabled {
+						self.tool_data.pivot_gizmo.state.gizmo_type = *gizmo_type;
+						responses.add(ToolMessage::UpdateHints);
+						let pivot_gizmo = self.tool_data.pivot_gizmo();
+						responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+						redraw_reference_pivot = true;
+					}
+				}
+				SelectOptionsUpdate::TogglePivotGizmoType(state) => {
+					self.tool_data.pivot_gizmo.state.disabled = !state;
+					responses.add(ToolMessage::UpdateHints);
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					redraw_reference_pivot = true;
+				}
+
+				SelectOptionsUpdate::TogglePivotPinned => {
+					self.tool_data.pivot_gizmo.pivot.pinned = !self.tool_data.pivot_gizmo.pivot.pinned;
+					responses.add(ToolMessage::UpdateHints);
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					redraw_reference_pivot = true;
+				}
+			}
 		}
 
-		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
+		self.fsm_state.process_event(message, &mut self.tool_data, context, &(), responses, false);
 
-		if self.tool_data.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed {
+		if self.tool_data.pivot_gizmo.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed || redraw_reference_pivot {
 			// Send the layout containing the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
 			self.send_layout(responses, LayoutTarget::ToolOptions);
 			self.tool_data.selected_layers_changed = false;
@@ -327,7 +383,8 @@ struct SelectToolData {
 	drag_current: ViewportPosition,
 	lasso_polygon: Vec<ViewportPosition>,
 	selection_mode: Option<SelectionMode>,
-	layers_dragging: Vec<LayerNodeIdentifier>,
+	layers_dragging: Vec<LayerNodeIdentifier>, // Unordered, often used as temporary buffer
+	ordered_layers: Vec<LayerNodeIdentifier>,  // Ordered list of layers
 	layer_selected_on_start: Option<LayerNodeIdentifier>,
 	select_single_layer: Option<LayerNodeIdentifier>,
 	axis_align: bool,
@@ -335,7 +392,9 @@ struct SelectToolData {
 	bounding_box_manager: Option<BoundingBoxManager>,
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
-	pivot: Pivot,
+	pivot_gizmo: PivotGizmo,
+	pivot_gizmo_start: Option<DVec2>,
+	pivot_gizmo_shift: Option<DVec2>,
 	compass_rose: CompassRose,
 	line_center: DVec2,
 	skew_edge: EdgeBool,
@@ -501,14 +560,32 @@ impl SelectToolData {
 		responses.add(NodeGraphMessage::SendGraph);
 		self.layers_dragging = original;
 	}
+
+	fn state_from_pivot_gizmo(&self, mouse: DVec2) -> Option<SelectToolFsmState> {
+		match self.pivot_gizmo.state.gizmo_type {
+			PivotGizmoType::Pivot if self.pivot_gizmo.state.is_pivot() => self.pivot_gizmo.pivot.is_over(mouse).then_some(SelectToolFsmState::DraggingPivot),
+			_ => None,
+		}
+	}
+
+	fn pivot_gizmo(&self) -> PivotGizmo {
+		self.pivot_gizmo.clone()
+	}
+
+	fn sync_history(&mut self, document: &DocumentMessageHandler) {
+		let layers: Vec<_> = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
+		self.ordered_layers.retain(|layer| layers.contains(layer));
+		self.ordered_layers.extend(layers.iter().find(|&layer| !self.ordered_layers.contains(layer)));
+		self.pivot_gizmo.layer = self.ordered_layers.last().copied()
+	}
 }
 
 impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
 	type ToolOptions = ();
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData { document, input, font_cache, .. } = tool_action_data;
+	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionMessageContext, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
+		let ToolActionMessageContext { document, input, font_cache, .. } = tool_action_data;
 
 		let ToolMessage::Select(event) = event else { return self };
 		match (self, event) {
@@ -714,8 +791,63 @@ impl Fsm for SelectToolFsmState {
 						.flatten()
 				});
 
-				// Update pivot
-				tool_data.pivot.update_pivot(document, &mut overlay_context, Some((angle,)));
+				let mut active_origin = None;
+				let mut origin_angle = 0.;
+				if overlay_context.visibility_settings.origin() && !tool_data.pivot_gizmo.state.is_pivot_type() {
+					let get_angle = |layer: LayerNodeIdentifier| -> f64 {
+						let quad = Quad::from_box([DVec2::ZERO, DVec2::ONE]);
+						let bounds = document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface) * quad;
+						(bounds.top_left() - bounds.top_right()).to_angle()
+					};
+					if tool_data.pivot_gizmo.state.gizmo_type == PivotGizmoType::Average {
+						let mut count = 0_usize;
+
+						let sum: f64 = document
+							.network_interface
+							.selected_nodes()
+							.selected_visible_and_unlocked_layers(&document.network_interface)
+							.map(get_angle)
+							.inspect(|_| count += 1)
+							.sum();
+						if count > 0 {
+							origin_angle = sum / count as f64;
+						}
+					} else if tool_data.pivot_gizmo.state.gizmo_type == PivotGizmoType::Active {
+						origin_angle = document
+							.network_interface
+							.selected_nodes()
+							.selected_visible_and_unlocked_layers(&document.network_interface)
+							.find(|&layer| Some(layer) == tool_data.pivot_gizmo.layer)
+							.iter()
+							.map(|&layer| get_angle(layer))
+							.sum();
+					}
+
+					for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
+						let origin = graph_modification_utils::get_viewport_origin(layer, &document.network_interface);
+						if Some(layer) == tool_data.pivot_gizmo.layer {
+							active_origin = Some(origin);
+							continue;
+						}
+						overlay_context.dowel_pin(origin, origin_angle, None);
+					}
+				}
+				if let Some(origin) = active_origin {
+					overlay_context.dowel_pin(origin, origin_angle, Some(COLOR_OVERLAY_YELLOW));
+				}
+
+				let has_layers = document.network_interface.selected_nodes().has_selected_nodes();
+				let draw_pivot = tool_data.pivot_gizmo.state.is_pivot() && overlay_context.visibility_settings.pivot() && has_layers;
+				tool_data.pivot_gizmo.pivot.recalculate_pivot(document);
+				let pivot = draw_pivot.then_some(tool_data.pivot_gizmo.pivot.pivot).flatten();
+				if let Some(pivot) = pivot {
+					let offset = tool_data
+						.pivot_gizmo_start
+						.map(|offset| tool_data.pivot_gizmo.pivot_disconnected().then_some(tool_data.drag_current - offset).unwrap_or_default())
+						.unwrap_or_default();
+					let shift = tool_data.pivot_gizmo_shift.unwrap_or_default();
+					overlay_context.pivot(pivot + offset + shift, angle);
+				}
 
 				// Update compass rose
 				if overlay_context.visibility_settings.compass_rose() {
@@ -841,6 +973,15 @@ impl Fsm for SelectToolFsmState {
 						(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, None, fill_color),
 					}
 				}
+
+				if let Self::Dragging { .. } = self {
+					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
+					let document_start = document.metadata().document_to_viewport.inverse().transform_point2(quad.top_left());
+					let document_current = document.metadata().document_to_viewport.inverse().transform_point2(quad.bottom_right());
+
+					overlay_context.translation_box(document_current - document_start, quad, None);
+				}
+
 				self
 			}
 			(_, SelectToolMessage::EditLayer) => {
@@ -861,34 +1002,19 @@ impl Fsm for SelectToolFsmState {
 					remove_from_selection,
 					select_deepest,
 					lasso_select,
-					skew,
+					..
 				},
 			) => {
 				tool_data.drag_start = input.mouse.position;
 				tool_data.drag_current = input.mouse.position;
 				tool_data.selection_mode = None;
 
-				let dragging_bounds = tool_data.bounding_box_manager.as_mut().and_then(|bounding_box| {
-					let edges = bounding_box.check_selected_edges(input.mouse.position);
-
-					bounding_box.selected_edges = edges.map(|(top, bottom, left, right)| {
-						let selected_edges = SelectedEdges::new(top, bottom, left, right, bounding_box.bounds);
-						bounding_box.opposite_pivot = selected_edges.calculate_pivot();
-						selected_edges
-					});
-
-					edges
-				});
-
-				let rotating_bounds = tool_data
-					.bounding_box_manager
-					.as_ref()
-					.map(|bounding_box| bounding_box.check_rotate(input.mouse.position))
-					.unwrap_or_default();
-
 				let mut selected: Vec<_> = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
 				let intersection_list = document.click_list(input).collect::<Vec<_>>();
 				let intersection = document.find_deepest(&intersection_list);
+
+				let position = tool_data.pivot_gizmo().position(document);
+				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, Some(position));
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -903,68 +1029,25 @@ impl Fsm for SelectToolFsmState {
 				let angle = bounds.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
 				let mouse_position = input.mouse.position;
 				let compass_rose_state = tool_data.compass_rose.compass_rose_state(mouse_position, angle);
-				let is_over_pivot = tool_data.pivot.is_over(mouse_position);
 
 				let show_compass = bounds.is_some_and(|quad| quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
 				let can_grab_compass_rose = compass_rose_state.can_grab() && (show_compass || bounds.is_none());
-				let is_flat_layer = tool_data
-					.bounding_box_manager
-					.as_ref()
-					.map(|bounding_box_manager| bounding_box_manager.transform_tampered)
-					.unwrap_or(true);
 
-				let state =
-				// Dragging the pivot
-				if is_over_pivot {
+				let state = if let Some(state) = tool_data.state_from_pivot_gizmo(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
 
 					// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 					// tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
-					SelectToolFsmState::DraggingPivot
+					state
 				}
 				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
-				else if dragging_bounds.is_some() && !is_flat_layer {
-					responses.add(DocumentMessage::StartTransaction);
-
-					tool_data.layers_dragging = selected;
-
-					if let Some(bounds) = &mut tool_data.bounding_box_manager {
-						bounds.original_bound_transform = bounds.transform;
-
-						tool_data.layers_dragging.retain(|layer| {
-							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.document_network().nodes.contains_key(&layer.to_node())
-							} else {
-								log::error!("ROOT_PARENT should not be part of layers_dragging");
-								false
-							}
-						});
-
-						let mut selected = Selected::new(
-							&mut bounds.original_transforms,
-							&mut bounds.center_of_transformation,
-							&tool_data.layers_dragging,
-							responses,
-							&document.network_interface,
-							None,
-							&ToolType::Select,
-							None
-						);
-						bounds.center_of_transformation = selected.mean_average_of_pivots();
-
-						// Check if we're hovering over a skew triangle
-						let edges = bounds.check_selected_edges(input.mouse.position);
-						if let Some(edges) = edges {
-							let closest_edge = bounds.get_closest_edge(edges, input.mouse.position);
-							if bounds.check_skew_handle(input.mouse.position, closest_edge) {
-								tool_data.get_snap_candidates(document, input);
-								return SelectToolFsmState::SkewingBounds { skew };
-							}
-						}
-					}
+				else if resize {
 					tool_data.get_snap_candidates(document, input);
 					SelectToolFsmState::ResizingBounds
+				} else if skew {
+					tool_data.get_snap_candidates(document, input);
+					SelectToolFsmState::SkewingBounds { skew: Key::Control }
 				}
 				// Dragging the selected layers around to transform them
 				else if can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
@@ -977,43 +1060,24 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					tool_data.layers_dragging = selected;
-
 					tool_data.get_snap_candidates(document, input);
 					let (axis, using_compass) = {
 						let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
 						(axis_state.unwrap_or_default(), axis_state.is_some())
 					};
-					SelectToolFsmState::Dragging { axis, using_compass, has_dragged: false, deepest: input.keyboard.key(select_deepest), remove: input.keyboard.key(extend_selection) }
+
+					tool_data.pivot_gizmo_start = Some(tool_data.drag_current);
+
+					SelectToolFsmState::Dragging {
+						axis,
+						using_compass,
+						has_dragged: false,
+						deepest: input.keyboard.key(select_deepest),
+						remove: input.keyboard.key(extend_selection),
+					}
 				}
 				// Dragging near the transform cage bounding box to rotate it
-				else if rotating_bounds {
-					responses.add(DocumentMessage::StartTransaction);
-
-					if let Some(bounds) = &mut tool_data.bounding_box_manager {
-						tool_data.layers_dragging.retain(|layer| {
-							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.document_network().nodes.contains_key(&layer.to_node())
-							} else {
-								log::error!("ROOT_PARENT should not be part of layers_dragging");
-								false
-							}
-						});
-						let mut selected = Selected::new(
-							&mut bounds.original_transforms,
-							&mut bounds.center_of_transformation,
-							&selected,
-							responses,
-							&document.network_interface,
-							None,
-							&ToolType::Select,
-							None
-						);
-
-						bounds.center_of_transformation = selected.mean_average_of_pivots();
-					}
-
-					tool_data.layers_dragging = selected;
-
+				else if rotate {
 					SelectToolFsmState::RotatingBounds
 				}
 				// Dragging a selection box
@@ -1022,6 +1086,12 @@ impl Fsm for SelectToolFsmState {
 					let extend = input.keyboard.key(extend_selection);
 					if !extend && !input.keyboard.key(remove_from_selection) {
 						responses.add(DocumentMessage::DeselectAllLayers);
+
+						if !tool_data.pivot_gizmo.pivot.pinned {
+							let position = tool_data.pivot_gizmo.pivot.last_non_none_reference_point;
+							responses.add(SelectToolMessage::SetPivot { position });
+						}
+
 						tool_data.layers_dragging.clear();
 					}
 
@@ -1036,7 +1106,16 @@ impl Fsm for SelectToolFsmState {
 						tool_data.get_snap_candidates(document, input);
 
 						responses.add(DocumentMessage::StartTransaction);
-						SelectToolFsmState::Dragging { axis: Axis::None, using_compass: false, has_dragged: false, deepest: input.keyboard.key(select_deepest), remove: input.keyboard.key(extend_selection) }
+
+						tool_data.pivot_gizmo_start = Some(tool_data.drag_current);
+
+						SelectToolFsmState::Dragging {
+							axis: Axis::None,
+							using_compass: false,
+							has_dragged: false,
+							deepest: input.keyboard.key(select_deepest),
+							remove: input.keyboard.key(extend_selection),
+						}
 					} else {
 						let selection_shape = if input.keyboard.key(lasso_select) { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
 						SelectToolFsmState::Drawing { selection_shape, has_drawn: false }
@@ -1120,123 +1199,52 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove(modifier_keys)) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
-					if let Some(movement) = &mut bounds.selected_edges {
-						let (center, constrain) = (input.keyboard.key(modifier_keys.center), input.keyboard.key(modifier_keys.axis_align));
-
-						let center = center.then_some(bounds.center_of_transformation);
-						let snap = Some(SizeSnapData {
-							manager: &mut tool_data.snap_manager,
-							points: &mut tool_data.snap_candidates,
-							snap_data: SnapData::ignore(document, input, &tool_data.layers_dragging),
-						});
-						let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
-						let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
-
-						let pivot_transform = DAffine2::from_translation(pivot);
-						let transformation = pivot_transform * delta * pivot_transform.inverse();
-
-						tool_data.layers_dragging.retain(|layer| {
-							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.document_network().nodes.contains_key(&layer.to_node())
-							} else {
-								log::error!("ROOT_PARENT should not be part of layers_dragging");
-								false
-							}
-						});
-						let selected = &tool_data.layers_dragging;
-						let mut selected = Selected::new(
-							&mut bounds.original_transforms,
-							&mut pivot,
-							selected,
-							responses,
-							&document.network_interface,
-							None,
-							&ToolType::Select,
-							None,
-						);
-
-						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
-
-						// Auto-panning
-						let messages = [
-							SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
-							SelectToolMessage::PointerMove(modifier_keys).into(),
-						];
-						tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
-					}
+					resize_bounds(
+						document,
+						responses,
+						bounds,
+						&mut tool_data.layers_dragging,
+						&mut tool_data.snap_manager,
+						&mut tool_data.snap_candidates,
+						input,
+						input.keyboard.key(modifier_keys.center),
+						input.keyboard.key(modifier_keys.axis_align),
+						ToolType::Select,
+					);
+					let messages = [
+						SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
+						SelectToolMessage::PointerMove(modifier_keys).into(),
+					];
+					tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 				}
 				SelectToolFsmState::ResizingBounds
 			}
 			(SelectToolFsmState::SkewingBounds { skew }, SelectToolMessage::PointerMove(_)) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
-					if let Some(movement) = &mut bounds.selected_edges {
-						let free_movement = input.keyboard.key(skew);
-						let transformation = movement.skew_transform(input.mouse.position, bounds.original_bound_transform, free_movement);
-
-						tool_data.layers_dragging.retain(|layer| {
-							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.document_network().nodes.contains_key(&layer.to_node())
-							} else {
-								log::error!("ROOT_PARENT should not be part of layers_dragging");
-								false
-							}
-						});
-						let selected = &tool_data.layers_dragging;
-						let mut pivot = DVec2::ZERO;
-						let mut selected = Selected::new(
-							&mut bounds.original_transforms,
-							&mut pivot,
-							selected,
-							responses,
-							&document.network_interface,
-							None,
-							&ToolType::Select,
-							None,
-						);
-
-						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
-					}
+					skew_bounds(
+						document,
+						responses,
+						bounds,
+						input.keyboard.key(skew),
+						&mut tool_data.layers_dragging,
+						input.mouse.position,
+						ToolType::Select,
+					);
 				}
 				SelectToolFsmState::SkewingBounds { skew }
 			}
-			(SelectToolFsmState::RotatingBounds, SelectToolMessage::PointerMove(modifier_keys)) => {
+			(SelectToolFsmState::RotatingBounds, SelectToolMessage::PointerMove(_)) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
-					let angle = {
-						let start_offset = tool_data.drag_start - bounds.center_of_transformation;
-						let end_offset = input.mouse.position - bounds.center_of_transformation;
-
-						start_offset.angle_to(end_offset)
-					};
-
-					let snapped_angle = if input.keyboard.key(modifier_keys.snap_angle) {
-						let snap_resolution = ROTATE_INCREMENT.to_radians();
-						(angle / snap_resolution).round() * snap_resolution
-					} else {
-						angle
-					};
-
-					let delta = DAffine2::from_angle(snapped_angle);
-
-					tool_data.layers_dragging.retain(|layer| {
-						if *layer != LayerNodeIdentifier::ROOT_PARENT {
-							document.network_interface.document_network().nodes.contains_key(&layer.to_node())
-						} else {
-							log::error!("ROOT_PARENT should not be part of replacement_selected_layers");
-							false
-						}
-					});
-					let mut selected = Selected::new(
-						&mut bounds.original_transforms,
-						&mut bounds.center_of_transformation,
-						&tool_data.layers_dragging,
+					rotate_bounds(
+						document,
 						responses,
-						&document.network_interface,
-						None,
-						&ToolType::Select,
-						None,
+						bounds,
+						&mut tool_data.layers_dragging,
+						tool_data.drag_start,
+						input.mouse.position,
+						input.keyboard.key(Key::Shift),
+						ToolType::Select,
 					);
-
-					selected.update_transforms(delta, None, None);
 				}
 
 				SelectToolFsmState::RotatingBounds
@@ -1244,7 +1252,10 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerMove(modifier_keys)) => {
 				let mouse_position = input.mouse.position;
 				let snapped_mouse_position = mouse_position;
-				tool_data.pivot.set_viewport_position(snapped_mouse_position, document, responses);
+
+				tool_data.pivot_gizmo.pivot.set_viewport_position(snapped_mouse_position);
+
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 
 				// Auto-panning
 				let messages = [
@@ -1289,7 +1300,7 @@ impl Fsm for SelectToolFsmState {
 					.map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true, dragging_bounds, Some(tool_data.skew_edge)));
 
 				// Dragging the pivot overrules the other operations
-				if tool_data.pivot.is_over(input.mouse.position) {
+				if tool_data.state_from_pivot_gizmo(input.mouse.position).is_some() {
 					cursor = MouseCursorIcon::Move;
 				}
 
@@ -1429,20 +1440,32 @@ impl Fsm for SelectToolFsmState {
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.select_single_layer = None;
 
+				if let Some(start) = tool_data.pivot_gizmo_start {
+					let offset = tool_data.pivot_gizmo.pivot_disconnected().then_some(tool_data.drag_current - start).unwrap_or_default();
+					if let Some(v) = tool_data.pivot_gizmo.pivot.pivot.as_mut() {
+						*v += offset;
+					}
+				}
+				tool_data.pivot_gizmo_start = None;
+
+				let pivot_gizmo = tool_data.pivot_gizmo();
+				responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
+
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
 			(
-				SelectToolFsmState::ResizingBounds
-				| SelectToolFsmState::SkewingBounds { .. }
-				| SelectToolFsmState::RotatingBounds
-				| SelectToolFsmState::Dragging { .. }
-				| SelectToolFsmState::DraggingPivot,
+				SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds | SelectToolFsmState::DraggingPivot,
 				SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter,
 			) => {
 				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
+
+				let pivot_gizmo = tool_data.pivot_gizmo();
+				responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
+
 				responses.add(response);
+
 				tool_data.axis_align = false;
 				tool_data.snap_manager.cleanup(responses);
 
@@ -1548,6 +1571,7 @@ impl Fsm for SelectToolFsmState {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.axis_align = false;
+				tool_data.lasso_polygon.clear();
 				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;
@@ -1568,6 +1592,7 @@ impl Fsm for SelectToolFsmState {
 
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
+				tool_data.lasso_polygon.clear();
 				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;
@@ -1576,8 +1601,48 @@ impl Fsm for SelectToolFsmState {
 			(_, SelectToolMessage::SetPivot { position }) => {
 				responses.add(DocumentMessage::StartTransaction);
 
+				tool_data.pivot_gizmo.pivot.last_non_none_reference_point = position;
+				tool_data.pivot_gizmo.pivot.pinned = false;
+
 				let pos: Option<DVec2> = position.into();
-				tool_data.pivot.set_normalized_position(pos.unwrap(), document, responses);
+
+				tool_data.pivot_gizmo.pivot.set_normalized_position(pos.unwrap());
+
+				let pivot_gizmo = tool_data.pivot_gizmo();
+				responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
+
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+
+				self
+			}
+			(_, SelectToolMessage::SyncHistory) => {
+				tool_data.sync_history(document);
+
+				self
+			}
+			(_, SelectToolMessage::ShiftSelectedNodes { offset }) => {
+				let offset = document.metadata().document_to_viewport.transform_vector2(offset);
+				if tool_data.pivot_gizmo.pivot_disconnected() {
+					if let Some(v) = tool_data.pivot_gizmo.pivot.pivot.as_mut() {
+						*v += offset;
+					}
+
+					let pivot_gizmo = tool_data.pivot_gizmo();
+					responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
+				}
+
+				self
+			}
+			(_, SelectToolMessage::PivotShift { offset, flush }) => {
+				if flush {
+					tool_data.pivot_gizmo.pivot.pivot.as_mut().map(|v| *v += tool_data.pivot_gizmo_shift.take().unwrap_or_default());
+					let pivot_gizmo = tool_data.pivot_gizmo();
+					responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
+					return self;
+				}
+				if tool_data.pivot_gizmo.pivot_disconnected() {
+					tool_data.pivot_gizmo_shift = offset;
+				}
 
 				self
 			}
@@ -1802,6 +1867,7 @@ fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<La
 			.next()
 			.expect("ROOT_PARENT should have a layer child when clicking"),
 	);
+
 	if !remove {
 		tool_data.layers_dragging.extend(vec![layer]);
 	} else {

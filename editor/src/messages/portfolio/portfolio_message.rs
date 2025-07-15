@@ -19,6 +19,7 @@ pub enum PortfolioMessage {
 	Spreadsheet(SpreadsheetMessage),
 
 	// Messages
+	Init,
 	DocumentPassMessage {
 		document_id: DocumentId,
 		message: DocumentMessage,
@@ -54,9 +55,6 @@ pub enum PortfolioMessage {
 		preview_url: String,
 		data: Vec<u8>,
 	},
-	// ImaginateCheckServerStatus,
-	// ImaginatePollServerStatus,
-	// ImaginateServerHostname,
 	Import,
 	LoadDocumentResources {
 		document_id: DocumentId,

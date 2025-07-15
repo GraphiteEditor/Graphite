@@ -32,13 +32,7 @@ pub enum ToolMessage {
 	#[child]
 	Spline(SplineToolMessage),
 	#[child]
-	Line(LineToolMessage),
-	#[child]
-	Rectangle(RectangleToolMessage),
-	#[child]
-	Ellipse(EllipseToolMessage),
-	#[child]
-	Polygon(PolygonToolMessage),
+	Shape(ShapeToolMessage),
 	#[child]
 	Text(TextToolMessage),
 
@@ -54,30 +48,29 @@ pub enum ToolMessage {
 	// Relight(RelightToolMessage),
 	// 	// #[child]
 	// Detail(DetailToolMessage),
-	// #[child]
-	// Imaginate(ImaginateToolMessage),
 
 	// Messages
+
+	// General tools
 	ActivateToolSelect,
 	ActivateToolArtboard,
 	ActivateToolNavigate,
 	ActivateToolEyedropper,
-	ActivateToolText,
 	ActivateToolFill,
 	ActivateToolGradient,
-
+	// Vector tools
 	ActivateToolPath,
 	ActivateToolPen,
 	ActivateToolFreehand,
 	ActivateToolSpline,
-	ActivateToolLine,
-	ActivateToolRectangle,
-	ActivateToolEllipse,
-	ActivateToolPolygon,
-
+	ActivateToolShapeLine,
+	ActivateToolShapeRectangle,
+	ActivateToolShapeEllipse,
+	ActivateToolShape,
+	ActivateToolText,
+	// Raster tools
 	ActivateToolBrush,
-	// ActivateToolImaginate,
-	//
+
 	ActivateTool {
 		tool_type: ToolType,
 	},
@@ -87,13 +80,14 @@ pub enum ToolMessage {
 	Redo,
 	RefreshToolOptions,
 	ResetColors,
-	SelectPrimaryColor {
+	SelectWorkingColor {
 		color: Color,
+		primary: bool,
 	},
-	SelectRandomPrimaryColor,
-	SelectSecondaryColor {
-		color: Color,
+	SelectRandomWorkingColor {
+		primary: bool,
 	},
+	ToggleSelectVsPath,
 	SwapColors,
 	Undo,
 	UpdateCursor,

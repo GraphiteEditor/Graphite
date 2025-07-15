@@ -1,4 +1,4 @@
-use crate::messages::portfolio::document::node_graph::utility_types::GraphWireStyle;
+use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 
@@ -16,6 +16,4 @@ pub enum PreferencesMessage {
 	ModifyLayout { zoom_with_scroll: bool },
 	GraphWireStyle { style: GraphWireStyle },
 	ViewportZoomWheelRate { rate: f64 },
-	// ImaginateRefreshFrequency { seconds: f64 },
-	// ImaginateServerHostname { hostname: String },
 }

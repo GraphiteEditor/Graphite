@@ -4,12 +4,16 @@ mod modification;
 
 use super::misc::{dvec2_to_point, point_to_dvec2};
 use super::style::{PathStyle, Stroke};
+use crate::bounds::BoundingBox;
 use crate::instances::Instances;
-use crate::renderer::{ClickTargetType, FreePoint};
+use crate::math::quad::Quad;
+use crate::transform::Transform;
+use crate::vector::click_target::{ClickTargetType, FreePoint};
 use crate::{AlphaBlending, Color, GraphicGroupTable};
 pub use attributes::*;
-use bezier_rs::ManipulatorGroup;
+use bezier_rs::{BezierHandles, ManipulatorGroup};
 use core::borrow::Borrow;
+use core::hash::Hash;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 pub use indexed::VectorDataIndex;
@@ -21,8 +25,7 @@ use std::collections::HashMap;
 pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<VectorDataTable, D::Error> {
 	use serde::Deserialize;
 
-	#[derive(Clone, Debug, PartialEq, DynAny)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 	pub struct OldVectorData {
 		pub transform: DAffine2,
 		pub alpha_blending: AlphaBlending,
@@ -75,8 +78,7 @@ pub type VectorDataTable = Instances<VectorData>;
 /// It contains a list of subpaths (that may be open or closed), a transform, and some style information.
 ///
 /// Segments are connected if they share endpoints.
-#[derive(Clone, Debug, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct VectorData {
 	pub style: PathStyle,
 
@@ -105,8 +107,8 @@ impl Default for VectorData {
 	}
 }
 
-impl core::hash::Hash for VectorData {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl std::hash::Hash for VectorData {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.point_domain.hash(state);
 		self.segment_domain.hash(state);
 		self.region_domain.hash(state);
@@ -188,11 +190,6 @@ impl VectorData {
 		self.point_domain.push(id, point.position);
 	}
 
-	/// Appends a Kurbo BezPath to the vector data.
-	pub fn append_bezpath(&mut self, bezpath: kurbo::BezPath) {
-		AppendBezpath::append_bezpath(self, bezpath);
-	}
-
 	/// Construct some new vector data from a single subpath with an identity transform and black fill.
 	pub fn from_subpath(subpath: impl Borrow<bezier_rs::Subpath<PointId>>) -> Self {
 		Self::from_subpaths([subpath], false)
@@ -229,10 +226,10 @@ impl VectorData {
 
 	pub fn close_subpaths(&mut self) {
 		let segments_to_add: Vec<_> = self
-			.stroke_bezier_paths()
-			.filter(|subpath| !subpath.closed)
-			.filter_map(|subpath| {
-				let (first, last) = subpath.manipulator_groups().first().zip(subpath.manipulator_groups().last())?;
+			.build_stroke_path_iter()
+			.filter(|(_, closed)| !closed)
+			.filter_map(|(manipulator_groups, _)| {
+				let (first, last) = manipulator_groups.first().zip(manipulator_groups.last())?;
 				let (start, end) = self.point_domain.resolve_id(first.id).zip(self.point_domain.resolve_id(last.id))?;
 				Some((start, end))
 			})
@@ -337,6 +334,13 @@ impl VectorData {
 		index.flat_map(|index| self.segment_domain.connected_points(index).map(|index| self.point_domain.ids()[index]))
 	}
 
+	/// Returns the number of linear segments connected to the given point.
+	pub fn connected_linear_segments(&self, point_id: PointId) -> usize {
+		self.segment_bezier_iter()
+			.filter(|(_, bez, start, end)| ((*start == point_id || *end == point_id) && matches!(bez.handles, BezierHandles::Linear)))
+			.count()
+	}
+
 	/// Get an array slice of all segment IDs.
 	pub fn segment_ids(&self) -> &[SegmentId] {
 		self.segment_domain.ids()
@@ -366,7 +370,7 @@ impl VectorData {
 	}
 
 	pub fn check_point_inside_shape(&self, vector_data_transform: DAffine2, point: DVec2) -> bool {
-		let bez_paths: Vec<_> = self
+		let number = self
 			.stroke_bezpath_iter()
 			.map(|mut bezpath| {
 				// TODO: apply transform to points instead of modifying the paths
@@ -375,19 +379,9 @@ impl VectorData {
 				let bbox = bezpath.bounding_box();
 				(bezpath, bbox)
 			})
-			.collect();
-
-		// Check against all paths the point is contained in to compute the correct winding number
-		let mut number = 0;
-
-		for (shape, bbox) in bez_paths {
-			if bbox.x0 > point.x || bbox.y0 > point.y || bbox.x1 < point.x || bbox.y1 < point.y {
-				continue;
-			}
-
-			let winding = shape.winding(dvec2_to_point(point));
-			number += winding;
-		}
+			.filter(|(_, bbox)| bbox.contains(dvec2_to_point(point)))
+			.map(|(bezpath, _)| bezpath.winding(dvec2_to_point(point)))
+			.sum::<i32>();
 
 		// Non-zero fill rule
 		number != 0
@@ -414,7 +408,7 @@ impl VectorData {
 	}
 
 	pub fn other_colinear_handle(&self, handle: HandleId) -> Option<HandleId> {
-		let pair = self.colinear_manipulators.iter().find(|pair| pair.iter().any(|&val| val == handle))?;
+		let pair = self.colinear_manipulators.iter().find(|pair| pair.contains(&handle))?;
 		let other = pair.iter().copied().find(|&val| val != handle)?;
 		if handle.to_manipulator_point().get_anchor(self) == other.to_manipulator_point().get_anchor(self) {
 			Some(other)
@@ -494,9 +488,31 @@ impl VectorData {
 	}
 }
 
+impl BoundingBox for VectorDataTable {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
+		self.instance_ref_iter()
+			.flat_map(|instance| {
+				if !include_stroke {
+					return instance.instance.bounding_box_with_transform(transform * *instance.transform);
+				}
+
+				let stroke_width = instance.instance.style.stroke().map(|s| s.weight()).unwrap_or_default();
+
+				let miter_limit = instance.instance.style.stroke().map(|s| s.join_miter_limit).unwrap_or(1.);
+
+				let scale = transform.decompose_scale();
+
+				// We use the full line width here to account for different styles of stroke caps
+				let offset = DVec2::splat(stroke_width * scale.x.max(scale.y) * miter_limit);
+
+				instance.instance.bounding_box_with_transform(transform * *instance.transform).map(|[a, b]| [a - offset, b + offset])
+			})
+			.reduce(Quad::combine_bounds)
+	}
+}
+
 /// A selectable part of a curve, either an anchor (start or end of a bézier) or a handle (doesn't necessarily go through the bézier but influences curvature).
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum ManipulatorPointId {
 	/// A control anchor - the start or end point of a bézier.
 	Anchor(PointId),
@@ -583,8 +599,7 @@ impl ManipulatorPointId {
 }
 
 /// The type of handle found on a bézier curve.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum HandleType {
 	/// The first handle on a cubic bézier or the only handle on a quadratic bézier.
 	Primary,
@@ -593,8 +608,7 @@ pub enum HandleType {
 }
 
 /// Represents a primary or end handle found in a particular segment.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct HandleId {
 	pub ty: HandleType,
 	pub segment: SegmentId,
@@ -640,16 +654,6 @@ impl HandleId {
 		};
 		let handle_position = self.to_manipulator_point().get_position(vector_data);
 		handle_position.map(|pos| (pos - anchor_position).length()).unwrap_or(f64::MAX)
-	}
-
-	/// Set the handle's position relative to the anchor which is the start anchor for the primary handle and end anchor for the end handle.
-	#[must_use]
-	pub fn set_relative_position(self, relative_position: DVec2) -> VectorModificationType {
-		let Self { ty, segment } = self;
-		match ty {
-			HandleType::Primary => VectorModificationType::SetPrimaryHandle { segment, relative_position },
-			HandleType::End => VectorModificationType::SetEndHandle { segment, relative_position },
-		}
 	}
 
 	/// Convert an end handle to the primary handle and a primary handle to an end handle. Note that the new handle may not exist (e.g. for a quadratic bézier).

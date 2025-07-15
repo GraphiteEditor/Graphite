@@ -25,28 +25,19 @@ editor = { path = "../../editor", package = "graphite-editor", features = [
 	"resvg",
 	"vello",
 ] }
+graphene-std = { workspace = true }
 
 # Workspace dependencies
 graph-craft = { workspace = true }
 log = { workspace = true }
-graphene-core = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true }
 wasm-bindgen = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-glam = { workspace = true }
 math-parser = { workspace = true }
-wgpu = { workspace = true, features = [
-	"fragile-send-sync-non-atomic-wasm",
-] } # We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
-web-sys = { workspace = true, features = [
-	"Window",
-	"CanvasRenderingContext2d",
-	"Document",
-	"HtmlCanvasElement",
-	"IdleRequestOptions",
-] }
+wgpu = { workspace = true }
+web-sys = { workspace = true }
 
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false
@@ -54,7 +45,7 @@ wasm-opt = false
 [package.metadata.wasm-pack.profile.dev.wasm-bindgen]
 debug-js-glue = true
 demangle-name-section = true
-dwarf-debug-info = true
+dwarf-debug-info = false
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ["-Os", "-g"]

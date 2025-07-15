@@ -1,4 +1,4 @@
-use crate::{Node, NodeIO, NodeIOTypes, Type, WasmNotSend};
+use crate::{Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
 use dyn_any::{DynAny, StaticType};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -30,6 +30,8 @@ pub mod types {
 	pub type Resolution = glam::UVec2;
 	/// DVec2 with px unit
 	pub type PixelSize = glam::DVec2;
+	/// String with one or more than one line
+	pub type TextArea = String;
 }
 
 // Translation struct between macro and definition
@@ -59,7 +61,7 @@ pub struct FieldMetadata {
 	pub unit: Option<&'static str>,
 }
 
-pub trait ChoiceTypeStatic: Sized + Copy + crate::vector::misc::AsU32 + Send + Sync {
+pub trait ChoiceTypeStatic: Sized + Copy + crate::AsU32 + Send + Sync {
 	const WIDGET_HINT: ChoiceWidgetHint;
 	const DESCRIPTION: Option<&'static str>;
 	fn list() -> &'static [&'static [(Self, VariantMetadata)]];
@@ -101,17 +103,17 @@ pub enum RegistryValueSource {
 	Scope(&'static str),
 }
 
-type NodeRegistry = LazyLock<Mutex<HashMap<String, Vec<(NodeConstructor, NodeIOTypes)>>>>;
+type NodeRegistry = LazyLock<Mutex<HashMap<ProtoNodeIdentifier, Vec<(NodeConstructor, NodeIOTypes)>>>>;
 
 pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::new()));
 
-pub static NODE_METADATA: LazyLock<Mutex<HashMap<String, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[cfg(not(target_arch = "wasm32"))]
-pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n + Send>>;
+pub type DynFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n + Send>>;
 #[cfg(target_arch = "wasm32")]
-pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
-pub type LocalFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
+pub type DynFuture<'n, T> = Pin<Box<dyn std::future::Future<Output = T> + 'n>>;
+pub type LocalFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n>>;
 #[cfg(not(target_arch = "wasm32"))]
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n + Send>;
 #[cfg(target_arch = "wasm32")]
@@ -169,8 +171,8 @@ impl Drop for NodeContainer {
 	}
 }
 
-impl core::fmt::Debug for NodeContainer {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
+impl std::fmt::Debug for NodeContainer {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("NodeContainer").finish()
 	}
 }
@@ -184,7 +186,7 @@ impl NodeContainer {
 	#[cfg(feature = "dealloc_nodes")]
 	unsafe fn dealloc_unchecked(&mut self) {
 		unsafe {
-			std::mem::drop(Box::from_raw(self.node as *mut TypeErasedNode));
+			drop(Box::from_raw(self.node as *mut TypeErasedNode));
 		}
 	}
 }
@@ -219,7 +221,7 @@ where
 		self.node.reset();
 	}
 
-	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any + Send + Sync>> {
+	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
 		self.node.serialize()
 	}
 }
@@ -227,8 +229,8 @@ impl<I, O> DowncastBothNode<I, O> {
 	pub const fn new(node: SharedNodeContainer) -> Self {
 		Self {
 			node,
-			_i: core::marker::PhantomData,
-			_o: core::marker::PhantomData,
+			_i: PhantomData,
+			_o: PhantomData,
 		}
 	}
 }
@@ -252,7 +254,7 @@ where
 	}
 
 	#[inline(always)]
-	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any + Send + Sync>> {
+	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
 		self.node.serialize()
 	}
 }
@@ -271,14 +273,14 @@ pub struct DynAnyNode<I, O, Node> {
 
 impl<'input, I, O, N> Node<'input, Any<'input>> for DynAnyNode<I, O, N>
 where
-	I: 'input + dyn_any::StaticType + WasmNotSend,
-	O: 'input + dyn_any::StaticType + WasmNotSend,
+	I: 'input + StaticType + WasmNotSend,
+	O: 'input + StaticType + WasmNotSend,
 	N: 'input + Node<'input, I, Output = DynFuture<'input, O>>,
 {
 	type Output = FutureAny<'input>;
 	#[inline]
 	fn eval(&'input self, input: Any<'input>) -> Self::Output {
-		let node_name = core::any::type_name::<N>();
+		let node_name = std::any::type_name::<N>();
 		let output = |input| {
 			let result = self.node.eval(input);
 			async move { Box::new(result.await) as Any<'input> }
@@ -293,21 +295,21 @@ where
 		self.node.reset();
 	}
 
-	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any + Send + Sync>> {
+	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
 		self.node.serialize()
 	}
 }
 impl<'input, I, O, N> DynAnyNode<I, O, N>
 where
-	I: 'input + dyn_any::StaticType,
-	O: 'input + dyn_any::StaticType,
+	I: 'input + StaticType,
+	O: 'input + StaticType,
 	N: 'input + Node<'input, I, Output = DynFuture<'input, O>>,
 {
 	pub const fn new(node: N) -> Self {
 		Self {
 			node,
-			_i: core::marker::PhantomData,
-			_o: core::marker::PhantomData,
+			_i: PhantomData,
+			_o: PhantomData,
 		}
 	}
 }

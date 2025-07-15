@@ -1,20 +1,22 @@
 use crate::consts::{VIEWPORT_ZOOM_WHEEL_RATE, VIEWPORT_ZOOM_WHEEL_RATE_CHANGE};
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::utility_types::GraphWireStyle;
+use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 
-pub struct PreferencesDialogMessageData<'a> {
+#[derive(ExtractField)]
+pub struct PreferencesDialogMessageContext<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
 /// A dialog to allow users to customize Graphite editor options
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ExtractField)]
 pub struct PreferencesDialogMessageHandler {}
 
-impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageData<'_>> for PreferencesDialogMessageHandler {
-	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, data: PreferencesDialogMessageData) {
-		let PreferencesDialogMessageData { preferences } = data;
+#[message_handler_data]
+impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageContext<'_>> for PreferencesDialogMessageHandler {
+	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, context: PreferencesDialogMessageContext) {
+		let PreferencesDialogMessageContext { preferences } = context;
 
 		match message {
 			PreferencesDialogMessage::Confirm => {}
@@ -204,27 +206,6 @@ impl PreferencesDialogMessageHandler {
 				.widget_holder(),
 		];
 
-		// TODO: Reenable when Imaginate is restored
-		// let imaginate_server_hostname = vec![
-		// 	TextLabel::new("Imaginate").min_width(60).italic(true).widget_holder(),
-		// 	TextLabel::new("Server Hostname").table_align(true).widget_holder(),
-		// 	TextInput::new(&preferences.imaginate_server_hostname)
-		// 		.min_width(200)
-		// 		.on_update(|text_input: &TextInput| PreferencesMessage::ImaginateServerHostname { hostname: text_input.value.clone() }.into())
-		// 		.widget_holder(),
-		// ];
-		// let imaginate_refresh_frequency = vec![
-		// 	TextLabel::new("").min_width(60).widget_holder(),
-		// 	TextLabel::new("Refresh Frequency").table_align(true).widget_holder(),
-		// 	NumberInput::new(Some(preferences.imaginate_refresh_frequency))
-		// 		.unit(" seconds")
-		// 		.min(0.)
-		// 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		// 		.min_width(200)
-		// 		.on_update(|number_input: &NumberInput| PreferencesMessage::ImaginateRefreshFrequency { seconds: number_input.value.unwrap() }.into())
-		// 		.widget_holder(),
-		// ];
-
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row { widgets: navigation_header },
 			LayoutGroup::Row { widgets: zoom_rate_label },
@@ -238,8 +219,6 @@ impl PreferencesDialogMessageHandler {
 			LayoutGroup::Row { widgets: graph_wire_style },
 			LayoutGroup::Row { widgets: use_vello },
 			LayoutGroup::Row { widgets: vector_meshes },
-			// LayoutGroup::Row { widgets: imaginate_server_hostname },
-			// LayoutGroup::Row { widgets: imaginate_refresh_frequency },
 		]))
 	}
 

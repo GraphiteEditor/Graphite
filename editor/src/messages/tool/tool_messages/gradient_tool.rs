@@ -7,7 +7,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{Node
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use graphene_std::vector::style::{Fill, Gradient, GradientType};
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct GradientTool {
 	fsm_state: GradientToolFsmState,
 	data: GradientToolData,
@@ -53,10 +53,11 @@ impl ToolMetadata for GradientTool {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for GradientTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
+#[message_handler_data]
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for GradientTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Gradient(GradientToolMessage::UpdateOptions(action)) = message else {
-			self.fsm_state.process_event(message, &mut self.data, tool_data, &self.options, responses, false);
+			self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, false);
 			return;
 		};
 		match action {
@@ -66,7 +67,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Gradien
 				if let Some(selected_gradient) = &mut self.data.selected_gradient {
 					// Check if the current layer is a raster layer
 					if let Some(layer) = selected_gradient.layer {
-						if NodeGraphLayer::is_raster_layer(layer, &mut tool_data.document.network_interface) {
+						if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
 							return; // Don't proceed if it's a raster layer
 						}
 						selected_gradient.gradient.gradient_type = gradient_type;
@@ -242,8 +243,15 @@ impl Fsm for GradientToolFsmState {
 	type ToolData = GradientToolData;
 	type ToolOptions = GradientOptions;
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData {
+	fn transition(
+		self,
+		event: ToolMessage,
+		tool_data: &mut Self::ToolData,
+		tool_action_data: &mut ToolActionMessageContext,
+		tool_options: &Self::ToolOptions,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
+		let ToolActionMessageContext {
 			document, global_tool_data, input, ..
 		} = tool_action_data;
 
@@ -535,7 +543,8 @@ impl Fsm for GradientToolFsmState {
 mod test_gradient {
 	use crate::messages::input_mapper::utility_types::input_mouse::EditorMouseState;
 	use crate::messages::input_mapper::utility_types::input_mouse::ScrollDelta;
-	use crate::messages::portfolio::document::{graph_operation::utility_types::TransformIn, utility_types::misc::GroupFolderType};
+	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_std::vector::fill;
@@ -717,7 +726,7 @@ mod test_gradient {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 
-		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2.0 }).await;
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2. }).await;
 
 		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
 
@@ -726,7 +735,7 @@ mod test_gradient {
 		editor
 			.handle_message(GraphOperationMessage::TransformSet {
 				layer: selected_layer,
-				transform: DAffine2::from_scale_angle_translation(DVec2::new(1.5, 0.8), 0.3, DVec2::new(10.0, -5.0)),
+				transform: DAffine2::from_scale_angle_translation(DVec2::new(1.5, 0.8), 0.3, DVec2::new(10., -5.)),
 				transform_in: TransformIn::Local,
 				skip_rerender: false,
 			})
@@ -802,7 +811,7 @@ mod test_gradient {
 		stops.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
 		let positions: Vec<f64> = stops.iter().map(|(pos, _)| *pos).collect();
-		assert_stops_at_positions(&positions, &[0.0, 0.5, 1.0], 0.1);
+		assert_stops_at_positions(&positions, &[0., 0.5, 1.], 0.1);
 
 		let middle_color = stops[1].1.to_rgba8_srgb();
 
@@ -842,7 +851,7 @@ mod test_gradient {
 
 		// Check positions are now correctly ordered
 		let updated_positions: Vec<f64> = updated_stops.iter().map(|(pos, _)| *pos).collect();
-		assert_stops_at_positions(&updated_positions, &[0.0, 0.8, 1.0], 0.1);
+		assert_stops_at_positions(&updated_positions, &[0., 0.8, 1.], 0.1);
 
 		// Colors should maintain their associations with the stop points
 		assert_eq!(updated_stops[0].1.to_rgba8_srgb(), Color::BLUE.to_rgba8_srgb());
@@ -876,7 +885,7 @@ mod test_gradient {
 		let positions: Vec<f64> = updated_gradient.stops.iter().map(|(pos, _)| *pos).collect();
 
 		// Use helper function to verify positions
-		assert_stops_at_positions(&positions, &[0.0, 0.25, 0.75, 1.0], 0.05);
+		assert_stops_at_positions(&positions, &[0., 0.25, 0.75, 1.], 0.05);
 
 		// Select the stop at position 0.75 and delete it
 		let position2 = DVec2::new(75., 0.);
@@ -902,7 +911,7 @@ mod test_gradient {
 		let final_positions: Vec<f64> = final_gradient.stops.iter().map(|(pos, _)| *pos).collect();
 
 		// Verify final positions with helper function
-		assert_stops_at_positions(&final_positions, &[0.0, 0.25, 1.0], 0.05);
+		assert_stops_at_positions(&final_positions, &[0., 0.25, 1.], 0.05);
 
 		// Additional verification that 0.75 stop is gone
 		assert!(!final_positions.iter().any(|pos| (pos - 0.75).abs() < 0.05), "Stop at position 0.75 should have been deleted");

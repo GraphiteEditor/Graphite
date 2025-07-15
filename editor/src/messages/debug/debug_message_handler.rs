@@ -1,13 +1,14 @@
 use super::utility_types::MessageLoggingVerbosity;
 use crate::messages::prelude::*;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, ExtractField)]
 pub struct DebugMessageHandler {
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 }
 
+#[message_handler_data]
 impl MessageHandler<DebugMessage, ()> for DebugMessageHandler {
-	fn process_message(&mut self, message: DebugMessage, responses: &mut VecDeque<Message>, _data: ()) {
+	fn process_message(&mut self, message: DebugMessage, responses: &mut VecDeque<Message>, _: ()) {
 		match message {
 			DebugMessage::ToggleTraceLogs => {
 				if log::max_level() == log::LevelFilter::Debug {
