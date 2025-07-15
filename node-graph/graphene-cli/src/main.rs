@@ -7,7 +7,6 @@ use graph_craft::proto::{ProtoNetwork, ProtoNode};
 use graph_craft::util::load_network;
 use graph_craft::wasm_application_io::{EditorPreferences, WasmApplicationIoValue};
 use graphene_core::text::FontCache;
-use graphene_std::any::EditorContext;
 use graphene_std::application_io::{ApplicationIo, ApplicationIoValue, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_std::wasm_application_io::WasmApplicationIo;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
@@ -180,7 +179,7 @@ fn compile_graph(document_string: String, application_io: Arc<WasmApplicationIo>
 	let mut network = load_network(&document_string);
 	fix_nodes(&mut network);
 
-	let substitutions: std::collections::HashMap<String, DocumentNode> = preprocessor::generate_node_substitutions();
+	let substitutions = preprocessor::generate_node_substitutions();
 	preprocessor::expand_network(&mut network, &substitutions);
 
 	let mut wrapped_network = wrap_network_in_scope(network, Arc::new(FontCache::default()), EditorMetadata::default(), application_io);

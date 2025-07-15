@@ -12,7 +12,6 @@ use crate::test_utils::test_prelude::LayerNodeIdentifier;
 use glam::DVec2;
 use graph_craft::document::DocumentNode;
 use graphene_std::InputAccessor;
-use graphene_std::any::EditorContext;
 use graphene_std::raster::color::Color;
 
 /// A set of utility functions to make the writing of editor test more declarative
@@ -22,20 +21,20 @@ pub struct EditorTestUtils {
 }
 
 impl EditorTestUtils {
-	pub fn create() -> Self {
-		let _ = env_logger::builder().is_test(true).try_init();
-		set_uuid_seed(0);
+	// pub fn create() -> Self {
+	// 	let _ = env_logger::builder().is_test(true).try_init();
+	// 	set_uuid_seed(0);
 
-		let (mut editor, runtime) = Editor::new_local_executor();
+	// 	let (mut editor, runtime) = Editor::new_local_executor();
 
-		// We have to set this directly instead of using `GlobalsMessage::SetPlatform` because race conditions with multiple tests can cause that message handler to set it more than once, which is a failure.
-		// It isn't sufficient to guard the message dispatch here with a check if the once_cell is empty, because that isn't atomic and the time between checking and handling the dispatch can let multiple through.
-		let _ = GLOBAL_PLATFORM.set(Platform::Windows).is_ok();
+	// 	// We have to set this directly instead of using `GlobalsMessage::SetPlatform` because race conditions with multiple tests can cause that message handler to set it more than once, which is a failure.
+	// 	// It isn't sufficient to guard the message dispatch here with a check if the once_cell is empty, because that isn't atomic and the time between checking and handling the dispatch can let multiple through.
+	// 	let _ = GLOBAL_PLATFORM.set(Platform::Windows).is_ok();
 
-		editor.handle_message(PortfolioMessage::Init);
+	// 	editor.handle_message(PortfolioMessage::Init);
 
-		Self { editor, runtime }
-	}
+	// 	Self { editor, runtime }
+	// }
 
 	// pub fn eval_graph<'a>(&'a mut self) -> impl std::future::Future<Output = Result<Instrumented, String>> + 'a {
 	// 	// An inner function is required since async functions in traits are a bit weird

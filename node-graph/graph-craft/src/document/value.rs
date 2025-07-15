@@ -397,7 +397,6 @@ impl Display for TaggedValue {
 
 pub struct UpcastNode {
 	value: MemoHash<TaggedValue>,
-	inspected: Cell<bool>,
 }
 impl<'input> Node<'input, DAny<'input>> for UpcastNode {
 	type Output = FutureAny<'input>;
@@ -407,13 +406,12 @@ impl<'input> Node<'input, DAny<'input>> for UpcastNode {
 	}
 
 	fn introspect(&self) -> graphene_core::memo::MonitorIntrospectResult {
-		let inspected = self.inspected.replace(true);
-		graphene_core::memo::MonitorIntrospectResult::Evaluated((Arc::new(self.value.clone().into_inner()) as Arc<dyn std::any::Any + Send + Sync>, !inspected))
+		graphene_core::memo::MonitorIntrospectResult::Evaluated((Arc::new(self.value.clone().into_inner()) as Arc<dyn std::any::Any + Send + Sync>, true))
 	}
 }
 impl UpcastNode {
 	pub fn new(value: MemoHash<TaggedValue>) -> Self {
-		Self { value, inspected: Cell::new(false) }
+		Self { value }
 	}
 }
 #[derive(Default, Debug, Clone, Copy)]

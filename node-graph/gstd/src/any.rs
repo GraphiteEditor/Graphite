@@ -3,7 +3,6 @@ pub use graph_craft::proto::{Any, NodeContainer, TypeErasedBox, TypeErasedNode};
 use graph_craft::proto::{DynFuture, FutureAny, SharedNodeContainer};
 use graphene_core::Context;
 use graphene_core::ContextDependencies;
-use graphene_core::EditorContext;
 use graphene_core::NodeIO;
 use graphene_core::OwnedContextImpl;
 use graphene_core::WasmNotSend;

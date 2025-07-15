@@ -93,9 +93,12 @@ where
 
 		drop(cache_guard);
 
+		let fut = self.node.eval(input);
+		let cache = self.cache.clone();
+
 		Box::pin(async move {
-			let value = self.node.eval(input).await;
-			*self.cache.lock().unwrap() = Some((hash, Arc::new(value.clone())));
+			let value = fut.await;
+			*cache.lock().unwrap() = Some((hash, Arc::new(value.clone())));
 			value
 		})
 	}

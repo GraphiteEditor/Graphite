@@ -15,7 +15,7 @@ fn update_executor<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
 	c.bench_function(name, |b| {
 		b.iter_batched(
 			|| (executor.clone(), proto_network.clone()),
-			|(mut executor, network)| futures::executor::block_on(executor.update(black_box(network, None))),
+			|(mut executor, network)| futures::executor::block_on(executor.update(black_box(network), None)),
 			criterion::BatchSize::SmallInput,
 		)
 	});
@@ -33,7 +33,7 @@ fn run_once<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
 	let proto_network = network.compile().unwrap().0;
 
 	let executor = futures::executor::block_on(DynamicExecutor::new(proto_network)).unwrap();
-	let context = graphene_std::any::EditorContext::default();
+	let context = graphene_std::EditorContext::default();
 
 	c.bench_function(name, |b| b.iter(|| futures::executor::block_on((&executor).evaluate_from_node(context.clone(), None))));
 }
