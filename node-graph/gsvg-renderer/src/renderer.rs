@@ -329,7 +329,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 
 					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 					mask.render_to_vello(scene, transform, context, &render_params.for_clipper());
-					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
+					scene.push_layer(peniko::BlendMode::new(peniko::Mix::LuminanceClip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
 				}
 			}
 
@@ -593,7 +593,7 @@ impl GraphicElementRendered for VectorDataTable {
 
 					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 					mask.render_to_vello(scene, element_transform, _context, &render_params.for_clipper());
-					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
+					scene.push_layer(peniko::BlendMode::new(peniko::Mix::LuminanceClip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
 				}
 			}
 
@@ -1055,7 +1055,7 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 
 					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 					mask.render_to_vello(scene, transform, _context, &render_params.for_clipper());
-					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
+					scene.push_layer(peniko::BlendMode::new(peniko::Mix::LuminanceClip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
 				}
 			}
 
@@ -1354,7 +1354,7 @@ impl SvgRenderAttrs<'_> {
 
 		let id = format!("mask-{}", uuid);
 		write!(&mut self.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
-		write!(&mut self.0.svg_defs, r##"<mask id="{id}" mask-type="lumninance">{}</mask>"##, svg.svg.to_svg_string()).unwrap();
+		write!(&mut self.0.svg_defs, r##"<mask id="{id}">{}</mask>"##, svg.svg.to_svg_string()).unwrap();
 
 		let selector = format!("url(#{id})");
 

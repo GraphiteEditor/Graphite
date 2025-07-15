@@ -4364,7 +4364,7 @@ checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
 [[package]]
 name = "peniko"
 version = "0.2.0"
-source = "git+https://github.com/linebender/peniko.git?rev=d114c62#d114c6292dbcfb03e7360692198be423168a0edd"
+source = "git+https://github.com/mTvare6/peniko.git?branch=luminance-clip#cd9aa45fe5a5c3070f18311cf33aad9cc83e5863"
 dependencies = [
  "color 0.1.0",
  "kurbo",
@@ -7273,7 +7273,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 [[package]]
 name = "vello"
 version = "0.3.0"
-source = "git+https://github.com/linebender/vello.git?rev=3275ec8#3275ec85d831180be81820de06cca29a97a757f5"
+source = "git+https://github.com/mTvare6/vello.git?branch=luminance-clip#8af3207bd009da4e893b29f199985924e4a0b696"
 dependencies = [
  "bytemuck",
  "futures-intrusive",
@@ -7291,7 +7291,7 @@ dependencies = [
 [[package]]
 name = "vello_encoding"
 version = "0.3.0"
-source = "git+https://github.com/linebender/vello.git?rev=3275ec8#3275ec85d831180be81820de06cca29a97a757f5"
+source = "git+https://github.com/mTvare6/vello.git?branch=luminance-clip#8af3207bd009da4e893b29f199985924e4a0b696"
 dependencies = [
  "bytemuck",
  "guillotiere",
@@ -7303,7 +7303,7 @@ dependencies = [
 [[package]]
 name = "vello_shaders"
 version = "0.3.0"
-source = "git+https://github.com/linebender/vello.git?rev=3275ec8#3275ec85d831180be81820de06cca29a97a757f5"
+source = "git+https://github.com/mTvare6/vello.git?branch=luminance-clip#8af3207bd009da4e893b29f199985924e4a0b696"
 dependencies = [
  "bytemuck",
  "naga",
