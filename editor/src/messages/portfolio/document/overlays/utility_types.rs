@@ -1,12 +1,13 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER,
-	COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE,
+	COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH,
+	PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
 use bezier_rs::{Bezier, Subpath};
 use core::borrow::Borrow;
-use core::f64::consts::{FRAC_PI_2, TAU};
+use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
 use graphene_std::Color;
 use graphene_std::math::quad::Quad;
@@ -33,12 +34,14 @@ pub enum OverlaysType {
 	HoverOutline,
 	SelectionOutline,
 	Pivot,
+	Origin,
 	Path,
 	Anchors,
 	Handles,
 }
 
 #[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(default)]
 pub struct OverlaysVisibilitySettings {
 	pub all: bool,
 	pub artboard_name: bool,
@@ -49,6 +52,7 @@ pub struct OverlaysVisibilitySettings {
 	pub hover_outline: bool,
 	pub selection_outline: bool,
 	pub pivot: bool,
+	pub origin: bool,
 	pub path: bool,
 	pub anchors: bool,
 	pub handles: bool,
@@ -66,6 +70,7 @@ impl Default for OverlaysVisibilitySettings {
 			hover_outline: true,
 			selection_outline: true,
 			pivot: true,
+			origin: true,
 			path: true,
 			anchors: true,
 			handles: true,
@@ -108,6 +113,10 @@ impl OverlaysVisibilitySettings {
 
 	pub fn pivot(&self) -> bool {
 		self.all && self.pivot
+	}
+
+	pub fn origin(&self) -> bool {
+		self.all && self.origin
 	}
 
 	pub fn path(&self) -> bool {
@@ -341,6 +350,7 @@ impl OverlayContext {
 		self.render_context.rect(corner.x, corner.y, size, size);
 		self.render_context.set_fill_style_str(color_fill);
 		self.render_context.set_stroke_style_str(color_stroke);
+		self.render_context.set_line_width(1.);
 		self.render_context.fill();
 		self.render_context.stroke();
 
@@ -423,10 +433,7 @@ impl OverlayContext {
 
 	pub fn draw_scale(&mut self, start: DVec2, scale: f64, radius: f64, text: &str) {
 		let sign = scale.signum();
-		let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap())
-			.unwrap()
-			.with_alpha(0.05)
-			.to_rgba_hex_srgb();
+		let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05).to_rgba_hex_srgb();
 		fill_color.insert(0, '#');
 		let fill_color = Some(fill_color.as_str());
 		self.line(start + DVec2::X * radius * sign, start + DVec2::X * (radius * scale), None, None);
@@ -463,10 +470,7 @@ impl OverlayContext {
 
 		// Hover ring
 		if show_hover_ring {
-			let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-				.unwrap()
-				.with_alpha(0.5)
-				.to_rgba_hex_srgb();
+			let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.5).to_rgba_hex_srgb();
 			fill_color.insert(0, '#');
 
 			self.render_context.set_line_width(HOVER_RING_STROKE_WIDTH);
@@ -546,6 +550,36 @@ impl OverlayContext {
 		self.render_context.stroke();
 
 		self.render_context.set_line_cap("butt");
+
+		self.end_dpi_aware_transform();
+	}
+
+	pub fn dowel_pin(&mut self, position: DVec2, angle: f64, color: Option<&str>) {
+		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
+		let color = color.unwrap_or(COLOR_OVERLAY_YELLOW_DULL);
+
+		self.start_dpi_aware_transform();
+
+		// Draw the background circle with a white fill and blue outline
+		self.render_context.begin_path();
+		self.render_context.arc(x, y, DOWEL_PIN_RADIUS, 0., TAU).expect("Failed to draw the circle");
+		self.render_context.set_fill_style_str(COLOR_OVERLAY_WHITE);
+		self.render_context.fill();
+		self.render_context.set_stroke_style_str(color);
+		self.render_context.stroke();
+
+		// Draw the two blue filled sectors
+		self.render_context.begin_path();
+		// Top-left sector
+		self.render_context.move_to(x, y);
+		self.render_context.arc(x, y, DOWEL_PIN_RADIUS, FRAC_PI_2 + angle, PI + angle).expect("Failed to draw arc");
+		self.render_context.close_path();
+		// Bottom-right sector
+		self.render_context.move_to(x, y);
+		self.render_context.arc(x, y, DOWEL_PIN_RADIUS, PI + FRAC_PI_2 + angle, TAU + angle).expect("Failed to draw arc");
+		self.render_context.close_path();
+		self.render_context.set_fill_style_str(color);
+		self.render_context.fill();
 
 		self.end_dpi_aware_transform();
 	}
@@ -693,6 +727,7 @@ impl OverlayContext {
 
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 			self.render_context.set_stroke_style_str(color);
+			self.render_context.set_line_width(1.);
 			self.render_context.stroke();
 		}
 	}
@@ -731,11 +766,11 @@ impl OverlayContext {
 		// └──┴──┴──┴──┘
 		let pixels = [(0, 0), (2, 2)];
 		for &(x, y) in &pixels {
-			let index = (x + y * PATTERN_WIDTH as usize) * 4;
+			let index = (x + y * PATTERN_WIDTH) * 4;
 			data[index..index + 4].copy_from_slice(&color.to_rgba8_srgb());
 		}
 
-		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&mut data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
+		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
 		pattern_context.put_image_data(&image_data, 0., 0.).unwrap();
 		let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
 
@@ -779,6 +814,36 @@ impl OverlayContext {
 		self.render_context.set_fill_style_str(font_color);
 		self.render_context.fill_text(text, 0., 0.).expect("Failed to draw the text at the calculated position");
 		self.render_context.reset_transform().expect("Failed to reset the render context transform");
+	}
+
+	pub fn translation_box(&mut self, translation: DVec2, quad: Quad, typed_string: Option<String>) {
+		if translation.x.abs() > 1e-3 {
+			self.dashed_line(quad.top_left(), quad.top_right(), None, None, Some(2.), Some(2.), Some(0.5));
+
+			let width = match typed_string {
+				Some(ref typed_string) => typed_string,
+				None => &format!("{:.2}", translation.x).trim_end_matches('0').trim_end_matches('.').to_string(),
+			};
+			let x_transform = DAffine2::from_translation((quad.top_left() + quad.top_right()) / 2.);
+			self.text(width, COLOR_OVERLAY_BLUE, None, x_transform, 4., [Pivot::Middle, Pivot::End]);
+		}
+
+		if translation.y.abs() > 1e-3 {
+			self.dashed_line(quad.top_left(), quad.bottom_left(), None, None, Some(2.), Some(2.), Some(0.5));
+
+			let height = match typed_string {
+				Some(ref typed_string) => typed_string,
+				None => &format!("{:.2}", translation.y).trim_end_matches('0').trim_end_matches('.').to_string(),
+			};
+			let y_transform = DAffine2::from_translation((quad.top_left() + quad.bottom_left()) / 2.);
+			let height_pivot = if translation.x > -1e-3 { Pivot::Start } else { Pivot::End };
+			self.text(height, COLOR_OVERLAY_BLUE, None, y_transform, 3., [height_pivot, Pivot::Middle]);
+		}
+
+		if translation.x.abs() > 1e-3 && translation.y.abs() > 1e-3 {
+			self.line(quad.top_right(), quad.bottom_right(), None, None);
+			self.line(quad.bottom_left(), quad.bottom_right(), None, None);
+		}
 	}
 }
 

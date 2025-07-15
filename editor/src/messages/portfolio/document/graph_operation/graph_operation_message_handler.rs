@@ -14,27 +14,22 @@ use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, Gradient, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 
-#[derive(Debug, Clone)]
-struct ArtboardInfo {
-	input_node: NodeInput,
-	output_nodes: Vec<InputConnector>,
-	merge_node: NodeId,
-}
-
-pub struct GraphOperationMessageData<'a> {
+#[derive(ExtractField)]
+pub struct GraphOperationMessageContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub collapsed: &'a mut CollapsedLayers,
 	pub node_graph: &'a mut NodeGraphMessageHandler,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, ExtractField)]
 pub struct GraphOperationMessageHandler {}
 
 // GraphOperationMessageHandler always modified the document network. This is so changes to the layers panel will only affect the document network.
 // For changes to the selected network, use NodeGraphMessageHandler. No NodeGraphMessage's should be added here, since they will affect the selected nested network.
-impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for GraphOperationMessageHandler {
-	fn process_message(&mut self, message: GraphOperationMessage, responses: &mut VecDeque<Message>, data: GraphOperationMessageData) {
-		let network_interface = data.network_interface;
+#[message_handler_data]
+impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for GraphOperationMessageHandler {
+	fn process_message(&mut self, message: GraphOperationMessage, responses: &mut VecDeque<Message>, context: GraphOperationMessageContext) {
+		let network_interface = context.network_interface;
 
 		match message {
 			GraphOperationMessage::FillSet { layer, fill } => {
@@ -87,15 +82,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			} => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.transform_set(transform, transform_in, skip_rerender);
-				}
-			}
-			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
-				if layer == LayerNodeIdentifier::ROOT_PARENT {
-					log::error!("Cannot run TransformSetPivot on ROOT_PARENT");
-					return;
-				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.pivot_set(pivot);
 				}
 			}
 			GraphOperationMessage::Vector { layer, modification_type } => {
@@ -328,6 +314,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 	fn actions(&self) -> ActionList {
 		actions!(GraphOperationMessage;)
 	}
+}
+
+#[derive(Debug, Clone)]
+struct ArtboardInfo {
+	input_node: NodeInput,
+	output_nodes: Vec<InputConnector>,
+	merge_node: NodeId,
 }
 
 fn usvg_color(c: usvg::Color, a: f32) -> Color {

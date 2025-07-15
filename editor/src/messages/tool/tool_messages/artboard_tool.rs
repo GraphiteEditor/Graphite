@@ -13,7 +13,7 @@ use crate::messages::tool::common_functionality::transformation_cage::*;
 use graph_craft::document::NodeId;
 use graphene_std::renderer::Quad;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct ArtboardTool {
 	fsm_state: ArtboardToolFsmState,
 	data: ArtboardToolData,
@@ -48,9 +48,10 @@ impl ToolMetadata for ArtboardTool {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ArtboardTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		self.fsm_state.process_event(message, &mut self.data, tool_data, &(), responses, false);
+#[message_handler_data]
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for ArtboardTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		self.fsm_state.process_event(message, &mut self.data, context, &(), responses, false);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -217,8 +218,8 @@ impl Fsm for ArtboardToolFsmState {
 	type ToolData = ArtboardToolData;
 	type ToolOptions = ();
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData { document, input, .. } = tool_action_data;
+	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionMessageContext, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
+		let ToolActionMessageContext { document, input, .. } = tool_action_data;
 
 		let hovered = ArtboardToolData::hovered_artboard(document, input).is_some();
 
@@ -567,7 +568,7 @@ mod test_artboard {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {}", e),
 		};
-		instrumented.grab_all_input::<graphene_std::append_artboard::ArtboardInput>(&editor.runtime).collect()
+		instrumented.grab_all_input::<graphene_std::graphic_element::append_artboard::ArtboardInput>(&editor.runtime).collect()
 	}
 
 	#[tokio::test]

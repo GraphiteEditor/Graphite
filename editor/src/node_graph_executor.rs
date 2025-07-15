@@ -53,7 +53,7 @@ pub enum NodeGraphUpdate {
 	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct NodeGraphExecutor {
 	runtime_io: NodeRuntimeIO,
 	futures: HashMap<u64, ExecutionContext>,
@@ -64,17 +64,6 @@ pub struct NodeGraphExecutor {
 #[derive(Debug, Clone)]
 struct ExecutionContext {
 	export_config: Option<ExportConfig>,
-}
-
-impl Default for NodeGraphExecutor {
-	fn default() -> Self {
-		Self {
-			futures: Default::default(),
-			runtime_io: NodeRuntimeIO::new(),
-			node_graph_hash: 0,
-			old_inspect_node: None,
-		}
-	}
 }
 
 impl NodeGraphExecutor {
@@ -394,7 +383,9 @@ impl NodeGraphExecutor {
 				return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
 			}
 		};
-		responses.add(Message::EndBuffer(render_output_metadata));
+		responses.add(Message::EndBuffer {
+			render_metadata: render_output_metadata,
+		});
 		responses.add(DocumentMessage::RenderScrollbars);
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);
@@ -413,6 +404,7 @@ mod test {
 	use super::*;
 	use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 	use crate::test_utils::test_prelude::{self, NodeGraphLayer};
+	use graph_craft::ProtoNodeIdentifier;
 	use graph_craft::document::NodeNetwork;
 	use graphene_std::Context;
 	use graphene_std::NodeInputDecleration;
@@ -422,7 +414,7 @@ mod test {
 	/// Stores all of the monitor nodes that have been attached to a graph
 	#[derive(Default)]
 	pub struct Instrumented {
-		protonodes_by_name: HashMap<String, Vec<Vec<Vec<NodeId>>>>,
+		protonodes_by_name: HashMap<ProtoNodeIdentifier, Vec<Vec<Vec<NodeId>>>>,
 		protonodes_by_path: HashMap<Vec<NodeId>, Vec<Vec<NodeId>>>,
 	}
 
@@ -449,7 +441,7 @@ mod test {
 				}
 				if let DocumentNodeImplementation::ProtoNode(identifier) = &mut node.implementation {
 					path.push(*id);
-					self.protonodes_by_name.entry(identifier.name.to_string()).or_default().push(monitor_node_ids.clone());
+					self.protonodes_by_name.entry(identifier.clone()).or_default().push(monitor_node_ids.clone());
 					self.protonodes_by_path.insert(path.clone(), monitor_node_ids);
 					path.pop();
 				}
@@ -457,7 +449,7 @@ mod test {
 			for (input, monitor_id) in monitor_nodes {
 				let monitor_node = DocumentNode {
 					inputs: vec![input],
-					implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
+					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER),
 					manual_composition: Some(graph_craft::generic!(T)),
 					skip_deduplication: true,
 					..Default::default()
@@ -495,7 +487,7 @@ mod test {
 			Input::Result: Send + Sync + Clone + 'static,
 		{
 			self.protonodes_by_name
-				.get(Input::identifier())
+				.get(&Input::identifier())
 				.map_or([].as_slice(), |x| x.as_slice())
 				.iter()
 				.filter_map(|inputs| inputs.get(Input::INDEX))

@@ -1,8 +1,8 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE,
-	SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, DRILL_THROUGH_THRESHOLD,
+	HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
@@ -11,6 +11,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::portfolio::document::utility_types::transformation::Axis;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
+use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
 use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedLayerState, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
@@ -18,11 +19,13 @@ use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandi
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate};
 use bezier_rs::{Bezier, BezierHandles, TValue};
 use graphene_std::renderer::Quad;
+use graphene_std::transform::ReferencePoint;
+use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, VectorData};
 use graphene_std::vector::{ManipulatorPointId, PointId, VectorModificationType};
 use std::vec;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct PathTool {
 	fsm_state: PathToolFsmState,
 	tool_data: PathToolData,
@@ -106,6 +109,9 @@ pub enum PathToolMessage {
 	SelectedPointYChanged {
 		new_y: f64,
 	},
+	SetPivot {
+		position: ReferencePoint,
+	},
 	SwapSelectedHandles,
 	UpdateOptions(PathOptionsUpdate),
 	UpdateSelectedPointsStatus {
@@ -141,6 +147,9 @@ pub enum PathOptionsUpdate {
 	OverlayModeType(PathOverlayMode),
 	PointEditingMode { enabled: bool },
 	SegmentEditingMode { enabled: bool },
+	PivotGizmoType(PivotGizmoType),
+	TogglePivotGizmoType(bool),
+	TogglePivotPinned,
 }
 
 impl ToolMetadata for PathTool {
@@ -255,6 +264,20 @@ impl LayoutHolder for PathTool {
 		.selected_index(Some(self.options.path_overlay_mode as u32))
 		.widget_holder();
 
+		let [_checkbox, _dropdown] = {
+			let pivot_gizmo_type_widget = pivot_gizmo_type_widget(self.tool_data.pivot_gizmo.state, PivotToolSource::Path);
+			[pivot_gizmo_type_widget[0].clone(), pivot_gizmo_type_widget[2].clone()]
+		};
+
+		let has_something = !self.tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty();
+		let _pivot_reference = pivot_reference_point_widget(
+			has_something || !self.tool_data.pivot_gizmo.state.is_pivot(),
+			self.tool_data.pivot_gizmo.pivot.to_pivot_position(),
+			PivotToolSource::Path,
+		);
+
+		let _pin_pivot = pin_pivot_widget(self.tool_data.pivot_gizmo.pin_active(), false, PivotToolSource::Path);
+
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				x_location,
@@ -268,15 +291,24 @@ impl LayoutHolder for PathTool {
 				point_editing_mode,
 				related_seperator.clone(),
 				segment_editing_mode,
-				unrelated_seperator,
+				unrelated_seperator.clone(),
 				path_overlay_mode_widget,
+				unrelated_seperator.clone(),
+				// checkbox.clone(),
+				// related_seperator.clone(),
+				// dropdown.clone(),
+				// unrelated_seperator,
+				// pivot_reference,
+				// related_seperator.clone(),
+				// pin_pivot,
 			],
 		}]))
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
+#[message_handler_data]
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PathTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);
 
 		match message {
@@ -293,23 +325,46 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 					self.options.path_editing_mode.segment_editing_mode = enabled;
 					responses.add(OverlaysMessage::Draw);
 				}
+				PathOptionsUpdate::PivotGizmoType(gizmo_type) => {
+					if !self.tool_data.pivot_gizmo.state.disabled {
+						self.tool_data.pivot_gizmo.state.gizmo_type = gizmo_type;
+						responses.add(ToolMessage::UpdateHints);
+						let pivot_gizmo = self.tool_data.pivot_gizmo();
+						responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+						self.send_layout(responses, LayoutTarget::ToolOptions);
+					}
+				}
+				PathOptionsUpdate::TogglePivotGizmoType(state) => {
+					self.tool_data.pivot_gizmo.state.disabled = !state;
+					responses.add(ToolMessage::UpdateHints);
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					self.send_layout(responses, LayoutTarget::ToolOptions);
+				}
+
+				PathOptionsUpdate::TogglePivotPinned => {
+					self.tool_data.pivot_gizmo.pivot.pinned = !self.tool_data.pivot_gizmo.pivot.pinned;
+					responses.add(ToolMessage::UpdateHints);
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					self.send_layout(responses, LayoutTarget::ToolOptions);
+				}
 			},
 			ToolMessage::Path(PathToolMessage::ClosePath) => {
 				responses.add(DocumentMessage::AddTransaction);
-				tool_data.shape_editor.close_selected_path(tool_data.document, responses);
+				context.shape_editor.close_selected_path(context.document, responses);
 				responses.add(DocumentMessage::EndTransaction);
 				responses.add(OverlaysMessage::Draw);
 			}
 			ToolMessage::Path(PathToolMessage::SwapSelectedHandles) => {
-				if tool_data.shape_editor.handle_with_pair_selected(&tool_data.document.network_interface) {
-					tool_data.shape_editor.alternate_selected_handles(&tool_data.document.network_interface);
+				if context.shape_editor.handle_with_pair_selected(&context.document.network_interface) {
+					context.shape_editor.alternate_selected_handles(&context.document.network_interface);
 					responses.add(PathToolMessage::SelectedPointUpdated);
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::None });
 					responses.add(OverlaysMessage::Draw);
 				}
 			}
 			_ => {
-				self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
+				self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			}
 		}
 
@@ -443,6 +498,8 @@ struct PathToolData {
 	last_click_time: u64,
 	dragging_state: DraggingState,
 	angle: f64,
+	pivot_gizmo: PivotGizmo,
+	ordered_points: Vec<ManipulatorPointId>,
 	opposite_handle_position: Option<DVec2>,
 	last_clicked_point_was_selected: bool,
 	last_clicked_segment_was_selected: bool,
@@ -460,16 +517,17 @@ struct PathToolData {
 	started_drawing_from_inside: bool,
 	first_selected_with_single_click: bool,
 	stored_selection: Option<HashMap<LayerNodeIdentifier, SelectedLayerState>>,
+	last_drill_through_click_position: Option<DVec2>,
+	drill_through_cycle_index: usize,
+	drill_through_cycle_count: usize,
+	hovered_layers: Vec<LayerNodeIdentifier>,
+	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
 }
 
 impl PathToolData {
 	fn save_points_before_anchor_toggle(&mut self, points: Vec<ManipulatorPointId>) -> PathToolFsmState {
 		self.saved_points_before_anchor_select_toggle = points;
 		PathToolFsmState::Dragging(self.dragging_state)
-	}
-
-	fn remove_saved_points(&mut self) {
-		self.saved_points_before_anchor_select_toggle.clear();
 	}
 
 	pub fn selection_quad(&self, metadata: &DocumentMetadata) -> Quad {
@@ -520,6 +578,49 @@ impl PathToolData {
 		self.selection_status = selection_status;
 	}
 
+	fn remove_saved_points(&mut self) {
+		self.saved_points_before_anchor_select_toggle.clear();
+	}
+
+	fn reset_drill_through_cycle(&mut self) {
+		self.last_drill_through_click_position = None;
+		self.drill_through_cycle_index = 0;
+	}
+
+	fn next_drill_through_cycle(&mut self, position: DVec2) -> usize {
+		if self.last_drill_through_click_position.map_or(true, |last_pos| last_pos.distance(position) > DRILL_THROUGH_THRESHOLD) {
+			// New position, reset cycle
+			self.drill_through_cycle_index = 0;
+		} else {
+			// Same position, advance cycle
+			self.drill_through_cycle_index = (self.drill_through_cycle_index + 1) % self.drill_through_cycle_count.max(1);
+		}
+		self.last_drill_through_click_position = Some(position);
+		self.drill_through_cycle_index
+	}
+
+	fn peek_drill_through_index(&self) -> usize {
+		if self.drill_through_cycle_count == 0 {
+			0
+		} else {
+			(self.drill_through_cycle_index + 1) % self.drill_through_cycle_count.max(1)
+		}
+	}
+
+	fn has_drill_through_mouse_moved(&self, position: DVec2) -> bool {
+		self.last_drill_through_click_position.map_or(true, |last_pos| last_pos.distance(position) > DRILL_THROUGH_THRESHOLD)
+	}
+
+	fn set_ghost_outline(&mut self, shape_editor: &ShapeState, document: &DocumentMessageHandler) {
+		self.ghost_outline.clear();
+		for &layer in shape_editor.selected_shape_state.keys() {
+			// We probably need to collect here
+			let outline: Vec<ClickTargetType> = document.metadata().layer_with_free_points_outline(layer).cloned().collect();
+			let transform = document.metadata().transform_to_viewport(layer);
+			self.ghost_outline.push((outline, transform));
+		}
+	}
+
 	// TODO: This function is for basic point select mode. We definitely need to make a new one for the segment select mode.
 	#[allow(clippy::too_many_arguments)]
 	fn mouse_down(
@@ -562,6 +663,8 @@ impl PathToolData {
 			point_editing_mode,
 		) {
 			responses.add(DocumentMessage::StartTransaction);
+
+			self.set_ghost_outline(shape_editor, document);
 
 			self.last_clicked_point_was_selected = already_selected;
 
@@ -647,6 +750,8 @@ impl PathToolData {
 		else if let Some(segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
 			responses.add(DocumentMessage::StartTransaction);
 
+			self.set_ghost_outline(shape_editor, document);
+
 			if segment_editing_mode && !molding_in_segment_edit {
 				let layer = segment.layer();
 				let segment_id = segment.segment();
@@ -667,7 +772,6 @@ impl PathToolData {
 				}
 
 				self.drag_start_pos = input.mouse.position;
-
 				let viewport_to_document = document.metadata().document_to_viewport.inverse();
 				self.previous_mouse_position = viewport_to_document.transform_point2(input.mouse.position);
 
@@ -690,6 +794,8 @@ impl PathToolData {
 		else if let Some(layer) = document.click(input) {
 			if shape_editor.selected_shape_state.is_empty() {
 				self.first_selected_with_single_click = true;
+				// This ensures we don't need to double click a second time to get the drill through to work
+				self.last_drill_through_click_position = Some(input.mouse.position);
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 			}
 
@@ -718,7 +824,7 @@ impl PathToolData {
 			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 				continue;
 			};
-			let transform = document.metadata().transform_to_document(layer);
+			let transform = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
 
 			let mut layer_manipulators = HashSet::with_hasher(NoHashBuilder);
 			for point in state.selected_points() {
@@ -828,7 +934,7 @@ impl PathToolData {
 		let selected_handle = selection.selected_points().next()?.as_handle()?;
 		let handle_id = selected_handle.to_manipulator_point();
 
-		let layer_to_document = document.metadata().transform_to_document(*layer);
+		let layer_to_document = document.metadata().transform_to_document_if_feeds(*layer, &document.network_interface);
 		let vector_data = document.network_interface.compute_modified_vector(*layer)?;
 
 		let handle_position_local = selected_handle.to_manipulator_point().get_position(&vector_data)?;
@@ -870,7 +976,7 @@ impl PathToolData {
 				let anchor = handle_id.get_anchor(&vector_data);
 				let (angle, anchor_position) = calculate_adjacent_anchor_tangent(handle_id, anchor, adjacent_anchor, &vector_data);
 
-				let layer_to_document = document.metadata().transform_to_document(*layer);
+				let layer_to_document = document.metadata().transform_to_document_if_feeds(*layer, &document.network_interface);
 
 				self.adjacent_anchor_offset = handle_id
 					.get_anchor_position(&vector_data)
@@ -1017,7 +1123,7 @@ impl PathToolData {
 		}
 		// If already hovering on a segment, then recalculate its closest point
 		else if let Some(closest_segment) = &mut self.segment {
-			closest_segment.update_closest_point(document.metadata(), position);
+			closest_segment.update_closest_point(document.metadata(), &document.network_interface, position);
 
 			if closest_segment.too_far(position, SEGMENT_INSERTION_DISTANCE) {
 				self.segment = None;
@@ -1084,7 +1190,7 @@ impl PathToolData {
 		let layer = sliding_point_info.layer;
 
 		let Some(vector_data) = network_interface.compute_modified_vector(layer) else { return };
-		let transform = network_interface.document_metadata().transform_to_viewport(layer);
+		let transform = network_interface.document_metadata().transform_to_viewport_if_feeds(layer, network_interface);
 		let layer_pos = transform.inverse().transform_point2(target_position);
 
 		let segments = sliding_point_info.connected_segments;
@@ -1315,22 +1421,44 @@ impl PathToolData {
 			}
 		}
 	}
+
+	fn pivot_gizmo(&self) -> PivotGizmo {
+		self.pivot_gizmo.clone()
+	}
+
+	fn sync_history(&mut self, points: &[ManipulatorPointId]) {
+		self.ordered_points.retain(|layer| points.contains(layer));
+		self.ordered_points.extend(points.iter().find(|&layer| !self.ordered_points.contains(layer)));
+		self.pivot_gizmo.point = self.ordered_points.last().copied()
+	}
 }
 
 impl Fsm for PathToolFsmState {
 	type ToolData = PathToolData;
 	type ToolOptions = PathToolOptions;
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData { document, input, shape_editor, .. } = tool_action_data;
+	fn transition(
+		self,
+		event: ToolMessage,
+		tool_data: &mut Self::ToolData,
+		tool_action_data: &mut ToolActionMessageContext,
+		tool_options: &Self::ToolOptions,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
+		let ToolActionMessageContext { document, input, shape_editor, .. } = tool_action_data;
 
 		update_dynamic_hints(self, responses, shape_editor, document, tool_data, tool_options);
 
 		let ToolMessage::Path(event) = event else { return self };
+
+		// TODO(mTvare6): Remove once gizmos are implemented for path_tool
+		tool_data.pivot_gizmo.state.disabled = true;
+
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible
 				let target_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect();
+
 				shape_editor.set_selected_layers(target_layers);
 
 				responses.add(OverlaysMessage::Draw);
@@ -1343,9 +1471,18 @@ impl Fsm for PathToolFsmState {
 				shape_editor.update_selected_anchors_status(display_anchors);
 				shape_editor.update_selected_handles_status(display_handles);
 
+				let new_points = shape_editor.selected_points().copied().collect::<Vec<_>>();
+				tool_data.sync_history(&new_points);
+
 				self
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
+				if matches!(self, Self::Dragging(_)) {
+					for (outline, transform) in &tool_data.ghost_outline {
+						overlay_context.outline(outline.iter(), *transform, Some(COLOR_OVERLAY_GRAY));
+					}
+				}
+
 				// TODO: find the segment ids of which the selected points are a part of
 
 				match tool_options.path_overlay_mode {
@@ -1412,7 +1549,7 @@ impl Fsm for PathToolFsmState {
 
 						if let Some(closest_segment) = &tool_data.segment {
 							if tool_options.path_editing_mode.segment_editing_mode {
-								let transform = document.metadata().transform_to_viewport(closest_segment.layer());
+								let transform = document.metadata().transform_to_viewport_if_feeds(closest_segment.layer(), &document.network_interface);
 
 								overlay_context.outline_overlay_bezier(closest_segment.bezier(), transform);
 
@@ -1430,7 +1567,7 @@ impl Fsm for PathToolFsmState {
 								}
 							} else {
 								let perp = closest_segment.calculate_perp(document);
-								let point = closest_segment.closest_point(document.metadata());
+								let point = closest_segment.closest_point(document.metadata(), &document.network_interface);
 
 								// Draw an X on the segment
 								if tool_data.delete_segment_pressed {
@@ -1446,6 +1583,34 @@ impl Fsm for PathToolFsmState {
 									overlay_context.line(point - perp * SEGMENT_OVERLAY_SIZE, point + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
 								}
 							}
+						}
+
+						// Show outlines for hovered layers with appropriate highlighting
+						let currently_selected_layer = document.network_interface.selected_nodes().selected_layers(document.metadata()).next();
+						let next_selected_index = tool_data.peek_drill_through_index();
+						let mouse_has_moved = tool_data.has_drill_through_mouse_moved(input.mouse.position);
+
+						for (index, &hovered_layer) in tool_data.hovered_layers.iter().enumerate() {
+							// Skip already highlighted selected layer
+							if Some(hovered_layer) == currently_selected_layer {
+								continue;
+							}
+
+							let layer_to_viewport = document.metadata().transform_to_viewport(hovered_layer);
+							let outline = document.metadata().layer_with_free_points_outline(hovered_layer);
+
+							// Determine highlight color based on drill-through state
+							let color = match (index, mouse_has_moved) {
+								// If the layer is the next selected one and mouse has not moved, highlight it blue
+								(i, false) if i == next_selected_index => COLOR_OVERLAY_BLUE,
+								// If the layer is the first hovered one and mouse has moved, highlight it blue
+								(0, true) => COLOR_OVERLAY_BLUE,
+								// Otherwise, use gray
+								_ => COLOR_OVERLAY_GRAY,
+							};
+
+							// TODO: Make this draw underneath all other overlays
+							overlay_context.outline(outline, layer_to_viewport, Some(color));
 						}
 					}
 					Self::Drawing { selection_shape } => {
@@ -1628,9 +1793,9 @@ impl Fsm for PathToolFsmState {
 							break_molding,
 							tool_data.temporary_adjacent_handles_while_molding,
 						);
-					}
 
-					return PathToolFsmState::Dragging(tool_data.dragging_state);
+						return PathToolFsmState::Dragging(tool_data.dragging_state);
+					}
 				}
 
 				let anchor_and_handle_toggled = input.keyboard.get(move_anchor_with_handles as usize);
@@ -1710,15 +1875,26 @@ impl Fsm for PathToolFsmState {
 			}
 			(PathToolFsmState::Ready, PathToolMessage::PointerMove { delete_segment, .. }) => {
 				tool_data.delete_segment_pressed = input.keyboard.get(delete_segment as usize);
-
-				if !tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty() {
-					tool_data.saved_points_before_anchor_convert_smooth_sharp.clear();
-				}
-
-				if tool_data.adjacent_anchor_offset.is_some() {
-					tool_data.adjacent_anchor_offset = None;
-				}
+				tool_data.saved_points_before_anchor_convert_smooth_sharp.clear();
+				tool_data.adjacent_anchor_offset = None;
 				tool_data.stored_selection = None;
+
+				if tool_data.has_drill_through_mouse_moved(input.mouse.position) {
+					tool_data.reset_drill_through_cycle();
+				}
+
+				// When moving the cursor around we want to update the hovered layers
+				let new_hovered_layers: Vec<LayerNodeIdentifier> = document
+					.click_list_no_parents(input)
+					.filter(|&layer| {
+						// Filter out artboards and parent holders, and already selected layers
+						!document.network_interface.is_artboard(&layer.to_node(), &[])
+					})
+					.collect();
+
+				if tool_data.hovered_layers != new_hovered_layers {
+					tool_data.hovered_layers = new_hovered_layers;
+				}
 
 				responses.add(OverlaysMessage::Draw);
 
@@ -1920,6 +2096,7 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::DragStop { extend_selection, .. }) => {
+				tool_data.ghost_outline.clear();
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let drag_occurred = tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD;
 
@@ -2063,6 +2240,20 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::DoubleClick { extend_selection, shrink_selection }) => {
 				// Double-clicked on a point (flip smooth/sharp behavior)
 				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD);
+
+				let mut get_drill_through_layer = || -> Option<LayerNodeIdentifier> {
+					let drill_through_layers = document.click_list_no_parents(input).collect::<Vec<LayerNodeIdentifier>>();
+					if drill_through_layers.is_empty() {
+						tool_data.reset_drill_through_cycle();
+						None
+					} else {
+						tool_data.drill_through_cycle_count = drill_through_layers.len();
+						let cycle_index = tool_data.next_drill_through_cycle(input.mouse.position);
+						let layer = drill_through_layers.get(cycle_index);
+						if cycle_index == 0 { drill_through_layers.first().copied() } else { layer.copied() }
+					}
+				};
+
 				if nearest_point.is_some() {
 					// Flip the selected point between smooth and sharp
 					if !tool_data.double_click_handled && tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
@@ -2079,17 +2270,17 @@ impl Fsm for PathToolFsmState {
 					return PathToolFsmState::Ready;
 				}
 				// Double-clicked on a filled region
-				else if let Some(layer) = document.click(input) {
+				else if let Some(layer) = &get_drill_through_layer() {
 					let extend_selection = input.keyboard.get(extend_selection as usize);
 					let shrink_selection = input.keyboard.get(shrink_selection as usize);
 
-					if shape_editor.is_selected_layer(layer) {
+					if shape_editor.is_selected_layer(*layer) {
 						if extend_selection && !tool_data.first_selected_with_single_click {
 							responses.add(NodeGraphMessage::SelectedNodesRemove { nodes: vec![layer.to_node()] });
 
 							if let Some(selection) = &tool_data.stored_selection {
 								let mut selection = selection.clone();
-								selection.remove(&layer);
+								selection.remove(layer);
 								shape_editor.selected_shape_state = selection;
 								tool_data.stored_selection = None;
 							}
@@ -2101,19 +2292,19 @@ impl Fsm for PathToolFsmState {
 								tool_data.stored_selection = None;
 							}
 
-							let state = shape_editor.selected_shape_state.get_mut(&layer).expect("No state for selected layer");
+							let state = shape_editor.selected_shape_state.get_mut(layer).expect("No state for selected layer");
 							state.deselect_all_points_in_layer();
 							state.deselect_all_segments_in_layer();
 						} else if !tool_data.first_selected_with_single_click {
 							// Select according to the selected editing mode
 							let point_editing_mode = tool_options.path_editing_mode.point_editing_mode;
 							let segment_editing_mode = tool_options.path_editing_mode.segment_editing_mode;
-							shape_editor.select_connected(document, layer, input.mouse.position, point_editing_mode, segment_editing_mode);
+							shape_editor.select_connected(document, *layer, input.mouse.position, point_editing_mode, segment_editing_mode);
 
 							// Select all the other layers back again
 							if let Some(selection) = &tool_data.stored_selection {
 								let mut selection = selection.clone();
-								selection.remove(&layer);
+								selection.remove(layer);
 
 								for (layer, state) in selection {
 									shape_editor.selected_shape_state.insert(layer, state);
@@ -2208,6 +2399,18 @@ impl Fsm for PathToolFsmState {
 				responses.add(DocumentMessage::EndTransaction);
 				PathToolFsmState::Ready
 			}
+			(_, PathToolMessage::SetPivot { position }) => {
+				responses.add(DocumentMessage::StartTransaction);
+
+				tool_data.pivot_gizmo.pivot.last_non_none_reference_point = position;
+				let position: Option<DVec2> = position.into();
+				tool_data.pivot_gizmo.pivot.set_normalized_position(position.unwrap());
+				let pivot_gizmo = tool_data.pivot_gizmo();
+				responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+
+				self
+			}
 			(_, _) => PathToolFsmState::Ready,
 		}
 	}
@@ -2280,7 +2483,10 @@ fn get_selection_status(network_interface: &NodeNetworkInterface, shape_state: &
 			return SelectionStatus::None;
 		};
 
-		let coordinates = network_interface.document_metadata().transform_to_document(layer).transform_point2(local_position);
+		let coordinates = network_interface
+			.document_metadata()
+			.transform_to_document_if_feeds(layer, network_interface)
+			.transform_point2(local_position);
 		let manipulator_angle = if vector_data.colinear(point) { ManipulatorAngle::Colinear } else { ManipulatorAngle::Free };
 
 		return SelectionStatus::One(SingleSelectedPoint {

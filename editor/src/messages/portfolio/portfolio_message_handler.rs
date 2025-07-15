@@ -9,8 +9,9 @@ use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::DocumentMessageData;
+use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
@@ -25,7 +26,8 @@ use graphene_std::renderer::Quad;
 use graphene_std::text::Font;
 use std::vec;
 
-pub struct PortfolioMessageData<'a> {
+#[derive(ExtractField)]
+pub struct PortfolioMessageContext<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub current_tool: &'a ToolType,
@@ -35,7 +37,7 @@ pub struct PortfolioMessageData<'a> {
 	pub animation: &'a AnimationMessageHandler,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, ExtractField)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
@@ -52,9 +54,10 @@ pub struct PortfolioMessageHandler {
 	pub reset_node_definitions_on_open: bool,
 }
 
-impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
-	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, data: PortfolioMessageData) {
-		let PortfolioMessageData {
+#[message_handler_data]
+impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for PortfolioMessageHandler {
+	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, context: PortfolioMessageContext) {
+		let PortfolioMessageContext {
 			ipp,
 			preferences,
 			current_tool,
@@ -62,7 +65,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			reset_node_definitions_on_open,
 			timing_information,
 			animation,
-		} = data;
+		} = context;
 
 		match message {
 			// Sub-messages
@@ -102,7 +105,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
 					if let Some(document) = self.documents.get_mut(&document_id) {
-						let document_inputs = DocumentMessageData {
+						let document_inputs = DocumentMessageContext {
 							document_id,
 							ipp,
 							persistent_data: &self.persistent_data,
@@ -117,9 +120,26 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			}
 
 			// Messages
+			PortfolioMessage::Init => {
+				// Load persistent data from the browser database
+				responses.add(FrontendMessage::TriggerLoadFirstAutoSaveDocument);
+				responses.add(FrontendMessage::TriggerLoadPreferences);
+
+				// Display the menu bar at the top of the window
+				responses.add(MenuBarMessage::SendLayout);
+
+				// Send the information for tooltips and categories for each node/input.
+				responses.add(FrontendMessage::SendUIMetadata {
+					node_descriptions: document_node_definitions::collect_node_descriptions(),
+					node_types: document_node_definitions::collect_node_types(),
+				});
+
+				// Finish loading persistent data from the browser database
+				responses.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
+			}
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {
-					let document_inputs = DocumentMessageData {
+					let document_inputs = DocumentMessageContext {
 						document_id,
 						ipp,
 						persistent_data: &self.persistent_data,
@@ -970,7 +990,9 @@ impl PortfolioMessageHandler {
 				/text>"#
 				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
 				.to_string();
-			responses.add(Message::EndBuffer(graphene_std::renderer::RenderMetadata::default()));
+			responses.add(Message::EndBuffer {
+				render_metadata: graphene_std::renderer::RenderMetadata::default(),
+			});
 			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
 		}
 		result

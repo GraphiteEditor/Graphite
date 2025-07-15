@@ -403,7 +403,7 @@ mod test {
 					blend_mode: BlendMode::Normal,
 				},
 			}],
-			BrushCache::new_proto(),
+			BrushCache::default(),
 		)
 		.await;
 		assert_eq!(image.instance_ref_iter().next().unwrap().instance.width, 20);

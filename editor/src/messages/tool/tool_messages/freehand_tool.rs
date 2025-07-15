@@ -13,7 +13,7 @@ use graphene_std::Color;
 use graphene_std::vector::VectorModificationType;
 use graphene_std::vector::{PointId, SegmentId};
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct FreehandTool {
 	fsm_state: FreehandToolFsmState,
 	data: FreehandToolData,
@@ -116,10 +116,11 @@ impl LayoutHolder for FreehandTool {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FreehandTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
+#[message_handler_data]
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for FreehandTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Freehand(FreehandToolMessage::UpdateOptions(action)) = message else {
-			self.fsm_state.process_event(message, &mut self.data, tool_data, &self.options, responses, true);
+			self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, true);
 			return;
 		};
 		match action {
@@ -183,8 +184,15 @@ impl Fsm for FreehandToolFsmState {
 	type ToolData = FreehandToolData;
 	type ToolOptions = FreehandOptions;
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData {
+	fn transition(
+		self,
+		event: ToolMessage,
+		tool_data: &mut Self::ToolData,
+		tool_action_data: &mut ToolActionMessageContext,
+		tool_options: &Self::ToolOptions,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
+		let ToolActionMessageContext {
 			document,
 			global_tool_data,
 			input,

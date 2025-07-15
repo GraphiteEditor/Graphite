@@ -21,7 +21,7 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 		};
 	}
 
-	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
+	let node_registry = NODE_REGISTRY.lock().unwrap();
 	'outer: for (id, metadata) in NODE_METADATA.lock().unwrap().iter() {
 		for node in custom.iter() {
 			let DocumentNodeDefinition {
@@ -32,7 +32,7 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 				..
 			} = node;
 			match implementation {
-				DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) if name == id => continue 'outer,
+				DocumentNodeImplementation::ProtoNode(name) if name == id => continue 'outer,
 				_ => (),
 			}
 		}

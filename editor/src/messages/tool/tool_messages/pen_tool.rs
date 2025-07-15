@@ -17,7 +17,7 @@ use graphene_std::Color;
 use graphene_std::vector::{HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, StrokeId, VectorData};
 use graphene_std::vector::{PointId, VectorModificationType};
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct PenTool {
 	fsm_state: PenToolFsmState,
 	tool_data: PenToolData,
@@ -186,10 +186,11 @@ impl LayoutHolder for PenTool {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
+#[message_handler_data]
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Pen(PenToolMessage::UpdateOptions(action)) = message else {
-			self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
+			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			return;
 		};
 
@@ -1402,8 +1403,15 @@ impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
 	type ToolOptions = PenOptions;
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData {
+	fn transition(
+		self,
+		event: ToolMessage,
+		tool_data: &mut Self::ToolData,
+		tool_action_data: &mut ToolActionMessageContext,
+		tool_options: &Self::ToolOptions,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
+		let ToolActionMessageContext {
 			document,
 			global_tool_data,
 			input,

@@ -5,7 +5,7 @@ use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use graph_craft::wasm_application_io::EditorPreferences;
 
-#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type, ExtractField)]
 pub struct PreferencesMessageHandler {
 	pub selection_mode: SelectionMode,
 	pub zoom_with_scroll: bool,
@@ -44,8 +44,9 @@ impl Default for PreferencesMessageHandler {
 	}
 }
 
+#[message_handler_data]
 impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
-	fn process_message(&mut self, message: PreferencesMessage, responses: &mut VecDeque<Message>, _data: ()) {
+	fn process_message(&mut self, message: PreferencesMessage, responses: &mut VecDeque<Message>, _: ()) {
 		match message {
 			// Management messages
 			PreferencesMessage::Load { preferences } => {

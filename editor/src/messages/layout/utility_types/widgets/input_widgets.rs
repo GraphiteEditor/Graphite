@@ -474,6 +474,8 @@ pub struct ReferencePointInput {
 
 	pub disabled: bool,
 
+	pub tooltip: String,
+
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
