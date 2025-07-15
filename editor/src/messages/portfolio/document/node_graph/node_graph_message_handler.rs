@@ -1847,24 +1847,33 @@ impl NodeGraphMessageHandler {
 						_ => None,
 					};
 
+					let single_layer_selected = selection_includes_layers && !has_multiple_selection;
+
 					let mut node_chooser = NodeCatalog::new();
 					node_chooser.intial_search = compatible_type.unwrap_or("".to_string());
 
 					let node_chooser = node_chooser
 						.on_update(move |node_type| {
-							let node_id = NodeId::new();
-
-							Message::Batched {
-								messages: Box::new([
-									NodeGraphMessage::CreateNodeFromContextMenu {
-										node_id: Some(node_id),
-										node_type: node_type.clone(),
-										xy: None,
-										add_transaction: true,
-									}
-									.into(),
-									NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }.into(),
-								]),
+							if let (true, Some(layer)) = (single_layer_selected, selected_layer) {
+								NodeGraphMessage::CreateNodeInLayerWithTransaction {
+									node_type: node_type.clone(),
+									layer: LayerNodeIdentifier::new_unchecked(layer.to_node()),
+								}
+								.into()
+							} else {
+								let node_id = NodeId::new();
+								Message::Batched {
+									messages: Box::new([
+										NodeGraphMessage::CreateNodeFromContextMenu {
+											node_id: Some(node_id),
+											node_type: node_type.clone(),
+											xy: None,
+											add_transaction: true,
+										}
+										.into(),
+										NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }.into(),
+									]),
+								}
 							}
 						})
 						.widget_holder();
