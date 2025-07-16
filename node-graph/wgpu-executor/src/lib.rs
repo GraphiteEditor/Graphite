@@ -8,7 +8,10 @@ use graphene_application_io::{ApplicationIo, EditorApi, SurfaceHandle};
 use graphene_core::{Color, Ctx};
 pub use graphene_svg_renderer::RenderContext;
 use std::sync::Arc;
+use vello::Error;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
+use wgpu::TextureFormat;
+use wgpu::util::TextureBlitter;
 use wgpu::{Origin3d, SurfaceConfiguration, TextureAspect};
 
 #[derive(dyn_any::DynAny)]
@@ -40,6 +43,9 @@ impl graphene_application_io::Size for Surface {
 
 pub struct Surface {
 	pub inner: wgpu::Surface<'static>,
+	pub target_texture: wgpu::Texture,
+	pub target_view: wgpu::TextureView,
+	pub blitter: wgpu::util::TextureBlitter,
 	resolution: UVec2,
 }
 #[cfg(target_arch = "wasm32")]
@@ -53,9 +59,9 @@ unsafe impl StaticType for Surface {
 
 impl WgpuExecutor {
 	pub async fn render_vello_scene(&self, scene: &Scene, surface: &WgpuSurface, width: u32, height: u32, context: &RenderContext, background: Color) -> Result<()> {
-		let surface = &surface.surface.inner;
-		let surface_caps = surface.get_capabilities(&self.context.adapter);
-		surface.configure(
+		let surface_inner = &surface.surface.inner;
+		let surface_caps = surface_inner.get_capabilities(&self.context.adapter);
+		surface_inner.configure(
 			&self.context.device,
 			&SurfaceConfiguration {
 				usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::STORAGE_BINDING,
@@ -68,8 +74,6 @@ impl WgpuExecutor {
 				desired_maximum_frame_latency: 2,
 			},
 		);
-		let surface_texture = surface.get_current_texture()?;
-
 		let [r, g, b, _] = background.to_rgba8_srgb();
 		let render_params = RenderParams {
 			// We are using an explicit opaque color here to eliminate the alpha premultiplication step
@@ -83,20 +87,32 @@ impl WgpuExecutor {
 		{
 			let mut renderer = self.vello_renderer.lock().await;
 			for (id, texture) in context.resource_overrides.iter() {
-				let texture_view = wgpu::ImageCopyTextureBase {
-					texture: texture.clone(),
+				let texture = texture.clone();
+				let texture_view = wgpu::TexelCopyTextureInfoBase {
+					texture,
 					mip_level: 0,
 					origin: Origin3d::ZERO,
 					aspect: TextureAspect::All,
 				};
 				renderer.override_image(
-					&vello::peniko::Image::new(vello::peniko::Blob::from_raw_parts(Arc::new(vec![]), *id), vello::peniko::Format::Rgba8, 0, 0),
+					&vello::peniko::Image::new(vello::peniko::Blob::from_raw_parts(Arc::new(vec![]), *id), vello::peniko::ImageFormat::Rgba8, 0, 0),
 					Some(texture_view),
 				);
 			}
-			renderer.render_to_surface(&self.context.device, &self.context.queue, scene, &surface_texture, &render_params).unwrap();
+			renderer
+				.render_to_texture(&self.context.device, &self.context.queue, scene, &surface.surface.target_view, &render_params)
+				.unwrap();
 		}
 
+		let surface_texture = surface_inner.get_current_texture()?;
+		let mut encoder = self.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Surface Blit") });
+		surface.surface.blitter.copy(
+			&self.context.device,
+			&mut encoder,
+			&surface.surface.target_view,
+			&surface_texture.texture.create_view(&wgpu::TextureViewDescriptor::default()),
+		);
+		self.context.queue.submit([encoder.finish()]);
 		surface_texture.present();
 
 		Ok(())
@@ -105,12 +121,39 @@ impl WgpuExecutor {
 	#[cfg(target_arch = "wasm32")]
 	pub fn create_surface(&self, canvas: graphene_application_io::WasmSurfaceHandle) -> Result<SurfaceHandle<Surface>> {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
+		let size = UVec2::ZERO;
+
+		let capabilities = surface.get_capabilities(&self.context.adapter);
+		let format = capabilities
+			.formats
+			.into_iter()
+			.find(|it| matches!(it, TextureFormat::Rgba8Unorm | TextureFormat::Bgra8Unorm))
+			.ok_or(Error::UnsupportedSurfaceFormat)?;
+		let target_texture = self.context.device.create_texture(&wgpu::TextureDescriptor {
+			label: None,
+			size: wgpu::Extent3d {
+				width: size.x,
+				height: size.y,
+				depth_or_array_layers: 1,
+			},
+			mip_level_count: 1,
+			sample_count: 1,
+			dimension: wgpu::TextureDimension::D2,
+			usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+			format: TextureFormat::Rgba8Unorm,
+			view_formats: &[],
+		});
+		let target_view = target_texture.create_view(&wgpu::TextureViewDescriptor::default());
+		let blitter = TextureBlitter::new(&self.context.device, format);
 
 		Ok(SurfaceHandle {
 			window_id: canvas.window_id,
 			surface: Surface {
 				inner: surface,
-				resolution: UVec2::ZERO,
+				resolution: size,
+				blitter,
+				target_texture,
+				target_view,
 			},
 		})
 	}
@@ -120,9 +163,38 @@ impl WgpuExecutor {
 		let resolution = UVec2::new(size.width, size.height);
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Window(Box::new(window.surface)))?;
 
+		let capabilities = surface.get_capabilities(&self.context.adapter);
+		let format = capabilities
+			.formats
+			.into_iter()
+			.find(|it| matches!(it, TextureFormat::Rgba8Unorm | TextureFormat::Bgra8Unorm))
+			.ok_or(Error::UnsupportedSurfaceFormat)?;
+		let target_texture = self.context.device.create_texture(&wgpu::TextureDescriptor {
+			label: None,
+			size: wgpu::Extent3d {
+				width: size.width,
+				height: size.height,
+				depth_or_array_layers: 1,
+			},
+			mip_level_count: 1,
+			sample_count: 1,
+			dimension: wgpu::TextureDimension::D2,
+			usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+			format: TextureFormat::Rgba8Unorm,
+			view_formats: &[],
+		});
+		let target_view = target_texture.create_view(&wgpu::TextureViewDescriptor::default());
+		let blitter = TextureBlitter::new(&self.context.device, format);
+
 		Ok(SurfaceHandle {
 			window_id: window.window_id,
-			surface: Surface { inner: surface, resolution },
+			surface: Surface {
+				inner: surface,
+				resolution,
+				target_view,
+				target_texture,
+				blitter,
+			},
 		})
 	}
 }
@@ -134,7 +206,8 @@ impl WgpuExecutor {
 		let vello_renderer = Renderer::new(
 			&context.device,
 			RendererOptions {
-				surface_format: Some(wgpu::TextureFormat::Rgba8Unorm),
+				// surface_format: Some(wgpu::TextureFormat::Rgba8Unorm),
+				pipeline_cache: None,
 				use_cpu: false,
 				antialiasing_support: AaSupport::all(),
 				num_init_threads: std::num::NonZeroUsize::new(1),
