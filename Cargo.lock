@@ -7273,7 +7273,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 [[package]]
 name = "vello"
 version = "0.3.0"
-source = "git+https://github.com/mTvare6/vello.git?branch=luminance-clip#8af3207bd009da4e893b29f199985924e4a0b696"
+source = "git+https://github.com/mTvare6/vello.git?branch=luminance-clip#0e60fee95c8a7c53cc49e4a8a79a9130496772b5"
 dependencies = [
  "bytemuck",
  "futures-intrusive",
@@ -7291,7 +7291,7 @@ dependencies = [
 [[package]]
 name = "vello_encoding"
 version = "0.3.0"
-source = "git+https://github.com/mTvare6/vello.git?branch=luminance-clip#8af3207bd009da4e893b29f199985924e4a0b696"
+source = "git+https://github.com/mTvare6/vello.git?branch=luminance-clip#0e60fee95c8a7c53cc49e4a8a79a9130496772b5"
 dependencies = [
  "bytemuck",
  "guillotiere",
@@ -7303,7 +7303,7 @@ dependencies = [
 [[package]]
 name = "vello_shaders"
 version = "0.3.0"
-source = "git+https://github.com/mTvare6/vello.git?branch=luminance-clip#8af3207bd009da4e893b29f199985924e4a0b696"
+source = "git+https://github.com/mTvare6/vello.git?branch=luminance-clip#0e60fee95c8a7c53cc49e4a8a79a9130496772b5"
 dependencies = [
  "bytemuck",
  "naga",
