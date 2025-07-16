@@ -1286,6 +1286,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Disconnect all wires from the selected nodes
 				for &node_id in &selected_node_ids {
+					let previous_first_connection = network_interface.upstream_output_connector(&InputConnector::node(node_id, 0), selection_network_path);
+
 					// Disconnect input wires
 					for input_index in 0..network_interface.number_of_inputs(&node_id, selection_network_path) {
 						let input_connector = InputConnector::node(node_id, input_index);
@@ -1301,6 +1303,18 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 								for &input_connector in downstream_connections {
 									responses.add(NodeGraphMessage::DisconnectInput { input_connector });
 								}
+							}
+						}
+						if let Some(previous_first_connection) = previous_first_connection {
+							let Some(downstream_connections_to_first_output) = outward_wires.get(&OutputConnector::node(node_id, 0)) else {
+								log::error!("Could not get downstream_connections_to_first_output in shake node");
+								return;
+							};
+							for downstream_connections_to_first_output in downstream_connections_to_first_output {
+								responses.add(NodeGraphMessage::CreateWire {
+									output_connector: previous_first_connection,
+									input_connector: *downstream_connections_to_first_output,
+								});
 							}
 						}
 					}
