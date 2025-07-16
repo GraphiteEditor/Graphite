@@ -5,12 +5,13 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::{overlays::utility_types::OverlayContext, utility_types::network_interface::InputConnector};
 use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage};
 use crate::messages::prelude::{FrontendMessage, Responses};
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_arc_id};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_arc_id, get_stroke_width};
 use crate::messages::tool::common_functionality::shapes::shape_utility::{extract_arc_parameters, extract_circle_radius};
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use std::collections::VecDeque;
+use std::f64::consts::FRAC_PI_2;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub enum RadiusHandleState {
@@ -47,6 +48,18 @@ impl RadiusHandle {
 		self.handle_state = state;
 	}
 
+	pub fn check_if_inside_dash_lines(angle: f64, mouse_position: DVec2, viewport: DAffine2, radius: f64, document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -> bool {
+		let center = viewport.transform_point2(DVec2::ZERO);
+		if let Some(stroke_width) = get_stroke_width(layer, &document.network_interface) {
+			let layer_mouse = viewport.inverse().transform_point2(mouse_position);
+			let spacing = 3. * stroke_width;
+			layer_mouse.distance(DVec2::ZERO) >= (radius - spacing) && layer_mouse.distance(DVec2::ZERO) <= (radius + spacing)
+		} else {
+			let point_position = viewport.transform_point2(calculate_circle_point_position(angle, radius.abs()));
+			mouse_position.distance(center) <= point_position.distance(center)
+		}
+	}
+
 	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, mouse_position: DVec2, responses: &mut VecDeque<Message>) {
 		match &self.handle_state {
 			RadiusHandleState::Inactive => {
@@ -54,18 +67,15 @@ impl RadiusHandle {
 					return;
 				};
 				let viewport = document.metadata().transform_to_viewport(layer);
-
 				let angle = viewport.inverse().transform_point2(mouse_position).angle_to(DVec2::X);
-
-				let point_position = viewport.transform_point2(get_circle_point_position(angle, radius.abs()));
+				let point_position = viewport.transform_point2(calculate_circle_point_position(angle, radius.abs()));
 				let center = viewport.transform_point2(DVec2::ZERO);
 
-				log::info!("reaching here");
 				if point_position.distance(center) < GIZMO_HIDE_THRESHOLD {
 					return;
 				}
 
-				if mouse_position.distance(center) <= point_position.distance(center) {
+				if Self::check_if_inside_dash_lines(angle, mouse_position, viewport, radius.abs(), document, layer) {
 					self.layer = Some(layer);
 					self.initial_radius = radius;
 					self.previous_mouse_position = mouse_position;
@@ -89,9 +99,35 @@ impl RadiusHandle {
 					return;
 				};
 				let viewport = document.metadata().transform_to_viewport(layer);
+				let center = viewport.transform_point2(DVec2::ZERO);
 
-				overlay_context.dashed_circle(DVec2::ZERO, radius.abs(), None, None, Some(20.), Some(4.), Some(0.5), Some(viewport));
-				// overlay_context.dashed_line(center, point_position, None, None, Some(4.), Some(4.), Some(0.5));
+				let start_point = viewport.transform_point2(calculate_circle_point_position(0., radius)).distance(center);
+				let end_point = viewport.transform_point2(calculate_circle_point_position(FRAC_PI_2, radius)).distance(center);
+
+				if let Some(stroke_width) = get_stroke_width(layer, &document.network_interface) {
+					let threshold = 15.0;
+					let min_radius = start_point.min(end_point);
+
+					let extra_spacing = if min_radius < threshold {
+						10.0 * (min_radius / threshold) // smoothly scales from 0 → 10
+					} else {
+						10.0
+					};
+
+					let spacing = stroke_width + extra_spacing;
+					let smaller_radius_x = (start_point - spacing).abs();
+					let smaller_radius_y = (end_point - spacing).abs();
+
+					let larger_radius_x = (start_point + spacing).abs();
+					let larger_radius_y = (end_point + spacing).abs();
+
+					overlay_context.dashed_ellipse(center, smaller_radius_x, smaller_radius_y, None, None, None, None, None, None, Some(4.), Some(4.), Some(0.5));
+					overlay_context.dashed_ellipse(center, larger_radius_x, larger_radius_y, None, None, None, None, None, None, Some(4.), Some(4.), Some(0.5));
+
+					return;
+				}
+
+				overlay_context.dashed_ellipse(center, start_point, end_point, None, None, None, None, None, None, Some(4.), Some(4.), Some(0.5));
 			}
 		}
 	}
@@ -124,6 +160,6 @@ impl RadiusHandle {
 	}
 }
 
-fn get_circle_point_position(theta: f64, radius: f64) -> DVec2 {
+fn calculate_circle_point_position(theta: f64, radius: f64) -> DVec2 {
 	DVec2::new(radius * theta.cos(), -radius * theta.sin())
 }
