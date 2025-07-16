@@ -97,6 +97,7 @@ pub enum NodeGraphMessage {
 	PointerOutsideViewport {
 		shift: Key,
 	},
+	ShakeNode,
 	RemoveImport {
 		import_index: usize,
 	},

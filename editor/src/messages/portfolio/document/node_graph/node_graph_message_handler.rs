@@ -1270,6 +1270,45 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.auto_panning.stop(&messages, responses);
 				}
 			}
+			NodeGraphMessage::ShakeNode => {
+				// TODO: This does not have the desired behavior yet, this is just a placeholder
+
+				// Only shake if dragging a node
+				if self.drag_start.is_none() {
+					return;
+				}
+
+				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
+					log::error!("Could not get selected nodes in ShakeNode");
+					return;
+				};
+				let selected_node_ids: Vec<_> = selected_nodes.selected_nodes().cloned().collect();
+
+				// Disconnect all wires from the selected nodes
+				for &node_id in &selected_node_ids {
+					// Disconnect input wires
+					for input_index in 0..network_interface.number_of_inputs(&node_id, selection_network_path) {
+						let input_connector = InputConnector::node(node_id, input_index);
+						responses.add(NodeGraphMessage::DisconnectInput { input_connector });
+					}
+
+					// Disconnect output wires
+					let number_of_outputs = network_interface.number_of_outputs(&node_id, selection_network_path);
+					if let Some(outward_wires) = network_interface.outward_wires(selection_network_path) {
+						for output_index in 0..number_of_outputs {
+							let output_connector = OutputConnector::node(node_id, output_index);
+							if let Some(downstream_connections) = outward_wires.get(&output_connector) {
+								for &input_connector in downstream_connections {
+									responses.add(NodeGraphMessage::DisconnectInput { input_connector });
+								}
+							}
+						}
+					}
+				}
+
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SendGraph);
+			}
 			NodeGraphMessage::RemoveImport { import_index: usize } => {
 				network_interface.remove_import(usize, selection_network_path);
 				responses.add(NodeGraphMessage::SendGraph);
@@ -1782,6 +1821,12 @@ impl NodeGraphMessageHandler {
 				ToggleSelectedLocked,
 				ToggleSelectedVisibility,
 				ShiftSelectedNodes,
+			));
+		}
+
+		if self.drag_start.is_some() {
+			common.extend(actions!(NodeGraphMessageDiscriminant;
+				ShakeNode,
 			));
 		}
 
