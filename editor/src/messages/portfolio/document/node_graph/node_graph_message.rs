@@ -81,6 +81,9 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		parent: LayerNodeIdentifier,
 	},
+	SetChainPosition {
+		node_id: NodeId,
+	},
 	PasteNodes {
 		serialized_nodes: String,
 	},
