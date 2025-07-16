@@ -38,6 +38,11 @@ impl ShapeGizmoHandler for ArcGizmoHandler {
 	}
 
 	fn handle_click(&mut self) {
+		if self.sweep_angle_gizmo.hovered() && self.arc_radius_handle.hovered() {
+			self.sweep_angle_gizmo.update_state(SweepAngleGizmoState::Dragging);
+			self.arc_radius_handle.update_state(RadiusHandleState::Inactive);
+			return;
+		}
 		if self.sweep_angle_gizmo.hovered() {
 			self.sweep_angle_gizmo.update_state(SweepAngleGizmoState::Dragging);
 		}
@@ -84,6 +89,10 @@ impl ShapeGizmoHandler for ArcGizmoHandler {
 		mouse_position: DVec2,
 		overlay_context: &mut crate::messages::portfolio::document::overlays::utility_types::OverlayContext,
 	) {
+		if self.sweep_angle_gizmo.hovered() && self.arc_radius_handle.hovered() {
+			self.sweep_angle_gizmo.overlays(selected_shape_layers, document, input, mouse_position, overlay_context);
+			return;
+		}
 		self.sweep_angle_gizmo.overlays(selected_shape_layers, document, input, mouse_position, overlay_context);
 		self.arc_radius_handle.overlays(document, overlay_context);
 
