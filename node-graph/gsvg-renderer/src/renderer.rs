@@ -935,6 +935,7 @@ impl GraphicElementRendered for ArtboardGroupTable {
 
 impl GraphicElementRendered for RasterDataTable<CPU> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		use graphene_core::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 		for instance in self.instance_ref_iter() {
 			let transform = *instance.transform;
 
@@ -943,39 +944,63 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 				return;
 			}
 
-			let base64_string = image.base64_string.clone().unwrap_or_else(|| {
-				use base64::Engine;
+			match render_params.view_mode {
+				ViewMode::Outline => {
+					render.leaf_tag("rect", |attributes| {
+						attributes.push("x", "0");
+						attributes.push("y", "0");
+						attributes.push("width", "1");
+						attributes.push("height", "1");
+						attributes.push("fill", "none");
+						attributes.push("stroke", format!("#{}", LAYER_OUTLINE_STROKE_COLOR.to_rgb_hex_srgb()));
+						attributes.push("stroke-width", format!("#{}", LAYER_OUTLINE_STROKE_WEIGHT));
+						attributes.push("vector-effect", "non-scaling-stroke");
+						let matrix = format_transform_matrix(transform);
+						if !matrix.is_empty() {
+							attributes.push("transform", matrix);
+						}
+					});
+				}
+				_ => {
+					let base64_string = image.base64_string.clone().unwrap_or_else(|| {
+						use base64::Engine;
 
-				let output = image.to_png();
-				let preamble = "data:image/png;base64,";
-				let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
-				base64_string.push_str(preamble);
-				base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
-				base64_string
-			});
-			render.leaf_tag("image", |attributes| {
-				attributes.push("width", 1.to_string());
-				attributes.push("height", 1.to_string());
-				attributes.push("preserveAspectRatio", "none");
-				attributes.push("href", base64_string);
-				let matrix = format_transform_matrix(transform);
-				if !matrix.is_empty() {
-					attributes.push("transform", matrix);
+						let output = image.to_png();
+						let preamble = "data:image/png;base64,";
+						let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
+						base64_string.push_str(preamble);
+						base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
+						base64_string
+					});
+					render.leaf_tag("image", |attributes| {
+						attributes.push("width", 1.to_string());
+						attributes.push("height", 1.to_string());
+						attributes.push("preserveAspectRatio", "none");
+						attributes.push("href", base64_string);
+						let matrix = format_transform_matrix(transform);
+						if !matrix.is_empty() {
+							attributes.push("transform", matrix);
+						}
+						let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+						let opacity = instance.alpha_blending.opacity * factor;
+						if opacity < 1. {
+							attributes.push("opacity", opacity.to_string());
+						}
+						if instance.alpha_blending.blend_mode != BlendMode::default() {
+							attributes.push("style", instance.alpha_blending.blend_mode.render());
+						}
+					});
 				}
-				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
-				let opacity = instance.alpha_blending.opacity * factor;
-				if opacity < 1. {
-					attributes.push("opacity", opacity.to_string());
-				}
-				if instance.alpha_blending.blend_mode != BlendMode::default() {
-					attributes.push("style", instance.alpha_blending.blend_mode.render());
-				}
-			});
+			}
 		}
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext, _render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext, render_params: &RenderParams) {
+		use graphene_core::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
+		use vello::kurbo::Cap;
+		use vello::kurbo::Join;
+		use vello::kurbo::Rect;
 		use vello::peniko;
 
 		for instance in self.instance_ref_iter() {
@@ -983,10 +1008,34 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 			if image.data.is_empty() {
 				return;
 			}
-			let image = peniko::Image::new(image.to_flat_u8().0.into(), peniko::Format::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
-			let transform = transform * *instance.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+			match render_params.view_mode {
+				ViewMode::Outline => {
+					let rect = Rect::new(0.0, 0.0, 1.0, 1.0);
+					let outline_transform = transform * *instance.transform;
+					let outline_stroke = kurbo::Stroke {
+						width: LAYER_OUTLINE_STROKE_WEIGHT,
+						miter_limit: 4.,
+						join: Join::Miter,
+						start_cap: Cap::Butt,
+						end_cap: Cap::Butt,
+						dash_pattern: Default::default(),
+						dash_offset: 0.,
+					};
+					let outline_color = peniko::Color::new([
+						LAYER_OUTLINE_STROKE_COLOR.r(),
+						LAYER_OUTLINE_STROKE_COLOR.g(),
+						LAYER_OUTLINE_STROKE_COLOR.b(),
+						LAYER_OUTLINE_STROKE_COLOR.a(),
+					]);
+					scene.stroke(&outline_stroke, kurbo::Affine::new(outline_transform.to_cols_array()), outline_color, None, &rect);
+				}
+				_ => {
+					let image = peniko::Image::new(image.to_flat_u8().0.into(), peniko::Format::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
+					let transform = transform * *instance.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 
-			scene.draw_image(&image, kurbo::Affine::new(transform.to_cols_array()));
+					scene.draw_image(&image, kurbo::Affine::new(transform.to_cols_array()));
+				}
+			}
 		}
 	}
 
