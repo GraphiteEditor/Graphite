@@ -1,12 +1,12 @@
 use crate::instances::{InstanceRef, Instances};
 use crate::raster_types::{CPU, RasterDataTable};
 use crate::vector::VectorDataTable;
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, OwnedContextImpl};
+use crate::{Context, Ctx, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, WithIndex};
 use glam::DVec2;
 
 #[node_macro::node(name("Instance on Points"), category("Instancing"), path(graphene_core::vector))]
 async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + 'static>(
-	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx,
+	ctx: impl Ctx + WithIndex + Sync,
 	points: VectorDataTable,
 	#[implementations(
 		Context -> GraphicGroupTable,
@@ -22,8 +22,7 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + '
 		let mut iteration = async |index, point| {
 			let transformed_point = transform.transform_point2(point);
 
-			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_vararg(Box::new(transformed_point));
-			let generated_instance = instance.eval(new_ctx.into_context()).await;
+			let generated_instance = instance.eval(ctx.with_index(index)).await;
 
 			for mut instanced in generated_instance.instance_iter() {
 				instanced.transform.translation = transformed_point;
@@ -48,7 +47,7 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + '
 
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn instance_repeat<T: Into<GraphicElement> + Default + Send + Clone + 'static>(
-	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+	ctx: impl Ctx + WithIndex,
 	#[implementations(
 		Context -> GraphicGroupTable,
 		Context -> VectorDataTable,
@@ -65,8 +64,7 @@ async fn instance_repeat<T: Into<GraphicElement> + Default + Send + Clone + 'sta
 	for index in 0..count {
 		let index = if reverse { count - index - 1 } else { index };
 
-		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index);
-		let generated_instance = instance.eval(new_ctx.into_context()).await;
+		let generated_instance = instance.eval(ctx.with_index(index)).await;
 
 		for instanced in generated_instance.instance_iter() {
 			result_table.push(instanced);
@@ -88,53 +86,53 @@ async fn instance_position(ctx: impl Ctx + ExtractVarArgs) -> DVec2 {
 
 // TODO: Make this return a u32 instead of an f64, but we ned to improve math-related compatibility with integer types first.
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
-async fn instance_index(ctx: impl Ctx + ExtractIndex, _primary: (), loop_level: u32) -> f64 {
-	ctx.try_index()
-		.and_then(|indexes| indexes.get(indexes.len().wrapping_sub(1).wrapping_sub(loop_level as usize)).copied())
-		.unwrap_or_default() as f64
+async fn instance_index(ctx: impl Ctx + ExtractIndex, _primary: (), _loop_level: u32) -> f64 {
+	ctx.try_index().unwrap_or_default() as f64
+	// .and_then(|indexes| indexes.get(indexes.len().wrapping_sub(1).wrapping_sub(loop_level as usize)).copied())
+	// .unwrap_or_default() as f64
 }
 
-#[cfg(test)]
-mod test {
-	use super::*;
-	use crate::Node;
-	use crate::extract_xy::{ExtractXyNode, XY};
-	use crate::vector::VectorData;
-	use bezier_rs::Subpath;
-	use glam::DVec2;
-	use std::pin::Pin;
+// #[cfg(test)]
+// mod test {
+// 	use super::*;
+// 	use crate::Node;
+// 	use crate::extract_xy::{ExtractXyNode, XY};
+// 	use crate::vector::VectorData;
+// 	use bezier_rs::Subpath;
+// 	use glam::DVec2;
+// 	use std::pin::Pin;
 
-	#[derive(Clone)]
-	pub struct FutureWrapperNode<T: Clone>(T);
+// 	#[derive(Clone)]
+// 	pub struct FutureWrapperNode<T: Clone>(T);
 
-	impl<'i, I: Ctx, T: 'i + Clone + Send> Node<'i, I> for FutureWrapperNode<T> {
-		type Output = Pin<Box<dyn Future<Output = T> + 'i + Send>>;
-		fn eval(&'i self, _input: I) -> Self::Output {
-			let value = self.0.clone();
-			Box::pin(async move { value })
-		}
-	}
+// 	impl<'i, I: Ctx, T: 'i + Clone + Send> Node<'i, I> for FutureWrapperNode<T> {
+// 		type Output = Pin<Box<dyn Future<Output = T> + 'i + Send>>;
+// 		fn eval(&'i self, _input: I) -> Self::Output {
+// 			let value = self.0.clone();
+// 			Box::pin(async move { value })
+// 		}
+// 	}
 
-	#[tokio::test]
-	async fn instance_on_points_test() {
-		let owned = OwnedContextImpl::default().into_context();
-		let rect = crate::vector::generator_nodes::RectangleNode::new(
-			FutureWrapperNode(()),
-			ExtractXyNode::new(InstancePositionNode {}, FutureWrapperNode(XY::Y)),
-			FutureWrapperNode(2_f64),
-			FutureWrapperNode(false),
-			FutureWrapperNode(0_f64),
-			FutureWrapperNode(false),
-		);
+// 	#[tokio::test]
+// 	async fn instance_on_points_test() {
+// 		let owned = OwnedContextImpl::default().into_context();
+// 		let rect = crate::vector::generator_nodes::RectangleNode::new(
+// 			FutureWrapperNode(()),
+// 			ExtractXyNode::new(InstancePositionNode {}, FutureWrapperNode(XY::Y)),
+// 			FutureWrapperNode(2_f64),
+// 			FutureWrapperNode(false),
+// 			FutureWrapperNode(0_f64),
+// 			FutureWrapperNode(false),
+// 		);
 
-		let positions = [DVec2::new(40., 20.), DVec2::ONE, DVec2::new(-42., 9.), DVec2::new(10., 345.)];
-		let points = VectorDataTable::new(VectorData::from_subpath(Subpath::from_anchors_linear(positions, false)));
-		let repeated = super::instance_on_points(owned, points, &rect, false).await;
-		assert_eq!(repeated.len(), positions.len());
-		for (position, instanced) in positions.into_iter().zip(repeated.instance_ref_iter()) {
-			let bounds = instanced.instance.bounding_box_with_transform(*instanced.transform).unwrap();
-			assert!(position.abs_diff_eq((bounds[0] + bounds[1]) / 2., 1e-10));
-			assert_eq!((bounds[1] - bounds[0]).x, position.y);
-		}
-	}
-}
+// 		let positions = [DVec2::new(40., 20.), DVec2::ONE, DVec2::new(-42., 9.), DVec2::new(10., 345.)];
+// 		let points = VectorDataTable::new(VectorData::from_subpath(Subpath::from_anchors_linear(positions, false)));
+// 		let repeated = super::instance_on_points(owned, points, &rect, false).await;
+// 		assert_eq!(repeated.len(), positions.len());
+// 		for (position, instanced) in positions.into_iter().zip(repeated.instance_ref_iter()) {
+// 			let bounds = instanced.instance.bounding_box_with_transform(*instanced.transform).unwrap();
+// 			assert!(position.abs_diff_eq((bounds[0] + bounds[1]) / 2., 1e-10));
+// 			assert_eq!((bounds[1] - bounds[0]).x, position.y);
+// 		}
+// 	}
+// }

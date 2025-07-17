@@ -3,14 +3,13 @@
 use super::document_node_definitions::{NODE_OVERRIDES, NodePropertiesContext};
 use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 use choice::enum_choice;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::Type;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, InputConnector, NodeInput};
 use graphene_std::animation::RealTimeMode;
 use graphene_std::extract_xy::XY;
 use graphene_std::path_bool::BooleanOperation;
@@ -22,6 +21,7 @@ use graphene_std::raster::{
 use graphene_std::raster_types::{CPU, GPU, RasterDataTable};
 use graphene_std::text::Font;
 use graphene_std::transform::{Footprint, ReferencePoint};
+use graphene_std::uuid::NodeId;
 use graphene_std::vector::VectorDataTable;
 use graphene_std::vector::misc::GridType;
 use graphene_std::vector::misc::{ArcType, MergeByDistanceAlgorithm};

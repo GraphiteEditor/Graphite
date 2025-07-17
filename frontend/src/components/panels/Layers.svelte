@@ -92,6 +92,12 @@
 			updateLayerInTree(targetId, targetLayer);
 		});
 
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (updateDocumentLayerDetails) => {
+			const targetLayer = updateDocumentLayerDetails.data;
+			const targetId = targetLayer.id;
+
+			updateLayerInTree(targetId, targetLayer);
+		});
 		addEventListener("pointermove", clippingHover);
 		addEventListener("keydown", clippingKeyPress);
 		addEventListener("keyup", clippingKeyPress);
@@ -540,8 +546,8 @@
 						<IconLabel icon="Clipped" class="clipped-arrow" tooltip={"Clipping mask is active (Alt-click border to release)"} />
 					{/if}
 					<div class="thumbnail">
-						{#if $nodeGraph.thumbnails.has(listing.entry.id)}
-							{@html $nodeGraph.thumbnails.get(listing.entry.id)}
+						{#if $nodeGraph.thumbnails.get($nodeGraph.wires.get(listing.entry.id)?.get(BigInt(1))?.sni) !== undefined}
+							{@html $nodeGraph.thumbnails.get($nodeGraph.wires.get(listing.entry.id)?.get(BigInt(1))?.sni)}
 						{/if}
 					</div>
 					{#if listing.entry.name === "Artboard"}

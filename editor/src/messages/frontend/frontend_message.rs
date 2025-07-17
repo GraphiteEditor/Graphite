@@ -1,19 +1,22 @@
 use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
-	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, Transform,
+	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeSNIUpdate, FrontendNodeType, Transform,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
-use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
+use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate, WireSNIUpdate};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
-use graph_craft::document::NodeId;
 use graphene_std::raster::color::Color;
 use graphene_std::text::Font;
+use graphene_std::uuid::{NodeId, SNI};
 
 #[impl_message(Message, Frontend)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendMessage {
+	ClearNodeThumbnail {
+		sni: NodeId,
+	},
 	// Display prefix: make the frontend show something, like a dialog
 	DisplayDialog {
 		title: String,
@@ -125,6 +128,10 @@ pub enum FrontendMessage {
 		#[serde(rename = "box")]
 		box_selection: Option<BoxSelection>,
 	},
+	UpdateContextDuringEvaluation {
+		#[serde(rename = "contextDuringEvaluation")]
+		context_during_evaluation: Vec<(SNI, usize, String)>,
+	},
 	UpdateContextMenuInformation {
 		#[serde(rename = "contextMenuInformation")]
 		context_menu_information: Option<ContextMenuInformation>,
@@ -221,6 +228,10 @@ pub enum FrontendMessage {
 		#[serde(rename = "setColorChoice")]
 		set_color_choice: Option<String>,
 	},
+	UpdateGraphBreadcrumbPath {
+		#[serde(rename = "breadcrumbPath")]
+		breadcrumb_path: Vec<NodeId>,
+	},
 	UpdateGraphFadeArtwork {
 		percentage: f64,
 	},
@@ -260,7 +271,7 @@ pub enum FrontendMessage {
 	UpdateNodeGraphWires {
 		wires: Vec<WirePathUpdate>,
 	},
-	ClearAllNodeGraphWires,
+	ClearAllNodeGraphWirePaths,
 	UpdateNodeGraphControlBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
@@ -272,10 +283,6 @@ pub enum FrontendMessage {
 	UpdateNodeGraphTransform {
 		transform: Transform,
 	},
-	UpdateNodeThumbnail {
-		id: NodeId,
-		value: String,
-	},
 	UpdateOpenDocumentsList {
 		#[serde(rename = "openDocuments")]
 		open_documents: Vec<FrontendDocumentDetails>,
@@ -284,6 +291,14 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
+	},
+	UpdateThumbnails {
+		add: Vec<(NodeId, String)>,
+		clear: Vec<NodeId>,
+		#[serde(rename = "wireSNIUpdates")]
+		wire_sni_updates: Vec<WireSNIUpdate>,
+		#[serde(rename = "layerSNIUpdates")]
+		layer_sni_updates: Vec<FrontendNodeSNIUpdate>,
 	},
 	UpdateToolOptionsLayout {
 		#[serde(rename = "layoutTarget")]

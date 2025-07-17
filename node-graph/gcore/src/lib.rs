@@ -32,11 +32,13 @@ pub mod value;
 pub mod vector;
 
 pub use crate as graphene_core;
+use crate::memo::MonitorIntrospectResult;
 pub use blending::*;
 pub use context::*;
 pub use ctor;
 pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
 pub use graphic_element::{Artboard, ArtboardGroupTable, GraphicElement, GraphicGroupTable};
+pub use memo::IntrospectMode;
 pub use memo::MemoHash;
 pub use num_traits;
 pub use raster::Color;
@@ -58,11 +60,16 @@ pub trait Node<'i, Input> {
 	fn node_name(&self) -> &'static str {
 		std::any::type_name::<Self>()
 	}
-	/// Serialize the node which is used for the `introspect` function which can retrieve values from monitor nodes.
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		log::warn!("Node::serialize not implemented for {}", std::any::type_name::<Self>());
-		None
+
+	// If check if evaluated is true, then it returns None if the node has not been evaluated since the last introspection
+	fn introspect(&self) -> MonitorIntrospectResult {
+		log::warn!("Node::introspect not implemented for {}", std::any::type_name::<Self>());
+		MonitorIntrospectResult::Error
 	}
+
+	fn permanently_enable_cache(&self) {}
+
+	fn cache_first_evaluation(&self) {}
 }
 
 mod types;

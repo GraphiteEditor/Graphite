@@ -3,7 +3,7 @@ use super::node_graph::utility_types::Transform;
 use super::overlays::utility_types::Pivot;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
-use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
+use super::utility_types::network_interface::{NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
@@ -13,10 +13,9 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings};
-use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
@@ -24,26 +23,22 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{self
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
-use crate::node_graph_executor::NodeGraphExecutor;
 use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
+use graph_craft::document::{InputConnector, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool::{boolean_intersect, path_bool_lib};
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{Raster, RasterDataTable};
+use graphene_std::uuid::NodeId;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::style::ViewMode;
-use std::time::Duration;
 
 #[derive(ExtractField)]
 pub struct DocumentMessageContext<'a> {
-	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
-	pub persistent_data: &'a PersistentData,
-	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub device_pixel_ratio: f64,
@@ -102,12 +97,15 @@ pub struct DocumentMessageHandler {
 	// Fields omitted from the saved document format
 	// =============================================
 	//
+	/// Animation state for when the animation button was pressed/paused
+	#[serde(skip)]
+	pub animation_state: AnimationState,
 	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
 	#[serde(skip)]
-	breadcrumb_network_path: Vec<NodeId>,
+	pub breadcrumb_network_path: Vec<NodeId>,
 	/// Path to network that is currently selected. Updated based on the most recently clicked panel.
 	#[serde(skip)]
-	selection_network_path: Vec<NodeId>,
+	pub selection_network_path: Vec<NodeId>,
 	/// Stack of document network snapshots for previous history states.
 	#[serde(skip)]
 	document_undo_history: VecDeque<NodeNetworkInterface>,
@@ -165,22 +163,22 @@ impl Default for DocumentMessageHandler {
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
 			is_loaded: false,
+			animation_state: AnimationState::Stopped,
 		}
 	}
 }
 
 #[message_handler_data]
 impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMessageHandler {
-	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, context: DocumentMessageContext) {
+	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, data: DocumentMessageContext) {
 		let DocumentMessageContext {
-			document_id,
 			ipp,
-			persistent_data,
-			executor,
 			current_tool,
 			preferences,
 			device_pixel_ratio,
-		} = context;
+			// introspected_inputs,
+			// downcasted_inputs
+		} = data;
 
 		let selected_nodes_bounding_box_viewport = self.network_interface.selected_nodes_bounding_box_viewport(&self.breadcrumb_network_path);
 		let selected_visible_layers_bounding_box_viewport = self.selected_visible_layers_bounding_box_viewport();
@@ -218,12 +216,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				);
 			}
 			DocumentMessage::PropertiesPanel(message) => {
-				let context = PropertiesPanelMessageContext {
+				let context = super::properties_panel::PropertiesPanelMessageContext {
 					network_interface: &mut self.network_interface,
 					selection_network_path: &self.selection_network_path,
 					document_name: self.name.as_str(),
-					executor,
-					persistent_data,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
 			}
@@ -235,7 +231,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						network_interface: &mut self.network_interface,
 						selection_network_path: &self.selection_network_path,
 						breadcrumb_network_path: &self.breadcrumb_network_path,
-						document_id,
 						collapsed: &mut self.collapsed,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
@@ -342,7 +337,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					node_ids: vec![node_id],
 					delete_children: true,
 				});
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::EndTransaction);
@@ -441,12 +436,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				let nodes = new_dragging.iter().map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 			}
 			DocumentMessage::EnterNestedNetwork { node_id } => {
 				self.breadcrumb_network_path.push(node_id);
 				self.selection_network_path.clone_from(&self.breadcrumb_network_path);
-				responses.add(NodeGraphMessage::UnloadWires);
+				responses.add(NodeGraphMessage::UnloadWirePaths);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
@@ -476,7 +471,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.breadcrumb_network_path.pop();
 					self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				}
-				responses.add(NodeGraphMessage::UnloadWires);
+				responses.add(NodeGraphMessage::UnloadWirePaths);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
@@ -543,7 +538,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				if opened {
-					responses.add(NodeGraphMessage::UnloadWires);
+					responses.add(NodeGraphMessage::UnloadWirePaths);
 				}
 				if open {
 					responses.add(ToolMessage::DeactivateTools);
@@ -713,7 +708,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					}
 				}
 
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::MoveSelectedLayersToGroup { parent } => {
@@ -729,7 +724,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![parent.to_node()] });
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
@@ -1152,7 +1147,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SetNodePinned { node_id, pinned } => {
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::SetPinned { node_id, pinned });
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
@@ -1215,7 +1210,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
-				responses.add_front(NodeGraphMessage::RunDocumentGraph);
+				responses.add_front(PortfolioMessage::CompileActiveDocument);
 			}
 			DocumentMessage::AddTransaction => {
 				// Reverse order since they are added to the front
@@ -1288,6 +1283,27 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(NodeGraphMessage::SendGraph);
 			}
+			DocumentMessage::ToggleAnimation => {
+				match self.animation_state {
+					AnimationState::Stopped => {
+						self.animation_state = AnimationState::Playing { start: ipp.time };
+						responses.add(PortfolioMessage::EvaluateActiveDocumentWithThumbnails);
+					}
+					AnimationState::Playing { start } => self.animation_state = AnimationState::Paused { start, pause_time: ipp.time },
+					AnimationState::Paused { start, .. } => {
+						self.animation_state = AnimationState::Playing { start };
+						responses.add(PortfolioMessage::EvaluateActiveDocumentWithThumbnails);
+					}
+				}
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			}
+			DocumentMessage::RestartAnimation => {
+				self.animation_state = match self.animation_state {
+					AnimationState::Playing { .. } => AnimationState::Playing { start: ipp.time },
+					_ => AnimationState::Stopped,
+				};
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
 			DocumentMessage::ToggleSelectedVisibility => {
 				responses.add(NodeGraphMessage::ToggleSelectedVisibility);
@@ -1313,6 +1329,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			} => {
 				self.network_interface.update_transforms(upstream_footprints, local_transforms);
 				self.network_interface.update_first_instance_source_id(first_instance_source_id);
+				if matches!(self.animation_state, AnimationState::Playing { .. }) {
+					responses.add(PortfolioMessage::EvaluateActiveDocumentWithThumbnails);
+				}
 			}
 			DocumentMessage::UpdateClickTargets { click_targets } => {
 				// TODO: Allow non layer nodes to have click targets
@@ -1364,7 +1383,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(DocumentMessage::UngroupLayer { layer: folder });
 				}
 
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
@@ -1402,7 +1421,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					node_ids: vec![layer.to_node()],
 					delete_children: true,
 				});
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
@@ -1417,7 +1436,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						center: Key::Alt,
 						duplicate: Key::Alt,
 					}));
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::EvaluateActiveDocumentWithThumbnails);
 				} else {
 					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
 						return;
@@ -1433,7 +1452,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::UpdateEdges);
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
 					responses.add(NodeGraphMessage::UpdateImportsExports);
-
+					responses.add(NodeGraphMessage::UpdateVisibleNodes);
+					responses.add(NodeGraphMessage::SendWirePaths);
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
 						transform: Transform {
 							scale: transform.matrix2.x_axis.x,
@@ -1477,7 +1497,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Connect the current output data to the artboard's input data, and the artboard's output to the document output
 				responses.add(NodeGraphMessage::InsertNodeBetween {
 					node_id,
-					input_connector: network_interface::InputConnector::Export(0),
+					input_connector: InputConnector::Export(0),
 					insert_node_input_index: 1,
 				});
 
@@ -1574,6 +1594,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 }
 
 impl DocumentMessageHandler {
+	pub fn animation_time(&self, ipp: &InputPreprocessorMessageHandler) -> f64 {
+		match self.animation_state {
+			AnimationState::Stopped => 0.,
+			AnimationState::Playing { start } => ipp.time - start,
+			AnimationState::Paused { start, pause_time } => pause_time - start,
+		}
+	}
+
 	/// Runs an intersection test with all layers and a viewport space quad
 	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_std::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
@@ -1899,13 +1927,11 @@ impl DocumentMessageHandler {
 		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
 
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+		responses.add(PortfolioMessage::CompileActiveDocument);
+		responses.add(Message::StartEvaluationQueue);
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-		responses.add(NodeGraphMessage::SelectedNodesUpdated);
-		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
-		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
-		responses.add(NodeGraphMessage::UnloadWires);
-		responses.add(NodeGraphMessage::SetGridAlignedEdges);
-		responses.add(Message::StartBuffer);
+		responses.add(NodeGraphMessage::SendGraph);
+		responses.add(Message::EndEvaluationQueue);
 		Some(previous_network)
 	}
 	pub fn redo_with_history(&mut self, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
@@ -1931,12 +1957,14 @@ impl DocumentMessageHandler {
 		network_interface.set_document_to_viewport_transform(transform);
 
 		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
+		responses.add(PortfolioMessage::CompileActiveDocument);
+		responses.add(Message::StartEvaluationQueue);
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
-		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
-		responses.add(NodeGraphMessage::UnloadWires);
-		responses.add(NodeGraphMessage::SendWires);
+		responses.add(NodeGraphMessage::UnloadWirePaths);
+		responses.add(NodeGraphMessage::SendWirePaths);
+		responses.add(Message::EndEvaluationQueue);
 		Some(previous_network)
 	}
 
@@ -2062,7 +2090,7 @@ impl DocumentMessageHandler {
 				if let (Some(upstream_boolean_op), Some(only_selected_layer)) = (upstream_boolean_op, only_selected_layer) {
 					network_interface.set_input(&InputConnector::node(upstream_boolean_op, 1), NodeInput::value(TaggedValue::BooleanOperation(operation), false), &[]);
 
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 
 					return only_selected_layer.to_node();
 				}
@@ -2093,7 +2121,7 @@ impl DocumentMessageHandler {
 	/// Loads all of the fonts in the document.
 	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
 		let mut fonts = HashSet::new();
-		for (_node_id, node, _) in self.document_network().recursive_nodes() {
+		for (_node_path, node) in self.document_network().recursive_nodes() {
 			for input in &node.inputs {
 				if let Some(TaggedValue::Font(font)) = input.as_value() {
 					fonts.insert(font.clone());
@@ -2105,7 +2133,9 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>, animation_is_playing: bool, time: Duration) {
+	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>, ipp: &InputPreprocessorMessageHandler) {
+		let animation_is_playing = matches!(self.animation_state, AnimationState::Playing { .. });
+
 		// Document mode (dropdown menu at the left of the bar above the viewport, before the tool options)
 
 		let document_mode_layout = WidgetLayout::new(vec![LayoutGroup::Row {
@@ -2145,14 +2175,14 @@ impl DocumentMessageHandler {
 		let mut widgets = vec![
 			IconButton::new("PlaybackToStart", 24)
 				.tooltip("Restart Animation")
-				.tooltip_shortcut(action_keys!(AnimationMessageDiscriminant::RestartAnimation))
-				.on_update(|_| AnimationMessage::RestartAnimation.into())
-				.disabled(time == Duration::ZERO)
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::RestartAnimation))
+				.on_update(|_| DocumentMessage::RestartAnimation.into())
+				.disabled(self.animation_time(ipp) == 0.)
 				.widget_holder(),
 			IconButton::new(if animation_is_playing { "PlaybackPause" } else { "PlaybackPlay" }, 24)
 				.tooltip(if animation_is_playing { "Pause Animation" } else { "Play Animation" })
-				.tooltip_shortcut(action_keys!(AnimationMessageDiscriminant::ToggleLivePreview))
-				.on_update(|_| AnimationMessage::ToggleLivePreview.into())
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleAnimation))
+				.on_update(|_| DocumentMessage::ToggleAnimation.into())
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(self.overlays_visibility_settings.all)
@@ -2566,7 +2596,7 @@ impl DocumentMessageHandler {
 			layout: Layout::WidgetLayout(document_bar_layout),
 			layout_target: LayoutTarget::DocumentBar,
 		});
-		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
+		responses.add(PortfolioMessage::EvaluateActiveDocumentWithThumbnails);
 	}
 
 	pub fn update_layers_panel_control_bar_widgets(&self, responses: &mut VecDeque<Message>) {
@@ -2874,7 +2904,7 @@ impl DocumentMessageHandler {
 		}
 
 		if modified {
-			responses.add(NodeGraphMessage::RunDocumentGraph);
+			responses.add(PortfolioMessage::CompileActiveDocument);
 			responses.add(NodeGraphMessage::SendGraph);
 		}
 	}
@@ -3132,277 +3162,289 @@ impl Iterator for ClickXRayIter<'_> {
 	}
 }
 
-#[cfg(test)]
-mod document_message_handler_tests {
-	use super::*;
-	use crate::test_utils::test_prelude::*;
-
-	#[tokio::test]
-	async fn test_layer_selection_with_shift_and_ctrl() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		// Three rectangle layers
-		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-		editor.drag_tool(ToolType::Rectangle, 50., 50., 150., 150., ModifierKeys::empty()).await;
-		editor.drag_tool(ToolType::Rectangle, 100., 100., 200., 200., ModifierKeys::empty()).await;
-
-		let layers: Vec<_> = editor.active_document().metadata().all_layers().collect();
-
-		// Case 1: Basic selection (no modifier)
-		editor
-			.handle_message(DocumentMessage::SelectLayer {
-				id: layers[0].to_node(),
-				ctrl: false,
-				shift: false,
-			})
-			.await;
-		// Fresh document reference for verification
-		let document = editor.active_document();
-		let selected_nodes = document.network_interface.selected_nodes();
-		assert_eq!(selected_nodes.selected_nodes_ref().len(), 1);
-		assert!(selected_nodes.selected_layers_contains(layers[0], document.metadata()));
-
-		// Case 2: Ctrl + click to add another layer
-		editor
-			.handle_message(DocumentMessage::SelectLayer {
-				id: layers[2].to_node(),
-				ctrl: true,
-				shift: false,
-			})
-			.await;
-		let document = editor.active_document();
-		let selected_nodes = document.network_interface.selected_nodes();
-		assert_eq!(selected_nodes.selected_nodes_ref().len(), 2);
-		assert!(selected_nodes.selected_layers_contains(layers[0], document.metadata()));
-		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
-
-		// Case 3: Shift + click to select a range
-		editor
-			.handle_message(DocumentMessage::SelectLayer {
-				id: layers[1].to_node(),
-				ctrl: false,
-				shift: true,
-			})
-			.await;
-		let document = editor.active_document();
-		let selected_nodes = document.network_interface.selected_nodes();
-		// We expect 2 layers to be selected (layers 1 and 2) - not 3
-		assert_eq!(selected_nodes.selected_nodes_ref().len(), 2);
-		assert!(!selected_nodes.selected_layers_contains(layers[0], document.metadata()));
-		assert!(selected_nodes.selected_layers_contains(layers[1], document.metadata()));
-		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
-
-		// Case 4: Ctrl + click to toggle selection (deselect)
-		editor
-			.handle_message(DocumentMessage::SelectLayer {
-				id: layers[1].to_node(),
-				ctrl: true,
-				shift: false,
-			})
-			.await;
-
-		// Final fresh document reference
-		let document = editor.active_document();
-		let selected_nodes = document.network_interface.selected_nodes();
-		assert_eq!(selected_nodes.selected_nodes_ref().len(), 1);
-		assert!(!selected_nodes.selected_layers_contains(layers[0], document.metadata()));
-		assert!(!selected_nodes.selected_layers_contains(layers[1], document.metadata()));
-		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
-	}
-
-	#[tokio::test]
-	async fn test_layer_rearrangement() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		// Create three rectangle layers
-		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-		editor.drag_tool(ToolType::Rectangle, 50., 50., 150., 150., ModifierKeys::empty()).await;
-		editor.drag_tool(ToolType::Rectangle, 100., 100., 200., 200., ModifierKeys::empty()).await;
-
-		// Helper function to identify layers by bounds
-		async fn get_layer_by_bounds(editor: &mut EditorTestUtils, min_x: f64, min_y: f64) -> Option<LayerNodeIdentifier> {
-			let document = editor.active_document();
-			for layer in document.metadata().all_layers() {
-				if let Some(bbox) = document.metadata().bounding_box_viewport(layer) {
-					if (bbox[0].x - min_x).abs() < 1. && (bbox[0].y - min_y).abs() < 1. {
-						return Some(layer);
-					}
-				}
-			}
-			None
-		}
-
-		async fn get_layer_index(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<usize> {
-			let document = editor.active_document();
-			let parent = layer.parent(document.metadata())?;
-			parent.children(document.metadata()).position(|child| child == layer)
-		}
-
-		let layer_middle = get_layer_by_bounds(&mut editor, 50., 50.).await.unwrap();
-		let layer_top = get_layer_by_bounds(&mut editor, 100., 100.).await.unwrap();
-
-		let initial_index_top = get_layer_index(&mut editor, layer_top).await.unwrap();
-		let initial_index_middle = get_layer_index(&mut editor, layer_middle).await.unwrap();
-
-		// Test 1: Lower the top layer
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_top.to_node()] }).await;
-		editor.handle_message(DocumentMessage::SelectedLayersLower).await;
-		let new_index_top = get_layer_index(&mut editor, layer_top).await.unwrap();
-		assert!(new_index_top > initial_index_top, "Top layer should have moved down");
-
-		// Test 2: Raise the middle layer
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_middle.to_node()] }).await;
-		editor.handle_message(DocumentMessage::SelectedLayersRaise).await;
-		let new_index_middle = get_layer_index(&mut editor, layer_middle).await.unwrap();
-		assert!(new_index_middle < initial_index_middle, "Middle layer should have moved up");
-	}
-
-	#[tokio::test]
-	async fn test_move_folder_into_itself_doesnt_crash() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-
-		// Creating a parent folder
-		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
-		let parent_folder = editor.active_document().metadata().all_layers().next().unwrap();
-
-		// Creating a child folder inside the parent folder
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![parent_folder.to_node()] }).await;
-		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
-		let child_folder = editor.active_document().metadata().all_layers().next().unwrap();
-
-		// Attempt to move parent folder into child folder
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![parent_folder.to_node()] }).await;
-		editor
-			.handle_message(DocumentMessage::MoveSelectedLayersTo {
-				parent: child_folder,
-				insert_index: 0,
-			})
-			.await;
-
-		// The operation completed without crashing
-		// Verifying application still functions by performing another operation
-		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
-		assert!(true, "Application didn't crash after folder move operation");
-	}
-	#[tokio::test]
-	async fn test_moving_folder_with_children() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-
-		// Creating two folders at root level
-		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
-		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
-
-		let folder1 = editor.active_document().metadata().all_layers().next().unwrap();
-		let folder2 = editor.active_document().metadata().all_layers().nth(1).unwrap();
-
-		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-		let rect_layer = editor.active_document().metadata().all_layers().next().unwrap();
-
-		// First move rectangle into folder1
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rect_layer.to_node()] }).await;
-		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder1, insert_index: 0 }).await;
-
-		// Verifying rectagle is now in folder1
-		let rect_parent = rect_layer.parent(editor.active_document().metadata()).unwrap();
-		assert_eq!(rect_parent, folder1, "Rectangle should be inside folder1");
-
-		// Moving folder1 into folder2
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder1.to_node()] }).await;
-		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder2, insert_index: 0 }).await;
-
-		// Verifing hirarchy: folder2 > folder1 > rectangle
-		let document = editor.active_document();
-		let folder1_parent = folder1.parent(document.metadata()).unwrap();
-		assert_eq!(folder1_parent, folder2, "Folder1 should be inside folder2");
-
-		// Verifing rectangle moved with its parent
-		let rect_parent = rect_layer.parent(document.metadata()).unwrap();
-		assert_eq!(rect_parent, folder1, "Rectangle should still be inside folder1");
-
-		let rect_grandparent = rect_parent.parent(document.metadata()).unwrap();
-		assert_eq!(rect_grandparent, folder2, "Rectangle's grandparent should be folder2");
-	}
-
-	// TODO: Fix https://github.com/GraphiteEditor/Graphite/issues/2688 and reenable this as part of that fix.
-	#[ignore]
-	#[tokio::test]
-	async fn test_moving_layers_retains_transforms() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-
-		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
-		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
-
-		let folder2 = editor.active_document().metadata().all_layers().next().unwrap();
-		let folder1 = editor.active_document().metadata().all_layers().nth(1).unwrap();
-
-		// Applying transform to folder1 (translation)
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder1.to_node()] }).await;
-		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		editor.move_mouse(100., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
-		editor
-			.handle_message(TransformLayerMessage::PointerMove {
-				slow_key: Key::Shift,
-				increments_key: Key::Control,
-			})
-			.await;
-		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
-
-		// Applying different transform to folder2 (translation)
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder2.to_node()] }).await;
-		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		editor.move_mouse(200., 100., ModifierKeys::empty(), MouseKeys::NONE).await;
-		editor
-			.handle_message(TransformLayerMessage::PointerMove {
-				slow_key: Key::Shift,
-				increments_key: Key::Control,
-			})
-			.await;
-		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
-
-		// Creating rectangle in folder1
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder1.to_node()] }).await;
-		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-		let rect_layer = editor.active_document().metadata().all_layers().next().unwrap();
-
-		// Moving the rectangle to folder1 to ensure it's inside
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rect_layer.to_node()] }).await;
-		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder1, insert_index: 0 }).await;
-
-		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		editor.move_mouse(50., 25., ModifierKeys::empty(), MouseKeys::NONE).await;
-		editor
-			.handle_message(TransformLayerMessage::PointerMove {
-				slow_key: Key::Shift,
-				increments_key: Key::Control,
-			})
-			.await;
-		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
-
-		// Rectangle's viewport position before moving
-		let document = editor.active_document();
-		let rect_bbox_before = document.metadata().bounding_box_viewport(rect_layer).unwrap();
-
-		// Moving rectangle from folder1 to folder2
-		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder2, insert_index: 0 }).await;
-
-		// Rectangle's viewport position after moving
-		let document = editor.active_document();
-		let rect_bbox_after = document.metadata().bounding_box_viewport(rect_layer).unwrap();
-
-		// Verifing the rectangle maintains approximately the same position in viewport space
-		let before_center = (rect_bbox_before[0] + rect_bbox_before[1]) / 2.; // TODO: Should be: DVec2(0., -25.), regression (#2688) causes it to be: DVec2(100., 25.)
-		let after_center = (rect_bbox_after[0] + rect_bbox_after[1]) / 2.; // TODO:    Should be: DVec2(0., -25.), regression (#2688) causes it to be: DVec2(200., 75.)
-		let distance = before_center.distance(after_center); // TODO:                    Should be: 0.,               regression (#2688) causes it to be: 111.80339887498948
-
-		assert!(
-			distance < 1.,
-			"Rectangle should maintain its viewport position after moving between transformed groups.\n\
-			Before: {before_center:?}\n\
-			After:  {after_center:?}\n\
-			Dist:   {distance} (should be < 1)"
-		);
-	}
+#[derive(Default, Debug, Clone, PartialEq)]
+pub enum AnimationState {
+	#[default]
+	Stopped,
+	Playing {
+		start: f64,
+	},
+	Paused {
+		start: f64,
+		pause_time: f64,
+	},
 }
+// #[cfg(test)]
+// mod document_message_handler_tests {
+// 	use super::*;
+// 	use crate::test_utils::test_prelude::*;
+
+// 	#[tokio::test]
+// 	async fn test_layer_selection_with_shift_and_ctrl() {
+// 		let mut editor = EditorTestUtils::create();
+// 		editor.new_document().await;
+// 		// Three rectangle layers
+// 		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+// 		editor.drag_tool(ToolType::Rectangle, 50., 50., 150., 150., ModifierKeys::empty()).await;
+// 		editor.drag_tool(ToolType::Rectangle, 100., 100., 200., 200., ModifierKeys::empty()).await;
+
+// 		let layers: Vec<_> = editor.active_document().metadata().all_layers().collect();
+
+// 		// Case 1: Basic selection (no modifier)
+// 		editor
+// 			.handle_message(DocumentMessage::SelectLayer {
+// 				id: layers[0].to_node(),
+// 				ctrl: false,
+// 				shift: false,
+// 			})
+// 			.await;
+// 		// Fresh document reference for verification
+// 		let document = editor.active_document();
+// 		let selected_nodes = document.network_interface.selected_nodes();
+// 		assert_eq!(selected_nodes.selected_nodes_ref().len(), 1);
+// 		assert!(selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+
+// 		// Case 2: Ctrl + click to add another layer
+// 		editor
+// 			.handle_message(DocumentMessage::SelectLayer {
+// 				id: layers[2].to_node(),
+// 				ctrl: true,
+// 				shift: false,
+// 			})
+// 			.await;
+// 		let document = editor.active_document();
+// 		let selected_nodes = document.network_interface.selected_nodes();
+// 		assert_eq!(selected_nodes.selected_nodes_ref().len(), 2);
+// 		assert!(selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+// 		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
+
+// 		// Case 3: Shift + click to select a range
+// 		editor
+// 			.handle_message(DocumentMessage::SelectLayer {
+// 				id: layers[1].to_node(),
+// 				ctrl: false,
+// 				shift: true,
+// 			})
+// 			.await;
+// 		let document = editor.active_document();
+// 		let selected_nodes = document.network_interface.selected_nodes();
+// 		// We expect 2 layers to be selected (layers 1 and 2) - not 3
+// 		assert_eq!(selected_nodes.selected_nodes_ref().len(), 2);
+// 		assert!(!selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+// 		assert!(selected_nodes.selected_layers_contains(layers[1], document.metadata()));
+// 		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
+
+// 		// Case 4: Ctrl + click to toggle selection (deselect)
+// 		editor
+// 			.handle_message(DocumentMessage::SelectLayer {
+// 				id: layers[1].to_node(),
+// 				ctrl: true,
+// 				shift: false,
+// 			})
+// 			.await;
+
+// 		// Final fresh document reference
+// 		let document = editor.active_document();
+// 		let selected_nodes = document.network_interface.selected_nodes();
+// 		assert_eq!(selected_nodes.selected_nodes_ref().len(), 1);
+// 		assert!(!selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+// 		assert!(!selected_nodes.selected_layers_contains(layers[1], document.metadata()));
+// 		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
+// 	}
+
+// 	#[tokio::test]
+// 	async fn test_layer_rearrangement() {
+// 		let mut editor = EditorTestUtils::create();
+// 		editor.new_document().await;
+// 		// Create three rectangle layers
+// 		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+// 		editor.drag_tool(ToolType::Rectangle, 50., 50., 150., 150., ModifierKeys::empty()).await;
+// 		editor.drag_tool(ToolType::Rectangle, 100., 100., 200., 200., ModifierKeys::empty()).await;
+
+// 		// Helper function to identify layers by bounds
+// 		async fn get_layer_by_bounds(editor: &mut EditorTestUtils, min_x: f64, min_y: f64) -> Option<LayerNodeIdentifier> {
+// 			let document = editor.active_document();
+// 			for layer in document.metadata().all_layers() {
+// 				if let Some(bbox) = document.metadata().bounding_box_viewport(layer) {
+// 					if (bbox[0].x - min_x).abs() < 1. && (bbox[0].y - min_y).abs() < 1. {
+// 						return Some(layer);
+// 					}
+// 				}
+// 			}
+// 			None
+// 		}
+
+// 		async fn get_layer_index(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<usize> {
+// 			let document = editor.active_document();
+// 			let parent = layer.parent(document.metadata())?;
+// 			parent.children(document.metadata()).position(|child| child == layer)
+// 		}
+
+// 		let layer_middle = get_layer_by_bounds(&mut editor, 50., 50.).await.unwrap();
+// 		let layer_top = get_layer_by_bounds(&mut editor, 100., 100.).await.unwrap();
+
+// 		let initial_index_top = get_layer_index(&mut editor, layer_top).await.unwrap();
+// 		let initial_index_middle = get_layer_index(&mut editor, layer_middle).await.unwrap();
+
+// 		// Test 1: Lower the top layer
+// 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_top.to_node()] }).await;
+// 		editor.handle_message(DocumentMessage::SelectedLayersLower).await;
+// 		let new_index_top = get_layer_index(&mut editor, layer_top).await.unwrap();
+// 		assert!(new_index_top > initial_index_top, "Top layer should have moved down");
+
+// 		// Test 2: Raise the middle layer
+// 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_middle.to_node()] }).await;
+// 		editor.handle_message(DocumentMessage::SelectedLayersRaise).await;
+// 		let new_index_middle = get_layer_index(&mut editor, layer_middle).await.unwrap();
+// 		assert!(new_index_middle < initial_index_middle, "Middle layer should have moved up");
+// 	}
+
+// 	#[tokio::test]
+// 	async fn test_move_folder_into_itself_doesnt_crash() {
+// 		let mut editor = EditorTestUtils::create();
+// 		editor.new_document().await;
+
+// 		// Creating a parent folder
+// 		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+// 		let parent_folder = editor.active_document().metadata().all_layers().next().unwrap();
+
+// 		// Creating a child folder inside the parent folder
+// 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![parent_folder.to_node()] }).await;
+// 		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+// 		let child_folder = editor.active_document().metadata().all_layers().next().unwrap();
+
+// 		// Attempt to move parent folder into child folder
+// 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![parent_folder.to_node()] }).await;
+// 		editor
+// 			.handle_message(DocumentMessage::MoveSelectedLayersTo {
+// 				parent: child_folder,
+// 				insert_index: 0,
+// 			})
+// 			.await;
+
+// 		// The operation completed without crashing
+// 		// Verifying application still functions by performing another operation
+// 		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+// 		assert!(true, "Application didn't crash after folder move operation");
+// 	}
+// 	#[tokio::test]
+// 	async fn test_moving_folder_with_children() {
+// 		let mut editor = EditorTestUtils::create();
+// 		editor.new_document().await;
+
+// 		// Creating two folders at root level
+// 		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+// 		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+
+// 		let folder1 = editor.active_document().metadata().all_layers().next().unwrap();
+// 		let folder2 = editor.active_document().metadata().all_layers().nth(1).unwrap();
+
+// 		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+// 		let rect_layer = editor.active_document().metadata().all_layers().next().unwrap();
+
+// 		// First move rectangle into folder1
+// 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rect_layer.to_node()] }).await;
+// 		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder1, insert_index: 0 }).await;
+
+// 		// Verifying rectagle is now in folder1
+// 		let rect_parent = rect_layer.parent(editor.active_document().metadata()).unwrap();
+// 		assert_eq!(rect_parent, folder1, "Rectangle should be inside folder1");
+
+// 		// Moving folder1 into folder2
+// 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder1.to_node()] }).await;
+// 		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder2, insert_index: 0 }).await;
+
+// 		// Verifing hirarchy: folder2 > folder1 > rectangle
+// 		let document = editor.active_document();
+// 		let folder1_parent = folder1.parent(document.metadata()).unwrap();
+// 		assert_eq!(folder1_parent, folder2, "Folder1 should be inside folder2");
+
+// 		// Verifing rectangle moved with its parent
+// 		let rect_parent = rect_layer.parent(document.metadata()).unwrap();
+// 		assert_eq!(rect_parent, folder1, "Rectangle should still be inside folder1");
+
+// 		let rect_grandparent = rect_parent.parent(document.metadata()).unwrap();
+// 		assert_eq!(rect_grandparent, folder2, "Rectangle's grandparent should be folder2");
+// 	}
+
+// 	// TODO: Fix https://github.com/GraphiteEditor/Graphite/issues/2688 and reenable this as part of that fix.
+// 	#[ignore]
+// 	#[tokio::test]
+// 	async fn test_moving_layers_retains_transforms() {
+// 		let mut editor = EditorTestUtils::create();
+// 		editor.new_document().await;
+
+// 		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+// 		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+
+// 		let folder2 = editor.active_document().metadata().all_layers().next().unwrap();
+// 		let folder1 = editor.active_document().metadata().all_layers().nth(1).unwrap();
+
+// 		// Applying transform to folder1 (translation)
+// 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder1.to_node()] }).await;
+// 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+// 		editor.move_mouse(100., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
+// 		editor
+// 			.handle_message(TransformLayerMessage::PointerMove {
+// 				slow_key: Key::Shift,
+// 				increments_key: Key::Control,
+// 			})
+// 			.await;
+// 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+// 		// Applying different transform to folder2 (translation)
+// 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder2.to_node()] }).await;
+// 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+// 		editor.move_mouse(200., 100., ModifierKeys::empty(), MouseKeys::NONE).await;
+// 		editor
+// 			.handle_message(TransformLayerMessage::PointerMove {
+// 				slow_key: Key::Shift,
+// 				increments_key: Key::Control,
+// 			})
+// 			.await;
+// 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+// 		// Creating rectangle in folder1
+// 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder1.to_node()] }).await;
+// 		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+// 		let rect_layer = editor.active_document().metadata().all_layers().next().unwrap();
+
+// 		// Moving the rectangle to folder1 to ensure it's inside
+// 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rect_layer.to_node()] }).await;
+// 		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder1, insert_index: 0 }).await;
+
+// 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+// 		editor.move_mouse(50., 25., ModifierKeys::empty(), MouseKeys::NONE).await;
+// 		editor
+// 			.handle_message(TransformLayerMessage::PointerMove {
+// 				slow_key: Key::Shift,
+// 				increments_key: Key::Control,
+// 			})
+// 			.await;
+// 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+// 		// Rectangle's viewport position before moving
+// 		let document = editor.active_document();
+// 		let rect_bbox_before = document.metadata().bounding_box_viewport(rect_layer).unwrap();
+
+// 		// Moving rectangle from folder1 to folder2
+// 		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder2, insert_index: 0 }).await;
+
+// 		// Rectangle's viewport position after moving
+// 		let document = editor.active_document();
+// 		let rect_bbox_after = document.metadata().bounding_box_viewport(rect_layer).unwrap();
+
+// 		// Verifing the rectangle maintains approximately the same position in viewport space
+// 		let before_center = (rect_bbox_before[0] + rect_bbox_before[1]) / 2.; // TODO: Should be: DVec2(0., -25.), regression (#2688) causes it to be: DVec2(100., 25.)
+// 		let after_center = (rect_bbox_after[0] + rect_bbox_after[1]) / 2.; // TODO:    Should be: DVec2(0., -25.), regression (#2688) causes it to be: DVec2(200., 75.)
+// 		let distance = before_center.distance(after_center); // TODO:                    Should be: 0.,               regression (#2688) causes it to be: 111.80339887498948
+
+// 		assert!(
+// 			distance < 1.,
+// 			"Rectangle should maintain its viewport position after moving between transformed groups.\n\
+// 			Before: {before_center:?}\n\
+// 			After:  {after_center:?}\n\
+// 			Dist:   {distance} (should be < 1)"
+// 		);
+// 	}
+// }

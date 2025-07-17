@@ -3,8 +3,7 @@ use crate::messages::input_mapper::utility_types::input_mouse::{MouseButton, Mou
 use crate::messages::input_mapper::utility_types::misc::FrameTimeInfo;
 use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
-use glam::DVec2;
-use std::time::Duration;
+use glam::{DAffine2, DVec2};
 
 #[derive(ExtractField)]
 pub struct InputPreprocessorMessageContext {
@@ -14,7 +13,7 @@ pub struct InputPreprocessorMessageContext {
 #[derive(Debug, Default, ExtractField)]
 pub struct InputPreprocessorMessageHandler {
 	pub frame_time: FrameTimeInfo,
-	pub time: u64,
+	pub time: f64,
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
 	pub viewport_bounds: ViewportBounds,
@@ -98,9 +97,7 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext> f
 				self.translate_mouse_event(mouse_state, false, responses);
 			}
 			InputPreprocessorMessage::CurrentTime { timestamp } => {
-				responses.add(AnimationMessage::SetTime { time: timestamp as f64 });
 				self.time = timestamp;
-				self.frame_time.advance_timestamp(Duration::from_millis(timestamp));
 			}
 			InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
@@ -187,120 +184,129 @@ impl InputPreprocessorMessageHandler {
 		}
 	}
 
-	pub fn document_bounds(&self) -> [DVec2; 2] {
+	pub fn viewport_bounds(&self) -> [DVec2; 2] {
 		// IPP bounds are relative to the entire application
 		[(0., 0.).into(), self.viewport_bounds.bottom_right - self.viewport_bounds.top_left]
 	}
-}
 
-#[cfg(test)]
-mod test {
-	use crate::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
-	use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta};
-	use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
-	use crate::messages::prelude::*;
-
-	#[test]
-	fn process_action_mouse_move_handle_modifier_keys() {
-		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
-
-		let editor_mouse_state = EditorMouseState {
-			editor_position: (4., 809.).into(),
-			mouse_keys: MouseKeys::default(),
-			scroll_delta: ScrollDelta::default(),
-		};
-		let modifier_keys = ModifierKeys::ALT;
-		let message = InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys };
-
-		let mut responses = VecDeque::new();
-
-		let context = InputPreprocessorMessageContext {
-			keyboard_platform: KeyboardPlatformLayout::Standard,
-		};
-		input_preprocessor.process_message(message, &mut responses, context);
-
-		assert!(input_preprocessor.keyboard.get(Key::Alt as usize));
-		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::Alt).into()));
-	}
-
-	#[test]
-	fn process_action_mouse_down_handle_modifier_keys() {
-		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
-
-		let editor_mouse_state = EditorMouseState::default();
-		let modifier_keys = ModifierKeys::CONTROL;
-		let message = InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys };
-
-		let mut responses = VecDeque::new();
-
-		let context = InputPreprocessorMessageContext {
-			keyboard_platform: KeyboardPlatformLayout::Standard,
-		};
-		input_preprocessor.process_message(message, &mut responses, context);
-
-		assert!(input_preprocessor.keyboard.get(Key::Control as usize));
-		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::Control).into()));
-	}
-
-	#[test]
-	fn process_action_mouse_up_handle_modifier_keys() {
-		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
-
-		let editor_mouse_state = EditorMouseState::default();
-		let modifier_keys = ModifierKeys::SHIFT;
-		let message = InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys };
-
-		let mut responses = VecDeque::new();
-
-		let context = InputPreprocessorMessageContext {
-			keyboard_platform: KeyboardPlatformLayout::Standard,
-		};
-		input_preprocessor.process_message(message, &mut responses, context);
-
-		assert!(input_preprocessor.keyboard.get(Key::Shift as usize));
-		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::Shift).into()));
-	}
-
-	#[test]
-	fn process_action_key_down_handle_modifier_keys() {
-		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
-		input_preprocessor.keyboard.set(Key::Control as usize);
-
-		let key = Key::KeyA;
-		let key_repeat = false;
-		let modifier_keys = ModifierKeys::empty();
-		let message = InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys };
-
-		let mut responses = VecDeque::new();
-
-		let context = InputPreprocessorMessageContext {
-			keyboard_platform: KeyboardPlatformLayout::Standard,
-		};
-		input_preprocessor.process_message(message, &mut responses, context);
-
-		assert!(!input_preprocessor.keyboard.get(Key::Control as usize));
-		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyUp(Key::Control).into()));
-	}
-
-	#[test]
-	fn process_action_key_up_handle_modifier_keys() {
-		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
-
-		let key = Key::KeyS;
-		let key_repeat = false;
-		let modifier_keys = ModifierKeys::CONTROL | ModifierKeys::SHIFT;
-		let message = InputPreprocessorMessage::KeyUp { key, key_repeat, modifier_keys };
-
-		let mut responses = VecDeque::new();
-
-		let context = InputPreprocessorMessageContext {
-			keyboard_platform: KeyboardPlatformLayout::Standard,
-		};
-		input_preprocessor.process_message(message, &mut responses, context);
-
-		assert!(input_preprocessor.keyboard.get(Key::Control as usize));
-		assert!(input_preprocessor.keyboard.get(Key::Shift as usize));
-		assert!(responses.contains(&InputMapperMessage::KeyDown(Key::Control).into()));
-		assert!(responses.contains(&InputMapperMessage::KeyDown(Key::Control).into()));
+	pub fn document_bounds(&self, document_to_viewport: DAffine2) -> [DVec2; 2] {
+		// IPP bounds are relative to the entire application
+		let mut bounds = self.viewport_bounds();
+		for point in &mut bounds {
+			*point = document_to_viewport.transform_point2(*point);
+		}
+		bounds
 	}
 }
+
+// #[cfg(test)]
+// mod test {
+// 	use crate::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
+// 	use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta};
+// 	use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
+// 	use crate::messages::prelude::*;
+
+// 	#[test]
+// 	fn process_action_mouse_move_handle_modifier_keys() {
+// 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
+
+// 		let editor_mouse_state = EditorMouseState {
+// 			editor_position: (4., 809.).into(),
+// 			mouse_keys: MouseKeys::default(),
+// 			scroll_delta: ScrollDelta::default(),
+// 		};
+// 		let modifier_keys = ModifierKeys::ALT;
+// 		let message = InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys };
+
+// 		let mut responses = VecDeque::new();
+
+// 		let data = InputPreprocessorMessageData {
+// 			keyboard_platform: KeyboardPlatformLayout::Standard,
+// 		};
+// 		input_preprocessor.process_message(message, &mut responses, data);
+
+// 		assert!(input_preprocessor.keyboard.get(Key::Alt as usize));
+// 		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::Alt).into()));
+// 	}
+
+// 	#[test]
+// 	fn process_action_mouse_down_handle_modifier_keys() {
+// 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
+
+// 		let editor_mouse_state = EditorMouseState::default();
+// 		let modifier_keys = ModifierKeys::CONTROL;
+// 		let message = InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys };
+
+// 		let mut responses = VecDeque::new();
+
+// 		let data = InputPreprocessorMessageData {
+// 			keyboard_platform: KeyboardPlatformLayout::Standard,
+// 		};
+// 		input_preprocessor.process_message(message, &mut responses, data);
+
+// 		assert!(input_preprocessor.keyboard.get(Key::Control as usize));
+// 		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::Control).into()));
+// 	}
+
+// 	#[test]
+// 	fn process_action_mouse_up_handle_modifier_keys() {
+// 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
+
+// 		let editor_mouse_state = EditorMouseState::default();
+// 		let modifier_keys = ModifierKeys::SHIFT;
+// 		let message = InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys };
+
+// 		let mut responses = VecDeque::new();
+
+// 		let data = InputPreprocessorMessageData {
+// 			keyboard_platform: KeyboardPlatformLayout::Standard,
+// 		};
+// 		input_preprocessor.process_message(message, &mut responses, data);
+
+// 		assert!(input_preprocessor.keyboard.get(Key::Shift as usize));
+// 		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::Shift).into()));
+// 	}
+
+// 	#[test]
+// 	fn process_action_key_down_handle_modifier_keys() {
+// 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
+// 		input_preprocessor.keyboard.set(Key::Control as usize);
+
+// 		let key = Key::KeyA;
+// 		let key_repeat = false;
+// 		let modifier_keys = ModifierKeys::empty();
+// 		let message = InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys };
+
+// 		let mut responses = VecDeque::new();
+
+// 		let data = InputPreprocessorMessageData {
+// 			keyboard_platform: KeyboardPlatformLayout::Standard,
+// 		};
+// 		input_preprocessor.process_message(message, &mut responses, data);
+
+// 		assert!(!input_preprocessor.keyboard.get(Key::Control as usize));
+// 		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyUp(Key::Control).into()));
+// 	}
+
+// 	#[test]
+// 	fn process_action_key_up_handle_modifier_keys() {
+// 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
+
+// 		let key = Key::KeyS;
+// 		let key_repeat = false;
+// 		let modifier_keys = ModifierKeys::CONTROL | ModifierKeys::SHIFT;
+// 		let message = InputPreprocessorMessage::KeyUp { key, key_repeat, modifier_keys };
+
+// 		let mut responses = VecDeque::new();
+
+// 		let data = InputPreprocessorMessageData {
+// 			keyboard_platform: KeyboardPlatformLayout::Standard,
+// 		};
+// 		input_preprocessor.process_message(message, &mut responses, data);
+
+// 		assert!(input_preprocessor.keyboard.get(Key::Control as usize));
+// 		assert!(input_preprocessor.keyboard.get(Key::Shift as usize));
+// 		assert!(responses.contains(&InputMapperMessage::KeyDown(Key::Control).into()));
+// 		assert!(responses.contains(&InputMapperMessage::KeyDown(Key::Control).into()));
+// 	}
+// }

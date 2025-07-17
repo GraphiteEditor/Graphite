@@ -6,13 +6,14 @@ pub mod util;
 mod tests {
 	use futures::executor::block_on;
 	use graphene_core::*;
+	use graphene_std::uuid::NodeId;
 
 	#[test]
 	fn double_number() {
 		use graph_craft::document::*;
 		use graph_craft::*;
 
-		let network = NodeNetwork {
+		let mut network = NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(1), 0)],
 			nodes: [
 				// Simple identity node taking a number as input from outside the graph
@@ -40,11 +41,9 @@ mod tests {
 		};
 
 		use crate::dynamic_executor::DynamicExecutor;
-		use graph_craft::graphene_compiler::Compiler;
 
-		let compiler = Compiler {};
-		let protograph = compiler.compile_single(network).expect("Graph should be generated");
+		let protonetwork = network.compile().map(|result| result.0).expect("Graph should be generated");
 
-		let _exec = block_on(DynamicExecutor::new(protograph)).map(|_e| panic!("The network should not type check ")).unwrap_err();
+		let _exec = block_on(DynamicExecutor::new(protonetwork)).map(|_e| panic!("The network should not type check ")).unwrap_err();
 	}
 }

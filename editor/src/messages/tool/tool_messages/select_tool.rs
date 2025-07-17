@@ -22,11 +22,11 @@ use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::{resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_transform_cage};
 use bezier_rs::Subpath;
 use glam::DMat2;
-use graph_craft::document::NodeId;
 use graphene_std::path_bool::BooleanOperation;
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::transform::ReferencePoint;
+use graphene_std::uuid::NodeId;
 use std::fmt;
 
 #[derive(Default, ExtractField)]
@@ -289,21 +289,21 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 						responses.add(ToolMessage::UpdateHints);
 						let pivot_gizmo = self.tool_data.pivot_gizmo();
 						responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
-						responses.add(NodeGraphMessage::RunDocumentGraph);
+						responses.add(PortfolioMessage::CompileActiveDocument);
 						redraw_reference_pivot = true;
 					}
 				}
 				SelectOptionsUpdate::TogglePivotGizmoType(state) => {
 					self.tool_data.pivot_gizmo.state.disabled = !state;
 					responses.add(ToolMessage::UpdateHints);
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 					redraw_reference_pivot = true;
 				}
 
 				SelectOptionsUpdate::TogglePivotPinned => {
 					self.tool_data.pivot_gizmo.pivot.pinned = !self.tool_data.pivot_gizmo.pivot.pinned;
 					responses.add(ToolMessage::UpdateHints);
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 					redraw_reference_pivot = true;
 				}
 			}
@@ -517,7 +517,7 @@ impl SelectToolData {
 		}
 		let nodes = new_dragging.iter().map(|layer| layer.to_node()).collect();
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
-		responses.add(NodeGraphMessage::RunDocumentGraph);
+		responses.add(PortfolioMessage::CompileActiveDocument);
 		self.layers_dragging = new_dragging;
 	}
 
@@ -555,7 +555,7 @@ impl SelectToolData {
 			})
 			.collect();
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
-		responses.add(NodeGraphMessage::RunDocumentGraph);
+		responses.add(PortfolioMessage::CompileActiveDocument);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::SendGraph);
 		self.layers_dragging = original;
@@ -1255,7 +1255,7 @@ impl Fsm for SelectToolFsmState {
 
 				tool_data.pivot_gizmo.pivot.set_viewport_position(snapped_mouse_position);
 
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 
 				// Auto-panning
 				let messages = [
@@ -1611,7 +1611,7 @@ impl Fsm for SelectToolFsmState {
 				let pivot_gizmo = tool_data.pivot_gizmo();
 				responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
 
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::CompileActiveDocument);
 
 				self
 			}

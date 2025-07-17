@@ -1,18 +1,19 @@
 use super::transform_utils;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{self, NodeNetworkInterface};
 use crate::messages::prelude::*;
 use bezier_rs::Subpath;
 use glam::{DAffine2, IVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput};
+use graph_craft::document::{InputConnector, NodeInput, OutputConnector};
 use graphene_std::Artboard;
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{CPU, RasterDataTable};
 use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::uuid::NodeId;
 use graphene_std::vector::style::{Fill, Stroke};
 use graphene_std::vector::{PointId, VectorModificationType};
 use graphene_std::vector::{VectorData, VectorDataTable};
@@ -454,7 +455,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// Refresh the render and editor UI
 		self.responses.add(PropertiesPanelMessage::Refresh);
 		if !skip_rerender {
-			self.responses.add(NodeGraphMessage::RunDocumentGraph);
+			self.responses.add(PortfolioMessage::CompileActiveDocument);
 		}
 	}
 
@@ -462,7 +463,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(path_node_id) = self.existing_node_id("Path", true) else { return };
 		self.network_interface.vector_modify(&path_node_id, modification_type);
 		self.responses.add(PropertiesPanelMessage::Refresh);
-		self.responses.add(NodeGraphMessage::RunDocumentGraph);
+		self.responses.add(PortfolioMessage::CompileActiveDocument);
 	}
 
 	pub fn brush_modify(&mut self, strokes: Vec<BrushStroke>) {
@@ -495,7 +496,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.set_input(&input_connector, input, &[]);
 		self.responses.add(PropertiesPanelMessage::Refresh);
 		if !skip_rerender {
-			self.responses.add(NodeGraphMessage::RunDocumentGraph);
+			self.responses.add(PortfolioMessage::CompileActiveDocument);
 		}
 	}
 }

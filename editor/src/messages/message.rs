@@ -1,13 +1,16 @@
-use crate::messages::prelude::*;
-use graphene_std::renderer::RenderMetadata;
+use crate::{messages::prelude::*, node_graph_executor::IntrospectionResponse};
 use graphite_proc_macros::*;
 
 #[impl_message]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Message {
-	// Sub-messages
-	#[child]
-	Animation(AnimationMessage),
+	// Adds any subsequent messages to the queue
+	StartEvaluationQueue,
+	// Stop adding messages to the queue.
+	EndEvaluationQueue,
+	// Processes all messages that are queued to be run after evaluation, which occurs on the evaluation response. This allows a message to be run with data from after the evaluation is complete
+	#[serde(skip)]
+	ProcessEvaluationQueue(graphene_std::renderer::RenderMetadata, IntrospectionResponse),
 	#[child]
 	Broadcast(BroadcastMessage),
 	#[child]
@@ -37,10 +40,6 @@ pub enum Message {
 	NoOp,
 	Batched {
 		messages: Box<[Message]>,
-	},
-	StartBuffer,
-	EndBuffer {
-		render_metadata: RenderMetadata,
 	},
 }
 

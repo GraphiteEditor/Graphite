@@ -5,7 +5,6 @@ use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_RED, DRAG_THRESHOLD};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
@@ -14,10 +13,11 @@ use crate::messages::tool::common_functionality::snapping::{self, SnapCandidateP
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput};
+use graph_craft::document::{InputConnector, NodeInput};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::text::{Font, FontCache, TypesettingConfig, lines_clipping, load_font};
+use graphene_std::uuid::NodeId;
 use graphene_std::vector::style::Fill;
 
 #[derive(Default, ExtractField)]
@@ -298,7 +298,7 @@ impl TextToolData {
 			node_ids: vec![self.layer.to_node()],
 			delete_children: true,
 		});
-		responses.add(NodeGraphMessage::RunDocumentGraph);
+		responses.add(PortfolioMessage::CompileActiveDocument);
 
 		TextToolFsmState::Ready
 	}
@@ -362,7 +362,7 @@ impl TextToolData {
 				input_connector: InputConnector::node(graph_modification_utils::get_text_id(self.layer, &document.network_interface).unwrap(), 1),
 				input: NodeInput::value(TaggedValue::String("".to_string()), false),
 			});
-			responses.add(NodeGraphMessage::RunDocumentGraph);
+			responses.add(PortfolioMessage::CompileActiveDocument);
 		};
 	}
 
@@ -381,7 +381,7 @@ impl TextToolData {
 			parent: document.new_layer_parent(true),
 			insert_index: 0,
 		});
-		responses.add(Message::StartBuffer);
+		responses.add(Message::StartEvaluationQueue);
 		responses.add(GraphOperationMessage::FillSet {
 			layer: self.layer,
 			fill: if editing_text.color.is_some() {
@@ -394,15 +394,14 @@ impl TextToolData {
 			layer: self.layer,
 			transform: editing_text.transform,
 			transform_in: TransformIn::Viewport,
-			skip_rerender: true,
+			skip_rerender: false,
 		});
 		self.editing_text = Some(editing_text);
 
 		self.set_editing(true, font_cache, responses);
 
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
-
-		responses.add(NodeGraphMessage::RunDocumentGraph);
+		responses.add(Message::EndEvaluationQueue);
 	}
 
 	fn check_click(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, font_cache: &FontCache) -> Option<LayerNodeIdentifier> {
@@ -649,7 +648,7 @@ impl Fsm for TextToolFsmState {
 						skip_rerender: false,
 					});
 
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 
 					// Auto-panning
 					let messages = [
@@ -710,7 +709,7 @@ impl Fsm for TextToolFsmState {
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
-						responses.add(NodeGraphMessage::RunDocumentGraph);
+						responses.add(PortfolioMessage::CompileActiveDocument);
 
 						// Auto-panning
 						let messages = [
@@ -830,7 +829,7 @@ impl Fsm for TextToolFsmState {
 						input_connector: InputConnector::node(graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface).unwrap(), 1),
 						input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
 					});
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PortfolioMessage::CompileActiveDocument);
 
 					TextToolFsmState::Ready
 				} else {

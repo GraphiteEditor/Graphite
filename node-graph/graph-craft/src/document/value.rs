@@ -1,18 +1,18 @@
 use super::DocumentNode;
 use crate::proto::{Any as DAny, FutureAny};
-use crate::wasm_application_io::WasmEditorApi;
+use crate::wasm_application_io::WasmApplicationIoValue;
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::SurfaceFrame;
 use graphene_brush::brush_cache::BrushCache;
 use graphene_brush::brush_stroke::BrushStroke;
-use graphene_core::raster_types::CPU;
+use graphene_core::raster_types::{CPU, GPU};
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
 use graphene_core::vector::style::Fill;
 use graphene_core::{Color, MemoHash, Node, Type};
-use graphene_svg_renderer::RenderMetadata;
+use graphene_svg_renderer::{GraphicElementRendered, RenderMetadata};
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -32,9 +32,8 @@ macro_rules! tagged_value {
 			$( $(#[$meta] ) *$identifier( $ty ), )*
 			RenderOutput(RenderOutput),
 			SurfaceFrame(SurfaceFrame),
-			#[serde(skip)]
-			EditorApi(Arc<WasmEditorApi>)
 		}
+
 
 		// We must manually implement hashing because some values are floats and so do not reproducibly hash (see FakeHash below)
 		#[allow(clippy::derived_hash_with_manual_eq)]
@@ -46,7 +45,6 @@ macro_rules! tagged_value {
 					$( Self::$identifier(x) => {x.hash(state)}),*
 					Self::RenderOutput(x) => x.hash(state),
 					Self::SurfaceFrame(x) => x.hash(state),
-					Self::EditorApi(x) => x.hash(state),
 				}
 			}
 		}
@@ -58,7 +56,6 @@ macro_rules! tagged_value {
 					$( Self::$identifier(x) => Box::new(x), )*
 					Self::RenderOutput(x) => Box::new(x),
 					Self::SurfaceFrame(x) => Box::new(x),
-					Self::EditorApi(x) => Box::new(x),
 				}
 			}
 			/// Converts to a Arc<dyn Any + Send + Sync + 'static>
@@ -68,7 +65,6 @@ macro_rules! tagged_value {
 					$( Self::$identifier(x) => Arc::new(x), )*
 					Self::RenderOutput(x) => Arc::new(x),
 					Self::SurfaceFrame(x) => Arc::new(x),
-					Self::EditorApi(x) => Arc::new(x),
 				}
 			}
 			/// Creates a graphene_core::Type::Concrete(TypeDescriptor { .. }) with the type of the value inside the tagged value
@@ -78,7 +74,6 @@ macro_rules! tagged_value {
 					$( Self::$identifier(_) => concrete!($ty), )*
 					Self::RenderOutput(_) => concrete!(RenderOutput),
 					Self::SurfaceFrame(_) => concrete!(SurfaceFrame),
-					Self::EditorApi(_) => concrete!(&WasmEditorApi)
 				}
 			}
 			/// Attempts to downcast the dynamic type to a tagged value
@@ -106,6 +101,15 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(RenderOutput::clone(input.downcast_ref().unwrap()))),
 					x if x == TypeId::of::<SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(SurfaceFrame::clone(input.downcast_ref().unwrap()))),
 					_ => Err(format!("Cannot convert {:?} to TaggedValue",std::any::type_name_of_val(input))),
+				}
+			}
+			// Check for equality between a dynamic type and a tagged value without cloning
+			pub fn compare_value_to_dyn_any(&self, any: Box<dyn std::any::Any + Send + Sync>) -> bool {
+				match self {
+					TaggedValue::None => any.downcast_ref::<()>().is_some(),
+					$(TaggedValue::$identifier(value) => {any.downcast_ref::<$ty>().map_or(false, |v| v==value)}, )*
+					TaggedValue::RenderOutput(value) => any.downcast_ref::<RenderOutput>().map_or(false, |v| v==value),
+					TaggedValue::SurfaceFrame(value) => any.downcast_ref::<SurfaceFrame>().map_or(false, |v| v==value),
 				}
 			}
 			pub fn from_type(input: &Type) -> Option<Self> {
@@ -248,6 +252,9 @@ tagged_value! {
 	ReferencePoint(graphene_core::transform::ReferencePoint),
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_path_bool::BooleanOperation),
+	EditorMetadata(EditorMetadata),
+	#[serde(skip)]
+	ApplicationIo(Arc<WasmApplicationIoValue>),
 }
 
 impl TaggedValue {
@@ -396,6 +403,10 @@ impl<'input> Node<'input, DAny<'input>> for UpcastNode {
 	fn eval(&'input self, _: DAny<'input>) -> Self::Output {
 		Box::pin(async move { self.value.clone().into_inner().to_dynany() })
 	}
+
+	fn introspect(&self) -> graphene_core::memo::MonitorIntrospectResult {
+		graphene_core::memo::MonitorIntrospectResult::Evaluated((Arc::new(self.value.clone().into_inner()) as Arc<dyn std::any::Any + Send + Sync>, true))
+	}
 }
 impl UpcastNode {
 	pub fn new(value: MemoHash<TaggedValue>) -> Self {
@@ -435,6 +446,47 @@ pub enum RenderOutputType {
 impl Hash for RenderOutput {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.data.hash(state)
+	}
+}
+
+impl Default for RenderOutput {
+	fn default() -> Self {
+		RenderOutput {
+			data: RenderOutputType::Image(Vec::new()),
+			metadata: RenderMetadata::default(),
+		}
+	}
+}
+
+// Passed as a scope input
+#[derive(Clone, Debug, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct EditorMetadata {
+	// pub imaginate_hostname: String,
+	pub use_vello: bool,
+	pub hide_artboards: bool,
+	// If exporting, hide the artboard name and do not collect metadata
+	pub for_export: bool,
+	pub view_mode: graphene_core::vector::style::ViewMode,
+	pub transform_to_viewport: bool,
+}
+
+unsafe impl dyn_any::StaticType for EditorMetadata {
+	type Static = EditorMetadata;
+}
+
+impl Default for EditorMetadata {
+	fn default() -> Self {
+		Self {
+			// imaginate_hostname: "http://localhost:7860/".into(),
+			#[cfg(target_arch = "wasm32")]
+			use_vello: false,
+			#[cfg(not(target_arch = "wasm32"))]
+			use_vello: true,
+			hide_artboards: false,
+			for_export: false,
+			view_mode: graphene_core::vector::style::ViewMode::Normal,
+			transform_to_viewport: true,
+		}
 	}
 }
 
@@ -486,4 +538,37 @@ mod fake_hash {
 			self.1.hash(state)
 		}
 	}
+}
+
+macro_rules! thumbnail_render {
+	( $( $ty:ty ),* $(,)? ) => {
+		pub fn render_thumbnail(new_value: &Arc<dyn std::any::Any + Send + Sync>) -> Option<String> {
+			$(
+				if let Some(new_value) = new_value.downcast_ref::<$ty>() {
+					return Some(new_value.render_thumbnail());
+				}
+			)*
+			return None;
+		}
+    };
+}
+
+thumbnail_render! {
+	graphene_core::GraphicGroupTable,
+	graphene_core::vector::VectorDataTable,
+	graphene_core::Artboard,
+	graphene_core::ArtboardGroupTable,
+	graphene_core::raster_types::RasterDataTable<CPU>,
+	graphene_core::raster_types::RasterDataTable<GPU>,
+	graphene_core::GraphicElement,
+	Option<Color>,
+	Vec<Color>,
+	f64,
+}
+
+pub enum ThumbnailRenderResult {
+	NoChange,
+	// Cleared if there is an error or the data could not be rendered
+	ClearThumbnail,
+	UpdateThumbnail(String),
 }

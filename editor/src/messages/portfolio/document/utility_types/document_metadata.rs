@@ -4,9 +4,9 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Modify
 use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::{DAffine2, DVec2};
-use graph_craft::document::NodeId;
 use graphene_std::math::quad::Quad;
 use graphene_std::transform::Footprint;
+use graphene_std::uuid::NodeId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::{PointId, VectorData};
 use std::collections::{HashMap, HashSet};

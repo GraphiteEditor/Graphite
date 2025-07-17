@@ -211,6 +211,40 @@ pub trait GraphicElementRendered: BoundingBox + RenderComplexity {
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams);
 
+	fn render_thumbnail(&self) -> String {
+		let Some(bounds) = self.bounding_box(DAffine2::IDENTITY, true) else {
+			log::debug!("Could not get bounds");
+			return String::new();
+		};
+
+		let render_params = RenderParams {
+			view_mode: ViewMode::Normal,
+			culling_bounds: Some(bounds),
+			thumbnail: true,
+			hide_artboards: false,
+			for_export: false,
+			for_mask: false,
+			alignment_parent_transform: None,
+		};
+
+		let mut render = SvgRender::new();
+		self.render_svg(&mut render, &render_params);
+
+		// let center = (bounds[0] + bounds[1]) / 2.;
+
+		// let size = bounds[1] - bounds[0];
+
+		// let scale_x = 32.0 / size.x;
+		// let scale_y = 24.0 / size.y;
+		// let scale = scale_x.min(scale_y);
+
+		// render.wrap_with_transform()
+		// Give the SVG a viewbox and outer <svg>...</svg> wrapper tag
+		render.format_svg(bounds[0], bounds[1]);
+		render.svg.to_svg_string()
+		// format!(r#"<g transform="scale({}) translate({}, {})">{}</g>"#, scale, -center.x, -center.y, render.svg.to_svg_string())
+	}
+
 	/// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection.
 	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
 
@@ -1160,13 +1194,13 @@ impl Primitive for f64 {}
 impl Primitive for DVec2 {}
 
 fn text_attributes(attributes: &mut SvgRenderAttrs) {
-	attributes.push("fill", "white");
-	attributes.push("y", "30");
+	attributes.push("fill", "black");
 	attributes.push("font-size", "30");
 }
 
 impl<P: Primitive> GraphicElementRendered for P {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
+		log::debug!("Rendering svg for primative: {}", self);
 		render.parent_tag("text", text_attributes, |render| render.leaf_node(format!("{self}")));
 	}
 

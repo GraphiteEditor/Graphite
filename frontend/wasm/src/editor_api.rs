@@ -15,8 +15,8 @@ use editor::messages::portfolio::document::utility_types::network_interface::Imp
 use editor::messages::portfolio::utility_types::Platform;
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
-use graph_craft::document::NodeId;
 use graphene_std::raster::color::Color;
+use graphene_std::uuid::NodeId;
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
@@ -130,18 +130,12 @@ impl EditorHandle {
 			let f = std::rc::Rc::new(RefCell::new(None));
 			let g = f.clone();
 
-			*g.borrow_mut() = Some(Closure::new(move |_timestamp| {
+			*g.borrow_mut() = Some(Closure::new(move |timestamp| {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 					editor_and_handle(|editor, handle| {
-						for message in editor.handle_message(InputPreprocessorMessage::CurrentTime {
-							timestamp: js_sys::Date::now() as u64,
-						}) {
-							handle.send_frontend_message_to_js(message);
-						}
-
-						for message in editor.handle_message(AnimationMessage::IncrementFrameCounter) {
+						for message in editor.handle_message(InputPreprocessorMessage::CurrentTime { timestamp }) {
 							handle.send_frontend_message_to_js(message);
 						}
 

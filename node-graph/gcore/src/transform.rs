@@ -110,8 +110,10 @@ impl Footprint {
 		quality: RenderQuality::Full,
 	};
 
-	pub fn viewport_bounds_in_local_space(&self) -> AxisAlignedBbox {
-		let inverse = self.transform.inverse();
+	pub fn viewport_bounds_in_local_space(&self, downstream_transform: &DAffine2) -> AxisAlignedBbox {
+		// TODO: Check if this is the correct way to apply downstream transforms
+		let transform = self.transform * *downstream_transform;
+		let inverse = transform.inverse();
 		let start = inverse.transform_point2((0., 0.).into());
 		let end = inverse.transform_point2(self.resolution.as_dvec2());
 		AxisAlignedBbox { start, end }

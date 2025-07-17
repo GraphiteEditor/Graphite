@@ -3,11 +3,11 @@ use super::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
-use graph_craft::document::NodeInput;
+use graph_craft::document::{InputConnector, NodeInput};
 use graph_craft::document::value::TaggedValue;
 use std::collections::VecDeque;
 

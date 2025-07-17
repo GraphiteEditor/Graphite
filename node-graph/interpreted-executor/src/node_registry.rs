@@ -1,7 +1,7 @@
 use dyn_any::StaticType;
 use glam::{DVec2, IVec2, UVec2};
 use graph_craft::document::value::RenderOutput;
-use graph_craft::proto::{NodeConstructor, TypeErasedBox};
+use graph_craft::proto::{CacheConstructor, NodeConstructor, TypeErasedBox};
 use graphene_core::raster::color::Color;
 use graphene_core::raster::*;
 use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
@@ -17,14 +17,13 @@ use graphene_std::any::DowncastBothNode;
 use graphene_std::any::{ComposeTypeErased, DynAnyNode, IntoTypeErasedNode};
 use graphene_std::application_io::{ImageTexture, SurfaceFrame};
 #[cfg(feature = "gpu")]
-use graphene_std::wasm_application_io::{WasmEditorApi, WasmSurfaceHandle};
-use node_registry_macros::{async_node, convert_node, into_node};
+use graphene_std::wasm_application_io::{WasmApplicationIoValue, WasmSurfaceHandle};
+use node_registry_macros::{async_node, cache_node, convert_node, into_node};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 #[cfg(feature = "gpu")]
 use std::sync::Arc;
 #[cfg(feature = "gpu")]
-use wgpu_executor::WgpuExecutor;
 use wgpu_executor::{WgpuSurface, WindowHandle};
 
 // TODO: turn into hashmap
@@ -119,22 +118,22 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Context, fn_params: [Context => RasterDataTable<GPU>]),
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => RasterDataTable<GPU>]),
-		#[cfg(feature = "gpu")]
-		into_node!(from: &WasmEditorApi, to: &WgpuExecutor),
+		// #[cfg(feature = "gpu")]
+		// into_node!(from: &WasmApplicationIoValue, to: &WgpuExecutor),
 		#[cfg(feature = "gpu")]
 		(
 			ProtoNodeIdentifier::new(stringify!(wgpu_executor::CreateGpuSurfaceNode<_>)),
 			|args| {
 				Box::pin(async move {
-					let editor_api: DowncastBothNode<Context, &WasmEditorApi> = DowncastBothNode::new(args[0].clone());
+					let editor_api: DowncastBothNode<Context, Arc<WasmApplicationIoValue>> = DowncastBothNode::new(args[0].clone());
 					let node = <wgpu_executor::CreateGpuSurfaceNode<_>>::new(editor_api);
 					let any: DynAnyNode<Context, _, _> = DynAnyNode::new(node);
 					Box::new(any) as TypeErasedBox
 				})
 			},
 			{
-				let node = <wgpu_executor::CreateGpuSurfaceNode<_>>::new(graphene_std::any::PanicNode::<Context, dyn_any::DynFuture<'static, &WasmEditorApi>>::new());
-				let params = vec![fn_type_fut!(Context, &WasmEditorApi)];
+				let node = <wgpu_executor::CreateGpuSurfaceNode<_>>::new(graphene_std::any::PanicNode::<Context, dyn_any::DynFuture<'static, Arc<WasmApplicationIoValue>>>::new());
+				let params = vec![fn_type_fut!(Context, Arc<WasmApplicationIoValue>)];
 				let mut node_io = <wgpu_executor::CreateGpuSurfaceNode<_> as NodeIO<'_, Context>>::to_async_node_io(&node, params);
 				node_io.call_argument = concrete!(<Context as StaticType>::Static);
 				node_io
@@ -192,6 +191,52 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 
 pub static NODE_REGISTRY: Lazy<HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>> = Lazy::new(|| node_registry());
 
+fn cache_nodes() -> HashMap<Type, CacheConstructor> {
+	let nodes: Vec<(Type, CacheConstructor)> = vec![
+		cache_node!(ImageTexture),
+		cache_node!(VectorDataTable),
+		cache_node!(GraphicGroupTable),
+		cache_node!(GraphicElement),
+		cache_node!(Artboard),
+		cache_node!(RasterDataTable<CPU>),
+		cache_node!(RasterDataTable<GPU>),
+		cache_node!(graphene_core::instances::Instances<Artboard>),
+		cache_node!(String),
+		cache_node!(IVec2),
+		cache_node!(DVec2),
+		cache_node!(bool),
+		cache_node!(f64),
+		cache_node!(u32),
+		cache_node!(u64),
+		cache_node!(()),
+		cache_node!(Vec<f64>),
+		cache_node!(BlendMode),
+		cache_node!(graphene_std::transform::ReferencePoint),
+		cache_node!(graphene_path_bool::BooleanOperation),
+		cache_node!(Option<Color>),
+		cache_node!(graphene_core::vector::style::Fill),
+		cache_node!(graphene_core::vector::style::StrokeCap),
+		cache_node!(graphene_core::vector::style::StrokeJoin),
+		cache_node!(graphene_core::vector::style::PaintOrder),
+		cache_node!(graphene_core::vector::style::StrokeAlign),
+		cache_node!(graphene_core::vector::style::Stroke),
+		cache_node!(graphene_core::vector::style::Gradient),
+		cache_node!(graphene_core::vector::style::GradientStops),
+		cache_node!(Vec<graphene_core::uuid::NodeId>),
+		cache_node!(Color),
+		cache_node!(Box<graphene_core::vector::VectorModification>),
+		cache_node!(graphene_std::vector::misc::CentroidType),
+		cache_node!(graphene_std::vector::misc::PointSpacingType),
+	];
+	let mut cache_nodes = HashMap::new();
+	for (cache_type, constructor) in nodes {
+		cache_nodes.insert(cache_type, constructor);
+	}
+	cache_nodes
+}
+
+pub static CACHE_NODES: Lazy<HashMap<Type, CacheConstructor>> = Lazy::new(|| cache_nodes());
+
 mod node_registry_macros {
 	macro_rules! async_node {
 		// TODO: we currently need to annotate the type here because the compiler would otherwise (correctly)
@@ -207,7 +252,7 @@ mod node_registry_macros {
 				|mut args| {
 					Box::pin(async move {
 						args.reverse();
-						let node = <$path>::new($(graphene_std::any::downcast_node::<$arg, $type>(args.pop().expect("Not enough arguments provided to construct node"))),*);
+						let node = <$path>::new($(graphene_std::registry::downcast_node::<$arg, $type>(args.pop().expect("Not enough arguments provided to construct node"))),*);
 						let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(node);
 						Box::new(any) as TypeErasedBox
 					})
@@ -285,7 +330,18 @@ mod node_registry_macros {
 		};
 	}
 
+	macro_rules! cache_node {
+		($type:ty) => {
+			(concrete!($type), |arg, state| {
+				let node = <graphene_core::memo::MonitorMemoNode<_, _>>::new(graphene_std::registry::downcast_node::<graphene_std::Context, $type>(arg), state);
+				let any: DynAnyNode<_, _, _> = graphene_std::any::DynAnyNode::new(node);
+				Box::new(any) as TypeErasedBox
+			})
+		};
+	}
+
 	pub(crate) use async_node;
+	pub(crate) use cache_node;
 	pub(crate) use convert_node;
 	pub(crate) use into_node;
 }

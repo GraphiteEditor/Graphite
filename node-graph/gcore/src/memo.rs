@@ -7,6 +7,159 @@ use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+#[derive(Debug)]
+pub enum MonitorMemoNodeState {
+	Disabled,
+	// Stores the first execution, then gets set first execution result, which stores if the value changed
+	StoreFirstEvaluation,
+	// Gets set back to disabled on introspection, and stores a boolean for if the value changed since the last introspection
+	FirstEvaluationResult(bool),
+	// Acts as a normal cache node, and stores a boolean for if the value changed since the last introspection
+	Enabled(bool),
+}
+
+#[derive(Clone, Debug)]
+pub enum MonitorIntrospectResult {
+	// If trying to inspect a none that cannot be introspected
+	Error,
+	Disabled,
+	// The cache node has not been evaluated since the state was set to StoreFirstEvaluation/Enabled
+	NotEvaluated,
+	// If the monitor node was evaluated, then its data must exist, so it is not an option.
+	// The boolean represents if the data changed since the last introspection
+	Evaluated((std::sync::Arc<dyn std::any::Any + Send + Sync>, bool)),
+}
+
+/// Caches the output of a given Node and acts as a proxy
+pub struct MonitorMemoNode<T, CachedNode> {
+	// Introspection cache, uses the hash of the nullified context with default var args
+	// cache: Arc<Mutex<std::collections::HashMap<u64, Arc<T>>>>,
+	cache: Arc<Mutex<Option<(u64, Arc<T>)>>>,
+	node: CachedNode,
+	hash_on_last_introspection: Arc<Mutex<u64>>,
+	state: Arc<Mutex<MonitorMemoNodeState>>,
+}
+impl<'i, I: Hash + 'i + std::fmt::Debug, T: 'static + Clone + Send + Sync, CachedNode: 'i> Node<'i, I> for MonitorMemoNode<T, CachedNode>
+where
+	CachedNode: for<'any_input> Node<'any_input, I>,
+	for<'a> <CachedNode as Node<'a, I>>::Output: Future<Output = T> + WasmNotSend,
+{
+	// TODO: This should return a reference to the cached cached_value
+	// but that requires a lot of lifetime magic <- This was suggested by copilot but is pretty accurate xD
+	type Output = DynFuture<'i, T>;
+
+	fn eval(&'i self, input: I) -> Self::Output {
+		let mut state = self.state.lock().unwrap();
+
+		// log::debug!("Monitor memo node state: {:?}", *state);
+
+		if matches!(*state, MonitorMemoNodeState::Disabled | MonitorMemoNodeState::FirstEvaluationResult(_)) {
+			return Box::pin(self.node.eval(input));
+		}
+
+		let hash = {
+			let mut hasher = DefaultHasher::new();
+			input.hash(&mut hasher);
+			hasher.finish()
+		};
+
+		// log::debug!(
+		// 	"Monitor memo node input: {:?}, hash: {:?}, previous_hash: {:?}",
+		// 	input,
+		// 	hash,
+		// 	self.cache.lock().unwrap().as_ref().map(|(h, _)| *h)
+		// );
+
+		let last_hash = *self.hash_on_last_introspection.lock().unwrap();
+
+		match &mut *state {
+			MonitorMemoNodeState::Enabled(changed) => {
+				*changed = last_hash != hash;
+			}
+			MonitorMemoNodeState::StoreFirstEvaluation => {
+				*state = MonitorMemoNodeState::FirstEvaluationResult(last_hash != hash);
+			}
+			_ => {}
+		}
+
+		let cache_guard = self.cache.lock().unwrap();
+
+		if let Some((cached_hash, cached_data)) = cache_guard.as_ref() {
+			if *cached_hash == hash {
+				let cloned_data = (**cached_data).clone();
+				return Box::pin(async move { cloned_data });
+			}
+		}
+
+		drop(cache_guard);
+
+		let fut = self.node.eval(input);
+		let cache = self.cache.clone();
+
+		Box::pin(async move {
+			let value = fut.await;
+			*cache.lock().unwrap() = Some((hash, Arc::new(value.clone())));
+			value
+		})
+	}
+
+	fn introspect(&self) -> MonitorIntrospectResult {
+		let mut state_guard = self.state.lock().unwrap();
+		match *state_guard {
+			MonitorMemoNodeState::Disabled => {
+				// Make sure to set the state to "StoreFirstEvaluation" or "Enabled" before trying to introspect
+				log::error!("Cannot introspect disabled monitor memo node");
+				MonitorIntrospectResult::Disabled
+			}
+			MonitorMemoNodeState::StoreFirstEvaluation => MonitorIntrospectResult::NotEvaluated,
+			MonitorMemoNodeState::FirstEvaluationResult(changed_since_last_introspection) => {
+				let (hash, cache_value) = self
+					.cache
+					.lock()
+					.unwrap()
+					.as_ref()
+					.map(|(hash, data)| (*hash, (*data).clone() as Arc<dyn std::any::Any + Send + Sync>))
+					.expect("Evaluated cache node must store data");
+				*self.hash_on_last_introspection.lock().unwrap() = hash;
+				*state_guard = MonitorMemoNodeState::Disabled;
+				MonitorIntrospectResult::Evaluated((cache_value, changed_since_last_introspection))
+			}
+			MonitorMemoNodeState::Enabled(changed_since_last_introspection) => {
+				let cache = self.cache.lock().unwrap().as_ref().map(|(hash, data)| (*hash, (*data).clone() as Arc<dyn std::any::Any + Send + Sync>));
+				match cache {
+					Some((hash, cache_value)) => {
+						*self.hash_on_last_introspection.lock().unwrap() = hash;
+						MonitorIntrospectResult::Evaluated((cache_value, changed_since_last_introspection))
+					}
+					None => MonitorIntrospectResult::NotEvaluated,
+				}
+			}
+		}
+	}
+
+	fn permanently_enable_cache(&self) {
+		*self.state.lock().unwrap() = MonitorMemoNodeState::Enabled(false);
+	}
+
+	fn cache_first_evaluation(&self) {
+		if matches!(*self.state.lock().unwrap(), MonitorMemoNodeState::Enabled(_)) {
+			return;
+		}
+		*self.state.lock().unwrap() = MonitorMemoNodeState::StoreFirstEvaluation;
+	}
+}
+
+impl<T, CachedNode> MonitorMemoNode<T, CachedNode> {
+	pub fn new(node: CachedNode, state: MonitorMemoNodeState) -> MonitorMemoNode<T, CachedNode> {
+		MonitorMemoNode {
+			cache: Default::default(),
+			node,
+			hash_on_last_introspection: Arc::new(Mutex::new(0)),
+			state: Arc::new(Mutex::new(state)),
+		}
+	}
+}
+
 /// Caches the output of a given Node and acts as a proxy
 #[derive(Default)]
 pub struct MemoNode<T, CachedNode> {
@@ -107,47 +260,58 @@ pub mod impure_memo {
 	pub const IDENTIFIER: crate::ProtoNodeIdentifier = crate::ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode");
 }
 
-/// Stores both what a node was called with and what it returned.
-#[derive(Clone, Debug)]
-pub struct IORecord<I, O> {
-	pub input: I,
-	pub output: O,
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum IntrospectMode {
+	Input,
+	Data,
 }
 
 /// Caches the output of the last graph evaluation for introspection
 #[derive(Default)]
-pub struct MonitorNode<I, T, N> {
+pub struct MonitorNode<I, O, N> {
 	#[allow(clippy::type_complexity)]
-	io: Arc<Mutex<Option<Arc<IORecord<I, T>>>>>,
+	input: Arc<Mutex<Option<Arc<I>>>>,
+	output: Arc<Mutex<Option<Arc<O>>>>,
+	// Gets set to true by the editor when before evaluating the network, then reset when the monitor node is evaluated
+	introspect_input: Arc<Mutex<bool>>,
+	introspect_output: Arc<Mutex<bool>>,
 	node: N,
 }
 
-impl<'i, T, I, N> Node<'i, I> for MonitorNode<I, T, N>
+impl<'i, I, O, N> Node<'i, I> for MonitorNode<I, O, N>
 where
 	I: Clone + 'static + Send + Sync,
-	T: Clone + 'static + Send + Sync,
-	for<'a> N: Node<'a, I, Output: Future<Output = T> + WasmNotSend> + 'i,
+	O: Clone + 'static + Send + Sync,
+	for<'a> N: Node<'a, I, Output: Future<Output = O> + WasmNotSend> + Send + Sync + 'i,
 {
-	type Output = DynFuture<'i, T>;
+	type Output = DynFuture<'i, O>;
 	fn eval(&'i self, input: I) -> Self::Output {
-		let io = self.io.clone();
-		let output_fut = self.node.eval(input.clone());
 		Box::pin(async move {
-			let output = output_fut.await;
-			*io.lock().unwrap() = Some(Arc::new(IORecord { input, output: output.clone() }));
+			let output = self.node.eval(input.clone()).await;
+			let mut introspect_input = self.introspect_input.lock().unwrap();
+			if *introspect_input {
+				*self.input.lock().unwrap() = Some(Arc::new(input));
+				*introspect_input = false;
+			}
+			let mut introspect_output = self.introspect_output.lock().unwrap();
+			if *introspect_output {
+				*self.output.lock().unwrap() = Some(Arc::new(output.clone()));
+				*introspect_output = false;
+			}
 			output
 		})
 	}
-
-	fn serialize(&self) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
-		let io = self.io.lock().unwrap();
-		(io).as_ref().map(|output| output.clone() as Arc<dyn std::any::Any + Send + Sync>)
-	}
 }
 
-impl<I, T, N> MonitorNode<I, T, N> {
-	pub fn new(node: N) -> MonitorNode<I, T, N> {
-		MonitorNode { io: Arc::new(Mutex::new(None)), node }
+impl<I, O, N> MonitorNode<I, O, N> {
+	pub fn new(node: N) -> MonitorNode<I, O, N> {
+		MonitorNode {
+			input: Arc::new(Mutex::new(None)),
+			output: Arc::new(Mutex::new(None)),
+			introspect_input: Arc::new(Mutex::new(false)),
+			introspect_output: Arc::new(Mutex::new(false)),
+			node,
+		}
 	}
 }
 

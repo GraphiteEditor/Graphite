@@ -12,6 +12,7 @@ pub struct WirePath {
 	pub data_type: FrontendGraphDataType,
 	pub thick: bool,
 	pub dashed: bool,
+	pub center: Option<(i32, i32)>,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -22,6 +23,14 @@ pub struct WirePathUpdate {
 	// If none, then remove the wire from the map
 	#[serde(rename = "wirePathUpdate")]
 	pub wire_path_update: Option<WirePath>,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct WireSNIUpdate {
+	pub id: NodeId,
+	#[serde(rename = "inputIndex")]
+	pub input_index: usize,
+	pub sni: Option<NodeId>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -53,7 +62,7 @@ impl GraphWireStyle {
 	}
 }
 
-pub fn build_vector_wire(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool, graph_wire_style: GraphWireStyle) -> Subpath<PointId> {
+pub fn build_vector_wire(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool, graph_wire_style: &GraphWireStyle) -> (Subpath<PointId>, DVec2) {
 	let grid_spacing = 24.;
 	match graph_wire_style {
 		GraphWireStyle::Direct => {
@@ -85,7 +94,7 @@ pub fn build_vector_wire(output_position: DVec2, input_position: DVec2, vertical
 			let delta01 = DVec2::new((locations[1].x - locations[0].x) * smoothing, (locations[1].y - locations[0].y) * smoothing);
 			let delta23 = DVec2::new((locations[3].x - locations[2].x) * smoothing, (locations[3].y - locations[2].y) * smoothing);
 
-			Subpath::new(
+			let subpath = Subpath::new(
 				vec![
 					ManipulatorGroup {
 						anchor: locations[0],
@@ -113,7 +122,9 @@ pub fn build_vector_wire(output_position: DVec2, input_position: DVec2, vertical
 					},
 				],
 				false,
-			)
+			);
+			let center = subpath.center().unwrap();
+			(subpath, center)
 		}
 		GraphWireStyle::GridAligned => {
 			let locations = straight_wire_paths(output_position, input_position, vertical_out, vertical_in);
@@ -446,13 +457,13 @@ fn straight_wire_paths(output_position: DVec2, input_position: DVec2, vertical_o
 	vec![IVec2::new(x1, y1), IVec2::new(x20, y1), IVec2::new(x20, y3), IVec2::new(x4, y3)]
 }
 
-fn straight_wire_subpath(locations: Vec<IVec2>) -> Subpath<PointId> {
+fn straight_wire_subpath(locations: Vec<IVec2>) -> (Subpath<PointId>, DVec2) {
 	if locations.is_empty() {
-		return Subpath::new(Vec::new(), false);
+		return (Subpath::new(Vec::new(), false), DVec2::default());
 	}
 
 	if locations.len() == 2 {
-		return Subpath::new(
+		let subpath = Subpath::new(
 			vec![
 				ManipulatorGroup {
 					anchor: locations[0].into(),
@@ -469,6 +480,8 @@ fn straight_wire_subpath(locations: Vec<IVec2>) -> Subpath<PointId> {
 			],
 			false,
 		);
+		let center = subpath.center().unwrap();
+		return (subpath, center);
 	}
 
 	let corner_radius = 10;
@@ -585,5 +598,7 @@ fn straight_wire_subpath(locations: Vec<IVec2>) -> Subpath<PointId> {
 		out_handle: None,
 		id: PointId::generate(),
 	});
-	Subpath::new(path, false)
+	let subpath = Subpath::new(path, false);
+	let center = subpath.center().unwrap();
+	(subpath, center)
 }
