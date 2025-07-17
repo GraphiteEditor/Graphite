@@ -525,7 +525,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 		return Vec::new().into();
 	};
 
-	if let Some(&TaggedValue::DAffine2(transform)) = input.as_non_exposed_value() {
+	let widgets = if let Some(&TaggedValue::DAffine2(transform)) = input.as_non_exposed_value() {
 		let translation = transform.translation;
 		let rotation = transform.decompose_rotation();
 		let scale = transform.decompose_scale();
@@ -607,16 +607,22 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 				.on_commit(commit_value)
 				.widget_holder(),
 		]);
-	}
 
-	let widgets = vec![
-		LayoutGroup::Row { widgets: location_widgets },
-		LayoutGroup::Row { widgets: rotation_widgets },
-		LayoutGroup::Row { widgets: scale_widgets },
-	];
-	let (last, rest) = widgets.split_last().expect("Transform widget should return multiple rows");
-	*extra_widgets = rest.to_vec();
-	last.clone()
+		vec![
+			LayoutGroup::Row { widgets: location_widgets },
+			LayoutGroup::Row { widgets: rotation_widgets },
+			LayoutGroup::Row { widgets: scale_widgets },
+		]
+	} else {
+		vec![LayoutGroup::Row { widgets: location_widgets }]
+	};
+
+	if let Some((last, rest)) = widgets.split_last() {
+		*extra_widgets = rest.to_vec();
+		last.clone()
+	} else {
+		LayoutGroup::default()
+	}
 }
 
 pub fn coordinate_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, unit: &str, min: Option<f64>, is_integer: bool) -> LayoutGroup {
@@ -1460,9 +1466,9 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 
 pub(crate) fn node_no_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let text = if context.network_interface.is_layer(&node_id, context.selection_network_path) {
-		"Layer has no properties"
+		"Layer has no parameters"
 	} else {
-		"Node has no properties"
+		"Node has no parameters"
 	};
 	string_properties(text)
 }
