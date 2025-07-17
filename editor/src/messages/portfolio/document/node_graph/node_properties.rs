@@ -7,7 +7,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Inpu
 use crate::messages::prelude::*;
 use choice::enum_choice;
 use dyn_any::DynAny;
-use glam::{DAffine2, DVec2, IVec2, UVec2};
+use glam::{DAffine2, DVec2};
 use graph_craft::Type;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
@@ -160,8 +160,7 @@ pub(crate) fn property_from_type(
 				Some("Fraction") => number_widget(default_info, number_input.mode_range().min(min(0.)).max(max(1.))).into(),
 				Some("IntegerCount") => number_widget(default_info, number_input.int().min(min(1.))).into(),
 				Some("SeedValue") => number_widget(default_info, number_input.int().min(min(0.))).into(),
-				Some("Resolution") => coordinate_widget(default_info, "W", "H", unit.unwrap_or(" px"), Some(64.)),
-				Some("PixelSize") => coordinate_widget(default_info, "X", "Y", unit.unwrap_or(" px"), None),
+				Some("PixelSize") => coordinate_widget(default_info, "X", "Y", unit.unwrap_or(" px"), None, false),
 				Some("TextArea") => text_area_widget(default_info).into(),
 
 				// For all other types, use TypeId-based matching
@@ -176,9 +175,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<u64>() => number_widget(default_info, number_input.int().min(min(0.))).into(),
 						Some(x) if x == TypeId::of::<bool>() => bool_widget(default_info, CheckboxInput::default()).into(),
 						Some(x) if x == TypeId::of::<String>() => text_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<DVec2>() => coordinate_widget(default_info, "X", "Y", "", None),
-						Some(x) if x == TypeId::of::<UVec2>() => coordinate_widget(default_info, "X", "Y", "", Some(0.)),
-						Some(x) if x == TypeId::of::<IVec2>() => coordinate_widget(default_info, "X", "Y", "", None),
+						Some(x) if x == TypeId::of::<DVec2>() => coordinate_widget(default_info, "X", "Y", "", None, false),
 						// ==========================
 						// PRIMITIVE COLLECTION TYPES
 						// ==========================
@@ -507,7 +504,7 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 	last.clone()
 }
 
-pub fn coordinate_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, unit: &str, min: Option<f64>) -> LayoutGroup {
+pub fn coordinate_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, unit: &str, min: Option<f64>, is_integer: bool) -> LayoutGroup {
 	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
 
 	let mut widgets = start_widgets(parameter_widgets_info);
@@ -526,6 +523,7 @@ pub fn coordinate_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, 
 					.unit(unit)
 					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+					.is_integer(is_integer)
 					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), dvec2.y)), node_id, index))
 					.on_commit(commit_value)
 					.widget_holder(),
@@ -535,59 +533,8 @@ pub fn coordinate_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, 
 					.unit(unit)
 					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+					.is_integer(is_integer)
 					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(dvec2.x, input.value.unwrap())), node_id, index))
-					.on_commit(commit_value)
-					.widget_holder(),
-			]);
-		}
-		Some(&TaggedValue::IVec2(ivec2)) => {
-			let update_x = move |input: &NumberInput| TaggedValue::IVec2(IVec2::new(input.value.unwrap() as i32, ivec2.y));
-			let update_y = move |input: &NumberInput| TaggedValue::IVec2(IVec2::new(ivec2.x, input.value.unwrap() as i32));
-			widgets.extend_from_slice(&[
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				NumberInput::new(Some(ivec2.x as f64))
-					.int()
-					.label(x)
-					.unit(unit)
-					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
-					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-					.on_update(update_value(update_x, node_id, index))
-					.on_commit(commit_value)
-					.widget_holder(),
-				Separator::new(SeparatorType::Related).widget_holder(),
-				NumberInput::new(Some(ivec2.y as f64))
-					.int()
-					.label(y)
-					.unit(unit)
-					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
-					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-					.on_update(update_value(update_y, node_id, index))
-					.on_commit(commit_value)
-					.widget_holder(),
-			]);
-		}
-		Some(&TaggedValue::UVec2(uvec2)) => {
-			let update_x = move |input: &NumberInput| TaggedValue::UVec2(UVec2::new(input.value.unwrap() as u32, uvec2.y));
-			let update_y = move |input: &NumberInput| TaggedValue::UVec2(UVec2::new(uvec2.x, input.value.unwrap() as u32));
-			widgets.extend_from_slice(&[
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				NumberInput::new(Some(uvec2.x as f64))
-					.int()
-					.label(x)
-					.unit(unit)
-					.min(min.unwrap_or(0.))
-					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-					.on_update(update_value(update_x, node_id, index))
-					.on_commit(commit_value)
-					.widget_holder(),
-				Separator::new(SeparatorType::Related).widget_holder(),
-				NumberInput::new(Some(uvec2.y as f64))
-					.int()
-					.label(y)
-					.unit(unit)
-					.min(min.unwrap_or(0.))
-					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-					.on_update(update_value(update_y, node_id, index))
 					.on_commit(commit_value)
 					.widget_holder(),
 			]);
@@ -600,6 +547,7 @@ pub fn coordinate_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, 
 					.unit(unit)
 					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+					.is_integer(is_integer)
 					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), value)), node_id, index))
 					.on_commit(commit_value)
 					.widget_holder(),
@@ -609,6 +557,7 @@ pub fn coordinate_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, 
 					.unit(unit)
 					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+					.is_integer(is_integer)
 					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(value, input.value.unwrap())), node_id, index))
 					.on_commit(commit_value)
 					.widget_holder(),
@@ -1178,7 +1127,7 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	if let Some(&TaggedValue::GridType(grid_type)) = grid_type_input.as_non_exposed_value() {
 		match grid_type {
 			GridType::Rectangular => {
-				let spacing = coordinate_widget(ParameterWidgetsInfo::new(node_id, SpacingInput::<f64>::INDEX, true, context), "W", "H", " px", Some(0.));
+				let spacing = coordinate_widget(ParameterWidgetsInfo::new(node_id, SpacingInput::<f64>::INDEX, true, context), "W", "H", " px", Some(0.), false);
 				widgets.push(spacing);
 			}
 			GridType::Isometric => {
@@ -1188,7 +1137,7 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						NumberInput::default().label("H").min(0.).unit(" px"),
 					),
 				};
-				let angles = coordinate_widget(ParameterWidgetsInfo::new(node_id, AnglesInput::INDEX, true, context), "", "", "°", None);
+				let angles = coordinate_widget(ParameterWidgetsInfo::new(node_id, AnglesInput::INDEX, true, context), "", "", "°", None, false);
 				widgets.extend([spacing, angles]);
 			}
 		}

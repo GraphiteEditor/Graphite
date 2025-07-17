@@ -6473,6 +6473,7 @@ pub struct Vec2InputSettings {
 	pub y: String,
 	pub unit: String,
 	pub min: Option<f64>,
+	pub is_integer: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -6547,6 +6548,7 @@ impl InputPersistentMetadata {
 				self.input_data.insert("x".to_string(), json!(vec2_properties.x));
 				self.input_data.insert("y".to_string(), json!(vec2_properties.y));
 				self.input_data.insert("unit".to_string(), json!(vec2_properties.unit));
+				self.input_data.insert("is_integer".to_string(), Value::Bool(vec2_properties.is_integer));
 				if let Some(min) = vec2_properties.min {
 					self.input_data.insert("min".to_string(), json!(min));
 				}
