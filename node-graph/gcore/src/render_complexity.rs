@@ -1,3 +1,4 @@
+use crate::gradient::{Gradient, GradientStops};
 use crate::instances::Instances;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::vector::VectorData;
@@ -54,8 +55,10 @@ impl RenderComplexity for Raster<GPU> {
 
 impl RenderComplexity for String {}
 impl RenderComplexity for bool {}
-impl RenderComplexity for f32 {}
+impl RenderComplexity for u32 {}
 impl RenderComplexity for f64 {}
 impl RenderComplexity for DVec2 {}
 impl RenderComplexity for Option<Color> {}
 impl RenderComplexity for Vec<Color> {}
+impl RenderComplexity for GradientStops {}
+impl RenderComplexity for Gradient {}

@@ -796,7 +796,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					// Remove all thumbnails
 					cleared_thumbnails.push(sni);
 				}
-
+				document.node_graph_handler.node_graph_errors = Vec::new();
 				self.thumbnails_to_clear.extend(cleared_thumbnails);
 			}
 			PortfolioMessage::EvaluateActiveDocumentWithThumbnails => {
@@ -869,7 +869,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let evaluated_data = match monitor_result {
 						MonitorIntrospectResult::Error => continue,
 						MonitorIntrospectResult::Disabled => continue,
-						MonitorIntrospectResult::NotEvaluated => continue,
+						MonitorIntrospectResult::NotEvaluated => {
+							continue;
+						}
 						MonitorIntrospectResult::Evaluated((data, changed)) => {
 							// If the evaluated value is the same as the previous, then just remap the ID
 							if !changed {
@@ -1253,30 +1255,30 @@ impl PortfolioMessageHandler {
 					.network_interface
 					.viewport_loaded_thumbnail_position(&input_connector, graph_wire_style, &document.breadcrumb_network_path)
 				{
-					let in_view = viewport_position.x > 0.0 && viewport_position.y > 0.0 && viewport_position.x < ipp.viewport_bounds()[1].x && viewport_position.y < ipp.viewport_bounds()[1].y;
-					if in_view {
-						let Some(protonode) = document.network_interface.protonode_from_input(&input_connector, &document.breadcrumb_network_path) else {
-							// The input is not connected to the export, which occurs if inside a disconnected node
-							wire_stack = Vec::new();
-							nodes_to_render.clear();
-							continue;
-						};
-						nodes_to_render.insert(protonode);
-					}
+					// let in_view = viewport_position.x > 0.0 && viewport_position.y > 0.0 && viewport_position.x < ipp.viewport_bounds()[1].x && viewport_position.y < ipp.viewport_bounds()[1].y;
+					// if in_view {
+					let Some(protonode) = document.network_interface.protonode_from_input(&input_connector, &document.breadcrumb_network_path) else {
+						// The input is not connected to the export, which occurs if inside a disconnected node
+						wire_stack = Vec::new();
+						nodes_to_render.clear();
+						continue;
+					};
+					nodes_to_render.insert(protonode);
+					// }
 				}
 			}
 		};
 
-		// Get thumbnails for all visible layer
-		for visible_node in &document.node_graph_handler.visible_nodes(&mut document.network_interface, &document.breadcrumb_network_path, ipp) {
-			if document.network_interface.is_layer(&visible_node, &document.breadcrumb_network_path) {
-				let Some(protonode) = document
+		// Get thumbnails for all visible layer ouputs
+		// for visible_node in &document.node_graph_handler.visible_nodes(&mut document.network_interface, &document.breadcrumb_network_path, ipp) {
+		for visible_node in document.network_interface.nested_network(&document.breadcrumb_network_path).unwrap().nodes.keys() {
+			if document.network_interface.is_layer(visible_node, &document.breadcrumb_network_path) {
+				if let Some(protonode) = document
 					.network_interface
 					.protonode_from_output(&OutputConnector::node(*visible_node, 0), &document.breadcrumb_network_path)
-				else {
-					continue;
+				{
+					nodes_to_render.insert(protonode);
 				};
-				nodes_to_render.insert(protonode);
 			}
 		}
 

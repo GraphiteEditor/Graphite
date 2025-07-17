@@ -5,13 +5,15 @@ mod modification;
 use super::misc::{dvec2_to_point, point_to_dvec2};
 use super::style::{PathStyle, Stroke};
 use crate::bounds::BoundingBox;
+use crate::gradient::{Gradient, GradientType};
 use crate::instances::Instances;
 use crate::math::quad::Quad;
 use crate::transform::Transform;
 use crate::vector::click_target::{ClickTargetType, FreePoint};
+use crate::vector::style::Fill;
 use crate::{AlphaBlending, Color, GraphicGroupTable};
 pub use attributes::*;
-use bezier_rs::{BezierHandles, ManipulatorGroup};
+use bezier_rs::{BezierHandles, ManipulatorGroup, Subpath};
 use core::borrow::Borrow;
 use core::hash::Hash;
 use dyn_any::DynAny;
@@ -508,6 +510,36 @@ impl BoundingBox for VectorDataTable {
 				instance.instance.bounding_box_with_transform(transform * *instance.transform).map(|[a, b]| [a - offset, b + offset])
 			})
 			.reduce(Quad::combine_bounds)
+	}
+}
+
+/// Convert a Gradient/GradientStops into VectorDataTable for rendering thumbnails
+impl From<Gradient> for VectorDataTable {
+	fn from(mut gradient: Gradient) -> VectorDataTable {
+		match gradient.gradient_type {
+			GradientType::Linear => {
+				let mut rectangle = VectorData::from_subpath(Subpath::new_rect((0., 0.).into(), (150., 100.).into()));
+				// Handle vertical gradients
+				let intersection = if gradient.start.x == gradient.end.x {
+					DVec2::new(0., 100.)
+				} else {
+					let slope = (gradient.start.y - gradient.end.y) / (gradient.start.x - gradient.end.x);
+					if slope > 100. / 150. { DVec2::new(100. / slope, 100.) } else { DVec2::new(150., slope * 150.) }
+				};
+				gradient.start = (0., 0.).into();
+				gradient.end = intersection;
+				rectangle.style.fill = Fill::Gradient(gradient);
+				Instances::new(rectangle)
+			}
+			GradientType::Radial => {
+				let mut circle = VectorData::from_subpath(Subpath::new_ellipse((-100., -100.).into(), (100., 100.).into()));
+				gradient.start = (0., 0.).into();
+				gradient.end = (100., 0.).into();
+				gradient.transform = DAffine2::IDENTITY;
+				circle.style.fill = Fill::Gradient(gradient);
+				Instances::new(circle)
+			}
+		}
 	}
 }
 

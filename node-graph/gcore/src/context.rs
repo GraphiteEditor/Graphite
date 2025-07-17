@@ -630,8 +630,8 @@ fn get_animation_time(ctx: impl Ctx + ExtractAnimationTime) -> Option<f64> {
 }
 
 #[node_macro::node(category("Context Getter"))]
-fn get_index(ctx: impl Ctx + ExtractIndex) -> Option<usize> {
-	ctx.try_index()
+fn get_index(ctx: impl Ctx + ExtractIndex) -> Option<u32> {
+	ctx.try_index().map(|index| index as u32)
 }
 
 // #[node_macro::node(category("Loop"))]

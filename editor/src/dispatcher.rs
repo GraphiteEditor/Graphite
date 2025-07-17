@@ -6,9 +6,7 @@ use crate::messages::prelude::*;
 #[derive(Debug, Default)]
 pub struct Dispatcher {
 	evaluation_queue: Vec<Message>,
-	introspection_queue: Vec<Message>,
 	queueing_evaluation_messages: bool,
-	queueing_introspection_messages: bool,
 	message_queues: Vec<VecDeque<Message>>,
 	pub responses: Vec<FrontendMessage>,
 	pub message_handlers: DispatcherMessageHandlers,

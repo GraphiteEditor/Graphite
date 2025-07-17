@@ -1,7 +1,9 @@
+use glam::DVec2;
 pub use graph_craft::document::value::RenderOutputType;
 use graph_craft::document::value::{EditorMetadata, RenderOutput};
 pub use graph_craft::wasm_application_io::*;
 use graphene_application_io::ApplicationIo;
+use graphene_core::gradient::GradientStops;
 #[cfg(target_arch = "wasm32")]
 use graphene_core::instances::Instances;
 #[cfg(target_arch = "wasm32")]
@@ -240,10 +242,11 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 		graphene_core::Artboard,
 		graphene_core::ArtboardGroupTable,
 		Option<Color>,
+		GradientStops,
 		Vec<Color>,
 		bool,
-		f32,
 		f64,
+		DVec2,
 		String,
 	)]
 	data: T,

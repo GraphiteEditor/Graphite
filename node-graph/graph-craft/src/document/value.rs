@@ -7,6 +7,7 @@ pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::SurfaceFrame;
 use graphene_brush::brush_cache::BrushCache;
 use graphene_brush::brush_stroke::BrushStroke;
+use graphene_core::gradient::GradientStops;
 use graphene_core::raster_types::{CPU, GPU};
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
@@ -562,8 +563,13 @@ thumbnail_render! {
 	graphene_core::raster_types::RasterDataTable<GPU>,
 	graphene_core::GraphicElement,
 	Option<Color>,
+	GradientStops,
 	Vec<Color>,
+	u32,
 	f64,
+	DVec2,
+	bool,
+	String,
 }
 
 pub enum ThumbnailRenderResult {

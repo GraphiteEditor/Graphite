@@ -1,4 +1,4 @@
-use crate::Color;
+use crate::{Color, bounds::BoundingBox, vector::VectorDataTable};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 
@@ -29,6 +29,12 @@ impl std::hash::Hash for GradientStops {
 impl Default for GradientStops {
 	fn default() -> Self {
 		Self(vec![(0., Color::BLACK), (1., Color::WHITE)])
+	}
+}
+
+impl BoundingBox for GradientStops {
+	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
+		Into::<VectorDataTable>::into(Into::<Gradient>::into(self.clone())).bounding_box(DAffine2::default(), false)
 	}
 }
 
@@ -166,6 +172,24 @@ impl std::fmt::Display for Gradient {
 			.collect::<Vec<_>>()
 			.join(", ");
 		write!(f, "{} Gradient: {stops}", self.gradient_type)
+	}
+}
+
+impl From<GradientStops> for Gradient {
+	fn from(gradient_stops: GradientStops) -> Gradient {
+		Gradient {
+			stops: gradient_stops.clone(),
+			gradient_type: GradientType::Linear,
+			start: (0., 0.).into(),
+			end: (1., 0.).into(),
+			transform: DAffine2::IDENTITY,
+		}
+	}
+}
+
+impl BoundingBox for Gradient {
+	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
+		Into::<VectorDataTable>::into(self.clone()).bounding_box(DAffine2::default(), false)
 	}
 }
 

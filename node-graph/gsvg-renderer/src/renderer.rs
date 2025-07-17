@@ -6,6 +6,7 @@ use glam::{DAffine2, DVec2};
 use graphene_core::blending::BlendMode;
 use graphene_core::bounds::BoundingBox;
 use graphene_core::color::Color;
+use graphene_core::gradient::{Gradient, GradientStops};
 use graphene_core::instances::Instance;
 use graphene_core::math::quad::Quad;
 use graphene_core::raster::Image;
@@ -1185,23 +1186,36 @@ impl GraphicElementRendered for GraphicElement {
 	}
 }
 
-/// Used to stop rust complaining about upstream traits adding display implementations to `Option<Color>`. This would not be an issue as we control that crate.
-trait Primitive: std::fmt::Display + BoundingBox + RenderComplexity {}
-impl Primitive for String {}
+trait Primitive: std::fmt::Display + BoundingBox + RenderComplexity {
+	fn precision() -> bool {
+		false
+	}
+}
+impl Primitive for u32 {}
+impl Primitive for f64 {
+	fn precision() -> bool {
+		true
+	}
+}
+impl Primitive for DVec2 {
+	fn precision() -> bool {
+		true
+	}
+}
 impl Primitive for bool {}
-impl Primitive for f32 {}
-impl Primitive for f64 {}
-impl Primitive for DVec2 {}
+impl Primitive for String {}
 
 fn text_attributes(attributes: &mut SvgRenderAttrs) {
 	attributes.push("fill", "black");
 	attributes.push("font-size", "30");
+	attributes.push("dominant-baseline", "hanging");
+	attributes.push("text-anchor", "middle");
 }
 
 impl<P: Primitive> GraphicElementRendered for P {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
-		log::debug!("Rendering svg for primative: {}", self);
-		render.parent_tag("text", text_attributes, |render| render.leaf_node(format!("{self}")));
+		let text = if P::precision() { format!("{:.2}", self) } else { format!("{self}") };
+		render.parent_tag("text", text_attributes, |render| render.leaf_node(text));
 	}
 
 	#[cfg(feature = "vello")]
@@ -1210,22 +1224,33 @@ impl<P: Primitive> GraphicElementRendered for P {
 
 impl GraphicElementRendered for Option<Color> {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
-		let Some(color) = self else {
-			render.parent_tag("text", |_| {}, |render| render.leaf_node("Empty color"));
-			return;
-		};
-		let color_info = format!("{:?} #{} {:?}", color, color.to_rgba_hex_srgb(), color.to_rgba8_srgb());
-
-		render.leaf_tag("rect", |attributes| {
-			attributes.push("width", "100");
-			attributes.push("height", "100");
-			attributes.push("y", "40");
-			attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
-			if color.a() < 1. {
-				attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
+		match self {
+			Some(color) => {
+				render.leaf_tag("rect", |attributes| {
+					attributes.push("width", "150");
+					attributes.push("height", "100");
+					attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
+					if color.a() < 1. {
+						attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
+					}
+				});
 			}
-		});
-		render.parent_tag("text", text_attributes, |render| render.leaf_node(color_info))
+			None => {
+				render.leaf_tag("rect", |attributes| {
+					attributes.push("width", "150");
+					attributes.push("height", "100");
+					attributes.push("fill", format!("#ffffff"));
+				});
+				render.leaf_tag("line", |attributes| {
+					attributes.push("x1", "0");
+					attributes.push("y1", "100");
+					attributes.push("x2", "150");
+					attributes.push("y2", "0");
+					attributes.push("stroke", "red");
+					attributes.push("stroke-width", "5");
+				});
+			}
+		}
 	}
 
 	#[cfg(feature = "vello")]
@@ -1236,7 +1261,7 @@ impl GraphicElementRendered for Vec<Color> {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
 		for (index, &color) in self.iter().enumerate() {
 			render.leaf_tag("rect", |attributes| {
-				attributes.push("width", "100");
+				attributes.push("width", "150");
 				attributes.push("height", "100");
 				attributes.push("x", (index * 120).to_string());
 				attributes.push("y", "40");
@@ -1252,6 +1277,23 @@ impl GraphicElementRendered for Vec<Color> {
 	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
 }
 
+impl GraphicElementRendered for GradientStops {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		// Gradient stops -> Gradient -> Vector data table
+		Into::<VectorDataTable>::into(Into::<Gradient>::into(self.clone())).render_svg(render, render_params);
+	}
+
+	#[cfg(feature = "vello")]
+	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
+}
+
+impl GraphicElementRendered for Gradient {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		Into::<VectorDataTable>::into(self.clone()).render_svg(render, render_params);
+	}
+	#[cfg(feature = "vello")]
+	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
+}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SvgSegment {
 	Slice(&'static str),
