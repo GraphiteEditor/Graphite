@@ -7,7 +7,7 @@ use graphene_core::vector::style::Fill;
 use graphene_core::vector::{PointId, VectorData, VectorDataTable};
 use graphene_core::{Color, Ctx, GraphicElement, GraphicGroupTable};
 pub use path_bool as path_bool_lib;
-use path_bool::{FillRule, PathBooleanOperation};
+use path_bool::PathBooleanOperation;
 use std::ops::Mul;
 
 // TODO: Fix boolean ops to work by removing .transform() and .one_instnace_*() calls,
@@ -374,20 +374,60 @@ fn from_path(path_data: &[Path]) -> VectorData {
 
 type Path = Vec<path_bool::PathSegment>;
 
+fn path_to_bezpath(path: Path) -> kurbo::BezPath {
+	let p = |p: DVec2| -> kurbo::Point { kurbo::Point::new(p.x, p.y) };
+	let mut ret = kurbo::BezPath::new();
+	let mut last_point = None;
+
+	for s in path {
+		let p0 = p(s.start());
+		if last_point != Some(p0) {
+			ret.move_to(p0);
+		}
+
+		match s {
+			path_bool::PathSegment::Line(_, p1) => ret.line_to(p(p1)),
+			path_bool::PathSegment::Cubic(_, p1, p2, p3) => ret.curve_to(p(p1), p(p2), p(p3)),
+			path_bool::PathSegment::Quadratic(_, p1, p2) => ret.quad_to(p(p1), p(p2)),
+			path_bool::PathSegment::Arc(..) => unimplemented!(),
+		}
+		last_point = Some(p(s.end()));
+	}
+	ret
+}
+
 fn boolean_union(a: Path, b: Path) -> Vec<Path> {
 	path_bool(a, b, PathBooleanOperation::Union)
 }
 
 fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> Vec<Path> {
-	match path_bool::path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, op) {
-		Ok(results) => results,
-		Err(e) => {
-			let a_path = path_bool::path_to_path_data(&a, 0.001);
-			let b_path = path_bool::path_to_path_data(&b, 0.001);
-			log::error!("Boolean error {e:?} encountered while processing {a_path}\n {op:?}\n {b_path}");
-			Vec::new()
-		}
-	}
+	let op = match op {
+		PathBooleanOperation::Union => linesweeper::BinaryOp::Union,
+		PathBooleanOperation::Difference => linesweeper::BinaryOp::Difference,
+		PathBooleanOperation::Intersection => linesweeper::BinaryOp::Intersection,
+		PathBooleanOperation::Exclusion => linesweeper::BinaryOp::Xor,
+		PathBooleanOperation::Division => unimplemented!(),
+		PathBooleanOperation::Fracture => unimplemented!(),
+	};
+	let a = path_to_bezpath(a);
+	let b = path_to_bezpath(b);
+	log::warn!("first path: {:?}", a.to_svg());
+	log::warn!("second path: {:?}", b.to_svg());
+	let p = |q: kurbo::Point| -> DVec2 { DVec2::new(q.x, q.y) };
+	linesweeper::binary_op(&a, &b, linesweeper::FillRule::NonZero, op)
+		.unwrap()
+		.contours()
+		.map(|c| {
+			c.path
+				.segments()
+				.map(|s| match s {
+					kurbo::PathSeg::Line(ln) => path_bool::PathSegment::Line(p(ln.p0), p(ln.p1)),
+					kurbo::PathSeg::Quad(q) => path_bool::PathSegment::Quadratic(p(q.p0), p(q.p1), p(q.p2)),
+					kurbo::PathSeg::Cubic(c) => path_bool::PathSegment::Cubic(p(c.p0), p(c.p1), p(c.p2), p(c.p3)),
+				})
+				.collect()
+		})
+		.collect()
 }
 
 fn boolean_subtract(a: Path, b: Path) -> Vec<Path> {

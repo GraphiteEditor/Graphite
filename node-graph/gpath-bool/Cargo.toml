@@ -17,3 +17,5 @@ specta = { workspace = true }
 log = { workspace = true }
 path-bool = { workspace = true }
 serde = { workspace = true }
+linesweeper = { git = "https://github.com/jneem/linesweeper", features = ["slow-asserts"] }
+kurbo.workspace = true
