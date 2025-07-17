@@ -79,15 +79,6 @@ struct EvaluationContext {
 	export_config: Option<ExportConfig>,
 }
 
-impl Default for NodeGraphExecutor {
-	fn default() -> Self {
-		Self {
-			futures: Default::default(),
-			runtime_io: NodeRuntimeIO::new(),
-		}
-	}
-}
-
 impl NodeGraphExecutor {
 	/// A local runtime is useful on threads since having global state causes flakes
 	// #[cfg(test)]
@@ -269,18 +260,6 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 }
-
-// pub enum AnimationState {
-// 	#[default]
-// 	Stopped,
-// 	Playing {
-// 		start: f64,
-// 	},
-// 	Paused {
-// 		start: f64,
-// 		pause_time: f64,
-// 	},
-// }
 
 // Re-export for usage by tests in other modules
 // #[cfg(test)]

@@ -2535,7 +2535,7 @@ impl NodeNetworkInterface {
 
 	pub fn newly_loaded_input_wire(&mut self, input: &InputConnector, graph_wire_style: &GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
 		match self.cached_wire(input, network_path) {
-			Some(loaded) => None,
+			Some(_) => None,
 			None => {
 				self.load_wire(input, graph_wire_style, network_path);
 				self.cached_wire(input, network_path).cloned()

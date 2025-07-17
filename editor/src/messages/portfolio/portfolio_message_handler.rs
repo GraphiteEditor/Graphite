@@ -10,6 +10,7 @@ use crate::messages::frontend::utility_types::{ExportBounds, FrontendDocumentDet
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WireSNIUpdate};
@@ -23,7 +24,6 @@ use glam::{DAffine2, DVec2};
 use graph_craft::document::value::EditorMetadata;
 use graph_craft::document::{InputConnector, NodeInput, OutputConnector};
 use graphene_std::EditorContext;
-use graphene_std::application_io::TimingInformation;
 use graphene_std::memo::MonitorIntrospectResult;
 use graphene_std::renderer::{Quad, RenderMetadata};
 use graphene_std::text::Font;
@@ -38,8 +38,6 @@ pub struct PortfolioMessageContext<'a> {
 	pub current_tool: &'a ToolType,
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 	pub reset_node_definitions_on_open: bool,
-	pub timing_information: TimingInformation,
-	pub animation: &'a AnimationMessageHandler,
 }
 
 #[derive(Debug, Default, ExtractField)]
@@ -74,8 +72,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			current_tool,
 			message_logging_verbosity,
 			reset_node_definitions_on_open,
-			timing_information,
-			animation,
 		} = context;
 
 		match message {
@@ -127,9 +123,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
 					if let Some(document) = self.documents.get_mut(&document_id) {
-						let document_inputs = DocumentMessageData {
+						let document_inputs = DocumentMessageContext {
 							ipp,
-							persistent_data: &self.persistent_data,
 							current_tool,
 							preferences,
 							device_pixel_ratio: self.device_pixel_ratio.unwrap_or(1.),
@@ -138,7 +133,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 				}
 			}
-
 			// Messages
 			PortfolioMessage::Init => {
 				// Load persistent data from the browser database
@@ -156,18 +150,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// Finish loading persistent data from the browser database
 				responses.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
-			}
-			PortfolioMessage::DocumentPassMessage { document_id, message } => {
-				if let Some(document) = self.documents.get_mut(&document_id) {
-					let document_inputs = DocumentMessageData {
-						ipp,
-						persistent_data: &self.persistent_data,
-						current_tool,
-						preferences,
-						device_pixel_ratio: self.device_pixel_ratio.unwrap_or(1.),
-					};
-					document.process_message(message, responses, document_inputs)
-				}
 			}
 			PortfolioMessage::AutoSaveActiveDocument => {
 				if let Some(document_id) = self.active_document_id {
@@ -831,25 +813,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					return;
 				};
 
-				// let animation_time = match animation.timing_information().animation_time {
-				// 	AnimationState::Stopped => 0.,
-				// 	AnimationState::Playing { start } => ipp.time - start,
-				// 	AnimationState::Paused { start, pause_time } => pause_time - start,
-				// };
-
 				let mut context = EditorContext::default();
 				context.footprint = Some(Footprint {
 					transform: document.metadata().document_to_viewport,
 					resolution: ipp.viewport_bounds.size().as_uvec2(),
 					quality: RenderQuality::Full,
 				});
-				context.animation_time = Some(timing_information.animation_time.as_secs_f64());
+				context.animation_time = Some(document.animation_time(ipp));
 				context.real_time = Some(ipp.time);
 				context.downstream_transform = Some(DAffine2::IDENTITY);
 
-				let nodes_to_try_render = self.visible_nodes_to_try_render(ipp, &preferences.graph_wire_style);
-
-				self.executor.submit_node_graph_evaluation(context, None, None, nodes_to_try_render);
+				self.executor.submit_node_graph_evaluation(context, None, None, nodes_to_introspect);
 			}
 			PortfolioMessage::ProcessEvaluationResponse {
 				evaluation_metadata,
@@ -876,10 +850,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(OverlaysMessage::Draw);
-				// match document.animation_state {
-				// 	AnimationState::Playing { .. } => responses.add(PortfolioMessage::EvaluateActiveDocument),
-				// 	_ => {}
-				// };
 			}
 			// PortfolioMessage::IntrospectActiveDocument { nodes_to_introspect } => {
 			// 	self.executor.submit_node_graph_introspection(nodes_to_introspect);
@@ -1081,7 +1051,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::UpdateDocumentWidgets => {
 				if let Some(document) = self.active_document() {
-					document.update_document_widgets(responses, animation.is_playing(), timing_information.animation_time);
+					document.update_document_widgets(responses, ipp);
 				}
 			}
 			PortfolioMessage::UpdateOpenDocumentsList => {
@@ -1283,8 +1253,6 @@ impl PortfolioMessageHandler {
 					.network_interface
 					.viewport_loaded_thumbnail_position(&input_connector, graph_wire_style, &document.breadcrumb_network_path)
 				{
-					log::debug!("viewport position: {:?}, input: {:?}", viewport_position, input_connector);
-
 					let in_view = viewport_position.x > 0.0 && viewport_position.y > 0.0 && viewport_position.x < ipp.viewport_bounds()[1].x && viewport_position.y < ipp.viewport_bounds()[1].y;
 					if in_view {
 						let Some(protonode) = document.network_interface.protonode_from_input(&input_connector, &document.breadcrumb_network_path) else {

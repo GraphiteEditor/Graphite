@@ -20,7 +20,8 @@ use glam::{DAffine2, DVec2};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, ParamCurve, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
-use std::f64::consts::TAU;
+use std::f64::consts::{PI, TAU};
+use std::hash::{Hash, Hasher};
 
 /// Implemented for types that can be converted to an iterator of vector data.
 /// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
@@ -1732,7 +1733,7 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2, distance: f64) -> VectorData {
 	// Splits a bézier curve based on a distance measurement
 	fn split_distance(bezier: PathSeg, distance: f64, length: f64) -> PathSeg {
-		let parametric = eval_pathseg_euclidean(bezier, (distance / length).clamp(0., 1.), DEFAULT_ACCURACY);
+		let parametric = bezpath_algorithms::eval_pathseg_euclidean(bezier, (distance / length).clamp(0., 1.), DEFAULT_ACCURACY);
 		bezier.subsegment(parametric..1.)
 	}
 
@@ -1773,7 +1774,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 	}
 
 	fn calculate_distance_to_spilt(bezier1: PathSeg, bezier2: PathSeg, bevel_length: f64) -> f64 {
-		if is_linear(&bezier1) && is_linear(&bezier2) {
+		if bezpath_algorithms::is_linear(&bezier1) && bezpath_algorithms::is_linear(&bezier2) {
 			let v1 = (bezier1.end() - bezier1.start()).normalize();
 			let v2 = (bezier1.end() - bezier2.end()).normalize();
 
@@ -1798,8 +1799,8 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 		for i in 0..=INITIAL_SAMPLES {
 			let distance_sample = max_split * (i as f64 / INITIAL_SAMPLES as f64);
 
-			let x_point_t = eval_pathseg_euclidean(bezier1, 1. - clamp_and_round(distance_sample / length1), DEFAULT_ACCURACY);
-			let y_point_t = eval_pathseg_euclidean(bezier2, clamp_and_round(distance_sample / length2), DEFAULT_ACCURACY);
+			let x_point_t = bezpath_algorithms::eval_pathseg_euclidean(bezier1, 1. - clamp_and_round(distance_sample / length1), DEFAULT_ACCURACY);
+			let y_point_t = bezpath_algorithms::eval_pathseg_euclidean(bezier2, clamp_and_round(distance_sample / length2), DEFAULT_ACCURACY);
 
 			let x_point = bezier1.eval(x_point_t);
 			let y_point = bezier2.eval(y_point_t);
@@ -1822,8 +1823,8 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 					for j in 1..=REFINE_STEPS {
 						let refined_sample = prev_sample + (distance_sample - prev_sample) * (j as f64 / REFINE_STEPS as f64);
 
-						let x_point_t = eval_pathseg_euclidean(bezier1, 1. - (refined_sample / length1).clamp(0., 1.), DEFAULT_ACCURACY);
-						let y_point_t = eval_pathseg_euclidean(bezier2, (refined_sample / length2).clamp(0., 1.), DEFAULT_ACCURACY);
+						let x_point_t = bezpath_algorithms::eval_pathseg_euclidean(bezier1, 1. - (refined_sample / length1).clamp(0., 1.), DEFAULT_ACCURACY);
+						let y_point_t = bezpath_algorithms::eval_pathseg_euclidean(bezier2, (refined_sample / length2).clamp(0., 1.), DEFAULT_ACCURACY);
 
 						let x_point = bezier1.eval(x_point_t);
 						let y_point = bezier2.eval(y_point_t);
@@ -1911,16 +1912,16 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 
 			let spilt_distance = calculate_distance_to_spilt(bezier, next_bezier, distance);
 
-			if is_linear(&bezier) {
+			if bezpath_algorithms::is_linear(&bezier) {
 				let start = point_to_dvec2(bezier.start());
 				let end = point_to_dvec2(bezier.end());
-				bezier = handles_to_segment(start, BezierHandles::Linear, end);
+				bezier = handles_to_segment(start, bezier_rs::BezierHandles::Linear, end);
 			}
 
-			if is_linear(&next_bezier) {
+			if bezpath_algorithms::is_linear(&next_bezier) {
 				let start = point_to_dvec2(next_bezier.start());
 				let end = point_to_dvec2(next_bezier.end());
-				next_bezier = handles_to_segment(start, BezierHandles::Linear, end);
+				next_bezier = handles_to_segment(start, bezier_rs::BezierHandles::Linear, end);
 			}
 
 			let inverse_transform = (vector_data_transform.matrix2.determinant() != 0.).then(|| vector_data_transform.inverse()).unwrap_or_default();

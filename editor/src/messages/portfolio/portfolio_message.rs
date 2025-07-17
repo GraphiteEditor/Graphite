@@ -22,6 +22,7 @@ pub enum PortfolioMessage {
 	#[child]
 	Spreadsheet(SpreadsheetMessage),
 
+	Init,
 	// Sends a request to compile the network. Should occur when any value, preference, or font changes
 	CompileActiveDocument,
 	// Sends a request to evaluate the network. Should occur when any context value changes.
@@ -54,10 +55,6 @@ pub enum PortfolioMessage {
 	// Introspected data is cleared after queued messages are complete
 	ClearIntrospectedData,
 	ProcessThumbnails,
-	DocumentPassMessage {
-		document_id: DocumentId,
-		message: DocumentMessage,
-	},
 	AutoSaveActiveDocument,
 	AutoSaveAllDocuments,
 	AutoSaveDocument {

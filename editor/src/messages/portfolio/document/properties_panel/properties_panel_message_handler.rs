@@ -3,11 +3,10 @@ use graphene_std::uuid::NodeId;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
-use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
-use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
-pub struct PropertiesPanelMessageHandlerData<'a> {
+#[derive(ExtractField)]
+pub struct PropertiesPanelMessageContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub selection_network_path: &'a [NodeId],
 	pub document_name: &'a str,
@@ -23,7 +22,7 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 			network_interface,
 			selection_network_path,
 			document_name,
-		} = data;
+		} = context;
 
 		match message {
 			PropertiesPanelMessage::Clear => {
@@ -34,7 +33,6 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 			}
 			PropertiesPanelMessage::Refresh => {
 				let mut node_properties_context = NodePropertiesContext {
-					persistent_data,
 					responses,
 					network_interface,
 					selection_network_path,

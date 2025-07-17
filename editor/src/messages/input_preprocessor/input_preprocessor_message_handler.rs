@@ -97,7 +97,7 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext> f
 				self.translate_mouse_event(mouse_state, false, responses);
 			}
 			InputPreprocessorMessage::CurrentTime { timestamp } => {
-				self.time = timestamp as f64;
+				self.time = timestamp;
 			}
 			InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);

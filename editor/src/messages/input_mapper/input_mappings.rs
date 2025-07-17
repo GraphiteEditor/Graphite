@@ -437,8 +437,8 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Digit1); modifiers=[Alt], action_dispatch=DebugMessage::MessageNames),
 		entry!(KeyDown(Digit2); modifiers=[Alt], action_dispatch=DebugMessage::MessageContents),
 		// AnimationMessage
-		entry!(KeyDown(Space); modifiers=[Shift], action_dispatch=AnimationMessage::ToggleLivePreview),
-		entry!(KeyDown(Home); modifiers=[Shift], action_dispatch=AnimationMessage::RestartAnimation),
+		entry!(KeyDown(Space); modifiers=[Shift], action_dispatch=DocumentMessage::ToggleAnimation),
+		entry!(KeyDown(Home); modifiers=[Shift], action_dispatch=DocumentMessage::RestartAnimation),
 	];
 	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut wheel_scroll, mut pointer_move) = mappings;
 

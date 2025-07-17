@@ -16,7 +16,6 @@ pub struct Dispatcher {
 
 #[derive(Debug, Default)]
 pub struct DispatcherMessageHandlers {
-	animation_message_handler: AnimationMessageHandler,
 	broadcast_message_handler: BroadcastMessageHandler,
 	debug_message_handler: DebugMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
@@ -59,7 +58,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 ];
-const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(BroadcastEventDiscriminant::AnimationFrame))];
+const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[MessageDiscriminant::InputPreprocessor(InputPreprocessorMessageDiscriminant::CurrentTime)];
 // TODO: Find a way to combine these with the list above. We use strings for now since these are the standard variant names used by multiple messages. But having these also type-checked would be best.
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
 
@@ -163,27 +162,6 @@ impl Dispatcher {
 					let clear_message = PortfolioMessage::ClearIntrospectedData.into();
 					Self::schedule_execution(&mut self.message_queues, true, [clear_message]);
 				}
-				Message::NoOp => {}
-				Message::Init => {
-					// Load persistent data from the browser database
-					queue.add(FrontendMessage::TriggerLoadFirstAutoSaveDocument);
-					queue.add(FrontendMessage::TriggerLoadPreferences);
-
-					// Display the menu bar at the top of the window
-					queue.add(MenuBarMessage::SendLayout);
-
-					// Send the information for tooltips and categories for each node/input.
-					queue.add(FrontendMessage::SendUIMetadata {
-						node_descriptions: document_node_definitions::collect_node_descriptions(),
-						node_types: document_node_definitions::collect_node_types(),
-					});
-
-					// Finish loading persistent data from the browser database
-					queue.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
-				}
-				Message::Animation(message) => {
-					self.message_handlers.animation_message_handler.process_message(message, &mut queue, ());
-				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
 				Message::Debug(message) => {
 					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
@@ -238,8 +216,6 @@ impl Dispatcher {
 					let current_tool = &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type;
 					let message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
 					let reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
-					let timing_information = self.message_handlers.animation_message_handler.timing_information();
-					let animation = &self.message_handlers.animation_message_handler;
 
 					self.message_handlers.portfolio_message_handler.process_message(
 						message,
@@ -250,8 +226,6 @@ impl Dispatcher {
 							current_tool,
 							message_logging_verbosity,
 							reset_node_definitions_on_open,
-							timing_information,
-							animation,
 						},
 					);
 				}
@@ -283,37 +257,6 @@ impl Dispatcher {
 				Message::Batched { messages } => {
 					messages.iter().for_each(|message| self.handle_message(message.to_owned(), false));
 				}
-				Message::StartBuffer => {
-					self.buffered_queue = Some(std::mem::take(&mut self.message_queues));
-				}
-				Message::EndBuffer { render_metadata } => {
-					// Assign the message queue to the currently buffered queue
-					if let Some(buffered_queue) = self.buffered_queue.take() {
-						self.cleanup_queues(false);
-						assert!(self.message_queues.is_empty(), "message queues are always empty when ending a buffer");
-						self.message_queues = buffered_queue;
-					};
-
-					let graphene_std::renderer::RenderMetadata {
-						upstream_footprints: footprints,
-						local_transforms,
-						first_instance_source_id,
-						click_targets,
-						clip_targets,
-					} = render_metadata;
-
-					// Run these update state messages immediately
-					let messages = [
-						DocumentMessage::UpdateUpstreamTransforms {
-							upstream_footprints: footprints,
-							local_transforms,
-							first_instance_source_id,
-						},
-						DocumentMessage::UpdateClickTargets { click_targets },
-						DocumentMessage::UpdateClipTargets { clip_targets },
-					];
-					Self::schedule_execution(&mut self.message_queues, false, messages.map(Message::from));
-				}
 			}
 
 			// If there are child messages, append the queue to the list of queues
@@ -329,7 +272,6 @@ impl Dispatcher {
 		// TODO: Reduce the number of heap allocations
 		let mut list = Vec::new();
 		list.extend(self.message_handlers.dialog_message_handler.actions());
-		list.extend(self.message_handlers.animation_message_handler.actions());
 		list.extend(self.message_handlers.input_preprocessor_message_handler.actions());
 		list.extend(self.message_handlers.key_mapping_message_handler.actions());
 		list.extend(self.message_handlers.debug_message_handler.actions());

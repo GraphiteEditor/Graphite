@@ -4,9 +4,6 @@ use graphite_proc_macros::*;
 #[impl_message]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Message {
-	NoOp,
-	Init,
-	Batched(Box<[Message]>),
 	// Adds any subsequent messages to the queue
 	StartEvaluationQueue,
 	// Stop adding messages to the queue.
@@ -14,8 +11,6 @@ pub enum Message {
 	// Processes all messages that are queued to be run after evaluation, which occurs on the evaluation response. This allows a message to be run with data from after the evaluation is complete
 	#[serde(skip)]
 	ProcessEvaluationQueue(graphene_std::renderer::RenderMetadata, IntrospectionResponse),
-	#[child]
-	Animation(AnimationMessage),
 	#[child]
 	Broadcast(BroadcastMessage),
 	#[child]
@@ -45,10 +40,6 @@ pub enum Message {
 	NoOp,
 	Batched {
 		messages: Box<[Message]>,
-	},
-	StartBuffer,
-	EndBuffer {
-		render_metadata: RenderMetadata,
 	},
 }
 

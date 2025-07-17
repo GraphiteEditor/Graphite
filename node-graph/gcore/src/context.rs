@@ -41,7 +41,7 @@ pub trait ExtractAnimationTime {
 }
 
 pub trait ExtractIndex {
-	fn try_index(&self) -> Option<Vec<usize>>;
+	fn try_index(&self) -> Option<usize>;
 }
 
 // Consider returning a slice or something like that
@@ -231,7 +231,7 @@ impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Option<T> {
 	}
 }
 impl<T: ExtractIndex> ExtractIndex for Option<T> {
-	fn try_index(&self) -> Option<Vec<usize>> {
+	fn try_index(&self) -> Option<usize> {
 		self.as_ref().and_then(|x| x.try_index())
 	}
 }
@@ -263,7 +263,7 @@ impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Arc<T> {
 	}
 }
 impl<T: ExtractIndex> ExtractIndex for Arc<T> {
-	fn try_index(&self) -> Option<Vec<usize>> {
+	fn try_index(&self) -> Option<usize> {
 		(**self).try_index()
 	}
 }
@@ -316,7 +316,7 @@ impl ExtractAnimationTime for OwnedContextImpl {
 	}
 }
 impl ExtractIndex for OwnedContextImpl {
-	fn try_index(&self) -> Option<Vec<usize>> {
+	fn try_index(&self) -> Option<usize> {
 		self.index.clone()
 	}
 }
@@ -630,8 +630,8 @@ fn get_animation_time(ctx: impl Ctx + ExtractAnimationTime) -> Option<f64> {
 }
 
 #[node_macro::node(category("Context Getter"))]
-fn get_index(ctx: impl Ctx + ExtractIndex) -> Option<u32> {
-	ctx.try_index().map(|index| index as u32)
+fn get_index(ctx: impl Ctx + ExtractIndex) -> Option<usize> {
+	ctx.try_index()
 }
 
 // #[node_macro::node(category("Loop"))]
@@ -671,21 +671,21 @@ fn get_index(ctx: impl Ctx + ExtractIndex) -> Option<u32> {
 // 	}
 // }
 
-#[node_macro::node(category("Loop"))]
-async fn set_index<T: 'n + 'static>(
-	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
-	#[expose]
-	#[implementations(
-        Context -> u32,
-		Context -> (),
-	)]
-	input: impl Node<Context<'static>, Output = T>,
-	number: u32,
-) -> T {
-	let mut new_context = OwnedContextImpl::from(ctx);
-	new_context.index = Some(number.try_into().unwrap());
-	input.eval(new_context.into_context()).await
-}
+// #[node_macro::node(category("Loop"))]
+// async fn set_index<T: 'n + 'static>(
+// 	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
+// 	#[expose]
+// 	#[implementations(
+//         Context -> u32,
+// 		Context -> (),
+// 	)]
+// 	input: impl Node<Context<'static>, Output = T>,
+// 	number: u32,
+// ) -> T {
+// 	let mut new_context = OwnedContextImpl::from(ctx);
+// 	new_context.index = Some(number.try_into().unwrap());
+// 	input.eval(new_context.into_context()).await
+// }
 
 // #[node_macro::node(category("Loop"))]
 // fn create_arc_mutex(_ctx: impl Ctx) -> Arc<Mutex<Option<OwnedContextImpl>>> {

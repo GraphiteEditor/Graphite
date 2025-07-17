@@ -8,7 +8,6 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 	DocumentNodeMetadata, DocumentNodePersistentMetadata, InputMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata,
 	NumberInputSettings, Vec2InputSettings, WidgetOverride,
 };
-use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
@@ -28,7 +27,6 @@ use graphene_std::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 pub struct NodePropertiesContext<'a> {
-	pub persistent_data: &'a PersistentData,
 	pub responses: &'a mut VecDeque<Message>,
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub selection_network_path: &'a [NodeId],

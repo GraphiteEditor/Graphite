@@ -611,7 +611,7 @@ impl PathToolData {
 		self.last_drill_through_click_position.map_or(true, |last_pos| last_pos.distance(position) > DRILL_THROUGH_THRESHOLD)
 	}
 
-	fn set_ghost_outline(&mut self, shape_editor: &ShapeState, document: &DocumentMessageHandler) {
+	pub fn set_ghost_outline(&mut self, shape_editor: &ShapeState, document: &DocumentMessageHandler) {
 		self.ghost_outline.clear();
 		for &layer in shape_editor.selected_shape_state.keys() {
 			// We probably need to collect here

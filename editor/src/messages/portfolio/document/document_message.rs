@@ -170,6 +170,8 @@ pub enum DocumentMessage {
 	RepeatedAbortTransaction {
 		undo_count: usize,
 	},
+	ToggleAnimation,
+	RestartAnimation,
 	ToggleLayerExpansion {
 		id: NodeId,
 		recursive: bool,

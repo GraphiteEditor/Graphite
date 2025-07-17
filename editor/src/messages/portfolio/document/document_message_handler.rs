@@ -35,17 +35,13 @@ use graphene_std::uuid::NodeId;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::style::ViewMode;
-use std::time::Duration;
 
 #[derive(ExtractField)]
-pub struct DocumentMessageData<'a> {
+pub struct DocumentMessageContext<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
-	pub persistent_data: &'a PersistentData,
 	pub current_tool: &'a ToolType,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub device_pixel_ratio: f64,
-	// pub introspected_inputs: &HashMap<CompiledProtonodeInput, Arc<dyn std::any::Any + Send + Sync>>,
-	// pub downcasted_inputs: &mut HashMap<CompiledProtonodeInput, TaggedValue>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
@@ -101,6 +97,9 @@ pub struct DocumentMessageHandler {
 	// Fields omitted from the saved document format
 	// =============================================
 	//
+	/// Animation state for when the animation button was pressed/paused
+	#[serde(skip)]
+	pub animation_state: AnimationState,
 	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
 	#[serde(skip)]
 	pub breadcrumb_network_path: Vec<NodeId>,
@@ -164,16 +163,16 @@ impl Default for DocumentMessageHandler {
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
 			is_loaded: false,
+			animation_state: AnimationState::Stopped,
 		}
 	}
 }
 
 #[message_handler_data]
-impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessageHandler {
-	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, data: DocumentMessageData) {
-		let DocumentMessageData {
+impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMessageHandler {
+	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, data: DocumentMessageContext) {
+		let DocumentMessageContext {
 			ipp,
-			persistent_data,
 			current_tool,
 			preferences,
 			device_pixel_ratio,
@@ -217,7 +216,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				);
 			}
 			DocumentMessage::PropertiesPanel(message) => {
-				let properties_panel_message_handler_data = super::properties_panel::PropertiesPanelMessageHandlerData {
+				let context = super::properties_panel::PropertiesPanelMessageContext {
 					network_interface: &mut self.network_interface,
 					selection_network_path: &self.selection_network_path,
 					document_name: self.name.as_str(),
@@ -1284,6 +1283,27 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				responses.add(NodeGraphMessage::SendGraph);
 			}
+			DocumentMessage::ToggleAnimation => {
+				match self.animation_state {
+					AnimationState::Stopped => {
+						self.animation_state = AnimationState::Playing { start: ipp.time };
+						responses.add(PortfolioMessage::EvaluateActiveDocumentWithThumbnails);
+					}
+					AnimationState::Playing { start } => self.animation_state = AnimationState::Paused { start, pause_time: ipp.time },
+					AnimationState::Paused { start, .. } => {
+						self.animation_state = AnimationState::Playing { start };
+						responses.add(PortfolioMessage::EvaluateActiveDocumentWithThumbnails);
+					}
+				}
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			}
+			DocumentMessage::RestartAnimation => {
+				self.animation_state = match self.animation_state {
+					AnimationState::Playing { .. } => AnimationState::Playing { start: ipp.time },
+					_ => AnimationState::Stopped,
+				};
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
 			DocumentMessage::ToggleSelectedVisibility => {
 				responses.add(NodeGraphMessage::ToggleSelectedVisibility);
@@ -1302,17 +1322,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.snapping_state.snapping_enabled = !self.snapping_state.snapping_enabled;
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			// DocumentMessage::ToggleAnimation => match self.animation_state {
-			// 	AnimationState::Stopped => {self.animation_state = AnimationState::Playing { start: ipp.time }; responses.add(PortfolioMessage::EvaluateActiveDocument)},
-			// 	AnimationState::Playing { start } => self.animation_state = AnimationState::Paused { start , pause_time: ipp.time },
-			// 	AnimationState::Paused { start, .. } => {self.animation_state = AnimationState::Playing { start }; responses.add(PortfolioMessage::EvaluateActiveDocument)},
-			// },
-			// DocumentMessage::RestartAnimation => {
-			// 	self.animation_state = match self.animation_state {
-			// 		AnimationState::Playing { .. } => AnimationState::Playing { start: ipp.time },
-			// 		_ => AnimationState::Stopped,
-			// 	};
-			// }
 			DocumentMessage::UpdateUpstreamTransforms {
 				upstream_footprints,
 				local_transforms,
@@ -1320,6 +1329,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			} => {
 				self.network_interface.update_transforms(upstream_footprints, local_transforms);
 				self.network_interface.update_first_instance_source_id(first_instance_source_id);
+				if matches!(self.animation_state, AnimationState::Playing { .. }) {
+					responses.add(PortfolioMessage::EvaluateActiveDocumentWithThumbnails);
+				}
 			}
 			DocumentMessage::UpdateClickTargets { click_targets } => {
 				// TODO: Allow non layer nodes to have click targets
@@ -1582,6 +1594,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 }
 
 impl DocumentMessageHandler {
+	pub fn animation_time(&self, ipp: &InputPreprocessorMessageHandler) -> f64 {
+		match self.animation_state {
+			AnimationState::Stopped => 0.,
+			AnimationState::Playing { start } => ipp.time - start,
+			AnimationState::Paused { start, pause_time } => pause_time - start,
+		}
+	}
+
 	/// Runs an intersection test with all layers and a viewport space quad
 	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_std::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
@@ -2113,7 +2133,9 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>, animation_is_playing: bool, time: Duration) {
+	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>, ipp: &InputPreprocessorMessageHandler) {
+		let animation_is_playing = matches!(self.animation_state, AnimationState::Playing { .. });
+
 		// Document mode (dropdown menu at the left of the bar above the viewport, before the tool options)
 
 		let document_mode_layout = WidgetLayout::new(vec![LayoutGroup::Row {
@@ -2153,14 +2175,14 @@ impl DocumentMessageHandler {
 		let mut widgets = vec![
 			IconButton::new("PlaybackToStart", 24)
 				.tooltip("Restart Animation")
-				.tooltip_shortcut(action_keys!(AnimationMessageDiscriminant::RestartAnimation))
-				.on_update(|_| AnimationMessage::RestartAnimation.into())
-				.disabled(time == Duration::ZERO)
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::RestartAnimation))
+				.on_update(|_| DocumentMessage::RestartAnimation.into())
+				.disabled(self.animation_time(ipp) == 0.)
 				.widget_holder(),
 			IconButton::new(if animation_is_playing { "PlaybackPause" } else { "PlaybackPlay" }, 24)
 				.tooltip(if animation_is_playing { "Pause Animation" } else { "Play Animation" })
-				.tooltip_shortcut(action_keys!(AnimationMessageDiscriminant::ToggleLivePreview))
-				.on_update(|_| AnimationMessage::ToggleLivePreview.into())
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleAnimation))
+				.on_update(|_| DocumentMessage::ToggleAnimation.into())
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(self.overlays_visibility_settings.all)
@@ -3140,6 +3162,18 @@ impl Iterator for ClickXRayIter<'_> {
 	}
 }
 
+#[derive(Default, Debug, Clone, PartialEq)]
+pub enum AnimationState {
+	#[default]
+	Stopped,
+	Playing {
+		start: f64,
+	},
+	Paused {
+		start: f64,
+		pause_time: f64,
+	},
+}
 // #[cfg(test)]
 // mod document_message_handler_tests {
 // 	use super::*;

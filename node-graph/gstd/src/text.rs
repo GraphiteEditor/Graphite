@@ -1,4 +1,4 @@
-use crate::vector::{VectorData, VectorDataTable};
+use crate::vector::{VectorDataTable};
 use graphene_core::Ctx;
 pub use graphene_core::text::*;
 

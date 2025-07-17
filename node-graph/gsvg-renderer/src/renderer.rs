@@ -213,6 +213,7 @@ pub trait GraphicElementRendered: BoundingBox + RenderComplexity {
 
 	fn render_thumbnail(&self) -> String {
 		let Some(bounds) = self.bounding_box(DAffine2::IDENTITY, true) else {
+			log::debug!("Could not get bounds");
 			return String::new();
 		};
 
@@ -228,7 +229,7 @@ pub trait GraphicElementRendered: BoundingBox + RenderComplexity {
 
 		let mut render = SvgRender::new();
 		self.render_svg(&mut render, &render_params);
-		
+
 		// let center = (bounds[0] + bounds[1]) / 2.;
 
 		// let size = bounds[1] - bounds[0];
@@ -1193,13 +1194,13 @@ impl Primitive for f64 {}
 impl Primitive for DVec2 {}
 
 fn text_attributes(attributes: &mut SvgRenderAttrs) {
-	attributes.push("fill", "white");
-	attributes.push("y", "30");
+	attributes.push("fill", "black");
 	attributes.push("font-size", "30");
 }
 
 impl<P: Primitive> GraphicElementRendered for P {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
+		log::debug!("Rendering svg for primative: {}", self);
 		render.parent_tag("text", text_attributes, |render| render.leaf_node(format!("{self}")));
 	}
 

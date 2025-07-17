@@ -2305,7 +2305,7 @@ impl NodeGraphMessageHandler {
 				.find(|error| match &error.original_location {
 					graph_craft::proto::OriginalLocation::Value(_) => false,
 					graph_craft::proto::OriginalLocation::Node(prefixed_node_path) => {
-						let (prefix, node_path) = prefixed_node_path.split_first().unwrap();
+						let (_, node_path) = prefixed_node_path.split_first().unwrap();
 						node_path == &node_id_path
 					}
 				})
@@ -2314,7 +2314,7 @@ impl NodeGraphMessageHandler {
 					if self.node_graph_errors.iter().any(|error| match &error.original_location {
 						graph_craft::proto::OriginalLocation::Value(_) => false,
 						graph_craft::proto::OriginalLocation::Node(prefixed_node_path) => {
-							let (prefix, node_path) = prefixed_node_path.split_first().unwrap();
+							let (_, node_path) = prefixed_node_path.split_first().unwrap();
 							node_path.starts_with(&node_id_path)
 						}
 					}) {
