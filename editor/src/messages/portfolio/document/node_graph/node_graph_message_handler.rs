@@ -1291,8 +1291,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 			}
 			NodeGraphMessage::ShakeNode => {
-				// TODO: This does not have the desired behavior yet, this is just a placeholder
-
 				let Some(drag_start) = &self.drag_start else {
 					log::error!("Drag start should be initialized when shaking a node");
 					return;
@@ -1316,8 +1314,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Undo to the state of the graph before shaking
 				responses.add(DocumentMessage::AbortTransaction);
 
-				// Add a history step to undo to the state before shaking
-				responses.add(DocumentMessage::AddTransaction);
+				// Add a history step to abort to the state before shaking if right clicked
+				responses.add(DocumentMessage::StartTransaction);
 
 				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 					log::error!("Could not get selected nodes in ShakeNode");
