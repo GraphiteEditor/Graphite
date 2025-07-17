@@ -95,7 +95,7 @@ async fn post_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, bod
 	{
 		if discard_result {
 			wasm_bindgen_futures::spawn_local(async move {
-				let _ = reqwest::Client::new().post(url).body(body).send().await;
+				let _ = reqwest::Client::new().post(url).body(body).header("Content-Type", "application/octet-stream").send().await;
 			});
 			return String::new();
 		}
@@ -107,7 +107,7 @@ async fn post_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, bod
 			let url = url.clone();
 			let body = body.clone();
 			tokio::spawn(async move {
-				let _ = reqwest::Client::new().post(url).body(body).send().await;
+				let _ = reqwest::Client::new().post(url).body(body).header("Content-Type", "application/octet-stream").send().await;
 			});
 			return String::new();
 		}
@@ -117,7 +117,7 @@ async fn post_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, bod
 		}
 	}
 
-	let Ok(response) = reqwest::Client::new().post(url).body(body).send().await else {
+	let Ok(response) = reqwest::Client::new().post(url).body(body).header("Content-Type", "application/octet-stream").send().await else {
 		return String::new();
 	};
 	response.text().await.ok().unwrap_or_default()
