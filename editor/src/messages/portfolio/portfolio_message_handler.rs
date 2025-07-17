@@ -789,6 +789,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(DocumentMessage::GraphViewOverlay { open: node_graph_open });
 				if node_graph_open {
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
+					responses.add(NodeGraphMessage::UnloadWires);
+					responses.add(NodeGraphMessage::SendWires)
 				} else {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				}

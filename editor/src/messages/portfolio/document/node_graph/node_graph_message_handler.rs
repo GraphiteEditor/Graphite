@@ -1387,6 +1387,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					if node_bbox[1].x >= document_bbox[0].x && node_bbox[0].x <= document_bbox[1].x && node_bbox[1].y >= document_bbox[0].y && node_bbox[0].y <= document_bbox[1].y {
 						nodes.push(*node_id);
 					}
+					for error in &self.node_graph_errors {
+						if error.node_path.contains(node_id) {
+							nodes.push(*node_id);
+						}
+					}
 				}
 
 				responses.add(FrontendMessage::UpdateVisibleNodes { nodes });
