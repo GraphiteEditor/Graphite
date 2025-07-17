@@ -21,7 +21,7 @@ use graphene_std::raster::{
 };
 use graphene_std::raster_types::{CPU, GPU, RasterDataTable};
 use graphene_std::text::Font;
-use graphene_std::transform::{Footprint, ReferencePoint};
+use graphene_std::transform::{Footprint, ReferencePoint, Transform};
 use graphene_std::vector::VectorDataTable;
 use graphene_std::vector::misc::GridType;
 use graphene_std::vector::misc::{ArcType, MergeByDistanceAlgorithm};
@@ -176,6 +176,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<bool>() => bool_widget(default_info, CheckboxInput::default()).into(),
 						Some(x) if x == TypeId::of::<String>() => text_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<DVec2>() => coordinate_widget(default_info, "X", "Y", "", None, false),
+						Some(x) if x == TypeId::of::<DAffine2>() => transform_widget(default_info, &mut extra_widgets),
 						// ==========================
 						// PRIMITIVE COLLECTION TYPES
 						// ==========================
@@ -502,6 +503,126 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 	let (last, rest) = widgets.split_last().expect("Footprint widget should return multiple rows");
 	*extra_widgets = rest.to_vec();
 	last.clone()
+}
+
+pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widgets: &mut Vec<LayoutGroup>) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut location_widgets = start_widgets(parameter_widgets_info);
+	location_widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
+	let mut rotation_widgets = vec![TextLabel::new("").widget_holder()];
+	add_blank_assist(&mut rotation_widgets);
+	rotation_widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
+	let mut scale_widgets = vec![TextLabel::new("").widget_holder()];
+	add_blank_assist(&mut scale_widgets);
+	scale_widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
+	let Some(document_node) = document_node else { return LayoutGroup::default() };
+	let Some(input) = document_node.inputs.get(index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return Vec::new().into();
+	};
+
+	let widgets = if let Some(&TaggedValue::DAffine2(transform)) = input.as_non_exposed_value() {
+		let translation = transform.translation;
+		let rotation = transform.decompose_rotation();
+		let scale = transform.decompose_scale();
+
+		location_widgets.extend_from_slice(&[
+			NumberInput::new(Some(translation.x))
+				.label("X")
+				.unit(" px")
+				.on_update(update_value(
+					move |x: &NumberInput| {
+						let mut transform = transform;
+						transform.translation.x = x.value.unwrap_or(transform.translation.x);
+						TaggedValue::DAffine2(transform)
+					},
+					node_id,
+					index,
+				))
+				.on_commit(commit_value)
+				.widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			NumberInput::new(Some(translation.y))
+				.label("Y")
+				.unit(" px")
+				.on_update(update_value(
+					move |y: &NumberInput| {
+						let mut transform = transform;
+						transform.translation.y = y.value.unwrap_or(transform.translation.y);
+						TaggedValue::DAffine2(transform)
+					},
+					node_id,
+					index,
+				))
+				.on_commit(commit_value)
+				.widget_holder(),
+		]);
+
+		rotation_widgets.extend_from_slice(&[NumberInput::new(Some(rotation.to_degrees()))
+			.unit("°")
+			.mode(NumberInputMode::Range)
+			.range_min(Some(-180.))
+			.range_max(Some(180.))
+			.on_update(update_value(
+				move |r: &NumberInput| {
+					let transform = DAffine2::from_scale_angle_translation(scale, r.value.map(|r| r.to_radians()).unwrap_or(rotation), translation);
+					TaggedValue::DAffine2(transform)
+				},
+				node_id,
+				index,
+			))
+			.on_commit(commit_value)
+			.widget_holder()]);
+
+		scale_widgets.extend_from_slice(&[
+			NumberInput::new(Some(scale.x))
+				.label("W")
+				.unit("x")
+				.on_update(update_value(
+					move |w: &NumberInput| {
+						let transform = DAffine2::from_scale_angle_translation(DVec2::new(w.value.unwrap_or(scale.x), scale.y), rotation, translation);
+						TaggedValue::DAffine2(transform)
+					},
+					node_id,
+					index,
+				))
+				.on_commit(commit_value)
+				.widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			NumberInput::new(Some(scale.y))
+				.label("H")
+				.unit("x")
+				.on_update(update_value(
+					move |h: &NumberInput| {
+						let transform = DAffine2::from_scale_angle_translation(DVec2::new(scale.x, h.value.unwrap_or(scale.y)), rotation, translation);
+						TaggedValue::DAffine2(transform)
+					},
+					node_id,
+					index,
+				))
+				.on_commit(commit_value)
+				.widget_holder(),
+		]);
+
+		vec![
+			LayoutGroup::Row { widgets: location_widgets },
+			LayoutGroup::Row { widgets: rotation_widgets },
+			LayoutGroup::Row { widgets: scale_widgets },
+		]
+	} else {
+		vec![LayoutGroup::Row { widgets: location_widgets }]
+	};
+
+	if let Some((last, rest)) = widgets.split_last() {
+		*extra_widgets = rest.to_vec();
+		last.clone()
+	} else {
+		LayoutGroup::default()
+	}
 }
 
 pub fn coordinate_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, unit: &str, min: Option<f64>, is_integer: bool) -> LayoutGroup {
@@ -1345,9 +1466,9 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 
 pub(crate) fn node_no_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let text = if context.network_interface.is_layer(&node_id, context.selection_network_path) {
-		"Layer has no properties"
+		"Layer has no parameters"
 	} else {
-		"Node has no properties"
+		"Node has no parameters"
 	};
 	string_properties(text)
 }
