@@ -264,6 +264,13 @@ impl LayoutHolder for PathTool {
 		.selected_index(Some(self.options.path_overlay_mode as u32))
 		.widget_holder();
 
+		// Works only if a single layer is selected and its type is vectordata
+		let path_node_button = TextButton::new("Make Path Editable")
+			.icon(Some("NodeShape".into()))
+			.tooltip("Make Path Editable")
+			.on_update(|_| NodeGraphMessage::AddPathNode.into())
+			.widget_holder();
+
 		let [_checkbox, _dropdown] = {
 			let pivot_gizmo_type_widget = pivot_gizmo_type_widget(self.tool_data.pivot_gizmo.state, PivotToolSource::Path);
 			[pivot_gizmo_type_widget[0].clone(), pivot_gizmo_type_widget[2].clone()]
@@ -294,6 +301,7 @@ impl LayoutHolder for PathTool {
 				unrelated_seperator.clone(),
 				path_overlay_mode_widget,
 				unrelated_seperator.clone(),
+				path_node_button,
 				// checkbox.clone(),
 				// related_seperator.clone(),
 				// dropdown.clone(),

@@ -16,10 +16,11 @@ use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_clip_mode};
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2, IVec2};
+use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_std::math::math_ext::QuadExt;
@@ -118,6 +119,41 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				network_interface.insert_node_group(nodes, new_ids, selection_network_path);
 
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_layer_id] });
+			}
+			NodeGraphMessage::AddPathNode => {
+				let selected_nodes = network_interface.selected_nodes();
+				let mut selected_layers = selected_nodes.selected_layers(network_interface.document_metadata());
+				let selected_layer = selected_layers.next();
+				let has_selection = selected_layer.is_some();
+				let has_multiple_selection = selected_layers.next().is_some();
+
+				let compatible_type = selected_layer.and_then(|layer| {
+					let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
+					let node_type = graph_layer.horizontal_layer_flow().nth(1);
+					if let Some(node_id) = node_type {
+						let (output_type, _) = network_interface.output_type(&node_id, 0, &[]);
+						Some(format!("type:{}", output_type.nested_type()))
+					} else {
+						None
+					}
+				});
+
+				let compatible = compatible_type.unwrap_or("".to_string()) == "type:Instances<VectorData>";
+				let single_layer_selected = has_selection && !has_multiple_selection;
+
+				if compatible && single_layer_selected {
+					if let Some(layer) = selected_layer {
+						let node_type = "Path".to_string();
+						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &network_interface);
+						let modifiable = matches!(graph_layer.find_input("Path", 1), Some(TaggedValue::VectorModification(_)));
+						if !modifiable {
+							responses.add(NodeGraphMessage::CreateNodeInLayerWithTransaction {
+								node_type: node_type.clone(),
+								layer: LayerNodeIdentifier::new_unchecked(layer.to_node()),
+							});
+						}
+					}
+				}
 			}
 			NodeGraphMessage::AddImport => {
 				network_interface.add_import(graph_craft::document::value::TaggedValue::None, true, -1, "", "", breadcrumb_network_path);

@@ -261,6 +261,14 @@ impl LayoutHolder for MenuBarMessageHandler {
 					],
 					vec![
 						MenuBarEntry {
+							label: "Make Path Editable".into(),
+							icon: Some("NodeShape".into()),
+							shortcut: None,
+							action: MenuBarEntry::create_action(|_| NodeGraphMessage::AddPathNode.into()),
+							disabled: false,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
 							label: "Grab".into(),
 							icon: Some("TransformationGrab".into()),
 							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginGrab),
