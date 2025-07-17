@@ -16,7 +16,7 @@ use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_clip_mode};
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2, IVec2};
@@ -1836,9 +1836,10 @@ impl NodeGraphMessageHandler {
 					// Showing only compatible types
 					let compatible_type = match (selection_includes_layers, has_multiple_selection, selected_layer) {
 						(true, false, Some(layer)) => {
-							let input_connector = InputConnector::node(layer.to_node(), 1);
-							if let Some(OutputConnector::Node { node_id, .. }) = network_interface.upstream_output_connector(&input_connector, &breadcrumb_network_path) {
-								let (output_type, _) = network_interface.output_type(&node_id, 0, &breadcrumb_network_path);
+							let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
+							let node_type = graph_layer.horizontal_layer_flow().nth(1);
+							if let Some(node_id) = node_type {
+								let (output_type, _) = network_interface.output_type(&node_id, 0, &[]);
 								Some(format!("type:{}", output_type.nested_type()))
 							} else {
 								None

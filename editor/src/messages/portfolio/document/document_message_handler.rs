@@ -16,7 +16,7 @@ use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
@@ -2743,8 +2743,9 @@ impl DocumentMessageHandler {
 				.popover_layout({
 					// Showing only compatible types
 					let compatible_type = selected_layer.and_then(|layer| {
-						let input_connector = InputConnector::node(layer.to_node(), 1);
-						if let Some(OutputConnector::Node { node_id, .. }) = self.network_interface.upstream_output_connector(&input_connector, &self.selection_network_path) {
+						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &self.network_interface);
+						let node_type = graph_layer.horizontal_layer_flow().nth(1);
+						if let Some(node_id) = node_type {
 							let (output_type, _) = self.network_interface.output_type(&node_id, 0, &self.selection_network_path);
 							Some(format!("type:{}", output_type.nested_type()))
 						} else {
