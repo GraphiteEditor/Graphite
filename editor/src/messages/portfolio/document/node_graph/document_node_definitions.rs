@@ -85,7 +85,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	let custom = vec![
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
-			identifier: "Identity",
+			identifier: "Passthrough",
 			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
@@ -100,7 +100,178 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes."),
-			properties: Some("identity_properties"),
+			properties: Some("pass_through_properties"),
+		},
+		DocumentNodeDefinition {
+			identifier: "Value",
+			category: "Value",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
+					manual_composition: Some(generic!(T)),
+					inputs: vec![NodeInput::value(TaggedValue::None, false)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_metadata: vec![("Value", "").into()],
+					output_names: vec!["Out".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("Construct any value using the dropdown menu."),
+			properties: Some("value_properties"),
+		},
+		DocumentNodeDefinition {
+			identifier: "Number Value",
+			category: "Value",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
+					manual_composition: Some(generic!(T)),
+					inputs: vec![NodeInput::value(TaggedValue::F64(0.), false)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_metadata: vec![("Value", "").into()],
+					output_names: vec!["Out".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("Constructs a number which can be set to any real number"),
+			properties: Some("value_properties"),
+		},
+		DocumentNodeDefinition {
+			identifier: "Percentage Value",
+			category: "Value",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
+					manual_composition: Some(generic!(T)),
+					inputs: vec![NodeInput::value(TaggedValue::Percentage(0.), false)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_metadata: vec![("Value", "").into()],
+					output_names: vec!["Out".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("Constructs a decimal value between 0 and 1."),
+			properties: Some("value_properties"),
+		},
+		DocumentNodeDefinition {
+			identifier: "Number Value",
+			category: "Value",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
+					manual_composition: Some(generic!(T)),
+					inputs: vec![NodeInput::value(TaggedValue::U32(0), false)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_metadata: vec![("Value", "").into()],
+					output_names: vec!["Out".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("Constructs a positive integer value."),
+			properties: Some("value_properties"),
+		},
+		DocumentNodeDefinition {
+			identifier: "Bool Value",
+			category: "Value",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
+					manual_composition: Some(generic!(T)),
+					inputs: vec![NodeInput::value(TaggedValue::Bool(true), false)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_metadata: vec![("Value", "").into()],
+					output_names: vec!["Out".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("Constructs a value which can be true or false"),
+			properties: Some("value_properties"),
+		},
+		DocumentNodeDefinition {
+			identifier: "String Value",
+			category: "Value",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
+					manual_composition: Some(generic!(T)),
+					inputs: vec![NodeInput::value(TaggedValue::Percentage(0.), false)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_metadata: vec![("Value", "").into()],
+					output_names: vec!["Out".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("Constructs a string value which can be set to any plain text."),
+			properties: Some("value_properties"),
+		},
+		DocumentNodeDefinition {
+			identifier: "Coordinate Value",
+			category: "Value",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
+					manual_composition: Some(generic!(T)),
+					inputs: vec![NodeInput::value(TaggedValue::DVec2(DVec2::new(0., 0.)), false)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_metadata: vec![("Value", "").into()],
+					output_names: vec!["Out".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("Constructs a string value which can be set to any plain text."),
+			properties: Some("value_properties"),
+		},
+		DocumentNodeDefinition {
+			identifier: "Color Value",
+			category: "Value",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
+					manual_composition: Some(generic!(T)),
+					inputs: vec![NodeInput::value(TaggedValue::OptionalColor(None), false)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_metadata: vec![("Value", "").into()],
+					output_names: vec!["Out".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("Constructs a color value which may to set to any color, or no color"),
+			properties: Some("value_properties"),
+		},
+		DocumentNodeDefinition {
+			identifier: "Gradient Value",
+			category: "Value",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
+					manual_composition: Some(generic!(T)),
+					inputs: vec![NodeInput::value(TaggedValue::OptionalColor(None), false)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_metadata: vec![("Value", "").into()],
+					output_names: vec!["Out".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed(" Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors."),
+			properties: Some("value_properties"),
 		},
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
@@ -917,7 +1088,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed(
-				"Decomposes the X and Y components of a 2D coordinate.\n\nThe inverse of this node is \"Coordinate Value\", which can have either or both its X and Y exposed as graph inputs.",
+				"Decomposes the X and Y components of a 2D coordinate.\n\nThe inverse of this node is \"Coordinate from Numbers\", which can have either or both its X and Y exposed as graph inputs.",
 			),
 			properties: None,
 		},
@@ -1818,13 +1989,14 @@ fn static_node_properties() -> NodeProperties {
 	map.insert("grid_properties".to_string(), Box::new(node_properties::grid_properties));
 	map.insert("sample_polyline_properties".to_string(), Box::new(node_properties::sample_polyline_properties));
 	map.insert(
-		"identity_properties".to_string(),
-		Box::new(|_node_id, _context| node_properties::string_properties("The identity node passes its data through.")),
+		"pass_through_properties".to_string(),
+		Box::new(|_node_id, _context| node_properties::string_properties("The Passthrough node can be used to organize wires.")),
 	);
 	map.insert(
 		"monitor_properties".to_string(),
 		Box::new(|_node_id, _context| node_properties::string_properties("The Monitor node is used by the editor to access the data flowing through it.")),
 	);
+	map.insert("value_properties".to_string(), Box::new(node_properties::value_properties));
 	map
 }
 

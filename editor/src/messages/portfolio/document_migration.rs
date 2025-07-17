@@ -174,40 +174,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::ops::LogicalNotNode", "graphene_core::ops::LogicOrNode", "graphene_core::logic::LogicOrNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::bool_value::IDENTIFIER,
-		aliases: &["graphene_core::ops::BoolValueNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::math_nodes::number_value::IDENTIFIER,
-		aliases: &["graphene_core::ops::NumberValueNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::math_nodes::percentage_value::IDENTIFIER,
-		aliases: &["graphene_core::ops::PercentageValueNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::math_nodes::coordinate_value::IDENTIFIER,
-		aliases: &[
-			"graphene_core::ops::CoordinateValueNode",
-			"graphene_core::ops::ConstructVector2",
-			"graphene_core::ops::Vector2ValueNode",
-		],
-	},
-	NodeReplacement {
-		node: graphene_std::math_nodes::color_value::IDENTIFIER,
-		aliases: &["graphene_core::ops::ColorValueNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::math_nodes::gradient_value::IDENTIFIER,
-		aliases: &["graphene_core::ops::GradientValueNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::math_nodes::sample_gradient::IDENTIFIER,
 		aliases: &["graphene_core::ops::SampleGradientNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::math_nodes::string_value::IDENTIFIER,
-		aliases: &["graphene_core::ops::StringValueNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::dot_product::IDENTIFIER,
@@ -499,7 +467,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				let mut default_template = NodeTemplate::default();
 				default_template.document_node.implementation = DocumentNodeImplementation::ProtoNode(new.clone());
 				document.network_interface.replace_implementation(node_id, &network_path, &mut default_template);
-				document.network_interface.set_manual_compostion(node_id, &network_path, Some(graph_craft::Type::Generic("T".into())));
+				document.network_interface.set_manual_composition(node_id, &network_path, Some(graph_craft::Type::Generic("T".into())));
 			}
 		}
 	}
@@ -528,7 +496,45 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	if node.manual_composition == Some(graph_craft::concrete!(())) || node.manual_composition == Some(graph_craft::concrete!(graphene_std::transform::Footprint)) {
 		document
 			.network_interface
-			.set_manual_compostion(node_id, network_path, graph_craft::concrete!(graphene_std::Context).into());
+			.set_manual_composition(node_id, network_path, graph_craft::concrete!(graphene_std::Context).into());
+	}
+
+	// Update old value nodes after https://github.com/GraphiteEditor/Graphite/pull/2822
+	if let DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) = &node.implementation {
+		let value_node_names = [
+			"graphene_math_nodes::BoolValueNode",
+			"graphene_math_nodes::ColorValueNode",
+			"graphene_math_nodes::PercentageValueNode",
+			"graphene_math_nodes::NumberValueNode",
+			"graphene_math_nodes::StringValueNode",
+			"graphene_math_nodes::GradientValueNode",
+		];
+		if value_node_names.iter().any(|&s| s == name) {
+			let mut template = resolve_document_node_type("Value")?.default_node_template();
+			document.network_interface.replace_implementation(node_id, &network_path, &mut template);
+			let mut old_inputs = document.network_interface.replace_inputs(node_id, &network_path, &mut template)?;
+			document.network_interface.set_reference(node_id, network_path, Some("Value".to_string()));
+			if name == "graphene_math_nodes::PercentageValueNode" {
+				if let NodeInput::Value { tagged_value, .. } = &old_inputs[1] {
+					if let TaggedValue::F64(value) = &**tagged_value {
+						old_inputs[1] = NodeInput::value(TaggedValue::Percentage(*value), false);
+					}
+				}
+			}
+			// Only migrate value inputs, if its a wire the value is unknown.
+			if let NodeInput::Value { tagged_value, .. } = old_inputs[1].clone() {
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(tagged_value.into_inner(), false), network_path);
+			}
+		} else if name == "graphene_math_nodes::CoordinateValueNode" {
+			document.network_interface.set_implementation(
+				node_id,
+				&network_path,
+				DocumentNodeImplementation::ProtoNode(graphene_std::math_nodes::coordinate_from_numbers::IDENTIFIER),
+			);
+			document.network_interface.set_reference(node_id, network_path, Some("Coordinate From Numbers".to_string()))
+		}
 	}
 
 	// Only nodes that have not been modified and still refer to a definition can be updated
@@ -987,7 +993,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 	// Ensure layers are positioned as stacks if they are upstream siblings of another layer
 	document.network_interface.load_structure();
-	let all_layers = LayerNodeIdentifier::ROOT_PARENT.descendants(document.network_interface.document_metadata()).collect::<Vec<_>>();
+	let all_layers: Vec<LayerNodeIdentifier> = LayerNodeIdentifier::ROOT_PARENT.descendants(document.network_interface.document_metadata()).collect::<Vec<_>>();
 	for layer in all_layers {
 		let (downstream_node, input_index) = document
 			.network_interface

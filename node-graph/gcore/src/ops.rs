@@ -1,11 +1,28 @@
-use crate::Node;
+use crate::{
+	Node,
+	registry::{Any, DynFuture, SharedNodeContainer},
+};
 use std::marker::PhantomData;
 
-// TODO: Rename to "Passthrough"
-/// Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes.
-#[node_macro::node(skip_impl)]
-fn identity<'i, T: 'i + Send>(value: T) -> T {
-	value
+pub struct IdentityNode {
+	value: SharedNodeContainer,
+}
+
+impl<'i> Node<'i, Any<'i>> for IdentityNode {
+	type Output = DynFuture<'i, Any<'i>>;
+	fn eval(&'i self, input: Any<'i>) -> Self::Output {
+		Box::pin(async move { self.value.eval(input).await })
+	}
+}
+
+impl IdentityNode {
+	pub const fn new(value: SharedNodeContainer) -> Self {
+		IdentityNode { value }
+	}
+}
+
+pub mod identity {
+	pub const IDENTIFIER: crate::ProtoNodeIdentifier = crate::ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode");
 }
 
 // Type
@@ -140,15 +157,5 @@ impl<'input, I: 'input + Convert<_O> + Sync + Send, _O: 'input> Node<'input, I> 
 	#[inline]
 	fn eval(&'input self, input: I) -> Self::Output {
 		Box::pin(async move { input.convert() })
-	}
-}
-
-#[cfg(test)]
-mod test {
-	use super::*;
-
-	#[test]
-	pub fn identity_node() {
-		assert_eq!(identity(&4), &4);
 	}
 }

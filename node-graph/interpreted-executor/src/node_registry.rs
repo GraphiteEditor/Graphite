@@ -16,6 +16,7 @@ use graphene_std::GraphicElement;
 use graphene_std::any::DowncastBothNode;
 use graphene_std::any::{ComposeTypeErased, DynAnyNode, IntoTypeErasedNode};
 use graphene_std::application_io::{ImageTexture, SurfaceFrame};
+use graphene_std::ops::IdentityNode;
 #[cfg(feature = "gpu")]
 use graphene_std::wasm_application_io::{WasmEditorApi, WasmSurfaceHandle};
 use node_registry_macros::{async_node, convert_node, into_node};
@@ -112,6 +113,16 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				generic!(U),
 				vec![Type::Fn(Box::new(generic!(T)), Box::new(generic!(V))), Type::Fn(Box::new(generic!(V)), Box::new(generic!(U)))],
 			),
+		),
+		(
+			graphene_std::ops::identity::IDENTIFIER,
+			|args| {
+				Box::pin(async move {
+					let node = IdentityNode::new(args[0].clone());
+					node.into_type_erased()
+				})
+			},
+			NodeIOTypes::new(generic!(T), generic!(U), vec![Type::Fn(Box::new(concrete!(Context)), Box::new(generic!(U)))]),
 		),
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => WgpuSurface]),

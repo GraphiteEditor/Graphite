@@ -14,9 +14,9 @@ impl<'i, const N: u32, I> Node<'i, I> for IntNode<N> {
 }
 
 #[derive(Default, Debug, Clone, Copy)]
-pub struct ValueNode<T>(pub T);
+pub struct ValueRefNode<T>(pub T);
 
-impl<'i, T: 'i, I> Node<'i, I> for ValueNode<T> {
+impl<'i, T: 'i, I> Node<'i, I> for ValueRefNode<T> {
 	type Output = &'i T;
 	#[inline(always)]
 	fn eval(&'i self, _input: I) -> Self::Output {
@@ -24,15 +24,15 @@ impl<'i, T: 'i, I> Node<'i, I> for ValueNode<T> {
 	}
 }
 
-impl<T> ValueNode<T> {
-	pub const fn new(value: T) -> ValueNode<T> {
-		ValueNode(value)
+impl<T> ValueRefNode<T> {
+	pub const fn new(value: T) -> ValueRefNode<T> {
+		ValueRefNode(value)
 	}
 }
 
-impl<T> From<T> for ValueNode<T> {
+impl<T> From<T> for ValueRefNode<T> {
 	fn from(value: T) -> Self {
-		ValueNode::new(value)
+		ValueRefNode::new(value)
 	}
 }
 
@@ -191,13 +191,6 @@ mod test {
 	fn test_int_node() {
 		let node = IntNode::<5>;
 		assert_eq!(node.eval(()), 5);
-	}
-	#[test]
-	fn test_value_node() {
-		let node = ValueNode::new(5);
-		assert_eq!(node.eval(()), &5);
-		let type_erased = &node as &dyn for<'a> Node<'a, (), Output = &'a i32>;
-		assert_eq!(type_erased.eval(()), &5);
 	}
 	#[test]
 	fn test_default_node() {
