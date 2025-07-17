@@ -3,11 +3,12 @@ mod context;
 use anyhow::Result;
 pub use context::Context;
 use dyn_any::StaticType;
+use futures::lock::Mutex;
 use glam::UVec2;
 use graphene_application_io::{ApplicationIo, EditorApi, SurfaceHandle, SurfaceId};
 use graphene_core::{Color, Ctx};
 pub use graphene_svg_renderer::RenderContext;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::util::TextureBlitter;
 use wgpu::{Origin3d, SurfaceConfiguration, TextureAspect};
@@ -15,7 +16,7 @@ use wgpu::{Origin3d, SurfaceConfiguration, TextureAspect};
 #[derive(dyn_any::DynAny)]
 pub struct WgpuExecutor {
 	pub context: Context,
-	vello_renderer: futures::lock::Mutex<Renderer>,
+	vello_renderer: Mutex<Renderer>,
 }
 
 impl std::fmt::Debug for WgpuExecutor {
@@ -57,7 +58,7 @@ const VELLO_SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unor
 
 impl WgpuExecutor {
 	pub async fn render_vello_scene(&self, scene: &Scene, surface: &WgpuSurface, size: UVec2, context: &RenderContext, background: Color) -> Result<()> {
-		let mut guard = surface.surface.target_texture.lock().unwrap();
+		let mut guard = surface.surface.target_texture.lock().await;
 		let target_texture = if let Some(target_texture) = &*guard
 			&& target_texture.size == size
 		{
