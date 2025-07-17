@@ -1303,11 +1303,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			identifier: "Transform",
-			category: "General",
+			category: "Math: Transform",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(VectorDataTable::default()), true),
+						NodeInput::value(TaggedValue::DAffine2(DAffine2::default()), true),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ONE), false),
@@ -1317,7 +1317,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(VectorDataTable), 0)],
+								inputs: vec![NodeInput::network(generic!(T), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
 								manual_composition: Some(generic!(T)),
 								skip_deduplication: true,
@@ -1374,7 +1374,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					input_metadata: vec![
-						("Vector Data", "TODO").into(),
+						("Value", "TODO").into(),
 						InputMetadata::with_name_description_override(
 							"Translation",
 							"TODO",

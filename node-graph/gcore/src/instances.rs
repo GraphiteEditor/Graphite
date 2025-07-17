@@ -1,4 +1,5 @@
 use crate::AlphaBlending;
+use crate::transform::ApplyTransform;
 use crate::uuid::NodeId;
 use dyn_any::StaticType;
 use glam::DAffine2;
@@ -132,6 +133,20 @@ impl<T: Hash> Hash for Instances<T> {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		for instance in &self.instance {
 			instance.hash(state);
+		}
+	}
+}
+
+impl<T> ApplyTransform for Instances<T> {
+	fn apply_transform(&mut self, modification: &DAffine2) {
+		for transform in &mut self.transform {
+			*transform *= *modification;
+		}
+	}
+
+	fn left_apply_transform(&mut self, modification: &DAffine2) {
+		for transform in &mut self.transform {
+			*transform = *modification * *transform;
 		}
 	}
 }
