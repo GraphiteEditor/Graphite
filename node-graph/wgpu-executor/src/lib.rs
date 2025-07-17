@@ -8,7 +8,6 @@ use graphene_application_io::{ApplicationIo, EditorApi, SurfaceHandle, SurfaceId
 use graphene_core::{Color, Ctx};
 pub use graphene_svg_renderer::RenderContext;
 use std::sync::{Arc, Mutex};
-use vello::Error;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::util::TextureBlitter;
 use wgpu::{Origin3d, SurfaceConfiguration, TextureAspect};
@@ -54,6 +53,8 @@ unsafe impl StaticType for Surface {
 	type Static = Surface;
 }
 
+const VELLO_SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+
 impl WgpuExecutor {
 	pub async fn render_vello_scene(&self, scene: &Scene, surface: &WgpuSurface, size: UVec2, context: &RenderContext, background: Color) -> Result<()> {
 		let mut guard = surface.surface.target_texture.lock().unwrap();
@@ -73,7 +74,7 @@ impl WgpuExecutor {
 				sample_count: 1,
 				dimension: wgpu::TextureDimension::D2,
 				usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
-				format: wgpu::TextureFormat::Rgba8Unorm,
+				format: VELLO_SURFACE_FORMAT,
 				view_formats: &[],
 			});
 			let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -87,7 +88,7 @@ impl WgpuExecutor {
 			&self.context.device,
 			&SurfaceConfiguration {
 				usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::STORAGE_BINDING,
-				format: wgpu::TextureFormat::Rgba8Unorm,
+				format: VELLO_SURFACE_FORMAT,
 				width: size.x,
 				height: size.y,
 				present_mode: surface_caps.present_modes[0],
@@ -151,13 +152,7 @@ impl WgpuExecutor {
 	}
 
 	pub fn create_surface_inner(&self, surface: wgpu::Surface<'static>, window_id: SurfaceId) -> Result<SurfaceHandle<Surface>> {
-		let capabilities = surface.get_capabilities(&self.context.adapter);
-		let format = capabilities
-			.formats
-			.into_iter()
-			.find(|it| matches!(it, wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Bgra8Unorm))
-			.ok_or(Error::UnsupportedSurfaceFormat)?;
-		let blitter = TextureBlitter::new(&self.context.device, format);
+		let blitter = TextureBlitter::new(&self.context.device, VELLO_SURFACE_FORMAT);
 		Ok(SurfaceHandle {
 			window_id,
 			surface: Surface {
