@@ -23,8 +23,6 @@ impl FrontendGraphDataType {
 			TaggedValue::U32(_)
 			| TaggedValue::U64(_)
 			| TaggedValue::F64(_)
-			| TaggedValue::UVec2(_)
-			| TaggedValue::IVec2(_)
 			| TaggedValue::DVec2(_)
 			| TaggedValue::OptionalDVec2(_)
 			| TaggedValue::F64Array4(_)

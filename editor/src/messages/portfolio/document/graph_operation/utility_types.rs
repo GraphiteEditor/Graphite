@@ -97,7 +97,7 @@ impl<'a> ModifyInputsContext<'a> {
 			};
 		}
 
-		let layer_input_connector = post_node_input_connector.clone();
+		let layer_input_connector = post_node_input_connector;
 
 		// Sink post_node down to the end of the non layer chain that feeds into post_node, such that pre_node is the layer node at insert_index + 1, or None if insert_index is the last layer
 		loop {
@@ -132,8 +132,8 @@ impl<'a> ModifyInputsContext<'a> {
 		let artboard_node_template = resolve_document_node_type("Artboard").expect("Node").node_template_input_override([
 			Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroupTable::default()), true)),
 			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_std::GraphicGroupTable::default()), true)),
-			Some(NodeInput::value(TaggedValue::IVec2(artboard.location), false)),
-			Some(NodeInput::value(TaggedValue::IVec2(artboard.dimensions), false)),
+			Some(NodeInput::value(TaggedValue::DVec2(artboard.location.into()), false)),
+			Some(NodeInput::value(TaggedValue::DVec2(artboard.dimensions.into()), false)),
 			Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
 			Some(NodeInput::value(TaggedValue::Bool(artboard.clip), false)),
 		]);
@@ -486,8 +486,8 @@ impl<'a> ModifyInputsContext<'a> {
 			dimensions.y *= -1;
 			location.y -= dimensions.y;
 		}
-		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 2), NodeInput::value(TaggedValue::IVec2(location), false), false);
-		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 3), NodeInput::value(TaggedValue::IVec2(dimensions), false), false);
+		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 2), NodeInput::value(TaggedValue::DVec2(location.into()), false), false);
+		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 3), NodeInput::value(TaggedValue::DVec2(dimensions.into()), false), false);
 	}
 
 	/// Set the input, refresh the properties panel, and run the document graph if skip_rerender is false

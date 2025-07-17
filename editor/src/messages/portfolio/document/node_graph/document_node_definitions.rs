@@ -378,8 +378,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					inputs: vec![
 						NodeInput::value(TaggedValue::ArtboardGroup(ArtboardGroupTable::default()), true),
 						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroupTable::default()), true),
-						NodeInput::value(TaggedValue::IVec2(glam::IVec2::ZERO), false),
-						NodeInput::value(TaggedValue::IVec2(glam::IVec2::new(1920, 1080)), false),
+						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+						NodeInput::value(TaggedValue::DVec2(DVec2::new(1920., 1080.)), false),
 						NodeInput::value(TaggedValue::Color(Color::WHITE), false),
 						NodeInput::value(TaggedValue::Bool(false), false),
 					],
@@ -396,6 +396,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								x: "X".to_string(),
 								y: "Y".to_string(),
 								unit: " px".to_string(),
+								is_integer: true,
 								..Default::default()
 							}),
 						),
@@ -406,6 +407,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								x: "W".to_string(),
 								y: "H".to_string(),
 								unit: " px".to_string(),
+								is_integer: true,
 								..Default::default()
 							}),
 						),
@@ -1953,8 +1955,20 @@ fn static_input_properties() -> InputProperties {
 				.network_interface
 				.input_data(&node_id, index, "min", context.selection_network_path)
 				.and_then(|value| value.as_f64());
+			let is_integer = context
+				.network_interface
+				.input_data(&node_id, index, "is_integer", context.selection_network_path)
+				.and_then(|value| value.as_bool())
+				.unwrap_or_default();
 
-			Ok(vec![node_properties::coordinate_widget(ParameterWidgetsInfo::new(node_id, index, true, context), &x, &y, &unit, min)])
+			Ok(vec![node_properties::coordinate_widget(
+				ParameterWidgetsInfo::new(node_id, index, true, context),
+				&x,
+				&y,
+				&unit,
+				min,
+				is_integer,
+			)])
 		}),
 	);
 	map.insert(

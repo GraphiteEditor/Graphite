@@ -466,11 +466,14 @@ async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
 	)]
 	contents: impl Node<Context<'static>, Output = Data>,
 	label: String,
-	location: IVec2,
-	dimensions: IVec2,
+	location: DVec2,
+	dimensions: DVec2,
 	background: Color,
 	clip: bool,
 ) -> Artboard {
+	let location = location.as_ivec2();
+	let dimensions = dimensions.as_ivec2().max(IVec2::ONE);
+
 	let footprint = ctx.try_footprint().copied();
 	let mut new_ctx = OwnedContextImpl::from(ctx);
 	if let Some(mut footprint) = footprint {
