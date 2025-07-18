@@ -840,7 +840,7 @@ impl Color {
 	/// # Examples
 	/// ```
 	/// use graphene_core::color::Color;
-	/// let color = Color::from_rgbf32(0.114, 0.103, 0.98, 0.97).unwrap();
+	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
 	/// // TODO: Add test
 	/// ```
 	#[inline(always)]
