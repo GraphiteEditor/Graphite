@@ -50,7 +50,7 @@ pub struct Image<P: Pixel> {
 	// TODO: Currently it is always anchored at the top left corner at (0, 0). The bottom right corner of the new origin field would correspond to (1, 1).
 }
 
-#[derive(Debug, Clone, dyn_any::DynAny, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, dyn_any::DynAny, Default, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct TransformImage(pub DAffine2);
 
 impl Hash for TransformImage {

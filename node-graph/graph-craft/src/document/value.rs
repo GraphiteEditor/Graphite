@@ -1,6 +1,6 @@
 use super::DocumentNode;
 use crate::proto::{Any as DAny, FutureAny};
-use crate::wasm_application_io::{WasmCanvas, WasmEditorApi};
+use crate::wasm_application_io::WasmEditorApi;
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
@@ -429,12 +429,7 @@ pub struct RenderOutput {
 #[derive(Debug, Clone, Hash, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub enum RenderOutputType {
 	CanvasFrame(SurfaceFrame),
-	Svg {
-		svg: String,
-		image_data: Vec<(u64, Image<Color>, TransformImage)>,
-		#[serde(skip)]
-		canvas: WasmCanvas,
-	},
+	Svg { svg: String, image_data: Vec<(u64, Image<Color>, TransformImage)> },
 	Image(Vec<u8>),
 }
 

@@ -64,7 +64,7 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> RasterDataTable<CPU> {
 	RasterDataTable::new(Raster::new_cpu(image))
 }
 
-fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint, editor: &WasmEditorApi) -> RenderOutputType {
+fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutputType {
 	if !data.contains_artboard() && !render_params.hide_artboards {
 		render.leaf_tag("rect", |attributes| {
 			attributes.push("x", "0");
@@ -85,9 +85,7 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 
 	let svg = render.svg.to_svg_string();
 	let image_data = render.image_data;
-	let canvas = (!image_data.is_empty()).then_some(Arc::new(editor.application_io.as_ref().unwrap().create_window()));
-	let canvas = WasmCanvas(canvas);
-	RenderOutputType::Svg { svg, image_data, canvas }
+	RenderOutputType::Svg { svg, image_data }
 }
 
 #[cfg(feature = "vello")]
@@ -257,7 +255,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 
 	let output_format = render_config.export_format;
 	let data = match output_format {
-		ExportFormat::Svg => render_svg(data, SvgRender::new(), render_params, footprint, editor_api),
+		ExportFormat::Svg => render_svg(data, SvgRender::new(), render_params, footprint),
 		ExportFormat::Canvas => {
 			if use_vello && editor_api.application_io.as_ref().unwrap().gpu_executor().is_some() {
 				#[cfg(all(feature = "vello", not(test)))]
@@ -266,9 +264,9 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 					metadata,
 				};
 				#[cfg(any(not(feature = "vello"), test))]
-				render_svg(data, SvgRender::new(), render_params, footprint, editor_api)
+				render_svg(data, SvgRender::new(), render_params, footprint)
 			} else {
-				render_svg(data, SvgRender::new(), render_params, footprint, editor_api)
+				render_svg(data, SvgRender::new(), render_params, footprint)
 			}
 		}
 		_ => todo!("Non-SVG render output for {output_format:?}"),

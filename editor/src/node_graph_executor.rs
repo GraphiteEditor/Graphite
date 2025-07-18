@@ -350,13 +350,9 @@ impl NodeGraphExecutor {
 		match node_graph_output {
 			TaggedValue::RenderOutput(render_output) => {
 				match render_output.data {
-					graphene_std::wasm_application_io::RenderOutputType::Svg { svg, image_data, canvas } => {
+					graphene_std::wasm_application_io::RenderOutputType::Svg { svg, image_data } => {
 						// Send to frontend
-						#[cfg(target_arch = "wasm32")]
-						if !image_data.is_empty() {
-							let canvases = draw_image_frame(image_data, canvas.0.unwrap());
-							responses.add(FrontendMessage::UpdateCanvasImage { canvases });
-						}
+						responses.add(FrontendMessage::UpdateImageData { image_data });
 						responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 					}
 					graphene_std::wasm_application_io::RenderOutputType::CanvasFrame(frame) => {
@@ -396,73 +392,6 @@ impl NodeGraphExecutor {
 		responses.add(OverlaysMessage::Draw);
 		Ok(())
 	}
-}
-
-#[cfg(target_arch = "wasm32")]
-use graph_craft::wasm_application_io::WasmSurfaceHandle;
-#[cfg(target_arch = "wasm32")]
-use graphene_std::Color;
-#[cfg(target_arch = "wasm32")]
-use graphene_std::application_io;
-#[cfg(target_arch = "wasm32")]
-use graphene_std::raster::{Image, TransformImage};
-#[cfg(target_arch = "wasm32")]
-use js_sys::{Object, Reflect};
-#[cfg(target_arch = "wasm32")]
-use std::sync::Arc;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::Clamped;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::JsCast;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::JsValue;
-#[cfg(target_arch = "wasm32")]
-use web_sys::CanvasRenderingContext2d;
-#[cfg(target_arch = "wasm32")]
-use web_sys::HtmlCanvasElement;
-
-#[cfg(target_arch = "wasm32")]
-fn draw_image_frame(images: Vec<(u64, Image<Color>, TransformImage)>, surface_handle: Arc<WasmSurfaceHandle>) -> FrontendHtmlCanvases {
-	let mut canvases = Vec::new();
-	let window = web_sys::window().expect("No window object exists");
-	let image_canvases_key = JsValue::from_str("imageCanvases");
-	let image_canvases_obj = match Reflect::get(&window, &image_canvases_key) {
-		Ok(obj) if !obj.is_undefined() => obj.dyn_into::<Object>().expect("window.imageCanvases is not an object"),
-		_ => {
-			let new_obj = Object::new();
-			Reflect::set(&window, &image_canvases_key, &new_obj).expect("Failed to set window.imageCanvases");
-			new_obj
-		}
-	};
-
-	for (id, image, transform) in images {
-		let image_data_rgba8: Vec<u8> = image.data.iter().flat_map(|color| color.to_rgba8_srgb()).collect();
-
-		let array: Clamped<&[u8]> = Clamped(&image_data_rgba8);
-		if image.width > 0 && image.height > 0 {
-			let document = window.document().expect("should have a document on window");
-			let canvas_element = document
-				.create_element("canvas")
-				.expect("failed to create canvas element")
-				.dyn_into::<HtmlCanvasElement>()
-				.expect("failed to cast to canvas element");
-
-			canvas_element.set_width(1);
-			canvas_element.set_height(1);
-			let context = canvas_element.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
-
-			let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.width, image.height).expect("Failed to construct ImageData");
-			context.put_image_data(&image_data, 0., 0.).unwrap();
-			let canvas_name = format!("canvas{}", id);
-			Reflect::set(&image_canvases_obj, &JsValue::from_str(&canvas_name), &canvas_element).expect("Failed to set canvas on imageCanvases object");
-		}
-
-		let transform = transform.0;
-		let surface_handle = surface_handle.clone();
-		let canvas_frame = application_io::SurfaceHandleFrame { surface_handle, transform };
-		canvases.push(canvas_frame);
-	}
-	FrontendHtmlCanvases(canvases)
 }
 
 // Re-export for usage by tests in other modules

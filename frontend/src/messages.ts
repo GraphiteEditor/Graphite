@@ -689,8 +689,6 @@ export class UpdateDocumentArtwork extends JsMessage {
 	readonly svg!: string;
 }
 
-export class UpdateCanvasImage extends JsMessage {}
-
 export class UpdateDocumentScrollbars extends JsMessage {
 	@TupleToVec2
 	readonly position!: XY;
@@ -1658,7 +1656,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDialogColumn1,
 	UpdateDialogColumn2,
 	UpdateDocumentArtwork,
-	UpdateCanvasImage,
 	UpdateDocumentBarLayout,
 	UpdateDocumentLayerDetails,
 	UpdateDocumentLayerStructureJs,
