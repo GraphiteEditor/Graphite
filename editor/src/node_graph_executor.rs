@@ -447,8 +447,8 @@ fn draw_image_frame(images: Vec<(u64, Image<Color>, TransformImage)>, surface_ha
 				.dyn_into::<HtmlCanvasElement>()
 				.expect("failed to cast to canvas element");
 
-			canvas_element.set_width(image.width);
-			canvas_element.set_height(image.height);
+			canvas_element.set_width(1);
+			canvas_element.set_height(1);
 			let context = canvas_element.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
 
 			let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.width, image.height).expect("Failed to construct ImageData");
