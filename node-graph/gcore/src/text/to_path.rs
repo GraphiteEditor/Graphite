@@ -126,18 +126,26 @@ fn render_glyph_run(glyph_run: &GlyphRun<'_, ()>, path_builder: &mut PathBuilder
 
 	// User-requested tilt applied around baseline to avoid vertical displacement
 	// Translation ensures rotation point is at the baseline, not origin
-	let skew = DAffine2::from_translation(DVec2::new(0., run_y as f64))
-		* DAffine2::from_cols_array(&[1., 0., -tilt.to_radians().tan(), 1., 0., 0.])
-		* DAffine2::from_translation(DVec2::new(0., -run_y as f64));
+	let skew = if per_glyph_instances {
+		DAffine2::from_cols_array(&[1., 0., -tilt.to_radians().tan(), 1., 0., 0.])
+	} else {
+		DAffine2::from_translation(DVec2::new(0., run_y as f64))
+			* DAffine2::from_cols_array(&[1., 0., -tilt.to_radians().tan(), 1., 0., 0.])
+			* DAffine2::from_translation(DVec2::new(0., -run_y as f64))
+	};
 
 	let synthesis = run.synthesis();
 
 	// Font synthesis (e.g., synthetic italic) applied separately from user transforms
 	// This preserves the distinction between font styling and user transformations
 	let style_skew = synthesis.skew().map(|angle| {
-		DAffine2::from_translation(DVec2::new(0., run_y as f64))
-			* DAffine2::from_cols_array(&[1., 0., -angle.to_radians().tan() as f64, 1., 0., 0.])
-			* DAffine2::from_translation(DVec2::new(0., -run_y as f64))
+		if per_glyph_instances {
+			DAffine2::from_cols_array(&[1., 0., -angle.to_radians().tan() as f64, 1., 0., 0.])
+		} else {
+			DAffine2::from_translation(DVec2::new(0., run_y as f64))
+				* DAffine2::from_cols_array(&[1., 0., -angle.to_radians().tan() as f64, 1., 0., 0.])
+				* DAffine2::from_translation(DVec2::new(0., -run_y as f64))
+		}
 	});
 
 	let font = run.font();
