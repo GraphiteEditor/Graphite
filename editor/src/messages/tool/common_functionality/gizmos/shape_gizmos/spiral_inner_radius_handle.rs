@@ -56,19 +56,44 @@ impl RadiusGizmo {
 	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, mouse_position: DVec2, responses: &mut VecDeque<Message>) {
 		match &self.handle_state {
 			RadiusGizmoState::Inactive => {
-				if let Some(((inner_radius, outer_radius, _, _), spiral_type)) = extract_arc_or_log_spiral_parameters(layer, document).zip(get_spiral_type(layer, document)) {
-					let smaller_radius = (inner_radius.min(outer_radius)).max(5.);
+				if let Some(((inner_radius, outer_radius, turns, start_angle), spiral_type)) = extract_arc_or_log_spiral_parameters(layer, document).zip(get_spiral_type(layer, document)) {
 					let viewport = document.metadata().transform_to_viewport(layer);
 					let layer_mouse = viewport.inverse().transform_point2(mouse_position);
 
-					if DVec2::ZERO.distance(layer_mouse) < smaller_radius.max(5.) {
+					let center = viewport.transform_point2(DVec2::ZERO);
+
+					let b = calculate_b(inner_radius, turns, outer_radius, spiral_type);
+
+					let start_radius = spiral_point(0. + start_angle, inner_radius, b, spiral_type).distance(DVec2::ZERO);
+					let end_radius = spiral_point(turns * TAU + start_angle, inner_radius, b, spiral_type).distance(DVec2::ZERO);
+
+					log::info!("start_radius {:?}", start_radius);
+					log::info!("end radius {:?}", end_radius);
+
+					let larger_radius = (start_radius.max(end_radius)).max(5.);
+					let smaller_radius = (start_radius.min(end_radius)).max(5.);
+
+					if layer_mouse.distance(DVec2::ZERO) < smaller_radius {
+						log::info!("reaching heeee");
 						self.layer = Some(layer);
-						self.initial_radius = inner_radius;
+						self.initial_radius = smaller_radius;
 						self.spiral_type = spiral_type;
 						self.previous_mouse_position = mouse_position;
 						self.radius_index = if inner_radius > outer_radius { SPIRAL_OUTER_RADIUS_INDEX } else { SPIRAL_INNER_RADIUS_INDEX };
 						self.update_state(RadiusGizmoState::Hover);
 						responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::EWResize });
+						return;
+					}
+
+					if (layer_mouse.distance(DVec2::ZERO) - larger_radius).abs() < 5. {
+						self.layer = Some(layer);
+						self.initial_radius = larger_radius;
+						self.spiral_type = spiral_type;
+						self.previous_mouse_position = mouse_position;
+						self.radius_index = if inner_radius > outer_radius { SPIRAL_INNER_RADIUS_INDEX } else { SPIRAL_OUTER_RADIUS_INDEX };
+						self.update_state(RadiusGizmoState::Hover);
+						responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::EWResize });
+						return;
 					}
 				}
 			}
@@ -82,16 +107,20 @@ impl RadiusGizmo {
 				let Some(layer) = selected_spiral_layer.or(self.layer) else { return };
 
 				let viewport = document.metadata().transform_to_viewport(layer);
-				if let Some(((inner_radius, outer_radius, turns, _), spiral_type)) = extract_arc_or_log_spiral_parameters(layer, document).zip(get_spiral_type(layer, document)) {
+				if let Some(((inner_radius, outer_radius, turns, start_angle), spiral_type)) = extract_arc_or_log_spiral_parameters(layer, document).zip(get_spiral_type(layer, document)) {
 					let b = calculate_b(inner_radius, turns, outer_radius, spiral_type);
-					let (radius, endpoint) = if self.radius_index == SPIRAL_INNER_RADIUS_INDEX {
-						(inner_radius, spiral_point(0., inner_radius, b, spiral_type))
+					let endpoint = if self.radius_index == SPIRAL_INNER_RADIUS_INDEX {
+						spiral_point(0. + start_angle, inner_radius, b, spiral_type)
 					} else {
-						(outer_radius, spiral_point(turns * TAU, inner_radius, b, spiral_type))
+						spiral_point(turns * TAU + start_angle, inner_radius, b, spiral_type)
 					};
 
+					let viewport_center = viewport.transform_point2(DVec2::ZERO);
+
+					let radius = viewport.transform_point2(endpoint).distance(viewport_center);
+
 					overlay_context.manipulator_handle(viewport.transform_point2(endpoint), true, Some(COLOR_OVERLAY_RED));
-					overlay_context.dashed_circle(DVec2::ZERO, radius.max(5.), None, None, Some(4.), Some(4.), Some(0.5), Some(viewport));
+					overlay_context.dashed_ellipse(viewport_center, radius, radius, None, None, None, None, None, None, Some(4.), Some(4.), Some(0.5));
 				}
 			}
 			_ => {}
@@ -110,18 +139,13 @@ impl RadiusGizmo {
 			.expect("Failed to find inputs of Spiral");
 
 		let viewport_transform = document.network_interface.document_metadata().transform_to_viewport(layer);
-
-		let center = DVec2::ZERO;
 		let layer_drag_start = viewport_transform.inverse().transform_point2(drag_start);
 
 		let current_mouse_layer = viewport_transform.inverse().transform_point2(input.mouse.position);
 		let previous_mouse_layer = viewport_transform.inverse().transform_point2(self.previous_mouse_position);
 
 		let sign = (current_mouse_layer - previous_mouse_layer).dot(layer_drag_start).signum();
-
 		let delta = current_mouse_layer.distance(previous_mouse_layer) * sign;
-
-		let net_radius = current_mouse_layer.distance(DVec2::ZERO);
 
 		let Some(&TaggedValue::F64(radius)) = node_inputs.get(self.radius_index).expect("Failed to get radius of Spiral").as_value() else {
 			return;

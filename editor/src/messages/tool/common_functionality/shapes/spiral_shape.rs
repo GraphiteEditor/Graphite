@@ -41,9 +41,9 @@ impl ShapeGizmoHandler for SpiralGizmoHandler {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) {
-		self.radius_handle.handle_actions(selected_spiral_layer, document, input.mouse.position, responses);
+		// self.radius_handle.handle_actions(selected_spiral_layer, document, input.mouse.position, responses);
 		self.turns_handle.handle_actions(selected_spiral_layer, mouse_position, document, responses);
-		self.tightness_handle.handle_actions(selected_spiral_layer, input.mouse.position, document, responses);
+		// self.tightness_handle.handle_actions(selected_spiral_layer, input.mouse.position, document, responses);
 	}
 
 	fn handle_click(&mut self) {
@@ -196,6 +196,8 @@ impl Spiral {
 			SpiralType::Logarithmic => (dragged_distance).max(0.1),
 		};
 
+		let angle = ipp.mouse.position.angle_to(DVec2::X);
+
 		responses.add(GraphOperationMessage::TransformSet {
 			layer,
 			transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., viewport_drag_start),
@@ -227,4 +229,8 @@ impl Spiral {
 			responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Turns(turns)));
 		}
 	}
+}
+
+pub fn calculate_circle_point(theta: f64, radius: f64) -> DVec2 {
+	radius * DVec2::new(theta.cos(), -theta.sin())
 }

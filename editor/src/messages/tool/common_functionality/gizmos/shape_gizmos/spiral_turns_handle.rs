@@ -1,4 +1,4 @@
-use crate::consts::{COLOR_OVERLAY_RED, POINT_RADIUS_HANDLE_SNAP_THRESHOLD, SPIRAL_OUTER_RADIUS_INDEX, SPIRAL_TURNS_INDEX};
+use crate::consts::{COLOR_OVERLAY_RED, POINT_RADIUS_HANDLE_SNAP_THRESHOLD, SPIRAL_OUTER_RADIUS_INDEX, SPIRAL_START_ANGLE, SPIRAL_TURNS_INDEX};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -9,7 +9,7 @@ use crate::messages::prelude::{DocumentMessageHandler, FrontendMessage, InputPre
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{
-	calculate_b, extract_arc_or_log_spiral_parameters, get_arc_spiral_end_point, get_log_spiral_end_point, get_spiral_type, spiral_point,
+	calculate_b, extract_arc_or_log_spiral_parameters, get_arc_or_log_spiral_endpoints, get_arc_spiral_end_point, get_log_spiral_end_point, get_spiral_type, spiral_point,
 };
 use glam::DVec2;
 use graph_craft::document::NodeInput;
@@ -17,6 +17,14 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::vector::misc::SpiralType;
 use std::collections::VecDeque;
 use std::f64::consts::TAU;
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum GizmoType {
+	#[default]
+	None,
+	Start,
+	End,
+}
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub enum SpiralTurnsState {
@@ -34,8 +42,10 @@ pub struct SpiralTurns {
 	initial_outer_radius: f64,
 	initial_inner_radius: f64,
 	initial_b: f64,
+	initial_start_angle: f64,
 	previous_mouse_position: DVec2,
 	total_angle_delta: f64,
+	gizmo_type: GizmoType,
 	spiral_type: SpiralType,
 }
 
@@ -43,6 +53,7 @@ impl SpiralTurns {
 	pub fn cleanup(&mut self) {
 		self.handle_state = SpiralTurnsState::Inactive;
 		self.total_angle_delta = 0.;
+		self.gizmo_type = GizmoType::None;
 		self.layer = None;
 	}
 
@@ -58,14 +69,26 @@ impl SpiralTurns {
 		self.handle_state == SpiralTurnsState::Dragging
 	}
 
-	pub fn store_initial_parameters(&mut self, layer: LayerNodeIdentifier, a: f64, turns: f64, outer_radius: f64, mouse_position: DVec2, spiral_type: SpiralType) {
+	pub fn store_initial_parameters(
+		&mut self,
+		layer: LayerNodeIdentifier,
+		a: f64,
+		turns: f64,
+		outer_radius: f64,
+		mouse_position: DVec2,
+		start_angle: f64,
+		gizmo_type: GizmoType,
+		spiral_type: SpiralType,
+	) {
 		self.layer = Some(layer);
 		self.initial_turns = turns;
 		self.initial_b = calculate_b(a, turns, outer_radius, spiral_type);
 		self.initial_inner_radius = a;
 		self.initial_outer_radius = outer_radius;
+		self.initial_start_angle = start_angle;
 		self.previous_mouse_position = mouse_position;
 		self.spiral_type = spiral_type;
+		self.gizmo_type = gizmo_type;
 		self.update_state(SpiralTurnsState::Hover);
 	}
 
@@ -75,12 +98,21 @@ impl SpiralTurns {
 		match &self.handle_state {
 			SpiralTurnsState::Inactive => {
 				// Archimedean
-				if let Some(((inner_radius, outer_radius, turns, _), spiral_type)) = extract_arc_or_log_spiral_parameters(layer, document).zip(get_spiral_type(layer, document)) {
+				if let Some(((inner_radius, outer_radius, turns, start_angle), spiral_type)) = extract_arc_or_log_spiral_parameters(layer, document).zip(get_spiral_type(layer, document)) {
 					let b = calculate_b(inner_radius, turns, outer_radius, spiral_type);
-					let end_point = viewport.transform_point2(spiral_point(turns * TAU, inner_radius, b, spiral_type));
+					let end_point = viewport.transform_point2(spiral_point(turns * TAU + start_angle.to_radians(), inner_radius, b, spiral_type));
+					let start_point = viewport.transform_point2(spiral_point(0. + start_angle.to_radians(), inner_radius, b, spiral_type));
+
 					if mouse_position.distance(end_point) < POINT_RADIUS_HANDLE_SNAP_THRESHOLD {
-						self.store_initial_parameters(layer, inner_radius, turns, outer_radius, mouse_position, spiral_type);
+						self.store_initial_parameters(layer, inner_radius, turns, outer_radius, mouse_position, start_angle, GizmoType::End, spiral_type);
 						responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+						return;
+					}
+
+					if mouse_position.distance(start_point) < POINT_RADIUS_HANDLE_SNAP_THRESHOLD {
+						self.store_initial_parameters(layer, inner_radius, turns, outer_radius, mouse_position, start_angle, GizmoType::Start, spiral_type);
+						responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+						return;
 					}
 				}
 			}
@@ -97,15 +129,15 @@ impl SpiralTurns {
 				// Is true only when hovered over the gizmo
 				let selected = self.layer.is_some();
 
-				if let Some(endpoint) = get_arc_spiral_end_point(layer, document, viewport, TAU) {
-					overlay_context.manipulator_handle(endpoint, selected, Some(COLOR_OVERLAY_RED));
-					return;
+				let angle = match self.gizmo_type {
+					GizmoType::End => TAU,
+					GizmoType::Start => 0.,
+					GizmoType::None => return,
 				};
 
-				if let Some(endpoint) = get_log_spiral_end_point(layer, document, viewport, TAU) {
+				if let Some(endpoint) = get_arc_or_log_spiral_endpoints(layer, document, viewport, angle) {
 					overlay_context.manipulator_handle(endpoint, selected, Some(COLOR_OVERLAY_RED));
-					return;
-				};
+				}
 			}
 		}
 	}
@@ -132,22 +164,46 @@ impl SpiralTurns {
 		// Calculate the new outer radius based on spiral type and turn change
 		let outer_radius_change = match self.spiral_type {
 			SpiralType::Archimedean => turns_delta * (self.initial_b) * TAU,
-			SpiralType::Logarithmic => self.initial_inner_radius * (self.initial_b * TAU * turns_delta).exp(),
+			SpiralType::Logarithmic => self.initial_outer_radius * ((self.initial_b * TAU * turns_delta).exp() - 1.),
 		};
 
 		let Some(node_id) = graph_modification_utils::get_spiral_id(layer, &document.network_interface) else {
 			return;
 		};
 
-		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, SPIRAL_TURNS_INDEX),
-			input: NodeInput::value(TaggedValue::F64(self.initial_turns + turns_delta), false),
-		});
+		match self.gizmo_type {
+			GizmoType::Start => {
+				let sign = total_delta.signum() * -1.;
+				responses.add(NodeGraphMessage::SetInput {
+					input_connector: InputConnector::node(node_id, SPIRAL_START_ANGLE),
+					input: NodeInput::value(TaggedValue::F64(self.initial_start_angle + total_delta), false),
+				});
 
-		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, SPIRAL_OUTER_RADIUS_INDEX),
-			input: NodeInput::value(TaggedValue::F64(self.initial_outer_radius + outer_radius_change), false),
-		});
+				responses.add(NodeGraphMessage::SetInput {
+					input_connector: InputConnector::node(node_id, SPIRAL_TURNS_INDEX),
+					input: NodeInput::value(TaggedValue::F64(self.initial_turns + turns_delta * sign), false),
+				});
+
+				responses.add(NodeGraphMessage::SetInput {
+					input_connector: InputConnector::node(node_id, SPIRAL_OUTER_RADIUS_INDEX),
+					input: NodeInput::value(TaggedValue::F64(self.initial_outer_radius + outer_radius_change * sign), false),
+				});
+			}
+			GizmoType::End => {
+				responses.add(NodeGraphMessage::SetInput {
+					input_connector: InputConnector::node(node_id, SPIRAL_TURNS_INDEX),
+					input: NodeInput::value(TaggedValue::F64(self.initial_turns + turns_delta), false),
+				});
+
+				responses.add(NodeGraphMessage::SetInput {
+					input_connector: InputConnector::node(node_id, SPIRAL_OUTER_RADIUS_INDEX),
+					input: NodeInput::value(TaggedValue::F64(self.initial_outer_radius + outer_radius_change), false),
+				});
+			}
+			GizmoType::None => {
+				return;
+			}
+		}
 
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 
