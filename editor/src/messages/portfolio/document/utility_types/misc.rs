@@ -211,6 +211,7 @@ impl GridType {
 #[serde(default)]
 pub struct GridSnapping {
 	pub origin: DVec2,
+	pub origin_mode: GridOriginMode,
 	pub grid_type: GridType,
 	pub rectangular_spacing: DVec2,
 	pub isometric_y_spacing: f64,
@@ -224,6 +225,7 @@ impl Default for GridSnapping {
 	fn default() -> Self {
 		Self {
 			origin: DVec2::ZERO,
+			origin_mode: GridOriginMode::default(),
 			grid_type: Default::default(),
 			rectangular_spacing: DVec2::ONE,
 			isometric_y_spacing: 1.,
@@ -547,8 +549,8 @@ impl fmt::Display for AlignmentSnapTarget {
 		match self {
 			AlignmentSnapTarget::BoundingBoxCornerPoint => write!(f, "{}", BoundingBoxSnapTarget::CornerPoint),
 			AlignmentSnapTarget::BoundingBoxCenterPoint => write!(f, "{}", BoundingBoxSnapTarget::CenterPoint),
-			AlignmentSnapTarget::ArtboardCornerPoint => write!(f, "{}", ArtboardSnapTarget::CornerPoint),
-			AlignmentSnapTarget::ArtboardCenterPoint => write!(f, "{}", ArtboardSnapTarget::CenterPoint),
+			AlignmentSnapTarget::ArtboardCornerPoint => write!(f, "{}", ArtboardSnapSource::CornerPoint),
+			AlignmentSnapTarget::ArtboardCenterPoint => write!(f, "{}", ArtboardSnapSource::CenterPoint),
 			AlignmentSnapTarget::AlignWithAnchorPoint => write!(f, "{}", PathSnapTarget::AnchorPointWithColinearHandles),
 			AlignmentSnapTarget::IntersectionPoint => write!(f, "{}", PathSnapTarget::IntersectionPoint),
 			AlignmentSnapTarget::PerpendicularToEndpoint => write!(f, "{}", PathSnapTarget::PerpendicularToEndpoint),
@@ -694,4 +696,46 @@ impl PTZ {
 pub enum GroupFolderType {
 	Layer,
 	BooleanOperation(graphene_std::path_bool::BooleanOperation),
+}
+
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
+pub enum GridOriginMode {
+	/// Use the global grid origin
+	Global,
+	/// Use the selected artboard origins (falls back to global if none selected)
+	Artboard,
+}
+
+impl Default for GridOriginMode {
+	fn default() -> Self {
+		Self::Artboard
+	}
+}
+
+impl GridOriginMode {
+	pub fn list() -> [Self; 2] {
+		[Self::Global, Self::Artboard]
+	}
+}
+
+impl fmt::Display for GridOriginMode {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			GridOriginMode::Global => write!(f, "Global"),
+			GridOriginMode::Artboard => write!(f, "Artboard"),
+		}
+	}
+}
+
+/// Filter out duplicate or very close origins to optimize performance
+pub fn optimize_grid_origins(origins: Vec<glam::DVec2>) -> Vec<glam::DVec2> {
+	let mut optimized_origins = Vec::new();
+	const MIN_DISTANCE: f64 = 1.0; // Minimum distance between origins in pixels
+	for origin in origins {
+		let is_duplicate = optimized_origins.iter().any(|&existing| origin.distance(existing) < MIN_DISTANCE);
+		if !is_duplicate {
+			optimized_origins.push(origin);
+		}
+	}
+	optimized_origins
 }

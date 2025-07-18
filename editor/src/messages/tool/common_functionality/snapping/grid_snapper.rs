@@ -1,5 +1,5 @@
 use super::*;
-use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, GridSnapping, GridType, SnapTarget};
+use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, GridSnapping, GridType, SnapTarget, optimize_grid_origins};
 use glam::DVec2;
 use graphene_std::renderer::Quad;
 
@@ -13,6 +13,39 @@ struct Line {
 pub struct GridSnapper;
 
 impl GridSnapper {
+	/// Get the grid origins that should be used for snapping.
+	/// Returns either the selected artboard origins or the global grid origin based on the origin mode.
+	fn get_grid_origins(&self, document: &DocumentMessageHandler) -> Vec<DVec2> {
+		let origins = match document.snapping_state.grid.origin_mode {
+			crate::messages::portfolio::document::utility_types::misc::GridOriginMode::Global => {
+				// Always use global grid origin
+				vec![document.snapping_state.grid.origin]
+			}
+			crate::messages::portfolio::document::utility_types::misc::GridOriginMode::Artboard => {
+				// Use artboard origins if available, otherwise fall back to global
+				let selected_nodes = document.network_interface.selected_nodes();
+				let selected_artboards: Vec<_> = selected_nodes
+					.selected_layers(document.metadata())
+					.filter(|layer| document.network_interface.is_artboard(&layer.to_node(), &[]))
+					.collect();
+
+				if selected_artboards.is_empty() {
+					// No artboards selected, use global grid origin
+					vec![document.snapping_state.grid.origin]
+				} else {
+					// Use selected artboard origins
+					selected_artboards
+						.into_iter()
+						.filter_map(|artboard| document.metadata().bounding_box_document(artboard).map(|bounds| bounds[0]))
+						.collect()
+				}
+			}
+		};
+
+		// Optimize by removing duplicate or very close origins
+		optimize_grid_origins(origins)
+	}
+
 	// Rectangular grid has 4 lines around a point, 2 on y axis and 2 on x axis.
 	fn get_snap_lines_rectangular(&self, document_point: DVec2, snap_data: &mut SnapData, spacing: DVec2) -> Vec<Line> {
 		let document = snap_data.document;
@@ -21,16 +54,18 @@ impl GridSnapper {
 		let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 			return lines;
 		};
-		let origin = document.snapping_state.grid.origin;
-		for (direction, perpendicular) in [(DVec2::X, DVec2::Y), (DVec2::Y, DVec2::X)] {
-			lines.push(Line {
-				direction,
-				point: perpendicular * (((document_point - origin) / spacing).ceil() * spacing + origin),
-			});
-			lines.push(Line {
-				direction,
-				point: perpendicular * (((document_point - origin) / spacing).floor() * spacing + origin),
-			});
+		let origins = self.get_grid_origins(document);
+		for origin in origins {
+			for (direction, perpendicular) in [(DVec2::X, DVec2::Y), (DVec2::Y, DVec2::X)] {
+				lines.push(Line {
+					direction,
+					point: perpendicular * (((document_point - origin) / spacing).ceil() * spacing + origin),
+				});
+				lines.push(Line {
+					direction,
+					point: perpendicular * (((document_point - origin) / spacing).floor() * spacing + origin),
+				});
+			}
 		}
 		lines
 	}
@@ -40,7 +75,7 @@ impl GridSnapper {
 		let document = snap_data.document;
 		let mut lines = Vec::new();
 
-		let origin = document.snapping_state.grid.origin;
+		let origins = self.get_grid_origins(document);
 
 		let tan_a = angle_a.to_radians().tan();
 		let tan_b = angle_b.to_radians().tan();
@@ -50,40 +85,42 @@ impl GridSnapper {
 		};
 		let spacing = spacing * spacing_multiplier;
 
-		let x_max = ((document_point.x - origin.x) / spacing.x).ceil() * spacing.x + origin.x;
-		let x_min = ((document_point.x - origin.x) / spacing.x).floor() * spacing.x + origin.x;
-		lines.push(Line {
-			point: DVec2::new(x_max, 0.),
-			direction: DVec2::Y,
-		});
-		lines.push(Line {
-			point: DVec2::new(x_min, 0.),
-			direction: DVec2::Y,
-		});
+		for origin in origins {
+			let x_max = ((document_point.x - origin.x) / spacing.x).ceil() * spacing.x + origin.x;
+			let x_min = ((document_point.x - origin.x) / spacing.x).floor() * spacing.x + origin.x;
+			lines.push(Line {
+				point: DVec2::new(x_max, 0.),
+				direction: DVec2::Y,
+			});
+			lines.push(Line {
+				point: DVec2::new(x_min, 0.),
+				direction: DVec2::Y,
+			});
 
-		let y_projected_onto_x = document_point.y + tan_a * (document_point.x - origin.x);
-		let y_onto_x_max = ((y_projected_onto_x - origin.y) / spacing.y).ceil() * spacing.y + origin.y;
-		let y_onto_x_min = ((y_projected_onto_x - origin.y) / spacing.y).floor() * spacing.y + origin.y;
-		lines.push(Line {
-			point: DVec2::new(origin.x, y_onto_x_max),
-			direction: DVec2::new(1., -tan_a),
-		});
-		lines.push(Line {
-			point: DVec2::new(origin.x, y_onto_x_min),
-			direction: DVec2::new(1., -tan_a),
-		});
+			let y_projected_onto_x = document_point.y + tan_a * (document_point.x - origin.x);
+			let y_onto_x_max = ((y_projected_onto_x - origin.y) / spacing.y).ceil() * spacing.y + origin.y;
+			let y_onto_x_min = ((y_projected_onto_x - origin.y) / spacing.y).floor() * spacing.y + origin.y;
+			lines.push(Line {
+				point: DVec2::new(origin.x, y_onto_x_max),
+				direction: DVec2::new(1., -tan_a),
+			});
+			lines.push(Line {
+				point: DVec2::new(origin.x, y_onto_x_min),
+				direction: DVec2::new(1., -tan_a),
+			});
 
-		let y_projected_onto_z = document_point.y - tan_b * (document_point.x - origin.x);
-		let y_onto_z_max = ((y_projected_onto_z - origin.y) / spacing.y).ceil() * spacing.y + origin.y;
-		let y_onto_z_min = ((y_projected_onto_z - origin.y) / spacing.y).floor() * spacing.y + origin.y;
-		lines.push(Line {
-			point: DVec2::new(origin.x, y_onto_z_max),
-			direction: DVec2::new(1., tan_b),
-		});
-		lines.push(Line {
-			point: DVec2::new(origin.x, y_onto_z_min),
-			direction: DVec2::new(1., tan_b),
-		});
+			let y_projected_onto_z = document_point.y - tan_b * (document_point.x - origin.x);
+			let y_onto_z_max = ((y_projected_onto_z - origin.y) / spacing.y).ceil() * spacing.y + origin.y;
+			let y_onto_z_min = ((y_projected_onto_z - origin.y) / spacing.y).floor() * spacing.y + origin.y;
+			lines.push(Line {
+				point: DVec2::new(origin.x, y_onto_z_max),
+				direction: DVec2::new(1., tan_b),
+			});
+			lines.push(Line {
+				point: DVec2::new(origin.x, y_onto_z_min),
+				direction: DVec2::new(1., tan_b),
+			});
+		}
 
 		lines
 	}

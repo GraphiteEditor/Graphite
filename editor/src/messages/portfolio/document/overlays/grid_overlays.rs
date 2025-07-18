@@ -1,5 +1,6 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::misc::optimize_grid_origins;
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
 use crate::messages::prelude::*;
 use glam::DVec2;
@@ -7,8 +8,42 @@ use graphene_std::raster::color::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::vector::style::FillChoice;
 
+/// Get the grid origins that should be used for rendering the grid overlay.
+/// Returns either the selected artboard origins or the global grid origin based on the origin mode.
+fn get_grid_origins(document: &DocumentMessageHandler) -> Vec<DVec2> {
+	let origins = match document.snapping_state.grid.origin_mode {
+		crate::messages::portfolio::document::utility_types::misc::GridOriginMode::Global => {
+			// Always use global grid origin
+			vec![document.snapping_state.grid.origin]
+		}
+		crate::messages::portfolio::document::utility_types::misc::GridOriginMode::Artboard => {
+			// Use artboard origins if available, otherwise fall back to global
+			let selected_nodes = document.network_interface.selected_nodes();
+			let selected_artboards: Vec<_> = selected_nodes
+				.selected_layers(document.metadata())
+				.filter(|layer| document.network_interface.is_artboard(&layer.to_node(), &[]))
+				.collect();
+
+			if selected_artboards.is_empty() {
+				// No artboards selected, use global grid origin
+				vec![document.snapping_state.grid.origin]
+			} else {
+				// Use selected artboard origins
+				selected_artboards
+					.into_iter()
+					.filter_map(|artboard| document.metadata().bounding_box_document(artboard).map(|bounds| bounds[0]))
+					.collect()
+			}
+		}
+	};
+
+	// Optimize by removing duplicate or very close origins
+	optimize_grid_origins(origins)
+}
+
+// Removed duplicate definition of optimize_grid_origins
+
 fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
-	let origin = document.snapping_state.grid.origin;
 	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
 	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
@@ -16,27 +51,30 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
 
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
+	let origins = get_grid_origins(document);
 
-	for primary in 0..2 {
-		let secondary = 1 - primary;
-		let min = bounds.0.iter().map(|&corner| corner[secondary]).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
-		let max = bounds.0.iter().map(|&corner| corner[secondary]).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
-		let primary_start = bounds.0.iter().map(|&corner| corner[primary]).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
-		let primary_end = bounds.0.iter().map(|&corner| corner[primary]).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
-		let spacing = spacing[secondary];
-		for line_index in 0..=((max - min) / spacing).ceil() as i32 {
-			let secondary_pos = (((min - origin[secondary]) / spacing).ceil() + line_index as f64) * spacing + origin[secondary];
-			let start = if primary == 0 {
-				DVec2::new(primary_start, secondary_pos)
-			} else {
-				DVec2::new(secondary_pos, primary_start)
-			};
-			let end = if primary == 0 {
-				DVec2::new(primary_end, secondary_pos)
-			} else {
-				DVec2::new(secondary_pos, primary_end)
-			};
-			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color), None);
+	for origin in origins {
+		for primary in 0..2 {
+			let secondary = 1 - primary;
+			let min = bounds.0.iter().map(|&corner| corner[secondary]).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+			let max = bounds.0.iter().map(|&corner| corner[secondary]).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+			let primary_start = bounds.0.iter().map(|&corner| corner[primary]).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+			let primary_end = bounds.0.iter().map(|&corner| corner[primary]).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+			let spacing = spacing[secondary];
+			for line_index in 0..=((max - min) / spacing).ceil() as i32 {
+				let secondary_pos = (((min - origin[secondary]) / spacing).ceil() + line_index as f64) * spacing + origin[secondary];
+				let start = if primary == 0 {
+					DVec2::new(primary_start, secondary_pos)
+				} else {
+					DVec2::new(secondary_pos, primary_start)
+				};
+				let end = if primary == 0 {
+					DVec2::new(primary_end, secondary_pos)
+				} else {
+					DVec2::new(secondary_pos, primary_end)
+				};
+				overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color), None);
+			}
 		}
 	}
 }
@@ -47,7 +85,6 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 // TODO: Potentially create an image and render the image onto the canvas a single time.
 // TODO: Implement this with a dashed line (`set_line_dash`), with integer spacing which is continuously adjusted to correct the accumulated error.
 fn grid_overlay_rectangular_dot(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
-	let origin = document.snapping_state.grid.origin;
 	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
 	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
@@ -55,28 +92,31 @@ fn grid_overlay_rectangular_dot(document: &DocumentMessageHandler, overlay_conte
 	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
 
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
+	let origins = get_grid_origins(document);
 
-	let min = bounds.0.iter().map(|corner| corner.y).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
-	let max = bounds.0.iter().map(|corner| corner.y).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+	for origin in origins {
+		let min = bounds.0.iter().map(|corner| corner.y).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+		let max = bounds.0.iter().map(|corner| corner.y).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
 
-	let mut primary_start = bounds.0.iter().map(|corner| corner.x).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
-	let mut primary_end = bounds.0.iter().map(|corner| corner.x).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+		let mut primary_start = bounds.0.iter().map(|corner| corner.x).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+		let mut primary_end = bounds.0.iter().map(|corner| corner.x).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
 
-	primary_start = (primary_start / spacing.x).floor() * spacing.x + origin.x % spacing.x;
-	primary_end = (primary_end / spacing.x).floor() * spacing.x + origin.x % spacing.x;
+		primary_start = (primary_start / spacing.x).floor() * spacing.x + origin.x % spacing.x;
+		primary_end = (primary_end / spacing.x).floor() * spacing.x + origin.x % spacing.x;
 
-	// Round to avoid floating point errors
-	let total_dots = ((primary_end - primary_start) / spacing.x).round();
+		// Round to avoid floating point errors
+		let total_dots = ((primary_end - primary_start) / spacing.x).round();
 
-	for line_index in 0..=((max - min) / spacing.y).ceil() as i32 {
-		let secondary_pos = (((min - origin.y) / spacing.y).ceil() + line_index as f64) * spacing.y + origin.y;
-		let start = DVec2::new(primary_start, secondary_pos);
-		let end = DVec2::new(primary_end, secondary_pos);
+		for line_index in 0..=((max - min) / spacing.y).ceil() as i32 {
+			let secondary_pos = (((min - origin.y) / spacing.y).ceil() + line_index as f64) * spacing.y + origin.y;
+			let start = DVec2::new(primary_start, secondary_pos);
+			let end = DVec2::new(primary_end, secondary_pos);
 
-		let x_per_dot = (end.x - start.x) / total_dots;
-		for dot_index in 0..=total_dots as usize {
-			let exact_x = x_per_dot * dot_index as f64;
-			overlay_context.pixel(document_to_viewport.transform_point2(DVec2::new(start.x + exact_x, start.y)).round(), Some(&grid_color))
+			let x_per_dot = (end.x - start.x) / total_dots;
+			for dot_index in 0..=total_dots as usize {
+				let exact_x = x_per_dot * dot_index as f64;
+				overlay_context.pixel(document_to_viewport.transform_point2(DVec2::new(start.x + exact_x, start.y)).round(), Some(&grid_color))
+			}
 		}
 	}
 }
@@ -84,7 +124,6 @@ fn grid_overlay_rectangular_dot(document: &DocumentMessageHandler, overlay_conte
 fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, y_axis_spacing: f64, angle_a: f64, angle_b: f64) {
 	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
 	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
-	let origin = document.snapping_state.grid.origin;
 	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
 
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
@@ -101,25 +140,30 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 	let min_y = bounds.0.iter().map(|&corner| corner.y).min_by(cmp).unwrap_or_default();
 	let max_y = bounds.0.iter().map(|&corner| corner.y).max_by(cmp).unwrap_or_default();
 	let spacing = isometric_spacing.x;
-	for line_index in 0..=((max_x - min_x) / spacing).ceil() as i32 {
-		let x_pos = (((min_x - origin.x) / spacing).ceil() + line_index as f64) * spacing + origin.x;
-		let start = DVec2::new(x_pos, min_y);
-		let end = DVec2::new(x_pos, max_y);
-		overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color), None);
-	}
 
-	for (tan, multiply) in [(tan_a, -1.), (tan_b, 1.)] {
-		let project = |corner: &DVec2| corner.y + multiply * tan * (corner.x - origin.x);
-		let inverse_project = |corner: &DVec2| corner.y - tan * multiply * (corner.x - origin.x);
-		let min_y = bounds.0.into_iter().min_by(|a, b| inverse_project(a).partial_cmp(&inverse_project(b)).unwrap()).unwrap_or_default();
-		let max_y = bounds.0.into_iter().max_by(|a, b| inverse_project(a).partial_cmp(&inverse_project(b)).unwrap()).unwrap_or_default();
-		let spacing = isometric_spacing.y;
-		let lines = ((inverse_project(&max_y) - inverse_project(&min_y)) / spacing).ceil() as i32;
-		for line_index in 0..=lines {
-			let y_pos = (((inverse_project(&min_y) - origin.y) / spacing).ceil() + line_index as f64) * spacing + origin.y;
-			let start = DVec2::new(min_x, project(&DVec2::new(min_x, y_pos)));
-			let end = DVec2::new(max_x, project(&DVec2::new(max_x, y_pos)));
+	let origins = get_grid_origins(document);
+
+	for origin in origins {
+		for line_index in 0..=((max_x - min_x) / spacing).ceil() as i32 {
+			let x_pos = (((min_x - origin.x) / spacing).ceil() + line_index as f64) * spacing + origin.x;
+			let start = DVec2::new(x_pos, min_y);
+			let end = DVec2::new(x_pos, max_y);
 			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color), None);
+		}
+
+		for (tan, multiply) in [(tan_a, -1.), (tan_b, 1.)] {
+			let project = |corner: &DVec2| corner.y + multiply * tan * (corner.x - origin.x);
+			let inverse_project = |corner: &DVec2| corner.y - tan * multiply * (corner.x - origin.x);
+			let min_y = bounds.0.into_iter().min_by(|a, b| inverse_project(a).partial_cmp(&inverse_project(b)).unwrap()).unwrap_or_default();
+			let max_y = bounds.0.into_iter().max_by(|a, b| inverse_project(a).partial_cmp(&inverse_project(b)).unwrap()).unwrap_or_default();
+			let spacing = isometric_spacing.y;
+			let lines = ((inverse_project(&max_y) - inverse_project(&min_y)) / spacing).ceil() as i32;
+			for line_index in 0..=lines {
+				let y_pos = (((inverse_project(&min_y) - origin.y) / spacing).ceil() + line_index as f64) * spacing + origin.y;
+				let start = DVec2::new(min_x, project(&DVec2::new(min_x, y_pos)));
+				let end = DVec2::new(max_x, project(&DVec2::new(max_x, y_pos)));
+				overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color), None);
+			}
 		}
 	}
 }
@@ -127,7 +171,6 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, y_axis_spacing: f64, angle_a: f64, angle_b: f64) {
 	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
 	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
-	let origin = document.snapping_state.grid.origin;
 	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
 
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
@@ -142,35 +185,40 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 	let min_x = bounds.0.iter().map(|&corner| corner.x).min_by(cmp).unwrap_or_default();
 	let max_x = bounds.0.iter().map(|&corner| corner.x).max_by(cmp).unwrap_or_default();
 	let spacing_x = isometric_spacing.x;
-	let tan = tan_a;
-	let multiply = -1.;
-	let project = |corner: &DVec2| corner.y + multiply * tan * (corner.x - origin.x);
-	let inverse_project = |corner: &DVec2| corner.y - tan * multiply * (corner.x - origin.x);
-	let min_y = bounds.0.into_iter().min_by(|a, b| inverse_project(a).partial_cmp(&inverse_project(b)).unwrap()).unwrap_or_default();
-	let max_y = bounds.0.into_iter().max_by(|a, b| inverse_project(a).partial_cmp(&inverse_project(b)).unwrap()).unwrap_or_default();
-	let spacing_y = isometric_spacing.y;
-	let lines = ((inverse_project(&max_y) - inverse_project(&min_y)) / spacing_y).ceil() as i32;
+	let origins = get_grid_origins(document);
 
-	let cos_a = angle_a.to_radians().cos();
-	// If cos_a is 0 then there will be no intersections and thus no dots should be drawn
-	if cos_a.abs() <= 0.00001 {
-		return;
-	}
-	let x_offset = (((min_x - origin.x) / spacing_x).ceil()) * spacing_x + origin.x - min_x;
-	for line_index in 0..=lines {
-		let y_pos = (((inverse_project(&min_y) - origin.y) / spacing_y).ceil() + line_index as f64) * spacing_y + origin.y;
-		let start = DVec2::new(min_x + x_offset, project(&DVec2::new(min_x + x_offset, y_pos)));
-		let end = DVec2::new(max_x + x_offset, project(&DVec2::new(max_x + x_offset, y_pos)));
+	for origin in origins {
+		let tan = tan_a;
+		let multiply = -1.;
+		let project = |corner: &DVec2| corner.y + multiply * tan * (corner.x - origin.x);
+		let inverse_project = |corner: &DVec2| corner.y - tan * multiply * (corner.x - origin.x);
+		let min_y = bounds.0.into_iter().min_by(|a, b| inverse_project(a).partial_cmp(&inverse_project(b)).unwrap()).unwrap_or_default();
+		let max_y = bounds.0.into_iter().max_by(|a, b| inverse_project(a).partial_cmp(&inverse_project(b)).unwrap()).unwrap_or_default();
+		let spacing_y = isometric_spacing.y;
+		let lines = ((inverse_project(&max_y) - inverse_project(&min_y)) / spacing_y).ceil() as i32;
 
-		overlay_context.dashed_line(
-			document_to_viewport.transform_point2(start),
-			document_to_viewport.transform_point2(end),
-			Some(&grid_color),
-			None,
-			Some(1.),
-			Some((spacing_x / cos_a) * document_to_viewport.matrix2.x_axis.length() - 1.),
-			None,
-		);
+		let cos_a = angle_a.to_radians().cos();
+		// If cos_a is 0 then there will be no intersections and thus no dots should be drawn
+		if cos_a.abs() <= 0.00001 {
+			continue;
+		}
+
+		let x_offset = (((min_x - origin.x) / spacing_x).ceil()) * spacing_x + origin.x - min_x;
+		for line_index in 0..=lines {
+			let y_pos = (((inverse_project(&min_y) - origin.y) / spacing_y).ceil() + line_index as f64) * spacing_y + origin.y;
+			let start = DVec2::new(min_x + x_offset, project(&DVec2::new(min_x + x_offset, y_pos)));
+			let end = DVec2::new(max_x + x_offset, project(&DVec2::new(max_x + x_offset, y_pos)));
+
+			overlay_context.dashed_line(
+				document_to_viewport.transform_point2(start),
+				document_to_viewport.transform_point2(end),
+				Some(&grid_color),
+				None,
+				Some(1.),
+				Some((spacing_x / cos_a) * document_to_viewport.matrix2.x_axis.length() - 1.),
+				None,
+			);
+		}
 	}
 }
 
@@ -302,6 +350,33 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		],
 	});
 
+	widgets.push(LayoutGroup::Row {
+		widgets: vec![
+			TextLabel::new("Origin Mode").table_align(true).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			RadioInput::new(vec![
+				RadioEntryData::new("global")
+					.label("Global")
+					.tooltip("Use the global grid origin point")
+					.on_update(update_val(grid, |grid, _| {
+						grid.origin_mode = crate::messages::portfolio::document::utility_types::misc::GridOriginMode::Global;
+					})),
+				RadioEntryData::new("artboard")
+					.label("Artboard")
+					.tooltip("Use the origin of selected artboards (falls back to global if none selected)")
+					.on_update(update_val(grid, |grid, _| {
+						grid.origin_mode = crate::messages::portfolio::document::utility_types::misc::GridOriginMode::Artboard;
+					})),
+			])
+			.min_width(200)
+			.selected_index(Some(match grid.origin_mode {
+				crate::messages::portfolio::document::utility_types::misc::GridOriginMode::Global => 0,
+				crate::messages::portfolio::document::utility_types::misc::GridOriginMode::Artboard => 1,
+			}))
+			.widget_holder(),
+		],
+	});
+
 	match grid.grid_type {
 		GridType::Rectangular { spacing } => widgets.push(LayoutGroup::Row {
 			widgets: vec![
@@ -358,4 +433,109 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	}
 
 	widgets
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
+	use crate::messages::tool::utility_types::ToolType;
+	use crate::test_utils::EditorTestUtils;
+
+	#[tokio::test]
+	async fn test_grid_origins_with_no_artboards() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let document = editor.editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap();
+		let origins = get_grid_origins(document);
+
+		// Should use global grid origin when no artboards selected
+		assert_eq!(origins.len(), 1);
+		assert_eq!(origins[0], document.snapping_state.grid.origin);
+	}
+
+	#[tokio::test]
+	async fn test_grid_origins_with_selected_artboards() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Create two artboards
+		editor.drag_tool(ToolType::Artboard, 10.0, 10.0, 30.0, 30.0, ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Artboard, 50.0, 50.0, 70.0, 70.0, ModifierKeys::empty()).await;
+
+		let document = editor.editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap();
+		let origins = get_grid_origins(document);
+
+		// Should use artboard origins when artboards are selected
+		assert!(origins.len() > 0);
+
+		// At least one of the origins should be different from the global grid origin
+		let global_origin = document.snapping_state.grid.origin;
+		let has_artboard_origin = origins.iter().any(|&origin| origin != global_origin);
+		assert!(has_artboard_origin, "Should have artboard-specific origins when artboards are selected");
+	}
+
+	#[tokio::test]
+	async fn test_grid_origins_global_mode() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Create artboards
+		editor.drag_tool(ToolType::Artboard, 10.0, 10.0, 30.0, 30.0, ModifierKeys::empty()).await;
+
+		let document = editor.editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
+
+		// Set origin mode to Global
+		document.snapping_state.grid.origin_mode = crate::messages::portfolio::document::utility_types::misc::GridOriginMode::Global;
+
+		let origins = get_grid_origins(document);
+
+		// Should always use global grid origin in Global mode, even with artboards selected
+		assert_eq!(origins.len(), 1);
+		assert_eq!(origins[0], document.snapping_state.grid.origin);
+	}
+
+	#[tokio::test]
+	async fn test_grid_origins_artboard_mode() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Create artboards
+		editor.drag_tool(ToolType::Artboard, 10.0, 10.0, 30.0, 30.0, ModifierKeys::empty()).await;
+
+		let document = editor.editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
+
+		// Set origin mode to Artboard (should be default)
+		document.snapping_state.grid.origin_mode = crate::messages::portfolio::document::utility_types::misc::GridOriginMode::Artboard;
+
+		let origins = get_grid_origins(document);
+
+		// Should use artboard origins when artboards are selected in Artboard mode
+		assert!(origins.len() > 0);
+
+		// At least one of the origins should be different from the global grid origin
+		let global_origin = document.snapping_state.grid.origin;
+		let has_artboard_origin = origins.iter().any(|&origin| origin != global_origin);
+		assert!(has_artboard_origin, "Should have artboard-specific origins when artboards are selected in Artboard mode");
+	}
+
+	#[tokio::test]
+	async fn test_grid_origins_optimization() {
+		let origins = vec![
+			DVec2::new(0.0, 0.0),
+			DVec2::new(0.5, 0.0), // Very close to first origin
+			DVec2::new(10.0, 10.0),
+			DVec2::new(10.0, 10.0), // Duplicate
+			DVec2::new(20.0, 20.0),
+		];
+
+		let optimized = optimize_grid_origins(origins);
+
+		// Should remove duplicates and very close origins
+		assert_eq!(optimized.len(), 3);
+		assert!(optimized.contains(&DVec2::new(0.0, 0.0)));
+		assert!(optimized.contains(&DVec2::new(10.0, 10.0)));
+		assert!(optimized.contains(&DVec2::new(20.0, 20.0)));
+	}
 }
