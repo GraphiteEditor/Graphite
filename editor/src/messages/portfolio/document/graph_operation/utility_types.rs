@@ -124,7 +124,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn create_layer(&mut self, new_id: NodeId) -> LayerNodeIdentifier {
 		let new_merge_node = resolve_document_node_type("Merge").expect("Merge node").default_node_template();
 		self.network_interface.insert_node(new_id, new_merge_node, &[]);
-		LayerNodeIdentifier::new(new_id, self.network_interface, &[])
+		LayerNodeIdentifier::new(new_id, self.network_interface)
 	}
 
 	/// Creates an artboard as the primary export for the document network
@@ -138,7 +138,7 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::value(TaggedValue::Bool(artboard.clip), false)),
 		]);
 		self.network_interface.insert_node(new_id, artboard_node_template, &[]);
-		LayerNodeIdentifier::new(new_id, self.network_interface, &[])
+		LayerNodeIdentifier::new(new_id, self.network_interface)
 	}
 
 	pub fn insert_boolean_data(&mut self, operation: graphene_std::path_bool::BooleanOperation, layer: LayerNodeIdentifier) {
@@ -236,7 +236,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.layer_node.or_else(|| {
 			let export_node = self.network_interface.document_network().exports.first().and_then(|export| export.as_node())?;
 			if self.network_interface.is_layer(&export_node, &[]) {
-				Some(LayerNodeIdentifier::new(export_node, self.network_interface, &[]))
+				Some(LayerNodeIdentifier::new(export_node, self.network_interface))
 			} else {
 				None
 			}
