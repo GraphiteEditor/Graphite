@@ -263,14 +263,6 @@ impl LayoutHolder for MenuBarMessageHandler {
 					],
 					vec![
 						MenuBarEntry {
-							label: "Make Path Editable".into(),
-							icon: Some("NodeShape".into()),
-							shortcut: None,
-							action: MenuBarEntry::create_action(|_| NodeGraphMessage::AddPathNode.into()),
-							disabled: !single_path_node_compatible_layer_selected,
-							..MenuBarEntry::default()
-						},
-						MenuBarEntry {
 							label: "Grab".into(),
 							icon: Some("TransformationGrab".into()),
 							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginGrab),
@@ -428,9 +420,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 							disabled: no_active_document || !has_selected_layers,
 							children: MenuBarEntryChildren(vec![{
 								let list = <BooleanOperation as graphene_std::registry::ChoiceTypeStatic>::list();
-								list.into_iter()
-									.map(|i| i.into_iter())
-									.flatten()
+								list.iter()
+									.flat_map(|i| i.iter())
 									.map(move |(operation, info)| MenuBarEntry {
 										label: info.label.to_string(),
 										icon: info.icon.as_ref().map(|i| i.to_string()),
@@ -446,6 +437,14 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 					],
+					vec![MenuBarEntry {
+						label: "Make Path Editable".into(),
+						icon: Some("NodeShape".into()),
+						shortcut: None,
+						action: MenuBarEntry::create_action(|_| NodeGraphMessage::AddPathNode.into()),
+						disabled: !single_path_node_compatible_layer_selected,
+						..MenuBarEntry::default()
+					}],
 				]),
 			),
 			MenuBarEntry::new_root(
