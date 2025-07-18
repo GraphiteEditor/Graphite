@@ -438,42 +438,6 @@ pub enum RenderOutputType {
 	Image(Vec<u8>),
 }
 
-// impl Hash for RenderOutputType {
-// 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-// 		std::mem::discriminant(self).hash(state);
-// 		match self {
-// 			RenderOutputType::CanvasFrame(frame) => {
-// 				frame.hash(state);
-// 			}
-// 			RenderOutputType::Svg { svg, image_data, .. } => {
-// 				svg.hash(state);
-// 				image_data.hash(state);
-// 			}
-// 			RenderOutputType::Image(data) => {
-// 				data.hash(state);
-// 			}
-// 		}
-// 	}
-// }
-//
-// impl PartialEq for RenderOutputType {
-// 	fn eq(&self, other: &Self) -> bool {
-// 		match (self, other) {
-// 			(Self::CanvasFrame(l0), Self::CanvasFrame(r0)) => l0 == r0,
-// 			(
-// 				Self::Svg {
-// 					svg: l_svg, image_data: l_image_data, ..
-// 				},
-// 				Self::Svg {
-// 					svg: r_svg, image_data: r_image_data, ..
-// 				},
-// 			) => l_svg == r_svg && l_image_data == r_image_data,
-// 			(Self::Image(l0), Self::Image(r0)) => l0 == r0,
-// 			_ => false,
-// 		}
-// 	}
-// }
-
 impl Hash for RenderOutput {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.data.hash(state)

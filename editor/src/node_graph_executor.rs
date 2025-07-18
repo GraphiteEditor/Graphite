@@ -353,7 +353,7 @@ impl NodeGraphExecutor {
 					graphene_std::wasm_application_io::RenderOutputType::Svg { svg, image_data, canvas } => {
 						// Send to frontend
 						#[cfg(target_arch = "wasm32")]
-						{
+						if !image_data.is_empty() {
 							let canvases = draw_image_frame(image_data, canvas.0.unwrap());
 							responses.add(FrontendMessage::UpdateCanvasImage { canvases });
 						}
@@ -417,10 +417,10 @@ use web_sys::CanvasRenderingContext2d;
 
 #[cfg(target_arch = "wasm32")]
 fn draw_image_frame(images: Vec<(u64, Image<Color>, TransformImage)>, surface_handle: Arc<WasmSurfaceHandle>) -> FrontendHtmlCanvases {
-	let mut canves = Vec::new();
+	let mut canvases = Vec::new();
 	for (id, image, transform) in images {
-		let image_data = image.data;
-		let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
+		let image_data_rgba8: Vec<u8> = image.data.iter().flat_map(|color| color.to_rgba8_srgb()).collect();
+		let array: Clamped<&[u8]> = Clamped(&image_data_rgba8);
 		if image.width > 0 && image.height > 0 {
 			let canvas = &surface_handle.surface;
 			canvas.set_width(image.width);
@@ -429,12 +429,13 @@ fn draw_image_frame(images: Vec<(u64, Image<Color>, TransformImage)>, surface_ha
 			let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.width, image.height).expect("Failed to construct ImageData");
 			context.put_image_data(&image_data, 0., 0.).unwrap();
 		}
+
 		let transform = transform.0;
 		let surface_handle = surface_handle.clone();
 		let canvas = application_io::SurfaceHandleFrame { surface_handle, transform };
-		canves.push(canvas);
+		canvases.push(canvas);
 	}
-	FrontendHtmlCanvases(canves)
+	FrontendHtmlCanvases(canvases)
 }
 
 // Re-export for usage by tests in other modules
