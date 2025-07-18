@@ -307,6 +307,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 						editor.handle.pasteSerializedData(text.substring(16, text.length));
 					} else if (text.startsWith("graphite/nodes: ")) {
 						editor.handle.pasteSerializedNodes(text.substring(16, text.length));
+					} else if (text.startsWith("graphite/vector: ")) {
+						editor.handle.pasteSerializedVector(text.substring(17, text.length));
 					}
 				});
 			}
