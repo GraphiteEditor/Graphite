@@ -56,8 +56,8 @@ impl AsI64 for f64 {
 #[widget(Radio)]
 pub enum GridType {
 	#[default]
-	Rectangular,
-	Isometric,
+	Rectangular = 0,
+	Isometric = 1,
 }
 
 #[repr(C)]

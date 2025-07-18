@@ -24,9 +24,10 @@ pub enum ShapeType {
 	#[default]
 	Polygon = 0,
 	Star = 1,
-	Rectangle = 2,
-	Ellipse = 3,
-	Line = 4,
+	Grid = 2,
+	Rectangle = 3,
+	Ellipse = 4,
+	Line = 5,
 }
 
 impl ShapeType {
@@ -37,6 +38,7 @@ impl ShapeType {
 			Self::Rectangle => "Rectangle",
 			Self::Ellipse => "Ellipse",
 			Self::Line => "Line",
+			Self::Grid => "Grid",
 		})
 		.into()
 	}

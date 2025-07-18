@@ -10,6 +10,7 @@ use crate::messages::tool::common_functionality::gizmos::gizmo_manager::GizmoMan
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::resize::Resize;
+use crate::messages::tool::common_functionality::shapes::grid_shape::Grid;
 use crate::messages::tool::common_functionality::shapes::line_shape::{LineToolData, clicked_on_line_endpoints};
 use crate::messages::tool::common_functionality::shapes::polygon_shape::Polygon;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeToolModifierKey, ShapeType, anchor_overlays, transform_cage_overlays};
@@ -22,7 +23,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
-use graphene_std::vector::misc::ArcType;
+use graphene_std::vector::misc::{ArcType, GridType};
 use std::vec;
 
 #[derive(Default)]
@@ -39,6 +40,7 @@ pub struct ShapeToolOptions {
 	vertices: u32,
 	shape_type: ShapeType,
 	arc_type: ArcType,
+	grid_type: GridType,
 }
 
 impl Default for ShapeToolOptions {
@@ -50,6 +52,7 @@ impl Default for ShapeToolOptions {
 			vertices: 5,
 			shape_type: ShapeType::Polygon,
 			arc_type: ArcType::Open,
+			grid_type: GridType::Rectangular,
 		}
 	}
 }
@@ -65,6 +68,7 @@ pub enum ShapeOptionsUpdate {
 	Vertices(u32),
 	ShapeType(ShapeType),
 	ArcType(ArcType),
+	GridType(GridType),
 }
 
 #[impl_message(Message, ToolMessage, Shape)]
@@ -109,6 +113,9 @@ fn create_shape_option_widget(shape_type: ShapeType) -> WidgetHolder {
 		MenuListEntry::new("Star")
 			.label("Star")
 			.on_commit(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ShapeType(ShapeType::Star)).into()),
+		MenuListEntry::new("Grid")
+			.label("Grid")
+			.on_commit(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ShapeType(ShapeType::Grid)).into()),
 	]];
 	DropdownInput::new(entries).selected_index(Some(shape_type as u32)).widget_holder()
 }
@@ -123,6 +130,18 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.widget_holder()
 }
 
+fn create_grid_type_widget(grid_type: GridType) -> WidgetHolder {
+	let entries = vec![
+		RadioEntryData::new("Rectangular")
+			.label("Rectangular")
+			.on_update(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::GridType(GridType::Rectangular)).into()),
+		RadioEntryData::new("Isometric")
+			.label("Isometric")
+			.on_update(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::GridType(GridType::Isometric)).into()),
+	];
+	RadioInput::new(entries).selected_index(Some(grid_type as u32)).widget_holder()
+}
+
 impl LayoutHolder for ShapeTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = vec![];
@@ -135,6 +154,11 @@ impl LayoutHolder for ShapeTool {
 				widgets.push(create_sides_widget(self.options.vertices));
 				widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 			}
+		}
+
+		if self.options.shape_type == ShapeType::Grid {
+			widgets.push(create_grid_type_widget(self.options.grid_type));
+			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		}
 
 		if self.options.shape_type != ShapeType::Line {
@@ -202,6 +226,9 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 			}
 			ShapeOptionsUpdate::ArcType(arc_type) => {
 				self.options.arc_type = arc_type;
+			}
+			ShapeOptionsUpdate::GridType(grid_type) => {
+				self.options.grid_type = grid_type;
 			}
 		}
 
@@ -578,7 +605,7 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Ellipse | ShapeType::Rectangle => tool_data.data.start(document, input),
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Grid => tool_data.data.start(document, input),
 					ShapeType::Line => {
 						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 						let snapped = tool_data.data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
@@ -594,6 +621,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
 					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
+					ShapeType::Grid => Grid::create_node(tool_options.grid_type),
 				};
 
 				let nodes = vec![(NodeId(0), node)];
@@ -602,7 +630,7 @@ impl Fsm for ShapeToolFsmState {
 				responses.add(Message::StartBuffer);
 
 				match tool_data.current_shape {
-					ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Polygon | ShapeType::Star => {
+					ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Polygon | ShapeType::Star | ShapeType::Grid => {
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
@@ -635,6 +663,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Line => Line::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Polygon => Polygon::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Star => Star::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Grid => Grid::update_shape(document, input, layer, tool_options.grid_type, tool_data, modifier, responses),
 				}
 
 				// Auto-panning
@@ -853,6 +882,11 @@ impl Fsm for ShapeToolFsmState {
 						HintInfo::keys([Key::Shift], "Constrain Square").prepend_plus(),
 						HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 					])],
+					ShapeType::Grid => vec![HintGroup(vec![
+						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Grid"),
+						HintInfo::keys([Key::Shift], "Constrain Grid").prepend_plus(),
+						HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+					])],
 				};
 				HintData(hint_groups)
 			}
@@ -862,6 +896,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Polygon | ShapeType::Star => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
 					ShapeType::Rectangle => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
 					ShapeType::Ellipse => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Circular"), HintInfo::keys([Key::Alt], "From Center")]),
+					ShapeType::Grid => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Grid"), HintInfo::keys([Key::Alt], "From Center")]),
 					ShapeType::Line => HintGroup(vec![
 						HintInfo::keys([Key::Shift], "15° Increments"),
 						HintInfo::keys([Key::Alt], "From Center"),

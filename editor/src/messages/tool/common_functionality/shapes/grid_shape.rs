@@ -1,0 +1,179 @@
+use super::shape_utility::ShapeToolModifierKey;
+use super::shape_utility::update_radius_sign;
+use super::*;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::number_of_points_dial::NumberOfPointsDial;
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::number_of_points_dial::NumberOfPointsDialState;
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::point_radius_handle::PointRadiusHandle;
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::point_radius_handle::PointRadiusHandleState;
+use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
+use crate::messages::tool::common_functionality::shapes::shape_utility::polygon_outline;
+use crate::messages::tool::tool_messages::tool_prelude::*;
+use glam::DAffine2;
+use graph_craft::document::NodeInput;
+use graph_craft::document::value::TaggedValue;
+use graphene_std::vector::misc::GridType;
+use std::collections::VecDeque;
+
+// #[derive(Clone, Debug, Default)]
+// pub struct PolygonGizmoHandler {
+// 	number_of_points_dial: NumberOfPointsDial,
+// 	point_radius_handle: PointRadiusHandle,
+// }
+
+// impl ShapeGizmoHandler for PolygonGizmoHandler {
+// 	fn is_any_gizmo_hovered(&self) -> bool {
+// 		self.number_of_points_dial.is_hovering() || self.point_radius_handle.hovered()
+// 	}
+
+// 	fn handle_state(&mut self, selected_star_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+// 		self.number_of_points_dial.handle_actions(selected_star_layer, mouse_position, document, responses);
+// 		self.point_radius_handle.handle_actions(selected_star_layer, document, mouse_position, responses);
+// 	}
+
+// 	fn handle_click(&mut self) {
+// 		if self.number_of_points_dial.is_hovering() {
+// 			self.number_of_points_dial.update_state(NumberOfPointsDialState::Dragging);
+// 			return;
+// 		}
+
+// 		if self.point_radius_handle.hovered() {
+// 			self.point_radius_handle.update_state(PointRadiusHandleState::Dragging);
+// 		}
+// 	}
+
+// 	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+// 		if self.number_of_points_dial.is_dragging() {
+// 			self.number_of_points_dial.update_number_of_sides(document, input, responses, drag_start);
+// 		}
+
+// 		if self.point_radius_handle.is_dragging_or_snapped() {
+// 			self.point_radius_handle.update_inner_radius(document, input, responses, drag_start);
+// 		}
+// 	}
+
+// 	fn overlays(
+// 		&self,
+// 		document: &DocumentMessageHandler,
+// 		selected_polygon_layer: Option<LayerNodeIdentifier>,
+// 		input: &InputPreprocessorMessageHandler,
+// 		shape_editor: &mut &mut ShapeState,
+// 		mouse_position: DVec2,
+// 		overlay_context: &mut OverlayContext,
+// 	) {
+// 		self.number_of_points_dial.overlays(document, selected_polygon_layer, shape_editor, mouse_position, overlay_context);
+// 		self.point_radius_handle.overlays(selected_polygon_layer, document, input, mouse_position, overlay_context);
+
+// 		polygon_outline(selected_polygon_layer, document, overlay_context);
+// 	}
+
+// 	fn dragging_overlays(
+// 		&self,
+// 		document: &DocumentMessageHandler,
+// 		input: &InputPreprocessorMessageHandler,
+// 		shape_editor: &mut &mut ShapeState,
+// 		mouse_position: DVec2,
+// 		overlay_context: &mut OverlayContext,
+// 	) {
+// 		if self.number_of_points_dial.is_dragging() {
+// 			self.number_of_points_dial.overlays(document, None, shape_editor, mouse_position, overlay_context);
+// 		}
+
+// 		if self.point_radius_handle.is_dragging_or_snapped() {
+// 			self.point_radius_handle.overlays(None, document, input, mouse_position, overlay_context);
+// 		}
+// 	}
+
+// 	fn cleanup(&mut self) {
+// 		self.number_of_points_dial.cleanup();
+// 		self.point_radius_handle.cleanup();
+// 	}
+// }
+
+#[derive(Default)]
+pub struct Grid;
+
+impl Grid {
+	pub fn create_node(grid_type: GridType) -> NodeTemplate {
+		let node_type = resolve_document_node_type("Grid").expect("Grid can't be found");
+		node_type.node_template_input_override([
+			None,
+			Some(NodeInput::value(TaggedValue::GridType(grid_type), false)),
+			Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),
+		])
+	}
+
+	pub fn update_shape(
+		document: &DocumentMessageHandler,
+		ipp: &InputPreprocessorMessageHandler,
+		layer: LayerNodeIdentifier,
+		grid_type: GridType,
+		shape_tool_data: &mut ShapeToolData,
+		modifier: ShapeToolModifierKey,
+		responses: &mut VecDeque<Message>,
+	) {
+		let [center, lock_ratio, _, _] = modifier;
+
+		let start = shape_tool_data.data.viewport_drag_start(document);
+		let end = ipp.mouse.position;
+
+		let mut dimensions = (start - end).abs();
+
+		let mut translation = shape_tool_data.data.viewport_drag_start(document);
+		let mut scale = (end - start).signum();
+
+		match grid_type {
+			GridType::Rectangular => {
+				if ipp.keyboard.key(center) && ipp.keyboard.key(lock_ratio) {
+					let max = dimensions.x.max(dimensions.y);
+					let distance_to_make_center = max;
+					translation = shape_tool_data.data.viewport_drag_start(document) - distance_to_make_center;
+					dimensions = 2. * DVec2::splat(max) / 9.;
+					scale = DVec2::ONE;
+				} else if ipp.keyboard.key(lock_ratio) {
+					let max = dimensions.x.max(dimensions.y);
+					dimensions = DVec2::splat(max) / 9.
+				} else if ipp.keyboard.key(center) {
+					let distance_to_make_center = dimensions;
+					translation = shape_tool_data.data.viewport_drag_start(document) - distance_to_make_center;
+					dimensions = 2. * dimensions / 9.;
+					scale = DVec2::ONE;
+				} else {
+					dimensions = dimensions / 9.;
+				};
+			}
+			GridType::Isometric => {
+				if ipp.keyboard.key(center) {
+					let distance_to_make_center = DVec2::splat(dimensions.y);
+					translation = shape_tool_data.data.viewport_drag_start(document) - distance_to_make_center;
+					dimensions = 2. * DVec2::splat(dimensions.y) / 9.;
+					scale = DVec2::ONE;
+				} else {
+					dimensions = DVec2::splat(dimensions.y) / 9.;
+				};
+			}
+		}
+
+		let Some(node_id) = graph_modification_utils::get_grid_id(layer, &document.network_interface) else {
+			return;
+		};
+
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(node_id, 2),
+			input: NodeInput::value(TaggedValue::DVec2(dimensions), false),
+		});
+
+		responses.add(GraphOperationMessage::TransformSet {
+			layer,
+			transform: DAffine2::from_scale_angle_translation(scale, 0., translation),
+			transform_in: TransformIn::Viewport,
+			skip_rerender: false,
+		});
+	}
+}
