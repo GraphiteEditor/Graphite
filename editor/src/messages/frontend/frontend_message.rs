@@ -8,8 +8,16 @@ use crate::messages::portfolio::document::utility_types::wires::{WirePath, WireP
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 use graph_craft::document::NodeId;
+use graphene_std::application_io;
 use graphene_std::raster::color::Color;
 use graphene_std::text::Font;
+use web_sys::HtmlCanvasElement;
+
+#[derive(Debug, Clone, dyn_any::DynAny, Default, PartialEq)]
+pub struct FrontendHtmlCanvases(pub Vec<application_io::SurfaceHandleFrame<HtmlCanvasElement>>);
+
+unsafe impl Send for FrontendHtmlCanvases {}
+unsafe impl Sync for FrontendHtmlCanvases {}
 
 #[impl_message(Message, Frontend)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -178,6 +186,10 @@ pub enum FrontendMessage {
 	},
 	UpdateDocumentArtwork {
 		svg: String,
+	},
+	UpdateCanvasImage {
+		#[serde(skip)]
+		canvases: FrontendHtmlCanvases,
 	},
 	UpdateDocumentBarLayout {
 		#[serde(rename = "layoutTarget")]

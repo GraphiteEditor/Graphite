@@ -352,6 +352,11 @@ impl NodeGraphExecutor {
 				match render_output.data {
 					graphene_std::wasm_application_io::RenderOutputType::Svg { svg, image_data, canvas } => {
 						// Send to frontend
+						#[cfg(target_arch = "wasm32")]
+						{
+							let canvases = draw_image_frame(image_data, canvas.0.unwrap());
+							responses.add(FrontendMessage::UpdateCanvasImage { canvases });
+						}
 						responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 					}
 					graphene_std::wasm_application_io::RenderOutputType::CanvasFrame(frame) => {
@@ -409,14 +414,9 @@ use wasm_bindgen::Clamped;
 use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use web_sys::CanvasRenderingContext2d;
-#[cfg(target_arch = "wasm32")]
-use web_sys::HtmlCanvasElement;
 
 #[cfg(target_arch = "wasm32")]
-use bytemuck;
-
-#[cfg(target_arch = "wasm32")]
-async fn draw_image_frame(images: Vec<(u64, Image<Color>, TransformImage)>, surface_handle: Arc<WasmSurfaceHandle>) -> Vec<application_io::SurfaceHandleFrame<HtmlCanvasElement>> {
+fn draw_image_frame(images: Vec<(u64, Image<Color>, TransformImage)>, surface_handle: Arc<WasmSurfaceHandle>) -> FrontendHtmlCanvases {
 	let mut canves = Vec::new();
 	for (id, image, transform) in images {
 		let image_data = image.data;
@@ -430,10 +430,11 @@ async fn draw_image_frame(images: Vec<(u64, Image<Color>, TransformImage)>, surf
 			context.put_image_data(&image_data, 0., 0.).unwrap();
 		}
 		let transform = transform.0;
+		let surface_handle = surface_handle.clone();
 		let canvas = application_io::SurfaceHandleFrame { surface_handle, transform };
 		canves.push(canvas);
 	}
-	canves
+	FrontendHtmlCanvases(canves)
 }
 
 // Re-export for usage by tests in other modules

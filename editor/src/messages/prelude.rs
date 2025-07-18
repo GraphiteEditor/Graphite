@@ -49,6 +49,7 @@ pub use crate::messages::tool::tool_messages::text_tool::{TextToolMessage, TextT
 // Helper
 pub use crate::messages::globals::global_variables::*;
 pub use crate::messages::portfolio::document::utility_types::misc::DocumentId;
+pub use crate::messages::frontend::FrontendHtmlCanvases;
 pub use graphite_proc_macros::*;
 pub use std::collections::{HashMap, HashSet, VecDeque};
 
