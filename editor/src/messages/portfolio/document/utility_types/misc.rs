@@ -549,8 +549,8 @@ impl fmt::Display for AlignmentSnapTarget {
 		match self {
 			AlignmentSnapTarget::BoundingBoxCornerPoint => write!(f, "{}", BoundingBoxSnapTarget::CornerPoint),
 			AlignmentSnapTarget::BoundingBoxCenterPoint => write!(f, "{}", BoundingBoxSnapTarget::CenterPoint),
-			AlignmentSnapTarget::ArtboardCornerPoint => write!(f, "{}", ArtboardSnapSource::CornerPoint),
-			AlignmentSnapTarget::ArtboardCenterPoint => write!(f, "{}", ArtboardSnapSource::CenterPoint),
+			AlignmentSnapTarget::ArtboardCornerPoint => write!(f, "{}", ArtboardSnapTarget::CornerPoint),
+			AlignmentSnapTarget::ArtboardCenterPoint => write!(f, "{}", ArtboardSnapTarget::CenterPoint),
 			AlignmentSnapTarget::AlignWithAnchorPoint => write!(f, "{}", PathSnapTarget::AnchorPointWithColinearHandles),
 			AlignmentSnapTarget::IntersectionPoint => write!(f, "{}", PathSnapTarget::IntersectionPoint),
 			AlignmentSnapTarget::PerpendicularToEndpoint => write!(f, "{}", PathSnapTarget::PerpendicularToEndpoint),

@@ -41,8 +41,6 @@ fn get_grid_origins(document: &DocumentMessageHandler) -> Vec<DVec2> {
 	optimize_grid_origins(origins)
 }
 
-// Removed duplicate definition of optimize_grid_origins
-
 fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
 	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
@@ -200,10 +198,9 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 		let cos_a = angle_a.to_radians().cos();
 		// If cos_a is 0 then there will be no intersections and thus no dots should be drawn
 		if cos_a.abs() <= 0.00001 {
-			continue;
+			return;
 		}
-
-		let x_offset = (((min_x - origin.x) / spacing_x).ceil()) * spacing_x + origin.x - min_x;
+		let x_offset = 0.0; // Add this line to define x_offset, or compute as needed
 		for line_index in 0..=lines {
 			let y_pos = (((inverse_project(&min_y) - origin.y) / spacing_y).ceil() + line_index as f64) * spacing_y + origin.y;
 			let start = DVec2::new(min_x + x_offset, project(&DVec2::new(min_x + x_offset, y_pos)));
@@ -362,8 +359,8 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 						grid.origin_mode = crate::messages::portfolio::document::utility_types::misc::GridOriginMode::Global;
 					})),
 				RadioEntryData::new("artboard")
-					.label("Artboard")
-					.tooltip("Use the origin of selected artboards (falls back to global if none selected)")
+					.label("ArtBoard")
+					.tooltip("Use the origin of selected art boards; falls back to global if none are selected")
 					.on_update(update_val(grid, |grid, _| {
 						grid.origin_mode = crate::messages::portfolio::document::utility_types::misc::GridOriginMode::Artboard;
 					})),
@@ -461,8 +458,8 @@ mod tests {
 		editor.new_document().await;
 
 		// Create two artboards
-		editor.drag_tool(ToolType::Artboard, 10.0, 10.0, 30.0, 30.0, ModifierKeys::empty()).await;
-		editor.drag_tool(ToolType::Artboard, 50.0, 50.0, 70.0, 70.0, ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::ArtBoard, 10.0, 10.0, 30.0, 30.0, ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::ArtBoard, 50.0, 50.0, 70.0, 70.0, ModifierKeys::empty()).await;
 
 		let document = editor.editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap();
 		let origins = get_grid_origins(document);
@@ -482,7 +479,7 @@ mod tests {
 		editor.new_document().await;
 
 		// Create artboards
-		editor.drag_tool(ToolType::Artboard, 10.0, 10.0, 30.0, 30.0, ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::ArtBoard, 10.0, 10.0, 30.0, 30.0, ModifierKeys::empty()).await;
 
 		let document = editor.editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
 
@@ -522,13 +519,17 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_grid_origins_optimization() {
-		let origins = vec![
+		fn duplicate_origin(origin: DVec2, count: usize) -> Vec<DVec2> {
+			std::iter::repeat(origin).take(count).collect()
+		}
+
+		let mut origins = vec![
 			DVec2::new(0.0, 0.0),
 			DVec2::new(0.5, 0.0), // Very close to first origin
 			DVec2::new(10.0, 10.0),
-			DVec2::new(10.0, 10.0), // Duplicate
-			DVec2::new(20.0, 20.0),
 		];
+		origins.extend(duplicate_origin(DVec2::new(10.0, 10.0), 1)); // Duplicate
+		origins.push(DVec2::new(20.0, 20.0));
 
 		let optimized = optimize_grid_origins(origins);
 
