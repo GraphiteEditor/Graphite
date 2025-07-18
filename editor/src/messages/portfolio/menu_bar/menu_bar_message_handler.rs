@@ -19,6 +19,7 @@ pub struct MenuBarMessageHandler {
 	pub spreadsheet_view_open: bool,
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 	pub reset_node_definitions_on_open: bool,
+	pub single_path_node_compatible_layer_selected: bool,
 }
 
 #[message_handler_data]
@@ -45,6 +46,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 		let message_logging_verbosity_names = self.message_logging_verbosity == MessageLoggingVerbosity::Names;
 		let message_logging_verbosity_contents = self.message_logging_verbosity == MessageLoggingVerbosity::Contents;
 		let reset_node_definitions_on_open = self.reset_node_definitions_on_open;
+		let single_path_node_compatible_layer_selected = self.single_path_node_compatible_layer_selected;
 
 		let menu_bar_entries = vec![
 			MenuBarEntry {
@@ -265,7 +267,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							icon: Some("NodeShape".into()),
 							shortcut: None,
 							action: MenuBarEntry::create_action(|_| NodeGraphMessage::AddPathNode.into()),
-							disabled: false,
+							disabled: !single_path_node_compatible_layer_selected,
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {

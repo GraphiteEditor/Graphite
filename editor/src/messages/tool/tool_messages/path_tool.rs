@@ -11,6 +11,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::portfolio::document::utility_types::transformation::Axis;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
 use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedLayerState, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
@@ -18,6 +19,7 @@ use crate::messages::tool::common_functionality::shape_editor::{
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate};
 use bezier_rs::{Bezier, BezierHandles, TValue};
+use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
 use graphene_std::transform::ReferencePoint;
 use graphene_std::vector::click_target::ClickTargetType;
@@ -269,6 +271,7 @@ impl LayoutHolder for PathTool {
 			.icon(Some("NodeShape".into()))
 			.tooltip("Make Path Editable")
 			.on_update(|_| NodeGraphMessage::AddPathNode.into())
+			.disabled(!self.tool_data.single_path_node_compatible_layer_selected)
 			.widget_holder();
 
 		let [_checkbox, _dropdown] = {
@@ -530,6 +533,7 @@ struct PathToolData {
 	drill_through_cycle_count: usize,
 	hovered_layers: Vec<LayerNodeIdentifier>,
 	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
+	single_path_node_compatible_layer_selected: bool,
 }
 
 impl PathToolData {
@@ -2390,6 +2394,31 @@ impl Fsm for PathToolFsmState {
 				tool_data.dragging_state = DraggingState {
 					point_select_state: shape_editor.get_dragging_state(&document.network_interface),
 					colinear,
+				};
+
+				tool_data.single_path_node_compatible_layer_selected = {
+					let selected_nodes = document.network_interface.selected_nodes();
+					let mut selected_layers = selected_nodes.selected_layers(document.metadata());
+					let first_layer = selected_layers.next();
+					let second_layer = selected_layers.next();
+					let has_single_selection = first_layer.is_some() && second_layer.is_none();
+
+					let compatible_type = first_layer.and_then(|layer| {
+						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
+						graph_layer.horizontal_layer_flow().nth(1).and_then(|node_id| {
+							let (output_type, _) = document.network_interface.output_type(&node_id, 0, &[]);
+							Some(format!("type:{}", output_type.nested_type()))
+						})
+					});
+
+					let is_compatible = compatible_type.as_deref() == Some("type:Instances<VectorData>");
+
+					let is_modifiable = first_layer.map_or(false, |layer| {
+						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
+						matches!(graph_layer.find_input("Path", 1), Some(TaggedValue::VectorModification(_)))
+					});
+
+					first_layer.is_some() && has_single_selection && is_compatible && !is_modifiable
 				};
 				tool_data.update_selection_status(shape_editor, document);
 				self

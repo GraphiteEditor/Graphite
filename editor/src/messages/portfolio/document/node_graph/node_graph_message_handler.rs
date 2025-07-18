@@ -123,34 +123,31 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::AddPathNode => {
 				let selected_nodes = network_interface.selected_nodes();
 				let mut selected_layers = selected_nodes.selected_layers(network_interface.document_metadata());
-				let selected_layer = selected_layers.next();
-				let has_selection = selected_layer.is_some();
-				let has_multiple_selection = selected_layers.next().is_some();
+				let first_layer = selected_layers.next();
+				let second_layer = selected_layers.next();
+				let has_single_selection = first_layer.is_some() && second_layer.is_none();
 
-				let compatible_type = selected_layer.and_then(|layer| {
-					let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
-					let node_type = graph_layer.horizontal_layer_flow().nth(1);
-					if let Some(node_id) = node_type {
+				let compatible_type = first_layer.and_then(|layer| {
+					let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &network_interface);
+					graph_layer.horizontal_layer_flow().nth(1).and_then(|node_id| {
 						let (output_type, _) = network_interface.output_type(&node_id, 0, &[]);
 						Some(format!("type:{}", output_type.nested_type()))
-					} else {
-						None
-					}
+					})
 				});
 
-				let compatible = compatible_type.unwrap_or("".to_string()) == "type:Instances<VectorData>";
-				let single_layer_selected = has_selection && !has_multiple_selection;
+				let is_compatible = compatible_type.as_deref() == Some("type:Instances<VectorData>");
 
-				if compatible && single_layer_selected {
-					if let Some(layer) = selected_layer {
+				if first_layer.is_some() && has_single_selection && is_compatible {
+					if let Some(layer) = first_layer {
 						let node_type = "Path".to_string();
 						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &network_interface);
-						let modifiable = matches!(graph_layer.find_input("Path", 1), Some(TaggedValue::VectorModification(_)));
-						if !modifiable {
+						let is_modifiable = matches!(graph_layer.find_input("Path", 1), Some(TaggedValue::VectorModification(_)));
+						if !is_modifiable {
 							responses.add(NodeGraphMessage::CreateNodeInLayerWithTransaction {
 								node_type: node_type.clone(),
 								layer: LayerNodeIdentifier::new_unchecked(layer.to_node()),
 							});
+							responses.add(BroadcastEvent::SelectionChanged);
 						}
 					}
 				}
