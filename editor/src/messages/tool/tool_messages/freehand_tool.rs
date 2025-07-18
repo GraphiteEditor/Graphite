@@ -14,7 +14,7 @@ use graphene_std::vector::VectorModificationType;
 use graphene_std::vector::{PointId, SegmentId};
 
 #[derive(Default, ExtractField)]
-pub struct FreehandTool {
+pub struct FreehandToolMessageHandler {
 	fsm_state: FreehandToolFsmState,
 	data: FreehandToolData,
 	options: FreehandOptions,
@@ -68,7 +68,7 @@ enum FreehandToolFsmState {
 	Drawing,
 }
 
-impl ToolMetadata for FreehandTool {
+impl ToolMetadata for FreehandToolMessageHandler {
 	fn icon_name(&self) -> String {
 		"VectorFreehandTool".into()
 	}
@@ -90,7 +90,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.widget_holder()
 }
 
-impl LayoutHolder for FreehandTool {
+impl LayoutHolder for FreehandToolMessageHandler {
 	fn layout(&self) -> Layout {
 		let mut widgets = self.options.fill.create_widgets(
 			"Fill",
@@ -117,7 +117,7 @@ impl LayoutHolder for FreehandTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for FreehandTool {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for FreehandToolMessageHandler {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Freehand(FreehandToolMessage::UpdateOptions(action)) = message else {
 			self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, true);
@@ -161,7 +161,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Free
 	}
 }
 
-impl ToolTransition for FreehandTool {
+impl ToolTransition for FreehandToolMessageHandler {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			overlay_provider: Some(|overlay_context: OverlayContext| FreehandToolMessage::Overlays(overlay_context).into()),

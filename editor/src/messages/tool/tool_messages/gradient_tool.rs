@@ -8,7 +8,7 @@ use crate::messages::tool::common_functionality::snapping::SnapManager;
 use graphene_std::vector::style::{Fill, Gradient, GradientType};
 
 #[derive(Default, ExtractField)]
-pub struct GradientTool {
+pub struct GradientToolMessageHandler {
 	fsm_state: GradientToolFsmState,
 	data: GradientToolData,
 	options: GradientOptions,
@@ -41,7 +41,7 @@ pub enum GradientOptionsUpdate {
 	Type(GradientType),
 }
 
-impl ToolMetadata for GradientTool {
+impl ToolMetadata for GradientToolMessageHandler {
 	fn icon_name(&self) -> String {
 		"GeneralGradientTool".into()
 	}
@@ -54,7 +54,7 @@ impl ToolMetadata for GradientTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for GradientTool {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for GradientToolMessageHandler {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Gradient(GradientToolMessage::UpdateOptions(action)) = message else {
 			self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, false);
@@ -88,7 +88,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 	);
 }
 
-impl LayoutHolder for GradientTool {
+impl LayoutHolder for GradientToolMessageHandler {
 	fn layout(&self) -> Layout {
 		let gradient_type = RadioInput::new(vec![
 			RadioEntryData::new("Linear")
@@ -214,14 +214,14 @@ impl SelectedGradient {
 	}
 }
 
-impl GradientTool {
+impl GradientToolMessageHandler {
 	/// Get the gradient type of the selected gradient (if it exists)
 	pub fn selected_gradient(&self) -> Option<GradientType> {
 		self.data.selected_gradient.as_ref().map(|selected| selected.gradient.gradient_type)
 	}
 }
 
-impl ToolTransition for GradientTool {
+impl ToolTransition for GradientToolMessageHandler {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(GradientToolMessage::Abort.into()),

@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 
 #[derive(Default, ExtractField)]
-pub struct NavigateTool {
+pub struct NavigateToolMessageHandler {
 	fsm_state: NavigateToolFsmState,
 	tool_data: NavigateToolData,
 }
@@ -20,7 +20,7 @@ pub enum NavigateToolMessage {
 	End,
 }
 
-impl ToolMetadata for NavigateTool {
+impl ToolMetadata for NavigateToolMessageHandler {
 	fn icon_name(&self) -> String {
 		"GeneralNavigateTool".into()
 	}
@@ -32,14 +32,14 @@ impl ToolMetadata for NavigateTool {
 	}
 }
 
-impl LayoutHolder for NavigateTool {
+impl LayoutHolder for NavigateToolMessageHandler {
 	fn layout(&self) -> Layout {
 		Layout::WidgetLayout(WidgetLayout::default())
 	}
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for NavigateTool {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for NavigateToolMessageHandler {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		self.fsm_state.process_event(message, &mut self.tool_data, context, &(), responses, true);
 	}
@@ -61,7 +61,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Navi
 	}
 }
 
-impl ToolTransition for NavigateTool {
+impl ToolTransition for NavigateToolMessageHandler {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(NavigateToolMessage::Abort.into()),
