@@ -50,6 +50,14 @@ pub struct Image<P: Pixel> {
 	// TODO: Currently it is always anchored at the top left corner at (0, 0). The bottom right corner of the new origin field would correspond to (1, 1).
 }
 
+#[derive(Debug, Clone, dyn_any::DynAny, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TransformImage(pub DAffine2);
+
+impl Hash for TransformImage {
+	fn hash<H: std::hash::Hasher>(&self, _: &mut H) {}
+}
+
+
 impl<P: Pixel + Debug> Debug for Image<P> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let length = self.data.len();

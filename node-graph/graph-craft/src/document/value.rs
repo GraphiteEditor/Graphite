@@ -1,12 +1,13 @@
 use super::DocumentNode;
 use crate::proto::{Any as DAny, FutureAny};
-use crate::wasm_application_io::WasmEditorApi;
+use crate::wasm_application_io::{WasmCanvas, WasmEditorApi};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::SurfaceFrame;
 use graphene_brush::brush_cache::BrushCache;
 use graphene_brush::brush_stroke::BrushStroke;
+use graphene_core::raster::{Image, TransformImage};
 use graphene_core::raster_types::CPU;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
@@ -425,12 +426,53 @@ pub struct RenderOutput {
 	pub metadata: RenderMetadata,
 }
 
-#[derive(Debug, Clone, PartialEq, dyn_any::DynAny, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Hash, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub enum RenderOutputType {
 	CanvasFrame(SurfaceFrame),
-	Svg(String),
+	Svg {
+		svg: String,
+		image_data: Vec<(u64, Image<Color>, TransformImage)>,
+		#[serde(skip)]
+		canvas: WasmCanvas,
+	},
 	Image(Vec<u8>),
 }
+
+// impl Hash for RenderOutputType {
+// 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+// 		std::mem::discriminant(self).hash(state);
+// 		match self {
+// 			RenderOutputType::CanvasFrame(frame) => {
+// 				frame.hash(state);
+// 			}
+// 			RenderOutputType::Svg { svg, image_data, .. } => {
+// 				svg.hash(state);
+// 				image_data.hash(state);
+// 			}
+// 			RenderOutputType::Image(data) => {
+// 				data.hash(state);
+// 			}
+// 		}
+// 	}
+// }
+//
+// impl PartialEq for RenderOutputType {
+// 	fn eq(&self, other: &Self) -> bool {
+// 		match (self, other) {
+// 			(Self::CanvasFrame(l0), Self::CanvasFrame(r0)) => l0 == r0,
+// 			(
+// 				Self::Svg {
+// 					svg: l_svg, image_data: l_image_data, ..
+// 				},
+// 				Self::Svg {
+// 					svg: r_svg, image_data: r_image_data, ..
+// 				},
+// 			) => l_svg == r_svg && l_image_data == r_image_data,
+// 			(Self::Image(l0), Self::Image(r0)) => l0 == r0,
+// 			_ => false,
+// 		}
+// 	}
+// }
 
 impl Hash for RenderOutput {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {

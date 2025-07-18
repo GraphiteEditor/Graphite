@@ -8,7 +8,7 @@ use graphene_core::bounds::BoundingBox;
 use graphene_core::color::Color;
 use graphene_core::instances::Instance;
 use graphene_core::math::quad::Quad;
-use graphene_core::raster::Image;
+use graphene_core::raster::{Image, TransformImage};
 use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
 use graphene_core::render_complexity::RenderComplexity;
 use graphene_core::transform::{Footprint, Transform};
@@ -51,7 +51,7 @@ pub struct SvgRender {
 	pub svg: Vec<SvgSegment>,
 	pub svg_defs: String,
 	pub transform: DAffine2,
-	pub image_data: Vec<(u64, Image<Color>)>,
+	pub image_data: Vec<(u64, Image<Color>, TransformImage)>,
 	indent: usize,
 }
 
@@ -172,6 +172,10 @@ impl RenderParams {
 	pub fn for_alignment(&self, transform: DAffine2) -> Self {
 		let alignment_parent_transform = Some(transform);
 		Self { alignment_parent_transform, ..*self }
+	}
+
+	pub fn to_canvas(&self) -> bool {
+		!self.for_export && !self.thumbnail
 	}
 }
 
@@ -937,40 +941,73 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for instance in self.instance_ref_iter() {
 			let transform = *instance.transform;
-
 			let image = &instance.instance;
+
 			if image.data.is_empty() {
-				return;
+				continue;
 			}
 
-			let base64_string = image.base64_string.clone().unwrap_or_else(|| {
-				use base64::Engine;
+			if render_params.to_canvas() {
+				let id = generate_uuid();
+				render.image_data.push((id, image.data().clone(), TransformImage(transform)));
+				render.parent_tag(
+					"foreignObject",
+					|attributes| {
+						attributes.push("width", "1");
+						attributes.push("height", "1");
 
-				let output = image.to_png();
-				let preamble = "data:image/png;base64,";
-				let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
-				base64_string.push_str(preamble);
-				base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
-				base64_string
-			});
-			render.leaf_tag("image", |attributes| {
-				attributes.push("width", 1.to_string());
-				attributes.push("height", 1.to_string());
-				attributes.push("preserveAspectRatio", "none");
-				attributes.push("href", base64_string);
-				let matrix = format_transform_matrix(transform);
-				if !matrix.is_empty() {
-					attributes.push("transform", matrix);
-				}
-				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
-				let opacity = instance.alpha_blending.opacity * factor;
-				if opacity < 1. {
-					attributes.push("opacity", opacity.to_string());
-				}
-				if instance.alpha_blending.blend_mode != BlendMode::default() {
-					attributes.push("style", instance.alpha_blending.blend_mode.render());
-				}
-			});
+						let matrix = format_transform_matrix(transform);
+						if !matrix.is_empty() {
+							attributes.push("transform", matrix);
+						}
+
+						let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+						let opacity = instance.alpha_blending.opacity * factor;
+						if opacity < 1. {
+							attributes.push("opacity", opacity.to_string());
+						}
+						if instance.alpha_blending.blend_mode != BlendMode::default() {
+							attributes.push("style", instance.alpha_blending.blend_mode.render());
+						}
+					},
+					|render| {
+						render.leaf_tag("div", |attributes| {
+							attributes.push("data-canvas-placeholder", format!("canvas{}", id));
+							attributes.push("style", "width: 100%; height: 100%;".to_string());
+						})
+					},
+				);
+			} else {
+				let base64_string = image.base64_string.clone().unwrap_or_else(|| {
+					use base64::Engine;
+
+					let output = image.to_png();
+					let preamble = "data:image/png;base64,";
+					let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
+					base64_string.push_str(preamble);
+					base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
+					base64_string
+				});
+
+				render.leaf_tag("image", |attributes| {
+					attributes.push("width", "1");
+					attributes.push("height", "1");
+					attributes.push("preserveAspectRatio", "none");
+					attributes.push("href", base64_string);
+					let matrix = format_transform_matrix(transform);
+					if !matrix.is_empty() {
+						attributes.push("transform", matrix);
+					}
+					let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+					let opacity = instance.alpha_blending.opacity * factor;
+					if opacity < 1. {
+						attributes.push("opacity", opacity.to_string());
+					}
+					if instance.alpha_blending.blend_mode != BlendMode::default() {
+						attributes.push("style", instance.alpha_blending.blend_mode.render());
+					}
+				});
+			}
 		}
 	}
 

@@ -3,6 +3,7 @@ use graphene_application_io::{ApplicationError, ApplicationIo, ResourceFuture, S
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
 use std::sync::atomic::AtomicU64;
@@ -313,11 +314,31 @@ impl ApplicationIo for WasmApplicationIo {
 #[cfg(feature = "wgpu")]
 pub type WasmSurfaceHandle = SurfaceHandle<wgpu_executor::Window>;
 #[cfg(feature = "wgpu")]
+#[derive(Debug, Clone, dyn_any::DynAny, Default)]
+pub struct WasmCanvas(pub Option<Arc<WasmSurfaceHandle>>);
+#[cfg(feature = "wgpu")]
 pub type WasmSurfaceHandleFrame = graphene_application_io::SurfaceHandleFrame<wgpu_executor::Window>;
+
+#[cfg(feature = "wgpu")]
+unsafe impl Send for WasmCanvas {}
+#[cfg(feature = "wgpu")]
+unsafe impl Sync for WasmCanvas {}
 
 #[derive(Clone, Debug, PartialEq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct EditorPreferences {
 	pub use_vello: bool,
+}
+
+#[cfg(feature = "wgpu")]
+impl Hash for WasmCanvas {
+	fn hash<H: std::hash::Hasher>(&self, _: &mut H) {}
+}
+
+#[cfg(feature = "wgpu")]
+impl PartialEq for WasmCanvas {
+	fn eq(&self, _: &Self) -> bool {
+		true
+	}
 }
 
 impl graphene_application_io::GetEditorPreferences for EditorPreferences {

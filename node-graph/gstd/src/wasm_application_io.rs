@@ -30,35 +30,6 @@ async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<W
 	Arc::new(editor.application_io.as_ref().unwrap().create_window())
 }
 
-// TODO: Fix and reenable in order to get the 'Draw Canvas' node working again.
-// #[cfg(target_arch = "wasm32")]
-// use wasm_bindgen::Clamped;
-//
-// #[node_macro::node(category("Debug: GPU"))]
-// #[cfg(target_arch = "wasm32")]
-// async fn draw_image_frame(
-// 	_: impl Ctx,
-// 	image: RasterDataTable<graphene_core::raster::SRGBA8>,
-// 	surface_handle: Arc<WasmSurfaceHandle>,
-// ) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
-// 	let image = image.instance_ref_iter().next().unwrap().instance;
-// 	let image_data = image.image.data;
-// 	let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
-// 	if image.image.width > 0 && image.image.height > 0 {
-// 		let canvas = &surface_handle.surface;
-// 		canvas.set_width(image.image.width);
-// 		canvas.set_height(image.image.height);
-// 		// TODO: replace "2d" with "bitmaprenderer" once we switch to ImageBitmap (lives on gpu) from RasterData (lives on cpu)
-// 		let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
-// 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.image.width, image.image.height).expect("Failed to construct RasterData");
-// 		context.put_image_data(&image_data, 0., 0.).unwrap();
-// 	}
-// 	graphene_core::application_io::SurfaceHandleFrame {
-// 		surface_handle,
-// 		transform: image.transform,
-// 	}
-// }
-
 #[node_macro::node(category("Web Request"))]
 async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] editor: &'a WasmEditorApi, #[name("URL")] url: String) -> Arc<[u8]> {
 	let Some(api) = editor.application_io.as_ref() else {
@@ -93,7 +64,7 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> RasterDataTable<CPU> {
 	RasterDataTable::new(Raster::new_cpu(image))
 }
 
-fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutputType {
+fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint, editor: &WasmEditorApi) -> RenderOutputType {
 	if !data.contains_artboard() && !render_params.hide_artboards {
 		render.leaf_tag("rect", |attributes| {
 			attributes.push("x", "0");
@@ -112,7 +83,11 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 
 	render.wrap_with_transform(footprint.transform, Some(footprint.resolution.as_dvec2()));
 
-	RenderOutputType::Svg(render.svg.to_svg_string())
+	let svg = render.svg.to_svg_string();
+	let image_data = render.image_data;
+	let canvas = (!image_data.is_empty()).then_some(Arc::new(editor.application_io.as_ref().unwrap().create_window()));
+	let canvas = WasmCanvas(canvas);
+	RenderOutputType::Svg { svg, image_data, canvas }
 }
 
 #[cfg(feature = "vello")]
@@ -282,7 +257,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 
 	let output_format = render_config.export_format;
 	let data = match output_format {
-		ExportFormat::Svg => render_svg(data, SvgRender::new(), render_params, footprint),
+		ExportFormat::Svg => render_svg(data, SvgRender::new(), render_params, footprint, editor_api),
 		ExportFormat::Canvas => {
 			if use_vello && editor_api.application_io.as_ref().unwrap().gpu_executor().is_some() {
 				#[cfg(all(feature = "vello", not(test)))]
@@ -291,9 +266,9 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 					metadata,
 				};
 				#[cfg(any(not(feature = "vello"), test))]
-				render_svg(data, SvgRender::new(), render_params, footprint)
+				render_svg(data, SvgRender::new(), render_params, footprint, editor_api)
 			} else {
-				render_svg(data, SvgRender::new(), render_params, footprint)
+				render_svg(data, SvgRender::new(), render_params, footprint, editor_api)
 			}
 		}
 		_ => todo!("Non-SVG render output for {output_format:?}"),

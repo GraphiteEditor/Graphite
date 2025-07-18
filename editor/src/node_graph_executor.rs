@@ -213,7 +213,7 @@ impl NodeGraphExecutor {
 
 	fn export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let TaggedValue::RenderOutput(RenderOutput {
-			data: graphene_std::wasm_application_io::RenderOutputType::Svg(svg),
+			data: graphene_std::wasm_application_io::RenderOutputType::Svg { svg, .. },
 			..
 		}) = node_graph_output
 		else {
@@ -350,7 +350,7 @@ impl NodeGraphExecutor {
 		match node_graph_output {
 			TaggedValue::RenderOutput(render_output) => {
 				match render_output.data {
-					graphene_std::wasm_application_io::RenderOutputType::Svg(svg) => {
+					graphene_std::wasm_application_io::RenderOutputType::Svg { svg, image_data, canvas } => {
 						// Send to frontend
 						responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 					}
@@ -391,6 +391,49 @@ impl NodeGraphExecutor {
 		responses.add(OverlaysMessage::Draw);
 		Ok(())
 	}
+}
+
+#[cfg(target_arch = "wasm32")]
+use graph_craft::wasm_application_io::WasmSurfaceHandle;
+#[cfg(target_arch = "wasm32")]
+use graphene_std::Color;
+#[cfg(target_arch = "wasm32")]
+use graphene_std::application_io;
+#[cfg(target_arch = "wasm32")]
+use graphene_std::raster::{Image, TransformImage};
+#[cfg(target_arch = "wasm32")]
+use std::sync::Arc;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::Clamped;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
+#[cfg(target_arch = "wasm32")]
+use web_sys::CanvasRenderingContext2d;
+#[cfg(target_arch = "wasm32")]
+use web_sys::HtmlCanvasElement;
+
+#[cfg(target_arch = "wasm32")]
+use bytemuck;
+
+#[cfg(target_arch = "wasm32")]
+async fn draw_image_frame(images: Vec<(u64, Image<Color>, TransformImage)>, surface_handle: Arc<WasmSurfaceHandle>) -> Vec<application_io::SurfaceHandleFrame<HtmlCanvasElement>> {
+	let mut canves = Vec::new();
+	for (id, image, transform) in images {
+		let image_data = image.data;
+		let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
+		if image.width > 0 && image.height > 0 {
+			let canvas = &surface_handle.surface;
+			canvas.set_width(image.width);
+			canvas.set_height(image.height);
+			let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
+			let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.width, image.height).expect("Failed to construct ImageData");
+			context.put_image_data(&image_data, 0., 0.).unwrap();
+		}
+		let transform = transform.0;
+		let canvas = application_io::SurfaceHandleFrame { surface_handle, transform };
+		canves.push(canvas);
+	}
+	canves
 }
 
 // Re-export for usage by tests in other modules
