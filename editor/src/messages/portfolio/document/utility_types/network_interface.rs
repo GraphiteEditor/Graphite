@@ -5103,12 +5103,45 @@ impl NodeNetworkInterface {
 		else {
 			log::error!("Could not set chain position for layer node {node_id}");
 		}
+		// let previous_upstream_node = self.upstream_output_connector(&InputConnector::node(*node_id, 0), network_path).and_then(|output| output.node_id());
+		// let Some(previous_upstream_node_position) = previous_upstream_node.and_then(|upstream| self.position_from_downstream_node(&upstream, network_path)) else {
+		// 	log::error!("Could not get previous_upstream_node_position");
+		// 	return;
+		// };
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 		// Reload click target of the layer which encapsulate the chain
 		if let Some(downstream_layer) = self.downstream_layer_for_chain_node(node_id, network_path) {
 			self.unload_node_click_targets(&downstream_layer, network_path);
 		}
 		self.unload_all_nodes_bounding_box(network_path);
+
+		// let Some(new_upstream_node_position) = previous_upstream_node.and_then(|upstream| self.position_from_downstream_node(&upstream, network_path)) else {
+		// 	log::error!("Could not get new_upstream_node_position");
+		// 	return;
+		// };
+		// if let Some(previous_upstream_node) =   {
+		// 	let x_delta = new_upstream_node_position.x - previous_upstream_node_position.x;
+		// 	// Upstream node got shifted to left, so shift all upstream absolute sole dependents
+		// 	if x_delta != 0 {
+		// 		let upstream_absolute_nodes = SelectedNodes(
+		// 			self.upstream_flow_back_from_nodes(vec![previous_upstream_node], network_path, FlowType::UpstreamFlow)
+		// 				.into_iter()
+		// 				.filter(|node_id| self.is_absolute(node_id, network_path))
+		// 				.collect::<Vec<_>>(),
+		// 		);
+		// 		let old_selected_nodes = std::mem::replace(self.selected_nodes_mut(network_path).unwrap(), upstream_absolute_nodes);
+		// 		if x_delta < 0 {
+		// 			for _ in 0..x_delta.abs() {
+		// 				self.shift_selected_nodes(Direction::Left, false, network_path);
+		// 			}
+		// 		} else {
+		// 			for _ in 0..x_delta.abs() {
+		// 				self.shift_selected_nodes(Direction::Right, false, network_path);
+		// 			}
+		// 		}
+		// 		let _ = std::mem::replace(self.selected_nodes_mut(network_path).unwrap(), old_selected_nodes);
+		// 	}
+		// }
 	}
 
 	fn valid_upstream_chain_nodes(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Vec<NodeId> {
@@ -5965,31 +5998,6 @@ impl NodeNetworkInterface {
 			self.create_wire(&OutputConnector::node(*node_id, 0), &InputConnector::node(parent.to_node(), 1), network_path);
 			self.set_chain_position(node_id, network_path);
 		} else {
-			// TODO: Implement a more robust horizontal shift system when inserting a node into a chain.
-			// This should be done by breaking the chain and shifting the sole dependents for each node upstream of the insertion.
-			// Before inserting the node, shift the layer right 7 units so that all sole dependents are also shifted
-			// let input_connector = InputConnector::node(parent.to_node(), 0);
-			// let old_upstream = self.upstream_output_connector(&input_connector, network_path);
-			// This also needs to disconnect from the downstream layer
-			// self.disconnect_input(&input_connector, network_path);
-			// let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
-			// 	log::error!("Could not get selected nodes in move_layer_to_stack");
-			// 	return;
-			// };
-			// let old_selected_nodes = selected_nodes.replace_with(vec![parent.to_node()]);
-
-			// for _ in 0..7 {
-			// 	self.shift_selected_nodes(Direction::Left, false, network_path);
-			// }
-			// // Grip drag it back to the right
-			// for _ in 0..7 {
-			// 	self.shift_selected_nodes(Direction::Right, true, network_path);
-			// }
-			// let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
-			// if let Some(old_upstream) = old_upstream {
-			// 	self.create_wire(&old_upstream, &input_connector, network_path);
-			// }
-
 			// Insert the node in the gap and set the upstream to a chain
 			self.insert_node_between(node_id, &InputConnector::node(parent.to_node(), 1), 0, network_path);
 			self.force_set_upstream_to_chain(node_id, network_path);
