@@ -1387,6 +1387,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					if node_bbox[1].x >= document_bbox[0].x && node_bbox[0].x <= document_bbox[1].x && node_bbox[1].y >= document_bbox[0].y && node_bbox[0].y <= document_bbox[1].y {
 						nodes.push(*node_id);
 					}
+					for error in &self.node_graph_errors {
+						if error.node_path.contains(node_id) {
+							nodes.push(*node_id);
+						}
+					}
 				}
 
 				responses.add(FrontendMessage::UpdateVisibleNodes { nodes });
@@ -2399,19 +2404,19 @@ impl NodeGraphMessageHandler {
 		let mut ancestors_of_selected = HashSet::new();
 		let mut descendants_of_selected = HashSet::new();
 		for selected_layer in &selected_layers {
-			for ancestor in LayerNodeIdentifier::new(*selected_layer, network_interface, &[]).ancestors(network_interface.document_metadata()) {
+			for ancestor in LayerNodeIdentifier::new(*selected_layer, network_interface).ancestors(network_interface.document_metadata()) {
 				if ancestor != LayerNodeIdentifier::ROOT_PARENT && ancestor.to_node() != *selected_layer {
 					ancestors_of_selected.insert(ancestor.to_node());
 				}
 			}
-			for descendant in LayerNodeIdentifier::new(*selected_layer, network_interface, &[]).descendants(network_interface.document_metadata()) {
+			for descendant in LayerNodeIdentifier::new(*selected_layer, network_interface).descendants(network_interface.document_metadata()) {
 				descendants_of_selected.insert(descendant.to_node());
 			}
 		}
 
 		for (&node_id, node_metadata) in &network_interface.document_network_metadata().persistent_metadata.node_metadata {
 			if node_metadata.persistent_metadata.is_layer() {
-				let layer = LayerNodeIdentifier::new(node_id, network_interface, &[]);
+				let layer = LayerNodeIdentifier::new(node_id, network_interface);
 
 				let children_allowed =
 						// The layer has other layers as children along the secondary input's horizontal flow
