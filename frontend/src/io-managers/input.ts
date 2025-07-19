@@ -36,6 +36,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	let textToolInteractiveInputElement = undefined as undefined | HTMLDivElement;
 	let canvasFocused = true;
 	let inPointerLock = false;
+	const shakeSamples: { x: number; y: number; time: number }[] = [];
+	let lastShakeTime = 0;
 
 	// Event listeners
 
@@ -159,6 +161,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (!viewportPointerInteractionOngoing && (inFloatingMenu || inGraphOverlay)) return;
 
 		const modifiers = makeKeyboardModifiersBitfield(e);
+		if (detectShake(e)) editor.handle.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);
 		editor.handle.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
 	}
 
@@ -329,6 +332,71 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 				editor.handle.openDocumentFile(file.name, await file.text());
 			}
 		});
+	}
+
+	function detectShake(e: PointerEvent | MouseEvent): boolean {
+		const SENSITIVITY_DIRECTION_CHANGES = 3;
+		const SENSITIVITY_DISTANCE_TO_DISPLACEMENT_RATIO = 0.1;
+		const DETECTION_WINDOW_MS = 500;
+		const DEBOUNCE_MS = 1000;
+
+		// Add the current mouse position and time to our list of samples
+		const now = Date.now();
+		shakeSamples.push({ x: e.clientX, y: e.clientY, time: now });
+
+		// Remove samples that are older than our time window
+		while (shakeSamples.length > 0 && now - shakeSamples[0].time > DETECTION_WINDOW_MS) {
+			shakeSamples.shift();
+		}
+
+		// We can't be shaking if it's too early in terms of samples or debounce time
+		if (shakeSamples.length <= 3 || now - lastShakeTime <= DEBOUNCE_MS) return false;
+
+		// Calculate the total distance traveled
+		let totalDistanceSquared = 0;
+		for (let i = 1; i < shakeSamples.length; i += 1) {
+			const p1 = shakeSamples[i - 1];
+			const p2 = shakeSamples[i];
+			totalDistanceSquared += (p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2;
+		}
+
+		// Count the number of times the mouse changes direction significantly, and the average position of the mouse
+		let directionChanges = 0;
+		const averagePoint = { x: 0, y: 0 };
+		let averagePointCount = 0;
+		for (let i = 0; i < shakeSamples.length - 2; i += 1) {
+			const p1 = shakeSamples[i];
+			const p2 = shakeSamples[i + 1];
+			const p3 = shakeSamples[i + 2];
+
+			const vector1 = { x: p2.x - p1.x, y: p2.y - p1.y };
+			const vector2 = { x: p3.x - p2.x, y: p3.y - p2.y };
+
+			// Check if the dot product is negative, which indicates the angle between vectors is > 90 degrees
+			if (vector1.x * vector2.x + vector1.y * vector2.y < 0) directionChanges += 1;
+
+			averagePoint.x += p2.x;
+			averagePoint.y += p2.y;
+			averagePointCount += 1;
+		}
+		if (averagePointCount > 0) {
+			averagePoint.x /= averagePointCount;
+			averagePoint.y /= averagePointCount;
+		}
+
+		// Calculate the displacement (the distance between the first and last mouse positions)
+		const lastPoint = shakeSamples[shakeSamples.length - 1];
+		const displacementSquared = (lastPoint.x - averagePoint.x) ** 2 + (lastPoint.y - averagePoint.y) ** 2;
+
+		// A shake is detected if the mouse has traveled a lot but not moved far, and has changed direction enough times
+		if (SENSITIVITY_DISTANCE_TO_DISPLACEMENT_RATIO * totalDistanceSquared >= displacementSquared && directionChanges >= SENSITIVITY_DIRECTION_CHANGES) {
+			lastShakeTime = now;
+			shakeSamples.length = 0;
+
+			return true;
+		}
+
+		return false;
 	}
 
 	// Frontend message subscriptions

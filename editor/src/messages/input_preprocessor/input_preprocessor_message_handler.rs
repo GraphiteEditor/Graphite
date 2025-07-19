@@ -97,6 +97,14 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext> f
 
 				self.translate_mouse_event(mouse_state, false, responses);
 			}
+			InputPreprocessorMessage::PointerShake { editor_mouse_state, modifier_keys } => {
+				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
+
+				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				self.mouse.position = mouse_state.position;
+
+				responses.add(InputMapperMessage::PointerShake);
+			}
 			InputPreprocessorMessage::CurrentTime { timestamp } => {
 				responses.add(AnimationMessage::SetTime { time: timestamp as f64 });
 				self.time = timestamp;
