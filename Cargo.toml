@@ -1,6 +1,7 @@
 [workspace]
 members = [
 	"editor",
+	"desktop",
 	"proc-macros",
 	"frontend/wasm",
 	"node-graph/gapplication-io",
@@ -110,7 +111,7 @@ web-sys = { version = "=0.3.77", features = [
 	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
 ] }
-winit = "0.29"
+winit = { version = "0.30", features = ["wayland", "rwh_06"] }
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt"] }
 vello = { git = "https://github.com/linebender/vello.git", rev = "3275ec8" } # TODO switch back to stable when a release is made
