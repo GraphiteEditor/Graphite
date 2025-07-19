@@ -61,6 +61,7 @@ pub struct LayerPanelEntry {
 	pub clippable: bool,
 }
 
+/// IMPORTANT: the same node may appear multiple times.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
 pub struct SelectedNodes(pub Vec<NodeId>);
 
@@ -129,6 +130,7 @@ impl SelectedNodes {
 		self.selected_layers(metadata).any(|selected| selected == layer)
 	}
 
+	/// IMPORTANT: the same node may appear multiple times.
 	pub fn selected_nodes(&self) -> impl Iterator<Item = &NodeId> + '_ {
 		self.0.iter()
 	}
