@@ -301,9 +301,11 @@ impl ClosestSegment {
 		(midpoint, segment_ids)
 	}
 
-	pub fn adjusted_insert_and_select(&self, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>, extend_selection: bool) {
+	pub fn adjusted_insert_and_select(&self, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>, extend_selection: bool, point_mode: bool) {
 		let (id, _) = self.adjusted_insert(responses);
-		shape_editor.select_anchor_point_by_id(self.layer, id, extend_selection)
+		if point_mode {
+			shape_editor.select_anchor_point_by_id(self.layer, id, extend_selection)
+		}
 	}
 
 	pub fn calculate_perp(&self, document: &DocumentMessageHandler) -> DVec2 {
@@ -550,7 +552,7 @@ impl ShapeState {
 		select_threshold: f64,
 		extend_selection: bool,
 		path_overlay_mode: PathOverlayMode,
-		frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+		frontier_handles_info: &Option<HashMap<SegmentId, Vec<PointId>>>,
 	) -> Option<Option<SelectedPointsInfo>> {
 		if self.selected_shape_state.is_empty() {
 			return None;
@@ -599,7 +601,7 @@ impl ShapeState {
 		mouse_position: DVec2,
 		select_threshold: f64,
 		path_overlay_mode: PathOverlayMode,
-		frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+		frontier_handles_info: &Option<HashMap<SegmentId, Vec<PointId>>>,
 		point_editing_mode: bool,
 	) -> Option<(bool, Option<SelectedPointsInfo>)> {
 		if self.selected_shape_state.is_empty() {
@@ -1544,7 +1546,7 @@ impl ShapeState {
 		mouse_position: DVec2,
 		select_threshold: f64,
 		path_overlay_mode: PathOverlayMode,
-		frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+		frontier_handles_info: &Option<HashMap<SegmentId, Vec<PointId>>>,
 	) -> Option<(LayerNodeIdentifier, ManipulatorPointId)> {
 		if self.selected_shape_state.is_empty() {
 			return None;
@@ -1881,20 +1883,99 @@ impl ShapeState {
 		selection_shape: SelectionShape,
 		selection_change: SelectionChange,
 		path_overlay_mode: PathOverlayMode,
-		frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+		frontier_handles_info: &Option<HashMap<SegmentId, Vec<PointId>>>,
 		select_segments: bool,
+		select_points: bool,
 		// Here, "selection mode" represents touched or enclosed, not to be confused with editing modes
 		selection_mode: SelectionMode,
 	) {
+		let (points_inside, segments_inside) = self.get_inside_points_and_segments(
+			network_interface,
+			selection_shape,
+			path_overlay_mode,
+			frontier_handles_info,
+			select_segments,
+			select_points,
+			selection_mode,
+		);
+
+		if selection_change == SelectionChange::Clear {
+			self.deselect_all_points();
+			self.deselect_all_segments();
+		}
+
+		for (layer, points) in points_inside {
+			let Some(state) = self.selected_shape_state.get_mut(&layer) else {
+				continue;
+			};
+			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
+				continue;
+			};
+
+			for point in points {
+				match (point, selection_change) {
+					(_, SelectionChange::Shrink) => state.deselect_point(point),
+					(ManipulatorPointId::EndHandle(_) | ManipulatorPointId::PrimaryHandle(_), _) => {
+						let handle = point.as_handle().expect("Handle cannot be converted");
+						if handle.length(&vector_data) > 0. {
+							state.select_point(point);
+						}
+					}
+					(_, _) => state.select_point(point),
+				}
+			}
+		}
+
+		for (layer, segments) in segments_inside {
+			let Some(state) = self.selected_shape_state.get_mut(&layer) else {
+				continue;
+			};
+			match selection_change {
+				SelectionChange::Shrink => segments.iter().for_each(|segment| state.deselect_segment(*segment)),
+				_ => segments.iter().for_each(|segment| state.select_segment(*segment)),
+			}
+
+			// Also select/ deselect the endpoints of respective segments
+			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
+				continue;
+			};
+			if !select_points && select_segments {
+				vector_data
+					.segment_bezier_iter()
+					.filter(|(segment, _, _, _)| segments.contains(segment))
+					.for_each(|(_, _, start, end)| match selection_change {
+						SelectionChange::Shrink => {
+							state.deselect_point(ManipulatorPointId::Anchor(start));
+							state.deselect_point(ManipulatorPointId::Anchor(end));
+						}
+						_ => {
+							state.select_point(ManipulatorPointId::Anchor(start));
+							state.select_point(ManipulatorPointId::Anchor(end));
+						}
+					});
+			}
+		}
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn get_inside_points_and_segments(
+		&mut self,
+		network_interface: &NodeNetworkInterface,
+		selection_shape: SelectionShape,
+		path_overlay_mode: PathOverlayMode,
+		frontier_handles_info: &Option<HashMap<SegmentId, Vec<PointId>>>,
+		select_segments: bool,
+		select_points: bool,
+		// Here, "selection mode" represents touched or enclosed, not to be confused with editing modes
+		selection_mode: SelectionMode,
+	) -> (HashMap<LayerNodeIdentifier, HashSet<ManipulatorPointId>>, HashMap<LayerNodeIdentifier, HashSet<SegmentId>>) {
 		let selected_points = self.selected_points().cloned().collect::<HashSet<_>>();
 		let selected_segments = selected_segments(network_interface, self);
 
-		for (&layer, state) in &mut self.selected_shape_state {
-			if selection_change == SelectionChange::Clear {
-				state.clear_points();
-				state.clear_segments();
-			}
+		let mut points_inside: HashMap<LayerNodeIdentifier, HashSet<ManipulatorPointId>> = HashMap::new();
+		let mut segments_inside: HashMap<LayerNodeIdentifier, HashSet<SegmentId>> = HashMap::new();
 
+		for (&layer, _) in &mut self.selected_shape_state {
 			let vector_data = network_interface.compute_modified_vector(layer);
 			let Some(vector_data) = vector_data else { continue };
 			let transform = network_interface.document_metadata().transform_to_viewport_if_feeds(layer, network_interface);
@@ -1910,7 +1991,7 @@ impl ShapeState {
 
 			let polygon_subpath = if let SelectionShape::Lasso(polygon) = selection_shape {
 				if polygon.len() < 2 {
-					return;
+					return (points_inside, segments_inside);
 				}
 				let polygon: Subpath<PointId> = Subpath::from_anchors_linear(polygon.to_vec(), true);
 				Some(polygon)
@@ -1950,10 +2031,7 @@ impl ShapeState {
 					};
 
 					if select {
-						match selection_change {
-							SelectionChange::Shrink => state.deselect_segment(id),
-							_ => state.select_segment(id),
-						}
+						segments_inside.entry(layer).or_default().insert(id);
 					}
 				}
 
@@ -1970,21 +2048,11 @@ impl ShapeState {
 							.contains_point(transformed_position),
 					};
 
-					if select {
-						let is_visible_handle = is_visible_point(id, &vector_data, path_overlay_mode, frontier_handles_info.clone(), selected_segments.clone(), &selected_points);
+					if select && select_points {
+						let is_visible_handle = is_visible_point(id, &vector_data, path_overlay_mode, frontier_handles_info, selected_segments.clone(), &selected_points);
 
 						if is_visible_handle {
-							match selection_change {
-								SelectionChange::Shrink => state.deselect_point(id),
-								_ => {
-									// Select only the handles which are of nonzero length
-									if let Some(handle) = id.as_handle() {
-										if handle.length(&vector_data) > 0. {
-											state.select_point(id)
-										}
-									}
-								}
-							}
+							points_inside.entry(layer).or_default().insert(id);
 						}
 					}
 				}
@@ -2002,13 +2070,12 @@ impl ShapeState {
 						.contains_point(transformed_position),
 				};
 
-				if select {
-					match selection_change {
-						SelectionChange::Shrink => state.deselect_point(ManipulatorPointId::Anchor(id)),
-						_ => state.select_point(ManipulatorPointId::Anchor(id)),
-					}
+				if select && select_points {
+					points_inside.entry(layer).or_default().insert(ManipulatorPointId::Anchor(id));
 				}
 			}
 		}
+
+		(points_inside, segments_inside)
 	}
 }
