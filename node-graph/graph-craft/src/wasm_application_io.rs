@@ -217,26 +217,30 @@ impl ApplicationIo for WasmApplicationIo {
 	}
 	#[cfg(not(target_arch = "wasm32"))]
 	fn create_window(&self) -> SurfaceHandle<Self::Surface> {
-		log::trace!("Spawning window");
+		todo!("winit api changed, calling create_window on EventLoop is deprecated");
 
-		#[cfg(all(not(test), target_os = "linux", feature = "wayland"))]
-		use winit::platform::wayland::EventLoopBuilderExtWayland;
+		// log::trace!("Spawning window");
 
-		#[cfg(all(not(test), target_os = "linux", feature = "wayland"))]
-		let event_loop = winit::event_loop::EventLoopBuilder::new().with_any_thread(true).build().unwrap();
-		#[cfg(not(all(not(test), target_os = "linux", feature = "wayland")))]
-		let event_loop = winit::event_loop::EventLoop::new().unwrap();
+		// #[cfg(all(not(test), target_os = "linux", feature = "wayland"))]
+		// use winit::platform::wayland::EventLoopBuilderExtWayland;
 
-		let window = winit::window::WindowBuilder::new()
-			.with_title("Graphite")
-			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600))
-			.build(&event_loop)
-			.unwrap();
+		// #[cfg(all(not(test), target_os = "linux", feature = "wayland"))]
+		// let event_loop = winit::event_loop::EventLoopBuilder::new().with_any_thread(true).build().unwrap();
+		// #[cfg(not(all(not(test), target_os = "linux", feature = "wayland")))]
+		// let event_loop = winit::event_loop::EventLoop::new().unwrap();
 
-		SurfaceHandle {
-			window_id: SurfaceId(window.id().into()),
-			surface: Arc::new(window),
-		}
+		// let window = event_loop
+		// 	.create_window(
+		// 		winit::window::WindowAttributes::default()
+		// 			.with_title("Graphite")
+		// 			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600)),
+		// 	)
+		// 	.unwrap();
+
+		// SurfaceHandle {
+		// 	window_id: SurfaceId(window.id().into()),
+		// 	surface: Arc::new(window),
+		// }
 	}
 
 	#[cfg(target_arch = "wasm32")]

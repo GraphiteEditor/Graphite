@@ -16,6 +16,7 @@ accepted = [
 	"Unicode-DFS-2016",
 	"Zlib",
 	"NCSA",
+	"bzip2-1.0.6",
 ]
 workarounds = ["ring"]
 ignore-build-dependencies = true
