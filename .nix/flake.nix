@@ -36,7 +36,7 @@
         pkgs-unstable = import nixpkgs-unstable {
           inherit system overlays;
         };
-        
+
         rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
           targets = [ "wasm32-unknown-unknown" ];
           extensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
@@ -49,21 +49,6 @@
           vulkan-loader
           mesa
           libraw
-
-
-          # Tauri dependencies: keep in sync with https://v2.tauri.app/start/prerequisites/#system-dependencies (under the NixOS tab)
-          at-spi2-atk
-          atkmm
-          cairo
-          gdk-pixbuf
-          glib
-          gtk3
-          harfbuzz
-          librsvg
-          libsoup_3
-          pango
-          webkitgtk_4_1
-          openssl
         ];
 
         # Development tools that don't need to be in LD_LIBRARY_PATH
@@ -88,12 +73,11 @@
           cargo-watch
           cargo-nextest
           cargo-expand
-          
+
           # Profiling tools
           gnuplot
           samply
           cargo-flamegraph
-
         ];
       in
       {
@@ -104,7 +88,6 @@
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
           GIO_MODULE_DIR="${pkgs.glib-networking}/lib/gio/modules/";
           XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS";
-          
 
           shellHook = ''
             alias cargo='mold --run cargo'

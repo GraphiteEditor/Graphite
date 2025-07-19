@@ -28,10 +28,6 @@ targets = [
 	#{ triple = "wasm32-unknown-unknown", features = ["atomics"] },
 ]
 
-# Tauri produces too many nonsense warnings.
-exclude = ["tauri", "tauri-build"]
-
-
 # This section is considered when running `cargo deny check advisories`
 # More documentation for the advisories section can be found here:
 # https://embarkstudios.github.io/cargo-deny/checks/advisories/cfg.html
