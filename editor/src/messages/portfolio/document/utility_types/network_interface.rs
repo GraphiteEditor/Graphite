@@ -203,12 +203,12 @@ impl NodeNetworkInterface {
 	}
 
 	/// Returns the first downstream layer(inclusive) from a node. If the node is a layer, it will return itself.
-	pub fn downstream_layer(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<LayerNodeIdentifier> {
+	pub fn downstream_layer_for_chain_node(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<NodeId> {
 		let mut id = *node_id;
 		while !self.is_layer(&id, network_path) {
 			id = self.outward_wires(network_path)?.get(&OutputConnector::node(id, 0))?.first()?.node_id()?;
 		}
-		Some(LayerNodeIdentifier::new(id, self, network_path))
+		Some(id)
 	}
 
 	/// Returns all downstream layers (inclusive) from a node. If the node is a layer, it will return itself.
@@ -388,8 +388,8 @@ impl NodeNetworkInterface {
 					}
 
 					// If a chain node does not have a selected downstream layer, then set the position to absolute
-					let downstream_layer = self.downstream_layer(node_id, network_path);
-					if downstream_layer.is_none_or(|downstream_layer| new_ids.keys().all(|key| *key != downstream_layer.to_node())) {
+					let downstream_layer = self.downstream_layer_for_chain_node(node_id, network_path);
+					if downstream_layer.is_none_or(|downstream_layer| new_ids.keys().all(|key| *key != downstream_layer)) {
 						let Some(position) = self.position(node_id, network_path) else {
 							log::error!("Could not get position in create_node_template");
 							return None;
@@ -1244,7 +1244,7 @@ impl NodeNetworkInterface {
 					.as_ref()
 					.is_some_and(|reference| reference == "Artboard" && self.connected_to_output(node_id, &[]) && self.is_layer(node_id, &[]))
 				{
-					Some(LayerNodeIdentifier::new(*node_id, self, &[]))
+					Some(LayerNodeIdentifier::new(*node_id, self))
 				} else {
 					None
 				}
@@ -3025,7 +3025,7 @@ impl NodeNetworkInterface {
 
 // Helper functions for mutable getters
 impl NodeNetworkInterface {
-	pub fn upstream_chain_nodes(&mut self, network_path: &[NodeId]) -> Vec<NodeId> {
+	pub fn upstream_chain_nodes(&self, network_path: &[NodeId]) -> Vec<NodeId> {
 		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
 			log::error!("Could not get selected nodes in upstream_chain_nodes");
 			return Vec::new();
@@ -3156,7 +3156,7 @@ impl NodeNetworkInterface {
 		self.document_metadata.document_to_viewport = transform;
 	}
 
-	pub fn is_eligible_to_be_layer(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+	pub fn is_eligible_to_be_layer(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		let Some(node) = self.document_node(node_id, network_path) else {
 			log::error!("Could not get node {node_id} in is_eligible_to_be_layer");
 			return false;
@@ -3362,6 +3362,24 @@ impl NodeNetworkInterface {
 			.map(|[a, b]| [node_graph_to_viewport.transform_point2(a), node_graph_to_viewport.transform_point2(b)])
 	}
 
+	pub fn selected_layers_artwork_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
+		self.selected_nodes()
+			.0
+			.iter()
+			.filter(|node| self.is_layer(&node, &[]))
+			.filter_map(|layer| self.document_metadata.bounding_box_viewport(LayerNodeIdentifier::new(*layer, self)))
+			.reduce(Quad::combine_bounds)
+	}
+
+	pub fn selected_unlocked_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
+		self.selected_nodes()
+			.0
+			.iter()
+			.filter(|node| self.is_layer(&node, &[]) && !self.is_layer(&node, &[]))
+			.filter_map(|layer| self.document_metadata.bounding_box_viewport(LayerNodeIdentifier::new(*layer, self)))
+			.reduce(Quad::combine_bounds)
+	}
+
 	/// Get the combined bounding box of the click targets of the selected nodes in the node graph in layer space
 	pub fn selected_nodes_bounding_box(&mut self, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
 		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
@@ -3451,7 +3469,7 @@ impl NodeNetworkInterface {
 
 		let Some(first_root_layer) = self
 			.upstream_flow_back_from_nodes(vec![root_node.node_id], &[], FlowType::PrimaryFlow)
-			.find_map(|node_id| if self.is_layer(&node_id, &[]) { Some(LayerNodeIdentifier::new(node_id, self, &[])) } else { None })
+			.find_map(|node_id| if self.is_layer(&node_id, &[]) { Some(LayerNodeIdentifier::new(node_id, self)) } else { None })
 		else {
 			return;
 		};
@@ -3467,7 +3485,7 @@ impl NodeNetworkInterface {
 			if horizontal_root_node_id == first_root_layer.to_node() {
 				for current_node_id in horizontal_flow_iter {
 					if self.is_layer(&current_node_id, &[]) {
-						let current_layer_node = LayerNodeIdentifier::new(current_node_id, self, &[]);
+						let current_layer_node = LayerNodeIdentifier::new(current_node_id, self);
 						if !self.document_metadata.structure.contains_key(&current_layer_node) {
 							if current_node_id == first_root_layer.to_node() {
 								awaiting_primary_flow.push((current_node_id, LayerNodeIdentifier::ROOT_PARENT));
@@ -3484,7 +3502,7 @@ impl NodeNetworkInterface {
 				// Skip the horizontal_root_node_id node
 				for current_node_id in horizontal_flow_iter.skip(1) {
 					if self.is_layer(&current_node_id, &[]) {
-						let current_layer_node = LayerNodeIdentifier::new(current_node_id, self, &[]);
+						let current_layer_node = LayerNodeIdentifier::new(current_node_id, self);
 						if !self.document_metadata.structure.contains_key(&current_layer_node) {
 							awaiting_primary_flow.push((current_node_id, parent_layer_node));
 							children.push((parent_layer_node, current_layer_node));
@@ -3505,7 +3523,7 @@ impl NodeNetworkInterface {
 				for current_node_id in primary_flow_iter.skip(1) {
 					if self.is_layer(&current_node_id, &[]) {
 						// Create a new layer for the top of each stack, and add it as a child to the previous parent
-						let current_layer_node = LayerNodeIdentifier::new(current_node_id, self, &[]);
+						let current_layer_node = LayerNodeIdentifier::new(current_node_id, self);
 						if !self.document_metadata.structure.contains_key(&current_layer_node) {
 							children.push(current_layer_node);
 
@@ -3568,7 +3586,7 @@ impl NodeNetworkInterface {
 			}
 
 			stack.extend(self_network_metadata.persistent_metadata.node_metadata.keys().map(|node_id| {
-				let mut current_path = path.clone();
+				let mut current_path: Vec<NodeId> = path.clone();
 				current_path.push(*node_id);
 				current_path
 			}));
@@ -5085,12 +5103,45 @@ impl NodeNetworkInterface {
 		else {
 			log::error!("Could not set chain position for layer node {node_id}");
 		}
+		// let previous_upstream_node = self.upstream_output_connector(&InputConnector::node(*node_id, 0), network_path).and_then(|output| output.node_id());
+		// let Some(previous_upstream_node_position) = previous_upstream_node.and_then(|upstream| self.position_from_downstream_node(&upstream, network_path)) else {
+		// 	log::error!("Could not get previous_upstream_node_position");
+		// 	return;
+		// };
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 		// Reload click target of the layer which encapsulate the chain
-		if let Some(downstream_layer) = self.downstream_layer(node_id, network_path) {
-			self.unload_node_click_targets(&downstream_layer.to_node(), network_path);
+		if let Some(downstream_layer) = self.downstream_layer_for_chain_node(node_id, network_path) {
+			self.unload_node_click_targets(&downstream_layer, network_path);
 		}
 		self.unload_all_nodes_bounding_box(network_path);
+
+		// let Some(new_upstream_node_position) = previous_upstream_node.and_then(|upstream| self.position_from_downstream_node(&upstream, network_path)) else {
+		// 	log::error!("Could not get new_upstream_node_position");
+		// 	return;
+		// };
+		// if let Some(previous_upstream_node) =   {
+		// 	let x_delta = new_upstream_node_position.x - previous_upstream_node_position.x;
+		// 	// Upstream node got shifted to left, so shift all upstream absolute sole dependents
+		// 	if x_delta != 0 {
+		// 		let upstream_absolute_nodes = SelectedNodes(
+		// 			self.upstream_flow_back_from_nodes(vec![previous_upstream_node], network_path, FlowType::UpstreamFlow)
+		// 				.into_iter()
+		// 				.filter(|node_id| self.is_absolute(node_id, network_path))
+		// 				.collect::<Vec<_>>(),
+		// 		);
+		// 		let old_selected_nodes = std::mem::replace(self.selected_nodes_mut(network_path).unwrap(), upstream_absolute_nodes);
+		// 		if x_delta < 0 {
+		// 			for _ in 0..x_delta.abs() {
+		// 				self.shift_selected_nodes(Direction::Left, false, network_path);
+		// 			}
+		// 		} else {
+		// 			for _ in 0..x_delta.abs() {
+		// 				self.shift_selected_nodes(Direction::Right, false, network_path);
+		// 			}
+		// 		}
+		// 		let _ = std::mem::replace(self.selected_nodes_mut(network_path).unwrap(), old_selected_nodes);
+		// 	}
+		// }
 	}
 
 	fn valid_upstream_chain_nodes(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Vec<NodeId> {
@@ -5205,7 +5256,7 @@ impl NodeNetworkInterface {
 
 	/// node_id is the first chain node, not the layer
 	fn set_upstream_chain_to_absolute(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
-		let Some(downstream_layer) = self.downstream_layer(node_id, network_path) else {
+		let Some(downstream_layer) = self.downstream_layer_for_chain_node(node_id, network_path) else {
 			log::error!("Could not get downstream layer in set_upstream_chain_to_absolute");
 			return;
 		};
@@ -5218,7 +5269,7 @@ impl NodeNetworkInterface {
 			if self.is_chain(upstream_id, network_path) {
 				self.set_absolute_position(upstream_id, previous_position, network_path);
 				// Reload click target of the layer which used to encapsulate the chain
-				self.unload_node_click_targets(&downstream_layer.to_node(), network_path);
+				self.unload_node_click_targets(&downstream_layer, network_path);
 			}
 			// If there is an upstream layer then stop breaking the chain
 			else {
@@ -5297,8 +5348,8 @@ impl NodeNetworkInterface {
 			// Deselect chain nodes upstream from a selected layer
 			if self.is_chain(selected_node, network_path)
 				&& self
-					.downstream_layer(selected_node, network_path)
-					.is_some_and(|downstream_layer| node_ids.contains(&downstream_layer.to_node()))
+					.downstream_layer_for_chain_node(selected_node, network_path)
+					.is_some_and(|downstream_layer| node_ids.contains(&downstream_layer))
 			{
 				node_ids.remove(selected_node);
 			}
@@ -5947,31 +5998,6 @@ impl NodeNetworkInterface {
 			self.create_wire(&OutputConnector::node(*node_id, 0), &InputConnector::node(parent.to_node(), 1), network_path);
 			self.set_chain_position(node_id, network_path);
 		} else {
-			// TODO: Implement a more robust horizontal shift system when inserting a node into a chain.
-			// This should be done by breaking the chain and shifting the sole dependents for each node upstream of the insertion.
-			// Before inserting the node, shift the layer right 7 units so that all sole dependents are also shifted
-			// let input_connector = InputConnector::node(parent.to_node(), 0);
-			// let old_upstream = self.upstream_output_connector(&input_connector, network_path);
-			// This also needs to disconnect from the downstream layer
-			// self.disconnect_input(&input_connector, network_path);
-			// let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
-			// 	log::error!("Could not get selected nodes in move_layer_to_stack");
-			// 	return;
-			// };
-			// let old_selected_nodes = selected_nodes.replace_with(vec![parent.to_node()]);
-
-			// for _ in 0..7 {
-			// 	self.shift_selected_nodes(Direction::Left, false, network_path);
-			// }
-			// // Grip drag it back to the right
-			// for _ in 0..7 {
-			// 	self.shift_selected_nodes(Direction::Right, true, network_path);
-			// }
-			// let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
-			// if let Some(old_upstream) = old_upstream {
-			// 	self.create_wire(&old_upstream, &input_connector, network_path);
-			// }
-
 			// Insert the node in the gap and set the upstream to a chain
 			self.insert_node_between(node_id, &InputConnector::node(parent.to_node(), 1), 0, network_path);
 			self.force_set_upstream_to_chain(node_id, network_path);

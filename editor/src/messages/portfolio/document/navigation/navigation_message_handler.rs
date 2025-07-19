@@ -18,7 +18,6 @@ pub struct NavigationMessageContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub breadcrumb_network_path: &'a [NodeId],
 	pub ipp: &'a InputPreprocessorMessageHandler,
-	pub selection_bounds: Option<[DVec2; 2]>,
 	pub document_ptz: &'a mut PTZ,
 	pub graph_view_overlay_open: bool,
 	pub preferences: &'a PreferencesMessageHandler,
@@ -39,7 +38,6 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 			network_interface,
 			breadcrumb_network_path,
 			ipp,
-			selection_bounds,
 			document_ptz,
 			graph_view_overlay_open,
 			preferences,
@@ -386,9 +384,16 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
+			// Fully zooms in on the selected
 			NavigationMessage::FitViewportToSelection => {
+				let selection_bounds = if graph_view_overlay_open {
+					network_interface.selected_nodes_bounding_box_viewport(breadcrumb_network_path)
+				} else {
+					network_interface.selected_layers_artwork_bounding_box_viewport()
+				};
+
 				if let Some(bounds) = selection_bounds {
-					let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+					let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 						log::error!("Could not get node graph PTZ in FitViewportToSelection");
 						return;
 					};

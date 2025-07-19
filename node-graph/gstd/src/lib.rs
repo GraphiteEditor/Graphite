@@ -1,5 +1,4 @@
 pub mod any;
-pub mod http;
 pub mod text;
 #[cfg(feature = "wasm")]
 pub mod wasm_application_io;
