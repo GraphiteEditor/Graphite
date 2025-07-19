@@ -2709,7 +2709,22 @@ impl DocumentMessageHandler {
 				.tooltip("Add an operation to the end of this layer's chain of nodes")
 				.disabled(!has_selection || has_multiple_selection)
 				.popover_layout({
-					let node_chooser = NodeCatalog::new()
+					// Showing only compatible types
+					let compatible_type = selected_layer.and_then(|layer| {
+						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &self.network_interface);
+						let node_type = graph_layer.horizontal_layer_flow().nth(1);
+						if let Some(node_id) = node_type {
+							let (output_type, _) = self.network_interface.output_type(&node_id, 0, &self.selection_network_path);
+							Some(format!("type:{}", output_type.nested_type()))
+						} else {
+							None
+						}
+					});
+
+					let mut node_chooser = NodeCatalog::new();
+					node_chooser.intial_search = compatible_type.unwrap_or("".to_string());
+
+					let node_chooser = node_chooser
 						.on_update(move |node_type| {
 							if let Some(layer) = selected_layer {
 								NodeGraphMessage::CreateNodeInLayerWithTransaction {
