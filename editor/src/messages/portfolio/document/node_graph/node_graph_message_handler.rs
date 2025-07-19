@@ -19,12 +19,15 @@ use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_clip_mode};
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
+use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_std::math::math_ext::QuadExt;
+use graphene_std::vector::misc::subpath_to_kurbo_bezpath;
 use graphene_std::*;
+use kurbo::{Line, Point};
 use renderer::Quad;
 use std::cmp::Ordering;
 
@@ -1242,9 +1245,37 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 										}
 										log::debug!("preferences.graph_wire_style: {:?}", preferences.graph_wire_style);
 										let (wire, is_stack) = network_interface.vector_wire_from_input(&input, preferences.graph_wire_style, selection_network_path)?;
-										wire.rectangle_intersections_exist(bounding_box[0], bounding_box[1]).then_some((input, is_stack))
+
+										let bbox_rect = kurbo::Rect::new(bounding_box[0].x, bounding_box[0].y, bounding_box[1].x, bounding_box[1].y);
+
+										let p1 = DVec2::new(bbox_rect.x0, bbox_rect.y0);
+										let p2 = DVec2::new(bbox_rect.x1, bbox_rect.y0);
+										let p3 = DVec2::new(bbox_rect.x1, bbox_rect.y1);
+										let p4 = DVec2::new(bbox_rect.x0, bbox_rect.y1);
+										let ps = [p1, p2, p3, p4];
+
+										let inside = wire.is_inside_subpath(&Subpath::from_anchors_linear(ps, true), None, None);
+
+										let wire = subpath_to_kurbo_bezpath(wire);
+
+										let intersect = wire.segments().any(|segment| {
+											let rect = kurbo::Rect::new(bounding_box[0].x, bounding_box[0].y, bounding_box[1].x, bounding_box[1].y);
+
+											let top_line = Line::new(Point::new(rect.x0, rect.y0), Point::new(rect.x1, rect.y0));
+											let bottom_line = Line::new(Point::new(rect.x0, rect.y1), Point::new(rect.x1, rect.y1));
+											let left_line = Line::new(Point::new(rect.x0, rect.y0), Point::new(rect.x0, rect.y1));
+											let right_line = Line::new(Point::new(rect.x1, rect.y0), Point::new(rect.x1, rect.y1));
+
+											!segment.intersect_line(top_line).is_empty()
+												|| !segment.intersect_line(bottom_line).is_empty()
+												|| !segment.intersect_line(left_line).is_empty()
+												|| !segment.intersect_line(right_line).is_empty()
+										});
+
+										(intersect || inside).then_some((input, is_stack))
 									})
 									.collect::<Vec<_>>();
+
 								// Prioritize vertical thick lines and cancel if there are multiple potential wires
 								let mut node_wires = Vec::new();
 								let mut stack_wires = Vec::new();
