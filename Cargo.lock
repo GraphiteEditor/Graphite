@@ -2439,6 +2439,7 @@ version = "0.0.0"
 dependencies = [
  "bezier-rs",
  "bitflags 2.9.1",
+ "bytemuck",
  "derivative",
  "dyn-any",
  "env_logger",

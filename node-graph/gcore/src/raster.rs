@@ -15,6 +15,7 @@ pub mod color {
 pub mod image;
 
 pub use self::image::Image;
+pub use self::image::TransformImage;
 
 pub trait Bitmap {
 	type Pixel: Pixel;

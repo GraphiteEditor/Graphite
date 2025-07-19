@@ -8,6 +8,8 @@ use crate::messages::portfolio::document::utility_types::wires::{WirePath, WireP
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 use graph_craft::document::NodeId;
+use graphene_std::raster::Image;
+use graphene_std::raster::TransformImage;
 use graphene_std::raster::color::Color;
 use graphene_std::text::Font;
 
@@ -178,6 +180,9 @@ pub enum FrontendMessage {
 	},
 	UpdateDocumentArtwork {
 		svg: String,
+	},
+	UpdateImageData {
+		image_data: Vec<(u64, Image<Color>, TransformImage)>,
 	},
 	UpdateDocumentBarLayout {
 		#[serde(rename = "layoutTarget")]

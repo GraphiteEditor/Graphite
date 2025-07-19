@@ -3,6 +3,7 @@ use graphene_application_io::{ApplicationError, ApplicationIo, ResourceFuture, S
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
 use std::sync::atomic::AtomicU64;
