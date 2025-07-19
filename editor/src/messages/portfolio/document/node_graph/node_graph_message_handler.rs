@@ -16,10 +16,11 @@ use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_clip_mode};
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2, IVec2};
+use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_std::math::math_ext::QuadExt;
@@ -120,6 +121,38 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				network_interface.insert_node_group(nodes, new_ids, selection_network_path);
 
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_layer_id] });
+			}
+			NodeGraphMessage::AddPathNode => {
+				let selected_nodes = network_interface.selected_nodes();
+				let mut selected_layers = selected_nodes.selected_layers(network_interface.document_metadata());
+				let first_layer = selected_layers.next();
+				let second_layer = selected_layers.next();
+				let has_single_selection = first_layer.is_some() && second_layer.is_none();
+
+				let compatible_type = first_layer.and_then(|layer| {
+					let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &network_interface);
+					graph_layer.horizontal_layer_flow().nth(1).and_then(|node_id| {
+						let (output_type, _) = network_interface.output_type(&node_id, 0, &[]);
+						Some(format!("type:{}", output_type.nested_type()))
+					})
+				});
+
+				let is_compatible = compatible_type.as_deref() == Some("type:Instances<VectorData>");
+
+				if first_layer.is_some() && has_single_selection && is_compatible {
+					if let Some(layer) = first_layer {
+						let node_type = "Path".to_string();
+						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &network_interface);
+						let is_modifiable = matches!(graph_layer.find_input("Path", 1), Some(TaggedValue::VectorModification(_)));
+						if !is_modifiable {
+							responses.add(NodeGraphMessage::CreateNodeInLayerWithTransaction {
+								node_type: node_type.clone(),
+								layer: LayerNodeIdentifier::new_unchecked(layer.to_node()),
+							});
+							responses.add(BroadcastEvent::SelectionChanged);
+						}
+					}
+				}
 			}
 			NodeGraphMessage::AddImport => {
 				network_interface.add_import(graph_craft::document::value::TaggedValue::None, true, -1, "", "", breadcrumb_network_path);
@@ -1503,6 +1536,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					if node_bbox[1].x >= document_bbox[0].x && node_bbox[0].x <= document_bbox[1].x && node_bbox[1].y >= document_bbox[0].y && node_bbox[0].y <= document_bbox[1].y {
 						nodes.push(*node_id);
 					}
+					for error in &self.node_graph_errors {
+						if error.node_path.contains(node_id) {
+							nodes.push(*node_id);
+						}
+					}
 				}
 
 				responses.add(FrontendMessage::UpdateVisibleNodes { nodes });
@@ -2521,19 +2559,19 @@ impl NodeGraphMessageHandler {
 		let mut ancestors_of_selected = HashSet::new();
 		let mut descendants_of_selected = HashSet::new();
 		for selected_layer in &selected_layers {
-			for ancestor in LayerNodeIdentifier::new(*selected_layer, network_interface, &[]).ancestors(network_interface.document_metadata()) {
+			for ancestor in LayerNodeIdentifier::new(*selected_layer, network_interface).ancestors(network_interface.document_metadata()) {
 				if ancestor != LayerNodeIdentifier::ROOT_PARENT && ancestor.to_node() != *selected_layer {
 					ancestors_of_selected.insert(ancestor.to_node());
 				}
 			}
-			for descendant in LayerNodeIdentifier::new(*selected_layer, network_interface, &[]).descendants(network_interface.document_metadata()) {
+			for descendant in LayerNodeIdentifier::new(*selected_layer, network_interface).descendants(network_interface.document_metadata()) {
 				descendants_of_selected.insert(descendant.to_node());
 			}
 		}
 
 		for (&node_id, node_metadata) in &network_interface.document_network_metadata().persistent_metadata.node_metadata {
 			if node_metadata.persistent_metadata.is_layer() {
-				let layer = LayerNodeIdentifier::new(node_id, network_interface, &[]);
+				let layer = LayerNodeIdentifier::new(node_id, network_interface);
 
 				let children_allowed =
 						// The layer has other layers as children along the secondary input's horizontal flow

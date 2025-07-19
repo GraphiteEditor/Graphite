@@ -16,6 +16,7 @@ pub enum NodeGraphMessage {
 		nodes: Vec<(NodeId, NodeTemplate)>,
 		new_ids: HashMap<NodeId, NodeId>,
 	},
+	AddPathNode,
 	AddImport,
 	AddExport,
 	Init,

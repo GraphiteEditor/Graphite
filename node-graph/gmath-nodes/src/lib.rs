@@ -1,6 +1,7 @@
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use graphene_core::gradient::GradientStops;
-use graphene_core::registry::types::{Fraction, Percentage, TextArea};
+use graphene_core::registry::types::{Fraction, Percentage, PixelSize, TextArea};
+use graphene_core::transform::Footprint;
 use graphene_core::{Color, Ctx, num_traits};
 use log::warn;
 use math_parser::ast;
@@ -107,11 +108,11 @@ fn subtract<U: Sub<T>, T>(
 fn multiply<U: Mul<T>, T>(
 	_: impl Ctx,
 	/// The left-hand side of the multiplication operation.
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, f32, u32, f64, DVec2, DVec2, DAffine2)]
 	multiplier: U,
 	/// The right-hand side of the multiplication operation.
 	#[default(1.)]
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, f32, u32, DVec2, f64, DVec2, DAffine2)]
 	multiplicand: T,
 ) -> <U as Mul<T>>::Output {
 	multiplier * multiplicand
@@ -679,6 +680,16 @@ fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> Gradien
 #[node_macro::node(category("Value"))]
 fn string_value(_: impl Ctx, _primary: (), string: TextArea) -> String {
 	string
+}
+
+/// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.
+#[node_macro::node(category("Value"))]
+fn footprint_value(_: impl Ctx, _primary: (), transform: DAffine2, #[default(100., 100.)] resolution: PixelSize) -> Footprint {
+	Footprint {
+		transform,
+		resolution: resolution.max(DVec2::ONE).as_uvec2(),
+		..Default::default()
+	}
 }
 
 #[node_macro::node(category("Math: Vector"))]

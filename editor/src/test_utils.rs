@@ -326,8 +326,7 @@ pub mod test_prelude {
 	pub use crate::node_graph_executor::NodeRuntime;
 	pub use crate::test_utils::EditorTestUtils;
 	pub use core::f64;
-	pub use glam::DVec2;
-	pub use glam::IVec2;
+	pub use glam::{DVec2, IVec2};
 	pub use graph_craft::document::DocumentNode;
 	pub use graphene_std::raster::{Color, Image};
 	pub use graphene_std::transform::Footprint;

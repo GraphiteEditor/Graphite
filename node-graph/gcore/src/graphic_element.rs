@@ -100,6 +100,11 @@ impl From<RasterDataTable<GPU>> for GraphicGroupTable {
 		Self::new(GraphicElement::RasterDataGPU(raster_data_table))
 	}
 }
+impl From<DAffine2> for GraphicGroupTable {
+	fn from(_: DAffine2) -> Self {
+		GraphicGroupTable::default()
+	}
+}
 
 /// The possible forms of graphical content held in a Vec by the `elements` field of [`GraphicElement`].
 #[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
@@ -115,6 +120,12 @@ pub enum GraphicElement {
 impl Default for GraphicElement {
 	fn default() -> Self {
 		Self::GraphicGroup(GraphicGroupTable::default())
+	}
+}
+
+impl From<DAffine2> for GraphicElement {
+	fn from(_: DAffine2) -> Self {
+		GraphicElement::default()
 	}
 }
 
@@ -351,6 +362,7 @@ async fn to_element<Data: Into<GraphicElement> + 'n>(
 	 	VectorDataTable,
 		RasterDataTable<CPU>,
 	 	RasterDataTable<GPU>,
+		DAffine2,
 	)]
 	data: Data,
 ) -> GraphicElement {
@@ -463,14 +475,18 @@ async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
 		Context -> VectorDataTable,
 		Context -> RasterDataTable<CPU>,
 		Context -> RasterDataTable<GPU>,
+		Context -> DAffine2,
 	)]
 	contents: impl Node<Context<'static>, Output = Data>,
 	label: String,
-	location: IVec2,
-	dimensions: IVec2,
+	location: DVec2,
+	dimensions: DVec2,
 	background: Color,
 	clip: bool,
 ) -> Artboard {
+	let location = location.as_ivec2();
+	let dimensions = dimensions.as_ivec2().max(IVec2::ONE);
+
 	let footprint = ctx.try_footprint().copied();
 	let mut new_ctx = OwnedContextImpl::from(ctx);
 	if let Some(mut footprint) = footprint {
