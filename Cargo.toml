@@ -83,7 +83,7 @@ axum = "0.8"
 chrono = "0.4"
 ron = "0.8"
 fastnoise-lite = "1.1"
-wgpu = { version = "23", features = [
+wgpu = { version = "25.0.2", features = [
 	# We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
 	"fragile-send-sync-non-atomic-wasm",
 	"spirv",
@@ -114,7 +114,7 @@ web-sys = { version = "=0.3.77", features = [
 winit = "0.29"
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt"] }
-vello = { git = "https://github.com/linebender/vello.git", rev = "3275ec8" } # TODO switch back to stable when a release is made
+vello = { git = "https://github.com/linebender/vello.git" } # TODO switch back to stable when a release is made
 resvg = "0.44"
 usvg = "0.44"
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }

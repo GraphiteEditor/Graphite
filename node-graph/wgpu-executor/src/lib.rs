@@ -3,18 +3,20 @@ mod context;
 use anyhow::Result;
 pub use context::Context;
 use dyn_any::StaticType;
+use futures::lock::Mutex;
 use glam::UVec2;
-use graphene_application_io::{ApplicationIo, EditorApi, SurfaceHandle};
+use graphene_application_io::{ApplicationIo, EditorApi, SurfaceHandle, SurfaceId};
 use graphene_core::{Color, Ctx};
 pub use graphene_svg_renderer::RenderContext;
 use std::sync::Arc;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
+use wgpu::util::TextureBlitter;
 use wgpu::{Origin3d, SurfaceConfiguration, TextureAspect};
 
 #[derive(dyn_any::DynAny)]
 pub struct WgpuExecutor {
 	pub context: Context,
-	vello_renderer: futures::lock::Mutex<Renderer>,
+	vello_renderer: Mutex<Renderer>,
 }
 
 impl std::fmt::Debug for WgpuExecutor {
@@ -32,16 +34,17 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &
 pub type WgpuSurface = Arc<SurfaceHandle<Surface>>;
 pub type WgpuWindow = Arc<SurfaceHandle<WindowHandle>>;
 
-impl graphene_application_io::Size for Surface {
-	fn size(&self) -> UVec2 {
-		self.resolution
-	}
-}
-
 pub struct Surface {
 	pub inner: wgpu::Surface<'static>,
-	resolution: UVec2,
+	pub target_texture: Mutex<Option<TargetTexture>>,
+	pub blitter: TextureBlitter,
 }
+
+pub struct TargetTexture {
+	view: wgpu::TextureView,
+	size: UVec2,
+}
+
 #[cfg(target_arch = "wasm32")]
 pub type Window = web_sys::HtmlCanvasElement;
 #[cfg(not(target_arch = "wasm32"))]
@@ -51,52 +54,88 @@ unsafe impl StaticType for Surface {
 	type Static = Surface;
 }
 
+const VELLO_SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+
 impl WgpuExecutor {
-	pub async fn render_vello_scene(&self, scene: &Scene, surface: &WgpuSurface, width: u32, height: u32, context: &RenderContext, background: Color) -> Result<()> {
-		let surface = &surface.surface.inner;
-		let surface_caps = surface.get_capabilities(&self.context.adapter);
-		surface.configure(
+	pub async fn render_vello_scene(&self, scene: &Scene, surface: &WgpuSurface, size: UVec2, context: &RenderContext, background: Color) -> Result<()> {
+		let mut guard = surface.surface.target_texture.lock().await;
+		let target_texture = if let Some(target_texture) = &*guard
+			&& target_texture.size == size
+		{
+			target_texture
+		} else {
+			let texture = self.context.device.create_texture(&wgpu::TextureDescriptor {
+				label: None,
+				size: wgpu::Extent3d {
+					width: size.x,
+					height: size.y,
+					depth_or_array_layers: 1,
+				},
+				mip_level_count: 1,
+				sample_count: 1,
+				dimension: wgpu::TextureDimension::D2,
+				usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+				format: VELLO_SURFACE_FORMAT,
+				view_formats: &[],
+			});
+			let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+			*guard = Some(TargetTexture { size, view });
+			guard.as_ref().unwrap()
+		};
+
+		let surface_inner = &surface.surface.inner;
+		let surface_caps = surface_inner.get_capabilities(&self.context.adapter);
+		surface_inner.configure(
 			&self.context.device,
 			&SurfaceConfiguration {
 				usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::STORAGE_BINDING,
-				format: wgpu::TextureFormat::Rgba8Unorm,
-				width,
-				height,
+				format: VELLO_SURFACE_FORMAT,
+				width: size.x,
+				height: size.y,
 				present_mode: surface_caps.present_modes[0],
 				alpha_mode: wgpu::CompositeAlphaMode::Opaque,
 				view_formats: vec![],
 				desired_maximum_frame_latency: 2,
 			},
 		);
-		let surface_texture = surface.get_current_texture()?;
 
 		let [r, g, b, _] = background.to_rgba8_srgb();
 		let render_params = RenderParams {
 			// We are using an explicit opaque color here to eliminate the alpha premultiplication step
 			// which would be required to support a transparent webgpu canvas
 			base_color: vello::peniko::Color::from_rgba8(r, g, b, 0xff),
-			width,
-			height,
+			width: size.x,
+			height: size.y,
 			antialiasing_method: AaConfig::Msaa16,
 		};
 
 		{
 			let mut renderer = self.vello_renderer.lock().await;
 			for (id, texture) in context.resource_overrides.iter() {
-				let texture_view = wgpu::ImageCopyTextureBase {
-					texture: texture.clone(),
+				let texture = texture.clone();
+				let texture_view = wgpu::TexelCopyTextureInfoBase {
+					texture,
 					mip_level: 0,
 					origin: Origin3d::ZERO,
 					aspect: TextureAspect::All,
 				};
 				renderer.override_image(
-					&vello::peniko::Image::new(vello::peniko::Blob::from_raw_parts(Arc::new(vec![]), *id), vello::peniko::Format::Rgba8, 0, 0),
+					&vello::peniko::Image::new(vello::peniko::Blob::from_raw_parts(Arc::new(vec![]), *id), vello::peniko::ImageFormat::Rgba8, 0, 0),
 					Some(texture_view),
 				);
 			}
-			renderer.render_to_surface(&self.context.device, &self.context.queue, scene, &surface_texture, &render_params).unwrap();
+			renderer.render_to_texture(&self.context.device, &self.context.queue, scene, &target_texture.view, &render_params)?;
 		}
 
+		let surface_texture = surface_inner.get_current_texture()?;
+		let mut encoder = self.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Surface Blit") });
+		surface.surface.blitter.copy(
+			&self.context.device,
+			&mut encoder,
+			&target_texture.view,
+			&surface_texture.texture.create_view(&wgpu::TextureViewDescriptor::default()),
+		);
+		self.context.queue.submit([encoder.finish()]);
 		surface_texture.present();
 
 		Ok(())
@@ -105,24 +144,23 @@ impl WgpuExecutor {
 	#[cfg(target_arch = "wasm32")]
 	pub fn create_surface(&self, canvas: graphene_application_io::WasmSurfaceHandle) -> Result<SurfaceHandle<Surface>> {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
-
-		Ok(SurfaceHandle {
-			window_id: canvas.window_id,
-			surface: Surface {
-				inner: surface,
-				resolution: UVec2::ZERO,
-			},
-		})
+		self.create_surface_inner(surface, canvas.window_id)
 	}
 	#[cfg(not(target_arch = "wasm32"))]
 	pub fn create_surface(&self, window: SurfaceHandle<Window>) -> Result<SurfaceHandle<Surface>> {
-		let size = window.surface.inner_size();
-		let resolution = UVec2::new(size.width, size.height);
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Window(Box::new(window.surface)))?;
+		self.create_surface_inner(surface, window.window_id)
+	}
 
+	pub fn create_surface_inner(&self, surface: wgpu::Surface<'static>, window_id: SurfaceId) -> Result<SurfaceHandle<Surface>> {
+		let blitter = TextureBlitter::new(&self.context.device, VELLO_SURFACE_FORMAT);
 		Ok(SurfaceHandle {
-			window_id: window.window_id,
-			surface: Surface { inner: surface, resolution },
+			window_id,
+			surface: Surface {
+				inner: surface,
+				target_texture: Mutex::new(None),
+				blitter,
+			},
 		})
 	}
 }
@@ -134,7 +172,8 @@ impl WgpuExecutor {
 		let vello_renderer = Renderer::new(
 			&context.device,
 			RendererOptions {
-				surface_format: Some(wgpu::TextureFormat::Rgba8Unorm),
+				// surface_format: Some(wgpu::TextureFormat::Rgba8Unorm),
+				pipeline_cache: None,
 				use_cpu: false,
 				antialiasing_support: AaSupport::all(),
 				num_init_threads: std::num::NonZeroUsize::new(1),
