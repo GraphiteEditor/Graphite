@@ -19,6 +19,7 @@ use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_clip_mode};
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
+use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
@@ -1224,7 +1225,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 											return None;
 										}
 										let (wire, is_stack) = network_interface.vector_wire_from_input(&input, preferences.graph_wire_style, selection_network_path)?;
-										// here...
+
+										let bbox_rect = kurbo::Rect::new(bounding_box[0].x, bounding_box[0].y, bounding_box[1].x, bounding_box[1].y);
+
+										let p1 = DVec2::new(bbox_rect.x0, bbox_rect.y0);
+										let p2 = DVec2::new(bbox_rect.x1, bbox_rect.y0);
+										let p3 = DVec2::new(bbox_rect.x1, bbox_rect.y1);
+										let p4 = DVec2::new(bbox_rect.x0, bbox_rect.y1);
+										let ps = [p1, p2, p3, p4];
+
+										let inside = wire.is_inside_subpath(&Subpath::from_anchors_linear(ps, true), None, None);
+
 										let wire = subpath_to_kurbo_bezpath(wire);
 
 										let intersect = wire.segments().any(|segment| {
@@ -1241,9 +1252,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 												|| !segment.intersect_line(right_line).is_empty()
 										});
 
-										intersect.then_some((input, is_stack))
+										(intersect || inside).then_some((input, is_stack))
 									})
 									.collect::<Vec<_>>();
+								info!("overlapping wires {:#?}", overlapping_wires);
 								// Prioritize vertical thick lines and cancel if there are multiple potential wires
 								let mut node_wires = Vec::new();
 								let mut stack_wires = Vec::new();
