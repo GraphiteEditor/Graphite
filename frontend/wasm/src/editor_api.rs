@@ -77,8 +77,8 @@ fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>, TransformImag
 			.dyn_into::<HtmlCanvasElement>()
 			.expect("Failed to cast element to HtmlCanvasElement");
 
-		canvas.set_width(1);
-		canvas.set_height(1);
+		canvas.set_width(image.width);
+		canvas.set_height(image.height);
 		let context: CanvasRenderingContext2d = canvas
 			.get_context("2d")
 			.expect("Failed to get 2d context")
