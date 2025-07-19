@@ -3,7 +3,6 @@ members = [
 	"editor",
 	"proc-macros",
 	"frontend/wasm",
-	"frontend/src-tauri",
 	"node-graph/gapplication-io",
 	"node-graph/gbrush",
 	"node-graph/gcore",
