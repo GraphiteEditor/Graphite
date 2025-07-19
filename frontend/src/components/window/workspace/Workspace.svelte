@@ -2,7 +2,7 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { FrontendDocumentDetails } from "@graphite/messages";
+
 	import type { DialogState } from "@graphite/state-providers/dialog";
 	import type { PortfolioState } from "@graphite/state-providers/portfolio";
 
@@ -10,6 +10,7 @@
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import Panel from "@graphite/components/window/workspace/Panel.svelte";
+	import type { FrontendDocumentDetails } from "@graphite/messages.svelte";
 
 	const MIN_PANEL_SIZE = 100;
 	const PANEL_SIZES = {
@@ -22,21 +23,10 @@
 		/*         └─ */ layers: 55,
 	};
 
-	let panelSizes = PANEL_SIZES;
-	let documentPanel: Panel | undefined;
+	let panelSizes = $state(PANEL_SIZES);
+	let documentPanel: Panel | undefined = $state();
 	let gutterResizeRestore: [number, number] | undefined = undefined;
 	let pointerCaptureId: number | undefined = undefined;
-
-	$: documentPanel?.scrollTabIntoView($portfolio.activeDocumentIndex);
-
-	$: documentTabLabels = $portfolio.documents.map((doc: FrontendDocumentDetails) => {
-		const name = doc.displayName;
-
-		if (!editor.handle.inDevelopmentMode()) return { name };
-
-		const tooltip = `Document ID: ${doc.id}`;
-		return { name, tooltip };
-	});
 
 	const editor = getContext<Editor>("editor");
 	const portfolio = getContext<PortfolioState>("portfolio");
@@ -130,6 +120,19 @@
 
 		addListeners();
 	}
+	$effect(() => {
+		documentPanel?.scrollTabIntoView($portfolio.activeDocumentIndex);
+	});
+	let documentTabLabels = $derived(
+		$portfolio.documents.map((doc: FrontendDocumentDetails) => {
+			const name = doc.displayName;
+
+			if (!editor.handle.inDevelopmentMode()) return { name };
+
+			const tooltip = `Document ID: ${doc.id}`;
+			return { name, tooltip };
+		}),
+	);
 </script>
 
 <LayoutRow class="workspace" data-workspace>
@@ -148,18 +151,18 @@
 				/>
 			</LayoutRow>
 			{#if $portfolio.spreadsheetOpen}
-				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} />
+				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical onpointerdown={(e) => resizePanel(e)} />
 				<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["spreadsheet"] }} data-subdivision-name="spreadsheet">
 					<Panel panelType="Spreadsheet" tabLabels={[{ name: "Spreadsheet" }]} tabActiveIndex={0} />
 				</LayoutRow>
 			{/if}
 		</LayoutCol>
-		<LayoutCol class="workspace-grid-resize-gutter" data-gutter-horizontal on:pointerdown={(e) => resizePanel(e)} />
+		<LayoutCol class="workspace-grid-resize-gutter" data-gutter-horizontal onpointerdown={(e) => resizePanel(e)} />
 		<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["details"] }} data-subdivision-name="details">
 			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["properties"] }} data-subdivision-name="properties">
 				<Panel panelType="Properties" tabLabels={[{ name: "Properties" }]} tabActiveIndex={0} />
 			</LayoutRow>
-			<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} />
+			<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical onpointerdown={(e) => resizePanel(e)} />
 			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["layers"] }} data-subdivision-name="layers">
 				<Panel panelType="Layers" tabLabels={[{ name: "Layers" }]} tabActiveIndex={0} />
 			</LayoutRow>

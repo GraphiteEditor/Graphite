@@ -3,16 +3,7 @@
 
 	import type { Editor } from "@graphite/editor";
 	import { beginDraggingElement } from "@graphite/io-managers/drag";
-	import {
-		defaultWidgetLayout,
-		patchWidgetLayout,
-		UpdateDocumentLayerDetails,
-		UpdateDocumentLayerStructureJs,
-		UpdateLayersPanelControlBarLeftLayout,
-		UpdateLayersPanelControlBarRightLayout,
-		UpdateLayersPanelBottomBarLayout,
-	} from "@graphite/messages";
-	import type { DataBuffer, LayerPanelEntry } from "@graphite/messages";
+
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
@@ -23,6 +14,17 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import type { WidgetLayout as WidgetLayoutState } from "@graphite/messages.svelte";
+	import type { DataBuffer, LayerPanelEntry } from "@graphite/messages.svelte";
+	import {
+		defaultWidgetLayout,
+		patchWidgetLayout,
+		UpdateDocumentLayerDetails,
+		UpdateDocumentLayerStructureJs,
+		UpdateLayersPanelControlBarLeftLayout,
+		UpdateLayersPanelControlBarRightLayout,
+		UpdateLayersPanelBottomBarLayout,
+	} from "@graphite/messages.svelte";
 
 	type LayerListingInfo = {
 		folderIndex: number;
@@ -43,41 +45,38 @@
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
-	let list: LayoutCol | undefined;
+	let list: LayoutCol | undefined = $state();
 
 	// Layer data
 	let layerCache = new Map<string, LayerPanelEntry>(); // TODO: replace with BigUint64Array as index
-	let layers: LayerListingInfo[] = [];
+	let layers: LayerListingInfo[] = $state([]);
 
 	// Interactive dragging
-	let draggable = true;
-	let draggingData: undefined | DraggingData = undefined;
-	let fakeHighlightOfNotYetSelectedLayerBeingDragged: undefined | bigint = undefined;
-	let dragInPanel = false;
+	let draggable = $state(true);
+	let draggingData: undefined | DraggingData = $state(undefined);
+	let fakeHighlightOfNotYetSelectedLayerBeingDragged: undefined | bigint = $state(undefined);
+	let dragInPanel = $state(false);
 
 	// Interactive clipping
-	let layerToClipUponClick: LayerListingInfo | undefined = undefined;
-	let layerToClipAltKeyPressed = false;
+	let layerToClipUponClick: LayerListingInfo | undefined = $state(undefined);
+	let layerToClipAltKeyPressed = $state(false);
 
 	// Layouts
-	let layersPanelControlBarLeftLayout = defaultWidgetLayout();
-	let layersPanelControlBarRightLayout = defaultWidgetLayout();
-	let layersPanelBottomBarLayout = defaultWidgetLayout();
+	let layersPanelControlBarLeftLayout = $state<WidgetLayoutState>(defaultWidgetLayout());
+	let layersPanelControlBarRightLayout = $state<WidgetLayoutState>(defaultWidgetLayout());
+	let layersPanelBottomBarLayout = $state<WidgetLayoutState>(defaultWidgetLayout());
 
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (updateLayersPanelControlBarLeftLayout) => {
 			patchWidgetLayout(layersPanelControlBarLeftLayout, updateLayersPanelControlBarLeftLayout);
-			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (updateLayersPanelControlBarRightLayout) => {
 			patchWidgetLayout(layersPanelControlBarRightLayout, updateLayersPanelControlBarRightLayout);
-			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (updateLayersPanelBottomBarLayout) => {
 			patchWidgetLayout(layersPanelBottomBarLayout, updateLayersPanelBottomBarLayout);
-			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (updateDocumentLayerStructure) => {
@@ -182,7 +181,7 @@
 
 		draggable = false;
 		listing.editingName = true;
-		layers = layers;
+		// layers = layers;
 
 		await tick();
 
@@ -197,7 +196,7 @@
 
 		draggable = true;
 		listing.editingName = false;
-		layers = layers;
+		// layers = layers;
 
 		const name = (e.target instanceof HTMLInputElement && e.target.value) || "";
 		editor.handle.setLayerName(listing.entry.id, name);
@@ -207,7 +206,7 @@
 	async function onEditLayerNameDeselect(listing: LayerListingInfo) {
 		draggable = true;
 		listing.editingName = false;
-		layers = layers;
+		// layers = layers;
 
 		// Set it back to the original name if the user didn't enter a new name
 		if (document.activeElement instanceof HTMLInputElement) document.activeElement.value = listing.entry.alias;
@@ -472,7 +471,7 @@
 			});
 		};
 		recurse(updateDocumentLayerStructure);
-		layers = layers;
+		// layers = layers;
 	}
 
 	function updateLayerInTree(targetId: bigint, targetLayer: LayerPanelEntry) {
@@ -481,12 +480,12 @@
 		const layer = layers.find((layer: LayerListingInfo) => layer.entry.id === targetId);
 		if (layer) {
 			layer.entry = targetLayer;
-			layers = layers;
+			// layers = layers;
 		}
 	}
 </script>
 
-<LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
+<LayoutCol class="layers" ondragleave={() => (dragInPanel = false)}>
 	<LayoutRow class="control-bar" scrollableX={true}>
 		<WidgetLayout layout={layersPanelControlBarLeftLayout} />
 		<Separator />
@@ -498,10 +497,10 @@
 			styles={{ cursor: layerToClipUponClick && layerToClipAltKeyPressed && layerToClipUponClick.entry.clippable ? "alias" : "auto" }}
 			data-layer-panel
 			bind:this={list}
-			on:click={() => deselectAllLayers()}
-			on:dragover={updateInsertLine}
-			on:dragend={drop}
-			on:drop={drop}
+			onclick={() => deselectAllLayers()}
+			ondragover={updateInsertLine}
+			ondragend={drop}
+			ondrop={drop}
 		>
 			{#each layers as listing, index}
 				{@const selected = fakeHighlightOfNotYetSelectedLayerBeingDragged !== undefined ? fakeHighlightOfNotYetSelectedLayerBeingDragged === listing.entry.id : listing.entry.selected}
@@ -519,8 +518,8 @@
 					data-index={index}
 					tooltip={listing.entry.tooltip}
 					{draggable}
-					on:dragstart={(e) => draggable && dragStart(e, listing)}
-					on:click={(e) => selectLayerWithModifiers(e, listing)}
+					ondragstart={(e) => draggable && dragStart(e, listing)}
+					onclick={(e) => selectLayerWithModifiers(e, listing)}
 				>
 					{#if listing.entry.childrenAllowed}
 						<button
@@ -530,7 +529,7 @@
 							title={listing.entry.expanded
 								? "Collapse (Click) / Collapse All (Alt Click)"
 								: `Expand (Click) / Expand All (Alt Click)${listing.entry.ancestorOfSelected ? "\n(A selected layer is contained within)" : ""}`}
-							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
+							onclick={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
 							tabindex="0"
 						></button>
 					{:else}
@@ -547,24 +546,26 @@
 					{#if listing.entry.name === "Artboard"}
 						<IconLabel icon="Artboard" class={"layer-type-icon"} />
 					{/if}
-					<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
+					<LayoutRow class="layer-name" ondblclick={() => onEditLayerName(listing)}>
 						<input
 							data-text-input
 							type="text"
 							value={listing.entry.alias}
 							placeholder={listing.entry.name}
 							disabled={!listing.editingName}
-							on:blur={() => onEditLayerNameDeselect(listing)}
-							on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}
-							on:keydown={(e) => e.key === "Enter" && onEditLayerNameChange(listing, e)}
-							on:change={(e) => onEditLayerNameChange(listing, e)}
+							onblur={() => onEditLayerNameDeselect(listing)}
+							onkeydown={(e) => {
+								if (e.key === "Escape") onEditLayerNameDeselect(listing);
+								if (e.key === "Enter") onEditLayerNameChange(listing, e);
+							}}
+							onchange={(e) => onEditLayerNameChange(listing, e)}
 						/>
 					</LayoutRow>
 					{#if !listing.entry.unlocked || !listing.entry.parentsUnlocked}
 						<IconButton
 							class={"status-toggle"}
 							classes={{ inherited: !listing.entry.parentsUnlocked }}
-							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
+							onclick={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
 							size={24}
 							icon={listing.entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
 							hoverIcon={listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
@@ -574,7 +575,7 @@
 					<IconButton
 						class={"status-toggle"}
 						classes={{ inherited: !listing.entry.parentsVisible }}
-						action={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
+						onclick={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
 						size={24}
 						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
 						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
@@ -584,7 +585,7 @@
 			{/each}
 		</LayoutCol>
 		{#if draggingData && !draggingData.highlightFolder && dragInPanel}
-			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`} />
+			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`}></div>
 		{/if}
 	</LayoutRow>
 	<LayoutRow class="bottom-bar" scrollableX={true}>

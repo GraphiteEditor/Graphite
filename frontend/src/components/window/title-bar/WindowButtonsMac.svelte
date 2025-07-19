@@ -1,13 +1,17 @@
 <script lang="ts">
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
-	export let maximized = false;
+	type Props = {
+		maximized?: boolean;
+	};
+
+	let { maximized = false }: Props = $props();
 </script>
 
 <LayoutRow class="window-buttons-mac">
-	<div class="close" title="Close" />
-	<div class="minimize" title={maximized ? "Minimize" : "Maximize"} />
-	<div class="zoom" title="Zoom" />
+	<div class="close" title="Close"></div>
+	<div class="minimize" title={maximized ? "Minimize" : "Maximize"}></div>
+	<div class="zoom" title="Zoom"></div>
 </LayoutRow>
 
 <style lang="scss" global>

@@ -2,7 +2,11 @@
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	export let text: string;
+	type Props = {
+		text: string;
+	};
+
+	let { text }: Props = $props();
 </script>
 
 <LayoutRow class="window-title">

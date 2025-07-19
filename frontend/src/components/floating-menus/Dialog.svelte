@@ -16,7 +16,7 @@
 
 	const dialog = getContext<DialogState>("dialog");
 
-	let self: FloatingMenu | undefined;
+	let self: FloatingMenu | undefined = $state();
 
 	onMount(() => {
 		// Focus the button which is marked as emphasized, or otherwise the first button, in the popup
@@ -41,14 +41,14 @@
 				<div class="widget-layout details">
 					<div class="widget-span row"><TextLabel bold={true}>The editor crashed — sorry about that</TextLabel></div>
 					<div class="widget-span row"><TextLabel>Please report this by filing an issue on GitHub:</TextLabel></div>
-					<div class="widget-span row"><TextButton label="Report Bug" icon="Warning" flush={true} action={() => window.open(githubUrl($dialog.panicDetails), "_blank")} /></div>
+					<div class="widget-span row"><TextButton label="Report Bug" icon="Warning" flush={true} onclick={() => window.open(githubUrl($dialog.panicDetails), "_blank")} /></div>
 					<div class="widget-span row"><TextLabel multiline={true}>Reload the editor to continue. If this occurs<br />immediately on repeated reloads, clear storage:</TextLabel></div>
 					<div class="widget-span row">
 						<TextButton
 							label="Clear Saved Documents"
 							icon="Trash"
 							flush={true}
-							action={async () => {
+							onclick={async () => {
 								await wipeDocuments();
 								window.location.reload();
 							}}
@@ -68,8 +68,8 @@
 			<WidgetLayout layout={$dialog.buttons} class="details" />
 		{/if}
 		{#if $dialog.panicDetails}
-			<TextButton label="Copy Error Log" action={() => navigator.clipboard.writeText($dialog.panicDetails)} />
-			<TextButton label="Reload" emphasized={true} action={() => window.location.reload()} />
+			<TextButton label="Copy Error Log" onclick={() => navigator.clipboard.writeText($dialog.panicDetails)} />
+			<TextButton label="Reload" emphasized={true} onclick={() => window.location.reload()} />
 		{/if}
 	</LayoutRow>
 </FloatingMenu>

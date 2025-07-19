@@ -1,8 +1,10 @@
 import { type Editor } from "@graphite/editor";
-import { DisplayDialogPanic } from "@graphite/messages";
+
 import { type DialogState } from "@graphite/state-providers/dialog";
 import { browserVersion, operatingSystem } from "@graphite/utility-functions/platform";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
+
+import { DisplayDialogPanic } from "@graphite/messages.svelte";
 
 export function createPanicManager(editor: Editor, dialogState: DialogState) {
 	// Code panic dialog and console error

@@ -1,9 +1,5 @@
-<svelte:options accessors={true} />
-
 <script lang="ts">
-	import { createEventDispatcher, tick, onDestroy, onMount } from "svelte";
-
-	import type { MenuListEntry, MenuDirection } from "@graphite/messages";
+	import { tick, onDestroy, onMount } from "svelte";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
@@ -14,42 +10,52 @@
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
+	import type { MenuListEntry, MenuDirection } from "@graphite/messages.svelte";
 
-	let self: FloatingMenu | undefined;
-	let scroller: LayoutCol | undefined;
-	let searchTextInput: TextInput | undefined;
+	let self: FloatingMenu | undefined = $state();
+	let scroller: LayoutCol | undefined = $state();
+	let searchTextInput: TextInput | undefined = $state();
 
-	const dispatch = createEventDispatcher<{ open: boolean; activeEntry: MenuListEntry; hoverInEntry: MenuListEntry; hoverOutEntry: undefined; naturalWidth: number }>();
+	type Props = {
+		entries: MenuListEntry[][];
+		activeEntry?: MenuListEntry | undefined;
+		open: boolean;
+		direction?: MenuDirection;
+		minWidth?: number;
+		drawIcon?: boolean;
+		interactive?: boolean;
+		scrollableY?: boolean;
+		virtualScrollingEntryHeight?: number;
+		tooltip?: string | undefined;
+		onhoverOutEntry?: () => void;
+		onhoverInEntry?: (entry: MenuListEntry) => void;
+		onnaturalWidth?: (width: number) => void;
+		onactiveEntry?: (activeEntry: MenuListEntry) => void;
+	};
 
-	export let entries: MenuListEntry[][];
-	export let activeEntry: MenuListEntry | undefined = undefined;
-	export let open: boolean;
-	export let direction: MenuDirection = "Bottom";
-	export let minWidth = 0;
-	export let drawIcon = false;
-	export let interactive = false;
-	export let scrollableY = false;
-	export let virtualScrollingEntryHeight = 0;
-	export let tooltip: string | undefined = undefined;
+	let {
+		entries = $bindable(),
+		activeEntry = undefined,
+		open = $bindable(false),
+		direction = "Bottom",
+		minWidth = 0,
+		drawIcon = false,
+		interactive = false,
+		scrollableY = false,
+		virtualScrollingEntryHeight = 0,
+		tooltip = undefined,
+		onhoverOutEntry,
+		onhoverInEntry,
+		onnaturalWidth,
+		onactiveEntry,
+	}: Props = $props();
 
 	// Keep the child references outside of the entries array so as to avoid infinite recursion.
-	let childReferences: MenuList[][] = [];
-	let search = "";
+	let childReferences: MenuList[][] = $state([]);
+	let search = $state("");
 
-	let highlighted = activeEntry as MenuListEntry | undefined;
-	let virtualScrollingEntriesStart = 0;
-
-	// Called only when `open` is changed from outside this component
-	$: watchOpen(open);
-	$: watchEntries(entries);
-	$: watchRemeasureWidth(filteredEntries, drawIcon);
-	$: watchHighlightedWithSearch(filteredEntries, open);
-
-	$: filteredEntries = entries.map((section) => section.filter((entry) => inSearch(search, entry)));
-	$: virtualScrollingTotalHeight = filteredEntries.length === 0 ? 0 : filteredEntries[0].length * virtualScrollingEntryHeight;
-	$: virtualScrollingStartIndex = Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight) || 0;
-	$: virtualScrollingEndIndex = filteredEntries.length === 0 ? 0 : Math.min(filteredEntries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
-	$: startIndex = virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0;
+	let highlighted = $state(activeEntry as MenuListEntry | undefined);
+	let virtualScrollingEntriesStart = $state(0);
 
 	// TODO: Move keyboard input handling entirely to the unified system in `input.ts`.
 	// TODO: The current approach is hacky and blocks the allowances for shortcuts like the key to open the browser's dev tools.
@@ -116,12 +122,13 @@
 		return !search || entry.label.toLowerCase().includes(search.toLowerCase());
 	}
 
-	function watchOpen(open: boolean) {
-		if (open && !inNestedMenuList()) addEventListener("keydown", keydown);
+	function watchOpen(value: boolean) {
+		if (value && !inNestedMenuList()) addEventListener("keydown", keydown);
 		else if (!inNestedMenuList()) removeEventListener("keydown", keydown);
 
 		highlighted = activeEntry;
-		dispatch("open", open);
+		// dispatch("open", value);
+		// open = value;
 
 		search = "";
 	}
@@ -151,42 +158,43 @@
 		if (menuListEntry.action) menuListEntry.action();
 
 		// Notify the parent about the clicked entry as the new active entry
-		dispatch("activeEntry", menuListEntry);
+		onactiveEntry?.(menuListEntry);
 
 		// Close the containing menu
 		let childReference = getChildReference(menuListEntry);
 		if (childReference) {
 			childReference.open = false;
-			entries = entries;
+			// entries = entries;
 		}
-		dispatch("open", false);
+		// dispatch("open", false);
 		open = false;
 	}
 
 	function onEntryPointerEnter(menuListEntry: MenuListEntry) {
 		if (!menuListEntry.children?.length) {
-			dispatch("hoverInEntry", menuListEntry);
+			onhoverInEntry?.(menuListEntry);
 			return;
 		}
 
 		let childReference = getChildReference(menuListEntry);
 		if (childReference) {
 			childReference.open = true;
-			entries = entries;
-		} else dispatch("open", true);
+			// entries = entries;
+		} else open = true;
 	}
 
 	function onEntryPointerLeave(menuListEntry: MenuListEntry) {
 		if (!menuListEntry.children?.length) {
-			dispatch("hoverOutEntry");
+			// dispatch("hoverOutEntry");
+			onhoverOutEntry?.();
 			return;
 		}
 
 		let childReference = getChildReference(menuListEntry);
 		if (childReference) {
 			childReference.open = false;
-			entries = entries;
-		} else dispatch("open", false);
+			// entries = entries;
+		} else open = false;
 	}
 
 	function isEntryOpen(menuListEntry: MenuListEntry): boolean {
@@ -385,30 +393,49 @@
 	export function scrollViewTo(distanceDown: number) {
 		scroller?.div?.()?.scrollTo(0, distanceDown);
 	}
+	// Called only when `open` is changed from outside this component
+	$effect(() => {
+		watchOpen(open);
+	});
+	$effect(() => {
+		watchEntries(entries);
+	});
+	let filteredEntries = $derived(entries.map((section) => section.filter((entry) => inSearch(search, entry))));
+	$effect(() => {
+		watchRemeasureWidth(filteredEntries, drawIcon);
+	});
+	$effect(() => {
+		watchHighlightedWithSearch(filteredEntries, open);
+	});
+	let virtualScrollingTotalHeight = $derived(filteredEntries.length === 0 ? 0 : filteredEntries[0].length * virtualScrollingEntryHeight);
+	let virtualScrollingStartIndex = $derived(Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight) || 0);
+	let virtualScrollingEndIndex = $derived(filteredEntries.length === 0 ? 0 : Math.min(filteredEntries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight));
+	let startIndex = $derived(virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0);
+
+	export { entries, activeEntry, open, direction, minWidth, drawIcon, interactive, scrollableY, virtualScrollingEntryHeight, tooltip };
 </script>
 
 <FloatingMenu
 	class="menu-list"
-	{open}
-	on:open={({ detail }) => (open = detail)}
-	on:naturalWidth
+	bind:open
 	type="Dropdown"
 	windowEdgeMargin={0}
 	escapeCloses={false}
 	{direction}
 	{minWidth}
 	scrollableY={scrollableY && virtualScrollingEntryHeight === 0}
+	{onnaturalWidth}
 	bind:this={self}
 >
 	{#if search.length > 0}
-		<TextInput class="search" value={search} on:value={({ detail }) => (search = detail)} bind:this={searchTextInput}></TextInput>
+		<TextInput class="search" bind:value={search} bind:this={searchTextInput}></TextInput>
 	{/if}
 	<!-- If we put the scrollableY on the layoutcol for non-font dropdowns then for some reason it always creates a tiny scrollbar.
 	However when we are using the virtual scrolling then we need the layoutcol to be scrolling so we can bind the events without using `self`. -->
 	<LayoutCol
 		bind:this={scroller}
 		scrollableY={scrollableY && virtualScrollingEntryHeight !== 0}
-		on:scroll={onScroll}
+		onscroll={onScroll}
 		styles={{ "min-width": virtualScrollingEntryHeight ? `${minWidth}px` : `inherit` }}
 	>
 		{#if virtualScrollingEntryHeight}
@@ -424,14 +451,14 @@
 					classes={{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: Boolean(entry.disabled) }}
 					styles={{ height: virtualScrollingEntryHeight || "20px" }}
 					{tooltip}
-					on:click={() => !entry.disabled && onEntryClick(entry)}
-					on:pointerenter={() => !entry.disabled && onEntryPointerEnter(entry)}
-					on:pointerleave={() => !entry.disabled && onEntryPointerLeave(entry)}
+					onclick={() => !entry.disabled && onEntryClick(entry)}
+					onpointerenter={() => !entry.disabled && onEntryPointerEnter(entry)}
+					onpointerleave={() => !entry.disabled && onEntryPointerLeave(entry)}
 				>
 					{#if entry.icon && drawIcon}
 						<IconLabel icon={entry.icon} iconSizeOverride={16} class="entry-icon" />
 					{:else if drawIcon}
-						<div class="no-icon" />
+						<div class="no-icon"></div>
 					{/if}
 
 					{#if entry.font}
@@ -447,18 +474,13 @@
 					{#if entry.children?.length}
 						<IconLabel class="submenu-arrow" icon="DropdownArrow" />
 					{:else}
-						<div class="no-submenu-arrow" />
+						<div class="no-submenu-arrow"></div>
 					{/if}
 
 					{#if entry.children}
 						<MenuList
-							on:naturalWidth={({ detail }) => {
-								// We do a manual dispatch here instead of just `on:naturalWidth` as a workaround for the <script> tag
-								// at the top of this file displaying a "'render' implicitly has return type 'any' because..." error.
-								// See explanation at <https://github.com/sveltejs/language-tools/issues/452#issuecomment-723148184>.
-								dispatch("naturalWidth", detail);
-							}}
-							open={getChildReference(entry)?.open || false}
+							{onnaturalWidth}
+							open={entry?.open ?? false}
 							direction="TopRight"
 							entries={entry.children}
 							{minWidth}

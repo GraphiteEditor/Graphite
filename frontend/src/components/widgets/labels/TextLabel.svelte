@@ -1,26 +1,53 @@
 <script lang="ts">
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
-	let styleName = "";
-	export { styleName as style };
-	export let styles: Record<string, string | number | undefined> = {};
-	export let disabled = false;
-	export let bold = false;
-	export let italic = false;
-	export let centerAlign = false;
-	export let tableAlign = false;
-	export let minWidth = 0;
-	export let multiline = false;
-	export let tooltip: string | undefined = undefined;
-	export let checkboxId: bigint | undefined = undefined;
+	import type { Snippet } from "svelte";
+	import type { SvelteHTMLElements } from "svelte/elements";
 
-	$: extraClasses = Object.entries(classes)
-		.flatMap(([className, stateName]) => (stateName ? [className] : []))
-		.join(" ");
-	$: extraStyles = Object.entries(styles)
-		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
-		.join(" ");
+	type LabelHTMLElementProps = SvelteHTMLElements["label"];
+
+	type Props = {
+		class?: string;
+		classes?: Record<string, boolean>;
+		style?: string;
+		styles?: Record<string, string | number | undefined>;
+		disabled?: boolean;
+		bold?: boolean;
+		italic?: boolean;
+		centerAlign?: boolean;
+		tableAlign?: boolean;
+		minWidth?: number;
+		multiline?: boolean;
+		tooltip?: string | undefined;
+		checkboxId?: bigint | undefined;
+		children?: Snippet;
+	} & LabelHTMLElementProps;
+
+	let {
+		class: className = "",
+		classes = {},
+		style: styleName = "",
+		styles = {},
+		disabled = false,
+		bold = false,
+		italic = false,
+		centerAlign = false,
+		tableAlign = false,
+		minWidth = 0,
+		multiline = false,
+		tooltip = undefined,
+		checkboxId = undefined,
+		children,
+	}: Props = $props();
+
+	let extraClasses = $derived(
+		Object.entries(classes)
+			.flatMap(([className, stateName]) => (stateName ? [className] : []))
+			.join(" "),
+	);
+	let extraStyles = $derived(
+		Object.entries(styles)
+			.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
+			.join(" "),
+	);
 </script>
 
 <label
@@ -36,7 +63,7 @@
 	title={tooltip}
 	for={checkboxId !== undefined ? `checkbox-input-${checkboxId}` : undefined}
 >
-	<slot />
+	{@render children?.()}
 </label>
 
 <style lang="scss" global>

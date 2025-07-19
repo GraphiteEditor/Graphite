@@ -1,13 +1,17 @@
 <script lang="ts">
-	import { type SeparatorDirection, type SeparatorType } from "@graphite/messages";
+	import { type SeparatorDirection, type SeparatorType } from "@graphite/messages.svelte";
 
-	export let direction: SeparatorDirection = "Horizontal";
-	export let type: SeparatorType = "Unrelated";
+	type Props = {
+		direction?: SeparatorDirection;
+		type?: SeparatorType;
+	};
+
+	let { direction = "Horizontal", type = "Unrelated" }: Props = $props();
 </script>
 
 <div class={`separator ${direction.toLowerCase()} ${type.toLowerCase()}`}>
 	{#if type === "Section"}
-		<div />
+		<div></div>
 	{/if}
 </div>
 

@@ -1,31 +1,35 @@
 <script lang="ts">
-	import { createEventDispatcher, onDestroy } from "svelte";
-
-	import { Color, type Gradient } from "@graphite/messages";
+	import { onMount } from "svelte";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import { Color, type Gradient } from "@graphite/messages.svelte";
 
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
 
-	const dispatch = createEventDispatcher<{ activeMarkerIndexChange: number | undefined; gradient: Gradient; dragging: boolean }>();
+	type Props = {
+		activeMarkerIndex: number | undefined;
+		drag: boolean;
+		gradient: Gradient;
+		ongradient?: (gradient: Gradient) => void;
+		onactiveMarkerIndexChange?: (index: number | undefined) => void;
+	};
 
-	export let gradient: Gradient;
-	export let activeMarkerIndex = 0 as number | undefined;
+	let { activeMarkerIndex = 0, drag = $bindable(), gradient, ongradient, onactiveMarkerIndexChange }: Props = $props();
 	// export let disabled = false;
 	// export let tooltip: string | undefined = undefined;
 
-	let markerTrack: LayoutRow | undefined = undefined;
+	let markerTrack: LayoutRow | undefined = $state(undefined);
 	let positionRestore: number | undefined = undefined;
 	let deletionRestore: boolean | undefined = undefined;
 
 	function markerPointerDown(e: PointerEvent, index: number) {
 		// Left-click to select and begin potentially dragging
 		if (e.button === BUTTON_LEFT) {
-			activeMarkerIndex = index;
-			dispatch("activeMarkerIndexChange", index);
+			// activeMarkerIndex = index;
+			onactiveMarkerIndexChange?.(index);
 			addEvents();
 			return;
 		}
@@ -69,11 +73,9 @@
 		if (index === -1) index = gradient.stops.length;
 
 		gradient.stops.splice(index, 0, { position, color });
-		activeMarkerIndex = index;
 		deletionRestore = true;
-
-		dispatch("activeMarkerIndexChange", index);
-		dispatch("gradient", gradient);
+		onactiveMarkerIndexChange?.(index);
+		ongradient?.(gradient);
 
 		addEvents();
 	}
@@ -91,15 +93,10 @@
 		if (gradient.stops.length <= 2) return;
 
 		gradient.stops.splice(index, 1);
-		if (gradient.stops.length === 0) {
-			activeMarkerIndex = undefined;
-		} else {
-			activeMarkerIndex = Math.max(0, Math.min(gradient.stops.length - 1, index));
-		}
+		let newMarkerIndex = gradient.stops.length === 0 ? undefined : Math.max(0, Math.min(gradient.stops.length - 1, index));
 		deletionRestore = undefined;
-
-		dispatch("activeMarkerIndexChange", activeMarkerIndex);
-		dispatch("gradient", gradient);
+		onactiveMarkerIndexChange?.(newMarkerIndex);
+		ongradient?.(gradient);
 	}
 
 	function moveMarker(e: PointerEvent, index: number) {
@@ -113,7 +110,7 @@
 		if (deletionRestore === undefined) {
 			deletionRestore = false;
 
-			dispatch("dragging", true);
+			drag = true;
 		}
 
 		setPosition(index, position);
@@ -124,10 +121,9 @@
 		active.position = position;
 		gradient.stops.sort((a, b) => a.position - b.position);
 		if (gradient.stops.indexOf(active) !== activeMarkerIndex) {
-			activeMarkerIndex = gradient.stops.indexOf(active);
-			dispatch("activeMarkerIndexChange", gradient.stops.indexOf(active));
+			onactiveMarkerIndexChange?.(gradient.stops.indexOf(active));
 		}
-		dispatch("gradient", gradient);
+		ongradient?.(gradient);
 	}
 
 	function abortDrag() {
@@ -148,7 +144,7 @@
 		positionRestore = undefined;
 		deletionRestore = undefined;
 
-		dispatch("dragging", false);
+		drag = false;
 	}
 
 	function onPointerMove(e: PointerEvent) {
@@ -187,10 +183,13 @@
 		document.removeEventListener("keydown", onKeyDown);
 	}
 
-	document.addEventListener("keydown", deleteStop);
-	onDestroy(() => {
-		removeEvents();
-		document.removeEventListener("keydown", deleteStop);
+	onMount(() => {
+		document.addEventListener("keydown", deleteStop);
+
+		return () => {
+			removeEvents();
+			document.removeEventListener("keydown", deleteStop);
+		};
 	});
 
 	// # Backend -> Frontend
@@ -218,7 +217,7 @@
 		"--gradient-stops": gradient.toLinearGradientCSS(),
 	}}
 >
-	<LayoutRow class="gradient-strip" on:pointerdown={insertStop}></LayoutRow>
+	<LayoutRow class="gradient-strip" onpointerdown={insertStop}></LayoutRow>
 	<LayoutRow class="marker-track" bind:this={markerTrack}>
 		{#each gradient.stops as marker, index}
 			<svg
@@ -226,7 +225,7 @@
 				class:active={index === activeMarkerIndex}
 				style:--marker-position={marker.position}
 				style:--marker-color={marker.color.toRgbCSS()}
-				on:pointerdown={(e) => markerPointerDown(e, index)}
+				onpointerdown={(e) => markerPointerDown(e, index)}
 				data-gradient-marker
 				xmlns="http://www.w3.org/2000/svg"
 				viewBox="0 0 12 12"

@@ -1,7 +1,8 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import type { FrontendGraphOutput, FrontendGraphInput } from "@graphite/messages";
+
+import type { FrontendGraphOutput, FrontendGraphInput } from "@graphite/messages.svelte";
 import {
 	type Box,
 	type FrontendClickTargets,
@@ -26,7 +27,7 @@ import {
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
 	UpdateWirePathInProgress,
-} from "@graphite/messages";
+} from "@graphite/messages.svelte";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createNodeGraphState(editor: Editor) {

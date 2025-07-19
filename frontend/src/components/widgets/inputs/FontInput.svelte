@@ -1,36 +1,35 @@
 <script lang="ts">
-	import { createEventDispatcher, getContext, onMount, tick } from "svelte";
+	import { getContext, onMount, tick } from "svelte";
 
-	import type { MenuListEntry } from "@graphite/messages";
 	import type { FontsState } from "@graphite/state-providers/fonts";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import type { MenuListEntry } from "@graphite/messages.svelte";
 
 	const fonts = getContext<FontsState>("fonts");
 
-	const dispatch = createEventDispatcher<{
+	let menuList: MenuList | undefined = $state();
+
+	type Props = {
 		fontFamily: string;
 		fontStyle: string;
-		changeFont: { fontFamily: string; fontStyle: string; fontFileUrl: string | undefined };
-	}>();
+		isStyle?: boolean;
+		disabled?: boolean;
+		tooltip?: string | undefined;
+		onchangeFont?: (arg1: { fontFamily: string; fontStyle: string; fontFileUrl: string | undefined }) => void;
+		onfontFamily?: (fontFamily: string) => void;
+		onfontStyle?: (fontStyle: string) => void;
+	};
 
-	let menuList: MenuList | undefined;
+	let { fontFamily, fontStyle, isStyle = false, disabled = false, tooltip = undefined, onchangeFont, onfontFamily, onfontStyle }: Props = $props();
 
-	export let fontFamily: string;
-	export let fontStyle: string;
-	export let isStyle = false;
-	export let disabled = false;
-	export let tooltip: string | undefined = undefined;
-
-	let open = false;
-	let entries: MenuListEntry[] = [];
-	let activeEntry: MenuListEntry | undefined = undefined;
-	let minWidth = isStyle ? 0 : 300;
-
-	$: watchFont(fontFamily, fontStyle);
+	let open = $state(false);
+	let entries: MenuListEntry[] = $state([]);
+	let activeEntry: MenuListEntry | undefined = $state(undefined);
+	let minWidth = $state(isStyle ? 0 : 300);
 
 	async function watchFont(..._: string[]) {
 		// We set this function's result to a local variable to avoid reading from `entries` which causes Svelte to trigger an update that results in an infinite loop
@@ -64,19 +63,19 @@
 		let style;
 
 		if (isStyle) {
-			dispatch("fontStyle", newName);
+			onfontStyle?.(newName);
 
 			family = fontFamily;
 			style = newName;
 		} else {
-			dispatch("fontFamily", newName);
+			onfontFamily?.(newName);
 
 			family = newName;
 			style = "Regular (400)";
 		}
 
 		const fontFileUrl = await fonts.getFontFileUrl(family, style);
-		dispatch("changeFont", { fontFamily: family, fontStyle: style, fontFileUrl });
+		onchangeFont?.({ fontFamily: family, fontStyle: style, fontFileUrl });
 	}
 
 	async function getEntries(): Promise<MenuListEntry[]> {
@@ -100,6 +99,9 @@
 
 		activeEntry = getActiveEntry(entries);
 	});
+	$effect(() => {
+		watchFont(fontFamily, fontStyle);
+	});
 </script>
 
 <!-- TODO: Combine this widget into the DropdownInput widget -->
@@ -110,18 +112,17 @@
 		styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}
 		{tooltip}
 		tabindex={disabled ? -1 : 0}
-		on:click={toggleOpen}
+		onclick={toggleOpen}
 		data-floating-menu-spawner
 	>
 		<TextLabel class="dropdown-label">{activeEntry?.value || ""}</TextLabel>
 		<IconLabel class="dropdown-arrow" icon="DropdownArrow" />
 	</LayoutRow>
 	<MenuList
-		on:naturalWidth={({ detail }) => isStyle && (minWidth = detail)}
 		{activeEntry}
-		on:activeEntry={({ detail }) => (activeEntry = detail)}
-		{open}
-		on:open={({ detail }) => (open = detail)}
+		onnaturalWidth={(detail) => isStyle && (minWidth = detail)}
+		onactiveEntry={(detail) => (activeEntry = detail)}
+		bind:open
 		entries={[entries]}
 		minWidth={isStyle ? 0 : minWidth}
 		virtualScrollingEntryHeight={isStyle ? 0 : 20}

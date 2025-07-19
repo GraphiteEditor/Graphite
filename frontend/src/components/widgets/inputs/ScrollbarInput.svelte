@@ -1,10 +1,4 @@
-<script lang="ts" context="module">
-	export type ScrollbarDirection = "Horizontal" | "Vertical";
-</script>
-
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
-
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS, PRESS_REPEAT_INTERVAL_RAPID_MS } from "@graphite/io-managers/input";
 
 	const ARROW_CLICK_DISTANCE = 0.05;
@@ -19,26 +13,29 @@
 
 	const clamp01 = (value: number): number => Math.min(Math.max(value, 0), 1);
 
-	const dispatch = createEventDispatcher<{ trackShift: number; thumbPosition: number; thumbDragStart: undefined; thumbDragEnd: undefined; thumbDragAbort: undefined }>();
+	type Props = {
+		direction?: Graphite.Axis;
+		thumbPosition?: number;
+		thumbLength?: number;
+		ontrackShift?: (trackShift: number) => void;
+		onthumbPosition?: (trackShift: number) => void;
+		onthumbDragEnd?: () => void;
+		onthumbDragStart?: () => void;
+		onthumbDragAbort?: () => void;
+	};
 
-	export let direction: ScrollbarDirection = "Vertical";
-	export let thumbPosition = 0.5;
-	export let thumbLength = 0.5;
+	let { direction = "Vertical", thumbPosition = 0.5, thumbLength = 0.5, ontrackShift, onthumbPosition, onthumbDragEnd, onthumbDragStart, onthumbDragAbort }: Props = $props();
 
-	let scrollTrack: HTMLDivElement | undefined;
-	let dragging = false;
+	let scrollTrack: HTMLDivElement | undefined = $state();
+	let dragging = $state(false);
 	let pressingTrack = false;
 	let pressingArrow = false;
 	let repeatTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
 	let pointerPositionLastFrame = 0;
-	let thumbTop: string | undefined = undefined;
-	let thumbBottom: string | undefined = undefined;
-	let thumbLeft: string | undefined = undefined;
-	let thumbRight: string | undefined = undefined;
 
-	$: start = thumbToTrack(thumbLength, thumbPosition) - thumbLength / 2;
-	$: end = 1 - thumbToTrack(thumbLength, thumbPosition) - thumbLength / 2;
-	$: [thumbTop, thumbBottom, thumbLeft, thumbRight] = direction === "Vertical" ? [`${start * 100}%`, `${end * 100}%`, "0%", "0%"] : ["0%", "0%", `${start * 100}%`, `${end * 100}%`];
+	let start = $derived(thumbToTrack(thumbLength, thumbPosition) - thumbLength / 2);
+	let end = $derived(1 - thumbToTrack(thumbLength, thumbPosition) - thumbLength / 2);
+	let [thumbTop, thumbBottom, thumbLeft, thumbRight] = $derived(direction === "Vertical" ? [`${start * 100}%`, `${end * 100}%`, "0%", "0%"] : ["0%", "0%", `${start * 100}%`, `${end * 100}%`]);
 
 	function trackLength(): number | undefined {
 		if (scrollTrack === undefined) return undefined;
@@ -54,7 +51,7 @@
 		if (dragging) return;
 
 		dragging = true;
-		dispatch("thumbDragStart");
+		onthumbDragStart?.();
 		pointerPositionLastFrame = pointerPosition(e);
 
 		addEvents();
@@ -65,14 +62,14 @@
 			if (!pressingArrow) return;
 
 			const distance = afterInitialDelay ? ARROW_REPEAT_DISTANCE : ARROW_CLICK_DISTANCE;
-			dispatch("trackShift", -direction * distance);
+			ontrackShift?.(-direction * distance);
 
 			if (afterInitialDelay) repeatTimeout = setTimeout(sendMove, PRESS_REPEAT_INTERVAL_RAPID_MS);
 			afterInitialDelay = true;
 		};
 
 		pressingArrow = true;
-		dispatch("thumbDragStart");
+		onthumbDragStart?.();
 		let afterInitialDelay = false;
 		sendMove();
 		repeatTimeout = setTimeout(sendMove, PRESS_REPEAT_DELAY_MS);
@@ -108,13 +105,13 @@
 			}
 
 			const move = newPointer - oldPointer < 0 ? 1 : -1;
-			dispatch("trackShift", move);
+			ontrackShift?.(move);
 
 			if (afterInitialDelay) repeatTimeout = setTimeout(sendMove, PRESS_REPEAT_INTERVAL_MS);
 			afterInitialDelay = true;
 		};
 
-		dispatch("thumbDragStart");
+		onthumbDragStart?.();
 		pressingTrack = true;
 		let afterInitialDelay = false;
 		sendMove();
@@ -128,17 +125,17 @@
 			pressingTrack = false;
 			pressingArrow = false;
 			clearTimeout(repeatTimeout);
-			dispatch("thumbDragAbort");
+			onthumbDragAbort?.();
 		}
 
 		if (dragging) {
 			dragging = false;
-			dispatch("thumbDragAbort");
+			onthumbDragAbort?.();
 		}
 	}
 
 	function onPointerUp() {
-		if (dragging) dispatch("thumbDragEnd");
+		if (dragging) onthumbDragEnd?.();
 
 		dragging = false;
 		pressingTrack = false;
@@ -172,7 +169,7 @@
 			const dragDelta = positionPositionThisFrame - pointerPositionLastFrame;
 			const movement = dragDelta / (length * (1 - thumbLength));
 			const newThumbPosition = clamp01(thumbPosition + movement);
-			dispatch("thumbPosition", newThumbPosition);
+			onthumbPosition?.(newThumbPosition);
 
 			pointerPositionLastFrame = positionPositionThisFrame;
 
@@ -207,11 +204,11 @@
 </script>
 
 <div class={`scrollbar-input ${direction.toLowerCase()}`}>
-	<button class="arrow decrease" on:pointerdown={() => pressArrow(-1)} tabindex="-1" data-scrollbar-arrow></button>
-	<div class="scroll-track" on:pointerdown={pressTrack} bind:this={scrollTrack}>
-		<div class="scroll-thumb" on:pointerdown={dragThumb} class:dragging style:top={thumbTop} style:bottom={thumbBottom} style:left={thumbLeft} style:right={thumbRight} />
+	<button class="arrow decrease" onpointerdown={() => pressArrow(-1)} tabindex="-1" data-scrollbar-arrow></button>
+	<div class="scroll-track" onpointerdown={pressTrack} bind:this={scrollTrack}>
+		<div class="scroll-thumb" onpointerdown={dragThumb} class:dragging style:top={thumbTop} style:bottom={thumbBottom} style:left={thumbLeft} style:right={thumbRight}></div>
 	</div>
-	<button class="arrow increase" on:pointerdown={() => pressArrow(1)} tabindex="-1" data-scrollbar-arrow></button>
+	<button class="arrow increase" onpointerdown={() => pressArrow(1)} tabindex="-1" data-scrollbar-arrow></button>
 </div>
 
 <style lang="scss" global>

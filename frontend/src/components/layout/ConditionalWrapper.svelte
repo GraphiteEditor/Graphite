@@ -1,14 +1,21 @@
 <script lang="ts">
-	export let condition: boolean;
-	export let wrapperClass = "";
+	import type { Snippet } from "svelte";
+
+	type Props = {
+		condition: boolean;
+		wrapperClass?: string;
+		children?: Snippet;
+	};
+
+	let { condition, wrapperClass = "", children }: Props = $props();
 </script>
 
 {#if condition}
 	<div class={wrapperClass}>
-		<slot />
+		{@render children?.()}
 	</div>
 {:else}
-	<slot />
+	{@render children?.()}
 {/if}
 
 <style lang="scss" global></style>

@@ -1,24 +1,30 @@
 <script lang="ts">
+	import type { SvelteHTMLElements } from "svelte/elements";
+
 	import { type IconName, type IconSize } from "@graphite/utility-functions/icons";
 
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 
-	export let icon: IconName;
-	export let hoverIcon: IconName | undefined = undefined;
-	export let size: IconSize;
-	export let disabled = false;
-	export let active = false;
-	export let tooltip: string | undefined = undefined;
-	// Callbacks
-	export let action: (e?: MouseEvent) => void;
+	type ButtonHTMLElementProps = SvelteHTMLElements["button"];
 
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
+	type Props = {
+		class?: string;
+		classes?: Record<string, boolean>;
+		icon: IconName;
+		hoverIcon?: IconName | undefined;
+		size: IconSize;
+		disabled?: boolean;
+		active?: boolean;
+		tooltip?: string | undefined;
+	} & ButtonHTMLElementProps;
 
-	$: extraClasses = Object.entries(classes)
-		.flatMap(([className, stateName]) => (stateName ? [className] : []))
-		.join(" ");
+	let { class: className = "", classes = {}, icon, hoverIcon = undefined, size, disabled = false, active = false, tooltip = undefined, ...rest }: Props = $props();
+
+	let extraClasses = $derived(
+		Object.entries(classes)
+			.flatMap(([className, stateName]) => (stateName ? [className] : []))
+			.join(" "),
+	);
 </script>
 
 <button
@@ -26,11 +32,10 @@
 	class:hover-icon={hoverIcon && !disabled}
 	class:disabled
 	class:active
-	on:click={action}
 	{disabled}
 	title={tooltip}
 	tabindex={active ? -1 : 0}
-	{...$$restProps}
+	{...rest}
 >
 	<IconLabel {icon} />
 	{#if hoverIcon && !disabled}
@@ -55,7 +60,7 @@
 		}
 
 		// The `where` pseudo-class does not contribtue to specificity
-		& + :where(.icon-button) {
+		& + :where(:global(.icon-button)) {
 			margin-left: 0;
 		}
 

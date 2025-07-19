@@ -1,4 +1,4 @@
-<script lang="ts" context="module">
+<script lang="ts" module>
 	import Document from "@graphite/components/panels/Document.svelte";
 	import Layers from "@graphite/components/panels/Layers.svelte";
 	import Properties from "@graphite/components/panels/Properties.svelte";
@@ -17,7 +17,7 @@
 	import { getContext, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { type LayoutKeysGroup, type Key } from "@graphite/messages";
+
 	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
 
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
@@ -29,20 +29,25 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
+	import { type LayoutKeysGroup, type Key } from "@graphite/messages.svelte";
 
 	const BUTTON_MIDDLE = 1;
 
 	const editor = getContext<Editor>("editor");
 
-	export let tabMinWidths = false;
-	export let tabCloseButtons = false;
-	export let tabLabels: { name: string; tooltip?: string }[];
-	export let tabActiveIndex: number;
-	export let panelType: PanelType | undefined = undefined;
-	export let clickAction: ((index: number) => void) | undefined = undefined;
-	export let closeAction: ((index: number) => void) | undefined = undefined;
+	type Props = {
+		tabMinWidths?: boolean;
+		tabCloseButtons?: boolean;
+		tabLabels: { name: string; tooltip?: string }[];
+		tabActiveIndex: number;
+		panelType?: PanelType | undefined;
+		clickAction?: ((index: number) => void) | undefined;
+		closeAction?: ((index: number) => void) | undefined;
+	};
 
-	let tabElements: (LayoutRow | undefined)[] = [];
+	let { tabMinWidths = false, tabCloseButtons = false, tabLabels, tabActiveIndex, panelType = undefined, clickAction = undefined, closeAction = undefined }: Props = $props();
+
+	let tabElements: (LayoutRow | undefined)[] = $state([]);
 
 	function platformModifiers(reservedKey: boolean): LayoutKeysGroup {
 		// TODO: Remove this by properly feeding these keys from a layout provided by the backend
@@ -90,7 +95,7 @@
 	}
 </script>
 
-<LayoutCol class="panel" on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)}>
+<LayoutCol class="panel" onpointerdown={() => panelType && editor.handle.setActivePanel(panelType)}>
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
 		<LayoutRow class="tab-group" scrollableX={true}>
 			{#each tabLabels as tabLabel, tabIndex}
@@ -98,18 +103,18 @@
 					class="tab"
 					classes={{ active: tabIndex === tabActiveIndex }}
 					tooltip={tabLabel.tooltip || undefined}
-					on:click={(e) => {
+					onclick={(e) => {
 						e.stopPropagation();
 						clickAction?.(tabIndex);
 					}}
-					on:auxclick={(e) => {
+					onauxclick={(e) => {
 						// Middle mouse button click
 						if (e.button === BUTTON_MIDDLE) {
 							e.stopPropagation();
 							closeAction?.(tabIndex);
 						}
 					}}
-					on:mouseup={(e) => {
+					onmouseup={(e) => {
 						// Middle mouse button click fallback for Safari:
 						// https://developer.mozilla.org/en-US/docs/Web/API/Element/auxclick_event#browser_compatibility
 						// The downside of using mouseup is that the mousedown didn't have to originate in the same element.
@@ -124,7 +129,7 @@
 					<TextLabel>{tabLabel.name}</TextLabel>
 					{#if tabCloseButtons}
 						<IconButton
-							action={(e) => {
+							onclick={(e) => {
 								e?.stopPropagation();
 								closeAction?.(tabIndex);
 							}}
@@ -142,41 +147,44 @@
 	</LayoutRow>
 	<LayoutCol class="panel-body">
 		{#if panelType}
-			<svelte:component this={PANEL_COMPONENTS[panelType]} />
+			{@const SvelteComponent = PANEL_COMPONENTS[panelType]}
+			<SvelteComponent />
 		{:else}
-			<LayoutCol class="empty-panel" on:dragover={(e) => e.preventDefault()} on:drop={dropFile}>
+			<LayoutCol class="empty-panel" ondragover={(e) => e.preventDefault()} ondrop={dropFile}>
 				<LayoutCol class="content">
 					<LayoutRow class="logotype">
 						<IconLabel icon="GraphiteLogotypeSolid" />
 					</LayoutRow>
 					<LayoutRow class="actions">
 						<table>
-							<tr>
-								<td>
-									<TextButton label="New Document" icon="File" flush={true} action={() => editor.handle.newDocumentDialog()} />
-								</td>
-								<td>
-									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
-								</td>
-							</tr>
-							<tr>
-								<td>
-									<TextButton label="Open Document" icon="Folder" flush={true} action={() => editor.handle.openDocument()} />
-								</td>
-								<td>
-									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
-								</td>
-							</tr>
-							<tr>
-								<td colspan="2">
-									<TextButton label="Open Demo Artwork" icon="Image" flush={true} action={() => editor.handle.demoArtworkDialog()} />
-								</td>
-							</tr>
-							<tr>
-								<td colspan="2">
-									<TextButton label="Support the Development Fund" icon="Heart" flush={true} action={() => editor.handle.visitUrl("https://graphite.rs/donate/")} />
-								</td>
-							</tr>
+							<tbody>
+								<tr>
+									<td>
+										<TextButton label="New Document" icon="File" flush={true} onclick={() => editor.handle.newDocumentDialog()} />
+									</td>
+									<td>
+										<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
+									</td>
+								</tr>
+								<tr>
+									<td>
+										<TextButton label="Open Document" icon="Folder" flush={true} onclick={() => editor.handle.openDocument()} />
+									</td>
+									<td>
+										<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
+									</td>
+								</tr>
+								<tr>
+									<td colspan="2">
+										<TextButton label="Open Demo Artwork" icon="Image" flush={true} onclick={() => editor.handle.demoArtworkDialog()} />
+									</td>
+								</tr>
+								<tr>
+									<td colspan="2">
+										<TextButton label="Support the Development Fund" icon="Heart" flush={true} onclick={() => editor.handle.visitUrl("https://graphite.rs/donate/")} />
+									</td>
+								</tr>
+							</tbody>
 						</table>
 					</LayoutRow>
 				</LayoutCol>

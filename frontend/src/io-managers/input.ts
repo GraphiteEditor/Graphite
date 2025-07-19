@@ -1,9 +1,9 @@
 import { get } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import { TriggerPaste } from "@graphite/messages";
+
 import { type DialogState } from "@graphite/state-providers/dialog";
-import { type DocumentState } from "@graphite/state-providers/document";
+
 import { type FullscreenState } from "@graphite/state-providers/fullscreen";
 import { type PortfolioState } from "@graphite/state-providers/portfolio";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
@@ -11,6 +11,10 @@ import { platformIsMac } from "@graphite/utility-functions/platform";
 import { extractPixelData } from "@graphite/utility-functions/rasterization";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
 import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
+
+import { TriggerPaste } from "@graphite/messages.svelte";
+import { documentContextState } from "@graphite/state-providers/document.svelte";
+import { type DocumentState } from "@graphite/state-providers/document.svelte";
 
 const BUTTON_LEFT = 0;
 const BUTTON_MIDDLE = 1;
@@ -28,7 +32,7 @@ type EventListenerTarget = {
 	removeEventListener: typeof window.removeEventListener;
 };
 
-export function createInputManager(editor: Editor, dialog: DialogState, portfolio: PortfolioState, document: DocumentState, fullscreen: FullscreenState): () => void {
+export function createInputManager(editor: Editor, dialog: DialogState, portfolio: PortfolioState, _document: DocumentState, fullscreen: FullscreenState): () => void {
 	const app = window.document.querySelector("[data-app-container]") as HTMLElement | undefined;
 	app?.focus();
 
@@ -157,7 +161,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		// TODO: This would allow it to properly decide to act on removing hover focus from something that was hovered in the canvas before moving over the GUI.
 		// TODO: Further explanation: https://github.com/GraphiteEditor/Graphite/pull/623#discussion_r866436197
 		const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
-		const inGraphOverlay = get(document).graphViewOverlayOpen;
+		const inGraphOverlay = documentContextState.graphViewOverlayOpen;
 		if (!viewportPointerInteractionOngoing && (inFloatingMenu || inGraphOverlay)) return;
 
 		const modifiers = makeKeyboardModifiersBitfield(e);

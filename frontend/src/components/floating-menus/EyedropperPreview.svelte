@@ -1,4 +1,4 @@
-<script lang="ts" context="module">
+<script lang="ts" module>
 	// Should be equal to the width and height of the zoom preview canvas in the CSS
 	const ZOOM_WINDOW_DIMENSIONS_EXPANDED = 110;
 	// Should be equal to the width and height of the `.pixel-outline` div in the CSS, and should be evenly divisible into the number above
@@ -8,24 +8,24 @@
 </script>
 
 <script lang="ts">
-	import { onMount } from "svelte";
-
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 
 	const temporaryCanvas = document.createElement("canvas");
 	temporaryCanvas.width = ZOOM_WINDOW_DIMENSIONS;
 	temporaryCanvas.height = ZOOM_WINDOW_DIMENSIONS;
 
-	let zoomPreviewCanvas: HTMLCanvasElement | undefined;
+	let zoomPreviewCanvas: HTMLCanvasElement | undefined = $state();
 
-	export let imageData: ImageData | undefined = undefined;
-	export let colorChoice: string;
-	export let primaryColor: string;
-	export let secondaryColor: string;
-	export let x: number;
-	export let y: number;
+	type Props = {
+		imageData?: ImageData | undefined;
+		colorChoice: string;
+		primaryColor: string;
+		secondaryColor: string;
+		x: number;
+		y: number;
+	};
 
-	$: displayImageDataPreview(imageData);
+	let { imageData = undefined, colorChoice, primaryColor, secondaryColor, x, y }: Props = $props();
 
 	function displayImageDataPreview(imageData: ImageData | undefined) {
 		if (!zoomPreviewCanvas) return;
@@ -43,7 +43,7 @@
 		context.drawImage(temporaryCanvas, 0, 0);
 	}
 
-	onMount(() => {
+	$effect(() => {
 		displayImageDataPreview(imageData);
 	});
 </script>
@@ -56,8 +56,8 @@
 >
 	<div class="ring">
 		<div class="canvas-container">
-			<canvas width={ZOOM_WINDOW_DIMENSIONS} height={ZOOM_WINDOW_DIMENSIONS} bind:this={zoomPreviewCanvas} />
-			<div class="pixel-outline" />
+			<canvas width={ZOOM_WINDOW_DIMENSIONS} height={ZOOM_WINDOW_DIMENSIONS} bind:this={zoomPreviewCanvas}></canvas>
+			<div class="pixel-outline"></div>
 		</div>
 	</div>
 </FloatingMenu>

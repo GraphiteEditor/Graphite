@@ -1,25 +1,26 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
-
 	import type { IconName } from "@graphite/utility-functions/icons";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 
-	const dispatch = createEventDispatcher<{ checked: boolean }>();
+	type Props = {
+		checked?: boolean;
+		disabled?: boolean;
+		icon?: IconName;
+		tooltip?: string | undefined;
+		forLabel?: bigint | undefined;
+		onchecked?: (checked: boolean) => void;
+	};
 
-	export let checked = false;
-	export let disabled = false;
-	export let icon: IconName = "Checkmark";
-	export let tooltip: string | undefined = undefined;
-	export let forLabel: bigint | undefined = undefined;
+	let { checked = false, disabled = false, icon = "Checkmark", tooltip = undefined, forLabel = undefined, onchecked }: Props = $props();
 
-	let inputElement: HTMLInputElement | undefined;
+	let inputElement: HTMLInputElement | undefined = $state();
 
 	const backupId = String(Math.random()).substring(2);
 
-	$: id = forLabel !== undefined ? String(forLabel) : backupId;
-	$: displayIcon = (!checked && icon === "Checkmark" ? "Empty12px" : icon) as IconName;
+	let id = $derived(forLabel !== undefined ? String(forLabel) : backupId);
+	let displayIcon = $derived((!checked && icon === "Checkmark" ? "Empty12px" : icon) as IconName);
 
 	export function isChecked() {
 		return checked;
@@ -37,16 +38,8 @@
 </script>
 
 <LayoutRow class="checkbox-input">
-	<input
-		type="checkbox"
-		id={`checkbox-input-${id}`}
-		bind:checked
-		on:change={(_) => dispatch("checked", inputElement?.checked || false)}
-		{disabled}
-		tabindex={disabled ? -1 : 0}
-		bind:this={inputElement}
-	/>
-	<label class:disabled class:checked for={`checkbox-input-${id}`} on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)} title={tooltip}>
+	<input type="checkbox" id={`checkbox-input-${id}`} bind:checked onchange={(_) => onchecked?.(inputElement?.checked ?? false)} {disabled} tabindex={disabled ? -1 : 0} bind:this={inputElement} />
+	<label class:disabled class:checked for={`checkbox-input-${id}`} onkeydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)} title={tooltip}>
 		<LayoutRow class="checkbox-box">
 			<IconLabel icon={displayIcon} />
 		</LayoutRow>

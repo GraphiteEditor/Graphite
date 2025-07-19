@@ -3,6 +3,10 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
+
+import { downloadFileText, downloadFileBlob, upload } from "@graphite/utility-functions/files";
+import { extractPixelData, rasterizeSVG } from "@graphite/utility-functions/rasterization";
+
 import {
 	type FrontendDocumentDetails,
 	TriggerFetchAndOpenDocument,
@@ -16,9 +20,7 @@ import {
 	defaultWidgetLayout,
 	patchWidgetLayout,
 	UpdateSpreadsheetLayout,
-} from "@graphite/messages";
-import { downloadFileText, downloadFileBlob, upload } from "@graphite/utility-functions/files";
-import { extractPixelData, rasterizeSVG } from "@graphite/utility-functions/rasterization";
+} from "@graphite/messages.svelte";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createPortfolioState(editor: Editor) {
@@ -81,7 +83,8 @@ export function createPortfolioState(editor: Editor) {
 			return;
 		}
 
-		const imageData = await extractPixelData(new Blob([data.content.data], { type: data.type }));
+		const imageData = await extractPixelData(new Blob([new Uint8Array(data.content.data)], { type: data.type }));
+
 		editor.handle.pasteImage(data.filename, new Uint8Array(imageData.data), imageData.width, imageData.height);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerDownloadTextFile, (triggerFileDownload) => {

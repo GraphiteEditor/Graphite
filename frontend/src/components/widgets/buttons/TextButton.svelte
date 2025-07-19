@@ -1,38 +1,52 @@
 <script lang="ts">
-	import type { MenuListEntry } from "@graphite/messages";
+	import type { MouseEventHandler } from "svelte/elements";
+
 	import type { IconName } from "@graphite/utility-functions/icons";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import ConditionalWrapper from "@graphite/components/layout/ConditionalWrapper.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import type { MenuListEntry } from "@graphite/messages.svelte";
 
-	let self: MenuList;
-
+	let self: MenuList | undefined = $state();
+	let open: boolean = $state(false);
 	// Note: IconButton should be used if only an icon, but no label, is desired.
 	// However, if multiple TextButton widgets are used in a group with only some having no label, this component is able to accommodate that.
-	export let label: string;
-	export let icon: IconName | undefined = undefined;
-	export let hoverIcon: IconName | undefined = undefined;
-	export let emphasized = false;
-	export let flush = false;
-	export let minWidth = 0;
-	export let disabled = false;
-	export let tooltip: string | undefined = undefined;
-	export let menuListChildren: MenuListEntry[][] | undefined = undefined;
+	type Props = {
+		label: string;
+		icon?: IconName | undefined;
+		hoverIcon?: IconName | undefined;
+		emphasized?: boolean;
+		flush?: boolean;
+		minWidth?: number;
+		disabled?: boolean;
+		tooltip?: string | undefined;
+		menuListChildren?: MenuListEntry[][] | undefined;
+		onclick: MouseEventHandler<HTMLButtonElement>;
+	};
 
-	// Callbacks
-	// TODO: Replace this with an event binding (and on other components that do this)
-	export let action: (() => void) | undefined;
+	let {
+		label,
+		icon = undefined,
+		hoverIcon = undefined,
+		emphasized = false,
+		flush = false,
+		minWidth = 0,
+		disabled = false,
+		tooltip = undefined,
+		menuListChildren = $bindable([]),
+		onclick,
+	}: Props = $props();
 
-	$: menuListChildrenExists = (menuListChildren?.length ?? 0) > 0;
+	let menuListChildrenExists = $derived((menuListChildren?.length ?? 0) > 0);
 
 	// Handles either a button click or, if applicable, the opening of the menu list floating menu
-	function onClick(e: MouseEvent) {
+	function onClick(e: MouseEvent & { currentTarget: EventTarget & HTMLButtonElement }) {
 		// If there's no menu to open, trigger the action
 		if ((menuListChildren?.length ?? 0) === 0) {
 			// Call the action
-			if (action && !disabled) action();
+			if (!disabled) onclick?.(e);
 
 			// Exit early so we don't continue on and try to open the menu
 			return;
@@ -50,7 +64,7 @@
 <ConditionalWrapper condition={menuListChildrenExists} wrapperClass="text-button-container">
 	<button
 		class="text-button"
-		class:open={self?.open}
+		class:open
 		class:hover-icon={hoverIcon && !disabled}
 		class:emphasized
 		class:disabled
@@ -62,7 +76,7 @@
 		data-text-button
 		tabindex={disabled ? -1 : 0}
 		data-floating-menu-spawner={menuListChildrenExists ? "" : "no-hover-transfer"}
-		on:click={onClick}
+		onclick={onClick}
 	>
 		{#if icon}
 			<IconLabel {icon} />
@@ -75,15 +89,7 @@
 		{/if}
 	</button>
 	{#if menuListChildrenExists}
-		<MenuList
-			on:open={({ detail }) => self && (self.open = detail)}
-			open={self?.open || false}
-			entries={menuListChildren || []}
-			direction="Bottom"
-			minWidth={240}
-			drawIcon={true}
-			bind:this={self}
-		/>
+		<MenuList bind:open entries={menuListChildren} direction="Bottom" minWidth={240} drawIcon={true} bind:this={self} />
 	{/if}
 </ConditionalWrapper>
 
@@ -109,6 +115,7 @@
 		color: var(--button-text-color);
 		--button-background-color: var(--color-5-dullgray);
 		--button-text-color: var(--color-e-nearwhite);
+		cursor: pointer;
 
 		&:hover,
 		&.open {
@@ -129,6 +136,8 @@
 		&.disabled {
 			--button-background-color: var(--color-4-dimgray);
 			--button-text-color: var(--color-8-uppergray);
+			cursor: not-allowed;
+			pointer-events: all;
 		}
 
 		&.emphasized {
