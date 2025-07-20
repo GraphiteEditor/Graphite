@@ -532,7 +532,7 @@ struct PathToolData {
 	drill_through_cycle_index: usize,
 	drill_through_cycle_count: usize,
 	hovered_layers: Vec<LayerNodeIdentifier>,
-	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
+	ghost_outline: Vec<(Vec<ClickTargetType>, LayerNodeIdentifier)>,
 	single_path_node_compatible_layer_selected: bool,
 }
 
@@ -628,8 +628,8 @@ impl PathToolData {
 		for &layer in shape_editor.selected_shape_state.keys() {
 			// We probably need to collect here
 			let outline: Vec<ClickTargetType> = document.metadata().layer_with_free_points_outline(layer).cloned().collect();
-			let transform = document.metadata().transform_to_viewport(layer);
-			self.ghost_outline.push((outline, transform));
+
+			self.ghost_outline.push((outline, layer));
 		}
 	}
 
@@ -1490,8 +1490,9 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
 				if matches!(self, Self::Dragging(_)) {
-					for (outline, transform) in &tool_data.ghost_outline {
-						overlay_context.outline(outline.iter(), *transform, Some(COLOR_OVERLAY_GRAY));
+					for (outline, layer) in &tool_data.ghost_outline {
+						let transform = document.metadata().transform_to_viewport(*layer);
+						overlay_context.outline(outline.iter(), transform, Some(COLOR_OVERLAY_GRAY));
 					}
 				}
 
@@ -2390,7 +2391,6 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointUpdated) => {
-				tool_data.ghost_outline.clear();
 				let colinear = shape_editor.selected_manipulator_angles(&document.network_interface);
 				tool_data.dragging_state = DraggingState {
 					point_select_state: shape_editor.get_dragging_state(&document.network_interface),
