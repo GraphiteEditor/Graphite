@@ -37,7 +37,7 @@ impl Unit {
 	}
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
 	Float(f64),
 	Complex(Complex),
@@ -56,6 +56,11 @@ pub enum BinaryOp {
 	Mul,
 	Div,
 	Pow,
+	Leq,
+	Lt,
+	Geq,
+	Gt,
+	Eq,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -72,4 +77,5 @@ pub enum Node {
 	FnCall { name: String, expr: Vec<Node> },
 	BinOp { lhs: Box<Node>, op: BinaryOp, rhs: Box<Node> },
 	UnaryOp { expr: Box<Node>, op: UnaryOp },
+	Conditional { condition: Box<Node>, if_block: Box<Node>, else_block: Box<Node> },
 }

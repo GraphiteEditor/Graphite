@@ -2,6 +2,7 @@ use crate::ast::{Literal, Node};
 use crate::constants::DEFAULT_FUNCTIONS;
 use crate::context::{EvalContext, FunctionProvider, ValueProvider};
 use crate::value::{Number, Value};
+use num_complex::Complex;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -24,7 +25,7 @@ impl Node {
 			},
 
 			Node::BinOp { lhs, op, rhs } => match (lhs.eval(context)?, rhs.eval(context)?) {
-				(Value::Number(lhs), Value::Number(rhs)) => Ok(Value::Number(lhs.binary_op(*op, rhs))),
+				(Value::Number(lhs), Value::Number(rhs)) => Ok(Value::Number(lhs.binary_op(*op, rhs).ok_or(EvalError::TypeError)?)),
 			},
 			Node::UnaryOp { expr, op } => match expr.eval(context)? {
 				Value::Number(num) => Ok(Value::Number(num.unary_op(*op))),
@@ -39,6 +40,14 @@ impl Node {
 				} else {
 					context.get_value(name).ok_or_else(|| EvalError::MissingFunction(name.to_string()))
 				}
+			}
+			Node::Conditional { condition, if_block, else_block } => {
+				let condition = match condition.eval(context)? {
+					Value::Number(Number::Real(number)) => number != 0.0,
+					Value::Number(Number::Complex(number)) => number != Complex::ZERO,
+				};
+
+				if condition { if_block.eval(context) } else { else_block.eval(context) }
 			}
 		}
 	}

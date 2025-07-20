@@ -52,7 +52,7 @@ impl std::fmt::Display for Number {
 }
 
 impl Number {
-	pub fn binary_op(self, op: BinaryOp, other: Number) -> Number {
+	pub fn binary_op(self, op: BinaryOp, other: Number) -> Option<Number> {
 		match (self, other) {
 			(Number::Real(lhs), Number::Real(rhs)) => {
 				let result = match op {
@@ -61,8 +61,14 @@ impl Number {
 					BinaryOp::Mul => lhs * rhs,
 					BinaryOp::Div => lhs / rhs,
 					BinaryOp::Pow => lhs.powf(rhs),
+					BinaryOp::Leq => (lhs <= rhs) as u8 as f64,
+					BinaryOp::Lt => (lhs < rhs) as u8 as f64,
+					BinaryOp::Geq => (lhs >= rhs) as u8 as f64,
+					BinaryOp::Gt => (lhs > rhs) as u8 as f64,
+					BinaryOp::Eq => (lhs == rhs) as u8 as f64,
 				};
-				Number::Real(result)
+
+				Some(Number::Real(result))
 			}
 
 			(Number::Complex(lhs), Number::Complex(rhs)) => {
@@ -72,8 +78,18 @@ impl Number {
 					BinaryOp::Mul => lhs * rhs,
 					BinaryOp::Div => lhs / rhs,
 					BinaryOp::Pow => lhs.powc(rhs),
+					BinaryOp::Leq | BinaryOp::Lt | BinaryOp::Geq | BinaryOp::Gt => {
+						return None;
+					}
+					BinaryOp::Eq => {
+						if lhs == rhs {
+							return Some(Number::Real(1.0));
+						} else {
+							return Some(Number::Real(0.0));
+						}
+					}
 				};
-				Number::Complex(result)
+				Some(Number::Complex(result))
 			}
 
 			(Number::Real(lhs), Number::Complex(rhs)) => {
@@ -84,8 +100,9 @@ impl Number {
 					BinaryOp::Mul => lhs_complex * rhs,
 					BinaryOp::Div => lhs_complex / rhs,
 					BinaryOp::Pow => lhs_complex.powc(rhs),
+					_ => return None,
 				};
-				Number::Complex(result)
+				Some(Number::Complex(result))
 			}
 
 			(Number::Complex(lhs), Number::Real(rhs)) => {
@@ -96,8 +113,9 @@ impl Number {
 					BinaryOp::Mul => lhs * rhs_complex,
 					BinaryOp::Div => lhs / rhs_complex,
 					BinaryOp::Pow => lhs.powf(rhs),
+					_ => return None,
 				};
-				Number::Complex(result)
+				Some(Number::Complex(result))
 			}
 		}
 	}
