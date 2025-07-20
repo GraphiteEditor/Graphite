@@ -65,6 +65,8 @@ pub struct TransformLayerMessageHandler {
 
 	// Ghost outlines for Path Tool
 	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
+
+	was_grabbing: bool,
 }
 
 impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for TransformLayerMessageHandler {
@@ -122,7 +124,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.local_pivot = document.metadata().document_to_viewport.inverse().transform_point2(*selected.pivot);
 				self.grab_target = self.local_pivot;
 			}
-			// Here vector data from all layers is not considered which can be a problem in pivot calculation
+			// TODO: Here vector data from all layers is not considered which can be a problem in pivot calculation
 			else if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
 				*selected.original_transforms = OriginalTransforms::default();
 
@@ -301,6 +303,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				responses.add(SelectToolMessage::PivotShift { offset: None, flush: true });
 
 				if final_transform {
+					self.was_grabbing = false;
 					responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 				}
 			}
@@ -356,9 +359,36 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					if (selected_points.is_empty() && selected_segments.is_empty())
 						|| (!using_path_tool && !using_select_tool && !using_pen_tool && !using_shape_tool)
 						|| selected_layers.is_empty()
-						|| transform_type.equivalent_to(self.transform_operation)
+						|| (transform_type.equivalent_to(self.transform_operation) && !self.was_grabbing)
 					{
 						return;
+					}
+
+					if using_path_tool && (transform_type == TransformType::Grab) {
+						// Check if single point selected and iit is colinear point
+						let single_anchor_selected = shape_editor.selected_points().count() == 1 && shape_editor.selected_points().any(|point| matches!(point, ManipulatorPointId::Anchor(_)));
+						log::info!("reaching hereee");
+						if single_anchor_selected && transform_type.equivalent_to(self.transform_operation) && self.was_grabbing {
+							let Some(layer) = document.network_interface.selected_nodes().selected_layers(document.metadata()).next() else {
+								return;
+							};
+							let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { return };
+
+							let Some(anchor) = shape_editor.selected_points().next() else { return };
+							if vector_data.colinear(*anchor) {
+								responses.add(TransformLayerMessage::CancelTransformOperation);
+
+								// Start sliding point
+								responses.add(DocumentMessage::AddTransaction);
+								responses.add(PathToolMessage::StartSlidingPoint);
+								return;
+							} else {
+								return;
+							}
+						} else if transform_type.equivalent_to(self.transform_operation) {
+							return;
+						}
+						self.was_grabbing = true;
 					}
 				}
 
@@ -409,6 +439,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 			TransformLayerMessage::CancelTransformOperation => {
 				if using_path_tool {
 					self.ghost_outline.clear();
+					self.was_grabbing = false;
 				}
 
 				if using_pen_tool {
@@ -499,7 +530,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 				if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
 					match self.transform_operation {
-						TransformOperation::None => unreachable!(),
+						TransformOperation::None => {}
 						TransformOperation::Grabbing(translation) => {
 							let delta_pos = input.mouse.position - self.mouse_position;
 							let delta_pos = (self.initial_transform * document_to_viewport.inverse()).transform_vector2(delta_pos);

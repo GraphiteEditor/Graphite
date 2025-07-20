@@ -119,6 +119,7 @@ pub enum PathToolMessage {
 	UpdateSelectedPointsStatus {
 		overlay_context: OverlayContext,
 	},
+	StartSlidingPoint,
 }
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -399,6 +400,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				DeleteAndBreakPath,
 				ClosePath,
 				PointerMove,
+				StartSlidingPoint,
 			),
 			PathToolFsmState::Dragging(_) => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -410,6 +412,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				BreakPath,
 				DeleteAndBreakPath,
 				SwapSelectedHandles,
+				StartSlidingPoint,
 			),
 			PathToolFsmState::Drawing { .. } => actions!(PathToolMessageDiscriminant;
 				DoubleClick,
@@ -421,6 +424,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				DeleteAndBreakPath,
 				Escape,
 				RightClick,
+				StartSlidingPoint,
 			),
 			PathToolFsmState::SlidingPoint => actions!(PathToolMessageDiscriminant;
 				PointerMove,
@@ -1838,10 +1842,6 @@ impl Fsm for PathToolFsmState {
 				}
 
 				if !tool_data.update_colinear(equidistant_state, toggle_colinear_state, tool_action_data.shape_editor, tool_action_data.document, responses) {
-					if snap_angle_state && lock_angle_state && tool_data.start_sliding_point(tool_action_data.shape_editor, tool_action_data.document) {
-						return PathToolFsmState::SlidingPoint;
-					}
-
 					tool_data.drag(
 						equidistant_state,
 						lock_angle_state,
@@ -2248,6 +2248,13 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::DeleteAndBreakPath) => {
 				shape_editor.delete_point_and_break_path(document, responses);
 				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::StartSlidingPoint) => {
+				if tool_data.start_sliding_point(shape_editor, document) {
+					PathToolFsmState::SlidingPoint
+				} else {
+					PathToolFsmState::Ready
+				}
 			}
 			(_, PathToolMessage::DoubleClick { extend_selection, shrink_selection }) => {
 				// Double-clicked on a point (flip smooth/sharp behavior)
