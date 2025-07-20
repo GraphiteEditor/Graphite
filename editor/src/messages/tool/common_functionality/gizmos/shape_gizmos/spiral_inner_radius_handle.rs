@@ -64,17 +64,14 @@ impl RadiusGizmo {
 
 					let b = calculate_b(inner_radius, turns, outer_radius, spiral_type);
 
-					let start_radius = spiral_point(0. + start_angle, inner_radius, b, spiral_type).distance(DVec2::ZERO);
-					let end_radius = spiral_point(turns * TAU + start_angle, inner_radius, b, spiral_type).distance(DVec2::ZERO);
-
-					log::info!("start_radius {:?}", start_radius);
-					log::info!("end radius {:?}", end_radius);
+					let start_radius = spiral_point(0. + start_angle.to_radians(), inner_radius, b, spiral_type).distance(DVec2::ZERO);
+					let end_radius = spiral_point(turns * TAU + start_angle.to_radians(), inner_radius, b, spiral_type).distance(DVec2::ZERO);
 
 					let larger_radius = (start_radius.max(end_radius)).max(5.);
 					let smaller_radius = (start_radius.min(end_radius)).max(5.);
 
 					if layer_mouse.distance(DVec2::ZERO) < smaller_radius {
-						log::info!("reaching heeee");
+						log::info!("reachinhere inner radius");
 						self.layer = Some(layer);
 						self.initial_radius = smaller_radius;
 						self.spiral_type = spiral_type;
@@ -86,6 +83,7 @@ impl RadiusGizmo {
 					}
 
 					if (layer_mouse.distance(DVec2::ZERO) - larger_radius).abs() < 5. {
+						log::info!("reaching bigger radius");
 						self.layer = Some(layer);
 						self.initial_radius = larger_radius;
 						self.spiral_type = spiral_type;
@@ -110,9 +108,9 @@ impl RadiusGizmo {
 				if let Some(((inner_radius, outer_radius, turns, start_angle), spiral_type)) = extract_arc_or_log_spiral_parameters(layer, document).zip(get_spiral_type(layer, document)) {
 					let b = calculate_b(inner_radius, turns, outer_radius, spiral_type);
 					let endpoint = if self.radius_index == SPIRAL_INNER_RADIUS_INDEX {
-						spiral_point(0. + start_angle, inner_radius, b, spiral_type)
+						spiral_point(0. + start_angle.to_radians(), inner_radius, b, spiral_type)
 					} else {
-						spiral_point(turns * TAU + start_angle, inner_radius, b, spiral_type)
+						spiral_point(turns * TAU + start_angle.to_radians(), inner_radius, b, spiral_type)
 					};
 
 					let viewport_center = viewport.transform_point2(DVec2::ZERO);

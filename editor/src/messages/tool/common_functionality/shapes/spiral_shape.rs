@@ -42,8 +42,8 @@ impl ShapeGizmoHandler for SpiralGizmoHandler {
 		responses: &mut VecDeque<Message>,
 	) {
 		// self.radius_handle.handle_actions(selected_spiral_layer, document, input.mouse.position, responses);
-		self.turns_handle.handle_actions(selected_spiral_layer, mouse_position, document, responses);
-		// self.tightness_handle.handle_actions(selected_spiral_layer, input.mouse.position, document, responses);
+		// self.turns_handle.handle_actions(selected_spiral_layer, mouse_position, document, responses);
+		self.tightness_handle.handle_actions(selected_spiral_layer, input.mouse.position, document, responses);
 	}
 
 	fn handle_click(&mut self) {
