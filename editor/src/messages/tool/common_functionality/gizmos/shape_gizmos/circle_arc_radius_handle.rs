@@ -23,10 +23,15 @@ pub enum RadiusHandleState {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RadiusHandle {
+	/// The layer this handle is currently attached to
 	pub layer: Option<LayerNodeIdentifier>,
+	/// Original radius value when drag operation started (for delta calculations)
 	initial_radius: f64,
+	/// Current interaction state (inactive/hover/dragging)
 	handle_state: RadiusHandleState,
+	/// Angle at which the handle appears on the circle (in radians)
 	angle: f64,
+	/// Previous mouse position (used for calculating movement deltas)
 	previous_mouse_position: DVec2,
 }
 
@@ -48,13 +53,24 @@ impl RadiusHandle {
 		self.handle_state = state;
 	}
 
+	/// Determines if the mouse position is within the interactive area of the radius handle
+	/// The interactive area is a "dashed line" region around the circle/arc perimeter
+	///
+	/// For shapes with stroke: Creates a band around the radius (stroke_width + spacing)
+	/// For shapes without stroke: Uses simple distance-from-center comparison
 	pub fn check_if_inside_dash_lines(angle: f64, mouse_position: DVec2, viewport: DAffine2, radius: f64, document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -> bool {
 		let center = viewport.transform_point2(DVec2::ZERO);
+
 		if let Some(stroke_width) = get_stroke_width(layer, &document.network_interface) {
+			// For stroked shapes: Create interaction band based on stroke width
 			let layer_mouse = viewport.inverse().transform_point2(mouse_position);
-			let spacing = 3. * stroke_width;
-			layer_mouse.distance(DVec2::ZERO) >= (radius - spacing) && layer_mouse.distance(DVec2::ZERO) <= (radius + spacing)
+			let spacing = 3.0 * stroke_width; // 3x stroke width for comfortable interaction area
+			let mouse_distance = layer_mouse.distance(DVec2::ZERO);
+
+			// Mouse must be within the stroke band around the radius
+			mouse_distance >= (radius - spacing) && mouse_distance <= (radius + spacing)
 		} else {
+			// For non-stroked shapes: Simple radial distance check
 			let point_position = viewport.transform_point2(calculate_circle_point_position(angle, radius.abs()));
 			mouse_position.distance(center) <= point_position.distance(center)
 		}
@@ -89,45 +105,56 @@ impl RadiusHandle {
 		}
 	}
 
+	/// Renders visual overlay indicators for the radius handle
+	/// Shows dashed ellipses to indicate the interactive area around the shape
 	pub fn overlays(&self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 		match &self.handle_state {
-			RadiusHandleState::Inactive => {}
+			RadiusHandleState::Inactive => {
+				// No visual feedback when inactive
+			}
 
 			RadiusHandleState::Dragging | RadiusHandleState::Hover => {
 				let Some(layer) = self.layer else { return };
+
+				// Extract radius from the shape (circle or arc)
 				let Some(radius) = extract_circle_radius(layer, document).or(extract_arc_parameters(Some(layer), document).map(|(r, _, _, _)| r)) else {
 					return;
 				};
+
 				let viewport = document.metadata().transform_to_viewport(layer);
 				let center = viewport.transform_point2(DVec2::ZERO);
 
-				let start_point = viewport.transform_point2(calculate_circle_point_position(0., radius)).distance(center);
+				// Calculate radii at different angles to handle elliptical transformations
+				let start_point = viewport.transform_point2(calculate_circle_point_position(0.0, radius)).distance(center);
 				let end_point = viewport.transform_point2(calculate_circle_point_position(FRAC_PI_2, radius)).distance(center);
 
 				if let Some(stroke_width) = get_stroke_width(layer, &document.network_interface) {
+					// For stroked shapes: Show inner and outer interaction boundaries
 					let threshold = 15.0;
 					let min_radius = start_point.min(end_point);
 
-					let extra_spacing = if min_radius < threshold {
-						10.0 * (min_radius / threshold) // smoothly scales from 0 → 10
-					} else {
-						10.0
-					};
+					// Dynamic spacing that scales down for very small radii (prevents visual overlap)
+					let extra_spacing = if min_radius < threshold { 10.0 * (min_radius / threshold) } else { 10.0 };
 
 					let spacing = stroke_width + extra_spacing;
+
+					// Inner boundary (closer to center)
 					let smaller_radius_x = (start_point - spacing).abs();
 					let smaller_radius_y = (end_point - spacing).abs();
 
+					// Outer boundary (further from center)
 					let larger_radius_x = (start_point + spacing).abs();
 					let larger_radius_y = (end_point + spacing).abs();
 
-					overlay_context.dashed_ellipse(center, smaller_radius_x, smaller_radius_y, None, None, None, None, None, None, Some(4.), Some(4.), Some(0.5));
-					overlay_context.dashed_ellipse(center, larger_radius_x, larger_radius_y, None, None, None, None, None, None, Some(4.), Some(4.), Some(0.5));
+					// Render both inner and outer dashed ellipses
+					overlay_context.dashed_ellipse(center, smaller_radius_x, smaller_radius_y, None, None, None, None, None, None, Some(4.0), Some(4.0), Some(0.5));
+					overlay_context.dashed_ellipse(center, larger_radius_x, larger_radius_y, None, None, None, None, None, None, Some(4.0), Some(4.0), Some(0.5));
 
 					return;
 				}
 
-				overlay_context.dashed_ellipse(center, start_point, end_point, None, None, None, None, None, None, Some(4.), Some(4.), Some(0.5));
+				// For non-stroked shapes: Show single dashed ellipse at the radius
+				overlay_context.dashed_ellipse(center, start_point, end_point, None, None, None, None, None, None, Some(4.0), Some(4.0), Some(0.5));
 			}
 		}
 	}
