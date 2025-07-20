@@ -974,9 +974,12 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 						}
 					},
 					|render| {
-						render.leaf_tag("div", |attributes| {
-							attributes.push("data-canvas-placeholder", format!("canvas{}", id));
-						})
+						render.leaf_tag(
+							"img", // Must be a self-closing tag
+							|attributes| {
+								attributes.push("data-canvas-placeholder", format!("canvas{}", id));
+							},
+						)
 					},
 				);
 			} else {
