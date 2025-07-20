@@ -949,24 +949,20 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 
 			if render_params.to_canvas() {
 				let id = generate_uuid();
-				let scale = DVec2::new(transform.x_axis.x, transform.y_axis.y);
+				let mut transform_values = transform.to_scale_angle_translation();
 				render.image_data.push((id, image.data().clone(), TransformImage(transform)));
-				log::debug!("{transform} {} {}", image.width, image.height);
 				render.parent_tag(
 					"foreignObject",
 					|attributes| {
 						let size = DVec2::new(image.width as f64, image.height as f64);
-						let scale = scale / size;
-						let scale = DAffine2::from_scale(scale);
-						let matrix = format_transform_matrix(scale);
+						transform_values.0 /= size;
+						let matrix = DAffine2::from_scale_angle_translation(transform_values.0, transform_values.1, transform_values.2);
+						let matrix = format_transform_matrix(matrix);
 						if !matrix.is_empty() {
 							attributes.push("transform", matrix);
-							attributes.push("transform-origin", "top-left");
 						}
-						attributes.push("width", transform.matrix2.x_axis.x.to_string());
-						attributes.push("height", transform.matrix2.y_axis.y.to_string());
-						attributes.push("x", transform.translation.x.to_string());
-						attributes.push("y", transform.translation.y.to_string());
+						attributes.push("width", size.x.to_string());
+						attributes.push("height", size.y.to_string());
 
 						let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
 						let opacity = instance.alpha_blending.opacity * factor;
