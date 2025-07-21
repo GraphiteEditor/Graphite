@@ -25,7 +25,6 @@ use graphene_std::transform::ReferencePoint;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, VectorData};
 use graphene_std::vector::{ManipulatorPointId, PointId, VectorModificationType};
-use std::vec;
 
 #[derive(Default, ExtractField)]
 pub struct PathTool {
@@ -53,6 +52,7 @@ pub enum PathToolMessage {
 	DeselectAllPoints,
 	Delete,
 	DeleteAndBreakPath,
+	DeleteAndRefit,
 	DragStop {
 		extend_selection: Key,
 		shrink_selection: Key,
@@ -397,6 +397,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				DeselectAllPoints,
 				BreakPath,
 				DeleteAndBreakPath,
+				DeleteAndRefit,
 				ClosePath,
 				PointerMove,
 			),
@@ -409,6 +410,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				Delete,
 				BreakPath,
 				DeleteAndBreakPath,
+				DeleteAndRefit,
 				SwapSelectedHandles,
 			),
 			PathToolFsmState::Drawing { .. } => actions!(PathToolMessageDiscriminant;
@@ -419,6 +421,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				Enter,
 				BreakPath,
 				DeleteAndBreakPath,
+				DeleteAndRefit,
 				Escape,
 				RightClick,
 			),
@@ -2235,18 +2238,31 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::Delete) => {
 				// Delete the selected points and clean up overlays
 				responses.add(DocumentMessage::AddTransaction);
+				shape_editor.delete_selected_points(document, responses, false);
 				shape_editor.delete_selected_segments(document, responses);
-				shape_editor.delete_selected_points(document, responses);
 				responses.add(PathToolMessage::SelectionChanged);
 
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::BreakPath) => {
+				responses.add(DocumentMessage::AddTransaction);
 				shape_editor.break_path_at_selected_point(document, responses);
+				responses.add(PathToolMessage::SelectionChanged);
+
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::DeleteAndBreakPath) => {
+				responses.add(DocumentMessage::AddTransaction);
 				shape_editor.delete_point_and_break_path(document, responses);
+				responses.add(PathToolMessage::SelectionChanged);
+
+				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::DeleteAndRefit) => {
+				responses.add(DocumentMessage::AddTransaction);
+				shape_editor.delete_selected_points(document, responses, true);
+				responses.add(PathToolMessage::SelectionChanged);
+
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::DoubleClick { extend_selection, shrink_selection }) => {
@@ -2711,8 +2727,9 @@ fn update_dynamic_hints(
 			let mut delete_selected_hints = vec![HintInfo::keys([Key::Delete], "Delete Selected")];
 
 			if at_least_one_anchor_selected {
-				delete_selected_hints.push(HintInfo::keys([Key::Accel], "No Dissolve").prepend_plus());
-				delete_selected_hints.push(HintInfo::keys([Key::Shift], "Cut Anchor").prepend_plus());
+				delete_selected_hints.push(HintInfo::keys([Key::Accel], "With Segments").prepend_plus());
+				delete_selected_hints.push(HintInfo::keys([Key::Shift], "Re-Fit").prepend_plus());
+				delete_selected_hints.push(HintInfo::keys([Key::Alt], "Cut Anchor").prepend_plus());
 			}
 
 			if single_colinear_anchor_selected {
