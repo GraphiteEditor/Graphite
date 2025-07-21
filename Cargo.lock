@@ -5830,6 +5830,7 @@ name = "wgpu-executor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytemuck",
  "dyn-any",
  "futures",
  "glam",
