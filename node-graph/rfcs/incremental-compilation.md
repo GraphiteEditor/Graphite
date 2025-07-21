@@ -7,13 +7,13 @@ Any time a NodeInput is changed in the network the following changes to the borr
 3. Update the SNI of the downstream nodes (Not necessary if ghostcell is used and downstream nodes can have their inputs mutated)
 4. Reset any downstream caches
 
-We currently clone and recompile the entire network, which is very expensive. As networks grow larger and functionality gets split into separate nodes, a reasonable network may have hundreds of thousands of nodes. I believe with the following data structure and algorithm changes, it will be possible to implement incremental compilation, where a diff of changes is sent to the borrow tree. The overall goal of this method is the editor "damages" the node network by performing a series of set_input requests that invalidate downstream SNI's, and get queued in the compiler. Then, a compilation request iterates over the network, and uses the input requests, global cached compilation metadata,and NODE_REGISTRY to send a diff of updates to to the executor. These updates are `Add(SNI, (Constructor, Vec<SNI>))` and `Remove (SNI)` requests. In the future, GhostCell could be used to make a new `Modify((SNI, usize), SNI)` request, which remaps a nodes input to a new SharedNodeContainer.
+We currently clone and recompile the entire network, which is very expensive. As networks grow larger and functionality gets split into separate nodes, a reasonable network may have hundreds of thousands of nodes. I believe with the following data structure and algorithm changes, it will be possible to implement incremental compilation, where only the nodes which change need to be recompiled, and a compilation can only be done upstream of a specified input. The overall system requires the editor to send topological changes to the runtime. These changes include adding nodes, removing nodes, and setting inputs. These changes get queued in the compiler. Then, a compilation request iterates over the network from a certain input, and uses the queued requests, global cached compilation metadata,and NODE_REGISTRY to update the borrow tree.
 
 # New Editor Workflow
-Each document still stores a NodeNetwork, but this is used just for serialization. When a document is opened, the NodeNetwork gets moved into the compiler (within NodeId(0), the render node is NodeId(1), and stays the same). When the document is closed, the network within NodeId(0) is taken from the compiler and moved into the document. All changes such as add node, remove node, and set input get sent to the compiler. Then on a compilation request, the set input requests are applied, the NodeNetwork is modified, and the diff of changes is generated to be applied to the borrow tree. 
+Each document still stores a NodeNetwork, but this is used just for serialization. When a document is opened, the NodeNetwork gets moved into the compiler (within NodeId(0), the render node is NodeId(1), and stays the same). When the document is closed, the network within NodeId(0) is taken from the compiler and moved into the document. All changes such as add node, remove node, and set input get sent to the compiler. Then on a compilation request, a traversal is performed from the specified input, the set input requests are applied, the NodeNetwork is modified, and the borrow tree gets updated.
 
 # Editor changes:
-The editor now performs all compilation, type resolution, and stable node id generation.
+The editor now just stores editor-specific information such as the metadata for each node,
 
 ```rust
 struct SNI(u64);
@@ -24,19 +24,35 @@ SNI represents the stable node id of a protonode, which is calculated based on t
 ProtonodeInput is the path to the protonode DocumentNode in the recursive NodeNetwork structure, as well as the input index.
 
 ```rust
-PortfolioMessageHandler { 
-    pub compiler_metadata: HashMap<SNI, CompilerMetadata>
-}
 
-// Used by the compiler and editor to send diff based changes to the runtime and cache the types so the constructor can be easily looked up
-pub struct NodeNetworkCompiler {
-    resolved_type: NodeIOTypes,
-    // How many document nodes with this SNI exist. Could possibly be moved to the executor
-    usages: usize,
+// Stored in the runtime
+pub struct DynamicExecutor {
+    // Stores cached state for each inserted protonode, which includes types, context dependencies of all upstream nodes, and how many usages exist in the NodeNetwork
+    borrow_tree: HashMap<SNI, InsertedProtonode>,
     // The previously compiled NodeNetwork, which represents the current state of the borrow tree.
     network: NodeNetwork
-    // A series of SetInput requests which are queued between compilations
+    // A series of set input, add node, and remove node requests which are queued between compilations
+    add_node: HashMap<NodeId, DocumentNode>,
     input_requests: HashMap<InputConnector, NodeInput>
+    remove_node: HashSet<NodeId>
+
+    // The queue of changes to apply between history steps
+    undo_queue: Vec<NetworkUpdateRequest>
+}
+
+// Sent from the editor
+pub enum NetworkUpdateRequest {
+    SetInput(InputConnector, NodeInput)
+    AddNode(NodeId, DocumentNode),
+    RemoveNode(NodeId),
+}
+
+pub struct InsertedProtonode {
+    // Either the value node, cache node if output is clone, or protonode if output is not clone
+	cached_protonode: SharedNodeContainer,
+    resolved_type: NodeIOTypes,
+    // How many document nodes with this SNI exist.
+    usages: usize,
 }
 ```
 
