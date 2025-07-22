@@ -53,12 +53,6 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 				let _ = canvas_context.reset_transform();
 
 				if visibility_settings.all() {
-					responses.add(DocumentMessage::GridOverlays(OverlayContext {
-						render_context: canvas_context.clone(),
-						size: size.as_dvec2(),
-						device_pixel_ratio,
-						visibility_settings: visibility_settings.clone(),
-					}));
 					for provider in &self.overlay_providers {
 						responses.add(provider(OverlayContext {
 							render_context: canvas_context.clone(),
@@ -68,7 +62,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 						}));
 					}
 					responses.add(DocumentMessage::GridOverlays(OverlayContext {
-						render_context: context.clone(),
+						render_context: canvas_context.clone(),
 						size: size.as_dvec2(),
 						device_pixel_ratio,
 						visibility_settings: visibility_settings.clone(),
