@@ -1,7 +1,6 @@
 use kurbo::{BezPath, DEFAULT_ACCURACY, ParamCurve, PathSeg, Shape};
 
-/// Minimum allowable separation between adjacent `t` values when calculating curve intersections
-pub const MIN_SEPARATION_VALUE: f64 = 5. * 1e-3;
+use super::contants::MIN_SEPARATION_VALUE;
 
 pub fn segment_intersections(segment1: PathSeg, segment2: PathSeg, accuracy: Option<f64>) -> Vec<(f64, f64)> {
 	let accuracy = accuracy.unwrap_or(DEFAULT_ACCURACY);
@@ -96,4 +95,70 @@ pub fn filtered_all_segment_intersections(segment1: PathSeg, segment2: PathSeg, 
 fn bezpath_intersections(bezpath1: &BezPath, bezpath2: &BezPath) -> Vec<f64> {
 	let intersections = Vec::new();
 	intersections
+}
+
+#[cfg(test)]
+mod tests {
+	use super::filtered_segment_intersections;
+	use crate::vector::algorithms::util::{compare_points, compare_vec_of_points};
+
+	use kurbo::{CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
+
+	#[test]
+	fn test_intersect_line_segment_quadratic() {
+		let p1 = Point::new(30., 50.);
+		let p2 = Point::new(140., 30.);
+		let p3 = Point::new(160., 170.);
+
+		// Intersection at edge of curve
+		let bezier = PathSeg::Quad(QuadBez::new(p1, p2, p3));
+		let line1 = PathSeg::Line(Line::new(Point::new(20., 50.), Point::new(40., 50.)));
+		let intersections1 = filtered_segment_intersections(bezier, line1, None, None);
+		assert!(intersections1.len() == 1);
+		assert!(compare_points(bezier.eval(intersections1[0]), p1));
+
+		// Intersection in the middle of curve
+		let line2 = PathSeg::Line(Line::new(Point::new(150., 150.), Point::new(30., 30.)));
+		let intersections2 = filtered_segment_intersections(bezier, line2, None, None);
+		assert!(compare_points(bezier.eval(intersections2[0]), Point::new(47.77355, 47.77354)));
+	}
+	#[test]
+	fn test_intersect_curve_cubic_edge_case() {
+		// M34 107 C40 40 120 120 102 29
+
+		let p1 = Point::new(34., 107.);
+		let p2 = Point::new(40., 40.);
+		let p3 = Point::new(120., 120.);
+		let p4 = Point::new(102., 29.);
+		let bezier = PathSeg::Cubic(CubicBez::new(p1, p2, p3, p4));
+
+		let line = PathSeg::Line(Line::new(Point::new(150., 150.), Point::new(20., 20.)));
+		let intersections = filtered_segment_intersections(bezier, line, None, None);
+
+		assert_eq!(intersections.len(), 1);
+	}
+
+	#[test]
+	fn test_intersect_curve() {
+		let p0 = Point::new(30., 30.);
+		let p1 = Point::new(60., 140.);
+		let p2 = Point::new(150., 30.);
+		let p3 = Point::new(160., 160.);
+
+		let bezier1 = PathSeg::Cubic(CubicBez::new(p0, p1, p2, p3));
+
+		let p0 = Point::new(175., 140.);
+		let p1 = Point::new(20., 20.);
+		let p2 = Point::new(120., 20.);
+
+		let bezier2 = PathSeg::Quad(QuadBez::new(p0, p1, p2));
+
+		let intersections1 = filtered_segment_intersections(bezier1, bezier2, None, None);
+		let intersections2 = filtered_segment_intersections(bezier2, bezier1, None, None);
+
+		let intersections1_points: Vec<Point> = intersections1.iter().map(|&t| bezier1.eval(t)).collect();
+		let intersections2_points: Vec<Point> = intersections2.iter().map(|&t| bezier2.eval(t)).rev().collect();
+
+		assert!(compare_vec_of_points(intersections1_points, intersections2_points, 2.));
+	}
 }
