@@ -97,11 +97,20 @@ impl Raster<GPU> {
 		let RasterStorage::Gpu(gpu) = &self.data else { unreachable!() };
 		gpu.clone()
 	}
+}
+
+impl Raster<GPU> {
+	#[cfg(feature = "wgpu")]
 	pub fn is_empty(&self) -> bool {
 		let data = self.data();
 		data.width() == 0 || data.height() == 0
 	}
+	#[cfg(not(feature = "wgpu"))]
+	pub fn is_empty(&self) -> bool {
+		true
+	}
 }
+
 #[cfg(feature = "wgpu")]
 impl Deref for Raster<GPU> {
 	type Target = wgpu::Texture;
@@ -110,6 +119,7 @@ impl Deref for Raster<GPU> {
 		self.data()
 	}
 }
+
 pub type RasterDataTable<Storage> = Instances<Raster<Storage>>;
 
 // TODO: Make this not dupliated

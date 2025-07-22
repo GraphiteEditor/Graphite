@@ -16,6 +16,7 @@ pub enum NodeGraphMessage {
 		nodes: Vec<(NodeId, NodeTemplate)>,
 		new_ids: HashMap<NodeId, NodeId>,
 	},
+	AddPathNode,
 	AddImport,
 	AddExport,
 	Init,
@@ -33,6 +34,7 @@ pub enum NodeGraphMessage {
 		node_id: Option<NodeId>,
 		node_type: String,
 		xy: Option<(i32, i32)>,
+		add_transaction: bool,
 	},
 	CreateWire {
 		output_connector: OutputConnector,
@@ -80,6 +82,9 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		parent: LayerNodeIdentifier,
 	},
+	SetChainPosition {
+		node_id: NodeId,
+	},
 	PasteNodes {
 		serialized_nodes: String,
 	},
@@ -96,6 +101,7 @@ pub enum NodeGraphMessage {
 	PointerOutsideViewport {
 		shift: Key,
 	},
+	ShakeNode,
 	RemoveImport {
 		import_index: usize,
 	},
@@ -123,6 +129,9 @@ pub enum NodeGraphMessage {
 	},
 	SendClickTargets,
 	EndSendClickTargets,
+	UnloadWires,
+	SendWires,
+	UpdateVisibleNodes,
 	SendGraph,
 	SetGridAlignedEdges,
 	SetInputValue {

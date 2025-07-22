@@ -835,6 +835,20 @@ impl Color {
 		[(gamma.red * 255.) as u8, (gamma.green * 255.) as u8, (gamma.blue * 255.) as u8, (gamma.alpha * 255.) as u8]
 	}
 
+	/// Return the all RGB components as a u8 slice, first component is red, followed by green, followed by blue. Use this if the [`Color`] is in linear space.
+	///
+	/// # Examples
+	/// ```
+	/// use graphene_core::color::Color;
+	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
+	/// // TODO: Add test
+	/// ```
+	#[inline(always)]
+	pub fn to_rgb8_srgb(&self) -> [u8; 3] {
+		let gamma = self.to_gamma_srgb();
+		[(gamma.red * 255.) as u8, (gamma.green * 255.) as u8, (gamma.blue * 255.) as u8]
+	}
+
 	// https://www.niwa.nu/2013/05/math-behind-colorspace-conversions-rgb-hsl/
 	/// Convert a [Color] to a hue, saturation, lightness and alpha (all between 0 and 1)
 	///

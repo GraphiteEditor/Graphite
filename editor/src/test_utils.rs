@@ -31,7 +31,7 @@ impl EditorTestUtils {
 		// It isn't sufficient to guard the message dispatch here with a check if the once_cell is empty, because that isn't atomic and the time between checking and handling the dispatch can let multiple through.
 		let _ = GLOBAL_PLATFORM.set(Platform::Windows).is_ok();
 
-		editor.handle_message(Message::Init);
+		editor.handle_message(PortfolioMessage::Init);
 
 		Self { editor, runtime }
 	}
@@ -172,9 +172,10 @@ impl EditorTestUtils {
 	pub fn get_node<'a, T: InputAccessor<'a, DocumentNode>>(&'a self) -> impl Iterator<Item = T> + 'a {
 		self.active_document()
 			.network_interface
-			.iter_recursive()
-			.inspect(|node| println!("{:#?}", node.1.implementation))
-			.filter_map(move |(_, document)| T::new_with_source(document))
+			.document_network()
+			.recursive_nodes()
+			.inspect(|(_, node, _)| println!("{:#?}", node.implementation))
+			.filter_map(move |(_, document, _)| T::new_with_source(document))
 	}
 
 	pub async fn move_mouse(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys, mouse_keys: MouseKeys) {
@@ -227,11 +228,11 @@ impl EditorTestUtils {
 	}
 
 	pub async fn select_primary_color(&mut self, color: Color) {
-		self.handle_message(Message::Tool(ToolMessage::SelectPrimaryColor { color })).await;
+		self.handle_message(Message::Tool(ToolMessage::SelectWorkingColor { color, primary: true })).await;
 	}
 
 	pub async fn select_secondary_color(&mut self, color: Color) {
-		self.handle_message(Message::Tool(ToolMessage::SelectSecondaryColor { color })).await;
+		self.handle_message(Message::Tool(ToolMessage::SelectWorkingColor { color, primary: false })).await;
 	}
 
 	pub async fn create_raster_image(&mut self, image: graphene_std::raster::Image<Color>, mouse: Option<(f64, f64)>) {
@@ -300,7 +301,7 @@ pub trait FrontendMessageTestUtils {
 
 impl FrontendMessageTestUtils for FrontendMessage {
 	fn check_node_graph_error(&self) {
-		let FrontendMessage::UpdateNodeGraph { nodes, .. } = self else { return };
+		let FrontendMessage::UpdateNodeGraphNodes { nodes, .. } = self else { return };
 
 		for node in nodes {
 			if let Some(error) = &node.errors {
@@ -325,8 +326,7 @@ pub mod test_prelude {
 	pub use crate::node_graph_executor::NodeRuntime;
 	pub use crate::test_utils::EditorTestUtils;
 	pub use core::f64;
-	pub use glam::DVec2;
-	pub use glam::IVec2;
+	pub use glam::{DVec2, IVec2};
 	pub use graph_craft::document::DocumentNode;
 	pub use graphene_std::raster::{Color, Image};
 	pub use graphene_std::transform::Footprint;

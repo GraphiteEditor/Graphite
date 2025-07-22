@@ -1,6 +1,6 @@
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
-use crate::messages::dialog::DialogMessageData;
-use crate::messages::portfolio::document::node_graph::document_node_definitions;
+use crate::messages::dialog::DialogMessageContext;
+use crate::messages::layout::layout_message_handler::LayoutMessageContext;
 use crate::messages::prelude::*;
 
 #[derive(Debug, Default)]
@@ -40,7 +40,6 @@ impl DispatcherMessageHandlers {
 /// The last occurrence of the message in the message queue is sufficient to ensure correct behavior.
 /// In addition, these messages do not change any state in the backend (aside from caches).
 const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
-	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(NodeGraphMessageDiscriminant::SendGraph))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
 		PropertiesPanelMessageDiscriminant::Refresh,
 	))),
@@ -92,7 +91,7 @@ impl Dispatcher {
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T, process_after_all_current: bool) {
 		let message = message.into();
 		// Add all additional messages to the buffer if it exists (except from the end buffer message)
-		if !matches!(message, Message::EndBuffer(_)) {
+		if !matches!(message, Message::EndBuffer { .. }) {
 			if let Some(buffered_queue) = &mut self.buffered_queue {
 				Self::schedule_execution(buffered_queue, true, [message]);
 
@@ -127,69 +126,19 @@ impl Dispatcher {
 
 			// Process the action by forwarding it to the relevant message handler, or saving the FrontendMessage to be sent to the frontend
 			match message {
-				Message::StartBuffer => {
-					self.buffered_queue = Some(std::mem::take(&mut self.message_queues));
-				}
-				Message::EndBuffer(render_metadata) => {
-					// Assign the message queue to the currently buffered queue
-					if let Some(buffered_queue) = self.buffered_queue.take() {
-						self.cleanup_queues(false);
-						assert!(self.message_queues.is_empty(), "message queues are always empty when ending a buffer");
-						self.message_queues = buffered_queue;
-					};
-
-					let graphene_std::renderer::RenderMetadata {
-						upstream_footprints: footprints,
-						local_transforms,
-						click_targets,
-						clip_targets,
-					} = render_metadata;
-
-					// Run these update state messages immediately
-					let messages = [
-						DocumentMessage::UpdateUpstreamTransforms {
-							upstream_footprints: footprints,
-							local_transforms,
-						},
-						DocumentMessage::UpdateClickTargets { click_targets },
-						DocumentMessage::UpdateClipTargets { clip_targets },
-					];
-					Self::schedule_execution(&mut self.message_queues, false, messages.map(Message::from));
-				}
-				Message::NoOp => {}
-				Message::Init => {
-					// Load persistent data from the browser database
-					queue.add(FrontendMessage::TriggerLoadFirstAutoSaveDocument);
-					queue.add(FrontendMessage::TriggerLoadPreferences);
-
-					// Display the menu bar at the top of the window
-					queue.add(MenuBarMessage::SendLayout);
-
-					// Send the information for tooltips and categories for each node/input.
-					queue.add(FrontendMessage::SendUIMetadata {
-						node_descriptions: document_node_definitions::collect_node_descriptions(),
-						node_types: document_node_definitions::collect_node_types(),
-					});
-
-					// Finish loading persistent data from the browser database
-					queue.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
-				}
 				Message::Animation(message) => {
 					self.message_handlers.animation_message_handler.process_message(message, &mut queue, ());
-				}
-				Message::Batched(messages) => {
-					messages.iter().for_each(|message| self.handle_message(message.to_owned(), false));
 				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
 				Message::Debug(message) => {
 					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Dialog(message) => {
-					let data = DialogMessageData {
+					let context = DialogMessageContext {
 						portfolio: &self.message_handlers.portfolio_message_handler,
 						preferences: &self.message_handlers.preferences_message_handler,
 					};
-					self.message_handlers.dialog_message_handler.process_message(message, &mut queue, data);
+					self.message_handlers.dialog_message_handler.process_message(message, &mut queue, context);
 				}
 				Message::Frontend(message) => {
 					// Handle these messages immediately by returning early
@@ -212,7 +161,7 @@ impl Dispatcher {
 
 					self.message_handlers
 						.input_preprocessor_message_handler
-						.process_message(message, &mut queue, InputPreprocessorMessageData { keyboard_platform });
+						.process_message(message, &mut queue, InputPreprocessorMessageContext { keyboard_platform });
 				}
 				Message::KeyMapping(message) => {
 					let input = &self.message_handlers.input_preprocessor_message_handler;
@@ -220,12 +169,13 @@ impl Dispatcher {
 
 					self.message_handlers
 						.key_mapping_message_handler
-						.process_message(message, &mut queue, KeyMappingMessageData { input, actions });
+						.process_message(message, &mut queue, KeyMappingMessageContext { input, actions });
 				}
 				Message::Layout(message) => {
 					let action_input_mapping = &|action_to_find: &MessageDiscriminant| self.message_handlers.key_mapping_message_handler.action_input_mapping(action_to_find);
+					let context = LayoutMessageContext { action_input_mapping };
 
-					self.message_handlers.layout_message_handler.process_message(message, &mut queue, action_input_mapping);
+					self.message_handlers.layout_message_handler.process_message(message, &mut queue, context);
 				}
 				Message::Portfolio(message) => {
 					let ipp = &self.message_handlers.input_preprocessor_message_handler;
@@ -239,7 +189,7 @@ impl Dispatcher {
 					self.message_handlers.portfolio_message_handler.process_message(
 						message,
 						&mut queue,
-						PortfolioMessageData {
+						PortfolioMessageContext {
 							ipp,
 							preferences,
 							current_tool,
@@ -260,7 +210,7 @@ impl Dispatcher {
 						return;
 					};
 
-					let data = ToolMessageData {
+					let context = ToolMessageContext {
 						document_id,
 						document,
 						input: &self.message_handlers.input_preprocessor_message_handler,
@@ -269,10 +219,45 @@ impl Dispatcher {
 						preferences: &self.message_handlers.preferences_message_handler,
 					};
 
-					self.message_handlers.tool_message_handler.process_message(message, &mut queue, data);
+					self.message_handlers.tool_message_handler.process_message(message, &mut queue, context);
 				}
 				Message::Workspace(message) => {
 					self.message_handlers.workspace_message_handler.process_message(message, &mut queue, ());
+				}
+				Message::NoOp => {}
+				Message::Batched { messages } => {
+					messages.iter().for_each(|message| self.handle_message(message.to_owned(), false));
+				}
+				Message::StartBuffer => {
+					self.buffered_queue = Some(std::mem::take(&mut self.message_queues));
+				}
+				Message::EndBuffer { render_metadata } => {
+					// Assign the message queue to the currently buffered queue
+					if let Some(buffered_queue) = self.buffered_queue.take() {
+						self.cleanup_queues(false);
+						assert!(self.message_queues.is_empty(), "message queues are always empty when ending a buffer");
+						self.message_queues = buffered_queue;
+					};
+
+					let graphene_std::renderer::RenderMetadata {
+						upstream_footprints: footprints,
+						local_transforms,
+						first_instance_source_id,
+						click_targets,
+						clip_targets,
+					} = render_metadata;
+
+					// Run these update state messages immediately
+					let messages = [
+						DocumentMessage::UpdateUpstreamTransforms {
+							upstream_footprints: footprints,
+							local_transforms,
+							first_instance_source_id,
+						},
+						DocumentMessage::UpdateClickTargets { click_targets },
+						DocumentMessage::UpdateClipTargets { clip_targets },
+					];
+					Self::schedule_execution(&mut self.message_queues, false, messages.map(Message::from));
 				}
 			}
 
@@ -319,12 +304,11 @@ impl Dispatcher {
 		}))
 	}
 
-	/// Logs a message that is about to be executed,
-	/// either as a tree with a discriminant or the entire payload (depending on settings)
+	/// Logs a message that is about to be executed, either as a tree
+	/// with a discriminant or the entire payload (depending on settings)
 	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], message_logging_verbosity: MessageLoggingVerbosity) {
 		let discriminant = MessageDiscriminant::from(message);
-		let is_blocked = DEBUG_MESSAGE_BLOCK_LIST.iter().any(|&blocked_discriminant| discriminant == blocked_discriminant)
-			|| DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
+		let is_blocked = DEBUG_MESSAGE_BLOCK_LIST.contains(&discriminant) || DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
 
 		if !is_blocked {
 			match message_logging_verbosity {

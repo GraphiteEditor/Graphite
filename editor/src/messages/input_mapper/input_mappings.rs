@@ -8,7 +8,6 @@ use crate::messages::input_mapper::utility_types::misc::{KeyMappingEntries, Mapp
 use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
-use crate::messages::portfolio::document::utility_types::transformation::TransformType;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::brush_tool::BrushToolMessageOptionsUpdate;
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
@@ -55,14 +54,15 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyZ); modifiers=[Accel, MouseLeft], action_dispatch=DocumentMessage::Noop),
 		//
 		// NodeGraphMessage
-		entry!(KeyDown(MouseLeft); action_dispatch=NodeGraphMessage::PointerDown {shift_click: false, control_click: false, alt_click: false, right_click: false}),
-		entry!(KeyDown(MouseLeft); modifiers=[Shift], action_dispatch=NodeGraphMessage::PointerDown {shift_click: true, control_click: false, alt_click: false, right_click: false}),
-		entry!(KeyDown(MouseLeft); modifiers=[Accel], action_dispatch=NodeGraphMessage::PointerDown {shift_click: false, control_click: true, alt_click: false, right_click: false}),
-		entry!(KeyDown(MouseLeft); modifiers=[Shift, Accel], action_dispatch=NodeGraphMessage::PointerDown {shift_click: true, control_click: true, alt_click: false, right_click: false}),
-		entry!(KeyDown(MouseLeft); modifiers=[Alt], action_dispatch=NodeGraphMessage::PointerDown {shift_click: false, control_click: false, alt_click: true, right_click: false}),
-		entry!(KeyDown(MouseRight); action_dispatch=NodeGraphMessage::PointerDown {shift_click: false, control_click: false, alt_click: false, right_click: true}),
+		entry!(KeyDown(MouseLeft); action_dispatch=NodeGraphMessage::PointerDown { shift_click: false, control_click: false, alt_click: false, right_click: false }),
+		entry!(KeyDown(MouseLeft); modifiers=[Shift], action_dispatch=NodeGraphMessage::PointerDown { shift_click: true, control_click: false, alt_click: false, right_click: false }),
+		entry!(KeyDown(MouseLeft); modifiers=[Accel], action_dispatch=NodeGraphMessage::PointerDown { shift_click: false, control_click: true, alt_click: false, right_click: false }),
+		entry!(KeyDown(MouseLeft); modifiers=[Shift, Accel], action_dispatch=NodeGraphMessage::PointerDown { shift_click: true, control_click: true, alt_click: false, right_click: false }),
+		entry!(KeyDown(MouseLeft); modifiers=[Alt], action_dispatch=NodeGraphMessage::PointerDown { shift_click: false, control_click: false, alt_click: true, right_click: false }),
+		entry!(KeyDown(MouseRight); action_dispatch=NodeGraphMessage::PointerDown { shift_click: false, control_click: false, alt_click: false, right_click: true }),
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=NodeGraphMessage::EnterNestedNetwork),
-		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=NodeGraphMessage::PointerMove {shift: Shift}),
+		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=NodeGraphMessage::PointerMove { shift: Shift }),
+		entry!(PointerShake; action_dispatch=NodeGraphMessage::ShakeNode),
 		entry!(KeyUp(MouseLeft); action_dispatch=NodeGraphMessage::PointerUp),
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { delete_children: false }),
 		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { delete_children: false }),
@@ -221,11 +221,12 @@ pub fn input_mappings() -> Mapping {
 		entry!(PointerMove; refresh_keys=[KeyC, Space, Control, Shift, Alt], action_dispatch=PathToolMessage::PointerMove { toggle_colinear: KeyC, equidistant: Alt, move_anchor_with_handles: Space, snap_angle: Shift, lock_angle: Control, delete_segment: Alt, break_colinear_molding: Alt }),
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyDown(KeyA); modifiers=[Accel], action_dispatch=PathToolMessage::SelectAllAnchors),
-		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], action_dispatch=PathToolMessage::DeselectAllPoints),
+		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], canonical, action_dispatch=PathToolMessage::DeselectAllPoints),
+		entry!(KeyDown(KeyA); modifiers=[Alt], action_dispatch=PathToolMessage::DeselectAllPoints),
 		entry!(KeyDown(Backspace); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyUp(MouseLeft); action_dispatch=PathToolMessage::DragStop { extend_selection: Shift, shrink_selection: Alt }),
 		entry!(KeyDown(Enter); action_dispatch=PathToolMessage::Enter { extend_selection: Shift, shrink_selection: Alt }),
-		entry!(DoubleClick(MouseButton::Left); action_dispatch=PathToolMessage::FlipSmoothSharp),
+		entry!(DoubleClick(MouseButton::Left); action_dispatch=PathToolMessage::DoubleClick { extend_selection: Shift, shrink_selection: Alt }),
 		entry!(KeyDown(ArrowRight); action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: 0. }),
 		entry!(KeyDown(ArrowRight); modifiers=[Shift], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: BIG_NUDGE_AMOUNT, delta_y: 0. }),
 		entry!(KeyDown(ArrowRight); modifiers=[ArrowUp], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT }),
@@ -313,9 +314,11 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyE); action_dispatch=ToolMessage::ActivateToolShapeEllipse),
 		entry!(KeyDown(KeyY); action_dispatch=ToolMessage::ActivateToolShape),
 		entry!(KeyDown(KeyB); action_dispatch=ToolMessage::ActivateToolBrush),
-		entry!(KeyDown(KeyX); modifiers=[Accel, Shift], action_dispatch=ToolMessage::ResetColors),
+		entry!(KeyDown(KeyD); action_dispatch=ToolMessage::ResetColors),
 		entry!(KeyDown(KeyX); modifiers=[Shift], action_dispatch=ToolMessage::SwapColors),
-		entry!(KeyDown(KeyC); modifiers=[Alt], action_dispatch=ToolMessage::SelectRandomPrimaryColor),
+		entry!(KeyDown(KeyC); modifiers=[Alt], action_dispatch=ToolMessage::SelectRandomWorkingColor { primary: true }),
+		entry!(KeyDown(KeyC); modifiers=[Alt, Shift], action_dispatch=ToolMessage::SelectRandomWorkingColor { primary: false }),
+		entry!(KeyDownNoRepeat(Tab); action_dispatch=ToolMessage::ToggleSelectVsPath),
 		//
 		// DocumentMessage
 		entry!(KeyDown(Space); modifiers=[Control], action_dispatch=DocumentMessage::GraphViewOverlayToggle),
@@ -327,20 +330,21 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyH); modifiers=[Accel], action_dispatch=DocumentMessage::ToggleSelectedVisibility),
 		entry!(KeyDown(KeyL); modifiers=[Accel], action_dispatch=DocumentMessage::ToggleSelectedLocked),
 		entry!(KeyDown(KeyG); modifiers=[Alt], action_dispatch=DocumentMessage::ToggleGridVisibility),
-		entry!(KeyDown(KeyZ); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::Redo),
+		entry!(KeyDown(KeyZ); modifiers=[Accel, Shift], canonical, action_dispatch=DocumentMessage::Redo),
 		entry!(KeyDown(KeyY); modifiers=[Accel], action_dispatch=DocumentMessage::Redo),
 		entry!(KeyDown(KeyZ); modifiers=[Accel], action_dispatch=DocumentMessage::Undo),
 		entry!(KeyDown(KeyA); modifiers=[Accel], action_dispatch=DocumentMessage::SelectAllLayers),
-		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::DeselectAllLayers),
+		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], canonical, action_dispatch=DocumentMessage::DeselectAllLayers),
+		entry!(KeyDown(KeyA); modifiers=[Alt], action_dispatch=DocumentMessage::DeselectAllLayers),
 		entry!(KeyDown(KeyS); modifiers=[Accel], action_dispatch=DocumentMessage::SaveDocument),
-		entry!(KeyDown(KeyD); modifiers=[Accel], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
+		entry!(KeyDown(KeyD); modifiers=[Accel], canonical, action_dispatch=DocumentMessage::DuplicateSelectedLayers),
 		entry!(KeyDown(KeyJ); modifiers=[Accel], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
 		entry!(KeyDown(KeyG); modifiers=[Accel], action_dispatch=DocumentMessage::GroupSelectedLayers { group_folder_type: GroupFolderType::Layer }),
 		entry!(KeyDown(KeyG); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::UngroupSelectedLayers),
 		entry!(KeyDown(KeyN); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::CreateEmptyFolder),
-		entry!(KeyDown(Backslash); modifiers=[Alt], action_dispatch=DocumentMessage::SelectParentLayer),
-		entry!(KeyDown(BracketLeft); modifiers=[Alt], action_dispatch=DocumentMessage::SelectionStepBack),
-		entry!(KeyDown(BracketRight); modifiers=[Alt], action_dispatch=DocumentMessage::SelectionStepForward),
+		entry!(KeyDown(Escape); modifiers=[Shift], action_dispatch=DocumentMessage::SelectParentLayer),
+		entry!(KeyDown(BracketLeft); modifiers=[Alt], canonical, action_dispatch=DocumentMessage::SelectionStepBack),
+		entry!(KeyDown(BracketRight); modifiers=[Alt], canonical, action_dispatch=DocumentMessage::SelectionStepForward),
 		entry!(KeyDown(MouseBack); action_dispatch=DocumentMessage::SelectionStepBack),
 		entry!(KeyDown(MouseForward); action_dispatch=DocumentMessage::SelectionStepForward),
 		entry!(KeyDown(Digit0); modifiers=[Accel], action_dispatch=DocumentMessage::ZoomCanvasToFitAll),
@@ -376,9 +380,9 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(ArrowRight); action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: NUDGE_AMOUNT, delta_y: 0., resize: Alt, resize_opposite_corner: Control }),
 		//
 		// TransformLayerMessage
-		entry!(KeyDown(KeyG); action_dispatch=TransformLayerMessage::BeginGRS { transform_type: TransformType::Grab }),
-		entry!(KeyDown(KeyR); action_dispatch=TransformLayerMessage::BeginGRS { transform_type: TransformType::Rotate }),
-		entry!(KeyDown(KeyS); action_dispatch=TransformLayerMessage::BeginGRS { transform_type: TransformType::Scale }),
+		entry!(KeyDown(KeyG); action_dispatch=TransformLayerMessage::BeginGrab),
+		entry!(KeyDown(KeyR); action_dispatch=TransformLayerMessage::BeginRotate),
+		entry!(KeyDown(KeyS); action_dispatch=TransformLayerMessage::BeginScale),
 		entry!(KeyDown(Digit0); action_dispatch=TransformLayerMessage::TypeDigit { digit: 0 }),
 		entry!(KeyDown(Digit1); action_dispatch=TransformLayerMessage::TypeDigit { digit: 1 }),
 		entry!(KeyDown(Digit2); action_dispatch=TransformLayerMessage::TypeDigit { digit: 2 }),
@@ -414,7 +418,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Tab); modifiers=[Control], action_dispatch=PortfolioMessage::NextDocument),
 		entry!(KeyDown(Tab); modifiers=[Control, Shift], action_dispatch=PortfolioMessage::PrevDocument),
 		entry!(KeyDown(KeyW); modifiers=[Accel], action_dispatch=PortfolioMessage::CloseActiveDocumentWithConfirmation),
-		entry!(KeyDown(KeyW); modifiers=[Accel,Alt], action_dispatch=PortfolioMessage::CloseAllDocumentsWithConfirmation),
+		entry!(KeyDown(KeyW); modifiers=[Accel, Alt], action_dispatch=PortfolioMessage::CloseAllDocumentsWithConfirmation),
 		entry!(KeyDown(KeyO); modifiers=[Accel], action_dispatch=PortfolioMessage::OpenDocument),
 		entry!(KeyDown(KeyI); modifiers=[Accel], action_dispatch=PortfolioMessage::Import),
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }),
@@ -437,7 +441,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Space); modifiers=[Shift], action_dispatch=AnimationMessage::ToggleLivePreview),
 		entry!(KeyDown(Home); modifiers=[Shift], action_dispatch=AnimationMessage::RestartAnimation),
 	];
-	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut wheel_scroll, mut pointer_move) = mappings;
+	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut wheel_scroll, mut pointer_move, mut pointer_shake) = mappings;
 
 	let sort = |list: &mut KeyMappingEntries| list.0.sort_by(|a, b| b.modifiers.count_ones().cmp(&a.modifiers.count_ones()));
 	// Sort the sublists of `key_up`, `key_down`, `key_up_no_repeat`, and `key_down_no_repeat`
@@ -454,6 +458,8 @@ pub fn input_mappings() -> Mapping {
 	sort(&mut wheel_scroll);
 	// Sort `pointer_move`
 	sort(&mut pointer_move);
+	// Sort `pointer_shake`
+	sort(&mut pointer_shake);
 
 	Mapping {
 		key_up,
@@ -463,6 +469,7 @@ pub fn input_mappings() -> Mapping {
 		double_click,
 		wheel_scroll,
 		pointer_move,
+		pointer_shake,
 	}
 }
 

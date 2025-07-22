@@ -77,7 +77,7 @@ mod test_ellipse {
 		layers
 			.filter_map(|layer| {
 				let node_graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
-				let ellipse_node = node_graph_layer.upstream_node_id_from_protonode(ellipse::protonode_identifier())?;
+				let ellipse_node = node_graph_layer.upstream_node_id_from_protonode(ellipse::IDENTIFIER)?;
 				Some(ResolvedEllipse {
 					radius_x: instrumented.grab_protonode_input::<ellipse::RadiusXInput>(&vec![ellipse_node], &editor.runtime).unwrap(),
 					radius_y: instrumented.grab_protonode_input::<ellipse::RadiusYInput>(&vec![ellipse_node], &editor.runtime).unwrap(),

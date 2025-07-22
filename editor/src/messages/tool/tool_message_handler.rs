@@ -1,18 +1,20 @@
 use super::common_functionality::shape_editor::ShapeState;
 use super::common_functionality::shapes::shape_utility::ShapeType::{self, Ellipse, Line, Rectangle};
-use super::utility_types::{ToolActionHandlerData, ToolFsmState, tool_message_to_tool_type};
+use super::utility_types::{ToolActionMessageContext, ToolFsmState, tool_message_to_tool_type};
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
+use crate::messages::tool::transform_layer::transform_layer_message_handler::TransformLayerMessageContext;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use graphene_std::raster::color::Color;
 
-const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |context| DocumentMessage::DrawArtboardOverlays(context).into();
+const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |overlay_context| DocumentMessage::DrawArtboardOverlays(overlay_context).into();
 
-pub struct ToolMessageData<'a> {
+#[derive(ExtractField)]
+pub struct ToolMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub document: &'a mut DocumentMessageHandler,
 	pub input: &'a InputPreprocessorMessageHandler,
@@ -21,7 +23,7 @@ pub struct ToolMessageData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, ExtractField)]
 pub struct ToolMessageHandler {
 	pub tool_state: ToolFsmState,
 	pub transform_layer_handler: TransformLayerMessageHandler,
@@ -29,23 +31,31 @@ pub struct ToolMessageHandler {
 	pub tool_is_active: bool,
 }
 
-impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, data: ToolMessageData) {
-		let ToolMessageData {
+#[message_handler_data]
+impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: ToolMessageContext) {
+		let ToolMessageContext {
 			document_id,
 			document,
 			input,
 			persistent_data,
 			node_graph,
 			preferences,
-		} = data;
+		} = context;
 		let font_cache = &persistent_data.font_cache;
 
 		match message {
 			// Messages
-			ToolMessage::TransformLayer(message) => self
-				.transform_layer_handler
-				.process_message(message, responses, (document, input, &self.tool_state.tool_data, &mut self.shape_editor)),
+			ToolMessage::TransformLayer(message) => self.transform_layer_handler.process_message(
+				message,
+				responses,
+				TransformLayerMessageContext {
+					document,
+					input,
+					tool_data: &self.tool_state.tool_data,
+					shape_editor: &mut self.shape_editor,
+				},
+			),
 
 			ToolMessage::ActivateToolSelect => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Select }),
 			ToolMessage::ActivateToolArtboard => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Artboard }),
@@ -104,7 +114,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				// Send the old and new tools a transition to their FSM Abort states
 				let mut send_abort_to_tool = |old_tool: ToolType, new_tool: ToolType, update_hints_and_cursor: bool| {
 					if let Some(tool) = tool_data.tools.get_mut(&new_tool) {
-						let mut data = ToolActionHandlerData {
+						let mut data = ToolActionMessageContext {
 							document,
 							document_id,
 							global_tool_data: &self.tool_state.document_tool_data,
@@ -181,6 +191,11 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
 				});
 
+				responses.add(BroadcastMessage::SubscribeEvent {
+					on: BroadcastEvent::SelectionChanged,
+					send: Box::new(SelectToolMessage::SyncHistory.into()),
+				});
+
 				self.tool_is_active = true;
 
 				let tool_data = &mut self.tool_state.tool_data;
@@ -199,7 +214,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				// Notify the frontend about the initial working colors
 				document_data.update_working_colors(responses);
 
-				let mut data = ToolActionHandlerData {
+				let mut data = ToolActionMessageContext {
 					document,
 					document_id,
 					global_tool_data: &self.tool_state.document_tool_data,
@@ -240,14 +255,8 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 
 				document_data.update_working_colors(responses); // TODO: Make this an event
 			}
-			ToolMessage::SelectPrimaryColor { color } => {
-				let document_data = &mut self.tool_state.document_tool_data;
-				document_data.primary_color = color;
-
-				document_data.update_working_colors(responses); // TODO: Make this an event
-			}
-			ToolMessage::SelectRandomPrimaryColor => {
-				// Select a random primary color (rgba) based on an UUID
+			ToolMessage::SelectRandomWorkingColor { primary } => {
+				// Select a random working color (RGBA) based on an UUID
 				let document_data = &mut self.tool_state.document_tool_data;
 
 				let random_number = generate_uuid();
@@ -255,15 +264,35 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				let g = (random_number >> 8) as u8;
 				let b = random_number as u8;
 				let random_color = Color::from_rgba8_srgb(r, g, b, 255);
-				document_data.primary_color = random_color;
+
+				if primary {
+					document_data.primary_color = random_color;
+				} else {
+					document_data.secondary_color = random_color;
+				}
 
 				document_data.update_working_colors(responses); // TODO: Make this an event
 			}
-			ToolMessage::SelectSecondaryColor { color } => {
+			ToolMessage::SelectWorkingColor { color, primary } => {
 				let document_data = &mut self.tool_state.document_tool_data;
-				document_data.secondary_color = color;
+
+				if primary {
+					document_data.primary_color = color;
+				} else {
+					document_data.secondary_color = color;
+				}
 
 				document_data.update_working_colors(responses); // TODO: Make this an event
+			}
+			ToolMessage::ToggleSelectVsPath => {
+				// If we have the select tool active, toggle to the path tool and vice versa
+				let tool_data = &mut self.tool_state.tool_data;
+				let active_tool_type = tool_data.active_tool_type;
+				if active_tool_type == ToolType::Select {
+					responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Path });
+				} else {
+					responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
+				}
 			}
 			ToolMessage::SwapColors => {
 				let document_data = &mut self.tool_state.document_tool_data;
@@ -291,7 +320,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 					let graph_view_overlay_open = document.graph_view_overlay_open();
 
 					if tool_type == tool_data.active_tool_type {
-						let mut data = ToolActionHandlerData {
+						let mut data = ToolActionMessageContext {
 							document,
 							document_id,
 							global_tool_data: &self.tool_state.document_tool_data,
@@ -340,9 +369,12 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 
 			ActivateToolBrush,
 
-			SelectRandomPrimaryColor,
+			ToggleSelectVsPath,
+
+			SelectRandomWorkingColor,
 			ResetColors,
 			SwapColors,
+
 			Undo,
 		);
 		list.extend(self.tool_state.tool_data.active_tool().actions());

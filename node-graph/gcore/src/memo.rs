@@ -2,6 +2,7 @@ use crate::{Node, WasmNotSend};
 use dyn_any::DynFuture;
 use std::future::Future;
 use std::hash::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -47,6 +48,10 @@ impl<T, CachedNode> MemoNode<T, CachedNode> {
 	pub fn new(node: CachedNode) -> MemoNode<T, CachedNode> {
 		MemoNode { cache: Default::default(), node }
 	}
+}
+
+pub mod memo {
+	pub const IDENTIFIER: crate::ProtoNodeIdentifier = crate::ProtoNodeIdentifier::new("graphene_core::memo::MemoNode");
 }
 
 /// Caches the output of a given Node and acts as a proxy.
@@ -98,6 +103,10 @@ impl<T, I, CachedNode> ImpureMemoNode<I, T, CachedNode> {
 	}
 }
 
+pub mod impure_memo {
+	pub const IDENTIFIER: crate::ProtoNodeIdentifier = crate::ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode");
+}
+
 /// Stores both what a node was called with and what it returned.
 #[derive(Clone, Debug)]
 pub struct IORecord<I, O> {
@@ -142,7 +151,10 @@ impl<I, T, N> MonitorNode<I, T, N> {
 	}
 }
 
-use std::hash::{Hash, Hasher};
+pub mod monitor {
+	pub const IDENTIFIER: crate::ProtoNodeIdentifier = crate::ProtoNodeIdentifier::new("graphene_core::memo::MonitorNode");
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct MemoHash<T: Hash> {
 	hash: u64,

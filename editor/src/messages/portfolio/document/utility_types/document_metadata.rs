@@ -1,6 +1,8 @@
 use super::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::graph_operation::transform_utils;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
+use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 use graphene_std::math::quad::Quad;
@@ -17,30 +19,17 @@ use std::num::NonZeroU64;
 
 // TODO: To avoid storing a stateful snapshot of some other system's state (which is easily to accidentally get out of sync),
 // TODO: it might be better to have a system that can query the state of the node network on demand.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DocumentMetadata {
 	pub upstream_footprints: HashMap<NodeId, Footprint>,
 	pub local_transforms: HashMap<NodeId, DAffine2>,
+	pub first_instance_source_ids: HashMap<NodeId, Option<NodeId>>,
 	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
 	pub click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_modify: HashMap<NodeId, VectorData>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
-}
-
-impl Default for DocumentMetadata {
-	fn default() -> Self {
-		Self {
-			upstream_footprints: HashMap::new(),
-			local_transforms: HashMap::new(),
-			structure: HashMap::new(),
-			vector_modify: HashMap::new(),
-			click_targets: HashMap::new(),
-			clip_targets: HashSet::new(),
-			document_to_viewport: DAffine2::IDENTITY,
-		}
-	}
 }
 
 // =================================
@@ -108,6 +97,36 @@ impl DocumentMetadata {
 		// let stroke_transform = self.upstream_transform(stroke_node);
 
 		footprint * local_transform
+	}
+
+	pub fn transform_to_viewport_if_feeds(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DAffine2 {
+		// We're not allowed to convert the root parent to a node id
+		if layer == LayerNodeIdentifier::ROOT_PARENT {
+			return self.document_to_viewport;
+		}
+
+		let footprint = self.upstream_footprints.get(&layer.to_node()).map(|footprint| footprint.transform).unwrap_or(self.document_to_viewport);
+
+		let mut use_local = true;
+		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
+		if let Some(path_node) = graph_layer.upstream_node_id_from_name("Path") {
+			if let Some(&source) = self.first_instance_source_ids.get(&layer.to_node()) {
+				if !network_interface
+					.upstream_flow_back_from_nodes(vec![path_node], &[], FlowType::HorizontalFlow)
+					.any(|upstream| Some(upstream) == source)
+				{
+					use_local = false;
+					info!("Local transform is invalid — using the identity for the local transform instead")
+				}
+			}
+		}
+		let local_transform = use_local.then(|| self.local_transforms.get(&layer.to_node()).copied()).flatten().unwrap_or_default();
+
+		footprint * local_transform
+	}
+
+	pub fn transform_to_document_if_feeds(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DAffine2 {
+		self.document_to_viewport.inverse() * self.transform_to_viewport_if_feeds(layer, network_interface)
 	}
 
 	pub fn transform_to_viewport_with_first_transform_node_if_group(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DAffine2 {
@@ -250,12 +269,8 @@ impl LayerNodeIdentifier {
 
 	/// Construct a [`LayerNodeIdentifier`], debug asserting that it is a layer node. This should only be used in the document network since the structure is not loaded in nested networks.
 	#[track_caller]
-	pub fn new(node_id: NodeId, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Self {
-		debug_assert!(
-			network_interface.is_layer(&node_id, network_path),
-			"Layer identifier constructed from non-layer node {node_id}: {:#?}",
-			network_interface.nested_network(network_path).unwrap().nodes.get(&node_id)
-		);
+	pub fn new(node_id: NodeId, network_interface: &NodeNetworkInterface) -> Self {
+		debug_assert!(network_interface.is_layer(&node_id, &[]), "Layer identifier constructed from non-layer node {node_id}",);
 		Self::new_unchecked(node_id)
 	}
 

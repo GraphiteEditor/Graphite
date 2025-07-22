@@ -4,14 +4,14 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
 use bezier_rs::Subpath;
-use glam::{DAffine2, DVec2, IVec2};
+use glam::{DAffine2, IVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
+use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{CPU, RasterDataTable};
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::brush_stroke::BrushStroke;
 use graphene_std::vector::style::{Fill, Stroke};
 use graphene_std::vector::{PointId, VectorModificationType};
 use graphene_std::vector::{VectorData, VectorDataTable};
@@ -97,6 +97,8 @@ impl<'a> ModifyInputsContext<'a> {
 			};
 		}
 
+		let layer_input_connector = post_node_input_connector;
+
 		// Sink post_node down to the end of the non layer chain that feeds into post_node, such that pre_node is the layer node at insert_index + 1, or None if insert_index is the last layer
 		loop {
 			let pre_node_output_connector = network_interface.upstream_output_connector(&post_node_input_connector, &[]);
@@ -105,6 +107,11 @@ impl<'a> ModifyInputsContext<'a> {
 				Some(OutputConnector::Node { node_id: pre_node_id, .. }) if !network_interface.is_layer(&pre_node_id, &[]) => {
 					// Update post_node_input_connector for the next iteration
 					post_node_input_connector = InputConnector::node(pre_node_id, 0);
+					// Insert directly under layer if moving to the end of a layer stack that ends with a non layer node that does not have an exposed primary input
+					let primary_is_exposed = network_interface.input_from_connector(&post_node_input_connector, &[]).is_some_and(|input| input.is_exposed());
+					if !primary_is_exposed {
+						return layer_input_connector;
+					}
 				}
 				_ => break, // Break if pre_node_output_connector is None or if pre_node_id is a layer
 			}
@@ -117,7 +124,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn create_layer(&mut self, new_id: NodeId) -> LayerNodeIdentifier {
 		let new_merge_node = resolve_document_node_type("Merge").expect("Merge node").default_node_template();
 		self.network_interface.insert_node(new_id, new_merge_node, &[]);
-		LayerNodeIdentifier::new(new_id, self.network_interface, &[])
+		LayerNodeIdentifier::new(new_id, self.network_interface)
 	}
 
 	/// Creates an artboard as the primary export for the document network
@@ -125,13 +132,13 @@ impl<'a> ModifyInputsContext<'a> {
 		let artboard_node_template = resolve_document_node_type("Artboard").expect("Node").node_template_input_override([
 			Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroupTable::default()), true)),
 			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_std::GraphicGroupTable::default()), true)),
-			Some(NodeInput::value(TaggedValue::IVec2(artboard.location), false)),
-			Some(NodeInput::value(TaggedValue::IVec2(artboard.dimensions), false)),
+			Some(NodeInput::value(TaggedValue::DVec2(artboard.location.into()), false)),
+			Some(NodeInput::value(TaggedValue::DVec2(artboard.dimensions.into()), false)),
 			Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
 			Some(NodeInput::value(TaggedValue::Bool(artboard.clip), false)),
 		]);
 		self.network_interface.insert_node(new_id, artboard_node_template, &[]);
-		LayerNodeIdentifier::new(new_id, self.network_interface, &[])
+		LayerNodeIdentifier::new(new_id, self.network_interface)
 	}
 
 	pub fn insert_boolean_data(&mut self, operation: graphene_std::path_bool::BooleanOperation, layer: LayerNodeIdentifier) {
@@ -229,7 +236,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.layer_node.or_else(|| {
 			let export_node = self.network_interface.document_network().exports.first().and_then(|export| export.as_node())?;
 			if self.network_interface.is_layer(&export_node, &[]) {
-				Some(LayerNodeIdentifier::new(export_node, self.network_interface, &[]))
+				Some(LayerNodeIdentifier::new(export_node, self.network_interface))
 			} else {
 				None
 			}
@@ -458,12 +465,6 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
-	pub fn pivot_set(&mut self, new_pivot: DVec2) {
-		let Some(transform_node_id) = self.existing_node_id("Transform", true) else { return };
-
-		self.set_input_with_refresh(InputConnector::node(transform_node_id, 5), NodeInput::value(TaggedValue::DVec2(new_pivot), false), false);
-	}
-
 	pub fn vector_modify(&mut self, modification_type: VectorModificationType) {
 		let Some(path_node_id) = self.existing_node_id("Path", true) else { return };
 		self.network_interface.vector_modify(&path_node_id, modification_type);
@@ -492,8 +493,8 @@ impl<'a> ModifyInputsContext<'a> {
 			dimensions.y *= -1;
 			location.y -= dimensions.y;
 		}
-		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 2), NodeInput::value(TaggedValue::IVec2(location), false), false);
-		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 3), NodeInput::value(TaggedValue::IVec2(dimensions), false), false);
+		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 2), NodeInput::value(TaggedValue::DVec2(location.into()), false), false);
+		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 3), NodeInput::value(TaggedValue::DVec2(dimensions.into()), false), false);
 	}
 
 	/// Set the input, refresh the properties panel, and run the document graph if skip_rerender is false

@@ -10,10 +10,10 @@ use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
+use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings};
-use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
+use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
@@ -38,7 +38,8 @@ use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::style::ViewMode;
 use std::time::Duration;
 
-pub struct DocumentMessageData<'a> {
+#[derive(ExtractField)]
+pub struct DocumentMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub persistent_data: &'a PersistentData,
@@ -48,7 +49,7 @@ pub struct DocumentMessageData<'a> {
 	pub device_pixel_ratio: f64,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
 #[serde(default)]
 pub struct DocumentMessageHandler {
 	// ======================
@@ -168,9 +169,10 @@ impl Default for DocumentMessageHandler {
 	}
 }
 
-impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessageHandler {
-	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, data: DocumentMessageData) {
-		let DocumentMessageData {
+#[message_handler_data]
+impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMessageHandler {
+	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, context: DocumentMessageContext) {
+		let DocumentMessageContext {
 			document_id,
 			ipp,
 			persistent_data,
@@ -178,28 +180,21 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			current_tool,
 			preferences,
 			device_pixel_ratio,
-		} = data;
+		} = context;
 
-		let selected_nodes_bounding_box_viewport = self.network_interface.selected_nodes_bounding_box_viewport(&self.breadcrumb_network_path);
-		let selected_visible_layers_bounding_box_viewport = self.selected_visible_layers_bounding_box_viewport();
 		match message {
 			// Sub-messages
 			DocumentMessage::Navigation(message) => {
-				let data = NavigationMessageData {
+				let context = NavigationMessageContext {
 					network_interface: &mut self.network_interface,
 					breadcrumb_network_path: &self.breadcrumb_network_path,
 					ipp,
-					selection_bounds: if self.graph_view_overlay_open {
-						selected_nodes_bounding_box_viewport
-					} else {
-						selected_visible_layers_bounding_box_viewport
-					},
 					document_ptz: &mut self.document_ptz,
 					graph_view_overlay_open: self.graph_view_overlay_open,
 					preferences,
 				};
 
-				self.navigation_handler.process_message(message, responses, data);
+				self.navigation_handler.process_message(message, responses, context);
 			}
 			DocumentMessage::Overlays(message) => {
 				let visibility_settings = self.overlays_visibility_settings;
@@ -208,7 +203,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.overlays_message_handler.process_message(
 					message,
 					responses,
-					OverlaysMessageData {
+					OverlaysMessageContext {
 						visibility_settings,
 						ipp,
 						device_pixel_ratio,
@@ -216,20 +211,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				);
 			}
 			DocumentMessage::PropertiesPanel(message) => {
-				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
+				let context = PropertiesPanelMessageContext {
 					network_interface: &mut self.network_interface,
 					selection_network_path: &self.selection_network_path,
 					document_name: self.name.as_str(),
 					executor,
+					persistent_data,
 				};
-				self.properties_panel_message_handler
-					.process_message(message, responses, (persistent_data, properties_panel_message_handler_data));
+				self.properties_panel_message_handler.process_message(message, responses, context);
 			}
 			DocumentMessage::NodeGraph(message) => {
 				self.node_graph_handler.process_message(
 					message,
 					responses,
-					NodeGraphHandlerData {
+					NodeGraphMessageContext {
 						network_interface: &mut self.network_interface,
 						selection_network_path: &self.selection_network_path,
 						breadcrumb_network_path: &self.breadcrumb_network_path,
@@ -244,20 +239,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				);
 			}
 			DocumentMessage::GraphOperation(message) => {
-				let data = GraphOperationMessageData {
+				let context = GraphOperationMessageContext {
 					network_interface: &mut self.network_interface,
 					collapsed: &mut self.collapsed,
 					node_graph: &mut self.node_graph_handler,
 				};
 				let mut graph_operation_message_handler = GraphOperationMessageHandler {};
-				graph_operation_message_handler.process_message(message, responses, data);
+				graph_operation_message_handler.process_message(message, responses, context);
 			}
 			DocumentMessage::AlignSelectedLayers { axis, aggregate } => {
 				let axis = match axis {
 					AlignAxis::X => DVec2::X,
 					AlignAxis::Y => DVec2::Y,
 				};
-				let Some(combined_box) = self.selected_visible_layers_bounding_box_viewport() else {
+				let Some(combined_box) = self.network_interface.selected_layers_artwork_bounding_box_viewport() else {
 					return;
 				};
 
@@ -444,6 +439,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::EnterNestedNetwork { node_id } => {
 				self.breadcrumb_network_path.push(node_id);
 				self.selection_network_path.clone_from(&self.breadcrumb_network_path);
+				responses.add(NodeGraphMessage::UnloadWires);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
@@ -473,16 +469,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					self.breadcrumb_network_path.pop();
 					self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				}
+				responses.add(NodeGraphMessage::UnloadWires);
+				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
-				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::FlipSelectedLayers { flip_axis } => {
 				let scale = match flip_axis {
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
 				};
-				if let Some([min, max]) = self.selected_visible_and_unlock_layers_bounding_box_viewport() {
+				if let Some([min, max]) = self.network_interface.selected_unlocked_layers_bounding_box_viewport() {
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
 					let mut added_transaction = false;
@@ -502,7 +499,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::RotateSelectedLayers { degrees } => {
 				// Get the bounding box of selected layers in viewport space
-				if let Some([min, max]) = self.selected_visible_and_unlock_layers_bounding_box_viewport() {
+				if let Some([min, max]) = self.network_interface.selected_unlocked_layers_bounding_box_viewport() {
 					// Calculate the center of the bounding box to use as rotation pivot
 					let center = (max + min) / 2.;
 					// Transform that moves pivot point to origin
@@ -525,6 +522,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 			}
 			DocumentMessage::GraphViewOverlay { open } => {
+				let opened = !self.graph_view_overlay_open && open;
 				self.graph_view_overlay_open = open;
 
 				responses.add(FrontendMessage::UpdateGraphViewOverlay { open });
@@ -537,6 +535,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
+				if opened {
+					responses.add(NodeGraphMessage::UnloadWires);
+				}
 				if open {
 					responses.add(ToolMessage::DeactivateTools);
 					responses.add(OverlaysMessage::Draw); // Clear the overlays
@@ -744,6 +745,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// Nudge translation without resizing
 				if !resize {
 					let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
+					responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });
 
 					for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
 						responses.add(GraphOperationMessage::TransformChange {
@@ -1054,13 +1056,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.selected_layers_reorder(relative_index_offset, responses);
 			}
 			DocumentMessage::ClipLayer { id } => {
-				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
+				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
 
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(GraphOperationMessage::ClipModeToggle { layer });
 			}
 			DocumentMessage::SelectLayer { id, ctrl, shift } => {
-				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
+				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
 
 				let mut nodes = vec![];
 
@@ -1179,6 +1181,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					OverlaysType::HoverOutline => visibility_settings.hover_outline = visible,
 					OverlaysType::SelectionOutline => visibility_settings.selection_outline = visible,
 					OverlaysType::Pivot => visibility_settings.pivot = visible,
+					OverlaysType::Origin => visibility_settings.origin = visible,
 					OverlaysType::Path => visibility_settings.path = visible,
 					OverlaysType::Anchors => {
 						visibility_settings.anchors = visible;
@@ -1256,7 +1259,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::ToggleLayerExpansion { id, recursive } => {
-				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
+				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
 				let metadata = self.metadata();
 
 				let is_collapsed = self.collapsed.0.contains(&layer);
@@ -1299,8 +1302,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::UpdateUpstreamTransforms {
 				upstream_footprints,
 				local_transforms,
+				first_instance_source_id,
 			} => {
 				self.network_interface.update_transforms(upstream_footprints, local_transforms);
+				self.network_interface.update_first_instance_source_id(first_instance_source_id);
 			}
 			DocumentMessage::UpdateClickTargets { click_targets } => {
 				// TODO: Allow non layer nodes to have click targets
@@ -1311,7 +1316,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						self.network_interface.document_network().nodes.contains_key(node_id))
 					.filter_map(|(node_id, click_targets)| {
 						self.network_interface.is_layer(&node_id, &[]).then(|| {
-							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface, &[]);
+							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
 							(layer, click_targets)
 						})
 					})
@@ -1671,6 +1676,11 @@ impl DocumentMessageHandler {
 			})
 	}
 
+	pub fn click_list_no_parents<'a>(&'a self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
+		self.click_xray(ipp)
+			.filter(move |&layer| !self.network_interface.is_artboard(&layer.to_node(), &[]) && !layer.has_children(self.network_interface.document_metadata()))
+	}
+
 	/// Find the deepest layer that has been clicked on from a location in viewport space.
 	pub fn click(&self, ipp: &InputPreprocessorMessageHandler) -> Option<LayerNodeIdentifier> {
 		self.click_list(ipp).last()
@@ -1689,23 +1699,6 @@ impl DocumentMessageHandler {
 				}
 			})
 			.last()
-	}
-
-	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space
-	pub fn selected_visible_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
-		self.network_interface
-			.selected_nodes()
-			.selected_visible_layers(&self.network_interface)
-			.filter_map(|layer| self.metadata().bounding_box_viewport(layer))
-			.reduce(graphene_std::renderer::Quad::combine_bounds)
-	}
-
-	pub fn selected_visible_and_unlock_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
-		self.network_interface
-			.selected_nodes()
-			.selected_visible_and_unlocked_layers(&self.network_interface)
-			.filter_map(|layer| self.metadata().bounding_box_viewport(layer))
-			.reduce(graphene_std::renderer::Quad::combine_bounds)
 	}
 
 	pub fn document_network(&self) -> &NodeNetwork {
@@ -1878,6 +1871,7 @@ impl DocumentMessageHandler {
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
 		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
+		responses.add(NodeGraphMessage::UnloadWires);
 		responses.add(NodeGraphMessage::SetGridAlignedEdges);
 		responses.add(Message::StartBuffer);
 		Some(previous_network)
@@ -1909,7 +1903,8 @@ impl DocumentMessageHandler {
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
-
+		responses.add(NodeGraphMessage::UnloadWires);
+		responses.add(NodeGraphMessage::SendWires);
 		Some(previous_network)
 	}
 
@@ -2066,7 +2061,7 @@ impl DocumentMessageHandler {
 	/// Loads all of the fonts in the document.
 	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
 		let mut fonts = HashSet::new();
-		for (_node_id, node) in self.document_network().recursive_nodes() {
+		for (_node_id, node, _) in self.document_network().recursive_nodes() {
 			for input in &node.inputs {
 				if let Some(TaggedValue::Font(font)) = input.as_value() {
 					fonts.insert(font.clone());
@@ -2256,6 +2251,24 @@ impl DocumentMessageHandler {
 									.for_label(checkbox_id.clone())
 									.widget_holder(),
 								TextLabel::new("Transform Pivot".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+							]
+						},
+					},
+					LayoutGroup::Row {
+						widgets: {
+							let mut checkbox_id = CheckboxId::default();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.origin)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::Origin),
+										}
+										.into()
+									})
+									.for_label(checkbox_id.clone())
+									.widget_holder(),
+								TextLabel::new("Transform Origin".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
 							]
 						},
 					},
@@ -2717,7 +2730,22 @@ impl DocumentMessageHandler {
 				.tooltip("Add an operation to the end of this layer's chain of nodes")
 				.disabled(!has_selection || has_multiple_selection)
 				.popover_layout({
-					let node_chooser = NodeCatalog::new()
+					// Showing only compatible types
+					let compatible_type = selected_layer.and_then(|layer| {
+						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &self.network_interface);
+						let node_type = graph_layer.horizontal_layer_flow().nth(1);
+						if let Some(node_id) = node_type {
+							let (output_type, _) = self.network_interface.output_type(&node_id, 0, &self.selection_network_path);
+							Some(format!("type:{}", output_type.nested_type()))
+						} else {
+							None
+						}
+					});
+
+					let mut node_chooser = NodeCatalog::new();
+					node_chooser.intial_search = compatible_type.unwrap_or("".to_string());
+
+					let node_chooser = node_chooser
 						.on_update(move |node_type| {
 							if let Some(layer) = selected_layer {
 								NodeGraphMessage::CreateNodeInLayerWithTransaction {

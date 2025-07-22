@@ -1,7 +1,7 @@
 use super::*;
 use crate::Ctx;
 use crate::instances::Instance;
-use crate::uuid::generate_uuid;
+use crate::uuid::{NodeId, generate_uuid};
 use bezier_rs::BezierHandles;
 use dyn_any::DynAny;
 use kurbo::{BezPath, PathEl, Point};
@@ -418,17 +418,39 @@ impl Hash for VectorModification {
 	}
 }
 
-/// A node that applies a procedural modification to some [`VectorData`].
+/// Applies a diff modification to a vector path.
 #[node_macro::node(category(""))]
-async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: Box<VectorModification>) -> VectorDataTable {
+async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: Box<VectorModification>, node_path: Vec<NodeId>) -> VectorDataTable {
 	if vector_data.is_empty() {
 		vector_data.push(Instance::default());
 	}
 	let vector_data_instance = vector_data.get_mut(0).expect("push should give one item");
 	modification.apply(vector_data_instance.instance);
+
+	// Update the source node id
+	let this_node_path = node_path.iter().rev().nth(1).copied();
+	*vector_data_instance.source_node_id = vector_data_instance.source_node_id.or(this_node_path);
+
 	if vector_data.len() > 1 {
 		warn!("The path modify ran on {} instances of vector data. Only the first can be modified.", vector_data.len());
 	}
+	vector_data
+}
+
+/// Applies the vector path's local transformation to its geometry and resets it to the identity.
+#[node_macro::node(category("Vector"))]
+async fn apply_transform(_ctx: impl Ctx, mut vector_data: VectorDataTable) -> VectorDataTable {
+	for vector_data_instance in vector_data.instance_mut_iter() {
+		let vector_data = vector_data_instance.instance;
+		let transform = *vector_data_instance.transform;
+
+		for (_, point) in vector_data.point_domain.positions_mut() {
+			*point = transform.transform_point2(*point);
+		}
+
+		*vector_data_instance.transform = DAffine2::IDENTITY;
+	}
+
 	vector_data
 }
 

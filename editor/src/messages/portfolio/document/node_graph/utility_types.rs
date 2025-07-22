@@ -2,6 +2,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Inp
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Type;
+use std::borrow::Cow;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
@@ -15,20 +16,19 @@ pub enum FrontendGraphDataType {
 }
 
 impl FrontendGraphDataType {
-	fn with_type(input: &Type) -> Self {
+	pub fn from_type(input: &Type) -> Self {
 		match TaggedValue::from_type_or_none(input) {
 			TaggedValue::Image(_) | TaggedValue::RasterData(_) => Self::Raster,
 			TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::VectorData,
 			TaggedValue::U32(_)
 			| TaggedValue::U64(_)
 			| TaggedValue::F64(_)
-			| TaggedValue::UVec2(_)
-			| TaggedValue::IVec2(_)
 			| TaggedValue::DVec2(_)
 			| TaggedValue::OptionalDVec2(_)
 			| TaggedValue::F64Array4(_)
 			| TaggedValue::VecF64(_)
-			| TaggedValue::VecDVec2(_) => Self::Number,
+			| TaggedValue::VecDVec2(_)
+			| TaggedValue::DAffine2(_) => Self::Number,
 			TaggedValue::GraphicGroup(_) | TaggedValue::GraphicElement(_) => Self::Group, // TODO: Is GraphicElement supposed to be included here?
 			TaggedValue::ArtboardGroup(_) => Self::Artboard,
 			_ => Self::General,
@@ -38,7 +38,7 @@ impl FrontendGraphDataType {
 	pub fn displayed_type(input: &Type, type_source: &TypeSource) -> Self {
 		match type_source {
 			TypeSource::Error(_) | TypeSource::RandomProtonodeImplementation => Self::General,
-			_ => Self::with_type(input),
+			_ => Self::from_type(input),
 		}
 	}
 }
@@ -50,7 +50,7 @@ pub struct FrontendGraphInput {
 	pub name: String,
 	pub description: String,
 	#[serde(rename = "resolvedType")]
-	pub resolved_type: Option<String>,
+	pub resolved_type: String,
 	#[serde(rename = "validTypes")]
 	pub valid_types: Vec<String>,
 	#[serde(rename = "connectedTo")]
@@ -64,7 +64,7 @@ pub struct FrontendGraphOutput {
 	pub name: String,
 	pub description: String,
 	#[serde(rename = "resolvedType")]
-	pub resolved_type: Option<String>,
+	pub resolved_type: String,
 	#[serde(rename = "connectedTo")]
 	pub connected_to: Vec<InputConnector>,
 }
@@ -97,43 +97,26 @@ pub struct FrontendNode {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct FrontendNodeWire {
-	#[serde(rename = "wireStart")]
-	pub wire_start: OutputConnector,
-	#[serde(rename = "wireEnd")]
-	pub wire_end: InputConnector,
-	pub dashed: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeType {
-	pub name: String,
-	pub category: String,
+	pub name: Cow<'static, str>,
+	pub category: Cow<'static, str>,
 	#[serde(rename = "inputTypes")]
-	pub input_types: Option<Vec<String>>,
+	pub input_types: Option<Vec<Cow<'static, str>>>,
 }
 
 impl FrontendNodeType {
-	pub fn new(name: &'static str, category: &'static str) -> Self {
+	pub fn new(name: impl Into<Cow<'static, str>>, category: impl Into<Cow<'static, str>>) -> Self {
 		Self {
-			name: name.to_string(),
-			category: category.to_string(),
+			name: name.into(),
+			category: category.into(),
 			input_types: None,
 		}
 	}
 
-	pub fn with_input_types(name: &'static str, category: &'static str, input_types: Vec<String>) -> Self {
+	pub fn with_input_types(name: impl Into<Cow<'static, str>>, category: impl Into<Cow<'static, str>>, input_types: Vec<Cow<'static, str>>) -> Self {
 		Self {
-			name: name.to_string(),
-			category: category.to_string(),
-			input_types: Some(input_types),
-		}
-	}
-
-	pub fn with_owned_strings_and_input_types(name: String, category: String, input_types: Vec<String>) -> Self {
-		Self {
-			name,
-			category,
+			name: name.into(),
+			category: category.into(),
 			input_types: Some(input_types),
 		}
 	}
@@ -151,16 +134,6 @@ pub struct Transform {
 	pub scale: f64,
 	pub x: f64,
 	pub y: f64,
-}
-
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct WirePath {
-	#[serde(rename = "pathString")]
-	pub path_string: String,
-	#[serde(rename = "dataType")]
-	pub data_type: FrontendGraphDataType,
-	pub thick: bool,
-	pub dashed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -217,39 +190,10 @@ pub struct FrontendClickTargets {
 	pub modify_import_export: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum Direction {
 	Up,
 	Down,
 	Left,
 	Right,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
-pub enum GraphWireStyle {
-	#[default]
-	Direct = 0,
-	GridAligned = 1,
-}
-
-impl std::fmt::Display for GraphWireStyle {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			GraphWireStyle::GridAligned => write!(f, "Grid-Aligned"),
-			GraphWireStyle::Direct => write!(f, "Direct"),
-		}
-	}
-}
-
-impl GraphWireStyle {
-	pub fn tooltip_description(&self) -> &'static str {
-		match self {
-			GraphWireStyle::GridAligned => "Wires follow the grid, running in straight lines between nodes",
-			GraphWireStyle::Direct => "Wires bend to run at an angle directly between nodes",
-		}
-	}
-
-	pub fn is_direct(&self) -> bool {
-		*self == GraphWireStyle::Direct
-	}
 }
