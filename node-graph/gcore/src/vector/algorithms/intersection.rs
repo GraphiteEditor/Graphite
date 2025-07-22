@@ -1,9 +1,15 @@
 use kurbo::{BezPath, ParamCurve, PathSeg, Shape};
 
 pub fn segment_intersections(segment1: PathSeg, segment2: PathSeg, accuracy: f64) -> Vec<(f64, f64)> {
-	let mut intersections = Vec::new();
-	segment_intersections_inner(segment1, 0., 1., segment2, 0., 1., accuracy, &mut intersections);
-	intersections
+	match (segment1, segment2) {
+		(PathSeg::Line(line), segment2) => segment2.intersect_line(line).iter().map(|i| (i.line_t, i.segment_t)).collect(),
+		(segment1, PathSeg::Line(line)) => segment1.intersect_line(line).iter().map(|i| (i.segment_t, i.line_t)).collect(),
+		(segment1, segment2) => {
+			let mut intersections = Vec::new();
+			segment_intersections_inner(segment1, 0., 1., segment2, 0., 1., accuracy, &mut intersections);
+			intersections
+		}
+	}
 }
 
 fn segment_intersections_inner(segment1: PathSeg, min_t1: f64, max_t1: f64, segment2: PathSeg, min_t2: f64, max_t2: f64, accuracy: f64, intersections: &mut Vec<(f64, f64)>) {
@@ -16,7 +22,7 @@ fn segment_intersections_inner(segment1: PathSeg, min_t1: f64, max_t1: f64, segm
 	// Check if the bounding boxes overlap
 	if bbox1.overlaps(bbox2) {
 		// If bounding boxes are within the error threshold (i.e. are small enough), we have found an intersection
-		if bbox1.width() < accuracy && bbox1.height() < accuracy {
+		if bbox1.width() < accuracy && bbox1.height() < accuracy && bbox2.width() < accuracy && bbox2.height() < accuracy {
 			// Use the middle t value, append the corresponding `t` value.
 			intersections.push((mid_t1, mid_t2));
 			return;
