@@ -1,5 +1,5 @@
 // Root
-pub use crate::utility_traits::{ActionList, AsMessage, HierarchicalTree, MessageHandler, ToDiscriminant, TransitiveChild};
+pub use crate::utility_traits::{ActionList, AsMessage, ExtractField, HierarchicalTree, MessageHandler, ToDiscriminant, TransitiveChild};
 pub use crate::utility_types::{DebugMessageTree, MessageData};
 // Message, MessageData, MessageDiscriminant, MessageHandler
 pub use crate::messages::animation::{AnimationMessage, AnimationMessageDiscriminant, AnimationMessageHandler};

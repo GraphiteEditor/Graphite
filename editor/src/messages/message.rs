@@ -97,6 +97,17 @@ mod test {
 			}
 		}
 
+		// Print message field if any
+		if let Some(fields) = tree.fields() {
+			let len = fields.len();
+			for (i, field) in fields.iter().enumerate() {
+				let is_last_field = i == len - 1;
+				let branch = if is_last_field { "└── " } else { "├── " };
+
+				file.write_all(format!("{}{}{}\n", child_prefix, branch, field).as_bytes()).unwrap();
+			}
+		}
+
 		// Print handler field if any
 		if let Some(data) = tree.message_handler_fields() {
 			let len = data.fields().len();

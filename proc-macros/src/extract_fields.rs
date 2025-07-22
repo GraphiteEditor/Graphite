@@ -34,20 +34,20 @@ pub fn derive_extract_field_impl(input: TokenStream) -> syn::Result<TokenStream>
 	let field_str = field_info.into_iter().map(|(name, ty)| (format!("{}: {}", name, ty)));
 
 	let res = quote! {
-		impl #impl_generics #struct_name #ty_generics #where_clause {
-			pub fn field_types() -> Vec<(String, usize)> {
+		impl #impl_generics ExtractField for #struct_name #ty_generics #where_clause {
+			fn field_types() -> Vec<(String, usize)> {
 				vec![
 					#((String::from(#field_str), #field_line)),*
 				]
 			}
 
-			pub fn print_field_types() {
+			fn print_field_types() {
 				for (field, line) in Self::field_types() {
 					println!("{} at line {}", field, line);
 				}
 			}
 
-			pub fn path() -> &'static str {
+			fn path() -> &'static str {
 				file!()
 			}
 		}

@@ -67,6 +67,7 @@ pub struct TransformLayerMessageHandler {
 	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
 }
 
+#[message_handler_data]
 impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for TransformLayerMessageHandler {
 	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, context: TransformLayerMessageContext) {
 		let TransformLayerMessageContext {

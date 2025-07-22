@@ -43,10 +43,8 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 								quote! {
 									#input_item
 									impl #message_type {
-										pub fn message_handler_data_str() -> MessageData
-											{
+										pub fn message_handler_data_str() -> MessageData {
 											MessageData::new(format!("{}", stringify!(#type_name)), #type_name::field_types(), #type_name::path())
-
 										}
 										pub fn message_handler_str() -> MessageData {
 											MessageData::new(format!("{}", stringify!(#input_type)), #input_type::field_types(), #input_type::path())
