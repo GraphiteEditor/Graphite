@@ -220,7 +220,7 @@ async fn render_canvas(
 	if !data.contains_artboard() && !render_config.hide_artboards {
 		background = Color::WHITE;
 	}
-	exec.render_vello_scene(&scene, &surface_handle, footprint.resolution.x, footprint.resolution.y, &context, background)
+	exec.render_vello_scene(&scene, &surface_handle, footprint.resolution, &context, background)
 		.await
 		.expect("Failed to render Vello scene");
 

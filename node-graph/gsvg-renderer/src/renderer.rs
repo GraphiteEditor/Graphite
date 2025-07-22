@@ -145,7 +145,7 @@ impl Default for SvgRender {
 #[derive(Clone, Debug, Default)]
 pub struct RenderContext {
 	#[cfg(feature = "vello")]
-	pub resource_overrides: HashMap<u64, std::sync::Arc<wgpu::Texture>>,
+	pub resource_overrides: HashMap<u64, wgpu::Texture>,
 }
 
 /// Static state used whilst rendering
@@ -983,7 +983,7 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 			if image.data.is_empty() {
 				return;
 			}
-			let image = peniko::Image::new(image.to_flat_u8().0.into(), peniko::Format::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
+			let image = peniko::Image::new(image.to_flat_u8().0.into(), peniko::ImageFormat::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
 			let transform = transform * *instance.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 
 			scene.draw_image(&image, kurbo::Affine::new(transform.to_cols_array()));
@@ -1035,10 +1035,10 @@ impl GraphicElementRendered for RasterDataTable<GPU> {
 		};
 
 		for instance in self.instance_ref_iter() {
-			let image = peniko::Image::new(vec![].into(), peniko::Format::Rgba8, instance.instance.data().width(), instance.instance.data().height()).with_extend(peniko::Extend::Repeat);
+			let image = peniko::Image::new(vec![].into(), peniko::ImageFormat::Rgba8, instance.instance.data().width(), instance.instance.data().height()).with_extend(peniko::Extend::Repeat);
 
 			let id = image.data.id();
-			context.resource_overrides.insert(id, instance.instance.data_owned());
+			context.resource_overrides.insert(id, instance.instance.data().clone());
 
 			render_stuff(image, *instance.transform, *instance.alpha_blending);
 		}
