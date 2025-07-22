@@ -1174,29 +1174,6 @@ fn color_overlay<T: Adjust<Color>>(
 	image
 }
 
-// pub use index_node::IndexNode;
-
-// mod index_node {
-// 	use crate::raster::{Color, Image};
-// 	use crate::Ctx;
-
-// 	#[node_macro::node(category(""))]
-// 	pub fn index<T: Default + Clone>(
-// 		_: impl Ctx,
-// 		#[implementations(Vec<Image<Color>>, Vec<Color>)]
-// 		#[widget(ParsedWidgetOverride::Hidden)]
-// 		input: Vec<T>,
-// 		index: u32,
-// 	) -> T {
-// 		if (index as usize) < input.len() {
-// 			input[index as usize].clone()
-// 		} else {
-// 			warn!("The number of segments is {} but the requested segment is {}!", input.len(), index);
-// 			Default::default()
-// 		}
-// 	}
-// }
-
 #[cfg(test)]
 mod test {
 	use graphene_core::blending::BlendMode;
