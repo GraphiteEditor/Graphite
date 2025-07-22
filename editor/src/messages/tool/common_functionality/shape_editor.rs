@@ -1000,7 +1000,7 @@ impl ShapeState {
 		} else {
 			// Push both in and out handles into the correct position
 			for ((handle, sign), other_anchor) in handles.iter().zip([1., -1.]).zip(&anchor_positions) {
-				let Some(anchor_vector) = other_anchor.map(|position| (position - anchor_position)) else {
+				let Some(anchor_vector) = other_anchor.map(|position| position - anchor_position) else {
 					continue;
 				};
 
