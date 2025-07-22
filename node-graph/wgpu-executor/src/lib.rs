@@ -111,18 +111,14 @@ impl WgpuExecutor {
 
 		{
 			let mut renderer = self.vello_renderer.lock().await;
-			for (id, texture) in context.resource_overrides.iter() {
-				let texture = texture.clone();
+			for (image, texture) in context.resource_overrides.iter() {
 				let texture_view = wgpu::TexelCopyTextureInfoBase {
-					texture,
+					texture: texture.clone(),
 					mip_level: 0,
 					origin: Origin3d::ZERO,
 					aspect: TextureAspect::All,
 				};
-				renderer.override_image(
-					&vello::peniko::Image::new(vello::peniko::Blob::from_raw_parts(Arc::new(vec![]), *id), vello::peniko::ImageFormat::Rgba8, 0, 0),
-					Some(texture_view),
-				);
+				renderer.override_image(image, Some(texture_view));
 			}
 			renderer.render_to_texture(&self.context.device, &self.context.queue, scene, &target_texture.view, &render_params)?;
 		}
