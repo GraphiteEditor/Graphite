@@ -326,13 +326,14 @@
 			alreadyActedGuard = true;
 			isDragging = true;
 
-			// We need to request pointer lock as immediately as possible for Safari compatibility
+			// We begin dragging if the target supports pointer lock.
+			// We need to request pointer lock as immediately as possible for Safari compatibility.
 			const target = e.target || undefined;
-			if (!(target instanceof HTMLElement)) return;
+			if (target instanceof HTMLElement) {
+				target.requestPointerLock();
+				beginDrag();
+			}
 
-			target.requestPointerLock();
-
-			beginDrag();
 			removeEventListener("pointermove", onMove);
 		};
 		// If it's a mouseup, we'll begin editing the text field.
