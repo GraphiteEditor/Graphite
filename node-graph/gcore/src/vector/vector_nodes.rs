@@ -1874,7 +1874,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 		}
 
 		if segment_domain_length != sorted_segments.len() {
-			for i in 0..segment_domain_length as usize {
+			for i in 0..segment_domain_length {
 				if !sorted_segments.contains(&i) {
 					sorted_segments.push(i);
 				}

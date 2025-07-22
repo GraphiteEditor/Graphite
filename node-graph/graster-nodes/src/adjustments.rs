@@ -65,6 +65,26 @@ fn luminance<T: Adjust<Color>>(
 	input
 }
 
+#[node_macro::node(category("Raster"))]
+fn gamma_correction<T: Adjust<Color>>(
+	_: impl Ctx,
+	#[implementations(
+		Color,
+		RasterDataTable<CPU>,
+		GradientStops,
+	)]
+	mut input: T,
+	#[default(2.2)]
+	#[range((0.01, 10.))]
+	#[hard_min(0.0001)]
+	gamma: f64,
+	inverse: bool,
+) -> T {
+	let exponent = if inverse { 1. / gamma } else { gamma };
+	input.adjust(|color| color.gamma(exponent as f32));
+	input
+}
+
 #[node_macro::node(category("Raster: Channels"))]
 fn extract_channel<T: Adjust<Color>>(
 	_: impl Ctx,
