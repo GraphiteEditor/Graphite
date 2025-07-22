@@ -12,11 +12,11 @@
 
 	type Props = {
 		entries: MenuListEntry[][];
-		selectedIndex?: number | undefined; // When not provided, a dash is displayed
+		selectedIndex?: number; // When not provided, a dash is displayed
 		drawIcon?: boolean;
 		interactive?: boolean;
 		disabled?: boolean;
-		tooltip?: string | undefined;
+		tooltip?: string;
 		minWidth?: number;
 		maxWidth?: number;
 		onhoverOutEntry?: (index: number) => void;
@@ -26,7 +26,7 @@
 
 	let {
 		entries,
-		selectedIndex = undefined,
+		selectedIndex,
 		drawIcon = false,
 		interactive = true,
 		disabled = false,
@@ -40,12 +40,8 @@
 
 	let activeEntry = $state(makeActiveEntry());
 	let activeEntrySkipWatcher = false;
-	let initialSelectedIndex: number | undefined = undefined;
 	let open = $state(false);
-
-	function watchOpen(open: boolean) {
-		initialSelectedIndex = open ? selectedIndex : undefined;
-	}
+	let initialSelectedIndex: number | undefined = selectedIndex;
 
 	// Called only when `selectedIndex` is changed from outside this component
 	function watchSelectedIndex(_?: typeof selectedIndex) {
@@ -70,7 +66,9 @@
 		} else if (activeEntry !== DASH_ENTRY) {
 			// We need to set to the initial value first to track a right history step, as if we hover in initial selection.
 			if (initialSelectedIndex !== undefined) onhoverInEntry?.(initialSelectedIndex);
-			onselectedIndex?.(getEntryIndex(activeEntry));
+			const entryIndex = getEntryIndex(activeEntry);
+			onselectedIndex?.(entryIndex);
+			initialSelectedIndex = entryIndex;
 		}
 	}
 
@@ -100,9 +98,6 @@
 	});
 	$effect(() => {
 		watchActiveEntry(activeEntry);
-	});
-	$effect(() => {
-		watchOpen(open);
 	});
 </script>
 
