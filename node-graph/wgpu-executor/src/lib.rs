@@ -122,6 +122,9 @@ impl WgpuExecutor {
 				renderer.override_image(image, Some(texture_view));
 			}
 			renderer.render_to_texture(&self.context.device, &self.context.queue, scene, &target_texture.view, &render_params)?;
+			for (image, _) in context.resource_overrides.iter() {
+				renderer.override_image(image, None);
+			}
 		}
 
 		let surface_texture = surface_inner.get_current_texture()?;
