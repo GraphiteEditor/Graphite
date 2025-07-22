@@ -61,7 +61,7 @@ impl ImplSchemeHandlerFactory for GraphiteSchemeHandlerFactory {
 	}
 }
 
-static FRONTEND: Dir = include_dir!("$CARGO_MANIFEST_DIR/../frontend/dist");
+static FRONTEND: Dir = include_dir!("$CARGO_MANIFEST_DIR/../frontend-native/dist");
 
 struct GraphiteFrontendResourceHandler<'a> {
 	object: *mut RcImpl<_cef_resource_handler_t, Self>,
@@ -74,7 +74,7 @@ impl<'a> GraphiteFrontendResourceHandler<'a> {
 		let data = if let Some(file) = file {
 			Some(RefCell::new(file.contents().iter()))
 		} else {
-			println!("Failed to find asset at path: {}", path);
+			println!("Failed to find asset at path: {}/{}", FRONTEND.path().to_str().unwrap(), path);
 			None
 		};
 		let mimetype = if let Some(file) = file {

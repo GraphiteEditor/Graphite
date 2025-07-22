@@ -1,31 +1,35 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_app_t, cef_base_ref_counted_t};
-use cef::{App, BrowserProcessHandler, ImplApp, SchemeRegistrar, WrapApp};
+use cef::{App, BrowserProcessHandler, Frame, ImplApp, SchemeRegistrar, WrapApp};
 
 use crate::cef::scheme_handler::GraphiteSchemeHandlerFactory;
 use crate::cef::EventHandler;
+use crate::render::{FrameBuffer, FrameBufferHandle};
 
-use super::browser_process_handler::BrowserProcessHandlerImpl;
+use super::browser_process_handler::OffscreenBrowserProcessHandler;
 
-pub(crate) struct AppImpl<H: EventHandler> {
-	object: *mut RcImpl<_cef_app_t, Self>,
-	event_handler: H,
+struct OffscreenApp {
+	object: *mut RcImpl<cef_dll_sys::_cef_app_t, Self>,
+	frame_buffer: Arc<Mutex<FrameBuffer>>,
 }
-impl<H: EventHandler> AppImpl<H> {
-	pub(crate) fn new(event_handler: H) -> App {
+
+impl OffscreenApp {
+	fn new(frame_buffer: Arc<Mutex<FrameBuffer>>) -> App {
 		App::new(Self {
 			object: std::ptr::null_mut(),
-			event_handler,
+			frame_buffer,
 		})
 	}
 }
 
-impl<H: EventHandler> ImplApp for AppImpl<H> {
+impl ImplApp for OffscreenApp {
 	fn browser_process_handler(&self) -> Option<BrowserProcessHandler> {
-		Some(BrowserProcessHandlerImpl::new(self.event_handler.clone()))
+		println!("browser_process_handler");
+		Some(OffscreenBrowserProcessHandler::new(self.frame_buffer.clone()))
 	}
 
 	fn on_register_custom_schemes(&self, registrar: Option<&mut SchemeRegistrar>) {
+		println!("on_register_custom_schemes");
 		GraphiteSchemeHandlerFactory::register_schemes(registrar);
 	}
 

@@ -2,6 +2,7 @@ use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_client_t, cef_base_ref_counted_t};
 use cef::{Client, ImplClient, RenderHandler, WrapClient};
 
+
 pub(crate) struct ClientImpl {
 	object: *mut RcImpl<_cef_client_t, Self>,
 	render_handler: RenderHandler,

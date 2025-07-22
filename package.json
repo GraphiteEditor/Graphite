@@ -4,6 +4,7 @@
 	"scripts": {
 		"---------- DEV SERVER ----------": "",
 		"start": "cd frontend && npm start",
+		"start-desktop": "cd frontend-native && npm run build && cargo run -p graphite-desktop",
 		"profiling": "cd frontend && npm run profiling",
 		"production": "cd frontend && npm run production",
 		"---------- BUILDS ----------": "",

@@ -23,7 +23,7 @@ pub(crate) fn handle_window_event(context: &mut Context<Initialized>, event: &Wi
 
 				context.input_state.update_mouse_position(position);
 				let mouse_event: MouseEvent = (&context.input_state).into();
-				browser.host().unwrap().send_mouse_move_event(Some(&mouse_event), 0);
+				// browser.host().unwrap().send_mouse_move_event(Some(&mouse_event), 0);
 			}
 		}
 		WindowEvent::MouseInput { state, button, .. } => {

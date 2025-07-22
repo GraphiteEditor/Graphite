@@ -1,31 +1,30 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_render_handler_t, cef_base_ref_counted_t};
-use cef::{Browser, ImplBrowser, ImplBrowserHost, ImplRenderHandler, PaintElementType, Rect, RenderHandler, WrapRenderHandler};
+use cef::{Browser, ImplRenderHandler, PaintElementType, Rect, RenderHandler, WrapRenderHandler};
 
-use crate::cef::EventHandler;
+use crate::render::FrameBufferHandle;
 
-pub(crate) struct RenderHandlerImpl<H: EventHandler> {
+// CEF render handler for offscreen rendering
+pub struct OffscreenRenderHandler {
 	object: *mut RcImpl<_cef_render_handler_t, Self>,
-	event_handler: H,
+	frame_buffer: FrameBufferHandle,
 }
-impl<H: EventHandler> RenderHandlerImpl<H> {
-	pub(crate) fn new(event_handler: H) -> RenderHandler {
+
+impl OffscreenRenderHandler {
+	pub(crate) fn new(frame_buffer: FrameBufferHandle) -> RenderHandler {
 		RenderHandler::new(Self {
 			object: std::ptr::null_mut(),
-			event_handler,
+			frame_buffer,
 		})
 	}
 }
-impl<H: EventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
+impl ImplRenderHandler for OffscreenRenderHandler {
 	fn view_rect(&self, _browser: Option<&mut Browser>, rect: Option<&mut Rect>) {
+		let frame_buffer = self.frame_buffer.inner.lock().unwrap();
+		let width = frame_buffer.width() as i32;
+		let height = frame_buffer.height() as i32;
 		if let Some(rect) = rect {
-			let view = self.event_handler.view();
-			*rect = Rect {
-				x: 0,
-				y: 0,
-				width: view.width as i32,
-				height: view.height as i32,
-			};
+			*rect = Rect { x: 0, y: 0, width, height };
 		}
 	}
 
@@ -41,12 +40,7 @@ impl<H: EventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 	) {
 		let buffer_size = (width * height * 4) as usize;
 		let buffer_slice = unsafe { std::slice::from_raw_parts(buffer, buffer_size) };
-		let draw_successful = self.event_handler.draw(buffer_slice.to_vec(), width as usize, height as usize);
-		if !draw_successful {
-			if let Some(browser) = browser {
-				browser.host().unwrap().was_resized();
-			}
-		}
+		self.frame_buffer.inner.lock().unwrap().add_buffer(buffer_slice, width, height);
 	}
 
 	fn get_raw(&self) -> *mut _cef_render_handler_t {
@@ -54,7 +48,13 @@ impl<H: EventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 	}
 }
 
-impl<H: EventHandler> Clone for RenderHandlerImpl<H> {
+impl WrapRenderHandler for OffscreenRenderHandler {
+	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_render_handler_t, Self>) {
+		self.object = object;
+	}
+}
+
+impl Clone for OffscreenRenderHandler {
 	fn clone(&self) -> Self {
 		unsafe {
 			let rc_impl = &mut *self.object;
@@ -62,20 +62,16 @@ impl<H: EventHandler> Clone for RenderHandlerImpl<H> {
 		}
 		Self {
 			object: self.object,
-			event_handler: self.event_handler.clone(),
+			frame_buffer: self.frame_buffer.clone(),
 		}
 	}
 }
-impl<H: EventHandler> Rc for RenderHandlerImpl<H> {
+
+impl Rc for OffscreenRenderHandler {
 	fn as_base(&self) -> &cef_base_ref_counted_t {
 		unsafe {
 			let base = &*self.object;
 			std::mem::transmute(&base.cef_object)
 		}
-	}
-}
-impl<H: EventHandler> WrapRenderHandler for RenderHandlerImpl<H> {
-	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_render_handler_t, Self>) {
-		self.object = object;
 	}
 }

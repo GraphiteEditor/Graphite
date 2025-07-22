@@ -1,19 +1,25 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_app_t, cef_base_ref_counted_t};
-use cef::{App, ImplApp, SchemeRegistrar, WrapApp};
+use cef::{App, BrowserProcessHandler, ImplApp, SchemeRegistrar, WrapApp};
 
+use crate::cef::internal::browser_process_handler::OffscreenBrowserProcessHandler;
 use crate::cef::scheme_handler::GraphiteSchemeHandlerFactory;
+use crate::render::FrameBufferHandle;
 
-pub(crate) struct NonBrowserAppImpl {
+pub(crate) struct OffscreenApp {
 	object: *mut RcImpl<_cef_app_t, Self>,
 }
-impl NonBrowserAppImpl {
+impl OffscreenApp {
 	pub(crate) fn new() -> App {
 		App::new(Self { object: std::ptr::null_mut() })
 	}
 }
 
-impl ImplApp for NonBrowserAppImpl {
+impl ImplApp for OffscreenApp {
+	fn browser_process_handler(&self) -> Option<BrowserProcessHandler> {
+		Some(OffscreenBrowserProcessHandler::new())
+	}
+
 	fn on_register_custom_schemes(&self, registrar: Option<&mut SchemeRegistrar>) {
 		GraphiteSchemeHandlerFactory::register_schemes(registrar);
 	}
@@ -23,7 +29,7 @@ impl ImplApp for NonBrowserAppImpl {
 	}
 }
 
-impl Clone for NonBrowserAppImpl {
+impl Clone for OffscreenApp {
 	fn clone(&self) -> Self {
 		unsafe {
 			let rc_impl = &mut *self.object;
@@ -32,7 +38,7 @@ impl Clone for NonBrowserAppImpl {
 		Self { object: self.object }
 	}
 }
-impl Rc for NonBrowserAppImpl {
+impl Rc for OffscreenApp {
 	fn as_base(&self) -> &cef_base_ref_counted_t {
 		unsafe {
 			let base = &*self.object;
@@ -40,7 +46,7 @@ impl Rc for NonBrowserAppImpl {
 		}
 	}
 }
-impl WrapApp for NonBrowserAppImpl {
+impl WrapApp for OffscreenApp {
 	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_app_t, Self>) {
 		self.object = object;
 	}

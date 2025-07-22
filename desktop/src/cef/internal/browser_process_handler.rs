@@ -3,22 +3,17 @@ use cef::sys::{_cef_browser_process_handler_t, cef_base_ref_counted_t, cef_brows
 use cef::{BrowserProcessHandler, CefString, ImplBrowserProcessHandler, SchemeHandlerFactory, WrapBrowserProcessHandler};
 
 use crate::cef::scheme_handler::GraphiteSchemeHandlerFactory;
-use crate::cef::EventHandler;
 
-pub(crate) struct BrowserProcessHandlerImpl<H: EventHandler> {
+pub(crate) struct OffscreenBrowserProcessHandler {
 	object: *mut RcImpl<cef_browser_process_handler_t, Self>,
-	event_handler: H,
 }
-impl<H: EventHandler> BrowserProcessHandlerImpl<H> {
-	pub(crate) fn new(event_handler: H) -> BrowserProcessHandler {
-		BrowserProcessHandler::new(Self {
-			object: std::ptr::null_mut(),
-			event_handler,
-		})
+impl OffscreenBrowserProcessHandler {
+	pub(crate) fn new() -> BrowserProcessHandler {
+		BrowserProcessHandler::new(Self { object: std::ptr::null_mut() })
 	}
 }
 
-impl<H: EventHandler> ImplBrowserProcessHandler for BrowserProcessHandlerImpl<H> {
+impl ImplBrowserProcessHandler for OffscreenBrowserProcessHandler {
 	fn on_context_initialized(&self) {
 		cef::register_scheme_handler_factory(Some(&CefString::from("graphite")), None, Some(&mut SchemeHandlerFactory::new(GraphiteSchemeHandlerFactory::new())));
 	}
@@ -28,19 +23,16 @@ impl<H: EventHandler> ImplBrowserProcessHandler for BrowserProcessHandlerImpl<H>
 	}
 }
 
-impl<H: EventHandler> Clone for BrowserProcessHandlerImpl<H> {
+impl Clone for OffscreenBrowserProcessHandler {
 	fn clone(&self) -> Self {
 		unsafe {
 			let rc_impl = &mut *self.object;
 			rc_impl.interface.add_ref();
 		}
-		Self {
-			object: self.object,
-			event_handler: self.event_handler.clone(),
-		}
+		Self { object: self.object }
 	}
 }
-impl<H: EventHandler> Rc for BrowserProcessHandlerImpl<H> {
+impl Rc for OffscreenBrowserProcessHandler {
 	fn as_base(&self) -> &cef_base_ref_counted_t {
 		unsafe {
 			let base = &*self.object;
@@ -48,7 +40,7 @@ impl<H: EventHandler> Rc for BrowserProcessHandlerImpl<H> {
 		}
 	}
 }
-impl<H: EventHandler> WrapBrowserProcessHandler for BrowserProcessHandlerImpl<H> {
+impl WrapBrowserProcessHandler for OffscreenBrowserProcessHandler {
 	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_browser_process_handler_t, Self>) {
 		self.object = object;
 	}

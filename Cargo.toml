@@ -1,66 +1,9 @@
 [workspace]
 members = [
-	"editor",
 	"desktop",
-	"proc-macros",
-	"frontend/wasm",
-	"node-graph/gapplication-io",
-	"node-graph/gbrush",
-	"node-graph/gcore",
-	"node-graph/gstd",
-	"node-graph/gmath-nodes",
-	"node-graph/gpath-bool",
-	"node-graph/graph-craft",
-	"node-graph/graphene-cli",
-	"node-graph/graster-nodes",
-	"node-graph/gsvg-renderer",
-	"node-graph/interpreted-executor",
-	"node-graph/node-macro",
-	"node-graph/preprocessor",
-	"libraries/dyn-any",
-	"libraries/path-bool",
-	"libraries/bezier-rs",
-	"libraries/math-parser",
-	"website/other/bezier-rs-demos/wasm",
-]
-default-members = [
-	"editor",
-	"frontend/wasm",
-	"node-graph/gbrush",
-	"node-graph/gcore",
-	"node-graph/gstd",
-	"node-graph/gmath-nodes",
-	"node-graph/gpath-bool",
-	"node-graph/graph-craft",
-	"node-graph/graphene-cli",
-	"node-graph/graster-nodes",
-	"node-graph/gsvg-renderer",
-	"node-graph/interpreted-executor",
-	"node-graph/node-macro",
 ]
 resolver = "2"
-
 [workspace.dependencies]
-# Local dependencies
-bezier-rs = { path = "libraries/bezier-rs", features = ["dyn-any", "serde"] }
-dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam", "reqwest", "log-bad-types", "rc"] }
-preprocessor = { path = "node-graph/preprocessor"}
-math-parser = { path = "libraries/math-parser" }
-path-bool = { path = "libraries/path-bool" }
-graphene-application-io = { path = "node-graph/gapplication-io" }
-graphene-brush = { path = "node-graph/gbrush" }
-graphene-core = { path = "node-graph/gcore" }
-graphene-math-nodes = { path = "node-graph/gmath-nodes" }
-graphene-path-bool = { path = "node-graph/gpath-bool" }
-graph-craft = { path = "node-graph/graph-craft" }
-graphene-raster-nodes = { path = "node-graph/graster-nodes" }
-graphene-std = { path = "node-graph/gstd" }
-graphene-svg-renderer = { path = "node-graph/gsvg-renderer" }
-interpreted-executor = { path = "node-graph/interpreted-executor" }
-node-macro = { path = "node-graph/node-macro" }
-wgpu-executor = { path = "node-graph/wgpu-executor" }
-graphite-proc-macros = { path = "proc-macros" }
-
 # Workspace dependencies
 rustc-hash = "2.0"
 bytemuck = { version = "1.13", features = ["derive"] }
@@ -69,6 +12,8 @@ serde_json = "1.0"
 serde-wasm-bindgen = "0.6"
 reqwest = { version = "0.12", features = ["blocking", "rustls-tls", "json"] }
 futures = "0.3"
+cef = "138.5.0"
+include_dir = "0.7.4"
 env_logger = "0.11"
 log = "0.4"
 bitflags = { version = "2.4", features = ["serde"] }

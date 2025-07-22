@@ -4,10 +4,14 @@ use cef::{browser_host_create_browser_sync, initialize, BrowserSettings, Diction
 use thiserror::Error;
 use winit::event::WindowEvent;
 
+use crate::cef::internal::OffscreenRenderHandler;
+use crate::render::FrameBufferHandle;
+use crate::WindowStateHandle;
+
 use super::input::{handle_window_event, InputState};
 use super::EventHandler;
 
-use super::internal::{AppImpl, ClientImpl, NonBrowserAppImpl, RenderHandlerImpl};
+use super::internal::{AppImpl, ClientImpl, OffscreenApp, RenderHandlerImpl};
 
 pub(crate) struct Setup {}
 pub(crate) struct Initialized {}
@@ -37,7 +41,7 @@ impl Context<Setup> {
 		let is_browser_process = cmd.has_switch(Some(&switch)) != 1;
 		if !is_browser_process {
 			let process_type = CefString::from(&cmd.switch_value(Some(&switch)));
-			let mut app = NonBrowserAppImpl::new();
+			let mut app = OffscreenApp::new();
 			let ret = execute_process(Some(args.as_main_args()), Some(&mut app), std::ptr::null_mut());
 			if ret >= 0 {
 				return Err(SetupError::SubprocessFailed(process_type.to_string()));
@@ -53,19 +57,8 @@ impl Context<Setup> {
 		})
 	}
 
-	pub(crate) fn init(self, event_handler: impl EventHandler) -> Result<Context<Initialized>, InitError> {
-		let mut settings = Settings::default();
-		settings.windowless_rendering_enabled = 1;
-		settings.multi_threaded_message_loop = 0;
-
-		let mut cef_app = AppImpl::new(event_handler.clone());
-
-		let res = initialize(Some(self.args.as_main_args()), Some(&settings), Some(&mut cef_app), std::ptr::null_mut());
-		if res != 1 {
-			return Err(InitError::InitializationFailed);
-		}
-
-		let render_handler = RenderHandlerImpl::new(event_handler.clone());
+	pub(crate) fn init(self, frame_buffer: FrameBufferHandle) -> Result<Context<Initialized>, InitError> {
+		let render_handler = OffscreenRenderHandler::new(frame_buffer);
 		let mut client = ClientImpl::new(render_handler);
 
 		let url = CefString::from("graphite://frontend/");
