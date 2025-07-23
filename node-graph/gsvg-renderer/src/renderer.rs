@@ -38,10 +38,10 @@ impl MaskType {
 	}
 
 	fn write_to_defs(self, svg_defs: &mut String, uuid: u64, svg_string: String) {
-		let id = format!("mask-{}", uuid);
+		let id = format!("mask-{uuid}");
 		match self {
-			Self::Clip => write!(svg_defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg_string).unwrap(),
-			Self::Mask => write!(svg_defs, r##"<mask id="{id}" mask-type="alpha">{}</mask>"##, svg_string).unwrap(),
+			Self::Clip => write!(svg_defs, r##"<clipPath id="{id}">{svg_string}</clipPath>"##).unwrap(),
+			Self::Mask => write!(svg_defs, r##"<mask id="{id}" mask-type="alpha">{svg_string}</mask>"##).unwrap(),
 		}
 	}
 }
@@ -89,9 +89,9 @@ impl SvgRender {
 			.unwrap_or_default();
 
 		let matrix = format_transform_matrix(transform);
-		let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{}""#, matrix) };
+		let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{matrix}""#) };
 
-		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" {}><defs>{defs}</defs><g{transform}>"#, view_box);
+		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" {view_box}><defs>{defs}</defs><g{transform}>"#);
 		self.svg.insert(0, svg_header.into());
 		self.svg.push("</g></svg>".into());
 	}
@@ -267,7 +267,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 							mask_state = None;
 						}
 
-						let id = format!("mask-{}", uuid);
+						let id = format!("mask-{uuid}");
 						let selector = format!("url(#{id})");
 
 						attributes.push(mask_type.to_attribute(), selector);
@@ -444,18 +444,18 @@ impl GraphicElementRendered for VectorDataTable {
 				let can_use_order = !instance.instance.style.fill().is_none() && mask_type == MaskType::Mask;
 				if !can_use_order {
 					let id = format!("alignment-{}", generate_uuid());
-					let mut vector_row = VectorDataTable::default();
-					let mut fill_instance = instance.instance.clone();
 
+					let mut fill_instance = instance.instance.clone();
 					fill_instance.style.clear_stroke();
 					fill_instance.style.set_fill(Fill::solid(Color::BLACK));
 
-					vector_row.push(Instance {
+					let vector_row = VectorDataTable::new_instance(Instance {
 						instance: fill_instance,
 						alpha_blending: *instance.alpha_blending,
 						transform: *instance.transform,
 						source_node_id: None,
 					});
+
 					push_id = Some((id, mask_type, vector_row));
 				}
 			}
@@ -477,7 +477,7 @@ impl GraphicElementRendered for VectorDataTable {
 					let (x, y) = quad.top_left().into();
 					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
 					write!(defs, r##"{}"##, svg.svg_defs).unwrap();
-					let rect = format!(r##"<rect x="{}" y="{}" width="{width}" height="{height}" fill="white" />"##, x, y);
+					let rect = format!(r##"<rect x="{x}" y="{y}" width="{width}" height="{height}" fill="white" />"##);
 					match mask_type {
 						MaskType::Clip => write!(defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg.svg.to_svg_string()).unwrap(),
 						MaskType::Mask => write!(defs, r##"<mask id="{id}">{}{}</mask>"##, rect, svg.svg.to_svg_string()).unwrap(),
@@ -564,13 +564,11 @@ impl GraphicElementRendered for VectorDataTable {
 				.stroke()
 				.is_some_and(|stroke| stroke.align == StrokeAlign::Outside && !instance.instance.style.fill().is_none());
 			if can_draw_aligned_stroke && !reorder_for_outside {
-				let mut vector_data = VectorDataTable::default();
-
 				let mut fill_instance = instance.instance.clone();
 				fill_instance.style.clear_stroke();
 				fill_instance.style.set_fill(Fill::solid(Color::BLACK));
 
-				vector_data.push(Instance {
+				let vector_data = VectorDataTable::new_instance(Instance {
 					instance: fill_instance,
 					alpha_blending: *instance.alpha_blending,
 					transform: *instance.transform,
@@ -639,7 +637,11 @@ impl GraphicElementRendered for VectorDataTable {
 										let bounds = instance.instance.nonzero_bounding_box();
 										let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
-										let inverse_parent_transform = (parent_transform.matrix2.determinant() != 0.).then(|| parent_transform.inverse()).unwrap_or_default();
+										let inverse_parent_transform = if parent_transform.matrix2.determinant() != 0. {
+											parent_transform.inverse()
+										} else {
+											Default::default()
+										};
 										let mod_points = inverse_parent_transform * multiplied_transform * bound_transform;
 
 										let start = mod_points.transform_point2(gradient.start);
@@ -666,7 +668,11 @@ impl GraphicElementRendered for VectorDataTable {
 										});
 										// Vello does `element_transform * brush_transform` internally. We don't want element_transform to have any impact so we need to left multiply by the inverse.
 										// This makes the final internal brush transform equal to `parent_transform`, allowing you to stretch a gradient by transforming the parent folder.
-										let inverse_element_transform = (element_transform.matrix2.determinant() != 0.).then(|| element_transform.inverse()).unwrap_or_default();
+										let inverse_element_transform = if element_transform.matrix2.determinant() != 0. {
+											element_transform.inverse()
+										} else {
+											Default::default()
+										};
 										let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
 										scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), &path);
 									}
