@@ -22,7 +22,6 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
-use vello::peniko::Blob;
 #[cfg(feature = "vello")]
 use vello::*;
 
@@ -1039,7 +1038,7 @@ impl GraphicElementRendered for RasterDataTable<GPU> {
 			}
 
 			let image = peniko::Image::new(
-				Blob::new(LAZY_ARC_VEC_ZERO_U8.deref().clone()),
+				peniko::Blob::new(LAZY_ARC_VEC_ZERO_U8.deref().clone()),
 				peniko::ImageFormat::Rgba8,
 				instance.instance.data().width(),
 				instance.instance.data().height(),
