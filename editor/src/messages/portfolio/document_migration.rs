@@ -251,7 +251,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::vector::auto_tangents::IDENTIFIER,
 		aliases: &["graphene_core::vector::GenerateHandlesNode", "graphene_core::vector::RemoveHandlesNode"],
 	},
-	// raster::blending_nodes
+	// graphene_raster_nodes::blending_nodes
 	NodeReplacement {
 		node: graphene_std::raster_nodes::blending_nodes::blend::IDENTIFIER,
 		aliases: &[
@@ -272,7 +272,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_raster_nodes::generate_curves::ColorOverlayNode",
 		],
 	},
-	// raster::adjustments
+	// graphene_raster_nodes::adjustments
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::luminance::IDENTIFIER,
 		aliases: &["graphene_core::raster::adjustments::LuminanceNode", "graphene_core::raster::LuminanceNode"],
@@ -313,12 +313,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::raster_nodes::adjustments::threshold::IDENTIFIER,
 		aliases: &["graphene_core::raster::adjustments::ThresholdNode", "graphene_core::raster::ThresholdNode"],
 	},
-	// this node doesn't seem to exist?
-	// (graphene_std::raster_nodes::adjustments::blend_color::IDENTIFIER, &["graphene_core::raster::adjustments::BlendColorsNode","graphene_core::raster::BlendColorsNode"]),
-	NodeReplacement {
-		node: graphene_std::raster_nodes::adjustments::gradient_map::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::GradientMapNode", "graphene_core::raster::GradientMapNode"],
-	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::vibrance::IDENTIFIER,
 		aliases: &["graphene_core::raster::adjustments::VibranceNode", "graphene_core::raster::VibranceNode"],
@@ -339,7 +333,15 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::raster_nodes::adjustments::exposure::IDENTIFIER,
 		aliases: &["graphene_core::raster::adjustments::ExposureNode", "graphene_core::raster::ExposureNode"],
 	},
-	// raster
+	// graphene_raster_nodes::*
+	NodeReplacement {
+		node: graphene_std::raster_nodes::gradient_map::gradient_map::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::gradient_map::GradientMapNode",
+			"graphene_core::raster::adjustments::GradientMapNode",
+			"graphene_core::raster::GradientMapNode",
+		],
+	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::generate_curves::generate_curves::IDENTIFIER,
 		aliases: &["graphene_core::raster::adjustments::GenerateCurvesNode"],
