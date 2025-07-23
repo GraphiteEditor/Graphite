@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::process::exit;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use winit::application::ApplicationHandler;
 use winit::event::*;
@@ -157,6 +157,14 @@ impl WinitApp {
 }
 
 impl ApplicationHandler<CustomEvent> for WinitApp {
+	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+		event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(2)));
+	}
+
+	fn new_events(&mut self, _event_loop: &ActiveEventLoop, _cause: StartCause) {
+		self.cef_context.work();
+	}
+
 	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
 		self.window_state
 			.with(|s| match s {
@@ -175,9 +183,11 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 					self.window = Some(window.clone());
 					s.graphics_state = Some(graphics_state);
 
-					let _ = thread::spawn(move || loop {
-						thread::sleep(Duration::from_millis(100));
-						window.request_redraw();
+					let _ = thread::spawn(move || {
+						loop {
+							thread::sleep(Duration::from_millis(100));
+							window.request_redraw();
+						}
 					});
 
 					println!("Winit window created and ready");
@@ -299,7 +309,7 @@ fn main() {
 		.unwrap();
 
 	let event_loop = EventLoop::<CustomEvent>::with_user_event().build().unwrap();
-	event_loop.set_control_flow(ControlFlow::Wait);
+	event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(2)));
 
 	window_state.with(|s| s.event_loop_proxy = Some(event_loop.create_proxy())).unwrap();
 
