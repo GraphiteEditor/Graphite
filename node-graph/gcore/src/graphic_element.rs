@@ -41,6 +41,7 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 			for (graphic_element, source_node_id) in old.elements {
 				graphic_group_table.push(Instance {
 					instance: graphic_element,
+					mask: None,
 					transform: old.transform,
 					alpha_blending: old.alpha_blending,
 					source_node_id,
@@ -56,6 +57,7 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 					for (graphic_element, source_node_id) in &instance.instance.elements {
 						graphic_group_table.push(Instance {
 							instance: graphic_element.clone(),
+							mask: None,
 							transform: *instance.transform,
 							alpha_blending: *instance.alpha_blending,
 							source_node_id: *source_node_id,
@@ -313,6 +315,7 @@ pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D)
 			for (artboard, source_node_id) in artboard_group.artboards {
 				table.push(Instance {
 					instance: artboard,
+					mask: None,
 					transform: DAffine2::IDENTITY,
 					alpha_blending: AlphaBlending::default(),
 					source_node_id,
@@ -346,6 +349,7 @@ async fn layer<I: 'n + Send + Clone>(
 
 	stack.push(Instance {
 		instance: element,
+		mask: None,
 		transform: DAffine2::IDENTITY,
 		alpha_blending: AlphaBlending::default(),
 		source_node_id,
@@ -407,6 +411,7 @@ async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: boo
 				_ => {
 					output_group_table.push(Instance {
 						instance: current_element,
+						mask: None,
 						transform: *current_instance.transform,
 						alpha_blending: *current_instance.alpha_blending,
 						source_node_id: reference,
@@ -445,6 +450,7 @@ async fn flatten_vector(_: impl Ctx, group: GraphicGroupTable) -> VectorDataTabl
 					for current_element in vector_instance.instance_ref_iter() {
 						output_group_table.push(Instance {
 							instance: current_element.instance.clone(),
+							mask: None,
 							transform: *current_instance.transform * *current_element.transform,
 							alpha_blending: AlphaBlending {
 								blend_mode: current_element.alpha_blending.blend_mode,
@@ -513,6 +519,7 @@ pub async fn append_artboard(_ctx: impl Ctx, mut artboards: ArtboardGroupTable, 
 
 	artboards.push(Instance {
 		instance: artboard,
+		mask: None,
 		transform: DAffine2::IDENTITY,
 		alpha_blending: AlphaBlending::default(),
 		source_node_id: encapsulating_node_id,

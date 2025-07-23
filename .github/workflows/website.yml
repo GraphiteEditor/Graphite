@@ -112,6 +112,29 @@ jobs:
           mkdir -p website/public
           mv website/other/dist/* website/public
 
+      - name: 💿 Obtain cache of auto-generated code docs artifacts
+        id: cache-website-code-docs
+        uses: actions/cache/restore@v3
+        with:
+          path: artifacts
+          key: website-code-docs
+
+      - name: 📁 Fallback in case auto-generated code docs artifacts weren't cached
+        if: steps.cache-website-code-docs.outputs.cache-hit != 'true'
+        run: |
+          echo "🦀 Initial system version of Rust:"
+          rustc --version
+          rustup update stable
+          echo "🦀 Latest updated version of Rust:"
+          rustc --version
+          cargo test --package graphite-editor --lib -- messages::message::test::generate_message_tree
+          mkdir artifacts
+          mv hierarchical_message_system_tree.txt artifacts/hierarchical_message_system_tree.txt
+
+      - name: 🚚 Move `artifacts` contents to `website/public`
+        run: |
+          mv artifacts/* website/public
+
       - name: 📤 Publish to Cloudflare Pages
         id: cloudflare
         uses: cloudflare/pages-action@1

@@ -543,6 +543,7 @@ async fn round_corners(
 				transform: source_transform,
 				alpha_blending: Default::default(),
 				source_node_id: None,
+				mask: None,
 			}
 		})
 		.collect()
@@ -777,6 +778,7 @@ async fn auto_tangents(
 
 			Instance {
 				instance: result,
+				mask: None,
 				transform,
 				alpha_blending,
 				source_node_id,

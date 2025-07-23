@@ -272,6 +272,10 @@ impl GraphicElementRendered for GraphicGroupTable {
 
 						attributes.push(mask_type.to_attribute(), selector);
 					}
+
+					if let Some(mask) = instance.mask {
+						attributes.push_mask(mask, render_params.for_clipper());
+					}
 				},
 				|render| {
 					instance.instance.render_svg(render, render_params);
@@ -316,6 +320,20 @@ impl GraphicElementRendered for GraphicGroupTable {
 				}
 			}
 
+			let mut masked = false;
+			if let Some(mask) = instance.mask {
+				let bounds = mask.bounding_box(transform, true);
+
+				if let Some(bounds) = bounds {
+					masked = true;
+					let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+
+					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+					mask.render_to_vello(scene, transform, context, &render_params.for_clipper());
+					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
+				}
+			}
+
 			let next_clips = iter.peek().is_some_and(|next_instance| next_instance.instance.had_clip_enabled());
 			if next_clips && mask_instance_state.is_none() {
 				mask_instance_state = Some((instance.instance, transform));
@@ -348,6 +366,11 @@ impl GraphicElementRendered for GraphicGroupTable {
 				}
 			} else {
 				instance.instance.render_to_vello(scene, transform, context, render_params);
+			}
+
+			if masked {
+				scene.pop_layer();
+				scene.pop_layer();
 			}
 
 			if layer {
@@ -451,6 +474,7 @@ impl GraphicElementRendered for VectorDataTable {
 
 					let vector_row = VectorDataTable::new_instance(Instance {
 						instance: fill_instance,
+						mask: None,
 						alpha_blending: *instance.alpha_blending,
 						transform: *instance.transform,
 						source_node_id: None,
@@ -499,6 +523,11 @@ impl GraphicElementRendered for VectorDataTable {
 					let selector = format!("url(#{id})");
 					attributes.push(mask_type.to_attribute(), selector);
 				}
+
+				if let Some(mask) = instance.mask {
+					attributes.push_mask(mask, render_params.for_clipper());
+				}
+
 				attributes.push_val(fill_and_stroke);
 
 				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
@@ -555,6 +584,20 @@ impl GraphicElementRendered for VectorDataTable {
 				);
 			}
 
+			let mut masked = false;
+			if let Some(mask) = instance.mask {
+				let bounds = mask.bounding_box(element_transform, true);
+
+				if let Some(bounds) = bounds {
+					masked = true;
+					let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+
+					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+					mask.render_to_vello(scene, element_transform, _context, &render_params.for_clipper());
+					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
+				}
+			}
+
 			let can_draw_aligned_stroke = instance.instance.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
 				&& instance.instance.stroke_bezier_paths().all(|path| path.closed());
 
@@ -570,6 +613,7 @@ impl GraphicElementRendered for VectorDataTable {
 
 				let vector_data = VectorDataTable::new_instance(Instance {
 					instance: fill_instance,
+					mask: None,
 					alpha_blending: *instance.alpha_blending,
 					transform: *instance.transform,
 					source_node_id: None,
@@ -717,6 +761,11 @@ impl GraphicElementRendered for VectorDataTable {
 			}
 
 			if can_draw_aligned_stroke {
+				scene.pop_layer();
+				scene.pop_layer();
+			}
+
+			if masked {
 				scene.pop_layer();
 				scene.pop_layer();
 			}
@@ -959,29 +1008,40 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 				base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
 				base64_string
 			});
-			render.leaf_tag("image", |attributes| {
-				attributes.push("width", 1.to_string());
-				attributes.push("height", 1.to_string());
-				attributes.push("preserveAspectRatio", "none");
-				attributes.push("href", base64_string);
-				let matrix = format_transform_matrix(transform);
-				if !matrix.is_empty() {
-					attributes.push("transform", matrix);
-				}
-				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
-				let opacity = instance.alpha_blending.opacity * factor;
-				if opacity < 1. {
-					attributes.push("opacity", opacity.to_string());
-				}
-				if instance.alpha_blending.blend_mode != BlendMode::default() {
-					attributes.push("style", instance.alpha_blending.blend_mode.render());
-				}
-			});
+
+			let render_image = |render: &mut SvgRender| {
+				render.leaf_tag("image", |attributes| {
+					attributes.push("width", 1.to_string());
+					attributes.push("height", 1.to_string());
+					attributes.push("preserveAspectRatio", "none");
+					attributes.push("href", base64_string);
+					let matrix = format_transform_matrix(transform);
+					if !matrix.is_empty() {
+						attributes.push("transform", matrix);
+					}
+					let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+					let opacity = instance.alpha_blending.opacity * factor;
+					if opacity < 1. {
+						attributes.push("opacity", opacity.to_string());
+					}
+					if instance.alpha_blending.blend_mode != BlendMode::default() {
+						attributes.push("style", instance.alpha_blending.blend_mode.render());
+					}
+				})
+			};
+
+			// Unlike path and g elements, the mask attribute of image element is broken and
+			// behaves differently across different browsers. And so we use g to have it work correctly.
+			if let Some(mask) = instance.mask {
+				render.parent_tag("g", |attributes| attributes.push_mask(mask, render_params.for_clipper()), render_image);
+			} else {
+				render_image(render)
+			}
 		}
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext, _render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
 		for instance in self.instance_ref_iter() {
@@ -992,7 +1052,26 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 			let image = peniko::Image::new(image.to_flat_u8().0.into(), peniko::ImageFormat::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
 			let transform = transform * *instance.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 
+			let mut masked = false;
+			if let Some(mask) = instance.mask {
+				let bounds = mask.bounding_box(transform, true);
+
+				if let Some(bounds) = bounds {
+					masked = true;
+					let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+
+					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+					mask.render_to_vello(scene, transform, _context, &render_params.for_clipper());
+					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
+				}
+			}
+
 			scene.draw_image(&image, kurbo::Affine::new(transform.to_cols_array()));
+
+			if masked {
+				scene.pop_layer();
+				scene.pop_layer();
+			}
 		}
 	}
 
@@ -1274,5 +1353,18 @@ impl SvgRenderAttrs<'_> {
 	}
 	pub fn push_val(&mut self, value: impl Into<SvgSegment>) {
 		self.0.svg.push(value.into());
+	}
+	fn push_mask(&mut self, mask: &GraphicElement, render_params: RenderParams) {
+		let uuid = generate_uuid();
+		let mut svg = SvgRender::new();
+		mask.render_svg(&mut svg, &render_params);
+
+		let id = format!("mask-{}", uuid);
+		write!(&mut self.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
+		write!(&mut self.0.svg_defs, r##"<mask id="{id}">{}</mask>"##, svg.svg.to_svg_string()).unwrap();
+
+		let selector = format!("url(#{id})");
+
+		self.push("mask", selector);
 	}
 }
