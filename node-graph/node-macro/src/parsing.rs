@@ -191,8 +191,10 @@ impl Parse for NodeFnAttributes {
 
 		let nested = content.call(Punctuated::<Meta, Comma>::parse_terminated)?;
 		for meta in nested {
-			match meta {
-				Meta::List(meta) if meta.path.is_ident("category") => {
+			let name = meta.path().get_ident().ok_or_else(|| Error::new_spanned(meta.path(), "Node macro expects a known Ident, not a path"))?;
+			match name.to_string().as_str() {
+				"category" => {
+					let meta = meta.require_list()?;
 					if category.is_some() {
 						return Err(Error::new_spanned(meta, "Multiple 'category' attributes are not allowed"));
 					}
@@ -201,14 +203,16 @@ impl Parse for NodeFnAttributes {
 						.map_err(|_| Error::new_spanned(meta, "Expected a string literal for 'category', e.g., category(\"Value\")"))?;
 					category = Some(lit);
 				}
-				Meta::List(meta) if meta.path.is_ident("name") => {
+				"name" => {
+					let meta = meta.require_list()?;
 					if display_name.is_some() {
 						return Err(Error::new_spanned(meta, "Multiple 'name' attributes are not allowed"));
 					}
 					let parsed_name: LitStr = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a string for 'name', e.g., name(\"Memoize\")"))?;
 					display_name = Some(parsed_name);
 				}
-				Meta::List(meta) if meta.path.is_ident("path") => {
+				"path" => {
+					let meta = meta.require_list()?;
 					if path.is_some() {
 						return Err(Error::new_spanned(meta, "Multiple 'path' attributes are not allowed"));
 					}
@@ -217,13 +221,15 @@ impl Parse for NodeFnAttributes {
 						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'path', e.g., path(crate::MemoizeNode)"))?;
 					path = Some(parsed_path);
 				}
-				Meta::Path(path) if path.is_ident("skip_impl") => {
+				"skip_impl" => {
+					let path = meta.require_path_only()?;
 					if skip_impl {
 						return Err(Error::new_spanned(path, "Multiple 'skip_impl' attributes are not allowed"));
 					}
 					skip_impl = true;
 				}
-				Meta::List(meta) if meta.path.is_ident("properties") => {
+				"properties" => {
+					let meta = meta.require_list()?;
 					if properties_string.is_some() {
 						return Err(Error::new_spanned(path, "Multiple 'properties_string' attributes are not allowed"));
 					}
@@ -239,7 +245,7 @@ impl Parse for NodeFnAttributes {
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'path' and 'name'.
+							Supported attributes are 'category', 'path' 'name', 'skip_impl' and 'properties'.
 
 							Example usage:
 							#[node_macro::node(category("Value"), name("Test Node"))]
