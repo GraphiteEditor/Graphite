@@ -57,7 +57,6 @@ impl Hash for TransformImage {
 	fn hash<H: std::hash::Hasher>(&self, _: &mut H) {}
 }
 
-
 impl<P: Pixel + Debug> Debug for Image<P> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let length = self.data.len();
