@@ -337,7 +337,7 @@ impl VectorData {
 	/// Returns the number of linear segments connected to the given point.
 	pub fn connected_linear_segments(&self, point_id: PointId) -> usize {
 		self.segment_bezier_iter()
-			.filter(|(_, bez, start, end)| ((*start == point_id || *end == point_id) && matches!(bez.handles, BezierHandles::Linear)))
+			.filter(|(_, bez, start, end)| (*start == point_id || *end == point_id) && matches!(bez.handles, BezierHandles::Linear))
 			.count()
 	}
 

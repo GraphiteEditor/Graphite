@@ -292,15 +292,12 @@ where
 
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
-	let mut result = RasterDataTable::default();
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	result.push(Instance {
+	RasterDataTable::new_instance(Instance {
 		instance: Raster::new_cpu(image),
 		transform: footprint.transform,
 		..Default::default()
-	});
-
-	result
+	})
 }
 
 #[node_macro::node(category(""))]

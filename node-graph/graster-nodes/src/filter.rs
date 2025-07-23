@@ -20,27 +20,26 @@ async fn blur(
 	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
 	gamma: bool,
 ) -> RasterDataTable<CPU> {
-	let mut result_table = RasterDataTable::default();
+	image_frame
+		.instance_iter()
+		.map(|mut image_instance| {
+			let image = image_instance.instance.clone();
 
-	for mut image_instance in image_frame.instance_iter() {
-		let image = image_instance.instance.clone();
+			// Run blur algorithm
+			let blurred_image = if radius < 0.1 {
+				// Minimum blur radius
+				image.clone()
+			} else if box_blur {
+				Raster::new_cpu(box_blur_algorithm(image.into_data(), radius, gamma))
+			} else {
+				Raster::new_cpu(gaussian_blur_algorithm(image.into_data(), radius, gamma))
+			};
 
-		// Run blur algorithm
-		let blurred_image = if radius < 0.1 {
-			// Minimum blur radius
-			image.clone()
-		} else if box_blur {
-			Raster::new_cpu(box_blur_algorithm(image.into_data(), radius, gamma))
-		} else {
-			Raster::new_cpu(gaussian_blur_algorithm(image.into_data(), radius, gamma))
-		};
-
-		image_instance.instance = blurred_image;
-		image_instance.source_node_id = None;
-		result_table.push(image_instance);
-	}
-
-	result_table
+			image_instance.instance = blurred_image;
+			image_instance.source_node_id = None;
+			image_instance
+		})
+		.collect()
 }
 
 // 1D gaussian kernel
