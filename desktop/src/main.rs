@@ -3,7 +3,8 @@ use std::process::exit;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
-use winit::event_loop::{self, EventLoop, EventLoopProxy};
+use tracing_subscriber::EnvFilter;
+use winit::event_loop::{EventLoop, EventLoopProxy};
 
 mod cef;
 use cef::Setup;
@@ -20,11 +21,12 @@ pub(crate) enum CustomEvent {
 	ScheduleBrowserWork(Instant),
 }
 
+#[derive(Debug)]
 pub(crate) struct WindowState {
 	width: Option<usize>,
 	height: Option<usize>,
-	ui_fb: Option<FrameBuffer>,
-	preview_fb: Option<FrameBuffer>,
+	ui_frame_buffer: Option<FrameBuffer>,
+	_viewport_frame_buffer: Option<FrameBuffer>,
 	graphics_state: Option<GraphicsState>,
 	event_loop_proxy: Option<EventLoopProxy<CustomEvent>>,
 }
@@ -34,8 +36,8 @@ impl WindowState {
 		Self {
 			width: None,
 			height: None,
-			ui_fb: None,
-			preview_fb: None,
+			ui_frame_buffer: None,
+			_viewport_frame_buffer: None,
 			graphics_state: None,
 			event_loop_proxy: None,
 		}
@@ -43,18 +45,6 @@ impl WindowState {
 
 	fn handle(self) -> WindowStateHandle {
 		WindowStateHandle { inner: Arc::new(Mutex::new(self)) }
-	}
-}
-
-impl Debug for WindowState {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("WindowState")
-			.field("width", &self.width.is_some())
-			.field("height", &self.height.is_some())
-			.field("ui_fb", &self.ui_fb.is_some())
-			.field("preview_fb", &self.preview_fb.is_some())
-			.field("graphics_state", &self.graphics_state.is_some())
-			.finish()
 	}
 }
 
@@ -126,7 +116,7 @@ impl cef::CefEventHandler for CefHandler {
 				if frame_buffer.width() != s.width.unwrap_or(1) || frame_buffer.height() != s.height.unwrap_or(1) {
 					correct_size = false;
 				} else {
-					s.ui_fb = Some(frame_buffer);
+					s.ui_frame_buffer = Some(frame_buffer);
 				}
 			})
 			.unwrap();
@@ -145,11 +135,13 @@ impl cef::CefEventHandler for CefHandler {
 }
 
 fn main() {
+	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
+
 	let cef_context = match cef::Context::<Setup>::new() {
 		Ok(c) => c,
 		Err(cef::SetupError::Subprocess) => exit(0),
 		Err(cef::SetupError::SubprocessFailed(t)) => {
-			println!("Subprocess of type {t} failed");
+			tracing::error!("Subprocess of type {t} failed");
 			exit(1);
 		}
 	};
@@ -170,12 +162,12 @@ fn main() {
 	let cef_context = match cef_context.init(CefHandler::new(window_state.clone())) {
 		Ok(c) => c,
 		Err(cef::InitError::InitializationFailed) => {
-			println!("Cef initialization failed");
+			tracing::error!("Cef initialization failed");
 			exit(1);
 		}
 	};
 
-	println!("Cef initialized successfully");
+	tracing::info!("Cef initialized successfully");
 
 	let mut winit_app = WinitApp::new(window_state, cef_context);
 

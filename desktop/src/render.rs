@@ -8,6 +8,15 @@ pub(crate) struct FrameBuffer {
 	width: usize,
 	height: usize,
 }
+impl std::fmt::Debug for FrameBuffer {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("WindowState")
+			.field("width", &self.width)
+			.field("height", &self.height)
+			.field("len", &self.buffer.len())
+			.finish()
+	}
+}
 
 #[derive(Error, Debug)]
 pub(crate) enum FrameBufferError {
@@ -48,6 +57,7 @@ impl FrameBuffer {
 	}
 }
 
+#[derive(Debug)]
 pub(crate) struct GraphicsState {
 	surface: wgpu::Surface<'static>,
 	device: wgpu::Device,
@@ -109,7 +119,7 @@ impl GraphicsState {
 		surface.configure(&device, &config);
 
 		// Create shader module
-		let shader = device.create_shader_module(wgpu::include_wgsl!("fullscreen_texture.wgsl"));
+		let shader = device.create_shader_module(wgpu::include_wgsl!("render/fullscreen_texture.wgsl"));
 
 		// Create sampler
 		let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -317,7 +327,7 @@ impl GraphicsState {
 				render_pass.set_bind_group(0, bind_group, &[]);
 				render_pass.draw(0..6, 0..1); // Draw 3 vertices for fullscreen triangle
 			} else {
-				println!("No bind group available - showing clear color only");
+				tracing::warn!("No bind group available - showing clear color only");
 			}
 		}
 		self.queue.submit(std::iter::once(encoder.finish()));

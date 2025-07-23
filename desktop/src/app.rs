@@ -67,7 +67,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 					self.window = Some(window.clone());
 					s.graphics_state = Some(graphics_state);
 
-					println!("Winit window created and ready");
+					tracing::info!("Winit window created and ready");
 				}
 			})
 			.unwrap();
@@ -91,7 +91,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 
 		match event {
 			WindowEvent::CloseRequested => {
-				println!("The close button was pressed; stopping");
+				tracing::info!("The close button was pressed; stopping");
 				event_loop.exit();
 			}
 			WindowEvent::Resized(physical_size) => {
@@ -118,7 +118,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 							width: Some(width),
 							height: Some(height),
 							graphics_state: Some(graphics_state),
-							ui_fb,
+							ui_frame_buffer: ui_fb,
 							..
 						} = s
 						{
@@ -139,7 +139,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 								Err(wgpu::SurfaceError::OutOfMemory) => {
 									event_loop.exit();
 								}
-								Err(e) => eprintln!("{:?}", e),
+								Err(e) => tracing::error!("{:?}", e),
 							}
 						}
 					})
