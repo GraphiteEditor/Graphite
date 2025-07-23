@@ -171,10 +171,10 @@ impl LayoutHolder for TextTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for TextTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Text(TextToolMessage::UpdateOptions(action)) = message else {
-			self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
+			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			return;
 		};
 		match action {
@@ -329,7 +329,7 @@ impl TextToolData {
 	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler) -> Option<()> {
 		let transform = document.metadata().transform_to_viewport(self.layer);
 		let color = graph_modification_utils::get_fill_color(self.layer, &document.network_interface).unwrap_or(Color::BLACK);
-		let (text, font, typesetting) = graph_modification_utils::get_text(self.layer, &document.network_interface)?;
+		let (text, font, typesetting, _) = graph_modification_utils::get_text(self.layer, &document.network_interface)?;
 		self.editing_text = Some(EditingText {
 			text: text.clone(),
 			font: font.clone(),
@@ -449,8 +449,15 @@ impl Fsm for TextToolFsmState {
 	type ToolData = TextToolData;
 	type ToolOptions = TextOptions;
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, transition_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData {
+	fn transition(
+		self,
+		event: ToolMessage,
+		tool_data: &mut Self::ToolData,
+		transition_data: &mut ToolActionMessageContext,
+		tool_options: &Self::ToolOptions,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
+		let ToolActionMessageContext {
 			document,
 			global_tool_data,
 			input,
@@ -517,7 +524,7 @@ impl Fsm for TextToolFsmState {
 						bounding_box_manager.render_quad(&mut overlay_context);
 						// Draw red overlay if text is clipped
 						let transformed_quad = layer_transform * bounds;
-						if let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
+						if let Some((text, font, typesetting, _)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
 							let font_data = font_cache.get(font).map(|data| load_font(data));
 							if lines_clipping(text.as_str(), font_data, typesetting) {
 								overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));

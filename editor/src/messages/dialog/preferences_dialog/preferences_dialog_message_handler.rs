@@ -5,7 +5,7 @@ use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 
 #[derive(ExtractField)]
-pub struct PreferencesDialogMessageData<'a> {
+pub struct PreferencesDialogMessageContext<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
@@ -14,9 +14,9 @@ pub struct PreferencesDialogMessageData<'a> {
 pub struct PreferencesDialogMessageHandler {}
 
 #[message_handler_data]
-impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageData<'_>> for PreferencesDialogMessageHandler {
-	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, data: PreferencesDialogMessageData) {
-		let PreferencesDialogMessageData { preferences } = data;
+impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageContext<'_>> for PreferencesDialogMessageHandler {
+	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, context: PreferencesDialogMessageContext) {
+		let PreferencesDialogMessageContext { preferences } = context;
 
 		match message {
 			PreferencesDialogMessage::Confirm => {}

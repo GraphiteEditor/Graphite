@@ -60,6 +60,81 @@ async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<W
 // }
 
 #[node_macro::node(category("Web Request"))]
+async fn get_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, discard_result: bool) -> String {
+	#[cfg(target_arch = "wasm32")]
+	{
+		if discard_result {
+			wasm_bindgen_futures::spawn_local(async move {
+				let _ = reqwest::get(url).await;
+			});
+			return String::new();
+		}
+	}
+	#[cfg(not(target_arch = "wasm32"))]
+	{
+		#[cfg(feature = "tokio")]
+		if discard_result {
+			tokio::spawn(async move {
+				let _ = reqwest::get(url).await;
+			});
+			return String::new();
+		}
+		#[cfg(not(feature = "tokio"))]
+		if discard_result {
+			return String::new();
+		}
+	}
+
+	let Ok(response) = reqwest::get(url).await else { return String::new() };
+	response.text().await.ok().unwrap_or_default()
+}
+
+#[node_macro::node(category("Web Request"))]
+async fn post_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, body: Vec<u8>, discard_result: bool) -> String {
+	#[cfg(target_arch = "wasm32")]
+	{
+		if discard_result {
+			wasm_bindgen_futures::spawn_local(async move {
+				let _ = reqwest::Client::new().post(url).body(body).header("Content-Type", "application/octet-stream").send().await;
+			});
+			return String::new();
+		}
+	}
+	#[cfg(not(target_arch = "wasm32"))]
+	{
+		#[cfg(feature = "tokio")]
+		if discard_result {
+			let url = url.clone();
+			let body = body.clone();
+			tokio::spawn(async move {
+				let _ = reqwest::Client::new().post(url).body(body).header("Content-Type", "application/octet-stream").send().await;
+			});
+			return String::new();
+		}
+		#[cfg(not(feature = "tokio"))]
+		if discard_result {
+			return String::new();
+		}
+	}
+
+	let Ok(response) = reqwest::Client::new().post(url).body(body).header("Content-Type", "application/octet-stream").send().await else {
+		return String::new();
+	};
+	response.text().await.ok().unwrap_or_default()
+}
+
+#[node_macro::node(category("Web Request"), name("String to Bytes"))]
+fn string_to_bytes(_: impl Ctx, string: String) -> Vec<u8> {
+	string.into_bytes()
+}
+
+#[node_macro::node(category("Web Request"), name("Image to Bytes"))]
+fn image_to_bytes(_: impl Ctx, image: RasterDataTable<CPU>) -> Vec<u8> {
+	let Some(image) = image.instance_ref_iter().next() else { return vec![] };
+	image.instance.data.iter().flat_map(|color| color.to_rgb8_srgb().into_iter()).collect::<Vec<u8>>()
+}
+
+#[node_macro::node(category("Web Request"))]
 async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] editor: &'a WasmEditorApi, #[name("URL")] url: String) -> Arc<[u8]> {
 	let Some(api) = editor.application_io.as_ref() else {
 		return Arc::from(include_bytes!("../../graph-craft/src/null.png").to_vec());
@@ -145,7 +220,7 @@ async fn render_canvas(
 	if !data.contains_artboard() && !render_config.hide_artboards {
 		background = Color::WHITE;
 	}
-	exec.render_vello_scene(&scene, &surface_handle, footprint.resolution.x, footprint.resolution.y, &context, background)
+	exec.render_vello_scene(&scene, &surface_handle, footprint.resolution, &context, background)
 		.await
 		.expect("Failed to render Vello scene");
 
@@ -217,15 +292,12 @@ where
 
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
-	let mut result = RasterDataTable::default();
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	result.push(Instance {
+	RasterDataTable::new_instance(Instance {
 		instance: Raster::new_cpu(image),
 		transform: footprint.transform,
 		..Default::default()
-	});
-
-	result
+	})
 }
 
 #[node_macro::node(category(""))]

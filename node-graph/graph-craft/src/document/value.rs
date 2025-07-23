@@ -165,8 +165,7 @@ tagged_value! {
 	U64(u64),
 	Bool(bool),
 	String(String),
-	UVec2(UVec2),
-	IVec2(IVec2),
+	#[serde(alias = "IVec2", alias = "UVec2")]
 	DVec2(DVec2),
 	DAffine2(DAffine2),
 	OptionalF64(Option<f64>),

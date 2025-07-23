@@ -123,7 +123,7 @@ impl EditorHandle {
 			_ => Platform::Unknown,
 		};
 		self.dispatch(GlobalsMessage::SetPlatform { platform });
-		self.dispatch(Message::Init);
+		self.dispatch(PortfolioMessage::Init);
 
 		// Poll node graph evaluation on `requestAnimationFrame`
 		{
@@ -381,6 +381,17 @@ impl EditorHandle {
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
 		let message = InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys };
+		self.dispatch(message);
+	}
+
+	/// Mouse shaken
+	#[wasm_bindgen(js_name = onMouseShake)]
+	pub fn on_mouse_shake(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
+		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::PointerShake { editor_mouse_state, modifier_keys };
 		self.dispatch(message);
 	}
 

@@ -378,8 +378,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					inputs: vec![
 						NodeInput::value(TaggedValue::ArtboardGroup(ArtboardGroupTable::default()), true),
 						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroupTable::default()), true),
-						NodeInput::value(TaggedValue::IVec2(glam::IVec2::ZERO), false),
-						NodeInput::value(TaggedValue::IVec2(glam::IVec2::new(1920, 1080)), false),
+						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+						NodeInput::value(TaggedValue::DVec2(DVec2::new(1920., 1080.)), false),
 						NodeInput::value(TaggedValue::Color(Color::WHITE), false),
 						NodeInput::value(TaggedValue::Bool(false), false),
 					],
@@ -396,6 +396,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								x: "X".to_string(),
 								y: "Y".to_string(),
 								unit: " px".to_string(),
+								is_integer: true,
 								..Default::default()
 							}),
 						),
@@ -406,6 +407,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								x: "W".to_string(),
 								y: "H".to_string(),
 								unit: " px".to_string(),
+								is_integer: true,
 								..Default::default()
 							}),
 						),
@@ -1222,6 +1224,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
 						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false),
+						NodeInput::value(TaggedValue::Bool(false), false),
 					],
 					..Default::default()
 				},
@@ -1281,7 +1284,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						),
 						InputMetadata::with_name_description_override(
 							"Tilt",
-							"Faux italic",
+							"Faux italic.",
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(-85.),
 								max: Some(85.),
@@ -1289,6 +1292,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
+						("Per-Glyph Instances", "Splits each text glyph into its own instance, i.e. row in the table of vector data.").into(),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
@@ -1299,11 +1303,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			identifier: "Transform",
-			category: "General",
+			category: "Math: Transform",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(VectorDataTable::default()), true),
+						NodeInput::value(TaggedValue::DAffine2(DAffine2::default()), true),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ONE), false),
@@ -1313,7 +1317,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(VectorDataTable), 0)],
+								inputs: vec![NodeInput::network(generic!(T), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
 								manual_composition: Some(generic!(T)),
 								skip_deduplication: true,
@@ -1370,7 +1374,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					input_metadata: vec![
-						("Vector Data", "TODO").into(),
+						("Value", "TODO").into(),
 						InputMetadata::with_name_description_override(
 							"Translation",
 							"TODO",
@@ -1951,8 +1955,20 @@ fn static_input_properties() -> InputProperties {
 				.network_interface
 				.input_data(&node_id, index, "min", context.selection_network_path)
 				.and_then(|value| value.as_f64());
+			let is_integer = context
+				.network_interface
+				.input_data(&node_id, index, "is_integer", context.selection_network_path)
+				.and_then(|value| value.as_bool())
+				.unwrap_or_default();
 
-			Ok(vec![node_properties::coordinate_widget(ParameterWidgetsInfo::new(node_id, index, true, context), &x, &y, &unit, min)])
+			Ok(vec![node_properties::coordinate_widget(
+				ParameterWidgetsInfo::new(node_id, index, true, context),
+				&x,
+				&y,
+				&unit,
+				min,
+				is_integer,
+			)])
 		}),
 	);
 	map.insert(

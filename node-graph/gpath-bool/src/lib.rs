@@ -80,8 +80,7 @@ fn union<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, Vector
 	// Reverse vector data so that the result style is the style of the first vector data
 	let mut vector_data_reversed = vector_data.rev();
 
-	let mut result_vector_data_table = VectorDataTable::default();
-	result_vector_data_table.push(vector_data_reversed.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
+	let mut result_vector_data_table = VectorDataTable::new_instance(vector_data_reversed.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
 	let mut first_instance = result_vector_data_table.instance_mut_iter().next().expect("Expected the one instance we just pushed");
 
 	// Loop over all vector data and union it with the result
@@ -113,8 +112,7 @@ fn union<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, Vector
 fn subtract<'a>(vector_data: impl Iterator<Item = InstanceRef<'a, VectorData>>) -> VectorDataTable {
 	let mut vector_data = vector_data.into_iter();
 
-	let mut result_vector_data_table = VectorDataTable::default();
-	result_vector_data_table.push(vector_data.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
+	let mut result_vector_data_table = VectorDataTable::new_instance(vector_data.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
 	let mut first_instance = result_vector_data_table.instance_mut_iter().next().expect("Expected the one instance we just pushed");
 
 	let mut next_vector_data = vector_data.next();
@@ -145,8 +143,7 @@ fn subtract<'a>(vector_data: impl Iterator<Item = InstanceRef<'a, VectorData>>) 
 fn intersect<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, VectorData>>) -> VectorDataTable {
 	let mut vector_data = vector_data.rev();
 
-	let mut result_vector_data_table = VectorDataTable::default();
-	result_vector_data_table.push(vector_data.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
+	let mut result_vector_data_table = VectorDataTable::new_instance(vector_data.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
 	let mut first_instance = result_vector_data_table.instance_mut_iter().next().expect("Expected the one instance we just pushed");
 
 	let default = Instance::default();
@@ -226,71 +223,67 @@ fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, V
 }
 
 fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTable {
-	let mut result_table = VectorDataTable::default();
+	graphic_group_table
+		.instance_ref_iter()
+		.flat_map(|element| {
+			match element.instance.clone() {
+				GraphicElement::VectorData(vector_data) => {
+					// Apply the parent group's transform to each element of vector data
+					vector_data
+						.instance_iter()
+						.map(|mut sub_vector_data| {
+							sub_vector_data.transform = *element.transform * sub_vector_data.transform;
 
-	for element in graphic_group_table.instance_ref_iter() {
-		match element.instance.clone() {
-			GraphicElement::VectorData(vector_data) => {
-				// Apply the parent group's transform to each element of vector data
-				for mut sub_vector_data in vector_data.instance_iter() {
-					sub_vector_data.transform = *element.transform * sub_vector_data.transform;
+							sub_vector_data
+						})
+						.collect::<Vec<_>>()
+				}
+				GraphicElement::RasterDataCPU(image) => {
+					let make_instance = |transform| {
+						// Convert the image frame into a rectangular subpath with the image's transform
+						let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+						subpath.apply_transform(transform);
 
-					result_table.push(sub_vector_data);
+						// Create a vector data table row from the rectangular subpath, with a default black fill
+						let mut instance = VectorData::from_subpath(subpath);
+						instance.style.set_fill(Fill::Solid(Color::BLACK));
+
+						Instance { instance, ..Default::default() }
+					};
+
+					// Apply the parent group's transform to each element of raster data
+					image.instance_ref_iter().map(|instance| make_instance(*element.transform * *instance.transform)).collect::<Vec<_>>()
+				}
+				GraphicElement::RasterDataGPU(image) => {
+					let make_instance = |transform| {
+						// Convert the image frame into a rectangular subpath with the image's transform
+						let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+						subpath.apply_transform(transform);
+
+						// Create a vector data table row from the rectangular subpath, with a default black fill
+						let mut instance = VectorData::from_subpath(subpath);
+						instance.style.set_fill(Fill::Solid(Color::BLACK));
+
+						Instance { instance, ..Default::default() }
+					};
+
+					// Apply the parent group's transform to each element of raster data
+					image.instance_ref_iter().map(|instance| make_instance(*element.transform * *instance.transform)).collect::<Vec<_>>()
+				}
+				GraphicElement::GraphicGroup(mut graphic_group) => {
+					// Apply the parent group's transform to each element of inner group
+					for sub_element in graphic_group.instance_mut_iter() {
+						*sub_element.transform = *element.transform * *sub_element.transform;
+					}
+
+					// Recursively flatten the inner group into vector data
+					let unioned = boolean_operation_on_vector_data_table(flatten_vector_data(&graphic_group).instance_ref_iter(), BooleanOperation::Union);
+
+					unioned.instance_iter().collect::<Vec<_>>()
 				}
 			}
-			GraphicElement::RasterDataCPU(image) => {
-				let make_instance = |transform| {
-					// Convert the image frame into a rectangular subpath with the image's transform
-					let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-					subpath.apply_transform(transform);
-
-					// Create a vector data table row from the rectangular subpath, with a default black fill
-					let mut instance = VectorData::from_subpath(subpath);
-					instance.style.set_fill(Fill::Solid(Color::BLACK));
-
-					Instance { instance, ..Default::default() }
-				};
-
-				// Apply the parent group's transform to each element of raster data
-				for instance in image.instance_ref_iter() {
-					result_table.push(make_instance(*element.transform * *instance.transform));
-				}
-			}
-			GraphicElement::RasterDataGPU(image) => {
-				let make_instance = |transform| {
-					// Convert the image frame into a rectangular subpath with the image's transform
-					let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-					subpath.apply_transform(transform);
-
-					// Create a vector data table row from the rectangular subpath, with a default black fill
-					let mut instance = VectorData::from_subpath(subpath);
-					instance.style.set_fill(Fill::Solid(Color::BLACK));
-
-					Instance { instance, ..Default::default() }
-				};
-
-				// Apply the parent group's transform to each element of raster data
-				for instance in image.instance_ref_iter() {
-					result_table.push(make_instance(*element.transform * *instance.transform));
-				}
-			}
-			GraphicElement::GraphicGroup(mut graphic_group) => {
-				// Apply the parent group's transform to each element of inner group
-				for sub_element in graphic_group.instance_mut_iter() {
-					*sub_element.transform = *element.transform * *sub_element.transform;
-				}
-
-				// Recursively flatten the inner group into vector data
-				let unioned = boolean_operation_on_vector_data_table(flatten_vector_data(&graphic_group).instance_ref_iter(), BooleanOperation::Union);
-
-				for element in unioned.instance_iter() {
-					result_table.push(element);
-				}
-			}
-		}
-	}
-
-	result_table
+		})
+		.collect()
 }
 
 fn to_path(vector: &VectorData, transform: DAffine2) -> Vec<path_bool::PathSegment> {

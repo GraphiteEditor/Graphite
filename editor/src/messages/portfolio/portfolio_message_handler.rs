@@ -9,24 +9,27 @@ use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::DocumentMessageData;
+use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document_migration::*;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
+use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
 use graphene_std::text::Font;
 use std::vec;
 
 #[derive(ExtractField)]
-pub struct PortfolioMessageData<'a> {
+pub struct PortfolioMessageContext<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub current_tool: &'a ToolType,
@@ -54,9 +57,9 @@ pub struct PortfolioMessageHandler {
 }
 
 #[message_handler_data]
-impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
-	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, data: PortfolioMessageData) {
-		let PortfolioMessageData {
+impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for PortfolioMessageHandler {
+	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, context: PortfolioMessageContext) {
+		let PortfolioMessageContext {
 			ipp,
 			preferences,
 			current_tool,
@@ -64,7 +67,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			reset_node_definitions_on_open,
 			timing_information,
 			animation,
-		} = data;
+		} = context;
 
 		match message {
 			// Sub-messages
@@ -77,6 +80,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				self.menu_bar_message_handler.has_selected_nodes = false;
 				self.menu_bar_message_handler.has_selected_layers = false;
 				self.menu_bar_message_handler.has_selection_history = (false, false);
+				self.menu_bar_message_handler.single_path_node_compatible_layer_selected = false;
 				self.menu_bar_message_handler.spreadsheet_view_open = self.spreadsheet.spreadsheet_view_open;
 				self.menu_bar_message_handler.message_logging_verbosity = message_logging_verbosity;
 				self.menu_bar_message_handler.reset_node_definitions_on_open = reset_node_definitions_on_open;
@@ -94,6 +98,30 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						let metadata = &document.network_interface.document_network_metadata().persistent_metadata;
 						(!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty())
 					};
+					self.menu_bar_message_handler.single_path_node_compatible_layer_selected = {
+						let selected_nodes = document.network_interface.selected_nodes();
+						let mut selected_layers = selected_nodes.selected_layers(document.metadata());
+						let first_layer = selected_layers.next();
+						let second_layer = selected_layers.next();
+						let has_single_selection = first_layer.is_some() && second_layer.is_none();
+
+						let compatible_type = first_layer.and_then(|layer| {
+							let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
+							graph_layer.horizontal_layer_flow().nth(1).and_then(|node_id| {
+								let (output_type, _) = document.network_interface.output_type(&node_id, 0, &[]);
+								Some(format!("type:{}", output_type.nested_type()))
+							})
+						});
+
+						let is_compatible = compatible_type.as_deref() == Some("type:Instances<VectorData>");
+
+						let is_modifiable = first_layer.map_or(false, |layer| {
+							let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
+							matches!(graph_layer.find_input("Path", 1), Some(TaggedValue::VectorModification(_)))
+						});
+
+						first_layer.is_some() && has_single_selection && is_compatible && !is_modifiable
+					}
 				}
 
 				self.menu_bar_message_handler.process_message(message, responses, ());
@@ -104,7 +132,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
 					if let Some(document) = self.documents.get_mut(&document_id) {
-						let document_inputs = DocumentMessageData {
+						let document_inputs = DocumentMessageContext {
 							document_id,
 							ipp,
 							persistent_data: &self.persistent_data,
@@ -119,9 +147,26 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			}
 
 			// Messages
+			PortfolioMessage::Init => {
+				// Load persistent data from the browser database
+				responses.add(FrontendMessage::TriggerLoadFirstAutoSaveDocument);
+				responses.add(FrontendMessage::TriggerLoadPreferences);
+
+				// Display the menu bar at the top of the window
+				responses.add(MenuBarMessage::SendLayout);
+
+				// Send the information for tooltips and categories for each node/input.
+				responses.add(FrontendMessage::SendUIMetadata {
+					node_descriptions: document_node_definitions::collect_node_descriptions(),
+					node_types: document_node_definitions::collect_node_types(),
+				});
+
+				// Finish loading persistent data from the browser database
+				responses.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
+			}
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {
-					let document_inputs = DocumentMessageData {
+					let document_inputs = DocumentMessageContext {
 						document_id,
 						ipp,
 						persistent_data: &self.persistent_data,
@@ -744,6 +789,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				responses.add(DocumentMessage::GraphViewOverlay { open: node_graph_open });
 				if node_graph_open {
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
+					responses.add(NodeGraphMessage::UnloadWires);
+					responses.add(NodeGraphMessage::SendWires)
 				} else {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				}
@@ -972,7 +1019,9 @@ impl PortfolioMessageHandler {
 				/text>"#
 				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
 				.to_string();
-			responses.add(Message::EndBuffer(graphene_std::renderer::RenderMetadata::default()));
+			responses.add(Message::EndBuffer {
+				render_metadata: graphene_std::renderer::RenderMetadata::default(),
+			});
 			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
 		}
 		result

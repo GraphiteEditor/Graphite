@@ -31,10 +31,46 @@ jobs:
         with:
           tool: zola@0.20.0
 
+      - name: 🔍 Check if `website/other` directory changed
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            website-other:
+              - "website/other/**"
+
       - name: ✂ Replace template in <head> of index.html
         run: |
           # Remove the INDEX_HTML_HEAD_INCLUSION environment variable for build links (not master deploys)
           git rev-parse --abbrev-ref HEAD | grep master > /dev/null || export INDEX_HTML_HEAD_INCLUSION=""
+
+      - name: 💿 Obtain cache of auto-generated code docs artifacts
+        id: cache-website-code-docs
+        uses: actions/cache/restore@v3
+        with:
+          path: artifacts
+          key: website-code-docs
+
+      - name: 📁 Fallback in case auto-generated code docs artifacts weren't cached
+        if: steps.cache-website-code-docs.outputs.cache-hit != 'true'
+        run: |
+          echo "🦀 Initial system version of Rust:"
+          rustc --version
+          rustup update stable
+          echo "🦀 Latest updated version of Rust:"
+          rustc --version
+          cargo test --package graphite-editor --lib -- messages::message::test::generate_message_tree
+          mkdir artifacts
+          mv hierarchical_message_system_tree.txt artifacts/hierarchical_message_system_tree.txt
+
+      - name: 🚚 Move `artifacts` contents to `website/other/editor-structure`
+        run: |
+          mv artifacts/* website/other/editor-structure
+
+      - name: 🔧 Build auto-generated code docs artifacts into HTML
+        run: |
+          cd website/other/editor-structure
+          node generate.js hierarchical_message_system_tree.txt replacement.html
 
       - name: 🌐 Build Graphite website with Zola
         env:
@@ -44,16 +80,8 @@ jobs:
           npm run install-fonts
           zola --config config.toml build --minify
 
-      - name: 🔍 Check if `website/other` directory changed
-        uses: dorny/paths-filter@v3
-        id: changes
-        with:
-          filters: |
-            other:
-              - "website/other/**"
-
       - name: 💿 Restore cache of `website/other/dist` directory, if available and `website/other` didn't change
-        if: steps.changes.outputs.other != 'true'
+        if: steps.changes.outputs.website-other != 'true'
         id: cache-website-other-dist
         uses: actions/cache/restore@v3
         with:

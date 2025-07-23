@@ -7,7 +7,7 @@ use crate::messages::prelude::*;
 use std::fmt::Write;
 
 #[derive(ExtractField)]
-pub struct InputMapperMessageData<'a> {
+pub struct InputMapperMessageContext<'a> {
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub actions: ActionList,
 }
@@ -18,9 +18,9 @@ pub struct InputMapperMessageHandler {
 }
 
 #[message_handler_data]
-impl MessageHandler<InputMapperMessage, InputMapperMessageData<'_>> for InputMapperMessageHandler {
-	fn process_message(&mut self, message: InputMapperMessage, responses: &mut VecDeque<Message>, data: InputMapperMessageData) {
-		let InputMapperMessageData { input, actions } = data;
+impl MessageHandler<InputMapperMessage, InputMapperMessageContext<'_>> for InputMapperMessageHandler {
+	fn process_message(&mut self, message: InputMapperMessage, responses: &mut VecDeque<Message>, context: InputMapperMessageContext) {
+		let InputMapperMessageContext { input, actions } = context;
 
 		if let Some(message) = self.mapping.match_input_message(message, &input.keyboard, actions) {
 			responses.add(message);

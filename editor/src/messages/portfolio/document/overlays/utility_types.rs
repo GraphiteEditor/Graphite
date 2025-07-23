@@ -1,7 +1,8 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER,
-	COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE,
+	COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH,
+	PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
 use bezier_rs::{Bezier, Subpath};
@@ -349,6 +350,7 @@ impl OverlayContext {
 		self.render_context.rect(corner.x, corner.y, size, size);
 		self.render_context.set_fill_style_str(color_fill);
 		self.render_context.set_stroke_style_str(color_stroke);
+		self.render_context.set_line_width(1.);
 		self.render_context.fill();
 		self.render_context.stroke();
 
@@ -631,11 +633,9 @@ impl OverlayContext {
 	pub fn outline_overlay_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
-		let color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05).to_rgba_hex_srgb();
-
 		self.render_context.begin_path();
 		self.bezier_command(bezier, transform, true);
-		self.render_context.set_stroke_style_str(&color);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE_50);
 		self.render_context.set_line_width(4.);
 		self.render_context.stroke();
 
@@ -727,6 +727,7 @@ impl OverlayContext {
 
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 			self.render_context.set_stroke_style_str(color);
+			self.render_context.set_line_width(1.);
 			self.render_context.stroke();
 		}
 	}
