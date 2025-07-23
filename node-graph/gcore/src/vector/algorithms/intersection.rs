@@ -2,6 +2,34 @@ use kurbo::{BezPath, DEFAULT_ACCURACY, ParamCurve, PathSeg, Shape};
 
 use super::contants::MIN_SEPARATION_VALUE;
 
+/// Calculates the intersection points the subpath has with a given curve and returns a list of `(usize, f64)` tuples,
+/// where the `usize` represents the index of the curve in the subpath, and the `f64` represents the `t`-value local to
+/// that curve where the intersection occurred.
+/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+pub fn bezpath_and_segment_intersections(bezpath: &BezPath, segment: PathSeg, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
+	bezpath
+		.segments()
+		.enumerate()
+		.flat_map(|(index, this_segment)| {
+			filtered_segment_intersections(this_segment, segment, accuracy, minimum_separation)
+				.into_iter()
+				.map(|t| (index, t))
+				.collect::<Vec<(usize, f64)>>()
+		})
+		.collect()
+}
+
+/// Calculates the intersection points the bezpath has with another given bezpath and returns a list of parametric `t`-values.
+pub fn bezpath_intersections(bezpath1: &BezPath, bezpath2: &BezPath, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
+	let mut intersection_t_values: Vec<(usize, f64)> = bezpath2
+		.segments()
+		.flat_map(|bezier| bezpath_and_segment_intersections(bezpath1, bezier, accuracy, minimum_separation))
+		.collect();
+
+	intersection_t_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+	intersection_t_values
+}
+
 pub fn segment_intersections(segment1: PathSeg, segment2: PathSeg, accuracy: Option<f64>) -> Vec<(f64, f64)> {
 	let accuracy = accuracy.unwrap_or(DEFAULT_ACCURACY);
 
@@ -90,11 +118,6 @@ pub fn filtered_all_segment_intersections(segment1: PathSeg, segment2: PathSeg, 
 		accumulator.push(*t);
 		accumulator
 	})
-}
-
-fn bezpath_intersections(bezpath1: &BezPath, bezpath2: &BezPath) -> Vec<f64> {
-	let intersections = Vec::new();
-	intersections
 }
 
 #[cfg(test)]
