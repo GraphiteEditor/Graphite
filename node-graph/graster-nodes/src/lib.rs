@@ -1,4 +1,6 @@
 pub mod adjustments;
+pub mod cubic_spline;
+
 pub mod curve;
 pub mod dehaze;
 pub mod filter;

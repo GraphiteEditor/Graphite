@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
-use crate::curve::CubicSplines;
+use crate::cubic_spline::CubicSplines;
 use dyn_any::DynAny;
 use graphene_core::Node;
 use graphene_core::blending::BlendMode;
