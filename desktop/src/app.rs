@@ -19,6 +19,7 @@ pub(crate) struct WinitApp {
 	pub(crate) window_state: WindowStateHandle,
 	pub(crate) cef_context: cef::Context<cef::Initialized>,
 	pub(crate) window: Option<Arc<Window>>,
+	cef_schedule: Instant,
 }
 
 impl WinitApp {
@@ -27,18 +28,22 @@ impl WinitApp {
 			window_state,
 			cef_context,
 			window: None,
+			cef_schedule: Instant::now(),
 		}
 	}
 }
 
 impl ApplicationHandler<CustomEvent> for WinitApp {
 	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-		event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(2)));
-		self.cef_context.work();
+		let timeout = Instant::now() + Duration::from_millis(10);
+		let wait_until = timeout.min(self.cef_schedule);
+		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
 	}
 
 	fn new_events(&mut self, _event_loop: &ActiveEventLoop, _cause: StartCause) {
-		self.cef_context.work();
+		if Instant::now() > self.cef_schedule {
+			self.cef_context.work();
+		}
 	}
 
 	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
@@ -67,10 +72,13 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 
 	fn user_event(&mut self, _: &ActiveEventLoop, event: CustomEvent) {
 		match event {
-			CustomEvent::UiUpdate | CustomEvent::Resized => {
+			CustomEvent::UiUpdate => {
 				if let Some(window) = &self.window {
 					window.request_redraw();
 				}
+			}
+			CustomEvent::ScheduleBrowserWork(instant) => {
+				self.cef_schedule = instant;
 			}
 		}
 	}
@@ -90,9 +98,6 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 						let height = physical_size.height as usize;
 						s.width = Some(width);
 						s.height = Some(height);
-						if let Some(elp) = &s.event_loop_proxy {
-							let _ = elp.send_event(CustomEvent::Resized);
-						}
 						if let Some(graphics_state) = &mut s.graphics_state {
 							graphics_state.resize(width, height);
 						}

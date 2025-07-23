@@ -1,17 +1,17 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_client_t, cef_base_ref_counted_t};
-use cef::{Client, ImplClient, RenderHandler, WrapClient};
+use cef::{ImplClient, RenderHandler, WrapClient};
 
 pub(crate) struct ClientImpl {
 	object: *mut RcImpl<_cef_client_t, Self>,
 	render_handler: RenderHandler,
 }
 impl ClientImpl {
-	pub(crate) fn new(render_handler: RenderHandler) -> Client {
-		Client::new(Self {
+	pub(crate) fn new(render_handler: RenderHandler) -> Self {
+		Self {
 			object: std::ptr::null_mut(),
 			render_handler,
-		})
+		}
 	}
 }
 

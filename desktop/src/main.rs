@@ -1,8 +1,9 @@
 use std::fmt::Debug;
 use std::process::exit;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Instant;
 
-use winit::event_loop::{EventLoop, EventLoopProxy};
+use winit::event_loop::{self, EventLoop, EventLoopProxy};
 
 mod cef;
 use cef::Setup;
@@ -13,9 +14,10 @@ use render::{FrameBuffer, GraphicsState};
 mod app;
 use app::WinitApp;
 
+#[derive(Debug)]
 pub(crate) enum CustomEvent {
 	UiUpdate,
-	Resized,
+	ScheduleBrowserWork(Instant),
 }
 
 pub(crate) struct WindowState {
@@ -130,6 +132,15 @@ impl cef::CefEventHandler for CefHandler {
 			.unwrap();
 
 		correct_size
+	}
+
+	fn schedule_cef_message_loop_work(&self, scheduled_time: std::time::Instant) {
+		self.window_state
+			.with(|s| {
+				let Some(event_loop_proxy) = &mut s.event_loop_proxy else { return };
+				let _ = event_loop_proxy.send_event(CustomEvent::ScheduleBrowserWork(scheduled_time));
+			})
+			.unwrap();
 	}
 }
 

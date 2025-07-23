@@ -20,6 +20,7 @@ macro_rules! map {
 	};
 }
 
+// Windows Virtual keyboard binary representation
 pub(crate) trait ToVKBits {
 	fn to_vk_bits(&self) -> i32;
 }
@@ -205,6 +206,7 @@ impl ToVKBits for char {
 	}
 }
 
+// Chromium dom key binary representation
 pub(crate) trait ToDomBits {
 	fn to_dom_bits(&self) -> i32;
 }

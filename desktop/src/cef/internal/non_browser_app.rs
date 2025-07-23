@@ -8,7 +8,7 @@ pub(crate) struct NonBrowserAppImpl {
 	object: *mut RcImpl<_cef_app_t, Self>,
 }
 impl NonBrowserAppImpl {
-	pub(crate) fn new() -> App {
+	pub(crate) fn app() -> App {
 		App::new(Self { object: std::ptr::null_mut() })
 	}
 }

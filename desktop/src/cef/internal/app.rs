@@ -1,6 +1,6 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_app_t, cef_base_ref_counted_t};
-use cef::{App, BrowserProcessHandler, ImplApp, SchemeRegistrar, WrapApp};
+use cef::{BrowserProcessHandler, ImplApp, SchemeRegistrar, WrapApp};
 
 use crate::cef::CefEventHandler;
 use crate::cef::scheme_handler::GraphiteSchemeHandlerFactory;
@@ -12,17 +12,17 @@ pub(crate) struct AppImpl<H: CefEventHandler> {
 	event_handler: H,
 }
 impl<H: CefEventHandler> AppImpl<H> {
-	pub(crate) fn new(event_handler: H) -> App {
-		App::new(Self {
+	pub(crate) fn new(event_handler: H) -> Self {
+		Self {
 			object: std::ptr::null_mut(),
 			event_handler,
-		})
+		}
 	}
 }
 
 impl<H: CefEventHandler> ImplApp for AppImpl<H> {
 	fn browser_process_handler(&self) -> Option<BrowserProcessHandler> {
-		Some(BrowserProcessHandlerImpl::new(self.event_handler.clone()))
+		Some(BrowserProcessHandler::new(BrowserProcessHandlerImpl::new(self.event_handler.clone())))
 	}
 
 	fn on_register_custom_schemes(&self, registrar: Option<&mut SchemeRegistrar>) {

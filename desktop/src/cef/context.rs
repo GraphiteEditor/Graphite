@@ -1,11 +1,12 @@
 use cef::sys::CEF_API_VERSION_LAST;
+use cef::{App, BrowserSettings, Client, DictionaryValue, ImplBrowser, ImplBrowserHost, ImplCommandLine, RenderHandler, RequestContext, WindowInfo, browser_host_create_browser_sync, initialize};
 use cef::{Browser, CefString, Settings, api_hash, args::Args, execute_process};
-use cef::{BrowserSettings, DictionaryValue, ImplBrowser, ImplBrowserHost, ImplCommandLine, RenderHandler, RequestContext, WindowInfo, browser_host_create_browser_sync, initialize};
 use thiserror::Error;
 use winit::event::WindowEvent;
 
-use super::CefEventHandler;
-use super::input::{InputState, handle_window_event};
+use super::input::InputState;
+use super::scheme_handler::{FRONTEND_DOMAIN, GRAPHITE_SCHEME};
+use super::{CefEventHandler, input};
 
 use super::internal::{AppImpl, ClientImpl, NonBrowserAppImpl, RenderHandlerImpl};
 
@@ -21,13 +22,6 @@ pub(crate) struct Context<S: ContextState> {
 	pub(crate) input_state: InputState,
 	marker: std::marker::PhantomData<S>,
 }
-impl<S: ContextState> Drop for Context<S> {
-	fn drop(&mut self) {
-		if self.browser.is_some() {
-			cef::shutdown();
-		}
-	}
-}
 
 impl Context<Setup> {
 	pub(crate) fn new() -> Result<Context<Setup>, SetupError> {
@@ -38,15 +32,15 @@ impl Context<Setup> {
 			loader
 		};
 		let _ = api_hash(CEF_API_VERSION_LAST, 0);
+
 		let args = Args::new();
 		let cmd = args.as_cmd_line().unwrap();
 		let switch = CefString::from("type");
-		cmd.append_switch(Some(&CefString::from("disable-gpu")));
-		cmd.append_switch(Some(&CefString::from("disable-gpu-compositing")));
 		let is_browser_process = cmd.has_switch(Some(&switch)) != 1;
+
 		if !is_browser_process {
 			let process_type = CefString::from(&cmd.switch_value(Some(&switch)));
-			let mut app = NonBrowserAppImpl::new();
+			let mut app = NonBrowserAppImpl::app();
 			let ret = execute_process(Some(args.as_main_args()), Some(&mut app), std::ptr::null_mut());
 			if ret >= 0 {
 				return Err(SetupError::SubprocessFailed(process_type.to_string()));
@@ -54,6 +48,7 @@ impl Context<Setup> {
 				return Err(SetupError::Subprocess);
 			}
 		}
+
 		Ok(Context {
 			args,
 			browser: None,
@@ -70,17 +65,18 @@ impl Context<Setup> {
 			..Default::default()
 		};
 
-		let mut cef_app = AppImpl::new(event_handler.clone());
+		// Attention! Wrapping this in an extra App is necessary, otherwise the program still compiles but segfaults
+		let mut cef_app = App::new(AppImpl::new(event_handler.clone()));
 
-		let res = initialize(Some(self.args.as_main_args()), Some(&settings), Some(&mut cef_app), std::ptr::null_mut());
-		if res != 1 {
+		let result = initialize(Some(self.args.as_main_args()), Some(&settings), Some(&mut cef_app), std::ptr::null_mut());
+		if result != 1 {
 			return Err(InitError::InitializationFailed);
 		}
 
 		let render_handler = RenderHandlerImpl::new(event_handler.clone());
-		let mut client = ClientImpl::new(RenderHandler::new(render_handler));
+		let mut client = Client::new(ClientImpl::new(RenderHandler::new(render_handler)));
 
-		let url = CefString::from("graphite://frontend/");
+		let url = CefString::from(format!("{GRAPHITE_SCHEME}://{FRONTEND_DOMAIN}/").as_str());
 
 		let window_info = WindowInfo {
 			windowless_rendering_enabled: 1,
@@ -117,12 +113,20 @@ impl Context<Initialized> {
 	}
 
 	pub(crate) fn handle_window_event(&mut self, event: WindowEvent) -> Option<WindowEvent> {
-		handle_window_event(self, event)
+		input::handle_window_event(self, event)
 	}
 
 	pub(crate) fn notify_of_resize(&self) {
 		if let Some(browser) = &self.browser {
 			browser.host().unwrap().was_resized();
+		}
+	}
+}
+
+impl<S: ContextState> Drop for Context<S> {
+	fn drop(&mut self) {
+		if self.browser.is_some() {
+			cef::shutdown();
 		}
 	}
 }

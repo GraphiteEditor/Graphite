@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::ffi::c_int;
+use std::ops::DerefMut;
 use std::slice::Iter;
 
 use cef::rc::{Rc, RcImpl};
@@ -8,7 +9,10 @@ use cef::{
 	Browser, Callback, CefString, Frame, ImplRequest, ImplResourceHandler, ImplResponse, ImplSchemeHandlerFactory, ImplSchemeRegistrar, Request, ResourceHandler, ResourceReadCallback, Response,
 	SchemeRegistrar, WrapResourceHandler, WrapSchemeHandlerFactory,
 };
-use include_dir::{include_dir, Dir};
+use include_dir::{Dir, include_dir};
+
+pub(crate) const GRAPHITE_SCHEME: &str = "graphite-static";
+pub(crate) const FRONTEND_DOMAIN: &str = "frontend";
 
 pub(crate) struct GraphiteSchemeHandlerFactory {
 	object: *mut RcImpl<_cef_scheme_handler_factory_t, Self>,
@@ -25,24 +29,24 @@ impl GraphiteSchemeHandlerFactory {
 			scheme_options |= cef_scheme_options_t::CEF_SCHEME_OPTION_FETCH_ENABLED as i32;
 			scheme_options |= cef_scheme_options_t::CEF_SCHEME_OPTION_SECURE as i32;
 			scheme_options |= cef_scheme_options_t::CEF_SCHEME_OPTION_CORS_ENABLED as i32;
-			registrar.add_custom_scheme(Some(&CefString::from("graphite")), scheme_options);
+			registrar.add_custom_scheme(Some(&CefString::from(GRAPHITE_SCHEME)), scheme_options);
 		}
 	}
 }
 impl ImplSchemeHandlerFactory for GraphiteSchemeHandlerFactory {
 	fn create(&self, _browser: Option<&mut Browser>, _frame: Option<&mut Frame>, scheme_name: Option<&CefString>, request: Option<&mut Request>) -> Option<ResourceHandler> {
 		if let Some(scheme_name) = scheme_name {
-			if scheme_name.to_string() != "graphite" {
+			if scheme_name.to_string() != GRAPHITE_SCHEME {
 				return None;
 			}
 			if let Some(request) = request {
 				let url = CefString::from(&request.url()).to_string();
-				let path = url.strip_prefix("graphite://").unwrap();
+				let path = url.strip_prefix(&format!("{GRAPHITE_SCHEME}://")).unwrap();
 				let domain = path.split('/').next().unwrap_or("");
 				let path = path.strip_prefix(domain).unwrap_or("");
 				let path = path.trim_start_matches('/');
 				return match domain {
-					"frontend" => {
+					FRONTEND_DOMAIN => {
 						if path.is_empty() {
 							Some(ResourceHandler::new(GraphiteFrontendResourceHandler::new("index.html")))
 						} else {
@@ -74,7 +78,7 @@ impl<'a> GraphiteFrontendResourceHandler<'a> {
 		let data = if let Some(file) = file {
 			Some(RefCell::new(file.contents().iter()))
 		} else {
-			println!("Failed to find asset at path: {}", path);
+			tracing::error!("Failed to find asset at path: {}", path);
 			None
 		};
 		let mimetype = if let Some(file) = file {
@@ -123,7 +127,7 @@ impl<'a> ImplResourceHandler for GraphiteFrontendResourceHandler<'a> {
 			*response_length = -1; // Indicating that the length is unknown
 		}
 		if let Some(response) = response {
-			if let Some(_) = &self.data {
+			if self.data.is_some() {
 				if let Some(mimetype) = &self.mimetype {
 					let cef_mime = CefString::from(mimetype.as_str());
 					response.set_mime_type(Some(&cef_mime));
@@ -144,13 +148,10 @@ impl<'a> ImplResourceHandler for GraphiteFrontendResourceHandler<'a> {
 		let out = unsafe { std::slice::from_raw_parts_mut(data_out, bytes_to_read as usize) };
 		if let Some(data) = &self.data {
 			let mut data = data.borrow_mut();
-			for i in 0..bytes_to_read as usize {
-				if let Some(&byte) = data.next() {
-					out[i] = byte;
-					read += 1;
-				} else {
-					break;
-				}
+
+			for (out, &data) in out.iter_mut().zip(data.deref_mut()) {
+				*out = data;
+				read += 1;
 			}
 		}
 
