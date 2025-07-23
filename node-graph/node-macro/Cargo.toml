@@ -19,6 +19,7 @@ syn = { workspace = true }
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
 convert_case = { workspace = true }
+strum = { workspace = true }
 
 indoc = "2.0.5"
 proc-macro-crate = "3.1.0"

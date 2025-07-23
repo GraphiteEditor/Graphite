@@ -154,6 +154,7 @@ tinyvec = { version = "1", features = ["std"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 iai-callgrind = { version = "0.12.3" }
 ndarray = "0.16.1"
+strum = { version = "0.26.3", features = ["derive"] }
 
 [profile.dev]
 opt-level = 1

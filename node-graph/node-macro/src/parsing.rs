@@ -12,6 +12,7 @@ use syn::{
 };
 
 use crate::codegen::generate_node_code;
+use crate::shader_nodes::ShaderNodeType;
 
 #[derive(Debug)]
 pub(crate) struct Implementation {
@@ -47,6 +48,8 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) properties_string: Option<LitStr>,
 	/// whether to `#[cfg]` gate the node implementation, defaults to None
 	pub(crate) cfg: Option<TokenStream2>,
+	/// if this node should get a gpu implementation, defaults to None
+	pub(crate) shader_node: Option<ShaderNodeType>,
 	// Add more attributes as needed
 }
 
@@ -187,6 +190,7 @@ impl Parse for NodeFnAttributes {
 		let mut skip_impl = false;
 		let mut properties_string = None;
 		let mut cfg = None;
+		let mut shader_node = None;
 
 		let content = input;
 		// let content;
@@ -249,6 +253,13 @@ impl Parse for NodeFnAttributes {
 					let meta = meta.require_list()?;
 					cfg = Some(meta.tokens.clone());
 				}
+				"shader_node" => {
+					if shader_node.is_some() {
+						return Err(Error::new_spanned(path, "Multiple 'feature' attributes are not allowed"));
+					}
+					let meta = meta.require_list()?;
+					shader_node = Some(syn::parse2(meta.tokens.to_token_stream())?);
+				}
 				_ => {
 					return Err(Error::new_spanned(
 						meta,
@@ -273,6 +284,7 @@ impl Parse for NodeFnAttributes {
 			skip_impl,
 			properties_string,
 			cfg,
+			shader_node,
 		})
 	}
 }
