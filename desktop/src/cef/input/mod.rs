@@ -8,20 +8,15 @@ use super::context::{Context, Initialized};
 mod keymap;
 use keymap::{ToDomBits, ToVKBits};
 
-pub(crate) fn handle_window_event(context: &mut Context<Initialized>, event: &WindowEvent) {
+pub(crate) fn handle_window_event(context: &mut Context<Initialized>, event: WindowEvent) -> Option<WindowEvent> {
 	match event {
-		WindowEvent::Resized(_) => {
-			if let Some(browser) = &context.browser {
-				browser.host().unwrap().was_resized();
-			}
-		}
 		WindowEvent::CursorMoved { position, .. } => {
 			if let Some(browser) = &context.browser {
 				if let Some(host) = browser.host() {
 					host.set_focus(1);
 				}
 
-				context.input_state.update_mouse_position(position);
+				context.input_state.update_mouse_position(&position);
 				let mouse_event: MouseEvent = (&context.input_state).into();
 				browser.host().unwrap().send_mouse_move_event(Some(&mouse_event), 0);
 			}
@@ -89,7 +84,7 @@ pub(crate) fn handle_window_event(context: &mut Context<Initialized>, event: &Wi
 					let line_width = 40; //feels about right, TODO: replace with correct value
 					let line_height = 30; //feels about right, TODO: replace with correct value
 					let (delta_x, delta_y) = match delta {
-						MouseScrollDelta::LineDelta(x, y) => (*x * line_width as f32, *y * line_height as f32),
+						MouseScrollDelta::LineDelta(x, y) => (x * line_width as f32, y * line_height as f32),
 						MouseScrollDelta::PixelDelta(physical_position) => (physical_position.x as f32, physical_position.y as f32),
 					};
 					host.send_mouse_wheel_event(Some(&mouse_event), delta_x as i32, delta_y as i32);
@@ -117,14 +112,16 @@ pub(crate) fn handle_window_event(context: &mut Context<Initialized>, event: &Wi
 							let char = str.chars().next().unwrap_or('\0');
 							(None, Some(char))
 						}
-						_ => return,
+						_ => return None,
 					};
 
-					let mut key_event = KeyEvent::default();
-					key_event.size = std::mem::size_of::<KeyEvent>();
-					key_event.focus_on_editable_field = 1;
-					key_event.modifiers = context.input_state.cef_modifiers(&event.location, event.repeat).raw();
-					key_event.is_system_key = 0;
+					let mut key_event = KeyEvent {
+						size: size_of::<KeyEvent>(),
+						focus_on_editable_field: 1,
+						modifiers: context.input_state.cef_modifiers(&event.location, event.repeat).raw(),
+						is_system_key: 0,
+						..Default::default()
+					};
 
 					if let Some(named_key) = named_key {
 						key_event.native_key_code = named_key.to_dom_bits();
@@ -142,10 +139,10 @@ pub(crate) fn handle_window_event(context: &mut Context<Initialized>, event: &Wi
 							if let Some(char) = character {
 								let mut buf = [0; 2];
 								char.encode_utf16(&mut buf);
-								key_event.character = buf[0] as u16;
+								key_event.character = buf[0];
 								let mut buf = [0; 2];
 								char.to_lowercase().next().unwrap().encode_utf16(&mut buf);
-								key_event.unmodified_character = buf[0] as u16;
+								key_event.unmodified_character = buf[0];
 
 								key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_CHAR);
 								host.send_key_event(Some(&key_event));
@@ -159,8 +156,9 @@ pub(crate) fn handle_window_event(context: &mut Context<Initialized>, event: &Wi
 				}
 			}
 		}
-		_ => {}
+		e => return Some(e),
 	}
+	None
 }
 
 #[derive(Default, Clone)]
@@ -194,7 +192,7 @@ pub(crate) struct InputState {
 
 impl InputState {
 	fn update_modifiers(&mut self, modifiers: &winit::keyboard::ModifiersState) {
-		self.modifiers = modifiers.clone();
+		self.modifiers = *modifiers;
 	}
 
 	fn update_mouse_position(&mut self, position: &PhysicalPosition<f64>) {
@@ -206,7 +204,7 @@ impl InputState {
 	}
 
 	fn cef_modifiers(&self, location: &winit::keyboard::KeyLocation, is_repeat: bool) -> CefModifiers {
-		CefModifiers::new(&self, location, is_repeat)
+		CefModifiers::new(self, location, is_repeat)
 	}
 
 	fn cef_modifiers_mouse_event(&self) -> CefModifiers {
@@ -214,18 +212,18 @@ impl InputState {
 	}
 }
 
-impl Into<CefModifiers> for InputState {
-	fn into(self) -> CefModifiers {
-		CefModifiers::new(&self, &winit::keyboard::KeyLocation::Standard, false)
+impl From<InputState> for CefModifiers {
+	fn from(val: InputState) -> Self {
+		CefModifiers::new(&val, &winit::keyboard::KeyLocation::Standard, false)
 	}
 }
 
-impl Into<MouseEvent> for &InputState {
-	fn into(self) -> MouseEvent {
+impl From<&InputState> for MouseEvent {
+	fn from(val: &InputState) -> Self {
 		MouseEvent {
-			x: self.mouse_position.x as i32,
-			y: self.mouse_position.y as i32,
-			modifiers: self.cef_modifiers_mouse_event().raw(),
+			x: val.mouse_position.x as i32,
+			y: val.mouse_position.y as i32,
+			modifiers: val.cef_modifiers_mouse_event().raw(),
 		}
 	}
 }

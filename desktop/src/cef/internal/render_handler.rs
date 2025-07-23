@@ -1,25 +1,26 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_render_handler_t, cef_base_ref_counted_t};
-use cef::{Browser, ImplBrowser, ImplBrowserHost, ImplRenderHandler, PaintElementType, Rect, RenderHandler, WrapRenderHandler};
+use cef::{Browser, ImplBrowser, ImplBrowserHost, ImplRenderHandler, PaintElementType, Rect, WrapRenderHandler};
 
-use crate::cef::EventHandler;
+use crate::FrameBuffer;
+use crate::cef::CefEventHandler;
 
-pub(crate) struct RenderHandlerImpl<H: EventHandler> {
+pub(crate) struct RenderHandlerImpl<H: CefEventHandler> {
 	object: *mut RcImpl<_cef_render_handler_t, Self>,
 	event_handler: H,
 }
-impl<H: EventHandler> RenderHandlerImpl<H> {
-	pub(crate) fn new(event_handler: H) -> RenderHandler {
-		RenderHandler::new(Self {
+impl<H: CefEventHandler> RenderHandlerImpl<H> {
+	pub(crate) fn new(event_handler: H) -> Self {
+		Self {
 			object: std::ptr::null_mut(),
 			event_handler,
-		})
+		}
 	}
 }
-impl<H: EventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
+impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 	fn view_rect(&self, _browser: Option<&mut Browser>, rect: Option<&mut Rect>) {
 		if let Some(rect) = rect {
-			let view = self.event_handler.view();
+			let view = self.event_handler.window_size();
 			*rect = Rect {
 				x: 0,
 				y: 0,
@@ -41,7 +42,9 @@ impl<H: EventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 	) {
 		let buffer_size = (width * height * 4) as usize;
 		let buffer_slice = unsafe { std::slice::from_raw_parts(buffer, buffer_size) };
-		let draw_successful = self.event_handler.draw(buffer_slice.to_vec(), width as usize, height as usize);
+		let frame_buffer = FrameBuffer::new(buffer_slice.to_vec(), width as usize, height as usize).expect("Failed to create frame buffer");
+
+		let draw_successful = self.event_handler.draw(frame_buffer);
 		if !draw_successful {
 			if let Some(browser) = browser {
 				browser.host().unwrap().was_resized();
@@ -54,7 +57,7 @@ impl<H: EventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 	}
 }
 
-impl<H: EventHandler> Clone for RenderHandlerImpl<H> {
+impl<H: CefEventHandler> Clone for RenderHandlerImpl<H> {
 	fn clone(&self) -> Self {
 		unsafe {
 			let rc_impl = &mut *self.object;
@@ -66,7 +69,7 @@ impl<H: EventHandler> Clone for RenderHandlerImpl<H> {
 		}
 	}
 }
-impl<H: EventHandler> Rc for RenderHandlerImpl<H> {
+impl<H: CefEventHandler> Rc for RenderHandlerImpl<H> {
 	fn as_base(&self) -> &cef_base_ref_counted_t {
 		unsafe {
 			let base = &*self.object;
@@ -74,7 +77,7 @@ impl<H: EventHandler> Rc for RenderHandlerImpl<H> {
 		}
 	}
 }
-impl<H: EventHandler> WrapRenderHandler for RenderHandlerImpl<H> {
+impl<H: CefEventHandler> WrapRenderHandler for RenderHandlerImpl<H> {
 	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_render_handler_t, Self>) {
 		self.object = object;
 	}

@@ -1,10 +1,10 @@
 use cef::sys::CEF_API_VERSION_LAST;
 use cef::{Browser, CefString, Settings, api_hash, args::Args, execute_process};
-use cef::{BrowserSettings, DictionaryValue, ImplCommandLine, RequestContext, WindowInfo, browser_host_create_browser_sync, initialize};
+use cef::{BrowserSettings, DictionaryValue, ImplBrowser, ImplBrowserHost, ImplCommandLine, RenderHandler, RequestContext, WindowInfo, browser_host_create_browser_sync, initialize};
 use thiserror::Error;
 use winit::event::WindowEvent;
 
-use super::EventHandler;
+use super::CefEventHandler;
 use super::input::{InputState, handle_window_event};
 
 use super::internal::{AppImpl, ClientImpl, NonBrowserAppImpl, RenderHandlerImpl};
@@ -62,7 +62,7 @@ impl Context<Setup> {
 		})
 	}
 
-	pub(crate) fn init(self, event_handler: impl EventHandler) -> Result<Context<Initialized>, InitError> {
+	pub(crate) fn init(self, event_handler: impl CefEventHandler) -> Result<Context<Initialized>, InitError> {
 		let settings = Settings {
 			windowless_rendering_enabled: 1,
 			multi_threaded_message_loop: 0,
@@ -78,7 +78,7 @@ impl Context<Setup> {
 		}
 
 		let render_handler = RenderHandlerImpl::new(event_handler.clone());
-		let mut client = ClientImpl::new(render_handler);
+		let mut client = ClientImpl::new(RenderHandler::new(render_handler));
 
 		let url = CefString::from("graphite://frontend/");
 
@@ -116,8 +116,14 @@ impl Context<Initialized> {
 		cef::do_message_loop_work();
 	}
 
-	pub(crate) fn handle_window_event(&mut self, event: &WindowEvent) {
-		handle_window_event(self, event);
+	pub(crate) fn handle_window_event(&mut self, event: WindowEvent) -> Option<WindowEvent> {
+		handle_window_event(self, event)
+	}
+
+	pub(crate) fn notify_of_resize(&self) {
+		if let Some(browser) = &self.browser {
+			browser.host().unwrap().was_resized();
+		}
 	}
 }
 

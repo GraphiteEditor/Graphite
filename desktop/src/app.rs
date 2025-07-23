@@ -76,7 +76,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 	}
 
 	fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
-		self.cef_context.handle_window_event(&event);
+		let Some(event) = self.cef_context.handle_window_event(event) else { return };
 
 		match event {
 			WindowEvent::CloseRequested => {
@@ -98,6 +98,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 						}
 					})
 					.unwrap();
+				self.cef_context.notify_of_resize();
 			}
 
 			WindowEvent::RedrawRequested => {

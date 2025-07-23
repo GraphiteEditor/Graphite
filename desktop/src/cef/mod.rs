@@ -6,21 +6,23 @@ mod context;
 
 mod internal;
 
-pub(crate) trait EventHandler: Clone {
-	fn view(&self) -> View;
-	fn draw(&self, buffer: Vec<u8>, width: usize, height: usize) -> bool;
+pub(crate) trait CefEventHandler: Clone {
+	fn window_size(&self) -> WindowSize;
+	fn draw(&self, frame_buffer: FrameBuffer) -> bool;
 }
 
 #[derive(Clone)]
-pub(crate) struct View {
+pub(crate) struct WindowSize {
 	pub(crate) width: usize,
 	pub(crate) height: usize,
 }
 
-impl View {
+impl WindowSize {
 	pub(crate) fn new(width: usize, height: usize) -> Self {
 		Self { width, height }
 	}
 }
 
 pub(crate) use context::{Context, InitError, Initialized, Setup, SetupError};
+
+use crate::FrameBuffer;

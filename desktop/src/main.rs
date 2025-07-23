@@ -82,18 +82,18 @@ impl Clone for WindowStateHandle {
 }
 
 #[derive(Clone)]
-struct CefEventHandler {
+struct CefHandler {
 	window_state: WindowStateHandle,
 }
 
-impl CefEventHandler {
+impl CefHandler {
 	fn new(window_state: WindowStateHandle) -> Self {
 		Self { window_state }
 	}
 }
 
-impl cef::EventHandler for CefEventHandler {
-	fn view(&self) -> cef::View {
+impl cef::CefEventHandler for CefHandler {
+	fn window_size(&self) -> cef::WindowSize {
 		let mut w = 1;
 		let mut h = 1;
 
@@ -111,26 +111,20 @@ impl cef::EventHandler for CefEventHandler {
 			})
 			.unwrap();
 
-		cef::View::new(w, h)
+		cef::WindowSize::new(w, h)
 	}
 
-	fn draw(&self, buffer: Vec<u8>, width: usize, height: usize) -> bool {
-		let fb = FrameBuffer::new(buffer, width, height)
-			.map_err(|e| {
-				panic!("Failed to create FrameBuffer: {}", e);
-			})
-			.unwrap();
-
+	fn draw(&self, frame_buffer: FrameBuffer) -> bool {
 		let mut correct_size = true;
 		self.window_state
 			.with(|s| {
 				if let Some(event_loop_proxy) = &s.event_loop_proxy {
 					let _ = event_loop_proxy.send_event(CustomEvent::UiUpdate);
 				}
-				if width != s.width.unwrap_or(1) || height != s.height.unwrap_or(1) {
+				if frame_buffer.width() != s.width.unwrap_or(1) || frame_buffer.height() != s.height.unwrap_or(1) {
 					correct_size = false;
 				} else {
-					s.ui_fb = Some(fb);
+					s.ui_fb = Some(frame_buffer);
 				}
 			})
 			.unwrap();
@@ -162,7 +156,7 @@ fn main() {
 
 	window_state.with(|s| s.event_loop_proxy = Some(event_loop.create_proxy())).unwrap();
 
-	let cef_context = match cef_context.init(CefEventHandler::new(window_state.clone())) {
+	let cef_context = match cef_context.init(CefHandler::new(window_state.clone())) {
 		Ok(c) => c,
 		Err(cef::InitError::InitializationFailed) => {
 			println!("Cef initialization failed");
