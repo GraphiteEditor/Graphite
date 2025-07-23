@@ -47,7 +47,12 @@ impl CubicSplines {
 		// Gaussian elimination: forward elimination
 		for row in 0..4 {
 			let pivot_row_index = (row..4)
-				.max_by(|&a_row, &b_row| augmented_matrix[a_row][row].abs().partial_cmp(&augmented_matrix[b_row][row].abs()).unwrap_or(std::cmp::Ordering::Equal))
+				.max_by(|&a_row, &b_row| {
+					augmented_matrix[a_row][row]
+						.abs()
+						.partial_cmp(&augmented_matrix[b_row][row].abs())
+						.unwrap_or(core::cmp::Ordering::Equal)
+				})
 				.unwrap();
 
 			// Swap the current row with the row that has the largest pivot element

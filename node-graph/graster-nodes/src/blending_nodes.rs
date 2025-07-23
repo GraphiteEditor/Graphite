@@ -1,11 +1,12 @@
 use crate::adjust::Adjust;
-use graphene_core::color::Pixel;
+#[cfg(feature = "std")]
 use graphene_core::gradient::GradientStops;
-use graphene_core::raster::Image;
-use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
-use graphene_core::registry::types::Percentage;
-use graphene_core::{BlendMode, Color, Ctx};
-use std::cmp::Ordering;
+#[cfg(feature = "std")]
+use graphene_core::raster_types::{CPU, RasterDataTable};
+use graphene_core_shaders::Ctx;
+use graphene_core_shaders::blending::BlendMode;
+use graphene_core_shaders::color::{Color, Pixel};
+use graphene_core_shaders::registry::types::Percentage;
 
 pub trait Blend<P: Pixel> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(P, P) -> P) -> Self;
@@ -24,41 +25,45 @@ impl Blend<Color> for Option<Color> {
 		}
 	}
 }
-impl Blend<Color> for RasterDataTable<CPU> {
-	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-		let mut result_table = self.clone();
 
-		for (over, under) in result_table.instance_mut_iter().zip(under.instance_ref_iter()) {
-			let data = over.instance.data.iter().zip(under.instance.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
+#[cfg(feature = "std")]
+mod blend_std {
+	use super::*;
+	use core::cmp::Ordering;
+	use graphene_core::raster::Image;
+	use graphene_core::raster_types::Raster;
+	impl Blend<Color> for RasterDataTable<CPU> {
+		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
+			let mut result_table = self.clone();
+			for (over, under) in result_table.instance_mut_iter().zip(under.instance_ref_iter()) {
+				let data = over.instance.data.iter().zip(under.instance.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 
-			*over.instance = Raster::new_cpu(Image {
-				data,
-				width: over.instance.width,
-				height: over.instance.height,
-				base64_string: None,
-			});
+				*over.instance = Raster::new_cpu(Image {
+					data,
+					width: over.instance.width,
+					height: over.instance.height,
+					base64_string: None,
+				});
+			}
+			result_table
 		}
-
-		result_table
 	}
-}
-impl Blend<Color> for GradientStops {
-	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-		let mut combined_stops = self.iter().map(|(position, _)| position).chain(under.iter().map(|(position, _)| position)).collect::<Vec<_>>();
-		combined_stops.dedup_by(|&mut a, &mut b| (a - b).abs() < 1e-6);
-		combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
-
-		let stops = combined_stops
-			.into_iter()
-			.map(|&position| {
-				let over_color = self.evaluate(position);
-				let under_color = under.evaluate(position);
-				let color = blend_fn(over_color, under_color);
-				(position, color)
-			})
-			.collect::<Vec<_>>();
-
-		GradientStops::new(stops)
+	impl Blend<Color> for GradientStops {
+		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
+			let mut combined_stops = self.iter().map(|(position, _)| position).chain(under.iter().map(|(position, _)| position)).collect::<Vec<_>>();
+			combined_stops.dedup_by(|&mut a, &mut b| (a - b).abs() < 1e-6);
+			combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+			let stops = combined_stops
+				.into_iter()
+				.map(|&position| {
+					let over_color = self.evaluate(position);
+					let under_color = under.evaluate(position);
+					let color = blend_fn(over_color, under_color);
+					(position, color)
+				})
+				.collect::<Vec<_>>();
+			GradientStops::new(stops)
+		}
 	}
 }
 
@@ -114,7 +119,7 @@ pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendM
 	}
 }
 
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category("Raster"), shader_node(PerPixelAdjust))]
 async fn blend<T: Blend<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(
@@ -136,7 +141,7 @@ async fn blend<T: Blend<Color> + Send>(
 	over.blend(&under, |a, b| blend_colors(a, b, blend_mode, opacity / 100.))
 }
 
-#[node_macro::node(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
 fn color_overlay<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -163,6 +168,7 @@ fn color_overlay<T: Adjust<Color>>(
 	image
 }
 
+#[cfg(feature = "std")]
 #[node_macro::node(category(""), skip_impl)]
 fn blend_color_pair<BlendModeNode, OpacityNode>(input: (Color, Color), blend_mode: &'n BlendModeNode, opacity: &'n OpacityNode) -> Color
 where
@@ -174,7 +180,7 @@ where
 	blend_colors(input.0, input.1, blend_mode, opacity / 100.)
 }
 
-#[cfg(test)]
+#[cfg(all(feature = "std", test))]
 mod test {
 	use graphene_core::blending::BlendMode;
 	use graphene_core::color::Color;
