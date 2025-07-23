@@ -1,11 +1,11 @@
 use cef::sys::CEF_API_VERSION_LAST;
-use cef::{api_hash, args::Args, execute_process, Browser, CefString, Settings};
-use cef::{browser_host_create_browser_sync, initialize, BrowserSettings, DictionaryValue, ImplCommandLine, RequestContext, WindowInfo};
+use cef::{Browser, CefString, Settings, api_hash, args::Args, execute_process};
+use cef::{BrowserSettings, DictionaryValue, ImplCommandLine, RequestContext, WindowInfo, browser_host_create_browser_sync, initialize};
 use thiserror::Error;
 use winit::event::WindowEvent;
 
-use super::input::{handle_window_event, InputState};
 use super::EventHandler;
+use super::input::{InputState, handle_window_event};
 
 use super::internal::{AppImpl, ClientImpl, NonBrowserAppImpl, RenderHandlerImpl};
 
@@ -20,6 +20,13 @@ pub(crate) struct Context<S: ContextState> {
 	pub(crate) browser: Option<Browser>,
 	pub(crate) input_state: InputState,
 	marker: std::marker::PhantomData<S>,
+}
+impl<S: ContextState> Drop for Context<S> {
+	fn drop(&mut self) {
+		if self.browser.is_some() {
+			cef::shutdown();
+		}
+	}
 }
 
 impl Context<Setup> {
@@ -56,10 +63,12 @@ impl Context<Setup> {
 	}
 
 	pub(crate) fn init(self, event_handler: impl EventHandler) -> Result<Context<Initialized>, InitError> {
-		let mut settings = Settings::default();
-		settings.windowless_rendering_enabled = 1;
-		settings.multi_threaded_message_loop = 0;
-		settings.external_message_pump = 1;
+		let settings = Settings {
+			windowless_rendering_enabled: 1,
+			multi_threaded_message_loop: 0,
+			external_message_pump: 1,
+			..Default::default()
+		};
 
 		let mut cef_app = AppImpl::new(event_handler.clone());
 
@@ -73,12 +82,16 @@ impl Context<Setup> {
 
 		let url = CefString::from("graphite://frontend/");
 
-		let mut window_info = WindowInfo::default();
-		window_info.windowless_rendering_enabled = 1;
+		let window_info = WindowInfo {
+			windowless_rendering_enabled: 1,
+			..Default::default()
+		};
 
-		let mut settings = BrowserSettings::default();
-		settings.windowless_frame_rate = 60;
-		settings.background_color = 0x0;
+		let settings = BrowserSettings {
+			windowless_frame_rate: 60,
+			background_color: 0x0,
+			..Default::default()
+		};
 
 		let browser = browser_host_create_browser_sync(
 			Some(&window_info),
@@ -90,9 +103,9 @@ impl Context<Setup> {
 		);
 
 		Ok(Context {
-			args: self.args,
+			args: self.args.clone(),
 			browser,
-			input_state: self.input_state,
+			input_state: self.input_state.clone(),
 			marker: std::marker::PhantomData::<Initialized>,
 		})
 	}
@@ -105,10 +118,6 @@ impl Context<Initialized> {
 
 	pub(crate) fn handle_window_event(&mut self, event: &WindowEvent) {
 		handle_window_event(self, event);
-	}
-
-	pub(crate) fn shutdown(self) {
-		cef::shutdown();
 	}
 }
 
