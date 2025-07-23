@@ -54,14 +54,15 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyZ); modifiers=[Accel, MouseLeft], action_dispatch=DocumentMessage::Noop),
 		//
 		// NodeGraphMessage
-		entry!(KeyDown(MouseLeft); action_dispatch=NodeGraphMessage::PointerDown {shift_click: false, control_click: false, alt_click: false, right_click: false}),
-		entry!(KeyDown(MouseLeft); modifiers=[Shift], action_dispatch=NodeGraphMessage::PointerDown {shift_click: true, control_click: false, alt_click: false, right_click: false}),
-		entry!(KeyDown(MouseLeft); modifiers=[Accel], action_dispatch=NodeGraphMessage::PointerDown {shift_click: false, control_click: true, alt_click: false, right_click: false}),
-		entry!(KeyDown(MouseLeft); modifiers=[Shift, Accel], action_dispatch=NodeGraphMessage::PointerDown {shift_click: true, control_click: true, alt_click: false, right_click: false}),
-		entry!(KeyDown(MouseLeft); modifiers=[Alt], action_dispatch=NodeGraphMessage::PointerDown {shift_click: false, control_click: false, alt_click: true, right_click: false}),
-		entry!(KeyDown(MouseRight); action_dispatch=NodeGraphMessage::PointerDown {shift_click: false, control_click: false, alt_click: false, right_click: true}),
+		entry!(KeyDown(MouseLeft); action_dispatch=NodeGraphMessage::PointerDown { shift_click: false, control_click: false, alt_click: false, right_click: false }),
+		entry!(KeyDown(MouseLeft); modifiers=[Shift], action_dispatch=NodeGraphMessage::PointerDown { shift_click: true, control_click: false, alt_click: false, right_click: false }),
+		entry!(KeyDown(MouseLeft); modifiers=[Accel], action_dispatch=NodeGraphMessage::PointerDown { shift_click: false, control_click: true, alt_click: false, right_click: false }),
+		entry!(KeyDown(MouseLeft); modifiers=[Shift, Accel], action_dispatch=NodeGraphMessage::PointerDown { shift_click: true, control_click: true, alt_click: false, right_click: false }),
+		entry!(KeyDown(MouseLeft); modifiers=[Alt], action_dispatch=NodeGraphMessage::PointerDown { shift_click: false, control_click: false, alt_click: true, right_click: false }),
+		entry!(KeyDown(MouseRight); action_dispatch=NodeGraphMessage::PointerDown { shift_click: false, control_click: false, alt_click: false, right_click: true }),
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=NodeGraphMessage::EnterNestedNetwork),
-		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=NodeGraphMessage::PointerMove {shift: Shift}),
+		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=NodeGraphMessage::PointerMove { shift: Shift }),
+		entry!(PointerShake; action_dispatch=NodeGraphMessage::ShakeNode),
 		entry!(KeyUp(MouseLeft); action_dispatch=NodeGraphMessage::PointerUp),
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { delete_children: false }),
 		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { delete_children: false }),
@@ -417,7 +418,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Tab); modifiers=[Control], action_dispatch=PortfolioMessage::NextDocument),
 		entry!(KeyDown(Tab); modifiers=[Control, Shift], action_dispatch=PortfolioMessage::PrevDocument),
 		entry!(KeyDown(KeyW); modifiers=[Accel], action_dispatch=PortfolioMessage::CloseActiveDocumentWithConfirmation),
-		entry!(KeyDown(KeyW); modifiers=[Accel,Alt], action_dispatch=PortfolioMessage::CloseAllDocumentsWithConfirmation),
+		entry!(KeyDown(KeyW); modifiers=[Accel, Alt], action_dispatch=PortfolioMessage::CloseAllDocumentsWithConfirmation),
 		entry!(KeyDown(KeyO); modifiers=[Accel], action_dispatch=PortfolioMessage::OpenDocument),
 		entry!(KeyDown(KeyI); modifiers=[Accel], action_dispatch=PortfolioMessage::Import),
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }),
@@ -440,7 +441,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Space); modifiers=[Shift], action_dispatch=AnimationMessage::ToggleLivePreview),
 		entry!(KeyDown(Home); modifiers=[Shift], action_dispatch=AnimationMessage::RestartAnimation),
 	];
-	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut wheel_scroll, mut pointer_move) = mappings;
+	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut wheel_scroll, mut pointer_move, mut pointer_shake) = mappings;
 
 	let sort = |list: &mut KeyMappingEntries| list.0.sort_by(|a, b| b.modifiers.count_ones().cmp(&a.modifiers.count_ones()));
 	// Sort the sublists of `key_up`, `key_down`, `key_up_no_repeat`, and `key_down_no_repeat`
@@ -457,6 +458,8 @@ pub fn input_mappings() -> Mapping {
 	sort(&mut wheel_scroll);
 	// Sort `pointer_move`
 	sort(&mut pointer_move);
+	// Sort `pointer_shake`
+	sort(&mut pointer_shake);
 
 	Mapping {
 		key_up,
@@ -466,6 +469,7 @@ pub fn input_mappings() -> Mapping {
 		double_click,
 		wheel_scroll,
 		pointer_move,
+		pointer_shake,
 	}
 }
 

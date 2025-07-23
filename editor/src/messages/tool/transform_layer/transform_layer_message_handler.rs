@@ -1323,7 +1323,7 @@ mod test_transform_layer {
 			let document = editor.active_document_mut();
 			let group_children = document.network_interface.downstream_layers(&group_layer.to_node(), &[]);
 			if !group_children.is_empty() {
-				Some(LayerNodeIdentifier::new(group_children[0], &document.network_interface, &[]))
+				Some(LayerNodeIdentifier::new(group_children[0], &document.network_interface))
 			} else {
 				None
 			}

@@ -2,7 +2,7 @@
 name = "node-macro"
 publish = false
 version = "0.0.0"
-rust-version = "1.85"
+rust-version = "1.88"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 edition = "2024"
 readme = "../../README.md"
@@ -26,4 +26,3 @@ proc-macro-error2 = "2"
 
 [dev-dependencies]
 graphene-core = { workspace = true }
-
