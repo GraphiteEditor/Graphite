@@ -343,8 +343,8 @@ pub fn is_linear(segment: &PathSeg) -> bool {
 
 // TODO: If a segment curls back on itself tightly enough it could intersect again at the portion that should be trimmed. This could cause the Subpaths to be clipped
 // at the incorrect location. This can be avoided by first trimming the two Subpaths at any extrema, effectively ignoring loopbacks.
-/// Helper function to clip overlap of two intersecting open Subpaths. Returns an optional, as intersections may not exist for certain arrangements and distances.
-/// Assumes that the Subpaths represents simple Bezier segments, and clips the Subpaths at the last intersection of the first Subpath, and first intersection of the last Subpath.
+/// Helper function to clip overlap of two intersecting open Bezpaths. Returns an optional, as intersections may not exist for certain arrangements and distances.
+/// Assumes that the Bezpaths represents simple Bezier segments, and clips the Bezpaths at the last intersection of the first Bezpath, and first intersection of the last Bezpath.
 pub fn clip_simple_bezpaths(bezpath1: &BezPath, bezpath2: &BezPath) -> Option<(BezPath, BezPath)> {
 	// Split the first subpath at its last intersection
 	let intersections1 = bezpath_intersections(bezpath1, bezpath2, None, None);
