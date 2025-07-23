@@ -1,4 +1,5 @@
 use super::ShapeToolData;
+use crate::consts::{GRID_ANGLE_INDEX, GRID_COLUMNS_INDEX, GRID_ROW_INDEX, GRID_SPACING_INDEX, GRID_TYPE_INDEX};
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -14,7 +15,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::misc::dvec2_to_point;
+use graphene_std::vector::misc::{GridType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
 use std::collections::VecDeque;
 use std::f64::consts::{PI, TAU};
@@ -364,4 +365,22 @@ pub fn draw_snapping_ticks(snap_radii: &[f64], direction: DVec2, viewport: DAffi
 		overlay_context.line(tick_position, tick_position + tick_direction * 5., None, Some(2.));
 		overlay_context.line(tick_position, tick_position - tick_direction * 5., None, Some(2.));
 	}
+}
+
+/// Extract the node input values of Grid.
+/// Returns an option of (Grid-type, spacing,columns,rows,angles).
+pub fn extract_grid_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<(GridType, DVec2, u32, u32, DVec2)> {
+	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Grid")?;
+
+	let (Some(&TaggedValue::GridType(grid_type)), Some(&TaggedValue::DVec2(spacing)), Some(&TaggedValue::U32(columns)), Some(&TaggedValue::U32(rows)), Some(&TaggedValue::DVec2(angles))) = (
+		node_inputs.get(GRID_TYPE_INDEX)?.as_value(),
+		node_inputs.get(GRID_SPACING_INDEX)?.as_value(),
+		node_inputs.get(GRID_COLUMNS_INDEX)?.as_value(),
+		node_inputs.get(GRID_ROW_INDEX)?.as_value(),
+		node_inputs.get(GRID_ANGLE_INDEX)?.as_value(),
+	) else {
+		return None;
+	};
+
+	Some((grid_type, spacing, columns, rows, angles))
 }

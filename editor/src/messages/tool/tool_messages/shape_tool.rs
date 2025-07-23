@@ -686,7 +686,7 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(ShapeToolFsmState::ModifyingGizmo, ShapeToolMessage::PointerMove(..)) => {
 				responses.add(DocumentMessage::StartTransaction);
-				tool_data.gizmo_manger.handle_update(tool_data.data.drag_start, document, input, responses);
+				tool_data.gizmo_manger.handle_update(tool_data.data.viewport_drag_start(document), document, input, responses);
 
 				responses.add(OverlaysMessage::Draw);
 

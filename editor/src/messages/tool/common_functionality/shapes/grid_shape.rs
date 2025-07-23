@@ -1,19 +1,16 @@
 use super::shape_utility::ShapeToolModifierKey;
-use super::shape_utility::update_radius_sign;
 use super::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::number_of_points_dial::NumberOfPointsDial;
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::number_of_points_dial::NumberOfPointsDialState;
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::point_radius_handle::PointRadiusHandle;
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::point_radius_handle::PointRadiusHandleState;
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::grid_row_columns_gizmo::RowColumnGizmo;
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::grid_row_columns_gizmo::RowColumnGizmoState;
+
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
-use crate::messages::tool::common_functionality::shapes::shape_utility::polygon_outline;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
@@ -21,80 +18,59 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::vector::misc::GridType;
 use std::collections::VecDeque;
 
-// #[derive(Clone, Debug, Default)]
-// pub struct PolygonGizmoHandler {
-// 	number_of_points_dial: NumberOfPointsDial,
-// 	point_radius_handle: PointRadiusHandle,
-// }
+#[derive(Clone, Debug, Default)]
+pub struct GridGizmoHandler {
+	row_column_gizmo: RowColumnGizmo,
+}
 
-// impl ShapeGizmoHandler for PolygonGizmoHandler {
-// 	fn is_any_gizmo_hovered(&self) -> bool {
-// 		self.number_of_points_dial.is_hovering() || self.point_radius_handle.hovered()
-// 	}
+impl ShapeGizmoHandler for GridGizmoHandler {
+	fn is_any_gizmo_hovered(&self) -> bool {
+		self.row_column_gizmo.is_hovered()
+	}
 
-// 	fn handle_state(&mut self, selected_star_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-// 		self.number_of_points_dial.handle_actions(selected_star_layer, mouse_position, document, responses);
-// 		self.point_radius_handle.handle_actions(selected_star_layer, document, mouse_position, responses);
-// 	}
+	fn handle_state(&mut self, selected_grid_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		self.row_column_gizmo.handle_actions(selected_grid_layer, mouse_position, document, responses);
+	}
 
-// 	fn handle_click(&mut self) {
-// 		if self.number_of_points_dial.is_hovering() {
-// 			self.number_of_points_dial.update_state(NumberOfPointsDialState::Dragging);
-// 			return;
-// 		}
+	fn handle_click(&mut self) {
+		if self.row_column_gizmo.is_hovered() {
+			self.row_column_gizmo.update_state(RowColumnGizmoState::Dragging);
+		}
+	}
 
-// 		if self.point_radius_handle.hovered() {
-// 			self.point_radius_handle.update_state(PointRadiusHandleState::Dragging);
-// 		}
-// 	}
+	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+		if self.row_column_gizmo.is_dragging() {
+			self.row_column_gizmo.update(document, input, responses, drag_start);
+		}
+	}
 
-// 	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-// 		if self.number_of_points_dial.is_dragging() {
-// 			self.number_of_points_dial.update_number_of_sides(document, input, responses, drag_start);
-// 		}
+	fn overlays(
+		&self,
+		document: &DocumentMessageHandler,
+		selected_grid_layer: Option<LayerNodeIdentifier>,
+		input: &InputPreprocessorMessageHandler,
+		shape_editor: &mut &mut ShapeState,
+		mouse_position: DVec2,
+		overlay_context: &mut OverlayContext,
+	) {
+		self.row_column_gizmo.overlays(document, selected_grid_layer, shape_editor, mouse_position, overlay_context);
+	}
 
-// 		if self.point_radius_handle.is_dragging_or_snapped() {
-// 			self.point_radius_handle.update_inner_radius(document, input, responses, drag_start);
-// 		}
-// 	}
+	fn dragging_overlays(
+		&self,
+		document: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+		shape_editor: &mut &mut ShapeState,
+		mouse_position: DVec2,
+		overlay_context: &mut OverlayContext,
+	) {
+		if self.row_column_gizmo.is_dragging() {
+			self.row_column_gizmo.overlays(document, None, shape_editor, mouse_position, overlay_context);
+		}
+	}
 
-// 	fn overlays(
-// 		&self,
-// 		document: &DocumentMessageHandler,
-// 		selected_polygon_layer: Option<LayerNodeIdentifier>,
-// 		input: &InputPreprocessorMessageHandler,
-// 		shape_editor: &mut &mut ShapeState,
-// 		mouse_position: DVec2,
-// 		overlay_context: &mut OverlayContext,
-// 	) {
-// 		self.number_of_points_dial.overlays(document, selected_polygon_layer, shape_editor, mouse_position, overlay_context);
-// 		self.point_radius_handle.overlays(selected_polygon_layer, document, input, mouse_position, overlay_context);
-
-// 		polygon_outline(selected_polygon_layer, document, overlay_context);
-// 	}
-
-// 	fn dragging_overlays(
-// 		&self,
-// 		document: &DocumentMessageHandler,
-// 		input: &InputPreprocessorMessageHandler,
-// 		shape_editor: &mut &mut ShapeState,
-// 		mouse_position: DVec2,
-// 		overlay_context: &mut OverlayContext,
-// 	) {
-// 		if self.number_of_points_dial.is_dragging() {
-// 			self.number_of_points_dial.overlays(document, None, shape_editor, mouse_position, overlay_context);
-// 		}
-
-// 		if self.point_radius_handle.is_dragging_or_snapped() {
-// 			self.point_radius_handle.overlays(None, document, input, mouse_position, overlay_context);
-// 		}
-// 	}
-
-// 	fn cleanup(&mut self) {
-// 		self.number_of_points_dial.cleanup();
-// 		self.point_radius_handle.cleanup();
-// 	}
-// }
+	fn cleanup(&mut self) {}
+}
 
 #[derive(Default)]
 pub struct Grid;
