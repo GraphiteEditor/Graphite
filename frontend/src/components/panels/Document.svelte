@@ -353,6 +353,8 @@
 		window.document.fonts.add(newFont);
 		textInput.style.fontFamily = "text-font";
 
+		textInput.style.textAlign = displayEditableTextbox.textAlignment;
+
 		// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
 
 		const range = window.document.createRange();
@@ -774,7 +776,6 @@
 						.text-input {
 							word-break: break-all;
 							unicode-bidi: plaintext;
-							text-align: left;
 						}
 
 						.text-input div {
@@ -789,7 +790,6 @@
 							white-space: pre-wrap;
 							word-break: normal;
 							unicode-bidi: plaintext;
-							text-align: left;
 							display: inline-block;
 							// Workaround to force Chrome to display the flashing text entry cursor when text is empty
 							padding-left: 1px;

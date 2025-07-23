@@ -17,7 +17,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
-use graphene_std::text::{Font, FontCache, TypesettingConfig, lines_clipping, load_font};
+use graphene_std::text::{Font, FontCache, TextAlignment, TypesettingConfig, lines_clipping, load_font};
 use graphene_std::vector::style::Fill;
 
 #[derive(Default, ExtractField)]
@@ -35,6 +35,7 @@ pub struct TextOptions {
 	font_style: String,
 	fill: ToolColorOptions,
 	tilt: f64,
+	alignment: TextAlignment,
 }
 
 impl Default for TextOptions {
@@ -47,6 +48,7 @@ impl Default for TextOptions {
 			font_style: graphene_std::consts::DEFAULT_FONT_STYLE.into(),
 			fill: ToolColorOptions::new_primary(),
 			tilt: 0.,
+			alignment: TextAlignment::default(),
 		}
 	}
 }
@@ -314,6 +316,14 @@ impl TextToolData {
 				transform: editing_text.transform.to_cols_array(),
 				max_width: editing_text.typesetting.max_width,
 				max_height: editing_text.typesetting.max_height,
+				text_alignment: match editing_text.typesetting.alignment {
+					TextAlignment::Start => String::from("start"),
+					TextAlignment::End => String::from("end"),
+					TextAlignment::Left => String::from("left"),
+					TextAlignment::Middle => String::from("center"),
+					TextAlignment::Right => String::from("right"),
+					TextAlignment::Justified => String::from("justify"),
+				},
 			});
 		} else {
 			// Check if DisplayRemoveEditableTextbox is already in the responses queue
@@ -792,6 +802,7 @@ impl Fsm for TextToolFsmState {
 						character_spacing: tool_options.character_spacing,
 						max_height: constraint_size.map(|size| size.y),
 						tilt: tool_options.tilt,
+						alignment: tool_options.alignment.into(),
 					},
 					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
 					color: tool_options.fill.active_color(),

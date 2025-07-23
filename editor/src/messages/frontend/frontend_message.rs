@@ -38,6 +38,8 @@ pub enum FrontendMessage {
 		max_width: Option<f64>,
 		#[serde(rename = "maxHeight")]
 		max_height: Option<f64>,
+		#[serde(rename = "textAlignment")]
+		text_alignment: String,
 	},
 	DisplayEditableTextboxTransform {
 		transform: [f64; 6],

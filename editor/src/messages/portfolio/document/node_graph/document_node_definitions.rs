@@ -1305,6 +1305,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
 						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false),
 						NodeInput::value(TaggedValue::Bool(false), false),
+						NodeInput::value(TaggedValue::TextAlignment(text::TextAlignment::default()), false),
 					],
 					..Default::default()
 				},
@@ -1373,6 +1374,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							}),
 						),
 						("Per-Glyph Instances", "Splits each text glyph into its own instance, i.e. row in the table of vector data.").into(),
+						InputMetadata::with_name_description_override("Text Alignment", "Text Alignment.", WidgetOverride::Custom("text_alignment".to_string())),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
@@ -2402,6 +2404,13 @@ fn static_input_properties() -> InputProperties {
 				ParameterWidgetsInfo::new(node_id, index, true, context),
 				ColorInput::default().allow_none(false),
 			)])
+		}),
+	);
+	map.insert(
+		"text_alignment".to_string(),
+		Box::new(|node_id, index, context| {
+			let choices = enum_choice::<text::TextAlignment>().for_socket(ParameterWidgetsInfo::new(node_id, index, true, context)).property_row();
+			Ok(vec![choices])
 		}),
 	);
 	map
