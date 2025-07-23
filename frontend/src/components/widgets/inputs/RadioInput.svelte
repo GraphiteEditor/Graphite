@@ -1,24 +1,24 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
-
-	import { type RadioEntries, type RadioEntryData } from "@graphite/messages";
-
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import { type RadioEntries, type RadioEntryData } from "@graphite/messages.svelte";
 
-	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
+	type Props = {
+		entries: RadioEntries;
+		selectedIndex?: number | undefined;
+		disabled?: boolean;
+		minWidth?: number;
+		onselect?: (position: number) => void;
+	};
 
-	export let entries: RadioEntries;
-	export let selectedIndex: number | undefined = undefined;
-	export let disabled = false;
-	export let minWidth = 0;
+	let { entries, selectedIndex = undefined, disabled = false, minWidth = 0, onselect }: Props = $props();
 
-	$: mixed = selectedIndex === undefined && !disabled;
+	let mixed = $derived(selectedIndex === undefined && !disabled);
 
 	function handleEntryClick(radioEntryData: RadioEntryData) {
 		const index = entries.indexOf(radioEntryData);
-		dispatch("selectedIndex", index);
+		onselect?.(index);
 
 		radioEntryData.action?.();
 	}
@@ -26,7 +26,7 @@
 
 <LayoutRow class="radio-input" classes={{ disabled, mixed }} styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}>
 	{#each entries as entry, index}
-		<button class:active={!mixed ? index === selectedIndex : undefined} on:click={() => handleEntryClick(entry)} title={entry.tooltip} tabindex={index === selectedIndex ? -1 : 0} {disabled}>
+		<button class:active={!mixed ? index === selectedIndex : undefined} onclick={() => handleEntryClick(entry)} title={entry.tooltip} tabindex={index === selectedIndex ? -1 : 0} {disabled}>
 			{#if entry.icon}
 				<IconLabel icon={entry.icon} />
 			{/if}

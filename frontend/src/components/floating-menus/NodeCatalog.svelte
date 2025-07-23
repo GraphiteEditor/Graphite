@@ -1,30 +1,36 @@
 <script lang="ts">
-	import { createEventDispatcher, getContext, onMount } from "svelte";
+	import { getContext, onMount } from "svelte";
 
-	import type { FrontendNodeType } from "@graphite/messages";
+	import type { WheelEventHandler } from "svelte/elements";
+
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import type { FrontendNodeType } from "@graphite/messages.svelte";
 
-	const dispatch = createEventDispatcher<{ selectNodeType: string }>();
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
+	let nodeTypes: FrontendNodeType[] = [...$nodeGraph.nodeTypes];
 
-	export let disabled = false;
-	export let initialSearchTerm = "";
+	type Props = {
+		disabled?: boolean;
+		initialSearchTerm?: string;
+		onselectNodeType?: (selectNodeType: string) => void;
+		onwheel?: WheelEventHandler<HTMLDivElement>;
+	};
 
-	let nodeSearchInput: TextInput | undefined = undefined;
-	let searchTerm = initialSearchTerm;
+	let { disabled = false, initialSearchTerm = "", onselectNodeType, onwheel }: Props = $props();
 
-	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
+	let nodeSearchInput: TextInput | undefined = $state();
+	let searchTerm = $state(initialSearchTerm);
 
 	type NodeCategoryDetails = {
 		nodes: FrontendNodeType[];
 		open: boolean;
 	};
 
-	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, NodeCategoryDetails][] {
+	function buildNodeCategories(searchTerm: string): [string, NodeCategoryDetails][] {
 		const categories = new Map<string, NodeCategoryDetails>();
 		const isTypeSearch = searchTerm.toLowerCase().startsWith("type:");
 		let typeSearchTerm = "";
@@ -107,18 +113,32 @@
 	onMount(() => {
 		setTimeout(() => nodeSearchInput?.focus(), 0);
 	});
+
+	let nodeCategories = $state<[string, NodeCategoryDetails][]>([]);
+
+	$effect.pre(() => {
+		nodeCategories = buildNodeCategories(searchTerm);
+	});
 </script>
 
 <div class="node-catalog">
-	<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
-	<div class="list-results" on:wheel|passive|stopPropagation>
+	<TextInput placeholder="Search Nodes..." bind:value={searchTerm} bind:this={nodeSearchInput} />
+	<div
+		class="list-results"
+		onwheel={(event) => {
+			// onwheel events are passive by default
+			// https://svelte.dev/docs/svelte/v5-migration-guide#Breaking-changes-in-runes-mode-Touch-and-wheel-events-are-passive
+			event.stopPropagation();
+			onwheel?.(event);
+		}}
+	>
 		{#each nodeCategories as nodeCategory}
 			<details open={nodeCategory[1].open}>
 				<summary>
 					<TextLabel>{nodeCategory[0]}</TextLabel>
 				</summary>
 				{#each nodeCategory[1].nodes as nodeType}
-					<TextButton {disabled} label={nodeType.name} tooltip={$nodeGraph.nodeDescriptions.get(nodeType.name)} action={() => dispatch("selectNodeType", nodeType.name)} />
+					<TextButton {disabled} label={nodeType.name} tooltip={$nodeGraph.nodeDescriptions.get(nodeType.name)} onclick={() => onselectNodeType?.(nodeType.name)} />
 				{/each}
 			</details>
 		{:else}

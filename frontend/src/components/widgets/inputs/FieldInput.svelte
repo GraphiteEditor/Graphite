@@ -1,48 +1,79 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
+	import { tick } from "svelte";
+	import type { Snippet } from "svelte";
+	import type { SvelteHTMLElements } from "svelte/elements";
 
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
-	const dispatch = createEventDispatcher<{
+	type InputHTMLElementProps = SvelteHTMLElements["input"];
+	type TextAreaHTMLElementProps = SvelteHTMLElements["textarea"];
+
+	type CommonProps = {
+		class?: string;
+		classes?: Record<string, boolean>;
+		style?: string;
+		styles?: Record<string, string | number | undefined>;
 		value: string;
-		textFocused: undefined;
-		textChanged: undefined;
-		textChangeCanceled: undefined;
-	}>();
+		label?: string | undefined;
+		spellcheck?: boolean;
+		disabled?: boolean;
+		textarea?: boolean;
+		tooltip?: string | undefined;
+		placeholder?: string | undefined;
+		hideContextMenu?: boolean;
+		children?: Snippet;
+		onfocus?: (event: FocusEvent & { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => void;
+		oncommitText?: (arg1: string) => void;
+		onkeydown?: (event: KeyboardEvent & { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => void;
+		onpointerdown?: (event: PointerEvent & { currentTarget: HTMLInputElement | HTMLTextAreaElement | HTMLLabelElement }) => void;
+		ontextChangeCanceled?: () => void;
+	};
 
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
-	let styleName = "";
-	export { styleName as style };
-	export let styles: Record<string, string | number | undefined> = {};
-	export let value: string;
-	export let label: string | undefined = undefined;
-	export let spellcheck = false;
-	export let disabled = false;
-	export let textarea = false;
-	export let tooltip: string | undefined = undefined;
-	export let placeholder: string | undefined = undefined;
-	export let hideContextMenu = false;
+	type Props = CommonProps &
+		(CommonProps["textarea"] extends true
+			? TextAreaHTMLElementProps // If 'textarea' is explicitly true
+			: InputHTMLElementProps); // Otherwise (false, undefined, or missing)
 
-	let inputOrTextarea: HTMLInputElement | HTMLTextAreaElement | undefined;
+	let {
+		class: className = "",
+		classes = {},
+		style: styleName = "",
+		styles = {},
+		value = $bindable(""),
+		label = undefined,
+		spellcheck = false,
+		disabled = false,
+		textarea = false,
+		tooltip = undefined,
+		placeholder = undefined,
+		hideContextMenu = false,
+		onfocus,
+		oncommitText,
+		children,
+		onpointerdown,
+		ontextChangeCanceled,
+	}: Props = $props();
+
+	let inputOrTextarea: HTMLInputElement | HTMLTextAreaElement | undefined = $state();
 	let id = String(Math.random()).substring(2);
 	let macKeyboardLayout = platformIsMac();
+	let local = $state<string>(value);
 
-	$: inputValue = value;
-
-	$: dispatch("value", inputValue);
+	$effect.pre(() => {
+		local = value;
+	});
 
 	// Select (highlight) all the text. For technical reasons, it is necessary to pass the current text.
 	export function selectAllText(currentText: string) {
 		if (!inputOrTextarea) return;
 
 		// Setting the value directly is required to make the following `select()` call work
-		inputOrTextarea.value = currentText;
-		inputOrTextarea.select();
+		local = currentText;
+		// Wait for UI to update
+		tick().then(() => inputOrTextarea?.select());
 	}
 
 	export function focus() {
@@ -53,25 +84,58 @@
 		inputOrTextarea?.blur();
 	}
 
-	export function getValue(): string {
-		return inputOrTextarea?.value || "";
-	}
-
-	export function setInputElementValue(value: string) {
-		if (!inputOrTextarea) return;
-
-		inputOrTextarea.value = value;
-	}
-
 	export function element(): HTMLInputElement | HTMLTextAreaElement | undefined {
 		return inputOrTextarea;
 	}
 
 	function cancel() {
-		dispatch("textChangeCanceled");
+		local = value;
+		ontextChangeCanceled?.();
+		unFocus();
 
 		if (inputOrTextarea) preventEscapeClosingParentFloatingMenu(inputOrTextarea);
 	}
+
+	function onkeydownInput(e: KeyboardEvent & { currentTarget: HTMLInputElement }) {
+		if (e.key === "Enter") {
+			oncommitText?.(local);
+			unFocus();
+		}
+		if (e.key === "Escape") {
+			cancel();
+		}
+	}
+
+	function onkeydownTextArea(e: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) {
+		if ((macKeyboardLayout ? e.metaKey : e.ctrlKey) && e.key === "Enter") {
+			oncommitText?.(local ?? "");
+			unFocus();
+		}
+		if (e.key === "Escape") {
+			cancel();
+		}
+	}
+
+	function onblur() {
+		oncommitText?.(local ?? "");
+	}
+
+	// If oncommitText listener is defined
+	// let the text be bound to the local state
+	let textBind = $derived.by(() => {
+		return {
+			get current() {
+				return oncommitText ? local : value;
+			},
+			set current(v: string) {
+				if (oncommitText) {
+					local = v;
+				} else {
+					value = v;
+				}
+			},
+		};
+	});
 </script>
 
 <!-- This is a base component, extended by others like NumberInput and TextInput. It should not be used directly. -->
@@ -85,14 +149,12 @@
 			{disabled}
 			{placeholder}
 			bind:this={inputOrTextarea}
-			bind:value={inputValue}
-			on:focus={() => dispatch("textFocused")}
-			on:blur={() => dispatch("textChanged")}
-			on:change={() => dispatch("textChanged")}
-			on:keydown={(e) => e.key === "Enter" && dispatch("textChanged")}
-			on:keydown={(e) => e.key === "Escape" && cancel()}
-			on:pointerdown
-			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
+			bind:value={textBind.current}
+			{onfocus}
+			{onblur}
+			onkeydown={onkeydownInput}
+			{onpointerdown}
+			oncontextmenu={(e) => hideContextMenu && e.preventDefault()}
 			data-input-element
 		/>
 	{:else}
@@ -104,20 +166,18 @@
 			{spellcheck}
 			{disabled}
 			bind:this={inputOrTextarea}
-			bind:value={inputValue}
-			on:focus={() => dispatch("textFocused")}
-			on:blur={() => dispatch("textChanged")}
-			on:change={() => dispatch("textChanged")}
-			on:keydown={(e) => (macKeyboardLayout ? e.metaKey : e.ctrlKey) && e.key === "Enter" && dispatch("textChanged")}
-			on:keydown={(e) => e.key === "Escape" && cancel()}
-			on:pointerdown
-			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
-		/>
+			bind:value={textBind.current}
+			{onfocus}
+			{onblur}
+			onkeydown={onkeydownTextArea}
+			{onpointerdown}
+			oncontextmenu={(e) => hideContextMenu && e.preventDefault()}
+		></textarea>
 	{/if}
 	{#if label}
-		<label for={`field-input-${id}`} on:pointerdown>{label}</label>
+		<label for={`field-input-${id}`} {onpointerdown}>{label}</label>
 	{/if}
-	<slot />
+	{@render children?.()}
 </LayoutRow>
 
 <style lang="scss" global>

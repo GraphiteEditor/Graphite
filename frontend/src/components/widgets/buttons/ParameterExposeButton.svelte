@@ -1,13 +1,16 @@
 <script lang="ts">
-	import type { FrontendGraphDataType } from "@graphite/messages";
-
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import type { FrontendGraphDataType } from "@graphite/messages.svelte";
 
-	export let exposed: boolean;
-	export let dataType: FrontendGraphDataType;
-	export let tooltip: string | undefined = undefined;
-	// Callbacks
-	export let action: (e?: MouseEvent) => void;
+	type Props = {
+		exposed: boolean;
+		dataType: FrontendGraphDataType;
+		tooltip?: string | undefined;
+		// Callbacks
+		action: (e?: MouseEvent) => void;
+	};
+
+	let { exposed, dataType, tooltip = undefined, action }: Props = $props();
 </script>
 
 <LayoutRow class="parameter-expose-button">
@@ -15,7 +18,7 @@
 		class:exposed
 		style:--data-type-color={`var(--color-data-${dataType.toLowerCase()})`}
 		style:--data-type-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
-		on:click={action}
+		onclick={action}
 		title={tooltip}
 		tabindex="-1"
 	>

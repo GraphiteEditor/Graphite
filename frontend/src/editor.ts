@@ -1,7 +1,8 @@
 // import { panicProxy } from "@graphite/utility-functions/panic-proxy";
-import { type JsMessageType } from "@graphite/messages";
 import { createSubscriptionRouter, type SubscriptionRouter } from "@graphite/subscription-router";
 import init, { setRandomSeed, wasmMemory, EditorHandle } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
+
+import { type JsMessageType } from "@graphite/messages.svelte";
 
 export type Editor = {
 	raw: WebAssembly.Memory;

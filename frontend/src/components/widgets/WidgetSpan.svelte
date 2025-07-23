@@ -2,8 +2,7 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { Widget, WidgetSpanColumn, WidgetSpanRow } from "@graphite/messages";
-	import { narrowWidgetProps, isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/messages";
+
 	import { debouncer } from "@graphite/utility-functions/debounce";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
@@ -28,23 +27,20 @@
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import { narrowWidgetProps, isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/messages.svelte";
+	import type { Widget, WidgetSpanColumn, WidgetSpanRow } from "@graphite/messages.svelte";
 
 	const editor = getContext<Editor>("editor");
 
-	export let widgetData: WidgetSpanRow | WidgetSpanColumn;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	export let layoutTarget: any;
+	type Props = {
+		widgetData: WidgetSpanRow | WidgetSpanColumn;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		layoutTarget: any;
+		class?: string;
+		classes?: Record<string, boolean>;
+	};
 
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
-
-	$: extraClasses = Object.entries(classes)
-		.flatMap(([className, stateName]) => (stateName ? [className] : []))
-		.join(" ");
-
-	$: direction = watchDirection(widgetData);
-	$: widgets = watchWidgets(widgetData);
+	let { widgetData, layoutTarget, class: className = "", classes = {} }: Props = $props();
 
 	function watchDirection(widgetData: WidgetSpanRow | WidgetSpanColumn): "row" | "column" | undefined {
 		if (isWidgetSpanRow(widgetData)) return "row";
@@ -77,6 +73,14 @@
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		return Object.fromEntries(Object.entries(props).filter((entry) => !exclusions.includes(entry[0]))) as any;
 	}
+	let extraClasses = $derived(
+		Object.entries(classes)
+			.flatMap(([className, stateName]) => (stateName ? [className] : []))
+			.join(" "),
+	);
+
+	let direction = $derived(watchDirection(widgetData));
+	let widgets = $derived(watchWidgets(widgetData));
 </script>
 
 <!-- TODO: Refactor this component to use `<svelte:component this={attributesObject} />` to avoid all the separate conditional components -->
@@ -85,32 +89,34 @@
 	{#each widgets as component, index}
 		{@const checkboxInput = narrowWidgetProps(component.props, "CheckboxInput")}
 		{#if checkboxInput}
-			<CheckboxInput {...exclude(checkboxInput)} on:checked={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
+			<CheckboxInput {...exclude(checkboxInput)} onchecked={(detail) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const colorInput = narrowWidgetProps(component.props, "ColorInput")}
 		{#if colorInput}
-			<ColorInput {...exclude(colorInput)} on:value={({ detail }) => widgetValueUpdate(index, detail)} on:startHistoryTransaction={() => widgetValueCommit(index, colorInput.value)} />
+			<ColorInput {...exclude(colorInput)} onvalue={(detail) => widgetValueUpdate(index, detail)} onstartHistoryTransaction={() => widgetValueCommit(index, colorInput.value)} />
 		{/if}
 		{@const curvesInput = narrowWidgetProps(component.props, "CurveInput")}
 		{#if curvesInput}
-			<CurveInput {...exclude(curvesInput)} on:value={({ detail }) => debouncer((value) => widgetValueCommitAndUpdate(index, value), { debounceTime: 120 }).debounceUpdateValue(detail)} />
+			<CurveInput {...exclude(curvesInput)} onvalue={(detail) => debouncer((value) => widgetValueCommitAndUpdate(index, value), { debounceTime: 120 }).debounceUpdateValue(detail)} />
 		{/if}
 		{@const dropdownInput = narrowWidgetProps(component.props, "DropdownInput")}
 		{#if dropdownInput}
-			<DropdownInput
-				{...exclude(dropdownInput)}
-				on:hoverInEntry={({ detail }) => {
-					return widgetValueUpdate(index, detail);
-				}}
-				on:hoverOutEntry={({ detail }) => {
-					return widgetValueUpdate(index, detail);
-				}}
-				on:selectedIndex={({ detail }) => widgetValueCommitAndUpdate(index, detail)}
-			/>
+			{#key component.widgetId}
+				<DropdownInput
+					{...exclude(dropdownInput)}
+					onhoverInEntry={(detail) => {
+						return widgetValueUpdate(index, detail);
+					}}
+					onhoverOutEntry={(detail) => {
+						return widgetValueUpdate(index, detail);
+					}}
+					onselectedIndex={(detail) => widgetValueCommitAndUpdate(index, detail)}
+				/>
+			{/key}
 		{/if}
 		{@const fontInput = narrowWidgetProps(component.props, "FontInput")}
 		{#if fontInput}
-			<FontInput {...exclude(fontInput)} on:changeFont={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
+			<FontInput {...exclude(fontInput)} onchangeFont={(detail) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const parameterExposeButton = narrowWidgetProps(component.props, "ParameterExposeButton")}
 		{#if parameterExposeButton}
@@ -118,7 +124,7 @@
 		{/if}
 		{@const iconButton = narrowWidgetProps(component.props, "IconButton")}
 		{#if iconButton}
-			<IconButton {...exclude(iconButton)} action={() => widgetValueCommitAndUpdate(index, undefined)} />
+			<IconButton {...exclude(iconButton)} onclick={() => widgetValueCommitAndUpdate(index, undefined)} />
 		{/if}
 		{@const iconLabel = narrowWidgetProps(component.props, "IconLabel")}
 		{#if iconLabel}
@@ -130,21 +136,21 @@
 		{/if}
 		{@const nodeCatalog = narrowWidgetProps(component.props, "NodeCatalog")}
 		{#if nodeCatalog}
-			<NodeCatalog {...exclude(nodeCatalog)} on:selectNodeType={(e) => widgetValueCommitAndUpdate(index, e.detail)} />
+			<NodeCatalog {...exclude(nodeCatalog)} onselectNodeType={(e) => widgetValueCommitAndUpdate(index, e)} />
 		{/if}
 		{@const numberInput = narrowWidgetProps(component.props, "NumberInput")}
 		{#if numberInput}
 			<NumberInput
 				{...exclude(numberInput)}
-				on:value={({ detail }) => debouncer((value) => widgetValueUpdate(index, value)).debounceUpdateValue(detail)}
-				on:startHistoryTransaction={() => widgetValueCommit(index, numberInput.value)}
+				onvalue={(detail) => debouncer((value) => widgetValueUpdate(index, value)).debounceUpdateValue(detail)}
+				onstartHistoryTransaction={() => widgetValueCommit(index, numberInput.value)}
 				incrementCallbackIncrease={() => widgetValueCommitAndUpdate(index, "Increment")}
 				incrementCallbackDecrease={() => widgetValueCommitAndUpdate(index, "Decrement")}
 			/>
 		{/if}
 		{@const referencePointInput = narrowWidgetProps(component.props, "ReferencePointInput")}
 		{#if referencePointInput}
-			<ReferencePointInput {...exclude(referencePointInput)} on:value={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
+			<ReferencePointInput {...exclude(referencePointInput)} onvalue={(detail) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const popoverButton = narrowWidgetProps(component.props, "PopoverButton")}
 		{#if popoverButton}
@@ -154,7 +160,7 @@
 		{/if}
 		{@const radioInput = narrowWidgetProps(component.props, "RadioInput")}
 		{#if radioInput}
-			<RadioInput {...exclude(radioInput)} on:selectedIndex={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
+			<RadioInput {...exclude(radioInput)} onselect={(detail) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const separator = narrowWidgetProps(component.props, "Separator")}
 		{#if separator}
@@ -166,19 +172,19 @@
 		{/if}
 		{@const textAreaInput = narrowWidgetProps(component.props, "TextAreaInput")}
 		{#if textAreaInput}
-			<TextAreaInput {...exclude(textAreaInput)} on:commitText={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
+			<TextAreaInput {...exclude(textAreaInput)} oncommitText={(detail) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const textButton = narrowWidgetProps(component.props, "TextButton")}
 		{#if textButton}
-			<TextButton {...exclude(textButton)} action={() => widgetValueCommitAndUpdate(index, undefined)} />
+			<TextButton {...exclude(textButton)} onclick={() => widgetValueCommitAndUpdate(index, undefined)} />
 		{/if}
 		{@const breadcrumbTrailButtons = narrowWidgetProps(component.props, "BreadcrumbTrailButtons")}
 		{#if breadcrumbTrailButtons}
-			<BreadcrumbTrailButtons {...exclude(breadcrumbTrailButtons)} action={(breadcrumbIndex) => widgetValueCommitAndUpdate(index, breadcrumbIndex)} />
+			<BreadcrumbTrailButtons {...exclude(breadcrumbTrailButtons)} onclick={(breadcrumbIndex) => widgetValueCommitAndUpdate(index, breadcrumbIndex)} />
 		{/if}
 		{@const textInput = narrowWidgetProps(component.props, "TextInput")}
 		{#if textInput}
-			<TextInput {...exclude(textInput)} on:commitText={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
+			<TextInput {...exclude(textInput)} oncommitText={(detail) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const textLabel = narrowWidgetProps(component.props, "TextLabel")}
 		{#if textLabel}

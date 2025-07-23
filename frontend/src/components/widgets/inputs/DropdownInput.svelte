@@ -1,42 +1,47 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
-
-	import type { MenuListEntry } from "@graphite/messages";
-
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import type { MenuListEntry } from "@graphite/messages.svelte";
 
 	const DASH_ENTRY = { value: "", label: "-" };
 
-	const dispatch = createEventDispatcher<{ selectedIndex: number; hoverInEntry: number; hoverOutEntry: number }>();
+	let menuList: MenuList | undefined = $state();
+	let self: LayoutRow | undefined = $state();
 
-	let menuList: MenuList | undefined;
-	let self: LayoutRow | undefined;
+	type Props = {
+		entries: MenuListEntry[][];
+		selectedIndex?: number; // When not provided, a dash is displayed
+		drawIcon?: boolean;
+		interactive?: boolean;
+		disabled?: boolean;
+		tooltip?: string;
+		minWidth?: number;
+		maxWidth?: number;
+		onhoverOutEntry?: (index: number) => void;
+		onhoverInEntry?: (index: number) => void;
+		onselectedIndex?: (index: number) => void;
+	};
 
-	export let entries: MenuListEntry[][];
-	export let selectedIndex: number | undefined = undefined; // When not provided, a dash is displayed
-	export let drawIcon = false;
-	export let interactive = true;
-	export let disabled = false;
-	export let tooltip: string | undefined = undefined;
-	export let minWidth = 0;
-	export let maxWidth = 0;
+	let {
+		entries,
+		selectedIndex,
+		drawIcon = false,
+		interactive = true,
+		disabled = false,
+		tooltip = undefined,
+		minWidth = $bindable(0),
+		maxWidth = 0,
+		onhoverInEntry,
+		onhoverOutEntry,
+		onselectedIndex,
+	}: Props = $props();
 
-	let activeEntry = makeActiveEntry();
+	let activeEntry = $state(makeActiveEntry());
 	let activeEntrySkipWatcher = false;
-	let initialSelectedIndex: number | undefined = undefined;
-	let open = false;
-
-	$: watchSelectedIndex(selectedIndex);
-	$: watchEntries(entries);
-	$: watchActiveEntry(activeEntry);
-	$: watchOpen(open);
-
-	function watchOpen(open: boolean) {
-		initialSelectedIndex = open ? selectedIndex : undefined;
-	}
+	let open = $state(false);
+	let initialSelectedIndex: number | undefined = selectedIndex;
 
 	// Called only when `selectedIndex` is changed from outside this component
 	function watchSelectedIndex(_?: typeof selectedIndex) {
@@ -45,9 +50,13 @@
 	}
 
 	// Called only when `entries` is changed from outside this component
-	function watchEntries(_?: typeof entries) {
-		activeEntrySkipWatcher = true;
-		activeEntry = makeActiveEntry();
+	// function watchEntries(_?: typeof entries) {
+	// 	activeEntrySkipWatcher = true;
+	// 	activeEntry = makeActiveEntry();
+	// }
+
+	function getEntryIndex(entry: MenuListEntry): number {
+		return entries.flat().findIndex((item) => item.value === entry.value);
 	}
 
 	// Called when the `activeEntry` two-way binding on this component's MenuList component is changed, or by the `selectedIndex()` watcher above (but we want to skip that case)
@@ -56,17 +65,19 @@
 			activeEntrySkipWatcher = false;
 		} else if (activeEntry !== DASH_ENTRY) {
 			// We need to set to the initial value first to track a right history step, as if we hover in initial selection.
-			if (initialSelectedIndex !== undefined) dispatch("hoverInEntry", initialSelectedIndex);
-			dispatch("selectedIndex", entries.flat().indexOf(activeEntry));
+			if (initialSelectedIndex !== undefined) onhoverInEntry?.(initialSelectedIndex);
+			const entryIndex = getEntryIndex(activeEntry);
+			onselectedIndex?.(entryIndex);
+			initialSelectedIndex = entryIndex;
 		}
 	}
 
 	function dispatchHoverInEntry(hoveredEntry: MenuListEntry) {
-		dispatch("hoverInEntry", entries.flat().indexOf(hoveredEntry));
+		onhoverInEntry?.(getEntryIndex(hoveredEntry));
 	}
 
 	function dispatchHoverOutEntry() {
-		if (initialSelectedIndex !== undefined) dispatch("hoverOutEntry", initialSelectedIndex);
+		if (initialSelectedIndex !== undefined) onhoverOutEntry?.(initialSelectedIndex);
 	}
 
 	function makeActiveEntry(): MenuListEntry {
@@ -82,6 +93,12 @@
 		const blurTarget = (e.target as HTMLDivElement | undefined)?.closest("[data-dropdown-input]") || undefined;
 		if (blurTarget !== self?.div?.()) open = false;
 	}
+	$effect(() => {
+		watchSelectedIndex(selectedIndex);
+	});
+	$effect(() => {
+		watchActiveEntry(activeEntry);
+	});
 </script>
 
 <LayoutRow
@@ -94,8 +111,8 @@
 		class="dropdown-box"
 		classes={{ disabled, open }}
 		{tooltip}
-		on:click={() => !disabled && (open = true)}
-		on:blur={unFocusDropdownBox}
+		onclick={() => !disabled && (open = true)}
+		onblur={unFocusDropdownBox}
 		tabindex={disabled ? -1 : 0}
 		data-floating-menu-spawner
 	>
@@ -106,13 +123,12 @@
 		<IconLabel class="dropdown-arrow" icon="DropdownArrow" />
 	</LayoutRow>
 	<MenuList
-		on:naturalWidth={({ detail }) => (minWidth = detail)}
+		onnaturalWidth={(detail) => (minWidth = detail)}
 		{activeEntry}
-		on:activeEntry={({ detail }) => (activeEntry = detail)}
-		on:hoverInEntry={({ detail }) => dispatchHoverInEntry(detail)}
-		on:hoverOutEntry={() => dispatchHoverOutEntry()}
-		{open}
-		on:open={({ detail }) => (open = detail)}
+		onactiveEntry={(detail) => (activeEntry = detail)}
+		onhoverInEntry={dispatchHoverInEntry}
+		onhoverOutEntry={dispatchHoverOutEntry}
+		bind:open
 		{entries}
 		{drawIcon}
 		{interactive}

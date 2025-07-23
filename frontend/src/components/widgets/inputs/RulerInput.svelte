@@ -1,7 +1,3 @@
-<script lang="ts" context="module">
-	export type RulerDirection = "Horizontal" | "Vertical";
-</script>
-
 <script lang="ts">
 	import { onMount } from "svelte";
 
@@ -10,21 +6,22 @@
 	const MINOR_MARK_THICKNESS = 6;
 	const MICRO_MARK_THICKNESS = 3;
 
-	export let direction: RulerDirection = "Vertical";
-	export let origin: number;
-	export let numberInterval: number;
-	export let majorMarkSpacing: number;
-	export let minorDivisions = 5;
-	export let microDivisions = 2;
+	type Props = {
+		direction?: Graphite.Axis;
+		origin: number;
+		numberInterval: number;
+		majorMarkSpacing: number;
+		minorDivisions?: number;
+		microDivisions?: number;
+	};
 
-	let rulerInput: HTMLDivElement | undefined;
-	let rulerLength = 0;
-	let svgBounds = { width: "0px", height: "0px" };
+	let { direction = "Vertical", origin, numberInterval, majorMarkSpacing, minorDivisions = 5, microDivisions = 2 }: Props = $props();
 
-	$: svgPath = computeSvgPath(direction, origin, majorMarkSpacing, minorDivisions, microDivisions, rulerLength);
-	$: svgTexts = computeSvgTexts(direction, origin, majorMarkSpacing, numberInterval, rulerLength);
+	let rulerInput: HTMLDivElement | undefined = $state();
+	let rulerLength = $state(0);
+	let svgBounds = $state({ width: "0px", height: "0px" });
 
-	function computeSvgPath(direction: RulerDirection, origin: number, majorMarkSpacing: number, minorDivisions: number, microDivisions: number, rulerLength: number): string {
+	function computeSvgPath(direction: Graphite.Axis, origin: number, majorMarkSpacing: number, minorDivisions: number, microDivisions: number, rulerLength: number): string {
 		const isVertical = direction === "Vertical";
 		const lineDirection = isVertical ? "H" : "V";
 
@@ -51,7 +48,7 @@
 		return dPathAttribute;
 	}
 
-	function computeSvgTexts(direction: RulerDirection, origin: number, majorMarkSpacing: number, numberInterval: number, rulerLength: number): { transform: string; text: string }[] {
+	function computeSvgTexts(direction: Graphite.Axis, origin: number, majorMarkSpacing: number, numberInterval: number, rulerLength: number): { transform: string; text: string }[] {
 		const isVertical = direction === "Vertical";
 
 		const offsetStart = mod(origin, majorMarkSpacing);
@@ -102,6 +99,8 @@
 	}
 
 	onMount(resize);
+	let svgPath = $derived(computeSvgPath(direction, origin, majorMarkSpacing, minorDivisions, microDivisions, rulerLength));
+	let svgTexts = $derived(computeSvgTexts(direction, origin, majorMarkSpacing, numberInterval, rulerLength));
 </script>
 
 <div class={`ruler-input ${direction.toLowerCase()}`} bind:this={rulerInput}>

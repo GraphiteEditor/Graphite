@@ -1014,7 +1014,7 @@ export type MenuBarEntry = MenuEntryCommon & {
 export type MenuListEntry = MenuEntryCommon & {
 	action?: () => void;
 	children?: MenuListEntry[][];
-
+	open?: boolean;
 	value: string;
 	shortcutRequiresLock?: boolean;
 	disabled?: boolean;
@@ -1383,11 +1383,20 @@ export function narrowWidgetProps<K extends WidgetPropsNames>(props: WidgetProps
 
 export class Widget {
 	constructor(props: WidgetPropsSet, widgetId: bigint) {
-		this.props = props;
-		this.widgetId = widgetId;
+		// These properites are reactive to make it work with deeply nested bind's located at root level components and layers above
+		this.props = $state(props);
+		this.widgetId = $state(widgetId);
 	}
 
 	@Type(() => WidgetProps, { discriminator: { property: "kind", subTypes: [...widgetSubTypes] }, keepDiscriminatorProperty: true })
+	@Transform(({ value }) => {
+		// This protects the reactive state objects created by the Widget class
+		// to be converted back into POJO during recursion by the transformer
+		if (value.kind === "PopoverButton") {
+			value.popoverLayout = value.popoverLayout.map(createLayoutGroup);
+		}
+		return value;
+	})
 	props!: WidgetPropsSet;
 
 	widgetId!: bigint;
@@ -1398,10 +1407,6 @@ function hoistWidgetHolder(widgetHolder: any): Widget {
 	const kind = Object.keys(widgetHolder.widget)[0];
 	const props = widgetHolder.widget[kind];
 	props.kind = kind;
-
-	if (kind === "PopoverButton") {
-		props.popoverLayout = props.popoverLayout.map(createLayoutGroup);
-	}
 
 	const { widgetId } = widgetHolder;
 
@@ -1464,18 +1469,29 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 			return targetLayout[index];
 		}, layout.layout as UIItem);
 
-		// If this is a list with a length, then set the length to 0 to clear the list
-		if ("length" in diffObject) {
-			diffObject.length = 0;
-		}
-		// Remove all of the keys from the old object
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		Object.keys(diffObject).forEach((key) => delete (diffObject as any)[key]);
+		if (diffObject instanceof Widget) {
+			// For Widget instances, use direct property assignment
+			// The setters will handle the reactivity
+			diffObject.props = (update.newValue as Widget).props;
+			diffObject.widgetId = (update.newValue as Widget).widgetId;
+		} else {
+			// Clear array length using Reflect to trigger reactivity
+			if (Reflect.has(diffObject, "length")) {
+				Reflect.set(diffObject, "length", 0);
+			}
 
-		// Assign keys to the new object
-		// `Object.assign` works but `diffObject = update.newValue;` doesn't.
-		// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign
-		Object.assign(diffObject, update.newValue);
+			// Remove all enumerable properties using Reflect.deleteProperty to ensure proxy notifications
+			Object.keys(diffObject).forEach((key) => {
+				Reflect.deleteProperty(diffObject, key);
+			});
+
+			// Assign new properties
+			if (update.newValue && typeof update.newValue === "object") {
+				Object.entries(update.newValue).forEach(([key, value]) => {
+					Reflect.set(diffObject, key, value);
+				});
+			}
+		}
 	});
 }
 

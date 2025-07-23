@@ -4,8 +4,7 @@
 	import { fade } from "svelte/transition";
 
 	import type { Editor } from "@graphite/editor";
-	import type { Node } from "@graphite/messages";
-	import type { FrontendNode, FrontendGraphInput, FrontendGraphOutput } from "@graphite/messages";
+
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 
@@ -18,6 +17,8 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import { type FrontendNode, type FrontendGraphInput, FrontendGraphOutput } from "@graphite/messages.svelte";
+	import type { Node } from "@graphite/messages.svelte";
 
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
@@ -26,21 +27,16 @@
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
-	let graph: HTMLDivElement | undefined;
+	let graph: HTMLDivElement | undefined = $state();
 
-	// Key value is node id + input/output index
-	// Imports/Export are stored at a key value of 0
+	let inputElement = $state<HTMLInputElement>();
+	let hoveringImportIndex = $state<number>();
+	let hoveringExportIndex = $state<number>();
 
-	$: gridSpacing = calculateGridSpacing($nodeGraph.transform.scale);
-	$: dotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
-
-	let inputElement: HTMLInputElement;
-	let hoveringImportIndex: number | undefined = undefined;
-	let hoveringExportIndex: number | undefined = undefined;
-
-	let editingNameImportIndex: number | undefined = undefined;
-	let editingNameExportIndex: number | undefined = undefined;
-	let editingNameText = "";
+	let editingNameImportIndex = $state<number>();
+	let editingNameExportIndex = $state<number>();
+	let editingNameText = $state<string>("");
+	let nodeValues: FrontendNode[] = $state([]);
 
 	function exportsToEdgeTextInputWidth() {
 		let exportTextDivs = document.querySelectorAll(`[data-export-text-edge]`);
@@ -204,7 +200,7 @@
 	}
 
 	function primaryOutputConnectedToLayer(node: FrontendNode): boolean {
-		let firstConnectedNode = Array.from($nodeGraph.nodes.values()).find((n) =>
+		let firstConnectedNode = nodeValues.find((n) =>
 			node.primaryOutput?.connectedTo.some((connector) => {
 				if ((connector as Node).nodeId === undefined) return false;
 				if (connector.index !== 0n) return false;
@@ -215,7 +211,7 @@
 	}
 
 	function primaryInputConnectedToLayer(node: FrontendNode): boolean {
-		const connectedNode = Array.from($nodeGraph.nodes.values()).find((n) => {
+		const connectedNode = nodeValues.find((n) => {
 			if ((node.primaryInput?.connectedTo as Node) === undefined) return false;
 			return n.id === (node.primaryInput?.connectedTo as Node).nodeId;
 		});
@@ -230,6 +226,16 @@
 		}
 		return result;
 	}
+
+	$effect.pre(() => {
+		nodeValues = Array.from($nodeGraph.nodes.values());
+	});
+
+	// Key value is node id + input/output index
+	// Imports/Export are stored at a key value of 0
+
+	let gridSpacing = $derived(calculateGridSpacing($nodeGraph.transform.scale));
+	let dotRadius = $derived(1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2);
 </script>
 
 <div
@@ -252,9 +258,9 @@
 			}}
 		>
 			{#if typeof $nodeGraph.contextMenuInformation.contextMenuData === "string" && $nodeGraph.contextMenuInformation.contextMenuData === "CreateNode"}
-				<NodeCatalog on:selectNodeType={(e) => createNode(e.detail)} />
+				<NodeCatalog onselectNodeType={(e) => createNode(e)} />
 			{:else if $nodeGraph.contextMenuInformation.contextMenuData && "compatibleType" in $nodeGraph.contextMenuInformation.contextMenuData}
-				<NodeCatalog initialSearchTerm={$nodeGraph.contextMenuInformation.contextMenuData.compatibleType || ""} on:selectNodeType={(e) => createNode(e.detail)} />
+				<NodeCatalog initialSearchTerm={$nodeGraph.contextMenuInformation.contextMenuData.compatibleType || ""} onselectNodeType={(e) => createNode(e)} />
 			{:else}
 				{@const contextMenuData = $nodeGraph.contextMenuInformation.contextMenuData}
 				<LayoutRow class="toggle-layer-or-node">
@@ -282,7 +288,7 @@
 				</LayoutRow>
 				<Separator type="Section" direction="Vertical" />
 				<LayoutRow class="merge-selected-nodes">
-					<TextButton label="Merge Selected Nodes" action={() => editor.handle.mergeSelectedNodes()} />
+					<TextButton label="Merge Selected Nodes" onclick={() => editor.handle.mergeSelectedNodes()} />
 				</LayoutRow>
 			{/if}
 		</LayoutCol>
@@ -335,29 +341,11 @@
 	<!-- Import and Export ports -->
 	<div class="imports-and-exports" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		{#each $nodeGraph.imports as { outputMetadata, position }, index}
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				viewBox="0 0 8 8"
-				class="port"
-				data-port="output"
-				data-datatype={outputMetadata.dataType}
-				style:--data-color={`var(--color-data-${outputMetadata.dataType.toLowerCase()})`}
-				style:--data-color-dim={`var(--color-data-${outputMetadata.dataType.toLowerCase()}-dim)`}
-				style:--offset-left={position.x / 24}
-				style:--offset-top={position.y / 24}
-			>
-				<title>{`${dataTypeTooltip(outputMetadata)}\n\n${outputConnectedToText(outputMetadata)}`}</title>
-				{#if outputMetadata.connectedTo !== undefined}
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-				{:else}
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-				{/if}
-			</svg>
-
+			{@render port("port", "output", outputMetadata, position.x / 24, position.y / 24)}
 			<div
 				class="edit-import-export import"
-				on:pointerenter={() => (hoveringImportIndex = index)}
-				on:pointerleave={() => (hoveringImportIndex = undefined)}
+				onpointerenter={() => (hoveringImportIndex = index)}
+				onpointerleave={() => (hoveringImportIndex = undefined)}
 				style:--offset-left={position.x / 24}
 				style:--offset-top={position.y / 24}
 			>
@@ -368,11 +356,11 @@
 						style:width={importsToEdgeTextInputWidth()}
 						bind:this={inputElement}
 						bind:value={editingNameText}
-						on:blur={setEditingImportName}
-						on:keydown={(e) => e.key === "Enter" && setEditingImportName(e)}
+						onblur={setEditingImportName}
+						onkeydown={(e) => e.key === "Enter" && setEditingImportName(e)}
 					/>
 				{:else}
-					<p class="import-text" on:dblclick={() => setEditingImportNameIndex(index, outputMetadata.name)}>{outputMetadata.name}</p>
+					<p class="import-text" ondblclick={() => setEditingImportNameIndex(index, outputMetadata.name)}>{outputMetadata.name}</p>
 				{/if}
 				{#if hoveringImportIndex === index || editingNameImportIndex === index}
 					<IconButton
@@ -381,7 +369,7 @@
 						class="remove-button-import"
 						data-index={index}
 						data-import-text-edge
-						action={() => {
+						onclick={() => {
 							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 						}}
 					/>
@@ -389,47 +377,31 @@
 				{/if}
 			</div>
 		{/each}
+
 		{#if $nodeGraph.reorderImportIndex !== undefined}
 			{@const position = {
 				x: Number($nodeGraph.imports[0].position.x),
 				y: Number($nodeGraph.imports[0].position.y) + Number($nodeGraph.reorderImportIndex) * 24,
 			}}
-			<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 4) / 24} />
+			<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 4) / 24}></div>
 		{/if}
 		{#if $nodeGraph.addImport !== undefined}
 			<div class="plus" style:--offset-left={$nodeGraph.addImport.x / 24} style:--offset-top={$nodeGraph.addImport.y / 24}>
 				<IconButton
 					size={24}
 					icon="Add"
-					action={() => {
+					onclick={() => {
 						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
 				/>
 			</div>
 		{/if}
 		{#each $nodeGraph.exports as { inputMetadata, position }, index}
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				viewBox="0 0 8 8"
-				class="port"
-				data-port="input"
-				data-datatype={inputMetadata.dataType}
-				style:--data-color={`var(--color-data-${inputMetadata.dataType.toLowerCase()})`}
-				style:--data-color-dim={`var(--color-data-${inputMetadata.dataType.toLowerCase()}-dim)`}
-				style:--offset-left={position.x / 24}
-				style:--offset-top={position.y / 24}
-			>
-				<title>{`${dataTypeTooltip(inputMetadata)}\n\n${inputConnectedToText(inputMetadata)}`}</title>
-				{#if inputMetadata.connectedTo !== undefined}
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-				{:else}
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-				{/if}
-			</svg>
+			{@render port("port", "input", inputMetadata, position.x / 24, position.y / 24)}
 			<div
 				class="edit-import-export export"
-				on:pointerenter={() => (hoveringExportIndex = index)}
-				on:pointerleave={() => (hoveringExportIndex = undefined)}
+				onpointerenter={() => (hoveringExportIndex = index)}
+				onpointerleave={() => (hoveringExportIndex = undefined)}
 				style:--offset-left={position.x / 24}
 				style:--offset-top={position.y / 24}
 			>
@@ -441,7 +413,7 @@
 						class="remove-button-export"
 						data-index={index}
 						data-export-text-edge
-						action={() => {
+						onclick={() => {
 							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 						}}
 					/>
@@ -452,11 +424,11 @@
 						style:width={exportsToEdgeTextInputWidth()}
 						bind:this={inputElement}
 						bind:value={editingNameText}
-						on:blur={setEditingExportName}
-						on:keydown={(e) => e.key === "Enter" && setEditingExportName(e)}
+						onblur={setEditingExportName}
+						onkeydown={(e) => e.key === "Enter" && setEditingExportName(e)}
 					/>
 				{:else}
-					<p class="export-text" on:dblclick={() => setEditingExportNameIndex(index, inputMetadata.name)}>{inputMetadata.name}</p>
+					<p class="export-text" ondblclick={() => setEditingExportNameIndex(index, inputMetadata.name)}>{inputMetadata.name}</p>
 				{/if}
 			</div>
 		{/each}
@@ -465,14 +437,14 @@
 				x: Number($nodeGraph.exports[0].position.x),
 				y: Number($nodeGraph.exports[0].position.y) + Number($nodeGraph.reorderExportIndex) * 24,
 			}}
-			<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 4) / 24} />
+			<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 4) / 24}></div>
 		{/if}
 		{#if $nodeGraph.addExport !== undefined}
 			<div class="plus" style:--offset-left={$nodeGraph.addExport.x / 24} style:--offset-top={$nodeGraph.addExport.y / 24}>
 				<IconButton
 					size={24}
 					icon={"Add"}
-					action={() => {
+					onclick={() => {
 						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
 				/>
@@ -564,22 +536,7 @@
 				<!-- Layer input port (from left) -->
 				{#if node.exposedInputs.length > 0}
 					<div class="input ports">
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="port"
-							data-port="input"
-							data-datatype={stackDataInput.dataType}
-							style:--data-color={`var(--color-data-${stackDataInput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
-						>
-							<title>{`${dataTypeTooltip(stackDataInput)}\n\n${validTypesText(stackDataInput)}\n\n${inputConnectedToText(stackDataInput)}`}</title>
-							{#if stackDataInput.connectedTo !== undefined}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
+						{@render port("port", "input", stackDataInput)}
 					</div>
 				{/if}
 				<div class="details">
@@ -592,7 +549,7 @@
 					data-visibility-button
 					size={24}
 					icon={node.visible ? "EyeVisible" : "EyeHidden"}
-					action={() => {
+					onclick={() => {
 						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
 					tooltip={node.visible ? "Visible" : "Hidden"}
@@ -682,81 +639,19 @@
 				<!-- Input ports -->
 				<div class="input ports">
 					{#if node.primaryInput?.dataType}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="port primary-port"
-							data-port="input"
-							data-datatype={node.primaryInput?.dataType}
-							style:--data-color={`var(--color-data-${node.primaryInput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
-						>
-							<title>{`${dataTypeTooltip(node.primaryInput)}\n\n${validTypesText(node.primaryInput)}\n\n${inputConnectedToText(node.primaryInput)}`}</title>
-							{#if node.primaryInput.connectedTo !== undefined}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
+						{@render port("port primary-port", "input", node.primaryInput)}
 					{/if}
 					{#each node.exposedInputs as secondary, index}
 						{#if index < node.exposedInputs.length}
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								viewBox="0 0 8 8"
-								class="port"
-								data-port="input"
-								data-datatype={secondary.dataType}
-								style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
-								style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
-							>
-								<title>{`${dataTypeTooltip(secondary)}\n\n${validTypesText(secondary)}\n\n${inputConnectedToText(secondary)}`}</title>
-								{#if secondary.connectedTo !== undefined}
-									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-								{:else}
-									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-								{/if}
-							</svg>
+							{@render port("port", "input", secondary)}
 						{/if}
 					{/each}
 				</div>
 				<!-- Output ports -->
 				<div class="output ports">
-					{#if node.primaryOutput}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="port primary-port"
-							data-port="output"
-							data-datatype={node.primaryOutput.dataType}
-							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
-						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\n\n${outputConnectedToText(node.primaryOutput)}`}</title>
-							{#if node.primaryOutput.connectedTo !== undefined}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
-					{/if}
+					{@render port("port primary-port", "output", node.primaryOutput)}
 					{#each node.exposedOutputs as secondary}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="port"
-							data-port="output"
-							data-datatype={secondary.dataType}
-							style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
-						>
-							<title>{`${dataTypeTooltip(secondary)}\n\n${outputConnectedToText(secondary)}`}</title>
-							{#if secondary.connectedTo !== undefined}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
+						{@render port("port", "output", secondary)}
 					{/each}
 				</div>
 				<svg class="border-mask" width="0" height="0">
@@ -785,6 +680,34 @@
 		style:height={`${Math.abs($nodeGraph.box.startY - $nodeGraph.box.endY)}px`}
 	></div>
 {/if}
+
+{#snippet port(className: string, dataPort: string, node?: FrontendGraphInput | FrontendGraphOutput, offsetLeft?: number, offsetTop?: number)}
+	{#if node}
+		{@const color = node.dataType.toLowerCase()}
+		<svg
+			xmlns="http://www.w3.org/2000/svg"
+			viewBox="0 0 8 8"
+			class={className}
+			data-port={dataPort}
+			data-datatype={node.dataType}
+			style:--data-color={`var(--color-data-${color})`}
+			style:--data-color-dim={`var(--color-data-${color}-dim)`}
+			style:--offset-left={offsetLeft}
+			style:--offset-top={offsetTop}
+		>
+			{#if node instanceof FrontendGraphOutput}
+				<title>{`${dataTypeTooltip(node)}\n\n${outputConnectedToText(node)}`}</title>
+			{:else}
+				<title>{`${dataTypeTooltip(node)}\n\n${validTypesText(node)}\n\n${inputConnectedToText(node)}`}</title>
+			{/if}
+			{#if node.connectedTo !== undefined}
+				<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+			{:else}
+				<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+			{/if}
+		</svg>
+	{/if}
+{/snippet}
 
 <style lang="scss" global>
 	.graph {

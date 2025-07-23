@@ -1,54 +1,48 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
-
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
 
-	const dispatch = createEventDispatcher<{ commitText: string }>();
+	type Props = {
+		// Label
+		label?: string | undefined;
+		tooltip?: string | undefined;
+		placeholder?: string | undefined;
+		// Disabled
+		disabled?: boolean;
+		// Value
+		value: string;
+		// Styling
+		centered?: boolean;
+		minWidth?: number;
+		class?: string;
+		classes?: Record<string, boolean>;
+		oncommitText?: (arg1: string) => void;
+	};
 
-	// Label
-	export let label: string | undefined = undefined;
-	export let tooltip: string | undefined = undefined;
-	export let placeholder: string | undefined = undefined;
-	// Disabled
-	export let disabled = false;
-	// Value
-	export let value: string;
-	// Styling
-	export let centered = false;
-	export let minWidth = 0;
+	let {
+		label = undefined,
+		tooltip = undefined,
+		placeholder = undefined,
+		disabled = false,
+		value = $bindable(),
+		centered = false,
+		minWidth = 0,
+		class: className = "",
+		classes = {},
+		oncommitText,
+	}: Props = $props();
 
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
-
-	let self: FieldInput | undefined;
-	let editing = false;
+	let self: FieldInput | undefined = $state();
 
 	function onTextFocused() {
-		editing = true;
-
 		self?.selectAllText(value);
 	}
 
 	// Called only when `value` is changed from the <input> element via user input and committed, either with the
 	// enter key (via the `change` event) or when the <input> element is unfocused (with the `blur` event binding)
-	function onTextChanged() {
-		// The `unFocus()` call in `onTextChangeCanceled()` causes itself to be run again, so this if statement skips a second run
-		if (!editing) return;
+	function onTextChanged(commitValue: string) {
+		value = commitValue;
 
-		onTextChangeCanceled();
-
-		// TODO: Find a less hacky way to do this
-		if (self) dispatch("commitText", self.getValue());
-
-		// Required if value is not changed by the parent component upon update:value event
-		self?.setInputElementValue(self.getValue());
-	}
-
-	function onTextChangeCanceled() {
-		editing = false;
-
-		self?.unFocus();
+		oncommitText?.(commitValue);
 	}
 
 	export function focus() {
@@ -64,11 +58,9 @@
 	class={`text-input ${className}`.trim()}
 	classes={{ centered, ...classes }}
 	styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}
-	{value}
-	on:value
-	on:textFocused={onTextFocused}
-	on:textChanged={onTextChanged}
-	on:textChangeCanceled={onTextChangeCanceled}
+	bind:value
+	onfocus={onTextFocused}
+	oncommitText={oncommitText ? onTextChanged : undefined}
 	spellcheck={true}
 	{label}
 	{disabled}

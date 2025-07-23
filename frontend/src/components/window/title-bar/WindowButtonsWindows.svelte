@@ -2,7 +2,11 @@
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 
-	export let maximized = false;
+	type Props = {
+		maximized?: boolean;
+	};
+
+	let { maximized = false }: Props = $props();
 </script>
 
 <LayoutRow class="window-button windows minimize" tooltip="Minimize">

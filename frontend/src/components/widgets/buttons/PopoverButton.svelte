@@ -1,23 +1,29 @@
 <script lang="ts">
-	import type { MenuDirection } from "@graphite/messages";
+	import type { Snippet } from "svelte";
+
 	import { type IconName, type PopoverButtonStyle } from "@graphite/utility-functions/icons";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import type { MenuDirection } from "@graphite/messages.svelte";
 
-	export let style: PopoverButtonStyle = "DropdownArrow";
-	export let menuDirection: MenuDirection = "Bottom";
-	export let icon: IconName | undefined = undefined;
-	export let tooltip: string | undefined = undefined;
-	export let disabled = false;
-	export let popoverMinWidth = 1;
+	type Props = {
+		style?: PopoverButtonStyle;
+		menuDirection?: MenuDirection;
+		icon?: IconName | undefined;
+		tooltip?: string | undefined;
+		disabled?: boolean;
+		popoverMinWidth?: number;
+		// Callbacks
+		action?: (() => void) | undefined;
+		children?: Snippet;
+	};
 
-	// Callbacks
-	export let action: (() => void) | undefined = undefined;
+	let { style = "DropdownArrow", menuDirection = "Bottom", icon = undefined, tooltip = undefined, disabled = false, popoverMinWidth = 1, action = undefined, children }: Props = $props();
 
-	let open = false;
+	let open = $state(false);
 
 	function onClick() {
 		open = true;
@@ -26,13 +32,13 @@
 </script>
 
 <LayoutRow class="popover-button" classes={{ "has-icon": icon !== undefined, "direction-top": menuDirection === "Top" }}>
-	<IconButton class="dropdown-icon" classes={{ open }} {disabled} action={() => onClick()} icon={style || "DropdownArrow"} size={16} {tooltip} data-floating-menu-spawner />
+	<IconButton class="dropdown-icon" classes={{ open }} {disabled} onclick={() => onClick()} icon={style || "DropdownArrow"} size={16} {tooltip} data-floating-menu-spawner />
 	{#if icon !== undefined}
 		<IconLabel class="descriptive-icon" classes={{ open }} {disabled} {icon} {tooltip} />
 	{/if}
 
-	<FloatingMenu {open} on:open={({ detail }) => (open = detail)} minWidth={popoverMinWidth} type="Popover" direction={menuDirection || "Bottom"}>
-		<slot />
+	<FloatingMenu bind:open minWidth={popoverMinWidth} type="Popover" direction={menuDirection || "Bottom"}>
+		{@render children?.()}
 	</FloatingMenu>
 </LayoutRow>
 

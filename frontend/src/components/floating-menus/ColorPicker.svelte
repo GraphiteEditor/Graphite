@@ -1,10 +1,8 @@
 <script lang="ts">
-	import { onDestroy, createEventDispatcher, getContext } from "svelte";
+	import { onDestroy, getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { HSV, RGB, FillChoice } from "@graphite/messages";
-	import type { MenuDirection } from "@graphite/messages";
-	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
+
 	import { clamp } from "@graphite/utility-functions/math";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
@@ -17,6 +15,9 @@
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages.svelte";
+	import type { MenuDirection } from "@graphite/messages.svelte";
+	import type { HSV, RGB, FillChoice } from "@graphite/messages.svelte";
 
 	type PresetColors = "none" | "black" | "white" | "red" | "yellow" | "green" | "cyan" | "blue" | "magenta";
 
@@ -33,43 +34,41 @@
 	};
 
 	const editor = getContext<Editor>("editor");
+	type Props = {
+		colorOrGradient: FillChoice;
+		allowNone?: boolean;
+		// export let allowTransparency = false; // TODO: Implement
+		direction?: MenuDirection;
+		// TODO: See if this should be made to follow the pattern of DropdownInput.svelte so this could be removed
+		open: boolean;
+		oncolorOrGradient?: (colorOrGradient: FillChoice) => void;
+		onstartHistoryTransaction?: () => void;
+	};
 
-	const dispatch = createEventDispatcher<{ colorOrGradient: FillChoice; startHistoryTransaction: undefined }>();
-
-	export let colorOrGradient: FillChoice;
-	export let allowNone = false;
-	// export let allowTransparency = false; // TODO: Implement
-	export let direction: MenuDirection = "Bottom";
-	// TODO: See if this should be made to follow the pattern of DropdownInput.svelte so this could be removed
-	export let open: boolean;
+	let { colorOrGradient, allowNone = false, direction = "Bottom", open = $bindable(), oncolorOrGradient, onstartHistoryTransaction }: Props = $props();
 
 	const hsvaOrNone = colorOrGradient instanceof Color ? colorOrGradient.toHSVA() : colorOrGradient.firstColor()?.toHSVA();
-	const hsva = hsvaOrNone || { h: 0, s: 0, v: 0, a: 1 };
+	const hsva = hsvaOrNone ?? { h: 0, s: 0, v: 0, a: 1 };
 
-	// Gradient color stops
-	$: gradient = colorOrGradient instanceof Gradient ? colorOrGradient : undefined;
-	let activeIndex = 0 as number | undefined;
-	$: selectedGradientColor = (activeIndex !== undefined && gradient?.atIndex(activeIndex)?.color) || (Color.fromCSS("black") as Color);
-	// Currently viewed color
-	$: color = colorOrGradient instanceof Color ? colorOrGradient : selectedGradientColor;
+	let activeIndex = $state<number | undefined>(0);
 	// New color components
-	let hue = hsva.h;
-	let saturation = hsva.s;
-	let value = hsva.v;
-	let alpha = hsva.a;
-	let isNone = hsvaOrNone === undefined;
+	let hue = $state(hsva.h);
+	let saturation = $state(hsva.s);
+	let value = $state(hsva.v);
+	let alpha = $state(hsva.a);
+	let isNone = $state(hsvaOrNone === undefined);
 	// Old color components
-	let oldHue = hsva.h;
-	let oldSaturation = hsva.s;
-	let oldValue = hsva.v;
-	let oldAlpha = hsva.a;
-	let oldIsNone = hsvaOrNone === undefined;
+	let oldHue = $state(hsva.h);
+	let oldSaturation = $state(hsva.s);
+	let oldValue = $state(hsva.v);
+	let oldAlpha = $state(hsva.a);
+	let oldIsNone = $state(hsvaOrNone === undefined);
 	// Transient state
 	let draggingPickerTrack: HTMLDivElement | undefined = undefined;
-	let strayCloses = true;
-	let gradientSpectrumDragging = false;
+	let strayCloses = $state(true);
+	let gradientSpectrumDragging = $state(false);
 	let shiftPressed = false;
-	let alignedAxis: "saturation" | "value" | undefined = undefined;
+	let alignedAxis: "saturation" | "value" | undefined = $state(undefined);
 	let hueBeforeDrag = 0;
 	let saturationBeforeDrag = 0;
 	let valueBeforeDrag = 0;
@@ -79,21 +78,9 @@
 	let saturationRestoreWhenShiftReleased: number | undefined = undefined;
 	let valueRestoreWhenShiftReleased: number | undefined = undefined;
 
-	let self: FloatingMenu | undefined;
-	let hexCodeInputWidget: TextInput | undefined;
-	let gradientSpectrumInputWidget: SpectrumInput | undefined;
-
-	$: watchOpen(open);
-	$: watchColor(color);
-
-	$: oldColor = generateColor(oldHue, oldSaturation, oldValue, oldAlpha, oldIsNone);
-	$: newColor = generateColor(hue, saturation, value, alpha, isNone);
-	$: rgbChannels = Object.entries(newColor.toRgb255() || { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][];
-	$: hsvChannels = Object.entries(!isNone ? { h: hue * 360, s: saturation * 100, v: value * 100 } : { h: undefined, s: undefined, v: undefined }) as [keyof HSV, number | undefined][];
-	$: opaqueHueColor = new Color({ h: hue, s: 1, v: 1, a: 1 });
-	$: outlineFactor = Math.max(contrastingOutlineFactor(newColor, "--color-2-mildblack", 0.01), contrastingOutlineFactor(oldColor, "--color-2-mildblack", 0.01));
-	$: outlined = outlineFactor > 0.0001;
-	$: transparency = newColor.alpha < 1 || oldColor.alpha < 1;
+	let self: FloatingMenu | undefined = $state();
+	let hexCodeInputWidget: TextInput | undefined = $state();
+	let gradientSpectrumInputWidget: SpectrumInput | undefined = $state();
 
 	function generateColor(h: number, s: number, v: number, a: number, none: boolean) {
 		if (none) return new Color("none");
@@ -174,6 +161,7 @@
 		}
 
 		const color = new Color({ h: hue, s: saturation, v: value, a: alpha });
+
 		setColor(color);
 
 		if (!e.shiftKey) {
@@ -226,7 +214,7 @@
 		document.addEventListener("keydown", onKeyDown);
 		document.addEventListener("keyup", onKeyUp);
 
-		dispatch("startHistoryTransaction");
+		onstartHistoryTransaction?.();
 	}
 
 	function removeEvents() {
@@ -274,15 +262,14 @@
 	}
 
 	function setColor(color?: Color) {
-		const colorToEmit = color || new Color({ h: hue, s: saturation, v: value, a: alpha });
+		const colorToEmit = color ?? new Color({ h: hue, s: saturation, v: value, a: alpha });
 
 		const stop = gradientSpectrumInputWidget && activeIndex !== undefined && gradient?.atIndex(activeIndex);
-		if (stop && gradientSpectrumInputWidget instanceof SpectrumInput) {
+		if (stop && gradientSpectrumInputWidget !== undefined) {
 			stop.color = colorToEmit;
-			gradient = gradient;
 		}
 
-		dispatch("colorOrGradient", gradient || colorToEmit);
+		oncolorOrGradient?.(gradient ?? colorToEmit);
 	}
 
 	function swapNewWithOld() {
@@ -338,7 +325,7 @@
 	}
 
 	function setColorPreset(preset: PresetColors) {
-		dispatch("startHistoryTransaction");
+		onstartHistoryTransaction?.();
 		if (preset === "none") {
 			setNewHSVA(0, 0, 0, 1, true);
 			setColor(new Color("none"));
@@ -379,14 +366,14 @@
 		try {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const result = await new (window as any).EyeDropper().open();
-			dispatch("startHistoryTransaction");
+			onstartHistoryTransaction?.();
 			setColorCode(result.sRGBHex);
 		} catch {
 			// Do nothing
 		}
 	}
 
-	function gradientActiveMarkerIndexChange({ detail: index }: CustomEvent<number | undefined>) {
+	function gradientActiveMarkerIndexChange(index: number | undefined) {
 		activeIndex = index;
 		const color = index === undefined ? undefined : gradient?.colorAtIndex(index);
 		const hsva = color?.toHSVA();
@@ -401,9 +388,34 @@
 	onDestroy(() => {
 		removeEvents();
 	});
+	// Gradient color stops
+	let gradient = $state<Gradient | undefined>(undefined);
+	let selectedGradientColor = $derived((activeIndex !== undefined && gradient?.atIndex(activeIndex)?.color) || (Color.fromCSS("black") as Color));
+	// Currently viewed color
+	let color = $derived(colorOrGradient instanceof Color ? colorOrGradient : selectedGradientColor);
+	$effect(() => {
+		watchOpen(open);
+	});
+	$effect(() => {
+		watchColor(color);
+	});
+	// gradient changed from outside
+	$effect(() => {
+		if (colorOrGradient instanceof Gradient) {
+			gradient = colorOrGradient;
+		}
+	});
+	let oldColor = $derived(generateColor(oldHue, oldSaturation, oldValue, oldAlpha, oldIsNone));
+	let newColor = $derived(generateColor(hue, saturation, value, alpha, isNone));
+	let rgbChannels = $derived(Object.entries(newColor.toRgb255() || { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][]);
+	let hsvChannels = $derived(Object.entries(!isNone ? { h: hue * 360, s: saturation * 100, v: value * 100 } : { h: undefined, s: undefined, v: undefined }) as [keyof HSV, number | undefined][]);
+	let opaqueHueColor = $derived(new Color({ h: hue, s: 1, v: 1, a: 1 }));
+	let outlineFactor = $derived(Math.max(contrastingOutlineFactor(newColor, "--color-2-mildblack", 0.01), contrastingOutlineFactor(oldColor, "--color-2-mildblack", 0.01)));
+	let outlined = $derived(outlineFactor > 0.0001);
+	let transparency = $derived(newColor.alpha < 1 || oldColor.alpha < 1);
 </script>
 
-<FloatingMenu class="color-picker" {open} on:open {strayCloses} escapeCloses={strayCloses && !gradientSpectrumDragging} {direction} type="Popover" bind:this={self}>
+<FloatingMenu class="color-picker" bind:open {strayCloses} escapeCloses={strayCloses && !gradientSpectrumDragging} {direction} type="Popover" bind:this={self}>
 	<LayoutRow
 		styles={{
 			"--new-color": newColor.toHexOptionalAlpha(),
@@ -418,9 +430,9 @@
 	>
 		<LayoutCol class="pickers-and-gradient">
 			<LayoutRow class="pickers">
-				<LayoutCol class="saturation-value-picker" on:pointerdown={onPointerDown} data-saturation-value-picker>
+				<LayoutCol class="saturation-value-picker" onpointerdown={onPointerDown} data-saturation-value-picker>
 					{#if !isNone}
-						<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`} />
+						<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`}></div>
 					{/if}
 					{#if alignedAxis}
 						<div
@@ -429,17 +441,17 @@
 							class:value={alignedAxis === "value"}
 							style:top={`${(1 - value) * 100}%`}
 							style:left={`${saturation * 100}%`}
-						/>
+						></div>
 					{/if}
 				</LayoutCol>
-				<LayoutCol class="hue-picker" on:pointerdown={onPointerDown} data-hue-picker>
+				<LayoutCol class="hue-picker" onpointerdown={onPointerDown} data-hue-picker>
 					{#if !isNone}
-						<div class="selection-needle" style:top={`${(1 - hue) * 100}%`} />
+						<div class="selection-needle" style:top={`${(1 - hue) * 100}%`}></div>
 					{/if}
 				</LayoutCol>
-				<LayoutCol class="alpha-picker" on:pointerdown={onPointerDown} data-alpha-picker>
+				<LayoutCol class="alpha-picker" onpointerdown={onPointerDown} data-alpha-picker>
 					{#if !isNone}
-						<div class="selection-needle" style:top={`${(1 - alpha) * 100}%`} />
+						<div class="selection-needle" style:top={`${(1 - alpha) * 100}%`}></div>
 					{/if}
 				</LayoutCol>
 			</LayoutRow>
@@ -447,19 +459,19 @@
 				<LayoutRow class="gradient">
 					<SpectrumInput
 						{gradient}
-						on:gradient={() => {
-							gradient = gradient;
-							if (gradient) dispatch("colorOrGradient", gradient);
+						ongradient={(detail) => {
+							gradient = detail;
+							if (gradient) oncolorOrGradient?.(gradient);
 						}}
-						on:activeMarkerIndexChange={gradientActiveMarkerIndexChange}
+						onactiveMarkerIndexChange={gradientActiveMarkerIndexChange}
 						activeMarkerIndex={activeIndex}
-						on:dragging={({ detail }) => (gradientSpectrumDragging = detail)}
+						bind:drag={gradientSpectrumDragging}
 						bind:this={gradientSpectrumInputWidget}
 					/>
 					{#if gradientSpectrumInputWidget && activeIndex !== undefined}
 						<NumberInput
 							value={(gradient.positionAtIndex(activeIndex) || 0) * 100}
-							on:value={({ detail }) => {
+							onvalue={(detail) => {
 								if (gradientSpectrumInputWidget && activeIndex !== undefined && detail !== undefined) gradientSpectrumInputWidget.setPosition(activeIndex, detail / 100);
 							}}
 							displayDecimalPlaces={0}
@@ -480,7 +492,7 @@
 			>
 				{#if !newColor.equals(oldColor)}
 					<div class="swap-button-background"></div>
-					<IconButton class="swap-button" icon="SwapHorizontal" size={16} action={swapNewWithOld} tooltip="Swap" />
+					<IconButton class="swap-button" icon="SwapHorizontal" size={16} onclick={swapNewWithOld} tooltip="Swap" />
 				{/if}
 				<LayoutCol class="new-color" classes={{ none: isNone }}>
 					{#if !newColor.equals(oldColor)}
@@ -499,9 +511,9 @@
 				<Separator type="Related" />
 				<LayoutRow>
 					<TextInput
-						value={newColor.toHexOptionalAlpha() || "-"}
-						on:commitText={({ detail }) => {
-							dispatch("startHistoryTransaction");
+						value={newColor.toHexOptionalAlpha() ?? "-"}
+						oncommitText={(detail) => {
+							onstartHistoryTransaction?.();
 							setColorCode(detail);
 						}}
 						centered={true}
@@ -514,19 +526,17 @@
 				<TextLabel tooltip="Red/Green/Blue channels of the color, integers 0–255">RGB</TextLabel>
 				<Separator type="Related" />
 				<LayoutRow>
-					{#each rgbChannels as [channel, strength], index}
+					{#each rgbChannels as [channel, _strength], index}
 						{#if index > 0}
 							<Separator type="Related" />
 						{/if}
 						<NumberInput
-							value={strength}
-							on:value={({ detail }) => {
-								strength = detail;
+							value={rgbChannels[index][1]}
+							onvalue={(detail) => {
+								rgbChannels[index][1] = detail;
 								setColorRGB(channel, detail);
 							}}
-							on:startHistoryTransaction={() => {
-								dispatch("startHistoryTransaction");
-							}}
+							{onstartHistoryTransaction}
 							min={0}
 							max={255}
 							minWidth={1}
@@ -541,19 +551,17 @@
 				</TextLabel>
 				<Separator type="Related" />
 				<LayoutRow>
-					{#each hsvChannels as [channel, strength], index}
+					{#each hsvChannels as [channel, _strength], index}
 						{#if index > 0}
 							<Separator type="Related" />
 						{/if}
 						<NumberInput
-							value={strength}
-							on:value={({ detail }) => {
-								strength = detail;
+							value={hsvChannels[index][1]}
+							onvalue={(detail) => {
+								hsvChannels[index][1] = detail;
 								setColorHSV(channel, detail);
 							}}
-							on:startHistoryTransaction={() => {
-								dispatch("startHistoryTransaction");
-							}}
+							{onstartHistoryTransaction}
 							min={0}
 							max={channel === "h" ? 360 : 100}
 							unit={channel === "h" ? "°" : "%"}
@@ -573,13 +581,11 @@
 				<Separator type="Related" />
 				<NumberInput
 					value={!isNone ? alpha * 100 : undefined}
-					on:value={({ detail }) => {
+					onvalue={(detail) => {
 						if (detail !== undefined) alpha = detail / 100;
 						setColorAlphaPercent(detail);
 					}}
-					on:startHistoryTransaction={() => {
-						dispatch("startHistoryTransaction");
-					}}
+					{onstartHistoryTransaction}
 					min={0}
 					max={100}
 					rangeMin={0}
@@ -593,23 +599,23 @@
 			<LayoutRow class="leftover-space" />
 			<LayoutRow>
 				{#if allowNone && !gradient}
-					<button class="preset-color none" on:click={() => setColorPreset("none")} title="Set to no color" tabindex="0"></button>
+					<button class="preset-color none" onclick={() => setColorPreset("none")} title="Set to no color" tabindex="0"></button>
 					<Separator type="Related" />
 				{/if}
-				<button class="preset-color black" on:click={() => setColorPreset("black")} title="Set to black" tabindex="0"></button>
+				<button class="preset-color black" onclick={() => setColorPreset("black")} title="Set to black" tabindex="0"></button>
 				<Separator type="Related" />
-				<button class="preset-color white" on:click={() => setColorPreset("white")} title="Set to white" tabindex="0"></button>
+				<button class="preset-color white" onclick={() => setColorPreset("white")} title="Set to white" tabindex="0"></button>
 				<Separator type="Related" />
-				<button class="preset-color pure" on:click={setColorPresetSubtile} tabindex="-1">
-					<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c" title="Set to red" />
-					<div data-pure-tile="yellow" style="--pure-color: #ffff00; --pure-color-gray: #e3e3e3" title="Set to yellow" />
-					<div data-pure-tile="green" style="--pure-color: #00ff00; --pure-color-gray: #969696" title="Set to green" />
-					<div data-pure-tile="cyan" style="--pure-color: #00ffff; --pure-color-gray: #b2b2b2" title="Set to cyan" />
-					<div data-pure-tile="blue" style="--pure-color: #0000ff; --pure-color-gray: #1c1c1c" title="Set to blue" />
-					<div data-pure-tile="magenta" style="--pure-color: #ff00ff; --pure-color-gray: #696969" title="Set to magenta" />
+				<button class="preset-color pure" onclick={setColorPresetSubtile} tabindex="-1">
+					<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c" title="Set to red"></div>
+					<div data-pure-tile="yellow" style="--pure-color: #ffff00; --pure-color-gray: #e3e3e3" title="Set to yellow"></div>
+					<div data-pure-tile="green" style="--pure-color: #00ff00; --pure-color-gray: #969696" title="Set to green"></div>
+					<div data-pure-tile="cyan" style="--pure-color: #00ffff; --pure-color-gray: #b2b2b2" title="Set to cyan"></div>
+					<div data-pure-tile="blue" style="--pure-color: #0000ff; --pure-color-gray: #1c1c1c" title="Set to blue"></div>
+					<div data-pure-tile="magenta" style="--pure-color: #ff00ff; --pure-color-gray: #696969" title="Set to magenta"></div>
 				</button>
 				<Separator type="Related" />
-				<IconButton icon="Eyedropper" size={24} action={activateEyedropperSample} tooltip="Sample a pixel color from the document" />
+				<IconButton icon="Eyedropper" size={24} onclick={activateEyedropperSample} tooltip="Sample a pixel color from the document" />
 			</LayoutRow>
 		</LayoutCol>
 	</LayoutRow>
