@@ -73,7 +73,7 @@ impl GraphicsState {
 	pub(crate) async fn new(window: Arc<Window>) -> Self {
 		let size = window.inner_size();
 
-		let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+		let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
 			backends: wgpu::Backends::PRIMARY,
 			..Default::default()
 		});
@@ -90,15 +90,13 @@ impl GraphicsState {
 			.unwrap();
 
 		let (device, queue) = adapter
-			.request_device(
-				&wgpu::DeviceDescriptor {
-					required_features: wgpu::Features::empty(),
-					required_limits: wgpu::Limits::default(),
-					label: None,
-					memory_hints: Default::default(),
-				},
-				None,
-			)
+			.request_device(&wgpu::DeviceDescriptor {
+				required_features: wgpu::Features::empty(),
+				required_limits: wgpu::Limits::default(),
+				label: None,
+				memory_hints: Default::default(),
+				..Default::default()
+			})
 			.await
 			.unwrap();
 
@@ -260,14 +258,14 @@ impl GraphicsState {
 		});
 
 		self.queue.write_texture(
-			wgpu::ImageCopyTexture {
+			wgpu::TexelCopyTextureInfo {
 				texture: &texture,
 				mip_level: 0,
 				origin: wgpu::Origin3d::ZERO,
 				aspect: wgpu::TextureAspect::All,
 			},
 			data,
-			wgpu::ImageDataLayout {
+			wgpu::TexelCopyBufferLayout {
 				offset: 0,
 				bytes_per_row: Some(4 * width),
 				rows_per_image: Some(height),
