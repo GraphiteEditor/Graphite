@@ -14,6 +14,7 @@ pub struct Mapping {
 	pub double_click: [KeyMappingEntries; NUMBER_OF_MOUSE_BUTTONS],
 	pub wheel_scroll: KeyMappingEntries,
 	pub pointer_move: KeyMappingEntries,
+	pub pointer_shake: KeyMappingEntries,
 }
 
 impl Default for Mapping {
@@ -47,6 +48,7 @@ impl Mapping {
 			InputMapperMessage::DoubleClick(key) => &self.double_click[*key as usize],
 			InputMapperMessage::WheelScroll => &self.wheel_scroll,
 			InputMapperMessage::PointerMove => &self.pointer_move,
+			InputMapperMessage::PointerShake => &self.pointer_shake,
 		}
 	}
 
@@ -59,6 +61,7 @@ impl Mapping {
 			InputMapperMessage::DoubleClick(key) => &mut self.double_click[*key as usize],
 			InputMapperMessage::WheelScroll => &mut self.wheel_scroll,
 			InputMapperMessage::PointerMove => &mut self.pointer_move,
+			InputMapperMessage::PointerShake => &mut self.pointer_shake,
 		}
 	}
 }

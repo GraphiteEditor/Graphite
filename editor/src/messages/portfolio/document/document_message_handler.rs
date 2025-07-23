@@ -182,8 +182,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			device_pixel_ratio,
 		} = context;
 
-		let selected_nodes_bounding_box_viewport = self.network_interface.selected_nodes_bounding_box_viewport(&self.breadcrumb_network_path);
-		let selected_visible_layers_bounding_box_viewport = self.selected_visible_layers_bounding_box_viewport();
 		match message {
 			// Sub-messages
 			DocumentMessage::Navigation(message) => {
@@ -191,11 +189,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					network_interface: &mut self.network_interface,
 					breadcrumb_network_path: &self.breadcrumb_network_path,
 					ipp,
-					selection_bounds: if self.graph_view_overlay_open {
-						selected_nodes_bounding_box_viewport
-					} else {
-						selected_visible_layers_bounding_box_viewport
-					},
 					document_ptz: &mut self.document_ptz,
 					graph_view_overlay_open: self.graph_view_overlay_open,
 					preferences,
@@ -259,7 +252,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					AlignAxis::X => DVec2::X,
 					AlignAxis::Y => DVec2::Y,
 				};
-				let Some(combined_box) = self.selected_visible_layers_bounding_box_viewport() else {
+				let Some(combined_box) = self.network_interface.selected_layers_artwork_bounding_box_viewport() else {
 					return;
 				};
 
@@ -486,7 +479,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
 				};
-				if let Some([min, max]) = self.selected_visible_and_unlock_layers_bounding_box_viewport() {
+				if let Some([min, max]) = self.network_interface.selected_unlocked_layers_bounding_box_viewport() {
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
 					let mut added_transaction = false;
@@ -506,7 +499,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::RotateSelectedLayers { degrees } => {
 				// Get the bounding box of selected layers in viewport space
-				if let Some([min, max]) = self.selected_visible_and_unlock_layers_bounding_box_viewport() {
+				if let Some([min, max]) = self.network_interface.selected_unlocked_layers_bounding_box_viewport() {
 					// Calculate the center of the bounding box to use as rotation pivot
 					let center = (max + min) / 2.;
 					// Transform that moves pivot point to origin
@@ -1063,13 +1056,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.selected_layers_reorder(relative_index_offset, responses);
 			}
 			DocumentMessage::ClipLayer { id } => {
-				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
+				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
 
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(GraphOperationMessage::ClipModeToggle { layer });
 			}
 			DocumentMessage::SelectLayer { id, ctrl, shift } => {
-				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
+				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
 
 				let mut nodes = vec![];
 
@@ -1266,7 +1259,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::ToggleLayerExpansion { id, recursive } => {
-				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
+				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
 				let metadata = self.metadata();
 
 				let is_collapsed = self.collapsed.0.contains(&layer);
@@ -1323,7 +1316,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						self.network_interface.document_network().nodes.contains_key(node_id))
 					.filter_map(|(node_id, click_targets)| {
 						self.network_interface.is_layer(&node_id, &[]).then(|| {
-							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface, &[]);
+							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
 							(layer, click_targets)
 						})
 					})
@@ -1706,31 +1699,6 @@ impl DocumentMessageHandler {
 				}
 			})
 			.last()
-	}
-
-	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space
-	pub fn selected_visible_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
-		self.network_interface
-			.selected_nodes()
-			.selected_visible_layers(&self.network_interface)
-			.filter_map(|layer| self.metadata().bounding_box_viewport(layer))
-			.reduce(graphene_std::renderer::Quad::combine_bounds)
-	}
-
-	pub fn selected_visible_and_unlock_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
-		self.network_interface
-			.selected_nodes()
-			.selected_visible_and_unlocked_layers(&self.network_interface)
-			.filter_map(|layer| self.metadata().bounding_box_viewport(layer))
-			.reduce(graphene_std::renderer::Quad::combine_bounds)
-	}
-
-	pub fn selected_visible_and_unlock_layers_bounding_box_document(&self) -> Option<[DVec2; 2]> {
-		self.network_interface
-			.selected_nodes()
-			.selected_visible_and_unlocked_layers(&self.network_interface)
-			.map(|layer| self.metadata().nonzero_bounding_box(layer))
-			.reduce(graphene_std::renderer::Quad::combine_bounds)
 	}
 
 	pub fn document_network(&self) -> &NodeNetwork {
@@ -2741,7 +2709,22 @@ impl DocumentMessageHandler {
 				.tooltip("Add an operation to the end of this layer's chain of nodes")
 				.disabled(!has_selection || has_multiple_selection)
 				.popover_layout({
-					let node_chooser = NodeCatalog::new()
+					// Showing only compatible types
+					let compatible_type = selected_layer.and_then(|layer| {
+						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &self.network_interface);
+						let node_type = graph_layer.horizontal_layer_flow().nth(1);
+						if let Some(node_id) = node_type {
+							let (output_type, _) = self.network_interface.output_type(&node_id, 0, &self.selection_network_path);
+							Some(format!("type:{}", output_type.nested_type()))
+						} else {
+							None
+						}
+					});
+
+					let mut node_chooser = NodeCatalog::new();
+					node_chooser.intial_search = compatible_type.unwrap_or("".to_string());
+
+					let node_chooser = node_chooser
 						.on_update(move |node_type| {
 							if let Some(layer) = selected_layer {
 								NodeGraphMessage::CreateNodeInLayerWithTransaction {

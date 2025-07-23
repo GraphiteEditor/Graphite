@@ -1086,7 +1086,7 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 		let outer_face_key = if count != 1 {
 			#[cfg(feature = "logging")]
 			eprintln!("Found multiple outer faces: {areas:?}, falling back to area calculation");
-			let (key, _) = *areas.iter().max_by_key(|(_, area)| ((area.abs() * 1000.) as u64)).unwrap();
+			let (key, _) = *areas.iter().max_by_key(|(_, area)| (area.abs() * 1000.) as u64).unwrap();
 			*key
 		} else {
 			*windings
