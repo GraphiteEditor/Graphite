@@ -1769,6 +1769,7 @@ dependencies = [
  "futures",
  "glam",
  "graphene-core",
+ "graphene-core-shaders",
  "image",
  "ndarray",
  "node-macro",
