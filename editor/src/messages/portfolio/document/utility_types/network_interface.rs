@@ -6804,13 +6804,6 @@ impl From<DocumentNodePersistentMetadataPropertiesRow> for DocumentNodePersisten
 	}
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-enum NodePersistentMetadataVersions {
-	DocumentNodePersistentMetadataPropertiesRow(DocumentNodePersistentMetadataPropertiesRow),
-	NodePersistentMetadataInputNames(DocumentNodePersistentMetadataInputNames),
-	NodePersistentMetadata(DocumentNodePersistentMetadata),
-}
-
 fn deserialize_node_persistent_metadata<'de, D>(deserializer: D) -> Result<DocumentNodePersistentMetadata, D::Error>
 where
 	D: serde::Deserializer<'de>,
