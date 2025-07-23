@@ -45,6 +45,8 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) path: Option<Path>,
 	pub(crate) skip_impl: bool,
 	pub(crate) properties_string: Option<LitStr>,
+	/// whether to `#[cfg]` gate the node implementation, defaults to None
+	pub(crate) cfg: Option<TokenStream2>,
 	// Add more attributes as needed
 }
 
@@ -184,6 +186,7 @@ impl Parse for NodeFnAttributes {
 		let mut path = None;
 		let mut skip_impl = false;
 		let mut properties_string = None;
+		let mut cfg = None;
 
 		let content = input;
 		// let content;
@@ -239,13 +242,20 @@ impl Parse for NodeFnAttributes {
 
 					properties_string = Some(parsed_properties_string);
 				}
+				"cfg" => {
+					if cfg.is_some() {
+						return Err(Error::new_spanned(path, "Multiple 'feature' attributes are not allowed"));
+					}
+					let meta = meta.require_list()?;
+					cfg = Some(meta.tokens.clone());
+				}
 				_ => {
 					return Err(Error::new_spanned(
 						meta,
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'path' 'name', 'skip_impl' and 'properties'.
+							Supported attributes are 'category', 'path' 'name', 'skip_impl', 'cfg' and 'properties'.
 
 							Example usage:
 							#[node_macro::node(category("Value"), name("Test Node"))]
@@ -262,6 +272,7 @@ impl Parse for NodeFnAttributes {
 			path,
 			skip_impl,
 			properties_string,
+			cfg,
 		})
 	}
 }
