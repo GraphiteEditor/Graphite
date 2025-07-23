@@ -954,9 +954,9 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 					image.data().hash(&mut state);
 					state.finish()
 				});
-				// if !render.image_data.iter().any(|(old_id, _)| *old_id == id) {
+				if !render.image_data.iter().any(|(old_id, _)| *old_id == id) {
 					render.image_data.push((id, image.data().clone()));
-				// }
+				}
 				render.parent_tag(
 					"foreignObject",
 					|attributes| {

@@ -22,11 +22,21 @@ use js_sys::{Object, Reflect};
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData, window};
+
+static IMAGE_DATA_HASH: AtomicU64 = AtomicU64::new(0);
+
+fn calculate_hash<T: std::hash::Hash>(t: &T) -> u64 {
+	use std::collections::hash_map::DefaultHasher;
+	use std::hash::Hasher;
+	let mut hasher = DefaultHasher::new();
+	t.hash(&mut hasher);
+	hasher.finish()
+}
 
 /// Set the random seed used by the editor by calling this from JS upon initialization.
 /// This is necessary because WASM doesn't have a random number generator.
@@ -67,7 +77,10 @@ fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) {
 	let canvases_obj = Object::from(canvases_obj);
 
 	for (placeholder_id, image) in image_data.iter() {
-		if image.width == 0 || image.height == 0 {
+		let canvas_name = format!("canvas{}", placeholder_id);
+		let js_key = JsValue::from_str(&canvas_name);
+
+		if Reflect::has(&canvases_obj, &js_key).unwrap_or(false) || image.width == 0 || image.height == 0 {
 			continue;
 		}
 
@@ -79,6 +92,7 @@ fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) {
 
 		canvas.set_width(image.width);
 		canvas.set_height(image.height);
+
 		let context: CanvasRenderingContext2d = canvas
 			.get_context("2d")
 			.expect("Failed to get 2d context")
@@ -98,8 +112,6 @@ fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) {
 			}
 		}
 
-		let canvas_name = format!("canvas{}", placeholder_id);
-		let js_key = JsValue::from_str(&canvas_name);
 		let js_value = JsValue::from(canvas);
 
 		if Reflect::set(&canvases_obj, &js_key, &js_value).is_err() {
@@ -160,7 +172,13 @@ impl EditorHandle {
 	// Sends a FrontendMessage to JavaScript
 	fn send_frontend_message_to_js(&self, mut message: FrontendMessage) {
 		if let FrontendMessage::UpdateImageData { ref image_data } = message {
-			render_image_data_to_canvases(image_data.as_slice());
+			let new_hash = calculate_hash(image_data);
+			let prev_hash = IMAGE_DATA_HASH.load(Ordering::Relaxed);
+
+			if new_hash != prev_hash {
+				render_image_data_to_canvases(image_data.as_slice());
+				IMAGE_DATA_HASH.store(new_hash, Ordering::Relaxed);
+			}
 			return;
 		}
 
