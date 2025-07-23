@@ -53,7 +53,7 @@ pub fn split_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Option<(BezP
 	Some((first_bezpath, second_bezpath))
 }
 
-pub fn position_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> Point {
+pub fn evaluate_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> Point {
 	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, segments_length);
 	bezpath.get_seg(segment_index + 1).unwrap().eval(t)
 }

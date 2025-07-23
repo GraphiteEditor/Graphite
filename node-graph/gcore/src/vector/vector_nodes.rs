@@ -1,4 +1,4 @@
-use super::algorithms::bezpath_algorithms::{self, position_on_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
+use super::algorithms::bezpath_algorithms::{self, evaluate_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
 use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use super::misc::{CentroidType, point_to_dvec2};
@@ -1342,7 +1342,7 @@ async fn position_on_path(
 		let t = if progress == bezpath_count { 1. } else { progress.fract() };
 		bezpath.apply_affine(Affine::new(transform.to_cols_array()));
 
-		point_to_dvec2(position_on_bezpath(bezpath, t, euclidian, None))
+		point_to_dvec2(evaluate_bezpath(bezpath, t, euclidian, None))
 	})
 }
 
