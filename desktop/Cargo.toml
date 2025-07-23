@@ -5,8 +5,8 @@ description = "Graphite Desktop"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "Apache-2.0"
 repository = ""
-edition = "2021"
-rust-version = "1.79"
+edition = "2024"
+rust-version = "1.85"
 
 [features]
 default = ["gpu"]

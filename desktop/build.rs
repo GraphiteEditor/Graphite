@@ -6,5 +6,5 @@ fn main() {
 	metadata(format!("{}/index.html", &frontend_dir)).expect("Failed to find index.html in frontend directory.");
 
 	println!("cargo:rerun-if-changed=.");
-	println!("cargo:rerun-if-changed=../frontend");
+	println!("cargo:rerun-if-changed=../frontend/dist");
 }
