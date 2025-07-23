@@ -1,18 +1,18 @@
+use super::intersection::bezpath_intersections;
 use super::poisson_disk::poisson_disk_sample;
 use crate::vector::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
 use crate::vector::misc::{PointSpacingType, dvec2_to_point};
 use glam::DVec2;
 use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, QuadBez, Rect, Shape};
 
-/// Splits the [`BezPath`] at `t` value which lie in the range of [0, 1].
+/// Splits the [`BezPath`] at segment index at `t` value which lie in the range of [0, 1].
 /// Returns [`None`] if the given [`BezPath`] has no segments or `t` is within f64::EPSILON of 0 or 1.
-pub fn split_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Option<(BezPath, BezPath)> {
+pub fn split_bezpath_at_segment(bezpath: &BezPath, segment_index: usize, t: f64) -> Option<(BezPath, BezPath)> {
 	if t <= f64::EPSILON || (1. - t) <= f64::EPSILON || bezpath.segments().count() == 0 {
 		return None;
 	}
 
 	// Get the segment which lies at the split.
-	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, None);
 	let segment = bezpath.get_seg(segment_index + 1).unwrap();
 
 	// Divide the segment.
@@ -51,6 +51,18 @@ pub fn split_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Option<(BezP
 	}
 
 	Some((first_bezpath, second_bezpath))
+}
+
+/// Splits the [`BezPath`] at `t` value which lie in the range of [0, 1].
+/// Returns [`None`] if the given [`BezPath`] has no segments or `t` is within f64::EPSILON of 0 or 1.
+pub fn split_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Option<(BezPath, BezPath)> {
+	if t <= f64::EPSILON || (1. - t) <= f64::EPSILON || bezpath.segments().count() == 0 {
+		return None;
+	}
+
+	// Get the segment which lies at the split.
+	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, None);
+	split_bezpath_at_segment(bezpath, segment_index, t)
 }
 
 pub fn evaluate_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> Point {
@@ -327,4 +339,28 @@ pub fn is_linear(segment: &PathSeg) -> bool {
 		PathSeg::Quad(QuadBez { p0, p1, p2 }) => is_colinear(p0, p1, p2),
 		PathSeg::Cubic(CubicBez { p0, p1, p2, p3 }) => is_colinear(p0, p1, p3) && is_colinear(p0, p2, p3),
 	}
+}
+
+// TODO: If a segment curls back on itself tightly enough it could intersect again at the portion that should be trimmed. This could cause the Subpaths to be clipped
+// at the incorrect location. This can be avoided by first trimming the two Subpaths at any extrema, effectively ignoring loopbacks.
+/// Helper function to clip overlap of two intersecting open Subpaths. Returns an optional, as intersections may not exist for certain arrangements and distances.
+/// Assumes that the Subpaths represents simple Bezier segments, and clips the Subpaths at the last intersection of the first Subpath, and first intersection of the last Subpath.
+pub fn clip_simple_bezpaths(bezpath1: &BezPath, bezpath2: &BezPath) -> Option<(BezPath, BezPath)> {
+	// Split the first subpath at its last intersection
+	let intersections1 = bezpath_intersections(bezpath1, bezpath2, None, None);
+	if intersections1.is_empty() {
+		return None;
+	}
+	let (segment_index, t) = *intersections1.last().unwrap();
+	let (clipped_subpath1, _) = split_bezpath_at_segment(bezpath1, segment_index, t)?;
+
+	// Split the second subpath at its first intersection
+	let intersections2 = bezpath_intersections(bezpath2, bezpath1, None, None);
+	if intersections2.is_empty() {
+		return None;
+	}
+	let (segment_index, t) = intersections2[0];
+	let (_, clipped_subpath2) = split_bezpath_at_segment(bezpath2, segment_index, t)?;
+
+	Some((clipped_subpath1, clipped_subpath2))
 }
