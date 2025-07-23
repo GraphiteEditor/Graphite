@@ -122,10 +122,13 @@ pub fn filtered_all_segment_intersections(segment1: PathSeg, segment2: PathSeg, 
 
 #[cfg(test)]
 mod tests {
-	use super::filtered_segment_intersections;
-	use crate::vector::algorithms::util::{compare_points, compare_vec_of_points};
+	use super::{bezpath_and_segment_intersections, filtered_segment_intersections};
+	use crate::vector::algorithms::{
+		contants::MAX_ABSOLUTE_DIFFERENCE,
+		util::{compare_points, compare_vec_of_points, dvec2_compare},
+	};
 
-	use kurbo::{CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
+	use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathEl, PathSeg, Point, QuadBez};
 
 	#[test]
 	fn test_intersect_line_segment_quadratic() {
@@ -183,5 +186,174 @@ mod tests {
 		let intersections2_points: Vec<Point> = intersections2.iter().map(|&t| bezier2.eval(t)).rev().collect();
 
 		assert!(compare_vec_of_points(intersections1_points, intersections2_points, 2.));
+	}
+
+	#[test]
+	fn intersection_linear_multiple_subpath_curves_test_one() {
+		// M 35 125 C 40 40 120 120 43 43 Q 175 90 145 150 Q 70 185 35 125 Z
+
+		let cubic_start = Point::new(35., 125.);
+		let cubic_handle_1 = Point::new(40., 40.);
+		let cubic_handle_2 = Point::new(120., 120.);
+		let cubic_end = Point::new(43., 43.);
+
+		let quadratic_1_handle = Point::new(175., 90.);
+		let quadratic_end = Point::new(145., 150.);
+
+		let quadratic_2_handle = Point::new(70., 185.);
+
+		let cubic_bezier = PathSeg::Cubic(CubicBez::new(cubic_start, cubic_handle_1, cubic_handle_2, cubic_end));
+		let quadratic_bezier_1 = PathSeg::Quad(QuadBez::new(cubic_end, quadratic_1_handle, quadratic_end));
+
+		let bezpath = BezPath::from_vec(vec![
+			PathEl::MoveTo(cubic_start),
+			PathEl::CurveTo(cubic_handle_1, cubic_handle_2, cubic_end),
+			PathEl::QuadTo(quadratic_1_handle, quadratic_end),
+			PathEl::QuadTo(quadratic_2_handle, cubic_start),
+			PathEl::ClosePath,
+		]);
+
+		let line = PathSeg::Line(Line::new(Point::new(150., 150.), Point::new(20., 20.)));
+
+		let cubic_intersections = filtered_segment_intersections(cubic_bezier, line, None, None);
+		let quadratic_1_intersections = filtered_segment_intersections(quadratic_bezier_1, line, None, None);
+		let subpath_intersections = bezpath_and_segment_intersections(&bezpath, line, None, None);
+
+		assert!(
+			dvec2_compare(
+				cubic_bezier.eval(cubic_intersections[0]),
+				bezpath.segments().nth(subpath_intersections[0].0).unwrap().eval(subpath_intersections[0].1),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
+
+		assert!(
+			dvec2_compare(
+				quadratic_bezier_1.eval(quadratic_1_intersections[0]),
+				bezpath.segments().nth(subpath_intersections[1].0).unwrap().eval(subpath_intersections[1].1),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
+
+		assert!(
+			dvec2_compare(
+				quadratic_bezier_1.eval(quadratic_1_intersections[1]),
+				bezpath.segments().nth(subpath_intersections[2].0).unwrap().eval(subpath_intersections[2].1),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
+	}
+
+	#[test]
+	fn intersection_linear_multiple_subpath_curves_test_two() {
+		// M34 107 C40 40 120 120 102 29 Q175 90 129 171 Q70 185 34 107 Z
+		// M150 150 L 20 20
+
+		let cubic_start = Point::new(34., 107.);
+		let cubic_handle_1 = Point::new(40., 40.);
+		let cubic_handle_2 = Point::new(120., 120.);
+		let cubic_end = Point::new(102., 29.);
+
+		let quadratic_1_handle = Point::new(175., 90.);
+		let quadratic_end = Point::new(129., 171.);
+
+		let quadratic_2_handle = Point::new(70., 185.);
+
+		let cubic_bezier = PathSeg::Cubic(CubicBez::new(cubic_start, cubic_handle_1, cubic_handle_2, cubic_end));
+		let quadratic_bezier_1 = PathSeg::Quad(QuadBez::new(cubic_end, quadratic_1_handle, quadratic_end));
+
+		let bezpath = BezPath::from_vec(vec![
+			PathEl::MoveTo(cubic_start),
+			PathEl::CurveTo(cubic_handle_1, cubic_handle_2, cubic_end),
+			PathEl::QuadTo(quadratic_1_handle, quadratic_end),
+			PathEl::QuadTo(quadratic_2_handle, cubic_start),
+			PathEl::ClosePath,
+		]);
+
+		let line = PathSeg::Line(Line::new(Point::new(150., 150.), Point::new(20., 20.)));
+
+		let cubic_intersections = filtered_segment_intersections(cubic_bezier, line, None, None);
+		let quadratic_1_intersections = filtered_segment_intersections(quadratic_bezier_1, line, None, None);
+		let subpath_intersections = bezpath_and_segment_intersections(&bezpath, line, None, None);
+
+		assert!(
+			dvec2_compare(
+				cubic_bezier.eval(cubic_intersections[0]),
+				bezpath.segments().nth(subpath_intersections[0].0).unwrap().eval(subpath_intersections[0].1),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
+
+		assert!(
+			dvec2_compare(
+				quadratic_bezier_1.eval(quadratic_1_intersections[0]),
+				bezpath.segments().nth(subpath_intersections[1].0).unwrap().eval(subpath_intersections[1].1),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
+	}
+
+	#[test]
+	fn intersection_linear_multiple_subpath_curves_test_three() {
+		// M35 125 C40 40 120 120 44 44 Q175 90 145 150 Q70 185 35 125 Z
+
+		let cubic_start = Point::new(35., 125.);
+		let cubic_handle_1 = Point::new(40., 40.);
+		let cubic_handle_2 = Point::new(120., 120.);
+		let cubic_end = Point::new(44., 44.);
+
+		let quadratic_1_handle = Point::new(175., 90.);
+		let quadratic_end = Point::new(145., 150.);
+
+		let quadratic_2_handle = Point::new(70., 185.);
+
+		let cubic_bezier = PathSeg::Cubic(CubicBez::new(cubic_start, cubic_handle_1, cubic_handle_2, cubic_end));
+		let quadratic_bezier_1 = PathSeg::Quad(QuadBez::new(cubic_end, quadratic_1_handle, quadratic_end));
+
+		let bezpath = BezPath::from_vec(vec![
+			PathEl::MoveTo(cubic_start),
+			PathEl::CurveTo(cubic_handle_1, cubic_handle_2, cubic_end),
+			PathEl::QuadTo(quadratic_1_handle, quadratic_end),
+			PathEl::QuadTo(quadratic_2_handle, cubic_start),
+			PathEl::ClosePath,
+		]);
+
+		let line = PathSeg::Line(Line::new(Point::new(150., 150.), Point::new(20., 20.)));
+
+		let cubic_intersections = filtered_segment_intersections(cubic_bezier, line, None, None);
+		let quadratic_1_intersections = filtered_segment_intersections(quadratic_bezier_1, line, None, None);
+		let subpath_intersections = bezpath_and_segment_intersections(&bezpath, line, None, None);
+
+		assert!(
+			dvec2_compare(
+				cubic_bezier.eval(cubic_intersections[0]),
+				bezpath.segments().nth(subpath_intersections[0].0).unwrap().eval(subpath_intersections[0].1),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
+
+		assert!(
+			dvec2_compare(
+				quadratic_bezier_1.eval(quadratic_1_intersections[0]),
+				bezpath.segments().nth(subpath_intersections[1].0).unwrap().eval(subpath_intersections[1].1),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
+
+		assert!(
+			dvec2_compare(
+				quadratic_bezier_1.eval(quadratic_1_intersections[1]),
+				bezpath.segments().nth(subpath_intersections[2].0).unwrap().eval(subpath_intersections[2].1),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
 	}
 }
