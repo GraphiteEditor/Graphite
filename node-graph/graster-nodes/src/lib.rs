@@ -1,4 +1,6 @@
+pub mod adjust;
 pub mod adjustments;
+pub mod blending_nodes;
 pub mod cubic_spline;
 
 pub mod curve;

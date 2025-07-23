@@ -251,6 +251,27 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::vector::auto_tangents::IDENTIFIER,
 		aliases: &["graphene_core::vector::GenerateHandlesNode", "graphene_core::vector::RemoveHandlesNode"],
 	},
+	// raster::blending_nodes
+	NodeReplacement {
+		node: graphene_std::raster_nodes::blending_nodes::blend::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::BlendNode",
+			"graphene_core::raster::adjustments::BlendNode",
+			"graphene_core::raster::BlendNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::blending_nodes::blend_color_pair::IDENTIFIER,
+		aliases: &["graphene_raster_nodes::adjustments::BlendColorPairNode", "graphene_core::raster::BlendColorPairNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::blending_nodes::color_overlay::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::ColorOverlayNode",
+			"graphene_core::raster::adjustments::ColorOverlayNode",
+			"graphene_raster_nodes::generate_curves::ColorOverlayNode",
+		],
+	},
 	// raster::adjustments
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::luminance::IDENTIFIER,
@@ -292,14 +313,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::raster_nodes::adjustments::threshold::IDENTIFIER,
 		aliases: &["graphene_core::raster::adjustments::ThresholdNode", "graphene_core::raster::ThresholdNode"],
 	},
-	NodeReplacement {
-		node: graphene_std::raster_nodes::adjustments::blend::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::BlendNode", "graphene_core::raster::BlendNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::raster_nodes::adjustments::blend_color_pair::IDENTIFIER,
-		aliases: &["graphene_core::raster::BlendColorPairNode"],
-	},
 	// this node doesn't seem to exist?
 	// (graphene_std::raster_nodes::adjustments::blend_color::IDENTIFIER, &["graphene_core::raster::adjustments::BlendColorsNode","graphene_core::raster::BlendColorsNode"]),
 	NodeReplacement {
@@ -325,10 +338,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::exposure::IDENTIFIER,
 		aliases: &["graphene_core::raster::adjustments::ExposureNode", "graphene_core::raster::ExposureNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::raster_nodes::adjustments::color_overlay::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::ColorOverlayNode", "graphene_raster_nodes::generate_curves::ColorOverlayNode"],
 	},
 	// raster
 	NodeReplacement {
