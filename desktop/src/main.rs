@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 use std::process::exit;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::thread;
 use std::time::{Duration, Instant};
 
 use winit::application::ApplicationHandler;
@@ -18,7 +17,6 @@ use render::{FrameBuffer, GraphicsState};
 pub(crate) enum CustomEvent {
 	UiUpdate,
 	Resized,
-	DoBrowserWork,
 }
 
 pub(crate) struct WindowState {
@@ -98,16 +96,16 @@ impl cef::EventHandler for CefEventHandler {
 		let mut h = 1;
 
 		self.window_state
-			.with(|s| match s {
-				WindowState {
+			.with(|s| {
+				if let WindowState {
 					width: Some(width),
 					height: Some(height),
 					..
-				} => {
+				} = s
+				{
 					w = *width;
 					h = *height;
 				}
-				_ => {}
 			})
 			.unwrap();
 
@@ -126,7 +124,6 @@ impl cef::EventHandler for CefEventHandler {
 			.with(|s| {
 				if let Some(event_loop_proxy) = &s.event_loop_proxy {
 					let _ = event_loop_proxy.send_event(CustomEvent::UiUpdate);
-					let _ = event_loop_proxy.send_event(CustomEvent::DoBrowserWork);
 				}
 				if width != s.width.unwrap_or(1) || height != s.height.unwrap_or(1) {
 					correct_size = false;
@@ -159,6 +156,7 @@ impl WinitApp {
 impl ApplicationHandler<CustomEvent> for WinitApp {
 	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
 		event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(2)));
+		self.cef_context.work();
 	}
 
 	fn new_events(&mut self, _event_loop: &ActiveEventLoop, _cause: StartCause) {
@@ -167,8 +165,8 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 
 	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
 		self.window_state
-			.with(|s| match s {
-				WindowState { width: Some(w), height: Some(h), .. } => {
+			.with(|s| {
+				if let WindowState { width: Some(w), height: Some(h), .. } = s {
 					let window = Arc::new(
 						event_loop
 							.create_window(
@@ -183,25 +181,14 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 					self.window = Some(window.clone());
 					s.graphics_state = Some(graphics_state);
 
-					let _ = thread::spawn(move || {
-						loop {
-							thread::sleep(Duration::from_millis(100));
-							window.request_redraw();
-						}
-					});
-
 					println!("Winit window created and ready");
 				}
-				_ => {}
 			})
 			.unwrap();
 	}
 
 	fn user_event(&mut self, _: &ActiveEventLoop, event: CustomEvent) {
 		match event {
-			CustomEvent::DoBrowserWork => {
-				self.cef_context.work();
-			}
 			CustomEvent::UiUpdate | CustomEvent::Resized => {
 				if let Some(window) = &self.window {
 					window.request_redraw();
@@ -228,9 +215,6 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 						if let Some(elp) = &s.event_loop_proxy {
 							let _ = elp.send_event(CustomEvent::Resized);
 						}
-						if let Some(event_loop_proxy) = &s.event_loop_proxy {
-							let _ = event_loop_proxy.send_event(CustomEvent::DoBrowserWork);
-						}
 						if let Some(graphics_state) = &mut s.graphics_state {
 							graphics_state.resize(width, height);
 						}
@@ -242,23 +226,22 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 				self.cef_context.work();
 
 				self.window_state
-					.with(|s| match s {
-						WindowState {
+					.with(|s| {
+						if let WindowState {
 							width: Some(width),
 							height: Some(height),
 							graphics_state: Some(graphics_state),
 							ui_fb,
 							..
-						} => {
+						} = s
+						{
 							if let Some(fb) = &*ui_fb {
 								graphics_state.update_texture(fb);
 								if fb.width() != *width && fb.height() != *height {
 									graphics_state.resize(*width, *height);
 								}
-							} else {
-								if let Some(window) = &self.window {
-									window.request_redraw();
-								}
+							} else if let Some(window) = &self.window {
+								window.request_redraw();
 							}
 
 							match graphics_state.render() {
@@ -272,20 +255,11 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 								Err(e) => eprintln!("{:?}", e),
 							}
 						}
-						_ => {}
 					})
 					.unwrap();
 			}
 			_ => {}
 		}
-
-		self.window_state
-			.with(|s| {
-				if let Some(event_loop_proxy) = &s.event_loop_proxy {
-					let _ = event_loop_proxy.send_event(CustomEvent::DoBrowserWork);
-				}
-			})
-			.unwrap();
 	}
 }
 
