@@ -13,7 +13,6 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::extract_
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::num_traits::Zero;
 use graphene_std::vector::misc::{GridType, dvec2_to_point, get_line_endpoints};
 use kurbo::{Line, ParamCurveNearest};
 use std::collections::VecDeque;

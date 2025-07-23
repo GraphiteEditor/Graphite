@@ -48,7 +48,7 @@ impl ShapeGizmoHandler for GridGizmoHandler {
 		&self,
 		document: &DocumentMessageHandler,
 		selected_grid_layer: Option<LayerNodeIdentifier>,
-		input: &InputPreprocessorMessageHandler,
+		_input: &InputPreprocessorMessageHandler,
 		shape_editor: &mut &mut ShapeState,
 		mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
@@ -59,7 +59,7 @@ impl ShapeGizmoHandler for GridGizmoHandler {
 	fn dragging_overlays(
 		&self,
 		document: &DocumentMessageHandler,
-		input: &InputPreprocessorMessageHandler,
+		_input: &InputPreprocessorMessageHandler,
 		shape_editor: &mut &mut ShapeState,
 		mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
