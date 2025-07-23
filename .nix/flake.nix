@@ -36,34 +36,50 @@
         pkgs-unstable = import nixpkgs-unstable {
           inherit system overlays;
         };
-        
+
         rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
           targets = [ "wasm32-unknown-unknown" ];
           extensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
         };
 
+        libcef = pkgs.libcef.overrideAttrs (finalAttrs: previousAttrs: {
+          version = "138.0.26";
+          gitRevision = "84f2d27";
+          chromiumVersion = "138.0.7204.158";
+          srcHash = "sha256-d9jQJX7rgdoHfROD3zmOdMSesRdKE3slB5ZV+U2wlbQ=";
+
+          __intentionallyOverridingVersion = true;
+
+          postInstall = ''
+            strip $out/lib/*
+          '';
+        });
+
+        libcefPath = pkgs.runCommand "libcef-path" {} ''
+          mkdir -p $out
+
+          ln -s ${libcef}/include $out/include
+          find ${libcef}/lib -type f -name "*" -exec ln -s {} $out/ \;
+          find ${libcef}/libexec -type f -name "*" -exec ln -s {} $out/ \;
+          cp -r ${libcef}/share/cef/* $out/
+
+          echo '${builtins.toJSON {
+            type = "minimal";
+            name = builtins.baseNameOf libcef.src.url;
+            sha1 = "";
+          }}' > $out/archive.json
+        '';
+
         # Shared build inputs - system libraries that need to be in LD_LIBRARY_PATH
         buildInputs = with pkgs; [
           # System libraries
+          wayland
+          wayland.dev
           openssl
           vulkan-loader
           mesa
           libraw
-
-
-          # Tauri dependencies: keep in sync with https://v2.tauri.app/start/prerequisites/#system-dependencies (under the NixOS tab)
-          at-spi2-atk
-          atkmm
-          cairo
-          gdk-pixbuf
-          glib
-          gtk3
-          harfbuzz
-          librsvg
-          libsoup_3
-          pango
-          webkitgtk_4_1
-          openssl
+          libGL
         ];
 
         # Development tools that don't need to be in LD_LIBRARY_PATH
@@ -88,12 +104,11 @@
           cargo-watch
           cargo-nextest
           cargo-expand
-          
+
           # Profiling tools
           gnuplot
           samply
           cargo-flamegraph
-
         ];
       in
       {
@@ -101,10 +116,9 @@
         devShells.default = pkgs.mkShell {
           packages = buildInputs ++ buildTools ++ devTools;
 
-          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
-          GIO_MODULE_DIR="${pkgs.glib-networking}/lib/gio/modules/";
+          LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath buildInputs}:${libcefPath}";
+          CEF_PATH = libcefPath;
           XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS";
-          
 
           shellHook = ''
             alias cargo='mold --run cargo'
