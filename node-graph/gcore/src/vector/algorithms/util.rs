@@ -1,8 +1,8 @@
 use super::contants::MAX_ABSOLUTE_DIFFERENCE;
 use crate::vector::misc::point_to_dvec2;
 
-use glam::BVec2;
-use kurbo::Point;
+use glam::{BVec2, DVec2};
+use kurbo::{ParamCurve, ParamCurveDeriv, PathSeg, Point};
 
 // Compare two f64s with some maximum absolute difference to account for floating point errors
 #[cfg(test)]
@@ -29,4 +29,19 @@ pub fn compare_vec_of_points(a: Vec<Point>, b: Vec<Point>, max_absolute_differen
 /// Compare the two values in a `DVec2` independently with a provided max absolute value difference.
 pub fn dvec2_compare(a: Point, b: Point, max_abs_diff: f64) -> BVec2 {
 	BVec2::new((a.x - b.x).abs() < max_abs_diff, (a.y - b.y).abs() < max_abs_diff)
+}
+
+/// Compare two `f64` numbers with a provided max absolute value difference.
+pub fn f64_compare(a: f64, b: f64, max_abs_diff: f64) -> bool {
+	(a - b).abs() < max_abs_diff
+}
+
+pub fn segment_tangent(segment: PathSeg, t: f64) -> DVec2 {
+	let tangent = match segment {
+		PathSeg::Line(line) => line.deriv().eval(t),
+		PathSeg::Quad(quad_bez) => quad_bez.deriv().eval(t),
+		PathSeg::Cubic(cubic_bez) => cubic_bez.deriv().eval(t),
+	};
+
+	DVec2::new(tangent.x, tangent.y)
 }

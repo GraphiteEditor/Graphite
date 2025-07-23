@@ -1,7 +1,8 @@
-use super::intersection::bezpath_intersections;
+use super::intersection::{bezpath_intersections, line_intersection};
 use super::poisson_disk::poisson_disk_sample;
+use super::util::segment_tangent;
 use crate::vector::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
-use crate::vector::misc::{PointSpacingType, dvec2_to_point};
+use crate::vector::misc::{PointSpacingType, dvec2_to_point, point_to_dvec2};
 use glam::DVec2;
 use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, QuadBez, Rect, Shape};
 
@@ -363,4 +364,54 @@ pub fn clip_simple_bezpaths(bezpath1: &BezPath, bezpath2: &BezPath) -> Option<(B
 	let (_, clipped_subpath2) = split_bezpath_at_segment(bezpath2, segment_index, t)?;
 
 	Some((clipped_subpath1, clipped_subpath2))
+}
+
+/// Returns the manipulator point that is needed for a miter join if it is possible.
+/// - `miter_limit`: Defines a limit for the ratio between the miter length and the stroke width.
+///
+/// Alternatively, this can be interpreted as limiting the angle that the miter can form.
+/// When the limit is exceeded, no manipulator group will be returned.
+/// This value should be greater than 0. If not, the default of 4 will be used.
+pub fn miter_line_join(bezpath1: &BezPath, bezpath2: &BezPath, miter_limit: Option<f64>) -> Option<PathEl> {
+	let miter_limit = match miter_limit {
+		Some(miter_limit) if miter_limit > f64::EPSILON => miter_limit,
+		_ => 4.,
+	};
+	// TODO: Besides returning None using the `?` operator, is there a more appropriate way to handle a `None` result from `get_segment`?
+	let in_segment = bezpath1.segments().last()?;
+	let out_segment = bezpath2.get_seg(0)?;
+
+	let in_tangent = segment_tangent(in_segment, 1.);
+	let out_tangent = segment_tangent(out_segment, 0.);
+
+	if in_tangent == DVec2::ZERO || out_tangent == DVec2::ZERO {
+		// Avoid panic from normalizing zero vectors
+		// TODO: Besides returning None, is there a more appropriate way to handle this?
+		return None;
+	}
+	let normalized_in_tangent = in_tangent.normalize();
+	let normalized_out_tangent = out_tangent.normalize();
+
+	// The tangents must not be parallel for the miter join
+	if !normalized_in_tangent.abs_diff_eq(normalized_out_tangent, MAX_ABSOLUTE_DIFFERENCE) && !normalized_in_tangent.abs_diff_eq(-normalized_out_tangent, MAX_ABSOLUTE_DIFFERENCE) {
+		let intersection = line_intersection(in_segment.end(), in_tangent, out_segment.start(), out_tangent);
+
+		let start_to_intersection = intersection - point_to_dvec2(in_segment.end());
+		let intersection_to_end = point_to_dvec2(out_segment.start()) - intersection;
+		if start_to_intersection == DVec2::ZERO || intersection_to_end == DVec2::ZERO {
+			// Avoid panic from normalizing zero vectors
+			// TODO: Besides returning None, is there a more appropriate way to handle this?
+			return None;
+		}
+
+		// Draw the miter join if the intersection occurs in the correct direction with respect to the path
+		if start_to_intersection.normalize().abs_diff_eq(in_tangent, MAX_ABSOLUTE_DIFFERENCE)
+			&& intersection_to_end.normalize().abs_diff_eq(out_tangent, MAX_ABSOLUTE_DIFFERENCE)
+			&& miter_limit > f64::EPSILON / (start_to_intersection.angle_to(-intersection_to_end).abs() / 2.).sin()
+		{
+			return Some(PathEl::LineTo(dvec2_to_point(intersection)));
+		}
+	}
+	// If we can't draw the miter join, default to a bevel join
+	None
 }

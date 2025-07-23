@@ -1,4 +1,7 @@
-use kurbo::{BezPath, DEFAULT_ACCURACY, ParamCurve, PathSeg, Shape};
+use glam::DVec2;
+use kurbo::{BezPath, DEFAULT_ACCURACY, ParamCurve, PathSeg, Point, Shape};
+
+use crate::vector::algorithms::{contants::MAX_ABSOLUTE_DIFFERENCE, util::f64_compare};
 
 use super::contants::MIN_SEPARATION_VALUE;
 
@@ -118,6 +121,33 @@ pub fn filtered_all_segment_intersections(segment1: PathSeg, segment2: PathSeg, 
 		accumulator.push(*t);
 		accumulator
 	})
+}
+
+/// Returns the intersection of two lines. The lines are given by a point on the line and its slope (represented by a vector).
+pub fn line_intersection(point1: Point, point1_slope_vector: DVec2, point2: Point, point2_slope_vector: DVec2) -> DVec2 {
+	assert!(point1_slope_vector.normalize() != point2_slope_vector.normalize());
+
+	// Find the intersection when the first line is vertical
+	if f64_compare(point1_slope_vector.x, 0., MAX_ABSOLUTE_DIFFERENCE) {
+		let m2 = point2_slope_vector.y / point2_slope_vector.x;
+		let b2 = point2.y - m2 * point2.x;
+		DVec2::new(point1.x, point1.x * m2 + b2)
+	}
+	// Find the intersection when the second line is vertical
+	else if f64_compare(point2_slope_vector.x, 0., MAX_ABSOLUTE_DIFFERENCE) {
+		let m1 = point1_slope_vector.y / point1_slope_vector.x;
+		let b1 = point1.y - m1 * point1.x;
+		DVec2::new(point2.x, point2.x * m1 + b1)
+	}
+	// Find the intersection where neither line is vertical
+	else {
+		let m1 = point1_slope_vector.y / point1_slope_vector.x;
+		let b1 = point1.y - m1 * point1.x;
+		let m2 = point2_slope_vector.y / point2_slope_vector.x;
+		let b2 = point2.y - m2 * point2.x;
+		let intersection_x = (b2 - b1) / (m1 - m2);
+		DVec2::new(intersection_x, intersection_x * m1 + b1)
+	}
 }
 
 #[cfg(test)]
