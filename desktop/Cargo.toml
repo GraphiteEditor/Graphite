@@ -6,7 +6,7 @@ authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "Apache-2.0"
 repository = ""
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.87"
 
 [features]
 default = ["gpu"]

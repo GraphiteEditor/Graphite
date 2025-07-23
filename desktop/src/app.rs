@@ -19,7 +19,7 @@ pub(crate) struct WinitApp {
 	pub(crate) window_state: WindowStateHandle,
 	pub(crate) cef_context: cef::Context<cef::Initialized>,
 	pub(crate) window: Option<Arc<Window>>,
-	cef_schedule: Instant,
+	cef_schedule: Option<Instant>,
 }
 
 impl WinitApp {
@@ -28,7 +28,7 @@ impl WinitApp {
 			window_state,
 			cef_context,
 			window: None,
-			cef_schedule: Instant::now(),
+			cef_schedule: Some(Instant::now()),
 		}
 	}
 }
@@ -36,12 +36,15 @@ impl WinitApp {
 impl ApplicationHandler<CustomEvent> for WinitApp {
 	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
 		let timeout = Instant::now() + Duration::from_millis(10);
-		let wait_until = timeout.min(self.cef_schedule);
+		let wait_until = timeout.min(self.cef_schedule.unwrap_or(timeout));
 		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
 	}
 
 	fn new_events(&mut self, _event_loop: &ActiveEventLoop, _cause: StartCause) {
-		if Instant::now() > self.cef_schedule {
+		if let Some(schedule) = self.cef_schedule
+			&& schedule < Instant::now()
+		{
+			self.cef_schedule = None;
 			self.cef_context.work();
 		}
 	}
@@ -78,7 +81,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 				}
 			}
 			CustomEvent::ScheduleBrowserWork(instant) => {
-				self.cef_schedule = instant;
+				self.cef_schedule = Some(instant);
 			}
 		}
 	}
