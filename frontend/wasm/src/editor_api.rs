@@ -16,8 +16,8 @@ use editor::messages::portfolio::utility_types::Platform;
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
+use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
-use graphene_std::raster::{Image, TransformImage};
 use js_sys::{Object, Reflect};
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
@@ -41,7 +41,7 @@ pub fn wasm_memory() -> JsValue {
 	wasm_bindgen::memory()
 }
 
-fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>, TransformImage)]) {
+fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) {
 	let window = match window() {
 		Some(window) => window,
 		None => {
@@ -66,7 +66,7 @@ fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>, TransformImag
 	};
 	let canvases_obj = Object::from(canvases_obj);
 
-	for (placeholder_id, image, _) in image_data.iter() {
+	for (placeholder_id, image) in image_data.iter() {
 		if image.width == 0 || image.height == 0 {
 			continue;
 		}

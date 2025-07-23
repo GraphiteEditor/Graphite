@@ -8,7 +8,7 @@ use graphene_core::bounds::BoundingBox;
 use graphene_core::color::Color;
 use graphene_core::instances::Instance;
 use graphene_core::math::quad::Quad;
-use graphene_core::raster::{Image, TransformImage};
+use graphene_core::raster::Image;
 use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
 use graphene_core::render_complexity::RenderComplexity;
 use graphene_core::transform::{Footprint, Transform};
@@ -20,6 +20,7 @@ use graphene_core::{AlphaBlending, Artboard, ArtboardGroupTable, GraphicElement,
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
+use std::hash::{DefaultHasher, Hash, Hasher};
 #[cfg(feature = "vello")]
 use vello::*;
 
@@ -51,7 +52,7 @@ pub struct SvgRender {
 	pub svg: Vec<SvgSegment>,
 	pub svg_defs: String,
 	pub transform: DAffine2,
-	pub image_data: Vec<(u64, Image<Color>, TransformImage)>,
+	pub image_data: Vec<(u64, Image<Color>)>,
 	indent: usize,
 }
 
@@ -948,12 +949,18 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 			}
 
 			if render_params.to_canvas() {
-				let id = generate_uuid();
-				let mut transform_values = transform.to_scale_angle_translation();
-				render.image_data.push((id, image.data().clone(), TransformImage(transform)));
+				let id = instance.source_node_id.map(|x| x.0).unwrap_or_else(|| {
+					let mut state = DefaultHasher::new();
+					image.data().hash(&mut state);
+					state.finish()
+				});
+				// if !render.image_data.iter().any(|(old_id, _)| *old_id == id) {
+					render.image_data.push((id, image.data().clone()));
+				// }
 				render.parent_tag(
 					"foreignObject",
 					|attributes| {
+						let mut transform_values = transform.to_scale_angle_translation();
 						let size = DVec2::new(image.width as f64, image.height as f64);
 						transform_values.0 /= size;
 						let matrix = DAffine2::from_scale_angle_translation(transform_values.0, transform_values.1, transform_values.2);
