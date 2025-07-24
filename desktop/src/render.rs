@@ -3,21 +3,6 @@ use std::sync::Arc;
 use thiserror::Error;
 use winit::window::Window;
 
-pub(crate) struct FrameBuffer {
-	buffer: Vec<u8>,
-	width: usize,
-	height: usize,
-}
-impl std::fmt::Debug for FrameBuffer {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("FrameBuffer")
-			.field("width", &self.width)
-			.field("height", &self.height)
-			.field("len", &self.buffer.len())
-			.finish()
-	}
-}
-
 pub(crate) struct FrameBufferRef<'a> {
 	buffer: &'a [u8],
 	width: usize,
@@ -70,38 +55,6 @@ pub(crate) enum FrameBufferError {
 	InvalidSize { buffer_size: usize, expected_size: usize, width: usize, height: usize },
 }
 
-impl FrameBuffer {
-	pub(crate) fn new(buffer: Vec<u8>, width: usize, height: usize) -> Result<Self, FrameBufferError> {
-		let fb = Self { buffer, width, height };
-		fb.validate_size()?;
-		Ok(fb)
-	}
-
-	pub(crate) fn buffer(&self) -> &[u8] {
-		&self.buffer
-	}
-
-	pub(crate) fn width(&self) -> usize {
-		self.width
-	}
-
-	pub(crate) fn height(&self) -> usize {
-		self.height
-	}
-
-	fn validate_size(&self) -> Result<(), FrameBufferError> {
-		if self.buffer.len() != self.width * self.height * 4 {
-			Err(FrameBufferError::InvalidSize {
-				buffer_size: self.buffer.len(),
-				expected_size: self.width * self.height * 4,
-				width: self.width,
-				height: self.height,
-			})
-		} else {
-			Ok(())
-		}
-	}
-}
 #[derive(Debug, Clone)]
 pub(crate) struct WgpuContext {
 	pub(crate) device: wgpu::Device,
@@ -265,38 +218,17 @@ impl GraphicsState {
 		}
 	}
 
-	pub(crate) fn ui_texture_outdated(&self, frame_buffer: &FrameBuffer) -> bool {
-		let width = frame_buffer.width() as u32;
-		let height = frame_buffer.height() as u32;
-
-		self.config.width != width || self.config.height != height
-	}
-
 	pub(crate) fn resize(&mut self, width: u32, height: u32) {
 		if width > 0 && height > 0 && (self.config.width != width || self.config.height != height) {
 			self.config.width = width;
 			self.config.height = height;
 			self.surface.configure(&self.context.device, &self.config);
-			// let texture = self.context.device.create_texture(&wgpu::TextureDescriptor {
-			// 	label: Some("CEF Texture"),
-			// 	size: wgpu::Extent3d {
-			// 		width,
-			// 		height,
-			// 		depth_or_array_layers: 1,
-			// 	},
-			// 	mip_level_count: 1,
-			// 	sample_count: 1,
-			// 	dimension: wgpu::TextureDimension::D2,
-			// 	format: wgpu::TextureFormat::Bgra8UnormSrgb,
-			// 	usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-			// 	view_formats: &[],
-			// });
-			// self.texture = Some(texture);
 		}
 	}
 
 	pub(crate) fn bind_texture(&mut self, texture: &wgpu::Texture) {
 		let bind_group = self.create_bindgroup(texture);
+		self.texture = Some(texture.clone());
 
 		self.bind_group = Some(bind_group);
 	}

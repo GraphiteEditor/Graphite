@@ -9,7 +9,7 @@ mod cef;
 use cef::{Setup, WindowSize};
 
 mod render;
-use render::{FrameBuffer, WgpuContext};
+use render::WgpuContext;
 
 mod app;
 use app::WinitApp;

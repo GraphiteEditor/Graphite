@@ -1,7 +1,4 @@
-use crate::{
-	CustomEvent, FrameBuffer, WgpuContext,
-	render::{FrameBufferRef, GraphicsState},
-};
+use crate::{CustomEvent, WgpuContext, render::FrameBufferRef};
 use std::{
 	sync::{Arc, Mutex, mpsc::Receiver},
 	time::Instant,

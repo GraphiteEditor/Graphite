@@ -2,7 +2,6 @@ use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_render_handler_t, cef_base_ref_counted_t};
 use cef::{Browser, ImplRenderHandler, PaintElementType, Rect, WrapRenderHandler};
 
-use crate::FrameBuffer;
 use crate::cef::CefEventHandler;
 use crate::render::FrameBufferRef;
 
