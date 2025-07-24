@@ -48,7 +48,7 @@ fn main() {
 
 	tracing::info!("Cef initialized successfully");
 
-	let mut winit_app = WinitApp::new(cef_context, send);
+	let mut winit_app = WinitApp::new(cef_context, send, event_loop.create_proxy());
 
 	event_loop.run_app(&mut winit_app).unwrap();
 }

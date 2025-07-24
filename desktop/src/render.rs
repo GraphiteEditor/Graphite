@@ -223,11 +223,13 @@ impl GraphicsState {
 		graphics_state
 	}
 
-	pub(crate) fn update_texture(&mut self, frame_buffer: &FrameBuffer) {
-		let data = frame_buffer.buffer();
+	pub(crate) fn ui_texture_outdated(&self, frame_buffer: &FrameBuffer) -> bool {
 		let width = frame_buffer.width() as u32;
 		let height = frame_buffer.height() as u32;
 
+		self.config.width != width || self.config.height != height
+	}
+	pub(crate) fn resize(&mut self, width: u32, height: u32) {
 		if width > 0 && height > 0 && (self.config.width != width || self.config.height != height) {
 			self.config.width = width;
 			self.config.height = height;
@@ -248,6 +250,14 @@ impl GraphicsState {
 			});
 			self.texture = Some(texture);
 		}
+	}
+
+	pub(crate) fn update_texture(&mut self, frame_buffer: &FrameBuffer) {
+		let data = frame_buffer.buffer();
+		let width = frame_buffer.width() as u32;
+		let height = frame_buffer.height() as u32;
+
+		self.resize(width, height);
 
 		let Some(ref texture) = self.texture else { return };
 
