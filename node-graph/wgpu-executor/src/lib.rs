@@ -1,8 +1,9 @@
 mod context;
 pub mod texture_upload;
 
+use crate::context::new_context;
 use anyhow::Result;
-pub use context::Context;
+pub use context::wgpuContext;
 use dyn_any::StaticType;
 use futures::lock::Mutex;
 use glam::UVec2;
@@ -16,7 +17,7 @@ use wgpu::{Origin3d, SurfaceConfiguration, TextureAspect};
 
 #[derive(dyn_any::DynAny)]
 pub struct WgpuExecutor {
-	pub context: Context,
+	pub context: wgpuContext,
 	vello_renderer: Mutex<Renderer>,
 }
 
@@ -167,7 +168,7 @@ impl WgpuExecutor {
 
 impl WgpuExecutor {
 	pub async fn new() -> Option<Self> {
-		let context = Context::new().await?;
+		let context = new_context().await?;
 
 		let vello_renderer = Renderer::new(
 			&context.device,

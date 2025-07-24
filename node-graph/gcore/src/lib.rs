@@ -28,6 +28,7 @@ pub mod transform_nodes;
 pub mod uuid;
 pub mod value;
 pub mod vector;
+pub mod wgpu_context;
 
 pub use crate as graphene_core;
 pub use blending::*;

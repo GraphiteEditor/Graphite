@@ -38,7 +38,7 @@ pub async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: Raste
 			);
 
 			Instance {
-				instance: Raster::new_gpu(texture.into()),
+				instance: Raster::new_gpu(texture.into(), executor.context.clone()),
 				transform: *instance.transform,
 				alpha_blending: *instance.alpha_blending,
 				source_node_id: *instance.source_node_id,

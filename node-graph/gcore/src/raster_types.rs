@@ -137,10 +137,25 @@ pub use gpu::GPU;
 mod gpu {
 	use super::*;
 	use crate::raster_types::__private::Sealed;
+	use crate::wgpu_context::WgpuContext;
+	use std::hash::{Hash, Hasher};
 
-	#[derive(Clone, Debug, PartialEq, Hash)]
+	#[derive(Clone, Debug)]
 	pub struct GPU {
 		texture: wgpu::Texture,
+		context: WgpuContext,
+	}
+
+	// TODO doesn't make sense for GPU
+	impl PartialEq for GPU {
+		fn eq(&self, other: &Self) -> bool {
+			false
+		}
+	}
+
+	// TODO doesn't make sense for GPU
+	impl Hash for GPU {
+		fn hash<H: Hasher>(&self, state: &mut H) {}
 	}
 
 	impl Sealed for Raster<GPU> {}
@@ -152,8 +167,8 @@ mod gpu {
 	}
 
 	impl Raster<GPU> {
-		pub fn new_gpu(texture: wgpu::Texture) -> Self {
-			Self::new(GPU { texture })
+		pub fn new_gpu(texture: wgpu::Texture, context: WgpuContext) -> Self {
+			Self::new(GPU { texture, context })
 		}
 
 		pub fn data(&self) -> &wgpu::Texture {
