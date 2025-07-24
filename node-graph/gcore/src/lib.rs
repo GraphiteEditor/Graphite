@@ -37,6 +37,7 @@ pub use ctor;
 pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
 pub use graphene_core_shaders::AsU32;
 pub use graphene_core_shaders::blending;
+pub use graphene_core_shaders::choice_type;
 pub use graphene_core_shaders::color;
 pub use graphic_element::{Artboard, ArtboardGroupTable, GraphicElement, GraphicGroupTable};
 pub use memo::MemoHash;

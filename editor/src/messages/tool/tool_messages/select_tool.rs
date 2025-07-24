@@ -187,7 +187,7 @@ impl SelectTool {
 	}
 
 	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetHolder> + use<> {
-		let list = <BooleanOperation as graphene_std::registry::ChoiceTypeStatic>::list();
+		let list = <BooleanOperation as graphene_std::choice_type::ChoiceTypeStatic>::list();
 		list.iter().flat_map(|i| i.iter()).map(move |(operation, info)| {
 			let mut tooltip = info.label.to_string();
 			if let Some(doc) = info.docstring.as_deref() {
