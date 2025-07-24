@@ -248,8 +248,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 						attributes.push("transform", matrix);
 					}
 
-					let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
-					let opacity = instance.alpha_blending.opacity * factor;
+					let opacity = instance.alpha_blending.opacity(render_params.for_mask);
 					if opacity < 1. {
 						attributes.push("opacity", opacity.to_string());
 					}
@@ -304,8 +303,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 			};
 			let mut bounds = None;
 
-			let factor = if render_params.for_mask { 1. } else { alpha_blending.fill };
-			let opacity = alpha_blending.opacity * factor;
+			let opacity = instance.alpha_blending.opacity(render_params.for_mask);
 			if opacity < 1. || (render_params.view_mode != ViewMode::Outline && alpha_blending.blend_mode != BlendMode::default()) {
 				bounds = self
 					.instance_ref_iter()
@@ -508,8 +506,7 @@ impl GraphicElementRendered for VectorDataTable {
 				}
 				attributes.push_val(fill_and_stroke);
 
-				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
-				let opacity = instance.alpha_blending.opacity * factor;
+				let opacity = instance.alpha_blending.opacity(render_params.for_mask);
 				if opacity < 1. {
 					attributes.push("opacity", opacity.to_string());
 				}
@@ -550,8 +547,8 @@ impl GraphicElementRendered for VectorDataTable {
 				_ => instance.alpha_blending.blend_mode.to_peniko(),
 			};
 			let mut layer = false;
-			let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
-			let opacity = instance.alpha_blending.opacity * factor;
+
+			let opacity = instance.alpha_blending.opacity(render_params.for_mask);
 			if opacity < 1. || instance.alpha_blending.blend_mode != BlendMode::default() {
 				layer = true;
 				scene.push_layer(
@@ -979,8 +976,7 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 						attributes.push("width", size.x.to_string());
 						attributes.push("height", size.y.to_string());
 
-						let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
-						let opacity = instance.alpha_blending.opacity * factor;
+						let opacity = instance.alpha_blending.opacity(render_params.for_mask);
 						if opacity < 1. {
 							attributes.push("opacity", opacity.to_string());
 						}
@@ -1018,8 +1014,8 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 					if !matrix.is_empty() {
 						attributes.push("transform", matrix);
 					}
-					let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
-					let opacity = instance.alpha_blending.opacity * factor;
+
+					let opacity = instance.alpha_blending.opacity(render_params.for_mask);
 					if opacity < 1. {
 						attributes.push("opacity", opacity.to_string());
 					}
@@ -1043,9 +1039,8 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 
 			let alpha_blending = *instance.alpha_blending;
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
-			let factor = if render_params.for_mask { 1. } else { alpha_blending.fill };
-			let opacity = alpha_blending.opacity * factor;
 
+			let opacity = alpha_blending.opacity(render_params.for_mask);
 			let mut layer = false;
 
 			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
