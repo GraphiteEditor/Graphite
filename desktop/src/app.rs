@@ -2,6 +2,7 @@ use crate::CustomEvent;
 use crate::FrameBuffer;
 use crate::WindowSize;
 use crate::render::GraphicsState;
+use crate::render::WgpuContext;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
@@ -27,10 +28,11 @@ pub(crate) struct WinitApp {
 	_viewport_frame_buffer: Option<FrameBuffer>,
 	graphics_state: Option<GraphicsState>,
 	event_loop_proxy: EventLoopProxy<CustomEvent>,
+	wgpu_context: WgpuContext,
 }
 
 impl WinitApp {
-	pub(crate) fn new(cef_context: cef::Context<cef::Initialized>, window_size_sender: Sender<WindowSize>, event_loop_proxy: EventLoopProxy<CustomEvent>) -> Self {
+	pub(crate) fn new(cef_context: cef::Context<cef::Initialized>, window_size_sender: Sender<WindowSize>, event_loop_proxy: EventLoopProxy<CustomEvent>, wgpu_context: WgpuContext) -> Self {
 		Self {
 			cef_context,
 			window: None,
@@ -40,6 +42,7 @@ impl WinitApp {
 			graphics_state: None,
 			window_size_sender,
 			event_loop_proxy,
+			wgpu_context,
 		}
 	}
 }
@@ -71,7 +74,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 				)
 				.unwrap(),
 		);
-		let graphics_state = futures::executor::block_on(GraphicsState::new(window.clone()));
+		let graphics_state = GraphicsState::new(window.clone(), self.wgpu_context.clone());
 
 		self.window = Some(window);
 		self.graphics_state = Some(graphics_state);
@@ -81,11 +84,12 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 
 	fn user_event(&mut self, _: &ActiveEventLoop, event: CustomEvent) {
 		match event {
-			CustomEvent::UiUpdate(frame_buffer) => {
+			CustomEvent::UiUpdate((texture, width, height)) => {
 				if let Some(graphics_state) = self.graphics_state.as_mut() {
-					graphics_state.update_texture(&frame_buffer);
+					graphics_state.bind_texture(&texture);
+					graphics_state.resize(width, height);
 				}
-				self.ui_frame_buffer = Some(frame_buffer);
+				// self.ui_frame_buffer = Some(frame_buffer);
 				if let Some(window) = &self.window {
 					window.request_redraw();
 				}
@@ -113,9 +117,6 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 			}
 			WindowEvent::Resized(PhysicalSize { width, height }) => {
 				let _ = self.window_size_sender.send(WindowSize::new(width as usize, height as usize));
-				if let Some(ref mut graphics_state) = self.graphics_state {
-					graphics_state.resize(width, height);
-				}
 				self.cef_context.notify_of_resize();
 			}
 

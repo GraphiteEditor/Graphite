@@ -4,6 +4,7 @@ use cef::{Browser, ImplRenderHandler, PaintElementType, Rect, WrapRenderHandler}
 
 use crate::FrameBuffer;
 use crate::cef::CefEventHandler;
+use crate::render::FrameBufferRef;
 
 pub(crate) struct RenderHandlerImpl<H: CefEventHandler> {
 	object: *mut RcImpl<_cef_render_handler_t, Self>,
@@ -42,7 +43,7 @@ impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 	) {
 		let buffer_size = (width * height * 4) as usize;
 		let buffer_slice = unsafe { std::slice::from_raw_parts(buffer, buffer_size) };
-		let frame_buffer = FrameBuffer::new(buffer_slice.to_vec(), width as usize, height as usize).expect("Failed to create frame buffer");
+		let frame_buffer = FrameBufferRef::new(buffer_slice, width as usize, height as usize).expect("Failed to create frame buffer");
 
 		self.event_handler.draw(frame_buffer)
 	}
