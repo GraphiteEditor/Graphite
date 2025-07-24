@@ -39,30 +39,6 @@ math-parser = { workspace = true }
 wgpu = { workspace = true }
 web-sys = { workspace = true }
 
-[package.metadata.wasm-pack.profile.dev]
-wasm-opt = false
-
-[package.metadata.wasm-pack.profile.dev.wasm-bindgen]
-debug-js-glue = true
-demangle-name-section = true
-dwarf-debug-info = false
-
-[package.metadata.wasm-pack.profile.release]
-wasm-opt = ["-Os", "-g"]
-
-[package.metadata.wasm-pack.profile.release.wasm-bindgen]
-debug-js-glue = false
-demangle-name-section = false
-dwarf-debug-info = false
-
-[package.metadata.wasm-pack.profile.profiling]
-wasm-opt = ["-Os", "-g"]
-
-[package.metadata.wasm-pack.profile.profiling.wasm-bindgen]
-debug-js-glue = true
-demangle-name-section = true
-dwarf-debug-info = true
-
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
 	'cfg(wasm_bindgen_unstable_test_coverage)',
