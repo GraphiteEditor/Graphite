@@ -1,7 +1,7 @@
 # This is a helper file for people using NixOS as their operating system.
 # If you don't know what this file does, you can safely ignore it.
 
-# If you are using Nix as your package manager, you can run 'nix-shell'
+# If you are using Nix as your package manager, you can run 'nix-shell .nix'
 # in the root directory of the project and Nix will open a bash shell
 # with all the packages needed to build and run Graphite installed.
 # A shell.nix file is used in the Nix ecosystem to define a development
@@ -13,13 +13,13 @@
 # You can enter the Nix shell and run Graphite like normal with:
 # > npm start
 # Or you can run it like this without needing to first enter the Nix shell:
-# > nix-shell --command "npm start"
+# > nix-shell .nix --command "npm start"
 
 # Uses flake compat to provide a development shell that is identical to the one defined in the flake
 (import
   (
     let
-      lock = builtins.fromJSON (builtins.readFile .nix/flake.lock);
+      lock = builtins.fromJSON (builtins.readFile ./flake.lock);
       nodeName = lock.nodes.root.inputs.flake-compat;
     in
     fetchTarball {
@@ -27,5 +27,5 @@
       sha256 = lock.nodes.${nodeName}.locked.narHash;
     }
   )
-  { src = ./.nix; }
+  { src = ./.; }
 ).shellNix
