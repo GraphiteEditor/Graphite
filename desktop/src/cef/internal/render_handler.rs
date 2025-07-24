@@ -1,31 +1,38 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_render_handler_t, cef_base_ref_counted_t};
 use cef::{Browser, ImplRenderHandler, PaintElementType, Rect, WrapRenderHandler};
+use winit::event_loop::EventLoopProxy;
 
-use crate::cef::CefEventHandler;
+use crate::WinitEvent;
+use crate::cef::WindowSizeHandle;
+use crate::render::FrameBuffer;
 
-pub(crate) struct RenderHandlerImpl<H: CefEventHandler> {
+pub(crate) struct RenderHandlerImpl {
 	object: *mut RcImpl<_cef_render_handler_t, Self>,
-	event_handler: H,
+	event_loop_proxy: EventLoopProxy<WinitEvent>,
+	window_size: WindowSizeHandle,
 }
-impl<H: CefEventHandler> RenderHandlerImpl<H> {
-	pub(crate) fn new(event_handler: H) -> Self {
+
+impl RenderHandlerImpl {
+	pub(crate) fn new(event_loop_proxy: EventLoopProxy<WinitEvent>, window_size: WindowSizeHandle) -> Self {
 		Self {
 			object: std::ptr::null_mut(),
-			event_handler,
+			event_loop_proxy,
+			window_size,
 		}
 	}
 }
-impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
+impl ImplRenderHandler for RenderHandlerImpl {
 	fn view_rect(&self, _browser: Option<&mut Browser>, rect: Option<&mut Rect>) {
 		if let Some(rect) = rect {
-			let view = self.event_handler.window_size();
-			*rect = Rect {
-				x: 0,
-				y: 0,
-				width: view.width as i32,
-				height: view.height as i32,
-			};
+			let _ = self.window_size.with(|window_size| {
+				*rect = Rect {
+					x: 0,
+					y: 0,
+					width: window_size.as_ref().map(|w| w.width).unwrap_or(1) as i32,
+					height: window_size.as_ref().map(|w| w.height).unwrap_or(1) as i32,
+				};
+			});
 		}
 	}
 
@@ -39,7 +46,11 @@ impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 		width: ::std::os::raw::c_int,
 		height: ::std::os::raw::c_int,
 	) {
-		self.event_handler.on_paint(buffer, width as u32, height as u32);
+		let buffer_size = (width * height * 4) as usize;
+		let buffer_slice = unsafe { std::slice::from_raw_parts(buffer, buffer_size) };
+		let frame_buffer = FrameBuffer::new(buffer_slice.to_vec(), width as u32, height as u32).expect("Failed to create frame buffer");
+
+		let _ = self.event_loop_proxy.send_event(WinitEvent::UIUpdate { frame_buffer });
 	}
 
 	fn get_raw(&self) -> *mut _cef_render_handler_t {
@@ -47,7 +58,7 @@ impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 	}
 }
 
-impl<H: CefEventHandler> Clone for RenderHandlerImpl<H> {
+impl Clone for RenderHandlerImpl {
 	fn clone(&self) -> Self {
 		unsafe {
 			let rc_impl = &mut *self.object;
@@ -55,11 +66,12 @@ impl<H: CefEventHandler> Clone for RenderHandlerImpl<H> {
 		}
 		Self {
 			object: self.object,
-			event_handler: self.event_handler.clone(),
+			event_loop_proxy: self.event_loop_proxy.clone(),
+			window_size: self.window_size.clone(),
 		}
 	}
 }
-impl<H: CefEventHandler> Rc for RenderHandlerImpl<H> {
+impl Rc for RenderHandlerImpl {
 	fn as_base(&self) -> &cef_base_ref_counted_t {
 		unsafe {
 			let base = &*self.object;
@@ -67,7 +79,7 @@ impl<H: CefEventHandler> Rc for RenderHandlerImpl<H> {
 		}
 	}
 }
-impl<H: CefEventHandler> WrapRenderHandler for RenderHandlerImpl<H> {
+impl WrapRenderHandler for RenderHandlerImpl {
 	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_render_handler_t, Self>) {
 		self.object = object;
 	}

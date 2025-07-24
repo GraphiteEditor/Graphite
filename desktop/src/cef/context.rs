@@ -3,10 +3,14 @@ use cef::{App, BrowserSettings, Client, DictionaryValue, ImplBrowser, ImplBrowse
 use cef::{Browser, CefString, Settings, api_hash, args::Args, execute_process};
 use thiserror::Error;
 use winit::event::WindowEvent;
+use winit::event_loop::EventLoopProxy;
 
+use crate::WinitEvent;
+use crate::cef::WindowSizeHandle;
+
+use super::input;
 use super::input::InputState;
 use super::scheme_handler::{FRONTEND_DOMAIN, GRAPHITE_SCHEME};
-use super::{CefEventHandler, input};
 
 use super::internal::{AppImpl, ClientImpl, NonBrowserAppImpl, RenderHandlerImpl};
 
@@ -57,7 +61,7 @@ impl Context<Setup> {
 		})
 	}
 
-	pub(crate) fn init(self, event_handler: impl CefEventHandler) -> Result<Context<Initialized>, InitError> {
+	pub(crate) fn init(self, event_loop_proxy: EventLoopProxy<WinitEvent>, shared_window_size: WindowSizeHandle) -> Result<Context<Initialized>, InitError> {
 		let settings = Settings {
 			windowless_rendering_enabled: 1,
 			multi_threaded_message_loop: 0,
@@ -66,14 +70,14 @@ impl Context<Setup> {
 		};
 
 		// Attention! Wrapping this in an extra App is necessary, otherwise the program still compiles but segfaults
-		let mut cef_app = App::new(AppImpl::new(event_handler.clone()));
+		let mut cef_app = App::new(AppImpl::new());
 
 		let result = initialize(Some(self.args.as_main_args()), Some(&settings), Some(&mut cef_app), std::ptr::null_mut());
 		if result != 1 {
 			return Err(InitError::InitializationFailed);
 		}
 
-		let render_handler = RenderHandlerImpl::new(event_handler.clone());
+		let render_handler = RenderHandlerImpl::new(event_loop_proxy, shared_window_size);
 		let mut client = Client::new(ClientImpl::new(RenderHandler::new(render_handler)));
 
 		let url = CefString::from(format!("{GRAPHITE_SCHEME}://{FRONTEND_DOMAIN}/").as_str());

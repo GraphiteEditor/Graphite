@@ -7,11 +7,6 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 pub(crate) use context::{Context, InitError, Initialized, Setup, SetupError};
 
-pub(crate) trait CefEventHandler: Clone {
-	fn window_size(&self) -> WindowSize;
-	fn on_paint(&self, buffer: *const u8, width: u32, height: u32);
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct WindowSize {
 	pub(crate) width: u32,

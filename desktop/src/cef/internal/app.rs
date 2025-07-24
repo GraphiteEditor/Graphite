@@ -2,27 +2,22 @@ use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_app_t, cef_base_ref_counted_t};
 use cef::{BrowserProcessHandler, ImplApp, SchemeRegistrar, WrapApp};
 
-use crate::cef::CefEventHandler;
 use crate::cef::scheme_handler::GraphiteSchemeHandlerFactory;
 
 use super::browser_process_handler::BrowserProcessHandlerImpl;
 
-pub(crate) struct AppImpl<H: CefEventHandler> {
+pub(crate) struct AppImpl {
 	object: *mut RcImpl<_cef_app_t, Self>,
-	event_handler: H,
 }
-impl<H: CefEventHandler> AppImpl<H> {
-	pub(crate) fn new(event_handler: H) -> Self {
-		Self {
-			object: std::ptr::null_mut(),
-			event_handler,
-		}
+impl AppImpl {
+	pub(crate) fn new() -> Self {
+		Self { object: std::ptr::null_mut() }
 	}
 }
 
-impl<H: CefEventHandler> ImplApp for AppImpl<H> {
+impl ImplApp for AppImpl {
 	fn browser_process_handler(&self) -> Option<BrowserProcessHandler> {
-		Some(BrowserProcessHandler::new(BrowserProcessHandlerImpl::new(self.event_handler.clone())))
+		Some(BrowserProcessHandler::new(BrowserProcessHandlerImpl::new()))
 	}
 
 	fn on_register_custom_schemes(&self, registrar: Option<&mut SchemeRegistrar>) {
@@ -34,19 +29,16 @@ impl<H: CefEventHandler> ImplApp for AppImpl<H> {
 	}
 }
 
-impl<H: CefEventHandler> Clone for AppImpl<H> {
+impl Clone for AppImpl {
 	fn clone(&self) -> Self {
 		unsafe {
 			let rc_impl = &mut *self.object;
 			rc_impl.interface.add_ref();
 		}
-		Self {
-			object: self.object,
-			event_handler: self.event_handler.clone(),
-		}
+		Self { object: self.object }
 	}
 }
-impl<H: CefEventHandler> Rc for AppImpl<H> {
+impl Rc for AppImpl {
 	fn as_base(&self) -> &cef_base_ref_counted_t {
 		unsafe {
 			let base = &*self.object;
@@ -54,7 +46,7 @@ impl<H: CefEventHandler> Rc for AppImpl<H> {
 		}
 	}
 }
-impl<H: CefEventHandler> WrapApp for AppImpl<H> {
+impl WrapApp for AppImpl {
 	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_app_t, Self>) {
 		self.object = object;
 	}

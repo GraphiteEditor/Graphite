@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::process::exit;
 
 use tracing_subscriber::EnvFilter;
-use winit::event_loop::{EventLoop, EventLoopProxy};
+use winit::event_loop::EventLoop;
 
 mod cef;
 use cef::Setup;
@@ -28,40 +28,6 @@ pub(crate) enum WinitEvent {
 	// ViewportUpdate { texture: wgpu::TextureView },
 }
 
-#[derive(Clone)]
-struct CefHandler {
-	event_loop_proxy: EventLoopProxy<WinitEvent>,
-	window_state: WindowSizeHandle,
-}
-
-impl CefHandler {
-	fn new(event_loop_proxy: EventLoopProxy<WinitEvent>, window_state: WindowSizeHandle) -> Self {
-		Self { event_loop_proxy, window_state }
-	}
-}
-
-impl cef::CefEventHandler for CefHandler {
-	fn window_size(&self) -> cef::WindowSize {
-		let mut window_size = cef::WindowSize::new(1, 1);
-		self.window_state
-			.with(|s| {
-				if let Some(s) = s {
-					window_size = cef::WindowSize::new(s.width as u32, s.height as u32);
-				}
-			})
-			.unwrap();
-		window_size
-	}
-
-	fn on_paint(&self, buffer: *const u8, width: u32, height: u32) {
-		let buffer_size = (width * height * 4) as usize;
-		let buffer_slice = unsafe { std::slice::from_raw_parts(buffer, buffer_size) };
-		let frame_buffer = FrameBuffer::new(buffer_slice.to_vec(), width, height).expect("Failed to create frame buffer");
-
-		let _ = self.event_loop_proxy.send_event(WinitEvent::UIUpdate { frame_buffer });
-	}
-}
-
 fn main() {
 	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
 
@@ -78,7 +44,7 @@ fn main() {
 
 	let event_loop = EventLoop::<WinitEvent>::with_user_event().build().unwrap();
 
-	let cef_context = match cef_context.init(CefHandler::new(event_loop.create_proxy(), shared_window_data.clone())) {
+	let cef_context = match cef_context.init(event_loop.create_proxy(), shared_window_data.clone()) {
 		Ok(c) => c,
 		Err(cef::InitError::InitializationFailed) => {
 			tracing::error!("Cef initialization failed");
