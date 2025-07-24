@@ -990,7 +990,7 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 						render.leaf_tag(
 							"img", // Must be a self-closing tag
 							|attributes| {
-								attributes.push("data-canvas-placeholder", format!("canvas{}", id));
+								attributes.push("data-canvas-placeholder", id.to_string());
 							},
 						)
 					},

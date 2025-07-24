@@ -77,7 +77,7 @@ fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) {
 	let canvases_obj = Object::from(canvases_obj);
 
 	for (placeholder_id, image) in image_data.iter() {
-		let canvas_name = format!("canvas{}", placeholder_id);
+		let canvas_name = placeholder_id.to_string();
 		let js_key = JsValue::from_str(&canvas_name);
 
 		if Reflect::has(&canvases_obj, &js_key).unwrap_or(false) || image.width == 0 || image.height == 0 {
@@ -104,18 +104,18 @@ fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) {
 		match ImageData::new_with_u8_clamped_array_and_sh(clamped_u8_data, image.width, image.height) {
 			Ok(image_data_obj) => {
 				if context.put_image_data(&image_data_obj, 0.0, 0.0).is_err() {
-					error!("Failed to put image data on canvas for id: {}", placeholder_id);
+					error!("Failed to put image data on canvas for id: {placeholder_id}");
 				}
 			}
 			Err(e) => {
-				error!("Failed to create ImageData for id: {}: {:?}", placeholder_id, e);
+				error!("Failed to create ImageData for id: {placeholder_id}: {e:?}");
 			}
 		}
 
 		let js_value = JsValue::from(canvas);
 
 		if Reflect::set(&canvases_obj, &js_key, &js_value).is_err() {
-			error!("Failed to set canvas '{}' on imageCanvases object", canvas_name);
+			error!("Failed to set canvas '{canvas_name}' on imageCanvases object");
 		}
 	}
 }

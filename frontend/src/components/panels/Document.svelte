@@ -199,7 +199,7 @@
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			let canvas = (window as any).imageCanvases[canvasName];
 
-			if (canvasName != "canvas0" && canvas.parentElement) {
+			if (canvasName !== "0" && canvas.parentElement) {
 				var newCanvas = window.document.createElement("canvas");
 				var context = newCanvas.getContext("2d");
 

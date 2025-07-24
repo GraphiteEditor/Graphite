@@ -40,7 +40,7 @@ impl Drop for WindowWrapper {
 		let wrapper = || {
 			if let Ok(canvases) = Reflect::get(&window, &image_canvases_key) {
 				// Convert key and value to JsValue
-				let js_key = JsValue::from_str(format!("canvas{}", self.window.window_id).as_str());
+				let js_key = JsValue::from_str(self.window.window_id.to_string().as_str());
 
 				// Use Reflect API to set property
 				Reflect::delete_property(&canvases.into(), &js_key)?;
@@ -201,7 +201,7 @@ impl ApplicationIo for WasmApplicationIo {
 			}
 
 			// Convert key and value to JsValue
-			let js_key = JsValue::from_str(format!("canvas{}", id).as_str());
+			let js_key = JsValue::from_str(id.to_string().as_str());
 			let js_value = JsValue::from(canvas.clone());
 
 			let canvases = Object::from(canvases.unwrap());
@@ -254,7 +254,7 @@ impl ApplicationIo for WasmApplicationIo {
 		let wrapper = || {
 			if let Ok(canvases) = Reflect::get(&window, &image_canvases_key) {
 				// Convert key and value to JsValue
-				let js_key = JsValue::from_str(format!("canvas{}", surface_id.0).as_str());
+				let js_key = JsValue::from_str(surface_id.0.to_string().as_str());
 
 				// Use Reflect API to set property
 				Reflect::delete_property(&canvases.into(), &js_key)?;
