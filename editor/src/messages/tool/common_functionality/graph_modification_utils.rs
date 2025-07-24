@@ -424,6 +424,13 @@ impl<'a> NodeGraphLayer<'a> {
 			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
 	}
 
+	/// Node id of a visible node if it exists in the layer's primary flow
+	pub fn upstream_visible_node_id_from_name(&self, node_name: &str) -> Option<NodeId> {
+		self.horizontal_layer_flow()
+			.filter(|node_id| self.network_interface.is_visible(node_id, &[]))
+			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
+	}
+
 	/// Node id of a protonode if it exists in the layer's primary flow
 	pub fn upstream_node_id_from_protonode(&self, protonode_identifier: ProtoNodeIdentifier) -> Option<NodeId> {
 		self.horizontal_layer_flow()

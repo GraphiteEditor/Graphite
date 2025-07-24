@@ -3445,7 +3445,7 @@ impl NodeNetworkInterface {
 	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<VectorData> {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
 
-		if let Some(vector_data) = graph_layer.upstream_node_id_from_name("Path").and_then(|node| self.document_metadata.vector_modify.get(&node)) {
+		if let Some(vector_data) = graph_layer.upstream_visible_node_id_from_name("Path").and_then(|node| self.document_metadata.vector_modify.get(&node)) {
 			let mut modified = vector_data.clone();
 			if let Some(TaggedValue::VectorModification(modification)) = graph_layer.find_input("Path", 1) {
 				modification.apply(&mut modified);

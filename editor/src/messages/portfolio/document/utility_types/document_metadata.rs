@@ -90,7 +90,7 @@ impl DocumentMetadata {
 
 		let mut use_local = true;
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
-		if let Some(path_node) = graph_layer.upstream_node_id_from_name("Path") {
+		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name("Path") {
 			if let Some(&source) = self.first_instance_source_ids.get(&layer.to_node()) {
 				if !network_interface
 					.upstream_flow_back_from_nodes(vec![path_node], &[], FlowType::HorizontalFlow)
