@@ -19,12 +19,12 @@
 		"lint-fix": "eslint . --fix && tsc --noEmit",
 		"---------- INTERNAL ----------": "",
 		"setup": "node package-installer.js",
-		"wasm:build-dev": "wasm-pack build ./wasm --dev --target=web",
-		"wasm:build-profiling": "wasm-pack build ./wasm --profiling --target=web",
-		"wasm:build-production": "wasm-pack build ./wasm --release --target=web",
-		"wasm:watch-dev": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"wasm-pack build . --dev --target=web -- --color=always\"",
-		"wasm:watch-profiling": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"wasm-pack build . --profiling --target=web -- --color=always\"",
-		"wasm:watch-production": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"wasm-pack build . --release --target=web -- --color=always\""
+		"wasm:build-dev": "just build debug",
+		"wasm:build-profiling": "just build profiling",
+		"wasm:build-production": "just build release",
+		"wasm:watch-dev": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"just build --color=always debug\"",
+		"wasm:watch-profiling": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"just build --color=always profiling\"",
+		"wasm:watch-production": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"just build --color=always release\""
 	},
 	"dependencies": {
 		"@fontsource/inconsolata": "^5.2.5",
@@ -45,6 +45,7 @@
 		"eslint-plugin-import": "^2.30.0",
 		"eslint-plugin-prettier": "^5.2.1",
 		"eslint-plugin-svelte": "^2.44.0",
+		"just-install": "^2.0.2",
 		"postcss": "^8.4.47",
 		"prettier": "^3.3.3",
 		"prettier-plugin-svelte": "^3.2.6",

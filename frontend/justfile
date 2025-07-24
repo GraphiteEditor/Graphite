@@ -1,0 +1,16 @@
+# https://just.systems
+
+output := 'wasm'/'pkg'/'graphite_wasm_bg.wasm'
+
+build profile='debug':
+	cargo build -p graphite-wasm --lib --target wasm32-unknown-unknown --color=always {{ if profile != "debug" { "--release" } else { "" } }}
+
+	mkdir -p pkg
+
+	wasm-bindgen \
+		{{ '..' / 'target' / 'wasm32-unknown-unknown' / if profile != "debug" { 'release' / 'graphite_wasm.wasm' } else { 'debug' / 'graphite_wasm.wasm' } }} \
+		--out-dir {{ 'wasm' / 'pkg' }} --typescript --target web {{ if profile == "debug" { "--debug" } else { "" } }}
+
+	{{ if profile != 'debug' { "wasm-opt " + output + " -o " + output + " -O" } else { "" } }}
+
+
