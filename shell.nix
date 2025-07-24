@@ -15,71 +15,17 @@
 # Or you can run it like this without needing to first enter the Nix shell:
 # > nix-shell --command "npm start"
 
-let
-  # Get oxalica's Rust overlay for better Rust integration
-  rust-overlay-source = builtins.fetchGit {
-    url = "https://github.com/oxalica/rust-overlay";
-  };
-
-  # Import it so we can use it in Nix
-  rust-overlay = import rust-overlay-source;
-
-  # Import system packages overlaid with the Rust overlay
-  pkgs = import <nixpkgs> {
-    overlays = [ rust-overlay ];
-  };
-
-  # Define the rustc we need
-  rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
-    targets = [ "wasm32-unknown-unknown" ];
-    # wasm-pack needs this
-    extensions = [ "rust-src" "rust-analyzer" "clippy" "cargo"];
-  };
-in
-  # Make a shell with the dependencies we need
-  pkgs.mkShell {
-    packages = with pkgs; [
-      rustc-wasm
-      nodejs
-      cargo-watch
-      cargo-nextest
-      cargo-expand
-      cargo-about
-      wasm-pack
-      binaryen
-      wasm-bindgen-cli
-      vulkan-loader
-      libxkbcommon
-      pkg-config
-      # used for profiling
-      gnuplot
-      samply
-      cargo-flamegraph
-
-      # For Tauri
-      at-spi2-atk
-      atkmm
-      cairo
-      gdk-pixbuf
-      glib
-      gtk3
-      harfbuzz
-      librsvg
-      libsoup_3
-      pango
-      webkitgtk_4_1
-      openssl
-
-      # For Rawkit tests
-      libraw
-
-      # Use Mold as a linker
-      mold
-    ];
-
-    # Hacky way to run Cargo through Mold
-    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.openssl pkgs.vulkan-loader pkgs.libxkbcommon pkgs.llvmPackages.libcxxStdenv pkgs.gcc-unwrapped.lib pkgs.llvm pkgs.libraw];
-    shellHook = ''
-    alias cargo='mold --run cargo'
-    '';
-  }
+# Uses flake compat to provide a development shell that is identical to the one defined in the flake
+(import
+  (
+    let
+      lock = builtins.fromJSON (builtins.readFile .nix/flake.lock);
+      nodeName = lock.nodes.root.inputs.flake-compat;
+    in
+    fetchTarball {
+      url = lock.nodes.${nodeName}.locked.url;
+      sha256 = lock.nodes.${nodeName}.locked.narHash;
+    }
+  )
+  { src = ./.nix; }
+).shellNix
