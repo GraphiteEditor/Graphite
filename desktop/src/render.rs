@@ -223,13 +223,7 @@ impl GraphicsState {
 		graphics_state
 	}
 
-	pub(crate) fn ui_texture_outdated(&self, frame_buffer: &FrameBuffer) -> bool {
-		let width = frame_buffer.width() as u32;
-		let height = frame_buffer.height() as u32;
-
-		self.config.width != width || self.config.height != height
-	}
-	pub(crate) fn resize(&mut self, width: u32, height: u32) {
+	pub(crate) fn try_resize(&mut self, width: u32, height: u32) {
 		if width > 0 && height > 0 && (self.config.width != width || self.config.height != height) {
 			self.config.width = width;
 			self.config.height = height;
@@ -248,7 +242,26 @@ impl GraphicsState {
 				usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
 				view_formats: &[],
 			});
+
+			let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 			self.texture = Some(texture);
+
+			let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+				layout: &self.render_pipeline.get_bind_group_layout(0),
+				entries: &[
+					wgpu::BindGroupEntry {
+						binding: 0,
+						resource: wgpu::BindingResource::TextureView(&texture_view),
+					},
+					wgpu::BindGroupEntry {
+						binding: 1,
+						resource: wgpu::BindingResource::Sampler(&self.sampler),
+					},
+				],
+				label: Some("texture_bind_group"),
+			});
+
+			self.bind_group = Some(bind_group);
 		}
 	}
 
@@ -257,7 +270,7 @@ impl GraphicsState {
 		let width = frame_buffer.width() as u32;
 		let height = frame_buffer.height() as u32;
 
-		self.resize(width, height);
+		self.try_resize(width, height);
 
 		let Some(ref texture) = self.texture else { return };
 
@@ -280,25 +293,6 @@ impl GraphicsState {
 				depth_or_array_layers: 1,
 			},
 		);
-
-		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-		let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-			layout: &self.render_pipeline.get_bind_group_layout(0),
-			entries: &[
-				wgpu::BindGroupEntry {
-					binding: 0,
-					resource: wgpu::BindingResource::TextureView(&texture_view),
-				},
-				wgpu::BindGroupEntry {
-					binding: 1,
-					resource: wgpu::BindingResource::Sampler(&self.sampler),
-				},
-			],
-			label: Some("texture_bind_group"),
-		});
-
-		self.bind_group = Some(bind_group);
 	}
 
 	pub(crate) fn render(&mut self) -> Result<(), wgpu::SurfaceError> {

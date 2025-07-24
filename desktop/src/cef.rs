@@ -1,6 +1,9 @@
 use crate::{CustomEvent, FrameBuffer};
 use std::{
-	sync::{Arc, Mutex, mpsc::Receiver},
+	sync::{
+		Arc, Mutex,
+		mpsc::{Receiver, Sender},
+	},
 	time::Instant,
 };
 
@@ -21,7 +24,7 @@ pub(crate) trait CefEventHandler: Clone {
 	fn schedule_cef_message_loop_work(&self, scheduled_time: Instant);
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct WindowSize {
 	pub(crate) width: usize,
 	pub(crate) height: usize,
@@ -33,11 +36,6 @@ impl WindowSize {
 	}
 }
 
-#[derive(Clone)]
-pub(crate) struct CefHandler {
-	window_size_receiver: Arc<Mutex<WindowSizeReceiver>>,
-	event_loop_proxy: EventLoopProxy<CustomEvent>,
-}
 struct WindowSizeReceiver {
 	receiver: Receiver<WindowSize>,
 	window_size: WindowSize,
@@ -50,11 +48,20 @@ impl WindowSizeReceiver {
 		}
 	}
 }
+
+#[derive(Clone)]
+pub(crate) struct CefHandler {
+	window_size_receiver: Arc<Mutex<WindowSizeReceiver>>,
+	event_loop_proxy: EventLoopProxy<CustomEvent>,
+	poll_cef_sender: Sender<Instant>,
+}
+
 impl CefHandler {
-	pub(crate) fn new(window_size_receiver: Receiver<WindowSize>, event_loop_proxy: EventLoopProxy<CustomEvent>) -> Self {
+	pub(crate) fn new(window_size_receiver: Receiver<WindowSize>, event_loop_proxy: EventLoopProxy<CustomEvent>, poll_cef_sender: Sender<Instant>) -> Self {
 		Self {
 			window_size_receiver: Arc::new(Mutex::new(WindowSizeReceiver::new(window_size_receiver))),
 			event_loop_proxy,
+			poll_cef_sender,
 		}
 	}
 }
@@ -71,11 +78,12 @@ impl CefEventHandler for CefHandler {
 		}
 		*window_size
 	}
+
 	fn draw(&self, frame_buffer: FrameBuffer) {
 		let _ = self.event_loop_proxy.send_event(CustomEvent::UiUpdate(frame_buffer));
 	}
 
 	fn schedule_cef_message_loop_work(&self, scheduled_time: std::time::Instant) {
-		let _ = self.event_loop_proxy.send_event(CustomEvent::ScheduleBrowserWork(scheduled_time));
+		let _ = self.poll_cef_sender.send(scheduled_time);
 	}
 }
