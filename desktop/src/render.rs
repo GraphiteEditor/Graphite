@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use thiserror::Error;
-use wgpu::PollType;
 use winit::window::Window;
 
 pub(crate) struct FrameBuffer {
@@ -215,17 +214,13 @@ impl GraphicsState {
 
 		let fb = FrameBuffer::new(initial_data, width, height)
 			.map_err(|e| {
-				panic!("Failed to create initial FrameBuffer: {}", e);
+				panic!("Failed to create initial FrameBuffer: {e}");
 			})
 			.unwrap();
 
 		graphics_state.update_texture(&fb);
 
 		graphics_state
-	}
-
-	pub(crate) fn poll(&self) {
-		let _ = self.device.poll(PollType::Poll);
 	}
 
 	pub(crate) fn update_texture(&mut self, frame_buffer: &FrameBuffer) {

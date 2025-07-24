@@ -6,7 +6,6 @@ use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 use std::time::Instant;
-use tracing::instrument::WithSubscriber;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::StartCause;
