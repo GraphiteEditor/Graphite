@@ -567,6 +567,7 @@ impl Fsm for ShapeToolFsmState {
 
 				if tool_data.gizmo_manger.handle_click() {
 					tool_data.data.drag_start = document.metadata().document_to_viewport.inverse().transform_point2(mouse_pos);
+					responses.add(DocumentMessage::StartTransaction);
 					return ShapeToolFsmState::ModifyingGizmo;
 				}
 
@@ -685,7 +686,6 @@ impl Fsm for ShapeToolFsmState {
 				self
 			}
 			(ShapeToolFsmState::ModifyingGizmo, ShapeToolMessage::PointerMove(..)) => {
-				responses.add(DocumentMessage::StartTransaction);
 				tool_data.gizmo_manger.handle_update(tool_data.data.viewport_drag_start(document), document, input, responses);
 
 				responses.add(OverlaysMessage::Draw);
