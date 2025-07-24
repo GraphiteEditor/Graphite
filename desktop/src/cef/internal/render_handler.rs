@@ -1,6 +1,6 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_render_handler_t, cef_base_ref_counted_t};
-use cef::{Browser, ImplBrowser, ImplBrowserHost, ImplRenderHandler, PaintElementType, Rect, WrapRenderHandler};
+use cef::{Browser, ImplRenderHandler, PaintElementType, Rect, WrapRenderHandler};
 
 use crate::FrameBuffer;
 use crate::cef::CefEventHandler;
@@ -32,7 +32,7 @@ impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 
 	fn on_paint(
 		&self,
-		browser: Option<&mut Browser>,
+		_browser: Option<&mut Browser>,
 		_type_: PaintElementType,
 		_dirty_rect_count: usize,
 		_dirty_rects: Option<&Rect>,
@@ -44,12 +44,7 @@ impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 		let buffer_slice = unsafe { std::slice::from_raw_parts(buffer, buffer_size) };
 		let frame_buffer = FrameBuffer::new(buffer_slice.to_vec(), width as usize, height as usize).expect("Failed to create frame buffer");
 
-		let draw_successful = self.event_handler.draw(frame_buffer);
-		if !draw_successful {
-			if let Some(browser) = browser {
-				browser.host().unwrap().was_resized();
-			}
-		}
+		self.event_handler.draw(frame_buffer)
 	}
 
 	fn get_raw(&self) -> *mut _cef_render_handler_t {
