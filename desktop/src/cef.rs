@@ -11,13 +11,13 @@ pub(crate) use context::{Context, InitError, Initialized, Setup, SetupError};
 
 pub(crate) trait CefEventHandler: Clone {
 	fn window_size(&self) -> WindowSize;
-	fn draw(&self, frame_buffer: FrameBuffer) -> bool;
+	fn draw(&self, frame_buffer: FrameBuffer);
 	/// Scheudule the main event loop to run the cef event loop after the timeout
 	///  [`_cef_browser_process_handler_t::on_schedule_message_pump_work`] for more documentation.
 	fn schedule_cef_message_loop_work(&self, scheduled_time: Instant);
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub(crate) struct WindowSize {
 	pub(crate) width: usize,
 	pub(crate) height: usize,

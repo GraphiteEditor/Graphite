@@ -20,7 +20,7 @@ impl<H: CefEventHandler> BrowserProcessHandlerImpl<H> {
 	}
 }
 
-impl<H: CefEventHandler> ImplBrowserProcessHandler for BrowserProcessHandlerImpl<H> {
+impl<H: CefEventHandler + Clone> ImplBrowserProcessHandler for BrowserProcessHandlerImpl<H> {
 	fn on_context_initialized(&self) {
 		cef::register_scheme_handler_factory(Some(&CefString::from(GRAPHITE_SCHEME)), None, Some(&mut SchemeHandlerFactory::new(GraphiteSchemeHandlerFactory::new())));
 	}
@@ -34,7 +34,7 @@ impl<H: CefEventHandler> ImplBrowserProcessHandler for BrowserProcessHandlerImpl
 	}
 }
 
-impl<H: CefEventHandler> Clone for BrowserProcessHandlerImpl<H> {
+impl<H: CefEventHandler + Clone> Clone for BrowserProcessHandlerImpl<H> {
 	fn clone(&self) -> Self {
 		unsafe {
 			let rc_impl = &mut *self.object;
@@ -54,7 +54,7 @@ impl<H: CefEventHandler> Rc for BrowserProcessHandlerImpl<H> {
 		}
 	}
 }
-impl<H: CefEventHandler> WrapBrowserProcessHandler for BrowserProcessHandlerImpl<H> {
+impl<H: CefEventHandler + Clone> WrapBrowserProcessHandler for BrowserProcessHandlerImpl<H> {
 	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_browser_process_handler_t, Self>) {
 		self.object = object;
 	}

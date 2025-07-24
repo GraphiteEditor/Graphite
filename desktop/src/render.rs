@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use thiserror::Error;
+use wgpu::PollType;
 use winit::window::Window;
 
 pub(crate) struct FrameBuffer {
@@ -10,7 +11,7 @@ pub(crate) struct FrameBuffer {
 }
 impl std::fmt::Debug for FrameBuffer {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("WindowState")
+		f.debug_struct("FrameBuffer")
 			.field("width", &self.width)
 			.field("height", &self.height)
 			.field("len", &self.buffer.len())
@@ -223,12 +224,8 @@ impl GraphicsState {
 		graphics_state
 	}
 
-	pub(crate) fn resize(&mut self, width: usize, height: usize) {
-		if width > 0 && height > 0 && (self.config.width != width as u32 || self.config.height != height as u32) {
-			self.config.width = width as u32;
-			self.config.height = height as u32;
-			self.surface.configure(&self.device, &self.config);
-		}
+	pub(crate) fn poll(&self) {
+		let _ = self.device.poll(PollType::Poll);
 	}
 
 	pub(crate) fn update_texture(&mut self, frame_buffer: &FrameBuffer) {
