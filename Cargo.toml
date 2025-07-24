@@ -154,6 +154,10 @@ tinyvec = { version = "1", features = ["std"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 iai-callgrind = { version = "0.12.3" }
 ndarray = "0.16.1"
+cef = "138.5.0"
+include_dir = "0.7.4"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing = "0.1.41"
 
 [profile.dev]
 opt-level = 1

@@ -1,5 +1,3 @@
-use std::time::{Duration, Instant};
-
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_browser_process_handler_t, cef_base_ref_counted_t, cef_browser_process_handler_t};
 use cef::{CefString, ImplBrowserProcessHandler, SchemeHandlerFactory, WrapBrowserProcessHandler};
@@ -27,10 +25,6 @@ impl<H: CefEventHandler> ImplBrowserProcessHandler for BrowserProcessHandlerImpl
 
 	fn get_raw(&self) -> *mut _cef_browser_process_handler_t {
 		self.object.cast()
-	}
-
-	fn on_schedule_message_pump_work(&self, delay_ms: i64) {
-		self.event_handler.schedule_cef_message_loop_work(Instant::now() + Duration::from_millis(delay_ms as u64));
 	}
 }
 

@@ -117,9 +117,7 @@ impl Context<Initialized> {
 	}
 
 	pub(crate) fn notify_of_resize(&self) {
-		if let Some(browser) = &self.browser {
-			browser.host().unwrap().was_resized();
-		}
+		self.browser.as_ref().expect("browser must be initialized").host().unwrap().was_resized();
 	}
 }
 

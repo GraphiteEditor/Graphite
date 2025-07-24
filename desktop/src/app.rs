@@ -1,8 +1,8 @@
-use crate::CustomEvent;
-use crate::WindowState;
-use crate::WindowStateHandle;
+use crate::WindowSizeHandle;
+use crate::WinitEvent;
+use crate::cef::WindowSize;
+use crate::render::FrameBuffer;
 use crate::render::GraphicsState;
-use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
@@ -10,79 +10,90 @@ use winit::event::StartCause;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::event_loop::ControlFlow;
-use winit::window::Window;
+use winit::event_loop::EventLoopProxy;
 use winit::window::WindowId;
 
 use crate::cef;
 
 pub(crate) struct WinitApp {
-	pub(crate) window_state: WindowStateHandle,
+	pub(crate) event_loop_proxy: EventLoopProxy<WinitEvent>,
+	//
+	pub(crate) shared_render_data: WindowSizeHandle,
+	pub(crate) graphics_state: Option<GraphicsState>,
 	pub(crate) cef_context: cef::Context<cef::Initialized>,
-	pub(crate) window: Option<Arc<Window>>,
-	cef_schedule: Option<Instant>,
+	// Cached frame buffer from CEF, used to check if mouse is on a transparent pixel
+	pub(crate) frame_buffer: Option<FrameBuffer>,
 }
 
 impl WinitApp {
-	pub(crate) fn new(window_state: WindowStateHandle, cef_context: cef::Context<cef::Initialized>) -> Self {
+	pub(crate) fn new(elp: EventLoopProxy<WinitEvent>, shared_render_data: WindowSizeHandle, cef_context: cef::Context<cef::Initialized>) -> Self {
 		Self {
-			window_state,
+			event_loop_proxy: elp,
+			shared_render_data,
 			cef_context,
-			window: None,
-			cef_schedule: Some(Instant::now()),
+			graphics_state: None,
+			frame_buffer: None,
 		}
 	}
 }
 
-impl ApplicationHandler<CustomEvent> for WinitApp {
-	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-		let timeout = Instant::now() + Duration::from_millis(10);
-		let wait_until = timeout.min(self.cef_schedule.unwrap_or(timeout));
-		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
-	}
-
-	fn new_events(&mut self, _event_loop: &ActiveEventLoop, _cause: StartCause) {
-		if let Some(schedule) = self.cef_schedule
-			&& schedule < Instant::now()
-		{
-			self.cef_schedule = None;
-			self.cef_context.work();
+impl ApplicationHandler<WinitEvent> for WinitApp {
+	// Runs on every event, but when resume time is reached (100x per second) it does the CEF work and queues a new timer.
+	fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
+		match cause {
+			// When the event loop starts running, queue the timer.
+			StartCause::Init => {
+				event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(10)));
+			}
+			// When the timer expires, run the CEF work event and queue a new timer.
+			StartCause::ResumeTimeReached { .. } => {
+				self.cef_context.work();
+				event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(10)));
+			}
+			_ => {}
 		}
 	}
 
 	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-		self.window_state
-			.with(|s| {
-				if let WindowState { width: Some(w), height: Some(h), .. } = s {
-					let window = Arc::new(
-						event_loop
-							.create_window(
-								Window::default_attributes()
-									.with_title("CEF Offscreen Rendering")
-									.with_inner_size(winit::dpi::LogicalSize::new(*w as u32, *h as u32)),
-							)
-							.unwrap(),
-					);
-					let graphics_state = pollster::block_on(GraphicsState::new(window.clone()));
-
-					self.window = Some(window.clone());
-					s.graphics_state = Some(graphics_state);
-
-					tracing::info!("Winit window created and ready");
-				}
-			})
-			.unwrap();
+		self.graphics_state = Some(futures::executor::block_on(GraphicsState::new(event_loop)));
 	}
 
-	fn user_event(&mut self, _: &ActiveEventLoop, event: CustomEvent) {
+	fn user_event(&mut self, _: &ActiveEventLoop, event: WinitEvent) {
 		match event {
-			CustomEvent::UiUpdate => {
-				if let Some(window) = &self.window {
-					window.request_redraw();
-				}
+			WinitEvent::TryLoopCefWorkWhenResizing { window_size } => {
+				let Some(frame_buffer) = &self.frame_buffer else {
+					return;
+				};
+				if window_size.width != frame_buffer.width() || window_size.height != frame_buffer.height() {
+					let _ = self.event_loop_proxy.send_event(WinitEvent::TryLoopCefWorkWhenResizing { window_size });
+					self.cef_context.work();
+				};
 			}
-			CustomEvent::ScheduleBrowserWork(instant) => {
-				self.cef_schedule = Some(instant);
-			}
+			WinitEvent::UIUpdate { frame_buffer } => {
+				let Some(graphics_state) = &mut self.graphics_state else {
+					println!("Graphics state must be initialized in UIUpdate");
+					return;
+				};
+				graphics_state.update_ui_texture(&frame_buffer);
+				graphics_state.window.request_redraw();
+				self.frame_buffer = Some(frame_buffer);
+			} // WinitEvent::ViewportResized {
+			  // 	top_left
+			  // } => {
+			  // 	let Some(graphics_state) = &mut self.graphics_state else {
+			  // 		println!("Graphics state must be initialized in load_frame_buffer");
+			  // 		return Err("Graphics state must be initialized".to_string());
+			  // 	};
+			  // 	graphics_state._viewport_top_left = top_left;
+			  // }
+			  // 	,
+			  // WinitEvent::ViewportUpdate { texture } => {
+			  // 	let Some(graphics_state) = &mut self.graphics_state else {
+			  // 		println!("Graphics state must be initialized in load_frame_buffer");
+			  // 		return Err("Graphics state must be initialized".to_string());
+			  // 	};
+			  // 	graphics_state.viewport_texture = Some(texture.texture);
+			  // }
 		}
 	}
 
@@ -95,55 +106,20 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 				event_loop.exit();
 			}
 			WindowEvent::Resized(physical_size) => {
-				self.window_state
-					.with(|s| {
-						let width = physical_size.width as usize;
-						let height = physical_size.height as usize;
-						s.width = Some(width);
-						s.height = Some(height);
-						if let Some(graphics_state) = &mut s.graphics_state {
-							graphics_state.resize(width, height);
-						}
-					})
-					.unwrap();
+				// The WaitUntil control flow for the timed event loop will not run when the window is being resized, so CEF needs to be manually worked
+				let window_size = WindowSize::new(physical_size.width, physical_size.height);
+				let _ = self.shared_render_data.with(|shared_render_data| {
+					*shared_render_data = Some(window_size.clone());
+				});
 				self.cef_context.notify_of_resize();
+				let _ = self.event_loop_proxy.send_event(WinitEvent::TryLoopCefWorkWhenResizing { window_size });
 			}
-
 			WindowEvent::RedrawRequested => {
-				self.cef_context.work();
-
-				self.window_state
-					.with(|s| {
-						if let WindowState {
-							width: Some(width),
-							height: Some(height),
-							graphics_state: Some(graphics_state),
-							ui_frame_buffer: ui_fb,
-							..
-						} = s
-						{
-							if let Some(fb) = &*ui_fb {
-								graphics_state.update_texture(fb);
-								if fb.width() != *width && fb.height() != *height {
-									graphics_state.resize(*width, *height);
-								}
-							} else if let Some(window) = &self.window {
-								window.request_redraw();
-							}
-
-							match graphics_state.render() {
-								Ok(_) => {}
-								Err(wgpu::SurfaceError::Lost) => {
-									graphics_state.resize(*width, *height);
-								}
-								Err(wgpu::SurfaceError::OutOfMemory) => {
-									event_loop.exit();
-								}
-								Err(e) => tracing::error!("{:?}", e),
-							}
-						}
-					})
-					.unwrap();
+				let Some(graphics_state) = &mut self.graphics_state else {
+					println!("Graphics state must be initialized before RedrawRequested");
+					return;
+				};
+				let _ = graphics_state.render();
 			}
 			_ => {}
 		}

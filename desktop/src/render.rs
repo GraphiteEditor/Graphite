@@ -1,16 +1,17 @@
 use std::sync::Arc;
 
 use thiserror::Error;
-use winit::window::Window;
+use winit::{event_loop::ActiveEventLoop, window::Window};
 
 pub(crate) struct FrameBuffer {
 	buffer: Vec<u8>,
-	width: usize,
-	height: usize,
+	width: u32,
+	height: u32,
 }
+
 impl std::fmt::Debug for FrameBuffer {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("WindowState")
+		f.debug_struct("FrameBuffer")
 			.field("width", &self.width)
 			.field("height", &self.height)
 			.field("len", &self.buffer.len())
@@ -21,11 +22,11 @@ impl std::fmt::Debug for FrameBuffer {
 #[derive(Error, Debug)]
 pub(crate) enum FrameBufferError {
 	#[error("Invalid buffer size {buffer_size}, expected {expected_size} for width {width} multiplied with height {height} multiplied by 4 channels")]
-	InvalidSize { buffer_size: usize, expected_size: usize, width: usize, height: usize },
+	InvalidSize { buffer_size: usize, expected_size: usize, width: u32, height: u32 },
 }
 
 impl FrameBuffer {
-	pub(crate) fn new(buffer: Vec<u8>, width: usize, height: usize) -> Result<Self, FrameBufferError> {
+	pub(crate) fn new(buffer: Vec<u8>, width: u32, height: u32) -> Result<Self, FrameBufferError> {
 		let fb = Self { buffer, width, height };
 		fb.validate_size()?;
 		Ok(fb)
@@ -35,19 +36,19 @@ impl FrameBuffer {
 		&self.buffer
 	}
 
-	pub(crate) fn width(&self) -> usize {
+	pub(crate) fn width(&self) -> u32 {
 		self.width
 	}
 
-	pub(crate) fn height(&self) -> usize {
+	pub(crate) fn height(&self) -> u32 {
 		self.height
 	}
 
 	fn validate_size(&self) -> Result<(), FrameBufferError> {
-		if self.buffer.len() != self.width * self.height * 4 {
+		if self.buffer.len() != (self.width * self.height * 4) as usize {
 			Err(FrameBufferError::InvalidSize {
 				buffer_size: self.buffer.len(),
-				expected_size: self.width * self.height * 4,
+				expected_size: (self.width * self.height * 4) as usize,
 				width: self.width,
 				height: self.height,
 			})
@@ -59,18 +60,35 @@ impl FrameBuffer {
 
 #[derive(Debug)]
 pub(crate) struct GraphicsState {
+	pub window: Arc<Window>,
 	surface: wgpu::Surface<'static>,
+	config: wgpu::SurfaceConfiguration,
 	device: wgpu::Device,
 	queue: wgpu::Queue,
-	config: wgpu::SurfaceConfiguration,
-	texture: Option<wgpu::Texture>,
-	bind_group: Option<wgpu::BindGroup>,
 	render_pipeline: wgpu::RenderPipeline,
 	sampler: wgpu::Sampler,
+
+	// Cached texture for UI rendering
+	ui_texture: Option<wgpu::Texture>,
+	ui_bind_group: Option<wgpu::BindGroup>,
+	// Cached texture for node graph output
+	// viewport_texture: Option<wgpu::Texture>,
+	// // Returned from CEF js event callback
+	// viewport_top_left: (u32, u32),
 }
 
 impl GraphicsState {
-	pub(crate) async fn new(window: Arc<Window>) -> Self {
+	pub(crate) async fn new(event_loop: &ActiveEventLoop) -> Self {
+		let window = Arc::new(
+			event_loop
+				.create_window(
+					Window::default_attributes()
+						.with_title("CEF Offscreen Rendering Test")
+						.with_inner_size(winit::dpi::LogicalSize::new(800, 600)),
+				)
+				.unwrap(),
+		);
+
 		let size = window.inner_size();
 
 		let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -78,7 +96,7 @@ impl GraphicsState {
 			..Default::default()
 		});
 
-		let surface = instance.create_surface(window).unwrap();
+		let surface = instance.create_surface(window.clone()).unwrap();
 
 		let adapter = instance
 			.request_adapter(&wgpu::RequestAdapterOptions {
@@ -196,49 +214,30 @@ impl GraphicsState {
 			cache: None,
 		});
 
-		let mut graphics_state = Self {
+		let graphics_state = Self {
+			window,
 			surface,
 			device,
 			queue,
 			config,
-			texture: None,
-			bind_group: None,
+			ui_texture: None,
+			ui_bind_group: None,
 			render_pipeline,
 			sampler,
 		};
 
-		// Initialize with a test pattern so we always have something to render
-		let width = 800;
-		let height = 600;
-		let initial_data = vec![34u8; width * height * 4]; // Gray texture #222222FF
-
-		let fb = FrameBuffer::new(initial_data, width, height)
-			.map_err(|e| {
-				panic!("Failed to create initial FrameBuffer: {}", e);
-			})
-			.unwrap();
-
-		graphics_state.update_texture(&fb);
-
 		graphics_state
 	}
 
-	pub(crate) fn resize(&mut self, width: usize, height: usize) {
-		if width > 0 && height > 0 && (self.config.width != width as u32 || self.config.height != height as u32) {
-			self.config.width = width as u32;
-			self.config.height = height as u32;
-			self.surface.configure(&self.device, &self.config);
-		}
-	}
-
-	pub(crate) fn update_texture(&mut self, frame_buffer: &FrameBuffer) {
+	pub(crate) fn update_ui_texture(&mut self, frame_buffer: &FrameBuffer) {
 		let data = frame_buffer.buffer();
 		let width = frame_buffer.width() as u32;
 		let height = frame_buffer.height() as u32;
 
-		if width > 0 && height > 0 && (self.config.width != width || self.config.height != height) {
-			self.config.width = width;
+		// Resize the surface if the dimensions changed
+		if self.config.width != width || self.config.height != height {
 			self.config.height = height;
+			self.config.width = width;
 			self.surface.configure(&self.device, &self.config);
 		}
 
@@ -294,8 +293,8 @@ impl GraphicsState {
 			label: Some("texture_bind_group"),
 		});
 
-		self.texture = Some(texture);
-		self.bind_group = Some(bind_group);
+		self.ui_texture = Some(texture);
+		self.ui_bind_group = Some(bind_group);
 	}
 
 	pub(crate) fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -321,7 +320,7 @@ impl GraphicsState {
 			});
 
 			render_pass.set_pipeline(&self.render_pipeline);
-			if let Some(bind_group) = &self.bind_group {
+			if let Some(bind_group) = &self.ui_bind_group {
 				render_pass.set_bind_group(0, bind_group, &[]);
 				render_pass.draw(0..6, 0..1); // Draw 3 vertices for fullscreen triangle
 			} else {

@@ -1,7 +1,5 @@
 use std::fmt::Debug;
 use std::process::exit;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::Instant;
 
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::{EventLoop, EventLoopProxy};
@@ -10,127 +8,57 @@ mod cef;
 use cef::Setup;
 
 mod render;
-use render::{FrameBuffer, GraphicsState};
+use render::FrameBuffer;
 
 mod app;
 use app::WinitApp;
 
-#[derive(Debug)]
-pub(crate) enum CustomEvent {
-	UiUpdate,
-	ScheduleBrowserWork(Instant),
-}
+use crate::cef::{WindowSize, WindowSizeHandle};
 
 #[derive(Debug)]
-pub(crate) struct WindowState {
-	width: Option<usize>,
-	height: Option<usize>,
-	ui_frame_buffer: Option<FrameBuffer>,
-	_viewport_frame_buffer: Option<FrameBuffer>,
-	graphics_state: Option<GraphicsState>,
-	event_loop_proxy: Option<EventLoopProxy<CustomEvent>>,
-}
-
-impl WindowState {
-	fn new() -> Self {
-		Self {
-			width: None,
-			height: None,
-			ui_frame_buffer: None,
-			_viewport_frame_buffer: None,
-			graphics_state: None,
-			event_loop_proxy: None,
-		}
-	}
-
-	fn handle(self) -> WindowStateHandle {
-		WindowStateHandle { inner: Arc::new(Mutex::new(self)) }
-	}
-}
-
-pub(crate) struct WindowStateHandle {
-	inner: Arc<Mutex<WindowState>>,
-}
-
-impl WindowStateHandle {
-	fn with<'a, P>(&self, p: P) -> Result<(), PoisonError<MutexGuard<'a, WindowState>>>
-	where
-		P: FnOnce(&mut WindowState),
-	{
-		match self.inner.lock() {
-			Ok(mut guard) => {
-				p(&mut guard);
-				Ok(())
-			}
-			Err(_) => todo!("not error handling yet"),
-		}
-	}
-}
-
-impl Clone for WindowStateHandle {
-	fn clone(&self) -> Self {
-		Self { inner: self.inner.clone() }
-	}
+pub(crate) enum WinitEvent {
+	// Constantly run CEF when resizing until the cef ui overlay matches the current window size
+	// This is because the ResumeTimeReached event loop does not run when the window is being resized
+	TryLoopCefWorkWhenResizing { window_size: WindowSize },
+	// Called from the on_paint callback in OffscreenRenderHandler, and if the buffer is different than the previous buffer size
+	UIUpdate { frame_buffer: FrameBuffer },
+	// Called from the javascript binding to onResize for the canvas
+	// ViewportResized { top_left: (u32, u32) },
+	// // Called from the editor if the render node is evaluated and returns an UpdateViewport message
+	// ViewportUpdate { texture: wgpu::TextureView },
 }
 
 #[derive(Clone)]
 struct CefHandler {
-	window_state: WindowStateHandle,
+	event_loop_proxy: EventLoopProxy<WinitEvent>,
+	window_state: WindowSizeHandle,
 }
 
 impl CefHandler {
-	fn new(window_state: WindowStateHandle) -> Self {
-		Self { window_state }
+	fn new(event_loop_proxy: EventLoopProxy<WinitEvent>, window_state: WindowSizeHandle) -> Self {
+		Self { event_loop_proxy, window_state }
 	}
 }
 
 impl cef::CefEventHandler for CefHandler {
 	fn window_size(&self) -> cef::WindowSize {
-		let mut w = 1;
-		let mut h = 1;
-
+		let mut window_size = cef::WindowSize::new(1, 1);
 		self.window_state
 			.with(|s| {
-				if let WindowState {
-					width: Some(width),
-					height: Some(height),
-					..
-				} = s
-				{
-					w = *width;
-					h = *height;
+				if let Some(s) = s {
+					window_size = cef::WindowSize::new(s.width as u32, s.height as u32);
 				}
 			})
 			.unwrap();
-
-		cef::WindowSize::new(w, h)
+		window_size
 	}
 
-	fn draw(&self, frame_buffer: FrameBuffer) -> bool {
-		let mut correct_size = true;
-		self.window_state
-			.with(|s| {
-				if let Some(event_loop_proxy) = &s.event_loop_proxy {
-					let _ = event_loop_proxy.send_event(CustomEvent::UiUpdate);
-				}
-				if frame_buffer.width() != s.width.unwrap_or(1) || frame_buffer.height() != s.height.unwrap_or(1) {
-					correct_size = false;
-				} else {
-					s.ui_frame_buffer = Some(frame_buffer);
-				}
-			})
-			.unwrap();
+	fn on_paint(&self, buffer: *const u8, width: u32, height: u32) {
+		let buffer_size = (width * height * 4) as usize;
+		let buffer_slice = unsafe { std::slice::from_raw_parts(buffer, buffer_size) };
+		let frame_buffer = FrameBuffer::new(buffer_slice.to_vec(), width, height).expect("Failed to create frame buffer");
 
-		correct_size
-	}
-
-	fn schedule_cef_message_loop_work(&self, scheduled_time: std::time::Instant) {
-		self.window_state
-			.with(|s| {
-				let Some(event_loop_proxy) = &mut s.event_loop_proxy else { return };
-				let _ = event_loop_proxy.send_event(CustomEvent::ScheduleBrowserWork(scheduled_time));
-			})
-			.unwrap();
+		let _ = self.event_loop_proxy.send_event(WinitEvent::UIUpdate { frame_buffer });
 	}
 }
 
@@ -146,20 +74,11 @@ fn main() {
 		}
 	};
 
-	let window_state = WindowState::new().handle();
+	let shared_window_data = WindowSizeHandle::default();
 
-	window_state
-		.with(|s| {
-			s.width = Some(1200);
-			s.height = Some(800);
-		})
-		.unwrap();
+	let event_loop = EventLoop::<WinitEvent>::with_user_event().build().unwrap();
 
-	let event_loop = EventLoop::<CustomEvent>::with_user_event().build().unwrap();
-
-	window_state.with(|s| s.event_loop_proxy = Some(event_loop.create_proxy())).unwrap();
-
-	let cef_context = match cef_context.init(CefHandler::new(window_state.clone())) {
+	let cef_context = match cef_context.init(CefHandler::new(event_loop.create_proxy(), shared_window_data.clone())) {
 		Ok(c) => c,
 		Err(cef::InitError::InitializationFailed) => {
 			tracing::error!("Cef initialization failed");
@@ -169,7 +88,7 @@ fn main() {
 
 	tracing::info!("Cef initialized successfully");
 
-	let mut winit_app = WinitApp::new(window_state, cef_context);
+	let mut winit_app = WinitApp::new(event_loop.create_proxy(), shared_window_data, cef_context);
 
 	event_loop.run_app(&mut winit_app).unwrap();
 }

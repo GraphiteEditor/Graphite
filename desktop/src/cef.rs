@@ -1,29 +1,42 @@
-use crate::FrameBuffer;
-use std::time::Instant;
-
 mod context;
 mod input;
 mod internal;
 mod scheme_handler;
 
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+
 pub(crate) use context::{Context, InitError, Initialized, Setup, SetupError};
 
 pub(crate) trait CefEventHandler: Clone {
 	fn window_size(&self) -> WindowSize;
-	fn draw(&self, frame_buffer: FrameBuffer) -> bool;
-	/// Scheudule the main event loop to run the cef event loop after the timeout
-	///  [`_cef_browser_process_handler_t::on_schedule_message_pump_work`] for more documentation.
-	fn schedule_cef_message_loop_work(&self, scheduled_time: Instant);
+	fn on_paint(&self, buffer: *const u8, width: u32, height: u32);
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct WindowSize {
-	pub(crate) width: usize,
-	pub(crate) height: usize,
+	pub(crate) width: u32,
+	pub(crate) height: u32,
 }
 
 impl WindowSize {
-	pub(crate) fn new(width: usize, height: usize) -> Self {
+	pub(crate) fn new(width: u32, height: u32) -> Self {
 		Self { width, height }
+	}
+}
+
+// Shared between the CEF render handler and the Winit app
+#[derive(Clone, Default)]
+pub(crate) struct WindowSizeHandle {
+	inner: Arc<Mutex<Option<WindowSize>>>,
+}
+
+impl WindowSizeHandle {
+	pub fn with<P>(&self, p: P) -> Result<(), PoisonError<MutexGuard<Option<WindowSize>>>>
+	where
+		P: FnOnce(&mut Option<WindowSize>),
+	{
+		let mut guard = self.inner.lock()?;
+		p(&mut guard);
+		Ok(())
 	}
 }
