@@ -16,11 +16,13 @@ use graphene_core::uuid::{NodeId, generate_uuid};
 use graphene_core::vector::VectorDataTable;
 use graphene_core::vector::click_target::{ClickTarget, FreePoint};
 use graphene_core::vector::style::{Fill, Stroke, StrokeAlign, ViewMode};
-use graphene_core::{AlphaBlending, Artboard, ArtboardGroupTable, GraphicElement, GraphicGroupTable};
+use graphene_core::{Artboard, ArtboardGroupTable, GraphicElement, GraphicGroupTable};
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::ops::Deref;
+use std::sync::{Arc, LazyLock};
 #[cfg(feature = "vello")]
 use vello::*;
 
@@ -146,7 +148,7 @@ impl Default for SvgRender {
 #[derive(Clone, Debug, Default)]
 pub struct RenderContext {
 	#[cfg(feature = "vello")]
-	pub resource_overrides: HashMap<u64, wgpu::Texture>,
+	pub resource_overrides: Vec<(peniko::Image, wgpu::Texture)>,
 }
 
 /// Static state used whilst rendering
@@ -1063,6 +1065,8 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 	}
 }
 
+const LAZY_ARC_VEC_ZERO_U8: LazyLock<Arc<Vec<u8>>> = LazyLock::new(|| Arc::new(Vec::new()));
+
 impl GraphicElementRendered for RasterDataTable<GPU> {
 	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {
 		log::warn!("tried to render texture as an svg");
@@ -1072,30 +1076,30 @@ impl GraphicElementRendered for RasterDataTable<GPU> {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams) {
 		use vello::peniko;
 
-		let mut render_stuff = |image: peniko::Image, instance_transform: DAffine2, blend_mode: AlphaBlending| {
-			let image_transform = transform * instance_transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+		for instance in self.instance_ref_iter() {
+			let blend_mode = *instance.alpha_blending;
 			let layer = blend_mode != Default::default();
-
-			let Some(bounds) = self.bounding_box(transform, true) else { return };
-			let blending = peniko::BlendMode::new(blend_mode.blend_mode.to_peniko(), peniko::Compose::SrcOver);
-
 			if layer {
+				let Some(bounds) = self.bounding_box(transform, true) else { return };
+				let blending = peniko::BlendMode::new(blend_mode.blend_mode.to_peniko(), peniko::Compose::SrcOver);
 				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 				scene.push_layer(blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
 			}
+
+			let image = peniko::Image::new(
+				peniko::Blob::new(LAZY_ARC_VEC_ZERO_U8.deref().clone()),
+				peniko::ImageFormat::Rgba8,
+				instance.instance.data().width(),
+				instance.instance.data().height(),
+			)
+			.with_extend(peniko::Extend::Repeat);
+			let image_transform = transform * *instance.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 			scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
+			context.resource_overrides.push((image, instance.instance.data().clone()));
+
 			if layer {
 				scene.pop_layer()
 			}
-		};
-
-		for instance in self.instance_ref_iter() {
-			let image = peniko::Image::new(vec![].into(), peniko::ImageFormat::Rgba8, instance.instance.data().width(), instance.instance.data().height()).with_extend(peniko::Extend::Repeat);
-
-			let id = image.data.id();
-			context.resource_overrides.insert(id, instance.instance.data().clone());
-
-			render_stuff(image, *instance.transform, *instance.alpha_blending);
 		}
 	}
 

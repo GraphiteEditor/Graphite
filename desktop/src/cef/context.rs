@@ -4,6 +4,8 @@ use cef::{Browser, CefString, Settings, api_hash, args::Args, execute_process};
 use thiserror::Error;
 use winit::event::WindowEvent;
 
+use crate::cef::dirs::{cef_cache_dir, cef_data_dir};
+
 use super::input::InputState;
 use super::scheme_handler::{FRONTEND_DOMAIN, GRAPHITE_SCHEME};
 use super::{CefEventHandler, input};
@@ -62,6 +64,8 @@ impl Context<Setup> {
 			windowless_rendering_enabled: 1,
 			multi_threaded_message_loop: 0,
 			external_message_pump: 1,
+			root_cache_path: cef_data_dir().to_str().map(CefString::from).unwrap(),
+			cache_path: cef_cache_dir().to_str().map(CefString::from).unwrap(),
 			..Default::default()
 		};
 
