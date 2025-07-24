@@ -1032,18 +1032,39 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext, _render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
 		for instance in self.instance_ref_iter() {
 			let image = &instance.instance;
 			if image.data.is_empty() {
-				return;
+				continue;
 			}
-			let image = peniko::Image::new(image.to_flat_u8().0.into(), peniko::ImageFormat::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
-			let transform = transform * *instance.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 
-			scene.draw_image(&image, kurbo::Affine::new(transform.to_cols_array()));
+			let alpha_blending = *instance.alpha_blending;
+			let blend_mode = alpha_blending.blend_mode.to_peniko();
+			let factor = if render_params.for_mask { 1. } else { alpha_blending.fill };
+			let opacity = alpha_blending.opacity * factor;
+
+			let mut layer = false;
+
+			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
+				if let Some(bounds) = self.bounding_box(transform, false) {
+					let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
+					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+					scene.push_layer(blending, opacity, kurbo::Affine::IDENTITY, &rect);
+					layer = true;
+				}
+			}
+
+			let image = peniko::Image::new(image.to_flat_u8().0.into(), peniko::ImageFormat::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
+			let image_transform = transform * *instance.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+
+			scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
+
+			if layer {
+				scene.pop_layer();
+			}
 		}
 	}
 
