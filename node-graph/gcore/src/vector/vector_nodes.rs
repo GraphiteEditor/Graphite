@@ -1,5 +1,5 @@
 use super::algorithms::bezpath_algorithms::{self, evaluate_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
-use super::algorithms::offset_subpath::offset_subpath;
+use super::algorithms::offset_subpath::offset_bezpath;
 use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
@@ -18,7 +18,7 @@ use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 
-use bezier_rs::{BezierHandles, Join, ManipulatorGroup, Subpath};
+use bezier_rs::{BezierHandles, ManipulatorGroup, Subpath};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
@@ -991,10 +991,10 @@ async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, j
 	let mut result_table = VectorDataTable::default();
 
 	for mut vector_data_instance in vector_data.instance_iter() {
-		let vector_data_transform = vector_data_instance.transform;
+		let vector_data_transform = Affine::new(vector_data_instance.transform.to_cols_array());
 		let vector_data = vector_data_instance.instance;
 
-		let subpaths = vector_data.stroke_bezier_paths();
+		let bezpaths = vector_data.stroke_bezpath_iter();
 		let mut result = VectorData {
 			style: vector_data.style.clone(),
 			..Default::default()
@@ -1002,24 +1002,26 @@ async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, j
 		result.style.set_stroke_transform(DAffine2::IDENTITY);
 
 		// Perform operation on all subpaths in this shape.
-		for mut subpath in subpaths {
-			subpath.apply_transform(vector_data_transform);
+		for (i, mut bezpath) in bezpaths.enumerate() {
+			info!("perfoming offset for bezpath {}", i);
+			bezpath.apply_affine(vector_data_transform);
 
 			// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
-			let mut subpath_out = offset_subpath(
-				&subpath,
+			let mut bezpath_out = offset_bezpath(
+				&bezpath,
 				-distance,
 				match join {
-					StrokeJoin::Miter => Join::Miter(Some(miter_limit)),
-					StrokeJoin::Bevel => Join::Bevel,
-					StrokeJoin::Round => Join::Round,
+					StrokeJoin::Miter => kurbo::Join::Miter,
+					StrokeJoin::Bevel => kurbo::Join::Bevel,
+					StrokeJoin::Round => kurbo::Join::Round,
 				},
+				Some(miter_limit),
 			);
 
-			subpath_out.apply_transform(vector_data_transform.inverse());
+			bezpath_out.apply_affine(vector_data_transform.inverse());
 
 			// One closed subpath, open path.
-			result.append_subpath(subpath_out, false);
+			result.append_bezpath(bezpath_out);
 		}
 
 		vector_data_instance.instance = result;
