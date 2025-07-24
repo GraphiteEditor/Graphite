@@ -46,15 +46,13 @@ impl WinitApp {
 
 impl ApplicationHandler<CustomEvent> for WinitApp {
 	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-		let timeout = Instant::now() + Duration::from_millis(1000);
+		// Set a timeout in case we miss any cef schedule requests
+		let timeout = Instant::now() + Duration::from_millis(100);
 		let wait_until = timeout.min(self.cef_schedule.unwrap_or(timeout));
 		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
 	}
 
 	fn new_events(&mut self, _event_loop: &ActiveEventLoop, _cause: StartCause) {
-		if self.ui_frame_buffer.is_none() {
-			self.cef_context.work();
-		}
 		if let Some(schedule) = self.cef_schedule
 			&& schedule < Instant::now()
 		{

@@ -36,9 +36,9 @@ fn main() {
 
 	let event_loop = EventLoop::<CustomEvent>::with_user_event().build().unwrap();
 
-	let (send, recv) = std::sync::mpsc::channel();
+	let (window_size_sender, window_size_receiver) = std::sync::mpsc::channel();
 
-	let cef_context = match cef_context.init(cef::CefHandler::new(recv, event_loop.create_proxy())) {
+	let cef_context = match cef_context.init(cef::CefHandler::new(window_size_receiver, event_loop.create_proxy())) {
 		Ok(c) => c,
 		Err(cef::InitError::InitializationFailed) => {
 			tracing::error!("Cef initialization failed");
@@ -48,7 +48,7 @@ fn main() {
 
 	tracing::info!("Cef initialized successfully");
 
-	let mut winit_app = WinitApp::new(cef_context, send, event_loop.create_proxy());
+	let mut winit_app = WinitApp::new(cef_context, window_size_sender, event_loop.create_proxy());
 
 	event_loop.run_app(&mut winit_app).unwrap();
 }
