@@ -1,9 +1,11 @@
+use std::f64::consts::PI;
+
 use super::intersection::{bezpath_intersections, line_intersection};
 use super::poisson_disk::poisson_disk_sample;
 use super::util::segment_tangent;
 use crate::vector::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
 use crate::vector::misc::{PointSpacingType, dvec2_to_point, point_to_dvec2};
-use glam::DVec2;
+use glam::{DMat2, DVec2};
 use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, QuadBez, Rect, Shape};
 
 /// Splits the [`BezPath`] at segment index at `t` value which lie in the range of [0, 1].
@@ -414,4 +416,49 @@ pub fn miter_line_join(bezpath1: &BezPath, bezpath2: &BezPath, miter_limit: Opti
 	}
 	// If we can't draw the miter join, default to a bevel join
 	None
+}
+
+/// Computes the path elements to form a circular join from `left` to `right`, along a circle around `center`.
+/// By default, the angle is assumed to be 180 degrees.
+pub fn compute_circular_subpath_details(left: DVec2, arc_point: DVec2, right: DVec2, center: DVec2, angle: Option<f64>) -> [PathEl; 2] {
+	let center_to_arc_point = arc_point - center;
+
+	// Based on https://pomax.github.io/bezierinfo/#circles_cubic
+	let handle_offset_factor = if let Some(angle) = angle { 4. / 3. * (angle / 4.).tan() } else { 0.551784777779014 };
+
+	let p1 = dvec2_to_point(left - (left - center).perp() * handle_offset_factor);
+	let p2 = dvec2_to_point(arc_point + center_to_arc_point.perp() * handle_offset_factor);
+	let p3 = dvec2_to_point(arc_point);
+
+	let first_half = PathEl::CurveTo(p1, p2, p3);
+
+	let p1 = dvec2_to_point(arc_point - center_to_arc_point.perp() * handle_offset_factor);
+	let p2 = dvec2_to_point(right + (right - center).perp() * handle_offset_factor);
+	let p3 = dvec2_to_point(right);
+
+	let second_half = PathEl::CurveTo(p1, p2, p3);
+
+	[first_half, second_half]
+}
+
+/// Returns path elements to create a round join with the provided center.
+pub fn round_line_join(bezpath1: &BezPath, bezpath2: &BezPath, center: DVec2) -> [PathEl; 2] {
+	let left = point_to_dvec2(bezpath1.segments().last().unwrap().end());
+	let right = point_to_dvec2(bezpath2.segments().next().unwrap().start());
+
+	let center_to_right = right - center;
+	let center_to_left = left - center;
+
+	let in_segment = bezpath1.segments().last();
+	let in_tangent = in_segment.map(|in_segment| segment_tangent(in_segment, 1.));
+
+	let mut angle = center_to_right.angle_to(center_to_left) / 2.;
+	let mut arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
+
+	if in_tangent.map(|in_tangent| (arc_point - left).angle_to(in_tangent).abs()).unwrap_or_default() > PI / 2. {
+		angle = angle - PI * (if angle < 0. { -1. } else { 1. });
+		arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
+	}
+
+	compute_circular_subpath_details(left, arc_point, right, center, Some(angle))
 }
