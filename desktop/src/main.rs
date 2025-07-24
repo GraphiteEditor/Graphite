@@ -15,6 +15,8 @@ use render::{FrameBuffer, GraphicsState};
 mod app;
 use app::WinitApp;
 
+mod dirs;
+
 #[derive(Debug)]
 pub(crate) enum CustomEvent {
 	UiUpdate,

@@ -2,6 +2,7 @@ use crate::FrameBuffer;
 use std::time::Instant;
 
 mod context;
+mod dirs;
 mod input;
 mod internal;
 mod scheme_handler;
