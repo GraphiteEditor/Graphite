@@ -154,6 +154,7 @@ impl EditorHandle {
 	}
 
 	// Sends a message to the dispatcher in the Editor Backend
+	#[cfg(not(feature = "native"))]
 	fn dispatch<T: Into<Message>>(&self, message: T) {
 		// Process no further messages after a crash to avoid spamming the console
 		if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
@@ -167,6 +168,16 @@ impl EditorHandle {
 		for message in frontend_messages.into_iter() {
 			self.send_frontend_message_to_js(message);
 		}
+	}
+
+	#[cfg(feature = "native")]
+	fn dispatch<T: Into<Message>>(&self, message: T) {
+		let message: Message = message.into();
+		let Ok(serialized_message) = serde_json::to_string(&message) else {
+			log::error!("Failed to serialize message");
+			return;
+		};
+		crate::send_message_to_cef(serialized_message)
 	}
 
 	// Sends a FrontendMessage to JavaScript
@@ -202,11 +213,17 @@ impl EditorHandle {
 		}
 	}
 
+	#[cfg(feature = "native")]
+	#[wasm_bindgen(js_name = initAfterFrontendReady)]
+	pub fn init_after_frontend_ready(&self, platform: String) {
+		log::debug!("Init after frontend ready from rust");
+	}
 	// ========================================================================
 	// Add additional JS -> Rust wrapper functions below as needed for calling
 	// the backend from the web frontend.
 	// ========================================================================
 
+	#[cfg(not(feature = "native"))]
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
 	pub fn init_after_frontend_ready(&self, platform: String) {
 		// Send initialization messages

@@ -99,10 +99,16 @@ pub(crate) struct GraphicsState {
 	surface: wgpu::Surface<'static>,
 	context: WgpuContext,
 	config: wgpu::SurfaceConfiguration,
-	texture: Option<wgpu::Texture>,
-	bind_group: Option<wgpu::BindGroup>,
 	render_pipeline: wgpu::RenderPipeline,
 	sampler: wgpu::Sampler,
+
+	// Cached texture for UI rendering
+	ui_texture: Option<wgpu::Texture>,
+	ui_bind_group: Option<wgpu::BindGroup>,
+	// Cached texture for node graph output
+	// viewport_texture: Option<wgpu::Texture>,
+	// // Returned from CEF js event callback
+	pub viewport_top_left: (u32, u32),
 }
 
 impl GraphicsState {
@@ -211,10 +217,11 @@ impl GraphicsState {
 			surface,
 			context,
 			config,
-			texture: None,
-			bind_group: None,
 			render_pipeline,
 			sampler,
+			ui_texture: None,
+			ui_bind_group: None,
+			viewport_top_left: (0, 0),
 		}
 	}
 
@@ -228,9 +235,9 @@ impl GraphicsState {
 
 	pub(crate) fn bind_texture(&mut self, texture: &wgpu::Texture) {
 		let bind_group = self.create_bindgroup(texture);
-		self.texture = Some(texture.clone());
+		self.ui_texture = Some(texture.clone());
 
-		self.bind_group = Some(bind_group);
+		self.ui_bind_group = Some(bind_group);
 	}
 
 	fn create_bindgroup(&self, texture: &wgpu::Texture) -> wgpu::BindGroup {
@@ -275,7 +282,7 @@ impl GraphicsState {
 			});
 
 			render_pass.set_pipeline(&self.render_pipeline);
-			if let Some(bind_group) = &self.bind_group {
+			if let Some(bind_group) = &self.ui_bind_group {
 				render_pass.set_bind_group(0, bind_group, &[]);
 				render_pass.draw(0..6, 0..1); // Draw 3 vertices for fullscreen triangle
 			} else {

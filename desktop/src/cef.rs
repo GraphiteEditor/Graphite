@@ -19,6 +19,8 @@ pub(crate) trait CefEventHandler: Clone {
 	/// Scheudule the main event loop to run the cef event loop after the timeout
 	///  [`_cef_browser_process_handler_t::on_schedule_message_pump_work`] for more documentation.
 	fn schedule_cef_message_loop_work(&self, scheduled_time: Instant);
+
+	fn send_message_to_editior(&self, message: String);
 }
 
 #[derive(Clone, Copy)]
@@ -115,5 +117,8 @@ impl CefEventHandler for CefHandler {
 
 	fn schedule_cef_message_loop_work(&self, scheduled_time: std::time::Instant) {
 		let _ = self.event_loop_proxy.send_event(CustomEvent::ScheduleBrowserWork(scheduled_time));
+	}
+	fn send_message_to_editior(&self, message: String) {
+		let _ = self.event_loop_proxy.send_event(CustomEvent::MessageReceived { message });
 	}
 }
