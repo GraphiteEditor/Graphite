@@ -1817,13 +1817,10 @@ dependencies = [
 name = "graphite-desktop"
 version = "0.1.0"
 dependencies = [
- "base64 0.22.1",
- "bytemuck",
  "cef",
  "dirs",
- "graphite-editor",
+ "futures",
  "include_dir",
- "pollster",
  "thiserror 2.0.12",
  "tracing",
  "tracing-subscriber",
@@ -3627,12 +3624,6 @@ dependencies = [
  "tracing",
  "windows-sys 0.59.0",
 ]
-
-[[package]]
-name = "pollster"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22686f4785f02a4fcc856d3b3bb19bf6c8160d103f7a99cc258bddd0251dc7f2"
 
 [[package]]
 name = "portable-atomic"

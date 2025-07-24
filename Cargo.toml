@@ -156,6 +156,10 @@ iai-callgrind = { version = "0.12.3" }
 ndarray = "0.16.1"
 strum = { version = "0.26.3", features = ["derive"] }
 dirs = "6.0"
+cef = "138.5.0"
+include_dir = "0.7.4"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing = "0.1.41"
 
 [profile.dev]
 opt-level = 1

@@ -9,25 +9,23 @@ edition = "2024"
 rust-version = "1.87"
 
 [features]
-default = ["gpu"]
-gpu = ["graphite-editor/gpu"]
+# default = ["gpu"]
+# gpu = ["graphite-editor/gpu"]
 
 [dependencies]
 # Local dependencies
-graphite-editor = { path = "../editor", features = [
-	"gpu",
-	"ron",
-	"vello",
-	"decouple-execution",
-] }
+# graphite-editor = { path = "../editor", features = [
+# 	"gpu",
+# 	"ron",
+# 	"vello",
+# 	"decouple-execution",
+# ] }
 wgpu = { workspace = true }
 winit = { workspace = true, features = ["serde"] }
-base64.workspace = true
-thiserror.workspace = true
-pollster = "0.3"
-cef = "138.5.0"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-tracing = "0.1.41"
-bytemuck = { version = "1.23.1", features = ["derive"] }
-include_dir = "0.7.4"
-dirs.workspace = true
+thiserror = { workspace = true }
+futures = { workspace = true }
+cef = { workspace = true }
+include_dir = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing = { workspace = true }
+dirs = {workspace = true}
