@@ -971,11 +971,13 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 						let mut transform_values = transform.to_scale_angle_translation();
 						let size = DVec2::new(image.width as f64, image.height as f64);
 						transform_values.0 /= size;
+
 						let matrix = DAffine2::from_scale_angle_translation(transform_values.0, transform_values.1, transform_values.2);
 						let matrix = format_transform_matrix(matrix);
 						if !matrix.is_empty() {
 							attributes.push("transform", matrix);
 						}
+
 						attributes.push("width", size.x.to_string());
 						attributes.push("height", size.y.to_string());
 
@@ -983,13 +985,14 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 						if opacity < 1. {
 							attributes.push("opacity", opacity.to_string());
 						}
+
 						if instance.alpha_blending.blend_mode != BlendMode::default() {
 							attributes.push("style", instance.alpha_blending.blend_mode.render());
 						}
 					},
 					|render| {
 						render.leaf_tag(
-							"img", // Must be a self-closing tag
+							"img", // Must be a self-closing (void element) tag, so we can't use `div` or `span`, for example
 							|attributes| {
 								attributes.push("data-canvas-placeholder", id.to_string());
 							},

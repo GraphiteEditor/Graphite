@@ -158,9 +158,10 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 
 	render.wrap_with_transform(footprint.transform, Some(footprint.resolution.as_dvec2()));
 
-	let svg = render.svg.to_svg_string();
-	let image_data = render.image_data;
-	RenderOutputType::Svg { svg, image_data }
+	RenderOutputType::Svg {
+		svg: render.svg.to_svg_string(),
+		image_data: render.image_data,
+	}
 }
 
 #[cfg(feature = "vello")]

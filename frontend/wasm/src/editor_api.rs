@@ -103,7 +103,7 @@ fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) {
 		let clamped_u8_data = wasm_bindgen::Clamped(&u8_data[..]);
 		match ImageData::new_with_u8_clamped_array_and_sh(clamped_u8_data, image.width, image.height) {
 			Ok(image_data_obj) => {
-				if context.put_image_data(&image_data_obj, 0.0, 0.0).is_err() {
+				if context.put_image_data(&image_data_obj, 0., 0.).is_err() {
 					error!("Failed to put image data on canvas for id: {placeholder_id}");
 				}
 			}

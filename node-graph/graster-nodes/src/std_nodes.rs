@@ -120,9 +120,10 @@ pub fn combine_channels(
 			let alpha = alpha.filter(|i| i.instance.width > 0 && i.instance.height > 0);
 
 			// Get this instance's transform and alpha blending mode from the first non-empty channel
-			let Some((transform, alpha_blending, source_node_id)) = [&red, &green, &blue, &alpha].iter().find_map(|i| i.as_ref()).map(|i| (i.transform, i.alpha_blending, i.source_node_id)) else {
-				return None;
-			};
+			let (transform, alpha_blending, source_node_id) = [&red, &green, &blue, &alpha]
+				.iter()
+				.find_map(|i| i.as_ref())
+				.map(|i| (i.transform, i.alpha_blending, i.source_node_id))?;
 
 			// Get the common width and height of the channels, which must have equal dimensions
 			let channel_dimensions = [
@@ -139,9 +140,7 @@ pub fn combine_channels(
 			{
 				return None;
 			}
-			let Some(&(width, height)) = channel_dimensions.iter().flatten().next() else {
-				return None;
-			};
+			let &(width, height) = channel_dimensions.iter().flatten().next()?;
 
 			// Create a new image for this instance output
 			let mut image = Image::new(width, height, Color::TRANSPARENT);
