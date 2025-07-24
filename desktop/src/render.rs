@@ -10,7 +10,7 @@ pub(crate) struct FrameBuffer {
 }
 impl std::fmt::Debug for FrameBuffer {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("WindowState")
+		f.debug_struct("FrameBuffer")
 			.field("width", &self.width)
 			.field("height", &self.height)
 			.field("len", &self.buffer.len())
@@ -214,7 +214,7 @@ impl GraphicsState {
 
 		let fb = FrameBuffer::new(initial_data, width, height)
 			.map_err(|e| {
-				panic!("Failed to create initial FrameBuffer: {}", e);
+				panic!("Failed to create initial FrameBuffer: {e}");
 			})
 			.unwrap();
 
@@ -223,11 +223,32 @@ impl GraphicsState {
 		graphics_state
 	}
 
-	pub(crate) fn resize(&mut self, width: usize, height: usize) {
-		if width > 0 && height > 0 && (self.config.width != width as u32 || self.config.height != height as u32) {
-			self.config.width = width as u32;
-			self.config.height = height as u32;
+	pub(crate) fn ui_texture_outdated(&self, frame_buffer: &FrameBuffer) -> bool {
+		let width = frame_buffer.width() as u32;
+		let height = frame_buffer.height() as u32;
+
+		self.config.width != width || self.config.height != height
+	}
+	pub(crate) fn resize(&mut self, width: u32, height: u32) {
+		if width > 0 && height > 0 && (self.config.width != width || self.config.height != height) {
+			self.config.width = width;
+			self.config.height = height;
 			self.surface.configure(&self.device, &self.config);
+			let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+				label: Some("CEF Texture"),
+				size: wgpu::Extent3d {
+					width,
+					height,
+					depth_or_array_layers: 1,
+				},
+				mip_level_count: 1,
+				sample_count: 1,
+				dimension: wgpu::TextureDimension::D2,
+				format: wgpu::TextureFormat::Bgra8UnormSrgb,
+				usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+				view_formats: &[],
+			});
+			self.texture = Some(texture);
 		}
 	}
 
@@ -236,30 +257,13 @@ impl GraphicsState {
 		let width = frame_buffer.width() as u32;
 		let height = frame_buffer.height() as u32;
 
-		if width > 0 && height > 0 && (self.config.width != width || self.config.height != height) {
-			self.config.width = width;
-			self.config.height = height;
-			self.surface.configure(&self.device, &self.config);
-		}
+		self.resize(width, height);
 
-		let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-			label: Some("CEF Texture"),
-			size: wgpu::Extent3d {
-				width,
-				height,
-				depth_or_array_layers: 1,
-			},
-			mip_level_count: 1,
-			sample_count: 1,
-			dimension: wgpu::TextureDimension::D2,
-			format: wgpu::TextureFormat::Bgra8UnormSrgb,
-			usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-			view_formats: &[],
-		});
+		let Some(ref texture) = self.texture else { return };
 
 		self.queue.write_texture(
 			wgpu::TexelCopyTextureInfo {
-				texture: &texture,
+				texture,
 				mip_level: 0,
 				origin: wgpu::Origin3d::ZERO,
 				aspect: wgpu::TextureAspect::All,
@@ -294,7 +298,6 @@ impl GraphicsState {
 			label: Some("texture_bind_group"),
 		});
 
-		self.texture = Some(texture);
 		self.bind_group = Some(bind_group);
 	}
 
