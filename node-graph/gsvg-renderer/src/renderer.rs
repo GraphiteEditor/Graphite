@@ -551,6 +551,9 @@ impl GraphicElementRendered for VectorDataTable {
 			let opacity = instance.alpha_blending.opacity(render_params.for_mask);
 			if opacity < 1. || instance.alpha_blending.blend_mode != BlendMode::default() {
 				layer = true;
+				let weight = instance.instance.style.stroke().unwrap().weight;
+				let quad = Quad::from_box(layer_bounds).inflate(weight * element_transform.matrix2.determinant());
+				let layer_bounds = quad.bounding_box();
 				scene.push_layer(
 					peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
 					opacity,
@@ -1094,12 +1097,14 @@ impl GraphicElementRendered for RasterDataTable<GPU> {
 
 		for instance in self.instance_ref_iter() {
 			let blend_mode = *instance.alpha_blending;
-			let layer = blend_mode != Default::default();
-			if layer {
-				let Some(bounds) = self.bounding_box(transform, true) else { return };
-				let blending = peniko::BlendMode::new(blend_mode.blend_mode.to_peniko(), peniko::Compose::SrcOver);
-				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
-				scene.push_layer(blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
+			let mut layer = false;
+			if blend_mode != Default::default() {
+				if let Some(bounds) = self.bounding_box(transform, true) {
+					let blending = peniko::BlendMode::new(blend_mode.blend_mode.to_peniko(), peniko::Compose::SrcOver);
+					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+					scene.push_layer(blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
+					layer = true;
+				}
 			}
 
 			let image = peniko::Image::new(
