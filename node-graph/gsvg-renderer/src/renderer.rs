@@ -176,7 +176,7 @@ impl RenderParams {
 	}
 
 	pub fn to_canvas(&self) -> bool {
-		!self.for_export && !self.thumbnail
+		!self.for_export && !self.thumbnail && !self.for_mask
 	}
 }
 
