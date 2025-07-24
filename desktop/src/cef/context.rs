@@ -77,8 +77,8 @@ impl Context<Setup> {
 			return Err(InitError::InitializationFailed);
 		}
 
-		let render_handler = RenderHandlerImpl::new(event_handler.clone());
-		let mut client = Client::new(ClientImpl::new(RenderHandler::new(render_handler)));
+		let render_handler = RenderHandler::new(RenderHandlerImpl::new(event_handler.clone()));
+		let mut client = Client::new(ClientImpl::new(render_handler, event_handler.clone()));
 
 		let url = CefString::from(format!("{GRAPHITE_SCHEME}://{FRONTEND_DOMAIN}/").as_str());
 

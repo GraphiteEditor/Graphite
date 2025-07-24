@@ -20,6 +20,9 @@ mod dirs;
 pub(crate) enum CustomEvent {
 	UiUpdate(wgpu::Texture),
 	ScheduleBrowserWork(Instant),
+	MessageReceived { message: String },
+	// // Called from the editor if the render node is evaluated and returns an UpdateViewport message
+	// ViewportUpdate { texture: wgpu::TextureView },
 }
 
 fn main() {

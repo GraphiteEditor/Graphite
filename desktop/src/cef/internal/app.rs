@@ -3,6 +3,7 @@ use cef::sys::{_cef_app_t, cef_base_ref_counted_t};
 use cef::{BrowserProcessHandler, CefString, ImplApp, ImplCommandLine, SchemeRegistrar, WrapApp};
 
 use crate::cef::CefEventHandler;
+
 use crate::cef::scheme_handler::GraphiteSchemeHandlerFactory;
 
 use super::browser_process_handler::BrowserProcessHandlerImpl;

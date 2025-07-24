@@ -27,6 +27,7 @@ thread_local! {
 #[wasm_bindgen(start)]
 pub fn init_graphite() {
 	// Set up the panic hook
+	#[cfg(not(feature = "native"))]
 	panic::set_hook(Box::new(panic_hook));
 
 	// Set up the logger with a default level of debug
@@ -103,6 +104,24 @@ extern "C" {
 	fn error(msg: &str, format: &str);
 	#[wasm_bindgen(js_namespace = console)]
 	fn trace(msg: &str, format: &str);
+}
+
+#[wasm_bindgen]
+extern "C" {
+	fn sendMessageToCefFromWasm(message: String);
+}
+
+#[wasm_bindgen]
+pub fn send_message_to_cef(message: String) {
+	let global = js_sys::global();
+
+	// Get the function by name
+	let func = js_sys::Reflect::get(&global, &JsValue::from_str("sendMessageToCef")).expect("Function not found");
+
+	let func = func.dyn_into::<js_sys::Function>().expect("Not a function");
+
+	// Call it with argument
+	func.call1(&JsValue::NULL, &JsValue::from_str(&message)).expect("Function call failed");
 }
 
 #[derive(Default)]

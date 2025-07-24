@@ -1,21 +1,25 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_client_t, cef_base_ref_counted_t};
-use cef::{ImplClient, RenderHandler, WrapClient};
+use cef::{ImplClient, ImplProcessMessage, RenderHandler, WrapClient};
 
-pub(crate) struct ClientImpl {
+use crate::cef::CefEventHandler;
+
+pub(crate) struct ClientImpl<H: CefEventHandler> {
 	object: *mut RcImpl<_cef_client_t, Self>,
 	render_handler: RenderHandler,
+	event_handler: H,
 }
-impl ClientImpl {
-	pub(crate) fn new(render_handler: RenderHandler) -> Self {
+impl<H: CefEventHandler> ClientImpl<H> {
+	pub(crate) fn new(render_handler: RenderHandler, event_handler: H) -> Self {
 		Self {
 			object: std::ptr::null_mut(),
 			render_handler,
+			event_handler,
 		}
 	}
 }
 
-impl ImplClient for ClientImpl {
+impl<H: CefEventHandler> ImplClient for ClientImpl<H> {
 	fn render_handler(&self) -> Option<RenderHandler> {
 		Some(self.render_handler.clone())
 	}
@@ -23,9 +27,33 @@ impl ImplClient for ClientImpl {
 	fn get_raw(&self) -> *mut _cef_client_t {
 		self.object.cast()
 	}
+
+	fn on_process_message_received(
+		&self,
+		browser: Option<&mut cef::Browser>,
+		frame: Option<&mut cef::Frame>,
+		source_process: cef::ProcessId,
+		message: Option<&mut cef::ProcessMessage>,
+	) -> ::std::os::raw::c_int {
+		let Some(message) = message else {
+			tracing::event!(tracing::Level::ERROR, "No message in RenderProcessHandlerImpl::on_process_message_received");
+			return 1;
+		};
+
+		let pointer: *mut cef::sys::_cef_string_utf16_t = message.name().into();
+		let message = unsafe {
+			let str = (*pointer).str_;
+			let len = (*pointer).length;
+			let slice = std::slice::from_raw_parts(str, len as usize);
+			String::from_utf16(slice).unwrap()
+		};
+
+		let _ = self.event_handler.send_message_to_editior(message);
+		0
+	}
 }
 
-impl Clone for ClientImpl {
+impl<H: CefEventHandler> Clone for ClientImpl<H> {
 	fn clone(&self) -> Self {
 		unsafe {
 			let rc_impl = &mut *self.object;
@@ -34,10 +62,11 @@ impl Clone for ClientImpl {
 		Self {
 			object: self.object,
 			render_handler: self.render_handler.clone(),
+			event_handler: self.event_handler.clone(),
 		}
 	}
 }
-impl Rc for ClientImpl {
+impl<H: CefEventHandler> Rc for ClientImpl<H> {
 	fn as_base(&self) -> &cef_base_ref_counted_t {
 		unsafe {
 			let base = &*self.object;
@@ -45,7 +74,7 @@ impl Rc for ClientImpl {
 		}
 	}
 }
-impl WrapClient for ClientImpl {
+impl<H: CefEventHandler> WrapClient for ClientImpl<H> {
 	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_client_t, Self>) {
 		self.object = object;
 	}
