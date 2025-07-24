@@ -232,26 +232,28 @@ impl GraphicsState {
 			self.config.width = width;
 			self.config.height = height;
 			self.surface.configure(&self.device, &self.config);
+			let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+				label: Some("CEF Texture"),
+				size: wgpu::Extent3d {
+					width,
+					height,
+					depth_or_array_layers: 1,
+				},
+				mip_level_count: 1,
+				sample_count: 1,
+				dimension: wgpu::TextureDimension::D2,
+				format: wgpu::TextureFormat::Bgra8UnormSrgb,
+				usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+				view_formats: &[],
+			});
+			self.texture = Some(texture);
 		}
 
-		let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-			label: Some("CEF Texture"),
-			size: wgpu::Extent3d {
-				width,
-				height,
-				depth_or_array_layers: 1,
-			},
-			mip_level_count: 1,
-			sample_count: 1,
-			dimension: wgpu::TextureDimension::D2,
-			format: wgpu::TextureFormat::Bgra8UnormSrgb,
-			usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-			view_formats: &[],
-		});
+		let Some(ref texture) = self.texture else { return };
 
 		self.queue.write_texture(
 			wgpu::TexelCopyTextureInfo {
-				texture: &texture,
+				texture,
 				mip_level: 0,
 				origin: wgpu::Origin3d::ZERO,
 				aspect: wgpu::TextureAspect::All,
@@ -286,7 +288,6 @@ impl GraphicsState {
 			label: Some("texture_bind_group"),
 		});
 
-		self.texture = Some(texture);
 		self.bind_group = Some(bind_group);
 	}
 
