@@ -41,6 +41,17 @@ impl WinitApp {
 			window_size_sender,
 		}
 	}
+	fn run_cef(&mut self) {
+		if self.ui_frame_buffer.is_none() {
+			self.cef_context.work();
+		}
+		if let Some(schedule) = self.cef_schedule
+			&& schedule < Instant::now()
+		{
+			self.cef_schedule = None;
+			self.cef_context.work();
+		}
+	}
 }
 
 impl ApplicationHandler<CustomEvent> for WinitApp {
@@ -51,15 +62,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 	}
 
 	fn new_events(&mut self, _event_loop: &ActiveEventLoop, _cause: StartCause) {
-		if self.ui_frame_buffer.is_none() {
-			self.cef_context.work();
-		}
-		if let Some(schedule) = self.cef_schedule
-			&& schedule < Instant::now()
-		{
-			self.cef_schedule = None;
-			self.cef_context.work();
-		}
+		self.run_cef();
 	}
 
 	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
@@ -81,6 +84,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 	}
 
 	fn user_event(&mut self, _: &ActiveEventLoop, event: CustomEvent) {
+		self.run_cef();
 		match event {
 			CustomEvent::UiUpdate(frame_buffer) => {
 				if let Some(graphics_state) = self.graphics_state.as_mut() {
@@ -99,6 +103,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 	}
 
 	fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
+		self.run_cef();
 		let Some(event) = self.cef_context.handle_window_event(event) else { return };
 
 		match event {

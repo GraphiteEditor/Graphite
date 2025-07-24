@@ -77,5 +77,6 @@ impl CefEventHandler for CefHandler {
 
 	fn schedule_cef_message_loop_work(&self, scheduled_time: std::time::Instant) {
 		let _ = self.event_loop_proxy.send_event(CustomEvent::ScheduleBrowserWork(scheduled_time));
+		println!("browser scheduled work");
 	}
 }
