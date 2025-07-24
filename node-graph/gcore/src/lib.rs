@@ -35,6 +35,7 @@ pub use color::Color;
 pub use context::*;
 pub use ctor;
 pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
+pub use graphene_core_shaders::AsU32;
 pub use graphene_core_shaders::blending;
 pub use graphene_core_shaders::color;
 pub use graphic_element::{Artboard, ArtboardGroupTable, GraphicElement, GraphicGroupTable};
@@ -164,13 +165,4 @@ pub trait NodeInputDecleration {
 	const INDEX: usize;
 	fn identifier() -> ProtoNodeIdentifier;
 	type Result;
-}
-
-pub trait AsU32 {
-	fn as_u32(&self) -> u32;
-}
-impl AsU32 for u32 {
-	fn as_u32(&self) -> u32 {
-		*self
-	}
 }
