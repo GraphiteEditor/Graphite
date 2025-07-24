@@ -1,6 +1,7 @@
 pub use glam;
 
 pub mod blending;
+pub mod choice_type;
 pub mod color;
 
 pub trait AsU32 {
