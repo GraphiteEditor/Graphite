@@ -7,7 +7,9 @@ extern crate log;
 pub mod editor_api;
 pub mod helpers;
 
+use editor::application::Editor;
 use editor::messages::prelude::*;
+use editor_api::EditorHandle;
 use std::panic;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -107,11 +109,15 @@ extern "C" {
 }
 
 #[wasm_bindgen]
-extern "C" {
-	fn sendMessageToCefFromWasm(message: String);
+pub fn send_message_to_frontend(message: String) {
+	let Ok(message) = serde_json::from_str::<FrontendMessage>(&message) else { return };
+
+	let callback = move |_: &mut Editor, handle: &mut EditorHandle| {
+		handle.send_frontend_message_to_js_rust_proxy(message);
+	};
+	editor_api::editor_and_handle(callback);
 }
 
-#[wasm_bindgen]
 pub fn send_message_to_cef(message: String) {
 	let global = js_sys::global();
 

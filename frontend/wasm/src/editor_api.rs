@@ -906,7 +906,7 @@ fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) ->
 }
 
 /// Provides access to the `Editor` and its `EditorHandle` by calling the given closure with them as arguments.
-pub(crate) fn editor_and_handle(mut callback: impl FnMut(&mut Editor, &mut EditorHandle)) {
+pub(crate) fn editor_and_handle(callback: impl FnOnce(&mut Editor, &mut EditorHandle)) {
 	EDITOR_HANDLE.with(|editor_handle| {
 		editor(|editor| {
 			let mut guard = editor_handle.try_lock();
