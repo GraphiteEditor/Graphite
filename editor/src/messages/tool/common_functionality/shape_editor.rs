@@ -1027,6 +1027,9 @@ impl ShapeState {
 	/// If only one handle is selected, the other handle will be moved to match the angle of the selected handle.
 	/// If both or neither handles are selected, the angle of both handles will be averaged from their current angles, weighted by their lengths.
 	/// Assumes all selected manipulators have handles that are already not colinear.
+	///
+	/// For vector meshes, the handle which is nearest in the direction of 180° angle separation, becomes colinear with current handle,
+	/// and if that handle was colinear with some other handle that constraint is removed from the vector data
 	pub fn convert_selected_manipulators_to_colinear_handles(&self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler) {
 		let mut skip_set = HashSet::new();
 
@@ -1036,8 +1039,64 @@ impl ShapeState {
 			};
 			let transform = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
 
+			log::info!("reaching hereeeeee");
+
+			// TODO: A point which has
 			for &point in layer_state.selected_points.iter() {
-				let Some(handles) = point.get_handle_pair(&vector_data) else { continue };
+				// Skip a point which has more than 2 segments connected (vector meshes)
+				if let ManipulatorPointId::Anchor(anchor) = point {
+					if vector_data.all_connected(anchor).count() > 2 {
+						continue;
+					}
+				}
+
+				// let Some(handles) = point.get_handle_pair(&vector_data) else { continue };
+
+				// Here we take handles as the current handle and the most opposite non-colinear-handle
+
+				let is_handle_non_colinear = |handle: HandleId| -> bool { !(vector_data.colinear_manipulators.iter().any(|&handles| handles[0] == handle || handles[1] == handle)) };
+
+				log::info!("reaching here");
+				let other_handles = match point {
+					ManipulatorPointId::Anchor(_) => point.get_handle_pair(&vector_data),
+					_ => {
+						// something
+						point.get_all_connected_handles(&vector_data).and_then(|handles| {
+							let mut non_colinear_handles = handles.iter().filter(|&handle| is_handle_non_colinear(*handle)).clone().collect::<Vec<_>>();
+
+							// Now sort these by angle from the current handle
+							non_colinear_handles.sort_by(|&handle_a, &handle_b| {
+								let anchor = point.get_anchor_position(&vector_data).expect("No anchor position for handle");
+								let orig_handle_pos = point.get_position(&vector_data).expect("No handle position");
+
+								let a_pos = handle_a.to_manipulator_point().get_position(&vector_data).expect("No handle position");
+								let b_pos = handle_b.to_manipulator_point().get_position(&vector_data).expect("No handle position");
+
+								let v_orig = (orig_handle_pos - anchor).normalize_or_zero();
+
+								let v_a = (a_pos - anchor).normalize_or_zero();
+								let v_b = (b_pos - anchor).normalize_or_zero();
+
+								let angle_a = v_orig.angle_to(v_a).abs();
+								let angle_b = v_orig.angle_to(v_b).abs();
+
+								// Sort by descending angle (180° is farthest)
+								angle_b.partial_cmp(&angle_a).unwrap_or(std::cmp::Ordering::Equal)
+							});
+
+							let current = match point {
+								ManipulatorPointId::EndHandle(segment) => HandleId::end(segment),
+								ManipulatorPointId::PrimaryHandle(segment) => HandleId::primary(segment),
+								ManipulatorPointId::Anchor(_) => unreachable!(),
+							};
+
+							if let Some(other) = non_colinear_handles.iter().next() { Some([current, **other]) } else { None }
+						})
+					}
+				};
+
+				let Some(handles) = other_handles else { continue };
+
 				if skip_set.contains(&handles) || skip_set.contains(&[handles[1], handles[0]]) {
 					continue;
 				};
@@ -1317,7 +1376,7 @@ impl ShapeState {
 				match point {
 					ManipulatorPointId::Anchor(anchor) => {
 						if let Some(handles) = Self::dissolve_anchor(anchor, responses, layer, &vector_data) {
-							if !vector_data.all_connected(anchor).any(|a| selected_segments.contains(&a.segment)) {
+							if !vector_data.all_connected(anchor).any(|a| selected_segments.contains(&a.segment)) && vector_data.all_connected(anchor).count() <= 2 {
 								missing_anchors.insert(anchor, handles);
 							}
 						}

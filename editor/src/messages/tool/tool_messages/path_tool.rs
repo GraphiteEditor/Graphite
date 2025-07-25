@@ -583,7 +583,12 @@ impl PathToolData {
 			SelectionStatus::None => false,
 			SelectionStatus::One(single_selected_point) => {
 				let vector_data = document.network_interface.compute_modified_vector(single_selected_point.layer).unwrap();
-				single_selected_point.id.get_handle_pair(&vector_data).is_some()
+				if single_selected_point.id.get_handle_pair(&vector_data).is_some() {
+					let anchor = single_selected_point.id.get_anchor(&vector_data).expect("Cannot find connected anchor");
+					if vector_data.all_connected(anchor).count() > 2 { false } else { true }
+				} else {
+					false
+				}
 			}
 			SelectionStatus::Multiple(_) => true,
 		};
@@ -886,6 +891,7 @@ impl PathToolData {
 			if is_colinear {
 				shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
 			} else {
+				// Convert to colinear only if
 				shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
 			}
 			self.toggle_colinear_debounce = true;

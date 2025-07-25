@@ -561,6 +561,23 @@ impl ManipulatorPointId {
 		}
 	}
 
+	/// Finds all the connected handles of a point. For an anchor it is all the connected handles. For a handle it is all the handles connected to its corresponding anchor other than current handle
+	pub fn get_all_connected_handles(self, vector_data: &VectorData) -> Option<Vec<HandleId>> {
+		match self {
+			ManipulatorPointId::Anchor(point) => Some(vector_data.all_connected(point).collect::<Vec<_>>()),
+			ManipulatorPointId::PrimaryHandle(segment) => {
+				let point = vector_data.segment_domain.segment_start_from_id(segment)?;
+				let current = HandleId::primary(segment);
+				Some(vector_data.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>())
+			}
+			ManipulatorPointId::EndHandle(segment) => {
+				let point = vector_data.segment_domain.segment_end_from_id(segment)?;
+				let current = HandleId::primary(segment);
+				Some(vector_data.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>())
+			}
+		}
+	}
+
 	/// Attempt to find the closest anchor. If self is already an anchor then it is just self. If it is a start or end handle, then the start or end point is chosen.
 	#[must_use]
 	pub fn get_anchor(self, vector_data: &VectorData) -> Option<PointId> {
