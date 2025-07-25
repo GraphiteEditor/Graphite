@@ -20,6 +20,7 @@ use graphene_std::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
 };
+use graphene_std::selection::IndexOperationFilter;
 use graphene_std::text::{Font, TextAlign};
 use graphene_std::transform::{Footprint, ReferencePoint, Transform};
 use graphene_std::vector::misc::{ArcType, CentroidType, GridType, MergeByDistanceAlgorithm, PointSpacingType};
@@ -177,6 +178,7 @@ pub(crate) fn property_from_type(
 						// ==========================
 						Some(x) if x == TypeId::of::<Vec<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
 						Some(x) if x == TypeId::of::<Vec<DVec2>>() => array_of_vec2_widget(default_info, TextInput::default()).into(),
+						Some(x) if x == TypeId::of::<IndexOperationFilter>() => array_of_ranges(default_info, TextInput::default()).into(),
 						// ============
 						// STRUCT TYPES
 						// ============
@@ -741,6 +743,77 @@ pub fn array_of_vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, text_p
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			text_props
 				.value(x.iter().map(|v| format!("({}, {})", v.x, v.y)).collect::<Vec<_>>().join(", "))
+				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
+				.widget_holder(),
+		])
+	}
+	widgets
+}
+
+pub fn array_of_ranges(parameter_widgets_info: ParameterWidgetsInfo, text_props: TextInput) -> Vec<WidgetHolder> {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info);
+
+	let from_string = |string: &str| {
+		let mut result = Vec::new();
+		let mut start: Option<usize> = None;
+		let mut number: Option<usize> = None;
+		let mut seen_continue = false;
+		for c in string.chars() {
+			// any string containing a '*' gets all
+			if c == '*' {
+				return Some(TaggedValue::IndexOperationFilter(IndexOperationFilter::All));
+			}
+
+			if let Some(digit) = c.to_digit(10) {
+				if !seen_continue {
+					if let Some(start) = start.take() {
+						result.push(start..=start);
+					}
+				}
+				let mut value = number.unwrap_or_default();
+				value *= 10;
+				value += digit as usize;
+				number = Some(value);
+			} else {
+				if let Some(number) = number.take() {
+					if let Some(start) = start.take() {
+						result.push(start.min(number)..=start.max(number));
+					} else {
+						start = Some(number);
+					}
+					seen_continue = false;
+				}
+				if c == '=' || c == '-' || c == '.' {
+					seen_continue = true;
+				}
+			}
+		}
+		if let Some(number) = number.take() {
+			if let Some(start) = start.take() {
+				result.push(start.min(number)..=start.max(number));
+			} else {
+				result.push(number..=number);
+			}
+		}
+		if let Some(start) = start.take() {
+			result.push(start..=start);
+		}
+
+		Some(TaggedValue::IndexOperationFilter(result.into()))
+	};
+
+	let Some(document_node) = document_node else { return Vec::new() };
+	let Some(input) = document_node.inputs.get(index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	if let Some(TaggedValue::IndexOperationFilter(x)) = &input.as_non_exposed_value() {
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			text_props
+				.value(x.to_string())
 				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
 				.widget_holder(),
 		])

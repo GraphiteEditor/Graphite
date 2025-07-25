@@ -1487,6 +1487,113 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
+		// A modified version of the transform node that filters values based on a selection field
+		DocumentNodeDefinition {
+			identifier: "Transform Selection",
+			category: "Math: Transform",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					inputs: vec![
+						NodeInput::value(TaggedValue::DAffine2(DAffine2::default()), true),
+						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::DVec2(DVec2::ONE), false),
+						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+						NodeInput::value(TaggedValue::IndexOperationFilter((0..=1).into()), false),
+					],
+					implementation: DocumentNodeImplementation::Network(NodeNetwork {
+						exports: vec![NodeInput::node(NodeId(1), 0)],
+						nodes: [
+							DocumentNode {
+								inputs: vec![NodeInput::network(generic!(T), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
+								manual_composition: Some(generic!(T)),
+								skip_deduplication: true,
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![
+									NodeInput::node(NodeId(0), 0),
+									NodeInput::network(concrete!(DVec2), 1),
+									NodeInput::network(concrete!(f64), 2),
+									NodeInput::network(concrete!(DVec2), 3),
+									NodeInput::network(concrete!(DVec2), 4),
+									NodeInput::network(fn_type!(Context, bool), 5),
+								],
+								manual_composition: Some(concrete!(Context)),
+								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::transform_two::IDENTIFIER),
+								..Default::default()
+							},
+						]
+						.into_iter()
+						.enumerate()
+						.map(|(id, node)| (NodeId(id as u64), node))
+						.collect(),
+						..Default::default()
+					}),
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					network_metadata: Some(NodeNetworkMetadata {
+						persistent_metadata: NodeNetworkPersistentMetadata {
+							node_metadata: [
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Monitor".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Transform".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+							]
+							.into_iter()
+							.enumerate()
+							.map(|(id, node)| (NodeId(id as u64), node))
+							.collect(),
+							..Default::default()
+						},
+						..Default::default()
+					}),
+					input_metadata: vec![
+						("Value", "TODO").into(),
+						InputMetadata::with_name_description_override(
+							"Translation",
+							"TODO",
+							WidgetOverride::Vec2(Vec2InputSettings {
+								x: "X".to_string(),
+								y: "Y".to_string(),
+								unit: " px".to_string(),
+								..Default::default()
+							}),
+						),
+						InputMetadata::with_name_description_override("Rotation", "TODO", WidgetOverride::Custom("transform_rotation".to_string())),
+						InputMetadata::with_name_description_override(
+							"Scale",
+							"TODO",
+							WidgetOverride::Vec2(Vec2InputSettings {
+								x: "W".to_string(),
+								y: "H".to_string(),
+								unit: "x".to_string(),
+								..Default::default()
+							}),
+						),
+						InputMetadata::with_name_description_override("Skew", "TODO", WidgetOverride::Custom("transform_skew".to_string())),
+					],
+					output_names: vec!["Data".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("Transforms only selected instances based on a selection field"),
+			properties: None,
+		},
 		DocumentNodeDefinition {
 			identifier: "Boolean Operation",
 			category: "Vector",

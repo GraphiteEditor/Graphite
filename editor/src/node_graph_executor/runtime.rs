@@ -240,6 +240,7 @@ impl NodeRuntime {
 
 	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, String> {
 		preprocessor::expand_network(&mut graph, &self.substitutions);
+		preprocessor::evaluate_index_operation_filter(&mut graph);
 
 		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 

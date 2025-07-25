@@ -24,6 +24,36 @@ pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<ProtoNo
 	}
 }
 
+/// Referencing the TaggedValue::IndexOperationFilter will expand to a node that contains the evaluate_index_operation_filter
+pub fn evaluate_index_operation_filter(network: &mut NodeNetwork) {
+	let mut new_nodes = Vec::new();
+	for node in network.nodes.values_mut() {
+		for input in &mut node.inputs {
+			if !matches!(input.as_value(), Some(TaggedValue::IndexOperationFilter(_)),) {
+				continue;
+			}
+			let node_id = NodeId::new();
+			let range_input = std::mem::replace(input, NodeInput::node(node_id, 0));
+			new_nodes.push((node_id, range_input));
+		}
+		match &mut node.implementation {
+			DocumentNodeImplementation::Network(node_network) => evaluate_index_operation_filter(node_network),
+			_ => {}
+		}
+	}
+	for (id, range_input) in new_nodes {
+		network.nodes.insert(
+			id,
+			DocumentNode {
+				inputs: vec![range_input],
+				manual_composition: Some(concrete!(Context)),
+				implementation: DocumentNodeImplementation::ProtoNode(graphene_core::selection::evaluate_index_operation_filter::IDENTIFIER),
+				..Default::default()
+			},
+		);
+	}
+}
+
 pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNode> {
 	let mut custom = HashMap::new();
 	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
