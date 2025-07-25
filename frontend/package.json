@@ -22,9 +22,9 @@
 		"wasm:build-dev": "just build debug",
 		"wasm:build-profiling": "just build profiling",
 		"wasm:build-production": "just build release",
-		"wasm:watch-dev": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"just build --color=always debug\"",
-		"wasm:watch-profiling": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"just build --color=always profiling\"",
-		"wasm:watch-production": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"just build --color=always release\""
+		"wasm:watch-dev": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"just --color=always build debug\"",
+		"wasm:watch-profiling": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"just --color=always build profiling\"",
+		"wasm:watch-production": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"just --color=always build release\""
 	},
 	"dependencies": {
 		"@fontsource/inconsolata": "^5.2.5",
