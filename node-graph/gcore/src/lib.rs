@@ -2,10 +2,8 @@
 extern crate log;
 
 pub mod animation;
-pub mod blending;
 pub mod blending_nodes;
 pub mod bounds;
-pub mod color;
 pub mod consts;
 pub mod context;
 pub mod debug;
@@ -33,13 +31,15 @@ pub mod vector;
 
 pub use crate as graphene_core;
 pub use blending::*;
+pub use color::Color;
 pub use context::*;
 pub use ctor;
 pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
+pub use graphene_core_shaders::blending;
+pub use graphene_core_shaders::color;
 pub use graphic_element::{Artboard, ArtboardGroupTable, GraphicElement, GraphicGroupTable};
 pub use memo::MemoHash;
 pub use num_traits;
-pub use raster::Color;
 use std::any::TypeId;
 use std::future::Future;
 use std::pin::Pin;
