@@ -31,7 +31,6 @@ async fn dehaze(_: impl Ctx, image_frame: RasterDataTable<CPU>, strength: Percen
 			};
 
 			image_frame_instance.instance = Raster::new_cpu(dehazed_image);
-			image_frame_instance.source_node_id = None;
 			image_frame_instance
 		})
 		.collect()

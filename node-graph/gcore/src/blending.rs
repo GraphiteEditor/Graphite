@@ -56,6 +56,10 @@ impl AlphaBlending {
 			clip: if t < 0.5 { self.clip } else { other.clip },
 		}
 	}
+
+	pub fn opacity(&self, mask: bool) -> f32 {
+		self.opacity * if mask { 1. } else { self.fill }
+	}
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

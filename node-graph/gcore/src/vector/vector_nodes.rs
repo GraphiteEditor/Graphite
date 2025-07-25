@@ -417,7 +417,6 @@ where
 	// Create and add mirrored instance
 	for mut instance in instance.instance_iter() {
 		instance.transform = reflected_transform * instance.transform;
-		instance.source_node_id = None;
 		result_table.push(instance);
 	}
 
@@ -448,6 +447,7 @@ async fn round_corners(
 		.map(|source| {
 			let source_transform = *source.transform;
 			let source_transform_inverse = source_transform.inverse();
+			let source_node_id = source.source_node_id;
 			let source = source.instance;
 
 			let upstream_graphic_group = source.upstream_graphic_group.clone();
@@ -542,7 +542,7 @@ async fn round_corners(
 				instance: result,
 				transform: source_transform,
 				alpha_blending: Default::default(),
-				source_node_id: None,
+				source_node_id: *source_node_id,
 			}
 		})
 		.collect()
@@ -645,7 +645,6 @@ async fn box_warp(_: impl Ctx, vector_data: VectorDataTable, #[expose] rectangle
 			// Add this to the table and reset the transform since we've applied it directly to the points
 			vector_data_instance.instance = result;
 			vector_data_instance.transform = DAffine2::IDENTITY;
-			vector_data_instance.source_node_id = None;
 			vector_data_instance
 		})
 		.collect()
@@ -917,7 +916,6 @@ async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTa
 			result.style.set_stroke_transform(DAffine2::IDENTITY);
 
 			vector_data_instance.instance = result;
-			vector_data_instance.source_node_id = None;
 			vector_data_instance
 		})
 		.collect()
@@ -1013,7 +1011,6 @@ async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, j
 			}
 
 			vector_data_instance.instance = result;
-			vector_data_instance.source_node_id = None;
 			vector_data_instance
 		})
 		.collect()
@@ -1068,7 +1065,6 @@ async fn solidify_stroke(_: impl Ctx, vector_data: VectorDataTable) -> VectorDat
 			}
 
 			vector_data_instance.instance = result;
-			vector_data_instance.source_node_id = None;
 			vector_data_instance
 		})
 		.collect()

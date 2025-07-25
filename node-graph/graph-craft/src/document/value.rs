@@ -7,6 +7,7 @@ pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::SurfaceFrame;
 use graphene_brush::brush_cache::BrushCache;
 use graphene_brush::brush_stroke::BrushStroke;
+use graphene_core::raster::Image;
 use graphene_core::raster_types::CPU;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
@@ -424,10 +425,10 @@ pub struct RenderOutput {
 	pub metadata: RenderMetadata,
 }
 
-#[derive(Debug, Clone, PartialEq, dyn_any::DynAny, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Hash, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub enum RenderOutputType {
 	CanvasFrame(SurfaceFrame),
-	Svg(String),
+	Svg { svg: String, image_data: Vec<(u64, Image<Color>)> },
 	Image(Vec<u8>),
 }
 
