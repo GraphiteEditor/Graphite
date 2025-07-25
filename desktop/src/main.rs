@@ -18,7 +18,7 @@ mod dirs;
 
 #[derive(Debug)]
 pub(crate) enum CustomEvent {
-	UiUpdate((wgpu::Texture, u32, u32)),
+	UiUpdate(wgpu::Texture),
 	ScheduleBrowserWork(Instant),
 }
 
@@ -49,7 +49,7 @@ fn main() {
 
 	tracing::info!("Cef initialized successfully");
 
-	let mut winit_app = WinitApp::new(cef_context, window_size_sender, event_loop.create_proxy(), wgpu_context);
+	let mut winit_app = WinitApp::new(cef_context, window_size_sender, wgpu_context);
 
 	event_loop.run_app(&mut winit_app).unwrap();
 }

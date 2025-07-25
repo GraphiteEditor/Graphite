@@ -110,7 +110,7 @@ impl CefEventHandler for CefHandler {
 			},
 		);
 
-		let _ = self.event_loop_proxy.send_event(CustomEvent::UiUpdate((texture, width, height)));
+		let _ = self.event_loop_proxy.send_event(CustomEvent::UiUpdate(texture));
 	}
 
 	fn schedule_cef_message_loop_work(&self, scheduled_time: std::time::Instant) {

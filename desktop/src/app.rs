@@ -12,7 +12,6 @@ use winit::event::StartCause;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::event_loop::ControlFlow;
-use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 use winit::window::WindowId;
 
@@ -26,12 +25,11 @@ pub(crate) struct WinitApp {
 	window_size_sender: Sender<WindowSize>,
 	_viewport_frame_buffer: Option<wgpu::Texture>,
 	graphics_state: Option<GraphicsState>,
-	event_loop_proxy: EventLoopProxy<CustomEvent>,
 	wgpu_context: WgpuContext,
 }
 
 impl WinitApp {
-	pub(crate) fn new(cef_context: cef::Context<cef::Initialized>, window_size_sender: Sender<WindowSize>, event_loop_proxy: EventLoopProxy<CustomEvent>, wgpu_context: WgpuContext) -> Self {
+	pub(crate) fn new(cef_context: cef::Context<cef::Initialized>, window_size_sender: Sender<WindowSize>, wgpu_context: WgpuContext) -> Self {
 		Self {
 			cef_context,
 			window: None,
@@ -40,7 +38,6 @@ impl WinitApp {
 			_ui_frame_buffer: None,
 			graphics_state: None,
 			window_size_sender,
-			event_loop_proxy,
 			wgpu_context,
 		}
 	}
@@ -84,21 +81,21 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 
 	fn user_event(&mut self, _: &ActiveEventLoop, event: CustomEvent) {
 		match event {
-			CustomEvent::UiUpdate((texture, width, height)) => {
+			CustomEvent::UiUpdate(texture) => {
 				if let Some(graphics_state) = self.graphics_state.as_mut() {
 					graphics_state.bind_texture(&texture);
-					graphics_state.resize(width, height);
+					graphics_state.resize(texture.width(), texture.height());
 				}
 				if let Some(window) = &self.window {
 					window.request_redraw();
 				}
 			}
 			CustomEvent::ScheduleBrowserWork(instant) => {
-				if instant < Instant::now() {
+				if instant <= Instant::now() {
 					self.cef_context.work();
-					let _ = self.event_loop_proxy.send_event(CustomEvent::ScheduleBrowserWork(Instant::now() + Duration::from_millis(10)));
+				} else {
+					self.cef_schedule = Some(instant);
 				}
-				self.cef_schedule = Some(instant);
 			}
 		}
 	}
