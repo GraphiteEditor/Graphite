@@ -1,16 +1,18 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_client_t, cef_base_ref_counted_t};
-use cef::{ImplClient, RenderHandler, WrapClient};
+use cef::{DialogHandler, ImplClient, RenderHandler, WrapClient};
 
 pub(crate) struct ClientImpl {
 	object: *mut RcImpl<_cef_client_t, Self>,
 	render_handler: RenderHandler,
+	dialog_handler: DialogHandler,
 }
 impl ClientImpl {
-	pub(crate) fn new(render_handler: RenderHandler) -> Self {
+	pub(crate) fn new(render_handler: RenderHandler, dialog_handler: DialogHandler) -> Self {
 		Self {
 			object: std::ptr::null_mut(),
 			render_handler,
+			dialog_handler,
 		}
 	}
 }
@@ -18,6 +20,10 @@ impl ClientImpl {
 impl ImplClient for ClientImpl {
 	fn render_handler(&self) -> Option<RenderHandler> {
 		Some(self.render_handler.clone())
+	}
+
+	fn dialog_handler(&self) -> Option<cef::DialogHandler> {
+		Some(self.dialog_handler.clone())
 	}
 
 	fn get_raw(&self) -> *mut _cef_client_t {
@@ -34,6 +40,7 @@ impl Clone for ClientImpl {
 		Self {
 			object: self.object,
 			render_handler: self.render_handler.clone(),
+			dialog_handler: self.dialog_handler.clone(),
 		}
 	}
 }

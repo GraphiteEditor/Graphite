@@ -29,6 +29,10 @@ impl<H: CefEventHandler + Clone> ImplBrowserProcessHandler for BrowserProcessHan
 		self.event_handler.schedule_cef_message_loop_work(Instant::now() + Duration::from_millis(delay_ms as u64));
 	}
 
+	fn on_already_running_app_relaunch(&self, _command_line: Option<&mut cef::CommandLine>, _current_directory: Option<&CefString>) -> ::std::os::raw::c_int {
+		1 // Return 1 to prevent default behavior of opening a empty browser window
+	}
+
 	fn get_raw(&self) -> *mut _cef_browser_process_handler_t {
 		self.object.cast()
 	}

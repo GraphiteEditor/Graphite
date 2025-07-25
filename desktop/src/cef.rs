@@ -1,6 +1,7 @@
 use crate::{CustomEvent, WgpuContext, render::FrameBufferRef};
 use std::{
 	sync::{Arc, Mutex, mpsc::Receiver},
+	thread,
 	time::Instant,
 };
 
@@ -16,6 +17,7 @@ use winit::event_loop::EventLoopProxy;
 pub(crate) trait CefEventHandler: Clone {
 	fn window_size(&self) -> WindowSize;
 	fn draw<'a>(&self, frame_buffer: FrameBufferRef<'a>);
+	fn file_dialog(&self, mode: FileDialogMode, title: &str, default_file: &str) -> Receiver<Option<Vec<String>>>;
 	/// Scheudule the main event loop to run the cef event loop after the timeout
 	///  [`_cef_browser_process_handler_t::on_schedule_message_pump_work`] for more documentation.
 	fn schedule_cef_message_loop_work(&self, scheduled_time: Instant);
@@ -31,6 +33,13 @@ impl WindowSize {
 	pub(crate) fn new(width: usize, height: usize) -> Self {
 		Self { width, height }
 	}
+}
+
+pub(crate) enum FileDialogMode {
+	Open,
+	OpenMultiple,
+	OpenFolder,
+	Save,
 }
 
 #[derive(Clone)]
@@ -115,5 +124,47 @@ impl CefEventHandler for CefHandler {
 
 	fn schedule_cef_message_loop_work(&self, scheduled_time: std::time::Instant) {
 		let _ = self.event_loop_proxy.send_event(CustomEvent::ScheduleBrowserWork(scheduled_time));
+	}
+
+	fn file_dialog(&self, mode: FileDialogMode, title: &str, default_file: &str) -> Receiver<Option<Vec<String>>> {
+		let title = title.to_owned();
+		let default_file = default_file.to_owned();
+		let (sender, receiver) = std::sync::mpsc::channel();
+		dbg!("Opening file dialog with title: {}, default file: {}", &title, &default_file);
+		let _ = thread::spawn(move || {
+			let builder = native_dialog::FileDialogBuilder::default().set_title(&title).set_location(&default_file);
+			match mode {
+				FileDialogMode::OpenMultiple => match builder.open_multiple_file().show() {
+					Ok(paths) => {
+						let selected_files = paths.into_iter().map(|p| p.to_string_lossy().to_string()).collect();
+						sender.send(Some(selected_files)).unwrap_or_else(|_| tracing::error!("Failed to send selected files"));
+					}
+					Err(e) => {
+						tracing::error!("File dialog error: {}", e);
+						sender.send(None).unwrap_or_else(|_| tracing::error!("Failed to send None on error"));
+					}
+				},
+				_ => {
+					let res = match mode {
+						FileDialogMode::Open => builder.open_single_file().show(),
+						FileDialogMode::OpenFolder => builder.open_single_dir().show(),
+						FileDialogMode::Save => builder.save_single_file().show(),
+						FileDialogMode::OpenMultiple => unreachable!("OpenMultiple is handled above"),
+					};
+					match res {
+						Ok(Some(path)) => {
+							let selected_files = vec![path.to_string_lossy().to_string()];
+							sender.send(Some(selected_files)).unwrap_or_else(|_| tracing::error!("Failed to send selected files"));
+						}
+						Ok(None) => sender.send(None).unwrap_or_else(|_| tracing::error!("Failed to send None")),
+						Err(e) => {
+							tracing::error!("File dialog error: {}", e);
+							sender.send(None).unwrap_or_else(|_| tracing::error!("Failed to send None on error"));
+						}
+					}
+				}
+			}
+		});
+		receiver
 	}
 }

@@ -1,10 +1,14 @@
-use cef::sys::CEF_API_VERSION_LAST;
-use cef::{App, BrowserSettings, Client, DictionaryValue, ImplBrowser, ImplBrowserHost, ImplCommandLine, RenderHandler, RequestContext, WindowInfo, browser_host_create_browser_sync, initialize};
+use cef::sys::{CEF_API_VERSION_LAST, cef_resultcode_t};
+use cef::{
+	App, BrowserSettings, Client, DialogHandler, DictionaryValue, ImplBrowser, ImplBrowserHost, ImplCommandLine, RenderHandler, RequestContext, WindowInfo, browser_host_create_browser_sync,
+	initialize,
+};
 use cef::{Browser, CefString, Settings, api_hash, args::Args, execute_process};
 use thiserror::Error;
 use winit::event::WindowEvent;
 
 use crate::cef::dirs::{cef_cache_dir, cef_data_dir};
+use crate::cef::internal::DialogHandlerImpl;
 
 use super::input::InputState;
 use super::scheme_handler::{FRONTEND_DOMAIN, GRAPHITE_SCHEME};
@@ -74,11 +78,16 @@ impl Context<Setup> {
 
 		let result = initialize(Some(self.args.as_main_args()), Some(&settings), Some(&mut cef_app), std::ptr::null_mut());
 		if result != 1 {
-			return Err(InitError::InitializationFailed);
+			let cef_exit_code = cef::get_exit_code() as u32;
+			if cef_exit_code == cef_resultcode_t::CEF_RESULT_CODE_NORMAL_EXIT_PROCESS_NOTIFIED as u32 {
+				return Err(InitError::AlreadyRunning);
+			}
+			return Err(InitError::InitializationFailed(cef_exit_code));
 		}
 
-		let render_handler = RenderHandlerImpl::new(event_handler.clone());
-		let mut client = Client::new(ClientImpl::new(RenderHandler::new(render_handler)));
+		let render_handler = RenderHandler::new(RenderHandlerImpl::new(event_handler.clone()));
+		let dialog_handler = DialogHandler::new(DialogHandlerImpl::new(event_handler.clone()));
+		let mut client = Client::new(ClientImpl::new(render_handler, dialog_handler));
 
 		let url = CefString::from(format!("{GRAPHITE_SCHEME}://{FRONTEND_DOMAIN}/").as_str());
 
@@ -146,5 +155,7 @@ pub(crate) enum SetupError {
 #[derive(Error, Debug)]
 pub(crate) enum InitError {
 	#[error("initialization failed")]
-	InitializationFailed,
+	InitializationFailed(u32),
+	#[error("Another instance is already running")]
+	AlreadyRunning,
 }
