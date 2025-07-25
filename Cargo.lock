@@ -2389,6 +2389,7 @@ dependencies = [
  "graphene-core",
  "graphene-path-bool",
  "graphene-std",
+ "iai-callgrind",
  "log",
  "once_cell",
  "serde",
