@@ -192,12 +192,25 @@
 
 		const placeholders = window.document.querySelectorAll("[data-viewport] [data-canvas-placeholder]");
 		// Replace the placeholders with the actual canvas elements
-		placeholders.forEach((placeholder) => {
+		Array.from(placeholders).forEach((placeholder) => {
 			const canvasName = placeholder.getAttribute("data-canvas-placeholder");
 			if (!canvasName) return;
 			// Get the canvas element from the global storage
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const canvas = (window as any).imageCanvases[canvasName];
+			let canvas = (window as any).imageCanvases[canvasName];
+
+			if (canvasName !== "0" && canvas.parentElement) {
+				var newCanvas = window.document.createElement("canvas");
+				var context = newCanvas.getContext("2d");
+
+				newCanvas.width = canvas.width;
+				newCanvas.height = canvas.height;
+
+				context?.drawImage(canvas, 0, 0);
+
+				canvas = newCanvas;
+			}
+
 			placeholder.replaceWith(canvas);
 		});
 	}

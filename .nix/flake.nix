@@ -24,6 +24,9 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     flake-utils.url = "github:numtide/flake-utils";
+
+    # This is used to provide a identical development shell at `shell.nix` for users that do not use flakes
+    flake-compat.url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
   };
 
   outputs = { nixpkgs, nixpkgs-unstable, rust-overlay, flake-utils, ... }:
