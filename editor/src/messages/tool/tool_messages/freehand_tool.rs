@@ -383,15 +383,7 @@ mod test_freehand {
 		let point_count = vector_data.point_domain.ids().len();
 		let segment_count = vector_data.segment_domain.ids().len();
 
-		let actual_positions: Vec<DVec2> = vector_data
-			.point_domain
-			.ids()
-			.iter()
-			.filter_map(|&point_id| {
-				let position = vector_data.point_domain.position_from_id(point_id)?;
-				Some(transform.transform_point2(position))
-			})
-			.collect();
+		let actual_positions: Vec<DVec2> = vector_data.point_domain.positions().iter().map(|&position| transform.transform_point2(position)).collect();
 
 		if segment_count != point_count - 1 {
 			return Err(format!("Expected segments to be one less than points, got {} segments for {} points", segment_count, point_count));

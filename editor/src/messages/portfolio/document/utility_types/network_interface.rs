@@ -3449,14 +3449,12 @@ impl NodeNetworkInterface {
 			if let Some(vector_data) = self.document_metadata.vector_modify.get(&path_node) {
 				let mut modified = vector_data.clone();
 
-				if let Some(TaggedValue::VectorModification(modification)) = self
-					.document_network()
-					.nodes
-					.get(&path_node)
-					.map(|node| &node.inputs)
-					.and_then(|inputs| inputs.get(1))
-					.and_then(|input| input.as_value())
-				{
+				let my_input = graph_layer
+					.upstream_visible_node_id_from_name_in_layer("Path")
+					.and_then(|id| self.document_network().nodes.get(&id))
+					.and_then(|node: &DocumentNode| node.inputs.get(1))
+					.and_then(|input| input.as_value());
+				if let Some(TaggedValue::VectorModification(modification)) = my_input {
 					modification.apply(&mut modified);
 				}
 				return Some(modified);
