@@ -1,0 +1,35 @@
+[package]
+name = "graphene-core-shaders"
+version = "0.1.0"
+edition = "2024"
+description = "no_std API definitions for Graphene"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+[features]
+std = ["dep:dyn-any", "dep:serde", "dep:specta", "dep:log"]
+
+[dependencies]
+# Local std dependencies
+dyn-any = { workspace = true, optional = true }
+
+# Workspace dependencies
+bytemuck = { workspace = true }
+glam = { version = "0.29", default-features = false, features = ["nostd-libm", "scalar-math"] }
+half = { workspace = true }
+num-derive = { workspace = true }
+num-traits = { workspace = true }
+
+# Workspace std dependencies
+serde = { workspace = true, optional = true }
+specta = { workspace = true, optional = true }
+log = { workspace = true, optional = true }
+
+[dev-dependencies]
+graphene-core = { workspace = true }
+
+[lints.rust]
+# the spirv target is not in the list of common cfgs so must be added manually
+unexpected_cfgs = { level = "warn", check-cfg = [
+	'cfg(target_arch, values("spirv"))',
+] }

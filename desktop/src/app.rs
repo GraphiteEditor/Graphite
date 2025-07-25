@@ -1,7 +1,7 @@
 use crate::CustomEvent;
-use crate::FrameBuffer;
 use crate::WindowSize;
 use crate::render::GraphicsState;
+use crate::render::WgpuContext;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
@@ -12,7 +12,6 @@ use winit::event::StartCause;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::event_loop::ControlFlow;
-use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 use winit::window::WindowId;
 
@@ -22,24 +21,24 @@ pub(crate) struct WinitApp {
 	pub(crate) cef_context: cef::Context<cef::Initialized>,
 	pub(crate) window: Option<Arc<Window>>,
 	cef_schedule: Option<Instant>,
-	ui_frame_buffer: Option<FrameBuffer>,
+	_ui_frame_buffer: Option<wgpu::Texture>,
 	window_size_sender: Sender<WindowSize>,
-	_viewport_frame_buffer: Option<FrameBuffer>,
+	_viewport_frame_buffer: Option<wgpu::Texture>,
 	graphics_state: Option<GraphicsState>,
-	event_loop_proxy: EventLoopProxy<CustomEvent>,
+	wgpu_context: WgpuContext,
 }
 
 impl WinitApp {
-	pub(crate) fn new(cef_context: cef::Context<cef::Initialized>, window_size_sender: Sender<WindowSize>, event_loop_proxy: EventLoopProxy<CustomEvent>) -> Self {
+	pub(crate) fn new(cef_context: cef::Context<cef::Initialized>, window_size_sender: Sender<WindowSize>, wgpu_context: WgpuContext) -> Self {
 		Self {
 			cef_context,
 			window: None,
 			cef_schedule: Some(Instant::now()),
 			_viewport_frame_buffer: None,
-			ui_frame_buffer: None,
+			_ui_frame_buffer: None,
 			graphics_state: None,
 			window_size_sender,
-			event_loop_proxy,
+			wgpu_context,
 		}
 	}
 }
@@ -47,8 +46,9 @@ impl WinitApp {
 impl ApplicationHandler<CustomEvent> for WinitApp {
 	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
 		// Set a timeout in case we miss any cef schedule requests
-		let timeout = Instant::now() + Duration::from_millis(100);
+		let timeout = Instant::now() + Duration::from_millis(10);
 		let wait_until = timeout.min(self.cef_schedule.unwrap_or(timeout));
+		self.cef_context.work();
 		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
 	}
 
@@ -71,7 +71,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 				)
 				.unwrap(),
 		);
-		let graphics_state = futures::executor::block_on(GraphicsState::new(window.clone()));
+		let graphics_state = GraphicsState::new(window.clone(), self.wgpu_context.clone());
 
 		self.window = Some(window);
 		self.graphics_state = Some(graphics_state);
@@ -81,24 +81,21 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 
 	fn user_event(&mut self, _: &ActiveEventLoop, event: CustomEvent) {
 		match event {
-			CustomEvent::UiUpdate(frame_buffer) => {
+			CustomEvent::UiUpdate(texture) => {
 				if let Some(graphics_state) = self.graphics_state.as_mut() {
-					graphics_state.update_texture(&frame_buffer);
+					graphics_state.bind_texture(&texture);
+					graphics_state.resize(texture.width(), texture.height());
 				}
-				self.ui_frame_buffer = Some(frame_buffer);
 				if let Some(window) = &self.window {
 					window.request_redraw();
 				}
 			}
 			CustomEvent::ScheduleBrowserWork(instant) => {
-				if let Some(graphics_state) = self.graphics_state.as_mut()
-					&& let Some(frame_buffer) = &self.ui_frame_buffer
-					&& graphics_state.ui_texture_outdated(frame_buffer)
-				{
+				if instant <= Instant::now() {
 					self.cef_context.work();
-					let _ = self.event_loop_proxy.send_event(CustomEvent::ScheduleBrowserWork(Instant::now() + Duration::from_millis(1)));
+				} else {
+					self.cef_schedule = Some(instant);
 				}
-				self.cef_schedule = Some(instant);
 			}
 		}
 	}
@@ -113,9 +110,6 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 			}
 			WindowEvent::Resized(PhysicalSize { width, height }) => {
 				let _ = self.window_size_sender.send(WindowSize::new(width as usize, height as usize));
-				if let Some(ref mut graphics_state) = self.graphics_state {
-					graphics_state.resize(width, height);
-				}
 				self.cef_context.notify_of_resize();
 			}
 

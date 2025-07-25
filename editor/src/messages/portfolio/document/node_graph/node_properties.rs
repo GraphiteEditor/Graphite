@@ -1938,7 +1938,7 @@ pub mod choice {
 	use super::ParameterWidgetsInfo;
 	use crate::messages::tool::tool_messages::tool_prelude::*;
 	use graph_craft::document::value::TaggedValue;
-	use graphene_std::registry::{ChoiceTypeStatic, ChoiceWidgetHint};
+	use graphene_std::choice_type::{ChoiceTypeStatic, ChoiceWidgetHint};
 	use std::marker::PhantomData;
 
 	pub trait WidgetFactory {
@@ -1998,10 +1998,7 @@ pub mod choice {
 						.map(|(item, metadata)| {
 							let updater = updater_factory();
 							let committer = committer_factory();
-							MenuListEntry::new(metadata.name.as_ref())
-								.label(metadata.label.as_ref())
-								.on_update(move |_| updater(item))
-								.on_commit(committer)
+							MenuListEntry::new(metadata.name).label(metadata.label).on_update(move |_| updater(item)).on_commit(committer)
 						})
 						.collect()
 				})
@@ -2020,11 +2017,11 @@ pub mod choice {
 				.map(|(item, var_meta)| {
 					let updater = updater_factory();
 					let committer = committer_factory();
-					let entry = RadioEntryData::new(var_meta.name.as_ref()).on_update(move |_| updater(item)).on_commit(committer);
+					let entry = RadioEntryData::new(var_meta.name).on_update(move |_| updater(item)).on_commit(committer);
 					match (var_meta.icon.as_deref(), var_meta.docstring.as_deref()) {
-						(None, None) => entry.label(var_meta.label.as_ref()),
-						(None, Some(doc)) => entry.label(var_meta.label.as_ref()).tooltip(doc),
-						(Some(icon), None) => entry.icon(icon).tooltip(var_meta.label.as_ref()),
+						(None, None) => entry.label(var_meta.label),
+						(None, Some(doc)) => entry.label(var_meta.label).tooltip(doc),
+						(Some(icon), None) => entry.icon(icon).tooltip(var_meta.label),
 						(Some(icon), Some(doc)) => entry.icon(icon).tooltip(format!("{}\n\n{}", var_meta.label, doc)),
 					}
 				})

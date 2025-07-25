@@ -3,36 +3,19 @@ use std::sync::Arc;
 use thiserror::Error;
 use winit::window::Window;
 
-pub(crate) struct FrameBuffer {
-	buffer: Vec<u8>,
+pub(crate) struct FrameBufferRef<'a> {
+	buffer: &'a [u8],
 	width: usize,
 	height: usize,
 }
-impl std::fmt::Debug for FrameBuffer {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("FrameBuffer")
-			.field("width", &self.width)
-			.field("height", &self.height)
-			.field("len", &self.buffer.len())
-			.finish()
-	}
-}
-
-#[derive(Error, Debug)]
-pub(crate) enum FrameBufferError {
-	#[error("Invalid buffer size {buffer_size}, expected {expected_size} for width {width} multiplied with height {height} multiplied by 4 channels")]
-	InvalidSize { buffer_size: usize, expected_size: usize, width: usize, height: usize },
-}
-
-impl FrameBuffer {
-	pub(crate) fn new(buffer: Vec<u8>, width: usize, height: usize) -> Result<Self, FrameBufferError> {
+impl<'a> FrameBufferRef<'a> {
+	pub(crate) fn new(buffer: &'a [u8], width: usize, height: usize) -> Result<Self, FrameBufferError> {
 		let fb = Self { buffer, width, height };
 		fb.validate_size()?;
 		Ok(fb)
 	}
-
 	pub(crate) fn buffer(&self) -> &[u8] {
-		&self.buffer
+		self.buffer
 	}
 
 	pub(crate) fn width(&self) -> usize {
@@ -56,34 +39,41 @@ impl FrameBuffer {
 		}
 	}
 }
-
-#[derive(Debug)]
-pub(crate) struct GraphicsState {
-	surface: wgpu::Surface<'static>,
-	device: wgpu::Device,
-	queue: wgpu::Queue,
-	config: wgpu::SurfaceConfiguration,
-	texture: Option<wgpu::Texture>,
-	bind_group: Option<wgpu::BindGroup>,
-	render_pipeline: wgpu::RenderPipeline,
-	sampler: wgpu::Sampler,
+impl<'a> std::fmt::Debug for FrameBufferRef<'a> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("FrameBuffer")
+			.field("width", &self.width)
+			.field("height", &self.height)
+			.field("len", &self.buffer.len())
+			.finish()
+	}
 }
 
-impl GraphicsState {
-	pub(crate) async fn new(window: Arc<Window>) -> Self {
-		let size = window.inner_size();
+#[derive(Error, Debug)]
+pub(crate) enum FrameBufferError {
+	#[error("Invalid buffer size {buffer_size}, expected {expected_size} for width {width} multiplied with height {height} multiplied by 4 channels")]
+	InvalidSize { buffer_size: usize, expected_size: usize, width: usize, height: usize },
+}
 
+#[derive(Debug, Clone)]
+pub(crate) struct WgpuContext {
+	pub(crate) device: wgpu::Device,
+	pub(crate) queue: wgpu::Queue,
+	adapter: wgpu::Adapter,
+	instance: wgpu::Instance,
+}
+
+impl WgpuContext {
+	pub(crate) async fn new() -> Self {
 		let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
 			backends: wgpu::Backends::PRIMARY,
 			..Default::default()
 		});
 
-		let surface = instance.create_surface(window).unwrap();
-
 		let adapter = instance
 			.request_adapter(&wgpu::RequestAdapterOptions {
 				power_preference: wgpu::PowerPreference::default(),
-				compatible_surface: Some(&surface),
+				compatible_surface: None,
 				force_fallback_adapter: false,
 			})
 			.await
@@ -100,7 +90,28 @@ impl GraphicsState {
 			.await
 			.unwrap();
 
-		let surface_caps = surface.get_capabilities(&adapter);
+		Self { device, queue, adapter, instance }
+	}
+}
+
+#[derive(Debug)]
+pub(crate) struct GraphicsState {
+	surface: wgpu::Surface<'static>,
+	context: WgpuContext,
+	config: wgpu::SurfaceConfiguration,
+	texture: Option<wgpu::Texture>,
+	bind_group: Option<wgpu::BindGroup>,
+	render_pipeline: wgpu::RenderPipeline,
+	sampler: wgpu::Sampler,
+}
+
+impl GraphicsState {
+	pub(crate) fn new(window: Arc<Window>, context: WgpuContext) -> Self {
+		let size = window.inner_size();
+
+		let surface = context.instance.create_surface(window).unwrap();
+
+		let surface_caps = surface.get_capabilities(&context.adapter);
 		let surface_format = surface_caps.formats.iter().find(|f| f.is_srgb()).copied().unwrap_or(surface_caps.formats[0]);
 
 		let config = wgpu::SurfaceConfiguration {
@@ -114,13 +125,13 @@ impl GraphicsState {
 			desired_maximum_frame_latency: 2,
 		};
 
-		surface.configure(&device, &config);
+		surface.configure(&context.device, &config);
 
 		// Create shader module
-		let shader = device.create_shader_module(wgpu::include_wgsl!("render/fullscreen_texture.wgsl"));
+		let shader = context.device.create_shader_module(wgpu::include_wgsl!("render/fullscreen_texture.wgsl"));
 
 		// Create sampler
-		let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+		let sampler = context.device.create_sampler(&wgpu::SamplerDescriptor {
 			address_mode_u: wgpu::AddressMode::ClampToEdge,
 			address_mode_v: wgpu::AddressMode::ClampToEdge,
 			address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -130,7 +141,7 @@ impl GraphicsState {
 			..Default::default()
 		});
 
-		let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+		let texture_bind_group_layout = context.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 			entries: &[
 				wgpu::BindGroupLayoutEntry {
 					binding: 0,
@@ -152,13 +163,13 @@ impl GraphicsState {
 			label: Some("texture_bind_group_layout"),
 		});
 
-		let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+		let render_pipeline_layout = context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("Render Pipeline Layout"),
 			bind_group_layouts: &[&texture_bind_group_layout],
 			push_constant_ranges: &[],
 		});
 
-		let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+		let render_pipeline = context.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
 			label: Some("Render Pipeline"),
 			layout: Some(&render_pipeline_layout),
 			vertex: wgpu::VertexState {
@@ -196,94 +207,36 @@ impl GraphicsState {
 			cache: None,
 		});
 
-		let mut graphics_state = Self {
+		Self {
 			surface,
-			device,
-			queue,
+			context,
 			config,
 			texture: None,
 			bind_group: None,
 			render_pipeline,
 			sampler,
-		};
-
-		// Initialize with a test pattern so we always have something to render
-		let width = 800;
-		let height = 600;
-		let initial_data = vec![34u8; width * height * 4]; // Gray texture #222222FF
-
-		let fb = FrameBuffer::new(initial_data, width, height)
-			.map_err(|e| {
-				panic!("Failed to create initial FrameBuffer: {e}");
-			})
-			.unwrap();
-
-		graphics_state.update_texture(&fb);
-
-		graphics_state
+		}
 	}
 
-	pub(crate) fn ui_texture_outdated(&self, frame_buffer: &FrameBuffer) -> bool {
-		let width = frame_buffer.width() as u32;
-		let height = frame_buffer.height() as u32;
-
-		self.config.width != width || self.config.height != height
-	}
 	pub(crate) fn resize(&mut self, width: u32, height: u32) {
 		if width > 0 && height > 0 && (self.config.width != width || self.config.height != height) {
 			self.config.width = width;
 			self.config.height = height;
-			self.surface.configure(&self.device, &self.config);
-			let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-				label: Some("CEF Texture"),
-				size: wgpu::Extent3d {
-					width,
-					height,
-					depth_or_array_layers: 1,
-				},
-				mip_level_count: 1,
-				sample_count: 1,
-				dimension: wgpu::TextureDimension::D2,
-				format: wgpu::TextureFormat::Bgra8UnormSrgb,
-				usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-				view_formats: &[],
-			});
-			self.texture = Some(texture);
+			self.surface.configure(&self.context.device, &self.config);
 		}
 	}
 
-	pub(crate) fn update_texture(&mut self, frame_buffer: &FrameBuffer) {
-		let data = frame_buffer.buffer();
-		let width = frame_buffer.width() as u32;
-		let height = frame_buffer.height() as u32;
+	pub(crate) fn bind_texture(&mut self, texture: &wgpu::Texture) {
+		let bind_group = self.create_bindgroup(texture);
+		self.texture = Some(texture.clone());
 
-		self.resize(width, height);
+		self.bind_group = Some(bind_group);
+	}
 
-		let Some(ref texture) = self.texture else { return };
-
-		self.queue.write_texture(
-			wgpu::TexelCopyTextureInfo {
-				texture,
-				mip_level: 0,
-				origin: wgpu::Origin3d::ZERO,
-				aspect: wgpu::TextureAspect::All,
-			},
-			data,
-			wgpu::TexelCopyBufferLayout {
-				offset: 0,
-				bytes_per_row: Some(4 * width),
-				rows_per_image: Some(height),
-			},
-			wgpu::Extent3d {
-				width,
-				height,
-				depth_or_array_layers: 1,
-			},
-		);
-
+	fn create_bindgroup(&self, texture: &wgpu::Texture) -> wgpu::BindGroup {
 		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-		let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+		self.context.device.create_bind_group(&wgpu::BindGroupDescriptor {
 			layout: &self.render_pipeline.get_bind_group_layout(0),
 			entries: &[
 				wgpu::BindGroupEntry {
@@ -296,16 +249,14 @@ impl GraphicsState {
 				},
 			],
 			label: Some("texture_bind_group"),
-		});
-
-		self.bind_group = Some(bind_group);
+		})
 	}
 
 	pub(crate) fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
 		let output = self.surface.get_current_texture()?;
 		let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-		let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
+		let mut encoder = self.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
 
 		{
 			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -331,7 +282,7 @@ impl GraphicsState {
 				tracing::warn!("No bind group available - showing clear color only");
 			}
 		}
-		self.queue.submit(std::iter::once(encoder.finish()));
+		self.context.queue.submit(std::iter::once(encoder.finish()));
 		output.present();
 
 		Ok(())
