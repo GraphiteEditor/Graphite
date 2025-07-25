@@ -25,3 +25,4 @@ futures = { workspace = true }
 web-sys = { workspace = true }
 winit = { workspace = true }
 vello = { workspace = true }
+bytemuck = { workspace = true }

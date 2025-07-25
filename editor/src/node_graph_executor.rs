@@ -213,7 +213,7 @@ impl NodeGraphExecutor {
 
 	fn export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let TaggedValue::RenderOutput(RenderOutput {
-			data: graphene_std::wasm_application_io::RenderOutputType::Svg(svg),
+			data: graphene_std::wasm_application_io::RenderOutputType::Svg { svg, .. },
 			..
 		}) = node_graph_output
 		else {
@@ -350,15 +350,16 @@ impl NodeGraphExecutor {
 		match node_graph_output {
 			TaggedValue::RenderOutput(render_output) => {
 				match render_output.data {
-					graphene_std::wasm_application_io::RenderOutputType::Svg(svg) => {
+					graphene_std::wasm_application_io::RenderOutputType::Svg { svg, image_data } => {
 						// Send to frontend
+						responses.add(FrontendMessage::UpdateImageData { image_data });
 						responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 					}
 					graphene_std::wasm_application_io::RenderOutputType::CanvasFrame(frame) => {
 						let matrix = format_transform_matrix(frame.transform);
-						let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{}\"", matrix) };
+						let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{matrix}\"") };
 						let svg = format!(
-							r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="canvas{}"></div></foreignObject></svg>"#,
+							r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}"></div></foreignObject></svg>"#,
 							frame.resolution.x, frame.resolution.y, frame.surface_id.0
 						);
 						responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
