@@ -41,8 +41,12 @@ fn main() {
 	let wgpu_context = futures::executor::block_on(WgpuContext::new());
 	let cef_context = match cef_context.init(cef::CefHandler::new(window_size_receiver, event_loop.create_proxy(), wgpu_context.clone())) {
 		Ok(c) => c,
-		Err(cef::InitError::InitializationFailed) => {
-			tracing::error!("Cef initialization failed");
+		Err(cef::InitError::AlreadyRunning) => {
+			tracing::error!("Another instance is already running, Exiting.");
+			exit(0);
+		}
+		Err(cef::InitError::InitializationFailed(code)) => {
+			tracing::error!("Cef initialization failed with code: {code}");
 			exit(1);
 		}
 	};
