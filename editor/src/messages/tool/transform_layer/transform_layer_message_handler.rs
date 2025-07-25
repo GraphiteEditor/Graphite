@@ -365,29 +365,31 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					}
 
 					if using_path_tool && (transform_type == TransformType::Grab) {
-						// Check if single point selected and iit is colinear point
-						let single_anchor_selected = shape_editor.selected_points().count() == 1 && shape_editor.selected_points().any(|point| matches!(point, ManipulatorPointId::Anchor(_)));
-						log::info!("reaching hereee");
-						if single_anchor_selected && transform_type.equivalent_to(self.transform_operation) && self.was_grabbing {
-							let Some(layer) = document.network_interface.selected_nodes().selected_layers(document.metadata()).next() else {
-								return;
-							};
-							let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { return };
+						if transform_type.equivalent_to(self.transform_operation) {
+							return;
+						}
 
+						// Check if a single point is selected and it's a colinear point
+						let single_anchor_selected = shape_editor.selected_points().count() == 1 && shape_editor.selected_points().any(|point| matches!(point, ManipulatorPointId::Anchor(_)));
+
+						if single_anchor_selected && transform_type.equivalent_to(self.transform_operation) && self.was_grabbing {
+							let selected_nodes = &document.network_interface.selected_nodes();
+
+							let Some(layer) = selected_nodes.selected_layers(document.metadata()).next() else { return };
+							let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { return };
 							let Some(anchor) = shape_editor.selected_points().next() else { return };
+
 							if vector_data.colinear(*anchor) {
 								responses.add(TransformLayerMessage::CancelTransformOperation);
 
 								// Start sliding point
 								responses.add(DocumentMessage::AddTransaction);
 								responses.add(PathToolMessage::StartSlidingPoint);
-								return;
-							} else {
-								return;
 							}
-						} else if transform_type.equivalent_to(self.transform_operation) {
+
 							return;
 						}
+
 						self.was_grabbing = true;
 					}
 				}
