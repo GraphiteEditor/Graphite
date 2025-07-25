@@ -561,7 +561,7 @@ impl GraphicElementRendered for VectorDataTable {
 
 			let reorder_for_outside = instance.instance.style.stroke().is_some_and(|stroke| stroke.align == StrokeAlign::Outside) && !instance.instance.style.fill().is_none();
 			let use_layer = can_draw_aligned_stroke && !reorder_for_outside;
-			if use_layer{
+			if use_layer {
 				let mut fill_instance = instance.instance.clone();
 				fill_instance.style.clear_stroke();
 				fill_instance.style.set_fill(Fill::solid(Color::BLACK));
