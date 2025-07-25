@@ -1,10 +1,14 @@
 use cef::sys::{CEF_API_VERSION_LAST, cef_resultcode_t};
-use cef::{App, BrowserSettings, Client, DictionaryValue, ImplBrowser, ImplBrowserHost, ImplCommandLine, RenderHandler, RequestContext, WindowInfo, browser_host_create_browser_sync, initialize};
+use cef::{
+	App, BrowserSettings, Client, DialogHandler, DictionaryValue, ImplBrowser, ImplBrowserHost, ImplCommandLine, RenderHandler, RequestContext, WindowInfo, browser_host_create_browser_sync,
+	initialize,
+};
 use cef::{Browser, CefString, Settings, api_hash, args::Args, execute_process};
 use thiserror::Error;
 use winit::event::WindowEvent;
 
 use crate::cef::dirs::{cef_cache_dir, cef_data_dir};
+use crate::cef::internal::DialogHandlerImpl;
 
 use super::input::InputState;
 use super::scheme_handler::{FRONTEND_DOMAIN, GRAPHITE_SCHEME};
@@ -81,8 +85,9 @@ impl Context<Setup> {
 			return Err(InitError::InitializationFailed(cef_exit_code));
 		}
 
-		let render_handler = RenderHandlerImpl::new(event_handler.clone());
-		let mut client = Client::new(ClientImpl::new(RenderHandler::new(render_handler)));
+		let render_handler = RenderHandler::new(RenderHandlerImpl::new(event_handler.clone()));
+		let dialog_handler = DialogHandler::new(DialogHandlerImpl::new(event_handler.clone()));
+		let mut client = Client::new(ClientImpl::new(render_handler, dialog_handler));
 
 		let url = CefString::from(format!("{GRAPHITE_SCHEME}://{FRONTEND_DOMAIN}/").as_str());
 
