@@ -171,7 +171,6 @@
 
 	function canvasPointerDown(e: PointerEvent) {
 		const onEditbox = e.target instanceof HTMLDivElement && e.target.contentEditable;
-		console.log("Canvas pointer down", e, onEditbox);
 		if (!onEditbox) viewport?.setPointerCapture(e.pointerId);
 		if (window.document.activeElement instanceof HTMLElement) {
 			window.document.activeElement.blur();

@@ -48,7 +48,6 @@
 
 	onMount(() => {
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
-		console.log("init after frontend ready from js");
 		editor.handle.initAfterFrontendReady(operatingSystem());
 	});
 

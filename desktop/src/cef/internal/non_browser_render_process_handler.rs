@@ -1,9 +1,6 @@
 use cef::rc::{Rc, RcImpl};
-use cef::sys::{_cef_browser_process_handler_t, _cef_render_process_handler_t, cef_base_ref_counted_t, cef_browser_process_handler_t, cef_v8_handler_t, cef_v8_propertyattribute_t};
-use cef::{
-	CefString, ImplBrowserProcessHandler, ImplRenderProcessHandler, ImplV8Context, ImplV8Value, SchemeHandlerFactory, V8Handler, V8Propertyattribute, V8Value, WrapBrowserProcessHandler,
-	WrapRenderProcessHandler, v8_value_create_function,
-};
+use cef::sys::{_cef_render_process_handler_t, cef_base_ref_counted_t};
+use cef::{CefString, ImplRenderProcessHandler, ImplV8Context, ImplV8Value, V8Handler, V8Propertyattribute, WrapRenderProcessHandler, v8_value_create_function};
 
 use crate::cef::internal::non_browser_v8_handler::NonBrowserV8HandlerImpl;
 
@@ -17,7 +14,7 @@ impl NonBrowserRenderProcessHandlerImpl {
 }
 
 impl ImplRenderProcessHandler for NonBrowserRenderProcessHandlerImpl {
-	fn on_context_created(&self, browser: Option<&mut cef::Browser>, frame: Option<&mut cef::Frame>, context: Option<&mut cef::V8Context>) {
+	fn on_context_created(&self, _browser: Option<&mut cef::Browser>, _frame: Option<&mut cef::Frame>, context: Option<&mut cef::V8Context>) {
 		let Some(context) = context else {
 			tracing::event!(tracing::Level::ERROR, "No browser in RenderProcessHandlerImpl::on_context_created");
 			return;

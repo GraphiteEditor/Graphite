@@ -1,12 +1,4 @@
-use cef::{
-	CefString, Frame, ImplFrame, ImplV8Context, ImplV8Handler, ImplV8Value, ProcessId, ProcessMessage, V8Value, WrapV8Handler, process_message_create,
-	rc::Rc,
-	string_userfree_utf16_free,
-	sys::{cef_process_id_t, cef_string_userfree_utf16_free},
-	v8_context_get_current_context,
-};
-use tracing::event;
-use winit::event_loop::EventLoopProxy;
+use cef::{CefString, ImplFrame, ImplV8Context, ImplV8Handler, ImplV8Value, V8Value, WrapV8Handler, process_message_create, rc::Rc, sys::cef_process_id_t, v8_context_get_current_context};
 
 pub struct NonBrowserV8HandlerImpl {
 	object: *mut cef::rc::RcImpl<cef::sys::_cef_v8_handler_t, Self>,
@@ -28,14 +20,14 @@ impl ImplV8Handler for NonBrowserV8HandlerImpl {
 		_exception: Option<&mut cef::CefString>,
 	) -> ::std::os::raw::c_int {
 		if let Some(name) = name {
-			if name.to_string() == "sendMessageToCef".to_string() {
-				let string = arguments.unwrap().get(0).unwrap().as_ref().unwrap().string_value();
+			if name.to_string() == "sendMessageToCef" {
+				let string = arguments.unwrap().first().unwrap().as_ref().unwrap().string_value();
 
 				let pointer: *mut cef::sys::_cef_string_utf16_t = string.into();
 				let message = unsafe {
 					let str = (*pointer).str_;
 					let len = (*pointer).length;
-					let slice = std::slice::from_raw_parts(str, len as usize);
+					let slice = std::slice::from_raw_parts(str, len);
 					String::from_utf16(slice).unwrap()
 				};
 
