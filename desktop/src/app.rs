@@ -71,7 +71,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 				)
 				.unwrap(),
 		);
-		let graphics_state = pollster::block_on(GraphicsState::new(window.clone()));
+		let graphics_state = futures::executor::block_on(GraphicsState::new(window.clone()));
 
 		self.window = Some(window);
 		self.graphics_state = Some(graphics_state);
