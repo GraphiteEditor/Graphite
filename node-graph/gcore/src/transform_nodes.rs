@@ -7,6 +7,44 @@ use core::f64;
 use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category(""))]
+async fn transform_two(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	value: impl Node<Context<'static>, Output = VectorDataTable>,
+	translate: DVec2,
+	rotate: f64,
+	scale: DVec2,
+	skew: DVec2,
+	selection: impl Node<Context<'static>, Output = bool>,
+) -> VectorDataTable {
+	let matrix = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., skew.y, skew.x, 1., 0., 0.]);
+
+	let footprint = ctx.try_footprint().copied();
+
+	let mut transform_target = {
+		let mut new_ctx = OwnedContextImpl::from(ctx.clone());
+		if let Some(mut footprint) = footprint {
+			footprint.apply_transform(&matrix);
+			new_ctx = new_ctx.with_footprint(footprint);
+		}
+		value.eval(new_ctx.into_context()).await
+	};
+
+	for (index, instance) in transform_target.instance_mut_iter().enumerate() {
+		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index);
+
+		let should_eval = selection.eval(new_ctx.into_context()).await;
+		if should_eval {
+			info!("Applying to {index}");
+			*instance.transform = matrix * *instance.transform;
+		} else {
+			info!("Skipping index {index}");
+		}
+	}
+
+	transform_target
+}
+
+#[node_macro::node(category(""))]
 async fn transform<T: ApplyTransform + 'n + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(

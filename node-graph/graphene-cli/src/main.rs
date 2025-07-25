@@ -187,6 +187,8 @@ fn compile_graph(document_string: String, editor_api: Arc<WasmEditorApi>) -> Res
 	let substitutions = preprocessor::generate_node_substitutions();
 	preprocessor::expand_network(&mut network, &substitutions);
 
+	preprocessor::evaluate_index_operation_filter(&mut network);
+
 	let wrapped_network = wrap_network_in_scope(network.clone(), editor_api);
 
 	let compiler = Compiler {};
