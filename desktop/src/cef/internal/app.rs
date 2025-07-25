@@ -1,6 +1,6 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_app_t, cef_base_ref_counted_t};
-use cef::{BrowserProcessHandler, ImplApp, SchemeRegistrar, WrapApp};
+use cef::{BrowserProcessHandler, CefString, ImplApp, ImplCommandLine, SchemeRegistrar, WrapApp};
 
 use crate::cef::CefEventHandler;
 use crate::cef::scheme_handler::GraphiteSchemeHandlerFactory;
@@ -27,6 +27,14 @@ impl<H: CefEventHandler + Clone> ImplApp for AppImpl<H> {
 
 	fn on_register_custom_schemes(&self, registrar: Option<&mut SchemeRegistrar>) {
 		GraphiteSchemeHandlerFactory::register_schemes(registrar);
+	}
+
+	fn on_before_command_line_processing(&self, _process_type: Option<&cef::CefString>, command_line: Option<&mut cef::CommandLine>) {
+		if let Some(cmd) = command_line {
+			// Disable GPU acceleration, because it is not supported for Offscreen Rendering and can cause crashes.
+			cmd.append_switch(Some(&CefString::from("disable-gpu")));
+			cmd.append_switch(Some(&CefString::from("disable-gpu-compositing")));
+		}
 	}
 
 	fn get_raw(&self) -> *mut _cef_app_t {

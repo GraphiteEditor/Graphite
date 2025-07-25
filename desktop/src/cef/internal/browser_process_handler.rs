@@ -25,12 +25,12 @@ impl<H: CefEventHandler + Clone> ImplBrowserProcessHandler for BrowserProcessHan
 		cef::register_scheme_handler_factory(Some(&CefString::from(GRAPHITE_SCHEME)), None, Some(&mut SchemeHandlerFactory::new(GraphiteSchemeHandlerFactory::new())));
 	}
 
-	fn get_raw(&self) -> *mut _cef_browser_process_handler_t {
-		self.object.cast()
-	}
-
 	fn on_schedule_message_pump_work(&self, delay_ms: i64) {
 		self.event_handler.schedule_cef_message_loop_work(Instant::now() + Duration::from_millis(delay_ms as u64));
+	}
+
+	fn get_raw(&self) -> *mut _cef_browser_process_handler_t {
+		self.object.cast()
 	}
 }
 
