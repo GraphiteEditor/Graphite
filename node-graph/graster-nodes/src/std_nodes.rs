@@ -88,7 +88,6 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Rast
 			let new_transform = image_frame_transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
 
 			image_frame_instance.transform = new_transform;
-			image_frame_instance.source_node_id = None;
 			image_frame_instance.instance = Raster::new_cpu(image);
 			Some(image_frame_instance)
 		})
@@ -121,9 +120,10 @@ pub fn combine_channels(
 			let alpha = alpha.filter(|i| i.instance.width > 0 && i.instance.height > 0);
 
 			// Get this instance's transform and alpha blending mode from the first non-empty channel
-			let Some((transform, alpha_blending)) = [&red, &green, &blue, &alpha].iter().find_map(|i| i.as_ref()).map(|i| (i.transform, i.alpha_blending)) else {
-				return None;
-			};
+			let (transform, alpha_blending, source_node_id) = [&red, &green, &blue, &alpha]
+				.iter()
+				.find_map(|i| i.as_ref())
+				.map(|i| (i.transform, i.alpha_blending, i.source_node_id))?;
 
 			// Get the common width and height of the channels, which must have equal dimensions
 			let channel_dimensions = [
@@ -140,9 +140,7 @@ pub fn combine_channels(
 			{
 				return None;
 			}
-			let Some(&(width, height)) = channel_dimensions.iter().flatten().next() else {
-				return None;
-			};
+			let &(width, height) = channel_dimensions.iter().flatten().next()?;
 
 			// Create a new image for this instance output
 			let mut image = Image::new(width, height, Color::TRANSPARENT);
@@ -179,7 +177,7 @@ pub fn combine_channels(
 				instance: Raster::new_cpu(image),
 				transform,
 				alpha_blending,
-				source_node_id: None,
+				source_node_id,
 			})
 		})
 		.collect()
@@ -276,7 +274,6 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<CPU>, bounds: 
 
 			image_instance.instance = Raster::new_cpu(new_image);
 			image_instance.transform = new_texture_to_layer_space;
-			image_instance.source_node_id = None;
 			image_instance
 		})
 		.collect()

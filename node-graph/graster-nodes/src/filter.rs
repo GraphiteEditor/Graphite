@@ -36,7 +36,6 @@ async fn blur(
 			};
 
 			image_instance.instance = blurred_image;
-			image_instance.source_node_id = None;
 			image_instance
 		})
 		.collect()
