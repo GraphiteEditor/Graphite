@@ -302,10 +302,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 			let factor = if render_params.for_mask { 1. } else { alpha_blending.fill };
 			let opacity = alpha_blending.opacity * factor;
 			if opacity < 1. || (render_params.view_mode != ViewMode::Outline && alpha_blending.blend_mode != BlendMode::default()) {
-				bounds = self
-					.instance_ref_iter()
-					.filter_map(|element| element.instance.bounding_box(transform, true))
-					.reduce(Quad::combine_bounds);
+				bounds = instance.instance.bounding_box(transform, true);
 
 				if let Some(bounds) = bounds {
 					scene.push_layer(
@@ -328,10 +325,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 					mask_instance_state = None;
 				}
 				if !layer {
-					bounds = self
-						.instance_ref_iter()
-						.filter_map(|element| element.instance.bounding_box(transform, true))
-						.reduce(Quad::combine_bounds);
+					bounds = instance.instance.bounding_box(transform, true);
 				}
 
 				if let Some(bounds) = bounds {
@@ -560,12 +554,9 @@ impl GraphicElementRendered for VectorDataTable {
 			let can_draw_aligned_stroke = instance.instance.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
 				&& instance.instance.stroke_bezier_paths().all(|path| path.closed());
 
-			let reorder_for_outside = instance
-				.instance
-				.style
-				.stroke()
-				.is_some_and(|stroke| stroke.align == StrokeAlign::Outside && !instance.instance.style.fill().is_none());
-			if can_draw_aligned_stroke && !reorder_for_outside {
+			let reorder_for_outside = instance.instance.style.stroke().is_some_and(|stroke| stroke.align == StrokeAlign::Outside) && !instance.instance.style.fill().is_none();
+			let use_layer = can_draw_aligned_stroke && !reorder_for_outside;
+			if use_layer{
 				let mut fill_instance = instance.instance.clone();
 				fill_instance.style.clear_stroke();
 				fill_instance.style.set_fill(Fill::solid(Color::BLACK));
@@ -577,15 +568,15 @@ impl GraphicElementRendered for VectorDataTable {
 					source_node_id: None,
 				});
 
+				let bounds = instance.instance.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
 				let weight = instance.instance.style.stroke().unwrap().weight;
-				let quad = Quad::from_box(layer_bounds).inflate(weight * element_transform.matrix2.determinant());
-				let rect = kurbo::Rect::new(quad.top_left().x, quad.top_left().y, quad.bottom_right().x, quad.bottom_right().y);
+				let quad = Quad::from_box(bounds).inflate(weight * element_transform.matrix2.determinant());
+				let bounds = quad.bounding_box();
+				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
-				let inside = instance.instance.style.stroke().unwrap().align == StrokeAlign::Inside;
-				let compose = if inside { peniko::Compose::SrcIn } else { peniko::Compose::SrcOut };
 				scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 				vector_data.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
-				scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, compose), 1., kurbo::Affine::IDENTITY, &rect);
+				scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
 			}
 
 			// Render the path
@@ -619,6 +610,7 @@ impl GraphicElementRendered for VectorDataTable {
 						true => [Op::Stroke, Op::Fill],
 						false => [Op::Fill, Op::Stroke], // Default
 					};
+
 					for operation in order {
 						match operation {
 							Op::Fill => {
@@ -718,7 +710,7 @@ impl GraphicElementRendered for VectorDataTable {
 				}
 			}
 
-			if can_draw_aligned_stroke {
+			if use_layer {
 				scene.pop_layer();
 				scene.pop_layer();
 			}
