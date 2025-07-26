@@ -29,6 +29,7 @@ pub enum MouseCursorIcon {
 	Rotate,
 }
 
+#[impl_message(Message, ExportDialogMessage, FileType)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FileType {
 	#[default]
@@ -47,6 +48,7 @@ impl FileType {
 	}
 }
 
+#[impl_message(Message, ExportDialogMessage, ExportBounds)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum ExportBounds {
 	#[default]
