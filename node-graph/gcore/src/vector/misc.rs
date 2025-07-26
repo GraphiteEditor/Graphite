@@ -58,8 +58,8 @@ impl AsI64 for f64 {
 #[widget(Radio)]
 pub enum GridType {
 	#[default]
-	Rectangular,
-	Isometric,
+	Rectangular = 0,
+	Isometric = 1,
 }
 
 #[repr(C)]
@@ -98,6 +98,13 @@ pub fn point_to_dvec2(point: Point) -> DVec2 {
 
 pub fn dvec2_to_point(value: DVec2) -> Point {
 	Point { x: value.x, y: value.y }
+}
+
+pub fn get_line_endpoints(line: Line) -> (DVec2, DVec2) {
+	let po = line.p0;
+	let p1 = line.p1;
+
+	(point_to_dvec2(po), point_to_dvec2(p1))
 }
 
 pub fn segment_to_handles(segment: &PathSeg) -> BezierHandles {
