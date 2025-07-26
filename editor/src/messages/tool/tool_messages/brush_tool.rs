@@ -144,7 +144,11 @@ impl LayoutHolder for BrushTool {
 
 		let draw_mode_entries: Vec<_> = [DrawMode::Draw, DrawMode::Erase, DrawMode::Restore]
 			.into_iter()
-			.map(|draw_mode| RadioEntryData::new(format!("{draw_mode:?}")).on_update(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::DrawMode(draw_mode)).into()))
+			.map(|draw_mode| {
+				RadioEntryData::new(format!("{draw_mode:?}"))
+					.label(format!("{draw_mode:?}"))
+					.on_update(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::DrawMode(draw_mode)).into())
+			})
 			.collect();
 		widgets.push(RadioInput::new(draw_mode_entries).selected_index(Some(self.options.draw_mode as u32)).widget_holder());
 
@@ -186,10 +190,10 @@ impl LayoutHolder for BrushTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for BrushTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Brush(BrushToolMessage::UpdateOptions(action)) = message else {
-			self.fsm_state.process_event(message, &mut self.data, tool_data, &self.options, responses, true);
+			self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, true);
 			return;
 		};
 		match action {
@@ -306,8 +310,15 @@ impl Fsm for BrushToolFsmState {
 	type ToolData = BrushToolData;
 	type ToolOptions = BrushOptions;
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData {
+	fn transition(
+		self,
+		event: ToolMessage,
+		tool_data: &mut Self::ToolData,
+		tool_action_data: &mut ToolActionMessageContext,
+		tool_options: &Self::ToolOptions,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
+		let ToolActionMessageContext {
 			document, global_tool_data, input, ..
 		} = tool_action_data;
 

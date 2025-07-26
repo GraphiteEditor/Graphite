@@ -187,7 +187,7 @@ impl SelectTool {
 	}
 
 	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetHolder> + use<> {
-		let list = <BooleanOperation as graphene_std::registry::ChoiceTypeStatic>::list();
+		let list = <BooleanOperation as graphene_std::choice_type::ChoiceTypeStatic>::list();
 		list.iter().flat_map(|i| i.iter()).map(move |(operation, info)| {
 			let mut tooltip = info.label.to_string();
 			if let Some(doc) = info.docstring.as_deref() {
@@ -273,8 +273,8 @@ impl LayoutHolder for SelectTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for SelectTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let mut redraw_reference_pivot = false;
 
 		if let ToolMessage::Select(SelectToolMessage::SelectOptions(ref option_update)) = message {
@@ -309,7 +309,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 			}
 		}
 
-		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
+		self.fsm_state.process_event(message, &mut self.tool_data, context, &(), responses, false);
 
 		if self.tool_data.pivot_gizmo.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed || redraw_reference_pivot {
 			// Send the layout containing the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
@@ -584,8 +584,8 @@ impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
 	type ToolOptions = ();
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData { document, input, font_cache, .. } = tool_action_data;
+	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionMessageContext, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
+		let ToolActionMessageContext { document, input, font_cache, .. } = tool_action_data;
 
 		let ToolMessage::Select(event) = event else { return self };
 		match (self, event) {
@@ -972,6 +972,14 @@ impl Fsm for SelectToolFsmState {
 						(SelectionShapeType::Box, _) => overlay_context.quad(quad, None, fill_color),
 						(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, None, fill_color),
 					}
+				}
+
+				if let Self::Dragging { .. } = self {
+					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
+					let document_start = document.metadata().document_to_viewport.inverse().transform_point2(quad.top_left());
+					let document_current = document.metadata().document_to_viewport.inverse().transform_point2(quad.bottom_right());
+
+					overlay_context.translation_box(document_current - document_start, quad, None);
 				}
 
 				self

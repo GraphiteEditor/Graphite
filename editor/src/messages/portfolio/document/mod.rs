@@ -11,4 +11,4 @@ pub mod utility_types;
 #[doc(inline)]
 pub use document_message::{DocumentMessage, DocumentMessageDiscriminant};
 #[doc(inline)]
-pub use document_message_handler::{DocumentMessageData, DocumentMessageHandler};
+pub use document_message_handler::{DocumentMessageContext, DocumentMessageHandler};

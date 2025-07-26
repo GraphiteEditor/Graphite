@@ -2,15 +2,14 @@ pub use crate::dispatcher::*;
 use crate::messages::prelude::*;
 
 /// Implements a message handler struct for a separate message struct.
-/// - The first generic argument (`M`) is that message struct type, representing a message enum variant to be matched and handled in `process_message()`.
-/// - The second generic argument (`D`) is the type of data that can be passed along by the caller to `process_message()`.
-pub trait MessageHandler<M: ToDiscriminant, D>
+/// - The first type argument (`M`) is that message struct type, representing a message enum variant to be matched and handled in `process_message()`.
+/// - The second type argument (`C`) is the type of the context struct that can be passed along by the caller to `process_message()`.
+pub trait MessageHandler<M: ToDiscriminant, C>
 where
 	M::Discriminant: AsMessage,
 	<M::Discriminant as TransitiveChild>::TopParent: TransitiveChild<Parent = <M::Discriminant as TransitiveChild>::TopParent, TopParent = <M::Discriminant as TransitiveChild>::TopParent> + AsMessage,
 {
-	/// Return true if the Action is consumed.
-	fn process_message(&mut self, message: M, responses: &mut VecDeque<Message>, data: D);
+	fn process_message(&mut self, message: M, responses: &mut VecDeque<Message>, context: C);
 
 	fn actions(&self) -> ActionList;
 }

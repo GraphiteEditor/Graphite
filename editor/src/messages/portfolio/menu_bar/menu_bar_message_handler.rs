@@ -19,11 +19,12 @@ pub struct MenuBarMessageHandler {
 	pub spreadsheet_view_open: bool,
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 	pub reset_node_definitions_on_open: bool,
+	pub single_path_node_compatible_layer_selected: bool,
 }
 
 #[message_handler_data]
 impl MessageHandler<MenuBarMessage, ()> for MenuBarMessageHandler {
-	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, _data: ()) {
+	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, _: ()) {
 		match message {
 			MenuBarMessage::SendLayout => self.send_layout(responses, LayoutTarget::MenuBar),
 		}
@@ -45,6 +46,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 		let message_logging_verbosity_names = self.message_logging_verbosity == MessageLoggingVerbosity::Names;
 		let message_logging_verbosity_contents = self.message_logging_verbosity == MessageLoggingVerbosity::Contents;
 		let reset_node_definitions_on_open = self.reset_node_definitions_on_open;
+		let single_path_node_compatible_layer_selected = self.single_path_node_compatible_layer_selected;
 
 		let menu_bar_entries = vec![
 			MenuBarEntry {
@@ -417,10 +419,9 @@ impl LayoutHolder for MenuBarMessageHandler {
 							action: MenuBarEntry::no_action(),
 							disabled: no_active_document || !has_selected_layers,
 							children: MenuBarEntryChildren(vec![{
-								let list = <BooleanOperation as graphene_std::registry::ChoiceTypeStatic>::list();
-								list.into_iter()
-									.map(|i| i.into_iter())
-									.flatten()
+								let list = <BooleanOperation as graphene_std::choice_type::ChoiceTypeStatic>::list();
+								list.iter()
+									.flat_map(|i| i.iter())
 									.map(move |(operation, info)| MenuBarEntry {
 										label: info.label.to_string(),
 										icon: info.icon.as_ref().map(|i| i.to_string()),
@@ -436,6 +437,14 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 					],
+					vec![MenuBarEntry {
+						label: "Make Path Editable".into(),
+						icon: Some("NodeShape".into()),
+						shortcut: None,
+						action: MenuBarEntry::create_action(|_| NodeGraphMessage::AddPathNode.into()),
+						disabled: !single_path_node_compatible_layer_selected,
+						..MenuBarEntry::default()
+					}],
 				]),
 			),
 			MenuBarEntry::new_root(

@@ -1,6 +1,7 @@
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use graphene_core::gradient::GradientStops;
-use graphene_core::registry::types::{Fraction, Percentage, TextArea};
+use graphene_core::registry::types::{Fraction, Percentage, PixelSize, TextArea};
+use graphene_core::transform::Footprint;
 use graphene_core::{Color, Ctx, num_traits};
 use log::warn;
 use math_parser::ast;
@@ -107,11 +108,11 @@ fn subtract<U: Sub<T>, T>(
 fn multiply<U: Mul<T>, T>(
 	_: impl Ctx,
 	/// The left-hand side of the multiplication operation.
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, f32, u32, f64, DVec2, DVec2, DAffine2)]
 	multiplier: U,
 	/// The right-hand side of the multiplication operation.
 	#[default(1.)]
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, f32, u32, DVec2, f64, DVec2, DAffine2)]
 	multiplicand: T,
 ) -> <U as Mul<T>>::Output {
 	multiplier * multiplicand
@@ -462,15 +463,89 @@ fn clamp<T: std::cmp::PartialOrd>(
 	}
 }
 
+/// The greatest common divisor (GCD) calculates the largest positive integer that divides both of the two input numbers without leaving a remainder.
+#[node_macro::node(category("Math: Numeric"))]
+fn greatest_common_divisor<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32> + std::ops::SubAssign>(
+	_: impl Ctx,
+	/// One of the two numbers for which the GCD will be calculated.
+	#[implementations(u32, u64, i32)]
+	value: T,
+	/// The other of the two numbers for which the GCD will be calculated.
+	#[implementations(u32, u64, i32)]
+	other_value: T,
+) -> T {
+	if value == T::zero() {
+		return other_value;
+	}
+	if other_value == T::zero() {
+		return value;
+	}
+	binary_gcd(value, other_value)
+}
+
+/// The least common multiple (LCM) calculates the smallest positive integer that is a multiple of both of the two input numbers.
+#[node_macro::node(category("Math: Numeric"))]
+fn least_common_multiple<T: num_traits::ToPrimitive + num_traits::FromPrimitive + num_traits::identities::Zero>(
+	_: impl Ctx,
+	/// One of the two numbers for which the LCM will be calculated.
+	#[implementations(u32, u64, i32)]
+	value: T,
+	/// The other of the two numbers for which the LCM will be calculated.
+	#[implementations(u32, u64, i32)]
+	other_value: T,
+) -> T {
+	let value = value.to_i128().unwrap();
+	let other_value = other_value.to_i128().unwrap();
+
+	if value == 0 || other_value == 0 {
+		return T::zero();
+	}
+	let gcd = binary_gcd(value, other_value);
+
+	T::from_i128((value * other_value).abs() / gcd).unwrap()
+}
+
+fn binary_gcd<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32> + std::ops::SubAssign>(mut a: T, mut b: T) -> T {
+	if a == T::zero() {
+		return b;
+	}
+	if b == T::zero() {
+		return a;
+	}
+
+	let mut shift = 0;
+	while (a | b) & T::one() == T::zero() {
+		a >>= 1;
+		b >>= 1;
+		shift += 1;
+	}
+
+	while a & T::one() == T::zero() {
+		a >>= 1;
+	}
+
+	while b != T::zero() {
+		while b & T::one() == T::zero() {
+			b >>= 1;
+		}
+		if a > b {
+			std::mem::swap(&mut a, &mut b);
+		}
+		b -= a;
+	}
+
+	a << shift
+}
+
 /// The equality operation (==) compares two values and returns true if they are equal, or false if they are not.
 #[node_macro::node(category("Math: Logic"))]
 fn equals<U: std::cmp::PartialEq<T>, T>(
 	_: impl Ctx,
 	/// One of the two numbers to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, &str)]
+	#[implementations(f64, f32, u32, DVec2, &str, String)]
 	value: T,
 	/// The other of the two numbers to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, &str)]
+	#[implementations(f64, f32, u32, DVec2, &str, String)]
 	other_value: U,
 ) -> bool {
 	other_value == value
@@ -605,6 +680,16 @@ fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> Gradien
 #[node_macro::node(category("Value"))]
 fn string_value(_: impl Ctx, _primary: (), string: TextArea) -> String {
 	string
+}
+
+/// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.
+#[node_macro::node(category("Value"))]
+fn footprint_value(_: impl Ctx, _primary: (), transform: DAffine2, #[default(100., 100.)] resolution: PixelSize) -> Footprint {
+	Footprint {
+		transform,
+		resolution: resolution.max(DVec2::ONE).as_uvec2(),
+		..Default::default()
+	}
 }
 
 #[node_macro::node(category("Math: Vector"))]

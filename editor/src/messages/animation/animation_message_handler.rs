@@ -59,7 +59,7 @@ impl AnimationMessageHandler {
 
 #[message_handler_data]
 impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
-	fn process_message(&mut self, message: AnimationMessage, responses: &mut VecDeque<Message>, _data: ()) {
+	fn process_message(&mut self, message: AnimationMessage, responses: &mut VecDeque<Message>, _: ()) {
 		match message {
 			AnimationMessage::ToggleLivePreview => match self.animation_state {
 				AnimationState::Stopped => responses.add(AnimationMessage::EnableLivePreview),
@@ -82,13 +82,13 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 				// Update the restart and pause/play buttons
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			AnimationMessage::SetFrameIndex(frame) => {
+			AnimationMessage::SetFrameIndex { frame } => {
 				self.frame_index = frame;
 				responses.add(PortfolioMessage::SubmitActiveGraphRender);
 				// Update the restart and pause/play buttons
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			AnimationMessage::SetTime(time) => {
+			AnimationMessage::SetTime { time } => {
 				self.timestamp = time;
 				responses.add(AnimationMessage::UpdateTime);
 			}
@@ -120,7 +120,7 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 				// Update the restart and pause/play buttons
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			AnimationMessage::SetAnimationTimeMode(animation_time_mode) => {
+			AnimationMessage::SetAnimationTimeMode { animation_time_mode } => {
 				self.animation_time_mode = animation_time_mode;
 			}
 		}
