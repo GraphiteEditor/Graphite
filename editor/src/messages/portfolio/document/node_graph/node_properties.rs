@@ -2019,7 +2019,7 @@ pub mod choice {
 					let updater = updater_factory();
 					let committer = committer_factory();
 					let entry = RadioEntryData::new(var_meta.name).on_update(move |_| updater(item)).on_commit(committer);
-					match (var_meta.icon.as_deref(), var_meta.docstring.as_deref()) {
+					match (var_meta.icon, var_meta.docstring) {
 						(None, None) => entry.label(var_meta.label),
 						(None, Some(doc)) => entry.label(var_meta.label).tooltip(doc),
 						(Some(icon), None) => entry.icon(icon).tooltip(var_meta.label),

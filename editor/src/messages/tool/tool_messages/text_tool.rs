@@ -80,7 +80,7 @@ pub enum TextOptionsUpdate {
 	Font { family: String, style: String },
 	FontSize(f64),
 	LineHeightRatio(f64),
-	CharacterSpacing(f64),
+	Align(TextAlign),
 	WorkingColors(Option<Color>, Option<Color>),
 }
 
@@ -133,14 +133,15 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		.step(0.1)
 		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::LineHeightRatio(number_input.value.unwrap())).into())
 		.widget_holder();
-	let character_spacing = NumberInput::new(Some(tool.options.character_spacing))
-		.label("Char. Spacing")
-		.int()
-		.min(-((1_u64 << f64::MANTISSA_DIGITS) as f64))
-		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		.step(0.1)
-		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::CharacterSpacing(number_input.value.unwrap())).into())
-		.widget_holder();
+	let align_entries: Vec<_> = [TextAlign::Left, TextAlign::Center, TextAlign::Right, TextAlign::JustifyLeft]
+		.into_iter()
+		.map(|align| {
+			RadioEntryData::new(format!("{align:?}"))
+				.label(align.to_string())
+				.on_update(move |_| TextToolMessage::UpdateOptions(TextOptionsUpdate::Align(align)).into())
+		})
+		.collect();
+	let align = RadioInput::new(align_entries).selected_index(Some(tool.options.align as u32)).widget_holder();
 	vec![
 		font,
 		Separator::new(SeparatorType::Related).widget_holder(),
@@ -150,7 +151,7 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		Separator::new(SeparatorType::Related).widget_holder(),
 		line_height_ratio,
 		Separator::new(SeparatorType::Related).widget_holder(),
-		character_spacing,
+		align,
 	]
 }
 
@@ -188,7 +189,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			}
 			TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
 			TextOptionsUpdate::LineHeightRatio(line_height_ratio) => self.options.line_height_ratio = line_height_ratio,
-			TextOptionsUpdate::CharacterSpacing(character_spacing) => self.options.character_spacing = character_spacing,
+			TextOptionsUpdate::Align(align) => self.options.align = align,
 			TextOptionsUpdate::FillColor(color) => {
 				self.options.fill.custom_color = color;
 				self.options.fill.color_type = ToolColorType::Custom;
