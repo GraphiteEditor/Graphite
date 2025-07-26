@@ -116,12 +116,13 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 					tracing::error!("Could not get frame after editor processed messages");
 					return;
 				};
+				// dbg!(&responses);
 				for frontend_message in responses {
 					let Ok(serialized_message) = serde_json::to_string(&frontend_message) else {
 						tracing::error!("Failed to serialize frontend message in CustomEvent::MessageReceived");
 						continue;
 					};
-					let message = format!("window.handle.sendMessageToFrontendFromCEF(\'{serialized_message}\')");
+					let message = format!("window.sendMessageToFrontend(\'{serialized_message}\')");
 					let code = CefString::from(message.as_str());
 					frame.execute_java_script(Some(&code), None, 0);
 				}

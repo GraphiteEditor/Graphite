@@ -108,7 +108,7 @@ extern "C" {
 	fn trace(msg: &str, format: &str);
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "sendMessageToFrontend")]
 pub fn send_message_to_frontend(message: String) {
 	let Ok(message) = serde_json::from_str::<FrontendMessage>(&message) else { return };
 
@@ -118,7 +118,6 @@ pub fn send_message_to_frontend(message: String) {
 	editor_api::editor_and_handle(callback);
 }
 
-#[wasm_bindgen]
 pub fn send_message_to_cef(message: String) {
 	let global = js_sys::global();
 
