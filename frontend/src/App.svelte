@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from "svelte";
 
-	import { type Editor as GraphiteEditor, initWasm, createEditor, sendMessageToFrontend  } from "@graphite/editor";
+	import { type Editor as GraphiteEditor, initWasm, createEditor  } from "@graphite/editor";
 
 	import Editor from "@graphite/components/Editor.svelte";
 
@@ -9,9 +9,6 @@
 
 	onMount(async () => {
 		await initWasm();
-
-		// Register global message handler for cef
-		window.sendMessageToFrontend = sendMessageToFrontend;
 
 		editor = createEditor();
 	});

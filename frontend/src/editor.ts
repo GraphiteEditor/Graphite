@@ -1,7 +1,7 @@
 // import { panicProxy } from "@graphite/utility-functions/panic-proxy";
 import { type JsMessageType } from "@graphite/messages";
 import { createSubscriptionRouter, type SubscriptionRouter } from "@graphite/subscription-router";
-import init, { setRandomSeed, wasmMemory, EditorHandle } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
+import init, { setRandomSeed, wasmMemory, EditorHandle, sendMessageToFrontend } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 
 export type Editor = {
 	raw: WebAssembly.Memory;
@@ -23,6 +23,10 @@ export async function initWasm() {
 	for (const [name, f] of Object.entries(wasm)) {
 		if (name.startsWith("__node_registry")) f();
 	}
+
+	// Register global message handler for CEF
+	console.log(sendMessageToFrontend);
+	window.sendMessageToFrontend = sendMessageToFrontend;
 
 	wasmImport = await wasmMemory();
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any

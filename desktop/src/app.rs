@@ -122,9 +122,12 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 						tracing::error!("Failed to serialize frontend message in CustomEvent::MessageReceived");
 						continue;
 					};
+					// let message = format!("window.sendMessageToFrontend(\'{serialized_message}\')");
 					let message = format!("window.sendMessageToFrontend(\'{serialized_message}\')");
+					dbg!(&message);
 					let code = CefString::from(message.as_str());
 					frame.execute_java_script(Some(&code), None, 0);
+					self.cef_context.work();
 				}
 			}
 		}
