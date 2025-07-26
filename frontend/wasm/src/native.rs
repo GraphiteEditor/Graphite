@@ -1,21 +1,48 @@
-use std::cell::RefCell;
-use std::time::Duration;
-
 use crate::Message;
 use editor::messages::prelude::*;
-use wasm_bindgen::closure::Closure;
+use serde::ser::Serialize;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::{JsCast, JsValue};
 
 #[wasm_bindgen]
 #[derive(Clone)]
-pub struct EditorHandle;
+pub struct EditorHandle {
+	/// TODO: Remove
+	/// We current do frontend message in native -> serde serialize -> json string -> serde deserialize -> frontend message in wasm -> JSValue -> browser
+	/// We should do native -> V8Value -> browser.
+	frontend_message_handler_callback: js_sys::Function,
+}
 
 #[wasm_bindgen]
 impl EditorHandle {
 	#[wasm_bindgen(constructor)]
 	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
-		EditorHandle
+		EditorHandle { frontend_message_handler_callback }
+	}
+
+	/// TODO: Remove
+	#[wasm_bindgen(js_name = sendMessageToFrontendFromCEF)]
+	pub fn send_message_to_frontend_from_cef(&self, message: String) {
+		let Ok(mut message) = serde_json::from_str::<FrontendMessage>(&message) else { return };
+
+		if let FrontendMessage::UpdateDocumentLayerStructure { data_buffer } = message {
+			message = FrontendMessage::UpdateDocumentLayerStructureJs { data_buffer: data_buffer.into() };
+		}
+
+		let message_type = message.to_discriminant().local_name();
+
+		let serializer = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
+		let message_data = message.serialize(&serializer).expect("Failed to serialize FrontendMessage");
+
+		let js_return_value = self.frontend_message_handler_callback.call2(&JsValue::null(), &JsValue::from(message_type), &message_data);
+
+		if let Err(error) = js_return_value {
+			error!(
+				"While handling FrontendMessage \"{:?}\", JavaScript threw an error: {:?}",
+				message.to_discriminant().local_name(),
+				error,
+			)
+		}
 	}
 }
 

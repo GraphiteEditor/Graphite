@@ -24,12 +24,7 @@ impl ImplV8Handler for NonBrowserV8HandlerImpl {
 				let string = arguments.unwrap().first().unwrap().as_ref().unwrap().string_value();
 
 				let pointer: *mut cef::sys::_cef_string_utf16_t = string.into();
-				let message = unsafe {
-					let str = (*pointer).str_;
-					let len = (*pointer).length;
-					let slice = std::slice::from_raw_parts(str, len);
-					String::from_utf16(slice).unwrap()
-				};
+				let message = super::utility::pointer_to_string(pointer);
 
 				let Some(mut process_message) = process_message_create(Some(&CefString::from(message.as_str()))) else {
 					tracing::event!(tracing::Level::ERROR, "Failed to create process message");
