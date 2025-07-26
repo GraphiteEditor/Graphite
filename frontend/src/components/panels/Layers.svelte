@@ -410,13 +410,9 @@
 		if (e.dataTransfer) {
 			// Moving or duplicating layers
 			if (e.dataTransfer.items.length === 0) {
-				if (draggable && dragInPanel) {
+				if (draggable && dragInPanel && insertIndex !== undefined) {
 					select?.();
-					if (isDuplicating) {
-						editor.handle.duplicateLayer(insertParentId, insertIndex);
-					} else {
-						editor.handle.moveLayerInTree(insertParentId, insertIndex);
-					}
+					editor.handle.moveSelectedLayersInTree(insertParentId, insertIndex, isDuplicating);
 				}
 			}
 			// Importing files

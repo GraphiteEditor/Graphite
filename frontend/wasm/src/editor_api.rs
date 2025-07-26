@@ -633,18 +633,16 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Move a layer to within a folder and placed down at the given index.
+	/// Move the selected layers to within a given folder and placed within it at a given index.
 	/// If the folder is `None`, it is inserted into the document root.
 	/// If the insert index is `None`, it is inserted at the start of the folder.
-	#[wasm_bindgen(js_name = moveLayerInTree)]
-	pub fn move_layer_in_tree(&self, insert_parent_id: Option<u64>, insert_index: Option<usize>) {
+	#[wasm_bindgen(js_name = moveSelectedLayersInTree)]
+	pub fn move_selected_layers_in_tree(&self, insert_parent_id: Option<u64>, insert_index: Option<usize>, as_duplicate: bool) {
 		let insert_parent_id = insert_parent_id.map(NodeId);
 		let parent = insert_parent_id.map(LayerNodeIdentifier::new_unchecked).unwrap_or_default();
+		let insert_index = insert_index.unwrap_or_default();
 
-		let message = DocumentMessage::MoveSelectedLayersTo {
-			parent,
-			insert_index: insert_index.unwrap_or_default(),
-		};
+		let message = DocumentMessage::MoveSelectedLayersTo { parent, insert_index, as_duplicate };
 		self.dispatch(message);
 	}
 
@@ -772,13 +770,6 @@ impl EditorHandle {
 			mouse,
 			parent_and_insert_index,
 		};
-		self.dispatch(message);
-	}
-	/// Duplicate the selected layers
-	#[wasm_bindgen(js_name = duplicateLayer)]
-	pub fn duplicate_layer(&self, parent_id: Option<u64>, insert_index: usize) {
-		let parent = parent_id.map(|id| LayerNodeIdentifier::new_unchecked(NodeId(id))).unwrap_or_default();
-		let message = PortfolioMessage::DuplicateSelectedLayers { parent, insert_index };
 		self.dispatch(message);
 	}
 

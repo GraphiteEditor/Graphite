@@ -518,47 +518,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Load the document into the portfolio so it opens in the editor
 				self.load_document(document, document_id, responses, to_front);
 			}
-			PortfolioMessage::DuplicateSelectedLayers { parent, insert_index } => {
-				let Some(document) = self.active_document_mut() else {
-					return;
-				};
-
-				let mut all_new_ids = Vec::new();
-				let selected_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect::<Vec<_>>();
-
-				responses.add(DocumentMessage::DeselectAllLayers);
-				responses.add(DocumentMessage::AddTransaction);
-
-				for layer in selected_layers {
-					let layer_node_id = layer.to_node();
-
-					let mut copy_ids = HashMap::new();
-					copy_ids.insert(layer_node_id, NodeId(0));
-
-					document
-						.network_interface
-						.upstream_flow_back_from_nodes(vec![layer_node_id], &[], network_interface::FlowType::LayerChildrenUpstreamFlow)
-						.enumerate()
-						.for_each(|(index, node_id)| {
-							copy_ids.insert(node_id, NodeId((index + 1) as u64));
-						});
-
-					let nodes: Vec<_> = document.network_interface.copy_nodes(&copy_ids, &[]).collect();
-					let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
-					let new_layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
-					all_new_ids.extend(new_ids.values().cloned());
-
-					responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
-					responses.add(NodeGraphMessage::MoveLayerToStack {
-						layer: new_layer,
-						parent,
-						insert_index,
-					});
-				}
-
-				responses.add(NodeGraphMessage::RunDocumentGraph);
-				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: all_new_ids });
-			}
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
 				let mut all_new_ids = Vec::new();
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>, all_new_ids: &mut Vec<NodeId>| {

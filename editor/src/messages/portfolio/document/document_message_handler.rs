@@ -616,12 +616,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_folders });
 				}
 			}
-			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
+			DocumentMessage::MoveSelectedLayersTo { parent, insert_index, as_duplicate } => {
+				// Exit early if we have been called with an empty selection.
 				if !self.selection_network_path.is_empty() {
 					log::error!("Moving selected layers is only supported for the Document Network");
 					return;
 				}
-
 				// Disallow trying to insert into self.
 				if self
 					.network_interface
@@ -640,19 +640,51 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if any_artboards && parent != LayerNodeIdentifier::ROOT_PARENT {
 					return;
 				}
-
-				// Non-artboards cannot be put at the top level if artboards also exist there
+				// Non-artboards cannot be put at the top level if artboards also exist there.
 				let selected_any_non_artboards = self
 					.network_interface
 					.selected_nodes()
 					.selected_layers(self.metadata())
 					.any(|layer| !self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
-
 				let top_level_artboards = LayerNodeIdentifier::ROOT_PARENT
 					.children(self.metadata())
 					.any(|layer| self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
-
 				if selected_any_non_artboards && parent == LayerNodeIdentifier::ROOT_PARENT && top_level_artboards {
+					return;
+				}
+
+				if as_duplicate {
+					let mut all_new_ids = Vec::new();
+					let selected_layers = self.network_interface.selected_nodes().selected_layers(self.metadata()).collect::<Vec<_>>();
+
+					responses.add(DocumentMessage::DeselectAllLayers);
+					responses.add(DocumentMessage::AddTransaction);
+
+					for selected_layer in selected_layers {
+						let layer_node_id = selected_layer.to_node();
+
+						let mut copy_ids = HashMap::new();
+						copy_ids.insert(layer_node_id, NodeId(0));
+
+						self.network_interface
+							.upstream_flow_back_from_nodes(vec![layer_node_id], &[], network_interface::FlowType::LayerChildrenUpstreamFlow)
+							.enumerate()
+							.for_each(|(index, node_id)| {
+								copy_ids.insert(node_id, NodeId((index + 1) as u64));
+							});
+
+						let nodes: Vec<_> = self.network_interface.copy_nodes(&copy_ids, &[]).collect();
+						let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
+						let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
+						all_new_ids.extend(new_ids.values().cloned());
+
+						responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
+						responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index });
+					}
+
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: all_new_ids });
+
 					return;
 				}
 
@@ -2893,8 +2925,11 @@ impl DocumentMessageHandler {
 		};
 
 		// If moving down, insert below this layer. If moving up, insert above this layer.
-		let insert_index = if relative_index_offset < 0 { neighbor_index } else { neighbor_index + 1 };
-		responses.add(DocumentMessage::MoveSelectedLayersTo { parent, insert_index });
+		responses.add(DocumentMessage::MoveSelectedLayersTo {
+			parent,
+			insert_index: if relative_index_offset < 0 { neighbor_index } else { neighbor_index + 1 },
+			as_duplicate: false,
+		});
 	}
 
 	pub fn graph_view_overlay_open(&self) -> bool {
@@ -3260,6 +3295,7 @@ mod document_message_handler_tests {
 			.handle_message(DocumentMessage::MoveSelectedLayersTo {
 				parent: child_folder,
 				insert_index: 0,
+				as_duplicate: false,
 			})
 			.await;
 
@@ -3285,7 +3321,13 @@ mod document_message_handler_tests {
 
 		// First move rectangle into folder1
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rect_layer.to_node()] }).await;
-		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder1, insert_index: 0 }).await;
+		editor
+			.handle_message(DocumentMessage::MoveSelectedLayersTo {
+				parent: folder1,
+				insert_index: 0,
+				as_duplicate: false,
+			})
+			.await;
 
 		// Verifying rectagle is now in folder1
 		let rect_parent = rect_layer.parent(editor.active_document().metadata()).unwrap();
@@ -3293,7 +3335,13 @@ mod document_message_handler_tests {
 
 		// Moving folder1 into folder2
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder1.to_node()] }).await;
-		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder2, insert_index: 0 }).await;
+		editor
+			.handle_message(DocumentMessage::MoveSelectedLayersTo {
+				parent: folder2,
+				insert_index: 0,
+				as_duplicate: false,
+			})
+			.await;
 
 		// Verifing hirarchy: folder2 > folder1 > rectangle
 		let document = editor.active_document();
@@ -3352,7 +3400,13 @@ mod document_message_handler_tests {
 
 		// Moving the rectangle to folder1 to ensure it's inside
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rect_layer.to_node()] }).await;
-		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder1, insert_index: 0 }).await;
+		editor
+			.handle_message(DocumentMessage::MoveSelectedLayersTo {
+				parent: folder1,
+				insert_index: 0,
+				as_duplicate: false,
+			})
+			.await;
 
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
 		editor.move_mouse(50., 25., ModifierKeys::empty(), MouseKeys::NONE).await;
@@ -3369,7 +3423,13 @@ mod document_message_handler_tests {
 		let rect_bbox_before = document.metadata().bounding_box_viewport(rect_layer).unwrap();
 
 		// Moving rectangle from folder1 to folder2
-		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder2, insert_index: 0 }).await;
+		editor
+			.handle_message(DocumentMessage::MoveSelectedLayersTo {
+				parent: folder2,
+				insert_index: 0,
+				as_duplicate: false,
+			})
+			.await;
 
 		// Rectangle's viewport position after moving
 		let document = editor.active_document();

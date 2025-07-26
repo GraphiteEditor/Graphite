@@ -85,10 +85,6 @@ pub enum PortfolioMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
-	DuplicateSelectedLayers {
-		parent: LayerNodeIdentifier,
-		insert_index: usize,
-	},
 	PasteSerializedData {
 		data: String,
 	},
