@@ -1,10 +1,11 @@
+use super::TextAlign;
 use crate::instances::Instance;
 use crate::vector::{PointId, VectorData, VectorDataTable};
 use bezier_rs::{ManipulatorGroup, Subpath};
 use core::cell::RefCell;
 use glam::{DAffine2, DVec2};
 use parley::fontique::Blob;
-use parley::{Alignment, AlignmentOptions, FontContext, GlyphRun, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
+use parley::{AlignmentOptions, FontContext, GlyphRun, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
 use skrifa::GlyphId;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
@@ -50,16 +51,14 @@ impl PathBuilder {
 		}
 
 		if per_glyph_instances {
-			if !self.glyph_subpaths.is_empty() {
-				self.vector_table.push(Instance {
-					instance: VectorData::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false),
-					transform: DAffine2::from_translation(glyph_offset),
-					..Default::default()
-				})
-			}
-		} else if !self.glyph_subpaths.is_empty() {
-			for subpath in self.glyph_subpaths.iter() {
-				// Unwrapping here is ok, since the check above guarantees there is at least one `VectorData`
+			self.vector_table.push(Instance {
+				instance: VectorData::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false),
+				transform: DAffine2::from_translation(glyph_offset),
+				..Default::default()
+			});
+		} else {
+			for subpath in self.glyph_subpaths.drain(..) {
+				// Unwrapping here is ok because `self.vector_table` is initialized with a single `VectorData`
 				self.vector_table.get_mut(0).unwrap().instance.append_subpath(subpath, false);
 			}
 		}
@@ -105,6 +104,7 @@ pub struct TypesettingConfig {
 	pub max_width: Option<f64>,
 	pub max_height: Option<f64>,
 	pub tilt: f64,
+	pub align: TextAlign,
 }
 
 impl Default for TypesettingConfig {
@@ -116,6 +116,7 @@ impl Default for TypesettingConfig {
 			max_width: None,
 			max_height: None,
 			tilt: 0.,
+			align: TextAlign::default(),
 		}
 	}
 }
@@ -128,18 +129,26 @@ fn render_glyph_run(glyph_run: &GlyphRun<'_, ()>, path_builder: &mut PathBuilder
 
 	// User-requested tilt applied around baseline to avoid vertical displacement
 	// Translation ensures rotation point is at the baseline, not origin
-	let skew = DAffine2::from_translation(DVec2::new(0., run_y as f64))
-		* DAffine2::from_cols_array(&[1., 0., -tilt.to_radians().tan(), 1., 0., 0.])
-		* DAffine2::from_translation(DVec2::new(0., -run_y as f64));
+	let skew = if per_glyph_instances {
+		DAffine2::from_cols_array(&[1., 0., -tilt.to_radians().tan(), 1., 0., 0.])
+	} else {
+		DAffine2::from_translation(DVec2::new(0., run_y as f64))
+			* DAffine2::from_cols_array(&[1., 0., -tilt.to_radians().tan(), 1., 0., 0.])
+			* DAffine2::from_translation(DVec2::new(0., -run_y as f64))
+	};
 
 	let synthesis = run.synthesis();
 
 	// Font synthesis (e.g., synthetic italic) applied separately from user transforms
 	// This preserves the distinction between font styling and user transformations
 	let style_skew = synthesis.skew().map(|angle| {
-		DAffine2::from_translation(DVec2::new(0., run_y as f64))
-			* DAffine2::from_cols_array(&[1., 0., -angle.to_radians().tan() as f64, 1., 0., 0.])
-			* DAffine2::from_translation(DVec2::new(0., -run_y as f64))
+		if per_glyph_instances {
+			DAffine2::from_cols_array(&[1., 0., -angle.to_radians().tan() as f64, 1., 0., 0.])
+		} else {
+			DAffine2::from_translation(DVec2::new(0., run_y as f64))
+				* DAffine2::from_cols_array(&[1., 0., -angle.to_radians().tan() as f64, 1., 0., 0.])
+				* DAffine2::from_translation(DVec2::new(0., -run_y as f64))
+		}
 	});
 
 	let font = run.font();
@@ -181,7 +190,7 @@ fn layout_text(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 	})?;
 
 	const DISPLAY_SCALE: f32 = 1.;
-	let mut builder = layout_cx.ranged_builder(&mut font_cx, str, DISPLAY_SCALE, true);
+	let mut builder = layout_cx.ranged_builder(&mut font_cx, str, DISPLAY_SCALE, false);
 
 	builder.push_default(StyleProperty::FontSize(typesetting.font_size as f32));
 	builder.push_default(StyleProperty::LetterSpacing(typesetting.character_spacing as f32));
@@ -191,7 +200,7 @@ fn layout_text(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 	let mut layout: Layout<()> = builder.build(str);
 
 	layout.break_all_lines(typesetting.max_width.map(|mw| mw as f32));
-	layout.align(typesetting.max_width.map(|max_w| max_w as f32), Alignment::Left, AlignmentOptions::default());
+	layout.align(typesetting.max_width.map(|max_w| max_w as f32), typesetting.align.into(), AlignmentOptions::default());
 
 	Some(layout)
 }

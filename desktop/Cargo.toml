@@ -1,0 +1,31 @@
+[package]
+name = "graphite-desktop"
+version = "0.1.0"
+description = "Graphite Desktop"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "Apache-2.0"
+repository = ""
+edition = "2024"
+rust-version = "1.87"
+
+[features]
+# default = ["gpu"]
+# gpu = ["graphite-editor/gpu"]
+
+[dependencies]
+# Local dependencies
+# graphite-editor = { path = "../editor", features = [
+# 	"gpu",
+# 	"ron",
+# 	"vello",
+# 	"decouple-execution",
+# ] }
+wgpu = { workspace = true }
+winit = { workspace = true, features = ["serde"] }
+thiserror = { workspace = true }
+futures = { workspace = true }
+cef = { workspace = true }
+include_dir = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing = { workspace = true }
+dirs = {workspace = true}

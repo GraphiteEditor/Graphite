@@ -1,38 +1,12 @@
 use crate::{Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
 use dyn_any::{DynAny, StaticType};
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::{LazyLock, Mutex};
 
-pub mod types {
-	/// 0% - 100%
-	pub type Percentage = f64;
-	/// -100% - 100%
-	pub type SignedPercentage = f64;
-	/// -180° - 180°
-	pub type Angle = f64;
-	/// Ends in the unit of x
-	pub type Multiplier = f64;
-	/// Non-negative integer with px unit
-	pub type PixelLength = f64;
-	/// Non-negative
-	pub type Length = f64;
-	/// 0 to 1
-	pub type Fraction = f64;
-	/// Unsigned integer
-	pub type IntegerCount = u32;
-	/// Unsigned integer to be used for random seeds
-	pub type SeedValue = u32;
-	/// Non-negative integer coordinate with px unit
-	pub type Resolution = glam::UVec2;
-	/// DVec2 with px unit
-	pub type PixelSize = glam::DVec2;
-	/// String with one or more than one line
-	pub type TextArea = String;
-}
+pub use graphene_core_shaders::registry::types;
 
 // Translation struct between macro and definition
 #[derive(Clone)]
@@ -59,33 +33,6 @@ pub struct FieldMetadata {
 	pub number_display_decimal_places: Option<u32>,
 	pub number_step: Option<f64>,
 	pub unit: Option<&'static str>,
-}
-
-pub trait ChoiceTypeStatic: Sized + Copy + crate::AsU32 + Send + Sync {
-	const WIDGET_HINT: ChoiceWidgetHint;
-	const DESCRIPTION: Option<&'static str>;
-	fn list() -> &'static [&'static [(Self, VariantMetadata)]];
-}
-
-pub enum ChoiceWidgetHint {
-	Dropdown,
-	RadioButtons,
-}
-
-/// Translation struct between macro and definition.
-#[derive(Clone, Debug)]
-pub struct VariantMetadata {
-	/// Name as declared in source code.
-	pub name: Cow<'static, str>,
-
-	/// Name to be displayed in UI.
-	pub label: Cow<'static, str>,
-
-	/// User-facing documentation text.
-	pub docstring: Option<Cow<'static, str>>,
-
-	/// Name of icon to display in radio buttons and such.
-	pub icon: Option<Cow<'static, str>>,
 }
 
 #[derive(Clone, Debug)]

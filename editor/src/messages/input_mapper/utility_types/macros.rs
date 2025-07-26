@@ -90,6 +90,7 @@ macro_rules! mapping {
 		let mut double_click = KeyMappingEntries::mouse_buttons_arrays();
 		let mut wheel_scroll = KeyMappingEntries::new();
 		let mut pointer_move = KeyMappingEntries::new();
+		let mut pointer_shake = KeyMappingEntries::new();
 
 		$(
 		// Each of the many entry slices, one specified per action
@@ -104,6 +105,7 @@ macro_rules! mapping {
 					InputMapperMessage::DoubleClick(key) => &mut double_click[key as usize],
 					InputMapperMessage::WheelScroll => &mut wheel_scroll,
 					InputMapperMessage::PointerMove => &mut pointer_move,
+					InputMapperMessage::PointerShake => &mut pointer_shake,
 				};
 				// Push each entry to the corresponding `KeyMappingEntries` list for its input type
 				corresponding_list.push(entry.clone());
@@ -111,7 +113,7 @@ macro_rules! mapping {
 		}
 		)*
 
-		(key_up, key_down, key_up_no_repeat, key_down_no_repeat, double_click, wheel_scroll, pointer_move)
+		(key_up, key_down, key_up_no_repeat, key_down_no_repeat, double_click, wheel_scroll, pointer_move, pointer_shake)
 	}};
 }
 

@@ -192,12 +192,25 @@
 
 		const placeholders = window.document.querySelectorAll("[data-viewport] [data-canvas-placeholder]");
 		// Replace the placeholders with the actual canvas elements
-		placeholders.forEach((placeholder) => {
+		Array.from(placeholders).forEach((placeholder) => {
 			const canvasName = placeholder.getAttribute("data-canvas-placeholder");
 			if (!canvasName) return;
 			// Get the canvas element from the global storage
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const canvas = (window as any).imageCanvases[canvasName];
+			let canvas = (window as any).imageCanvases[canvasName];
+
+			if (canvasName !== "0" && canvas.parentElement) {
+				var newCanvas = window.document.createElement("canvas");
+				var context = newCanvas.getContext("2d");
+
+				newCanvas.width = canvas.width;
+				newCanvas.height = canvas.height;
+
+				context?.drawImage(canvas, 0, 0);
+
+				canvas = newCanvas;
+			}
+
 			placeholder.replaceWith(canvas);
 		});
 	}
@@ -330,6 +343,7 @@
 		textInput.style.lineHeight = `${displayEditableTextbox.lineHeightRatio}`;
 		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
 		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
+		textInput.style.textAlign = displayEditableTextbox.align;
 
 		textInput.oninput = () => {
 			if (!textInput) return;
@@ -761,7 +775,6 @@
 						.text-input {
 							word-break: break-all;
 							unicode-bidi: plaintext;
-							text-align: left;
 						}
 
 						.text-input div {
@@ -776,7 +789,6 @@
 							white-space: pre-wrap;
 							word-break: normal;
 							unicode-bidi: plaintext;
-							text-align: left;
 							display: inline-block;
 							// Workaround to force Chrome to display the flashing text entry cursor when text is empty
 							padding-left: 1px;

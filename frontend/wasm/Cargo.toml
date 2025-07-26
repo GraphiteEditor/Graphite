@@ -2,7 +2,7 @@
 name = "graphite-wasm"
 publish = false
 version = "0.0.0"
-rust-version = "1.85"
+rust-version = "1.88"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 edition = "2024"
 readme = "../../README.md"
@@ -13,7 +13,7 @@ license = "Apache-2.0"
 [features]
 default = ["gpu"]
 gpu = ["editor/gpu"]
-tauri = [ "editor/tauri"]
+tauri = ["editor/tauri"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
