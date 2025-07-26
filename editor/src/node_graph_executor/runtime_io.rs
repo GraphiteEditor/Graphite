@@ -1,20 +1,9 @@
 use super::*;
 use std::sync::mpsc::{Receiver, Sender};
-use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen]
-extern "C" {
-	// Invoke with arguments (default)
-	#[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
-	async fn invoke(cmd: &str, args: JsValue) -> JsValue;
-	#[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], js_name="invoke")]
-	async fn invoke_without_arg(cmd: &str) -> JsValue;
-}
-
-/// Handles communication with the NodeRuntime, either locally or via Tauri
+/// Handles communication with the NodeRuntime, either locally or via the native event loop proxy
 #[derive(Debug)]
 pub struct NodeRuntimeIO {
-	// Send to
 	sender: Sender<GraphRuntimeRequest>,
 	receiver: Receiver<NodeGraphUpdate>,
 }
@@ -26,7 +15,7 @@ impl Default for NodeRuntimeIO {
 }
 
 impl NodeRuntimeIO {
-	/// Creates a new NodeRuntimeIO instance
+	/// Creates a new NodeRuntimeIO instance on web
 	pub fn new() -> Self {
 		let (response_sender, response_receiver) = std::sync::mpsc::channel();
 		let (request_sender, request_receiver) = std::sync::mpsc::channel();

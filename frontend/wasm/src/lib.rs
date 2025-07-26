@@ -1,81 +1,670 @@
-#![doc = include_str!("../README.md")]
+//
+// This file is where functions are defined to be called directly from JS.
+// It serves as a thin wrapper over the editor backend API that relies
+// on the dispatcher messaging system and more complex Rust data types.
+//
 
+#![doc = include_str!("../README.md")]
 // `macro_use` puts the log macros (`error!`, `warn!`, `debug!`, `info!` and `trace!`) in scope for the crate
 #[macro_use]
 extern crate log;
 
-pub mod editor_api;
 pub mod helpers;
 
-use editor::messages::prelude::*;
-use std::panic;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
-use wasm_bindgen::prelude::*;
+#[cfg(feature = "native")]
+mod native;
+#[cfg(not(feature = "native"))]
+mod web;
 
-// Set up the persistent editor backend state
-pub static EDITOR_HAS_CRASHED: AtomicBool = AtomicBool::new(false);
-pub static NODE_GRAPH_ERROR_DISPLAYED: AtomicBool = AtomicBool::new(false);
-pub static LOGGER: WasmLog = WasmLog;
+#[cfg(feature = "native")]
+pub use native::*;
+#[cfg(not(feature = "native"))]
+pub use web::*;
 
-thread_local! {
-	pub static EDITOR: Mutex<Option<editor::application::Editor>> = const { Mutex::new(None) };
-	pub static EDITOR_HANDLE: Mutex<Option<editor_api::EditorHandle>> = const { Mutex::new(None) };
+use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
+use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
+use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use editor::messages::portfolio::utility_types::Platform;
+use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
+use graphene_std::Color;
+use graphene_std::uuid::NodeId;
+use serde_wasm_bindgen::from_value;
+
+use editor::messages::{portfolio::document::utility_types::network_interface::ImportOrExport, prelude::*};
+use wasm_bindgen::JsValue;
+use wasm_bindgen::prelude::wasm_bindgen;
+
+use crate::helpers::translate_key;
+
+/// Set the random seed used by the editor by calling this from JS upon initialization.
+/// This is necessary because WASM doesn't have a random number generator.
+#[wasm_bindgen(js_name = setRandomSeed)]
+pub fn set_random_seed(seed: u64) {
+	editor::application::set_uuid_seed(seed);
 }
 
-/// Initialize the backend
-#[wasm_bindgen(start)]
-pub fn init_graphite() {
-	// Set up the panic hook
-	#[cfg(not(feature = "native"))]
-	panic::set_hook(Box::new(panic_hook));
-
-	// Set up the logger with a default level of debug
-	log::set_logger(&LOGGER).expect("Failed to set logger");
-	log::set_max_level(log::LevelFilter::Debug);
+/// Provides a handle to access the raw WASM memory.
+#[wasm_bindgen(js_name = wasmMemory)]
+pub fn wasm_memory() -> JsValue {
+	wasm_bindgen::memory()
 }
 
-/// When a panic occurs, notify the user and log the error to the JS console before the backend dies
-pub fn panic_hook(info: &panic::PanicHookInfo) {
-	let info = info.to_string();
-	let backtrace = Error::new("stack").stack().to_string();
-	if backtrace.contains("DynAnyNode") {
-		log::error!("Node graph evaluation panicked {info}");
+/// The functions in here are used both when compiling for native or web.
+/// However, when compiling for the native desktop app, received messages are sent directly to the browser runtime (CEF), which forwards them to the main native thread
+/// When compiling for web, the messages are sent to the editor, processed, and sent back to the browser
+#[wasm_bindgen]
+impl EditorHandle {
+	#[wasm_bindgen(js_name = initAfterFrontendReady)]
+	pub fn init_after_frontend_ready(&self, platform: String) {
+		// Send initialization messages
+		let platform = match platform.as_str() {
+			"Windows" => Platform::Windows,
+			"Mac" => Platform::Mac,
+			"Linux" => Platform::Linux,
+			_ => Platform::Unknown,
+		};
+		self.dispatch(GlobalsMessage::SetPlatform { platform });
+		self.dispatch(PortfolioMessage::Init);
 
-		// When the graph panics, the node runtime lock may not be released properly
-		if editor::node_graph_executor::NODE_RUNTIME.try_lock().is_none() {
-			unsafe { editor::node_graph_executor::NODE_RUNTIME.force_unlock() };
-		}
-
-		if !NODE_GRAPH_ERROR_DISPLAYED.load(Ordering::SeqCst) {
-			NODE_GRAPH_ERROR_DISPLAYED.store(true, Ordering::SeqCst);
-			editor_api::editor_and_handle(|_, handle| {
-				let error = r#"
-				<rect x="50%" y="50%" width="600" height="100" transform="translate(-300 -50)" rx="4" fill="var(--color-error-red)" />
-				<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="18" fill="var(--color-2-mildblack)">
-					<tspan x="50%" dy="-24" font-weight="bold">The document crashed while being rendered in its current state.</tspan>
-					<tspan x="50%" dy="24">The editor is now unstable! Undo your last action to restore the artwork,</tspan>
-					<tspan x="50%" dy="24">then save your document and restart the editor before continuing work.</tspan>
-				/text>"#
-				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
-				.to_string();
-				handle.send_frontend_message_to_js_rust_proxy(FrontendMessage::UpdateDocumentArtwork { svg: error });
-			});
-		}
-
-		return;
-	} else {
-		EDITOR_HAS_CRASHED.store(true, Ordering::SeqCst);
+		#[cfg(not(feature = "native"))]
+		run_and_poll_node_graph_evaluation_loop();
 	}
 
-	log::error!("{info}");
+	// Called from interval in App.Svelte
+	#[wasm_bindgen(js_name = autoSaveAllDocuments)]
+	pub fn auto_save_all_documents(&self) {
+		let message = PortfolioMessage::AutoSaveAllDocuments;
+		self.dispatch(message);
+	}
 
-	EDITOR_HANDLE.with(|editor_handle| {
-		let mut guard = editor_handle.lock();
-		if let Ok(Some(handle)) = guard.as_deref_mut() {
-			handle.send_frontend_message_to_js_rust_proxy(FrontendMessage::DisplayDialogPanic { panic_info: info.to_string() });
+	// Called from interval in App.Svelte
+	#[wasm_bindgen(js_name = autoPanning)]
+	pub fn auto_panning(&self) {
+		let message = BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame);
+		self.dispatch(message);
+	}
+
+	/// Displays a dialog with an error message
+	#[wasm_bindgen(js_name = errorDialog)]
+	pub fn error_dialog(&self, title: String, description: String) {
+		let message = DialogMessage::DisplayDialogError { title, description };
+		self.dispatch(message);
+	}
+
+	/// Answer whether or not the editor is in development mode
+	#[wasm_bindgen(js_name = inDevelopmentMode)]
+	pub fn in_development_mode(&self) -> bool {
+		cfg!(debug_assertions)
+	}
+
+	/// Get the constant `FILE_SAVE_SUFFIX`
+	#[wasm_bindgen(js_name = fileSaveSuffix)]
+	pub fn file_save_suffix(&self) -> String {
+		editor::consts::FILE_SAVE_SUFFIX.into()
+	}
+
+	/// Update the value of a given UI widget, but don't commit it to the history (unless `commit_layout()` is called, which handles that)
+	#[wasm_bindgen(js_name = widgetValueUpdate)]
+	pub fn widget_value_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+		let widget_id = WidgetId(widget_id);
+		match (from_value(layout_target), from_value(value)) {
+			(Ok(layout_target), Ok(value)) => {
+				let message = LayoutMessage::WidgetValueUpdate { layout_target, widget_id, value };
+				self.dispatch(message);
+				Ok(())
+			}
+			(target, val) => Err(Error::new(&format!("Could not update UI\nDetails:\nTarget: {target:?}\nValue: {val:?}")).into()),
 		}
-	});
+	}
+
+	/// Commit the value of a given UI widget to the history
+	#[wasm_bindgen(js_name = widgetValueCommit)]
+	pub fn widget_value_commit(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+		let widget_id = WidgetId(widget_id);
+		match (from_value(layout_target), from_value(value)) {
+			(Ok(layout_target), Ok(value)) => {
+				let message = LayoutMessage::WidgetValueCommit { layout_target, widget_id, value };
+				self.dispatch(message);
+				Ok(())
+			}
+			(target, val) => Err(Error::new(&format!("Could not commit UI\nDetails:\nTarget: {target:?}\nValue: {val:?}")).into()),
+		}
+	}
+
+	/// Update the value of a given UI widget, and commit it to the history
+	#[wasm_bindgen(js_name = widgetValueCommitAndUpdate)]
+	pub fn widget_value_commit_and_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+		self.widget_value_commit(layout_target.clone(), widget_id, value.clone())?;
+		self.widget_value_update(layout_target, widget_id, value)?;
+		Ok(())
+	}
+
+	#[wasm_bindgen(js_name = loadPreferences)]
+	pub fn load_preferences(&self, preferences: String) {
+		let message = PreferencesMessage::Load { preferences };
+
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = selectDocument)]
+	pub fn select_document(&self, document_id: u64) {
+		let document_id = DocumentId(document_id);
+		let message = PortfolioMessage::SelectDocument { document_id };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = newDocumentDialog)]
+	pub fn new_document_dialog(&self) {
+		let message = DialogMessage::RequestNewDocumentDialog;
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = openDocument)]
+	pub fn open_document(&self) {
+		let message = PortfolioMessage::OpenDocument;
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = demoArtworkDialog)]
+	pub fn demo_artwork_dialog(&self) {
+		let message = DialogMessage::RequestDemoArtworkDialog;
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = openDocumentFile)]
+	pub fn open_document_file(&self, document_name: String, document_serialized_content: String) {
+		let message = PortfolioMessage::OpenDocumentFile {
+			document_name,
+			document_serialized_content,
+		};
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = openAutoSavedDocument)]
+	pub fn open_auto_saved_document(&self, document_id: u64, document_name: String, document_is_saved: bool, document_serialized_content: String, to_front: bool) {
+		let document_id = DocumentId(document_id);
+		let message = PortfolioMessage::OpenDocumentFileWithId {
+			document_id,
+			document_name,
+			document_is_auto_saved: true,
+			document_is_saved,
+			document_serialized_content,
+			to_front,
+		};
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = triggerAutoSave)]
+	pub fn trigger_auto_save(&self, document_id: u64) {
+		let document_id = DocumentId(document_id);
+		let message = PortfolioMessage::AutoSaveDocument { document_id };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = closeDocumentWithConfirmation)]
+	pub fn close_document_with_confirmation(&self, document_id: u64) {
+		let document_id = DocumentId(document_id);
+		let message = PortfolioMessage::CloseDocumentWithConfirmation { document_id };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = requestAboutGraphiteDialogWithLocalizedCommitDate)]
+	pub fn request_about_graphite_dialog_with_localized_commit_date(&self, localized_commit_date: String, localized_commit_year: String) {
+		let message = DialogMessage::RequestAboutGraphiteDialogWithLocalizedCommitDate {
+			localized_commit_date,
+			localized_commit_year,
+		};
+		self.dispatch(message);
+	}
+
+	/// Send new bounds when document panel viewports get resized or moved within the editor
+	/// [left, top, right, bottom]...
+	#[wasm_bindgen(js_name = boundsOfViewports)]
+	pub fn bounds_of_viewports(&self, bounds_of_viewports: &[f64]) {
+		let chunked: Vec<_> = bounds_of_viewports.chunks(4).map(ViewportBounds::from_slice).collect();
+
+		let message = InputPreprocessorMessage::BoundsOfViewports { bounds_of_viewports: chunked };
+		self.dispatch(message);
+	}
+
+	/// Zoom the canvas to fit all content
+	#[wasm_bindgen(js_name = zoomCanvasToFitAll)]
+	pub fn zoom_canvas_to_fit_all(&self) {
+		let message = DocumentMessage::ZoomCanvasToFitAll;
+		self.dispatch(message);
+	}
+
+	/// Inform the overlays system of the current device pixel ratio
+	#[wasm_bindgen(js_name = setDevicePixelRatio)]
+	pub fn set_device_pixel_ratio(&self, ratio: f64) {
+		let message = PortfolioMessage::SetDevicePixelRatio { ratio };
+		self.dispatch(message);
+	}
+
+	/// Mouse movement within the screenspace bounds of the viewport
+	#[wasm_bindgen(js_name = onMouseMove)]
+	pub fn on_mouse_move(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
+		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys };
+		self.dispatch(message);
+	}
+
+	/// Mouse scrolling within the screenspace bounds of the viewport
+	#[wasm_bindgen(js_name = onWheelScroll)]
+	pub fn on_wheel_scroll(&self, x: f64, y: f64, mouse_keys: u8, wheel_delta_x: f64, wheel_delta_y: f64, wheel_delta_z: f64, modifiers: u8) {
+		let mut editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+		editor_mouse_state.scroll_delta = ScrollDelta::new(wheel_delta_x, wheel_delta_y, wheel_delta_z);
+
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys };
+		self.dispatch(message);
+	}
+
+	/// A mouse button depressed within screenspace the bounds of the viewport
+	#[wasm_bindgen(js_name = onMouseDown)]
+	pub fn on_mouse_down(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
+		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys };
+		self.dispatch(message);
+	}
+
+	/// A mouse button released
+	#[wasm_bindgen(js_name = onMouseUp)]
+	pub fn on_mouse_up(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
+		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys };
+		self.dispatch(message);
+	}
+
+	/// Mouse shaken
+	#[wasm_bindgen(js_name = onMouseShake)]
+	pub fn on_mouse_shake(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
+		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::PointerShake { editor_mouse_state, modifier_keys };
+		self.dispatch(message);
+	}
+
+	/// Mouse double clicked
+	#[wasm_bindgen(js_name = onDoubleClick)]
+	pub fn on_double_click(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
+		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys };
+		self.dispatch(message);
+	}
+
+	/// A keyboard button depressed within screenspace the bounds of the viewport
+	#[wasm_bindgen(js_name = onKeyDown)]
+	pub fn on_key_down(&self, name: String, modifiers: u8, key_repeat: bool) {
+		let key = translate_key(&name);
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		trace!("Key down {key:?}, name: {name}, modifiers: {modifiers:?}, key repeat: {key_repeat}");
+
+		let message = InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys };
+		self.dispatch(message);
+	}
+
+	/// A keyboard button released
+	#[wasm_bindgen(js_name = onKeyUp)]
+	pub fn on_key_up(&self, name: String, modifiers: u8, key_repeat: bool) {
+		let key = translate_key(&name);
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		trace!("Key up {key:?}, name: {name}, modifiers: {modifier_keys:?}, key repeat: {key_repeat}");
+
+		let message = InputPreprocessorMessage::KeyUp { key, key_repeat, modifier_keys };
+		self.dispatch(message);
+	}
+
+	/// A text box was committed
+	#[wasm_bindgen(js_name = onChangeText)]
+	pub fn on_change_text(&self, new_text: String, is_left_or_right_click: bool) -> Result<(), JsValue> {
+		let message = TextToolMessage::TextChange { new_text, is_left_or_right_click };
+		self.dispatch(message);
+
+		Ok(())
+	}
+
+	/// A font has been downloaded
+	#[wasm_bindgen(js_name = onFontLoad)]
+	pub fn on_font_load(&self, font_family: String, font_style: String, preview_url: String, data: Vec<u8>) -> Result<(), JsValue> {
+		let message = PortfolioMessage::FontLoaded {
+			font_family,
+			font_style,
+			preview_url,
+			data,
+		};
+		self.dispatch(message);
+
+		Ok(())
+	}
+
+	/// A text box was changed
+	#[wasm_bindgen(js_name = updateBounds)]
+	pub fn update_bounds(&self, new_text: String) -> Result<(), JsValue> {
+		let message = TextToolMessage::UpdateBounds { new_text };
+		self.dispatch(message);
+
+		Ok(())
+	}
+
+	/// Begin sampling a pixel color from the document by entering eyedropper sampling mode
+	#[wasm_bindgen(js_name = eyedropperSampleForColorPicker)]
+	pub fn eyedropper_sample_for_color_picker(&self) -> Result<(), JsValue> {
+		let message = DialogMessage::RequestComingSoonDialog { issue: Some(832) };
+		self.dispatch(message);
+
+		Ok(())
+	}
+
+	/// Update primary color with values on a scale from 0 to 1.
+	#[wasm_bindgen(js_name = updatePrimaryColor)]
+	pub fn update_primary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
+		let Some(primary_color) = Color::from_rgbaf32(red, green, blue, alpha) else {
+			return Err(Error::new("Invalid color").into());
+		};
+
+		let message = ToolMessage::SelectWorkingColor {
+			color: primary_color.to_linear_srgb(),
+			primary: true,
+		};
+		self.dispatch(message);
+
+		Ok(())
+	}
+
+	/// Update secondary color with values on a scale from 0 to 1.
+	#[wasm_bindgen(js_name = updateSecondaryColor)]
+	pub fn update_secondary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
+		let Some(secondary_color) = Color::from_rgbaf32(red, green, blue, alpha) else {
+			return Err(Error::new("Invalid color").into());
+		};
+
+		let message = ToolMessage::SelectWorkingColor {
+			color: secondary_color.to_linear_srgb(),
+			primary: false,
+		};
+		self.dispatch(message);
+
+		Ok(())
+	}
+
+	/// Visit the given URL
+	#[wasm_bindgen(js_name = visitUrl)]
+	pub fn visit_url(&self, url: String) {
+		let message = FrontendMessage::TriggerVisitLink { url };
+		self.dispatch(message);
+	}
+
+	/// Paste layers from a serialized json representation
+	#[wasm_bindgen(js_name = pasteSerializedData)]
+	pub fn paste_serialized_data(&self, data: String) {
+		let message = PortfolioMessage::PasteSerializedData { data };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = clipLayer)]
+	pub fn clip_layer(&self, id: u64) {
+		let id = NodeId(id);
+		let message = DocumentMessage::ClipLayer { id };
+		self.dispatch(message);
+	}
+
+	/// Modify the layer selection based on the layer which is clicked while holding down the <kbd>Ctrl</kbd> and/or <kbd>Shift</kbd> modifier keys used for range selection behavior
+	#[wasm_bindgen(js_name = selectLayer)]
+	pub fn select_layer(&self, id: u64, ctrl: bool, shift: bool) {
+		let id = NodeId(id);
+		let message = DocumentMessage::SelectLayer { id, ctrl, shift };
+		self.dispatch(message);
+	}
+
+	/// Deselect all layers
+	#[wasm_bindgen(js_name = deselectAllLayers)]
+	pub fn deselect_all_layers(&self) {
+		let message = DocumentMessage::DeselectAllLayers;
+		self.dispatch(message);
+	}
+
+	/// Move a layer to within a folder and placed down at the given index.
+	/// If the folder is `None`, it is inserted into the document root.
+	/// If the insert index is `None`, it is inserted at the start of the folder.
+	#[wasm_bindgen(js_name = moveLayerInTree)]
+	pub fn move_layer_in_tree(&self, insert_parent_id: Option<u64>, insert_index: Option<usize>) {
+		let insert_parent_id = insert_parent_id.map(NodeId);
+		let parent = insert_parent_id.map(LayerNodeIdentifier::new_unchecked).unwrap_or_default();
+
+		let message = DocumentMessage::MoveSelectedLayersTo {
+			parent,
+			insert_index: insert_index.unwrap_or_default(),
+		};
+		self.dispatch(message);
+	}
+
+	/// Set the name for the layer
+	#[wasm_bindgen(js_name = setLayerName)]
+	pub fn set_layer_name(&self, id: u64, name: String) {
+		let layer = LayerNodeIdentifier::new_unchecked(NodeId(id));
+		let message = NodeGraphMessage::SetDisplayName {
+			node_id: layer.to_node(),
+			alias: name,
+			skip_adding_history_step: false,
+		};
+		self.dispatch(message);
+	}
+
+	/// Translates document (in viewport coords)
+	#[wasm_bindgen(js_name = panCanvasAbortPrepare)]
+	pub fn pan_canvas_abort_prepare(&self, x_not_y_axis: bool) {
+		let message = NavigationMessage::CanvasPanAbortPrepare { x_not_y_axis };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = panCanvasAbort)]
+	pub fn pan_canvas_abort(&self, x_not_y_axis: bool) {
+		let message = NavigationMessage::CanvasPanAbort { x_not_y_axis };
+		self.dispatch(message);
+	}
+
+	/// Translates document (in viewport coords)
+	#[wasm_bindgen(js_name = panCanvas)]
+	pub fn pan_canvas(&self, delta_x: f64, delta_y: f64) {
+		let message = NavigationMessage::CanvasPan { delta: (delta_x, delta_y).into() };
+		self.dispatch(message);
+	}
+
+	/// Translates document (in viewport coords)
+	#[wasm_bindgen(js_name = panCanvasByFraction)]
+	pub fn pan_canvas_by_fraction(&self, delta_x: f64, delta_y: f64) {
+		let message = NavigationMessage::CanvasPanByViewportFraction { delta: (delta_x, delta_y).into() };
+		self.dispatch(message);
+	}
+
+	/// Snaps the import/export edges to a grid space when the scroll bar is released
+	#[wasm_bindgen(js_name = setGridAlignedEdges)]
+	pub fn set_grid_aligned_edges(&self) {
+		let message = NodeGraphMessage::SetGridAlignedEdges;
+		self.dispatch(message);
+	}
+
+	/// Merge a group of nodes into a subnetwork
+	#[wasm_bindgen(js_name = mergeSelectedNodes)]
+	pub fn merge_nodes(&self) {
+		let message = NodeGraphMessage::MergeSelectedNodes;
+		self.dispatch(message);
+	}
+
+	/// Creates a new document node in the node graph
+	#[wasm_bindgen(js_name = createNode)]
+	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
+		let id = NodeId::new();
+		let message = NodeGraphMessage::CreateNodeFromContextMenu {
+			node_id: Some(id),
+			node_type,
+			xy: Some((x / 24, y / 24)),
+			add_transaction: true,
+		};
+		self.dispatch(message);
+	}
+
+	/// Pastes the nodes based on serialized data
+	#[wasm_bindgen(js_name = pasteSerializedNodes)]
+	pub fn paste_serialized_nodes(&self, serialized_nodes: String) {
+		let message = NodeGraphMessage::PasteNodes { serialized_nodes };
+		self.dispatch(message);
+	}
+
+	/// Pastes an image
+	#[wasm_bindgen(js_name = pasteImage)]
+	pub fn paste_image(
+		&self,
+		name: Option<String>,
+		image_data: Vec<u8>,
+		width: u32,
+		height: u32,
+		mouse_x: Option<f64>,
+		mouse_y: Option<f64>,
+		insert_parent_id: Option<u64>,
+		insert_index: Option<usize>,
+	) {
+		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
+		let image = graphene_std::raster::Image::from_image_data(&image_data, width, height);
+
+		let parent_and_insert_index = if let (Some(insert_parent_id), Some(insert_index)) = (insert_parent_id, insert_index) {
+			let insert_parent_id = NodeId(insert_parent_id);
+			let parent = LayerNodeIdentifier::new_unchecked(insert_parent_id);
+			Some((parent, insert_index))
+		} else {
+			None
+		};
+
+		let message = PortfolioMessage::PasteImage {
+			name,
+			image,
+			mouse,
+			parent_and_insert_index,
+		};
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = pasteSvg)]
+	pub fn paste_svg(&self, name: Option<String>, svg: String, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<usize>) {
+		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
+
+		let parent_and_insert_index = if let (Some(insert_parent_id), Some(insert_index)) = (insert_parent_id, insert_index) {
+			let insert_parent_id = NodeId(insert_parent_id);
+			let parent = LayerNodeIdentifier::new_unchecked(insert_parent_id);
+			Some((parent, insert_index))
+		} else {
+			None
+		};
+
+		let message = PortfolioMessage::PasteSvg {
+			name,
+			svg,
+			mouse,
+			parent_and_insert_index,
+		};
+		self.dispatch(message);
+	}
+
+	/// Toggle visibility of a layer or node given its node ID
+	#[wasm_bindgen(js_name = toggleNodeVisibilityLayerPanel)]
+	pub fn toggle_node_visibility_layer(&self, id: u64) {
+		let node_id = NodeId(id);
+		let message = NodeGraphMessage::ToggleVisibility { node_id };
+		self.dispatch(message);
+	}
+
+	/// Pin or unpin a node given its node ID
+	#[wasm_bindgen(js_name = setNodePinned)]
+	pub fn set_node_pinned(&self, id: u64, pinned: bool) {
+		self.dispatch(DocumentMessage::SetNodePinned { node_id: NodeId(id), pinned });
+	}
+
+	/// Delete a layer or node given its node ID
+	#[wasm_bindgen(js_name = deleteNode)]
+	pub fn delete_node(&self, id: u64) {
+		self.dispatch(DocumentMessage::DeleteNode { node_id: NodeId(id) });
+	}
+
+	/// Toggle lock state of a layer from the layer list
+	#[wasm_bindgen(js_name = toggleLayerLock)]
+	pub fn toggle_layer_lock(&self, node_id: u64) {
+		let message = NodeGraphMessage::ToggleLocked { node_id: NodeId(node_id) };
+		self.dispatch(message);
+	}
+
+	/// Toggle expansions state of a layer from the layer list
+	#[wasm_bindgen(js_name = toggleLayerExpansion)]
+	pub fn toggle_layer_expansion(&self, id: u64, recursive: bool) {
+		let id = NodeId(id);
+		let message = DocumentMessage::ToggleLayerExpansion { id, recursive };
+		self.dispatch(message);
+	}
+
+	/// Set the active panel to the most recently clicked panel
+	#[wasm_bindgen(js_name = setActivePanel)]
+	pub fn set_active_panel(&self, panel: String) {
+		let message = PortfolioMessage::SetActivePanel { panel: panel.into() };
+		self.dispatch(message);
+	}
+
+	/// Toggle display type for a layer
+	#[wasm_bindgen(js_name = setToNodeOrLayer)]
+	pub fn set_to_node_or_layer(&self, id: u64, is_layer: bool) {
+		self.dispatch(DocumentMessage::SetToNodeOrLayer { node_id: NodeId(id), is_layer });
+	}
+
+	/// Set the name of an import or export
+	#[wasm_bindgen(js_name = setImportName)]
+	pub fn set_import_name(&self, index: usize, name: String) {
+		let message = NodeGraphMessage::SetImportExportName {
+			name,
+			index: ImportOrExport::Import(index),
+		};
+		self.dispatch(message);
+	}
+
+	/// Set the name of an export
+	#[wasm_bindgen(js_name = setExportName)]
+	pub fn set_export_name(&self, index: usize, name: String) {
+		let message = NodeGraphMessage::SetImportExportName {
+			name,
+			index: ImportOrExport::Export(index),
+		};
+		self.dispatch(message);
+	}
+}
+
+#[wasm_bindgen(js_name = evaluateMathExpression)]
+pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
+	let value = math_parser::evaluate(expression)
+		.inspect_err(|err| error!("Math parser error on \"{expression}\": {err}"))
+		.ok()?
+		.0
+		.inspect_err(|err| error!("Math evaluate error on \"{expression}\": {err} "))
+		.ok()?;
+	let Some(real) = value.as_real() else {
+		error!("{value} was not a real; skipping.");
+		return None;
+	};
+	Some(real)
 }
 
 #[wasm_bindgen]
@@ -89,75 +678,4 @@ extern "C" {
 
 	#[wasm_bindgen(structural, method, getter)]
 	fn stack(error: &Error) -> String;
-}
-
-/// Logging to the JS console
-#[wasm_bindgen]
-extern "C" {
-	#[wasm_bindgen(js_namespace = console)]
-	fn log(msg: &str, format: &str);
-	#[wasm_bindgen(js_namespace = console)]
-	fn info(msg: &str, format: &str);
-	#[wasm_bindgen(js_namespace = console)]
-	fn warn(msg: &str, format: &str);
-	#[wasm_bindgen(js_namespace = console)]
-	fn error(msg: &str, format: &str);
-	#[wasm_bindgen(js_namespace = console)]
-	fn trace(msg: &str, format: &str);
-}
-
-#[wasm_bindgen]
-extern "C" {
-	fn sendMessageToCefFromWasm(message: String);
-}
-
-#[wasm_bindgen]
-pub fn send_message_to_cef(message: String) {
-	let global = js_sys::global();
-
-	// Get the function by name
-	let func = js_sys::Reflect::get(&global, &JsValue::from_str("sendMessageToCef")).expect("Function not found");
-
-	let func = func.dyn_into::<js_sys::Function>().expect("Not a function");
-
-	// Call it with argument
-	func.call1(&JsValue::NULL, &JsValue::from_str(&message)).expect("Function call failed");
-}
-
-#[derive(Default)]
-pub struct WasmLog;
-
-impl log::Log for WasmLog {
-	#[inline]
-	fn enabled(&self, metadata: &log::Metadata) -> bool {
-		metadata.level() <= log::max_level()
-	}
-
-	fn log(&self, record: &log::Record) {
-		if !self.enabled(record.metadata()) {
-			return;
-		}
-
-		let (log, name, color): (fn(&str, &str), &str, &str) = match record.level() {
-			log::Level::Trace => (log, "trace", "color:plum"),
-			log::Level::Debug => (log, "debug", "color:cyan"),
-			log::Level::Warn => (warn, "warn", "color:goldenrod"),
-			log::Level::Info => (info, "info", "color:mediumseagreen"),
-			log::Level::Error => (error, "error", "color:red"),
-		};
-
-		// The %c is replaced by the message color
-		if record.level() == log::Level::Info {
-			// We don't print the file name and line number for info-level logs because it's used for printing the message system logs
-			log(&format!("%c{}\t{}", name, record.args()), color);
-		} else {
-			let file = record.file().unwrap_or_else(|| record.target());
-			let line = record.line().map_or_else(|| "[Unknown]".to_string(), |line| line.to_string());
-			let args = record.args();
-
-			log(&format!("%c{name}\t{file}:{line}\n{args}"), color);
-		}
-	}
-
-	fn flush(&self) {}
 }
