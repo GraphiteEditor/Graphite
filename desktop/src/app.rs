@@ -2,10 +2,11 @@ use crate::CustomEvent;
 use crate::WindowSize;
 use crate::render::GraphicsState;
 use crate::render::WgpuContext;
+use ::cef::CefString;
+use ::cef::ImplBrowser;
+use ::cef::ImplFrame;
 use graphite_editor::application::Editor;
-use graphite_editor::dispatcher::Dispatcher;
 use graphite_editor::messages::prelude::Message;
-use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
@@ -109,10 +110,21 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 					tracing::error!("Message could not be deserialized: {:?}", message);
 					return;
 				};
-				println!("Message received: {message:?}");
 				let responses = self.editor.handle_message(message);
-				println!("responses: {:?}", responses);
 				// Send response to CEF
+				let Some(frame) = self.cef_context.browser.as_ref().unwrap().main_frame() else {
+					tracing::error!("Could not get frame after editor processed messages");
+					return;
+				};
+				for frontend_message in responses {
+					let Ok(serialized_message) = serde_json::to_string(&frontend_message) else {
+						tracing::error!("Failed to serialize frontend message in CustomEvent::MessageReceived");
+						continue;
+					};
+					let message = format!("window.handle.sendMessageToFrontendFromCEF(\'{serialized_message}\')");
+					let code = CefString::from(message.as_str());
+					frame.execute_java_script(Some(&code), None, 0);
+				}
 			}
 		}
 	}

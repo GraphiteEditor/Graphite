@@ -118,6 +118,7 @@ pub fn send_message_to_frontend(message: String) {
 	editor_api::editor_and_handle(callback);
 }
 
+#[wasm_bindgen]
 pub fn send_message_to_cef(message: String) {
 	let global = js_sys::global();
 
