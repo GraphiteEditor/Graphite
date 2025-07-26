@@ -7,16 +7,15 @@ pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::SurfaceFrame;
 use graphene_brush::brush_cache::BrushCache;
 use graphene_brush::brush_stroke::BrushStroke;
+use graphene_core::choice_type::{ChoiceTypeStatic, ChoiceWidgetHint, VariantMetadata};
 use graphene_core::raster::Image;
 use graphene_core::raster_types::CPU;
 use graphene_core::registry::types::Percentage;
-use graphene_core::registry::{ChoiceTypeStatic, ChoiceWidgetHint, VariantMetadata};
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
 use graphene_core::vector::style::Fill;
 use graphene_core::{AsU32, Color, MemoHash, Node, Type};
 use graphene_svg_renderer::RenderMetadata;
-use std::borrow::Cow;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -78,21 +77,21 @@ macro_rules! tagged_value {
 				static VALUES: [(TaggedValueChoice, VariantMetadata); 2 + COUNT] = [
 
 					(TaggedValueChoice::None, VariantMetadata {
-						name: Cow::Borrowed(stringify!(None)),
-						label: Cow::Borrowed(stringify!(None)),
+						name: stringify!(None),
+						label: stringify!(None),
 						docstring: None,
 						icon: None,
 					}),
 					(TaggedValueChoice::Percentage, VariantMetadata {
-						name: Cow::Borrowed(stringify!(Percentage)),
-						label: Cow::Borrowed(stringify!(Percentage)),
+						name: stringify!(Percentage),
+						label: stringify!(Percentage),
 						docstring: None,
 						icon: None,
 					}),
 					$(
 						(TaggedValueChoice::$identifier, VariantMetadata {
-							name: Cow::Borrowed(stringify!($identifier)),
-							label: Cow::Borrowed(stringify!($identifier)),
+							name: stringify!($identifier),
+							label: stringify!($identifier),
 							docstring: None,
 							icon: None,
 						}),

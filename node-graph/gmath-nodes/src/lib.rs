@@ -1,8 +1,6 @@
 use glam::{DAffine2, DVec2};
 use graphene_core::gradient::GradientStops;
 use graphene_core::registry::types::Fraction;
-use graphene_core::registry::types::{Fraction, Percentage, PixelSize, TextArea};
-use graphene_core::transform::Footprint;
 use graphene_core::{Color, Ctx, num_traits};
 use log::warn;
 use math_parser::ast;

@@ -122,7 +122,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: Some("value_properties"),
 		},
 		DocumentNodeDefinition {
-			identifier: "Number Value",
+			identifier: "Real Number Value",
 			category: "Value",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
@@ -138,6 +138,25 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("Constructs a number which can be set to any real number"),
+			properties: Some("value_properties"),
+		},
+		DocumentNodeDefinition {
+			identifier: "Whole Number Value",
+			category: "Value",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
+					manual_composition: Some(generic!(T)),
+					inputs: vec![NodeInput::value(TaggedValue::U32(0), false)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_metadata: vec![("Value", "").into()],
+					output_names: vec!["Out".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("Constructs a positive integer value."),
 			properties: Some("value_properties"),
 		},
 		DocumentNodeDefinition {
@@ -157,25 +176,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("Constructs a decimal value between 0 and 1."),
-			properties: Some("value_properties"),
-		},
-		DocumentNodeDefinition {
-			identifier: "Number Value",
-			category: "Value",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
-					manual_composition: Some(generic!(T)),
-					inputs: vec![NodeInput::value(TaggedValue::U32(0), false)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Value", "").into()],
-					output_names: vec!["Out".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("Constructs a positive integer value."),
 			properties: Some("value_properties"),
 		},
 		DocumentNodeDefinition {
@@ -224,6 +224,25 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
 					manual_composition: Some(generic!(T)),
 					inputs: vec![NodeInput::value(TaggedValue::DVec2(DVec2::new(0., 0.)), false)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_metadata: vec![("Value", "").into()],
+					output_names: vec!["Out".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("Constructs a string value which can be set to any plain text."),
+			properties: Some("value_properties"),
+		},
+		DocumentNodeDefinition {
+			identifier: "Footprint Value",
+			category: "Value",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
+					manual_composition: Some(generic!(T)),
+					inputs: vec![NodeInput::value(TaggedValue::Footprint(Footprint::default()), false)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
