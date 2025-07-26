@@ -20,7 +20,7 @@ use graphene_std::raster::{
 	SelectiveColorChoice,
 };
 use graphene_std::raster_types::{CPU, GPU, RasterDataTable};
-use graphene_std::text::Font;
+use graphene_std::text::{Font, TextAlign};
 use graphene_std::transform::{Footprint, ReferencePoint, Transform};
 use graphene_std::vector::VectorDataTable;
 use graphene_std::vector::misc::GridType;
@@ -223,6 +223,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<StrokeAlign>() => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<PaintOrder>() => enum_choice::<PaintOrder>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<ArcType>() => enum_choice::<ArcType>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<TextAlign>() => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<MergeByDistanceAlgorithm>() => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<PointSpacingType>() => enum_choice::<PointSpacingType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<BooleanOperation>() => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
@@ -2018,7 +2019,7 @@ pub mod choice {
 					let updater = updater_factory();
 					let committer = committer_factory();
 					let entry = RadioEntryData::new(var_meta.name).on_update(move |_| updater(item)).on_commit(committer);
-					match (var_meta.icon.as_deref(), var_meta.docstring.as_deref()) {
+					match (var_meta.icon, var_meta.docstring) {
 						(None, None) => entry.label(var_meta.label),
 						(None, Some(doc)) => entry.label(var_meta.label).tooltip(doc),
 						(Some(icon), None) => entry.icon(icon).tooltip(var_meta.label),

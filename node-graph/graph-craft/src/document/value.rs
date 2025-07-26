@@ -248,6 +248,7 @@ tagged_value! {
 	ReferencePoint(graphene_core::transform::ReferencePoint),
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_path_bool::BooleanOperation),
+	TextAlign(graphene_core::text::TextAlign),
 }
 
 impl TaggedValue {
