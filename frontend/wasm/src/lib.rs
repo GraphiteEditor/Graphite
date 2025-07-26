@@ -112,8 +112,10 @@ extern "C" {
 #[wasm_bindgen(js_name = "sendMessageToFrontend")]
 pub fn send_message_to_frontend() {
 	let message = read_cef_data();
+	log::debug!("buffer_len {:?}", message);
 	let buffer = Uint8Array::new(&message);
 	let buffer = buffer.to_vec();
+	log::debug!("buffer_len {}", buffer.len());
 	let Ok(messages) = bitcode::deserialize::<Vec<FrontendMessage>>(&buffer) else { return };
 
 	let callback = move |_: &mut Editor, handle: &mut EditorHandle| {

@@ -1,7 +1,7 @@
 use cef::{
 	CefString, ImplFrame, ImplV8ArrayBufferReleaseCallback, ImplV8Context, ImplV8Handler, ImplV8Value, V8ArrayBufferReleaseCallback, V8Value, WrapV8ArrayBufferReleaseCallback, WrapV8Handler,
 	process_message_create,
-	rc::{ConvertParam, Rc},
+	rc::{ConvertParam, ConvertReturnValue, Rc},
 	sys::cef_process_id_t,
 	v8_context_get_current_context,
 };
@@ -49,16 +49,24 @@ impl ImplV8Handler for NonBrowserV8HandlerImpl {
 				frame.send_process_message(cef_process_id_t::PID_BROWSER.into(), Some(&mut process_message));
 			}
 			if name.to_string() == "readMessageData" {
-				let Ok(data) = dbg!(self.receiver.lock().as_mut().unwrap().recv()) else { return 0 };
+				let Ok(mut data) = self.receiver.lock().as_mut().unwrap().recv() else { return 0 };
 				let data_len = data.len();
-				let buffer = cef::v8_value_create_array_buffer(
-					Vec::leak(data).as_mut_ptr(),
-					data_len,
-					Some(&mut V8ArrayBufferReleaseCallback::new(BufferFreeCallback { object: std::ptr::null_mut() })),
-				);
+				let buffer = cef::v8_value_create_array_buffer_with_copy(data.as_mut_ptr(), data_len);
+				if buffer.is_none() {
+					tracing::error!("buffer is none");
+				}
+				if retval.is_none() {
+					tracing::error!("retval is none");
+				}
+				if let Some(buffer) = &buffer {
+					eprintln!("is valid: {}", buffer.is_valid());
+					eprintln!("is array: {}", buffer.is_array_buffer());
+				}
 				if let Some(retval) = retval {
 					*retval = buffer;
 				}
+				tracing::error!("sucessfully set return value");
+				return 1;
 			}
 		}
 		1
@@ -93,35 +101,6 @@ impl Rc for NonBrowserV8HandlerImpl {
 
 impl WrapV8Handler for NonBrowserV8HandlerImpl {
 	fn wrap_rc(&mut self, object: *mut cef::rc::RcImpl<cef::sys::_cef_v8_handler_t, Self>) {
-		self.object = object;
-	}
-}
-
-#[derive(Clone)]
-struct BufferFreeCallback {
-	object: *mut cef::rc::RcImpl<cef::sys::_cef_v8_array_buffer_release_callback_t, Self>,
-}
-
-impl ImplV8ArrayBufferReleaseCallback for BufferFreeCallback {
-	fn get_raw(&self) -> *mut cef::sys::_cef_v8_array_buffer_release_callback_t {
-		todo!()
-	}
-	fn release_buffer(&self, buffer: *mut u8) {
-		unsafe { std::alloc::dealloc(buffer, std::alloc::Layout::new::<u8>()) };
-	}
-}
-
-impl Rc for BufferFreeCallback {
-	fn as_base(&self) -> &cef::sys::cef_base_ref_counted_t {
-		unsafe {
-			let base = &*self.object;
-			std::mem::transmute(&base.cef_object)
-		}
-	}
-}
-
-impl WrapV8ArrayBufferReleaseCallback for BufferFreeCallback {
-	fn wrap_rc(&mut self, object: *mut cef::rc::RcImpl<cef::sys::_cef_v8_array_buffer_release_callback_t, Self>) {
 		self.object = object;
 	}
 }
