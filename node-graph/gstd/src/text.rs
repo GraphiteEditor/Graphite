@@ -28,10 +28,10 @@ fn text<'i: 'n>(
 	#[unit("°")]
 	#[default(0.)]
 	tilt: f64,
+	align: TextAlign,
 	/// Splits each text glyph into its own instance, i.e. row in the table of vector data.
 	#[default(false)]
 	per_glyph_instances: bool,
-	#[default(TextAlignment::default())] text_alignment: TextAlignment,
 ) -> VectorDataTable {
 	let typesetting = TypesettingConfig {
 		font_size,
@@ -40,7 +40,7 @@ fn text<'i: 'n>(
 		max_width,
 		max_height,
 		tilt,
-		alignment: text_alignment.into(),
+		align,
 	};
 
 	let font_data = editor.font_cache.get(&font_name).map(|f| load_font(f));

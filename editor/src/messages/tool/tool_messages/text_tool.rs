@@ -17,7 +17,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
-use graphene_std::text::{Font, FontCache, TextAlignment, TypesettingConfig, lines_clipping, load_font};
+use graphene_std::text::{Font, FontCache, TextAlign, TypesettingConfig, lines_clipping, load_font};
 use graphene_std::vector::style::Fill;
 
 #[derive(Default, ExtractField)]
@@ -35,7 +35,7 @@ pub struct TextOptions {
 	font_style: String,
 	fill: ToolColorOptions,
 	tilt: f64,
-	alignment: TextAlignment,
+	align: TextAlign,
 }
 
 impl Default for TextOptions {
@@ -48,7 +48,7 @@ impl Default for TextOptions {
 			font_style: graphene_std::consts::DEFAULT_FONT_STYLE.into(),
 			fill: ToolColorOptions::new_primary(),
 			tilt: 0.,
-			alignment: TextAlignment::default(),
+			align: TextAlign::default(),
 		}
 	}
 }
@@ -136,7 +136,7 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 	let character_spacing = NumberInput::new(Some(tool.options.character_spacing))
 		.label("Char. Spacing")
 		.int()
-		.min(0.)
+		.min(-((1_u64 << f64::MANTISSA_DIGITS) as f64))
 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 		.step(0.1)
 		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::CharacterSpacing(number_input.value.unwrap())).into())
@@ -316,14 +316,7 @@ impl TextToolData {
 				transform: editing_text.transform.to_cols_array(),
 				max_width: editing_text.typesetting.max_width,
 				max_height: editing_text.typesetting.max_height,
-				text_alignment: match editing_text.typesetting.alignment {
-					TextAlignment::Start => String::from("start"),
-					TextAlignment::End => String::from("end"),
-					TextAlignment::Left => String::from("left"),
-					TextAlignment::Middle => String::from("center"),
-					TextAlignment::Right => String::from("right"),
-					TextAlignment::Justified => String::from("justify"),
-				},
+				align: editing_text.typesetting.align,
 			});
 		} else {
 			// Check if DisplayRemoveEditableTextbox is already in the responses queue
@@ -802,7 +795,7 @@ impl Fsm for TextToolFsmState {
 						character_spacing: tool_options.character_spacing,
 						max_height: constraint_size.map(|size| size.y),
 						tilt: tool_options.tilt,
-						alignment: tool_options.alignment.into(),
+						align: tool_options.align,
 					},
 					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
 					color: tool_options.fill.active_color(),

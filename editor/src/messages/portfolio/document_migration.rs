@@ -10,7 +10,7 @@ use glam::IVec2;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::ProtoNodeIdentifier;
-use graphene_std::text::{TextAlignment, TypesettingConfig};
+use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use graphene_std::vector::{VectorData, VectorDataTable};
@@ -702,10 +702,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		);
 		document.network_interface.set_input(
 			&InputConnector::node(*node_id, 9),
-			if inputs_count >= 10 {
+			if inputs_count >= 11 {
 				old_inputs[9].clone()
 			} else {
-				NodeInput::value(TaggedValue::Bool(false), false)
+				NodeInput::value(TaggedValue::TextAlign(TextAlign::default()), false)
 			},
 			network_path,
 		);
@@ -714,7 +714,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			if inputs_count >= 11 {
 				old_inputs[10].clone()
 			} else {
-				NodeInput::value(TaggedValue::TextAlignment(TextAlignment::default()), false)
+				NodeInput::value(TaggedValue::Bool(false), false)
 			},
 			network_path,
 		);

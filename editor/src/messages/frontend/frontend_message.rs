@@ -10,7 +10,7 @@ use crate::messages::tool::utility_types::HintData;
 use graph_craft::document::NodeId;
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
-use graphene_std::text::Font;
+use graphene_std::text::{Font, TextAlign};
 
 #[impl_message(Message, Frontend)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -38,8 +38,7 @@ pub enum FrontendMessage {
 		max_width: Option<f64>,
 		#[serde(rename = "maxHeight")]
 		max_height: Option<f64>,
-		#[serde(rename = "textAlignment")]
-		text_alignment: String,
+		align: TextAlign,
 	},
 	DisplayEditableTextboxTransform {
 		transform: [f64; 6],

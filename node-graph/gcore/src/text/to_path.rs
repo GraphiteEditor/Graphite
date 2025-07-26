@@ -1,3 +1,4 @@
+use super::TextAlign;
 use crate::instances::Instance;
 use crate::vector::{PointId, VectorData, VectorDataTable};
 use bezier_rs::{ManipulatorGroup, Subpath};
@@ -11,8 +12,6 @@ use skrifa::outline::{DrawSettings, OutlinePen};
 use skrifa::raw::FontRef as ReadFontsRef;
 use skrifa::{MetadataProvider, OutlineGlyph};
 use std::sync::Arc;
-
-use super::TextAlignment;
 
 // Thread-local storage avoids expensive re-initialization of font and layout contexts
 // across multiple text rendering operations within the same thread
@@ -105,7 +104,7 @@ pub struct TypesettingConfig {
 	pub max_width: Option<f64>,
 	pub max_height: Option<f64>,
 	pub tilt: f64,
-	pub alignment: TextAlignment,
+	pub align: TextAlign,
 }
 
 impl Default for TypesettingConfig {
@@ -117,7 +116,7 @@ impl Default for TypesettingConfig {
 			max_width: None,
 			max_height: None,
 			tilt: 0.,
-			alignment: TextAlignment::default(),
+			align: TextAlign::default(),
 		}
 	}
 }
@@ -201,7 +200,7 @@ fn layout_text(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 	let mut layout: Layout<()> = builder.build(str);
 
 	layout.break_all_lines(typesetting.max_width.map(|mw| mw as f32));
-	layout.align(typesetting.max_width.map(|max_w| max_w as f32), typesetting.alignment.into(), AlignmentOptions::default());
+	layout.align(typesetting.max_width.map(|max_w| max_w as f32), typesetting.align.into(), AlignmentOptions::default());
 
 	Some(layout)
 }

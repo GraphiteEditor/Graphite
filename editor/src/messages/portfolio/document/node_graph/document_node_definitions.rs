@@ -1304,8 +1304,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
 						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false),
+						NodeInput::value(TaggedValue::TextAlign(text::TextAlign::default()), false),
 						NodeInput::value(TaggedValue::Bool(false), false),
-						NodeInput::value(TaggedValue::TextAlignment(text::TextAlignment::default()), false),
 					],
 					..Default::default()
 				},
@@ -1338,7 +1338,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
 								unit: Some(" px".to_string()),
-								min: Some(0.),
 								step: Some(0.1),
 								..Default::default()
 							}),
@@ -1373,8 +1372,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
+						InputMetadata::with_name_description_override("Align", "TODO", WidgetOverride::Custom("text_align".to_string())),
 						("Per-Glyph Instances", "Splits each text glyph into its own instance, i.e. row in the table of vector data.").into(),
-						InputMetadata::with_name_description_override("Text Alignment", "Text Alignment.", WidgetOverride::Custom("text_alignment".to_string())),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
@@ -2407,9 +2406,9 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
-		"text_alignment".to_string(),
+		"text_align".to_string(),
 		Box::new(|node_id, index, context| {
-			let choices = enum_choice::<text::TextAlignment>().for_socket(ParameterWidgetsInfo::new(node_id, index, true, context)).property_row();
+			let choices = enum_choice::<text::TextAlign>().for_socket(ParameterWidgetsInfo::new(node_id, index, true, context)).property_row();
 			Ok(vec![choices])
 		}),
 	);

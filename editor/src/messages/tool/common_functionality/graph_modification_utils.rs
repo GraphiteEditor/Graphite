@@ -368,12 +368,8 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 	let Some(&TaggedValue::OptionalF64(max_width)) = inputs[6].as_value() else { return None };
 	let Some(&TaggedValue::OptionalF64(max_height)) = inputs[7].as_value() else { return None };
 	let Some(&TaggedValue::F64(tilt)) = inputs[8].as_value() else { return None };
-	let Some(TaggedValue::Bool(per_glyph_instances)) = &inputs[9].as_value() else {
-		return None;
-	};
-	let Some(TaggedValue::TextAlignment(alignment)) = &inputs[10].as_value() else {
-		return None;
-	};
+	let Some(&TaggedValue::TextAlign(align)) = inputs[9].as_value() else { return None };
+	let Some(&TaggedValue::Bool(per_glyph_instances)) = inputs[10].as_value() else { return None };
 
 	let typesetting = TypesettingConfig {
 		font_size,
@@ -382,9 +378,9 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 		character_spacing,
 		max_height,
 		tilt,
-		alignment: *alignment,
+		align,
 	};
-	Some((text, font, typesetting, *per_glyph_instances))
+	Some((text, font, typesetting, per_glyph_instances))
 }
 
 pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {

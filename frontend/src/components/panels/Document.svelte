@@ -343,6 +343,7 @@
 		textInput.style.lineHeight = `${displayEditableTextbox.lineHeightRatio}`;
 		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
 		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
+		textInput.style.textAlign = displayEditableTextbox.align;
 
 		textInput.oninput = () => {
 			if (!textInput) return;
@@ -352,8 +353,6 @@
 		const newFont = new FontFace("text-font", `url(${displayEditableTextbox.url})`);
 		window.document.fonts.add(newFont);
 		textInput.style.fontFamily = "text-font";
-
-		textInput.style.textAlign = displayEditableTextbox.textAlignment;
 
 		// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
 
