@@ -7,19 +7,20 @@ pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::SurfaceFrame;
 use graphene_brush::brush_cache::BrushCache;
 use graphene_brush::brush_stroke::BrushStroke;
+use graphene_core::choice_type::{ChoiceTypeStatic, ChoiceWidgetHint, VariantMetadata};
 use graphene_core::raster::Image;
 use graphene_core::raster_types::CPU;
+use graphene_core::registry::types::Percentage;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
 use graphene_core::vector::style::Fill;
-use graphene_core::{Color, MemoHash, Node, Type};
+use graphene_core::{AsU32, Color, MemoHash, Node, Type};
 use graphene_svg_renderer::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
-
 pub struct TaggedValueTypeError;
 
 /// Macro to generate the tagged value enum.
@@ -30,11 +31,80 @@ macro_rules! tagged_value {
 		#[allow(clippy::large_enum_variant)] // TODO(TrueDoctor): Properly solve this disparity between the size of the largest and next largest variants
 		pub enum TaggedValue {
 			None,
+			Percentage(Percentage),
 			$( $(#[$meta] ) *$identifier( $ty ), )*
 			RenderOutput(RenderOutput),
 			SurfaceFrame(SurfaceFrame),
 			#[serde(skip)]
 			EditorApi(Arc<WasmEditorApi>)
+		}
+
+		#[derive(Clone, Copy, Debug)]
+		#[repr(u32)]
+		pub enum TaggedValueChoice {
+			None,
+			Percentage,
+			$($identifier,)*
+		}
+
+		impl TaggedValueChoice {
+			pub fn to_tagged_value(&self) -> TaggedValue {
+				match self {
+					TaggedValueChoice::None => TaggedValue::None,
+					TaggedValueChoice::Percentage => TaggedValue::Percentage(0.),
+					$(TaggedValueChoice::$identifier => TaggedValue::$identifier(Default::default()),)*
+				}
+			}
+			pub fn from_tagged_value(value: &TaggedValue) -> Option<Self> {
+				match value {
+					TaggedValue::None => Some(TaggedValueChoice::None),
+					TaggedValue::Percentage(_) => Some(TaggedValueChoice::Percentage),
+					$( TaggedValue::$identifier(_) => Some(TaggedValueChoice::$identifier), )*
+					_ => None
+				}
+			}
+		}
+
+		impl ChoiceTypeStatic for TaggedValueChoice {
+			const WIDGET_HINT: ChoiceWidgetHint = ChoiceWidgetHint::Dropdown; // or your preferred hint
+
+			const DESCRIPTION: Option<&'static str> = Some("Select a value");
+
+			fn list() -> &'static [&'static [(Self, VariantMetadata)]] {
+
+				const COUNT: usize = 0 $( + one!($identifier) )*;
+				// Define static array of (choice, metadata) tuples
+				static VALUES: [(TaggedValueChoice, VariantMetadata); 2 + COUNT] = [
+
+					(TaggedValueChoice::None, VariantMetadata {
+						name: stringify!(None),
+						label: stringify!(None),
+						docstring: None,
+						icon: None,
+					}),
+					(TaggedValueChoice::Percentage, VariantMetadata {
+						name: stringify!(Percentage),
+						label: stringify!(Percentage),
+						docstring: None,
+						icon: None,
+					}),
+					$(
+						(TaggedValueChoice::$identifier, VariantMetadata {
+							name: stringify!($identifier),
+							label: stringify!($identifier),
+							docstring: None,
+							icon: None,
+						}),
+					)*
+				];
+
+				// Static reference to the slice of VALUES
+				static LIST: [&'static [(TaggedValueChoice, VariantMetadata)]; 1] = [
+					&VALUES,
+				];
+
+				&LIST
+			}
 		}
 
 		// We must manually implement hashing because some values are floats and so do not reproducibly hash (see FakeHash below)
@@ -44,6 +114,7 @@ macro_rules! tagged_value {
 				core::mem::discriminant(self).hash(state);
 				match self {
 					Self::None => {}
+					Self::Percentage(x) => {x.hash(state)},
 					$( Self::$identifier(x) => {x.hash(state)}),*
 					Self::RenderOutput(x) => x.hash(state),
 					Self::SurfaceFrame(x) => x.hash(state),
@@ -56,6 +127,7 @@ macro_rules! tagged_value {
 			pub fn to_dynany(self) -> DAny<'a> {
 				match self {
 					Self::None => Box::new(()),
+					Self::Percentage(x) => Box::new(x),
 					$( Self::$identifier(x) => Box::new(x), )*
 					Self::RenderOutput(x) => Box::new(x),
 					Self::SurfaceFrame(x) => Box::new(x),
@@ -66,6 +138,7 @@ macro_rules! tagged_value {
 			pub fn to_any(self) -> Arc<dyn std::any::Any + Send + Sync + 'static> {
 				match self {
 					Self::None => Arc::new(()),
+					Self::Percentage(x) => Arc::new(x),
 					$( Self::$identifier(x) => Arc::new(x), )*
 					Self::RenderOutput(x) => Arc::new(x),
 					Self::SurfaceFrame(x) => Arc::new(x),
@@ -76,6 +149,7 @@ macro_rules! tagged_value {
 			pub fn ty(&self) -> Type {
 				match self {
 					Self::None => concrete!(()),
+					Self::Percentage(_) => concrete!(Percentage),
 					$( Self::$identifier(_) => concrete!($ty), )*
 					Self::RenderOutput(_) => concrete!(RenderOutput),
 					Self::SurfaceFrame(_) => concrete!(SurfaceFrame),
@@ -92,8 +166,6 @@ macro_rules! tagged_value {
 					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(*downcast(input).unwrap())), )*
 					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(*downcast(input).unwrap())),
 					x if x == TypeId::of::<SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(*downcast(input).unwrap())),
-
-
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 				}
 			}
@@ -153,6 +225,12 @@ macro_rules! tagged_value {
 				}
 			}
 		)*
+	};
+}
+
+macro_rules! one {
+	($anything:tt) => {
+		1
 	};
 }
 
@@ -385,6 +463,12 @@ impl Display for TaggedValue {
 			TaggedValue::Bool(x) => f.write_fmt(format_args!("{x}")),
 			_ => panic!("Cannot convert to string"),
 		}
+	}
+}
+
+impl AsU32 for TaggedValueChoice {
+	fn as_u32(&self) -> u32 {
+		*self as u32
 	}
 }
 
