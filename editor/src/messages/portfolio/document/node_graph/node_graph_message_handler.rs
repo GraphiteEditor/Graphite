@@ -2265,6 +2265,12 @@ impl NodeGraphMessageHandler {
 			}
 		}
 
+		// The same layer/node may appear several times. Sort and dedup them for a stable ordering.
+		layers.sort();
+		layers.dedup();
+		nodes.sort();
+		nodes.dedup();
+
 		// Next, we decide what to display based on the number of layers and nodes selected
 		match *layers.as_slice() {
 			// If no layers are selected, show properties for all selected nodes
