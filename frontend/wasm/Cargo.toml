@@ -39,6 +39,7 @@ wasm-bindgen-futures = { workspace = true }
 math-parser = { workspace = true }
 wgpu = { workspace = true }
 web-sys = { workspace = true }
+bitcode = { version = "0.6.6", features = ["serde"] }
 
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false

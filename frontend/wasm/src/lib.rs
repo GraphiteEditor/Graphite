@@ -10,6 +10,7 @@ pub mod helpers;
 use editor::application::Editor;
 use editor::messages::prelude::*;
 use editor_api::EditorHandle;
+use js_sys::Uint8Array;
 use std::panic;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -109,13 +110,30 @@ extern "C" {
 }
 
 #[wasm_bindgen(js_name = "sendMessageToFrontend")]
-pub fn send_message_to_frontend(message: String) {
-	let Ok(message) = serde_json::from_str::<FrontendMessage>(&message) else { return };
+pub fn send_message_to_frontend() {
+	let message = read_cef_data();
+	let buffer = Uint8Array::new(&message);
+	let buffer = buffer.to_vec();
+	let Ok(messages) = bitcode::deserialize::<Vec<FrontendMessage>>(&buffer) else { return };
 
 	let callback = move |_: &mut Editor, handle: &mut EditorHandle| {
-		handle.send_frontend_message_to_js_rust_proxy(message);
+		for message in messages {
+			handle.send_frontend_message_to_js_rust_proxy(message);
+		}
 	};
 	editor_api::editor_and_handle(callback);
+}
+pub fn read_cef_data() -> JsValue {
+	let global = js_sys::global();
+
+	// Get the function by name
+	let func = js_sys::Reflect::get(&global, &JsValue::from_str("readMessageData")).expect("Function not found");
+
+	let func = func.dyn_into::<js_sys::Function>().expect("Not a function");
+
+	// Call it with argument
+
+	func.call0(&JsValue::NULL).expect("Function call failed")
 }
 
 pub fn send_message_to_cef(message: String) {

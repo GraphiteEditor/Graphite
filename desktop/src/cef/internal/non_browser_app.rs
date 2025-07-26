@@ -2,7 +2,7 @@ use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_app_t, cef_base_ref_counted_t};
 use cef::{App, ImplApp, SchemeRegistrar, WrapApp};
 
-use crate::cef::internal::non_browser_render_process_handler::NonBrowserRenderProcessHandlerImpl;
+use crate::cef::internal::non_browser_render_process_handler::RenderProcessHandlerImpl;
 use crate::cef::scheme_handler::GraphiteSchemeHandlerFactory;
 
 pub(crate) struct NonBrowserAppImpl {
@@ -16,7 +16,7 @@ impl NonBrowserAppImpl {
 
 impl ImplApp for NonBrowserAppImpl {
 	fn render_process_handler(&self) -> Option<cef::RenderProcessHandler> {
-		Some(cef::RenderProcessHandler::new(NonBrowserRenderProcessHandlerImpl::new()))
+		Some(cef::RenderProcessHandler::new(RenderProcessHandlerImpl::new()))
 	}
 
 	fn on_register_custom_schemes(&self, registrar: Option<&mut SchemeRegistrar>) {

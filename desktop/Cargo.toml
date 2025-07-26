@@ -31,3 +31,4 @@ tracing-subscriber = { workspace = true }
 tracing = { workspace = true }
 dirs = {workspace = true}
 serde_json = { workspace = true }
+bitcode = { version = "0.6.6", features = ["serde"] }
