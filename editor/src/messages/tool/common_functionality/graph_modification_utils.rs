@@ -332,6 +332,10 @@ pub fn get_fill_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Fill")
 }
 
+pub fn get_circle_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Circle")
+}
+
 pub fn get_ellipse_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Ellipse")
 }
@@ -350,6 +354,10 @@ pub fn get_rectangle_id(layer: LayerNodeIdentifier, network_interface: &NodeNetw
 
 pub fn get_star_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Star")
+}
+
+pub fn get_arc_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Arc")
 }
 
 pub fn get_text_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {

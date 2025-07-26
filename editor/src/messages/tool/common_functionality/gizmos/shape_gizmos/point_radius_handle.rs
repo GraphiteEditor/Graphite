@@ -262,7 +262,6 @@ impl PointRadiusHandle {
 				};
 
 				let viewport = document.metadata().transform_to_viewport(layer);
-				let center = viewport.transform_point2(DVec2::ZERO);
 
 				match snapping_index {
 					// Make a triangle with previous two points
@@ -274,41 +273,57 @@ impl PointRadiusHandle {
 						overlay_context.line(before_outer_position, outer_position, Some(COLOR_OVERLAY_RED), Some(3.));
 						overlay_context.line(outer_position, point_position, Some(COLOR_OVERLAY_RED), Some(3.));
 
+						let before_outer_position = viewport.inverse().transform_point2(before_outer_position);
+						let outer_position = viewport.inverse().transform_point2(outer_position);
+						let point_position = viewport.inverse().transform_point2(point_position);
+
 						let l1 = (before_outer_position - outer_position).length() * 0.2;
 						let Some(l1_direction) = (before_outer_position - outer_position).try_normalize() else { return };
 						let Some(l2_direction) = (point_position - outer_position).try_normalize() else { return };
-						let Some(direction) = (center - outer_position).try_normalize() else { return };
+						let Some(direction) = (-outer_position).try_normalize() else { return };
 
 						let new_point = SQRT_2 * l1 * direction + outer_position;
 
 						let before_outer_position = l1 * l1_direction + outer_position;
 						let point_position = l1 * l2_direction + outer_position;
 
-						overlay_context.line(before_outer_position, new_point, Some(COLOR_OVERLAY_RED), Some(3.));
-						overlay_context.line(new_point, point_position, Some(COLOR_OVERLAY_RED), Some(3.));
+						overlay_context.line(
+							viewport.transform_point2(before_outer_position),
+							viewport.transform_point2(new_point),
+							Some(COLOR_OVERLAY_RED),
+							Some(3.),
+						);
+						overlay_context.line(viewport.transform_point2(new_point), viewport.transform_point2(point_position), Some(COLOR_OVERLAY_RED), Some(3.));
 					}
 					1 => {
 						let before_outer_position = star_vertex_position(viewport, (self.point as i32) - 1, sides, radius1, radius2);
-
 						let after_point_position = star_vertex_position(viewport, (self.point as i32) + 1, sides, radius1, radius2);
-
 						let point_position = star_vertex_position(viewport, self.point as i32, sides, radius1, radius2);
 
 						overlay_context.line(before_outer_position, point_position, Some(COLOR_OVERLAY_RED), Some(3.));
 						overlay_context.line(point_position, after_point_position, Some(COLOR_OVERLAY_RED), Some(3.));
 
+						let before_outer_position = viewport.inverse().transform_point2(before_outer_position);
+						let after_point_position = viewport.inverse().transform_point2(after_point_position);
+						let point_position = viewport.inverse().transform_point2(point_position);
+
 						let l1 = (before_outer_position - point_position).length() * 0.2;
 						let Some(l1_direction) = (before_outer_position - point_position).try_normalize() else { return };
 						let Some(l2_direction) = (after_point_position - point_position).try_normalize() else { return };
-						let Some(direction) = (center - point_position).try_normalize() else { return };
+						let Some(direction) = (-point_position).try_normalize() else { return };
 
 						let new_point = SQRT_2 * l1 * direction + point_position;
 
 						let before_outer_position = l1 * l1_direction + point_position;
 						let after_point_position = l1 * l2_direction + point_position;
 
-						overlay_context.line(before_outer_position, new_point, Some(COLOR_OVERLAY_RED), Some(3.));
-						overlay_context.line(new_point, after_point_position, Some(COLOR_OVERLAY_RED), Some(3.));
+						overlay_context.line(
+							viewport.transform_point2(before_outer_position),
+							viewport.transform_point2(new_point),
+							Some(COLOR_OVERLAY_RED),
+							Some(3.),
+						);
+						overlay_context.line(viewport.transform_point2(new_point), viewport.transform_point2(after_point_position), Some(COLOR_OVERLAY_RED), Some(3.));
 					}
 					i => {
 						// Use `self.point` as absolute reference as it matches the index of vertices of the star starting from 0

@@ -4,6 +4,8 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::common_functionality::shapes::arc_shape::ArcGizmoHandler;
+use crate::messages::tool::common_functionality::shapes::circle_shape::CircleGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::polygon_shape::PolygonGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::star_shape::StarGizmoHandler;
@@ -23,6 +25,8 @@ pub enum ShapeGizmoHandlers {
 	None,
 	Star(StarGizmoHandler),
 	Polygon(PolygonGizmoHandler),
+	Arc(ArcGizmoHandler),
+	Circle(CircleGizmoHandler),
 }
 
 impl ShapeGizmoHandlers {
@@ -32,6 +36,8 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Star(_) => "star",
 			Self::Polygon(_) => "polygon",
+			Self::Arc(_) => "arc",
+			Self::Circle(_) => "circle",
 			Self::None => "none",
 		}
 	}
@@ -41,6 +47,8 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Star(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Polygon(h) => h.handle_state(layer, mouse_position, document, responses),
+			Self::Arc(h) => h.handle_state(layer, mouse_position, document, responses),
+			Self::Circle(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::None => {}
 		}
 	}
@@ -50,6 +58,8 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Star(h) => h.is_any_gizmo_hovered(),
 			Self::Polygon(h) => h.is_any_gizmo_hovered(),
+			Self::Arc(h) => h.is_any_gizmo_hovered(),
+			Self::Circle(h) => h.is_any_gizmo_hovered(),
 			Self::None => false,
 		}
 	}
@@ -59,6 +69,8 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Star(h) => h.handle_click(),
 			Self::Polygon(h) => h.handle_click(),
+			Self::Arc(h) => h.handle_click(),
+			Self::Circle(h) => h.handle_click(),
 			Self::None => {}
 		}
 	}
@@ -68,6 +80,8 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Star(h) => h.handle_update(drag_start, document, input, responses),
 			Self::Polygon(h) => h.handle_update(drag_start, document, input, responses),
+			Self::Arc(h) => h.handle_update(drag_start, document, input, responses),
+			Self::Circle(h) => h.handle_update(drag_start, document, input, responses),
 			Self::None => {}
 		}
 	}
@@ -77,6 +91,8 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Star(h) => h.cleanup(),
 			Self::Polygon(h) => h.cleanup(),
+			Self::Arc(h) => h.cleanup(),
+			Self::Circle(h) => h.cleanup(),
 			Self::None => {}
 		}
 	}
@@ -94,6 +110,8 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Star(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Polygon(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
+			Self::Arc(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
+			Self::Circle(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::None => {}
 		}
 	}
@@ -110,6 +128,8 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Star(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Polygon(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
+			Self::Arc(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
+			Self::Circle(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::None => {}
 		}
 	}
@@ -145,6 +165,14 @@ impl GizmoManager {
 		// Polygon
 		if graph_modification_utils::get_polygon_id(layer, &document.network_interface).is_some() {
 			return Some(ShapeGizmoHandlers::Polygon(PolygonGizmoHandler::default()));
+		}
+		if graph_modification_utils::get_arc_id(layer, &document.network_interface).is_some() {
+			return Some(ShapeGizmoHandlers::Arc(ArcGizmoHandler::new()));
+		}
+
+		// Polygon
+		if graph_modification_utils::get_circle_id(layer, &document.network_interface).is_some() {
+			return Some(ShapeGizmoHandlers::Circle(CircleGizmoHandler::default()));
 		}
 
 		None
