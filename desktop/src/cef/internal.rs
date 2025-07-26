@@ -5,6 +5,7 @@ mod non_browser_app;
 mod non_browser_render_process_handler;
 mod non_browser_v8_handler;
 mod render_handler;
+mod utility;
 
 pub(crate) use app::AppImpl;
 pub(crate) use client::ClientImpl;

@@ -30,25 +30,19 @@ impl<H: CefEventHandler> ImplClient for ClientImpl<H> {
 
 	fn on_process_message_received(
 		&self,
-		browser: Option<&mut cef::Browser>,
-		frame: Option<&mut cef::Frame>,
-		source_process: cef::ProcessId,
+		_browser: Option<&mut cef::Browser>,
+		_frame: Option<&mut cef::Frame>,
+		_source_process: cef::ProcessId,
 		message: Option<&mut cef::ProcessMessage>,
 	) -> ::std::os::raw::c_int {
 		let Some(message) = message else {
-			tracing::event!(tracing::Level::ERROR, "No message in RenderProcessHandlerImpl::on_process_message_received");
+			tracing::error!("No message in RenderProcessHandlerImpl::on_process_message_received");
 			return 1;
 		};
 
 		let pointer: *mut cef::sys::_cef_string_utf16_t = message.name().into();
-		let message = unsafe {
-			let str = (*pointer).str_;
-			let len = (*pointer).length;
-			let slice = std::slice::from_raw_parts(str, len as usize);
-			String::from_utf16(slice).unwrap()
-		};
-
-		let _ = self.event_handler.send_message_to_editior(message);
+		let string_message = super::utility::pointer_to_string(pointer);
+		let _ = self.event_handler.send_message_to_editor(string_message);
 		0
 	}
 }

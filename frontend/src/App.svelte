@@ -14,6 +14,7 @@
 
 		editor = createEditor();
 
+		window.handle = editor.handle;
 		// Auto save every 15 seconds
 		autoSaveAllDocumentsId = setInterval(() => {
 			editor?.handle.autoSaveAllDocuments();
