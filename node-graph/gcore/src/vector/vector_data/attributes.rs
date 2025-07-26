@@ -304,7 +304,7 @@ impl SegmentDomain {
 		&self.stroke
 	}
 
-	pub(crate) fn push(&mut self, id: SegmentId, start: usize, end: usize, handles: BezierHandles, stroke: StrokeId) {
+	pub fn push(&mut self, id: SegmentId, start: usize, end: usize, handles: BezierHandles, stroke: StrokeId) {
 		debug_assert!(!self.id.contains(&id), "Tried to push an existing point to a point domain");
 
 		self.id.push(id);
