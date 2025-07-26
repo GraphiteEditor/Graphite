@@ -151,11 +151,11 @@ impl GizmoManager {
 		if graph_modification_utils::get_star_id(layer, &document.network_interface).is_some() {
 			return Some(ShapeGizmoHandlers::Star(StarGizmoHandler::default()));
 		}
-
 		// Polygon
 		if graph_modification_utils::get_polygon_id(layer, &document.network_interface).is_some() {
 			return Some(ShapeGizmoHandlers::Polygon(PolygonGizmoHandler::default()));
 		}
+		// Arc
 		if graph_modification_utils::get_arc_id(layer, &document.network_interface).is_some() {
 			return Some(ShapeGizmoHandlers::Arc(ArcGizmoHandler::new()));
 		}

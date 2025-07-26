@@ -24,11 +24,11 @@ use std::f64::consts::{PI, TAU};
 pub enum ShapeType {
 	#[default]
 	Polygon = 0,
-	Star = 1,
-	Arc = 2,
-	Rectangle = 3,
-	Ellipse = 4,
-	Line = 5,
+	Star,
+	Arc,
+	Rectangle,
+	Ellipse,
+	Line,
 }
 
 impl ShapeType {
@@ -237,13 +237,10 @@ pub fn extract_polygon_parameters(layer: Option<LayerNodeIdentifier>, document: 
 	Some((n, radius))
 }
 
-/// Extract the node input values of Arc.
+/// Extract the node input values of an arc.
 /// Returns an option of (radius, start angle, sweep angle, arc type).
 pub fn extract_arc_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(f64, f64, f64, ArcType)> {
-	let Some(layer) = layer else {
-		return None;
-	};
-	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Arc")?;
+	let node_inputs = NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs("Arc")?;
 
 	let (Some(&TaggedValue::F64(radius)), Some(&TaggedValue::F64(start_angle)), Some(&TaggedValue::F64(sweep_angle)), Some(&TaggedValue::ArcType(arc_type))) = (
 		node_inputs.get(1)?.as_value(),
@@ -259,14 +256,9 @@ pub fn extract_arc_parameters(layer: Option<LayerNodeIdentifier>, document: &Doc
 
 /// Calculate the viewport positions of arc endpoints
 pub fn arc_end_points(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(DVec2, DVec2)> {
-	let Some(layer) = layer else {
-		return None;
-	};
-	let Some((radius, start_angle, sweep_angle, _)) = extract_arc_parameters(Some(layer), document) else {
-		return None;
-	};
+	let (radius, start_angle, sweep_angle, _) = extract_arc_parameters(Some(layer?), document)?;
 
-	let viewport = document.metadata().transform_to_viewport(layer);
+	let viewport = document.metadata().transform_to_viewport(layer?);
 
 	arc_end_points_ignore_layer(radius, start_angle, sweep_angle, Some(viewport))
 }
@@ -340,11 +332,9 @@ pub fn polygon_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMe
 	overlay_context.outline(subpath.iter(), viewport, None);
 }
 
-/// Outlines the geometric shape made by arc-node
+/// Outlines the geometric shape made by an Arc node
 pub fn arc_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
-	let Some(layer) = layer else {
-		return;
-	};
+	let Some(layer) = layer else { return };
 
 	let Some((radius, start_angle, sweep_angle, arc_type)) = extract_arc_parameters(Some(layer), document) else {
 		return;
@@ -365,7 +355,7 @@ pub fn arc_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessag
 	overlay_context.outline(subpath.iter(), viewport, None);
 }
 
-/// Check if the the cursor is inside the geometric star-shape made by star-node without any upstream node modifications
+/// Check if the the cursor is inside the geometric star shape made by the Star node without any upstream node modifications
 pub fn inside_star(viewport: DAffine2, n: u32, radius1: f64, radius2: f64, mouse_position: DVec2) -> bool {
 	let mut paths = Vec::new();
 
@@ -445,10 +435,10 @@ pub fn wrap_to_tau(angle: f64) -> f64 {
 }
 
 pub fn format_rounded(value: f64, precision: usize) -> String {
-	format!("{:.*}", precision, value).trim_end_matches('0').trim_end_matches('.').to_string()
+	format!("{value:.precision$}").trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
-// Give the approximated angle to display in degrees(Note : The input is in degrees)
+/// Gives the approximated angle to display in degrees, given an angle in degrees.
 pub fn calculate_display_angle(angle: f64) -> f64 {
 	if angle.is_sign_positive() {
 		angle - (angle / 360.).floor() * 360.

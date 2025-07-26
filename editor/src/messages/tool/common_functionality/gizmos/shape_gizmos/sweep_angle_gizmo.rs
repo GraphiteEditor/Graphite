@@ -1,19 +1,16 @@
 use crate::consts::{ARC_SNAP_THRESHOLD, COLOR_OVERLAY_RED, GIZMO_HIDE_THRESHOLD};
+use crate::messages::frontend::utility_types::MouseCursorIcon;
+use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+use crate::messages::prelude::{DocumentMessageHandler, FrontendMessage};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{arc_end_points, calculate_arc_text_transform, extract_arc_parameters, format_rounded};
 use crate::messages::tool::tool_messages::tool_prelude::*;
-use crate::messages::{
-	frontend::utility_types::MouseCursorIcon,
-	message::Message,
-	prelude::{DocumentMessageHandler, FrontendMessage},
-};
 use glam::DVec2;
-use graph_craft::document::NodeId;
-use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeInput};
 use std::collections::VecDeque;
 use std::f64::consts::FRAC_PI_4;
 
@@ -61,45 +58,40 @@ impl SweepAngleGizmo {
 	}
 
 	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, mouse_position: DVec2, responses: &mut VecDeque<Message>) {
-		match self.handle_state {
-			SweepAngleGizmoState::Inactive => {
-				let Some((start, end)) = arc_end_points(Some(layer), document) else { return };
-				let Some((_, start_angle, sweep_angle, _)) = extract_arc_parameters(Some(layer), document) else {
-					return;
-				};
+		if self.handle_state == SweepAngleGizmoState::Inactive {
+			let Some((start, end)) = arc_end_points(Some(layer), document) else { return };
+			let Some((_, start_angle, sweep_angle, _)) = extract_arc_parameters(Some(layer), document) else {
+				return;
+			};
 
-				let center = document.metadata().transform_to_viewport(layer).transform_point2(DVec2::ZERO);
+			let center = document.metadata().transform_to_viewport(layer).transform_point2(DVec2::ZERO);
 
-				if center.distance(start) < GIZMO_HIDE_THRESHOLD {
-					return;
-				}
-
-				let (close_to_gizmo, endpoint_type) = if mouse_position.distance(start) < 5. {
-					(true, EndpointType::Start)
-				} else if mouse_position.distance(end) < 5. {
-					(true, EndpointType::End)
-				} else {
-					(false, EndpointType::None)
-				};
-
-				if close_to_gizmo {
-					self.layer = Some(layer);
-					self.initial_start_angle = start_angle;
-					self.initial_sweep_angle = sweep_angle;
-					self.previous_mouse_position = mouse_position;
-					self.total_angle_delta = 0.;
-					self.position_before_rotation = if endpoint_type == EndpointType::End { end } else { start };
-					self.endpoint = endpoint_type;
-					self.snap_angles = Self::calculate_snap_angles();
-					self.update_state(SweepAngleGizmoState::Hover);
-					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
-					return;
-				}
+			if center.distance(start) < GIZMO_HIDE_THRESHOLD {
+				return;
 			}
 
-			SweepAngleGizmoState::Hover => {}
-			SweepAngleGizmoState::Dragging => {}
-			SweepAngleGizmoState::Snapped => {}
+			let (close_to_gizmo, endpoint_type) = if mouse_position.distance(start) < 5. {
+				(true, EndpointType::Start)
+			} else if mouse_position.distance(end) < 5. {
+				(true, EndpointType::End)
+			} else {
+				(false, EndpointType::None)
+			};
+
+			if close_to_gizmo {
+				self.layer = Some(layer);
+				self.initial_start_angle = start_angle;
+				self.initial_sweep_angle = sweep_angle;
+				self.previous_mouse_position = mouse_position;
+				self.total_angle_delta = 0.;
+				self.position_before_rotation = if endpoint_type == EndpointType::End { end } else { start };
+				self.endpoint = endpoint_type;
+				self.snap_angles = Self::calculate_snap_angles();
+
+				self.update_state(SweepAngleGizmoState::Hover);
+
+				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+			}
 		}
 	}
 
@@ -124,11 +116,8 @@ impl SweepAngleGizmo {
 				// Highlight the currently hovered endpoint only
 				let Some((point1, point2)) = arc_end_points(self.layer, document) else { return };
 
-				if matches!(self.endpoint, EndpointType::Start) {
-					overlay_context.manipulator_handle(point1, true, Some(COLOR_OVERLAY_RED));
-				} else {
-					overlay_context.manipulator_handle(point2, true, Some(COLOR_OVERLAY_RED));
-				}
+				let point = if self.endpoint == EndpointType::Start { point1 } else { point2 };
+				overlay_context.manipulator_handle(point, true, Some(COLOR_OVERLAY_RED));
 			}
 			SweepAngleGizmoState::Dragging => {
 				// Show snapping guides and angle arc while dragging
@@ -137,29 +126,23 @@ impl SweepAngleGizmo {
 				let viewport = document.metadata().transform_to_viewport(layer);
 
 				// Depending on which endpoint is being dragged, draw guides relative to the static point
-				if self.endpoint == EndpointType::End {
-					self.dragging_snapping_overlays(self.position_before_rotation, current_end, tilt_offset, viewport, overlay_context);
-				} else {
-					self.dragging_snapping_overlays(self.position_before_rotation, current_start, tilt_offset, viewport, overlay_context);
-				}
+				let point = if self.endpoint == EndpointType::End { current_end } else { current_start };
+				self.dragging_snapping_overlays(self.position_before_rotation, point, tilt_offset, viewport, overlay_context);
 			}
 			SweepAngleGizmoState::Snapped => {
 				// When snapping is active, draw snapping arcs and angular guidelines
-				let Some((current_start, current_end)) = arc_end_points(self.layer, document) else { return };
+				let Some((start, end)) = arc_end_points(self.layer, document) else { return };
 				let Some(layer) = self.layer else { return };
 				let viewport = document.metadata().transform_to_viewport(layer);
 				let center = viewport.transform_point2(DVec2::ZERO);
 
 				// Draw snapping arc and angle overlays between the two points
-				if self.endpoint == EndpointType::Start {
-					self.dragging_snapping_overlays(current_end, current_start, tilt_offset, viewport, overlay_context);
-				} else {
-					self.dragging_snapping_overlays(current_start, current_end, tilt_offset, viewport, overlay_context);
-				}
+				let (a, b) = if self.endpoint == EndpointType::Start { (end, start) } else { (start, end) };
+				self.dragging_snapping_overlays(a, b, tilt_offset, viewport, overlay_context);
 
 				// Draw lines from endpoints to the arc center
-				overlay_context.line(current_start, center, Some(COLOR_OVERLAY_RED), Some(2.0));
-				overlay_context.line(current_end, center, Some(COLOR_OVERLAY_RED), Some(2.0));
+				overlay_context.line(start, center, Some(COLOR_OVERLAY_RED), Some(2.));
+				overlay_context.line(end, center, Some(COLOR_OVERLAY_RED), Some(2.));
 			}
 		}
 	}
@@ -191,10 +174,7 @@ impl SweepAngleGizmo {
 	}
 
 	pub fn update_arc(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		let Some(layer) = self.layer else {
-			return;
-		};
-
+		let Some(layer) = self.layer else { return };
 		let Some((_, current_start_angle, current_sweep_angle, _)) = extract_arc_parameters(Some(layer), document) else {
 			return;
 		};
@@ -217,80 +197,76 @@ impl SweepAngleGizmo {
 			EndpointType::Start => {
 				// Dragging start changes both start and sweep
 
-				let sign = angle.signum() * -1.;
+				let sign = -angle.signum();
 				let mut total = angle;
 
 				let new_start_angle = self.initial_start_angle + total;
 				let new_sweep_angle = self.initial_sweep_angle + total.abs() * sign;
 
-				// Clamp sweep angle to 360°
-				if new_sweep_angle > 360. {
-					let wrapped = new_sweep_angle % 360.;
-					self.total_angle_delta = -wrapped;
+				match () {
+					// Clamp sweep angle to 360°
+					() if new_sweep_angle > 360. => {
+						let wrapped = new_sweep_angle % 360.;
+						self.total_angle_delta = -wrapped;
 
-					// Remaining drag gets passed to the end endpoint
-					let rest_angle = angle_delta + wrapped;
-					self.endpoint = EndpointType::End;
+						// Remaining drag gets passed to the ending endpoint
+						let rest_angle = angle_delta + wrapped;
+						self.endpoint = EndpointType::End;
 
-					self.initial_sweep_angle = 360.;
-					self.initial_start_angle = current_start_angle + rest_angle;
+						self.initial_sweep_angle = 360.;
+						self.initial_start_angle = current_start_angle + rest_angle;
 
-					self.apply_arc_update(node_id, self.initial_start_angle, self.initial_sweep_angle - wrapped, input, responses);
-					return;
+						self.apply_arc_update(node_id, self.initial_start_angle, self.initial_sweep_angle - wrapped, input, responses);
+					}
+					() if new_sweep_angle < 0. => {
+						let rest_angle = angle_delta + new_sweep_angle;
+
+						self.total_angle_delta = new_sweep_angle.abs();
+						self.endpoint = EndpointType::End;
+
+						self.initial_sweep_angle = 0.;
+						self.initial_start_angle = current_start_angle + rest_angle;
+
+						self.apply_arc_update(node_id, self.initial_start_angle, new_sweep_angle.abs(), input, responses);
+					}
+					// Wrap start angle > 180° back into [-180°, 180°] and adjust sweep
+					() if new_start_angle > 180. => {
+						let overflow = new_start_angle % 180.;
+						let rest_angle = angle_delta - overflow;
+
+						// We wrap the angle back into [-180°, 180°] range by jumping from +180° to -180°
+						// Example: dragging past 190° becomes -170°, and we subtract the overshoot from sweep
+						// Sweep angle must shrink to maintain consistent arc
+						self.total_angle_delta = rest_angle;
+						self.initial_start_angle = -180.;
+						self.initial_sweep_angle = current_sweep_angle - rest_angle;
+
+						self.apply_arc_update(node_id, self.initial_start_angle + overflow, self.initial_sweep_angle - overflow, input, responses);
+					}
+					// Wrap start angle < -180° back into [-180°, 180°] and adjust sweep
+					() if new_start_angle < -180. => {
+						let underflow = new_start_angle % 180.;
+						let rest_angle = angle_delta - underflow;
+
+						// We wrap the angle back into [-180°, 180°] by jumping from -190° to +170°
+						// Sweep must grow to reflect continued clockwise drag past -180°
+						// Start angle flips from -190° to +170°, and sweep increases accordingly
+						self.total_angle_delta = underflow;
+						self.initial_start_angle = 180.;
+						self.initial_sweep_angle = current_sweep_angle + rest_angle.abs();
+
+						self.apply_arc_update(node_id, self.initial_start_angle + underflow, self.initial_sweep_angle + underflow.abs(), input, responses);
+					}
+					_ => {
+						if let Some(snapped_delta) = self.check_snapping(self.initial_sweep_angle + total.abs() * sign) {
+							total += snapped_delta;
+							self.update_state(SweepAngleGizmoState::Snapped);
+						}
+
+						self.total_angle_delta = angle;
+						self.apply_arc_update(node_id, self.initial_start_angle + total, self.initial_sweep_angle + total.abs() * sign, input, responses);
+					}
 				}
-
-				if new_sweep_angle < 0. {
-					let rest_angle = angle_delta + new_sweep_angle;
-
-					self.total_angle_delta = new_sweep_angle.abs();
-					self.endpoint = EndpointType::End;
-
-					self.initial_sweep_angle = 0.;
-					self.initial_start_angle = current_start_angle + rest_angle;
-
-					self.apply_arc_update(node_id, self.initial_start_angle, new_sweep_angle.abs(), input, responses);
-					return;
-				}
-
-				// Wrap start angle > 180° back into [-180°, 180°] and adjust sweep
-				if new_start_angle > 180. {
-					let overflow = new_start_angle % 180.;
-					let rest_angle = angle_delta - overflow;
-
-					// We wrap the angle back into [-180°, 180°] range by jumping from +180° to -180°
-					// Example: dragging past 190° becomes -170°, and we subtract the overshoot from sweep
-					// Sweep angle must shrink to maintain consistent arc
-					self.total_angle_delta = rest_angle;
-					self.initial_start_angle = -180.;
-					self.initial_sweep_angle = current_sweep_angle - rest_angle;
-
-					self.apply_arc_update(node_id, self.initial_start_angle + overflow, self.initial_sweep_angle - overflow, input, responses);
-					return;
-				}
-
-				// Wrap start angle < -180° back into [-180°, 180°] and adjust sweep
-				if new_start_angle < -180. {
-					let underflow = new_start_angle % 180.;
-					let rest_angle = angle_delta - underflow;
-
-					// We wrap the angle back into [-180°, 180°] by jumping from -190° to +170°
-					// Sweep must grow to reflect continued clockwise drag past -180°
-					// Start angle flips from -190° to +170°, and sweep increases accordingly
-					self.total_angle_delta = underflow;
-					self.initial_start_angle = 180.;
-					self.initial_sweep_angle = current_sweep_angle + rest_angle.abs();
-
-					self.apply_arc_update(node_id, self.initial_start_angle + underflow, self.initial_sweep_angle + underflow.abs(), input, responses);
-					return;
-				}
-
-				if let Some(snapped_delta) = self.check_snapping(self.initial_sweep_angle + total.abs() * sign) {
-					total += snapped_delta;
-					self.update_state(SweepAngleGizmoState::Snapped);
-				}
-
-				self.total_angle_delta = angle;
-				self.apply_arc_update(node_id, self.initial_start_angle + total, self.initial_sweep_angle + total.abs() * sign, input, responses);
 			}
 			EndpointType::End => {
 				// Dragging the end only changes sweep angle
@@ -298,39 +274,39 @@ impl SweepAngleGizmo {
 				let mut total = angle;
 				let new_sweep_angle = self.initial_sweep_angle + angle;
 
-				// Clamp sweep angle below 0°, switch to start
-				if new_sweep_angle < 0. {
-					let delta = angle_delta - current_sweep_angle;
-					let sign = delta.signum() * -1.;
+				match () {
+					// Clamp sweep angle below 0°, switch to start
+					() if new_sweep_angle < 0. => {
+						let delta = angle_delta - current_sweep_angle;
+						let sign = -delta.signum();
 
-					self.initial_sweep_angle = 0.;
-					self.total_angle_delta = delta;
-					self.endpoint = EndpointType::Start;
+						self.initial_sweep_angle = 0.;
+						self.total_angle_delta = delta;
+						self.endpoint = EndpointType::Start;
 
-					self.apply_arc_update(node_id, self.initial_start_angle + delta, self.initial_sweep_angle + delta.abs() * sign, input, responses);
-					return;
+						self.apply_arc_update(node_id, self.initial_start_angle + delta, self.initial_sweep_angle + delta.abs() * sign, input, responses);
+					}
+					// Clamp sweep angle above 360°, switch to start
+					() if new_sweep_angle > 360. => {
+						let delta = angle_delta - (360. - current_sweep_angle);
+						let sign = -delta.signum();
+
+						self.total_angle_delta = angle_delta;
+						self.initial_sweep_angle = 360.;
+						self.endpoint = EndpointType::Start;
+
+						self.apply_arc_update(node_id, self.initial_start_angle + angle_delta, self.initial_sweep_angle + angle_delta.abs() * sign, input, responses);
+					}
+					_ => {
+						if let Some(snapped_delta) = self.check_snapping(self.initial_sweep_angle + angle) {
+							total += snapped_delta;
+							self.update_state(SweepAngleGizmoState::Snapped);
+						}
+
+						self.total_angle_delta = angle;
+						self.apply_arc_update(node_id, self.initial_start_angle, self.initial_sweep_angle + total, input, responses);
+					}
 				}
-
-				// Clamp sweep angle above 360°, switch to start
-				if new_sweep_angle > 360. {
-					let delta = angle_delta - (360. - current_sweep_angle);
-					let sign = delta.signum() * -1.;
-
-					self.total_angle_delta = angle_delta;
-					self.initial_sweep_angle = 360.;
-					self.endpoint = EndpointType::Start;
-
-					self.apply_arc_update(node_id, self.initial_start_angle + angle_delta, self.initial_sweep_angle + angle_delta.abs() * sign, input, responses);
-					return;
-				}
-
-				if let Some(snapped_delta) = self.check_snapping(self.initial_sweep_angle + angle) {
-					total += snapped_delta;
-					self.update_state(SweepAngleGizmoState::Snapped);
-				}
-
-				self.total_angle_delta = angle;
-				self.apply_arc_update(node_id, self.initial_start_angle, self.initial_sweep_angle + total, input, responses);
 			}
 			EndpointType::None => {}
 		}
@@ -354,10 +330,10 @@ impl SweepAngleGizmo {
 	}
 
 	pub fn check_snapping(&self, new_sweep_angle: f64) -> Option<f64> {
-		return self.snap_angles.iter().find(|angle| (**angle - new_sweep_angle).abs() <= ARC_SNAP_THRESHOLD).map(|angle| {
+		self.snap_angles.iter().find(|angle| (**angle - new_sweep_angle).abs() <= ARC_SNAP_THRESHOLD).map(|angle| {
 			let delta = angle - new_sweep_angle;
 			if self.endpoint == EndpointType::End { delta } else { -delta }
-		});
+		})
 	}
 
 	pub fn calculate_snap_angles() -> Vec<f64> {

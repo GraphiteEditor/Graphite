@@ -37,7 +37,6 @@ impl ShapeGizmoHandler for ArcGizmoHandler {
 	fn handle_click(&mut self) {
 		if self.sweep_angle_gizmo.hovered() {
 			self.sweep_angle_gizmo.update_state(SweepAngleGizmoState::Dragging);
-			return;
 		}
 	}
 
@@ -130,7 +129,7 @@ impl Arc {
 
 			responses.add(GraphOperationMessage::TransformSet {
 				layer,
-				transform: DAffine2::from_scale_angle_translation(scale, 0.0, start.midpoint(end)),
+				transform: DAffine2::from_scale_angle_translation(scale, 0., start.midpoint(end)),
 				transform_in: TransformIn::Viewport,
 				skip_rerender: false,
 			});

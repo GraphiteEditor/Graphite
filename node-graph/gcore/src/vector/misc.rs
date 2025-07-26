@@ -68,8 +68,8 @@ pub enum GridType {
 pub enum ArcType {
 	#[default]
 	Open = 0,
-	Closed = 1,
-	PieSlice = 2,
+	Closed,
+	PieSlice,
 }
 
 #[repr(C)]
