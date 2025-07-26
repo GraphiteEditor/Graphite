@@ -891,7 +891,6 @@ impl PathToolData {
 			if is_colinear {
 				shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
 			} else {
-				// Convert to colinear only if
 				shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
 			}
 			self.toggle_colinear_debounce = true;

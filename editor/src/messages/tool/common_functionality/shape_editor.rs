@@ -1,3 +1,5 @@
+use std::f64::consts::PI;
+
 use super::graph_modification_utils::merge_layers;
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
 use super::utility_functions::{adjust_handle_colinearity, calculate_bezier_bbox, calculate_segment_angle, restore_g1_continuity, restore_previous_handle_position};
@@ -892,16 +894,20 @@ impl ShapeState {
 			ManipulatorPointId::Anchor(point) => self.move_anchor(point, &vector_data, delta, layer, None, responses),
 			ManipulatorPointId::PrimaryHandle(segment) => {
 				self.move_primary(segment, delta, layer, responses);
-				if let Some(handles) = point.get_handle_pair(&vector_data) {
-					let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
-					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				if let Some(handle) = point.as_handle() {
+					if let Some(handles) = vector_data.colinear_manipulators.iter().find(|handles| handles[0] == handle || handles[1] == handle) {
+						let modification_type = VectorModificationType::SetG1Continuous { handles: *handles, enabled: false };
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					}
 				}
 			}
 			ManipulatorPointId::EndHandle(segment) => {
 				self.move_end(segment, delta, layer, responses);
-				if let Some(handles) = point.get_handle_pair(&vector_data) {
-					let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
-					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				if let Some(handle) = point.as_handle() {
+					if let Some(handles) = vector_data.colinear_manipulators.iter().find(|handles| handles[0] == handle || handles[1] == handle) {
+						let modification_type = VectorModificationType::SetG1Continuous { handles: *handles, enabled: false };
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					}
 				}
 			}
 		}
@@ -1028,8 +1034,8 @@ impl ShapeState {
 	/// If both or neither handles are selected, the angle of both handles will be averaged from their current angles, weighted by their lengths.
 	/// Assumes all selected manipulators have handles that are already not colinear.
 	///
-	/// For vector meshes, the handle which is nearest in the direction of 180° angle separation, becomes colinear with current handle,
-	/// and if that handle was colinear with some other handle that constraint is removed from the vector data
+	/// For vector meshes, non colinear handle which is nearest in the direction of 180° angle separation, becomes colinear with current handle,
+	/// if there is no such handle, nothing happens
 	pub fn convert_selected_manipulators_to_colinear_handles(&self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler) {
 		let mut skip_set = HashSet::new();
 
@@ -1039,9 +1045,6 @@ impl ShapeState {
 			};
 			let transform = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
 
-			log::info!("reaching hereeeeee");
-
-			// TODO: A point which has
 			for &point in layer_state.selected_points.iter() {
 				// Skip a point which has more than 2 segments connected (vector meshes)
 				if let ManipulatorPointId::Anchor(anchor) = point {
@@ -1050,21 +1053,17 @@ impl ShapeState {
 					}
 				}
 
-				// let Some(handles) = point.get_handle_pair(&vector_data) else { continue };
-
 				// Here we take handles as the current handle and the most opposite non-colinear-handle
 
 				let is_handle_non_colinear = |handle: HandleId| -> bool { !(vector_data.colinear_manipulators.iter().any(|&handles| handles[0] == handle || handles[1] == handle)) };
 
-				log::info!("reaching here");
 				let other_handles = match point {
 					ManipulatorPointId::Anchor(_) => point.get_handle_pair(&vector_data),
 					_ => {
-						// something
 						point.get_all_connected_handles(&vector_data).and_then(|handles| {
 							let mut non_colinear_handles = handles.iter().filter(|&handle| is_handle_non_colinear(*handle)).clone().collect::<Vec<_>>();
 
-							// Now sort these by angle from the current handle
+							// Sort these by angle from the current handle
 							non_colinear_handles.sort_by(|&handle_a, &handle_b| {
 								let anchor = point.get_anchor_position(&vector_data).expect("No anchor position for handle");
 								let orig_handle_pos = point.get_position(&vector_data).expect("No handle position");
@@ -1567,9 +1566,11 @@ impl ShapeState {
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
 						}
 					}
-				} else if let Some(handles) = point.get_handle_pair(&vector_data) {
-					let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
-					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				} else if let Some(handle) = point.as_handle() {
+					if let Some(handles) = vector_data.colinear_manipulators.iter().find(|handles| handles[0] == handle || handles[1] == handle) {
+						let modification_type = VectorModificationType::SetG1Continuous { handles: *handles, enabled: false };
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					}
 				}
 			}
 		}
@@ -1779,9 +1780,40 @@ impl ShapeState {
 				if point.as_anchor().is_some() {
 					continue;
 				}
-				if let Some(handles) = point.get_handle_pair(&vector_data) {
-					// handle[0] is selected, handle[1] is opposite / mirror handle
-					handles_to_update.push((layer, handles[0].to_manipulator_point(), handles[1].to_manipulator_point()));
+
+				if let Some(other_handles) = point.get_all_connected_handles(&vector_data) {
+					// Find the next closest handle in the clockwise sense
+					let mut candidates = other_handles.clone();
+					candidates.sort_by(|&handle_a, &handle_b| {
+						let anchor = point.get_anchor_position(&vector_data).expect("No anchor position for handle");
+						let orig_handle_pos = point.get_position(&vector_data).expect("No handle position");
+
+						let a_pos = handle_a.to_manipulator_point().get_position(&vector_data).expect("No handle position");
+						let b_pos = handle_b.to_manipulator_point().get_position(&vector_data).expect("No handle position");
+
+						let v_orig = (orig_handle_pos - anchor).normalize_or_zero();
+
+						let v_a = (a_pos - anchor).normalize_or_zero();
+						let v_b = (b_pos - anchor).normalize_or_zero();
+
+						let signed_angle = |base: DVec2, to: DVec2| -> f64 {
+							let angle = base.angle_to(to);
+							let cross = base.perp_dot(to);
+
+							if cross < 0.0 { 2.0 * PI - angle } else { angle }
+						};
+
+						let angle_a = signed_angle(v_orig, v_a);
+						let angle_b = signed_angle(v_orig, v_b);
+
+						angle_a.partial_cmp(&angle_b).unwrap_or(std::cmp::Ordering::Equal)
+					});
+
+					if candidates.is_empty() {
+						continue;
+					}
+
+					handles_to_update.push((layer, *point, candidates[0].to_manipulator_point()));
 				}
 			}
 		}

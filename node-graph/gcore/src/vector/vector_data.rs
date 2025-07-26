@@ -572,7 +572,7 @@ impl ManipulatorPointId {
 			}
 			ManipulatorPointId::EndHandle(segment) => {
 				let point = vector_data.segment_domain.segment_end_from_id(segment)?;
-				let current = HandleId::primary(segment);
+				let current = HandleId::end(segment);
 				Some(vector_data.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>())
 			}
 		}
