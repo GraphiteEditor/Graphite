@@ -1,12 +1,3 @@
-use crate::GraphicGroupTable;
-pub use crate::color::*;
-use crate::raster_types::{CPU, RasterDataTable};
-use crate::vector::VectorDataTable;
-use std::fmt::Debug;
-
-#[cfg(target_arch = "spirv")]
-use spirv_std::num_traits::float::Float;
-
 /// as to not yet rename all references
 pub mod color {
 	pub use super::*;
@@ -15,6 +6,11 @@ pub mod color {
 pub mod image;
 
 pub use self::image::Image;
+use crate::GraphicGroupTable;
+pub use crate::color::*;
+use crate::raster_types::{CPU, RasterDataTable};
+use crate::vector::VectorDataTable;
+use std::fmt::Debug;
 
 pub trait Bitmap {
 	type Pixel: Pixel;

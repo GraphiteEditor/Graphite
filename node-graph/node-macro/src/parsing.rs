@@ -12,6 +12,7 @@ use syn::{
 };
 
 use crate::codegen::generate_node_code;
+use crate::shader_nodes::ShaderNodeType;
 
 #[derive(Debug)]
 pub(crate) struct Implementation {
@@ -45,6 +46,10 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) path: Option<Path>,
 	pub(crate) skip_impl: bool,
 	pub(crate) properties_string: Option<LitStr>,
+	/// whether to `#[cfg]` gate the node implementation, defaults to None
+	pub(crate) cfg: Option<TokenStream2>,
+	/// if this node should get a gpu implementation, defaults to None
+	pub(crate) shader_node: Option<ShaderNodeType>,
 	// Add more attributes as needed
 }
 
@@ -184,6 +189,8 @@ impl Parse for NodeFnAttributes {
 		let mut path = None;
 		let mut skip_impl = false;
 		let mut properties_string = None;
+		let mut cfg = None;
+		let mut shader_node = None;
 
 		let content = input;
 		// let content;
@@ -191,8 +198,10 @@ impl Parse for NodeFnAttributes {
 
 		let nested = content.call(Punctuated::<Meta, Comma>::parse_terminated)?;
 		for meta in nested {
-			match meta {
-				Meta::List(meta) if meta.path.is_ident("category") => {
+			let name = meta.path().get_ident().ok_or_else(|| Error::new_spanned(meta.path(), "Node macro expects a known Ident, not a path"))?;
+			match name.to_string().as_str() {
+				"category" => {
+					let meta = meta.require_list()?;
 					if category.is_some() {
 						return Err(Error::new_spanned(meta, "Multiple 'category' attributes are not allowed"));
 					}
@@ -201,14 +210,16 @@ impl Parse for NodeFnAttributes {
 						.map_err(|_| Error::new_spanned(meta, "Expected a string literal for 'category', e.g., category(\"Value\")"))?;
 					category = Some(lit);
 				}
-				Meta::List(meta) if meta.path.is_ident("name") => {
+				"name" => {
+					let meta = meta.require_list()?;
 					if display_name.is_some() {
 						return Err(Error::new_spanned(meta, "Multiple 'name' attributes are not allowed"));
 					}
 					let parsed_name: LitStr = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a string for 'name', e.g., name(\"Memoize\")"))?;
 					display_name = Some(parsed_name);
 				}
-				Meta::List(meta) if meta.path.is_ident("path") => {
+				"path" => {
+					let meta = meta.require_list()?;
 					if path.is_some() {
 						return Err(Error::new_spanned(meta, "Multiple 'path' attributes are not allowed"));
 					}
@@ -217,13 +228,15 @@ impl Parse for NodeFnAttributes {
 						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'path', e.g., path(crate::MemoizeNode)"))?;
 					path = Some(parsed_path);
 				}
-				Meta::Path(path) if path.is_ident("skip_impl") => {
+				"skip_impl" => {
+					let path = meta.require_path_only()?;
 					if skip_impl {
 						return Err(Error::new_spanned(path, "Multiple 'skip_impl' attributes are not allowed"));
 					}
 					skip_impl = true;
 				}
-				Meta::List(meta) if meta.path.is_ident("properties") => {
+				"properties" => {
+					let meta = meta.require_list()?;
 					if properties_string.is_some() {
 						return Err(Error::new_spanned(path, "Multiple 'properties_string' attributes are not allowed"));
 					}
@@ -233,13 +246,27 @@ impl Parse for NodeFnAttributes {
 
 					properties_string = Some(parsed_properties_string);
 				}
+				"cfg" => {
+					if cfg.is_some() {
+						return Err(Error::new_spanned(path, "Multiple 'feature' attributes are not allowed"));
+					}
+					let meta = meta.require_list()?;
+					cfg = Some(meta.tokens.clone());
+				}
+				"shader_node" => {
+					if shader_node.is_some() {
+						return Err(Error::new_spanned(path, "Multiple 'feature' attributes are not allowed"));
+					}
+					let meta = meta.require_list()?;
+					shader_node = Some(syn::parse2(meta.tokens.to_token_stream())?);
+				}
 				_ => {
 					return Err(Error::new_spanned(
 						meta,
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'path' and 'name'.
+							Supported attributes are 'category', 'path' 'name', 'skip_impl', 'cfg' and 'properties'.
 
 							Example usage:
 							#[node_macro::node(category("Value"), name("Test Node"))]
@@ -256,6 +283,8 @@ impl Parse for NodeFnAttributes {
 			path,
 			skip_impl,
 			properties_string,
+			cfg,
+			shader_node,
 		})
 	}
 }
@@ -758,6 +787,8 @@ mod tests {
 				path: Some(parse_quote!(graphene_core::TestNode)),
 				skip_impl: true,
 				properties_string: None,
+				cfg: None,
+				shader_node: None,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -819,6 +850,8 @@ mod tests {
 				path: None,
 				skip_impl: false,
 				properties_string: None,
+				cfg: None,
+				shader_node: None,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -891,6 +924,8 @@ mod tests {
 				path: None,
 				skip_impl: false,
 				properties_string: None,
+				cfg: None,
+				shader_node: None,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -948,6 +983,8 @@ mod tests {
 				path: None,
 				skip_impl: false,
 				properties_string: None,
+				cfg: None,
+				shader_node: None,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -1017,6 +1054,8 @@ mod tests {
 				path: Some(parse_quote!(graphene_core::TestNode)),
 				skip_impl: false,
 				properties_string: None,
+				cfg: None,
+				shader_node: None,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1074,6 +1113,8 @@ mod tests {
 				path: None,
 				skip_impl: false,
 				properties_string: None,
+				cfg: None,
+				shader_node: None,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -1131,6 +1172,8 @@ mod tests {
 				path: None,
 				skip_impl: false,
 				properties_string: None,
+				cfg: None,
+				shader_node: None,
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),
