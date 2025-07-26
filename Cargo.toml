@@ -1,12 +1,13 @@
 [workspace]
 members = [
 	"editor",
+	"desktop",
 	"proc-macros",
 	"frontend/wasm",
-	"frontend/src-tauri",
 	"node-graph/gapplication-io",
 	"node-graph/gbrush",
 	"node-graph/gcore",
+	"node-graph/gcore-shaders",
 	"node-graph/gstd",
 	"node-graph/gmath-nodes",
 	"node-graph/gpath-bool",
@@ -28,6 +29,7 @@ default-members = [
 	"frontend/wasm",
 	"node-graph/gbrush",
 	"node-graph/gcore",
+	"node-graph/gcore-shaders",
 	"node-graph/gstd",
 	"node-graph/gmath-nodes",
 	"node-graph/gpath-bool",
@@ -50,6 +52,7 @@ path-bool = { path = "libraries/path-bool" }
 graphene-application-io = { path = "node-graph/gapplication-io" }
 graphene-brush = { path = "node-graph/gbrush" }
 graphene-core = { path = "node-graph/gcore" }
+graphene-core-shaders = { path = "node-graph/gcore-shaders" }
 graphene-math-nodes = { path = "node-graph/gmath-nodes" }
 graphene-path-bool = { path = "node-graph/gpath-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
@@ -83,7 +86,7 @@ axum = "0.8"
 chrono = "0.4"
 ron = "0.8"
 fastnoise-lite = "1.1"
-wgpu = { version = "23", features = [
+wgpu = { version = "25.0.2", features = [
 	# We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
 	"fragile-send-sync-non-atomic-wasm",
 	"spirv",
@@ -111,10 +114,10 @@ web-sys = { version = "=0.3.77", features = [
 	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
 ] }
-winit = "0.29"
+winit = { version = "0.30", features = ["wayland", "rwh_06"] }
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt"] }
-vello = { git = "https://github.com/linebender/vello.git", rev = "3275ec8" } # TODO switch back to stable when a release is made
+vello = { git = "https://github.com/linebender/vello.git" } # TODO switch back to stable when a release is made
 resvg = "0.44"
 usvg = "0.44"
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }
@@ -154,12 +157,19 @@ tinyvec = { version = "1", features = ["std"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 iai-callgrind = { version = "0.12.3" }
 ndarray = "0.16.1"
+strum = { version = "0.26.3", features = ["derive"] }
+dirs = "6.0"
+cef = "138.5.0"
+include_dir = "0.7.4"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing = "0.1.41"
 
 [profile.dev]
 opt-level = 1
 
 [profile.dev.package]
 graphite-editor = { opt-level = 1 }
+graphene-core-shaders = { opt-level = 1 }
 graphene-core = { opt-level = 1 }
 graphene-std = { opt-level = 1 }
 interpreted-executor = { opt-level = 1 } # This is a mitigation for https://github.com/rustwasm/wasm-pack/issues/981 which is needed because the node_registry function is too large
