@@ -302,10 +302,15 @@ impl ClosestSegment {
 		(midpoint, segment_ids)
 	}
 
-	pub fn adjusted_insert_and_select(&self, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>, extend_selection: bool, point_mode: bool) {
-		let (id, _) = self.adjusted_insert(responses);
-		if point_mode {
-			shape_editor.select_anchor_point_by_id(self.layer, id, extend_selection)
+	pub fn adjusted_insert_and_select(&self, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>, extend_selection: bool, point_mode: bool, is_segment_selected: bool) {
+		let (id, segments) = self.adjusted_insert(responses);
+		if point_mode || is_segment_selected {
+			shape_editor.select_anchor_point_by_id(self.layer, id, extend_selection);
+		}
+
+		if is_segment_selected {
+			let Some(state) = shape_editor.selected_shape_state.get_mut(&self.layer) else { return };
+			segments.iter().for_each(|segment| state.select_segment(*segment));
 		}
 	}
 
@@ -609,11 +614,11 @@ impl ShapeState {
 			return None;
 		}
 
-		if !point_editing_mode {
-			return None;
-		}
-
 		if let Some((layer, manipulator_point_id)) = self.find_nearest_point_indices(network_interface, mouse_position, select_threshold) {
+			// If not point editing mode then only handles are allowed to be dragged
+			if !point_editing_mode && matches!(manipulator_point_id, ManipulatorPointId::Anchor(_)) {
+				return None;
+			}
 			let vector_data = network_interface.compute_modified_vector(layer)?;
 			let point_position = manipulator_point_id.get_position(&vector_data)?;
 

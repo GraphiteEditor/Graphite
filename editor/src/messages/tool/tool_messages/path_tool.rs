@@ -515,7 +515,7 @@ struct PathToolData {
 	auto_panning: AutoPanning,
 	saved_points_before_anchor_select_toggle: Vec<ManipulatorPointId>,
 	select_anchor_toggled: bool,
-	saved_points_before_handle_drag: Vec<ManipulatorPointId>,
+	saved_selection_before_handle_drag: HashMap<LayerNodeIdentifier, (HashSet<ManipulatorPointId>, HashSet<SegmentId>)>,
 	handle_drag_toggle: bool,
 	saved_points_before_anchor_convert_smooth_sharp: HashSet<ManipulatorPointId>,
 	last_click_time: u64,
@@ -679,7 +679,13 @@ impl PathToolData {
 
 		self.last_click_time = input.time;
 
-		let old_selection = shape_editor.selected_points().cloned().collect::<Vec<_>>();
+		let mut old_selection = HashMap::new();
+
+		for (layer, state) in &shape_editor.selected_shape_state {
+			let selected_points = state.selected_points().collect::<HashSet<_>>();
+			let selected_segments = state.selected_segments().collect::<HashSet<_>>();
+			old_selection.insert(*layer, (selected_points, selected_segments));
+		}
 
 		// Check if the point is already selected; if not, select the first point within the threshold (in pixels)
 		// Don't select the points which are not shown currently in PathOverlayMode
@@ -724,7 +730,7 @@ impl PathToolData {
 					}
 				}
 				if dragging_only_handles && !self.handle_drag_toggle && !old_selection.is_empty() {
-					self.saved_points_before_handle_drag = old_selection;
+					self.saved_selection_before_handle_drag = old_selection;
 				}
 
 				if handle_drag_from_anchor {
@@ -1144,11 +1150,13 @@ impl PathToolData {
 		tangent_vector.try_normalize()
 	}
 
-	fn update_closest_segment(&mut self, shape_editor: &mut ShapeState, position: DVec2, document: &DocumentMessageHandler, path_overlay_mode: PathOverlayMode) {
+	fn update_closest_segment(&mut self, shape_editor: &mut ShapeState, position: DVec2, document: &DocumentMessageHandler, path_overlay_mode: PathOverlayMode, point_editing_mode: bool) {
 		// Check if there is no point nearby
+		// If the point mode is deactivated then don't override closest segment even if there is a closer point
 		if shape_editor
 			.find_nearest_visible_point_indices(&document.network_interface, position, SELECTION_THRESHOLD, path_overlay_mode, &self.frontier_handles_info)
 			.is_some()
+			&& point_editing_mode
 		{
 			self.segment = None;
 		}
@@ -1595,7 +1603,8 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
-				if matches!(self, Self::Dragging(_)) {
+				// Set this to show ghost line only if drag actually happened
+				if matches!(self, Self::Dragging(_)) && tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 					for (outline, layer) in &tool_data.ghost_outline {
 						let transform = document.metadata().transform_to_viewport(*layer);
 						overlay_context.outline(outline.iter(), transform, Some(COLOR_OVERLAY_GRAY));
@@ -1664,7 +1673,13 @@ impl Fsm for PathToolFsmState {
 
 				match self {
 					Self::Ready => {
-						tool_data.update_closest_segment(shape_editor, input.mouse.position, document, tool_options.path_overlay_mode);
+						tool_data.update_closest_segment(
+							shape_editor,
+							input.mouse.position,
+							document,
+							tool_options.path_overlay_mode,
+							tool_options.path_editing_mode.point_editing_mode,
+						);
 
 						// If there exists an underlying anchor, we show a hover overlay
 						(|| {
@@ -1779,7 +1794,6 @@ impl Fsm for PathToolFsmState {
 
 						let quad = tool_data.selection_quad(document.metadata());
 
-						// TODO: Calculate which points/handles are currently in the selected region and make those have a
 						let select_segments = tool_options.path_editing_mode.segment_editing_mode;
 						let select_points = tool_options.path_editing_mode.point_editing_mode;
 						let (points_inside, segments_inside) = match selection_shape {
@@ -1984,7 +1998,7 @@ impl Fsm for PathToolFsmState {
 				let selected_only_handles = !shape_editor.selected_points().any(|point| matches!(point, ManipulatorPointId::Anchor(_)));
 				tool_data.stored_selection = None;
 
-				if !tool_data.saved_points_before_handle_drag.is_empty() && (tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD) && (selected_only_handles) {
+				if !tool_data.saved_selection_before_handle_drag.is_empty() && (tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD) && (selected_only_handles) {
 					tool_data.handle_drag_toggle = true;
 				}
 
@@ -2239,9 +2253,14 @@ impl Fsm for PathToolFsmState {
 				if tool_data.handle_drag_toggle && tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 					shape_editor.deselect_all_points();
 					shape_editor.deselect_all_segments();
-					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
 
-					tool_data.saved_points_before_handle_drag.clear();
+					for (layer, (selected_points, selected_segments)) in &tool_data.saved_selection_before_handle_drag {
+						let Some(state) = shape_editor.selected_shape_state.get_mut(&layer) else { continue };
+						selected_points.iter().for_each(|point| state.select_point(*point));
+						selected_segments.iter().for_each(|segment| state.select_segment(*segment));
+					}
+
+					tool_data.saved_selection_before_handle_drag.clear();
 					tool_data.handle_drag_toggle = false;
 				}
 				tool_data.molding_info = None;
@@ -2352,7 +2371,17 @@ impl Fsm for PathToolFsmState {
 								shape_editor.dissolve_segment(responses, segment.layer(), &vector_data, segment.segment(), segment.points());
 							}
 						} else {
-							segment.adjusted_insert_and_select(shape_editor, responses, extend_selection, point_mode);
+							let is_segment_selected = shape_editor
+								.selected_shape_state
+								.get(&segment.layer())
+								.map_or(false, |state| state.is_segment_selected(segment.segment()));
+
+							segment.adjusted_insert_and_select(shape_editor, responses, extend_selection, point_mode, is_segment_selected);
+							tool_data.segment = None;
+							tool_data.molding_info = None;
+							tool_data.molding_segment = false;
+							tool_data.temporary_adjacent_handles_while_molding = None;
+							return PathToolFsmState::Ready;
 						}
 					}
 
@@ -2365,7 +2394,7 @@ impl Fsm for PathToolFsmState {
 				let segment_mode = tool_options.path_editing_mode.segment_editing_mode;
 				let point_mode = tool_options.path_editing_mode.point_editing_mode;
 
-				if let Some((layer, nearest_point)) = nearest_point {
+				if let (Some((layer, nearest_point)), true) = (nearest_point, point_mode) {
 					let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
 					if !drag_occurred && extend_selection {
 						if clicked_selected && tool_data.last_clicked_point_was_selected {
@@ -2453,9 +2482,15 @@ impl Fsm for PathToolFsmState {
 
 				if tool_data.handle_drag_toggle && drag_occurred {
 					shape_editor.deselect_all_points();
-					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
+					shape_editor.deselect_all_segments();
 
-					tool_data.saved_points_before_handle_drag.clear();
+					for (layer, (selected_points, selected_segments)) in &tool_data.saved_selection_before_handle_drag {
+						let Some(state) = shape_editor.selected_shape_state.get_mut(&layer) else { continue };
+						selected_points.iter().for_each(|point| state.select_point(*point));
+						selected_segments.iter().for_each(|segment| state.select_segment(*segment));
+					}
+
+					tool_data.saved_selection_before_handle_drag.clear();
 					tool_data.handle_drag_toggle = false;
 				}
 
