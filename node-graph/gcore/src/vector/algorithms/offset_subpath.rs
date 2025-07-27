@@ -1,26 +1,21 @@
 use crate::vector::misc::point_to_dvec2;
 use kurbo::{BezPath, Join, ParamCurve, PathEl, PathSeg};
 
-use super::{
-	bezpath_algorithms::{clip_simple_bezpaths, miter_line_join, round_line_join},
-	util::segment_tangent,
-};
+use super::bezpath_algorithms::{clip_simple_bezpaths, miter_line_join, round_line_join};
 
 /// Value to control smoothness and mathematical accuracy to offset a cubic Bezier.
 const CUBIC_REGULARIZATION_ACCURACY: f64 = 0.5;
 /// Accuracy of fitting offset curve to Bezier paths.
 const CUBIC_TO_BEZPATH_ACCURACY: f64 = 1e-3;
 /// Constant used to determine if `f64`s are equivalent.
-pub const MAX_ABSOLUTE_DIFFERENCE: f64 = 1e-3;
+pub const MAX_ABSOLUTE_DIFFERENCE: f64 = 1e-7;
 
-// TODO: Replace the implementation to use only Kurbo API.
-/// Reduces the segments of the subpath into simple subcurves, then offset each subcurve a set `distance` away.
+/// Reduces the segments of the bezpath into simple subcurves, then offset each subcurve a set `distance` away.
 /// The intersections of segments of the subpath are joined using the method specified by the `join` argument.
 pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit: Option<f64>) -> BezPath {
 	// An offset at a distance 0 from the curve is simply the same curve.
 	// An offset of a single point is not defined.
 	if distance == 0. || bezpath.get_seg(1).is_none() {
-		info!("not enougn segments");
 		return bezpath.clone();
 	}
 
@@ -34,8 +29,6 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 			})
 			.filter(|bezpath| bezpath.get_seg(1).is_some()) // In some cases the reduced and scaled bézier is marked by is_point (so the subpath is empty).
 			.collect::<Vec<BezPath>>();
-
-	let mut drop_common_point = vec![true; bezpaths.len()];
 
 	// Clip or join consecutive Subpaths
 	for i in 0..bezpaths.len() - 1 {
@@ -51,32 +44,28 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 			continue;
 		}
 
-		// Calculate the angle formed between two consecutive Subpaths
-		// NOTE: [BezPath] segments are one-indexed.
-		let out_tangent = segment_tangent(bezpath.get_seg(i + 1).unwrap(), 1.);
-		let in_tangent = segment_tangent(bezpath.get_seg(j + 1).unwrap(), 0.);
-		let angle = out_tangent.angle_to(in_tangent);
-
 		// The angle is concave. The Subpath overlap and must be clipped
 		let mut apply_join = true;
-		if (angle > 0. && distance > 0.) || (angle < 0. && distance < 0.) {
-			// If the distance is large enough, there may still be no intersections. Also, if the angle is close enough to zero,
-			// subpath intersections may find no intersections. In this case, the points are likely close enough that we can approximate
-			// the points as being on top of one another.
-			if let Some((clipped_subpath1, clipped_subpath2)) = clip_simple_bezpaths(bezpath1, bezpath2) {
-				bezpaths[i] = clipped_subpath1;
-				bezpaths[j] = clipped_subpath2;
-				apply_join = false;
-			}
+
+		if let Some((clipped_subpath1, clipped_subpath2)) = clip_simple_bezpaths(bezpath1, bezpath2) {
+			bezpaths[i] = clipped_subpath1;
+			bezpaths[j] = clipped_subpath2;
+			apply_join = false;
 		}
 		// The angle is convex. The Subpath must be joined using the specified join type
 		if apply_join {
-			drop_common_point[j] = false;
 			match join {
-				Join::Bevel => {}
+				Join::Bevel => {
+					let element = PathEl::LineTo(bezpaths[j].segments().next().unwrap().start());
+					bezpaths[i].push(element);
+				}
 				Join::Miter => {
 					let element = miter_line_join(&bezpaths[i], &bezpaths[j], miter_limit);
 					if let Some(element) = element {
+						bezpaths[i].push(element[0]);
+						bezpaths[i].push(element[1]);
+					} else {
+						let element = PathEl::LineTo(bezpaths[j].segments().next().unwrap().start());
 						bezpaths[i].push(element);
 					}
 				}
@@ -93,28 +82,30 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 	// Clip any overlap in the last segment
 	let is_bezpath_closed = bezpath.elements().last().is_some_and(|element| *element == PathEl::ClosePath);
 	if is_bezpath_closed {
-		let out_tangent = segment_tangent(bezpath.segments().last().unwrap(), 1.);
-		let in_tangent = segment_tangent(bezpath.segments().next().unwrap(), 0.);
-		let angle = out_tangent.angle_to(in_tangent);
-
 		let mut apply_join = true;
-		if (angle > 0. && distance > 0.) || (angle < 0. && distance < 0.) {
-			if let Some((clipped_subpath1, clipped_subpath2)) = clip_simple_bezpaths(&bezpaths[bezpaths.len() - 1], &bezpaths[0]) {
-				// Merge the clipped subpaths
-				let last_index = bezpaths.len() - 1;
-				bezpaths[last_index] = clipped_subpath1;
-				bezpaths[0] = clipped_subpath2;
-				apply_join = false;
-			}
+		if let Some((clipped_subpath1, clipped_subpath2)) = clip_simple_bezpaths(&bezpaths[bezpaths.len() - 1], &bezpaths[0]) {
+			// Merge the clipped subpaths
+			let last_index = bezpaths.len() - 1;
+			bezpaths[last_index] = clipped_subpath1;
+			bezpaths[0] = clipped_subpath2;
+			apply_join = false;
 		}
+
 		if apply_join {
-			drop_common_point[0] = false;
 			match join {
-				Join::Bevel => {}
+				Join::Bevel => {
+					let last_subpath_index = bezpaths.len() - 1;
+					let element = PathEl::LineTo(bezpaths[0].segments().next().unwrap().start());
+					bezpaths[last_subpath_index].push(element);
+				}
 				Join::Miter => {
 					let last_subpath_index = bezpaths.len() - 1;
 					let element = miter_line_join(&bezpaths[last_subpath_index], &bezpaths[0], miter_limit);
 					if let Some(element) = element {
+						bezpaths[last_subpath_index].push(element[0]);
+						bezpaths[last_subpath_index].push(element[1]);
+					} else {
+						let element = PathEl::LineTo(bezpaths[0].segments().next().unwrap().start());
 						bezpaths[last_subpath_index].push(element);
 					}
 				}
@@ -129,12 +120,19 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 		}
 	}
 
-	// Merge the subpaths. Drop points which overlap with one another.
+	// Merge the bezpaths and its segments. Drop points which overlap with one another.
 	let segments = bezpaths.iter().flat_map(|bezpath| bezpath.segments().collect::<Vec<PathSeg>>()).collect::<Vec<PathSeg>>();
-	let mut offset_bezpath = BezPath::from_path_segments(segments.into_iter());
+	let mut offset_bezpath = segments.iter().fold(BezPath::new(), |mut acc, segment| {
+		if acc.elements().is_empty() {
+			acc.move_to(segment.start());
+		}
+		acc.push(segment.as_path_el());
+		acc
+	});
 
 	if is_bezpath_closed {
 		offset_bezpath.close_path();
 	}
+
 	offset_bezpath
 }

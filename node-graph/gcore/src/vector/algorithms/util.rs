@@ -37,6 +37,9 @@ pub fn f64_compare(a: f64, b: f64, max_abs_diff: f64) -> bool {
 }
 
 pub fn segment_tangent(segment: PathSeg, t: f64) -> DVec2 {
+	// NOTE: .deriv() method gives inaccurate result when it is 1.
+	let t = if t == 1. { 1. - f64::EPSILON } else { t };
+
 	let tangent = match segment {
 		PathSeg::Line(line) => line.deriv().eval(t),
 		PathSeg::Quad(quad_bez) => quad_bez.deriv().eval(t),
