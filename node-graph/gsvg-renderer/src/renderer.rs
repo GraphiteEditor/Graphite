@@ -16,10 +16,13 @@ use graphene_core::uuid::{NodeId, generate_uuid};
 use graphene_core::vector::VectorDataTable;
 use graphene_core::vector::click_target::{ClickTarget, FreePoint};
 use graphene_core::vector::style::{Fill, Stroke, StrokeAlign, ViewMode};
-use graphene_core::{AlphaBlending, Artboard, ArtboardGroupTable, GraphicElement, GraphicGroupTable};
+use graphene_core::{Artboard, ArtboardGroupTable, GraphicElement, GraphicGroupTable};
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::ops::Deref;
+use std::sync::{Arc, LazyLock};
 #[cfg(feature = "vello")]
 use vello::*;
 
@@ -38,10 +41,10 @@ impl MaskType {
 	}
 
 	fn write_to_defs(self, svg_defs: &mut String, uuid: u64, svg_string: String) {
-		let id = format!("mask-{}", uuid);
+		let id = format!("mask-{uuid}");
 		match self {
-			Self::Clip => write!(svg_defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg_string).unwrap(),
-			Self::Mask => write!(svg_defs, r##"<mask id="{id}" mask-type="alpha">{}</mask>"##, svg_string).unwrap(),
+			Self::Clip => write!(svg_defs, r##"<clipPath id="{id}">{svg_string}</clipPath>"##).unwrap(),
+			Self::Mask => write!(svg_defs, r##"<mask id="{id}" mask-type="alpha">{svg_string}</mask>"##).unwrap(),
 		}
 	}
 }
@@ -89,9 +92,9 @@ impl SvgRender {
 			.unwrap_or_default();
 
 		let matrix = format_transform_matrix(transform);
-		let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{}""#, matrix) };
+		let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{matrix}""#) };
 
-		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" {}><defs>{defs}</defs><g{transform}>"#, view_box);
+		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" {view_box}><defs>{defs}</defs><g{transform}>"#);
 		self.svg.insert(0, svg_header.into());
 		self.svg.push("</g></svg>".into());
 	}
@@ -145,7 +148,7 @@ impl Default for SvgRender {
 #[derive(Clone, Debug, Default)]
 pub struct RenderContext {
 	#[cfg(feature = "vello")]
-	pub resource_overrides: HashMap<u64, std::sync::Arc<wgpu::Texture>>,
+	pub resource_overrides: Vec<(peniko::Image, wgpu::Texture)>,
 }
 
 /// Static state used whilst rendering
@@ -172,6 +175,10 @@ impl RenderParams {
 	pub fn for_alignment(&self, transform: DAffine2) -> Self {
 		let alignment_parent_transform = Some(transform);
 		Self { alignment_parent_transform, ..*self }
+	}
+
+	pub fn to_canvas(&self) -> bool {
+		!self.for_export && !self.thumbnail && !self.for_mask
 	}
 }
 
@@ -241,8 +248,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 						attributes.push("transform", matrix);
 					}
 
-					let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
-					let opacity = instance.alpha_blending.opacity * factor;
+					let opacity = instance.alpha_blending.opacity(render_params.for_mask);
 					if opacity < 1. {
 						attributes.push("opacity", opacity.to_string());
 					}
@@ -267,7 +273,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 							mask_state = None;
 						}
 
-						let id = format!("mask-{}", uuid);
+						let id = format!("mask-{uuid}");
 						let selector = format!("url(#{id})");
 
 						attributes.push(mask_type.to_attribute(), selector);
@@ -297,13 +303,9 @@ impl GraphicElementRendered for GraphicGroupTable {
 			};
 			let mut bounds = None;
 
-			let factor = if render_params.for_mask { 1. } else { alpha_blending.fill };
-			let opacity = alpha_blending.opacity * factor;
+			let opacity = instance.alpha_blending.opacity(render_params.for_mask);
 			if opacity < 1. || (render_params.view_mode != ViewMode::Outline && alpha_blending.blend_mode != BlendMode::default()) {
-				bounds = self
-					.instance_ref_iter()
-					.filter_map(|element| element.instance.bounding_box(transform, true))
-					.reduce(Quad::combine_bounds);
+				bounds = instance.instance.bounding_box(transform, true);
 
 				if let Some(bounds) = bounds {
 					scene.push_layer(
@@ -326,10 +328,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 					mask_instance_state = None;
 				}
 				if !layer {
-					bounds = self
-						.instance_ref_iter()
-						.filter_map(|element| element.instance.bounding_box(transform, true))
-						.reduce(Quad::combine_bounds);
+					bounds = instance.instance.bounding_box(transform, true);
 				}
 
 				if let Some(bounds) = bounds {
@@ -444,18 +443,18 @@ impl GraphicElementRendered for VectorDataTable {
 				let can_use_order = !instance.instance.style.fill().is_none() && mask_type == MaskType::Mask;
 				if !can_use_order {
 					let id = format!("alignment-{}", generate_uuid());
-					let mut vector_row = VectorDataTable::default();
-					let mut fill_instance = instance.instance.clone();
 
+					let mut fill_instance = instance.instance.clone();
 					fill_instance.style.clear_stroke();
 					fill_instance.style.set_fill(Fill::solid(Color::BLACK));
 
-					vector_row.push(Instance {
+					let vector_row = VectorDataTable::new_instance(Instance {
 						instance: fill_instance,
 						alpha_blending: *instance.alpha_blending,
 						transform: *instance.transform,
 						source_node_id: None,
 					});
+
 					push_id = Some((id, mask_type, vector_row));
 				}
 			}
@@ -477,7 +476,7 @@ impl GraphicElementRendered for VectorDataTable {
 					let (x, y) = quad.top_left().into();
 					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
 					write!(defs, r##"{}"##, svg.svg_defs).unwrap();
-					let rect = format!(r##"<rect x="{}" y="{}" width="{width}" height="{height}" fill="white" />"##, x, y);
+					let rect = format!(r##"<rect x="{x}" y="{y}" width="{width}" height="{height}" fill="white" />"##);
 					match mask_type {
 						MaskType::Clip => write!(defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg.svg.to_svg_string()).unwrap(),
 						MaskType::Mask => write!(defs, r##"<mask id="{id}">{}{}</mask>"##, rect, svg.svg.to_svg_string()).unwrap(),
@@ -501,8 +500,7 @@ impl GraphicElementRendered for VectorDataTable {
 				}
 				attributes.push_val(fill_and_stroke);
 
-				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
-				let opacity = instance.alpha_blending.opacity * factor;
+				let opacity = instance.alpha_blending.opacity(render_params.for_mask);
 				if opacity < 1. {
 					attributes.push("opacity", opacity.to_string());
 				}
@@ -543,10 +541,13 @@ impl GraphicElementRendered for VectorDataTable {
 				_ => instance.alpha_blending.blend_mode.to_peniko(),
 			};
 			let mut layer = false;
-			let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
-			let opacity = instance.alpha_blending.opacity * factor;
+
+			let opacity = instance.alpha_blending.opacity(render_params.for_mask);
 			if opacity < 1. || instance.alpha_blending.blend_mode != BlendMode::default() {
 				layer = true;
+				let weight = instance.instance.style.stroke().unwrap().weight;
+				let quad = Quad::from_box(layer_bounds).inflate(weight * element_transform.matrix2.determinant());
+				let layer_bounds = quad.bounding_box();
 				scene.push_layer(
 					peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
 					opacity,
@@ -558,34 +559,29 @@ impl GraphicElementRendered for VectorDataTable {
 			let can_draw_aligned_stroke = instance.instance.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
 				&& instance.instance.stroke_bezier_paths().all(|path| path.closed());
 
-			let reorder_for_outside = instance
-				.instance
-				.style
-				.stroke()
-				.is_some_and(|stroke| stroke.align == StrokeAlign::Outside && !instance.instance.style.fill().is_none());
-			if can_draw_aligned_stroke && !reorder_for_outside {
-				let mut vector_data = VectorDataTable::default();
-
+			let reorder_for_outside = instance.instance.style.stroke().is_some_and(|stroke| stroke.align == StrokeAlign::Outside) && !instance.instance.style.fill().is_none();
+			let use_layer = can_draw_aligned_stroke && !reorder_for_outside;
+			if use_layer {
 				let mut fill_instance = instance.instance.clone();
 				fill_instance.style.clear_stroke();
 				fill_instance.style.set_fill(Fill::solid(Color::BLACK));
 
-				vector_data.push(Instance {
+				let vector_data = VectorDataTable::new_instance(Instance {
 					instance: fill_instance,
 					alpha_blending: *instance.alpha_blending,
 					transform: *instance.transform,
 					source_node_id: None,
 				});
 
+				let bounds = instance.instance.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
 				let weight = instance.instance.style.stroke().unwrap().weight;
-				let quad = Quad::from_box(layer_bounds).inflate(weight * element_transform.matrix2.determinant());
-				let rect = kurbo::Rect::new(quad.top_left().x, quad.top_left().y, quad.bottom_right().x, quad.bottom_right().y);
+				let quad = Quad::from_box(bounds).inflate(weight * element_transform.matrix2.determinant());
+				let bounds = quad.bounding_box();
+				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
-				let inside = instance.instance.style.stroke().unwrap().align == StrokeAlign::Inside;
-				let compose = if inside { peniko::Compose::SrcIn } else { peniko::Compose::SrcOut };
 				scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 				vector_data.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
-				scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, compose), 1., kurbo::Affine::IDENTITY, &rect);
+				scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
 			}
 
 			// Render the path
@@ -619,6 +615,7 @@ impl GraphicElementRendered for VectorDataTable {
 						true => [Op::Stroke, Op::Fill],
 						false => [Op::Fill, Op::Stroke], // Default
 					};
+
 					for operation in order {
 						match operation {
 							Op::Fill => {
@@ -639,7 +636,11 @@ impl GraphicElementRendered for VectorDataTable {
 										let bounds = instance.instance.nonzero_bounding_box();
 										let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
-										let inverse_parent_transform = (parent_transform.matrix2.determinant() != 0.).then(|| parent_transform.inverse()).unwrap_or_default();
+										let inverse_parent_transform = if parent_transform.matrix2.determinant() != 0. {
+											parent_transform.inverse()
+										} else {
+											Default::default()
+										};
 										let mod_points = inverse_parent_transform * multiplied_transform * bound_transform;
 
 										let start = mod_points.transform_point2(gradient.start);
@@ -666,7 +667,11 @@ impl GraphicElementRendered for VectorDataTable {
 										});
 										// Vello does `element_transform * brush_transform` internally. We don't want element_transform to have any impact so we need to left multiply by the inverse.
 										// This makes the final internal brush transform equal to `parent_transform`, allowing you to stretch a gradient by transforming the parent folder.
-										let inverse_element_transform = (element_transform.matrix2.determinant() != 0.).then(|| element_transform.inverse()).unwrap_or_default();
+										let inverse_element_transform = if element_transform.matrix2.determinant() != 0. {
+											element_transform.inverse()
+										} else {
+											Default::default()
+										};
 										let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
 										scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), &path);
 									}
@@ -710,7 +715,7 @@ impl GraphicElementRendered for VectorDataTable {
 				}
 			}
 
-			if can_draw_aligned_stroke {
+			if use_layer {
 				scene.pop_layer();
 				scene.pop_layer();
 			}
@@ -937,56 +942,122 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for instance in self.instance_ref_iter() {
 			let transform = *instance.transform;
-
 			let image = &instance.instance;
+
 			if image.data.is_empty() {
-				return;
+				continue;
 			}
 
-			let base64_string = image.base64_string.clone().unwrap_or_else(|| {
-				use base64::Engine;
+			if render_params.to_canvas() {
+				let id = instance.source_node_id.map(|x| x.0).unwrap_or_else(|| {
+					let mut state = DefaultHasher::new();
+					image.data().hash(&mut state);
+					state.finish()
+				});
+				if !render.image_data.iter().any(|(old_id, _)| *old_id == id) {
+					render.image_data.push((id, image.data().clone()));
+				}
+				render.parent_tag(
+					"foreignObject",
+					|attributes| {
+						let mut transform_values = transform.to_scale_angle_translation();
+						let size = DVec2::new(image.width as f64, image.height as f64);
+						transform_values.0 /= size;
 
-				let output = image.to_png();
-				let preamble = "data:image/png;base64,";
-				let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
-				base64_string.push_str(preamble);
-				base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
-				base64_string
-			});
-			render.leaf_tag("image", |attributes| {
-				attributes.push("width", 1.to_string());
-				attributes.push("height", 1.to_string());
-				attributes.push("preserveAspectRatio", "none");
-				attributes.push("href", base64_string);
-				let matrix = format_transform_matrix(transform);
-				if !matrix.is_empty() {
-					attributes.push("transform", matrix);
-				}
-				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
-				let opacity = instance.alpha_blending.opacity * factor;
-				if opacity < 1. {
-					attributes.push("opacity", opacity.to_string());
-				}
-				if instance.alpha_blending.blend_mode != BlendMode::default() {
-					attributes.push("style", instance.alpha_blending.blend_mode.render());
-				}
-			});
+						let matrix = DAffine2::from_scale_angle_translation(transform_values.0, transform_values.1, transform_values.2);
+						let matrix = format_transform_matrix(matrix);
+						if !matrix.is_empty() {
+							attributes.push("transform", matrix);
+						}
+
+						attributes.push("width", size.x.to_string());
+						attributes.push("height", size.y.to_string());
+
+						let opacity = instance.alpha_blending.opacity(render_params.for_mask);
+						if opacity < 1. {
+							attributes.push("opacity", opacity.to_string());
+						}
+
+						if instance.alpha_blending.blend_mode != BlendMode::default() {
+							attributes.push("style", instance.alpha_blending.blend_mode.render());
+						}
+					},
+					|render| {
+						render.leaf_tag(
+							"img", // Must be a self-closing (void element) tag, so we can't use `div` or `span`, for example
+							|attributes| {
+								attributes.push("data-canvas-placeholder", id.to_string());
+							},
+						)
+					},
+				);
+			} else {
+				let base64_string = image.base64_string.clone().unwrap_or_else(|| {
+					use base64::Engine;
+
+					let output = image.to_png();
+					let preamble = "data:image/png;base64,";
+					let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
+					base64_string.push_str(preamble);
+					base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
+					base64_string
+				});
+
+				render.leaf_tag("image", |attributes| {
+					attributes.push("width", "1");
+					attributes.push("height", "1");
+					attributes.push("preserveAspectRatio", "none");
+					attributes.push("href", base64_string);
+					let matrix = format_transform_matrix(transform);
+					if !matrix.is_empty() {
+						attributes.push("transform", matrix);
+					}
+
+					let opacity = instance.alpha_blending.opacity(render_params.for_mask);
+					if opacity < 1. {
+						attributes.push("opacity", opacity.to_string());
+					}
+					if instance.alpha_blending.blend_mode != BlendMode::default() {
+						attributes.push("style", instance.alpha_blending.blend_mode.render());
+					}
+				});
+			}
 		}
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext, _render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
 		for instance in self.instance_ref_iter() {
 			let image = &instance.instance;
 			if image.data.is_empty() {
-				return;
+				continue;
 			}
-			let image = peniko::Image::new(image.to_flat_u8().0.into(), peniko::Format::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
-			let transform = transform * *instance.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 
-			scene.draw_image(&image, kurbo::Affine::new(transform.to_cols_array()));
+			let alpha_blending = *instance.alpha_blending;
+			let blend_mode = alpha_blending.blend_mode.to_peniko();
+
+			let opacity = alpha_blending.opacity(render_params.for_mask);
+			let mut layer = false;
+
+			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
+				if let Some(bounds) = self.bounding_box(transform, false) {
+					let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
+					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+					scene.push_layer(blending, opacity, kurbo::Affine::IDENTITY, &rect);
+					layer = true;
+				}
+			}
+
+			let image = peniko::Image::new(image.to_flat_u8().0.into(), peniko::ImageFormat::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
+			let image_transform = transform * *instance.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+
+			scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
+
+			if layer {
+				scene.pop_layer();
+			}
 		}
 	}
 
@@ -1008,6 +1079,8 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 	}
 }
 
+const LAZY_ARC_VEC_ZERO_U8: LazyLock<Arc<Vec<u8>>> = LazyLock::new(|| Arc::new(Vec::new()));
+
 impl GraphicElementRendered for RasterDataTable<GPU> {
 	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {
 		log::warn!("tried to render texture as an svg");
@@ -1017,30 +1090,32 @@ impl GraphicElementRendered for RasterDataTable<GPU> {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams) {
 		use vello::peniko;
 
-		let mut render_stuff = |image: peniko::Image, instance_transform: DAffine2, blend_mode: AlphaBlending| {
-			let image_transform = transform * instance_transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
-			let layer = blend_mode != Default::default();
-
-			let Some(bounds) = self.bounding_box(transform, true) else { return };
-			let blending = peniko::BlendMode::new(blend_mode.blend_mode.to_peniko(), peniko::Compose::SrcOver);
-
-			if layer {
-				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
-				scene.push_layer(blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
+		for instance in self.instance_ref_iter() {
+			let blend_mode = *instance.alpha_blending;
+			let mut layer = false;
+			if blend_mode != Default::default() {
+				if let Some(bounds) = self.bounding_box(transform, true) {
+					let blending = peniko::BlendMode::new(blend_mode.blend_mode.to_peniko(), peniko::Compose::SrcOver);
+					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+					scene.push_layer(blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
+					layer = true;
+				}
 			}
+
+			let image = peniko::Image::new(
+				peniko::Blob::new(LAZY_ARC_VEC_ZERO_U8.deref().clone()),
+				peniko::ImageFormat::Rgba8,
+				instance.instance.data().width(),
+				instance.instance.data().height(),
+			)
+			.with_extend(peniko::Extend::Repeat);
+			let image_transform = transform * *instance.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 			scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
+			context.resource_overrides.push((image, instance.instance.data().clone()));
+
 			if layer {
 				scene.pop_layer()
 			}
-		};
-
-		for instance in self.instance_ref_iter() {
-			let image = peniko::Image::new(vec![].into(), peniko::Format::Rgba8, instance.instance.data().width(), instance.instance.data().height()).with_extend(peniko::Extend::Repeat);
-
-			let id = image.data.id();
-			context.resource_overrides.insert(id, instance.instance.data_owned());
-
-			render_stuff(image, *instance.transform, *instance.alpha_blending);
 		}
 	}
 

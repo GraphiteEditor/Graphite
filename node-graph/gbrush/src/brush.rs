@@ -14,7 +14,7 @@ use graphene_core::registry::FutureWrapperNode;
 use graphene_core::transform::Transform;
 use graphene_core::value::ClonedNode;
 use graphene_core::{Ctx, Node};
-use graphene_raster_nodes::adjustments::blend_colors;
+use graphene_raster_nodes::blending_nodes::blend_colors;
 use graphene_raster_nodes::std_nodes::{empty_image, extend_image_to_bounds};
 
 #[derive(Clone, Copy, Debug, PartialEq)]

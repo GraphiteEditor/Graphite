@@ -120,7 +120,6 @@ impl<'i, T: Clone + 'i> Node<'i, ()> for DebugClonedNode<T> {
 	type Output = T;
 	#[inline(always)]
 	fn eval(&'i self, _input: ()) -> Self::Output {
-		#[cfg(not(target_arch = "spirv"))]
 		// KEEP THIS `debug!()` - It acts as the output for the debug node itself
 		log::debug!("DebugClonedNode::eval");
 

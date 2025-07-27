@@ -30,35 +30,6 @@ async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<W
 	Arc::new(editor.application_io.as_ref().unwrap().create_window())
 }
 
-// TODO: Fix and reenable in order to get the 'Draw Canvas' node working again.
-// #[cfg(target_arch = "wasm32")]
-// use wasm_bindgen::Clamped;
-//
-// #[node_macro::node(category("Debug: GPU"))]
-// #[cfg(target_arch = "wasm32")]
-// async fn draw_image_frame(
-// 	_: impl Ctx,
-// 	image: RasterDataTable<graphene_core::raster::SRGBA8>,
-// 	surface_handle: Arc<WasmSurfaceHandle>,
-// ) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
-// 	let image = image.instance_ref_iter().next().unwrap().instance;
-// 	let image_data = image.image.data;
-// 	let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
-// 	if image.image.width > 0 && image.image.height > 0 {
-// 		let canvas = &surface_handle.surface;
-// 		canvas.set_width(image.image.width);
-// 		canvas.set_height(image.image.height);
-// 		// TODO: replace "2d" with "bitmaprenderer" once we switch to ImageBitmap (lives on gpu) from RasterData (lives on cpu)
-// 		let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
-// 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.image.width, image.image.height).expect("Failed to construct RasterData");
-// 		context.put_image_data(&image_data, 0., 0.).unwrap();
-// 	}
-// 	graphene_core::application_io::SurfaceHandleFrame {
-// 		surface_handle,
-// 		transform: image.transform,
-// 	}
-// }
-
 #[node_macro::node(category("Web Request"))]
 async fn get_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, discard_result: bool) -> String {
 	#[cfg(target_arch = "wasm32")]
@@ -187,7 +158,10 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 
 	render.wrap_with_transform(footprint.transform, Some(footprint.resolution.as_dvec2()));
 
-	RenderOutputType::Svg(render.svg.to_svg_string())
+	RenderOutputType::Svg {
+		svg: render.svg.to_svg_string(),
+		image_data: render.image_data,
+	}
 }
 
 #[cfg(feature = "vello")]
@@ -220,7 +194,7 @@ async fn render_canvas(
 	if !data.contains_artboard() && !render_config.hide_artboards {
 		background = Color::WHITE;
 	}
-	exec.render_vello_scene(&scene, &surface_handle, footprint.resolution.x, footprint.resolution.y, &context, background)
+	exec.render_vello_scene(&scene, &surface_handle, footprint.resolution, &context, background)
 		.await
 		.expect("Failed to render Vello scene");
 
@@ -292,15 +266,12 @@ where
 
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
-	let mut result = RasterDataTable::default();
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	result.push(Instance {
+	RasterDataTable::new_instance(Instance {
 		instance: Raster::new_cpu(image),
 		transform: footprint.transform,
 		..Default::default()
-	});
-
-	result
+	})
 }
 
 #[node_macro::node(category(""))]
