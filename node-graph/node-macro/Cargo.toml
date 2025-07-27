@@ -2,7 +2,7 @@
 name = "node-macro"
 publish = false
 version = "0.0.0"
-rust-version = "1.85"
+rust-version = "1.88"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 edition = "2024"
 readme = "../../README.md"
@@ -19,6 +19,7 @@ syn = { workspace = true }
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
 convert_case = { workspace = true }
+strum = { workspace = true }
 
 indoc = "2.0.5"
 proc-macro-crate = "3.1.0"
@@ -26,4 +27,3 @@ proc-macro-error2 = "2"
 
 [dev-dependencies]
 graphene-core = { workspace = true }
-

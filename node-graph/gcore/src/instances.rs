@@ -27,6 +27,24 @@ impl<T> Instances<T> {
 		}
 	}
 
+	pub fn new_instance(instance: Instance<T>) -> Self {
+		Self {
+			instance: vec![instance.instance],
+			transform: vec![instance.transform],
+			alpha_blending: vec![instance.alpha_blending],
+			source_node_id: vec![instance.source_node_id],
+		}
+	}
+
+	pub fn with_capacity(capacity: usize) -> Self {
+		Self {
+			instance: Vec::with_capacity(capacity),
+			transform: Vec::with_capacity(capacity),
+			alpha_blending: Vec::with_capacity(capacity),
+			source_node_id: Vec::with_capacity(capacity),
+		}
+	}
+
 	pub fn push(&mut self, instance: Instance<T>) {
 		self.instance.push(instance.instance);
 		self.transform.push(instance.transform);
@@ -159,6 +177,18 @@ impl<T: PartialEq> PartialEq for Instances<T> {
 
 unsafe impl<T: StaticType + 'static> StaticType for Instances<T> {
 	type Static = Instances<T>;
+}
+
+impl<T> FromIterator<Instance<T>> for Instances<T> {
+	fn from_iter<I: IntoIterator<Item = Instance<T>>>(iter: I) -> Self {
+		let iter = iter.into_iter();
+		let (lower, _) = iter.size_hint();
+		let mut instances = Self::with_capacity(lower);
+		for instance in iter {
+			instances.push(instance);
+		}
+		instances
+	}
 }
 
 fn one_daffine2_default() -> Vec<DAffine2> {
