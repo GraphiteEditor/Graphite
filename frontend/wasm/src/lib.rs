@@ -10,7 +10,7 @@ pub mod helpers;
 use editor::application::Editor;
 use editor::messages::prelude::*;
 use editor_api::EditorHandle;
-use js_sys::Uint8Array;
+use js_sys::{ArrayBuffer, Uint8Array};
 use std::panic;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -110,32 +110,36 @@ extern "C" {
 }
 
 #[wasm_bindgen(js_name = "sendMessageToFrontend")]
-pub fn send_message_to_frontend() {
-	let message = read_cef_data();
-	log::debug!("buffer_len {:?}", message);
-	let buffer = Uint8Array::new(&message);
-	let buffer = buffer.to_vec();
-	log::debug!("buffer_len {}", buffer.len());
-	let Ok(messages) = bitcode::deserialize::<Vec<FrontendMessage>>(&buffer) else { return };
+pub fn send_message_to_frontend(length: i32) {
+	let buffer = ArrayBuffer::new(length as u32);
+	let _ = read_cef_data(&buffer);
+	// let buffer = Uint8Array::new(&message);
+	let buffer = Uint8Array::new(buffer.as_ref()).to_vec();
+	// match bitcode::deserialize::<Vec<FrontendMessage>>(&buffer) {
+	// match serde_json::from_slice::<Vec<FrontendMessage>>(&buffer) {
+	match ron::from_str::<Vec<FrontendMessage>>(str::from_utf8(buffer.as_slice()).unwrap()) {
+		Ok(messages) => {
+			// log::debug!("Received messages: {:?}", messages);
 
-	let callback = move |_: &mut Editor, handle: &mut EditorHandle| {
-		for message in messages {
-			handle.send_frontend_message_to_js_rust_proxy(message);
+			let callback = move |_: &mut Editor, handle: &mut EditorHandle| {
+				for message in messages {
+					handle.send_frontend_message_to_js_rust_proxy(message);
+				}
+			};
+			editor_api::editor_and_handle(callback);
 		}
-	};
-	editor_api::editor_and_handle(callback);
+		Err(e) => log::error!("Failed to deserialize frontend messages: {e:?}"),
+	}
 }
-pub fn read_cef_data() -> JsValue {
+pub fn read_cef_data(buffer: &ArrayBuffer) -> JsValue {
 	let global = js_sys::global();
 
 	// Get the function by name
 	let func = js_sys::Reflect::get(&global, &JsValue::from_str("readMessageData")).expect("Function not found");
-
 	let func = func.dyn_into::<js_sys::Function>().expect("Not a function");
 
 	// Call it with argument
-
-	func.call0(&JsValue::NULL).expect("Function call failed")
+	func.call1(&JsValue::NULL, buffer).expect("Function call failed")
 }
 
 pub fn send_message_to_cef(message: String) {

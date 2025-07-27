@@ -7,10 +7,10 @@ use ::cef::ImplBrowser;
 use ::cef::ImplFrame;
 use ::cef::ImplListValue;
 use ::cef::ImplProcessMessage;
-use ::cef::ImplValue;
 use ::cef::process_message_create;
 use graphite_editor::application::Editor;
-use graphite_editor::messages::prelude::Message;
+use graphite_editor::messages::portfolio::utility_types::Platform;
+use graphite_editor::messages::prelude::*;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
@@ -53,6 +53,30 @@ impl WinitApp {
 			editor: Editor::new(),
 		}
 	}
+
+	fn dispatch_message(&mut self, message: Message) {
+		let responses = self.editor.handle_message(message);
+		if responses.is_empty() {
+			return;
+		}
+		let Some(frame) = self.cef_context.browser.as_ref().unwrap().main_frame() else {
+			tracing::error!("Could not get frame after editor processed messages");
+			return;
+		};
+		let Some(mut process_message) = process_message_create(Some(&CefString::from("editorResponseToJs"))) else {
+			tracing::event!(tracing::Level::ERROR, "Failed to create process message");
+			return;
+		};
+		let Some(arg_list) = process_message.argument_list() else { return };
+		// let buffer = bitcode::serialize(&responses).unwrap();
+		let buffer = ron::to_string(&responses).unwrap().as_bytes().to_vec();
+		let mut value = ::cef::binary_value_create(Some(&buffer));
+		arg_list.set_binary(0, value.as_mut());
+		frame.send_process_message(::cef::sys::cef_process_id_t::PID_RENDERER.into(), Some(&mut process_message));
+		let message = format!("window.sendMessageToFrontend({})", buffer.len());
+		let code = CefString::from(message.as_str());
+		frame.execute_java_script(Some(&code), None, 0);
+	}
 }
 
 impl ApplicationHandler<CustomEvent> for WinitApp {
@@ -89,6 +113,10 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 		self.graphics_state = Some(graphics_state);
 
 		tracing::info!("Winit window created and ready");
+
+		let platform = Platform::Linux;
+		dbg!(self.editor.handle_message(GlobalsMessage::SetPlatform { platform }));
+		self.dispatch_message(PortfolioMessage::Init.into());
 	}
 
 	fn user_event(&mut self, _: &ActiveEventLoop, event: CustomEvent) {
@@ -114,30 +142,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 					tracing::error!("Message could not be deserialized: {:?}", message);
 					return;
 				};
-				let responses = self.editor.handle_message(message);
-				if responses.is_empty() {
-					return;
-				}
-				// Send response to CEF
-				let Some(frame) = self.cef_context.browser.as_ref().unwrap().main_frame() else {
-					tracing::error!("Could not get frame after editor processed messages");
-					return;
-				};
-
-				let Some(mut process_message) = process_message_create(Some(&CefString::from("editorResponseToJs"))) else {
-					tracing::event!(tracing::Level::ERROR, "Failed to create process message");
-					return;
-				};
-				let Some(arg_list) = process_message.argument_list() else { return };
-				let buffer = bitcode::serialize(&responses).unwrap();
-				let mut value = ::cef::binary_value_create(Some(&buffer));
-				arg_list.set_binary(0, value.as_mut());
-
-				frame.send_process_message(::cef::sys::cef_process_id_t::PID_RENDERER.into(), Some(&mut process_message));
-
-				let message = format!("window.sendMessageToFrontend()");
-				let code = CefString::from(message.as_str());
-				frame.execute_java_script(Some(&code), None, 0);
+				self.dispatch_message(message);
 
 				// dbg!(&responses);
 				// for frontend_message in responses {

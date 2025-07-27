@@ -40,6 +40,7 @@ math-parser = { workspace = true }
 wgpu = { workspace = true }
 web-sys = { workspace = true }
 bitcode = { version = "0.6.6", features = ["serde"] }
+ron = "0.10"
 
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false

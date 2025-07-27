@@ -1,10 +1,4 @@
-use cef::{
-	CefString, ImplFrame, ImplV8ArrayBufferReleaseCallback, ImplV8Context, ImplV8Handler, ImplV8Value, V8ArrayBufferReleaseCallback, V8Value, WrapV8ArrayBufferReleaseCallback, WrapV8Handler,
-	process_message_create,
-	rc::{ConvertParam, ConvertReturnValue, Rc},
-	sys::cef_process_id_t,
-	v8_context_get_current_context,
-};
+use cef::{CefString, ImplFrame, ImplV8Context, ImplV8Handler, ImplV8Value, V8Value, WrapV8Handler, process_message_create, rc::Rc, sys::cef_process_id_t, v8_context_get_current_context};
 use std::sync::{Arc, Mutex, mpsc::Receiver};
 
 pub struct NonBrowserV8HandlerImpl {
@@ -27,7 +21,7 @@ impl ImplV8Handler for NonBrowserV8HandlerImpl {
 		name: Option<&cef::CefString>,
 		_object: Option<&mut V8Value>,
 		arguments: Option<&[Option<V8Value>]>,
-		retval: Option<&mut Option<V8Value>>,
+		_retval: Option<&mut Option<V8Value>>,
 		_exception: Option<&mut cef::CefString>,
 	) -> ::std::os::raw::c_int {
 		if let Some(name) = name {
@@ -49,23 +43,14 @@ impl ImplV8Handler for NonBrowserV8HandlerImpl {
 				frame.send_process_message(cef_process_id_t::PID_BROWSER.into(), Some(&mut process_message));
 			}
 			if name.to_string() == "readMessageData" {
-				let Ok(mut data) = self.receiver.lock().as_mut().unwrap().recv() else { return 0 };
-				let data_len = data.len();
-				let buffer = cef::v8_value_create_array_buffer_with_copy(data.as_mut_ptr(), data_len);
-				if buffer.is_none() {
-					tracing::error!("buffer is none");
-				}
-				if retval.is_none() {
-					tracing::error!("retval is none");
-				}
-				if let Some(buffer) = &buffer {
-					eprintln!("is valid: {}", buffer.is_valid());
-					eprintln!("is array: {}", buffer.is_array_buffer());
-				}
-				if let Some(retval) = retval {
-					*retval = buffer;
-				}
-				tracing::error!("sucessfully set return value");
+				let Ok(data) = self.receiver.lock().as_mut().unwrap().recv() else { return 0 };
+
+				let arg1 = arguments.unwrap().first().unwrap().as_ref().unwrap();
+				let size = arg1.array_buffer_byte_length();
+				let ptr = arg1.array_buffer_data();
+
+				let js_buffer = unsafe { std::slice::from_raw_parts_mut(ptr as *mut u8, size) };
+				js_buffer.copy_from_slice(&data);
 				return 1;
 			}
 		}
