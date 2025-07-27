@@ -378,8 +378,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					inputs: vec![
 						NodeInput::value(TaggedValue::ArtboardGroup(ArtboardGroupTable::default()), true),
 						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroupTable::default()), true),
-						NodeInput::value(TaggedValue::IVec2(glam::IVec2::ZERO), false),
-						NodeInput::value(TaggedValue::IVec2(glam::IVec2::new(1920, 1080)), false),
+						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+						NodeInput::value(TaggedValue::DVec2(DVec2::new(1920., 1080.)), false),
 						NodeInput::value(TaggedValue::Color(Color::WHITE), false),
 						NodeInput::value(TaggedValue::Bool(false), false),
 					],
@@ -396,6 +396,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								x: "X".to_string(),
 								y: "Y".to_string(),
 								unit: " px".to_string(),
+								is_integer: true,
 								..Default::default()
 							}),
 						),
@@ -406,6 +407,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								x: "W".to_string(),
 								y: "H".to_string(),
 								unit: " px".to_string(),
+								is_integer: true,
 								..Default::default()
 							}),
 						),
@@ -1081,6 +1083,86 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
+		#[cfg(feature = "gpu")]
+		DocumentNodeDefinition {
+			identifier: "Upload Texture",
+			category: "Debug: GPU",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::Network(NodeNetwork {
+						exports: vec![NodeInput::node(NodeId(2), 0)],
+						nodes: [
+							DocumentNode {
+								inputs: vec![NodeInput::scope("editor-api")],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<&WgpuExecutor>")),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::network(concrete!(RasterDataTable<CPU>), 0), NodeInput::node(NodeId(0), 0)],
+								manual_composition: Some(generic!(T)),
+								implementation: DocumentNodeImplementation::ProtoNode(wgpu_executor::texture_upload::upload_texture::IDENTIFIER),
+								..Default::default()
+							},
+							DocumentNode {
+								manual_composition: Some(generic!(T)),
+								inputs: vec![NodeInput::node(NodeId(1), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(memo::impure_memo::IDENTIFIER),
+								..Default::default()
+							},
+						]
+						.into_iter()
+						.enumerate()
+						.map(|(id, node)| (NodeId(id as u64), node))
+						.collect(),
+						..Default::default()
+					}),
+					inputs: vec![NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					output_names: vec!["Texture".to_string()],
+					network_metadata: Some(NodeNetworkMetadata {
+						persistent_metadata: NodeNetworkPersistentMetadata {
+							node_metadata: [
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Extract Executor".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Upload Texture".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Cache".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+							]
+							.into_iter()
+							.enumerate()
+							.map(|(id, node)| (NodeId(id as u64), node))
+							.collect(),
+							..Default::default()
+						},
+						..Default::default()
+					}),
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("TODO"),
+			properties: None,
+		},
 		DocumentNodeDefinition {
 			identifier: "Extract",
 			category: "Debug",
@@ -1222,6 +1304,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
 						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false),
+						NodeInput::value(TaggedValue::TextAlign(text::TextAlign::default()), false),
 						NodeInput::value(TaggedValue::Bool(false), false),
 					],
 					..Default::default()
@@ -1255,7 +1338,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
 								unit: Some(" px".to_string()),
-								min: Some(0.),
 								step: Some(0.1),
 								..Default::default()
 							}),
@@ -1290,6 +1372,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
+						InputMetadata::with_name_description_override("Align", "TODO", WidgetOverride::Custom("text_align".to_string())),
 						("Per-Glyph Instances", "Splits each text glyph into its own instance, i.e. row in the table of vector data.").into(),
 					],
 					output_names: vec!["Vector".to_string()],
@@ -1301,11 +1384,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			identifier: "Transform",
-			category: "General",
+			category: "Math: Transform",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(VectorDataTable::default()), true),
+						NodeInput::value(TaggedValue::DAffine2(DAffine2::default()), true),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ONE), false),
@@ -1315,7 +1398,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(VectorDataTable), 0)],
+								inputs: vec![NodeInput::network(generic!(T), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
 								manual_composition: Some(generic!(T)),
 								skip_deduplication: true,
@@ -1372,7 +1455,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					input_metadata: vec![
-						("Vector Data", "TODO").into(),
+						("Value", "TODO").into(),
 						InputMetadata::with_name_description_override(
 							"Translation",
 							"TODO",
@@ -1953,8 +2036,20 @@ fn static_input_properties() -> InputProperties {
 				.network_interface
 				.input_data(&node_id, index, "min", context.selection_network_path)
 				.and_then(|value| value.as_f64());
+			let is_integer = context
+				.network_interface
+				.input_data(&node_id, index, "is_integer", context.selection_network_path)
+				.and_then(|value| value.as_bool())
+				.unwrap_or_default();
 
-			Ok(vec![node_properties::coordinate_widget(ParameterWidgetsInfo::new(node_id, index, true, context), &x, &y, &unit, min)])
+			Ok(vec![node_properties::coordinate_widget(
+				ParameterWidgetsInfo::new(node_id, index, true, context),
+				&x,
+				&y,
+				&unit,
+				min,
+				is_integer,
+			)])
 		}),
 	);
 	map.insert(
@@ -2308,6 +2403,13 @@ fn static_input_properties() -> InputProperties {
 				ParameterWidgetsInfo::new(node_id, index, true, context),
 				ColorInput::default().allow_none(false),
 			)])
+		}),
+	);
+	map.insert(
+		"text_align".to_string(),
+		Box::new(|node_id, index, context| {
+			let choices = enum_choice::<text::TextAlign>().for_socket(ParameterWidgetsInfo::new(node_id, index, true, context)).property_row();
+			Ok(vec![choices])
 		}),
 	);
 	map

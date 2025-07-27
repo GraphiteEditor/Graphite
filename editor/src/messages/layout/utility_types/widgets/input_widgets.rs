@@ -335,6 +335,9 @@ pub enum NumberInputMode {
 pub struct NodeCatalog {
 	pub disabled: bool,
 
+	#[serde(rename = "initialSearchTerm")]
+	pub intial_search: String,
+
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]

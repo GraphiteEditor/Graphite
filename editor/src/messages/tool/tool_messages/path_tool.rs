@@ -11,6 +11,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::portfolio::document::utility_types::transformation::Axis;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
 use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedLayerState, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
@@ -18,6 +19,7 @@ use crate::messages::tool::common_functionality::shape_editor::{
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate};
 use bezier_rs::{Bezier, BezierHandles, TValue};
+use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
 use graphene_std::transform::ReferencePoint;
 use graphene_std::vector::click_target::ClickTargetType;
@@ -270,6 +272,14 @@ impl LayoutHolder for PathTool {
 		.selected_index(Some(self.options.path_overlay_mode as u32))
 		.widget_holder();
 
+		// Works only if a single layer is selected and its type is vectordata
+		let path_node_button = TextButton::new("Make Path Editable")
+			.icon(Some("NodeShape".into()))
+			.tooltip("Make Path Editable")
+			.on_update(|_| NodeGraphMessage::AddPathNode.into())
+			.disabled(!self.tool_data.single_path_node_compatible_layer_selected)
+			.widget_holder();
+
 		let [_checkbox, _dropdown] = {
 			let pivot_gizmo_type_widget = pivot_gizmo_type_widget(self.tool_data.pivot_gizmo.state, PivotToolSource::Path);
 			[pivot_gizmo_type_widget[0].clone(), pivot_gizmo_type_widget[2].clone()]
@@ -300,6 +310,7 @@ impl LayoutHolder for PathTool {
 				unrelated_seperator.clone(),
 				path_overlay_mode_widget,
 				unrelated_seperator.clone(),
+				path_node_button,
 				// checkbox.clone(),
 				// related_seperator.clone(),
 				// dropdown.clone(),
@@ -535,7 +546,8 @@ struct PathToolData {
 	drill_through_cycle_index: usize,
 	drill_through_cycle_count: usize,
 	hovered_layers: Vec<LayerNodeIdentifier>,
-	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
+	ghost_outline: Vec<(Vec<ClickTargetType>, LayerNodeIdentifier)>,
+	single_path_node_compatible_layer_selected: bool,
 }
 
 impl PathToolData {
@@ -585,7 +597,12 @@ impl PathToolData {
 			SelectionStatus::None => false,
 			SelectionStatus::One(single_selected_point) => {
 				let vector_data = document.network_interface.compute_modified_vector(single_selected_point.layer).unwrap();
-				single_selected_point.id.get_handle_pair(&vector_data).is_some()
+				if single_selected_point.id.get_handle_pair(&vector_data).is_some() {
+					let anchor = single_selected_point.id.get_anchor(&vector_data).expect("Cannot find connected anchor");
+					vector_data.all_connected(anchor).count() <= 2
+				} else {
+					false
+				}
 			}
 			SelectionStatus::Multiple(_) => true,
 		};
@@ -602,7 +619,7 @@ impl PathToolData {
 	}
 
 	fn next_drill_through_cycle(&mut self, position: DVec2) -> usize {
-		if self.last_drill_through_click_position.map_or(true, |last_pos| last_pos.distance(position) > DRILL_THROUGH_THRESHOLD) {
+		if self.last_drill_through_click_position.is_none_or(|last_pos| last_pos.distance(position) > DRILL_THROUGH_THRESHOLD) {
 			// New position, reset cycle
 			self.drill_through_cycle_index = 0;
 		} else {
@@ -622,7 +639,7 @@ impl PathToolData {
 	}
 
 	fn has_drill_through_mouse_moved(&self, position: DVec2) -> bool {
-		self.last_drill_through_click_position.map_or(true, |last_pos| last_pos.distance(position) > DRILL_THROUGH_THRESHOLD)
+		self.last_drill_through_click_position.is_none_or(|last_pos| last_pos.distance(position) > DRILL_THROUGH_THRESHOLD)
 	}
 
 	fn set_ghost_outline(&mut self, shape_editor: &ShapeState, document: &DocumentMessageHandler) {
@@ -630,8 +647,8 @@ impl PathToolData {
 		for &layer in shape_editor.selected_shape_state.keys() {
 			// We probably need to collect here
 			let outline: Vec<ClickTargetType> = document.metadata().layer_with_free_points_outline(layer).cloned().collect();
-			let transform = document.metadata().transform_to_viewport(layer);
-			self.ghost_outline.push((outline, transform));
+
+			self.ghost_outline.push((outline, layer));
 		}
 	}
 
@@ -1573,8 +1590,9 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
 				if matches!(self, Self::Dragging(_)) {
-					for (outline, transform) in &tool_data.ghost_outline {
-						overlay_context.outline(outline.iter(), *transform, Some(COLOR_OVERLAY_GRAY));
+					for (outline, layer) in &tool_data.ghost_outline {
+						let transform = document.metadata().transform_to_viewport(*layer);
+						overlay_context.outline(outline.iter(), transform, Some(COLOR_OVERLAY_GRAY));
 					}
 				}
 
@@ -2615,6 +2633,31 @@ impl Fsm for PathToolFsmState {
 				tool_data.dragging_state = DraggingState {
 					point_select_state: shape_editor.get_dragging_state(&document.network_interface),
 					colinear,
+				};
+
+				tool_data.single_path_node_compatible_layer_selected = {
+					let selected_nodes = document.network_interface.selected_nodes();
+					let mut selected_layers = selected_nodes.selected_layers(document.metadata());
+					let first_layer = selected_layers.next();
+					let second_layer = selected_layers.next();
+					let has_single_selection = first_layer.is_some() && second_layer.is_none();
+
+					let compatible_type = first_layer.and_then(|layer| {
+						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
+						graph_layer.horizontal_layer_flow().nth(1).map(|node_id| {
+							let (output_type, _) = document.network_interface.output_type(&node_id, 0, &[]);
+							format!("type:{}", output_type.nested_type())
+						})
+					});
+
+					let is_compatible = compatible_type.as_deref() == Some("type:Instances<VectorData>");
+
+					let is_modifiable = first_layer.is_some_and(|layer| {
+						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
+						matches!(graph_layer.find_input("Path", 1), Some(TaggedValue::VectorModification(_)))
+					});
+
+					first_layer.is_some() && has_single_selection && is_compatible && !is_modifiable
 				};
 				tool_data.update_selection_status(shape_editor, document);
 				self
