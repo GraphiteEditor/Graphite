@@ -2,6 +2,10 @@ use crate::CustomEvent;
 use crate::WindowSize;
 use crate::render::GraphicsState;
 use crate::render::WgpuContext;
+use graphite_editor::application::Editor;
+use graphite_editor::dispatcher::Dispatcher;
+use graphite_editor::messages::prelude::Message;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
@@ -21,11 +25,13 @@ pub(crate) struct WinitApp {
 	pub(crate) cef_context: cef::Context<cef::Initialized>,
 	pub(crate) window: Option<Arc<Window>>,
 	cef_schedule: Option<Instant>,
+	// Cached frame buffer from CEF, used to check if mouse is on a transparent pixel
 	_ui_frame_buffer: Option<wgpu::Texture>,
 	window_size_sender: Sender<WindowSize>,
 	_viewport_frame_buffer: Option<wgpu::Texture>,
 	graphics_state: Option<GraphicsState>,
 	wgpu_context: WgpuContext,
+	pub(crate) editor: Editor,
 }
 
 impl WinitApp {
@@ -39,6 +45,7 @@ impl WinitApp {
 			graphics_state: None,
 			window_size_sender,
 			wgpu_context,
+			editor: Editor::new(),
 		}
 	}
 }
@@ -96,6 +103,16 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 				} else {
 					self.cef_schedule = Some(instant);
 				}
+			}
+			CustomEvent::MessageReceived { message } => {
+				let Ok(message) = serde_json::from_str::<Message>(&message) else {
+					tracing::error!("Message could not be deserialized: {:?}", message);
+					return;
+				};
+				println!("Message received: {message:?}");
+				let responses = self.editor.handle_message(message);
+				println!("responses: {:?}", responses);
+				// Send response to CEF
 			}
 		}
 	}

@@ -382,14 +382,6 @@ pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any + 
 	Err(IntrospectError::RuntimeNotReady)
 }
 
-pub async fn run_node_graph() -> bool {
-	let Some(mut runtime) = NODE_RUNTIME.try_lock() else { return false };
-	if let Some(ref mut runtime) = runtime.as_mut() {
-		runtime.run().await;
-	}
-	true
-}
-
 pub async fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	node_runtime.replace(runtime)

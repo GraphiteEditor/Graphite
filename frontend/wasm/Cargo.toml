@@ -13,7 +13,7 @@ license = "Apache-2.0"
 [features]
 default = ["gpu"]
 gpu = ["editor/gpu"]
-tauri = ["editor/tauri"]
+native = []
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -31,6 +31,7 @@ graphene-std = { workspace = true }
 graph-craft = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 wasm-bindgen = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
