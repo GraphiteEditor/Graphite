@@ -3,7 +3,11 @@ use std::sync::{Arc, Mutex};
 
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_render_process_handler_t, cef_base_ref_counted_t};
-use cef::{ImplRenderProcessHandler, WrapRenderProcessHandler};
+use cef::{ImplRenderProcessHandler, V8Handler, WrapRenderProcessHandler};
+
+use crate::cef::internal::render_process_v8_handler::BrowserProcessV8HandlerImpl;
+
+use super::utility::V8ContextExt;
 
 pub(crate) struct RenderProcessHandlerImpl {
 	object: *mut RcImpl<_cef_render_process_handler_t, Self>,
@@ -22,6 +26,17 @@ impl RenderProcessHandlerImpl {
 }
 
 impl ImplRenderProcessHandler for RenderProcessHandlerImpl {
+	fn on_context_created(&self, _browser: Option<&mut cef::Browser>, _frame: Option<&mut cef::Frame>, context: Option<&mut cef::V8Context>) {
+		let Some(context) = context else {
+			tracing::error!("No browser in RenderProcessHandlerImpl::on_context_created");
+			return;
+		};
+		let mut v8_handler = V8Handler::new(BrowserProcessV8HandlerImpl::new(self.receiver.clone()));
+
+		context.register_global_function("editorResponseToJs", &mut v8_handler);
+		context.register_global_function("sendMessageToCef", &mut v8_handler);
+	}
+
 	fn get_raw(&self) -> *mut _cef_render_process_handler_t {
 		self.object.cast()
 	}
