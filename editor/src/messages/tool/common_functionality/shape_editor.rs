@@ -1,5 +1,3 @@
-use std::f64::consts::PI;
-
 use super::graph_modification_utils::merge_layers;
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
 use super::utility_functions::{adjust_handle_colinearity, calculate_bezier_bbox, calculate_segment_angle, restore_g1_continuity, restore_previous_handle_position};
@@ -17,6 +15,7 @@ use bezier_rs::{Bezier, BezierHandles, Subpath, TValue};
 use glam::{DAffine2, DVec2};
 use graphene_std::vector::{HandleExt, HandleId, SegmentId};
 use graphene_std::vector::{ManipulatorPointId, PointId, VectorData, VectorModificationType};
+use std::f64::consts::TAU;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum SelectionChange {
@@ -1034,8 +1033,8 @@ impl ShapeState {
 	/// If both or neither handles are selected, the angle of both handles will be averaged from their current angles, weighted by their lengths.
 	/// Assumes all selected manipulators have handles that are already not colinear.
 	///
-	/// For vector meshes, non colinear handle which is nearest in the direction of 180° angle separation, becomes colinear with current handle,
-	/// if there is no such handle, nothing happens
+	/// For vector meshes, the non-colinear handle which is nearest in the direction of 180° angle separation becomes colinear with current handle.
+	/// If there is no such handle, nothing happens.
 	pub fn convert_selected_manipulators_to_colinear_handles(&self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler) {
 		let mut skip_set = HashSet::new();
 
@@ -1055,43 +1054,42 @@ impl ShapeState {
 
 				// Here we take handles as the current handle and the most opposite non-colinear-handle
 
-				let is_handle_non_colinear = |handle: HandleId| -> bool { !(vector_data.colinear_manipulators.iter().any(|&handles| handles[0] == handle || handles[1] == handle)) };
+				let is_handle_colinear = |handle: HandleId| -> bool { vector_data.colinear_manipulators.iter().any(|&handles| handles[0] == handle || handles[1] == handle) };
 
-				let other_handles = match point {
-					ManipulatorPointId::Anchor(_) => point.get_handle_pair(&vector_data),
-					_ => {
-						point.get_all_connected_handles(&vector_data).and_then(|handles| {
-							let mut non_colinear_handles = handles.iter().filter(|&handle| is_handle_non_colinear(*handle)).clone().collect::<Vec<_>>();
+				let other_handles = if matches!(point, ManipulatorPointId::Anchor(_)) {
+					point.get_handle_pair(&vector_data)
+				} else {
+					point.get_all_connected_handles(&vector_data).and_then(|handles| {
+						let mut non_colinear_handles = handles.iter().filter(|&handle| !is_handle_colinear(*handle)).clone().collect::<Vec<_>>();
 
-							// Sort these by angle from the current handle
-							non_colinear_handles.sort_by(|&handle_a, &handle_b| {
-								let anchor = point.get_anchor_position(&vector_data).expect("No anchor position for handle");
-								let orig_handle_pos = point.get_position(&vector_data).expect("No handle position");
+						// Sort these by angle from the current handle
+						non_colinear_handles.sort_by(|&handle_a, &handle_b| {
+							let anchor = point.get_anchor_position(&vector_data).expect("No anchor position for handle");
+							let orig_handle_pos = point.get_position(&vector_data).expect("No handle position");
 
-								let a_pos = handle_a.to_manipulator_point().get_position(&vector_data).expect("No handle position");
-								let b_pos = handle_b.to_manipulator_point().get_position(&vector_data).expect("No handle position");
+							let a_pos = handle_a.to_manipulator_point().get_position(&vector_data).expect("No handle position");
+							let b_pos = handle_b.to_manipulator_point().get_position(&vector_data).expect("No handle position");
 
-								let v_orig = (orig_handle_pos - anchor).normalize_or_zero();
+							let v_orig = (orig_handle_pos - anchor).normalize_or_zero();
 
-								let v_a = (a_pos - anchor).normalize_or_zero();
-								let v_b = (b_pos - anchor).normalize_or_zero();
+							let v_a = (a_pos - anchor).normalize_or_zero();
+							let v_b = (b_pos - anchor).normalize_or_zero();
 
-								let angle_a = v_orig.angle_to(v_a).abs();
-								let angle_b = v_orig.angle_to(v_b).abs();
+							let angle_a = v_orig.angle_to(v_a).abs();
+							let angle_b = v_orig.angle_to(v_b).abs();
 
-								// Sort by descending angle (180° is farthest)
-								angle_b.partial_cmp(&angle_a).unwrap_or(std::cmp::Ordering::Equal)
-							});
+							// Sort by descending angle (180° is furthest)
+							angle_b.partial_cmp(&angle_a).unwrap_or(std::cmp::Ordering::Equal)
+						});
 
-							let current = match point {
-								ManipulatorPointId::EndHandle(segment) => HandleId::end(segment),
-								ManipulatorPointId::PrimaryHandle(segment) => HandleId::primary(segment),
-								ManipulatorPointId::Anchor(_) => unreachable!(),
-							};
+						let current = match point {
+							ManipulatorPointId::EndHandle(segment) => HandleId::end(segment),
+							ManipulatorPointId::PrimaryHandle(segment) => HandleId::primary(segment),
+							ManipulatorPointId::Anchor(_) => unreachable!(),
+						};
 
-							if let Some(other) = non_colinear_handles.iter().next() { Some([current, **other]) } else { None }
-						})
-					}
+						non_colinear_handles.first().map(|other| [current, **other])
+					})
 				};
 
 				let Some(handles) = other_handles else { continue };
@@ -1554,14 +1552,12 @@ impl ShapeState {
 	/// Disable colinear handles colinear.
 	pub fn disable_colinear_handles_state_on_selected(&self, network_interface: &NodeNetworkInterface, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
-			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
-				continue;
-			};
+			let Some(vector_data) = network_interface.compute_modified_vector(layer) else { continue };
 
 			for &point in &state.selected_points {
 				if let ManipulatorPointId::Anchor(point) = point {
 					for connected in vector_data.all_connected(point) {
-						if let Some(&handles) = vector_data.colinear_manipulators.iter().find(|target| target.iter().any(|&target| target == connected)) {
+						if let Some(&handles) = vector_data.colinear_manipulators.iter().find(|target| target.contains(&connected)) {
 							let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
 						}
@@ -1800,7 +1796,7 @@ impl ShapeState {
 							let angle = base.angle_to(to);
 							let cross = base.perp_dot(to);
 
-							if cross < 0.0 { 2.0 * PI - angle } else { angle }
+							if cross < 0. { TAU - angle } else { angle }
 						};
 
 						let angle_a = signed_angle(v_orig, v_a);
