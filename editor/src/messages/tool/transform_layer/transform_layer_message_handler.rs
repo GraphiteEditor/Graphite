@@ -365,10 +365,6 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					}
 
 					if using_path_tool && (transform_type == TransformType::Grab) {
-						if transform_type.equivalent_to(self.transform_operation) {
-							return;
-						}
-
 						// Check if a single point is selected and it's a colinear point
 						let single_anchor_selected = shape_editor.selected_points().count() == 1 && shape_editor.selected_points().any(|point| matches!(point, ManipulatorPointId::Anchor(_)));
 
@@ -387,6 +383,8 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 								responses.add(PathToolMessage::StartSlidingPoint);
 							}
 
+							return;
+						} else if transform_type.equivalent_to(self.transform_operation) {
 							return;
 						}
 

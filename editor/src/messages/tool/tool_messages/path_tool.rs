@@ -1168,11 +1168,6 @@ impl PathToolData {
 				return false;
 			};
 
-			// Check that the handles of anchor point are also colinear
-			if !vector_data.colinear(*anchor) {
-				return false;
-			};
-
 			let Some(point_id) = anchor.as_anchor() else { return false };
 
 			let mut connected_segments = [None, None];
