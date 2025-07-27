@@ -16,8 +16,6 @@ pub struct CheckboxInput {
 
 	pub disabled: bool,
 
-	pub frozen: bool,
-
 	pub icon: String,
 
 	pub tooltip: String,
@@ -43,7 +41,6 @@ impl Default for CheckboxInput {
 		Self {
 			checked: false,
 			disabled: false,
-			frozen: false,
 			icon: "Checkmark".into(),
 			tooltip: Default::default(),
 			tooltip_shortcut: Default::default(),

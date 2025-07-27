@@ -10,7 +10,6 @@
 
 	export let checked = false;
 	export let disabled = false;
-	export let frozen = true;
 	export let icon: IconName = "Checkmark";
 	export let tooltip: string | undefined = undefined;
 	export let forLabel: bigint | undefined = undefined;
@@ -43,11 +42,11 @@
 		id={`checkbox-input-${id}`}
 		bind:checked
 		on:change={(_) => dispatch("checked", inputElement?.checked || false)}
-		disabled={disabled || frozen}
-		tabindex={disabled || frozen ? -1 : 0}
+		{disabled}
+		tabindex={disabled ? -1 : 0}
 		bind:this={inputElement}
 	/>
-	<label class:disabled class:frozen={frozen && !disabled} class:checked for={`checkbox-input-${id}`} on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)} title={tooltip}>
+	<label class:disabled class:checked for={`checkbox-input-${id}`} on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)} title={tooltip}>
 		<LayoutRow class="checkbox-box">
 			<IconLabel icon={displayIcon} />
 		</LayoutRow>
@@ -116,28 +115,6 @@
 			// Disabled while checked
 			&.disabled .checkbox-box {
 				background: var(--color-8-uppergray);
-			}
-		}
-
-		+ .text-label.text-label {
-			margin-left: 8px;
-		}
-
-		label.frozen {
-			pointer-events: none;
-			cursor: default;
-
-			.checkbox-box {
-				background: var(--color-5-dullgray);
-			}
-
-			// when checked and frozen
-			&.checked .checkbox-box {
-				background: var(--color-e-nearwhite);
-
-				.icon-label {
-					fill: var(--color-2-mildblack);
-				}
 			}
 		}
 
