@@ -181,7 +181,6 @@ specta-macros = { opt-level = 1 }
 syn = { opt-level = 1 }
 
 [profile.release]
-lto = "thin"
 debug = true
 
 [profile.profiling]
