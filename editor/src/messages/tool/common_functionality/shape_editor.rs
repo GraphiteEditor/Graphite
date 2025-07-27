@@ -1992,12 +1992,8 @@ impl ShapeState {
 		}
 
 		for (layer, points) in points_inside {
-			let Some(state) = self.selected_shape_state.get_mut(&layer) else {
-				continue;
-			};
-			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
-				continue;
-			};
+			let Some(state) = self.selected_shape_state.get_mut(&layer) else { continue };
+			let Some(vector_data) = network_interface.compute_modified_vector(layer) else { continue };
 
 			for point in points {
 				match (point, selection_change) {
@@ -2014,18 +2010,14 @@ impl ShapeState {
 		}
 
 		for (layer, segments) in segments_inside {
-			let Some(state) = self.selected_shape_state.get_mut(&layer) else {
-				continue;
-			};
+			let Some(state) = self.selected_shape_state.get_mut(&layer) else { continue };
 			match selection_change {
 				SelectionChange::Shrink => segments.iter().for_each(|segment| state.deselect_segment(*segment)),
 				_ => segments.iter().for_each(|segment| state.select_segment(*segment)),
 			}
 
-			// Also select/ deselect the endpoints of respective segments
-			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
-				continue;
-			};
+			// Also select/deselect the endpoints of respective segments
+			let Some(vector_data) = network_interface.compute_modified_vector(layer) else { continue };
 			if !select_points && select_segments {
 				vector_data
 					.segment_bezier_iter()
@@ -2053,7 +2045,7 @@ impl ShapeState {
 		frontier_handles_info: &Option<HashMap<SegmentId, Vec<PointId>>>,
 		select_segments: bool,
 		select_points: bool,
-		// Here, "selection mode" represents touched or enclosed, not to be confused with editing modes
+		// Represents if the box/lasso selection touches or encloses the targets (not to be confused with editing modes).
 		selection_mode: SelectionMode,
 	) -> (HashMap<LayerNodeIdentifier, HashSet<ManipulatorPointId>>, HashMap<LayerNodeIdentifier, HashSet<SegmentId>>) {
 		let selected_points = self.selected_points().cloned().collect::<HashSet<_>>();
@@ -2062,7 +2054,7 @@ impl ShapeState {
 		let mut points_inside: HashMap<LayerNodeIdentifier, HashSet<ManipulatorPointId>> = HashMap::new();
 		let mut segments_inside: HashMap<LayerNodeIdentifier, HashSet<SegmentId>> = HashMap::new();
 
-		for (&layer, _) in &mut self.selected_shape_state {
+		for &layer in self.selected_shape_state.keys() {
 			let vector_data = network_interface.compute_modified_vector(layer);
 			let Some(vector_data) = vector_data else { continue };
 			let transform = network_interface.document_metadata().transform_to_viewport_if_feeds(layer, network_interface);
