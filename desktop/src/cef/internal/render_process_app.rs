@@ -4,16 +4,16 @@ use cef::{App, ImplApp, SchemeRegistrar, WrapApp};
 
 use crate::cef::scheme_handler::GraphiteSchemeHandlerFactory;
 
-pub(crate) struct NonBrowserAppImpl {
+pub(crate) struct RenderProcessAppImpl {
 	object: *mut RcImpl<_cef_app_t, Self>,
 }
-impl NonBrowserAppImpl {
+impl RenderProcessAppImpl {
 	pub(crate) fn app() -> App {
 		App::new(Self { object: std::ptr::null_mut() })
 	}
 }
 
-impl ImplApp for NonBrowserAppImpl {
+impl ImplApp for RenderProcessAppImpl {
 	fn on_register_custom_schemes(&self, registrar: Option<&mut SchemeRegistrar>) {
 		GraphiteSchemeHandlerFactory::register_schemes(registrar);
 	}
@@ -23,7 +23,7 @@ impl ImplApp for NonBrowserAppImpl {
 	}
 }
 
-impl Clone for NonBrowserAppImpl {
+impl Clone for RenderProcessAppImpl {
 	fn clone(&self) -> Self {
 		unsafe {
 			let rc_impl = &mut *self.object;
@@ -32,7 +32,7 @@ impl Clone for NonBrowserAppImpl {
 		Self { object: self.object }
 	}
 }
-impl Rc for NonBrowserAppImpl {
+impl Rc for RenderProcessAppImpl {
 	fn as_base(&self) -> &cef_base_ref_counted_t {
 		unsafe {
 			let base = &*self.object;
@@ -40,7 +40,7 @@ impl Rc for NonBrowserAppImpl {
 		}
 	}
 }
-impl WrapApp for NonBrowserAppImpl {
+impl WrapApp for RenderProcessAppImpl {
 	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_app_t, Self>) {
 		self.object = object;
 	}
