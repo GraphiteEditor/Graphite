@@ -1,12 +1,12 @@
 use cef::{CefString, ImplFrame, ImplV8Context, ImplV8Handler, ImplV8Value, V8Value, WrapV8Handler, process_message_create, rc::Rc, sys::cef_process_id_t, v8_context_get_current_context};
 use std::sync::{Arc, Mutex, mpsc::Receiver};
 
-pub struct NonBrowserV8HandlerImpl {
+pub struct BrowserProcessV8HandlerImpl {
 	object: *mut cef::rc::RcImpl<cef::sys::_cef_v8_handler_t, Self>,
 	receiver: Arc<Mutex<Receiver<Vec<u8>>>>,
 }
 
-impl NonBrowserV8HandlerImpl {
+impl BrowserProcessV8HandlerImpl {
 	pub(crate) fn new(receiver: Arc<Mutex<Receiver<Vec<u8>>>>) -> Self {
 		Self {
 			object: std::ptr::null_mut(),
@@ -15,7 +15,7 @@ impl NonBrowserV8HandlerImpl {
 	}
 }
 
-impl ImplV8Handler for NonBrowserV8HandlerImpl {
+impl ImplV8Handler for BrowserProcessV8HandlerImpl {
 	fn execute(
 		&self,
 		name: Option<&cef::CefString>,
@@ -62,7 +62,7 @@ impl ImplV8Handler for NonBrowserV8HandlerImpl {
 	}
 }
 
-impl Clone for NonBrowserV8HandlerImpl {
+impl Clone for BrowserProcessV8HandlerImpl {
 	fn clone(&self) -> Self {
 		unsafe {
 			let rc_impl = &mut *self.object;
@@ -75,7 +75,7 @@ impl Clone for NonBrowserV8HandlerImpl {
 	}
 }
 
-impl Rc for NonBrowserV8HandlerImpl {
+impl Rc for BrowserProcessV8HandlerImpl {
 	fn as_base(&self) -> &cef::sys::cef_base_ref_counted_t {
 		unsafe {
 			let base = &*self.object;
@@ -84,7 +84,7 @@ impl Rc for NonBrowserV8HandlerImpl {
 	}
 }
 
-impl WrapV8Handler for NonBrowserV8HandlerImpl {
+impl WrapV8Handler for BrowserProcessV8HandlerImpl {
 	fn wrap_rc(&mut self, object: *mut cef::rc::RcImpl<cef::sys::_cef_v8_handler_t, Self>) {
 		self.object = object;
 	}

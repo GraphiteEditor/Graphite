@@ -1,13 +1,13 @@
-mod app;
+mod browser_process_app;
 mod browser_process_client;
 mod browser_process_handler;
-mod non_browser_app;
-mod non_browser_render_process_handler;
-mod non_browser_v8_handler;
 mod render_handler;
+mod render_process_app;
+mod render_process_handler;
+mod render_process_v8_handler;
 mod utility;
 
-pub(crate) use app::AppImpl;
-pub(crate) use browser_process_client::ClientImpl;
-pub(crate) use non_browser_app::NonBrowserAppImpl;
+pub(crate) use browser_process_app::BrowserProcessAppImpl;
+pub(crate) use browser_process_client::BrowserProcessClientImpl;
 pub(crate) use render_handler::RenderHandlerImpl;
+pub(crate) use render_process_app::RenderProcessAppImpl;

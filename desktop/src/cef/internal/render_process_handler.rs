@@ -4,11 +4,11 @@ use std::sync::{Arc, Mutex};
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_render_process_handler_t, cef_base_ref_counted_t};
 use cef::{
-	CefString, Client, ImplBinaryValue, ImplListValue, ImplProcessMessage, ImplRenderProcessHandler, ImplV8Context, ImplV8Value, V8Handler, V8Propertyattribute, WrapRenderProcessHandler,
+	CefString, ImplBinaryValue, ImplListValue, ImplProcessMessage, ImplRenderProcessHandler, ImplV8Context, ImplV8Value, V8Handler, V8Propertyattribute, WrapRenderProcessHandler,
 	v8_value_create_function,
 };
 
-use crate::cef::internal::non_browser_v8_handler::NonBrowserV8HandlerImpl;
+use crate::cef::internal::render_process_v8_handler::BrowserProcessV8HandlerImpl;
 
 pub(crate) struct RenderProcessHandlerImpl {
 	object: *mut RcImpl<_cef_render_process_handler_t, Self>,
@@ -60,7 +60,7 @@ impl ImplRenderProcessHandler for RenderProcessHandlerImpl {
 			tracing::event!(tracing::Level::ERROR, "No browser in RenderProcessHandlerImpl::on_context_created");
 			return;
 		};
-		let mut v8_handler = V8Handler::new(NonBrowserV8HandlerImpl::new(self.receiver.clone()));
+		let mut v8_handler = V8Handler::new(BrowserProcessV8HandlerImpl::new(self.receiver.clone()));
 		let Some(mut function) = v8_value_create_function(Some(&CefString::from("sendMessageToCef")), Some(&mut v8_handler)) else {
 			tracing::event!(tracing::Level::ERROR, "Failed to create V8 function");
 			return;

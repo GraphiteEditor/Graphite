@@ -2,14 +2,14 @@ use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_app_t, cef_base_ref_counted_t};
 use cef::{App, ImplApp, RenderProcessHandler, SchemeRegistrar, WrapApp};
 
-use crate::cef::internal::non_browser_render_process_handler::RenderProcessHandlerImpl;
+use crate::cef::internal::render_process_handler::RenderProcessHandlerImpl;
 use crate::cef::scheme_handler::GraphiteSchemeHandlerFactory;
 
-pub(crate) struct NonBrowserAppImpl {
+pub(crate) struct RenderProcessAppImpl {
 	object: *mut RcImpl<_cef_app_t, Self>,
 	render_process_handler: RenderProcessHandler,
 }
-impl NonBrowserAppImpl {
+impl RenderProcessAppImpl {
 	pub(crate) fn app() -> App {
 		App::new(Self {
 			object: std::ptr::null_mut(),
@@ -18,7 +18,7 @@ impl NonBrowserAppImpl {
 	}
 }
 
-impl ImplApp for NonBrowserAppImpl {
+impl ImplApp for RenderProcessAppImpl {
 	fn render_process_handler(&self) -> Option<cef::RenderProcessHandler> {
 		Some(self.render_process_handler.clone())
 	}
@@ -32,7 +32,7 @@ impl ImplApp for NonBrowserAppImpl {
 	}
 }
 
-impl Clone for NonBrowserAppImpl {
+impl Clone for RenderProcessAppImpl {
 	fn clone(&self) -> Self {
 		unsafe {
 			let rc_impl = &mut *self.object;
@@ -44,7 +44,7 @@ impl Clone for NonBrowserAppImpl {
 		}
 	}
 }
-impl Rc for NonBrowserAppImpl {
+impl Rc for RenderProcessAppImpl {
 	fn as_base(&self) -> &cef_base_ref_counted_t {
 		unsafe {
 			let base = &*self.object;
@@ -52,7 +52,7 @@ impl Rc for NonBrowserAppImpl {
 		}
 	}
 }
-impl WrapApp for NonBrowserAppImpl {
+impl WrapApp for RenderProcessAppImpl {
 	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_app_t, Self>) {
 		self.object = object;
 	}
