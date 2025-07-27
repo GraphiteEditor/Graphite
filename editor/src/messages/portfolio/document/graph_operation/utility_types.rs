@@ -198,6 +198,7 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::value(TaggedValue::OptionalF64(typesetting.max_width), false)),
 			Some(NodeInput::value(TaggedValue::OptionalF64(typesetting.max_height), false)),
 			Some(NodeInput::value(TaggedValue::F64(typesetting.tilt), false)),
+			Some(NodeInput::value(TaggedValue::TextAlign(typesetting.align), false)),
 		]);
 
 		let text_id = NodeId::new();

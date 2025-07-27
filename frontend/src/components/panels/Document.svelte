@@ -343,6 +343,7 @@
 		textInput.style.lineHeight = `${displayEditableTextbox.lineHeightRatio}`;
 		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
 		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
+		textInput.style.textAlign = displayEditableTextbox.align;
 
 		textInput.oninput = () => {
 			if (!textInput) return;
@@ -774,7 +775,6 @@
 						.text-input {
 							word-break: break-all;
 							unicode-bidi: plaintext;
-							text-align: left;
 						}
 
 						.text-input div {
@@ -789,7 +789,6 @@
 							white-space: pre-wrap;
 							word-break: normal;
 							unicode-bidi: plaintext;
-							text-align: left;
 							display: inline-block;
 							// Workaround to force Chrome to display the flashing text entry cursor when text is empty
 							padding-left: 1px;

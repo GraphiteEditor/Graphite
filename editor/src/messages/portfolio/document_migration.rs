@@ -10,7 +10,7 @@ use glam::IVec2;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::ProtoNodeIdentifier;
-use graphene_std::text::TypesettingConfig;
+use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use graphene_std::vector::{VectorData, VectorDataTable};
@@ -338,6 +338,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::raster_nodes::gradient_map::gradient_map::IDENTIFIER,
 		aliases: &[
 			"graphene_raster_nodes::gradient_map::GradientMapNode",
+			"graphene_raster_nodes::adjustments::GradientMapNode",
 			"graphene_core::raster::adjustments::GradientMapNode",
 			"graphene_core::raster::GradientMapNode",
 		],
@@ -646,7 +647,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
-	if reference == "Text" && inputs_count != 10 {
+	if reference == "Text" && inputs_count != 11 {
 		let mut template = resolve_document_node_type(reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
@@ -702,8 +703,17 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		);
 		document.network_interface.set_input(
 			&InputConnector::node(*node_id, 9),
-			if inputs_count >= 10 {
+			if inputs_count >= 11 {
 				old_inputs[9].clone()
+			} else {
+				NodeInput::value(TaggedValue::TextAlign(TextAlign::default()), false)
+			},
+			network_path,
+		);
+		document.network_interface.set_input(
+			&InputConnector::node(*node_id, 10),
+			if inputs_count >= 11 {
+				old_inputs[10].clone()
 			} else {
 				NodeInput::value(TaggedValue::Bool(false), false)
 			},

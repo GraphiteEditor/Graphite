@@ -814,6 +814,8 @@ export class UpdateDocumentLayerStructureJs extends JsMessage {
 	readonly dataBuffer!: DataBuffer;
 }
 
+export type TextAlign = "Left" | "Center" | "Right" | "JustifyLeft";
+
 export class DisplayEditableTextbox extends JsMessage {
 	readonly text!: string;
 
@@ -831,6 +833,8 @@ export class DisplayEditableTextbox extends JsMessage {
 	readonly maxWidth!: undefined | number;
 
 	readonly maxHeight!: undefined | number;
+
+	readonly align!: TextAlign;
 }
 
 export class DisplayEditableTextboxTransform extends JsMessage {
