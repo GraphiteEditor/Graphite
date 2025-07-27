@@ -371,11 +371,11 @@ pub fn clip_simple_bezpaths(bezpath1: &BezPath, bezpath2: &BezPath) -> Option<(B
 	Some((clipped_subpath1, clipped_subpath2))
 }
 
-/// Returns the manipulator point that is needed for a miter join if it is possible.
+/// Returns the [`PathEl`] that is needed for a miter join if it is possible.
 /// - `miter_limit`: Defines a limit for the ratio between the miter length and the stroke width.
 ///
 /// Alternatively, this can be interpreted as limiting the angle that the miter can form.
-/// When the limit is exceeded, no manipulator group will be returned.
+/// When the limit is exceeded, no [`PathEl`] will be returned.
 /// This value should be greater than 0. If not, the default of 4 will be used.
 pub fn miter_line_join(bezpath1: &BezPath, bezpath2: &BezPath, miter_limit: Option<f64>) -> Option<[PathEl; 2]> {
 	let miter_limit = match miter_limit {
@@ -416,7 +416,7 @@ pub fn miter_line_join(bezpath1: &BezPath, bezpath2: &BezPath, miter_limit: Opti
 	return Some([PathEl::LineTo(intersection), PathEl::LineTo(out_segment.start())]);
 }
 
-/// Computes the path elements to form a circular join from `left` to `right`, along a circle around `center`.
+/// Computes the [`PathEl`] to form a circular join from `left` to `right`, along a circle around `center`.
 /// By default, the angle is assumed to be 180 degrees.
 pub fn compute_circular_subpath_details(left: DVec2, arc_point: DVec2, right: DVec2, center: DVec2, angle: Option<f64>) -> [PathEl; 2] {
 	let center_to_arc_point = arc_point - center;
@@ -439,7 +439,7 @@ pub fn compute_circular_subpath_details(left: DVec2, arc_point: DVec2, right: DV
 	[first_half, second_half]
 }
 
-/// Returns path elements to create a round join with the provided center.
+/// Returns two [`PathEl`] to create a round join with the provided center.
 pub fn round_line_join(bezpath1: &BezPath, bezpath2: &BezPath, center: DVec2) -> [PathEl; 2] {
 	let left = point_to_dvec2(bezpath1.segments().last().unwrap().end());
 	let right = point_to_dvec2(bezpath2.segments().next().unwrap().start());
