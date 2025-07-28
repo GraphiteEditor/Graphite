@@ -8,7 +8,9 @@ mod context;
 mod dirs;
 mod input;
 mod internal;
+mod ipc;
 mod scheme_handler;
+mod utility;
 
 pub(crate) use context::{Context, InitError, Initialized, Setup, SetupError};
 use winit::event_loop::EventLoopProxy;

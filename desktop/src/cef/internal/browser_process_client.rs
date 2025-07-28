@@ -3,6 +3,7 @@ use cef::sys::{_cef_client_t, cef_base_ref_counted_t};
 use cef::{ImplClient, RenderHandler, WrapClient};
 
 use crate::cef::CefEventHandler;
+use crate::cef::ipc::{MessageType, UnpackMessage, UnpackedMessage};
 
 pub(crate) struct BrowserProcessClientImpl<H: CefEventHandler> {
 	object: *mut RcImpl<_cef_client_t, Self>,
@@ -20,6 +21,26 @@ impl<H: CefEventHandler> BrowserProcessClientImpl<H> {
 }
 
 impl<H: CefEventHandler> ImplClient for BrowserProcessClientImpl<H> {
+	fn on_process_message_received(
+		&self,
+		_browser: Option<&mut cef::Browser>,
+		_frame: Option<&mut cef::Frame>,
+		_source_process: cef::ProcessId,
+		message: Option<&mut cef::ProcessMessage>,
+	) -> ::std::os::raw::c_int {
+		match message.unpack() {
+			Some(UnpackedMessage {
+				message_type: MessageType::SendToNative,
+				data,
+			}) => {}
+			_ => {
+				tracing::error!("Unexpected message type received in browser process");
+				return 0;
+			}
+		}
+		1
+	}
+
 	fn render_handler(&self) -> Option<RenderHandler> {
 		Some(self.render_handler.clone())
 	}
