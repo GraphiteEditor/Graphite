@@ -364,6 +364,7 @@ impl NodeGraphExecutor {
 						);
 						responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 					}
+					graphene_std::wasm_application_io::RenderOutputType::Texture { .. } => {}
 					_ => {
 						return Err(format!("Invalid node graph output type: {:#?}", render_output.data));
 					}

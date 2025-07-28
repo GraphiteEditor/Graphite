@@ -931,7 +931,7 @@ async fn poll_node_graph_evaluation() {
 		return;
 	}
 
-	if !editor::node_graph_executor::run_node_graph().await {
+	if !editor::node_graph_executor::run_node_graph().await.0 {
 		return;
 	};
 

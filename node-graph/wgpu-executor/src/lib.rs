@@ -141,6 +141,53 @@ impl WgpuExecutor {
 		Ok(())
 	}
 
+	pub async fn render_vello_scene_to_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Color) -> Result<wgpu::Texture> {
+		let texture = self.context.device.create_texture(&wgpu::TextureDescriptor {
+			label: None,
+			size: wgpu::Extent3d {
+				width: size.x.max(1),
+				height: size.y.max(1),
+				depth_or_array_layers: 1,
+			},
+			mip_level_count: 1,
+			sample_count: 1,
+			dimension: wgpu::TextureDimension::D2,
+			usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+			format: VELLO_SURFACE_FORMAT,
+			view_formats: &[],
+		});
+		let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+		let [r, g, b, _] = background.to_rgba8_srgb();
+		let render_params = RenderParams {
+			// We are using an explicit opaque color here to eliminate the alpha premultiplication step
+			// which would be required to support a transparent webgpu canvas
+			base_color: vello::peniko::Color::from_rgba8(r, g, b, 0xff),
+			width: size.x,
+			height: size.y,
+			antialiasing_method: AaConfig::Msaa16,
+		};
+
+		{
+			let mut renderer = self.vello_renderer.lock().await;
+			for (image, texture) in context.resource_overrides.iter() {
+				let texture_view = wgpu::TexelCopyTextureInfoBase {
+					texture: texture.clone(),
+					mip_level: 0,
+					origin: Origin3d::ZERO,
+					aspect: TextureAspect::All,
+				};
+				renderer.override_image(image, Some(texture_view));
+			}
+			renderer.render_to_texture(&self.context.device, &self.context.queue, scene, &view, &render_params)?;
+			for (image, _) in context.resource_overrides.iter() {
+				renderer.override_image(image, None);
+			}
+		}
+
+		Ok(texture)
+	}
+
 	#[cfg(target_arch = "wasm32")]
 	pub fn create_surface(&self, canvas: graphene_application_io::WasmSurfaceHandle) -> Result<SurfaceHandle<Surface>> {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
@@ -169,6 +216,25 @@ impl WgpuExecutor {
 	pub async fn new() -> Option<Self> {
 		let context = Context::new().await?;
 
+		let vello_renderer = Renderer::new(
+			&context.device,
+			RendererOptions {
+				// surface_format: Some(wgpu::TextureFormat::Rgba8Unorm),
+				pipeline_cache: None,
+				use_cpu: false,
+				antialiasing_support: AaSupport::all(),
+				num_init_threads: std::num::NonZeroUsize::new(1),
+			},
+		)
+		.map_err(|e| anyhow::anyhow!("Failed to create Vello renderer: {:?}", e))
+		.ok()?;
+
+		Some(Self {
+			context,
+			vello_renderer: vello_renderer.into(),
+		})
+	}
+	pub fn with_context(context: Context) -> Option<Self> {
 		let vello_renderer = Renderer::new(
 			&context.device,
 			RendererOptions {
