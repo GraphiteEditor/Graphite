@@ -624,28 +624,32 @@ impl Fsm for ShapeToolFsmState {
 				let nodes = vec![(NodeId(0), node)];
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
 
-				responses.add(Message::StartBuffer);
+				let defered_responses = &mut VecDeque::new();
 
 				match tool_data.current_shape {
 					ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Arc | ShapeType::Polygon | ShapeType::Star => {
-						responses.add(GraphOperationMessage::TransformSet {
+						defered_responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
 
-						tool_options.fill.apply_fill(layer, responses);
+						tool_options.fill.apply_fill(layer, defered_responses);
 					}
 					ShapeType::Line => {
 						tool_data.line_data.weight = tool_options.line_weight;
 						tool_data.line_data.editing_layer = Some(layer);
 					}
 				}
-				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
+				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
 
-				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
+				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
 				tool_data.data.layer = Some(layer);
+
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: defered_responses.drain(..).collect(),
+				});
 
 				ShapeToolFsmState::Drawing(tool_data.current_shape)
 			}

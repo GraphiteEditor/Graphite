@@ -1435,6 +1435,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						},
 					})
 				}
+				// Some parts of the editior (e.g. navigation messages) depend on these bounds to be present
+				let bounds = if self.graph_view_overlay_open {
+					self.network_interface.all_nodes_bounding_box(&self.breadcrumb_network_path).cloned()
+				} else {
+					self.network_interface.document_bounds_document_space(true)
+				};
+				if bounds.is_some() {
+					responses.add(DeferMessage::TriggerNavigationReady);
+				} else {
+					// If we don't have bounds yet, we need wait until the node graph has run once more
+					responses.add(DeferMessage::AfterGraphRun {
+						messages: vec![DocumentMessage::PTZUpdate.into()],
+					});
+				}
 			}
 			DocumentMessage::SelectionStepBack => {
 				self.network_interface.selection_step_back(&self.selection_network_path);
@@ -1866,14 +1880,14 @@ impl DocumentMessageHandler {
 
 		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
 
-		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
-		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-		responses.add(NodeGraphMessage::SelectedNodesUpdated);
-		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
 		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
-		responses.add(NodeGraphMessage::UnloadWires);
-		responses.add(NodeGraphMessage::SetGridAlignedEdges);
-		responses.add(Message::StartBuffer);
+		responses.push_front(NodeGraphMessage::UnloadWires.into());
+		responses.push_front(NodeGraphMessage::SetGridAlignedEdges.into());
+
+		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+		responses.push_front(NodeGraphMessage::ForceRunDocumentGraph.into());
+		responses.push_front(NodeGraphMessage::SelectedNodesUpdated.into());
+		responses.push_front(PortfolioMessage::UpdateOpenDocumentsList.into());
 		Some(previous_network)
 	}
 	pub fn redo_with_history(&mut self, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {

@@ -3,7 +3,7 @@ use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::document::value::{RenderOutput, TaggedValue};
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, generate_uuid};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_std::application_io::TimingInformation;
@@ -56,6 +56,7 @@ pub enum NodeGraphUpdate {
 #[derive(Debug, Default)]
 pub struct NodeGraphExecutor {
 	runtime_io: NodeRuntimeIO,
+	current_execution_id: u64,
 	futures: HashMap<u64, ExecutionContext>,
 	node_graph_hash: u64,
 	old_inspect_node: Option<NodeId>,
@@ -78,13 +79,15 @@ impl NodeGraphExecutor {
 			futures: Default::default(),
 			runtime_io: NodeRuntimeIO::with_channels(request_sender, response_receiver),
 			node_graph_hash: 0,
+			current_execution_id: 0,
 			old_inspect_node: None,
 		};
 		(node_runtime, node_executor)
 	}
 	/// Execute the network by flattening it and creating a borrow stack.
-	fn queue_execution(&self, render_config: RenderConfig) -> u64 {
-		let execution_id = generate_uuid();
+	fn queue_execution(&mut self, render_config: RenderConfig) -> u64 {
+		let execution_id = self.current_execution_id;
+		self.current_execution_id += 1;
 		let request = ExecutionRequest { execution_id, render_config };
 		self.runtime_io.send(GraphRuntimeRequest::ExecutionRequest(request)).expect("Failed to send generation request");
 
@@ -105,7 +108,7 @@ impl NodeGraphExecutor {
 	#[cfg(test)]
 	pub(crate) fn update_node_graph_instrumented(&mut self, document: &mut DocumentMessageHandler) -> Result<Instrumented, String> {
 		// We should always invalidate the cache.
-		self.node_graph_hash = generate_uuid();
+		self.node_graph_hash = crate::application::generate_uuid();
 		let mut network = document.network_interface.document_network().clone();
 		let instrumented = Instrumented::new(&mut network);
 
@@ -280,6 +283,7 @@ impl NodeGraphExecutor {
 					} else {
 						self.process_node_graph_output(node_graph_output, transform, responses)?
 					}
+					responses.add(DeferMessage::TriggerGraphRun(execution_id));
 
 					// Update the spreadsheet on the frontend using the value of the inspect result.
 					if self.old_inspect_node.is_some() {
@@ -385,9 +389,22 @@ impl NodeGraphExecutor {
 				return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
 			}
 		};
-		responses.add(Message::EndBuffer {
-			render_metadata: render_output_metadata,
+		let graphene_std::renderer::RenderMetadata {
+			upstream_footprints: footprints,
+			local_transforms,
+			first_instance_source_id,
+			click_targets,
+			clip_targets,
+		} = render_output_metadata;
+
+		// Run these update state messages immediately
+		responses.add(DocumentMessage::UpdateUpstreamTransforms {
+			upstream_footprints: footprints,
+			local_transforms,
+			first_instance_source_id,
 		});
+		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
+		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
 		responses.add(DocumentMessage::RenderScrollbars);
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);
