@@ -45,7 +45,15 @@ jobs:
 
       - name: Run baseline benchmarks
         run: |
+          # Compile benchmarks
           cargo bench --bench compile_demo_art_iai -- --save-baseline=master
+          
+          # Runtime benchmarks
+          cd node-graph/interpreted-executor
+          cargo bench --bench update_executor_iai -- --save-baseline=master
+          cargo bench --bench run_once_iai -- --save-baseline=master
+          cargo bench --bench run_cached_iai -- --save-baseline=master
+          cd ../..
 
       - name: Checkout PR branch
         run: |
@@ -54,9 +62,31 @@ jobs:
       - name: Run PR benchmarks
         id: benchmark
         run: |
-          BENCH_OUTPUT=$(cargo bench --bench compile_demo_art_iai -- --baseline=master --output-format=json  | jq -sc | sed 's/\\"//g')
-          echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_OUTPUT
-          echo "$BENCH_OUTPUT" >> $GITHUB_OUTPUT
+          # Compile benchmarks
+          COMPILE_OUTPUT=$(cargo bench --bench compile_demo_art_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g')
+          
+          # Runtime benchmarks
+          cd node-graph/interpreted-executor
+          UPDATE_OUTPUT=$(cargo bench --bench update_executor_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g')
+          RUN_ONCE_OUTPUT=$(cargo bench --bench run_once_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g')
+          RUN_CACHED_OUTPUT=$(cargo bench --bench run_cached_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g')
+          cd ../..
+          
+          # Store outputs
+          echo "COMPILE_OUTPUT<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMPILE_OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "UPDATE_OUTPUT<<EOF" >> $GITHUB_OUTPUT
+          echo "$UPDATE_OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "RUN_ONCE_OUTPUT<<EOF" >> $GITHUB_OUTPUT
+          echo "$RUN_ONCE_OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "RUN_CACHED_OUTPUT<<EOF" >> $GITHUB_OUTPUT
+          echo "$RUN_CACHED_OUTPUT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Make old comments collapsed by default
@@ -89,7 +119,11 @@ jobs:
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
-            const benchmarkOutput = JSON.parse(`${{ steps.benchmark.outputs.BENCHMARK_OUTPUT }}`);
+            const compileOutput = JSON.parse(`${{ steps.benchmark.outputs.COMPILE_OUTPUT }}`);
+            const updateOutput = JSON.parse(`${{ steps.benchmark.outputs.UPDATE_OUTPUT }}`);
+            const runOnceOutput = JSON.parse(`${{ steps.benchmark.outputs.RUN_ONCE_OUTPUT }}`);
+            const runCachedOutput = JSON.parse(`${{ steps.benchmark.outputs.RUN_CACHED_OUTPUT }}`);
+            
             let significantChanges = false;
             let commentBody = "";
 
@@ -110,58 +144,83 @@ jobs:
               return str.padStart(len);
             }
 
-            for (const benchmark of benchmarkOutput) {
-              if (benchmark.callgrind_summary && benchmark.callgrind_summary.summaries) {
-                const summary = benchmark.callgrind_summary.summaries[0];
-                const irDiff = summary.events.Ir;
-                
-                if (irDiff.diff_pct !== null) {
-                  const changePercentage = formatPercentage(irDiff.diff_pct);
-                  const color = irDiff.diff_pct > 0 ? "red" : "lime";
+            function processBenchmarkOutput(benchmarkOutput, sectionTitle) {
+              let sectionBody = "";
+              let hasResults = false;
+              
+              for (const benchmark of benchmarkOutput) {
+                if (benchmark.callgrind_summary && benchmark.callgrind_summary.summaries) {
+                  const summary = benchmark.callgrind_summary.summaries[0];
+                  const irDiff = summary.events.Ir;
                   
-                  commentBody += "---\n\n";
-                  commentBody += `${benchmark.module_path} ${benchmark.id}:${benchmark.details}\n`;
-                  commentBody += `Instructions: \`${formatNumber(irDiff.old)}\` (master) -> \`${formatNumber(irDiff.new)}\` (HEAD) : `;
-                  commentBody += `$$\\color{${color}}${changePercentage.replace("%", "\\\\%")}$$\n\n`;
-                  
-                  commentBody += "<details>\n<summary>Detailed metrics</summary>\n\n```\n";
-                  commentBody += `Baselines:                master|       HEAD\n`;
-                  
-                  for (const [eventKind, costsDiff] of Object.entries(summary.events)) {
-                    if (costsDiff.diff_pct !== null) {
-                      const changePercentage = formatPercentage(costsDiff.diff_pct);
-                      const line = `${padRight(eventKind, 20)} ${padLeft(formatNumber(costsDiff.old), 11)}|${padLeft(formatNumber(costsDiff.new), 11)} ${padLeft(changePercentage, 15)}`;
-                      commentBody += `${line}\n`;
+                  if (irDiff.diff_pct !== null) {
+                    hasResults = true;
+                    const changePercentage = formatPercentage(irDiff.diff_pct);
+                    const color = irDiff.diff_pct > 0 ? "red" : "lime";
+                    
+                    sectionBody += `**${benchmark.module_path} ${benchmark.id}:${benchmark.details}**\n`;
+                    sectionBody += `Instructions: \`${formatNumber(irDiff.old)}\` (master) → \`${formatNumber(irDiff.new)}\` (HEAD) : `;
+                    sectionBody += `$$\\color{${color}}${changePercentage.replace("%", "\\\\%")}$$\n\n`;
+                    
+                    sectionBody += "<details>\n<summary>Detailed metrics</summary>\n\n```\n";
+                    sectionBody += `Baselines:                master|       HEAD\n`;
+                    
+                    for (const [eventKind, costsDiff] of Object.entries(summary.events)) {
+                      if (costsDiff.diff_pct !== null) {
+                        const changePercentage = formatPercentage(costsDiff.diff_pct);
+                        const line = `${padRight(eventKind, 20)} ${padLeft(formatNumber(costsDiff.old), 11)}|${padLeft(formatNumber(costsDiff.new), 11)} ${padLeft(changePercentage, 15)}`;
+                        sectionBody += `${line}\n`;
+                      }
                     }
-                  }
-                  
-                  commentBody += "```\n</details>\n\n";
-                  
-                  if (Math.abs(irDiff.diff_pct) > 5) {
-                    significantChanges = true;
+                    
+                    sectionBody += "```\n</details>\n\n";
+                    
+                    if (Math.abs(irDiff.diff_pct) > 5) {
+                      significantChanges = true;
+                    }
                   }
                 }
               }
+              
+              if (hasResults) {
+                return `## ${sectionTitle}\n\n${sectionBody}`;
+              }
+              return "";
             }
 
-            const output = `
-            <details open>
+            // Process each benchmark category
+            const compileSection = processBenchmarkOutput(compileOutput, "🔧 Compile Time");
+            const updateSection = processBenchmarkOutput(updateOutput, "🔄 Executor Update");
+            const runOnceSection = processBenchmarkOutput(runOnceOutput, "🚀 Cold Execution");
+            const runCachedSection = processBenchmarkOutput(runCachedOutput, "⚡ Cached Execution");
 
-            <summary>Performance Benchmark Results</summary>
+            // Combine all sections
+            commentBody = [compileSection, updateSection, runOnceSection, runCachedSection]
+              .filter(section => section.length > 0)
+              .join("---\n\n");
 
-            ${commentBody}
+            if (commentBody.length > 0) {
+              const output = `
+              <details open>
 
-            </details>
-            `;
+              <summary>Performance Benchmark Results</summary>
 
-            if (significantChanges) {
-              github.rest.issues.createComment({
-                issue_number: context.issue.number,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: output
-              });
+              ${commentBody}
+
+              </details>
+              `;
+
+              if (significantChanges) {
+                github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: output
+                });
+              } else {
+                console.log("No significant performance changes detected. Skipping comment.");
+                console.log(output);
+              }
             } else {
-              console.log("No significant performance changes detected. Skipping comment.");
-              console.log(output);
+              console.log("No benchmark results to display.");
             }
