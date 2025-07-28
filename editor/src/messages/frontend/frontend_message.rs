@@ -1,4 +1,5 @@
 use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
+use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
 	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, Transform,
@@ -308,5 +309,14 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
+	},
+	UpdatePlatform {
+		platform: AppWindowPlatform,
+	},
+	UpdateMaximized {
+		maximized: bool,
+	},
+	UpdateViewportHolePunch {
+		active: bool,
 	},
 }

@@ -103,7 +103,6 @@ export function createPortfolioState(editor: Editor) {
 			// Fail silently if there's an error rasterizing the SVG, such as a zero-sized image
 		}
 	});
-
 	editor.subscriptions.subscribeJsMessage(UpdateSpreadsheetState, async (updateSpreadsheetState) => {
 		update((state) => {
 			state.spreadsheetOpen = updateSpreadsheetState.open;
@@ -111,7 +110,6 @@ export function createPortfolioState(editor: Editor) {
 			return state;
 		});
 	});
-
 	editor.subscriptions.subscribeJsMessage(UpdateSpreadsheetLayout, (updateSpreadsheetLayout) => {
 		update((state) => {
 			patchWidgetLayout(state.spreadsheetWidgets, updateSpreadsheetLayout);

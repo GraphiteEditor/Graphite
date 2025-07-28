@@ -107,15 +107,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 						let compatible_type = first_layer.and_then(|layer| {
 							let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
-							graph_layer.horizontal_layer_flow().nth(1).and_then(|node_id| {
+							graph_layer.horizontal_layer_flow().nth(1).map(|node_id| {
 								let (output_type, _) = document.network_interface.output_type(&node_id, 0, &[]);
-								Some(format!("type:{}", output_type.nested_type()))
+								format!("type:{}", output_type.nested_type())
 							})
 						});
 
 						let is_compatible = compatible_type.as_deref() == Some("type:Instances<VectorData>");
 
-						let is_modifiable = first_layer.map_or(false, |layer| {
+						let is_modifiable = first_layer.is_some_and(|layer| {
 							let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
 							matches!(graph_layer.find_input("Path", 1), Some(TaggedValue::VectorModification(_)))
 						});
