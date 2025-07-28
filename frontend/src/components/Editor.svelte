@@ -201,10 +201,10 @@
 	}
 
 	html,
-	body {
+	html body {
 		margin: 0;
 		height: 100%;
-		background: var(--color-2-mildblack);
+		background: transparent;
 		overscroll-behavior: none;
 		-webkit-user-select: none; // Required as of Safari 15.0 (Graphite's minimum version) through the latest release
 		user-select: none;

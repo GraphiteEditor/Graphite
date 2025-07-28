@@ -229,6 +229,7 @@ impl Dispatcher {
 					messages.iter().for_each(|message| self.handle_message(message.to_owned(), false));
 				}
 				Message::StartBuffer => {
+					println!("starting buffer");
 					self.buffered_queue = Some(std::mem::take(&mut self.message_queues));
 				}
 				Message::EndBuffer { render_metadata } => {

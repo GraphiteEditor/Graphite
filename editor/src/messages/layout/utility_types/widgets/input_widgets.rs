@@ -78,7 +78,9 @@ impl<'a> serde::Deserialize<'a> for CheckboxId {
 	where
 		D: serde::Deserializer<'a>,
 	{
-		let id = u64::deserialize(deserializer)?;
+		let optional_id: Option<u64> = Option::deserialize(deserializer)?;
+		// let id = u64::deserialize(deserializer)?;
+		let id = optional_id.unwrap_or(0);
 		let checkbox_id = CheckboxId(OnceCell::new().into());
 		checkbox_id.0.set(id).map_err(serde::de::Error::custom)?;
 		Ok(checkbox_id)

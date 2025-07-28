@@ -98,6 +98,8 @@
 	.title-bar {
 		height: 28px;
 		flex: 0 0 auto;
+		background: var(--color-2-mildblack);
+		z-index: 1;
 
 		> .layout-row {
 			flex: 1 1 100%;

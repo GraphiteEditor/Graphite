@@ -3,10 +3,9 @@ use std::sync::{Arc, Mutex};
 
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_render_process_handler_t, cef_base_ref_counted_t};
-use cef::{ImplRenderProcessHandler, V8Handler, WrapRenderProcessHandler};
+use cef::{ImplBinaryValue, ImplListValue, ImplProcessMessage, ImplRenderProcessHandler, V8Handler, WrapRenderProcessHandler};
 
-use crate::cef::internal::render_process_v8_handler::BrowserProcessV8HandlerImpl;
-
+use super::render_process_v8_handler::BrowserProcessV8HandlerImpl;
 use super::utility::V8ContextExt;
 
 pub(crate) struct RenderProcessHandlerImpl {
@@ -26,6 +25,32 @@ impl RenderProcessHandlerImpl {
 }
 
 impl ImplRenderProcessHandler for RenderProcessHandlerImpl {
+	fn on_process_message_received(
+		&self,
+		_browser: Option<&mut cef::Browser>,
+		_frame: Option<&mut cef::Frame>,
+		_source_process: cef::ProcessId,
+		message: Option<&mut cef::ProcessMessage>,
+	) -> ::std::os::raw::c_int {
+		let Some(message) = message else {
+			tracing::error!("No message in RenderProcessHandlerImpl::on_process_message_received");
+			return 1;
+		};
+
+		let message_name = cef::CefString::from(&message.name()).to_string();
+
+		if message_name == "editorResponseToJs" {
+			let Some(arglist) = message.argument_list() else { return 0 };
+			let Some(binary) = arglist.binary(0) else { return 0 };
+			let size = binary.size();
+			let ptr = binary.raw_data();
+			let buffer = unsafe { std::slice::from_raw_parts(ptr as *const u8, size) };
+			let _ = self.sender.send(buffer.to_vec());
+		}
+
+		1
+	}
+
 	fn on_context_created(&self, _browser: Option<&mut cef::Browser>, _frame: Option<&mut cef::Frame>, context: Option<&mut cef::V8Context>) {
 		let Some(context) = context else {
 			tracing::error!("No browser in RenderProcessHandlerImpl::on_context_created");

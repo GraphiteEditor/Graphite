@@ -49,12 +49,23 @@ impl Size for web_sys::HtmlCanvasElement {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ImageTexture {
+	#[serde(skip)]
 	#[cfg(feature = "wgpu")]
 	pub texture: Arc<wgpu::Texture>,
+	#[serde(skip)]
 	#[cfg(not(feature = "wgpu"))]
 	pub texture: (),
+}
+
+impl<'a> serde::Deserialize<'a> for ImageTexture {
+	fn deserialize<D>(_: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'a>,
+	{
+		unimplemented!("attempted to serialize a texture")
+	}
 }
 
 impl Hash for ImageTexture {

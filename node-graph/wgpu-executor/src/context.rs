@@ -33,7 +33,10 @@ impl Context {
 			.request_device(&wgpu::DeviceDescriptor {
 				label: None,
 				// #[cfg(not(feature = "passthrough"))]
+				#[cfg(target_arch = "wasm32")]
 				required_features: wgpu::Features::empty(),
+				#[cfg(not(target_arch = "wasm32"))]
+				required_features: wgpu::Features::PUSH_CONSTANTS,
 				// Currently disabled because not all backend support passthrough.
 				// TODO: reenable only when vulkan adapter is available
 				// #[cfg(feature = "passthrough")]
@@ -47,9 +50,9 @@ impl Context {
 
 		let info = adapter.get_info();
 		// skip this on LavaPipe temporarily
-		if info.vendor == 0x10005 {
-			return None;
-		}
+		// if info.vendor == 0x10005 {
+		// 	return None;
+		// }
 		Some(Self {
 			device: Arc::new(device),
 			queue: Arc::new(queue),

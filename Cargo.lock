@@ -338,6 +338,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc827186963e592360843fb5ba4b973e145841266c1357f7180c43526f2e5b61"
 
 [[package]]
+name = "bitcode"
+version = "0.6.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf300f4aa6e66f3bdff11f1236a88c622fe47ea814524792240b4d554d9858ee"
+dependencies = [
+ "arrayvec",
+ "bitcode_derive",
+ "bytemuck",
+ "glam",
+ "serde",
+]
+
+[[package]]
+name = "bitcode_derive"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42b6b4cb608b8282dc3b53d0f4c9ab404655d562674c682db7e6c0458cc83c23"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.104",
+]
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1817,14 +1841,22 @@ dependencies = [
 name = "graphite-desktop"
 version = "0.1.0"
 dependencies = [
+ "bitcode",
+ "bytemuck",
  "cef",
  "dirs",
  "futures",
+ "glam",
+ "graph-craft",
+ "graphite-editor",
  "include_dir",
+ "ron 0.10.1",
+ "serde_json",
  "thiserror 2.0.12",
  "tracing",
  "tracing-subscriber",
  "wgpu",
+ "wgpu-executor",
  "winit",
 ]
 
@@ -1850,7 +1882,7 @@ dependencies = [
  "num_enum",
  "once_cell",
  "preprocessor",
- "ron",
+ "ron 0.8.1",
  "serde",
  "serde_json",
  "specta",
@@ -1879,14 +1911,17 @@ dependencies = [
 name = "graphite-wasm"
 version = "0.0.0"
 dependencies = [
+ "bitcode",
  "graph-craft",
  "graphene-std",
  "graphite-editor",
  "js-sys",
  "log",
  "math-parser",
+ "ron 0.10.1",
  "serde",
  "serde-wasm-bindgen",
+ "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -4209,6 +4244,19 @@ dependencies = [
  "bitflags 2.9.1",
  "serde",
  "serde_derive",
+]
+
+[[package]]
+name = "ron"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "beceb6f7bf81c73e73aeef6dd1356d9a1b2b4909e1f0fc3e59b034f9572d7b7f"
+dependencies = [
+ "base64 0.22.1",
+ "bitflags 2.9.1",
+ "serde",
+ "serde_derive",
+ "unicode-ident",
 ]
 
 [[package]]

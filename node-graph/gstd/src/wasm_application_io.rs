@@ -170,10 +170,10 @@ async fn render_canvas(
 	render_config: RenderConfig,
 	data: impl GraphicElementRendered,
 	editor: &WasmEditorApi,
-	surface_handle: wgpu_executor::WgpuSurface,
+	surface_handle: Option<wgpu_executor::WgpuSurface>,
 	render_params: RenderParams,
 ) -> RenderOutputType {
-	use graphene_application_io::SurfaceFrame;
+	use graphene_application_io::{ImageTexture, SurfaceFrame};
 
 	let footprint = render_config.viewport;
 	let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() else {
@@ -194,17 +194,26 @@ async fn render_canvas(
 	if !data.contains_artboard() && !render_config.hide_artboards {
 		background = Color::WHITE;
 	}
-	exec.render_vello_scene(&scene, &surface_handle, footprint.resolution, &context, background)
-		.await
-		.expect("Failed to render Vello scene");
+	if let Some(surface_handle) = surface_handle {
+		exec.render_vello_scene(&scene, &surface_handle, footprint.resolution, &context, background)
+			.await
+			.expect("Failed to render Vello scene");
 
-	let frame = SurfaceFrame {
-		surface_id: surface_handle.window_id,
-		resolution: render_config.viewport.resolution,
-		transform: glam::DAffine2::IDENTITY,
-	};
+		let frame = SurfaceFrame {
+			surface_id: surface_handle.window_id,
+			resolution: render_config.viewport.resolution,
+			transform: glam::DAffine2::IDENTITY,
+		};
 
-	RenderOutputType::CanvasFrame(frame)
+		RenderOutputType::CanvasFrame(frame)
+	} else {
+		let texture = exec
+			.render_vello_scene_to_texture(&scene, footprint.resolution, &context, background)
+			.await
+			.expect("Failed to render Vello scene");
+
+		RenderOutputType::Texture(ImageTexture { texture: Arc::new(texture) })
+	}
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -316,11 +325,13 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	let data = data.eval(ctx.clone()).await;
 	let editor_api = editor_api.eval(None).await;
 
-	#[cfg(all(feature = "vello", not(test)))]
+	#[cfg(all(feature = "vello", not(test), target_arch = "wasm32"))]
 	let surface_handle = _surface_handle.eval(None).await;
+	#[cfg(not(target_arch = "wasm32"))]
+	let surface_handle: Option<wgpu_executor::WgpuSurface> = None;
 
 	let use_vello = editor_api.editor_preferences.use_vello();
-	#[cfg(all(feature = "vello", not(test)))]
+	#[cfg(all(feature = "vello", not(test), target_arch = "wasm32"))]
 	let use_vello = use_vello && surface_handle.is_some();
 
 	let mut metadata = RenderMetadata::default();
@@ -333,7 +344,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 			if use_vello && editor_api.application_io.as_ref().unwrap().gpu_executor().is_some() {
 				#[cfg(all(feature = "vello", not(test)))]
 				return RenderOutput {
-					data: render_canvas(render_config, data, editor_api, surface_handle.unwrap(), render_params).await,
+					data: render_canvas(render_config, data, editor_api, surface_handle, render_params).await,
 					metadata,
 				};
 				#[cfg(any(not(feature = "vello"), test))]

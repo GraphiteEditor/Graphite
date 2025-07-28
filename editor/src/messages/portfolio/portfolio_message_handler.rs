@@ -853,6 +853,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					});
 				}
 			}
+			PortfolioMessage::PollNodeGraphEvaluation => {
+				let _ = self.poll_node_graph_evaluation(responses);
+			}
 			PortfolioMessage::ToggleRulers => {
 				if let Some(document) = self.active_document_mut() {
 					document.rulers_visible = !document.rulers_visible;

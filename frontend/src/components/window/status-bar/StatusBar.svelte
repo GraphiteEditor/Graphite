@@ -49,6 +49,8 @@
 		height: 24px;
 		width: 100%;
 		flex: 0 0 auto;
+		background: var(--color-2-mildblack);
+		z-index: 1;
 
 		.hint-groups {
 			flex: 0 0 auto;

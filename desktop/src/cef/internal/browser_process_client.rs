@@ -1,6 +1,6 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_client_t, cef_base_ref_counted_t};
-use cef::{ImplClient, RenderHandler, WrapClient};
+use cef::{ImplClient, ImplProcessMessage, RenderHandler, WrapClient};
 
 use crate::cef::CefEventHandler;
 
@@ -26,6 +26,24 @@ impl<H: CefEventHandler> ImplClient for BrowserProcessClientImpl<H> {
 
 	fn get_raw(&self) -> *mut _cef_client_t {
 		self.object.cast()
+	}
+
+	fn on_process_message_received(
+		&self,
+		_browser: Option<&mut cef::Browser>,
+		_frame: Option<&mut cef::Frame>,
+		_source_process: cef::ProcessId,
+		message: Option<&mut cef::ProcessMessage>,
+	) -> ::std::os::raw::c_int {
+		let Some(message) = message else {
+			tracing::error!("No message in RenderProcessHandlerImpl::on_process_message_received");
+			return 1;
+		};
+
+		let pointer: *mut cef::sys::_cef_string_utf16_t = message.name().into();
+		let string_message = unsafe { super::utility::pointer_to_string(pointer) };
+		let _ = self.event_handler.send_message_to_editor(string_message);
+		0
 	}
 }
 

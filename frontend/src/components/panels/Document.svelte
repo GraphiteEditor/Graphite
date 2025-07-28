@@ -171,7 +171,6 @@
 
 	function canvasPointerDown(e: PointerEvent) {
 		const onEditbox = e.target instanceof HTMLDivElement && e.target.contentEditable;
-
 		if (!onEditbox) viewport?.setPointerCapture(e.pointerId);
 		if (window.document.activeElement instanceof HTMLElement) {
 			window.document.activeElement.blur();
@@ -519,7 +518,7 @@
 						<RulerInput origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Vertical" bind:this={rulerVertical} />
 					</LayoutCol>
 				{/if}
-				<LayoutCol class="viewport-container-inner" styles={{ cursor: canvasCursor }}>
+				<LayoutCol class="viewport-container-inner" styles={{ cursor: canvasCursor }} data-viewport-container>
 					{#if cursorEyedropper}
 						<EyedropperPreview
 							colorChoice={cursorEyedropperPreviewColorChoice}
@@ -592,7 +591,7 @@
 		.control-bar {
 			height: 32px;
 			flex: 0 0 auto;
-			margin: 0 4px;
+			padding: 0 4px;
 
 			.spacer {
 				min-width: 40px;
@@ -837,6 +836,33 @@
 					}
 				}
 			}
+		}
+	}
+
+	.panel.document-panel {
+		background: none;
+		box-shadow: 0 0 0 1000000px var(--color-2-mildblack);
+
+		.tab-bar {
+			background: var(--color-1-nearblack);
+		}
+
+		.panel-body {
+			background: none;
+
+			&:has(.empty-panel) {
+				background: var(--color-3-darkgray);
+			}
+
+			.control-bar,
+			.tool-shelf,
+			.ruler-or-scrollbar {
+				background: var(--color-3-darkgray);
+			}
+		}
+
+		.viewport {
+			visibility: hidden;
 		}
 	}
 </style>

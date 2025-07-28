@@ -9,7 +9,7 @@
 	import Workspace from "@graphite/components/window/workspace/Workspace.svelte";
 
 	let platform: ApplicationPlatform = "Web";
-	let maximized: true;
+	let maximized = true;
 </script>
 
 <LayoutCol class="main-window">

@@ -42,6 +42,13 @@
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
 
+	let className = "";
+	export { className as class };
+	export let classes: Record<string, boolean> = {};
+	let styleName = "";
+	export { styleName as style };
+	export let styles: Record<string, string | number | undefined> = {};
+
 	let tabElements: (LayoutRow | undefined)[] = [];
 
 	function platformModifiers(reservedKey: boolean): LayoutKeysGroup {
@@ -90,7 +97,7 @@
 	}
 </script>
 
-<LayoutCol class="panel" on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)}>
+<LayoutCol on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
 		<LayoutRow class="tab-group" scrollableX={true}>
 			{#each tabLabels as tabLabel, tabIndex}

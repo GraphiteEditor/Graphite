@@ -137,6 +137,7 @@
 		<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["content"] }} data-subdivision-name="content">
 			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["document"] }} data-subdivision-name="document">
 				<Panel
+					class="document-panel"
 					panelType={$portfolio.documents.length > 0 ? "Document" : undefined}
 					tabCloseButtons={true}
 					tabMinWidths={true}
