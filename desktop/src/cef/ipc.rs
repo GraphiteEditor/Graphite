@@ -94,17 +94,19 @@ pub(crate) struct UnpackedMessage<'a> {
 	pub(crate) message_type: MessageType,
 	pub(crate) data: &'a [u8],
 }
-pub(crate) trait UnpackMessage {
-	fn unpack(&'_ self) -> Option<UnpackedMessage<'_>>;
-}
-impl UnpackMessage for Option<&mut cef::ProcessMessage> {
-	fn unpack(&'_ self) -> Option<UnpackedMessage<'_>> {
-		let Some(message) = self else { return None };
-		message.unpack()
-	}
+
+trait Sealed {}
+impl Sealed for cef::ProcessMessage {}
+#[allow(private_bounds)]
+pub(crate) trait UnpackMessage: Sealed {
+	/// # Safety
+	///
+	/// The caller must ensure that the message is valid.
+	/// Message should come from cef.
+	unsafe fn unpack(&self) -> Option<UnpackedMessage<'_>>;
 }
 impl UnpackMessage for cef::ProcessMessage {
-	fn unpack(&'_ self) -> Option<UnpackedMessage<'_>> {
+	unsafe fn unpack(&self) -> Option<UnpackedMessage<'_>> {
 		let pointer: *mut cef::sys::_cef_string_utf16_t = self.name().into();
 		let message = unsafe { super::utility::pointer_to_string(pointer) };
 		let Ok(message_type) = message.try_into() else {

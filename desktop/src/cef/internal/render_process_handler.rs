@@ -26,7 +26,8 @@ impl ImplRenderProcessHandler for RenderProcessHandlerImpl {
 		_source_process: cef::ProcessId,
 		message: Option<&mut cef::ProcessMessage>,
 	) -> ::std::os::raw::c_int {
-		match message.unpack() {
+		let unpacked_message = unsafe { message.and_then(|m| m.unpack()) };
+		match unpacked_message {
 			Some(UnpackedMessage {
 				message_type: MessageType::SendToJS,
 				data,
