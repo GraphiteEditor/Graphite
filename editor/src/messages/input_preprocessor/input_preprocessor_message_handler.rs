@@ -34,7 +34,6 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext> f
 					self.viewport_bounds = bounds;
 
 					responses.add(NavigationMessage::CanvasPan { delta: DVec2::ZERO });
-					responses.add(DeferMessage::TriggerGraphRun);
 					responses.add(NodeGraphMessage::SetGridAlignedEdges);
 				}
 			}

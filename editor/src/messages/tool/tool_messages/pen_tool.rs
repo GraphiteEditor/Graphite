@@ -1721,9 +1721,9 @@ impl Fsm for PenToolFsmState {
 					let next_point = tool_data.next_point;
 					let start = latest_point.id;
 
-					if let Some(layer) = layer {
-						let mut vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
-
+					if let Some(layer) = layer
+						&& let Some(mut vector_data) = document.network_interface.compute_modified_vector(layer)
+					{
 						let closest_point = vector_data.extendable_points(preferences.vector_meshes).filter(|&id| id != start).find(|&id| {
 							vector_data.point_domain.position_from_id(id).map_or(false, |pos| {
 								let dist_sq = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
