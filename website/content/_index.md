@@ -279,11 +279,11 @@ Presently, Graphite is a lightweight offline web app with features primarily ori
 
 Where's the download? The web app is [currently live](https://editor.graphite.rs) and desktop apps for Windows, Mac, and Linux should be available in 2025.
 
-Graphite is designed principally as a professional desktop application that is also accessible in a browser for quick, casual usage. It's built for speed with (nearly) no JavaScript. And regardless of platform, your work runs locally and privately on your own hardware. There is no server.
+Graphite is designed principally as a professional desktop application that is also accessible in a browser for quick access from anywhere. It's built for speed with (nearly) no JavaScript. And regardless of platform, it runs locally and privately on your own hardware— there is no server.
 
 <a href="https://github.com/GraphiteEditor/Graphite/issues/2535" target="_blank">Engineering the tech</a> for a native app distributed across three new platforms takes extra time. That's why supporting the web platform, which keeps up-to-date and reaches all devices, has been the initial target. For now, you can <a href="https://support.google.com/chrome/answer/9658361" target="_blank">install the app as a PWA</a> for a desktop-like experience.
 
-Once it's ready to shine, Graphite's code architecture is structured to deliver native performance for your graphically intensive workloads on desktop platforms and very low overhead on the web thanks to WebAssembly and WebGPU, new high-performance browser technologies.
+Graphite's code architecture is structured to deliver true native performance for your graphically intensive workloads on desktop platforms and very low overhead on the web thanks to WebAssembly and WebGPU, new high-performance browser technologies.
 
 </div>
 
@@ -298,9 +298,9 @@ Once it's ready to shine, Graphite's code architecture is structured to deliver 
 
 <h2 class="heart">Support the mission</h2>
 
-Free software doesn't grow on trees! Chip in your share of the (very real) development costs so you're not leaving others to pick up the tab. Becoming a member (or giving a one-time donation) lets you help maintain Graphite's sustainability and independence.
+Free software doesn't grow on trees! Chip in your share of the (very real) development costs so you're not leaving others to pick up your tab. In just a few clicks, becoming a member (or giving a one-time donation) lets you help maintain Graphite's sustainability and independence.
 
-<a href="/donate" class="button arrow">Become a member</a>
+<a href="/donate" class="button arrow">Donate now</a>
 
 </div>
 
@@ -317,7 +317,7 @@ Free software doesn't grow on trees! Chip in your share of the (very real) devel
 
 ---
 
-Graphite is the first and only graphic design package built for procedural editing — where everything you make is nondestructive.
+Graphite is the first and only comprehensive graphic design suite built for procedural editing — where everything you make is nondestructive.
 
 </div>
 
