@@ -9,6 +9,8 @@ pub enum Message {
 	#[child]
 	Animation(AnimationMessage),
 	#[child]
+	AppWindow(AppWindowMessage),
+	#[child]
 	Broadcast(BroadcastMessage),
 	#[child]
 	Debug(DebugMessage),

@@ -349,6 +349,21 @@ export class TriggerIndexedDbRemoveDocument extends JsMessage {
 	documentId!: string;
 }
 
+export type AppWindowPlatform = "Web" | "Windows" | "Mac" | "Linux";
+
+export class UpdatePlatform extends JsMessage {
+	@Transform(({ value }: { value: AppWindowPlatform }) => value)
+	readonly platform!: AppWindowPlatform;
+}
+
+export class UpdateMaximized extends JsMessage {
+	readonly maximized!: boolean;
+}
+
+export class UpdateViewportHolePunch extends JsMessage {
+	readonly active!: boolean;
+}
+
 export class UpdateInputHints extends JsMessage {
 	@Type(() => HintInfo)
 	readonly hintData!: HintData;
@@ -1670,29 +1685,32 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateEyedropperSamplingState,
 	UpdateGraphFadeArtwork,
 	UpdateGraphViewOverlay,
-	UpdateSpreadsheetState,
 	UpdateImportReorderIndex,
 	UpdateImportsExports,
 	UpdateInputHints,
 	UpdateInSelectedNetwork,
+	UpdateLayersPanelBottomBarLayout,
 	UpdateLayersPanelControlBarLeftLayout,
 	UpdateLayersPanelControlBarRightLayout,
-	UpdateLayersPanelBottomBarLayout,
 	UpdateLayerWidths,
+	UpdateMaximized,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
-	UpdateNodeGraphNodes,
-	UpdateVisibleNodes,
-	UpdateNodeGraphWires,
-	UpdateNodeGraphTransform,
 	UpdateNodeGraphControlBarLayout,
+	UpdateNodeGraphNodes,
 	UpdateNodeGraphSelection,
+	UpdateNodeGraphTransform,
+	UpdateNodeGraphWires,
 	UpdateNodeThumbnail,
 	UpdateOpenDocumentsList,
+	UpdatePlatform,
 	UpdatePropertyPanelSectionsLayout,
 	UpdateSpreadsheetLayout,
+	UpdateSpreadsheetState,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
+	UpdateViewportHolePunch,
+	UpdateVisibleNodes,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,
 } as const;

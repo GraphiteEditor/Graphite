@@ -137,6 +137,7 @@
 		<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["content"] }} data-subdivision-name="content">
 			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["document"] }} data-subdivision-name="document">
 				<Panel
+					class="document-panel"
 					panelType={$portfolio.documents.length > 0 ? "Document" : undefined}
 					tabCloseButtons={true}
 					tabMinWidths={true}
@@ -176,8 +177,9 @@
 		flex: 1 1 100%;
 
 		.workspace-grid-subdivision {
-			min-height: 28px;
+			position: relative;
 			flex: 1 1 0;
+			min-height: 28px;
 
 			&.folded {
 				flex-grow: 0;
@@ -195,6 +197,16 @@
 			&.layout-col {
 				cursor: ew-resize;
 			}
+		}
+
+		// Needed for the viewport hole punch on desktop
+		.viewport-hole-punch & .workspace-grid-subdivision:has(.panel.document-panel)::after {
+			content: "";
+			position: absolute;
+			inset: 6px;
+			border-radius: 6px;
+			box-shadow: 0 0 0 calc(100vw + 100vh) var(--color-2-mildblack);
+			z-index: -1;
 		}
 	}
 </style>

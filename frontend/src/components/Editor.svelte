@@ -9,6 +9,7 @@
 	import { createLocalizationManager } from "@graphite/io-managers/localization";
 	import { createPanicManager } from "@graphite/io-managers/panic";
 	import { createPersistenceManager } from "@graphite/io-managers/persistence";
+	import { createAppWindowState } from "@graphite/state-providers/app-window";
 	import { createDialogState } from "@graphite/state-providers/dialog";
 	import { createDocumentState } from "@graphite/state-providers/document";
 	import { createFontsState } from "@graphite/state-providers/fonts";
@@ -36,6 +37,8 @@
 	setContext("nodeGraph", nodeGraph);
 	let portfolio = createPortfolioState(editor);
 	setContext("portfolio", portfolio);
+	let appWindow = createAppWindowState(editor);
+	setContext("appWindow", appWindow);
 
 	// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
 	createClipboardManager(editor);
@@ -58,10 +61,11 @@
 	});
 </script>
 
-<MainWindow />
+<MainWindow platform={$appWindow.platform} maximized={$appWindow.maximized} viewportHolePunch={$appWindow.viewportHolePunch} />
 
 <style lang="scss" global>
 	// Disable the spinning loading indicator
+	body::before,
 	body::after {
 		content: none !important;
 	}
@@ -206,8 +210,14 @@
 		height: 100%;
 		background: var(--color-2-mildblack);
 		overscroll-behavior: none;
-		-webkit-user-select: none; // Required as of Safari 15.0 (Graphite's minimum version) through the latest release
+		-webkit-user-select: none; // Still required by Safari as of 2025
 		user-select: none;
+	}
+
+	// Needed for the viewport hole punch on desktop
+	html:has(body > .viewport-hole-punch),
+	body:has(> .viewport-hole-punch) {
+		background: none;
 	}
 
 	// The default value of `auto` from the CSS spec is a footgun with flexbox layouts:
