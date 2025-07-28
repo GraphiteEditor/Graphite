@@ -3375,7 +3375,7 @@ impl NodeNetworkInterface {
 		self.selected_nodes()
 			.0
 			.iter()
-			.filter(|node| self.is_layer(&node, &[]) && !self.is_layer(&node, &[]))
+			.filter(|node| self.is_layer(&node, &[]) && !self.is_locked(&node, &[]))
 			.filter_map(|layer| self.document_metadata.bounding_box_viewport(LayerNodeIdentifier::new(*layer, self)))
 			.reduce(Quad::combine_bounds)
 	}
