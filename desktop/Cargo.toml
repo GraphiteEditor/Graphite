@@ -28,4 +28,5 @@ cef = { workspace = true }
 include_dir = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing = { workspace = true }
-dirs = {workspace = true}
+dirs = { workspace = true }
+bytemuck = { workspace = true }

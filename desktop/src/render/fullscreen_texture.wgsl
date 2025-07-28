@@ -25,12 +25,25 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 	return out;
 }
 
+struct Constants {
+    viewport_offset: vec2<f32>,
+};
+
+var<push_constant> constants: Constants;
+
 @group(0) @binding(0)
-var t_diffuse: texture_2d<f32>;
+var t_ui: texture_2d<f32>;
 @group(0) @binding(1)
+var t_viewport: texture_2d<f32>;
+@group(0) @binding(2)
 var s_diffuse: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-	return textureSample(t_diffuse, s_diffuse, in.tex_coords);
+	let ui_color: vec4<f32> = textureSample(t_ui, s_diffuse, in.tex_coords);
+	if (ui_color.a == 1.0) {
+		return ui_color;
+	}
+	let viewport_color: vec4<f32> = textureSample(t_viewport, s_diffuse, in.tex_coords - constants.viewport_offset);
+	return ui_color * ui_color.a + viewport_color * (1.0 - ui_color.a);
 }

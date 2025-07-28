@@ -1834,6 +1834,7 @@ dependencies = [
 name = "graphite-desktop"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "cef",
  "dirs",
  "futures",

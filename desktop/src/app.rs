@@ -83,7 +83,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 		match event {
 			CustomEvent::UiUpdate(texture) => {
 				if let Some(graphics_state) = self.graphics_state.as_mut() {
-					graphics_state.bind_texture(&texture);
+					graphics_state.bind_ui_texture(&texture);
 					graphics_state.resize(texture.width(), texture.height());
 				}
 				if let Some(window) = &self.window {
