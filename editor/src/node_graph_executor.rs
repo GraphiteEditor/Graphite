@@ -384,9 +384,6 @@ impl NodeGraphExecutor {
 				return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
 			}
 		};
-		// responses.add(Message::EndBuffer {
-		// 	render_metadata: render_output_metadata,
-		// });
 		responses.add(DeferMessage::TriggerGraphRun);
 		let graphene_std::renderer::RenderMetadata {
 			upstream_footprints: footprints,
