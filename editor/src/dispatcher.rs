@@ -1,4 +1,5 @@
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
+use crate::messages::defer::DeferMessageContext;
 use crate::messages::dialog::DialogMessageContext;
 use crate::messages::layout::layout_message_handler::LayoutMessageContext;
 use crate::messages::prelude::*;
@@ -133,7 +134,13 @@ impl Dispatcher {
 					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Defer(message) => {
-					self.message_handlers.defer_message_handler.process_message(message, &mut queue, ());
+					self.message_handlers.defer_message_handler.process_message(
+						message,
+						&mut queue,
+						DeferMessageContext {
+							viewport_bounds: self.message_handlers.input_preprocessor_message_handler.viewport_bounds,
+						},
+					);
 				}
 				Message::Dialog(message) => {
 					let context = DialogMessageContext {

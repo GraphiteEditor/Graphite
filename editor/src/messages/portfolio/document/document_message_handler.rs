@@ -1441,9 +1441,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				} else {
 					self.network_interface.document_bounds_document_space(true)
 				};
-				if bounds.is_some() {
-					responses.add(DeferMessage::TriggerViewportReady);
-				} else {
+				if bounds.is_none() {
 					// If we don't have bounds yet, we need wait until the node graph has run once more
 					responses.add(DeferMessage::AfterGraphRun {
 						messages: vec![DocumentMessage::PTZUpdate.into()],

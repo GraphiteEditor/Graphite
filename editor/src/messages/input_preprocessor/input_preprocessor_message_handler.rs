@@ -17,6 +17,7 @@ pub struct InputPreprocessorMessageHandler {
 	pub time: u64,
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
+	// The viewport bounds are loaded on the browser callback, not when the editor is initialized.
 	pub viewport_bounds: ViewportBounds,
 }
 
@@ -32,9 +33,7 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext> f
 				for bounds in bounds_of_viewports {
 					// TODO: Extend this to multiple viewports instead of setting it to the value of this last loop iteration
 					self.viewport_bounds = bounds;
-
-					responses.add(NavigationMessage::CanvasPan { delta: DVec2::ZERO });
-					responses.add(NodeGraphMessage::SetGridAlignedEdges);
+					responses.add(DeferMessage::TriggerViewportReady);
 				}
 			}
 			InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys } => {
