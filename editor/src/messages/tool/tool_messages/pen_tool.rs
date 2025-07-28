@@ -1257,10 +1257,10 @@ impl PenToolData {
 		self.prior_segments = None;
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
-		// This causes the following message to be run only after the next graph evaluation runs and the transforms are updated
-		responses.add(Message::StartBuffer);
 		// It is necessary to defer this until the transform of the layer can be accurately computed (quite hacky)
-		responses.add(PenToolMessage::AddPointLayerPosition { layer, viewport });
+		responses.add(DeferMessage::AfterGraphRun {
+			messages: vec![PenToolMessage::AddPointLayerPosition { layer, viewport }.into()],
+		});
 	}
 
 	/// Perform extension of an existing path

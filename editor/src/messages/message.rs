@@ -1,5 +1,4 @@
 use crate::messages::prelude::*;
-use graphene_std::renderer::RenderMetadata;
 use graphite_proc_macros::*;
 
 #[impl_message]
@@ -14,6 +13,8 @@ pub enum Message {
 	Broadcast(BroadcastMessage),
 	#[child]
 	Debug(DebugMessage),
+	#[child]
+	Defer(DeferMessage),
 	#[child]
 	Dialog(DialogMessage),
 	#[child]
@@ -39,10 +40,6 @@ pub enum Message {
 	NoOp,
 	Batched {
 		messages: Box<[Message]>,
-	},
-	StartBuffer,
-	EndBuffer {
-		render_metadata: RenderMetadata,
 	},
 }
 

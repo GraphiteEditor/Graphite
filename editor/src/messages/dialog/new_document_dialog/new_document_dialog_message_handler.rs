@@ -24,17 +24,23 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 
 				let create_artboard = !self.infinite && self.dimensions.x > 0 && self.dimensions.y > 0;
 				if create_artboard {
-					responses.add(Message::StartBuffer);
-					responses.add(GraphOperationMessage::NewArtboard {
-						id: NodeId::new(),
-						artboard: graphene_std::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(DeferMessage::AfterGraphRun {
+						messages: vec![
+							GraphOperationMessage::NewArtboard {
+								id: NodeId::new(),
+								artboard: graphene_std::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
+							}
+							.into(),
+						],
 					});
 				}
 
 				// TODO: Figure out how to get StartBuffer to work here so we can delete this and use `DocumentMessage::ZoomCanvasToFitAll` instead
 				// Currently, it is necessary to use `FrontendMessage::TriggerDelayedZoomCanvasToFitAll` rather than `DocumentMessage::ZoomCanvasToFitAll` because the size of the viewport is not yet populated
-				responses.add(Message::StartBuffer);
-				responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
+				responses.add(DeferMessage::AfterViewportResize {
+					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+				});
 				responses.add(DocumentMessage::DeselectAllLayers);
 			}
 		}

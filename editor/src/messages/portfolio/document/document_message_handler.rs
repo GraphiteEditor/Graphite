@@ -1866,14 +1866,14 @@ impl DocumentMessageHandler {
 
 		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
 
-		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
-		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-		responses.add(NodeGraphMessage::SelectedNodesUpdated);
-		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
 		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
-		responses.add(NodeGraphMessage::UnloadWires);
-		responses.add(NodeGraphMessage::SetGridAlignedEdges);
-		responses.add(Message::StartBuffer);
+		responses.push_front(NodeGraphMessage::UnloadWires.into());
+		responses.push_front(NodeGraphMessage::SetGridAlignedEdges.into());
+
+		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+		responses.push_front(NodeGraphMessage::ForceRunDocumentGraph.into());
+		responses.push_front(NodeGraphMessage::SelectedNodesUpdated.into());
+		responses.push_front(PortfolioMessage::UpdateOpenDocumentsList.into());
 		Some(previous_network)
 	}
 	pub fn redo_with_history(&mut self, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {

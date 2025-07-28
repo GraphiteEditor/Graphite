@@ -384,9 +384,26 @@ impl NodeGraphExecutor {
 				return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
 			}
 		};
-		responses.add(Message::EndBuffer {
-			render_metadata: render_output_metadata,
+		// responses.add(Message::EndBuffer {
+		// 	render_metadata: render_output_metadata,
+		// });
+		responses.add(DeferMessage::TriggerGraphRun);
+		let graphene_std::renderer::RenderMetadata {
+			upstream_footprints: footprints,
+			local_transforms,
+			first_instance_source_id,
+			click_targets,
+			clip_targets,
+		} = render_output_metadata;
+
+		// Run these update state messages immediately
+		responses.add(DocumentMessage::UpdateUpstreamTransforms {
+			upstream_footprints: footprints,
+			local_transforms,
+			first_instance_source_id,
 		});
+		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
+		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
 		responses.add(DocumentMessage::RenderScrollbars);
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);

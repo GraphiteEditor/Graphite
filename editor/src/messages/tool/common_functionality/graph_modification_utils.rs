@@ -153,8 +153,9 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 	});
 
 	responses.add(NodeGraphMessage::RunDocumentGraph);
-	responses.add(Message::StartBuffer);
-	responses.add(PenToolMessage::RecalculateLatestPointsPosition);
+	responses.add(DeferMessage::AfterGraphRun {
+		messages: vec![PenToolMessage::RecalculateLatestPointsPosition.into()],
+	});
 }
 
 /// Merge the `first_endpoint` with `second_endpoint`.

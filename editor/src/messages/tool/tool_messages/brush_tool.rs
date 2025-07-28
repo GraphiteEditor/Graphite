@@ -383,8 +383,9 @@ impl Fsm for BrushToolFsmState {
 				else {
 					new_brush_layer(document, responses);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
-					responses.add(Message::StartBuffer);
-					responses.add(BrushToolMessage::DragStart);
+					responses.add(DeferMessage::AfterGraphRun {
+						messages: vec![BrushToolMessage::DragStart.into()],
+					});
 					BrushToolFsmState::Ready
 				}
 			}
