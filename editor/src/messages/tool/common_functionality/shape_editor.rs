@@ -1490,6 +1490,23 @@ impl ShapeState {
 		}
 	}
 
+	pub fn delete_hanging_selected_anchors(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		for (&layer, state) in &self.selected_shape_state {
+			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
+				continue;
+			};
+
+			for point in &state.selected_points {
+				if let ManipulatorPointId::Anchor(anchor) = point {
+					if vector_data.all_connected(*anchor).all(|segment| state.is_segment_selected(segment.segment)) {
+						let modification_type = VectorModificationType::RemovePoint { id: *anchor };
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					}
+				}
+			}
+		}
+	}
+
 	pub fn break_path_at_selected_point(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };

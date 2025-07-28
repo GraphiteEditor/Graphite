@@ -2520,8 +2520,17 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::Delete) => {
 				// Delete the selected points and clean up overlays
 				responses.add(DocumentMessage::AddTransaction);
+				let point_mode = tool_options.path_editing_mode.point_editing_mode;
+				let segment_mode = tool_options.path_editing_mode.segment_editing_mode;
+
+				let only_segment_mode = segment_mode && !point_mode;
+
 				shape_editor.delete_selected_segments(document, responses);
-				shape_editor.delete_selected_points(document, responses);
+				if only_segment_mode {
+					shape_editor.delete_hanging_selected_anchors(document, responses);
+				} else {
+					shape_editor.delete_selected_points(document, responses);
+				}
 				responses.add(PathToolMessage::SelectionChanged);
 
 				PathToolFsmState::Ready
