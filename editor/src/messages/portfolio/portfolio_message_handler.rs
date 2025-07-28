@@ -568,8 +568,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: all_new_ids });
-						responses.add(Message::StartBuffer);
-						responses.add(PortfolioMessage::CenterPastedLayers { layers });
+						responses.add(DeferMessage::AfterGraphRun {
+							messages: vec![PortfolioMessage::CenterPastedLayers { layers }.into()],
+						});
 					}
 				}
 			}
@@ -701,13 +702,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				if create_document {
 					// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
-					responses.add(Message::StartBuffer);
-					responses.add(DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true });
+					responses.add(DeferMessage::AfterGraphRun {
+						messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
+					});
 
-					// TODO: Figure out how to get StartBuffer to work here so we can delete this and use `DocumentMessage::ZoomCanvasToFitAll` instead
-					// Currently, it is necessary to use `FrontendMessage::TriggerDelayedZoomCanvasToFitAll` rather than `DocumentMessage::ZoomCanvasToFitAll` because the size of the viewport is not yet populated
-					responses.add(Message::StartBuffer);
-					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
+					responses.add(DeferMessage::AfterViewportResize {
+						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+					});
 				}
 			}
 			PortfolioMessage::PasteSvg {
@@ -733,13 +734,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				if create_document {
 					// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
-					responses.add(Message::StartBuffer);
-					responses.add(DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true });
+					responses.add(DeferMessage::AfterGraphRun {
+						messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
+					});
 
-					// TODO: Figure out how to get StartBuffer to work here so we can delete this and use `DocumentMessage::ZoomCanvasToFitAll` instead
-					// Currently, it is necessary to use `FrontendMessage::TriggerDelayedZoomCanvasToFitAll` rather than `DocumentMessage::ZoomCanvasToFitAll` because the size of the viewport is not yet populated
-					responses.add(Message::StartBuffer);
-					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
+					responses.add(DeferMessage::AfterViewportResize {
+						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+					});
 				}
 			}
 			PortfolioMessage::PrevDocument => {
@@ -1019,9 +1020,7 @@ impl PortfolioMessageHandler {
 				/text>"#
 				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
 				.to_string();
-			responses.add(Message::EndBuffer {
-				render_metadata: graphene_std::renderer::RenderMetadata::default(),
-			});
+			responses.add(DeferMessage::TriggerGraphRun);
 			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
 		}
 		result

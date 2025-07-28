@@ -5,7 +5,6 @@ use crate::messages::prelude::*;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {
-	buffered_queue: Option<Vec<VecDeque<Message>>>,
 	message_queues: Vec<VecDeque<Message>>,
 	pub responses: Vec<FrontendMessage>,
 	pub message_handlers: DispatcherMessageHandlers,
@@ -17,6 +16,7 @@ pub struct DispatcherMessageHandlers {
 	app_window_message_handler: AppWindowMessageHandler,
 	broadcast_message_handler: BroadcastMessageHandler,
 	debug_message_handler: DebugMessageHandler,
+	defer_message_handler: DeferMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
 	globals_message_handler: GlobalsMessageHandler,
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
@@ -91,14 +91,6 @@ impl Dispatcher {
 
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T, process_after_all_current: bool) {
 		let message = message.into();
-		// Add all additional messages to the buffer if it exists (except from the end buffer message)
-		if !matches!(message, Message::EndBuffer { .. }) {
-			if let Some(buffered_queue) = &mut self.buffered_queue {
-				Self::schedule_execution(buffered_queue, true, [message]);
-
-				return;
-			}
-		}
 
 		// If we are not maintaining the buffer, simply add to the current queue
 		Self::schedule_execution(&mut self.message_queues, process_after_all_current, [message]);
@@ -136,6 +128,9 @@ impl Dispatcher {
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
 				Message::Debug(message) => {
 					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
+				}
+				Message::Defer(message) => {
+					self.message_handlers.defer_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Dialog(message) => {
 					let context = DialogMessageContext {
@@ -231,37 +226,6 @@ impl Dispatcher {
 				Message::NoOp => {}
 				Message::Batched { messages } => {
 					messages.iter().for_each(|message| self.handle_message(message.to_owned(), false));
-				}
-				Message::StartBuffer => {
-					self.buffered_queue = Some(std::mem::take(&mut self.message_queues));
-				}
-				Message::EndBuffer { render_metadata } => {
-					// Assign the message queue to the currently buffered queue
-					if let Some(buffered_queue) = self.buffered_queue.take() {
-						self.cleanup_queues(false);
-						assert!(self.message_queues.is_empty(), "message queues are always empty when ending a buffer");
-						self.message_queues = buffered_queue;
-					};
-
-					let graphene_std::renderer::RenderMetadata {
-						upstream_footprints: footprints,
-						local_transforms,
-						first_instance_source_id,
-						click_targets,
-						clip_targets,
-					} = render_metadata;
-
-					// Run these update state messages immediately
-					let messages = [
-						DocumentMessage::UpdateUpstreamTransforms {
-							upstream_footprints: footprints,
-							local_transforms,
-							first_instance_source_id,
-						},
-						DocumentMessage::UpdateClickTargets { click_targets },
-						DocumentMessage::UpdateClipTargets { clip_targets },
-					];
-					Self::schedule_execution(&mut self.message_queues, false, messages.map(Message::from));
 				}
 			}
 
