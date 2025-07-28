@@ -43,7 +43,7 @@ impl Context {
 				trace: wgpu::Trace::Off,
 			})
 			.await
-			.unwrap();
+			.ok()?;
 
 		let info = adapter.get_info();
 		// skip this on LavaPipe temporarily
