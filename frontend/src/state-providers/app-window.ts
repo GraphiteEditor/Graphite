@@ -10,7 +10,7 @@ export function createAppWindowState(editor: Editor) {
 	const { subscribe, update } = writable({
 		platform: "Web" as AppWindowPlatform,
 		maximized: false,
-		viewportHolePunch: false,
+		viewportHolePunch: true,
 	});
 
 	// Set up message subscriptions on creation
