@@ -1,6 +1,6 @@
-use cef::rc::{Rc, RcImpl};
-use cef::sys::{_cef_render_process_handler_t, cef_base_ref_counted_t, cef_render_process_handler_t};
-use cef::{ImplRenderProcessHandler, WrapRenderProcessHandler};
+use cef::rc::{ConvertReturnValue, Rc, RcImpl};
+use cef::sys::{_cef_render_process_handler_t, cef_base_ref_counted_t, cef_render_process_handler_t, cef_v8_propertyattribute_t, cef_v8_value_create_array_buffer_with_copy};
+use cef::{CefString, ImplFrame, ImplRenderProcessHandler, ImplV8Context, ImplV8Value, V8Value, WrapRenderProcessHandler, v8_context_get_entered_context};
 
 use crate::cef::ipc::{MessageType, UnpackMessage, UnpackedMessage};
 
@@ -17,7 +17,7 @@ impl ImplRenderProcessHandler for RenderProcessHandlerImpl {
 	fn on_process_message_received(
 		&self,
 		_browser: Option<&mut cef::Browser>,
-		_frame: Option<&mut cef::Frame>,
+		frame: Option<&mut cef::Frame>,
 		_source_process: cef::ProcessId,
 		message: Option<&mut cef::ProcessMessage>,
 	) -> ::std::os::raw::c_int {
@@ -25,7 +25,43 @@ impl ImplRenderProcessHandler for RenderProcessHandlerImpl {
 			Some(UnpackedMessage {
 				message_type: MessageType::SendToJS,
 				data,
-			}) => {}
+			}) => {
+				let Some(frame) = frame else {
+					tracing::error!("Frame is not available");
+					return 0;
+				};
+				let Some(context) = frame.v8_context() else {
+					tracing::error!("V8 context is not available");
+					return 0;
+				};
+				if context.enter() == 0 {
+					tracing::error!("Failed to enter V8 context");
+					return 0;
+				}
+				let mut value: V8Value = unsafe { cef_v8_value_create_array_buffer_with_copy(data.as_ptr() as *mut std::ffi::c_void, data.len()) }.wrap_result();
+				let Some(global) = context.global() else {
+					tracing::error!("Global object is not available in V8 context");
+					return 0;
+				};
+
+				let function_name = "receiveNativeMessage";
+				let property_name = "receiveNativeMessageData";
+
+				let function_call = format!("window.{function_name}(window.{property_name})");
+
+				global.set_value_bykey(
+					Some(&CefString::from(property_name)),
+					Some(&mut value),
+					cef_v8_propertyattribute_t::V8_PROPERTY_ATTRIBUTE_READONLY.wrap_result(),
+				);
+
+				frame.execute_java_script(Some(&CefString::from(function_call.as_str())), None, 0);
+
+				if context.exit() == 0 {
+					tracing::error!("Failed to exit V8 context");
+					return 0;
+				}
+			}
 			_ => {
 				tracing::error!("Unexpected message type received in render process");
 				return 0;
