@@ -1,10 +1,9 @@
 use crate::transform::Footprint;
+pub use graphene_core_shaders::context::{ArcCtx, Ctx};
 use std::any::Any;
 use std::borrow::Borrow;
 use std::panic::Location;
 use std::sync::Arc;
-
-pub trait Ctx: Clone + Send {}
 
 pub trait ExtractFootprint {
 	#[track_caller]
@@ -51,9 +50,6 @@ pub enum VarArgsResult {
 	IndexOutOfBounds,
 	NoVarArgs,
 }
-impl<T: Ctx> Ctx for Option<T> {}
-impl<T: Ctx + Sync> Ctx for &T {}
-impl Ctx for () {}
 impl Ctx for Footprint {}
 impl ExtractFootprint for () {
 	fn try_footprint(&self) -> Option<&Footprint> {
@@ -157,7 +153,7 @@ impl<T: CloneVarArgs + Sync> CloneVarArgs for Arc<T> {
 }
 
 impl Ctx for ContextImpl<'_> {}
-impl Ctx for Arc<OwnedContextImpl> {}
+impl ArcCtx for OwnedContextImpl {}
 
 impl ExtractFootprint for ContextImpl<'_> {
 	fn try_footprint(&self) -> Option<&Footprint> {

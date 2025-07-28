@@ -20,7 +20,7 @@ use graphene_std::raster::{
 	SelectiveColorChoice,
 };
 use graphene_std::raster_types::{CPU, GPU, RasterDataTable};
-use graphene_std::text::Font;
+use graphene_std::text::{Font, TextAlign};
 use graphene_std::transform::{Footprint, ReferencePoint, Transform};
 use graphene_std::vector::VectorDataTable;
 use graphene_std::vector::misc::GridType;
@@ -223,6 +223,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<StrokeAlign>() => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<PaintOrder>() => enum_choice::<PaintOrder>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<ArcType>() => enum_choice::<ArcType>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<TextAlign>() => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<MergeByDistanceAlgorithm>() => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<PointSpacingType>() => enum_choice::<PointSpacingType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<BooleanOperation>() => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
@@ -1938,7 +1939,7 @@ pub mod choice {
 	use super::ParameterWidgetsInfo;
 	use crate::messages::tool::tool_messages::tool_prelude::*;
 	use graph_craft::document::value::TaggedValue;
-	use graphene_std::registry::{ChoiceTypeStatic, ChoiceWidgetHint};
+	use graphene_std::choice_type::{ChoiceTypeStatic, ChoiceWidgetHint};
 	use std::marker::PhantomData;
 
 	pub trait WidgetFactory {
@@ -1998,10 +1999,7 @@ pub mod choice {
 						.map(|(item, metadata)| {
 							let updater = updater_factory();
 							let committer = committer_factory();
-							MenuListEntry::new(metadata.name.as_ref())
-								.label(metadata.label.as_ref())
-								.on_update(move |_| updater(item))
-								.on_commit(committer)
+							MenuListEntry::new(metadata.name).label(metadata.label).on_update(move |_| updater(item)).on_commit(committer)
 						})
 						.collect()
 				})
@@ -2020,11 +2018,11 @@ pub mod choice {
 				.map(|(item, var_meta)| {
 					let updater = updater_factory();
 					let committer = committer_factory();
-					let entry = RadioEntryData::new(var_meta.name.as_ref()).on_update(move |_| updater(item)).on_commit(committer);
-					match (var_meta.icon.as_deref(), var_meta.docstring.as_deref()) {
-						(None, None) => entry.label(var_meta.label.as_ref()),
-						(None, Some(doc)) => entry.label(var_meta.label.as_ref()).tooltip(doc),
-						(Some(icon), None) => entry.icon(icon).tooltip(var_meta.label.as_ref()),
+					let entry = RadioEntryData::new(var_meta.name).on_update(move |_| updater(item)).on_commit(committer);
+					match (var_meta.icon, var_meta.docstring) {
+						(None, None) => entry.label(var_meta.label),
+						(None, Some(doc)) => entry.label(var_meta.label).tooltip(doc),
+						(Some(icon), None) => entry.icon(icon).tooltip(var_meta.label),
 						(Some(icon), Some(doc)) => entry.icon(icon).tooltip(format!("{}\n\n{}", var_meta.label, doc)),
 					}
 				})
