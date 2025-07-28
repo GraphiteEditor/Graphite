@@ -32,7 +32,8 @@ impl<H: CefEventHandler> ImplClient for BrowserProcessClientImpl<H> {
 			Some(UnpackedMessage {
 				message_type: MessageType::SendToNative,
 				data,
-			}) => {}
+			}) => self.event_handler.receive_web_message(data),
+
 			_ => {
 				tracing::error!("Unexpected message type received in browser process");
 				return 0;

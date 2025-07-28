@@ -7,6 +7,7 @@ use winit::event::WindowEvent;
 use crate::cef::dirs::{cef_cache_dir, cef_data_dir};
 
 use super::input::InputState;
+use super::ipc::{MessageType, SendMessage};
 use super::scheme_handler::{FRONTEND_DOMAIN, GRAPHITE_SCHEME};
 use super::{CefEventHandler, input};
 
@@ -128,6 +129,10 @@ impl Context<Initialized> {
 		if let Some(browser) = &self.browser {
 			browser.host().unwrap().was_resized();
 		}
+	}
+
+	pub(crate) fn send_web_message(&self, message: &[u8]) {
+		self.send_message(MessageType::SendToJS, message);
 	}
 }
 

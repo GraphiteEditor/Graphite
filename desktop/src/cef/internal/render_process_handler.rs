@@ -1,8 +1,13 @@
 use cef::rc::{ConvertReturnValue, Rc, RcImpl};
 use cef::sys::{_cef_render_process_handler_t, cef_base_ref_counted_t, cef_render_process_handler_t, cef_v8_propertyattribute_t, cef_v8_value_create_array_buffer_with_copy};
-use cef::{CefString, ImplFrame, ImplRenderProcessHandler, ImplV8Context, ImplV8Value, V8Value, WrapRenderProcessHandler, v8_context_get_entered_context};
+use cef::{
+	CefString, ImplFrame, ImplRenderProcessHandler, ImplV8Context, ImplV8Value, V8Handler, V8Propertyattribute, V8Value, WrapRenderProcessHandler, v8_context_get_entered_context,
+	v8_value_create_function,
+};
 
 use crate::cef::ipc::{MessageType, UnpackMessage, UnpackedMessage};
+
+use super::render_process_v8_handler::BrowserProcessV8HandlerImpl;
 
 pub(crate) struct RenderProcessHandlerImpl {
 	object: *mut RcImpl<cef_render_process_handler_t, Self>,
@@ -68,6 +73,27 @@ impl ImplRenderProcessHandler for RenderProcessHandlerImpl {
 			}
 		}
 		1
+	}
+
+	fn on_context_created(&self, _browser: Option<&mut cef::Browser>, _frame: Option<&mut cef::Frame>, context: Option<&mut cef::V8Context>) {
+		let function_name = "sendNativeMessage";
+
+		let Some(context) = context else {
+			tracing::error!("V8 context is not available");
+			return;
+		};
+
+		let mut v8_handler = V8Handler::new(BrowserProcessV8HandlerImpl::new());
+		let Some(mut function) = v8_value_create_function(Some(&CefString::from(function_name)), Some(&mut v8_handler)) else {
+			tracing::error!("Failed to create V8 function {function_name}");
+			return;
+		};
+
+		let Some(global) = context.global() else {
+			tracing::error!("Global object is not available in V8 context");
+			return;
+		};
+		global.set_value_bykey(Some(&CefString::from(function_name)), Some(&mut function), V8Propertyattribute::default());
 	}
 
 	fn get_raw(&self) -> *mut _cef_render_process_handler_t {
