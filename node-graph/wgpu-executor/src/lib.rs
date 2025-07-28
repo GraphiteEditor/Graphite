@@ -238,7 +238,6 @@ impl WgpuExecutor {
 		let vello_renderer = Renderer::new(
 			&context.device,
 			RendererOptions {
-				// surface_format: Some(wgpu::TextureFormat::Rgba8Unorm),
 				pipeline_cache: None,
 				use_cpu: false,
 				antialiasing_support: AaSupport::all(),

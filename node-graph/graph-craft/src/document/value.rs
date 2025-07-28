@@ -429,8 +429,12 @@ pub struct RenderOutput {
 #[derive(Debug, Clone, Hash, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub enum RenderOutputType {
 	CanvasFrame(SurfaceFrame),
+	#[serde(skip)]
 	Texture(ImageTexture),
-	Svg { svg: String, image_data: Vec<(u64, Image<Color>)> },
+	Svg {
+		svg: String,
+		image_data: Vec<(u64, Image<Color>)>,
+	},
 	Image(Vec<u8>),
 }
 

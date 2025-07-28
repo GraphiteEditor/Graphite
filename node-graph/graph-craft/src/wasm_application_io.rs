@@ -137,7 +137,6 @@ impl WasmApplicationIo {
 		let wgpu_available = executor.is_some();
 		WGPU_AVAILABLE.store(wgpu_available as i8, Ordering::SeqCst);
 
-		// Always enable wgpu when running with Tauri
 		let mut io = Self {
 			#[cfg(target_arch = "wasm32")]
 			ids: AtomicU64::new(0),
@@ -162,11 +161,7 @@ impl WasmApplicationIo {
 		let wgpu_available = executor.is_some();
 		WGPU_AVAILABLE.store(wgpu_available as i8, Ordering::SeqCst);
 
-		// Always enable wgpu when running with Tauri
 		let mut io = Self {
-			#[cfg(target_arch = "wasm32")]
-			ids: AtomicU64::new(0),
-			#[cfg(feature = "wgpu")]
 			gpu_executor: executor,
 			windows: Vec::new(),
 			resources: HashMap::new(),

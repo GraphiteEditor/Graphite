@@ -49,12 +49,10 @@ impl Size for web_sys::HtmlCanvasElement {
 	}
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone)]
 pub struct ImageTexture {
-	#[serde(skip)]
 	#[cfg(feature = "wgpu")]
 	pub texture: Arc<wgpu::Texture>,
-	#[serde(skip)]
 	#[cfg(not(feature = "wgpu"))]
 	pub texture: (),
 }
