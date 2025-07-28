@@ -702,12 +702,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				if create_document {
 					// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
+					responses.add(DeferMessage::AfterViewportReady {
+						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+					});
 					responses.add(DeferMessage::AfterGraphRun {
 						messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
-					});
-
-					responses.add(DeferMessage::AfterViewportResize {
-						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
 					});
 				}
 			}
@@ -738,7 +737,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
 					});
 
-					responses.add(DeferMessage::AfterViewportResize {
+					responses.add(DeferMessage::AfterViewportReady {
 						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
 					});
 				}
@@ -1020,7 +1019,6 @@ impl PortfolioMessageHandler {
 				/text>"#
 				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
 				.to_string();
-			responses.add(DeferMessage::TriggerGraphRun);
 			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
 		}
 		result

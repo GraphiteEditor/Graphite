@@ -59,7 +59,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "commitDate")]
 		commit_date: String,
 	},
-	TriggerDelayedZoomCanvasToFitAll,
 	TriggerDownloadImage {
 		svg: String,
 		name: String,

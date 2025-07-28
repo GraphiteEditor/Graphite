@@ -791,8 +791,6 @@ export class TriggerImport extends JsMessage {}
 
 export class TriggerPaste extends JsMessage {}
 
-export class TriggerDelayedZoomCanvasToFitAll extends JsMessage {}
-
 export class TriggerDownloadImage extends JsMessage {
 	readonly svg!: string;
 
@@ -1649,7 +1647,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayRemoveEditableTextbox,
 	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
-	TriggerDelayedZoomCanvasToFitAll,
 	TriggerDownloadImage,
 	TriggerDownloadTextFile,
 	TriggerFetchAndOpenDocument,
