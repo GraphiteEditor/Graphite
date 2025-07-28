@@ -26,6 +26,7 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 }
 
 struct Constants {
+	viewport_scale: vec2<f32>,
     viewport_offset: vec2<f32>,
 };
 
@@ -44,6 +45,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	if (ui_color.a == 1.0) {
 		return ui_color;
 	}
-	let viewport_color: vec4<f32> = textureSample(t_viewport, s_diffuse, in.tex_coords - constants.viewport_offset);
+	let viewport_tex_coords = (in.tex_coords - constants.viewport_offset) * constants.viewport_scale;
+	let viewport_color: vec4<f32> = textureSample(t_viewport, s_diffuse, viewport_tex_coords);
 	return ui_color * ui_color.a + viewport_color * (1.0 - ui_color.a);
 }

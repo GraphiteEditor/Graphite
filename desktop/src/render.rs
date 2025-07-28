@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use bytemuck::{Pod, Zeroable};
 use thiserror::Error;
 use winit::window::Window;
 
@@ -103,6 +104,7 @@ pub(crate) struct GraphicsState {
 	config: wgpu::SurfaceConfiguration,
 	render_pipeline: wgpu::RenderPipeline,
 	sampler: wgpu::Sampler,
+	viewport_scale: [f32; 2],
 	viewport_offset: [f32; 2],
 	viewport_texture: Option<wgpu::Texture>,
 	ui_texture: Option<wgpu::Texture>,
@@ -182,7 +184,7 @@ impl GraphicsState {
 			bind_group_layouts: &[&texture_bind_group_layout],
 			push_constant_ranges: &[wgpu::PushConstantRange {
 				stages: wgpu::ShaderStages::FRAGMENT,
-				range: 0..std::mem::size_of::<[f32; 2]>() as u32, // 2 floats for viewport offset
+				range: 0..size_of::<Constants>() as u32,
 			}],
 		});
 
@@ -230,6 +232,7 @@ impl GraphicsState {
 			config,
 			render_pipeline,
 			sampler,
+			viewport_scale: [1.0, 1.0],
 			viewport_offset: [0.0, 0.0],
 			viewport_texture: None,
 			ui_texture: None,
@@ -259,6 +262,10 @@ impl GraphicsState {
 		self.viewport_texture = Some(texture.clone());
 
 		self.bind_group = Some(bind_group);
+	}
+
+	pub(crate) fn set_viewport_scale(&mut self, scale: [f32; 2]) {
+		self.viewport_scale = scale;
 	}
 
 	pub(crate) fn set_viewport_offset(&mut self, offset: [f32; 2]) {
@@ -312,7 +319,14 @@ impl GraphicsState {
 			});
 
 			render_pass.set_pipeline(&self.render_pipeline);
-			render_pass.set_push_constants(wgpu::ShaderStages::FRAGMENT, 0, bytemuck::cast_slice(&self.viewport_offset));
+			render_pass.set_push_constants(
+				wgpu::ShaderStages::FRAGMENT,
+				0,
+				bytemuck::bytes_of(&Constants {
+					viewport_scale: self.viewport_scale,
+					viewport_offset: self.viewport_offset,
+				}),
+			);
 			if let Some(bind_group) = &self.bind_group {
 				render_pass.set_bind_group(0, bind_group, &[]);
 				render_pass.draw(0..6, 0..1); // Draw 3 vertices for fullscreen triangle
@@ -325,4 +339,11 @@ impl GraphicsState {
 
 		Ok(())
 	}
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+struct Constants {
+	viewport_scale: [f32; 2],
+	viewport_offset: [f32; 2],
 }
