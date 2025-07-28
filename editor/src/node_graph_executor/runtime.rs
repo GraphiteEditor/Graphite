@@ -8,7 +8,7 @@ use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::Context;
-use graphene_std::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
+use graphene_std::application_io::{ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_std::instances::Instance;
 use graphene_std::memo::IORecord;
 use graphene_std::renderer::{GraphicElementRendered, RenderParams, SvgRender};
@@ -16,7 +16,7 @@ use graphene_std::renderer::{RenderSvgSegmentList, SvgSegment};
 use graphene_std::text::FontCache;
 use graphene_std::vector::style::ViewMode;
 use graphene_std::vector::{VectorData, VectorDataTable};
-use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
+use graphene_std::wasm_application_io::{RenderOutputType, WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use once_cell::sync::Lazy;
@@ -131,12 +131,12 @@ impl NodeRuntime {
 		}
 	}
 
-	pub async fn run(&mut self) {
+	pub async fn run(&mut self) -> Option<ImageTexture> {
 		if self.editor_api.application_io.is_none() {
 			self.editor_api = WasmEditorApi {
-				#[cfg(not(test))]
+				#[cfg(all(not(test), target_arch = "wasm32"))]
 				application_io: Some(WasmApplicationIo::new().await.into()),
-				#[cfg(test)]
+				#[cfg(any(test, not(target_arch = "wasm32")))]
 				application_io: Some(WasmApplicationIo::new_offscreen().await.into()),
 				font_cache: self.editor_api.font_cache.clone(),
 				node_graph_message_sender: Box::new(self.sender.clone()),
@@ -213,6 +213,16 @@ impl NodeRuntime {
 					// Resolve the result from the inspection by accessing the monitor node
 					let inspect_result = self.inspect_state.and_then(|state| state.access(&self.executor));
 
+					let texture = if let Ok(TaggedValue::RenderOutput(RenderOutput {
+						data: RenderOutputType::Texture(texture),
+						..
+					})) = &result
+					{
+						// We can early return becaus we know that there is at most one execution request and it will always be handled last
+						Some(texture.clone())
+					} else {
+						None
+					};
 					self.sender.send_execution_response(ExecutionResponse {
 						execution_id,
 						result,
@@ -221,9 +231,11 @@ impl NodeRuntime {
 						vector_modify: self.vector_modify.clone(),
 						inspect_result,
 					});
+					return texture;
 				}
 			}
 		}
+		None
 	}
 
 	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, String> {
@@ -382,17 +394,29 @@ pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any + 
 	Err(IntrospectError::RuntimeNotReady)
 }
 
-pub async fn run_node_graph() -> bool {
-	let Some(mut runtime) = NODE_RUNTIME.try_lock() else { return false };
+pub async fn run_node_graph() -> (bool, Option<ImageTexture>) {
+	let Some(mut runtime) = NODE_RUNTIME.try_lock() else { return (false, None) };
 	if let Some(ref mut runtime) = runtime.as_mut() {
-		runtime.run().await;
+		return (true, runtime.run().await);
 	}
-	true
+	(false, None)
 }
 
 pub async fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	node_runtime.replace(runtime)
+}
+pub async fn replace_application_io(application_io: WasmApplicationIo) {
+	let mut node_runtime = NODE_RUNTIME.lock();
+	if let Some(node_runtime) = &mut *node_runtime {
+		node_runtime.editor_api = WasmEditorApi {
+			font_cache: node_runtime.editor_api.font_cache.clone(),
+			application_io: Some(application_io.into()),
+			node_graph_message_sender: Box::new(node_runtime.sender.clone()),
+			editor_preferences: Box::new(node_runtime.editor_preferences.clone()),
+		}
+		.into();
+	}
 }
 
 /// Which node is inspected and which monitor node is used (if any) for the current execution
