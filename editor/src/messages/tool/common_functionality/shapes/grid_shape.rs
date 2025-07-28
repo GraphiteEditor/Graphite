@@ -5,9 +5,9 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::grid_row_columns_gizmo::RowColumnGizmo;
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::grid_row_columns_gizmo::RowColumnGizmoState;
-
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::grid_row_columns_gizmo::{RowColumnGizmo, calculate_rectangle_side_direction, calculate_rectangle_top_direction};
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::grid_spacing_gizmos::{GridSpacingGizmo, GridSpacingGizmoState};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
@@ -15,32 +15,43 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::vector::misc::GridType;
+use graphene_std::vector::misc::{GridType, dvec2_to_point};
+use kurbo::{Line, ParamCurveNearest};
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug, Default)]
 pub struct GridGizmoHandler {
 	row_column_gizmo: RowColumnGizmo,
+	grid_spacing_gizmo: GridSpacingGizmo,
 }
 
 impl ShapeGizmoHandler for GridGizmoHandler {
 	fn is_any_gizmo_hovered(&self) -> bool {
-		self.row_column_gizmo.is_hovered()
+		self.row_column_gizmo.is_hovered() || self.grid_spacing_gizmo.is_hovered()
 	}
 
 	fn handle_state(&mut self, selected_grid_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		self.row_column_gizmo.handle_actions(selected_grid_layer, mouse_position, document, responses);
+		self.grid_spacing_gizmo.handle_actions(selected_grid_layer, mouse_position, document, responses);
 	}
 
 	fn handle_click(&mut self) {
 		if self.row_column_gizmo.is_hovered() {
 			self.row_column_gizmo.update_state(RowColumnGizmoState::Dragging);
 		}
+
+		if self.grid_spacing_gizmo.is_hovered() {
+			self.grid_spacing_gizmo.update_state(GridSpacingGizmoState::Dragging);
+		}
 	}
 
 	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		if self.row_column_gizmo.is_dragging() {
 			self.row_column_gizmo.update(document, input, responses, drag_start);
+		}
+
+		if self.grid_spacing_gizmo.is_dragging() {
+			self.grid_spacing_gizmo.update(document, input, responses, drag_start);
 		}
 	}
 
@@ -54,6 +65,7 @@ impl ShapeGizmoHandler for GridGizmoHandler {
 		overlay_context: &mut OverlayContext,
 	) {
 		self.row_column_gizmo.overlays(document, selected_grid_layer, shape_editor, mouse_position, overlay_context);
+		self.grid_spacing_gizmo.overlays(document, selected_grid_layer, shape_editor, mouse_position, overlay_context);
 	}
 
 	fn dragging_overlays(
@@ -67,9 +79,16 @@ impl ShapeGizmoHandler for GridGizmoHandler {
 		if self.row_column_gizmo.is_dragging() {
 			self.row_column_gizmo.overlays(document, None, shape_editor, mouse_position, overlay_context);
 		}
+
+		if self.grid_spacing_gizmo.is_dragging() {
+			self.grid_spacing_gizmo.overlays(document, None, shape_editor, mouse_position, overlay_context);
+		}
 	}
 
-	fn cleanup(&mut self) {}
+	fn cleanup(&mut self) {
+		self.grid_spacing_gizmo.cleanup();
+		self.row_column_gizmo.cleanup();
+	}
 }
 
 #[derive(Default)]

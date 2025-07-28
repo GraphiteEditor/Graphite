@@ -175,7 +175,7 @@ fn check_if_over_gizmo(grid_type: GridType, columns: u32, rows: u32, spacing: DV
 	None
 }
 
-fn convert_to_gizmo_line(p0: DVec2, p1: DVec2) -> Line {
+pub fn convert_to_gizmo_line(p0: DVec2, p1: DVec2) -> Line {
 	Line {
 		p0: dvec2_to_point(p0),
 		p1: dvec2_to_point(p1),
@@ -198,7 +198,7 @@ fn get_corners(columns: u32, rows: u32, spacing: DVec2) -> (DVec2, DVec2, DVec2,
 	(point0, point1, point2, point3)
 }
 
-fn get_viewport_grid_spacing(grid_type: GridType, angles: DVec2, spacing: DVec2, viewport: DAffine2) -> DVec2 {
+pub fn get_viewport_grid_spacing(grid_type: GridType, angles: DVec2, spacing: DVec2, viewport: DAffine2) -> DVec2 {
 	match grid_type {
 		GridType::Rectangular => {
 			let p0 = DVec2::ZERO;
@@ -223,28 +223,28 @@ fn get_viewport_grid_spacing(grid_type: GridType, angles: DVec2, spacing: DVec2,
 	}
 }
 
-fn get_rectangle_top_line_points(columns: u32, rows: u32, spacing: DVec2) -> (DVec2, DVec2) {
+pub fn get_rectangle_top_line_points(columns: u32, rows: u32, spacing: DVec2) -> (DVec2, DVec2) {
 	let (top_left, top_right, _, _) = get_corners(columns, rows, spacing);
 	let offset = if columns == 1 || rows == 1 { DVec2::ZERO } else { DVec2::new(spacing.x * 0.5, 0.) };
 
 	(top_left + offset, top_right - offset)
 }
 
-fn get_rectangle_bottom_line_points(columns: u32, rows: u32, spacing: DVec2) -> (DVec2, DVec2) {
+pub fn get_rectangle_bottom_line_points(columns: u32, rows: u32, spacing: DVec2) -> (DVec2, DVec2) {
 	let (_, _, bottom_right, bottom_left) = get_corners(columns, rows, spacing);
 	let offset = if columns == 1 || rows == 1 { DVec2::ZERO } else { DVec2::new(spacing.x * 0.5, 0.) };
 
 	(bottom_left + offset, bottom_right - offset)
 }
 
-fn get_rectangle_right_line_points(columns: u32, rows: u32, spacing: DVec2) -> (DVec2, DVec2) {
+pub fn get_rectangle_right_line_points(columns: u32, rows: u32, spacing: DVec2) -> (DVec2, DVec2) {
 	let (_, top_right, bottom_right, _) = get_corners(columns, rows, spacing);
 	let offset = if columns == 1 || rows == 1 { DVec2::ZERO } else { DVec2::new(0., -spacing.y * 0.5) };
 
 	(top_right - offset, bottom_right + offset)
 }
 
-fn get_rectangle_left_line_points(columns: u32, rows: u32, spacing: DVec2) -> (DVec2, DVec2) {
+pub fn get_rectangle_left_line_points(columns: u32, rows: u32, spacing: DVec2) -> (DVec2, DVec2) {
 	let (top_left, _, _, bottom_left) = get_corners(columns, rows, spacing);
 	let offset = if columns == 1 || rows == 1 { DVec2::ZERO } else { DVec2::new(0., -spacing.y * 0.5) };
 
@@ -292,14 +292,14 @@ fn calculate_isometric_bottom_line_points(columns: u32, rows: u32, spacing: DVec
 	(bottom_left + offset, bottom_right - offset + isometric_offset)
 }
 
-fn calculate_isometric_offset(spacing: DVec2, angles: DVec2) -> DVec2 {
+pub fn calculate_isometric_offset(spacing: DVec2, angles: DVec2) -> DVec2 {
 	let first_point = calculate_isometric_point(0, 0, angles, spacing);
 	let second_point = calculate_isometric_point(1, 0, angles, spacing);
 
 	DVec2::new(first_point.x - second_point.x, first_point.y - second_point.y)
 }
 
-fn calculate_isometric_right_line_points(columns: u32, rows: u32, spacing: DVec2, angles: DVec2) -> (DVec2, DVec2) {
+pub fn calculate_isometric_right_line_points(columns: u32, rows: u32, spacing: DVec2, angles: DVec2) -> (DVec2, DVec2) {
 	let top_right = calculate_isometric_point(columns - 1, 0, angles, spacing);
 	let bottom_right = calculate_isometric_point(columns - 1, rows - 1, angles, spacing);
 
@@ -308,7 +308,7 @@ fn calculate_isometric_right_line_points(columns: u32, rows: u32, spacing: DVec2
 	(top_right - offset, bottom_right + offset)
 }
 
-fn calculate_isometric_left_line_points(columns: u32, rows: u32, spacing: DVec2, angles: DVec2) -> (DVec2, DVec2) {
+pub fn calculate_isometric_left_line_points(columns: u32, rows: u32, spacing: DVec2, angles: DVec2) -> (DVec2, DVec2) {
 	let top_left = calculate_isometric_point(0, 0, angles, spacing);
 	let bottom_left = calculate_isometric_point(0, rows - 1, angles, spacing);
 
@@ -317,13 +317,13 @@ fn calculate_isometric_left_line_points(columns: u32, rows: u32, spacing: DVec2,
 	(top_left - offset, bottom_left + offset)
 }
 
-fn calculate_rectangle_side_direction(spacing: DVec2, viewport: DAffine2) -> DVec2 {
+pub fn calculate_rectangle_side_direction(spacing: DVec2, viewport: DAffine2) -> DVec2 {
 	let p0 = DVec2::ZERO;
 	let p1 = DVec2::new(spacing.x, 0.);
 	(viewport.transform_point2(p1) - viewport.transform_point2(p0)).normalize()
 }
 
-fn calculate_rectangle_top_direction(spacing: DVec2, viewport: DAffine2) -> DVec2 {
+pub fn calculate_rectangle_top_direction(spacing: DVec2, viewport: DAffine2) -> DVec2 {
 	let p0 = DVec2::ZERO;
 	let p1 = DVec2::new(0., spacing.y);
 	(viewport.transform_point2(p0) - viewport.transform_point2(p1)).try_normalize().unwrap_or(DVec2::ZERO)
