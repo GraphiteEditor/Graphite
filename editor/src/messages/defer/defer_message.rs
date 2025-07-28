@@ -5,6 +5,6 @@ use crate::messages::prelude::*;
 pub enum DeferMessage {
 	TriggerGraphRun(u64),
 	AfterGraphRun { messages: Vec<Message> },
-	TriggerViewportReady,
-	AfterViewportReady { messages: Vec<Message> },
+	TriggerNavigationReady,
+	AfterNavigationReady { messages: Vec<Message> },
 }

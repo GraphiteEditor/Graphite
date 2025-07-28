@@ -702,7 +702,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				if create_document {
 					// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
-					responses.add(DeferMessage::AfterViewportReady {
+					responses.add(DeferMessage::AfterNavigationReady {
 						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
 					});
 					responses.add(DeferMessage::AfterGraphRun {
@@ -737,7 +737,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
 					});
 
-					responses.add(DeferMessage::AfterViewportReady {
+					responses.add(DeferMessage::AfterNavigationReady {
 						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
 					});
 				}

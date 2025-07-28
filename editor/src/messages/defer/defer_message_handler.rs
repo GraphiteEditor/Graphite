@@ -14,7 +14,7 @@ impl MessageHandler<DeferMessage, ()> for DeferMessageHandler {
 			DeferMessage::AfterGraphRun { mut messages } => {
 				self.after_graph_run.extend(messages.drain(..).map(|m| (self.current_graph_submission_id, m)));
 			}
-			DeferMessage::AfterViewportReady { messages } => {
+			DeferMessage::AfterNavigationReady { messages } => {
 				self.after_viewport_resize.extend_from_slice(&messages);
 			}
 			DeferMessage::TriggerGraphRun(execution_id) => {
@@ -23,7 +23,7 @@ impl MessageHandler<DeferMessage, ()> for DeferMessageHandler {
 					responses.push_front(message.1);
 				}
 			}
-			DeferMessage::TriggerViewportReady => {
+			DeferMessage::TriggerNavigationReady => {
 				for message in self.after_viewport_resize.drain(..) {
 					responses.push_front(message);
 				}

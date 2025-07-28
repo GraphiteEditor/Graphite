@@ -36,7 +36,7 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 					});
 				}
 
-				responses.add(DeferMessage::AfterViewportReady {
+				responses.add(DeferMessage::AfterNavigationReady {
 					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
 				});
 				responses.add(DocumentMessage::DeselectAllLayers);
