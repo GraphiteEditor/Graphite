@@ -14,6 +14,7 @@ pub struct Dispatcher {
 #[derive(Debug, Default)]
 pub struct DispatcherMessageHandlers {
 	animation_message_handler: AnimationMessageHandler,
+	app_window_message_handler: AppWindowMessageHandler,
 	broadcast_message_handler: BroadcastMessageHandler,
 	debug_message_handler: DebugMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
@@ -128,6 +129,9 @@ impl Dispatcher {
 			match message {
 				Message::Animation(message) => {
 					self.message_handlers.animation_message_handler.process_message(message, &mut queue, ());
+				}
+				Message::AppWindow(message) => {
+					self.message_handlers.app_window_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
 				Message::Debug(message) => {
