@@ -67,12 +67,11 @@ pub use cpu::CPU;
 
 mod cpu {
 	use super::*;
-	use crate::raster_types::__private::Sealed;
 
 	#[derive(Clone, Debug, Default, PartialEq, Hash, DynAny)]
 	pub struct CPU(Image<Color>);
 
-	impl Sealed for Raster<CPU> {}
+	impl __private::Sealed for Raster<CPU> {}
 
 	impl Storage for Raster<CPU> {
 		fn is_empty(&self) -> bool {
@@ -136,14 +135,13 @@ pub use gpu::GPU;
 #[cfg(feature = "wgpu")]
 mod gpu {
 	use super::*;
-	use crate::raster_types::__private::Sealed;
 
 	#[derive(Clone, Debug, PartialEq, Hash)]
 	pub struct GPU {
 		texture: wgpu::Texture,
 	}
 
-	impl Sealed for Raster<GPU> {}
+	impl __private::Sealed for Raster<GPU> {}
 
 	impl Storage for Raster<GPU> {
 		fn is_empty(&self) -> bool {
@@ -166,8 +164,10 @@ mod gpu {
 mod gpu {
 	use super::*;
 
-	#[derive(Clone, Debug)]
+	#[derive(Clone, Debug, PartialEq, Hash)]
 	pub struct GPU;
+
+	impl __private::Sealed for Raster<GPU> {}
 
 	impl Storage for Raster<GPU> {
 		fn is_empty(&self) -> bool {
