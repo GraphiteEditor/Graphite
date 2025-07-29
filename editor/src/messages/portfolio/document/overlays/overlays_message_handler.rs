@@ -99,7 +99,6 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 				}
 
 				// TODO: Render the Vello scene to a texture and display it
-				todo!("Render Vello scene to texture")
 			}
 			OverlaysMessage::AddProvider(message) => {
 				self.overlay_providers.insert(message);

@@ -708,12 +708,11 @@ impl OverlayContext {
 
 	pub fn get_width(&self, _text: &str) -> f64 {
 		// TODO: Implement proper text measurement in Vello
-		todo!()
+		0.
 	}
 
 	pub fn text(&self, _text: &str, _font_color: &str, _background_color: Option<&str>, _transform: DAffine2, _padding: f64, _pivot: [Pivot; 2]) {
 		// TODO: Implement text rendering in Vello
-		todo!()
 	}
 
 	pub fn translation_box(&mut self, translation: DVec2, quad: Quad, typed_string: Option<String>) {
