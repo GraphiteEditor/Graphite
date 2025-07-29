@@ -18,7 +18,7 @@ use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 
-use bezier_rs::{BezierHandles, Join, ManipulatorGroup, Subpath};
+use bezier_rs::ManipulatorGroup;
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};

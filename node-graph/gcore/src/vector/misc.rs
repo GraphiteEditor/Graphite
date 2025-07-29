@@ -169,3 +169,7 @@ pub fn bezpath_from_manipulator_groups(manipulator_groups: &[ManipulatorGroup<Po
 	}
 	bezpath
 }
+
+pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup<PointId>>, bool) {
+	todo!()
+}
