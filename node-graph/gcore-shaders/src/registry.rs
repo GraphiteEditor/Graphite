@@ -20,5 +20,6 @@ pub mod types {
 	/// DVec2 with px unit
 	pub type PixelSize = glam::DVec2;
 	/// String with one or more than one line
+	#[cfg(feature = "std")]
 	pub type TextArea = String;
 }

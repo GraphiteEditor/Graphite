@@ -14,9 +14,9 @@ pub trait Linear {
 	fn lerp(self, other: Self, value: Self) -> Self
 	where
 		Self: Sized + Copy,
-		Self: std::ops::Sub<Self, Output = Self>,
-		Self: std::ops::Mul<Self, Output = Self>,
-		Self: std::ops::Add<Self, Output = Self>,
+		Self: core::ops::Sub<Self, Output = Self>,
+		Self: core::ops::Mul<Self, Output = Self>,
+		Self: core::ops::Add<Self, Output = Self>,
 	{
 		self + (other - self) * value
 	}
