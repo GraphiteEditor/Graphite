@@ -15,17 +15,6 @@ The best introduction for getting up-to-speed with Graphite contribution comes f
 	<img data-youtube-embed="vUzIeg8frh4" src="https://static.graphite.rs/content/volunteer/guide/workshop-intro-to-coding-for-graphite-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Workshop: Intro to Coding for Graphite" />
 </div>
 
-<!-- ## Tech stack -->
-<!-- - rustc: Compiler for node graph generics and custom nodes -->
-<!-- - rust-gpu: Compiler backend to generate compute shaders from Rust source code -->
-<!-- - wgpu: Portable graphics API for running compute shaders on desktop and web -->
-<!-- - Tauri: lightweight desktop web UI shell while the backend runs natively (experimental) -->
-<!-- - Vello: GPU-accelerated vector graphics renderer -->
-<!-- - COSMIC Text: Text shaping and typesetting -->
-<!-- - Wasmer or Wasmtime: Portable, sandboxed runtime for custom nodes -->
-<!-- - Tokio: parallelized job execution in the node graph pipeline -->
-<!-- - Xilem: High-performance native UI framework, to replace Tauri when ready -->
-
 ## Codebase structure
 
 Graphite is built from several main software components. New developers may choose to specialize in one or more area without having to attain a working knowledge of the full codebase.
