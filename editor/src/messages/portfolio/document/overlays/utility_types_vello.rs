@@ -516,7 +516,6 @@ impl OverlayContext {
 
 		// Top-left sector
 		path.move_to(kurbo::Point::new(x, y));
-		let end_angle = PI + angle;
 		let end_x = x + DOWEL_PIN_RADIUS * (FRAC_PI_2 + angle).cos();
 		let end_y = y + DOWEL_PIN_RADIUS * (FRAC_PI_2 + angle).sin();
 		path.line_to(kurbo::Point::new(end_x, end_y));
@@ -542,10 +541,11 @@ impl OverlayContext {
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color), None, &path);
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn arc_sweep_angle(&mut self, offset_angle: f64, angle: f64, end_point_position: DVec2, bold_radius: f64, dash_radius: f64, pivot: DVec2, text: &str, transform: DAffine2) {
 		self.manipulator_handle(end_point_position, true, Some(COLOR_OVERLAY_RED));
 		self.draw_arc_gizmo_angle(pivot, bold_radius, dash_radius, ARC_SWEEP_GIZMO_RADIUS, offset_angle, angle.to_radians());
-		self.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
+		self.text(text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 	}
 
 	/// Used by the Pen and Path tools to outline the path of the shape.
