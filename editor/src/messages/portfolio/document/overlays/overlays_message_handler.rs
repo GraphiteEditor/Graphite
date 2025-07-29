@@ -68,7 +68,9 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 					}
 				}
 			}
-			#[cfg(not(target_arch = "wasm32"))]
+			#[cfg(test)]
+			OverlaysMessage::Draw => {}
+			#[cfg(all(not(target_arch = "wasm32"), not(test)))]
 			OverlaysMessage::Draw => {
 				use super::utility_types::OverlayContext;
 				use vello::Scene;
