@@ -46,6 +46,7 @@ usvg = { workspace = true }
 once_cell = { workspace = true }
 web-sys = { workspace = true }
 bytemuck = { workspace = true }
+vello = { workspace = true }
 
 # Required dependencies
 spin = "0.9.8"

@@ -1876,6 +1876,7 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "usvg",
+ "vello",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
