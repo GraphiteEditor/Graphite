@@ -51,6 +51,7 @@ fn luminance<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	luminance_calc: LuminanceCalculation,
 ) -> T {
@@ -76,6 +77,7 @@ fn gamma_correction<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	#[default(2.2)]
 	#[range((0.01, 10.))]
@@ -97,6 +99,7 @@ fn extract_channel<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	channel: RedGreenBlueAlpha,
 ) -> T {
@@ -121,6 +124,7 @@ fn make_opaque<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 ) -> T {
 	input.adjust(|color| {
@@ -147,6 +151,7 @@ fn brightness_contrast<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	brightness: SignedPercentage,
 	contrast: SignedPercentage,
@@ -237,6 +242,7 @@ fn levels<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 	#[default(0.)] shadows: Percentage,
 	#[default(50.)] midtones: Percentage,
@@ -305,6 +311,7 @@ async fn black_and_white<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 	#[default(Color::BLACK)] tint: Table<Color>,
 	#[default(40.)]
@@ -381,6 +388,7 @@ async fn hue_saturation<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	hue_shift: Angle,
 	saturation_shift: SignedPercentage,
@@ -416,6 +424,7 @@ async fn invert<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 ) -> T {
 	input.adjust(|color| {
@@ -439,6 +448,7 @@ async fn threshold<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 	#[default(50.)] min_luminance: Percentage,
 	#[default(100.)] max_luminance: Percentage,
@@ -485,6 +495,7 @@ async fn vibrance<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 	vibrance: SignedPercentage,
 ) -> T {
@@ -651,6 +662,7 @@ async fn channel_mixer<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 
 	monochrome: bool,
@@ -780,6 +792,7 @@ async fn selective_color<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 
 	mode: RelativeAbsolute,
@@ -923,6 +936,7 @@ async fn posterize<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	#[default(4)]
 	#[hard_min(2.)]
@@ -957,6 +971,7 @@ async fn exposure<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	exposure: f64,
 	offset: f64,
