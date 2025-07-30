@@ -89,6 +89,18 @@ impl ShapeGizmoHandler for PolygonGizmoHandler {
 		}
 	}
 
+	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
+		if self.number_of_points_dial.is_dragging() || self.number_of_points_dial.is_hovering() {
+			return Some(MouseCursorIcon::EWResize);
+		}
+
+		if self.point_radius_handle.is_dragging_or_snapped() || self.point_radius_handle.hovered() {
+			return Some(MouseCursorIcon::Default);
+		}
+
+		None
+	}
+
 	fn cleanup(&mut self) {
 		self.number_of_points_dial.cleanup();
 		self.point_radius_handle.cleanup();

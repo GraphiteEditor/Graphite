@@ -335,7 +335,7 @@ pub struct ShapeToolData {
 	current_shape: ShapeType,
 
 	// Gizmos
-	gizmo_manger: GizmoManager,
+	gizmo_manager: GizmoManager,
 }
 
 impl ShapeToolData {
@@ -350,6 +350,19 @@ impl ShapeToolData {
 				snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
 			}
 		}
+	}
+
+	fn transform_cage_mouse_icon(&mut self, input: &InputPreprocessorMessageHandler) -> MouseCursorIcon {
+		let dragging_bounds = self
+			.bounding_box_manager
+			.as_mut()
+			.and_then(|bounding_box| bounding_box.check_selected_edges(input.mouse.position))
+			.is_some();
+
+		self.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Crosshair, |bounds| {
+			let cursor_icon = bounds.get_cursor(input, true, dragging_bounds, Some(self.skew_edge));
+			if cursor_icon == MouseCursorIcon::Default { MouseCursorIcon::Crosshair } else { cursor_icon }
+		})
 	}
 }
 
@@ -388,30 +401,34 @@ impl Fsm for ShapeToolFsmState {
 					.indicator_pos()
 					.map(|pos| document.metadata().document_to_viewport.transform_point2(pos))
 					.unwrap_or(input.mouse.position);
-				let is_resizing_or_rotating = matches!(self, ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::SkewingBounds { .. } | ShapeToolFsmState::RotatingBounds);
 
 				if matches!(self, Self::Ready(_)) && !input.keyboard.key(Key::Control) {
-					tool_data.gizmo_manger.handle_actions(mouse_position, document, responses);
-					tool_data.gizmo_manger.overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
+					tool_data.gizmo_manager.handle_actions(mouse_position, document, responses);
+					tool_data.gizmo_manager.overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
 				}
 
 				if matches!(self, ShapeToolFsmState::ModifyingGizmo) && !input.keyboard.key(Key::Control) {
-					tool_data.gizmo_manger.dragging_overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
+					tool_data.gizmo_manager.dragging_overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
+					let cursor = tool_data.gizmo_manager.mouse_cursor_icon().unwrap_or(MouseCursorIcon::Crosshair);
+					tool_data.cursor = cursor;
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 				}
 
 				let modifying_transform_cage = matches!(self, ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::RotatingBounds | ShapeToolFsmState::SkewingBounds { .. });
-				let hovering_over_gizmo = tool_data.gizmo_manger.hovering_over_gizmo();
+				let hovering_over_gizmo = tool_data.gizmo_manager.hovering_over_gizmo();
 
-				if !is_resizing_or_rotating && !matches!(self, ShapeToolFsmState::ModifyingGizmo) && !modifying_transform_cage && !hovering_over_gizmo {
+				if !matches!(self, ShapeToolFsmState::ModifyingGizmo) && !modifying_transform_cage && !hovering_over_gizmo {
 					tool_data.data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				}
 
 				if modifying_transform_cage && !matches!(self, ShapeToolFsmState::ModifyingGizmo) {
 					transform_cage_overlays(document, tool_data, &mut overlay_context);
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor: tool_data.cursor });
 				}
 
 				if input.keyboard.key(Key::Control) && matches!(self, ShapeToolFsmState::Ready(_)) {
 					anchor_overlays(document, &mut overlay_context);
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 				} else if matches!(self, ShapeToolFsmState::Ready(_)) {
 					Line::overlays(document, tool_data, &mut overlay_context);
 
@@ -433,7 +450,7 @@ impl Fsm for ShapeToolFsmState {
 						let edges = bounds.check_selected_edges(input.mouse.position);
 						let is_skewing = matches!(self, ShapeToolFsmState::SkewingBounds { .. });
 						let is_near_square = edges.is_some_and(|hover_edge| bounds.over_extended_edge_midpoint(input.mouse.position, hover_edge));
-						if is_skewing || (dragging_bounds && is_near_square && !is_resizing_or_rotating && !hovering_over_gizmo) {
+						if is_skewing || (dragging_bounds && is_near_square && !hovering_over_gizmo) {
 							bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
 						}
 						if !is_skewing && dragging_bounds && !hovering_over_gizmo {
@@ -442,6 +459,16 @@ impl Fsm for ShapeToolFsmState {
 							}
 						}
 					}
+
+					let mut cursor;
+
+					cursor = tool_data.transform_cage_mouse_icon(input);
+					if let Some(gizmo_cursor_icon) = tool_data.gizmo_manager.mouse_cursor_icon() {
+						cursor = gizmo_cursor_icon;
+					}
+
+					tool_data.cursor = cursor;
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 				}
 
 				if matches!(self, ShapeToolFsmState::Drawing(_) | ShapeToolFsmState::DraggingLineEndpoints) {
@@ -562,8 +589,14 @@ impl Fsm for ShapeToolFsmState {
 
 				tool_data.line_data.drag_current = mouse_pos;
 
-				if tool_data.gizmo_manger.handle_click() {
+				if tool_data.gizmo_manager.handle_click() && !input.keyboard.key(Key::Accel) {
 					tool_data.data.drag_start = document.metadata().document_to_viewport.inverse().transform_point2(mouse_pos);
+					responses.add(DocumentMessage::StartTransaction);
+
+					let cursor = tool_data.gizmo_manager.mouse_cursor_icon().unwrap_or(MouseCursorIcon::Crosshair);
+					tool_data.cursor = cursor;
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
+
 					return ShapeToolFsmState::ModifyingGizmo;
 				}
 
@@ -584,6 +617,10 @@ impl Fsm for ShapeToolFsmState {
 				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, None);
 
 				if !input.keyboard.key(Key::Control) {
+					let cursor = tool_data.transform_cage_mouse_icon(input);
+					tool_data.cursor = cursor;
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
+
 					match (resize, rotate, skew) {
 						(true, false, false) => {
 							tool_data.get_snap_candidates(document, input);
@@ -591,10 +628,12 @@ impl Fsm for ShapeToolFsmState {
 						}
 						(false, true, false) => {
 							tool_data.data.drag_start = mouse_pos;
+
 							return ShapeToolFsmState::RotatingBounds;
 						}
 						(false, false, true) => {
 							tool_data.get_snap_candidates(document, input);
+
 							return ShapeToolFsmState::SkewingBounds { skew: Key::Control };
 						}
 						_ => {}
@@ -686,8 +725,7 @@ impl Fsm for ShapeToolFsmState {
 				self
 			}
 			(ShapeToolFsmState::ModifyingGizmo, ShapeToolMessage::PointerMove(..)) => {
-				responses.add(DocumentMessage::StartTransaction);
-				tool_data.gizmo_manger.handle_update(tool_data.data.drag_start, document, input, responses);
+				tool_data.gizmo_manager.handle_update(tool_data.data.drag_start, document, input, responses);
 
 				responses.add(OverlaysMessage::Draw);
 
@@ -758,7 +796,7 @@ impl Fsm for ShapeToolFsmState {
 					if cursor == MouseCursorIcon::Default { MouseCursorIcon::Crosshair } else { cursor }
 				});
 
-				if tool_data.cursor != cursor && !input.keyboard.key(Key::Control) && !all_selected_layers_line {
+				if tool_data.cursor != cursor {
 					tool_data.cursor = cursor;
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 				}
@@ -797,7 +835,7 @@ impl Fsm for ShapeToolFsmState {
 				input.mouse.finish_transaction(tool_data.data.drag_start, responses);
 				tool_data.data.cleanup(responses);
 
-				tool_data.gizmo_manger.handle_cleanup();
+				tool_data.gizmo_manager.handle_cleanup();
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
@@ -822,12 +860,13 @@ impl Fsm for ShapeToolFsmState {
 				tool_data.data.cleanup(responses);
 				tool_data.line_data.dragging_endpoint = None;
 
-				tool_data.gizmo_manger.handle_cleanup();
+				tool_data.gizmo_manager.handle_cleanup();
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
 				}
 
+				tool_data.cursor = MouseCursorIcon::Crosshair;
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 
 				ShapeToolFsmState::Ready(tool_data.current_shape)
