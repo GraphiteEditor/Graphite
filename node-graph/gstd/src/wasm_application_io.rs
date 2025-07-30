@@ -16,7 +16,6 @@ use graphene_svg_renderer::{GraphicElementRendered, RenderParams, RenderSvgSegme
 
 #[cfg(target_arch = "wasm32")]
 use base64::Engine;
-#[cfg(target_arch = "wasm32")]
 use glam::DAffine2;
 use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
@@ -175,7 +174,8 @@ async fn render_canvas(
 ) -> RenderOutputType {
 	use graphene_application_io::{ImageTexture, SurfaceFrame};
 
-	let footprint = render_config.viewport;
+	let mut footprint = render_config.viewport;
+	footprint.resolution = footprint.resolution.max(glam::UVec2::splat(1));
 	let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() else {
 		unreachable!("Attempted to render with Vello when no GPU executor is available");
 	};
@@ -202,7 +202,7 @@ async fn render_canvas(
 		let frame = SurfaceFrame {
 			surface_id: surface_handle.window_id,
 			resolution: render_config.viewport.resolution,
-			transform: glam::DAffine2::IDENTITY,
+			transform: DAffine2::IDENTITY,
 		};
 
 		RenderOutputType::CanvasFrame(frame)
