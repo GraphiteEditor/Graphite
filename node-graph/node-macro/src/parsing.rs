@@ -120,6 +120,8 @@ pub enum ParsedFieldType {
 	Node(NodeParsedField),
 }
 
+/// a param of any kind, either a concrete type or a generic type with a set of possible types specified via
+/// `#[implementation(type)]`
 #[derive(Clone, Debug)]
 pub struct RegularParsedField {
 	pub ty: Type,
@@ -131,8 +133,10 @@ pub struct RegularParsedField {
 	pub number_hard_max: Option<LitFloat>,
 	pub number_mode_range: Option<ExprTuple>,
 	pub implementations: Punctuated<Type, Comma>,
+	pub gpu_image: bool,
 }
 
+/// a param of `impl Node` with `#[implementation(in -> out)]`
 #[derive(Clone, Debug)]
 pub struct NodeParsedField {
 	pub input_type: Type,
@@ -529,6 +533,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				.map_err(|e| Error::new_spanned(attr, format!("Invalid `step` for argument '{ident}': {e}\nUSAGE EXAMPLE: #[step(2.)]")))
 		})
 		.transpose()?;
+	let gpu_image = extract_attribute(attrs, "gpu_image").is_some();
 
 	let (is_node, node_input_type, node_output_type) = parse_node_type(&ty);
 	let description = attrs
@@ -590,6 +595,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				ty,
 				value_source,
 				implementations,
+				gpu_image,
 			}),
 			name,
 			description,
