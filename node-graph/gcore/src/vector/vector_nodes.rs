@@ -1,7 +1,7 @@
 use super::algorithms::bezpath_algorithms::{self, position_on_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
 use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
-use super::misc::{CentroidType, point_to_dvec2};
+use super::misc::{CentroidType, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataExt, VectorDataTable};
 use crate::bounds::BoundingBox;
@@ -22,7 +22,7 @@ use bezier_rs::ManipulatorGroup;
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
-use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, ParamCurve, PathEl, PathSeg, Shape};
+use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use std::f64::consts::TAU;
@@ -465,34 +465,33 @@ async fn round_corners(
 			// Grab the initial point ID as a stable starting point
 			let mut initial_point_id = source.point_domain.ids().first().copied().unwrap_or(PointId::generate());
 
-			for mut subpath in source.stroke_bezier_paths() {
-				subpath.apply_transform(source_transform);
+			for mut bezpath in source.stroke_bezpath_iter() {
+				bezpath.apply_affine(Affine::new(source_transform.to_cols_array()));
+				let (manipulator_groups, is_closed) = bezpath_to_manipulator_groups(&bezpath);
 
 				// End if not enough points for corner rounding
-				if subpath.manipulator_groups().len() < 3 {
-					result.append_subpath(subpath, false);
+				if manipulator_groups.len() < 3 {
+					result.append_bezpath(bezpath);
 					continue;
 				}
 
-				let groups = subpath.manipulator_groups();
-				let mut new_groups = Vec::new();
-				let is_closed = subpath.closed();
+				let mut new_manipulator_groups = Vec::new();
 
-				for i in 0..groups.len() {
+				for i in 0..manipulator_groups.len() {
 					// Skip first and last points for open paths
-					if !is_closed && (i == 0 || i == groups.len() - 1) {
-						new_groups.push(groups[i]);
+					if !is_closed && (i == 0 || i == manipulator_groups.len() - 1) {
+						new_manipulator_groups.push(manipulator_groups[i]);
 						continue;
 					}
 
 					// Not the prettiest, but it makes the rest of the logic more readable
-					let prev_idx = if i == 0 { if is_closed { groups.len() - 1 } else { 0 } } else { i - 1 };
+					let prev_idx = if i == 0 { if is_closed { manipulator_groups.len() - 1 } else { 0 } } else { i - 1 };
 					let curr_idx = i;
-					let next_idx = if i == groups.len() - 1 { if is_closed { 0 } else { i } } else { i + 1 };
+					let next_idx = if i == manipulator_groups.len() - 1 { if is_closed { 0 } else { i } } else { i + 1 };
 
-					let prev = groups[prev_idx].anchor;
-					let curr = groups[curr_idx].anchor;
-					let next = groups[next_idx].anchor;
+					let prev = manipulator_groups[prev_idx].anchor;
+					let curr = manipulator_groups[curr_idx].anchor;
+					let next = manipulator_groups[next_idx].anchor;
 
 					let dir1 = (curr - prev).normalize_or(DVec2::X);
 					let dir2 = (next - curr).normalize_or(DVec2::X);
@@ -501,7 +500,7 @@ async fn round_corners(
 
 					// Skip near-straight corners
 					if theta > PI - min_angle_threshold.to_radians() {
-						new_groups.push(groups[curr_idx]);
+						new_manipulator_groups.push(manipulator_groups[curr_idx]);
 						continue;
 					}
 
@@ -514,7 +513,7 @@ async fn round_corners(
 					let p2 = curr + dir2 * distance_along_edge;
 
 					// Add first point (coming into the rounded corner)
-					new_groups.push(ManipulatorGroup {
+					new_manipulator_groups.push(ManipulatorGroup {
 						anchor: p1,
 						in_handle: None,
 						out_handle: Some(curr - dir1 * distance_along_edge * roundness),
@@ -522,7 +521,7 @@ async fn round_corners(
 					});
 
 					// Add second point (coming out of the rounded corner)
-					new_groups.push(ManipulatorGroup {
+					new_manipulator_groups.push(ManipulatorGroup {
 						anchor: p2,
 						in_handle: Some(curr + dir2 * distance_along_edge * roundness),
 						out_handle: None,
@@ -531,9 +530,9 @@ async fn round_corners(
 				}
 
 				// One subpath for each shape
-				let mut rounded_subpath = Subpath::new(new_groups, is_closed);
-				rounded_subpath.apply_transform(source_transform_inverse);
-				result.append_subpath(rounded_subpath, false);
+				let mut rounded_subpath = bezpath_from_manipulator_groups(&new_manipulator_groups, is_closed);
+				rounded_subpath.apply_affine(Affine::new(source_transform_inverse.to_cols_array()));
+				result.append_bezpath(rounded_subpath);
 			}
 
 			result.upstream_graphic_group = upstream_graphic_group;
@@ -769,9 +768,9 @@ async fn auto_tangents(
 					});
 				}
 
-				let mut softened_subpath = Subpath::new(new_groups, is_closed);
-				softened_subpath.apply_transform(transform.inverse());
-				result.append_subpath(softened_subpath, true);
+				let mut softened_bezpath = bezpath_from_manipulator_groups(&new_groups, is_closed);
+				softened_bezpath.apply_affine(Affine::new(transform.inverse().to_cols_array()));
+				result.append_bezpath(softened_bezpath);
 			}
 
 			Instance {
@@ -1900,15 +1899,11 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 			let spilt_distance = calculate_distance_to_spilt(bezier, next_bezier, distance);
 
 			if is_linear(&bezier) {
-				let start = point_to_dvec2(bezier.start());
-				let end = point_to_dvec2(bezier.end());
-				bezier = handles_to_segment(start, BezierHandles::Linear, end);
+				bezier = PathSeg::Line(Line::new(bezier.start(), bezier.end()));
 			}
 
 			if is_linear(&next_bezier) {
-				let start = point_to_dvec2(next_bezier.start());
-				let end = point_to_dvec2(next_bezier.end());
-				next_bezier = handles_to_segment(start, BezierHandles::Linear, end);
+				next_bezier = PathSeg::Line(Line::new(next_bezier.start(), next_bezier.end()));
 			}
 
 			let inverse_transform = if vector_data_transform.matrix2.determinant() != 0. {
