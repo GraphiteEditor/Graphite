@@ -623,23 +623,30 @@ impl Fsm for ShapeToolFsmState {
 				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, None);
 
 				if !input.keyboard.key(Key::Control) {
-					let cursor = tool_data.transform_cage_mouse_icon(input);
-					tool_data.cursor = cursor;
-					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
-					// Send a PointerMove message to refresh the cursor icon
-					responses.add(ShapeToolMessage::PointerMove(ShapeToolData::shape_tool_modifier_keys()));
+					// Helper function to update cursor and send pointer move message
+					let update_cursor_and_pointer = |tool_data: &mut ShapeToolData, responses: &mut VecDeque<Message>| {
+						let cursor = tool_data.transform_cage_mouse_icon(input);
+						tool_data.cursor = cursor;
+						responses.add(FrontendMessage::UpdateMouseCursor { cursor });
+						responses.add(ShapeToolMessage::PointerMove(ShapeToolData::shape_tool_modifier_keys()));
+					};
+
 					match (resize, rotate, skew) {
 						(true, false, false) => {
 							tool_data.get_snap_candidates(document, input);
+							update_cursor_and_pointer(tool_data, responses);
+
 							return ShapeToolFsmState::ResizingBounds;
 						}
 						(false, true, false) => {
 							tool_data.data.drag_start = mouse_pos;
+							update_cursor_and_pointer(tool_data, responses);
 
 							return ShapeToolFsmState::RotatingBounds;
 						}
 						(false, false, true) => {
 							tool_data.get_snap_candidates(document, input);
+							update_cursor_and_pointer(tool_data, responses);
 
 							return ShapeToolFsmState::SkewingBounds { skew: Key::Control };
 						}
