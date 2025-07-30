@@ -1,6 +1,6 @@
 use crate::parsing::NodeFnAttributes;
 use proc_macro2::{Ident, TokenStream};
-use quote::quote;
+use quote::{ToTokens, TokenStreamExt, quote};
 use strum::{EnumString, VariantNames};
 use syn::Error;
 use syn::parse::{Parse, ParseStream};
@@ -18,15 +18,38 @@ pub fn modify_cfg(attributes: &NodeFnAttributes) -> TokenStream {
 
 #[derive(Debug, EnumString, VariantNames)]
 pub(crate) enum ShaderNodeType {
-	PerPixelAdjust,
+	PerPixelAdjust(PerPixelAdjust),
 }
 
 impl Parse for ShaderNodeType {
 	fn parse(input: ParseStream) -> syn::Result<Self> {
 		let ident: Ident = input.parse()?;
 		Ok(match ident.to_string().as_str() {
-			"PerPixelAdjust" => ShaderNodeType::PerPixelAdjust,
+			"PerPixelAdjust" => ShaderNodeType::PerPixelAdjust(crate::shader_nodes::PerPixelAdjust::parse(input)?),
 			_ => return Err(Error::new_spanned(&ident, format!("attr 'shader_node' must be one of {:?}", Self::VARIANTS))),
 		})
+	}
+}
+
+impl ShaderNodeType {
+	pub fn codegen_shader_entry_point(&self) -> TokenStream {
+		match self {
+			ShaderNodeType::PerPixelAdjust(x) => x.codegen_shader_entry_point(),
+		}
+	}
+}
+
+#[derive(Debug)]
+pub struct PerPixelAdjust {}
+
+impl Parse for PerPixelAdjust {
+	fn parse(_input: ParseStream) -> syn::Result<Self> {
+		Ok(Self {})
+	}
+}
+
+impl PerPixelAdjust {
+	pub fn codegen_shader_entry_point(&self) -> TokenStream {
+		quote! {}
 	}
 }
