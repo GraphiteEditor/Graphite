@@ -17,7 +17,7 @@ use core::hash::Hash;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 pub use indexed::VectorDataIndex;
-use kurbo::{Affine, Rect, Shape};
+use kurbo::{Affine, BezPath, Rect, Shape};
 pub use modification::*;
 use std::collections::HashMap;
 
@@ -193,6 +193,13 @@ impl VectorData {
 	/// Construct some new vector data from a single subpath with an identity transform and black fill.
 	pub fn from_subpath(subpath: impl Borrow<bezier_rs::Subpath<PointId>>) -> Self {
 		Self::from_subpaths([subpath], false)
+	}
+
+	/// Construct some new vector data from a single bezpath with an identity transform and black fill.
+	pub fn from_bezpath(bezpath: BezPath) -> Self {
+		let mut vector_data = Self::default();
+		vector_data.append_bezpath(bezpath);
+		vector_data
 	}
 
 	/// Construct some new vector data from subpaths with an identity transform and black fill.

@@ -18,7 +18,7 @@ use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 
-use bezier_rs::ManipulatorGroup;
+use bezier_rs::{Join, ManipulatorGroup};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
@@ -2126,8 +2126,8 @@ mod test {
 		}
 	}
 
-	fn vector_node(data: Subpath<PointId>) -> VectorDataTable {
-		VectorDataTable::new(VectorData::from_subpath(data))
+	fn vector_node_from_bezpath(bezpath: BezPath) -> VectorDataTable {
+		VectorDataTable::new(VectorData::from_bezpath(bezpath))
 	}
 
 	fn create_vector_data_instance(bezpath: BezPath, transform: DAffine2) -> Instance<VectorData> {
@@ -2144,37 +2144,51 @@ mod test {
 	async fn repeat() {
 		let direction = DVec2::X * 1.5;
 		let instances = 3;
-		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
+		let repeated = super::repeat(
+			Footprint::default(),
+			vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY)),
+			direction,
+			0.,
+			instances,
+		)
+		.await;
 		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
-		assert_eq!(vector_data.region_bezier_paths().count(), 3);
-		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
-			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
+		assert_eq!(vector_data.region_manipulator_groups().count(), 3);
+		for (index, (_, manipulator_groups)) in vector_data.region_manipulator_groups().enumerate() {
+			assert!((manipulator_groups[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
 		}
 	}
 	#[tokio::test]
 	async fn repeat_transform_position() {
 		let direction = DVec2::new(12., 10.);
 		let instances = 8;
-		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
+		let repeated = super::repeat(
+			Footprint::default(),
+			vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY)),
+			direction,
+			0.,
+			instances,
+		)
+		.await;
 		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
-		assert_eq!(vector_data.region_bezier_paths().count(), 8);
-		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
-			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
+		assert_eq!(vector_data.region_manipulator_groups().count(), 8);
+		for (index, (_, manipulator_groups)) in vector_data.region_manipulator_groups().enumerate() {
+			assert!((manipulator_groups[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
 		}
 	}
 	#[tokio::test]
 	async fn circular_repeat() {
-		let repeated = super::circular_repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)), 45., 4., 8).await;
+		let repeated = super::circular_repeat(Footprint::default(), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)), 45., 4., 8).await;
 		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
-		assert_eq!(vector_data.region_bezier_paths().count(), 8);
+		assert_eq!(vector_data.region_manipulator_groups().count(), 8);
 
-		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
+		for (index, (_, manipulator_groups)) in vector_data.region_manipulator_groups().enumerate() {
 			let expected_angle = (index as f64 + 1.) * 45.;
 
-			let center = (subpath.manipulator_groups()[0].anchor + subpath.manipulator_groups()[2].anchor) / 2.;
+			let center = (manipulator_groups[0].anchor + manipulator_groups[2].anchor) / 2.;
 			let actual_angle = DVec2::Y.angle_to(center).to_degrees();
 
 			assert!((actual_angle - expected_angle).abs() % 360. < 1e-5, "Expected {expected_angle} found {actual_angle}");
@@ -2182,14 +2196,15 @@ mod test {
 	}
 	#[tokio::test]
 	async fn bounding_box() {
-		let bounding_box = super::bounding_box((), vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE))).await;
+		let bounding_box = super::bounding_box((), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY))).await;
 		let bounding_box = bounding_box.instance_ref_iter().next().unwrap().instance;
-		assert_eq!(bounding_box.region_bezier_paths().count(), 1);
-		let subpath = bounding_box.region_bezier_paths().next().unwrap().1;
-		assert_eq!(&subpath.anchors()[..4], &[DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.),]);
+		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
+		let manipulator_groups_anchors = bounding_box.region_manipulator_groups().next().unwrap().1.iter().map(|group| group.anchor).collect::<Vec<DVec2>>();
+
+		assert_eq!(&manipulator_groups_anchors[..4], &[DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.),]);
 
 		// Test a VectorData with non-zero rotation
-		let square = VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE));
+		let square = VectorData::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
 		let mut square = VectorDataTable::new(square);
 		*square.get_mut(0).unwrap().transform *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4);
 		let bounding_box = BoundingBoxNode {
@@ -2198,34 +2213,42 @@ mod test {
 		.eval(Footprint::default())
 		.await;
 		let bounding_box = bounding_box.instance_ref_iter().next().unwrap().instance;
-		assert_eq!(bounding_box.region_bezier_paths().count(), 1);
-		let subpath = bounding_box.region_bezier_paths().next().unwrap().1;
+		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
+		let manipulator_groups_anchors = bounding_box.region_manipulator_groups().next().unwrap().1.iter().map(|group| group.anchor).collect::<Vec<DVec2>>();
+
 		let expected_bounding_box = [DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.)];
 		for i in 0..4 {
-			assert_eq!(subpath.anchors()[i], expected_bounding_box[i]);
+			assert_eq!(manipulator_groups_anchors[i], expected_bounding_box[i]);
 		}
 	}
 	#[tokio::test]
 	async fn copy_to_points() {
-		let points = Subpath::new_rect(DVec2::NEG_ONE * 10., DVec2::ONE * 10.);
-		let instance = Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE);
+		let points = Rect::new(-10., -10., 10., 10.).to_path(DEFAULT_ACCURACY);
+		let instance = Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY);
 
-		let expected_points = VectorData::from_subpath(points.clone()).point_domain.positions().to_vec();
+		let expected_points = VectorData::from_bezpath(points.clone()).point_domain.positions().to_vec();
 
-		let copy_to_points = super::copy_to_points(Footprint::default(), vector_node(points), vector_node(instance), 1., 1., 0., 0, 0., 0).await;
+		let copy_to_points = super::copy_to_points(Footprint::default(), vector_node_from_bezpath(points), vector_node_from_bezpath(instance), 1., 1., 0., 0, 0., 0).await;
 		let flatten_path = super::flatten_path(Footprint::default(), copy_to_points).await;
 		let flattened_copy_to_points = flatten_path.instance_ref_iter().next().unwrap().instance;
 
-		assert_eq!(flattened_copy_to_points.region_bezier_paths().count(), expected_points.len());
+		assert_eq!(flattened_copy_to_points.region_manipulator_groups().count(), expected_points.len());
 
-		for (index, (_, subpath)) in flattened_copy_to_points.region_bezier_paths().enumerate() {
+		for (index, (_, manipulator_groups)) in flattened_copy_to_points.region_manipulator_groups().enumerate() {
 			let offset = expected_points[index];
+			let manipulator_groups_anchors = manipulator_groups.iter().map(|group| group.anchor).collect::<Vec<DVec2>>();
 			assert_eq!(
-				&subpath.anchors(),
+				&manipulator_groups_anchors,
 				&[offset + DVec2::NEG_ONE, offset + DVec2::new(1., -1.), offset + DVec2::ONE, offset + DVec2::new(-1., 1.),]
 			);
 		}
 	}
+
+	use bezier_rs::Subpath;
+	fn vector_node(data: Subpath<PointId>) -> VectorDataTable {
+		VectorDataTable::new(VectorData::from_subpath(data))
+	}
+
 	#[tokio::test]
 	async fn sample_polyline() {
 		let path = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
