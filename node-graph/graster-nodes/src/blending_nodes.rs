@@ -130,6 +130,7 @@ async fn blend<T: Blend<Color> + Send>(
 		Table<Raster<CPU>>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	over: T,
 	#[expose]
 	#[implementations(
@@ -137,6 +138,7 @@ async fn blend<T: Blend<Color> + Send>(
 		Table<Raster<CPU>>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	under: T,
 	blend_mode: BlendMode,
 	#[default(100.)] opacity: Percentage,
@@ -152,6 +154,7 @@ fn color_overlay<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 	#[default(Color::BLACK)] color: Color,
 	blend_mode: BlendMode,
