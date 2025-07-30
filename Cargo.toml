@@ -14,6 +14,7 @@ members = [
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
 	"node-graph/graster-nodes",
+	"node-graph/graster-nodes/shaders",
 	"node-graph/gsvg-renderer",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
@@ -163,6 +164,8 @@ cef = "138.5.0"
 include_dir = "0.7.4"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing = "0.1.41"
+spirv-std = { git = "https://github.com/rust-gpu/rust-gpu", rev = "535673815dc59fef56d9c8f7c1a8bd54d817cc40" }
+cargo-gpu = { git = "https://github.com/rust-gpu/cargo-gpu", rev = "071cf6d5284fc0c2460af9f868f2f20e0168880b" }
 
 [profile.dev]
 opt-level = 1
