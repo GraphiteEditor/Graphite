@@ -364,6 +364,10 @@ impl ShapeToolData {
 			if cursor_icon == MouseCursorIcon::Default { MouseCursorIcon::Crosshair } else { cursor_icon }
 		})
 	}
+
+	fn shape_tool_modifier_keys() -> [Key; 4] {
+		[Key::Alt, Key::Shift, Key::Control, Key::Shift]
+	}
 }
 
 impl Fsm for ShapeToolFsmState {
@@ -596,6 +600,8 @@ impl Fsm for ShapeToolFsmState {
 					let cursor = tool_data.gizmo_manager.mouse_cursor_icon().unwrap_or(MouseCursorIcon::Crosshair);
 					tool_data.cursor = cursor;
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
+					// Send a PointerMove message to refresh the cursor icon
+					responses.add(ShapeToolMessage::PointerMove(ShapeToolData::shape_tool_modifier_keys()));
 
 					return ShapeToolFsmState::ModifyingGizmo;
 				}
@@ -620,7 +626,8 @@ impl Fsm for ShapeToolFsmState {
 					let cursor = tool_data.transform_cage_mouse_icon(input);
 					tool_data.cursor = cursor;
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
-
+					// Send a PointerMove message to refresh the cursor icon
+					responses.add(ShapeToolMessage::PointerMove(ShapeToolData::shape_tool_modifier_keys()));
 					match (resize, rotate, skew) {
 						(true, false, false) => {
 							tool_data.get_snap_candidates(document, input);
