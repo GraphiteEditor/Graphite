@@ -171,5 +171,29 @@ pub fn bezpath_from_manipulator_groups(manipulator_groups: &[ManipulatorGroup<Po
 }
 
 pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup<PointId>>, bool) {
-	todo!()
+	let mut manipulator_groups = Vec::new();
+	let mut in_handle = None;
+	let mut is_closed = false;
+
+	for element in bezpath.elements() {
+		let (manipulator_group, next_in_handle) = match *element {
+			kurbo::PathEl::MoveTo(point) => (ManipulatorGroup::new(point_to_dvec2(point), in_handle, None), None),
+			kurbo::PathEl::LineTo(point) => (ManipulatorGroup::new(point_to_dvec2(point), in_handle, None), None),
+			kurbo::PathEl::QuadTo(point, point1) => (ManipulatorGroup::new(point_to_dvec2(point), in_handle, Some(point_to_dvec2(point1))), None),
+			kurbo::PathEl::CurveTo(point, point1, point2) => (ManipulatorGroup::new(point_to_dvec2(point), in_handle, Some(point_to_dvec2(point1))), Some(point_to_dvec2(point2))),
+			kurbo::PathEl::ClosePath => {
+				is_closed = true;
+				break;
+			}
+		};
+
+		in_handle = next_in_handle;
+		manipulator_groups.push(manipulator_group);
+	}
+
+	if let Some(first) = manipulator_groups.first_mut() {
+		first.in_handle = in_handle;
+	}
+
+	(manipulator_groups, is_closed)
 }
