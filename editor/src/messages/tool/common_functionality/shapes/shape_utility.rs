@@ -75,7 +75,7 @@ impl ShapeType {
 	}
 }
 
-pub type ShapeToolModifierKey = [Key; 4];
+pub type ShapeToolModifierKey = [Key; 3];
 
 /// The `ShapeGizmoHandler` trait defines the interactive behavior and overlay logic for shape-specific tools in the editor.
 /// A gizmo is a visual handle or control point used to manipulate a shape's properties (e.g., number of sides, radius, angle).

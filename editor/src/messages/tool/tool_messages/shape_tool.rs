@@ -365,8 +365,8 @@ impl ShapeToolData {
 		})
 	}
 
-	fn shape_tool_modifier_keys() -> [Key; 4] {
-		[Key::Alt, Key::Shift, Key::Control, Key::Shift]
+	fn shape_tool_modifier_keys() -> [Key; 3] {
+		[Key::Alt, Key::Shift, Key::Control]
 	}
 }
 
