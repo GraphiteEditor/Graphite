@@ -362,6 +362,7 @@ impl NodeRuntime {
 			hide_artboards: false,
 			for_export: false,
 			for_mask: false,
+			disable_canvas_override: false,
 			alignment_parent_transform: None,
 		};
 		let mut render = SvgRender::new();

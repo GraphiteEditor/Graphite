@@ -163,8 +163,10 @@ pub struct RenderParams {
 	pub for_export: bool,
 	/// Are we generating a mask in this render pass? Used to see if fill should be multiplied with alpha.
 	pub for_mask: bool,
-	/// Are we generating a mask for alignment? Used to prevent unnecesary transforms in masks
+	/// Are we generating a mask for alignment? Used to prevent unnecesary transforms in masks.
 	pub alignment_parent_transform: Option<DAffine2>,
+	/// Whether or not if rendering image data via the canvas should be disabled forcefully. Currently it only checks for eyedropper.
+	pub disable_canvas_override: bool,
 }
 
 impl RenderParams {
@@ -178,7 +180,7 @@ impl RenderParams {
 	}
 
 	pub fn to_canvas(&self) -> bool {
-		!self.for_export && !self.thumbnail && !self.for_mask
+		!self.disable_canvas_override && !self.for_export && !self.thumbnail && !self.for_mask
 	}
 }
 

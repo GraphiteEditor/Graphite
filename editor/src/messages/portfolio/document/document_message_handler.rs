@@ -127,6 +127,9 @@ pub struct DocumentMessageHandler {
 	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
 	#[serde(skip)]
 	pub is_loaded: bool,
+	/// Whether or not if rendering image data via the canvas should be disabled forcefully. Currently it only checks for eyedropper.
+	#[serde(skip)]
+	pub disable_canvas_override: bool,
 }
 
 impl Default for DocumentMessageHandler {
@@ -165,6 +168,7 @@ impl Default for DocumentMessageHandler {
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
 			is_loaded: false,
+			disable_canvas_override: false,
 		}
 	}
 }
@@ -181,6 +185,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			preferences,
 			device_pixel_ratio,
 		} = context;
+
+		self.disable_canvas_override = *current_tool == ToolType::Eyedropper;
 
 		match message {
 			// Sub-messages

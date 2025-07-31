@@ -136,6 +136,7 @@ impl NodeGraphExecutor {
 
 	/// Adds an evaluate request for whatever current network is cached.
 	pub(crate) fn submit_current_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, time: TimingInformation) -> Result<(), String> {
+		let disable_canvas_override = document.disable_canvas_override;
 		let render_config = RenderConfig {
 			viewport: Footprint {
 				transform: document.metadata().document_to_viewport,
@@ -150,6 +151,7 @@ impl NodeGraphExecutor {
 			view_mode: document.view_mode,
 			hide_artboards: false,
 			for_export: false,
+			disable_canvas_override,
 		};
 
 		// Execute the node graph
@@ -200,6 +202,7 @@ impl NodeGraphExecutor {
 			view_mode: document.view_mode,
 			hide_artboards: export_config.transparent_background,
 			for_export: true,
+			disable_canvas_override: false,
 		};
 		export_config.size = size;
 
@@ -336,6 +339,7 @@ impl NodeGraphExecutor {
 			for_export: false,
 			for_mask: false,
 			alignment_parent_transform: None,
+			disable_canvas_override: false
 		};
 
 		// Render SVG

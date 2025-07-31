@@ -243,6 +243,7 @@ pub struct RenderConfig {
 	pub view_mode: ViewMode,
 	pub hide_artboards: bool,
 	pub for_export: bool,
+	pub disable_canvas_override: bool
 }
 
 struct Logger;
