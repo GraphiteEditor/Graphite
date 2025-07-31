@@ -345,6 +345,23 @@ impl OverlayContext {
 		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color_stroke), None, &circle);
 	}
 
+	pub fn dashed_ellipse(
+		&mut self,
+		_center: DVec2,
+		_radius_x: f64,
+		_radius_y: f64,
+		_rotation: Option<f64>,
+		_start_angle: Option<f64>,
+		_end_angle: Option<f64>,
+		_counterclockwise: Option<bool>,
+		_color_fill: Option<&str>,
+		_color_stroke: Option<&str>,
+		_dash_width: Option<f64>,
+		_dash_gap_width: Option<f64>,
+		_dash_offset: Option<f64>,
+	) {
+	}
+
 	pub fn draw_arc(&mut self, center: DVec2, radius: f64, start_from: f64, end_at: f64) {
 		let segments = ((end_at - start_from).abs() / (std::f64::consts::PI / 4.)).ceil() as usize;
 		let step = (end_at - start_from) / segments as f64;
@@ -379,11 +396,9 @@ impl OverlayContext {
 		self.scene.stroke(&kurbo::Stroke::new(1.0), self.get_transform(), Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
-	pub fn draw_arc_gizmo_angle(&mut self, pivot: DVec2, bold_radius: f64, dash_radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
+	pub fn draw_arc_gizmo_angle(&mut self, pivot: DVec2, bold_radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
 		let end_point1 = pivot + bold_radius * DVec2::from_angle(angle + offset_angle);
-		let end_point2 = pivot + dash_radius * DVec2::from_angle(offset_angle);
 		self.line(pivot, end_point1, None, None);
-		self.dashed_line(pivot, end_point2, None, None, Some(2.), Some(2.), Some(0.5));
 		self.draw_arc(pivot, arc_radius, offset_angle, (angle) % TAU + offset_angle);
 	}
 
@@ -542,9 +557,9 @@ impl OverlayContext {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	pub fn arc_sweep_angle(&mut self, offset_angle: f64, angle: f64, end_point_position: DVec2, bold_radius: f64, dash_radius: f64, pivot: DVec2, text: &str, transform: DAffine2) {
+	pub fn arc_sweep_angle(&mut self, offset_angle: f64, angle: f64, end_point_position: DVec2, bold_radius: f64, pivot: DVec2, text: &str, transform: DAffine2) {
 		self.manipulator_handle(end_point_position, true, Some(COLOR_OVERLAY_RED));
-		self.draw_arc_gizmo_angle(pivot, bold_radius, dash_radius, ARC_SWEEP_GIZMO_RADIUS, offset_angle, angle.to_radians());
+		self.draw_arc_gizmo_angle(pivot, bold_radius, ARC_SWEEP_GIZMO_RADIUS, offset_angle, angle.to_radians());
 		self.text(text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 	}
 

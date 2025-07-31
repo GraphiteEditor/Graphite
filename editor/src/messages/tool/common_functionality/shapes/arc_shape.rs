@@ -29,7 +29,7 @@ impl ArcGizmoHandler {
 
 impl ShapeGizmoHandler for ArcGizmoHandler {
 	fn handle_state(&mut self, selected_shape_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		self.sweep_angle_gizmo.handle_actions(selected_shape_layer, document, mouse_position, responses);
+		self.sweep_angle_gizmo.handle_actions(selected_shape_layer, document, mouse_position);
 		self.arc_radius_handle.handle_actions(selected_shape_layer, document, mouse_position, responses);
 	}
 
@@ -57,7 +57,7 @@ impl ShapeGizmoHandler for ArcGizmoHandler {
 			self.sweep_angle_gizmo.update_arc(document, input, responses);
 		}
 
-		if self.arc_radius_handle.is_dragging_or_snapped() {
+		if self.arc_radius_handle.is_dragging() {
 			self.arc_radius_handle.update_inner_radius(document, input, responses, drag_start);
 		}
 	}
@@ -75,7 +75,7 @@ impl ShapeGizmoHandler for ArcGizmoHandler {
 			arc_outline(self.sweep_angle_gizmo.layer, document, overlay_context);
 		}
 
-		if self.arc_radius_handle.is_dragging_or_snapped() {
+		if self.arc_radius_handle.is_dragging() {
 			self.arc_radius_handle.overlays(document, overlay_context);
 		}
 	}
@@ -97,6 +97,14 @@ impl ShapeGizmoHandler for ArcGizmoHandler {
 		self.arc_radius_handle.overlays(document, overlay_context);
 
 		arc_outline(selected_shape_layers.or(self.sweep_angle_gizmo.layer), document, overlay_context);
+	}
+
+	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
+		if self.sweep_angle_gizmo.hovered() || self.sweep_angle_gizmo.is_dragging_or_snapped() {
+			return Some(MouseCursorIcon::Default);
+		}
+
+		None
 	}
 
 	fn cleanup(&mut self) {

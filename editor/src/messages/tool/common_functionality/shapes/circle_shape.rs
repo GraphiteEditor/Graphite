@@ -35,7 +35,7 @@ impl ShapeGizmoHandler for CircleGizmoHandler {
 	}
 
 	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		if self.circle_radius_handle.is_dragging_or_snapped() {
+		if self.circle_radius_handle.is_dragging() {
 			self.circle_radius_handle.update_inner_radius(document, input, responses, drag_start);
 		}
 	}
@@ -60,13 +60,21 @@ impl ShapeGizmoHandler for CircleGizmoHandler {
 		_mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
 	) {
-		if self.circle_radius_handle.is_dragging_or_snapped() {
+		if self.circle_radius_handle.is_dragging() {
 			self.circle_radius_handle.overlays(document, overlay_context);
 		}
 	}
 
 	fn cleanup(&mut self) {
 		self.circle_radius_handle.cleanup();
+	}
+
+	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
+		if self.circle_radius_handle.hovered() || self.circle_radius_handle.is_dragging() {
+			return Some(MouseCursorIcon::EWResize);
+		}
+
+		None
 	}
 }
 

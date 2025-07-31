@@ -40,7 +40,7 @@ impl RadiusHandle {
 		self.handle_state == RadiusHandleState::Hover
 	}
 
-	pub fn is_dragging_or_snapped(&self) -> bool {
+	pub fn is_dragging(&self) -> bool {
 		self.handle_state == RadiusHandleState::Dragging
 	}
 
