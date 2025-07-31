@@ -133,7 +133,7 @@ impl NodeGraphExecutor {
 	}
 
 	/// Adds an evaluate request for whatever current network is cached.
-	pub(crate) fn submit_current_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, time: TimingInformation) -> Result<(), String> {
+	pub(crate) fn submit_current_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, time: TimingInformation) -> Result<Message, String> {
 		let render_config = RenderConfig {
 			viewport: Footprint {
 				transform: document.metadata().document_to_viewport,
@@ -155,7 +155,7 @@ impl NodeGraphExecutor {
 
 		self.futures.insert(execution_id, ExecutionContext { export_config: None });
 
-		Ok(())
+		Ok(DeferMessage::SetGraphSubmissionIndex(execution_id).into())
 	}
 
 	/// Evaluates a node graph, computing the entire graph
@@ -166,11 +166,9 @@ impl NodeGraphExecutor {
 		time: TimingInformation,
 		inspect_node: Option<NodeId>,
 		ignore_hash: bool,
-	) -> Result<(), String> {
+	) -> Result<Message, String> {
 		self.update_node_graph(document, inspect_node, ignore_hash)?;
-		self.submit_current_node_graph_evaluation(document, viewport_resolution, time)?;
-
-		Ok(())
+		self.submit_current_node_graph_evaluation(document, viewport_resolution, time)
 	}
 
 	/// Evaluates a node graph for export
