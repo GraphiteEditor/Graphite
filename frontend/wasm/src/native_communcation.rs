@@ -9,8 +9,6 @@ pub fn receive_native_message(buffer: ArrayBuffer) {
 	let buffer = Uint8Array::new(buffer.as_ref()).to_vec();
 	match ron::from_str::<Vec<FrontendMessage>>(str::from_utf8(buffer.as_slice()).unwrap()) {
 		Ok(messages) => {
-			// log::debug!("Received messages: {:?}", messages);
-
 			let callback = move |_: &mut Editor, handle: &mut EditorHandle| {
 				for message in messages {
 					handle.send_frontend_message_to_js_rust_proxy(message);

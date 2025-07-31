@@ -129,10 +129,6 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 					if let Some(window) = &self.window {
 						window.request_redraw();
 					}
-					if let InputPreprocessorMessage::CurrentTime { .. } | InputPreprocessorMessage::PointerMove { .. } = &ipp_message {
-					} else {
-						// println!("got ipp message: {:?}", &ipp_message.to_discriminant());
-					}
 				}
 				if let Message::InputPreprocessor(InputPreprocessorMessage::BoundsOfViewports { bounds_of_viewports }) = &message {
 					if let Some(graphic_state) = &mut self.graphics_state {
