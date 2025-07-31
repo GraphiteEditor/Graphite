@@ -27,6 +27,7 @@ export async function initWasm() {
 	wasmImport = await wasmMemory();
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	(window as any).imageCanvases = {};
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	(window as any).receiveNativeMessage = receiveNativeMessage;
 
 	// Provide a random starter seed which must occur after initializing the WASM module, since WASM can't generate its own random numbers
