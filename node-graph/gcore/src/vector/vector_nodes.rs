@@ -14,7 +14,7 @@ use crate::vector::algorithms::bezpath_algorithms::{eval_pathseg_euclidean, is_l
 use crate::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use crate::vector::misc::{MergeByDistanceAlgorithm, PointSpacingType};
 use crate::vector::misc::{handles_to_segment, segment_to_handles};
-use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, StrokeScaling};
 use crate::vector::{FillId, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 
@@ -191,6 +191,8 @@ async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	/// The phase offset distance from the starting point of the dash pattern.
 	#[unit(" px")]
 	dash_offset: f64,
+	/// Whether the stroke should scale with shape transformations or maintain a constant visual width.
+	scaling: StrokeScaling,
 ) -> Instances<V>
 where
 	Instances<V>: VectorDataTableIterMut + 'n + Send,
@@ -205,7 +207,7 @@ where
 		join_miter_limit: miter_limit,
 		align,
 		transform: DAffine2::IDENTITY,
-		non_scaling: false,
+		non_scaling: scaling.is_non_scaling(),
 		paint_order,
 	};
 

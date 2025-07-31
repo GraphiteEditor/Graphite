@@ -27,7 +27,7 @@ use graphene_std::vector::misc::GridType;
 use graphene_std::vector::misc::{ArcType, MergeByDistanceAlgorithm};
 use graphene_std::vector::misc::{CentroidType, PointSpacingType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
-use graphene_std::vector::style::{GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, StrokeScaling};
 use graphene_std::{GraphicGroupTable, NodeInputDecleration};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
@@ -1807,6 +1807,9 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	let dash_lengths = array_of_number_widget(ParameterWidgetsInfo::new(node_id, DashLengthsInput::INDEX, true, context), TextInput::default().centered(true));
 	let number_input = disabled_number_input;
 	let dash_offset = number_widget(ParameterWidgetsInfo::new(node_id, DashOffsetInput::INDEX, true, context), number_input);
+	let scaling = enum_choice::<StrokeScaling>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, ScalingInput::INDEX, true, context))
+		.property_row();
 
 	vec![
 		color,
@@ -1818,6 +1821,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		paint_order,
 		LayoutGroup::Row { widgets: dash_lengths },
 		LayoutGroup::Row { widgets: dash_offset },
+		scaling,
 	]
 }
 

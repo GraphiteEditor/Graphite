@@ -643,8 +643,6 @@ impl Fsm for ShapeToolFsmState {
 					}
 				}
 				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
-
-				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
 				tool_data.data.layer = Some(layer);
 
 				responses.add(DeferMessage::AfterGraphRun {
