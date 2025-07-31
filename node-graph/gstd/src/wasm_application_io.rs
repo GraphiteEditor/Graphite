@@ -245,6 +245,7 @@ where
 	let resolution = footprint.resolution;
 	let render_params = RenderParams {
 		culling_bounds: None,
+		for_export: true,
 		..Default::default()
 	};
 

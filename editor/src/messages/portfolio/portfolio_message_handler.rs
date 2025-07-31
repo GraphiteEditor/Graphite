@@ -702,11 +702,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				if create_document {
 					// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
-					responses.add(DeferMessage::AfterNavigationReady {
-						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
-					});
 					responses.add(DeferMessage::AfterGraphRun {
 						messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
+					});
+					responses.add(DeferMessage::AfterNavigationReady {
+						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
 					});
 				}
 			}
@@ -883,6 +883,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(FrontendMessage::UpdateOpenDocumentsList { open_documents });
 			}
 			PortfolioMessage::UpdateVelloPreference => {
+				responses.add(FrontendMessage::UpdateViewportHolePunch { active: preferences.use_vello });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				self.persistent_data.use_vello = preferences.use_vello;
 			}

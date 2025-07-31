@@ -1,9 +1,6 @@
 use cef::rc::{ConvertReturnValue, Rc, RcImpl};
 use cef::sys::{_cef_render_process_handler_t, cef_base_ref_counted_t, cef_render_process_handler_t, cef_v8_propertyattribute_t, cef_v8_value_create_array_buffer_with_copy};
-use cef::{
-	CefString, ImplFrame, ImplRenderProcessHandler, ImplV8Context, ImplV8Value, V8Handler, V8Propertyattribute, V8Value, WrapRenderProcessHandler, v8_context_get_entered_context,
-	v8_value_create_function,
-};
+use cef::{CefString, ImplFrame, ImplRenderProcessHandler, ImplV8Context, ImplV8Value, V8Handler, V8Propertyattribute, V8Value, WrapRenderProcessHandler, v8_value_create_function};
 
 use crate::cef::ipc::{MessageType, UnpackMessage, UnpackedMessage};
 
@@ -61,7 +58,9 @@ impl ImplRenderProcessHandler for RenderProcessHandlerImpl {
 					cef_v8_propertyattribute_t::V8_PROPERTY_ATTRIBUTE_READONLY.wrap_result(),
 				);
 
-				frame.execute_java_script(Some(&CefString::from(function_call.as_str())), None, 0);
+				if global.value_bykey(Some(&CefString::from(function_name))).is_some() {
+					frame.execute_java_script(Some(&CefString::from(function_call.as_str())), None, 0);
+				}
 
 				if context.exit() == 0 {
 					tracing::error!("Failed to exit V8 context");

@@ -241,8 +241,8 @@
 			`.trim();
 
 		if (!rasterizedCanvas) {
-			rasterizedCanvas = await rasterizeSVGCanvas(svg, width * dpiFactor, height * dpiFactor, "image/png");
-			rasterizedContext = rasterizedCanvas.getContext("2d") || undefined;
+			rasterizedCanvas = await rasterizeSVGCanvas(svg, width * dpiFactor, height * dpiFactor);
+			rasterizedContext = rasterizedCanvas.getContext("2d", { willReadFrequently: true }) || undefined;
 		}
 		if (!rasterizedContext) return undefined;
 

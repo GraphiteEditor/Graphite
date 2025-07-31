@@ -480,6 +480,10 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 		resolution_widgets.push(
 			NumberInput::new(Some((footprint.resolution.as_dvec2() / bounds).x * 100.))
 				.label("Resolution")
+				.mode_range()
+				.min(0.)
+				.range_min(Some(1.))
+				.range_max(Some(100.))
 				.unit("%")
 				.on_update(update_value(
 					move |x: &NumberInput| {

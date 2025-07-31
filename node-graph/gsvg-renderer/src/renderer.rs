@@ -159,11 +159,11 @@ pub struct RenderParams {
 	pub thumbnail: bool,
 	/// Don't render the rectangle for an artboard to allow exporting with a transparent background.
 	pub hide_artboards: bool,
-	/// Are we exporting? Causes the text above an artboard to be hidden.
+	/// Are we exporting as a standalone SVG?
 	pub for_export: bool,
 	/// Are we generating a mask in this render pass? Used to see if fill should be multiplied with alpha.
 	pub for_mask: bool,
-	/// Are we generating a mask for alignment? Used to prevent unnecesary transforms in masks
+	/// Are we generating a mask for alignment? Used to prevent unnecessary transforms in masks
 	pub alignment_parent_transform: Option<DAffine2>,
 }
 
