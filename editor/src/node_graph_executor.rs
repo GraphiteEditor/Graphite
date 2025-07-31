@@ -29,7 +29,6 @@ pub struct ExecutionRequest {
 	render_config: RenderConfig,
 }
 
-#[cfg_attr(feature = "decouple-execution", derive(serde::Serialize, serde::Deserialize))]
 pub struct ExecutionResponse {
 	execution_id: u64,
 	result: Result<TaggedValue, String>,
@@ -46,7 +45,6 @@ pub struct CompilationResponse {
 	node_graph_errors: GraphErrors,
 }
 
-#[cfg_attr(feature = "decouple-execution", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeGraphUpdate {
 	ExecutionResponse(ExecutionResponse),
 	CompilationResponse(CompilationResponse),
