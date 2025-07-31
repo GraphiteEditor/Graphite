@@ -2199,6 +2199,7 @@ impl Fsm for PathToolFsmState {
 				}
 				// Deselect all points if the user clicks the filled region of the shape
 				else if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
+					log::debug!("clicked filled region");
 					shape_editor.deselect_all_points();
 					shape_editor.deselect_all_segments();
 				}
@@ -2229,7 +2230,9 @@ impl Fsm for PathToolFsmState {
 				tool_data.snapping_axis = None;
 				tool_data.sliding_point_info = None;
 
-				responses.add(DocumentMessage::EndTransaction);
+				if drag_occurred || extend_selection {
+					responses.add(DocumentMessage::EndTransaction);
+				}
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.opposite_handle_position = None;
@@ -2282,7 +2285,9 @@ impl Fsm for PathToolFsmState {
 						tool_data.saved_points_before_anchor_convert_smooth_sharp.clear();
 
 						responses.add(DocumentMessage::EndTransaction);
-						responses.add(PathToolMessage::SelectedPointUpdated);
+						responses.add(DeferMessage::AfterGraphRun {
+							messages: vec![PathToolMessage::SelectedPointUpdated.into()],
+						});
 					}
 
 					return PathToolFsmState::Ready;
