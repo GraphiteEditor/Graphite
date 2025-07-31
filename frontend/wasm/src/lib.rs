@@ -6,7 +6,6 @@ extern crate log;
 
 pub mod editor_api;
 pub mod helpers;
-#[cfg(feature = "native")]
 pub mod native_communcation;
 
 use editor::messages::prelude::*;
