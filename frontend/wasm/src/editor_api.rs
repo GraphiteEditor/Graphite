@@ -154,6 +154,7 @@ impl EditorHandle {
 	}
 
 	// Sends a message to the dispatcher in the Editor Backend
+	#[cfg(not(feature = "native"))]
 	fn dispatch<T: Into<Message>>(&self, message: T) {
 		// Process no further messages after a crash to avoid spamming the console
 		if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
@@ -167,6 +168,16 @@ impl EditorHandle {
 		for message in frontend_messages.into_iter() {
 			self.send_frontend_message_to_js(message);
 		}
+	}
+
+	#[cfg(feature = "native")]
+	fn dispatch<T: Into<Message>>(&self, message: T) {
+		let message: Message = message.into();
+		let Ok(serialized_message) = ron::to_string(&message) else {
+			log::error!("Failed to serialize message");
+			return;
+		};
+		crate::native_communcation::send_message_to_cef(serialized_message)
 	}
 
 	// Sends a FrontendMessage to JavaScript
@@ -228,22 +239,15 @@ impl EditorHandle {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
-					editor_and_handle(|editor, handle| {
-						for message in editor.handle_message(InputPreprocessorMessage::CurrentTime {
+					editor_and_handle(|_, handle| {
+						handle.dispatch(InputPreprocessorMessage::CurrentTime {
 							timestamp: js_sys::Date::now() as u64,
-						}) {
-							handle.send_frontend_message_to_js(message);
-						}
-
-						for message in editor.handle_message(AnimationMessage::IncrementFrameCounter) {
-							handle.send_frontend_message_to_js(message);
-						}
+						});
+						handle.dispatch(AnimationMessage::IncrementFrameCounter);
 
 						// Used by auto-panning, but this could possibly be refactored in the future, see:
 						// <https://github.com/GraphiteEditor/Graphite/pull/2562#discussion_r2041102786>
-						for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
-							handle.send_frontend_message_to_js(message);
-						}
+						handle.dispatch(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame));
 					});
 				}
 
@@ -268,6 +272,27 @@ impl EditorHandle {
 
 			set_timeout(g.borrow().as_ref().unwrap(), Duration::from_secs(editor::consts::AUTO_SAVE_TIMEOUT_SECONDS));
 		}
+	}
+
+	/// Minimizes the application window to the taskbar or dock
+	#[wasm_bindgen(js_name = appWindowMinimize)]
+	pub fn app_window_minimize(&self) {
+		let message = AppWindowMessage::AppWindowMinimize;
+		self.dispatch(message);
+	}
+
+	/// Toggles minimizing or restoring down the application window
+	#[wasm_bindgen(js_name = appWindowMaximize)]
+	pub fn app_window_maximize(&self) {
+		let message = AppWindowMessage::AppWindowMaximize;
+		self.dispatch(message);
+	}
+
+	/// Closes the application window
+	#[wasm_bindgen(js_name = appWindowClose)]
+	pub fn app_window_close(&self) {
+		let message = AppWindowMessage::AppWindowClose;
+		self.dispatch(message);
 	}
 
 	/// Displays a dialog with an error message
@@ -889,7 +914,7 @@ fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) ->
 }
 
 /// Provides access to the `Editor` and its `EditorHandle` by calling the given closure with them as arguments.
-pub(crate) fn editor_and_handle(mut callback: impl FnMut(&mut Editor, &mut EditorHandle)) {
+pub(crate) fn editor_and_handle(callback: impl FnOnce(&mut Editor, &mut EditorHandle)) {
 	EDITOR_HANDLE.with(|editor_handle| {
 		editor(|editor| {
 			let mut guard = editor_handle.try_lock();
@@ -910,7 +935,7 @@ async fn poll_node_graph_evaluation() {
 		return;
 	}
 
-	if !editor::node_graph_executor::run_node_graph().await {
+	if !editor::node_graph_executor::run_node_graph().await.0 {
 		return;
 	};
 
@@ -943,9 +968,7 @@ fn auto_save_all_documents() {
 		return;
 	}
 
-	editor_and_handle(|editor, handle| {
-		for message in editor.handle_message(PortfolioMessage::AutoSaveAllDocuments) {
-			handle.send_frontend_message_to_js(message);
-		}
+	editor_and_handle(|_, handle| {
+		handle.dispatch(PortfolioMessage::AutoSaveAllDocuments);
 	});
 }

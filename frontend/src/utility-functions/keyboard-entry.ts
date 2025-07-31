@@ -32,7 +32,7 @@ export function textInputCleanup(text: string): string {
 // <https://github.com/WICG/keyboard-map/issues/26>
 // In the desktop version of VS Code, this is achieved with this Electron plugin:
 // <https://github.com/Microsoft/node-native-keymap>
-// We may be able to port that (it's a relatively small codebase) to Rust for use with Tauri.
+// We may be able to port that (it's a relatively small codebase) to Rust for use with our desktop application.
 // But on the web, just like VS Code, we're limited by the shortcomings of the spec.
 // A collection of further insights:
 // <https://docs.google.com/document/d/1p17IBbYGsZivLIMhKZOaCJFAJFokbPfKrkB37fOPXSM/edit>

@@ -53,7 +53,7 @@ impl Line {
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
-		let [center, _, lock_angle, snap_angle] = modifier;
+		let [center, snap_angle, lock_angle] = modifier;
 
 		shape_tool_data.line_data.drag_current = ipp.mouse.position;
 

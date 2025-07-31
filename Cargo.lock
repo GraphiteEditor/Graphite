@@ -1834,14 +1834,20 @@ dependencies = [
 name = "graphite-desktop"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "cef",
  "dirs",
  "futures",
+ "glam",
+ "graph-craft",
+ "graphite-editor",
  "include_dir",
+ "ron",
  "thiserror 2.0.12",
  "tracing",
  "tracing-subscriber",
  "wgpu",
+ "wgpu-executor",
  "winit",
 ]
 
@@ -1875,6 +1881,7 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "usvg",
+ "vello",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -1902,6 +1909,7 @@ dependencies = [
  "js-sys",
  "log",
  "math-parser",
+ "ron",
  "serde",
  "serde-wasm-bindgen",
  "wasm-bindgen",
