@@ -1,7 +1,7 @@
 // import { panicProxy } from "@graphite/utility-functions/panic-proxy";
 import { type JsMessageType } from "@graphite/messages";
 import { createSubscriptionRouter, type SubscriptionRouter } from "@graphite/subscription-router";
-import init, { setRandomSeed, wasmMemory, EditorHandle } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
+import init, { setRandomSeed, wasmMemory, EditorHandle, receiveNativeMessage } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 
 export type Editor = {
 	raw: WebAssembly.Memory;
@@ -22,6 +22,10 @@ export async function initWasm() {
 	const wasm = await init();
 	for (const [name, f] of Object.entries(wasm)) {
 		if (name.startsWith("__node_registry")) f();
+	}
+
+	if (receiveNativeMessage) {
+		(window as any).receiveNativeMessage = receiveNativeMessage;
 	}
 
 	wasmImport = await wasmMemory();

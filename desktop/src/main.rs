@@ -2,6 +2,7 @@ use std::fmt::Debug;
 use std::process::exit;
 use std::time::Instant;
 
+use graphite_editor::messages::prelude::Message;
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
 
@@ -20,6 +21,7 @@ mod dirs;
 pub(crate) enum CustomEvent {
 	UiUpdate(wgpu::Texture),
 	ScheduleBrowserWork(Instant),
+	MessageReceived { message: Message },
 }
 
 fn main() {
@@ -38,7 +40,7 @@ fn main() {
 
 	let (window_size_sender, window_size_receiver) = std::sync::mpsc::channel();
 
-	let wgpu_context = futures::executor::block_on(WgpuContext::new());
+	let wgpu_context = futures::executor::block_on(WgpuContext::new()).unwrap();
 	let cef_context = match cef_context.init(cef::CefHandler::new(window_size_receiver, event_loop.create_proxy(), wgpu_context.clone())) {
 		Ok(c) => c,
 		Err(cef::InitError::AlreadyRunning) => {
@@ -50,6 +52,8 @@ fn main() {
 			exit(1);
 		}
 	};
+
+	tracing::info!("Cef initialized successfully");
 
 	let mut winit_app = WinitApp::new(cef_context, window_size_sender, wgpu_context);
 

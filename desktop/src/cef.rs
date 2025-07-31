@@ -120,5 +120,15 @@ impl CefEventHandler for CefHandler {
 		let _ = self.event_loop_proxy.send_event(CustomEvent::ScheduleBrowserWork(scheduled_time));
 	}
 
-	fn receive_web_message(&self, message: &[u8]) {}
+	fn receive_web_message(&self, message: &[u8]) {
+		let str = std::str::from_utf8(message).unwrap();
+		match ron::from_str(str) {
+			Ok(message) => {
+				let _ = self.event_loop_proxy.send_event(CustomEvent::MessageReceived { message });
+			}
+			Err(e) => {
+				tracing::error!("Failed to deserialize message {:?}", e)
+			}
+		}
+	}
 }

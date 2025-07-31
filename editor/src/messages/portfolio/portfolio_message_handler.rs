@@ -883,6 +883,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(FrontendMessage::UpdateOpenDocumentsList { open_documents });
 			}
 			PortfolioMessage::UpdateVelloPreference => {
+				responses.add(FrontendMessage::UpdateViewportHolePunch { active: preferences.use_vello });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				self.persistent_data.use_vello = preferences.use_vello;
 			}
