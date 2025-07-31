@@ -22,7 +22,7 @@ pub(crate) enum CustomEvent {
 	UiUpdate(wgpu::Texture),
 	ScheduleBrowserWork(Instant),
 	MessageReceived { message: Message },
-	NodeGraphRan { texture: Option<graphene_application_io::ImageTexture> },
+	NodeGraphRan { texture: Option<wgpu::Texture> },
 }
 
 fn main() {
@@ -63,7 +63,9 @@ fn main() {
 			let last_render = Instant::now();
 			let (has_run, texture) = futures::executor::block_on(graphite_editor::node_graph_executor::run_node_graph());
 			if has_run {
-				rendering_loop_proxy.send_event(CustomEvent::NodeGraphRan { texture });
+				let _ = rendering_loop_proxy.send_event(CustomEvent::NodeGraphRan {
+					texture: texture.map(|t| (*t.texture).clone()),
+				});
 			}
 			let frame_time = Duration::from_secs_f32((target_fps as f32).recip());
 			let sleep = last_render + frame_time - Instant::now();

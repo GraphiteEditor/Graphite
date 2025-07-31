@@ -72,8 +72,6 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 		let wait_until = timeout.min(self.cef_schedule.unwrap_or(timeout));
 		self.cef_context.work();
 
-		let (_has_run, texture) = futures::executor::block_on(graphite_editor::node_graph_executor::run_node_graph());
-
 		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
 	}
 
@@ -212,7 +210,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 				if let Some(texture) = texture
 					&& let Some(graphics_state) = &mut self.graphics_state
 				{
-					graphics_state.bind_viewport_texture(texture.texture.as_ref());
+					graphics_state.bind_viewport_texture(&texture);
 				}
 				let mut responses = VecDeque::new();
 				let err = self.editor.poll_node_graph_evaluation(&mut responses);
