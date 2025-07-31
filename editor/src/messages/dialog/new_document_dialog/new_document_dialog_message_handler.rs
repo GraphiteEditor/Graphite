@@ -34,11 +34,10 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 							.into(),
 						],
 					});
+					responses.add(DeferMessage::AfterNavigationReady {
+						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into(), DocumentMessage::DeselectAllLayers.into()],
+					});
 				}
-
-				responses.add(DeferMessage::AfterNavigationReady {
-					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into(), DocumentMessage::DeselectAllLayers.into()],
-				});
 			}
 		}
 
