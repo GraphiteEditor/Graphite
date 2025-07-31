@@ -476,7 +476,7 @@ impl Fsm for ShapeToolFsmState {
 
 				if matches!(self, ShapeToolFsmState::Drawing(_) | ShapeToolFsmState::DraggingLineEndpoints) {
 					Line::overlays(document, tool_data, &mut overlay_context);
-					if matches!(tool_options.shape_type, ShapeType::Circle) {
+					if tool_options.shape_type == ShapeType::Circle {
 						tool_data.gizmo_manager.overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
 					}
 				}
@@ -657,7 +657,7 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Ellipse | ShapeType::Arc | ShapeType::Rectangle | ShapeType::Circle => tool_data.data.start(document, input),
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Rectangle | ShapeType::Ellipse => tool_data.data.start(document, input),
 					ShapeType::Line => {
 						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 						let snapped = tool_data.data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
@@ -670,11 +670,11 @@ impl Fsm for ShapeToolFsmState {
 				let node = match tool_data.current_shape {
 					ShapeType::Polygon => Polygon::create_node(tool_options.vertices),
 					ShapeType::Star => Star::create_node(tool_options.vertices),
+					ShapeType::Circle => Circle::create_node(),
 					ShapeType::Arc => Arc::create_node(tool_options.arc_type),
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
 					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
-					ShapeType::Circle => Circle::create_node(),
 				};
 
 				let nodes = vec![(NodeId(0), node)];
@@ -683,7 +683,7 @@ impl Fsm for ShapeToolFsmState {
 				let defered_responses = &mut VecDeque::new();
 
 				match tool_data.current_shape {
-					ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Arc | ShapeType::Polygon | ShapeType::Star | ShapeType::Circle => {
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Rectangle | ShapeType::Ellipse => {
 						defered_responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
@@ -715,13 +715,13 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
-					ShapeType::Rectangle => Rectangle::update_shape(document, input, layer, tool_data, modifier, responses),
-					ShapeType::Ellipse => Ellipse::update_shape(document, input, layer, tool_data, modifier, responses),
-					ShapeType::Line => Line::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Polygon => Polygon::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Star => Star::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Circle => Circle::update_shape(document, input, layer, responses),
 					ShapeType::Arc => Arc::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Rectangle => Rectangle::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Ellipse => Ellipse::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Line => Line::update_shape(document, input, layer, tool_data, modifier, responses),
 				}
 
 				// Auto-panning
@@ -959,7 +959,9 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Circle => HintGroup(vec![]),
 				};
 
-				common_hint_group.push(tool_hint_group);
+				if !tool_hint_group.0.is_empty() {
+					common_hint_group.push(tool_hint_group);
+				}
 
 				if matches!(shape, ShapeType::Polygon | ShapeType::Star) {
 					common_hint_group.push(HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Decrease/Increase Sides")]));

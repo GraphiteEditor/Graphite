@@ -43,6 +43,7 @@ impl ShapeGizmoHandler for ArcGizmoHandler {
 			self.arc_radius_handle.update_state(RadiusHandleState::Inactive);
 			return;
 		}
+
 		if self.sweep_angle_gizmo.hovered() {
 			self.sweep_angle_gizmo.update_state(SweepAngleGizmoState::Dragging);
 		}

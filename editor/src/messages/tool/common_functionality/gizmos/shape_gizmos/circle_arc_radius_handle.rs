@@ -1,8 +1,9 @@
 use crate::consts::GIZMO_HIDE_THRESHOLD;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::{overlays::utility_types::OverlayContext, utility_types::network_interface::InputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage};
 use crate::messages::prelude::{FrontendMessage, Responses};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_arc_id, get_stroke_width};
@@ -80,11 +81,12 @@ impl RadiusHandle {
 					self.initial_radius = radius;
 					self.previous_mouse_position = mouse_position;
 					self.angle = angle;
+
 					self.update_state(RadiusHandleState::Hover);
+
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::EWResize });
 				}
 			}
-
 			RadiusHandleState::Dragging | RadiusHandleState::Hover => {}
 		}
 	}
@@ -92,7 +94,6 @@ impl RadiusHandle {
 	pub fn overlays(&self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 		match &self.handle_state {
 			RadiusHandleState::Inactive => {}
-
 			RadiusHandleState::Dragging | RadiusHandleState::Hover => {
 				let Some(layer) = self.layer else { return };
 				let Some(radius) = extract_circle_radius(layer, document).or(extract_arc_parameters(Some(layer), document).map(|(r, _, _, _)| r)) else {
@@ -105,14 +106,11 @@ impl RadiusHandle {
 				let end_point = viewport.transform_point2(calculate_circle_point_position(FRAC_PI_2, radius)).distance(center);
 
 				if let Some(stroke_width) = get_stroke_width(layer, &document.network_interface) {
-					let threshold = 15.0;
+					let threshold = 15.;
 					let min_radius = start_point.min(end_point);
 
-					let extra_spacing = if min_radius < threshold {
-						10.0 * (min_radius / threshold) // smoothly scales from 0 → 10
-					} else {
-						10.0
-					};
+					// Smoothly scales from 0 → 10 as the radius approaches the threshold
+					let extra_spacing = if min_radius < threshold { 10. * (min_radius / threshold) } else { 10. };
 
 					let spacing = stroke_width + extra_spacing;
 					let smaller_radius_x = (start_point - spacing).abs();
@@ -134,14 +132,13 @@ impl RadiusHandle {
 
 	pub fn update_inner_radius(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>, drag_start: DVec2) {
 		let Some(layer) = self.layer else { return };
-
 		let Some(node_id) = graph_modification_utils::get_circle_id(layer, &document.network_interface).or(get_arc_id(layer, &document.network_interface)) else {
 			return;
 		};
-
 		let Some(current_radius) = extract_circle_radius(layer, document).or(extract_arc_parameters(Some(layer), document).map(|(r, _, _, _)| r)) else {
 			return;
 		};
+
 		let viewport_transform = document.network_interface.document_metadata().transform_to_viewport(layer);
 		let center = viewport_transform.transform_point2(DVec2::ZERO);
 

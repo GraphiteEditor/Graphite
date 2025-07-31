@@ -180,8 +180,7 @@ impl GizmoManager {
 		if graph_modification_utils::get_arc_id(layer, &document.network_interface).is_some() {
 			return Some(ShapeGizmoHandlers::Arc(ArcGizmoHandler::new()));
 		}
-
-		// Polygon
+		// Circle
 		if graph_modification_utils::get_circle_id(layer, &document.network_interface).is_some() {
 			return Some(ShapeGizmoHandlers::Circle(CircleGizmoHandler::default()));
 		}

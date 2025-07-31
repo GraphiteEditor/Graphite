@@ -25,12 +25,12 @@ use std::f64::consts::{PI, TAU};
 pub enum ShapeType {
 	#[default]
 	Polygon = 0,
-	Star = 1,
-	Circle = 2,
-	Arc = 3,
-	Rectangle = 4,
-	Ellipse = 5,
-	Line = 6,
+	Star,
+	Circle,
+	Arc,
+	Rectangle,
+	Ellipse,
+	Line,
 }
 
 impl ShapeType {
@@ -38,11 +38,11 @@ impl ShapeType {
 		(match self {
 			Self::Polygon => "Polygon",
 			Self::Star => "Star",
+			Self::Circle => "Circle",
 			Self::Arc => "Arc",
 			Self::Rectangle => "Rectangle",
 			Self::Ellipse => "Ellipse",
 			Self::Line => "Line",
-			Self::Circle => "Circle",
 		})
 		.into()
 	}
