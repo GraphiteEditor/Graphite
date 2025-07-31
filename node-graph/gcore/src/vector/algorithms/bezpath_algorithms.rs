@@ -1,8 +1,9 @@
+use std::path::Path;
+
 use super::poisson_disk::poisson_disk_sample;
-use crate::vector::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
 use crate::vector::misc::{PointSpacingType, dvec2_to_point};
 use glam::DVec2;
-use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, QuadBez, Rect, Shape};
+use kurbo::{BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, Rect, Shape};
 
 /// Splits the [`BezPath`] at `t` value which lie in the range of [0, 1].
 /// Returns [`None`] if the given [`BezPath`] has no segments or `t` is within f64::EPSILON of 0 or 1.
@@ -175,6 +176,25 @@ pub fn t_value_to_parametric(bezpath: &BezPath, t: f64, euclidian: bool, segment
 	bezpath_t_value_to_parametric(bezpath, BezPathTValue::GlobalParametric(t), segments_length)
 }
 
+pub enum TValue {
+	Parametric(f64),
+	Euclidean(f64),
+}
+
+pub fn trim_pathseg(segment: PathSeg, t1: TValue, t2: TValue) -> Option<PathSeg> {
+	let t1 = eval_pathseg(segment, t1);
+	let t2 = eval_pathseg(segment, t2);
+
+	if t1 > t2 { None } else { Some(segment.subsegment(t1..t2)) }
+}
+
+pub fn eval_pathseg(segment: PathSeg, t_value: TValue) -> f64 {
+	match t_value {
+		TValue::Parametric(t) => t,
+		TValue::Euclidean(t) => eval_pathseg_euclidean(segment, t, DEFAULT_ACCURACY),
+	}
+}
+
 /// Finds the t value of point on the given path segment i.e fractional distance along the segment's total length.
 /// It uses a binary search to find the value `t` such that the ratio `length_up_to_t / total_length` approximates the input `distance`.
 pub fn eval_pathseg_euclidean(path_segment: PathSeg, distance: f64, accuracy: f64) -> f64 {
@@ -314,17 +334,4 @@ pub fn poisson_disk_points(bezpath_index: usize, bezpaths: &[(BezPath, Rect)], s
 	let height = this_bbox.height();
 
 	poisson_disk_sample(offset, width, height, separation_disk_diameter, point_in_shape_checker, line_intersect_shape_checker, rng)
-}
-
-/// Returns true if the Bezier curve is equivalent to a line.
-///
-/// **NOTE**: This is different from simply checking if the segment is [`PathSeg::Line`] or [`PathSeg::Quad`] or [`PathSeg::Cubic`]. Bezier curve can also be a line if the control points are colinear to the start and end points. Therefore if the handles exceed the start and end point, it will still be considered as a line.
-pub fn is_linear(segment: &PathSeg) -> bool {
-	let is_colinear = |a: Point, b: Point, c: Point| -> bool { ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs() < MAX_ABSOLUTE_DIFFERENCE };
-
-	match *segment {
-		PathSeg::Line(_) => true,
-		PathSeg::Quad(QuadBez { p0, p1, p2 }) => is_colinear(p0, p1, p2),
-		PathSeg::Cubic(CubicBez { p0, p1, p2, p3 }) => is_colinear(p0, p1, p3) && is_colinear(p0, p2, p3),
-	}
 }

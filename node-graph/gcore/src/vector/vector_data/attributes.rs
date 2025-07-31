@@ -3,6 +3,7 @@ use crate::vector::vector_data::{HandleId, VectorData};
 use bezier_rs::{BezierHandles, ManipulatorGroup};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
+use kurbo::{CubicBez, Line, PathSeg, QuadBez};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::iter::zip;
@@ -673,6 +674,18 @@ impl FoundSubpath {
 }
 
 impl VectorData {
+	/// Construct a [`kurbo::PathSeg`] by resolving the points from their ids.
+	fn path_segment_from_index(&self, start: usize, end: usize, handles: BezierHandles) -> PathSeg {
+		let start = dvec2_to_point(self.point_domain.positions()[start]);
+		let end = dvec2_to_point(self.point_domain.positions()[end]);
+
+		match handles {
+			BezierHandles::Linear => PathSeg::Line(Line::new(start, end)),
+			BezierHandles::Quadratic { handle } => PathSeg::Quad(QuadBez::new(start, dvec2_to_point(handle), end)),
+			BezierHandles::Cubic { handle_start, handle_end } => PathSeg::Cubic(CubicBez::new(start, dvec2_to_point(handle_start), dvec2_to_point(handle_end), end)),
+		}
+	}
+
 	/// Construct a [`bezier_rs::Bezier`] curve spanning from the resolved position of the start and end points with the specified handles.
 	fn segment_to_bezier_with_index(&self, start: usize, end: usize, handles: BezierHandles) -> bezier_rs::Bezier {
 		let start = self.point_domain.positions()[start];
@@ -697,6 +710,19 @@ impl VectorData {
 		let start_id = self.point_domain.ids()[start];
 		let end_id = self.point_domain.ids()[end];
 		(start_id, end_id, self.segment_to_bezier_with_index(start, end, self.segment_domain.handles[index]))
+	}
+
+	/// Iterator over all of the [`bezier_rs::Bezier`] following the order that they are stored in the segment domain, skipping invalid segments.
+	pub fn segment_iter(&self) -> impl Iterator<Item = (SegmentId, PathSeg, PointId, PointId)> {
+		let to_segment = |(((&handles, &id), &start), &end)| (id, self.path_segment_from_index(start, end, handles), self.point_domain.ids()[start], self.point_domain.ids()[end]);
+
+		self.segment_domain
+			.handles
+			.iter()
+			.zip(&self.segment_domain.id)
+			.zip(self.segment_domain.start_point())
+			.zip(self.segment_domain.end_point())
+			.map(to_segment)
 	}
 
 	/// Iterator over all of the [`bezier_rs::Bezier`] following the order that they are stored in the segment domain, skipping invalid segments.
