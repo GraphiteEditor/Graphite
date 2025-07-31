@@ -245,6 +245,7 @@ where
 	let resolution = footprint.resolution;
 	let render_params = RenderParams {
 		culling_bounds: None,
+		disable_canvas_override: false,
 		..Default::default()
 	};
 
@@ -311,7 +312,12 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 		.into_context();
 	ctx.footprint();
 
-	let RenderConfig { hide_artboards, for_export, .. } = render_config;
+	let RenderConfig {
+		hide_artboards,
+		for_export,
+		disable_canvas_override,
+		..
+	} = render_config;
 	let render_params = RenderParams {
 		view_mode: render_config.view_mode,
 		culling_bounds: None,
@@ -320,6 +326,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 		for_export,
 		for_mask: false,
 		alignment_parent_transform: None,
+		disable_canvas_override,
 	};
 
 	let data = data.eval(ctx.clone()).await;
