@@ -73,23 +73,6 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 		self.cef_context.work();
 
 		let (_has_run, texture) = futures::executor::block_on(graphite_editor::node_graph_executor::run_node_graph());
-		if _has_run {
-			let mut responses = VecDeque::new();
-			let err = self.editor.poll_node_graph_evaluation(&mut responses);
-			if let Err(e) = err {
-				tracing::error!("Error poling node graph: {}", e);
-			}
-			let frontend_messages = responses
-				.into_iter()
-				.flat_map(|response| if let Message::Frontend(frontend) = response { Some(frontend) } else { None })
-				.collect();
-			self.send_messages_to_editor(frontend_messages);
-		}
-		if let Some(texture) = texture
-			&& let Some(graphics_state) = &mut self.graphics_state
-		{
-			graphics_state.bind_viewport_texture(texture.texture.as_ref());
-		}
 
 		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
 	}
@@ -224,6 +207,24 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 					}
 				}
 				self.dispatch_message(message);
+			}
+			CustomEvent::NodeGraphRan { texture } => {
+				if let Some(texture) = texture
+					&& let Some(graphics_state) = &mut self.graphics_state
+				{
+					graphics_state.bind_viewport_texture(texture.texture.as_ref());
+				}
+				let mut responses = VecDeque::new();
+				let err = self.editor.poll_node_graph_evaluation(&mut responses);
+				if let Err(e) = err {
+					if e != "No active document" {
+						tracing::error!("Error poling node graph: {}", e);
+					}
+				}
+
+				for message in responses {
+					self.dispatch_message(message);
+				}
 			}
 		}
 	}

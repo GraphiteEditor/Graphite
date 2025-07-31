@@ -1,6 +1,6 @@
-use std::fmt::Debug;
 use std::process::exit;
 use std::time::Instant;
+use std::{fmt::Debug, time::Duration};
 
 use graphite_editor::messages::prelude::Message;
 use tracing_subscriber::EnvFilter;
@@ -22,6 +22,7 @@ pub(crate) enum CustomEvent {
 	UiUpdate(wgpu::Texture),
 	ScheduleBrowserWork(Instant),
 	MessageReceived { message: Message },
+	NodeGraphRan { texture: Option<graphene_application_io::ImageTexture> },
 }
 
 fn main() {
@@ -54,6 +55,21 @@ fn main() {
 	};
 
 	tracing::info!("Cef initialized successfully");
+
+	let rendering_loop_proxy = event_loop.create_proxy();
+	let target_fps = 60;
+	std::thread::spawn(move || {
+		loop {
+			let last_render = Instant::now();
+			let (has_run, texture) = futures::executor::block_on(graphite_editor::node_graph_executor::run_node_graph());
+			if has_run {
+				rendering_loop_proxy.send_event(CustomEvent::NodeGraphRan { texture });
+			}
+			let frame_time = Duration::from_secs_f32((target_fps as f32).recip());
+			let sleep = last_render + frame_time - Instant::now();
+			std::thread::sleep(sleep);
+		}
+	});
 
 	let mut winit_app = WinitApp::new(cef_context, window_size_sender, wgpu_context);
 
