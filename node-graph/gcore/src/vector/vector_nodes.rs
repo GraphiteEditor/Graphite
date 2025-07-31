@@ -931,13 +931,13 @@ async fn dimensions(_: impl Ctx, vector_data: VectorDataTable) -> DVec2 {
 		.unwrap_or_default()
 }
 
-/// Converts a coordinate value into a vector anchor point.
+/// Converts a vec2 value into a vector path composed of a single anchor point.
 ///
 /// This is useful in conjunction with nodes that repeat it, followed by the "Points to Polyline" node to string together a path of the points.
-#[node_macro::node(category("Vector"), name("Coordinate to Point"), path(graphene_core::vector))]
-async fn position_to_point(_: impl Ctx, coordinate: DVec2) -> VectorDataTable {
+#[node_macro::node(category("Vector"), name("Vec2 to Point"), path(graphene_core::vector))]
+async fn vec2_to_point(_: impl Ctx, vec2: DVec2) -> VectorDataTable {
 	let mut point_domain = PointDomain::new();
-	point_domain.push(PointId::generate(), coordinate);
+	point_domain.push(PointId::generate(), vec2);
 
 	VectorDataTable::new_instance(Instance {
 		instance: VectorData { point_domain, ..Default::default() },

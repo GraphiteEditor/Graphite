@@ -851,7 +851,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: None,
 		},
 		DocumentNodeDefinition {
-			identifier: "Split Coordinate",
+			identifier: "Split Vec2",
 			category: "Math: Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
@@ -882,7 +882,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Coordinate", "TODO").into()],
+					input_metadata: vec![("Vec2", "TODO").into()],
 					output_names: vec!["X".to_string(), "Y".to_string()],
 					has_primary_output: false,
 					network_metadata: Some(NodeNetworkMetadata {
@@ -917,7 +917,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed(
-				"Decomposes the X and Y components of a 2D coordinate.\n\nThe inverse of this node is \"Coordinate Value\", which can have either or both its X and Y exposed as graph inputs.",
+				"Decomposes the X and Y components of a vec2.\n\nThe inverse of this node is \"Vec2 Value\", which can have either or both its X and Y parameters exposed as graph inputs.",
 			),
 			properties: None,
 		},
@@ -2042,7 +2042,7 @@ fn static_input_properties() -> InputProperties {
 				.and_then(|value| value.as_bool())
 				.unwrap_or_default();
 
-			Ok(vec![node_properties::coordinate_widget(
+			Ok(vec![node_properties::vec2_widget(
 				ParameterWidgetsInfo::new(node_id, index, true, context),
 				&x,
 				&y,
@@ -2298,7 +2298,7 @@ fn static_input_properties() -> InputProperties {
 		"spline_input".to_string(),
 		Box::new(|node_id, index, context| {
 			Ok(vec![LayoutGroup::Row {
-				widgets: node_properties::array_of_coordinates_widget(ParameterWidgetsInfo::new(node_id, index, true, context), TextInput::default().centered(true)),
+				widgets: node_properties::array_of_vec2_widget(ParameterWidgetsInfo::new(node_id, index, true, context), TextInput::default().centered(true)),
 			}])
 		}),
 	);
