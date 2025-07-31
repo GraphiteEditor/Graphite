@@ -160,7 +160,7 @@ pub(crate) fn property_from_type(
 				Some("Fraction") => number_widget(default_info, number_input.mode_range().min(min(0.)).max(max(1.))).into(),
 				Some("IntegerCount") => number_widget(default_info, number_input.int().min(min(1.))).into(),
 				Some("SeedValue") => number_widget(default_info, number_input.int().min(min(0.))).into(),
-				Some("PixelSize") => coordinate_widget(default_info, "X", "Y", unit.unwrap_or(" px"), None, false),
+				Some("PixelSize") => vec2_widget(default_info, "X", "Y", unit.unwrap_or(" px"), None, false),
 				Some("TextArea") => text_area_widget(default_info).into(),
 
 				// For all other types, use TypeId-based matching
@@ -175,13 +175,13 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<u64>() => number_widget(default_info, number_input.int().min(min(0.))).into(),
 						Some(x) if x == TypeId::of::<bool>() => bool_widget(default_info, CheckboxInput::default()).into(),
 						Some(x) if x == TypeId::of::<String>() => text_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<DVec2>() => coordinate_widget(default_info, "X", "Y", "", None, false),
+						Some(x) if x == TypeId::of::<DVec2>() => vec2_widget(default_info, "X", "Y", "", None, false),
 						Some(x) if x == TypeId::of::<DAffine2>() => transform_widget(default_info, &mut extra_widgets),
 						// ==========================
 						// PRIMITIVE COLLECTION TYPES
 						// ==========================
 						Some(x) if x == TypeId::of::<Vec<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
-						Some(x) if x == TypeId::of::<Vec<DVec2>>() => array_of_coordinates_widget(default_info, TextInput::default()).into(),
+						Some(x) if x == TypeId::of::<Vec<DVec2>>() => array_of_vec2_widget(default_info, TextInput::default()).into(),
 						// ====================
 						// GRAPHICAL DATA TYPES
 						// ====================
@@ -626,7 +626,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 	}
 }
 
-pub fn coordinate_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, unit: &str, min: Option<f64>, is_integer: bool) -> LayoutGroup {
+pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, unit: &str, min: Option<f64>, is_integer: bool) -> LayoutGroup {
 	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
 
 	let mut widgets = start_widgets(parameter_widgets_info);
@@ -723,7 +723,7 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 	widgets
 }
 
-pub fn array_of_coordinates_widget(parameter_widgets_info: ParameterWidgetsInfo, text_props: TextInput) -> Vec<WidgetHolder> {
+pub fn array_of_vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, text_props: TextInput) -> Vec<WidgetHolder> {
 	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
 
 	let mut widgets = start_widgets(parameter_widgets_info);
@@ -1249,7 +1249,7 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	if let Some(&TaggedValue::GridType(grid_type)) = grid_type_input.as_non_exposed_value() {
 		match grid_type {
 			GridType::Rectangular => {
-				let spacing = coordinate_widget(ParameterWidgetsInfo::new(node_id, SpacingInput::<f64>::INDEX, true, context), "W", "H", " px", Some(0.), false);
+				let spacing = vec2_widget(ParameterWidgetsInfo::new(node_id, SpacingInput::<f64>::INDEX, true, context), "W", "H", " px", Some(0.), false);
 				widgets.push(spacing);
 			}
 			GridType::Isometric => {
@@ -1259,7 +1259,7 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						NumberInput::default().label("H").min(0.).unit(" px"),
 					),
 				};
-				let angles = coordinate_widget(ParameterWidgetsInfo::new(node_id, AnglesInput::INDEX, true, context), "", "", "°", None, false);
+				let angles = vec2_widget(ParameterWidgetsInfo::new(node_id, AnglesInput::INDEX, true, context), "", "", "°", None, false);
 				widgets.extend([spacing, angles]);
 			}
 		}
