@@ -206,9 +206,12 @@ impl Dispatcher {
 					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Tool(message) => {
-					let document_id = self.message_handlers.portfolio_message_handler.active_document_id().unwrap();
-					let Some(document) = self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id) else {
+					let Some(document_id) = self.message_handlers.portfolio_message_handler.active_document_id() else {
 						warn!("Called ToolMessage without an active document.\nGot {message:?}");
+						return;
+					};
+					let Some(document) = self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id) else {
+						warn!("Called ToolMessage with an invalid active document.\nGot {message:?}");
 						return;
 					};
 
