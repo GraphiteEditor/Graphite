@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use super::poisson_disk::poisson_disk_sample;
 use crate::vector::misc::{PointSpacingType, dvec2_to_point};
 use glam::DVec2;
