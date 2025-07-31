@@ -67,10 +67,12 @@ pub trait Responses {
 }
 
 impl Responses for VecDeque<Message> {
+	#[inline(always)]
 	fn add(&mut self, message: impl Into<Message>) {
 		self.push_back(message.into());
 	}
 
+	#[inline(always)]
 	fn add_front(&mut self, message: impl Into<Message>) {
 		self.push_front(message.into());
 	}

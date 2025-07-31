@@ -28,12 +28,12 @@ impl MessageHandler<DeferMessage, ()> for DeferMessageHandler {
 				let num_elements_to_remove = self.after_graph_run.binary_search_by_key(&(execution_id + 1), |x| x.0).unwrap_or_else(|pos| pos - 1);
 				let elements = self.after_graph_run.drain(0..=num_elements_to_remove);
 				for (_, message) in elements.rev() {
-					responses.push_front(message);
+					responses.add_front(message);
 				}
 			}
 			DeferMessage::TriggerNavigationReady => {
 				for message in self.after_viewport_resize.drain(..).rev() {
-					responses.push_front(message);
+					responses.add_front(message);
 				}
 			}
 		}

@@ -2199,7 +2199,6 @@ impl Fsm for PathToolFsmState {
 				}
 				// Deselect all points if the user clicks the filled region of the shape
 				else if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
-					log::debug!("clicked filled region");
 					shape_editor.deselect_all_points();
 					shape_editor.deselect_all_segments();
 				}
