@@ -464,12 +464,7 @@ impl Fsm for ShapeToolFsmState {
 						}
 					}
 
-					let mut cursor;
-
-					cursor = tool_data.transform_cage_mouse_icon(input);
-					if let Some(gizmo_cursor_icon) = tool_data.gizmo_manager.mouse_cursor_icon() {
-						cursor = gizmo_cursor_icon;
-					}
+					let cursor = tool_data.gizmo_manager.mouse_cursor_icon().unwrap_or_else(|| tool_data.transform_cage_mouse_icon(input));
 
 					tool_data.cursor = cursor;
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });

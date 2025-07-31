@@ -271,7 +271,6 @@ impl GizmoManager {
 	///
 	/// If a gizmo is active (hovered or being manipulated), it returns the cursor icon associated with that gizmo;
 	/// otherwise, returns `None` to indicate the default crosshair cursor should be used.
-
 	pub fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
 		self.active_shape_handler.as_ref().and_then(|h| h.gizmo_cursor_icon())
 	}
