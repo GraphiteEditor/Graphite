@@ -1,4 +1,3 @@
-use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
 	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COLOR_OVERLAY_YELLOW_DULL,
 	COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE,
@@ -14,8 +13,9 @@ use graphene_std::math::quad::Quad;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::{PointId, SegmentId, VectorData};
 use std::collections::HashMap;
-use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
+use vello::Scene;
+use vello::kurbo::{self, BezPath};
+use vello::peniko;
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
 
@@ -132,24 +132,64 @@ impl OverlaysVisibilitySettings {
 	}
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct OverlayContext {
 	// Serde functionality isn't used but is required by the message system macros
-	#[serde(skip, default = "overlay_canvas_context")]
+	#[serde(skip)]
 	#[specta(skip)]
-	pub render_context: web_sys::CanvasRenderingContext2d,
+	pub scene: Scene,
 	pub size: DVec2,
 	// The device pixel ratio is a property provided by the browser window and is the CSS pixel size divided by the physical monitor's pixel size.
 	// It allows better pixel density of visualizations on high-DPI displays where the OS display scaling is not 100%, or where the browser is zoomed.
 	pub device_pixel_ratio: f64,
 	pub visibility_settings: OverlaysVisibilitySettings,
 }
+
+// Manual implementations since Scene doesn't implement PartialEq or Debug
+impl PartialEq for OverlayContext {
+	fn eq(&self, other: &Self) -> bool {
+		self.size == other.size && self.device_pixel_ratio == other.device_pixel_ratio && self.visibility_settings == other.visibility_settings
+	}
+}
+
+impl std::fmt::Debug for OverlayContext {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("OverlayContext")
+			.field("scene", &"Scene { ... }")
+			.field("size", &self.size)
+			.field("device_pixel_ratio", &self.device_pixel_ratio)
+			.field("visibility_settings", &self.visibility_settings)
+			.finish()
+	}
+}
+
+// Default implementation for Scene
+impl Default for OverlayContext {
+	fn default() -> Self {
+		Self {
+			scene: Scene::new(),
+			size: DVec2::ZERO,
+			device_pixel_ratio: 1.0,
+			visibility_settings: OverlaysVisibilitySettings::default(),
+		}
+	}
+}
+
 // Message hashing isn't used but is required by the message system macros
 impl core::hash::Hash for OverlayContext {
 	fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
 }
 
 impl OverlayContext {
+	fn parse_color(color: &str) -> peniko::Color {
+		let hex = color.trim_start_matches('#');
+		let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
+		let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
+		let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
+		let a = if hex.len() >= 8 { u8::from_str_radix(&hex[6..8], 16).unwrap_or(255) } else { 255 };
+		peniko::Color::from_rgba8(r, g, b, a)
+	}
+
 	pub fn quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>) {
 		self.dashed_polygon(&quad.0, stroke_color, color_fill, None, None, None);
 	}
@@ -162,20 +202,17 @@ impl OverlayContext {
 		let edge1 = base + normal * size / 2.;
 		let edge2 = base - normal * size / 2.;
 
-		self.start_dpi_aware_transform();
+		let transform = self.get_transform();
 
-		self.render_context.begin_path();
-		self.render_context.move_to(top.x, top.y);
-		self.render_context.line_to(edge1.x, edge1.y);
-		self.render_context.line_to(edge2.x, edge2.y);
-		self.render_context.close_path();
+		let mut path = BezPath::new();
+		path.move_to(kurbo::Point::new(top.x, top.y));
+		path.line_to(kurbo::Point::new(edge1.x, edge1.y));
+		path.line_to(kurbo::Point::new(edge2.x, edge2.y));
+		path.close_path();
 
-		self.render_context.set_fill_style_str(color_fill);
-		self.render_context.set_stroke_style_str(color_stroke);
-		self.render_context.fill();
-		self.render_context.stroke();
+		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &path);
 
-		self.end_dpi_aware_transform();
+		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color_stroke), None, &path);
 	}
 
 	pub fn dashed_quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
@@ -191,55 +228,31 @@ impl OverlayContext {
 			return;
 		}
 
-		self.start_dpi_aware_transform();
+		let transform = self.get_transform();
 
-		// Set the dash pattern
-		if let Some(dash_width) = dash_width {
-			let dash_gap_width = dash_gap_width.unwrap_or(1.);
-			let array = js_sys::Array::new();
-			array.push(&JsValue::from(dash_width));
-			array.push(&JsValue::from(dash_gap_width));
-
-			if let Some(dash_offset) = dash_offset {
-				if dash_offset != 0. {
-					self.render_context.set_line_dash_offset(dash_offset);
-				}
-			}
-
-			self.render_context
-				.set_line_dash(&JsValue::from(array))
-				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
-				.ok();
+		let mut path = BezPath::new();
+		if let Some(first) = polygon.last() {
+			path.move_to(kurbo::Point::new(first.x.round() - 0.5, first.y.round() - 0.5));
 		}
-
-		self.render_context.begin_path();
-		self.render_context.move_to(polygon.last().unwrap().x.round() - 0.5, polygon.last().unwrap().y.round() - 0.5);
 
 		for point in polygon {
-			self.render_context.line_to(point.x.round() - 0.5, point.y.round() - 0.5);
+			path.line_to(kurbo::Point::new(point.x.round() - 0.5, point.y.round() - 0.5));
 		}
+		path.close_path();
 
 		if let Some(color_fill) = color_fill {
-			self.render_context.set_fill_style_str(color_fill);
-			self.render_context.fill();
+			self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &path);
 		}
 
 		let stroke_color = stroke_color.unwrap_or(COLOR_OVERLAY_BLUE);
-		self.render_context.set_stroke_style_str(stroke_color);
-		self.render_context.stroke();
+		let mut stroke = kurbo::Stroke::new(1.0);
 
-		// Reset the dash pattern back to solid
-		if dash_width.is_some() {
-			self.render_context
-				.set_line_dash(&JsValue::from(js_sys::Array::new()))
-				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
-				.ok();
-		}
-		if dash_offset.is_some() && dash_offset != Some(0.) {
-			self.render_context.set_line_dash_offset(0.);
+		if let Some(dash_width) = dash_width {
+			let dash_gap = dash_gap_width.unwrap_or(1.);
+			stroke = stroke.with_dashes(dash_offset.unwrap_or(0.), [dash_width, dash_gap]);
 		}
 
-		self.end_dpi_aware_transform();
+		self.scene.stroke(&stroke, transform, Self::parse_color(stroke_color), None, &path);
 	}
 
 	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>) {
@@ -248,69 +261,36 @@ impl OverlayContext {
 
 	#[allow(clippy::too_many_arguments)]
 	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
-		self.start_dpi_aware_transform();
-
-		// Set the dash pattern
-		if let Some(dash_width) = dash_width {
-			let dash_gap_width = dash_gap_width.unwrap_or(1.);
-			let array = js_sys::Array::new();
-			array.push(&JsValue::from(dash_width));
-			array.push(&JsValue::from(dash_gap_width));
-
-			if let Some(dash_offset) = dash_offset {
-				if dash_offset != 0. {
-					self.render_context.set_line_dash_offset(dash_offset);
-				}
-			}
-
-			self.render_context
-				.set_line_dash(&JsValue::from(array))
-				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
-				.ok();
-		}
+		let transform = self.get_transform();
 
 		let start = start.round() - DVec2::splat(0.5);
 		let end = end.round() - DVec2::splat(0.5);
 
-		self.render_context.begin_path();
-		self.render_context.move_to(start.x, start.y);
-		self.render_context.line_to(end.x, end.y);
-		self.render_context.set_line_width(thickness.unwrap_or(1.));
-		self.render_context.set_stroke_style_str(color.unwrap_or(COLOR_OVERLAY_BLUE));
-		self.render_context.stroke();
-		self.render_context.set_line_width(1.);
+		let mut path = BezPath::new();
+		path.move_to(kurbo::Point::new(start.x, start.y));
+		path.line_to(kurbo::Point::new(end.x, end.y));
 
-		// Reset the dash pattern back to solid
-		if dash_width.is_some() {
-			self.render_context
-				.set_line_dash(&JsValue::from(js_sys::Array::new()))
-				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
-				.ok();
-		}
-		if dash_offset.is_some() && dash_offset != Some(0.) {
-			self.render_context.set_line_dash_offset(0.);
+		let mut stroke = kurbo::Stroke::new(thickness.unwrap_or(1.));
+
+		if let Some(dash_width) = dash_width {
+			let dash_gap = dash_gap_width.unwrap_or(1.);
+			stroke = stroke.with_dashes(dash_offset.unwrap_or(0.), [dash_width, dash_gap]);
 		}
 
-		self.end_dpi_aware_transform();
+		self.scene.stroke(&stroke, transform, Self::parse_color(color.unwrap_or(COLOR_OVERLAY_BLUE)), None, &path);
 	}
 
 	pub fn manipulator_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
-		self.start_dpi_aware_transform();
-
+		let transform = self.get_transform();
 		let position = position.round() - DVec2::splat(0.5);
 
-		self.render_context.begin_path();
-		self.render_context
-			.arc(position.x, position.y, MANIPULATOR_GROUP_MARKER_SIZE / 2., 0., TAU)
-			.expect("Failed to draw the circle");
+		let circle = kurbo::Circle::new((position.x, position.y), MANIPULATOR_GROUP_MARKER_SIZE / 2.);
 
 		let fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
-		self.render_context.set_fill_style_str(fill);
-		self.render_context.set_stroke_style_str(color.unwrap_or(COLOR_OVERLAY_BLUE));
-		self.render_context.fill();
-		self.render_context.stroke();
+		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(fill), None, &circle);
 
-		self.end_dpi_aware_transform();
+		self.scene
+			.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color.unwrap_or(COLOR_OVERLAY_BLUE)), None, &circle);
 	}
 
 	pub fn manipulator_anchor(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
@@ -319,21 +299,8 @@ impl OverlayContext {
 		self.square(position, None, Some(color_fill), Some(color_stroke));
 	}
 
-	/// Transforms the canvas context to adjust for DPI scaling
-	///
-	/// Overwrites all existing tranforms. This operation can be reversed with [`Self::reset_transform`].
-	fn start_dpi_aware_transform(&self) {
-		let [a, b, c, d, e, f] = DAffine2::from_scale(DVec2::splat(self.device_pixel_ratio)).to_cols_array();
-		self.render_context
-			.set_transform(a, b, c, d, e, f)
-			.expect("transform should be able to be set to be able to account for DPI");
-	}
-
-	/// Un-transforms the Canvas context to adjust for DPI scaling
-	///
-	/// Warning: this function doesn't only reset the DPI scaling adjustment, it resets the entire transform.
-	fn end_dpi_aware_transform(&self) {
-		self.render_context.reset_transform().expect("transform should be able to be reset to be able to account for DPI");
+	fn get_transform(&self) -> kurbo::Affine {
+		kurbo::Affine::scale(self.device_pixel_ratio)
 	}
 
 	pub fn square(&mut self, position: DVec2, size: Option<f64>, color_fill: Option<&str>, color_stroke: Option<&str>) {
@@ -344,17 +311,12 @@ impl OverlayContext {
 		let position = position.round() - DVec2::splat(0.5);
 		let corner = position - DVec2::splat(size) / 2.;
 
-		self.start_dpi_aware_transform();
+		let transform = self.get_transform();
+		let rect = kurbo::Rect::new(corner.x, corner.y, corner.x + size, corner.y + size);
 
-		self.render_context.begin_path();
-		self.render_context.rect(corner.x, corner.y, size, size);
-		self.render_context.set_fill_style_str(color_fill);
-		self.render_context.set_stroke_style_str(color_stroke);
-		self.render_context.set_line_width(1.);
-		self.render_context.fill();
-		self.render_context.stroke();
+		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &rect);
 
-		self.end_dpi_aware_transform();
+		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color_stroke), None, &rect);
 	}
 
 	pub fn pixel(&mut self, position: DVec2, color: Option<&str>) {
@@ -364,14 +326,10 @@ impl OverlayContext {
 		let position = position.round() - DVec2::splat(0.5);
 		let corner = position - DVec2::splat(size) / 2.;
 
-		self.start_dpi_aware_transform();
+		let transform = self.get_transform();
+		let rect = kurbo::Rect::new(corner.x, corner.y, corner.x + size, corner.y + size);
 
-		self.render_context.begin_path();
-		self.render_context.rect(corner.x, corner.y, size, size);
-		self.render_context.set_fill_style_str(color_fill);
-		self.render_context.fill();
-
-		self.end_dpi_aware_transform();
+		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &rect);
 	}
 
 	pub fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
@@ -379,16 +337,12 @@ impl OverlayContext {
 		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
 		let position = position.round();
 
-		self.start_dpi_aware_transform();
+		let transform = self.get_transform();
+		let circle = kurbo::Circle::new((position.x, position.y), radius);
 
-		self.render_context.begin_path();
-		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
-		self.render_context.set_fill_style_str(color_fill);
-		self.render_context.set_stroke_style_str(color_stroke);
-		self.render_context.fill();
-		self.render_context.stroke();
+		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &circle);
 
-		self.end_dpi_aware_transform();
+		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color_stroke), None, &circle);
 	}
 
 	pub fn draw_arc(&mut self, center: DVec2, radius: f64, start_from: f64, end_at: f64) {
@@ -397,7 +351,7 @@ impl OverlayContext {
 		let half_step = step / 2.;
 		let factor = 4. / 3. * half_step.sin() / (1. + half_step.cos());
 
-		self.render_context.begin_path();
+		let mut path = BezPath::new();
 
 		for i in 0..segments {
 			let start_angle = start_from + step * i as f64;
@@ -411,16 +365,18 @@ impl OverlayContext {
 			let handle_start = start + start_vec.perp() * radius * factor;
 			let handle_end = end - end_vec.perp() * radius * factor;
 
-			let bezier = Bezier {
-				start,
-				end,
-				handles: bezier_rs::BezierHandles::Cubic { handle_start, handle_end },
-			};
+			if i == 0 {
+				path.move_to(kurbo::Point::new(start.x, start.y));
+			}
 
-			self.bezier_command(bezier, DAffine2::IDENTITY, i == 0);
+			path.curve_to(
+				kurbo::Point::new(handle_start.x, handle_start.y),
+				kurbo::Point::new(handle_end.x, handle_end.y),
+				kurbo::Point::new(end.x, end.y),
+			);
 		}
 
-		self.render_context.stroke();
+		self.scene.stroke(&kurbo::Stroke::new(1.0), self.get_transform(), Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
 	pub fn draw_arc_gizmo_angle(&mut self, pivot: DVec2, bold_radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
@@ -467,27 +423,20 @@ impl OverlayContext {
 
 		let Some(show_hover_ring) = show_compass_with_hover_ring else { return };
 
-		self.start_dpi_aware_transform();
-
+		let transform = self.get_transform();
 		let center = compass_center.round() - DVec2::splat(0.5);
-
-		// Save the old line width to restore it later
-		let old_line_width = self.render_context.line_width();
 
 		// Hover ring
 		if show_hover_ring {
 			let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.5).to_rgba_hex_srgb();
 			fill_color.insert(0, '#');
 
-			self.render_context.set_line_width(HOVER_RING_STROKE_WIDTH);
-			self.render_context.begin_path();
-			self.render_context.arc(center.x, center.y, HOVER_RING_CENTERLINE_RADIUS, 0., TAU).expect("Failed to draw hover ring");
-			self.render_context.set_stroke_style_str(&fill_color);
-			self.render_context.stroke();
+			let circle = kurbo::Circle::new((center.x, center.y), HOVER_RING_CENTERLINE_RADIUS);
+			self.scene
+				.stroke(&kurbo::Stroke::new(HOVER_RING_STROKE_WIDTH), transform, Self::parse_color(&fill_color), None, &circle);
 		}
 
 		// Arrows
-		self.render_context.set_line_width(0.01);
 		for i in 0..4 {
 			let direction = DVec2::from_angle(i as f64 * FRAC_PI_2 + angle);
 			let color = if i % 2 == 0 { COLOR_OVERLAY_RED } else { COLOR_OVERLAY_GREEN };
@@ -500,183 +449,165 @@ impl OverlayContext {
 			let side1 = center + r * DVec2::new(cos * direction.x - sin * direction.y, sin * direction.x + direction.y * cos);
 			let side2 = center + r * DVec2::new(cos * direction.x + sin * direction.y, -sin * direction.x + direction.y * cos);
 
-			self.render_context.begin_path();
-			self.render_context.move_to(tip.x, tip.y);
-			self.render_context.line_to(side1.x, side1.y);
-			self.render_context.line_to(base.x, base.y);
-			self.render_context.line_to(side2.x, side2.y);
-			self.render_context.close_path();
+			let mut path = BezPath::new();
+			path.move_to(kurbo::Point::new(tip.x, tip.y));
+			path.line_to(kurbo::Point::new(side1.x, side1.y));
+			path.line_to(kurbo::Point::new(base.x, base.y));
+			path.line_to(kurbo::Point::new(side2.x, side2.y));
+			path.close_path();
 
-			self.render_context.set_fill_style_str(color);
-			self.render_context.fill();
-			self.render_context.set_stroke_style_str(color);
-			self.render_context.stroke();
+			let color_parsed = Self::parse_color(color);
+			self.scene.fill(peniko::Fill::NonZero, transform, color_parsed, None, &path);
+			self.scene.stroke(&kurbo::Stroke::new(0.01), transform, color_parsed, None, &path);
 		}
 
 		// Main ring
-		self.render_context.set_line_width(MAIN_RING_STROKE_WIDTH);
-		self.render_context.begin_path();
-		self.render_context.arc(center.x, center.y, MAIN_RING_CENTERLINE_RADIUS, 0., TAU).expect("Failed to draw main ring");
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
-		self.render_context.stroke();
-
-		// Restore the old line width
-		self.render_context.set_line_width(old_line_width);
+		let circle = kurbo::Circle::new((center.x, center.y), MAIN_RING_CENTERLINE_RADIUS);
+		self.scene
+			.stroke(&kurbo::Stroke::new(MAIN_RING_STROKE_WIDTH), transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &circle);
 	}
 
 	pub fn pivot(&mut self, position: DVec2, angle: f64) {
 		let uv = DVec2::from_angle(angle);
 		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
 
-		self.start_dpi_aware_transform();
+		let transform = self.get_transform();
 
 		// Circle
-
-		self.render_context.begin_path();
-		self.render_context.arc(x, y, PIVOT_DIAMETER / 2., 0., TAU).expect("Failed to draw the circle");
-		self.render_context.set_fill_style_str(COLOR_OVERLAY_YELLOW);
-		self.render_context.fill();
+		let circle = kurbo::Circle::new((x, y), PIVOT_DIAMETER / 2.);
+		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(COLOR_OVERLAY_YELLOW), None, &circle);
 
 		// Crosshair
-
-		// Round line caps add half the stroke width to the length on each end, so we subtract that here before halving to get the radius
 		const CROSSHAIR_RADIUS: f64 = (PIVOT_CROSSHAIR_LENGTH - PIVOT_CROSSHAIR_THICKNESS) / 2.;
 
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_YELLOW);
-		self.render_context.set_line_cap("round");
+		let mut stroke = kurbo::Stroke::new(PIVOT_CROSSHAIR_THICKNESS);
+		stroke = stroke.with_caps(kurbo::Cap::Round);
 
-		self.render_context.begin_path();
-		self.render_context.move_to(x + CROSSHAIR_RADIUS * uv.x, y + CROSSHAIR_RADIUS * uv.y);
-		self.render_context.line_to(x - CROSSHAIR_RADIUS * uv.x, y - CROSSHAIR_RADIUS * uv.y);
-		self.render_context.stroke();
+		// Horizontal line
+		let mut path = BezPath::new();
+		path.move_to(kurbo::Point::new(x + CROSSHAIR_RADIUS * uv.x, y + CROSSHAIR_RADIUS * uv.y));
+		path.line_to(kurbo::Point::new(x - CROSSHAIR_RADIUS * uv.x, y - CROSSHAIR_RADIUS * uv.y));
 
-		self.render_context.begin_path();
-		self.render_context.move_to(x - CROSSHAIR_RADIUS * uv.y, y + CROSSHAIR_RADIUS * uv.x);
-		self.render_context.line_to(x + CROSSHAIR_RADIUS * uv.y, y - CROSSHAIR_RADIUS * uv.x);
-		self.render_context.stroke();
+		self.scene.stroke(&stroke, transform, Self::parse_color(COLOR_OVERLAY_YELLOW), None, &path);
 
-		self.render_context.set_line_cap("butt");
+		// Vertical line
+		let mut path = BezPath::new();
+		path.move_to(kurbo::Point::new(x - CROSSHAIR_RADIUS * uv.y, y + CROSSHAIR_RADIUS * uv.x));
+		path.line_to(kurbo::Point::new(x + CROSSHAIR_RADIUS * uv.y, y - CROSSHAIR_RADIUS * uv.x));
 
-		self.end_dpi_aware_transform();
+		self.scene.stroke(&stroke, transform, Self::parse_color(COLOR_OVERLAY_YELLOW), None, &path);
 	}
 
 	pub fn dowel_pin(&mut self, position: DVec2, angle: f64, color: Option<&str>) {
 		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
 		let color = color.unwrap_or(COLOR_OVERLAY_YELLOW_DULL);
 
-		self.start_dpi_aware_transform();
+		let transform = self.get_transform();
 
-		// Draw the background circle with a white fill and blue outline
-		self.render_context.begin_path();
-		self.render_context.arc(x, y, DOWEL_PIN_RADIUS, 0., TAU).expect("Failed to draw the circle");
-		self.render_context.set_fill_style_str(COLOR_OVERLAY_WHITE);
-		self.render_context.fill();
-		self.render_context.set_stroke_style_str(color);
-		self.render_context.stroke();
+		// Draw the background circle with a white fill and colored outline
+		let circle = kurbo::Circle::new((x, y), DOWEL_PIN_RADIUS);
+		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(COLOR_OVERLAY_WHITE), None, &circle);
+		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color), None, &circle);
 
-		// Draw the two blue filled sectors
-		self.render_context.begin_path();
+		// Draw the two filled sectors using paths
+		let mut path = BezPath::new();
+
 		// Top-left sector
-		self.render_context.move_to(x, y);
-		self.render_context.arc(x, y, DOWEL_PIN_RADIUS, FRAC_PI_2 + angle, PI + angle).expect("Failed to draw arc");
-		self.render_context.close_path();
-		// Bottom-right sector
-		self.render_context.move_to(x, y);
-		self.render_context.arc(x, y, DOWEL_PIN_RADIUS, PI + FRAC_PI_2 + angle, TAU + angle).expect("Failed to draw arc");
-		self.render_context.close_path();
-		self.render_context.set_fill_style_str(color);
-		self.render_context.fill();
+		path.move_to(kurbo::Point::new(x, y));
+		let end_x = x + DOWEL_PIN_RADIUS * (FRAC_PI_2 + angle).cos();
+		let end_y = y + DOWEL_PIN_RADIUS * (FRAC_PI_2 + angle).sin();
+		path.line_to(kurbo::Point::new(end_x, end_y));
+		// Draw arc manually
+		let arc = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), FRAC_PI_2 + angle, FRAC_PI_2, 0.0);
+		arc.to_cubic_beziers(0.1, |p1, p2, p| {
+			path.curve_to(p1, p2, p);
+		});
+		path.close_path();
 
-		self.end_dpi_aware_transform();
+		// Bottom-right sector
+		path.move_to(kurbo::Point::new(x, y));
+		let end_x = x + DOWEL_PIN_RADIUS * (PI + FRAC_PI_2 + angle).cos();
+		let end_y = y + DOWEL_PIN_RADIUS * (PI + FRAC_PI_2 + angle).sin();
+		path.line_to(kurbo::Point::new(end_x, end_y));
+		// Draw arc manually
+		let arc = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), PI + FRAC_PI_2 + angle, FRAC_PI_2, 0.0);
+		arc.to_cubic_beziers(0.1, |p1, p2, p| {
+			path.curve_to(p1, p2, p);
+		});
+		path.close_path();
+
+		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color), None, &path);
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn arc_sweep_angle(&mut self, offset_angle: f64, angle: f64, end_point_position: DVec2, bold_radius: f64, pivot: DVec2, text: &str, transform: DAffine2) {
 		self.manipulator_handle(end_point_position, true, Some(COLOR_OVERLAY_RED));
 		self.draw_arc_gizmo_angle(pivot, bold_radius, ARC_SWEEP_GIZMO_RADIUS, offset_angle, angle.to_radians());
-		self.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
+		self.text(text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 	}
 
 	/// Used by the Pen and Path tools to outline the path of the shape.
 	pub fn outline_vector(&mut self, vector_data: &VectorData, transform: DAffine2) {
-		self.start_dpi_aware_transform();
+		let vello_transform = self.get_transform();
+		let mut path = BezPath::new();
 
-		self.render_context.begin_path();
 		let mut last_point = None;
 		for (_, bezier, start_id, end_id) in vector_data.segment_bezier_iter() {
 			let move_to = last_point != Some(start_id);
 			last_point = Some(end_id);
 
-			self.bezier_command(bezier, transform, move_to);
+			self.bezier_to_path(bezier, transform, move_to, &mut path);
 		}
 
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
-		self.render_context.stroke();
-
-		self.end_dpi_aware_transform();
+		self.scene.stroke(&kurbo::Stroke::new(1.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
 	/// Used by the Pen tool in order to show how the bezier curve would look like.
 	pub fn outline_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
-		self.start_dpi_aware_transform();
+		let vello_transform = self.get_transform();
+		let mut path = BezPath::new();
+		self.bezier_to_path(bezier, transform, true, &mut path);
 
-		self.render_context.begin_path();
-		self.bezier_command(bezier, transform, true);
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
-		self.render_context.stroke();
-
-		self.end_dpi_aware_transform();
+		self.scene.stroke(&kurbo::Stroke::new(1.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
 	/// Used by the path tool segment mode in order to show the selected segments.
 	pub fn outline_select_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
-		self.start_dpi_aware_transform();
+		let vello_transform = self.get_transform();
+		let mut path = BezPath::new();
+		self.bezier_to_path(bezier, transform, true, &mut path);
 
-		self.render_context.begin_path();
-		self.bezier_command(bezier, transform, true);
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
-		self.render_context.set_line_width(4.);
-		self.render_context.stroke();
-
-		self.render_context.set_line_width(1.);
-
-		self.end_dpi_aware_transform();
+		self.scene.stroke(&kurbo::Stroke::new(4.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
 	pub fn outline_overlay_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
-		self.start_dpi_aware_transform();
+		let vello_transform = self.get_transform();
+		let mut path = BezPath::new();
+		self.bezier_to_path(bezier, transform, true, &mut path);
 
-		self.render_context.begin_path();
-		self.bezier_command(bezier, transform, true);
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE_50);
-		self.render_context.set_line_width(4.);
-		self.render_context.stroke();
-
-		self.render_context.set_line_width(1.);
-
-		self.end_dpi_aware_transform();
+		self.scene.stroke(&kurbo::Stroke::new(4.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE_50), None, &path);
 	}
 
-	fn bezier_command(&self, bezier: Bezier, transform: DAffine2, move_to: bool) {
-		self.start_dpi_aware_transform();
-
+	fn bezier_to_path(&self, bezier: Bezier, transform: DAffine2, move_to: bool, path: &mut BezPath) {
 		let Bezier { start, end, handles } = bezier.apply_transformation(|point| transform.transform_point2(point));
 		if move_to {
-			self.render_context.move_to(start.x, start.y);
+			path.move_to(kurbo::Point::new(start.x, start.y));
 		}
 
 		match handles {
-			bezier_rs::BezierHandles::Linear => self.render_context.line_to(end.x, end.y),
-			bezier_rs::BezierHandles::Quadratic { handle } => self.render_context.quadratic_curve_to(handle.x, handle.y, end.x, end.y),
-			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => self.render_context.bezier_curve_to(handle_start.x, handle_start.y, handle_end.x, handle_end.y, end.x, end.y),
+			bezier_rs::BezierHandles::Linear => path.line_to(kurbo::Point::new(end.x, end.y)),
+			bezier_rs::BezierHandles::Quadratic { handle } => path.quad_to(kurbo::Point::new(handle.x, handle.y), kurbo::Point::new(end.x, end.y)),
+			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => path.curve_to(
+				kurbo::Point::new(handle_start.x, handle_start.y),
+				kurbo::Point::new(handle_end.x, handle_end.y),
+				kurbo::Point::new(end.x, end.y),
+			),
 		}
-
-		self.end_dpi_aware_transform();
 	}
 
-	fn push_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
-		self.start_dpi_aware_transform();
+	fn push_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) -> BezPath {
+		let mut path = BezPath::new();
 
-		self.render_context.begin_path();
 		for subpath in subpaths {
 			let subpath = subpath.borrow();
 			let mut curves = subpath.iter().peekable();
@@ -685,22 +616,22 @@ impl OverlayContext {
 				continue;
 			};
 
-			self.render_context.move_to(transform.transform_point2(first.start()).x, transform.transform_point2(first.start()).y);
+			let start_point = transform.transform_point2(first.start());
+			path.move_to(kurbo::Point::new(start_point.x, start_point.y));
+
 			for curve in curves {
 				match curve.handles {
 					bezier_rs::BezierHandles::Linear => {
 						let a = transform.transform_point2(curve.end());
 						let a = a.round() - DVec2::splat(0.5);
-
-						self.render_context.line_to(a.x, a.y)
+						path.line_to(kurbo::Point::new(a.x, a.y));
 					}
 					bezier_rs::BezierHandles::Quadratic { handle } => {
 						let a = transform.transform_point2(handle);
 						let b = transform.transform_point2(curve.end());
 						let a = a.round() - DVec2::splat(0.5);
 						let b = b.round() - DVec2::splat(0.5);
-
-						self.render_context.quadratic_curve_to(a.x, a.y, b.x, b.y)
+						path.quad_to(kurbo::Point::new(a.x, a.y), kurbo::Point::new(b.x, b.y));
 					}
 					bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
 						let a = transform.transform_point2(handle_start);
@@ -709,123 +640,77 @@ impl OverlayContext {
 						let a = a.round() - DVec2::splat(0.5);
 						let b = b.round() - DVec2::splat(0.5);
 						let c = c.round() - DVec2::splat(0.5);
-
-						self.render_context.bezier_curve_to(a.x, a.y, b.x, b.y, c.x, c.y)
+						path.curve_to(kurbo::Point::new(a.x, a.y), kurbo::Point::new(b.x, b.y), kurbo::Point::new(c.x, c.y));
 					}
 				}
 			}
 
 			if subpath.closed() {
-				self.render_context.close_path();
+				path.close_path();
 			}
 		}
 
-		self.end_dpi_aware_transform();
+		path
 	}
 
 	/// Used by the Select tool to outline a path or a free point when selected or hovered.
 	pub fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
 		let mut subpaths: Vec<bezier_rs::Subpath<PointId>> = vec![];
 
-		target_types.for_each(|target_type| match target_type.borrow() {
-			ClickTargetType::FreePoint(point) => {
-				self.manipulator_anchor(transform.transform_point2(point.position), false, None);
+		for target_type in target_types {
+			match target_type.borrow() {
+				ClickTargetType::FreePoint(point) => {
+					self.manipulator_anchor(transform.transform_point2(point.position), false, None);
+				}
+				ClickTargetType::Subpath(subpath) => subpaths.push(subpath.clone()),
 			}
-			ClickTargetType::Subpath(subpath) => subpaths.push(subpath.clone()),
-		});
+		}
 
 		if !subpaths.is_empty() {
-			self.push_path(subpaths.iter(), transform);
-
+			let path = self.push_path(subpaths.iter(), transform);
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
-			self.render_context.set_stroke_style_str(color);
-			self.render_context.set_line_width(1.);
-			self.render_context.stroke();
+
+			self.scene.stroke(&kurbo::Stroke::new(1.0), self.get_transform(), Self::parse_color(color), None, &path);
 		}
 	}
 
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed.
 	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		self.push_path(subpaths, transform);
+		let path = self.push_path(subpaths, transform);
 
-		self.render_context.set_fill_style_str(color);
-		self.render_context.fill();
+		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), Self::parse_color(color), None, &path);
 	}
 
 	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
 	/// Used by the fill tool to show the area to be filled.
 	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
-		const PATTERN_WIDTH: usize = 4;
-		const PATTERN_HEIGHT: usize = 4;
+		// TODO: Implement pattern fill in Vello
+		// For now, just fill with a semi-transparent version of the color
+		let path = self.push_path(subpaths, transform);
+		let semi_transparent_color = color.with_alpha(0.5);
 
-		let pattern_canvas = OffscreenCanvas::new(PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
-		let pattern_context: OffscreenCanvasRenderingContext2d = pattern_canvas
-			.get_context("2d")
-			.ok()
-			.flatten()
-			.expect("Failed to get canvas context")
-			.dyn_into()
-			.expect("Context should be a canvas 2d context");
-
-		// 4x4 pixels, 4 components (RGBA) per pixel
-		let mut data = [0_u8; 4 * PATTERN_WIDTH * PATTERN_HEIGHT];
-
-		// ┌▄▄┬──┬──┬──┐
-		// ├▀▀┼──┼──┼──┤
-		// ├──┼──┼▄▄┼──┤
-		// ├──┼──┼▀▀┼──┤
-		// └──┴──┴──┴──┘
-		let pixels = [(0, 0), (2, 2)];
-		for &(x, y) in &pixels {
-			let index = (x + y * PATTERN_WIDTH) * 4;
-			data[index..index + 4].copy_from_slice(&color.to_rgba8_srgb());
-		}
-
-		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
-		pattern_context.put_image_data(&image_data, 0., 0.).unwrap();
-		let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
-
-		self.push_path(subpaths, transform);
-
-		self.render_context.set_fill_style_canvas_pattern(&pattern);
-		self.render_context.fill();
+		self.scene.fill(
+			peniko::Fill::NonZero,
+			self.get_transform(),
+			peniko::Color::from_rgba8(
+				(semi_transparent_color.r() * 255.) as u8,
+				(semi_transparent_color.g() * 255.) as u8,
+				(semi_transparent_color.b() * 255.) as u8,
+				(semi_transparent_color.a() * 255.) as u8,
+			),
+			None,
+			&path,
+		);
 	}
 
-	pub fn get_width(&self, text: &str) -> f64 {
-		self.render_context.measure_text(text).expect("Failed to measure text dimensions").width()
+	pub fn get_width(&self, _text: &str) -> f64 {
+		// TODO: Implement proper text measurement in Vello
+		0.
 	}
 
-	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
-		let metrics = self.render_context.measure_text(text).expect("Failed to measure the text dimensions");
-		let x = match pivot[0] {
-			Pivot::Start => padding,
-			Pivot::Middle => -(metrics.actual_bounding_box_right() + metrics.actual_bounding_box_left()) / 2.,
-			Pivot::End => -padding - metrics.actual_bounding_box_right() + metrics.actual_bounding_box_left(),
-		};
-		let y = match pivot[1] {
-			Pivot::Start => padding + metrics.font_bounding_box_ascent() - metrics.font_bounding_box_descent(),
-			Pivot::Middle => (metrics.font_bounding_box_ascent() + metrics.font_bounding_box_descent()) / 2.,
-			Pivot::End => -padding,
-		};
-
-		let [a, b, c, d, e, f] = (DAffine2::from_scale(DVec2::splat(self.device_pixel_ratio)) * transform * DAffine2::from_translation(DVec2::new(x, y))).to_cols_array();
-		self.render_context.set_transform(a, b, c, d, e, f).expect("Failed to rotate the render context to the specified angle");
-
-		if let Some(background) = background_color {
-			self.render_context.set_fill_style_str(background);
-			self.render_context.fill_rect(
-				-padding,
-				padding,
-				metrics.actual_bounding_box_right() - metrics.actual_bounding_box_left() + padding * 2.,
-				metrics.font_bounding_box_descent() - metrics.font_bounding_box_ascent() - padding * 2.,
-			);
-		}
-
-		self.render_context.set_font(r#"12px "Source Sans Pro", Arial, sans-serif"#);
-		self.render_context.set_fill_style_str(font_color);
-		self.render_context.fill_text(text, 0., 0.).expect("Failed to draw the text at the calculated position");
-		self.render_context.reset_transform().expect("Failed to reset the render context transform");
+	pub fn text(&self, _text: &str, _font_color: &str, _background_color: Option<&str>, _transform: DAffine2, _padding: f64, _pivot: [Pivot; 2]) {
+		// TODO: Implement text rendering in Vello
 	}
 
 	pub fn translation_box(&mut self, translation: DVec2, quad: Quad, typed_string: Option<String>) {

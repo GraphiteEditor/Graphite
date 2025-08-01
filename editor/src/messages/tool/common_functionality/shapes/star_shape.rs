@@ -90,6 +90,18 @@ impl ShapeGizmoHandler for StarGizmoHandler {
 		self.number_of_points_dial.cleanup();
 		self.point_radius_handle.cleanup();
 	}
+
+	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
+		if self.number_of_points_dial.is_dragging() || self.number_of_points_dial.is_hovering() {
+			return Some(MouseCursorIcon::EWResize);
+		}
+
+		if self.point_radius_handle.is_dragging_or_snapped() || self.point_radius_handle.hovered() {
+			return Some(MouseCursorIcon::Default);
+		}
+
+		None
+	}
 }
 
 #[derive(Default)]
@@ -114,7 +126,7 @@ impl Star {
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
-		let [center, lock_ratio, _, _] = modifier;
+		let [center, lock_ratio, _] = modifier;
 
 		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, center, lock_ratio) {
 			// TODO: We need to determine how to allow the polygon node to make irregular shapes

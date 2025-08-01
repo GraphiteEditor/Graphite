@@ -363,13 +363,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
 				for document_id in self.document_ids.iter() {
 					let inspect_node = self.inspect_node_id();
-					let _ = self.executor.submit_node_graph_evaluation(
+					if let Ok(message) = self.executor.submit_node_graph_evaluation(
 						self.documents.get_mut(document_id).expect("Tried to render non-existent document"),
 						ipp.viewport_bounds.size().as_uvec2(),
 						timing_information,
 						inspect_node,
 						true,
-					);
+					) {
+						responses.add(message);
+					}
 				}
 
 				if self.active_document_mut().is_some() {
@@ -702,11 +704,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				if create_document {
 					// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
-					responses.add(DeferMessage::AfterNavigationReady {
-						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
-					});
 					responses.add(DeferMessage::AfterGraphRun {
 						messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
+					});
+					responses.add(DeferMessage::AfterNavigationReady {
+						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
 					});
 				}
 			}
@@ -846,11 +848,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					ignore_hash,
 				);
 
-				if let Err(description) = result {
-					responses.add(DialogMessage::DisplayDialogError {
-						title: "Unable to update node graph".to_string(),
-						description,
-					});
+				match result {
+					Err(description) => {
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "Unable to update node graph".to_string(),
+							description,
+						});
+					}
+					Ok(message) => responses.add(message),
 				}
 			}
 			PortfolioMessage::ToggleRulers => {
@@ -883,6 +888,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(FrontendMessage::UpdateOpenDocumentsList { open_documents });
 			}
 			PortfolioMessage::UpdateVelloPreference => {
+				responses.add(FrontendMessage::UpdateViewportHolePunch { active: preferences.use_vello });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				self.persistent_data.use_vello = preferences.use_vello;
 			}

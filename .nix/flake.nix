@@ -1,13 +1,11 @@
 # This is a helper file for people using NixOS as their operating system.
 # If you don't know what this file does, you can safely ignore it.
-# This file defines both the development environment for the project.
+# This file defines the reproducible development environment for the project.
 #
 # Development Environment:
-# - Provides all necessary tools for Rust/WASM development
-# - Includes Tauri dependencies for desktop app development
+# - Provides all necessary tools for Rust/Wasm development
 # - Sets up profiling and debugging tools
 # - Configures mold as the default linker for faster builds
-#
 #
 # Usage:
 # - Development shell: `nix develop`
@@ -16,7 +14,6 @@
   description = "Development environment and build configuration";
 
   inputs = {
-    # This url should be changed to match your system packages if you work on tauri because you need to use the same graphics library versions as the ones used by your system
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
     rust-overlay = {
@@ -96,7 +93,6 @@
           pkgs.pkg-config
           pkgs.git
           pkgs.gobject-introspection
-          pkgs-unstable.cargo-tauri
           pkgs-unstable.cargo-about
 
           # Linker

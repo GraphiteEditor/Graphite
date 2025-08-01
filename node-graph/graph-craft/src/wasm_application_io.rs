@@ -70,14 +70,6 @@ pub struct WasmApplicationIo {
 static WGPU_AVAILABLE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
 
 pub fn wgpu_available() -> Option<bool> {
-	// Always enable wgpu when running with Tauri
-	#[cfg(target_arch = "wasm32")]
-	if let Some(window) = web_sys::window() {
-		if js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("__TAURI__")).is_ok() {
-			return Some(true);
-		}
-	}
-
 	match WGPU_AVAILABLE.load(Ordering::SeqCst) {
 		-1 => None,
 		0 => Some(false),

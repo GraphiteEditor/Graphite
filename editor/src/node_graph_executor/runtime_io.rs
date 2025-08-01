@@ -1,7 +1,7 @@
 use super::*;
 use std::sync::mpsc::{Receiver, Sender};
 
-/// Handles communication with the NodeRuntime, either locally or via Tauri
+/// Handles communication with the NodeRuntime
 #[derive(Debug)]
 pub struct NodeRuntimeIO {
 	// Send to
