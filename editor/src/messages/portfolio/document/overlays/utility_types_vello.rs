@@ -558,7 +558,7 @@ impl OverlayContext {
 
 	#[allow(clippy::too_many_arguments)]
 	pub fn arc_sweep_angle(&mut self, offset_angle: f64, angle: f64, end_point_position: DVec2, bold_radius: f64, pivot: DVec2, text: &str, transform: DAffine2) {
-		self.manipulator_handle(end_point_position, true, Some(COLOR_OVERLAY_RED));
+		self.manipulator_handle(end_point_position, true, None);
 		self.draw_arc_gizmo_angle(pivot, bold_radius, ARC_SWEEP_GIZMO_RADIUS, offset_angle, angle.to_radians());
 		self.text(text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 	}

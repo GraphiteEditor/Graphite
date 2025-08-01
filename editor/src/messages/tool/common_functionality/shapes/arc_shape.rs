@@ -38,6 +38,7 @@ impl ShapeGizmoHandler for ArcGizmoHandler {
 	}
 
 	fn handle_click(&mut self) {
+		// If hovering over both the gizmos give priority to sweep angle gizmo
 		if self.sweep_angle_gizmo.hovered() && self.arc_radius_handle.hovered() {
 			self.sweep_angle_gizmo.update_state(SweepAngleGizmoState::Dragging);
 			self.arc_radius_handle.update_state(RadiusHandleState::Inactive);
@@ -77,6 +78,7 @@ impl ShapeGizmoHandler for ArcGizmoHandler {
 		}
 
 		if self.arc_radius_handle.is_dragging() {
+			self.sweep_angle_gizmo.overlays(self.arc_radius_handle.layer, document, input, mouse_position, overlay_context);
 			self.arc_radius_handle.overlays(document, overlay_context);
 		}
 	}
@@ -84,25 +86,38 @@ impl ShapeGizmoHandler for ArcGizmoHandler {
 	fn overlays(
 		&self,
 		document: &DocumentMessageHandler,
-		selected_shape_layers: Option<LayerNodeIdentifier>,
+		selected_shape_layer: Option<LayerNodeIdentifier>,
 		input: &InputPreprocessorMessageHandler,
 		_shape_editor: &mut &mut crate::messages::tool::common_functionality::shape_editor::ShapeState,
 		mouse_position: DVec2,
 		overlay_context: &mut crate::messages::portfolio::document::overlays::utility_types::OverlayContext,
 	) {
+		// If hovering over both the gizmos give priority to sweep angle gizmo
 		if self.sweep_angle_gizmo.hovered() && self.arc_radius_handle.hovered() {
-			self.sweep_angle_gizmo.overlays(selected_shape_layers, document, input, mouse_position, overlay_context);
+			self.sweep_angle_gizmo.overlays(selected_shape_layer, document, input, mouse_position, overlay_context);
 			return;
 		}
-		self.sweep_angle_gizmo.overlays(selected_shape_layers, document, input, mouse_position, overlay_context);
+
+		if self.arc_radius_handle.hovered() {
+			let layer = self.arc_radius_handle.layer;
+
+			self.arc_radius_handle.overlays(document, overlay_context);
+			self.sweep_angle_gizmo.overlays(layer, document, input, mouse_position, overlay_context);
+		}
+
+		self.sweep_angle_gizmo.overlays(selected_shape_layer, document, input, mouse_position, overlay_context);
 		self.arc_radius_handle.overlays(document, overlay_context);
 
-		arc_outline(selected_shape_layers.or(self.sweep_angle_gizmo.layer), document, overlay_context);
+		arc_outline(selected_shape_layer.or(self.sweep_angle_gizmo.layer), document, overlay_context);
 	}
 
 	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
 		if self.sweep_angle_gizmo.hovered() || self.sweep_angle_gizmo.is_dragging_or_snapped() {
 			return Some(MouseCursorIcon::Default);
+		}
+
+		if self.arc_radius_handle.hovered() || self.arc_radius_handle.is_dragging() {
+			return Some(MouseCursorIcon::EWResize);
 		}
 
 		None

@@ -52,13 +52,29 @@ impl RadiusHandle {
 	pub fn check_if_inside_dash_lines(angle: f64, mouse_position: DVec2, viewport: DAffine2, radius: f64, document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -> bool {
 		let center = viewport.transform_point2(DVec2::ZERO);
 		if let Some(stroke_width) = get_stroke_width(layer, &document.network_interface) {
-			let layer_mouse = viewport.inverse().transform_point2(mouse_position);
-			let spacing = 3. * stroke_width;
-			layer_mouse.distance(DVec2::ZERO) >= (radius - spacing) && layer_mouse.distance(DVec2::ZERO) <= (radius + spacing)
+			let circle_point = calculate_circle_point_position(angle, radius.abs());
+			let direction = circle_point.normalize();
+			let mouse_distance = mouse_position.distance(center);
+
+			let spacing = Self::calculate_extra_spacing(viewport, radius, center, stroke_width, 15.);
+
+			let inner_point = viewport.transform_point2(circle_point - direction * spacing).distance(center);
+			let outer_point = viewport.transform_point2(circle_point + direction * spacing).distance(center);
+
+			mouse_distance >= inner_point && mouse_distance <= outer_point
 		} else {
 			let point_position = viewport.transform_point2(calculate_circle_point_position(angle, radius.abs()));
 			mouse_position.distance(center) <= point_position.distance(center)
 		}
+	}
+
+	fn calculate_extra_spacing(viewport: DAffine2, radius: f64, viewport_center: DVec2, stroke_width: f64, threshold: f64) -> f64 {
+		let start_point = viewport.transform_point2(calculate_circle_point_position(0., radius)).distance(viewport_center);
+		let end_point = viewport.transform_point2(calculate_circle_point_position(FRAC_PI_2, radius)).distance(viewport_center);
+		let min_radius = start_point.min(end_point);
+		let extra_spacing = if min_radius < threshold { 10. * (min_radius / threshold) } else { 10. };
+
+		stroke_width + extra_spacing
 	}
 
 	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, mouse_position: DVec2, responses: &mut VecDeque<Message>) {
@@ -106,13 +122,7 @@ impl RadiusHandle {
 				let end_point = viewport.transform_point2(calculate_circle_point_position(FRAC_PI_2, radius)).distance(center);
 
 				if let Some(stroke_width) = get_stroke_width(layer, &document.network_interface) {
-					let threshold = 15.;
-					let min_radius = start_point.min(end_point);
-
-					// Smoothly scales from 0 → 10 as the radius approaches the threshold
-					let extra_spacing = if min_radius < threshold { 10. * (min_radius / threshold) } else { 10. };
-
-					let spacing = stroke_width + extra_spacing;
+					let spacing = Self::calculate_extra_spacing(viewport, radius, center, stroke_width, 15.);
 					let smaller_radius_x = (start_point - spacing).abs();
 					let smaller_radius_y = (end_point - spacing).abs();
 
