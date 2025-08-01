@@ -149,11 +149,9 @@ impl Arc {
 			// We keep the smaller dimension's scale at 1 and scale the other dimension accordingly
 			if dimensions.x > dimensions.y {
 				scale.x = dimensions.x / dimensions.y;
-				scale.y = 1.;
 				radius = dimensions.y / 2.;
 			} else {
 				scale.y = dimensions.y / dimensions.x;
-				scale.x = 1.;
 				radius = dimensions.x / 2.;
 			}
 

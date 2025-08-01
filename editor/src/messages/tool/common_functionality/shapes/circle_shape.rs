@@ -6,7 +6,8 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Inp
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::circle_arc_radius_handle::{RadiusHandle, RadiusHandleState};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
+use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, ShapeToolModifierKey};
+use crate::messages::tool::tool_messages::shape_tool::ShapeToolData;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
@@ -85,15 +86,29 @@ impl Circle {
 		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(0.), false))])
 	}
 
-	pub fn update_shape(document: &DocumentMessageHandler, ipp: &InputPreprocessorMessageHandler, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+	pub fn update_shape(
+		document: &DocumentMessageHandler,
+		ipp: &InputPreprocessorMessageHandler,
+		layer: LayerNodeIdentifier,
+		shape_tool_data: &mut ShapeToolData,
+		modifier: ShapeToolModifierKey,
+		responses: &mut VecDeque<Message>,
+	) {
+		let center = modifier[0];
+		let [start, end] = shape_tool_data.data.calculate_circle_points(document, ipp, center);
 		let Some(node_id) = graph_modification_utils::get_circle_id(layer, &document.network_interface) else {
 			return;
 		};
 
-		let viewport = document.metadata().transform_to_viewport(layer);
-		let center = viewport.transform_point2(DVec2::ZERO);
+		let dimensions = (start - end).abs();
+		let radius: f64;
 
-		let radius = ipp.mouse.position.distance(center);
+		// We keep the smaller dimension's scale at 1 and scale the other dimension accordingly
+		if dimensions.x > dimensions.y {
+			radius = dimensions.y / 2.;
+		} else {
+			radius = dimensions.x / 2.;
+		}
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 1),
@@ -102,7 +117,7 @@ impl Circle {
 
 		responses.add(GraphOperationMessage::TransformSet {
 			layer,
-			transform: DAffine2::from_translation(center),
+			transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., start.midpoint(end)),
 			transform_in: TransformIn::Viewport,
 			skip_rerender: false,
 		});
