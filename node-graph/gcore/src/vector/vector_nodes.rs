@@ -2316,12 +2316,12 @@ mod test {
 	#[tokio::test]
 	async fn morph() {
 		let source = Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY);
-		let target = Ellipse::from_rect(Rect::new(-100., -100., 0., 0.)).to_path(DEFAULT_ACCURACY);
+		let target = Rect::new(-100., -100., 0., 0.).to_path(DEFAULT_ACCURACY);
 		let morphed = super::morph(Footprint::default(), vector_node_from_bezpath(source), vector_node_from_bezpath(target), 0.5).await;
 		let morphed = morphed.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(
 			&morphed.point_domain.positions()[..4],
-			vec![DVec2::new(-25., -50.), DVec2::new(50., -25.), DVec2::new(25., 50.), DVec2::new(-50., 25.)]
+			vec![DVec2::new(-50.0, -50.0), DVec2::new(50.0, -50.0), DVec2::new(50.0, 50.0), DVec2::new(-50.0, 50.0)]
 		);
 	}
 
