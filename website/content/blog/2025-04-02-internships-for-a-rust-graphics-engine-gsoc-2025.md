@@ -41,7 +41,7 @@ Out of the [full list of project opportunities](/volunteer/guide/student-project
 - Creating an efficient brush rendering system for large painted path datasets
 - Managing colors through flexible use of color spaces, color models, and color profiles
 - Researching an assortment of algorithms for image processing operations
-- Engineering solutions for combining Tauri's webview and Graphite's WGPU renderer in the same window across Windows, Mac, and Linux desktop applications
+- Engineering solutions for combining our web-based editor GUI and native WGPU renderer in the same window across Windows, Mac, and Linux desktop applications
 
 These recently added projects are pending an extended description, but we'll be happy to discuss the details if you pop into our [Discord server](https://discord.graphite.rs) and introduce yourself with links to related experience and projects.
 

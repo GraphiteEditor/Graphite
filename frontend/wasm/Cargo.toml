@@ -13,7 +13,7 @@ license = "Apache-2.0"
 [features]
 default = ["gpu"]
 gpu = ["editor/gpu"]
-tauri = ["editor/tauri"]
+native = []
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -38,6 +38,7 @@ wasm-bindgen-futures = { workspace = true }
 math-parser = { workspace = true }
 wgpu = { workspace = true }
 web-sys = { workspace = true }
+ron = { workspace = true }
 
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false

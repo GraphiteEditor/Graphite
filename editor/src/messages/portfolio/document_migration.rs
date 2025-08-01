@@ -186,12 +186,17 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::ops::PercentageValueNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::coordinate_value::IDENTIFIER,
+		node: graphene_std::math_nodes::vec_2_value::IDENTIFIER,
 		aliases: &[
-			"graphene_core::ops::CoordinateValueNode",
 			"graphene_core::ops::ConstructVector2",
 			"graphene_core::ops::Vector2ValueNode",
+			"graphene_core::ops::CoordinateValueNode",
+			"graphene_math_nodes::CoordinateValueNode",
 		],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::vec_2_to_point::IDENTIFIER,
+		aliases: &["graphene_core::vector::PositionToPointNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::color_value::IDENTIFIER,

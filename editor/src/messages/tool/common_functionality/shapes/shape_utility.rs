@@ -1,5 +1,6 @@
 use super::ShapeToolData;
 use crate::consts::{ARC_SWEEP_GIZMO_RADIUS, ARC_SWEEP_GIZMO_TEXT_HEIGHT};
+use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -74,7 +75,7 @@ impl ShapeType {
 	}
 }
 
-pub type ShapeToolModifierKey = [Key; 4];
+pub type ShapeToolModifierKey = [Key; 3];
 
 /// The `ShapeGizmoHandler` trait defines the interactive behavior and overlay logic for shape-specific tools in the editor.
 /// A gizmo is a visual handle or control point used to manipulate a shape's properties (e.g., number of sides, radius, angle).
@@ -127,6 +128,8 @@ pub trait ShapeGizmoHandler {
 	///
 	/// For example, dragging states or hover flags should be cleared to avoid visual glitches when switching tools or shapes.
 	fn cleanup(&mut self);
+
+	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon>;
 }
 
 /// Center, Lock Ratio, Lock Angle, Snap Angle, Increase/Decrease Side

@@ -59,13 +59,6 @@ in
       samply
       cargo-flamegraph
 
-      # For Tauri
-      openssl
-      glib
-      gtk3
-      libsoup
-      webkitgtk
-
       # For Rawkit tests
       libraw
 

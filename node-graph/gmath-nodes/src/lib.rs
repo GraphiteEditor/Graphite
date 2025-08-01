@@ -286,7 +286,7 @@ fn cosine_inverse<U: num_traits::float::Float>(
 
 /// The inverse tangent trigonometric function (atan or atan2, depending on input type) calculates:
 /// atan: the angle whose tangent is the specified scalar number.
-/// atan2: the angle of a ray from the origin to the specified coordinate.
+/// atan2: the angle of a ray from the origin to the specified vec2.
 ///
 /// The resulting angle is always in the range [0°, 180°] or, in radians, [-π/2, π/2].
 #[node_macro::node(category("Math: Trig"))]
@@ -651,9 +651,9 @@ fn percentage_value(_: impl Ctx, _primary: (), percentage: Percentage) -> f64 {
 	percentage
 }
 
-/// Constructs a two-dimensional vector value which may be set to any XY coordinate.
-#[node_macro::node(category("Value"))]
-fn coordinate_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
+/// Constructs a two-dimensional vector value which may be set to any XY pair.
+#[node_macro::node(category("Value"), name("Vec2 Value"))]
+fn vec2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
 	DVec2::new(x, y)
 }
 
