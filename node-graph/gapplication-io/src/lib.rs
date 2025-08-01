@@ -57,6 +57,15 @@ pub struct ImageTexture {
 	pub texture: (),
 }
 
+impl<'a> serde::Deserialize<'a> for ImageTexture {
+	fn deserialize<D>(_: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'a>,
+	{
+		unimplemented!("attempted to serialize a texture")
+	}
+}
+
 impl Hash for ImageTexture {
 	#[cfg(feature = "wgpu")]
 	fn hash<H: Hasher>(&self, state: &mut H) {

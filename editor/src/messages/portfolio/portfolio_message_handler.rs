@@ -107,15 +107,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 						let compatible_type = first_layer.and_then(|layer| {
 							let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
-							graph_layer.horizontal_layer_flow().nth(1).and_then(|node_id| {
+							graph_layer.horizontal_layer_flow().nth(1).map(|node_id| {
 								let (output_type, _) = document.network_interface.output_type(&node_id, 0, &[]);
-								Some(format!("type:{}", output_type.nested_type()))
+								format!("type:{}", output_type.nested_type())
 							})
 						});
 
 						let is_compatible = compatible_type.as_deref() == Some("type:Instances<VectorData>");
 
-						let is_modifiable = first_layer.map_or(false, |layer| {
+						let is_modifiable = first_layer.is_some_and(|layer| {
 							let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
 							matches!(graph_layer.find_input("Path", 1), Some(TaggedValue::VectorModification(_)))
 						});
@@ -363,13 +363,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
 				for document_id in self.document_ids.iter() {
 					let inspect_node = self.inspect_node_id();
-					let _ = self.executor.submit_node_graph_evaluation(
+					if let Ok(message) = self.executor.submit_node_graph_evaluation(
 						self.documents.get_mut(document_id).expect("Tried to render non-existent document"),
 						ipp.viewport_bounds.size().as_uvec2(),
 						timing_information,
 						inspect_node,
 						true,
-					);
+					) {
+						responses.add(message);
+					}
 				}
 
 				if self.active_document_mut().is_some() {
@@ -568,8 +570,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: all_new_ids });
-						responses.add(Message::StartBuffer);
-						responses.add(PortfolioMessage::CenterPastedLayers { layers });
+						responses.add(DeferMessage::AfterGraphRun {
+							messages: vec![PortfolioMessage::CenterPastedLayers { layers }.into()],
+						});
 					}
 				}
 			}
@@ -701,13 +704,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				if create_document {
 					// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
-					responses.add(Message::StartBuffer);
-					responses.add(DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true });
-
-					// TODO: Figure out how to get StartBuffer to work here so we can delete this and use `DocumentMessage::ZoomCanvasToFitAll` instead
-					// Currently, it is necessary to use `FrontendMessage::TriggerDelayedZoomCanvasToFitAll` rather than `DocumentMessage::ZoomCanvasToFitAll` because the size of the viewport is not yet populated
-					responses.add(Message::StartBuffer);
-					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
+					responses.add(DeferMessage::AfterGraphRun {
+						messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
+					});
+					responses.add(DeferMessage::AfterNavigationReady {
+						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+					});
 				}
 			}
 			PortfolioMessage::PasteSvg {
@@ -733,13 +735,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				if create_document {
 					// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
-					responses.add(Message::StartBuffer);
-					responses.add(DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true });
+					responses.add(DeferMessage::AfterGraphRun {
+						messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
+					});
 
-					// TODO: Figure out how to get StartBuffer to work here so we can delete this and use `DocumentMessage::ZoomCanvasToFitAll` instead
-					// Currently, it is necessary to use `FrontendMessage::TriggerDelayedZoomCanvasToFitAll` rather than `DocumentMessage::ZoomCanvasToFitAll` because the size of the viewport is not yet populated
-					responses.add(Message::StartBuffer);
-					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
+					responses.add(DeferMessage::AfterNavigationReady {
+						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+					});
 				}
 			}
 			PortfolioMessage::PrevDocument => {
@@ -846,11 +848,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					ignore_hash,
 				);
 
-				if let Err(description) = result {
-					responses.add(DialogMessage::DisplayDialogError {
-						title: "Unable to update node graph".to_string(),
-						description,
-					});
+				match result {
+					Err(description) => {
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "Unable to update node graph".to_string(),
+							description,
+						});
+					}
+					Ok(message) => responses.add(message),
 				}
 			}
 			PortfolioMessage::ToggleRulers => {
@@ -883,6 +888,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(FrontendMessage::UpdateOpenDocumentsList { open_documents });
 			}
 			PortfolioMessage::UpdateVelloPreference => {
+				let active = if cfg!(target_arch = "wasm32") { false } else { preferences.use_vello };
+				responses.add(FrontendMessage::UpdateViewportHolePunch { active });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				self.persistent_data.use_vello = preferences.use_vello;
 			}
@@ -1019,9 +1026,6 @@ impl PortfolioMessageHandler {
 				/text>"#
 				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
 				.to_string();
-			responses.add(Message::EndBuffer {
-				render_metadata: graphene_std::renderer::RenderMetadata::default(),
-			});
 			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
 		}
 		result

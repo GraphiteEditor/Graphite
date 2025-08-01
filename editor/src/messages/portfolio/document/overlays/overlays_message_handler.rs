@@ -21,7 +21,6 @@ pub struct OverlaysMessageHandler {
 impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMessageHandler {
 	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, context: OverlaysMessageContext) {
 		let OverlaysMessageContext { visibility_settings, ipp, .. } = context;
-		#[cfg(target_arch = "wasm32")]
 		let device_pixel_ratio = context.device_pixel_ratio;
 
 		match message {
@@ -69,9 +68,39 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 					}
 				}
 			}
-			#[cfg(not(target_arch = "wasm32"))]
+			#[cfg(test)]
+			OverlaysMessage::Draw => {}
+			#[cfg(all(not(target_arch = "wasm32"), not(test)))]
 			OverlaysMessage::Draw => {
-				warn!("Cannot render overlays on non-Wasm targets.\n{responses:?} {visibility_settings:?} {ipp:?}",);
+				use super::utility_types::OverlayContext;
+				use vello::Scene;
+
+				let size = ipp.viewport_bounds.size().as_uvec2();
+
+				let scene = Scene::new();
+
+				if visibility_settings.all() {
+					let overlay_context = OverlayContext {
+						scene,
+						size: size.as_dvec2(),
+						device_pixel_ratio,
+						visibility_settings,
+					};
+
+					responses.add(DocumentMessage::GridOverlays(overlay_context.clone()));
+
+					for provider in &self.overlay_providers {
+						let overlay_context = OverlayContext {
+							scene: Scene::new(),
+							size: size.as_dvec2(),
+							device_pixel_ratio,
+							visibility_settings,
+						};
+						responses.add(provider(overlay_context));
+					}
+				}
+
+				// TODO: Render the Vello scene to a texture and display it
 			}
 			OverlaysMessage::AddProvider(message) => {
 				self.overlay_providers.insert(message);

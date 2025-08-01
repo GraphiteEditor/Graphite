@@ -1,3 +1,4 @@
+use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -121,6 +122,15 @@ impl ShapeGizmoHandlers {
 			Self::Polygon(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Arc(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::None => {}
+		}
+	}
+
+	pub fn gizmo_cursor_icon(&self) -> Option<MouseCursorIcon> {
+		match self {
+			Self::Star(h) => h.mouse_cursor_icon(),
+			Self::Polygon(h) => h.mouse_cursor_icon(),
+			Self::Arc(h) => h.mouse_cursor_icon(),
+			Self::None => None,
 		}
 	}
 }
@@ -255,5 +265,13 @@ impl GizmoManager {
 				handler.overlays(document, Some(*layer), input, shape_editor, mouse_position, overlay_context);
 			}
 		}
+	}
+
+	/// Returns the cursor icon to display when hovering or dragging a gizmo.
+	///
+	/// If a gizmo is active (hovered or being manipulated), it returns the cursor icon associated with that gizmo;
+	/// otherwise, returns `None` to indicate the default crosshair cursor should be used.
+	pub fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
+		self.active_shape_handler.as_ref().and_then(|h| h.gizmo_cursor_icon())
 	}
 }

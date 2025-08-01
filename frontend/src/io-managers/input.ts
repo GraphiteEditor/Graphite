@@ -169,7 +169,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		potentiallyRestoreCanvasFocus(e);
 
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-node-graph]");
+		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 		const inDialog = target instanceof Element && target.closest("[data-dialog] [data-floating-menu-content]");
 		const inContextMenu = target instanceof Element && target.closest("[data-context-menu]");
 		const inTextInput = target === textToolInteractiveInputElement;
@@ -219,7 +219,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 		// Allow only events within the viewport or node graph boundaries
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-node-graph]");
+		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 		if (!(isTargetingCanvas instanceof Element)) return;
 
 		// Allow only repeated increments of double-clicks (not 1, 3, 5, etc.)
@@ -256,7 +256,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	function onWheelScroll(e: WheelEvent) {
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-node-graph]");
+		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 
 		// Redirect vertical scroll wheel movement into a horizontal scroll on a horizontally scrollable element
 		// There seems to be no possible way to properly employ the browser's smooth scrolling interpolation
@@ -502,7 +502,9 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	function potentiallyRestoreCanvasFocus(e: Event) {
 		const { target } = e;
-		const newInCanvasArea = (target instanceof Element && target.closest("[data-viewport], [data-graph]")) instanceof Element && !targetIsTextField(window.document.activeElement || undefined);
+		const newInCanvasArea =
+			(target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-graph]")) instanceof Element &&
+			!targetIsTextField(window.document.activeElement || undefined);
 		if (!canvasFocused && newInCanvasArea) {
 			canvasFocused = true;
 			app?.focus();
