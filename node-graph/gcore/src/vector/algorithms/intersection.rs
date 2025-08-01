@@ -1,11 +1,11 @@
-use kurbo::{BezPath, DEFAULT_ACCURACY, ParamCurve, PathSeg, Shape};
-
 use super::contants::MIN_SEPARATION_VALUE;
+use kurbo::{BezPath, DEFAULT_ACCURACY, ParamCurve, PathSeg, Shape};
 
 /// Calculates the intersection points the bezpath has with a given segment and returns a list of `(usize, f64)` tuples,
 /// where the `usize` represents the index of the segment in the bezpath, and the `f64` represents the `t`-value local to
 /// that segment where the intersection occurred.
-/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+///
+/// `minimum_separation` is the minimum difference that two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
 pub fn bezpath_and_segment_intersections(bezpath: &BezPath, segment: PathSeg, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 	bezpath
 		.segments()
@@ -46,7 +46,8 @@ pub fn segment_intersections(segment1: PathSeg, segment2: PathSeg, accuracy: Opt
 }
 
 /// Implements [https://pomax.github.io/bezierinfo/#curveintersection] to find intersection between two Bezier segments
-/// by splitting the segment recursively until the size of the subsegments bounding box is smaller than the accuracy.
+/// by splitting the segment recursively until the size of the subsegment's bounding box is smaller than the accuracy.
+#[allow(clippy::too_many_arguments)]
 fn segment_intersections_inner(segment1: PathSeg, min_t1: f64, max_t1: f64, segment2: PathSeg, min_t2: f64, max_t2: f64, accuracy: f64, intersections: &mut Vec<(f64, f64)>) {
 	let bbox1 = segment1.bounding_box();
 	let bbox2 = segment2.bounding_box();
@@ -56,14 +57,14 @@ fn segment_intersections_inner(segment1: PathSeg, min_t1: f64, max_t1: f64, segm
 
 	// Check if the bounding boxes overlap
 	if bbox1.overlaps(bbox2) {
-		// If bounding boxes overlaps and they are small enough, we have found an intersection
+		// If bounding boxes overlap and they are small enough, we have found an intersection
 		if bbox1.width() < accuracy && bbox1.height() < accuracy && bbox2.width() < accuracy && bbox2.height() < accuracy {
-			// Use the middle t value, append the corresponding `t` value.
+			// Use the middle `t` value, append the corresponding `t` value
 			intersections.push((mid_t1, mid_t2));
 			return;
 		}
 
-		// Split curves in half.
+		// Split curves in half
 		let (seg11, seg12) = segment1.subdivide();
 		let (seg21, seg22) = segment2.subdivide();
 
@@ -81,8 +82,10 @@ fn segment_intersections_inner(segment1: PathSeg, min_t1: f64, max_t1: f64, segm
 /// between 2 adjacent `t` values is less than the minimum difference, the filtering takes the larger `t` value and discards the smaller `t` value.
 /// The returned `t` values are with respect to the current bezier segment, not the provided parameter.
 /// If the provided segment is linear, then zero intersection points will be returned along colinear segments.
-/// - `accuracy` - For intersections where the provided bezier segment is non-linear, `accuracy` defines the maximum size of the bounding boxes to be considered an intersection point.
-/// - `minimum_separation` - The minimum difference between adjacent `t` values in sorted order
+///
+/// `accuracy` defines, for intersections where the provided bezier segment is non-linear, the maximum size of the bounding boxes to be considered an intersection point.
+///
+/// `minimum_separation` is the minimum difference between adjacent `t` values in sorted order.
 pub fn filtered_segment_intersections(segment1: PathSeg, segment2: PathSeg, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<f64> {
 	let mut intersection_t_values = segment_intersections(segment1, segment2, accuracy);
 	intersection_t_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -97,13 +100,15 @@ pub fn filtered_segment_intersections(segment1: PathSeg, segment2: PathSeg, accu
 }
 
 // TODO: Use an `impl Iterator` return type instead of a `Vec`
-/// Returns a list of pairs of filtered parametric `t` values that correspond to intersection points between the current bezier curve and the provided one
-/// such that the difference between adjacent `t` values in sorted order is greater than some minimum separation value. If the difference
-/// between 2 adjacent `t` values is less than the minimum difference, the filtering takes the larger `t` value and discards the smaller `t` value.
+/// Returns a list of pairs of filtered parametric `t` values that correspond to intersection points between the current bezier curve and the provided
+/// one such that the difference between adjacent `t` values in sorted order is greater than some minimum separation value. If the difference between
+/// two adjacent `t` values is less than the minimum difference, the filtering takes the larger `t` value and discards the smaller `t` value.
 /// The first value in pair is with respect to the current bezier and the second value in pair is with respect to the provided parameter.
 /// If the provided curve is linear, then zero intersection points will be returned along colinear segments.
-/// - `error` - For intersections where the provided bezier is non-linear, `error` defines the threshold for bounding boxes to be considered an intersection point.
-/// - `minimum_separation` - The minimum difference between adjacent `t` values in sorted order
+///
+/// `error`, for intersections where the provided bezier is non-linear, defines the threshold for bounding boxes to be considered an intersection point.
+///
+/// `minimum_separation` is the minimum difference between adjacent `t` values in sorted order
 pub fn filtered_all_segment_intersections(segment1: PathSeg, segment2: PathSeg, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(f64, f64)> {
 	let mut intersection_t_values = segment_intersections(segment1, segment2, accuracy);
 	intersection_t_values.sort_by(|a, b| (a.0 + a.1).partial_cmp(&(b.0 + b.1)).unwrap());

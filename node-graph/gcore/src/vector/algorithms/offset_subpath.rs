@@ -1,7 +1,6 @@
+use super::bezpath_algorithms::{clip_simple_bezpaths, miter_line_join, round_line_join};
 use crate::vector::misc::point_to_dvec2;
 use kurbo::{BezPath, Join, ParamCurve, PathEl, PathSeg};
-
-use super::bezpath_algorithms::{clip_simple_bezpaths, miter_line_join, round_line_join};
 
 /// Value to control smoothness and mathematical accuracy to offset a cubic Bezier.
 const CUBIC_REGULARIZATION_ACCURACY: f64 = 0.5;
@@ -24,8 +23,8 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 			.map(|bezier| bezier.to_cubic())
 			.map(|cubic_bez| {
 				let cubic_offset = kurbo::offset::CubicOffset::new_regularized(cubic_bez, distance, CUBIC_REGULARIZATION_ACCURACY);
-				let offset_bezpath = kurbo::fit_to_bezpath(&cubic_offset, CUBIC_TO_BEZPATH_ACCURACY);
-				offset_bezpath
+				
+				kurbo::fit_to_bezpath(&cubic_offset, CUBIC_TO_BEZPATH_ACCURACY)
 			})
 			.filter(|bezpath| bezpath.get_seg(1).is_some()) // In some cases the reduced and scaled bézier is marked by is_point (so the subpath is empty).
 			.collect::<Vec<BezPath>>();

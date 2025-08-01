@@ -1,15 +1,11 @@
-use std::f64;
-use std::f64::consts::PI;
-
 use super::intersection::bezpath_intersections;
 use super::poisson_disk::poisson_disk_sample;
 use super::util::segment_tangent;
-
 use crate::vector::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
 use crate::vector::misc::{PointSpacingType, dvec2_to_point, point_to_dvec2};
-
 use glam::{DMat2, DVec2};
 use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, QuadBez, Rect, Shape};
+use std::f64::consts::{FRAC_PI_2, PI};
 
 /// Splits the [`BezPath`] at segment index at `t` value which lie in the range of [0, 1].
 /// Returns [`None`] if the given [`BezPath`] has no segments or `t` is within f64::EPSILON of 0 or 1.
@@ -59,7 +55,7 @@ pub fn split_bezpath_at_segment(bezpath: &BezPath, segment_index: usize, t: f64)
 	Some((first_bezpath, second_bezpath))
 }
 
-/// Splits the [`BezPath`] at `t` value which lie in the range of [0, 1].
+/// Splits the [`BezPath`] at a `t` value which lies in the range of [0, 1].
 /// Returns [`None`] if the given [`BezPath`] has no segments or `t` is within f64::EPSILON of 0 or 1.
 pub fn split_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Option<(BezPath, BezPath)> {
 	if t <= f64::EPSILON || (1. - t) <= f64::EPSILON || bezpath.segments().count() == 0 {
@@ -348,32 +344,32 @@ pub fn is_linear(segment: &PathSeg) -> bool {
 }
 
 // TODO: If a segment curls back on itself tightly enough it could intersect again at the portion that should be trimmed. This could cause the Subpaths to be clipped
-// at the incorrect location. This can be avoided by first trimming the two Subpaths at any extrema, effectively ignoring loopbacks.
-/// Helper function to clip overlap of two intersecting open Bezpaths. Returns an optional, as intersections may not exist for certain arrangements and distances.
-/// Assumes that the Bezpaths represents simple Bezier segments, and clips the Bezpaths at the last intersection of the first Bezpath, and first intersection of the last Bezpath.
+// TODO: at the incorrect location. This can be avoided by first trimming the two Subpaths at any extrema, effectively ignoring loopbacks.
+/// Helper function to clip overlap of two intersecting open BezPaths. Returns an Option because intersections may not exist for certain arrangements and distances.
+/// Assumes that the BezPaths represents simple Bezier segments, and clips the BezPaths at the last intersection of the first BezPath, and first intersection of the last BezPath.
 pub fn clip_simple_bezpaths(bezpath1: &BezPath, bezpath2: &BezPath) -> Option<(BezPath, BezPath)> {
 	// Split the first subpath at its last intersection
-	let intersections1 = bezpath_intersections(bezpath1, bezpath2, None, None);
-	if intersections1.is_empty() {
+	let subpath_1_intersections = bezpath_intersections(bezpath1, bezpath2, None, None);
+	if subpath_1_intersections.is_empty() {
 		return None;
 	}
-	let (segment_index, t) = *intersections1.last().unwrap();
+	let (segment_index, t) = *subpath_1_intersections.last()?;
 	let (clipped_subpath1, _) = split_bezpath_at_segment(bezpath1, segment_index, t)?;
 
 	// Split the second subpath at its first intersection
-	let intersections2 = bezpath_intersections(bezpath2, bezpath1, None, None);
-	if intersections2.is_empty() {
+	let subpath_2_intersections = bezpath_intersections(bezpath2, bezpath1, None, None);
+	if subpath_2_intersections.is_empty() {
 		return None;
 	}
-	let (segment_index, t) = intersections2[0];
+	let (segment_index, t) = subpath_2_intersections[0];
 	let (_, clipped_subpath2) = split_bezpath_at_segment(bezpath2, segment_index, t)?;
 
 	Some((clipped_subpath1, clipped_subpath2))
 }
 
 /// Returns the [`PathEl`] that is needed for a miter join if it is possible.
-/// - `miter_limit`: Defines a limit for the ratio between the miter length and the stroke width.
 ///
+/// `miter_limit` defines a limit for the ratio between the miter length and the stroke width.
 /// Alternatively, this can be interpreted as limiting the angle that the miter can form.
 /// When the limit is exceeded, no [`PathEl`] will be returned.
 /// This value should be greater than 0. If not, the default of 4 will be used.
@@ -383,8 +379,8 @@ pub fn miter_line_join(bezpath1: &BezPath, bezpath2: &BezPath, miter_limit: Opti
 		_ => 4.,
 	};
 	// TODO: Besides returning None using the `?` operator, is there a more appropriate way to handle a `None` result from `get_segment`?
-	let in_segment = bezpath1.segments().last().unwrap();
-	let out_segment = bezpath2.segments().next().unwrap();
+	let in_segment = bezpath1.segments().last()?;
+	let out_segment = bezpath2.segments().next()?;
 
 	let in_tangent = segment_tangent(in_segment, 1.);
 	let out_tangent = segment_tangent(out_segment, 0.);
@@ -409,11 +405,11 @@ pub fn miter_line_join(bezpath1: &BezPath, bezpath2: &BezPath, miter_limit: Opti
 	let p2 = point_to_dvec2(p1) + out_tangent.normalize();
 	let line2 = Line::new(p1, dvec2_to_point(p2));
 
-	// If we don't find the interseciton point to draw the miter join, default to a bevel join
-	// otherwise, return the element to create the join.
+	// If we don't find the intersection point to draw the miter join, we instead default to a bevel join.
+	// Otherwise, we return the element to create the join.
 	let intersection = line1.crossing_point(line2)?;
 
-	return Some([PathEl::LineTo(intersection), PathEl::LineTo(out_segment.start())]);
+	Some([PathEl::LineTo(intersection), PathEl::LineTo(out_segment.start())])
 }
 
 /// Computes the [`PathEl`] to form a circular join from `left` to `right`, along a circle around `center`.
@@ -453,7 +449,7 @@ pub fn round_line_join(bezpath1: &BezPath, bezpath2: &BezPath, center: DVec2) ->
 	let mut angle = center_to_right.angle_to(center_to_left) / 2.;
 	let mut arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 
-	if in_tangent.map(|in_tangent| (arc_point - left).angle_to(in_tangent).abs()).unwrap_or_default() > PI / 2. {
+	if in_tangent.map(|in_tangent| (arc_point - left).angle_to(in_tangent).abs()).unwrap_or_default() > FRAC_PI_2 {
 		angle = angle - PI * (if angle < 0. { -1. } else { 1. });
 		arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 	}
