@@ -56,25 +56,26 @@ pub fn split_bezpath_at_segment(bezpath: &BezPath, segment_index: usize, t: f64)
 }
 
 /// Splits the [`BezPath`] at a `t` value which lies in the range of [0, 1].
-/// Returns [`None`] if the given [`BezPath`] has no segments or `t` is within f64::EPSILON of 0 or 1.
-pub fn split_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Option<(BezPath, BezPath)> {
-	if t <= f64::EPSILON || (1. - t) <= f64::EPSILON || bezpath.segments().count() == 0 {
+/// Returns [`None`] if the given [`BezPath`] has no segments.
+pub fn split_bezpath(bezpath: &BezPath, t_value: TValue) -> Option<(BezPath, BezPath)> {
+	if bezpath.segments().count() == 0 {
 		return None;
 	}
 
 	// Get the segment which lies at the split.
-	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, None);
+	let (segment_index, t) = eval_bezpath(bezpath, t_value, None);
 	split_bezpath_at_segment(bezpath, segment_index, t)
 }
 
-pub fn evaluate_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> Point {
-	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, segments_length);
+pub fn evaluate_bezpath(bezpath: &BezPath, t_value: TValue, segments_length: Option<&[f64]>) -> Point {
+	let (segment_index, t) = eval_bezpath(bezpath, t_value, segments_length);
 	bezpath.get_seg(segment_index + 1).unwrap().eval(t)
 }
 
-pub fn tangent_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> Point {
-	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, segments_length);
+pub fn tangent_on_bezpath(bezpath: &BezPath, t_value: TValue, segments_length: Option<&[f64]>) -> Point {
+	let (segment_index, t) = eval_bezpath(bezpath, t_value, segments_length);
 	let segment = bezpath.get_seg(segment_index + 1).unwrap();
+
 	match segment {
 		PathSeg::Line(line) => line.deriv().eval(t),
 		PathSeg::Quad(quad_bez) => quad_bez.deriv().eval(t),
@@ -180,15 +181,7 @@ pub fn sample_polyline_on_bezpath(
 	Some(sample_bezpath)
 }
 
-pub fn t_value_to_parametric(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> (usize, f64) {
-	if euclidian {
-		let (segment_index, t) = bezpath_t_value_to_parametric(bezpath, BezPathTValue::GlobalEuclidean(t), segments_length);
-		let segment = bezpath.get_seg(segment_index + 1).unwrap();
-		return (segment_index, eval_pathseg_euclidean(segment, t, DEFAULT_ACCURACY));
-	}
-	bezpath_t_value_to_parametric(bezpath, BezPathTValue::GlobalParametric(t), segments_length)
-}
-
+#[derive(Debug, Clone, Copy)]
 pub enum TValue {
 	Parametric(f64),
 	Euclidean(f64),
@@ -242,7 +235,7 @@ pub fn eval_pathseg_euclidean(segment: PathSeg, distance: f64, accuracy: f64) ->
 /// Converts from a bezpath (composed of multiple segments) to a point along a certain segment represented.
 /// The returned tuple represents the segment index and the `t` value along that segment.
 /// Both the input global `t` value and the output `t` value are in euclidean space, meaning there is a constant rate of change along the arc length.
-fn global_euclidean_to_local_euclidean(bezpath: &BezPath, global_t: f64, lengths: &[f64], total_length: f64) -> (usize, f64) {
+fn eval_bazpath_to_euclidean(bezpath: &BezPath, global_t: f64, lengths: &[f64], total_length: f64) -> (usize, f64) {
 	let mut accumulator = 0.;
 	for (index, length) in lengths.iter().enumerate() {
 		let length_ratio = length / total_length;
@@ -254,19 +247,14 @@ fn global_euclidean_to_local_euclidean(bezpath: &BezPath, global_t: f64, lengths
 	(bezpath.segments().count() - 1, 1.)
 }
 
-enum BezPathTValue {
-	GlobalEuclidean(f64),
-	GlobalParametric(f64),
-}
-
-/// Convert a [BezPathTValue] to a parametric `(segment_index, t)` tuple.
-/// - Asserts that `t` values contained within the `SubpathTValue` argument lie in the range [0, 1].
-fn bezpath_t_value_to_parametric(bezpath: &BezPath, t: BezPathTValue, precomputed_segments_length: Option<&[f64]>) -> (usize, f64) {
+/// Convert a [TValue] to a parametric `(segment_index, t)` tuple.
+/// - Asserts that `t` values contained within the `TValue` argument lie in the range [0, 1].
+fn eval_bezpath(bezpath: &BezPath, t: TValue, precomputed_segments_length: Option<&[f64]>) -> (usize, f64) {
 	let segment_count = bezpath.segments().count();
 	assert!(segment_count >= 1);
 
 	match t {
-		BezPathTValue::GlobalEuclidean(t) => {
+		TValue::Euclidean(t) => {
 			let computed_segments_length;
 
 			let segments_length = if let Some(segments_length) = precomputed_segments_length {
@@ -278,16 +266,18 @@ fn bezpath_t_value_to_parametric(bezpath: &BezPath, t: BezPathTValue, precompute
 
 			let total_length = segments_length.iter().sum();
 
-			global_euclidean_to_local_euclidean(bezpath, t, segments_length, total_length)
+			let (segment_index, t) = eval_bazpath_to_euclidean(bezpath, t, segments_length, total_length);
+			let segment = bezpath.get_seg(segment_index + 1).unwrap();
+			(segment_index, eval_pathseg_euclidean(segment, t, DEFAULT_ACCURACY))
 		}
-		BezPathTValue::GlobalParametric(global_t) => {
-			assert!((0.0..=1.).contains(&global_t));
+		TValue::Parametric(t) => {
+			assert!((0.0..=1.).contains(&t));
 
-			if global_t == 1. {
+			if t == 1. {
 				return (segment_count - 1, 1.);
 			}
 
-			let scaled_t = global_t * segment_count as f64;
+			let scaled_t = t * segment_count as f64;
 			let segment_index = scaled_t.floor() as usize;
 			let t = scaled_t - segment_index as f64;
 

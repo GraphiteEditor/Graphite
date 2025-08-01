@@ -1,4 +1,4 @@
-use super::algorithms::bezpath_algorithms::{self, evaluate_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
+use super::algorithms::bezpath_algorithms::{self, TValue, evaluate_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_bezpath;
 use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use super::misc::{CentroidType, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
@@ -1221,8 +1221,9 @@ async fn split_path(_: impl Ctx, mut vector_data: VectorDataTable, progress: Fra
 			result_vector_data.append_bezpath(bezpath.clone());
 		}
 		let t = if t_value == bezpath_count { 1. } else { t_value.fract() };
+		let t = if euclidian { TValue::Euclidean(t) } else { TValue::Parametric(t) };
 
-		if let Some((first, second)) = split_bezpath(&bezpath, t, euclidian) {
+		if let Some((first, second)) = split_bezpath(&bezpath, t) {
 			result_vector_data.append_bezpath(first);
 			result_vector_data.append_bezpath(second);
 		} else {
@@ -1323,9 +1324,11 @@ async fn position_on_path(
 
 	bezpaths.get_mut(index).map_or(DVec2::ZERO, |(bezpath, transform)| {
 		let t = if progress == bezpath_count { 1. } else { progress.fract() };
+		let t = if euclidian { TValue::Euclidean(t) } else { TValue::Parametric(t) };
+
 		bezpath.apply_affine(Affine::new(transform.to_cols_array()));
 
-		point_to_dvec2(evaluate_bezpath(bezpath, t, euclidian, None))
+		point_to_dvec2(evaluate_bezpath(bezpath, t, None))
 	})
 }
 
@@ -1360,12 +1363,14 @@ async fn tangent_on_path(
 
 	bezpaths.get_mut(index).map_or(0., |(bezpath, transform)| {
 		let t = if progress == bezpath_count { 1. } else { progress.fract() };
+		let t_value = |t: f64| if euclidian { TValue::Euclidean(t) } else { TValue::Parametric(t) };
+
 		bezpath.apply_affine(Affine::new(transform.to_cols_array()));
 
-		let mut tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t, euclidian, None));
+		let mut tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t_value(t), None));
 		if tangent == DVec2::ZERO {
 			let t = t + if t > 0.5 { -0.001 } else { 0.001 };
-			tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t, euclidian, None));
+			tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t_value(t), None));
 		}
 		if tangent == DVec2::ZERO {
 			return 0.;
