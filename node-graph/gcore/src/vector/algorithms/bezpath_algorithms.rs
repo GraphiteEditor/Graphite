@@ -194,6 +194,7 @@ pub enum TValue {
 	Euclidean(f64),
 }
 
+/// Return the subsegment for the given [TValue] range. Returns None if parametric value of `t1` is greater than `t2`.
 pub fn trim_pathseg(segment: PathSeg, t1: TValue, t2: TValue) -> Option<PathSeg> {
 	let t1 = eval_pathseg(segment, t1);
 	let t2 = eval_pathseg(segment, t2);
@@ -210,12 +211,12 @@ pub fn eval_pathseg(segment: PathSeg, t_value: TValue) -> f64 {
 
 /// Finds the t value of point on the given path segment i.e fractional distance along the segment's total length.
 /// It uses a binary search to find the value `t` such that the ratio `length_up_to_t / total_length` approximates the input `distance`.
-pub fn eval_pathseg_euclidean(path_segment: PathSeg, distance: f64, accuracy: f64) -> f64 {
+pub fn eval_pathseg_euclidean(segment: PathSeg, distance: f64, accuracy: f64) -> f64 {
 	let mut low_t = 0.;
 	let mut mid_t = 0.5;
 	let mut high_t = 1.;
 
-	let total_length = path_segment.perimeter(accuracy);
+	let total_length = segment.perimeter(accuracy);
 
 	if !total_length.is_finite() || total_length <= f64::EPSILON {
 		return 0.;
@@ -224,7 +225,7 @@ pub fn eval_pathseg_euclidean(path_segment: PathSeg, distance: f64, accuracy: f6
 	let distance = distance.clamp(0., 1.);
 
 	while high_t - low_t > accuracy {
-		let current_length = path_segment.subsegment(0.0..mid_t).perimeter(accuracy);
+		let current_length = segment.subsegment(0.0..mid_t).perimeter(accuracy);
 		let current_distance = current_length / total_length;
 
 		if current_distance > distance {
