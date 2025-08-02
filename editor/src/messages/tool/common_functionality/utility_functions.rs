@@ -1,18 +1,20 @@
 use super::snapping::{SnapCandidatePoint, SnapData, SnapManager};
 use super::transformation_cage::{BoundingBoxManager, SizeSnapData};
 use crate::consts::ROTATE_INCREMENT;
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::get_text;
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_text};
 use crate::messages::tool::common_functionality::transformation_cage::SelectedEdges;
 use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
 use crate::messages::tool::utility_types::ToolType;
 use bezier_rs::{Bezier, BezierHandles};
 use glam::{DAffine2, DVec2};
+use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
 use graphene_std::text::{FontCache, load_font};
-use graphene_std::vector::{HandleExt, HandleId, ManipulatorPointId, PointId, SegmentId, VectorData, VectorModificationType};
+use graphene_std::vector::{HandleExt, HandleId, ManipulatorPointId, PointId, SegmentId, VectorData, VectorModification, VectorModificationType};
 use kurbo::{CubicBez, Line, ParamCurveExtrema, PathSeg, Point, QuadBez};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
@@ -585,4 +587,34 @@ pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec
 	let len2 = b.exp().max(min_len2);
 
 	(d1 * len1, d2 * len2)
+}
+
+pub fn single_path_node_compatible_layer_selected(network_interface: &NodeNetworkInterface, metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
+	let selected_nodes = network_interface.selected_nodes();
+	let mut selected_layers = selected_nodes.selected_layers(metadata);
+	let first_layer = selected_layers.next();
+	let second_layer = selected_layers.next();
+	let has_single_selection = first_layer.is_some() && second_layer.is_none();
+	let compatible_type = first_layer.and_then(|layer| {
+		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &network_interface);
+		graph_layer.horizontal_layer_flow().nth(1).map(|node_id| {
+			let (output_type, _) = network_interface.output_type(&node_id, 0, &[]);
+			format!("type:{}", output_type.nested_type())
+		})
+	});
+	let is_compatible = compatible_type.as_deref() == Some("type:Instances<VectorData>");
+	let path_node_with_no_diffs_exist = first_layer.is_some_and(|layer| {
+		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &network_interface);
+		if let Some(TaggedValue::VectorModification(vector)) = graph_layer.find_input("Path", 1) {
+			let modification = *vector.clone();
+			modification == VectorModification::default()
+		} else {
+			false
+		}
+	});
+	if first_layer.is_some() && has_single_selection && is_compatible && !path_node_with_no_diffs_exist {
+		first_layer
+	} else {
+		None
+	}
 }

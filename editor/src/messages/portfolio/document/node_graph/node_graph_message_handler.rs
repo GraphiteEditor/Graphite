@@ -17,15 +17,14 @@ use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle,
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_clip_mode};
+use crate::messages::tool::common_functionality::utility_functions::single_path_node_compatible_layer_selected;
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
-use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_std::math::math_ext::QuadExt;
-use graphene_std::vector::VectorModification;
 use graphene_std::vector::misc::subpath_to_kurbo_bezpath;
 use graphene_std::*;
 use kurbo::{Line, Point};
@@ -127,43 +126,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_layer_id] });
 			}
 			NodeGraphMessage::AddPathNode => {
-				let selected_nodes = network_interface.selected_nodes();
-				let mut selected_layers = selected_nodes.selected_layers(network_interface.document_metadata());
-				let first_layer = selected_layers.next();
-				let second_layer = selected_layers.next();
-				let has_single_selection = first_layer.is_some() && second_layer.is_none();
-
-				let compatible_type = first_layer.and_then(|layer| {
-					let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &network_interface);
-					graph_layer.horizontal_layer_flow().nth(1).and_then(|node_id| {
-						let (output_type, _) = network_interface.output_type(&node_id, 0, &[]);
-						Some(format!("type:{}", output_type.nested_type()))
-					})
-				});
-
-				let is_compatible = compatible_type.as_deref() == Some("type:Instances<VectorData>");
-
-				if first_layer.is_some() && has_single_selection && is_compatible {
-					if let Some(layer) = first_layer {
-						let node_type = "Path".to_string();
-						let path_node_with_no_diffs_exist = first_layer.is_some_and(|layer| {
-							let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &network_interface);
-							if let Some(TaggedValue::VectorModification(vector)) = graph_layer.find_input("Path", 1) {
-								let modification = *vector.clone();
-								modification == VectorModification::default()
-							} else {
-								false
-							}
-						});
-
-						if !path_node_with_no_diffs_exist {
-							responses.add(NodeGraphMessage::CreateNodeInLayerWithTransaction {
-								node_type: node_type.clone(),
-								layer: LayerNodeIdentifier::new_unchecked(layer.to_node()),
-							});
-							responses.add(BroadcastEvent::SelectionChanged);
-						}
-					}
+				if let Some(layer) = single_path_node_compatible_layer_selected(&network_interface, network_interface.document_metadata()) {
+					responses.add(NodeGraphMessage::CreateNodeInLayerWithTransaction {
+						node_type: "Path".to_string(),
+						layer: layer,
+					});
+					responses.add(BroadcastEvent::SelectionChanged);
 				}
 			}
 			NodeGraphMessage::AddImport => {

@@ -11,19 +11,17 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::portfolio::document::utility_types::transformation::Axis;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
 use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedLayerState, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
-use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate};
+use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate, single_path_node_compatible_layer_selected};
 use bezier_rs::{Bezier, BezierHandles, TValue};
-use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
 use graphene_std::transform::ReferencePoint;
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, VectorData, VectorModification};
+use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, VectorData};
 use graphene_std::vector::{ManipulatorPointId, PointId, VectorModificationType};
 use std::vec;
 
@@ -2406,35 +2404,7 @@ impl Fsm for PathToolFsmState {
 					colinear,
 				};
 
-				tool_data.single_path_node_compatible_layer_selected = {
-					let selected_nodes = document.network_interface.selected_nodes();
-					let mut selected_layers = selected_nodes.selected_layers(document.metadata());
-					let first_layer = selected_layers.next();
-					let second_layer = selected_layers.next();
-					let has_single_selection = first_layer.is_some() && second_layer.is_none();
-
-					let compatible_type = first_layer.and_then(|layer| {
-						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
-						graph_layer.horizontal_layer_flow().nth(1).map(|node_id| {
-							let (output_type, _) = document.network_interface.output_type(&node_id, 0, &[]);
-							format!("type:{}", output_type.nested_type())
-						})
-					});
-
-					let is_compatible = compatible_type.as_deref() == Some("type:Instances<VectorData>");
-
-					let path_node_with_no_diffs_exist = first_layer.is_some_and(|layer| {
-						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
-						if let Some(TaggedValue::VectorModification(vector)) = graph_layer.find_input("Path", 1) {
-							let modification = *vector.clone();
-							modification == VectorModification::default()
-						} else {
-							false
-						}
-					});
-
-					first_layer.is_some() && has_single_selection && is_compatible && !path_node_with_no_diffs_exist
-				};
+				tool_data.single_path_node_compatible_layer_selected = single_path_node_compatible_layer_selected(&document.network_interface, document.metadata()).is_some();
 				tool_data.update_selection_status(shape_editor, document);
 				self
 			}
