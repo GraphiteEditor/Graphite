@@ -337,7 +337,7 @@ impl VectorData {
 	/// Returns the number of linear segments connected to the given point.
 	pub fn connected_linear_segments(&self, point_id: PointId) -> usize {
 		self.segment_bezier_iter()
-			.filter(|(_, bez, start, end)| ((*start == point_id || *end == point_id) && matches!(bez.handles, BezierHandles::Linear)))
+			.filter(|(_, bez, start, end)| (*start == point_id || *end == point_id) && matches!(bez.handles, BezierHandles::Linear))
 			.count()
 	}
 
@@ -557,6 +557,30 @@ impl ManipulatorPointId {
 				let current = HandleId::end(segment);
 				let other = vector_data.segment_domain.all_connected(point).find(|&value| value != current);
 				other.map(|other| [current, other])
+			}
+		}
+	}
+
+	/// Finds all the connected handles of a point.
+	/// For an anchor it is all the connected handles.
+	/// For a handle it is all the handles connected to its corresponding anchor other than the current handle.
+	pub fn get_all_connected_handles(self, vector_data: &VectorData) -> Option<Vec<HandleId>> {
+		match self {
+			ManipulatorPointId::Anchor(point) => {
+				let connected = vector_data.all_connected(point).collect::<Vec<_>>();
+				Some(connected)
+			}
+			ManipulatorPointId::PrimaryHandle(segment) => {
+				let point = vector_data.segment_domain.segment_start_from_id(segment)?;
+				let current = HandleId::primary(segment);
+				let connected = vector_data.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>();
+				Some(connected)
+			}
+			ManipulatorPointId::EndHandle(segment) => {
+				let point = vector_data.segment_domain.segment_end_from_id(segment)?;
+				let current = HandleId::end(segment);
+				let connected = vector_data.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>();
+				Some(connected)
 			}
 		}
 	}

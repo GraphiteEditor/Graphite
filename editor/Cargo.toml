@@ -2,7 +2,7 @@
 name = "graphite-editor"
 publish = false
 version = "0.0.0"
-rust-version = "1.85"
+rust-version = "1.88"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 edition = "2024"
 readme = "../README.md"
@@ -14,8 +14,6 @@ license = "Apache-2.0"
 default = ["wasm"]
 wasm = ["wasm-bindgen", "graphene-std/wasm", "wasm-bindgen-futures"]
 gpu = ["interpreted-executor/gpu", "wgpu-executor"]
-tauri = ["ron", "decouple-execution"]
-decouple-execution = []
 resvg = ["graphene-std/resvg"]
 vello = ["graphene-std/vello", "resvg"]
 ron = ["dep:ron"]
@@ -46,6 +44,8 @@ num_enum = { workspace = true }
 usvg = { workspace = true }
 once_cell = { workspace = true }
 web-sys = { workspace = true }
+bytemuck = { workspace = true }
+vello = { workspace = true }
 
 # Required dependencies
 spin = "0.9.8"

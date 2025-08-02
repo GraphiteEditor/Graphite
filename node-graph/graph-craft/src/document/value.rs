@@ -4,9 +4,10 @@ use crate::wasm_application_io::WasmEditorApi;
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
-use graphene_application_io::SurfaceFrame;
+use graphene_application_io::{ImageTexture, SurfaceFrame};
 use graphene_brush::brush_cache::BrushCache;
 use graphene_brush::brush_stroke::BrushStroke;
+use graphene_core::raster::Image;
 use graphene_core::raster_types::CPU;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
@@ -247,6 +248,7 @@ tagged_value! {
 	ReferencePoint(graphene_core::transform::ReferencePoint),
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_path_bool::BooleanOperation),
+	TextAlign(graphene_core::text::TextAlign),
 }
 
 impl TaggedValue {
@@ -424,10 +426,15 @@ pub struct RenderOutput {
 	pub metadata: RenderMetadata,
 }
 
-#[derive(Debug, Clone, PartialEq, dyn_any::DynAny, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Hash, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub enum RenderOutputType {
 	CanvasFrame(SurfaceFrame),
-	Svg(String),
+	#[serde(skip)]
+	Texture(ImageTexture),
+	Svg {
+		svg: String,
+		image_data: Vec<(u64, Image<Color>)>,
+	},
 	Image(Vec<u8>),
 }
 

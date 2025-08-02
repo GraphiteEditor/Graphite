@@ -345,13 +345,15 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 
-	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, &graphene_core, &identifier);
+	let cfg = crate::shader_nodes::modify_cfg(&attributes);
+	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, &graphene_core, &identifier, &cfg);
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
 		#[inline]
 		#[allow(clippy::too_many_arguments)]
 		#vis #async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_ident: #input_type #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
 
+		#cfg
 		#[automatically_derived]
 		impl<'n, #(#fn_generics,)* #(#struct_generics,)* #(#future_idents,)*> #graphene_core::Node<'n, #input_type> for #mod_name::#struct_name<#(#struct_generics,)*>
 		#struct_where_clause
@@ -359,16 +361,19 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			#eval_impl
 		}
 
+		#cfg
 		const fn #identifier() -> #graphene_core::ProtoNodeIdentifier {
 			#graphene_core::ProtoNodeIdentifier::new(std::concat!(#identifier_path, "::", std::stringify!(#struct_name)))
 		}
 
+		#cfg
 		#[doc(inline)]
 		pub use #mod_name::#struct_name;
 
 		#[doc(hidden)]
 		#node_input_accessor
 
+		#cfg
 		#[doc(hidden)]
 		mod #mod_name {
 			use super::*;
@@ -434,7 +439,14 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 }
 
 /// Generates strongly typed utilites to access inputs
-fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::GenericParam], field_idents: &[&PatIdent], graphene_core: &TokenStream2, identifier: &Ident) -> TokenStream2 {
+fn generate_node_input_references(
+	parsed: &ParsedNodeFn,
+	fn_generics: &[crate::GenericParam],
+	field_idents: &[&PatIdent],
+	graphene_core: &TokenStream2,
+	identifier: &Ident,
+	cfg: &TokenStream2,
+) -> TokenStream2 {
 	let inputs_module_name = format_ident!("{}", parsed.struct_name.to_string().to_case(Case::Snake));
 
 	let mut generated_input_accessor = Vec::new();
@@ -479,6 +491,7 @@ fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::G
 	}
 
 	quote! {
+		#cfg
 		pub mod #inputs_module_name {
 			use super::*;
 

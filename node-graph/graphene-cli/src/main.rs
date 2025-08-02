@@ -111,7 +111,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			std::thread::spawn(move || {
 				loop {
 					std::thread::sleep(std::time::Duration::from_nanos(10));
-					device.poll(wgpu::Maintain::Poll);
+					device.poll(wgpu::PollType::Poll).unwrap();
 				}
 			});
 			let executor = create_executor(proto_graph)?;
@@ -123,7 +123,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 					println!("{:?}", result);
 					break;
 				}
-				std::thread::sleep(std::time::Duration::from_millis(16));
+				tokio::time::sleep(std::time::Duration::from_millis(16)).await;
 			}
 		}
 	}

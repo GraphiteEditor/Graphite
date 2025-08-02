@@ -67,7 +67,7 @@ pub enum GridType {
 #[widget(Radio)]
 pub enum ArcType {
 	#[default]
-	Open,
+	Open = 0,
 	Closed,
 	PieSlice,
 }

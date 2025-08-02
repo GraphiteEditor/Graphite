@@ -419,7 +419,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							action: MenuBarEntry::no_action(),
 							disabled: no_active_document || !has_selected_layers,
 							children: MenuBarEntryChildren(vec![{
-								let list = <BooleanOperation as graphene_std::registry::ChoiceTypeStatic>::list();
+								let list = <BooleanOperation as graphene_std::choice_type::ChoiceTypeStatic>::list();
 								list.iter()
 									.flat_map(|i| i.iter())
 									.map(move |(operation, info)| MenuBarEntry {

@@ -212,41 +212,6 @@ impl BoundingBox for GraphicGroupTable {
 	}
 }
 
-impl<'de> serde::Deserialize<'de> for Raster<CPU> {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: serde::Deserializer<'de>,
-	{
-		Ok(Raster::new_cpu(Image::deserialize(deserializer)?))
-	}
-}
-
-impl serde::Serialize for Raster<CPU> {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: serde::Serializer,
-	{
-		self.data().serialize(serializer)
-	}
-}
-impl<'de> serde::Deserialize<'de> for Raster<GPU> {
-	fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
-	where
-		D: serde::Deserializer<'de>,
-	{
-		unimplemented!()
-	}
-}
-
-impl serde::Serialize for Raster<GPU> {
-	fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: serde::Serializer,
-	{
-		unimplemented!()
-	}
-}
-
 /// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
 #[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct Artboard {

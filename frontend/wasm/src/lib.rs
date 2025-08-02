@@ -6,6 +6,7 @@ extern crate log;
 
 pub mod editor_api;
 pub mod helpers;
+pub mod native_communcation;
 
 use editor::messages::prelude::*;
 use std::panic;

@@ -3,6 +3,7 @@ use graphene_application_io::{ApplicationError, ApplicationIo, ResourceFuture, S
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
 use std::sync::atomic::AtomicU64;
@@ -39,7 +40,7 @@ impl Drop for WindowWrapper {
 		let wrapper = || {
 			if let Ok(canvases) = Reflect::get(&window, &image_canvases_key) {
 				// Convert key and value to JsValue
-				let js_key = JsValue::from_str(format!("canvas{}", self.window.window_id).as_str());
+				let js_key = JsValue::from_str(self.window.window_id.to_string().as_str());
 
 				// Use Reflect API to set property
 				Reflect::delete_property(&canvases.into(), &js_key)?;
@@ -69,14 +70,6 @@ pub struct WasmApplicationIo {
 static WGPU_AVAILABLE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
 
 pub fn wgpu_available() -> Option<bool> {
-	// Always enable wgpu when running with Tauri
-	#[cfg(target_arch = "wasm32")]
-	if let Some(window) = web_sys::window() {
-		if js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("__TAURI__")).is_ok() {
-			return Some(true);
-		}
-	}
-
 	match WGPU_AVAILABLE.load(Ordering::SeqCst) {
 		-1 => None,
 		0 => Some(false),
@@ -136,11 +129,31 @@ impl WasmApplicationIo {
 		let wgpu_available = executor.is_some();
 		WGPU_AVAILABLE.store(wgpu_available as i8, Ordering::SeqCst);
 
-		// Always enable wgpu when running with Tauri
 		let mut io = Self {
 			#[cfg(target_arch = "wasm32")]
 			ids: AtomicU64::new(0),
 			#[cfg(feature = "wgpu")]
+			gpu_executor: executor,
+			windows: Vec::new(),
+			resources: HashMap::new(),
+		};
+
+		io.resources.insert("null".to_string(), Arc::from(include_bytes!("null.png").to_vec()));
+
+		io
+	}
+	#[cfg(all(not(target_arch = "wasm32"), feature = "wgpu"))]
+	pub fn new_with_context(context: wgpu_executor::Context) -> Self {
+		#[cfg(feature = "wgpu")]
+		let executor = WgpuExecutor::with_context(context);
+
+		#[cfg(not(feature = "wgpu"))]
+		let wgpu_available = false;
+		#[cfg(feature = "wgpu")]
+		let wgpu_available = executor.is_some();
+		WGPU_AVAILABLE.store(wgpu_available as i8, Ordering::SeqCst);
+
+		let mut io = Self {
 			gpu_executor: executor,
 			windows: Vec::new(),
 			resources: HashMap::new(),
@@ -200,7 +213,7 @@ impl ApplicationIo for WasmApplicationIo {
 			}
 
 			// Convert key and value to JsValue
-			let js_key = JsValue::from_str(format!("canvas{}", id).as_str());
+			let js_key = JsValue::from_str(id.to_string().as_str());
 			let js_value = JsValue::from(canvas.clone());
 
 			let canvases = Object::from(canvases.unwrap());
@@ -217,26 +230,30 @@ impl ApplicationIo for WasmApplicationIo {
 	}
 	#[cfg(not(target_arch = "wasm32"))]
 	fn create_window(&self) -> SurfaceHandle<Self::Surface> {
-		log::trace!("Spawning window");
+		todo!("winit api changed, calling create_window on EventLoop is deprecated");
 
-		#[cfg(all(not(test), target_os = "linux", feature = "wayland"))]
-		use winit::platform::wayland::EventLoopBuilderExtWayland;
+		// log::trace!("Spawning window");
 
-		#[cfg(all(not(test), target_os = "linux", feature = "wayland"))]
-		let event_loop = winit::event_loop::EventLoopBuilder::new().with_any_thread(true).build().unwrap();
-		#[cfg(not(all(not(test), target_os = "linux", feature = "wayland")))]
-		let event_loop = winit::event_loop::EventLoop::new().unwrap();
+		// #[cfg(all(not(test), target_os = "linux", feature = "wayland"))]
+		// use winit::platform::wayland::EventLoopBuilderExtWayland;
 
-		let window = winit::window::WindowBuilder::new()
-			.with_title("Graphite")
-			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600))
-			.build(&event_loop)
-			.unwrap();
+		// #[cfg(all(not(test), target_os = "linux", feature = "wayland"))]
+		// let event_loop = winit::event_loop::EventLoopBuilder::new().with_any_thread(true).build().unwrap();
+		// #[cfg(not(all(not(test), target_os = "linux", feature = "wayland")))]
+		// let event_loop = winit::event_loop::EventLoop::new().unwrap();
 
-		SurfaceHandle {
-			window_id: SurfaceId(window.id().into()),
-			surface: Arc::new(window),
-		}
+		// let window = event_loop
+		// 	.create_window(
+		// 		winit::window::WindowAttributes::default()
+		// 			.with_title("Graphite")
+		// 			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600)),
+		// 	)
+		// 	.unwrap();
+
+		// SurfaceHandle {
+		// 	window_id: SurfaceId(window.id().into()),
+		// 	surface: Arc::new(window),
+		// }
 	}
 
 	#[cfg(target_arch = "wasm32")]
@@ -249,7 +266,7 @@ impl ApplicationIo for WasmApplicationIo {
 		let wrapper = || {
 			if let Ok(canvases) = Reflect::get(&window, &image_canvases_key) {
 				// Convert key and value to JsValue
-				let js_key = JsValue::from_str(format!("canvas{}", surface_id.0).as_str());
+				let js_key = JsValue::from_str(surface_id.0.to_string().as_str());
 
 				// Use Reflect API to set property
 				Reflect::delete_property(&canvases.into(), &js_key)?;

@@ -3,8 +3,10 @@ pub use crate::utility_traits::{ActionList, AsMessage, ExtractField, Hierarchica
 pub use crate::utility_types::{DebugMessageTree, MessageData};
 // Message, MessageData, MessageDiscriminant, MessageHandler
 pub use crate::messages::animation::{AnimationMessage, AnimationMessageDiscriminant, AnimationMessageHandler};
+pub use crate::messages::app_window::{AppWindowMessage, AppWindowMessageDiscriminant, AppWindowMessageHandler};
 pub use crate::messages::broadcast::{BroadcastMessage, BroadcastMessageDiscriminant, BroadcastMessageHandler};
 pub use crate::messages::debug::{DebugMessage, DebugMessageDiscriminant, DebugMessageHandler};
+pub use crate::messages::defer::{DeferMessage, DeferMessageDiscriminant, DeferMessageHandler};
 pub use crate::messages::dialog::export_dialog::{ExportDialogMessage, ExportDialogMessageContext, ExportDialogMessageDiscriminant, ExportDialogMessageHandler};
 pub use crate::messages::dialog::new_document_dialog::{NewDocumentDialogMessage, NewDocumentDialogMessageDiscriminant, NewDocumentDialogMessageHandler};
 pub use crate::messages::dialog::preferences_dialog::{PreferencesDialogMessage, PreferencesDialogMessageContext, PreferencesDialogMessageDiscriminant, PreferencesDialogMessageHandler};
@@ -65,10 +67,12 @@ pub trait Responses {
 }
 
 impl Responses for VecDeque<Message> {
+	#[inline(always)]
 	fn add(&mut self, message: impl Into<Message>) {
 		self.push_back(message.into());
 	}
 
+	#[inline(always)]
 	fn add_front(&mut self, message: impl Into<Message>) {
 		self.push_front(message.into());
 	}

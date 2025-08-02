@@ -349,6 +349,21 @@ export class TriggerIndexedDbRemoveDocument extends JsMessage {
 	documentId!: string;
 }
 
+export type AppWindowPlatform = "Web" | "Windows" | "Mac" | "Linux";
+
+export class UpdatePlatform extends JsMessage {
+	@Transform(({ value }: { value: AppWindowPlatform }) => value)
+	readonly platform!: AppWindowPlatform;
+}
+
+export class UpdateMaximized extends JsMessage {
+	readonly maximized!: boolean;
+}
+
+export class UpdateViewportHolePunch extends JsMessage {
+	readonly active!: boolean;
+}
+
 export class UpdateInputHints extends JsMessage {
 	@Type(() => HintInfo)
 	readonly hintData!: HintData;
@@ -501,7 +516,7 @@ export class Color {
 		const canvas = document.createElement("canvas");
 		canvas.width = 1;
 		canvas.height = 1;
-		const context = canvas.getContext("2d");
+		const context = canvas.getContext("2d", { willReadFrequently: true });
 		if (!context) return undefined;
 
 		context.clearRect(0, 0, 1, 1);
@@ -776,8 +791,6 @@ export class TriggerImport extends JsMessage {}
 
 export class TriggerPaste extends JsMessage {}
 
-export class TriggerDelayedZoomCanvasToFitAll extends JsMessage {}
-
 export class TriggerDownloadImage extends JsMessage {
 	readonly svg!: string;
 
@@ -814,6 +827,8 @@ export class UpdateDocumentLayerStructureJs extends JsMessage {
 	readonly dataBuffer!: DataBuffer;
 }
 
+export type TextAlign = "Left" | "Center" | "Right" | "JustifyLeft";
+
 export class DisplayEditableTextbox extends JsMessage {
 	readonly text!: string;
 
@@ -831,6 +846,8 @@ export class DisplayEditableTextbox extends JsMessage {
 	readonly maxWidth!: undefined | number;
 
 	readonly maxHeight!: undefined | number;
+
+	readonly align!: TextAlign;
 }
 
 export class DisplayEditableTextboxTransform extends JsMessage {
@@ -1630,7 +1647,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayRemoveEditableTextbox,
 	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
-	TriggerDelayedZoomCanvasToFitAll,
 	TriggerDownloadImage,
 	TriggerDownloadTextFile,
 	TriggerFetchAndOpenDocument,
@@ -1666,29 +1682,32 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateEyedropperSamplingState,
 	UpdateGraphFadeArtwork,
 	UpdateGraphViewOverlay,
-	UpdateSpreadsheetState,
 	UpdateImportReorderIndex,
 	UpdateImportsExports,
 	UpdateInputHints,
 	UpdateInSelectedNetwork,
+	UpdateLayersPanelBottomBarLayout,
 	UpdateLayersPanelControlBarLeftLayout,
 	UpdateLayersPanelControlBarRightLayout,
-	UpdateLayersPanelBottomBarLayout,
 	UpdateLayerWidths,
+	UpdateMaximized,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
-	UpdateNodeGraphNodes,
-	UpdateVisibleNodes,
-	UpdateNodeGraphWires,
-	UpdateNodeGraphTransform,
 	UpdateNodeGraphControlBarLayout,
+	UpdateNodeGraphNodes,
 	UpdateNodeGraphSelection,
+	UpdateNodeGraphTransform,
+	UpdateNodeGraphWires,
 	UpdateNodeThumbnail,
 	UpdateOpenDocumentsList,
+	UpdatePlatform,
 	UpdatePropertyPanelSectionsLayout,
 	UpdateSpreadsheetLayout,
+	UpdateSpreadsheetState,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
+	UpdateViewportHolePunch,
+	UpdateVisibleNodes,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,
 } as const;
