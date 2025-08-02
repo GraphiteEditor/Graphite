@@ -1,4 +1,5 @@
 use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
+use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
 	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, Transform,
@@ -12,8 +13,12 @@ use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
 use graphene_std::text::{Font, TextAlign};
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+
 #[impl_message(Message, Frontend)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(derivative::Derivative, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derivative(Debug, PartialEq)]
 pub enum FrontendMessage {
 	// Display prefix: make the frontend show something, like a dialog
 	DisplayDialog {
@@ -58,7 +63,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "commitDate")]
 		commit_date: String,
 	},
-	TriggerDelayedZoomCanvasToFitAll,
 	TriggerDownloadImage {
 		svg: String,
 		name: String,
@@ -309,4 +313,19 @@ pub enum FrontendMessage {
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
+	UpdatePlatform {
+		platform: AppWindowPlatform,
+	},
+	UpdateMaximized {
+		maximized: bool,
+	},
+	UpdateViewportHolePunch {
+		active: bool,
+	},
+	#[cfg(not(target_arch = "wasm32"))]
+	RenderOverlays(
+		#[serde(skip, default = "OverlayContext::default")]
+		#[derivative(Debug = "ignore", PartialEq = "ignore")]
+		OverlayContext,
+	),
 }

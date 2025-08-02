@@ -1,18 +1,17 @@
-<script lang="ts" context="module">
-	export type ApplicationPlatform = "Windows" | "Mac" | "Linux" | "Web";
-</script>
-
 <script lang="ts">
+	import type { AppWindowPlatform } from "@graphite/messages";
+
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import StatusBar from "@graphite/components/window/status-bar/StatusBar.svelte";
 	import TitleBar from "@graphite/components/window/title-bar/TitleBar.svelte";
 	import Workspace from "@graphite/components/window/workspace/Workspace.svelte";
 
-	let platform: ApplicationPlatform = "Web";
-	let maximized: true;
+	export let platform: AppWindowPlatform;
+	export let maximized: boolean;
+	export let viewportHolePunch: boolean;
 </script>
 
-<LayoutCol class="main-window">
+<LayoutCol class="main-window" classes={{ "viewport-hole-punch": viewportHolePunch }}>
 	<TitleBar {platform} {maximized} />
 
 	<Workspace />

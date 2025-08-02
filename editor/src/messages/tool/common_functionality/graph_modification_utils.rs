@@ -153,8 +153,9 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 	});
 
 	responses.add(NodeGraphMessage::RunDocumentGraph);
-	responses.add(Message::StartBuffer);
-	responses.add(PenToolMessage::RecalculateLatestPointsPosition);
+	responses.add(DeferMessage::AfterGraphRun {
+		messages: vec![PenToolMessage::RecalculateLatestPointsPosition.into()],
+	});
 }
 
 /// Merge the `first_endpoint` with `second_endpoint`.
@@ -330,6 +331,10 @@ pub fn get_fill(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 
 pub fn get_fill_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Fill")
+}
+
+pub fn get_circle_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Circle")
 }
 
 pub fn get_ellipse_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {

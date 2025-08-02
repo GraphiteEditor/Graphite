@@ -166,7 +166,7 @@ And then from a development perspective, I am looking forward to accomplishing t
 
 - Restoring several previous features that were removed during refactors in the past year to a fully working state including Imaginate, snapping, folder bounding boxes, transform pivots, and vector shape boolean operations
 - Deploying GPU-based rendering by default and moving from an experimental to a production-ready hardware-accelerated compositing system using [Vello](https://github.com/linebender/vello) to unify the currently separate raster and vector pipelines
-- Shipping desktop apps for Windows, Mac, and Linux by integrating [Tauri](https://tauri.app/) and bundling built-in AI models to run Imaginate and other upcoming features directly on user hardware
+- Shipping desktop apps for Windows, Mac, and Linux and bundling built-in AI models to run Imaginate and other upcoming features directly on user hardware
 - Designing a new vector graphics data format suitable for advanced procedural editing and rendering, plus the associated procedural workflow features
 - Remaking the Brush tool with the GPU-accelerated pipeline and the adaptive resolution system so digital painting in Graphite becomes practical
 - Implementing the Mask Mode feature for Magic Wand tool marquee selections, which will dramatically improve Graphite's utility as a raster graphics editor
