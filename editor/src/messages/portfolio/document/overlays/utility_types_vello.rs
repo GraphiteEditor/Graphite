@@ -293,10 +293,34 @@ impl OverlayContext {
 			.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color.unwrap_or(COLOR_OVERLAY_BLUE)), None, &circle);
 	}
 
+	pub fn hover_manipulator_handle(&mut self, position: DVec2, selected: bool) {
+		let transform = self.get_transform();
+
+		let position = position.round() - DVec2::splat(0.5);
+
+		let circle = kurbo::Circle::new((position.x, position.y), (MANIPULATOR_GROUP_MARKER_SIZE + 2.) / 2.);
+
+		let fill = COLOR_OVERLAY_BLUE_50;
+		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(fill), None, &circle);
+		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(COLOR_OVERLAY_BLUE_50), None, &circle);
+
+		let inner_circle = kurbo::Circle::new((position.x, position.y), MANIPULATOR_GROUP_MARKER_SIZE / 2.);
+
+		let color_fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
+		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &circle);
+		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &inner_circle);
+	}
+
 	pub fn manipulator_anchor(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
 		let color_stroke = color.unwrap_or(COLOR_OVERLAY_BLUE);
 		let color_fill = if selected { color_stroke } else { COLOR_OVERLAY_WHITE };
 		self.square(position, None, Some(color_fill), Some(color_stroke));
+	}
+
+	pub fn hover_manipulator_anchor(&mut self, position: DVec2, selected: bool) {
+		self.square(position, Some(MANIPULATOR_GROUP_MARKER_SIZE + 2.), Some(COLOR_OVERLAY_BLUE_50), Some(COLOR_OVERLAY_BLUE_50));
+		let color_fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
+		self.square(position, None, Some(color_fill), Some(COLOR_OVERLAY_BLUE));
 	}
 
 	fn get_transform(&self) -> kurbo::Affine {
