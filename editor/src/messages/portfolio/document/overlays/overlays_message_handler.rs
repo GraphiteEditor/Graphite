@@ -20,8 +20,12 @@ pub struct OverlaysMessageHandler {
 #[message_handler_data]
 impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMessageHandler {
 	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, context: OverlaysMessageContext) {
-		let OverlaysMessageContext { visibility_settings, ipp, .. } = context;
-		let device_pixel_ratio = context.device_pixel_ratio;
+		let OverlaysMessageContext {
+			visibility_settings,
+			ipp,
+			device_pixel_ratio,
+			..
+		} = context;
 
 		match message {
 			#[cfg(target_family = "wasm")]
@@ -68,11 +72,10 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 					}
 				}
 			}
-			#[cfg(test)]
-			OverlaysMessage::Draw => {}
 			#[cfg(all(not(target_family = "wasm"), not(test)))]
 			OverlaysMessage::Draw => {
 				use super::utility_types::OverlayContext;
+
 				let size = ipp.viewport_bounds.size();
 
 				let overlay_context = OverlayContext::new(size, device_pixel_ratio, visibility_settings);
@@ -85,6 +88,13 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 					}
 				}
 				responses.add(FrontendMessage::RenderOverlays(overlay_context));
+			}
+			#[cfg(all(not(target_family = "wasm"), test))]
+			OverlaysMessage::Draw => {
+				// Removes unused warnings in test builds
+				drop(responses);
+				drop(context);
+				drop(super::utility_types::OverlayContext::new(ipp.viewport_bounds.size(), device_pixel_ratio, visibility_settings));
 			}
 			OverlaysMessage::AddProvider(message) => {
 				self.overlay_providers.insert(message);
