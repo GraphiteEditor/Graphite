@@ -187,10 +187,10 @@ impl LayoutHolder for PenTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Pen(PenToolMessage::UpdateOptions(action)) = message else {
-			self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
+			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			return;
 		};
 
@@ -1257,10 +1257,10 @@ impl PenToolData {
 		self.prior_segments = None;
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
-		// This causes the following message to be run only after the next graph evaluation runs and the transforms are updated
-		responses.add(Message::StartBuffer);
 		// It is necessary to defer this until the transform of the layer can be accurately computed (quite hacky)
-		responses.add(PenToolMessage::AddPointLayerPosition { layer, viewport });
+		responses.add(DeferMessage::AfterGraphRun {
+			messages: vec![PenToolMessage::AddPointLayerPosition { layer, viewport }.into()],
+		});
 	}
 
 	/// Perform extension of an existing path
@@ -1403,8 +1403,15 @@ impl Fsm for PenToolFsmState {
 	type ToolData = PenToolData;
 	type ToolOptions = PenOptions;
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData {
+	fn transition(
+		self,
+		event: ToolMessage,
+		tool_data: &mut Self::ToolData,
+		tool_action_data: &mut ToolActionMessageContext,
+		tool_options: &Self::ToolOptions,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
+		let ToolActionMessageContext {
 			document,
 			global_tool_data,
 			input,
@@ -1714,9 +1721,9 @@ impl Fsm for PenToolFsmState {
 					let next_point = tool_data.next_point;
 					let start = latest_point.id;
 
-					if let Some(layer) = layer {
-						let mut vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
-
+					if let Some(layer) = layer
+						&& let Some(mut vector_data) = document.network_interface.compute_modified_vector(layer)
+					{
 						let closest_point = vector_data.extendable_points(preferences.vector_meshes).filter(|&id| id != start).find(|&id| {
 							vector_data.point_domain.position_from_id(id).map_or(false, |pos| {
 								let dist_sq = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));

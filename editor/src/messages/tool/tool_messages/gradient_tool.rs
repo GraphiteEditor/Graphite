@@ -54,10 +54,10 @@ impl ToolMetadata for GradientTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for GradientTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for GradientTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Gradient(GradientToolMessage::UpdateOptions(action)) = message else {
-			self.fsm_state.process_event(message, &mut self.data, tool_data, &self.options, responses, false);
+			self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, false);
 			return;
 		};
 		match action {
@@ -67,7 +67,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Gradien
 				if let Some(selected_gradient) = &mut self.data.selected_gradient {
 					// Check if the current layer is a raster layer
 					if let Some(layer) = selected_gradient.layer {
-						if NodeGraphLayer::is_raster_layer(layer, &mut tool_data.document.network_interface) {
+						if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
 							return; // Don't proceed if it's a raster layer
 						}
 						selected_gradient.gradient.gradient_type = gradient_type;
@@ -243,8 +243,15 @@ impl Fsm for GradientToolFsmState {
 	type ToolData = GradientToolData;
 	type ToolOptions = GradientOptions;
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData {
+	fn transition(
+		self,
+		event: ToolMessage,
+		tool_data: &mut Self::ToolData,
+		tool_action_data: &mut ToolActionMessageContext,
+		tool_options: &Self::ToolOptions,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
+		let ToolActionMessageContext {
 			document, global_tool_data, input, ..
 		} = tool_action_data;
 

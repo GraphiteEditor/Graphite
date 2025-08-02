@@ -7,7 +7,7 @@ use glam::DVec2;
 use std::time::Duration;
 
 #[derive(ExtractField)]
-pub struct InputPreprocessorMessageData {
+pub struct InputPreprocessorMessageContext {
 	pub keyboard_platform: KeyboardPlatformLayout,
 }
 
@@ -21,9 +21,9 @@ pub struct InputPreprocessorMessageHandler {
 }
 
 #[message_handler_data]
-impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageData> for InputPreprocessorMessageHandler {
-	fn process_message(&mut self, message: InputPreprocessorMessage, responses: &mut VecDeque<Message>, data: InputPreprocessorMessageData) {
-		let InputPreprocessorMessageData { keyboard_platform } = data;
+impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext> for InputPreprocessorMessageHandler {
+	fn process_message(&mut self, message: InputPreprocessorMessage, responses: &mut VecDeque<Message>, context: InputPreprocessorMessageContext) {
+		let InputPreprocessorMessageContext { keyboard_platform } = context;
 
 		match message {
 			InputPreprocessorMessage::BoundsOfViewports { bounds_of_viewports } => {
@@ -97,8 +97,16 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageData> for 
 
 				self.translate_mouse_event(mouse_state, false, responses);
 			}
+			InputPreprocessorMessage::PointerShake { editor_mouse_state, modifier_keys } => {
+				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
+
+				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				self.mouse.position = mouse_state.position;
+
+				responses.add(InputMapperMessage::PointerShake);
+			}
 			InputPreprocessorMessage::CurrentTime { timestamp } => {
-				responses.add(AnimationMessage::SetTime(timestamp as f64));
+				responses.add(AnimationMessage::SetTime { time: timestamp as f64 });
 				self.time = timestamp;
 				self.frame_time.advance_timestamp(Duration::from_millis(timestamp));
 			}
@@ -214,10 +222,10 @@ mod test {
 
 		let mut responses = VecDeque::new();
 
-		let data = InputPreprocessorMessageData {
+		let context = InputPreprocessorMessageContext {
 			keyboard_platform: KeyboardPlatformLayout::Standard,
 		};
-		input_preprocessor.process_message(message, &mut responses, data);
+		input_preprocessor.process_message(message, &mut responses, context);
 
 		assert!(input_preprocessor.keyboard.get(Key::Alt as usize));
 		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::Alt).into()));
@@ -233,10 +241,10 @@ mod test {
 
 		let mut responses = VecDeque::new();
 
-		let data = InputPreprocessorMessageData {
+		let context = InputPreprocessorMessageContext {
 			keyboard_platform: KeyboardPlatformLayout::Standard,
 		};
-		input_preprocessor.process_message(message, &mut responses, data);
+		input_preprocessor.process_message(message, &mut responses, context);
 
 		assert!(input_preprocessor.keyboard.get(Key::Control as usize));
 		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::Control).into()));
@@ -252,10 +260,10 @@ mod test {
 
 		let mut responses = VecDeque::new();
 
-		let data = InputPreprocessorMessageData {
+		let context = InputPreprocessorMessageContext {
 			keyboard_platform: KeyboardPlatformLayout::Standard,
 		};
-		input_preprocessor.process_message(message, &mut responses, data);
+		input_preprocessor.process_message(message, &mut responses, context);
 
 		assert!(input_preprocessor.keyboard.get(Key::Shift as usize));
 		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyDown(Key::Shift).into()));
@@ -273,10 +281,10 @@ mod test {
 
 		let mut responses = VecDeque::new();
 
-		let data = InputPreprocessorMessageData {
+		let context = InputPreprocessorMessageContext {
 			keyboard_platform: KeyboardPlatformLayout::Standard,
 		};
-		input_preprocessor.process_message(message, &mut responses, data);
+		input_preprocessor.process_message(message, &mut responses, context);
 
 		assert!(!input_preprocessor.keyboard.get(Key::Control as usize));
 		assert_eq!(responses.pop_front(), Some(InputMapperMessage::KeyUp(Key::Control).into()));
@@ -293,10 +301,10 @@ mod test {
 
 		let mut responses = VecDeque::new();
 
-		let data = InputPreprocessorMessageData {
+		let context = InputPreprocessorMessageContext {
 			keyboard_platform: KeyboardPlatformLayout::Standard,
 		};
-		input_preprocessor.process_message(message, &mut responses, data);
+		input_preprocessor.process_message(message, &mut responses, context);
 
 		assert!(input_preprocessor.keyboard.get(Key::Control as usize));
 		assert!(input_preprocessor.keyboard.get(Key::Shift as usize));

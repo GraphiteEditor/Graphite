@@ -40,9 +40,9 @@ impl LayoutHolder for EyedropperTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for EyedropperTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		self.fsm_state.process_event(message, &mut self.data, tool_data, &(), responses, true);
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for EyedropperTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		self.fsm_state.process_event(message, &mut self.data, context, &(), responses, true);
 	}
 
 	advertise_actions!(EyedropperToolMessageDiscriminant;
@@ -80,8 +80,8 @@ impl Fsm for EyedropperToolFsmState {
 	type ToolData = EyedropperToolData;
 	type ToolOptions = ();
 
-	fn transition(self, event: ToolMessage, _tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData { global_tool_data, input, .. } = tool_action_data;
+	fn transition(self, event: ToolMessage, _tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionMessageContext, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
+		let ToolActionMessageContext { global_tool_data, input, .. } = tool_action_data;
 
 		let ToolMessage::Eyedropper(event) = event else { return self };
 		match (self, event) {

@@ -2,7 +2,7 @@ use super::utility_types::{OverlayProvider, OverlaysVisibilitySettings};
 use crate::messages::prelude::*;
 
 #[derive(ExtractField)]
-pub struct OverlaysMessageData<'a> {
+pub struct OverlaysMessageContext<'a> {
 	pub visibility_settings: OverlaysVisibilitySettings,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub device_pixel_ratio: f64,
@@ -18,9 +18,10 @@ pub struct OverlaysMessageHandler {
 }
 
 #[message_handler_data]
-impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessageHandler {
-	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, data: OverlaysMessageData) {
-		let OverlaysMessageData { visibility_settings, ipp, .. } = data;
+impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMessageHandler {
+	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, context: OverlaysMessageContext) {
+		let OverlaysMessageContext { visibility_settings, ipp, .. } = context;
+		let device_pixel_ratio = context.device_pixel_ratio;
 
 		match message {
 			#[cfg(target_arch = "wasm32")]
@@ -30,8 +31,6 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 				use glam::{DAffine2, DVec2};
 				use wasm_bindgen::JsCast;
 
-				let device_pixel_ratio = data.device_pixel_ratio;
-
 				let canvas = match &self.canvas {
 					Some(canvas) => canvas,
 					None => {
@@ -40,28 +39,28 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 					}
 				};
 
-				let context = self.context.get_or_insert_with(|| {
-					let context = canvas.get_context("2d").ok().flatten().expect("Failed to get canvas context");
-					context.dyn_into().expect("Context should be a canvas 2d context")
+				let canvas_context = self.context.get_or_insert_with(|| {
+					let canvas_context = canvas.get_context("2d").ok().flatten().expect("Failed to get canvas context");
+					canvas_context.dyn_into().expect("Context should be a canvas 2d context")
 				});
 
 				let size = ipp.viewport_bounds.size().as_uvec2();
 
 				let [a, b, c, d, e, f] = DAffine2::from_scale(DVec2::splat(device_pixel_ratio)).to_cols_array();
-				let _ = context.set_transform(a, b, c, d, e, f);
-				context.clear_rect(0., 0., ipp.viewport_bounds.size().x, ipp.viewport_bounds.size().y);
-				let _ = context.reset_transform();
+				let _ = canvas_context.set_transform(a, b, c, d, e, f);
+				canvas_context.clear_rect(0., 0., ipp.viewport_bounds.size().x, ipp.viewport_bounds.size().y);
+				let _ = canvas_context.reset_transform();
 
 				if visibility_settings.all() {
 					responses.add(DocumentMessage::GridOverlays(OverlayContext {
-						render_context: context.clone(),
+						render_context: canvas_context.clone(),
 						size: size.as_dvec2(),
 						device_pixel_ratio,
 						visibility_settings: visibility_settings.clone(),
 					}));
 					for provider in &self.overlay_providers {
 						responses.add(provider(OverlayContext {
-							render_context: context.clone(),
+							render_context: canvas_context.clone(),
 							size: size.as_dvec2(),
 							device_pixel_ratio,
 							visibility_settings: visibility_settings.clone(),
@@ -69,9 +68,39 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 					}
 				}
 			}
-			#[cfg(not(target_arch = "wasm32"))]
+			#[cfg(test)]
+			OverlaysMessage::Draw => {}
+			#[cfg(all(not(target_arch = "wasm32"), not(test)))]
 			OverlaysMessage::Draw => {
-				warn!("Cannot render overlays on non-Wasm targets.\n{responses:?} {visibility_settings:?} {ipp:?}",);
+				use super::utility_types::OverlayContext;
+				use vello::Scene;
+
+				let size = ipp.viewport_bounds.size().as_uvec2();
+
+				let scene = Scene::new();
+
+				if visibility_settings.all() {
+					let overlay_context = OverlayContext {
+						scene,
+						size: size.as_dvec2(),
+						device_pixel_ratio,
+						visibility_settings,
+					};
+
+					responses.add(DocumentMessage::GridOverlays(overlay_context.clone()));
+
+					for provider in &self.overlay_providers {
+						let overlay_context = OverlayContext {
+							scene: Scene::new(),
+							size: size.as_dvec2(),
+							device_pixel_ratio,
+							visibility_settings,
+						};
+						responses.add(provider(overlay_context));
+					}
+				}
+
+				// TODO: Render the Vello scene to a texture and display it
 			}
 			OverlaysMessage::AddProvider(message) => {
 				self.overlay_providers.insert(message);

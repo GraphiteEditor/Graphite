@@ -16,13 +16,27 @@ use editor::messages::portfolio::utility_types::Platform;
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
+use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
+use js_sys::{Object, Reflect};
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData, window};
+
+static IMAGE_DATA_HASH: AtomicU64 = AtomicU64::new(0);
+
+fn calculate_hash<T: std::hash::Hash>(t: &T) -> u64 {
+	use std::collections::hash_map::DefaultHasher;
+	use std::hash::Hasher;
+	let mut hasher = DefaultHasher::new();
+	t.hash(&mut hasher);
+	hasher.finish()
+}
 
 /// Set the random seed used by the editor by calling this from JS upon initialization.
 /// This is necessary because WASM doesn't have a random number generator.
@@ -35,6 +49,75 @@ pub fn set_random_seed(seed: u64) {
 #[wasm_bindgen(js_name = wasmMemory)]
 pub fn wasm_memory() -> JsValue {
 	wasm_bindgen::memory()
+}
+
+fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) {
+	let window = match window() {
+		Some(window) => window,
+		None => {
+			error!("Cannot render canvas: window object not found");
+			return;
+		}
+	};
+	let document = window.document().expect("window should have a document");
+	let window_obj = Object::from(window);
+	let image_canvases_key = JsValue::from_str("imageCanvases");
+
+	let canvases_obj = match Reflect::get(&window_obj, &image_canvases_key) {
+		Ok(obj) if !obj.is_undefined() && !obj.is_null() => obj,
+		_ => {
+			let new_obj = Object::new();
+			if Reflect::set(&window_obj, &image_canvases_key, &new_obj).is_err() {
+				error!("Failed to create and set imageCanvases object on window");
+				return;
+			}
+			new_obj.into()
+		}
+	};
+	let canvases_obj = Object::from(canvases_obj);
+
+	for (placeholder_id, image) in image_data.iter() {
+		let canvas_name = placeholder_id.to_string();
+		let js_key = JsValue::from_str(&canvas_name);
+
+		if Reflect::has(&canvases_obj, &js_key).unwrap_or(false) || image.width == 0 || image.height == 0 {
+			continue;
+		}
+
+		let canvas: HtmlCanvasElement = document
+			.create_element("canvas")
+			.expect("Failed to create canvas element")
+			.dyn_into::<HtmlCanvasElement>()
+			.expect("Failed to cast element to HtmlCanvasElement");
+
+		canvas.set_width(image.width);
+		canvas.set_height(image.height);
+
+		let context: CanvasRenderingContext2d = canvas
+			.get_context("2d")
+			.expect("Failed to get 2d context")
+			.expect("2d context was not found")
+			.dyn_into::<CanvasRenderingContext2d>()
+			.expect("Failed to cast context to CanvasRenderingContext2d");
+		let u8_data: Vec<u8> = image.data.iter().flat_map(|color| color.to_rgba8_srgb()).collect();
+		let clamped_u8_data = wasm_bindgen::Clamped(&u8_data[..]);
+		match ImageData::new_with_u8_clamped_array_and_sh(clamped_u8_data, image.width, image.height) {
+			Ok(image_data_obj) => {
+				if context.put_image_data(&image_data_obj, 0., 0.).is_err() {
+					error!("Failed to put image data on canvas for id: {placeholder_id}");
+				}
+			}
+			Err(e) => {
+				error!("Failed to create ImageData for id: {placeholder_id}: {e:?}");
+			}
+		}
+
+		let js_value = JsValue::from(canvas);
+
+		if Reflect::set(&canvases_obj, &js_key, &js_value).is_err() {
+			error!("Failed to set canvas '{canvas_name}' on imageCanvases object");
+		}
+	}
 }
 
 // ============================================================================
@@ -71,6 +154,7 @@ impl EditorHandle {
 	}
 
 	// Sends a message to the dispatcher in the Editor Backend
+	#[cfg(not(feature = "native"))]
 	fn dispatch<T: Into<Message>>(&self, message: T) {
 		// Process no further messages after a crash to avoid spamming the console
 		if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
@@ -86,8 +170,29 @@ impl EditorHandle {
 		}
 	}
 
+	#[cfg(feature = "native")]
+	fn dispatch<T: Into<Message>>(&self, message: T) {
+		let message: Message = message.into();
+		let Ok(serialized_message) = ron::to_string(&message) else {
+			log::error!("Failed to serialize message");
+			return;
+		};
+		crate::native_communcation::send_message_to_cef(serialized_message)
+	}
+
 	// Sends a FrontendMessage to JavaScript
 	fn send_frontend_message_to_js(&self, mut message: FrontendMessage) {
+		if let FrontendMessage::UpdateImageData { ref image_data } = message {
+			let new_hash = calculate_hash(image_data);
+			let prev_hash = IMAGE_DATA_HASH.load(Ordering::Relaxed);
+
+			if new_hash != prev_hash {
+				render_image_data_to_canvases(image_data.as_slice());
+				IMAGE_DATA_HASH.store(new_hash, Ordering::Relaxed);
+			}
+			return;
+		}
+
 		if let FrontendMessage::UpdateDocumentLayerStructure { data_buffer } = message {
 			message = FrontendMessage::UpdateDocumentLayerStructureJs { data_buffer: data_buffer.into() };
 		}
@@ -123,7 +228,7 @@ impl EditorHandle {
 			_ => Platform::Unknown,
 		};
 		self.dispatch(GlobalsMessage::SetPlatform { platform });
-		self.dispatch(Message::Init);
+		self.dispatch(PortfolioMessage::Init);
 
 		// Poll node graph evaluation on `requestAnimationFrame`
 		{
@@ -134,22 +239,15 @@ impl EditorHandle {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
-					editor_and_handle(|editor, handle| {
-						for message in editor.handle_message(InputPreprocessorMessage::CurrentTime {
+					editor_and_handle(|_, handle| {
+						handle.dispatch(InputPreprocessorMessage::CurrentTime {
 							timestamp: js_sys::Date::now() as u64,
-						}) {
-							handle.send_frontend_message_to_js(message);
-						}
-
-						for message in editor.handle_message(AnimationMessage::IncrementFrameCounter) {
-							handle.send_frontend_message_to_js(message);
-						}
+						});
+						handle.dispatch(AnimationMessage::IncrementFrameCounter);
 
 						// Used by auto-panning, but this could possibly be refactored in the future, see:
 						// <https://github.com/GraphiteEditor/Graphite/pull/2562#discussion_r2041102786>
-						for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
-							handle.send_frontend_message_to_js(message);
-						}
+						handle.dispatch(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame));
 					});
 				}
 
@@ -174,6 +272,27 @@ impl EditorHandle {
 
 			set_timeout(g.borrow().as_ref().unwrap(), Duration::from_secs(editor::consts::AUTO_SAVE_TIMEOUT_SECONDS));
 		}
+	}
+
+	/// Minimizes the application window to the taskbar or dock
+	#[wasm_bindgen(js_name = appWindowMinimize)]
+	pub fn app_window_minimize(&self) {
+		let message = AppWindowMessage::AppWindowMinimize;
+		self.dispatch(message);
+	}
+
+	/// Toggles minimizing or restoring down the application window
+	#[wasm_bindgen(js_name = appWindowMaximize)]
+	pub fn app_window_maximize(&self) {
+		let message = AppWindowMessage::AppWindowMaximize;
+		self.dispatch(message);
+	}
+
+	/// Closes the application window
+	#[wasm_bindgen(js_name = appWindowClose)]
+	pub fn app_window_close(&self) {
+		let message = AppWindowMessage::AppWindowClose;
+		self.dispatch(message);
 	}
 
 	/// Displays a dialog with an error message
@@ -381,6 +500,17 @@ impl EditorHandle {
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
 		let message = InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys };
+		self.dispatch(message);
+	}
+
+	/// Mouse shaken
+	#[wasm_bindgen(js_name = onMouseShake)]
+	pub fn on_mouse_shake(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
+		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::PointerShake { editor_mouse_state, modifier_keys };
 		self.dispatch(message);
 	}
 
@@ -784,7 +914,7 @@ fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) ->
 }
 
 /// Provides access to the `Editor` and its `EditorHandle` by calling the given closure with them as arguments.
-pub(crate) fn editor_and_handle(mut callback: impl FnMut(&mut Editor, &mut EditorHandle)) {
+pub(crate) fn editor_and_handle(callback: impl FnOnce(&mut Editor, &mut EditorHandle)) {
 	EDITOR_HANDLE.with(|editor_handle| {
 		editor(|editor| {
 			let mut guard = editor_handle.try_lock();
@@ -805,7 +935,7 @@ async fn poll_node_graph_evaluation() {
 		return;
 	}
 
-	if !editor::node_graph_executor::run_node_graph().await {
+	if !editor::node_graph_executor::run_node_graph().await.0 {
 		return;
 	};
 
@@ -838,9 +968,7 @@ fn auto_save_all_documents() {
 		return;
 	}
 
-	editor_and_handle(|editor, handle| {
-		for message in editor.handle_message(PortfolioMessage::AutoSaveAllDocuments) {
-			handle.send_frontend_message_to_js(message);
-		}
+	editor_and_handle(|_, handle| {
+		handle.dispatch(PortfolioMessage::AutoSaveAllDocuments);
 	});
 }

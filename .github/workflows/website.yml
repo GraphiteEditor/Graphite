@@ -44,6 +44,34 @@ jobs:
           # Remove the INDEX_HTML_HEAD_INCLUSION environment variable for build links (not master deploys)
           git rev-parse --abbrev-ref HEAD | grep master > /dev/null || export INDEX_HTML_HEAD_INCLUSION=""
 
+      - name: 💿 Obtain cache of auto-generated code docs artifacts
+        id: cache-website-code-docs
+        uses: actions/cache/restore@v3
+        with:
+          path: artifacts
+          key: website-code-docs
+
+      - name: 📁 Fallback in case auto-generated code docs artifacts weren't cached
+        if: steps.cache-website-code-docs.outputs.cache-hit != 'true'
+        run: |
+          echo "🦀 Initial system version of Rust:"
+          rustc --version
+          rustup update stable
+          echo "🦀 Latest updated version of Rust:"
+          rustc --version
+          cargo test --package graphite-editor --lib -- messages::message::test::generate_message_tree
+          mkdir artifacts
+          mv hierarchical_message_system_tree.txt artifacts/hierarchical_message_system_tree.txt
+
+      - name: 🚚 Move `artifacts` contents to `website/other/editor-structure`
+        run: |
+          mv artifacts/* website/other/editor-structure
+
+      - name: 🔧 Build auto-generated code docs artifacts into HTML
+        run: |
+          cd website/other/editor-structure
+          node generate.js hierarchical_message_system_tree.txt replacement.html
+
       - name: 🌐 Build Graphite website with Zola
         env:
           MODE: prod
@@ -83,29 +111,6 @@ jobs:
         run: |
           mkdir -p website/public
           mv website/other/dist/* website/public
-
-      - name: 💿 Obtain cache of auto-generated code docs artifacts
-        id: cache-website-code-docs
-        uses: actions/cache/restore@v3
-        with:
-          path: artifacts
-          key: website-code-docs
-
-      - name: 📁 Fallback in case auto-generated code docs artifacts weren't cached
-        if: steps.cache-website-code-docs.outputs.cache-hit != 'true'
-        run: |
-          echo "🦀 Initial system version of Rust:"
-          rustc --version
-          rustup update stable
-          echo "🦀 Latest updated version of Rust:"
-          rustc --version
-          cargo test --package graphite-editor --lib -- messages::message::test::generate_message_tree
-          mkdir artifacts
-          mv hierarchical_message_system_tree.txt artifacts/hierarchical_message_system_tree.txt
-
-      - name: 🚚 Move `artifacts` contents to `website/public`
-        run: |
-          mv artifacts/* website/public
 
       - name: 📤 Publish to Cloudflare Pages
         id: cloudflare

@@ -19,7 +19,7 @@ use std::borrow::Cow;
 use std::fmt::{self, Debug};
 
 #[derive(ExtractField)]
-pub struct ToolActionHandlerData<'a> {
+pub struct ToolActionMessageContext<'a> {
 	pub document: &'a mut DocumentMessageHandler,
 	pub document_id: DocumentId,
 	pub global_tool_data: &'a DocumentToolData,
@@ -30,8 +30,8 @@ pub struct ToolActionHandlerData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
-pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionHandlerData<'a>> + LayoutHolder + ToolTransition + ToolMetadata {}
-impl<T> ToolCommon for T where T: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionHandlerData<'a>> + LayoutHolder + ToolTransition + ToolMetadata {}
+pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + LayoutHolder + ToolTransition + ToolMetadata {}
+impl<T> ToolCommon for T where T: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + LayoutHolder + ToolTransition + ToolMetadata {}
 
 type Tool = dyn ToolCommon + Send + Sync;
 
@@ -53,7 +53,7 @@ pub trait Fsm {
 	/// For example, if the tool's FSM is in a `Ready` state and receives a `DragStart` message as its event, it may decide to send some messages,
 	/// update some internal tool variables, and end by transitioning to a `Drawing` state.
 	#[must_use]
-	fn transition(self, message: ToolMessage, tool_data: &mut Self::ToolData, transition_data: &mut ToolActionHandlerData, options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self;
+	fn transition(self, message: ToolMessage, tool_data: &mut Self::ToolData, transition_data: &mut ToolActionMessageContext, options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self;
 
 	/// Implementing this trait function lets a specific tool provide a list of hints (user input actions presently available) to draw in the footer bar.
 	fn update_hints(&self, responses: &mut VecDeque<Message>);
@@ -82,7 +82,7 @@ pub trait Fsm {
 		&mut self,
 		message: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		transition_data: &mut ToolActionHandlerData,
+		transition_data: &mut ToolActionMessageContext,
 		options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 		update_cursor_on_transition: bool,

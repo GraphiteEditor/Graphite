@@ -4,7 +4,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::prelude::*;
 
 #[derive(ExtractField)]
-pub struct ExportDialogMessageData<'a> {
+pub struct ExportDialogMessageContext<'a> {
 	pub portfolio: &'a PortfolioMessageHandler,
 }
 
@@ -33,9 +33,9 @@ impl Default for ExportDialogMessageHandler {
 }
 
 #[message_handler_data]
-impl MessageHandler<ExportDialogMessage, ExportDialogMessageData<'_>> for ExportDialogMessageHandler {
-	fn process_message(&mut self, message: ExportDialogMessage, responses: &mut VecDeque<Message>, data: ExportDialogMessageData) {
-		let ExportDialogMessageData { portfolio } = data;
+impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for ExportDialogMessageHandler {
+	fn process_message(&mut self, message: ExportDialogMessage, responses: &mut VecDeque<Message>, context: ExportDialogMessageContext) {
+		let ExportDialogMessageContext { portfolio } = context;
 
 		match message {
 			ExportDialogMessage::FileType(export_type) => self.file_type = export_type,

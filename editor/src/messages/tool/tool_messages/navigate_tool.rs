@@ -39,9 +39,9 @@ impl LayoutHolder for NavigateTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for NavigateTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for NavigateTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		self.fsm_state.process_event(message, &mut self.tool_data, context, &(), responses, true);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -92,7 +92,7 @@ impl Fsm for NavigateToolFsmState {
 		self,
 		message: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		ToolActionHandlerData { input, .. }: &mut ToolActionHandlerData,
+		ToolActionMessageContext { input, .. }: &mut ToolActionMessageContext,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {

@@ -27,7 +27,7 @@ pub struct SpreadsheetMessageHandler {
 
 #[message_handler_data]
 impl MessageHandler<SpreadsheetMessage, ()> for SpreadsheetMessageHandler {
-	fn process_message(&mut self, message: SpreadsheetMessage, responses: &mut VecDeque<Message>, _data: ()) {
+	fn process_message(&mut self, message: SpreadsheetMessage, responses: &mut VecDeque<Message>, _: ()) {
 		match message {
 			SpreadsheetMessage::ToggleOpen => {
 				self.spreadsheet_view_open = !self.spreadsheet_view_open;

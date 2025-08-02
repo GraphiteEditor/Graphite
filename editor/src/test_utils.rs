@@ -31,7 +31,7 @@ impl EditorTestUtils {
 		// It isn't sufficient to guard the message dispatch here with a check if the once_cell is empty, because that isn't atomic and the time between checking and handling the dispatch can let multiple through.
 		let _ = GLOBAL_PLATFORM.set(Platform::Windows).is_ok();
 
-		editor.handle_message(Message::Init);
+		editor.handle_message(PortfolioMessage::Init);
 
 		Self { editor, runtime }
 	}
@@ -326,8 +326,7 @@ pub mod test_prelude {
 	pub use crate::node_graph_executor::NodeRuntime;
 	pub use crate::test_utils::EditorTestUtils;
 	pub use core::f64;
-	pub use glam::DVec2;
-	pub use glam::IVec2;
+	pub use glam::{DVec2, IVec2};
 	pub use graph_craft::document::DocumentNode;
 	pub use graphene_std::raster::{Color, Image};
 	pub use graphene_std::transform::Footprint;

@@ -9,9 +9,9 @@ pub enum AnimationMessage {
 	EnableLivePreview,
 	DisableLivePreview,
 	RestartAnimation,
-	SetFrameIndex(f64),
-	SetTime(f64),
+	SetFrameIndex { frame: f64 },
+	SetTime { time: f64 },
 	UpdateTime,
 	IncrementFrameCounter,
-	SetAnimationTimeMode(AnimationTimeMode),
+	SetAnimationTimeMode { animation_time_mode: AnimationTimeMode },
 }

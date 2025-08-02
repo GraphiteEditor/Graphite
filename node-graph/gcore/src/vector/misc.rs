@@ -1,6 +1,10 @@
+use super::PointId;
+use super::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
+use bezier_rs::{BezierHandles, ManipulatorGroup, Subpath};
 use dyn_any::DynAny;
 use glam::DVec2;
-use kurbo::Point;
+use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
+use std::ops::Sub;
 
 /// Represents different ways of calculating the centroid.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
@@ -64,7 +68,7 @@ pub enum GridType {
 #[widget(Radio)]
 pub enum ArcType {
 	#[default]
-	Open,
+	Open = 0,
 	Closed,
 	PieSlice,
 }
@@ -95,4 +99,141 @@ pub fn point_to_dvec2(point: Point) -> DVec2 {
 
 pub fn dvec2_to_point(value: DVec2) -> Point {
 	Point { x: value.x, y: value.y }
+}
+
+pub fn segment_to_handles(segment: &PathSeg) -> BezierHandles {
+	match *segment {
+		PathSeg::Line(_) => BezierHandles::Linear,
+		PathSeg::Quad(QuadBez { p0: _, p1, p2: _ }) => BezierHandles::Quadratic { handle: point_to_dvec2(p1) },
+		PathSeg::Cubic(CubicBez { p0: _, p1, p2, p3: _ }) => BezierHandles::Cubic {
+			handle_start: point_to_dvec2(p1),
+			handle_end: point_to_dvec2(p2),
+		},
+	}
+}
+
+pub fn handles_to_segment(start: DVec2, handles: BezierHandles, end: DVec2) -> PathSeg {
+	match handles {
+		bezier_rs::BezierHandles::Linear => {
+			let p0 = dvec2_to_point(start);
+			let p1 = dvec2_to_point(end);
+			PathSeg::Line(Line::new(p0, p1))
+		}
+		bezier_rs::BezierHandles::Quadratic { handle } => {
+			let p0 = dvec2_to_point(start);
+			let p1 = dvec2_to_point(handle);
+			let p2 = dvec2_to_point(end);
+			PathSeg::Quad(QuadBez::new(p0, p1, p2))
+		}
+		bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
+			let p0 = dvec2_to_point(start);
+			let p1 = dvec2_to_point(handle_start);
+			let p2 = dvec2_to_point(handle_end);
+			let p3 = dvec2_to_point(end);
+			PathSeg::Cubic(CubicBez::new(p0, p1, p2, p3))
+		}
+	}
+}
+
+pub fn subpath_to_kurbo_bezpath(subpath: Subpath<PointId>) -> BezPath {
+	let maniputor_groups = subpath.manipulator_groups();
+	let closed = subpath.closed();
+	bezpath_from_manipulator_groups(maniputor_groups, closed)
+}
+
+pub fn bezpath_from_manipulator_groups(manipulator_groups: &[ManipulatorGroup<PointId>], closed: bool) -> BezPath {
+	let mut bezpath = kurbo::BezPath::new();
+	let mut out_handle;
+
+	let Some(first) = manipulator_groups.first() else { return bezpath };
+	bezpath.move_to(dvec2_to_point(first.anchor));
+	out_handle = first.out_handle;
+
+	for manipulator in manipulator_groups.iter().skip(1) {
+		match (out_handle, manipulator.in_handle) {
+			(Some(handle_start), Some(handle_end)) => bezpath.curve_to(dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(manipulator.anchor)),
+			(None, None) => bezpath.line_to(dvec2_to_point(manipulator.anchor)),
+			(None, Some(handle)) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(manipulator.anchor)),
+			(Some(handle), None) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(manipulator.anchor)),
+		}
+		out_handle = manipulator.out_handle;
+	}
+
+	if closed {
+		match (out_handle, first.in_handle) {
+			(Some(handle_start), Some(handle_end)) => bezpath.curve_to(dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(first.anchor)),
+			(None, None) => bezpath.line_to(dvec2_to_point(first.anchor)),
+			(None, Some(handle)) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(first.anchor)),
+			(Some(handle), None) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(first.anchor)),
+		}
+		bezpath.close_path();
+	}
+	bezpath
+}
+
+pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup<PointId>>, bool) {
+	let mut manipulator_groups = Vec::<ManipulatorGroup<PointId>>::new();
+	let mut is_closed = false;
+
+	for element in bezpath.elements() {
+		let manipulator_group = match *element {
+			kurbo::PathEl::MoveTo(point) => ManipulatorGroup::new(point_to_dvec2(point), None, None),
+			kurbo::PathEl::LineTo(point) => ManipulatorGroup::new(point_to_dvec2(point), None, None),
+			kurbo::PathEl::QuadTo(point, point1) => ManipulatorGroup::new(point_to_dvec2(point1), Some(point_to_dvec2(point)), None),
+			kurbo::PathEl::CurveTo(point, point1, point2) => {
+				if let Some(last_maipulator_group) = manipulator_groups.last_mut() {
+					last_maipulator_group.out_handle = Some(point_to_dvec2(point));
+				}
+				ManipulatorGroup::new(point_to_dvec2(point2), Some(point_to_dvec2(point1)), None)
+			}
+			kurbo::PathEl::ClosePath => {
+				if let Some(last_group) = manipulator_groups.pop() {
+					if let Some(first_group) = manipulator_groups.first_mut() {
+						first_group.out_handle = last_group.in_handle;
+					}
+				}
+				is_closed = true;
+				break;
+			}
+		};
+
+		manipulator_groups.push(manipulator_group);
+	}
+
+	(manipulator_groups, is_closed)
+}
+
+/// Returns true if the [`PathSeg`] is equivalent to a line.
+///
+/// This is different from simply checking if the segment is [`PathSeg::Line`] or [`PathSeg::Quad`] or [`PathSeg::Cubic`]. Bezier curve can also be a line if the control points are colinear to the start and end points. Therefore if the handles exceed the start and end point, it will still be considered as a line.
+pub fn is_linear(segment: PathSeg) -> bool {
+	let is_colinear = |a: Point, b: Point, c: Point| -> bool { ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs() < MAX_ABSOLUTE_DIFFERENCE };
+
+	match segment {
+		PathSeg::Line(_) => true,
+		PathSeg::Quad(QuadBez { p0, p1, p2 }) => is_colinear(p0, p1, p2),
+		PathSeg::Cubic(CubicBez { p0, p1, p2, p3 }) => is_colinear(p0, p1, p3) && is_colinear(p0, p2, p3),
+	}
+}
+
+/// Get an iterator over the coordinates of all points in a path segment.
+pub fn get_segment_points(segment: PathSeg) -> Vec<Point> {
+	match segment {
+		PathSeg::Line(line) => [line.p0, line.p1].to_vec(),
+		PathSeg::Quad(quad_bez) => [quad_bez.p0, quad_bez.p1, quad_bez.p2].to_vec(),
+		PathSeg::Cubic(cubic_bez) => [cubic_bez.p0, cubic_bez.p1, cubic_bez.p2, cubic_bez.p3].to_vec(),
+	}
+}
+
+/// Returns true if the corresponding points of the two [`PathSeg`]s are within the provided absolute value difference from each other.
+pub fn pathseg_abs_diff_eq(seg1: PathSeg, seg2: PathSeg, max_abs_diff: f64) -> bool {
+	let seg1 = if is_linear(seg1) { PathSeg::Line(Line::new(seg1.start(), seg1.end())) } else { seg1 };
+	let seg2 = if is_linear(seg2) { PathSeg::Line(Line::new(seg2.start(), seg2.end())) } else { seg2 };
+
+	let seg1_points = get_segment_points(seg1);
+	let seg2_points = get_segment_points(seg2);
+
+	let cmp = |a: f64, b: f64| a.sub(b).abs() < max_abs_diff;
+
+	seg1_points.len() == seg2_points.len() && seg1_points.into_iter().zip(seg2_points).all(|(a, b)| cmp(a.x, b.x) && cmp(a.y, b.y))
 }

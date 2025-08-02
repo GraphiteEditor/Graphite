@@ -4,7 +4,7 @@ mod grid_snapper;
 mod layer_snapper;
 mod snap_results;
 
-use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_LABEL_BACKGROUND, COLOR_OVERLAY_WHITE};
+use crate::consts::{COLOR_OVERLAY_BLACK_75, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_WHITE};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, PathSnapTarget, SnapTarget};
@@ -482,7 +482,7 @@ impl SnapManager {
 			if !any_align && ind.distribution_equal_distance_horizontal.is_none() && ind.distribution_equal_distance_vertical.is_none() {
 				let text = format!("[{}] from [{}]", ind.target, ind.source);
 				let transform = DAffine2::from_translation(viewport - DVec2::new(0., 4.));
-				overlay_context.text(&text, COLOR_OVERLAY_WHITE, Some(COLOR_OVERLAY_LABEL_BACKGROUND), transform, 4., [Pivot::Start, Pivot::End]);
+				overlay_context.text(&text, COLOR_OVERLAY_WHITE, Some(COLOR_OVERLAY_BLACK_75), transform, 4., [Pivot::Start, Pivot::End]);
 				overlay_context.square(viewport, Some(4.), Some(COLOR_OVERLAY_BLUE), Some(COLOR_OVERLAY_BLUE));
 			}
 		}

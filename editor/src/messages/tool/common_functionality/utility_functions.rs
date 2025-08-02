@@ -66,14 +66,22 @@ where
 
 /// Calculates the bounding box of the layer's text, based on the settings for max width and height specified in the typesetting config.
 pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, font_cache: &FontCache) -> Quad {
-	let Some((text, font, typesetting)) = get_text(layer, &document.network_interface) else {
+	let Some((text, font, typesetting, per_glyph_instances)) = get_text(layer, &document.network_interface) else {
 		return Quad::from_box([DVec2::ZERO, DVec2::ZERO]);
 	};
 
 	let font_data = font_cache.get(font).map(|data| load_font(data));
 	let far = graphene_std::text::bounding_box(text, font_data, typesetting, false);
 
-	Quad::from_box([DVec2::ZERO, far])
+	// TODO: Once the instances refactor is complete and per_glyph_instances can be removed (since it'll be the default),
+	// TODO: remove this because the top of the dashed bounding overlay should no longer be based on the first line's baseline.
+	let vertical_offset = if per_glyph_instances {
+		DVec2::NEG_Y * typesetting.font_size * (1. + (typesetting.line_height_ratio - 1.) / 2.)
+	} else {
+		DVec2::ZERO
+	};
+
+	Quad::from_box([DVec2::ZERO + vertical_offset, far + vertical_offset])
 }
 
 pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector_data: &VectorData, prefer_handle_direction: bool) -> Option<f64> {
@@ -167,7 +175,7 @@ pub fn is_visible_point(
 	manipulator_point_id: ManipulatorPointId,
 	vector_data: &VectorData,
 	path_overlay_mode: PathOverlayMode,
-	frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+	frontier_handles_info: &Option<HashMap<SegmentId, Vec<PointId>>>,
 	selected_segments: Vec<SegmentId>,
 	selected_points: &HashSet<ManipulatorPointId>,
 ) -> bool {
@@ -193,7 +201,7 @@ pub fn is_visible_point(
 						warn!("No anchor for selected handle");
 						return false;
 					};
-					let Some(frontier_handles) = &frontier_handles_info else {
+					let Some(frontier_handles) = frontier_handles_info else {
 						warn!("No frontier handles info provided");
 						return false;
 					};

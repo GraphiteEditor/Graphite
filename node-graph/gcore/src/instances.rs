@@ -1,4 +1,5 @@
 use crate::AlphaBlending;
+use crate::transform::ApplyTransform;
 use crate::uuid::NodeId;
 use dyn_any::StaticType;
 use glam::DAffine2;
@@ -23,6 +24,24 @@ impl<T> Instances<T> {
 			transform: vec![DAffine2::IDENTITY],
 			alpha_blending: vec![AlphaBlending::default()],
 			source_node_id: vec![None],
+		}
+	}
+
+	pub fn new_instance(instance: Instance<T>) -> Self {
+		Self {
+			instance: vec![instance.instance],
+			transform: vec![instance.transform],
+			alpha_blending: vec![instance.alpha_blending],
+			source_node_id: vec![instance.source_node_id],
+		}
+	}
+
+	pub fn with_capacity(capacity: usize) -> Self {
+		Self {
+			instance: Vec::with_capacity(capacity),
+			transform: Vec::with_capacity(capacity),
+			alpha_blending: Vec::with_capacity(capacity),
+			source_node_id: Vec::with_capacity(capacity),
 		}
 	}
 
@@ -136,6 +155,20 @@ impl<T: Hash> Hash for Instances<T> {
 	}
 }
 
+impl<T> ApplyTransform for Instances<T> {
+	fn apply_transform(&mut self, modification: &DAffine2) {
+		for transform in &mut self.transform {
+			*transform *= *modification;
+		}
+	}
+
+	fn left_apply_transform(&mut self, modification: &DAffine2) {
+		for transform in &mut self.transform {
+			*transform = *modification * *transform;
+		}
+	}
+}
+
 impl<T: PartialEq> PartialEq for Instances<T> {
 	fn eq(&self, other: &Self) -> bool {
 		self.instance.len() == other.instance.len() && { self.instance.iter().zip(other.instance.iter()).all(|(a, b)| a == b) }
@@ -144,6 +177,18 @@ impl<T: PartialEq> PartialEq for Instances<T> {
 
 unsafe impl<T: StaticType + 'static> StaticType for Instances<T> {
 	type Static = Instances<T>;
+}
+
+impl<T> FromIterator<Instance<T>> for Instances<T> {
+	fn from_iter<I: IntoIterator<Item = Instance<T>>>(iter: I) -> Self {
+		let iter = iter.into_iter();
+		let (lower, _) = iter.size_hint();
+		let mut instances = Self::with_capacity(lower);
+		for instance in iter {
+			instances.push(instance);
+		}
+		instances
+	}
 }
 
 fn one_daffine2_default() -> Vec<DAffine2> {

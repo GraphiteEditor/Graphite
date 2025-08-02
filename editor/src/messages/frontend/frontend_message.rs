@@ -1,4 +1,5 @@
 use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
+use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
 	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, Transform,
@@ -8,8 +9,9 @@ use crate::messages::portfolio::document::utility_types::wires::{WirePath, WireP
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 use graph_craft::document::NodeId;
+use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
-use graphene_std::text::Font;
+use graphene_std::text::{Font, TextAlign};
 
 #[impl_message(Message, Frontend)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -37,6 +39,7 @@ pub enum FrontendMessage {
 		max_width: Option<f64>,
 		#[serde(rename = "maxHeight")]
 		max_height: Option<f64>,
+		align: TextAlign,
 	},
 	DisplayEditableTextboxTransform {
 		transform: [f64; 6],
@@ -56,7 +59,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "commitDate")]
 		commit_date: String,
 	},
-	TriggerDelayedZoomCanvasToFitAll,
 	TriggerDownloadImage {
 		svg: String,
 		name: String,
@@ -178,6 +180,9 @@ pub enum FrontendMessage {
 	},
 	UpdateDocumentArtwork {
 		svg: String,
+	},
+	UpdateImageData {
+		image_data: Vec<(u64, Image<Color>)>,
 	},
 	UpdateDocumentBarLayout {
 		#[serde(rename = "layoutTarget")]
@@ -303,5 +308,14 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
+	},
+	UpdatePlatform {
+		platform: AppWindowPlatform,
+	},
+	UpdateMaximized {
+		maximized: bool,
+	},
+	UpdateViewportHolePunch {
+		active: bool,
 	},
 }

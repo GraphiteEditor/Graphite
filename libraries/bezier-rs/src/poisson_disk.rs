@@ -169,7 +169,7 @@ where
 	A::Item: Clone,
 	B::Item: Clone,
 {
-	a.flat_map(move |i| (b.clone().map(move |j| (i.clone(), j))))
+	a.flat_map(move |i| b.clone().map(move |j| (i.clone(), j)))
 }
 
 /// A square (represented by its top left corner position and width/height of `square_size`) that is currently a candidate for targetting by the dart throwing process.

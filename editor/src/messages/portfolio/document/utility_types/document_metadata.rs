@@ -250,12 +250,8 @@ impl LayerNodeIdentifier {
 
 	/// Construct a [`LayerNodeIdentifier`], debug asserting that it is a layer node. This should only be used in the document network since the structure is not loaded in nested networks.
 	#[track_caller]
-	pub fn new(node_id: NodeId, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Self {
-		debug_assert!(
-			network_interface.is_layer(&node_id, network_path),
-			"Layer identifier constructed from non-layer node {node_id}: {:#?}",
-			network_interface.nested_network(network_path).unwrap().nodes.get(&node_id)
-		);
+	pub fn new(node_id: NodeId, network_interface: &NodeNetworkInterface) -> Self {
+		debug_assert!(network_interface.is_layer(&node_id, &[]), "Layer identifier constructed from non-layer node {node_id}",);
 		Self::new_unchecked(node_id)
 	}
 

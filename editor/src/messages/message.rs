@@ -4,18 +4,17 @@ use graphite_proc_macros::*;
 #[impl_message]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Message {
-	NoOp,
-	Init,
-	Batched(Box<[Message]>),
-	StartBuffer,
-	EndBuffer(graphene_std::renderer::RenderMetadata),
-
+	// Sub-messages
 	#[child]
 	Animation(AnimationMessage),
+	#[child]
+	AppWindow(AppWindowMessage),
 	#[child]
 	Broadcast(BroadcastMessage),
 	#[child]
 	Debug(DebugMessage),
+	#[child]
+	Defer(DeferMessage),
 	#[child]
 	Dialog(DialogMessage),
 	#[child]
@@ -36,6 +35,12 @@ pub enum Message {
 	Tool(ToolMessage),
 	#[child]
 	Workspace(WorkspaceMessage),
+
+	// Messages
+	NoOp,
+	Batched {
+		messages: Box<[Message]>,
+	},
 }
 
 /// Provides an impl of `specta::Type` for `MessageDiscriminant`, the struct created by `impl_message`.

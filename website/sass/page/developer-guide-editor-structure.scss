@@ -1,0 +1,106 @@
+.structure-outline {
+	font-family: monospace;
+	font-size: 18px;
+	line-height: 1.5;
+	margin-top: 20px;
+
+	ul {
+		list-style-type: none;
+		padding-left: 20px;
+
+		li {
+			margin-top: 0;
+
+			span {
+				line-height: 1.5;
+				display: inline-block;
+			}
+		}
+	}
+
+	.tree-node {
+		padding-left: calc(10px + 8px);
+		position: relative;
+		user-select: none;
+		cursor: pointer;
+
+		&::before {
+			content: "";
+			background: url('data:image/svg+xml;utf8,\
+				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><polygon fill="%2316323f" points="4,0 1,0 6,5 1,10 4,10 9,5 4,0" /></svg>\
+				');
+			position: absolute;
+			margin: auto;
+			top: 0;
+			bottom: 0;
+			left: 0;
+			width: 10px;
+			height: 10px;
+		}
+
+		&.expanded::before {
+			transform: rotate(90deg);
+		}
+
+		a {
+			margin-left: 12px;
+			color: var(--color-crimson);
+			font-size: 12px;
+			font-family: Arial, sans-serif;
+			position: relative;
+
+			&:hover::after {
+				content: "↗";
+				margin-left: 4px;
+				position: absolute;
+			}
+		}
+	}
+
+	.tree-leaf {
+		margin-left: calc(10px + 8px);
+
+		&.field {
+			padding-left: 4px;
+			color: var(--color-storm);
+		}
+
+		&:not(.field) {
+			padding: 0 4px;
+			background: var(--color-fog);
+		}
+	}
+
+	.nested {
+		display: none;
+	}
+
+	.active {
+		display: block;
+	}
+
+	.warn {
+		margin-left: 12px;
+		color: var(--color-flamingo);
+		font-family: Arial, sans-serif;
+		font-size: 12px;
+		text-decoration: none;
+		font-style: italic;
+	}
+}
+
+.subsystem,
+.submessage {
+	font-family: monospace;
+	line-height: 1.5;
+	padding: 0 4px;
+}
+
+.subsystem {
+	color: #ffffff;
+	background: var(--color-storm);
+}
+
+.submessage {
+	background: var(--color-lilac);
+}

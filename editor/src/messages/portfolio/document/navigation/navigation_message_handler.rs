@@ -14,11 +14,10 @@ use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 
 #[derive(ExtractField)]
-pub struct NavigationMessageData<'a> {
+pub struct NavigationMessageContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub breadcrumb_network_path: &'a [NodeId],
 	pub ipp: &'a InputPreprocessorMessageHandler,
-	pub selection_bounds: Option<[DVec2; 2]>,
 	pub document_ptz: &'a mut PTZ,
 	pub graph_view_overlay_open: bool,
 	pub preferences: &'a PreferencesMessageHandler,
@@ -33,17 +32,16 @@ pub struct NavigationMessageHandler {
 }
 
 #[message_handler_data]
-impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for NavigationMessageHandler {
-	fn process_message(&mut self, message: NavigationMessage, responses: &mut VecDeque<Message>, data: NavigationMessageData) {
-		let NavigationMessageData {
+impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for NavigationMessageHandler {
+	fn process_message(&mut self, message: NavigationMessage, responses: &mut VecDeque<Message>, context: NavigationMessageContext) {
+		let NavigationMessageContext {
 			network_interface,
 			breadcrumb_network_path,
 			ipp,
-			selection_bounds,
 			document_ptz,
 			graph_view_overlay_open,
 			preferences,
-		} = data;
+		} = context;
 
 		fn get_ptz<'a>(document_ptz: &'a PTZ, network_interface: &'a NodeNetworkInterface, graph_view_overlay_open: bool, breadcrumb_network_path: &[NodeId]) -> Option<&'a PTZ> {
 			if !graph_view_overlay_open {
@@ -386,9 +384,16 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
+			// Fully zooms in on the selected
 			NavigationMessage::FitViewportToSelection => {
+				let selection_bounds = if graph_view_overlay_open {
+					network_interface.selected_nodes_bounding_box_viewport(breadcrumb_network_path)
+				} else {
+					network_interface.selected_layers_artwork_bounding_box_viewport()
+				};
+
 				if let Some(bounds) = selection_bounds {
-					let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+					let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 						log::error!("Could not get node graph PTZ in FitViewportToSelection");
 						return;
 					};

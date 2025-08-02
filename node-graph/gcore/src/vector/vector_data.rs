@@ -17,7 +17,7 @@ use core::hash::Hash;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 pub use indexed::VectorDataIndex;
-use kurbo::{Affine, Rect, Shape};
+use kurbo::{Affine, BezPath, Rect, Shape};
 pub use modification::*;
 use std::collections::HashMap;
 
@@ -195,6 +195,13 @@ impl VectorData {
 		Self::from_subpaths([subpath], false)
 	}
 
+	/// Construct some new vector data from a single [`BezPath`] with an identity transform and black fill.
+	pub fn from_bezpath(bezpath: BezPath) -> Self {
+		let mut vector_data = Self::default();
+		vector_data.append_bezpath(bezpath);
+		vector_data
+	}
+
 	/// Construct some new vector data from subpaths with an identity transform and black fill.
 	pub fn from_subpaths(subpaths: impl IntoIterator<Item = impl Borrow<bezier_rs::Subpath<PointId>>>, preserve_id: bool) -> Self {
 		let mut vector_data = Self::default();
@@ -226,10 +233,10 @@ impl VectorData {
 
 	pub fn close_subpaths(&mut self) {
 		let segments_to_add: Vec<_> = self
-			.stroke_bezier_paths()
-			.filter(|subpath| !subpath.closed)
-			.filter_map(|subpath| {
-				let (first, last) = subpath.manipulator_groups().first().zip(subpath.manipulator_groups().last())?;
+			.build_stroke_path_iter()
+			.filter(|(_, closed)| !closed)
+			.filter_map(|(manipulator_groups, _)| {
+				let (first, last) = manipulator_groups.first().zip(manipulator_groups.last())?;
 				let (start, end) = self.point_domain.resolve_id(first.id).zip(self.point_domain.resolve_id(last.id))?;
 				Some((start, end))
 			})
@@ -337,7 +344,7 @@ impl VectorData {
 	/// Returns the number of linear segments connected to the given point.
 	pub fn connected_linear_segments(&self, point_id: PointId) -> usize {
 		self.segment_bezier_iter()
-			.filter(|(_, bez, start, end)| ((*start == point_id || *end == point_id) && matches!(bez.handles, BezierHandles::Linear)))
+			.filter(|(_, bez, start, end)| (*start == point_id || *end == point_id) && matches!(bez.handles, BezierHandles::Linear))
 			.count()
 	}
 
@@ -370,7 +377,7 @@ impl VectorData {
 	}
 
 	pub fn check_point_inside_shape(&self, vector_data_transform: DAffine2, point: DVec2) -> bool {
-		let bez_paths: Vec<_> = self
+		let number = self
 			.stroke_bezpath_iter()
 			.map(|mut bezpath| {
 				// TODO: apply transform to points instead of modifying the paths
@@ -379,19 +386,9 @@ impl VectorData {
 				let bbox = bezpath.bounding_box();
 				(bezpath, bbox)
 			})
-			.collect();
-
-		// Check against all paths the point is contained in to compute the correct winding number
-		let mut number = 0;
-
-		for (shape, bbox) in bez_paths {
-			if bbox.x0 > point.x || bbox.y0 > point.y || bbox.x1 < point.x || bbox.y1 < point.y {
-				continue;
-			}
-
-			let winding = shape.winding(dvec2_to_point(point));
-			number += winding;
-		}
+			.filter(|(_, bbox)| bbox.contains(dvec2_to_point(point)))
+			.map(|(bezpath, _)| bezpath.winding(dvec2_to_point(point)))
+			.sum::<i32>();
 
 		// Non-zero fill rule
 		number != 0
@@ -567,6 +564,30 @@ impl ManipulatorPointId {
 				let current = HandleId::end(segment);
 				let other = vector_data.segment_domain.all_connected(point).find(|&value| value != current);
 				other.map(|other| [current, other])
+			}
+		}
+	}
+
+	/// Finds all the connected handles of a point.
+	/// For an anchor it is all the connected handles.
+	/// For a handle it is all the handles connected to its corresponding anchor other than the current handle.
+	pub fn get_all_connected_handles(self, vector_data: &VectorData) -> Option<Vec<HandleId>> {
+		match self {
+			ManipulatorPointId::Anchor(point) => {
+				let connected = vector_data.all_connected(point).collect::<Vec<_>>();
+				Some(connected)
+			}
+			ManipulatorPointId::PrimaryHandle(segment) => {
+				let point = vector_data.segment_domain.segment_start_from_id(segment)?;
+				let current = HandleId::primary(segment);
+				let connected = vector_data.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>();
+				Some(connected)
+			}
+			ManipulatorPointId::EndHandle(segment) => {
+				let point = vector_data.segment_domain.segment_end_from_id(segment)?;
+				let current = HandleId::end(segment);
+				let connected = vector_data.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>();
+				Some(connected)
 			}
 		}
 	}

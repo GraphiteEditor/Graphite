@@ -23,13 +23,12 @@ impl FrontendGraphDataType {
 			TaggedValue::U32(_)
 			| TaggedValue::U64(_)
 			| TaggedValue::F64(_)
-			| TaggedValue::UVec2(_)
-			| TaggedValue::IVec2(_)
 			| TaggedValue::DVec2(_)
 			| TaggedValue::OptionalDVec2(_)
 			| TaggedValue::F64Array4(_)
 			| TaggedValue::VecF64(_)
-			| TaggedValue::VecDVec2(_) => Self::Number,
+			| TaggedValue::VecDVec2(_)
+			| TaggedValue::DAffine2(_) => Self::Number,
 			TaggedValue::GraphicGroup(_) | TaggedValue::GraphicElement(_) => Self::Group, // TODO: Is GraphicElement supposed to be included here?
 			TaggedValue::ArtboardGroup(_) => Self::Artboard,
 			_ => Self::General,
