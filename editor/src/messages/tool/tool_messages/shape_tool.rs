@@ -27,7 +27,7 @@ use graphene_std::renderer::Quad;
 use graphene_std::vector::misc::ArcType;
 use std::vec;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct ShapeTool {
 	fsm_state: ShapeToolFsmState,
 	tool_data: ShapeToolData,
@@ -191,6 +191,7 @@ impl LayoutHolder for ShapeTool {
 	}
 }
 
+#[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for ShapeTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Shape(ShapeToolMessage::UpdateOptions(action)) = message else {
