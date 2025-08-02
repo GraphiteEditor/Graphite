@@ -172,28 +172,32 @@ pub fn bezpath_from_manipulator_groups(manipulator_groups: &[ManipulatorGroup<Po
 }
 
 pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup<PointId>>, bool) {
-	let mut manipulator_groups = Vec::new();
-	let mut in_handle = None;
+	let mut manipulator_groups = Vec::<ManipulatorGroup<PointId>>::new();
 	let mut is_closed = false;
 
 	for element in bezpath.elements() {
-		let (manipulator_group, next_in_handle) = match *element {
-			kurbo::PathEl::MoveTo(point) => (ManipulatorGroup::new(point_to_dvec2(point), in_handle, None), None),
-			kurbo::PathEl::LineTo(point) => (ManipulatorGroup::new(point_to_dvec2(point), in_handle, None), None),
-			kurbo::PathEl::QuadTo(point, point1) => (ManipulatorGroup::new(point_to_dvec2(point), in_handle, Some(point_to_dvec2(point1))), None),
-			kurbo::PathEl::CurveTo(point, point1, point2) => (ManipulatorGroup::new(point_to_dvec2(point), in_handle, Some(point_to_dvec2(point1))), Some(point_to_dvec2(point2))),
+		let manipulator_group = match *element {
+			kurbo::PathEl::MoveTo(point) => ManipulatorGroup::new(point_to_dvec2(point), None, None),
+			kurbo::PathEl::LineTo(point) => ManipulatorGroup::new(point_to_dvec2(point), None, None),
+			kurbo::PathEl::QuadTo(point, point1) => ManipulatorGroup::new(point_to_dvec2(point1), Some(point_to_dvec2(point)), None),
+			kurbo::PathEl::CurveTo(point, point1, point2) => {
+				if let Some(last_maipulator_group) = manipulator_groups.last_mut() {
+					last_maipulator_group.out_handle = Some(point_to_dvec2(point));
+				}
+				ManipulatorGroup::new(point_to_dvec2(point2), Some(point_to_dvec2(point1)), None)
+			}
 			kurbo::PathEl::ClosePath => {
+				if let Some(last_group) = manipulator_groups.pop() {
+					if let Some(first_group) = manipulator_groups.first_mut() {
+						first_group.out_handle = last_group.in_handle;
+					}
+				}
 				is_closed = true;
 				break;
 			}
 		};
 
-		in_handle = next_in_handle;
 		manipulator_groups.push(manipulator_group);
-	}
-
-	if let Some(first) = manipulator_groups.first_mut() {
-		first.in_handle = in_handle;
 	}
 
 	(manipulator_groups, is_closed)
