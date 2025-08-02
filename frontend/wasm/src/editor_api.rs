@@ -629,14 +629,14 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Paste layers from a serialized json representation
+	/// Paste layers from a serialized JSON representation
 	#[wasm_bindgen(js_name = pasteSerializedData)]
 	pub fn paste_serialized_data(&self, data: String) {
 		let message = PortfolioMessage::PasteSerializedData { data };
 		self.dispatch(message);
 	}
 
-	/// Paste vector data into a new layer from a serialized json representation
+	/// Paste vector data into a new layer from a serialized JSON representation
 	#[wasm_bindgen(js_name = pasteSerializedVector)]
 	pub fn paste_serialized_vector(&self, data: String) {
 		let message = PortfolioMessage::PasteSerializedVector { data };

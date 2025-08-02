@@ -132,10 +132,10 @@ pub enum PathToolMessage {
 	Cut {
 		clipboard: Clipboard,
 	},
-	DeleteSelected,
 	Paste {
 		data: String,
 	},
+	DeleteSelected,
 	Duplicate,
 	TogglePointEditing,
 	ToggleSegmentEditing,
@@ -2281,7 +2281,7 @@ impl Fsm for PathToolFsmState {
 					shape_editor.deselect_all_segments();
 
 					for (layer, (selected_points, selected_segments)) in &tool_data.saved_selection_before_handle_drag {
-						let Some(state) = shape_editor.selected_shape_state.get_mut(&layer) else { continue };
+						let Some(state) = shape_editor.selected_shape_state.get_mut(layer) else { continue };
 						selected_points.iter().for_each(|point| state.select_point(*point));
 						selected_segments.iter().for_each(|segment| state.select_segment(*segment));
 					}
@@ -2400,7 +2400,7 @@ impl Fsm for PathToolFsmState {
 							let is_segment_selected = shape_editor
 								.selected_shape_state
 								.get(&segment.layer())
-								.map_or(false, |state| state.is_segment_selected(segment.segment()));
+								.is_some_and(|state| state.is_segment_selected(segment.segment()));
 
 							segment.adjusted_insert_and_select(shape_editor, responses, extend_selection, point_mode, is_segment_selected);
 							tool_data.segment = None;
@@ -2511,7 +2511,7 @@ impl Fsm for PathToolFsmState {
 					shape_editor.deselect_all_segments();
 
 					for (layer, (selected_points, selected_segments)) in &tool_data.saved_selection_before_handle_drag {
-						let Some(state) = shape_editor.selected_shape_state.get_mut(&layer) else { continue };
+						let Some(state) = shape_editor.selected_shape_state.get_mut(layer) else { continue };
 						selected_points.iter().for_each(|point| state.select_point(*point));
 						selected_segments.iter().for_each(|segment| state.select_segment(*segment));
 					}
@@ -2606,23 +2606,19 @@ impl Fsm for PathToolFsmState {
 						}
 					}
 
-					let find_index = |id: PointId| {
-						new_vector_data
-							.point_domain
-							.iter()
-							.enumerate()
-							.find(|(_, (point_id, _))| *point_id == id)
-							.expect("Point does not exist in point domain")
-							.0
-					};
+					let find_index = |id: PointId| new_vector_data.point_domain.iter().enumerate().find(|(_, (point_id, _))| *point_id == id).map(|(index, _)| index);
 
 					// Add segments which have selected ends
 					for ((segment_id, bezier, start, end), stroke) in old_vector_data.segment_bezier_iter().zip(old_vector_data.segment_domain.stroke().iter()) {
 						let both_ends_selected = layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(start)) && layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(end));
+
 						let segment_selected = layer_selection_state.is_segment_selected(segment_id);
+
 						if both_ends_selected || segment_selected {
-							let start_index = find_index(start);
-							let end_index = find_index(end);
+							let Some((start_index, end_index)) = find_index(start).zip(find_index(end)) else {
+								error!("Point does not exist in point domain");
+								return PathToolFsmState::Ready;
+							};
 							new_vector_data.segment_domain.push(segment_id, start_index, end_index, bezier.handles, *stroke);
 						}
 					}
@@ -2641,108 +2637,15 @@ impl Fsm for PathToolFsmState {
 					copy_text += &serde_json::to_string(&buffer).expect("Could not serialize paste");
 
 					responses.add(FrontendMessage::TriggerTextCopy { copy_text });
-				} else {
-					//TODO: Add implementation for internal clipboard
 				}
+				// TODO: Add implementation for internal clipboard
 
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::Cut { clipboard }) => {
 				responses.add(PathToolMessage::Copy { clipboard });
-				// Delete the selected points/ segments
+				// Delete the selected points/segments
 				responses.add(PathToolMessage::DeleteSelected);
-
-				PathToolFsmState::Ready
-			}
-			(_, PathToolMessage::DeleteSelected) => {
-				//Delete the selected points and segments
-				shape_editor.delete_point_and_break_path(document, responses);
-				shape_editor.delete_selected_segments(document, responses);
-
-				PathToolFsmState::Ready
-			}
-			(_, PathToolMessage::Duplicate) => {
-				responses.add(DocumentMessage::AddTransaction);
-
-				// Copy the existing selected geometry and paste it in the existing layers
-				for (layer, layer_selection_state) in shape_editor.selected_shape_state.clone() {
-					if layer_selection_state.is_empty() {
-						continue;
-					}
-
-					let Some(old_vector_data) = document.network_interface.compute_modified_vector(layer) else {
-						continue;
-					};
-
-					// Add all the selected points
-					let mut selected_points_by_segment = HashSet::new();
-					old_vector_data
-						.segment_bezier_iter()
-						.filter(|(segment, _, _, _)| layer_selection_state.is_segment_selected(*segment))
-						.for_each(|(_, _, start, end)| {
-							selected_points_by_segment.insert(start);
-							selected_points_by_segment.insert(end);
-						});
-					let mut points_map = HashMap::new();
-					for (point, position) in old_vector_data.point_domain.iter() {
-						//TODO: Either the point is selected or it is an endpoint of a selected segment
-
-						if layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(point)) || selected_points_by_segment.contains(&point) {
-							// insert the same point with new id
-							let new_id = PointId::generate();
-							points_map.insert(point, new_id);
-							let modification_type = VectorModificationType::InsertPoint { id: new_id, position };
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
-						}
-					}
-
-					let mut segments_map = HashMap::new();
-					for (segment_id, bezier, start, end) in old_vector_data.segment_bezier_iter() {
-						let both_ends_selected = layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(start)) && layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(end));
-						let segment_selected = layer_selection_state.is_segment_selected(segment_id);
-						if both_ends_selected || segment_selected {
-							let new_id = SegmentId::generate();
-							segments_map.insert(segment_id, new_id);
-
-							let handles = match bezier.handles {
-								BezierHandles::Linear => [None, None],
-								BezierHandles::Quadratic { handle } => [Some(handle - bezier.start), None],
-								BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start), Some(handle_end - bezier.end)],
-							};
-
-							let points = [points_map[&start], points_map[&end]];
-							let modification_type = VectorModificationType::InsertSegment { id: new_id, points, handles };
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
-						}
-					}
-
-					for handles in old_vector_data.colinear_manipulators {
-						let to_new_handle = |handle: HandleId| -> HandleId {
-							HandleId {
-								ty: handle.ty,
-								segment: segments_map[&handle.segment],
-							}
-						};
-
-						if segments_map.contains_key(&handles[0].segment) && segments_map.contains_key(&handles[1].segment) {
-							let new_handles = [to_new_handle(handles[0]), to_new_handle(handles[1])];
-							let modification_type = VectorModificationType::SetG1Continuous { handles: new_handles, enabled: true };
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
-						}
-					}
-
-					shape_editor.deselect_all_points();
-					shape_editor.deselect_all_segments();
-
-					// Set selection to newly inserted points and segments
-					let state = shape_editor.selected_shape_state.get_mut(&layer).expect("No state for layer");
-					if tool_options.path_editing_mode.point_editing_mode {
-						points_map.values().for_each(|point| state.select_point(ManipulatorPointId::Anchor(*point)));
-					}
-					if tool_options.path_editing_mode.segment_editing_mode {
-						segments_map.values().for_each(|segment| state.select_segment(*segment));
-					}
-				}
 
 				PathToolFsmState::Ready
 			}
@@ -2757,7 +2660,10 @@ impl Fsm for PathToolFsmState {
 						let layer = if shape_editor.selected_shape_state.contains_key(&layer) {
 							layer
 						} else {
-							let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
+							let Some(node_type) = resolve_document_node_type("Path") else {
+								error!("Could not resolve node type for Path");
+								continue;
+							};
 							let nodes = vec![(NodeId(0), node_type.default_node_template())];
 
 							let parent = document.new_layer_parent(false);
@@ -2772,6 +2678,7 @@ impl Fsm for PathToolFsmState {
 
 							let stroke = graphene_std::vector::style::Stroke::new(Some(stroke_color.to_gamma_srgb()), DEFAULT_STROKE_WIDTH);
 							responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+
 							new_layers.push(layer);
 
 							responses.add(GraphOperationMessage::TransformSet {
@@ -2780,14 +2687,18 @@ impl Fsm for PathToolFsmState {
 								transform_in: TransformIn::Local,
 								skip_rerender: false,
 							});
+
 							layer
 						};
+
 						// Create new point ids and add those into the existing vector data
 						let mut points_map = HashMap::new();
 						for (point, position) in new_vector.point_domain.iter() {
 							let new_point_id = PointId::generate();
 							points_map.insert(point, new_point_id);
+
 							let modification_type = VectorModificationType::InsertPoint { id: new_point_id, position };
+
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
 						}
 
@@ -2806,6 +2717,7 @@ impl Fsm for PathToolFsmState {
 
 							let points = [points_map[&start], points_map[&end]];
 							let modification_type = VectorModificationType::InsertSegment { id: new_segment_id, points, handles };
+
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
 						}
 
@@ -2819,28 +2731,135 @@ impl Fsm for PathToolFsmState {
 							};
 							let new_handles = [to_new_handle(handles[0]), to_new_handle(handles[1])];
 							let modification_type = VectorModificationType::SetG1Continuous { handles: new_handles, enabled: true };
+
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
 						}
 
-						if !shape_editor.selected_shape_state.contains_key(&layer) {
-							shape_editor.selected_shape_state.insert(layer, SelectedLayerState::default());
-						}
+						shape_editor.selected_shape_state.entry(layer).or_insert(Default::default());
 
 						// Set selection to newly inserted points
-						let state = shape_editor.selected_shape_state.get_mut(&layer).expect("No state for layer");
-						// points_map.values().for_each(|point| state.select_point(ManipulatorPointId::Anchor(*point)));
+						let Some(state) = shape_editor.selected_shape_state.get_mut(&layer) else {
+							error!("No state for layer: {layer:?}");
+							continue;
+						};
+
+						// If point editing mode is enabled, select all the pasted points
 						if tool_options.path_editing_mode.point_editing_mode {
 							points_map.values().for_each(|point| state.select_point(ManipulatorPointId::Anchor(*point)));
 						}
+						// If segment editing mode is enabled, select all the pasted segments
 						if tool_options.path_editing_mode.segment_editing_mode {
 							segments_map.values().for_each(|segment| state.select_segment(*segment));
 						}
 					}
 
+					// If there are new layers created, we need to center them in the viewport
 					if !new_layers.is_empty() {
 						responses.add(Message::Defer(DeferMessage::AfterGraphRun {
 							messages: vec![PortfolioMessage::CenterPastedLayers { layers: new_layers }.into()],
 						}));
+					}
+				}
+
+				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::DeleteSelected) => {
+				// Delete the selected points and segments
+				shape_editor.delete_point_and_break_path(document, responses);
+				shape_editor.delete_selected_segments(document, responses);
+
+				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::Duplicate) => {
+				responses.add(DocumentMessage::AddTransaction);
+
+				// Copy the existing selected geometry and paste it in the existing layers
+				for (layer, layer_selection_state) in shape_editor.selected_shape_state.clone() {
+					if layer_selection_state.is_empty() {
+						continue;
+					}
+					let Some(old_vector_data) = document.network_interface.compute_modified_vector(layer) else {
+						continue;
+					};
+
+					// Add all the selected points
+					let mut selected_points_by_segment = HashSet::new();
+					old_vector_data
+						.segment_bezier_iter()
+						.filter(|(segment, _, _, _)| layer_selection_state.is_segment_selected(*segment))
+						.for_each(|(_, _, start, end)| {
+							selected_points_by_segment.insert(start);
+							selected_points_by_segment.insert(end);
+						});
+
+					let mut points_map = HashMap::new();
+					for (point, position) in old_vector_data.point_domain.iter() {
+						// TODO: Either the point is selected or it is an endpoint of a selected segment
+
+						if layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(point)) || selected_points_by_segment.contains(&point) {
+							// Insert the same point with a new id
+							let new_id = PointId::generate();
+							points_map.insert(point, new_id);
+
+							let modification_type = VectorModificationType::InsertPoint { id: new_id, position };
+
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+					}
+
+					let mut segments_map = HashMap::new();
+
+					for (segment_id, bezier, start, end) in old_vector_data.segment_bezier_iter() {
+						let both_ends_selected = layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(start)) && layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(end));
+
+						let segment_selected = layer_selection_state.is_segment_selected(segment_id);
+
+						if both_ends_selected || segment_selected {
+							let new_id = SegmentId::generate();
+							segments_map.insert(segment_id, new_id);
+
+							let handles = match bezier.handles {
+								BezierHandles::Linear => [None, None],
+								BezierHandles::Quadratic { handle } => [Some(handle - bezier.start), None],
+								BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start), Some(handle_end - bezier.end)],
+							};
+
+							let points = [points_map[&start], points_map[&end]];
+							let modification_type = VectorModificationType::InsertSegment { id: new_id, points, handles };
+
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+					}
+
+					for handles in old_vector_data.colinear_manipulators {
+						let to_new_handle = |handle: HandleId| -> HandleId {
+							HandleId {
+								ty: handle.ty,
+								segment: segments_map[&handle.segment],
+							}
+						};
+
+						if segments_map.contains_key(&handles[0].segment) && segments_map.contains_key(&handles[1].segment) {
+							let new_handles = [to_new_handle(handles[0]), to_new_handle(handles[1])];
+							let modification_type = VectorModificationType::SetG1Continuous { handles: new_handles, enabled: true };
+
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+					}
+
+					shape_editor.deselect_all_points();
+					shape_editor.deselect_all_segments();
+
+					// Set selection to newly inserted points and segments
+					let Some(state) = shape_editor.selected_shape_state.get_mut(&layer) else {
+						error!("No state for layer: {layer:?}");
+						continue;
+					};
+					if tool_options.path_editing_mode.point_editing_mode {
+						points_map.values().for_each(|point| state.select_point(ManipulatorPointId::Anchor(*point)));
+					}
+					if tool_options.path_editing_mode.segment_editing_mode {
+						segments_map.values().for_each(|segment| state.select_segment(*segment));
 					}
 				}
 
