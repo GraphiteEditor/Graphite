@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
+use glam::UVec2;
+use graphene_std::raster::color::Color;
 use thiserror::Error;
+use wgpu_executor::WgpuExecutor;
 use winit::window::Window;
 
 pub(crate) struct FrameBufferRef<'a> {
@@ -62,12 +65,15 @@ pub use wgpu_executor::Context as WgpuContext;
 pub(crate) struct GraphicsState {
 	surface: wgpu::Surface<'static>,
 	context: WgpuContext,
+	wgpu_executor: WgpuExecutor,
 	config: wgpu::SurfaceConfiguration,
 	render_pipeline: wgpu::RenderPipeline,
+	transparent_texture: wgpu::Texture,
 	sampler: wgpu::Sampler,
 	viewport_scale: [f32; 2],
 	viewport_offset: [f32; 2],
 	viewport_texture: Option<wgpu::Texture>,
+	overlays_texture: Option<wgpu::Texture>,
 	ui_texture: Option<wgpu::Texture>,
 	bind_group: Option<wgpu::BindGroup>,
 }
@@ -93,6 +99,21 @@ impl GraphicsState {
 		};
 
 		surface.configure(&context.device, &config);
+
+		let transparent_texture = context.device.create_texture(&wgpu::TextureDescriptor {
+			label: Some("Transparent Texture"),
+			size: wgpu::Extent3d {
+				width: 1,
+				height: 1,
+				depth_or_array_layers: 1,
+			},
+			mip_level_count: 1,
+			sample_count: 1,
+			dimension: wgpu::TextureDimension::D2,
+			format: wgpu::TextureFormat::Bgra8UnormSrgb,
+			usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+			view_formats: &[],
+		});
 
 		// Create shader module
 		let shader = context.device.create_shader_module(wgpu::include_wgsl!("render/fullscreen_texture.wgsl"));
@@ -132,6 +153,16 @@ impl GraphicsState {
 				},
 				wgpu::BindGroupLayoutEntry {
 					binding: 2,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Texture {
+						multisampled: false,
+						view_dimension: wgpu::TextureViewDimension::D2,
+						sample_type: wgpu::TextureSampleType::Float { filterable: true },
+					},
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 3,
 					visibility: wgpu::ShaderStages::FRAGMENT,
 					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
 					count: None,
@@ -187,15 +218,20 @@ impl GraphicsState {
 			cache: None,
 		});
 
+		let wgpu_executor = WgpuExecutor::with_context(context.clone()).expect("Failed to create WgpuExecutor");
+
 		Self {
 			surface,
 			context,
+			wgpu_executor,
 			config,
 			render_pipeline,
+			transparent_texture,
 			sampler,
 			viewport_scale: [1.0, 1.0],
 			viewport_offset: [0.0, 0.0],
 			viewport_texture: None,
+			overlays_texture: None,
 			ui_texture: None,
 			bind_group: None,
 		}
@@ -209,20 +245,19 @@ impl GraphicsState {
 		}
 	}
 
-	pub(crate) fn bind_ui_texture(&mut self, texture: &wgpu::Texture) {
-		let bind_group = self.create_bindgroup(texture, &self.viewport_texture.clone().unwrap_or(texture.clone()));
-
-		self.ui_texture = Some(texture.clone());
-
-		self.bind_group = Some(bind_group);
+	pub(crate) fn bind_viewport_texture(&mut self, viewport_texture: wgpu::Texture) {
+		self.viewport_texture = Some(viewport_texture);
+		self.update_bindgroup();
 	}
 
-	pub(crate) fn bind_viewport_texture(&mut self, texture: &wgpu::Texture) {
-		let bind_group = self.create_bindgroup(&self.ui_texture.clone().unwrap_or(texture.clone()), texture);
+	pub(crate) fn bind_overlays_texture(&mut self, overlays_texture: wgpu::Texture) {
+		self.overlays_texture = Some(overlays_texture);
+		self.update_bindgroup();
+	}
 
-		self.viewport_texture = Some(texture.clone());
-
-		self.bind_group = Some(bind_group);
+	pub(crate) fn bind_ui_texture(&mut self, bind_ui_texture: wgpu::Texture) {
+		self.ui_texture = Some(bind_ui_texture);
+		self.update_bindgroup();
 	}
 
 	pub(crate) fn set_viewport_scale(&mut self, scale: [f32; 2]) {
@@ -233,28 +268,18 @@ impl GraphicsState {
 		self.viewport_offset = offset;
 	}
 
-	fn create_bindgroup(&self, ui_texture: &wgpu::Texture, viewport_texture: &wgpu::Texture) -> wgpu::BindGroup {
-		let ui_texture_view = ui_texture.create_view(&wgpu::TextureViewDescriptor::default());
-		let viewport_texture_view = viewport_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-		self.context.device.create_bind_group(&wgpu::BindGroupDescriptor {
-			layout: &self.render_pipeline.get_bind_group_layout(0),
-			entries: &[
-				wgpu::BindGroupEntry {
-					binding: 0,
-					resource: wgpu::BindingResource::TextureView(&ui_texture_view),
-				},
-				wgpu::BindGroupEntry {
-					binding: 1,
-					resource: wgpu::BindingResource::TextureView(&viewport_texture_view),
-				},
-				wgpu::BindGroupEntry {
-					binding: 2,
-					resource: wgpu::BindingResource::Sampler(&self.sampler),
-				},
-			],
-			label: Some("texture_bind_group"),
-		})
+	pub(crate) fn render_overlays(&mut self, scene: &vello::Scene) {
+		let Some(viewport_texture) = self.viewport_texture.as_ref() else {
+			tracing::warn!("No viewport texture bound, cannot render overlays");
+			return;
+		};
+		let size = UVec2::new(viewport_texture.width(), viewport_texture.height());
+		let texture = futures::executor::block_on(self.wgpu_executor.render_vello_scene_to_texture(scene, size, &Default::default(), Color::TRANSPARENT));
+		let Ok(texture) = texture else {
+			tracing::error!("Error rendering overlays");
+			return;
+		};
+		self.bind_overlays_texture(texture);
 	}
 
 	pub(crate) fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -299,6 +324,37 @@ impl GraphicsState {
 		output.present();
 
 		Ok(())
+	}
+
+	fn update_bindgroup(&mut self) {
+		let viewport_texture_view = self.viewport_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
+		let overlays_texture_view = self.overlays_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
+		let ui_texture_view = self.ui_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
+
+		let bind_group = self.context.device.create_bind_group(&wgpu::BindGroupDescriptor {
+			layout: &self.render_pipeline.get_bind_group_layout(0),
+			entries: &[
+				wgpu::BindGroupEntry {
+					binding: 0,
+					resource: wgpu::BindingResource::TextureView(&viewport_texture_view),
+				},
+				wgpu::BindGroupEntry {
+					binding: 1,
+					resource: wgpu::BindingResource::TextureView(&overlays_texture_view),
+				},
+				wgpu::BindGroupEntry {
+					binding: 2,
+					resource: wgpu::BindingResource::TextureView(&ui_texture_view),
+				},
+				wgpu::BindGroupEntry {
+					binding: 3,
+					resource: wgpu::BindingResource::Sampler(&self.sampler),
+				},
+			],
+			label: Some("texture_bind_group"),
+		});
+
+		self.bind_group = Some(bind_group);
 	}
 }
 
