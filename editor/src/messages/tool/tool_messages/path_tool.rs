@@ -121,6 +121,7 @@ pub enum PathToolMessage {
 	UpdateSelectedPointsStatus {
 		overlay_context: OverlayContext,
 	},
+	StartSlidingPoint,
 	TogglePointEditing,
 	ToggleSegmentEditing,
 }
@@ -403,6 +404,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				DeleteAndBreakPath,
 				ClosePath,
 				PointerMove,
+				StartSlidingPoint,
 				TogglePointEditing,
 				ToggleSegmentEditing
 			),
@@ -416,6 +418,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				BreakPath,
 				DeleteAndBreakPath,
 				SwapSelectedHandles,
+				StartSlidingPoint,
 				TogglePointEditing,
 				ToggleSegmentEditing
 			),
@@ -429,6 +432,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				DeleteAndBreakPath,
 				Escape,
 				RightClick,
+				StartSlidingPoint,
 				TogglePointEditing,
 				ToggleSegmentEditing
 			),
@@ -1183,11 +1187,6 @@ impl PathToolData {
 				return false;
 			};
 			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
-				return false;
-			};
-
-			// Check that the handles of anchor point are also colinear
-			if !vector_data.colinear(*anchor) {
 				return false;
 			};
 
@@ -2052,10 +2051,6 @@ impl Fsm for PathToolFsmState {
 				}
 
 				if !tool_data.update_colinear(equidistant_state, toggle_colinear_state, tool_action_data.shape_editor, tool_action_data.document, responses) {
-					if snap_angle_state && lock_angle_state && tool_data.start_sliding_point(tool_action_data.shape_editor, tool_action_data.document) {
-						return PathToolFsmState::SlidingPoint;
-					}
-
 					tool_data.drag(
 						equidistant_state,
 						lock_angle_state,
@@ -2544,6 +2539,13 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::DeleteAndBreakPath) => {
 				shape_editor.delete_point_and_break_path(document, responses);
 				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::StartSlidingPoint) => {
+				if tool_data.start_sliding_point(shape_editor, document) {
+					PathToolFsmState::SlidingPoint
+				} else {
+					PathToolFsmState::Ready
+				}
 			}
 			(_, PathToolMessage::DoubleClick { extend_selection, shrink_selection }) => {
 				// Double-clicked on a point (flip smooth/sharp behavior)
