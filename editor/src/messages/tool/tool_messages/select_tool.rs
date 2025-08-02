@@ -30,7 +30,7 @@ use graphene_std::transform::ReferencePoint;
 use std::fmt;
 
 #[derive(Default, ExtractField)]
-pub struct SelectTool {
+pub struct SelectToolMessageHandler {
 	fsm_state: SelectToolFsmState,
 	tool_data: SelectToolData,
 }
@@ -109,7 +109,7 @@ pub enum SelectToolMessage {
 	},
 }
 
-impl ToolMetadata for SelectTool {
+impl ToolMetadata for SelectToolMessageHandler {
 	fn icon_name(&self) -> String {
 		"GeneralSelectTool".into()
 	}
@@ -121,7 +121,7 @@ impl ToolMetadata for SelectTool {
 	}
 }
 
-impl SelectTool {
+impl SelectToolMessageHandler {
 	fn deep_selection_widget(&self) -> WidgetHolder {
 		let layer_selection_behavior_entries = [NestedSelectionBehavior::Shallowest, NestedSelectionBehavior::Deepest]
 			.iter()
@@ -206,7 +206,7 @@ impl SelectTool {
 	}
 }
 
-impl LayoutHolder for SelectTool {
+impl LayoutHolder for SelectToolMessageHandler {
 	fn layout(&self) -> Layout {
 		let mut widgets = Vec::new();
 
@@ -273,7 +273,7 @@ impl LayoutHolder for SelectTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for SelectTool {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for SelectToolMessageHandler {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let mut redraw_reference_pivot = false;
 
@@ -312,7 +312,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 		self.fsm_state.process_event(message, &mut self.tool_data, context, &(), responses, false);
 
 		if self.tool_data.pivot_gizmo.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed || redraw_reference_pivot {
-			// Send the layout containing the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
+			// Send the layout containing the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectToolMessageHandler)
 			self.send_layout(responses, LayoutTarget::ToolOptions);
 			self.tool_data.selected_layers_changed = false;
 		}
@@ -336,7 +336,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 	}
 }
 
-impl ToolTransition for SelectTool {
+impl ToolTransition for SelectToolMessageHandler {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(SelectToolMessage::Abort.into()),
