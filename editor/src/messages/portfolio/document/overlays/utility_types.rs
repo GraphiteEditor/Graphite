@@ -294,6 +294,147 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
+	#[allow(clippy::too_many_arguments)]
+	pub fn dashed_ellipse(
+		&mut self,
+		center: DVec2,
+		radius_x: f64,
+		radius_y: f64,
+		rotation: Option<f64>,
+		start_angle: Option<f64>,
+		end_angle: Option<f64>,
+		counterclockwise: Option<bool>,
+		color_fill: Option<&str>,
+		color_stroke: Option<&str>,
+		dash_width: Option<f64>,
+		dash_gap_width: Option<f64>,
+		dash_offset: Option<f64>,
+	) {
+		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
+		let center = center.round();
+
+		self.start_dpi_aware_transform();
+
+		if let Some(dash_width) = dash_width {
+			let dash_gap_width = dash_gap_width.unwrap_or(1.);
+			let array = js_sys::Array::new();
+			array.push(&JsValue::from(dash_width));
+			array.push(&JsValue::from(dash_gap_width));
+
+			if let Some(dash_offset) = dash_offset {
+				if dash_offset != 0. {
+					self.render_context.set_line_dash_offset(dash_offset);
+				}
+			}
+
+			self.render_context
+				.set_line_dash(&JsValue::from(array))
+				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
+				.ok();
+		}
+
+		self.render_context.begin_path();
+		self.render_context
+			.ellipse_with_anticlockwise(
+				center.x,
+				center.y,
+				radius_x,
+				radius_y,
+				rotation.unwrap_or_default(),
+				start_angle.unwrap_or_default(),
+				end_angle.unwrap_or(TAU),
+				counterclockwise.unwrap_or_default(),
+			)
+			.expect("Failed to draw ellipse");
+		self.render_context.set_stroke_style_str(color_stroke);
+
+		if let Some(fill_color) = color_fill {
+			self.render_context.set_fill_style_str(fill_color);
+			self.render_context.fill();
+		}
+		self.render_context.stroke();
+
+		// Reset the dash pattern back to solid
+		if dash_width.is_some() {
+			self.render_context
+				.set_line_dash(&JsValue::from(js_sys::Array::new()))
+				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
+				.ok();
+		}
+		if dash_offset.is_some() && dash_offset != Some(0.) {
+			self.render_context.set_line_dash_offset(0.);
+		}
+
+		self.end_dpi_aware_transform();
+	}
+
+	pub fn dashed_circle(
+		&mut self,
+		position: DVec2,
+		radius: f64,
+		color_fill: Option<&str>,
+		color_stroke: Option<&str>,
+		dash_width: Option<f64>,
+		dash_gap_width: Option<f64>,
+		dash_offset: Option<f64>,
+		transform: Option<DAffine2>,
+	) {
+		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
+		let position = position.round();
+
+		self.start_dpi_aware_transform();
+
+		if let Some(transform) = transform {
+			let [a, b, c, d, e, f] = transform.to_cols_array();
+			self.render_context.transform(a, b, c, d, e, f).expect("Failed to transform circle");
+		}
+
+		if let Some(dash_width) = dash_width {
+			let dash_gap_width = dash_gap_width.unwrap_or(1.);
+			let array = js_sys::Array::new();
+			array.push(&JsValue::from(dash_width));
+			array.push(&JsValue::from(dash_gap_width));
+
+			if let Some(dash_offset) = dash_offset {
+				if dash_offset != 0. {
+					self.render_context.set_line_dash_offset(dash_offset);
+				}
+			}
+
+			self.render_context
+				.set_line_dash(&JsValue::from(array))
+				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
+				.ok();
+		}
+
+		self.render_context.begin_path();
+		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
+		self.render_context.set_stroke_style_str(color_stroke);
+
+		if let Some(fill_color) = color_fill {
+			self.render_context.set_fill_style_str(fill_color);
+			self.render_context.fill();
+		}
+		self.render_context.stroke();
+
+		// Reset the dash pattern back to solid
+		if dash_width.is_some() {
+			self.render_context
+				.set_line_dash(&JsValue::from(js_sys::Array::new()))
+				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
+				.ok();
+		}
+		if dash_offset.is_some() && dash_offset != Some(0.) {
+			self.render_context.set_line_dash_offset(0.);
+		}
+
+		self.end_dpi_aware_transform();
+	}
+
+	pub fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
+		self.dashed_circle(position, radius, color_fill, color_stroke, None, None, None, None);
+	}
+
 	pub fn manipulator_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
 		self.start_dpi_aware_transform();
 
@@ -406,23 +547,6 @@ impl OverlayContext {
 		self.render_context.rect(corner.x, corner.y, size, size);
 		self.render_context.set_fill_style_str(color_fill);
 		self.render_context.fill();
-
-		self.end_dpi_aware_transform();
-	}
-
-	pub fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
-		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
-		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
-		let position = position.round();
-
-		self.start_dpi_aware_transform();
-
-		self.render_context.begin_path();
-		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
-		self.render_context.set_fill_style_str(color_fill);
-		self.render_context.set_stroke_style_str(color_stroke);
-		self.render_context.fill();
-		self.render_context.stroke();
 
 		self.end_dpi_aware_transform();
 	}
@@ -627,7 +751,7 @@ impl OverlayContext {
 	}
 
 	pub fn arc_sweep_angle(&mut self, offset_angle: f64, angle: f64, end_point_position: DVec2, bold_radius: f64, pivot: DVec2, text: &str, transform: DAffine2) {
-		self.manipulator_handle(end_point_position, true, Some(COLOR_OVERLAY_RED));
+		self.manipulator_handle(end_point_position, true, None);
 		self.draw_arc_gizmo_angle(pivot, bold_radius, ARC_SWEEP_GIZMO_RADIUS, offset_angle, angle.to_radians());
 		self.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 	}

@@ -1,4 +1,4 @@
-use crate::consts::{ARC_SNAP_THRESHOLD, COLOR_OVERLAY_RED, GIZMO_HIDE_THRESHOLD};
+use crate::consts::{ARC_SNAP_THRESHOLD, GIZMO_HIDE_THRESHOLD};
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -104,17 +104,17 @@ impl SweepAngleGizmo {
 
 		match self.handle_state {
 			SweepAngleGizmoState::Inactive => {
-				// Draw both endpoint handles if an arc is selected
 				let Some((point1, point2)) = arc_end_points(selected_arc_layer, document) else { return };
-				overlay_context.manipulator_handle(point1, false, Some(COLOR_OVERLAY_RED));
-				overlay_context.manipulator_handle(point2, false, Some(COLOR_OVERLAY_RED));
+				overlay_context.manipulator_handle(point1, false, None);
+				overlay_context.manipulator_handle(point2, false, None);
 			}
 			SweepAngleGizmoState::Hover => {
 				// Highlight the currently hovered endpoint only
 				let Some((point1, point2)) = arc_end_points(self.layer, document) else { return };
 
-				let point = if self.endpoint == EndpointType::Start { point1 } else { point2 };
-				overlay_context.manipulator_handle(point, true, Some(COLOR_OVERLAY_RED));
+				let (point, other_point) = if self.endpoint == EndpointType::Start { (point1, point2) } else { (point2, point1) };
+				overlay_context.manipulator_handle(point, true, None);
+				overlay_context.manipulator_handle(other_point, false, None);
 			}
 			SweepAngleGizmoState::Dragging => {
 				// Show snapping guides and angle arc while dragging
@@ -123,10 +123,16 @@ impl SweepAngleGizmo {
 				let viewport = document.metadata().transform_to_viewport(layer);
 
 				// Depending on which endpoint is being dragged, draw guides relative to the static point
-				let point = if self.endpoint == EndpointType::End { current_end } else { current_start };
+				let (point, other_point) = if self.endpoint == EndpointType::End {
+					(current_end, current_start)
+				} else {
+					(current_start, current_end)
+				};
 
 				// Draw the dashed line from center to drag start position
 				overlay_context.dashed_line(self.position_before_rotation, viewport.transform_point2(DVec2::ZERO), None, None, Some(5.), Some(5.), Some(0.5));
+
+				overlay_context.manipulator_handle(other_point, false, None);
 
 				// Draw the angle, text and the bold line
 				self.dragging_snapping_overlays(self.position_before_rotation, point, tilt_offset, viewport, overlay_context);
@@ -143,8 +149,8 @@ impl SweepAngleGizmo {
 				self.dragging_snapping_overlays(a, b, tilt_offset, viewport, overlay_context);
 
 				// Draw lines from endpoints to the arc center
-				overlay_context.line(start, center, Some(COLOR_OVERLAY_RED), Some(2.));
-				overlay_context.line(end, center, Some(COLOR_OVERLAY_RED), Some(2.));
+				overlay_context.line(start, center, None, Some(2.));
+				overlay_context.line(end, center, None, Some(2.));
 
 				// Draw the line from drag start to arc center
 				overlay_context.dashed_line(self.position_before_rotation, center, None, None, Some(5.), Some(5.), Some(0.5));
