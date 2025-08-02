@@ -18,7 +18,7 @@ use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document_migration::*;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::utility_functions::single_path_node_compatible_layer_selected;
+use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use glam::{DAffine2, DVec2};
@@ -79,7 +79,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.menu_bar_message_handler.has_selected_nodes = false;
 				self.menu_bar_message_handler.has_selected_layers = false;
 				self.menu_bar_message_handler.has_selection_history = (false, false);
-				self.menu_bar_message_handler.single_path_node_compatible_layer_selected = false;
+				self.menu_bar_message_handler.make_path_editable_is_allowed = false;
 				self.menu_bar_message_handler.spreadsheet_view_open = self.spreadsheet.spreadsheet_view_open;
 				self.menu_bar_message_handler.message_logging_verbosity = message_logging_verbosity;
 				self.menu_bar_message_handler.reset_node_definitions_on_open = reset_node_definitions_on_open;
@@ -97,7 +97,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						let metadata = &document.network_interface.document_network_metadata().persistent_metadata;
 						(!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty())
 					};
-					self.menu_bar_message_handler.single_path_node_compatible_layer_selected = single_path_node_compatible_layer_selected(&document.network_interface, document.metadata()).is_some();
+					self.menu_bar_message_handler.make_path_editable_is_allowed = make_path_editable_is_allowed(&document.network_interface, document.metadata()).is_some();
 				}
 
 				self.menu_bar_message_handler.process_message(message, responses, ());

@@ -16,7 +16,7 @@ use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedLayerState, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
-use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate, single_path_node_compatible_layer_selected};
+use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate, make_path_editable_is_allowed};
 use bezier_rs::{Bezier, BezierHandles, TValue};
 use graphene_std::renderer::Quad;
 use graphene_std::transform::ReferencePoint;
@@ -273,7 +273,7 @@ impl LayoutHolder for PathTool {
 			.icon(Some("NodeShape".into()))
 			.tooltip("Make Path Editable")
 			.on_update(|_| NodeGraphMessage::AddPathNode.into())
-			.disabled(!self.tool_data.single_path_node_compatible_layer_selected)
+			.disabled(!self.tool_data.make_path_editable_is_allowed)
 			.widget_holder();
 
 		let [_checkbox, _dropdown] = {
@@ -543,7 +543,7 @@ struct PathToolData {
 	drill_through_cycle_count: usize,
 	hovered_layers: Vec<LayerNodeIdentifier>,
 	ghost_outline: Vec<(Vec<ClickTargetType>, LayerNodeIdentifier)>,
-	single_path_node_compatible_layer_selected: bool,
+	make_path_editable_is_allowed: bool,
 }
 
 impl PathToolData {
@@ -2692,7 +2692,7 @@ impl Fsm for PathToolFsmState {
 					colinear,
 				};
 
-				tool_data.single_path_node_compatible_layer_selected = single_path_node_compatible_layer_selected(&document.network_interface, document.metadata()).is_some();
+				tool_data.make_path_editable_is_allowed = make_path_editable_is_allowed(&document.network_interface, document.metadata()).is_some();
 				tool_data.update_selection_status(shape_editor, document);
 				self
 			}

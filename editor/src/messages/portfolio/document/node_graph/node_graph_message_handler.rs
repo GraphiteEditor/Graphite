@@ -17,7 +17,7 @@ use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle,
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_clip_mode};
-use crate::messages::tool::common_functionality::utility_functions::single_path_node_compatible_layer_selected;
+use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use bezier_rs::Subpath;
@@ -126,11 +126,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_layer_id] });
 			}
 			NodeGraphMessage::AddPathNode => {
-				if let Some(layer) = single_path_node_compatible_layer_selected(&network_interface, network_interface.document_metadata()) {
-					responses.add(NodeGraphMessage::CreateNodeInLayerWithTransaction {
-						node_type: "Path".to_string(),
-						layer: layer,
-					});
+				if let Some(layer) = make_path_editable_is_allowed(network_interface, network_interface.document_metadata()) {
+					responses.add(NodeGraphMessage::CreateNodeInLayerWithTransaction { node_type: "Path".to_string(), layer });
 					responses.add(BroadcastEvent::SelectionChanged);
 				}
 			}
