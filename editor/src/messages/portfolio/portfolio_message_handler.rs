@@ -3,7 +3,7 @@ use super::document::utility_types::network_interface;
 use super::spreadsheet::SpreadsheetMessageHandler;
 use super::utility_types::{PanelType, PersistentData};
 use crate::application::generate_uuid;
-use crate::consts::DEFAULT_DOCUMENT_NAME;
+use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH};
 use crate::messages::animation::TimingInformation;
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
@@ -12,19 +12,24 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document_migration::*;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
+use bezier_rs::BezierHandles;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
+use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::text::Font;
+use graphene_std::vector::{HandleId, PointId, SegmentId, VectorData, VectorModificationType};
 use std::vec;
 
 #[derive(ExtractField)]
@@ -550,6 +555,99 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							messages: vec![PortfolioMessage::CenterPastedLayers { layers }.into()],
 						});
 					}
+				}
+			}
+			// Custom paste implementation for Path tool
+			PortfolioMessage::PasteSerializedVector { data } => {
+				// If using Path tool then send the operation to Path tool
+				if *current_tool == ToolType::Path {
+					responses.add(PathToolMessage::Paste { data });
+					return;
+				}
+
+				// If not using Path tool, create new layers and add paths into those
+				if let Some(document) = self.active_document() {
+					let Ok(data) = serde_json::from_str::<Vec<(LayerNodeIdentifier, VectorData, DAffine2)>>(&data) else {
+						return;
+					};
+
+					let mut layers = Vec::new();
+
+					for (_, new_vector, transform) in data {
+						let Some(node_type) = resolve_document_node_type("Path") else {
+							error!("Path node does not exist");
+							continue;
+						};
+						let nodes = vec![(NodeId(0), node_type.default_node_template())];
+
+						let parent = document.new_layer_parent(false);
+
+						let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
+						layers.push(layer);
+
+						// Adding the transform back into the layer
+						responses.add(GraphOperationMessage::TransformSet {
+							layer,
+							transform,
+							transform_in: TransformIn::Local,
+							skip_rerender: false,
+						});
+
+						// Add default fill and stroke to the layer
+						let fill_color = Color::WHITE;
+						let stroke_color = Color::BLACK;
+
+						let fill = graphene_std::vector::style::Fill::solid(fill_color.to_gamma_srgb());
+						responses.add(GraphOperationMessage::FillSet { layer, fill });
+
+						let stroke = graphene_std::vector::style::Stroke::new(Some(stroke_color.to_gamma_srgb()), DEFAULT_STROKE_WIDTH);
+						responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+
+						// Create new point ids and add those into the existing vector data
+						let mut points_map = HashMap::new();
+						for (point, position) in new_vector.point_domain.iter() {
+							let new_point_id = PointId::generate();
+							points_map.insert(point, new_point_id);
+							let modification_type = VectorModificationType::InsertPoint { id: new_point_id, position };
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+
+						// Create new segment ids and add the segments into the existing vector data
+						let mut segments_map = HashMap::new();
+						for (segment_id, bezier, start, end) in new_vector.segment_bezier_iter() {
+							let new_segment_id = SegmentId::generate();
+
+							segments_map.insert(segment_id, new_segment_id);
+
+							let handles = match bezier.handles {
+								BezierHandles::Linear => [None, None],
+								BezierHandles::Quadratic { handle } => [Some(handle - bezier.start), None],
+								BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start), Some(handle_end - bezier.end)],
+							};
+
+							let points = [points_map[&start], points_map[&end]];
+							let modification_type = VectorModificationType::InsertSegment { id: new_segment_id, points, handles };
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+
+						// Set G1 continuity
+						for handles in new_vector.colinear_manipulators {
+							let to_new_handle = |handle: HandleId| -> HandleId {
+								HandleId {
+									ty: handle.ty,
+									segment: segments_map[&handle.segment],
+								}
+							};
+							let new_handles = [to_new_handle(handles[0]), to_new_handle(handles[1])];
+							let modification_type = VectorModificationType::SetG1Continuous { handles: new_handles, enabled: true };
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+					}
+
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(Message::Defer(DeferMessage::AfterGraphRun {
+						messages: vec![PortfolioMessage::CenterPastedLayers { layers }.into()],
+					}));
 				}
 			}
 			PortfolioMessage::CenterPastedLayers { layers } => {

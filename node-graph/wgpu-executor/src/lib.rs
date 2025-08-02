@@ -158,11 +158,9 @@ impl WgpuExecutor {
 		});
 		let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-		let [r, g, b, _] = background.to_rgba8_srgb();
+		let [r, g, b, a] = background.to_rgba8_srgb();
 		let render_params = RenderParams {
-			// We are using an explicit opaque color here to eliminate the alpha premultiplication step
-			// which would be required to support a transparent webgpu canvas
-			base_color: vello::peniko::Color::from_rgba8(r, g, b, 0xff),
+			base_color: vello::peniko::Color::from_rgba8(r, g, b, a),
 			width: size.x,
 			height: size.y,
 			antialiasing_method: AaConfig::Msaa16,

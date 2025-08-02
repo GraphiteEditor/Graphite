@@ -4,11 +4,12 @@
 #
 # Development Environment:
 # - Provides all necessary tools for Rust/Wasm development
+# - Includes dependencies for desktop app development
 # - Sets up profiling and debugging tools
 # - Configures mold as the default linker for faster builds
 #
 # Usage:
-# - Development shell: `nix develop`
+# - Development shell: `nix develop .nix` from the project root
 # - Run in dev shell with direnv: add `use flake` to .envrc
 {
   description = "Development environment and build configuration";

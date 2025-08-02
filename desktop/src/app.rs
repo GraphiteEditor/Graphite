@@ -48,7 +48,15 @@ impl WinitApp {
 		self.send_messages_to_editor(responses);
 	}
 
-	fn send_messages_to_editor(&mut self, responses: Vec<FrontendMessage>) {
+	fn send_messages_to_editor(&mut self, mut responses: Vec<FrontendMessage>) {
+		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::RenderOverlays(_))) {
+			let FrontendMessage::RenderOverlays(overlay_context) = message else { unreachable!() };
+			if let Some(graphics_state) = &mut self.graphics_state {
+				let scene = overlay_context.take_scene();
+				graphics_state.set_overlays_scene(scene);
+			}
+		}
+
 		if responses.is_empty() {
 			return;
 		}
@@ -110,8 +118,8 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 		match event {
 			CustomEvent::UiUpdate(texture) => {
 				if let Some(graphics_state) = self.graphics_state.as_mut() {
-					graphics_state.bind_ui_texture(&texture);
 					graphics_state.resize(texture.width(), texture.height());
+					graphics_state.bind_ui_texture(texture);
 				}
 				if let Some(window) = &self.window {
 					window.request_redraw();
@@ -125,7 +133,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 				}
 			}
 			CustomEvent::MessageReceived { message } => {
-				if let Message::InputPreprocessor(ipp_message) = &message {
+				if let Message::InputPreprocessor(_) = &message {
 					if let Some(window) = &self.window {
 						window.request_redraw();
 					}
@@ -144,13 +152,14 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 						panic!("graphics state not intialized, viewport offset might be lost");
 					}
 				}
+
 				self.dispatch_message(message);
 			}
 			CustomEvent::NodeGraphRan { texture } => {
 				if let Some(texture) = texture
 					&& let Some(graphics_state) = &mut self.graphics_state
 				{
-					graphics_state.bind_viewport_texture(&texture);
+					graphics_state.bind_viewport_texture(texture);
 				}
 				let mut responses = VecDeque::new();
 				let err = self.editor.poll_node_graph_evaluation(&mut responses);

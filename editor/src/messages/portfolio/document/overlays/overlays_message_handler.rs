@@ -73,34 +73,18 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 			#[cfg(all(not(target_arch = "wasm32"), not(test)))]
 			OverlaysMessage::Draw => {
 				use super::utility_types::OverlayContext;
-				use vello::Scene;
+				let size = ipp.viewport_bounds.size();
 
-				let size = ipp.viewport_bounds.size().as_uvec2();
-
-				let scene = Scene::new();
+				let overlay_context = OverlayContext::new(size, device_pixel_ratio, visibility_settings);
 
 				if visibility_settings.all() {
-					let overlay_context = OverlayContext {
-						scene,
-						size: size.as_dvec2(),
-						device_pixel_ratio,
-						visibility_settings,
-					};
-
 					responses.add(DocumentMessage::GridOverlays(overlay_context.clone()));
 
 					for provider in &self.overlay_providers {
-						let overlay_context = OverlayContext {
-							scene: Scene::new(),
-							size: size.as_dvec2(),
-							device_pixel_ratio,
-							visibility_settings,
-						};
-						responses.add(provider(overlay_context));
+						responses.add(provider(overlay_context.clone()));
 					}
 				}
-
-				// TODO: Render the Vello scene to a texture and display it
+				responses.add(FrontendMessage::RenderOverlays(overlay_context));
 			}
 			OverlaysMessage::AddProvider(message) => {
 				self.overlay_providers.insert(message);
