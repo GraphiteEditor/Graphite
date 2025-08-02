@@ -96,6 +96,17 @@ mod test {
 			}
 		}
 
+		// Print message field if any
+		if let Some(fields) = tree.fields() {
+			let len = fields.len();
+			for (i, field) in fields.iter().enumerate() {
+				let is_last_field = i == len - 1;
+				let branch = if is_last_field { "└── " } else { "├── " };
+
+				file.write_all(format!("{}{}{}\n", child_prefix, branch, field).as_bytes()).unwrap();
+			}
+		}
+
 		// Print handler field if any
 		if let Some(data) = tree.message_handler_fields() {
 			let len = data.fields().len();
@@ -104,16 +115,15 @@ mod test {
 			} else {
 				("└── ", format!("{}    ", prefix))
 			};
-			if data.path().is_empty() {
-				file.write_all(format!("{}{}{}\n", prefix, branch, data.name()).as_bytes()).unwrap();
-			} else {
+			if !data.name().is_empty() {
 				file.write_all(format!("{}{}{} `{}`\n", prefix, branch, data.name(), data.path()).as_bytes()).unwrap();
-			}
-			for (i, field) in data.fields().iter().enumerate() {
-				let is_last_field = i == len - 1;
-				let branch = if is_last_field { "└── " } else { "├── " };
 
-				file.write_all(format!("{}{}{}\n", child_prefix, branch, field.0).as_bytes()).unwrap();
+				for (i, field) in data.fields().iter().enumerate() {
+					let is_last_field = i == len - 1;
+					let branch = if is_last_field { "└── " } else { "├── " };
+
+					file.write_all(format!("{}{}{}\n", child_prefix, branch, field.0).as_bytes()).unwrap();
+				}
 			}
 		}
 
