@@ -260,6 +260,21 @@ impl PaintOrder {
 	}
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum StrokeScaling {
+	#[default]
+	ScaleWithShape,
+	NonScaling,
+}
+
+impl StrokeScaling {
+	pub fn is_non_scaling(self) -> bool {
+		self == Self::NonScaling
+	}
+}
+
 fn daffine2_identity() -> DAffine2 {
 	DAffine2::IDENTITY
 }
