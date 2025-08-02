@@ -433,6 +433,16 @@ impl<'a> NodeGraphLayer<'a> {
 			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
 	}
 
+	/// Node id of a visible node if it exists in the layer's primary flow until another layer
+	pub fn upstream_visible_node_id_from_name_in_layer(&self, node_name: &str) -> Option<NodeId> {
+		// `.skip(1)` is used to skip self
+		self.horizontal_layer_flow()
+			.skip(1)
+			.take_while(|node_id| !self.network_interface.is_layer(node_id, &[]))
+			.filter(|node_id| self.network_interface.is_visible(node_id, &[]))
+			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
+	}
+
 	/// Node id of a protonode if it exists in the layer's primary flow
 	pub fn upstream_node_id_from_protonode(&self, protonode_identifier: ProtoNodeIdentifier) -> Option<NodeId> {
 		self.horizontal_layer_flow()
@@ -447,10 +457,11 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// Find all of the inputs of a specific node within the layer's primary flow, up until the next layer is reached.
 	pub fn find_node_inputs(&self, node_name: &str) -> Option<&'a Vec<NodeInput>> {
+		// `.skip(1)` is used to skip self
 		self.horizontal_layer_flow()
-			.skip(1)// Skip self
-			.take_while(|node_id| !self.network_interface.is_layer(node_id,&[]))
-			.find(|node_id| self.network_interface.reference(node_id,&[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
+			.skip(1)
+			.take_while(|node_id| !self.network_interface.is_layer(node_id, &[]))
+			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
 			.and_then(|node_id| self.network_interface.document_network().nodes.get(&node_id).map(|node| &node.inputs))
 	}
 
