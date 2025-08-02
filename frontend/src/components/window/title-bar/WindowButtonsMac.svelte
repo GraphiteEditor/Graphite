@@ -1,13 +1,17 @@
 <script lang="ts">
+	import { getContext } from "svelte";
+
+	import type { Editor } from "@graphite/editor";
+
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
-	export let maximized = false;
+	const editor = getContext<Editor>("editor");
 </script>
 
 <LayoutRow class="window-buttons-mac">
-	<div class="close" title="Close" />
-	<div class="minimize" title={maximized ? "Minimize" : "Maximize"} />
-	<div class="zoom" title="Zoom" />
+	<div class="close" on:click={() => editor.handle.appWindowClose()} />
+	<div class="minimize" on:click={() => editor.handle.appWindowMinimize()} />
+	<div class="zoom" on:click={() => editor.handle.appWindowMaximize()} />
 </LayoutRow>
 
 <style lang="scss" global>

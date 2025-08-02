@@ -1,12 +1,8 @@
-<script lang="ts" context="module">
-	export type Platform = "Windows" | "Mac" | "Linux" | "Web";
-</script>
-
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@graphite/messages";
+	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, type AppWindowPlatform, UpdateMenuBarLayout } from "@graphite/messages";
 	import type { PortfolioState } from "@graphite/state-providers/portfolio";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 
@@ -17,7 +13,7 @@
 	import WindowButtonsWindows from "@graphite/components/window/title-bar/WindowButtonsWindows.svelte";
 	import WindowTitle from "@graphite/components/window/title-bar/WindowTitle.svelte";
 
-	export let platform: Platform;
+	export let platform: AppWindowPlatform;
 	export let maximized: boolean;
 
 	const editor = getContext<Editor>("editor");
@@ -73,7 +69,7 @@
 	<!-- Menu bar (or on Mac: window buttons) -->
 	<LayoutRow class="left">
 		{#if platform === "Mac"}
-			<WindowButtonsMac {maximized} />
+			<WindowButtonsMac />
 		{:else}
 			{#each entries as entry}
 				<TextButton label={entry.label} icon={entry.icon} menuListChildren={entry.children} action={entry.action} flush={true} />

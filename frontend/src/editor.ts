@@ -1,7 +1,7 @@
 // import { panicProxy } from "@graphite/utility-functions/panic-proxy";
 import { type JsMessageType } from "@graphite/messages";
 import { createSubscriptionRouter, type SubscriptionRouter } from "@graphite/subscription-router";
-import init, { setRandomSeed, wasmMemory, EditorHandle } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
+import init, { setRandomSeed, wasmMemory, EditorHandle, receiveNativeMessage } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 
 export type Editor = {
 	raw: WebAssembly.Memory;
@@ -27,6 +27,8 @@ export async function initWasm() {
 	wasmImport = await wasmMemory();
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	(window as any).imageCanvases = {};
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	(window as any).receiveNativeMessage = receiveNativeMessage;
 
 	// Provide a random starter seed which must occur after initializing the WASM module, since WASM can't generate its own random numbers
 	const randomSeedFloat = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);

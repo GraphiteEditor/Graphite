@@ -1,5 +1,6 @@
 use super::ShapeToolData;
 use crate::consts::{ARC_SWEEP_GIZMO_RADIUS, ARC_SWEEP_GIZMO_TEXT_HEIGHT};
+use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -25,6 +26,7 @@ pub enum ShapeType {
 	#[default]
 	Polygon = 0,
 	Star,
+	Circle,
 	Arc,
 	Rectangle,
 	Ellipse,
@@ -36,6 +38,7 @@ impl ShapeType {
 		(match self {
 			Self::Polygon => "Polygon",
 			Self::Star => "Star",
+			Self::Circle => "Circle",
 			Self::Arc => "Arc",
 			Self::Rectangle => "Rectangle",
 			Self::Ellipse => "Ellipse",
@@ -74,7 +77,7 @@ impl ShapeType {
 	}
 }
 
-pub type ShapeToolModifierKey = [Key; 4];
+pub type ShapeToolModifierKey = [Key; 3];
 
 /// The `ShapeGizmoHandler` trait defines the interactive behavior and overlay logic for shape-specific tools in the editor.
 /// A gizmo is a visual handle or control point used to manipulate a shape's properties (e.g., number of sides, radius, angle).
@@ -127,6 +130,8 @@ pub trait ShapeGizmoHandler {
 	///
 	/// For example, dragging states or hover flags should be cleared to avoid visual glitches when switching tools or shapes.
 	fn cleanup(&mut self);
+
+	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon>;
 }
 
 /// Center, Lock Ratio, Lock Angle, Snap Angle, Increase/Decrease Side
@@ -277,6 +282,19 @@ pub fn arc_end_points_ignore_layer(radius: f64, start_angle: f64, sweep_angle: f
 }
 
 /// Calculate the viewport position of a star vertex given its index
+/// Extract the node input values of Circle.
+/// Returns an option of (radius).
+pub fn extract_circle_radius(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<f64> {
+	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Circle")?;
+
+	let Some(&TaggedValue::F64(radius)) = node_inputs.get(1)?.as_value() else {
+		return None;
+	};
+
+	Some(radius)
+}
+
+/// Calculate the viewport position of as a star vertex given its index
 pub fn star_vertex_position(viewport: DAffine2, vertex_index: i32, n: u32, radius1: f64, radius2: f64) -> DVec2 {
 	let angle = ((vertex_index as f64) * PI) / (n as f64);
 	let radius = if vertex_index % 2 == 0 { radius1 } else { radius2 };
