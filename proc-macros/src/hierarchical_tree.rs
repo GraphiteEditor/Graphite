@@ -20,7 +20,7 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 			.iter()
 			.any(|attr| attr.path().get_ident().is_some_and(|ident| ident == "sub_discriminant" || ident == "child"));
 
-		return match &variant.fields {
+		match &variant.fields {
 			Fields::Unit => quote! {
 				message_tree.add_variant(DebugMessageTree::new(stringify!(#variant_type)));
 			},
@@ -61,7 +61,7 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 					}
 				}
 			}
-		};
+		}
 	});
 
 	let res = quote! {
@@ -69,8 +69,8 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 			fn build_message_tree() -> DebugMessageTree {
 				let mut message_tree = DebugMessageTree::new(stringify!(#input_type));
 				#(#build_message_tree)*
-				let message_handler_str = #input_type::message_handler_str();
 
+				let message_handler_str = #input_type::message_handler_str();
 				message_tree.add_message_handler_field(message_handler_str);
 
 				let message_handler_data_str = #input_type::message_handler_data_str();

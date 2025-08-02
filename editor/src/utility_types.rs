@@ -94,16 +94,10 @@ impl DebugMessageTree {
 	}
 
 	pub fn has_message_handler_data_fields(&self) -> bool {
-		match self.message_handler_data_fields() {
-			Some(_) => true,
-			None => false,
-		}
+		self.message_handler_data_fields().is_some()
 	}
 
 	pub fn has_message_handler_fields(&self) -> bool {
-		match self.message_handler_fields() {
-			Some(_) => true,
-			None => false,
-		}
+		self.message_handler_fields().is_some()
 	}
 }

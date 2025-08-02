@@ -6,10 +6,10 @@ use crate::messages::prelude::*;
 pub enum ExportDialogMessage {
 	#[child]
 	FileType(FileType),
-	ScaleFactor(f64),
-	TransparentBackground(bool),
 	#[child]
 	ExportBounds(ExportBounds),
+	ScaleFactor(f64),
+	TransparentBackground(bool),
 
 	Submit,
 }

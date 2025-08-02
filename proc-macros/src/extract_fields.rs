@@ -31,7 +31,7 @@ pub fn derive_extract_field_impl(input: TokenStream) -> syn::Result<TokenStream>
 		})
 		.collect::<Vec<_>>();
 
-	let field_str = field_info.into_iter().map(|(name, ty)| (format!("{}: {}", name, ty)));
+	let field_str = field_info.into_iter().map(|(name, ty)| (format!("{name}: {ty}")));
 
 	let res = quote! {
 		impl #impl_generics ExtractField for #struct_name #ty_generics #where_clause {
