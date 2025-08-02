@@ -13,8 +13,12 @@ use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
 use graphene_std::text::{Font, TextAlign};
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+
 #[impl_message(Message, Frontend)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(derivative::Derivative, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derivative(Debug, PartialEq)]
 pub enum FrontendMessage {
 	// Display prefix: make the frontend show something, like a dialog
 	DisplayDialog {
@@ -318,4 +322,10 @@ pub enum FrontendMessage {
 	UpdateViewportHolePunch {
 		active: bool,
 	},
+	#[cfg(not(target_arch = "wasm32"))]
+	RenderOverlays(
+		#[serde(skip, default = "OverlayContext::default")]
+		#[derivative(Debug = "ignore", PartialEq = "ignore")]
+		OverlayContext,
+	),
 }
