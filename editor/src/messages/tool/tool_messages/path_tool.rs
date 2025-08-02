@@ -21,7 +21,7 @@ use bezier_rs::{Bezier, BezierHandles, TValue};
 use graphene_std::renderer::Quad;
 use graphene_std::transform::ReferencePoint;
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, VectorData};
+use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, VectorData, VectorModification};
 use graphene_std::vector::{ManipulatorPointId, PointId, VectorModificationType};
 use std::vec;
 
