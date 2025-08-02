@@ -53,7 +53,7 @@ impl WinitApp {
 			let FrontendMessage::RenderOverlays(overlay_context) = message else { unreachable!() };
 			if let Some(graphics_state) = &mut self.graphics_state {
 				let scene = overlay_context.take_scene();
-				graphics_state.render_overlays(&scene);
+				graphics_state.set_overlays_scene(scene);
 			}
 		}
 
