@@ -13,7 +13,7 @@ use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
 use graphene_std::text::{Font, TextAlign};
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 
 #[impl_message(Message, Frontend)]
@@ -322,7 +322,7 @@ pub enum FrontendMessage {
 	UpdateViewportHolePunch {
 		active: bool,
 	},
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(target_family = "wasm"))]
 	RenderOverlays(
 		#[serde(skip, default = "OverlayContext::default")]
 		#[derivative(Debug = "ignore", PartialEq = "ignore")]

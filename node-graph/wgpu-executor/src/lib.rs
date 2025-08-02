@@ -46,9 +46,9 @@ pub struct TargetTexture {
 	size: UVec2,
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 pub type Window = web_sys::HtmlCanvasElement;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 pub type Window = Arc<winit::window::Window>;
 
 unsafe impl StaticType for Surface {
@@ -186,12 +186,12 @@ impl WgpuExecutor {
 		Ok(texture)
 	}
 
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(target_family = "wasm")]
 	pub fn create_surface(&self, canvas: graphene_application_io::WasmSurfaceHandle) -> Result<SurfaceHandle<Surface>> {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
 		self.create_surface_inner(surface, canvas.window_id)
 	}
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(target_family = "wasm"))]
 	pub fn create_surface(&self, window: SurfaceHandle<Window>) -> Result<SurfaceHandle<Surface>> {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Window(Box::new(window.surface)))?;
 		self.create_surface_inner(surface, window.window_id)

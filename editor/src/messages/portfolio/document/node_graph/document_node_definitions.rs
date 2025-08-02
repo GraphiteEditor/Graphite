@@ -591,7 +591,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("Creates a new canvas object."),
 			properties: None,
 		},
-		#[cfg(all(feature = "gpu", target_arch = "wasm32"))]
+		#[cfg(all(feature = "gpu", target_family = "wasm"))]
 		DocumentNodeDefinition {
 			identifier: "Rasterize",
 			category: "Raster",
