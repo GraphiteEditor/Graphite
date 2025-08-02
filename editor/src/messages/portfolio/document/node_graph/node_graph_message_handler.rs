@@ -25,7 +25,6 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_std::math::math_ext::QuadExt;
-use graphene_std::vector::VectorModification;
 use graphene_std::vector::misc::subpath_to_kurbo_bezpath;
 use graphene_std::*;
 use kurbo::{Line, Point};
