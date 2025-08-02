@@ -25,6 +25,7 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 	return out;
 }
 
+
 struct Constants {
 	viewport_scale: vec2<f32>,
 	viewport_offset: vec2<f32>,
