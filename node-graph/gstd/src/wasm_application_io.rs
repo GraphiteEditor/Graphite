@@ -3,7 +3,7 @@ pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
 use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
 #[cfg(target_family = "wasm")]
-use graphene_core::instances::Instances;
+use graphene_core::instances::Table;
 #[cfg(target_family = "wasm")]
 use graphene_core::math::bbox::Bbox;
 use graphene_core::raster::image::Image;
@@ -225,12 +225,12 @@ async fn rasterize<T: WasmNotSend + 'n>(
 		RasterDataTable<CPU>,
 		GraphicGroupTable,
 	)]
-	mut data: Instances<T>,
+	mut data: Table<T>,
 	footprint: Footprint,
 	surface_handle: Arc<graphene_application_io::SurfaceHandle<HtmlCanvasElement>>,
 ) -> RasterDataTable<CPU>
 where
-	Instances<T>: GraphicElementRendered,
+	Table<T>: GraphicElementRendered,
 {
 	use graphene_core::instances::Instance;
 

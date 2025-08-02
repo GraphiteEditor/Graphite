@@ -6,7 +6,7 @@ use glam::DAffine2;
 use std::hash::Hash;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct Instances<T> {
+pub struct Table<T> {
 	#[serde(alias = "instances")]
 	instance: Vec<T>,
 	#[serde(default = "one_daffine2_default")]
@@ -17,7 +17,7 @@ pub struct Instances<T> {
 	source_node_id: Vec<Option<NodeId>>,
 }
 
-impl<T> Instances<T> {
+impl<T> Table<T> {
 	pub fn new(instance: T) -> Self {
 		Self {
 			instance: vec![instance],
@@ -52,7 +52,7 @@ impl<T> Instances<T> {
 		self.source_node_id.push(instance.source_node_id);
 	}
 
-	pub fn extend(&mut self, instances: Instances<T>) {
+	pub fn extend(&mut self, instances: Table<T>) {
 		self.instance.extend(instances.instance);
 		self.transform.extend(instances.transform);
 		self.alpha_blending.extend(instances.alpha_blending);
@@ -136,7 +136,7 @@ impl<T> Instances<T> {
 	}
 }
 
-impl<T> Default for Instances<T> {
+impl<T> Default for Table<T> {
 	fn default() -> Self {
 		Self {
 			instance: Vec::new(),
@@ -147,7 +147,7 @@ impl<T> Default for Instances<T> {
 	}
 }
 
-impl<T: Hash> Hash for Instances<T> {
+impl<T: Hash> Hash for Table<T> {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		for instance in &self.instance {
 			instance.hash(state);
@@ -155,7 +155,7 @@ impl<T: Hash> Hash for Instances<T> {
 	}
 }
 
-impl<T> ApplyTransform for Instances<T> {
+impl<T> ApplyTransform for Table<T> {
 	fn apply_transform(&mut self, modification: &DAffine2) {
 		for transform in &mut self.transform {
 			*transform *= *modification;
@@ -169,17 +169,17 @@ impl<T> ApplyTransform for Instances<T> {
 	}
 }
 
-impl<T: PartialEq> PartialEq for Instances<T> {
+impl<T: PartialEq> PartialEq for Table<T> {
 	fn eq(&self, other: &Self) -> bool {
 		self.instance.len() == other.instance.len() && { self.instance.iter().zip(other.instance.iter()).all(|(a, b)| a == b) }
 	}
 }
 
-unsafe impl<T: StaticType + 'static> StaticType for Instances<T> {
-	type Static = Instances<T>;
+unsafe impl<T: StaticType + 'static> StaticType for Table<T> {
+	type Static = Table<T>;
 }
 
-impl<T> FromIterator<Instance<T>> for Instances<T> {
+impl<T> FromIterator<Instance<T>> for Table<T> {
 	fn from_iter<I: IntoIterator<Item = Instance<T>>>(iter: I) -> Self {
 		let iter = iter.into_iter();
 		let (lower, _) = iter.size_hint();
@@ -270,8 +270,8 @@ impl<T> Instance<T> {
 		}
 	}
 
-	pub fn to_table(self) -> Instances<T> {
-		Instances {
+	pub fn to_table(self) -> Table<T> {
+		Table {
 			instance: vec![self.instance],
 			transform: vec![self.transform],
 			alpha_blending: vec![self.alpha_blending],

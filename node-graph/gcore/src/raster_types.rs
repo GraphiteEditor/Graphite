@@ -1,6 +1,6 @@
 use crate::Color;
 use crate::bounds::BoundingBox;
-use crate::instances::Instances;
+use crate::instances::Table;
 use crate::math::quad::Quad;
 use crate::raster::Image;
 use core::ops::Deref;
@@ -61,7 +61,7 @@ where
 	}
 }
 
-pub type RasterDataTable<Storage> = Instances<Raster<Storage>>;
+pub type RasterDataTable<Storage> = Table<Raster<Storage>>;
 
 pub use cpu::CPU;
 

@@ -6,7 +6,7 @@ use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::Context;
 use graphene_std::GraphicGroupTable;
-use graphene_std::instances::Instances;
+use graphene_std::instances::Table;
 use graphene_std::memo::IORecord;
 use graphene_std::raster::Image;
 use graphene_std::vector::{VectorData, VectorDataTable};
@@ -268,12 +268,12 @@ impl InstanceLayout for Artboard {
 	}
 }
 
-impl<T: InstanceLayout> InstanceLayout for Instances<T> {
+impl<T: InstanceLayout> InstanceLayout for Table<T> {
 	fn type_name() -> &'static str {
-		"Instances"
+		"Table"
 	}
 	fn identifier(&self) -> String {
-		format!("Instances<{}> (length={})", T::type_name(), self.len())
+		format!("Table<{}> (length={})", T::type_name(), self.len())
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		if let Some(index) = data.desired_path.get(data.current_depth).copied() {
@@ -316,7 +316,7 @@ impl<T: InstanceLayout> InstanceLayout for Instances<T> {
 
 		rows.insert(0, column_headings(&["", "instance", "transform", "alpha_blending", "source_node_id"]));
 
-		let instances = vec![TextLabel::new("Instances:").widget_holder()];
-		vec![LayoutGroup::Row { widgets: instances }, LayoutGroup::Table { rows }]
+		let table = vec![TextLabel::new("Table:").widget_holder()];
+		vec![LayoutGroup::Row { widgets: table }, LayoutGroup::Table { rows }]
 	}
 }

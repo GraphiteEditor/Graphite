@@ -1,7 +1,7 @@
 use super::Color;
 use crate::AlphaBlending;
 use crate::color::float_to_srgb_u8;
-use crate::instances::{Instance, Instances};
+use crate::instances::{Instance, Table};
 use crate::raster_types::Raster;
 use core::hash::{Hash, Hasher};
 use dyn_any::{DynAny, StaticType};
@@ -215,7 +215,7 @@ impl<P: Pixel> IntoIterator for Image<P> {
 pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<RasterDataTable<CPU>, D::Error> {
 	use serde::Deserialize;
 
-	type ImageFrameTable<P> = Instances<Image<P>>;
+	type ImageFrameTable<P> = Table<Image<P>>;
 
 	#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 	enum RasterFrame {
@@ -284,7 +284,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 	enum FormatVersions {
 		Image(Image<Color>),
 		OldImageFrame(OldImageFrame<Color>),
-		ImageFrame(Instances<ImageFrame<Color>>),
+		ImageFrame(Table<ImageFrame<Color>>),
 		ImageFrameTable(ImageFrameTable<Color>),
 		RasterDataTable(RasterDataTable<CPU>),
 	}
@@ -302,7 +302,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 			image_frame
 				.instance_ref_iter()
 				.next()
-				.unwrap_or(Instances::new(ImageFrame::default()).instance_ref_iter().next().unwrap())
+				.unwrap_or(Table::new(ImageFrame::default()).instance_ref_iter().next().unwrap())
 				.instance
 				.image
 				.clone(),
@@ -316,7 +316,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Instance<Raster<CPU>>, D::Error> {
 	use serde::Deserialize;
 
-	type ImageFrameTable<P> = Instances<Image<P>>;
+	type ImageFrameTable<P> = Table<Image<P>>;
 
 	#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 	enum RasterFrame {
@@ -385,7 +385,7 @@ pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializ
 	enum FormatVersions {
 		Image(Image<Color>),
 		OldImageFrame(OldImageFrame<Color>),
-		ImageFrame(Instances<ImageFrame<Color>>),
+		ImageFrame(Table<ImageFrame<Color>>),
 		RasterDataTable(RasterDataTable<CPU>),
 		ImageInstance(Instance<Raster<CPU>>),
 	}
@@ -409,8 +409,6 @@ pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializ
 		FormatVersions::ImageInstance(image_instance) => image_instance,
 	})
 }
-
-// pub type RasterDataTable<P> = Instances<Image<P>>;
 
 impl<P: Debug + Copy + Pixel> Sample for Image<P> {
 	type Pixel = P;

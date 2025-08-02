@@ -1,4 +1,4 @@
-use crate::instances::Instances;
+use crate::instances::Table;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::vector::VectorData;
 use crate::{Artboard, Color, GraphicElement};
@@ -10,7 +10,7 @@ pub trait RenderComplexity {
 	}
 }
 
-impl<T: RenderComplexity> RenderComplexity for Instances<T> {
+impl<T: RenderComplexity> RenderComplexity for Table<T> {
 	fn render_complexity(&self) -> usize {
 		self.instance_ref_iter().map(|instance| instance.instance.render_complexity()).fold(0, usize::saturating_add)
 	}

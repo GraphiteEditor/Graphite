@@ -1,4 +1,4 @@
-use crate::instances::{InstanceRef, Instances};
+use crate::instances::{InstanceRef, Table};
 use crate::raster_types::{CPU, RasterDataTable};
 use crate::vector::VectorDataTable;
 use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, OwnedContextImpl};
@@ -13,10 +13,10 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + '
 		Context -> VectorDataTable,
 		Context -> RasterDataTable<CPU>
 	)]
-	instance: impl Node<'n, Context<'static>, Output = Instances<T>>,
+	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
 	reverse: bool,
-) -> Instances<T> {
-	let mut result_table = Instances::<T>::default();
+) -> Table<T> {
+	let mut result_table = Table::<T>::default();
 
 	for InstanceRef { instance: points, transform, .. } in points.instance_ref_iter() {
 		let mut iteration = async |index, point| {
@@ -54,13 +54,13 @@ async fn instance_repeat<T: Into<GraphicElement> + Default + Send + Clone + 'sta
 		Context -> VectorDataTable,
 		Context -> RasterDataTable<CPU>
 	)]
-	instance: impl Node<'n, Context<'static>, Output = Instances<T>>,
+	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
 	#[default(1)] count: u64,
 	reverse: bool,
-) -> Instances<T> {
+) -> Table<T> {
 	let count = count.max(1) as usize;
 
-	let mut result_table = Instances::<T>::default();
+	let mut result_table = Table::<T>::default();
 
 	for index in 0..count {
 		let index = if reverse { count - index - 1 } else { index };

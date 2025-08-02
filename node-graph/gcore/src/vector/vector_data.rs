@@ -5,7 +5,7 @@ mod modification;
 use super::misc::{dvec2_to_point, point_to_dvec2};
 use super::style::{PathStyle, Stroke};
 use crate::bounds::BoundingBox;
-use crate::instances::Instances;
+use crate::instances::Table;
 use crate::math::quad::Quad;
 use crate::transform::Transform;
 use crate::vector::click_target::{ClickTargetType, FreePoint};
@@ -72,7 +72,7 @@ pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 	})
 }
 
-pub type VectorDataTable = Instances<VectorData>;
+pub type VectorDataTable = Table<VectorData>;
 
 /// [VectorData] is passed between nodes.
 /// It contains a list of subpaths (that may be open or closed), a transform, and some style information.

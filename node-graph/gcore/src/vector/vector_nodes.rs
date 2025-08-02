@@ -5,7 +5,7 @@ use super::misc::{CentroidType, bezpath_from_manipulator_groups, bezpath_to_mani
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataExt, VectorDataTable};
 use crate::bounds::BoundingBox;
-use crate::instances::{Instance, InstanceMut, Instances};
+use crate::instances::{Instance, InstanceMut, Table};
 use crate::raster_types::{CPU, GPU, RasterDataTable};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
 use crate::transform::{Footprint, ReferencePoint, Transform};
@@ -159,7 +159,7 @@ async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	_: impl Ctx,
 	#[implementations(VectorDataTable, VectorDataTable, GraphicGroupTable, GraphicGroupTable)]
 	/// The vector elements, or group of vector elements, to apply the stroke to.
-	mut vector_data: Instances<V>,
+	mut vector_data: Table<V>,
 	#[implementations(
 		Option<Color>,
 		Color,
@@ -190,9 +190,9 @@ async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	/// The phase offset distance from the starting point of the dash pattern.
 	#[unit(" px")]
 	dash_offset: f64,
-) -> Instances<V>
+) -> Table<V>
 where
-	Instances<V>: VectorDataTableIterMut + 'n + Send,
+	Table<V>: VectorDataTableIterMut + 'n + Send,
 {
 	let stroke = Stroke {
 		color: color.into(),
@@ -221,18 +221,18 @@ where
 async fn repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	// TODO: Implement other GraphicElementRendered types.
-	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Instances<I>,
+	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Table<I>,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: PixelSize,
 	angle: Angle,
 	#[default(4)] instances: IntegerCount,
-) -> Instances<I> {
+) -> Table<I> {
 	let angle = angle.to_radians();
 	let count = instances.max(1);
 	let total = (count - 1) as f64;
 
-	let mut result_table = Instances::<I>::default();
+	let mut result_table = Table::<I>::default();
 
 	for index in 0..count {
 		let angle = index as f64 * angle / total;
@@ -257,16 +257,16 @@ async fn repeat<I: 'n + Send + Clone>(
 async fn circular_repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	// TODO: Implement other GraphicElementRendered types.
-	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Instances<I>,
+	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Table<I>,
 	angle_offset: Angle,
 	#[unit(" px")]
 	#[default(5)]
 	radius: f64,
 	#[default(5)] instances: IntegerCount,
-) -> Instances<I> {
+) -> Table<I> {
 	let count = instances.max(1);
 
-	let mut result_table = Instances::<I>::default();
+	let mut result_table = Table::<I>::default();
 
 	for index in 0..count {
 		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + angle_offset.to_radians());
@@ -294,7 +294,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	#[expose]
 	/// Artwork to be copied and placed at each point.
 	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)]
-	instance: Instances<I>,
+	instance: Table<I>,
 	/// Minimum range of randomized sizes given to each instance.
 	#[default(1)]
 	#[range((0., 2.))]
@@ -315,8 +315,8 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	random_rotation: Angle,
 	/// Seed to determine unique variations on all the randomized instance angles.
 	random_rotation_seed: SeedValue,
-) -> Instances<I> {
-	let mut result_table = Instances::<I>::default();
+) -> Table<I> {
+	let mut result_table = Table::<I>::default();
 
 	let random_scale_difference = random_scale_max - random_scale_min;
 
@@ -368,16 +368,16 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn mirror<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Instances<I>,
+	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Table<I>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
 	#[unit(" px")] offset: f64,
 	#[range((-90., 90.))] angle: Angle,
 	#[default(true)] keep_original: bool,
-) -> Instances<I>
+) -> Table<I>
 where
-	Instances<I>: BoundingBox,
+	Table<I>: BoundingBox,
 {
-	let mut result_table = Instances::default();
+	let mut result_table = Table::default();
 
 	// Normalize the direction vector
 	let normal = DVec2::from_angle(angle.to_radians());
@@ -1071,9 +1071,9 @@ async fn solidify_stroke(_: impl Ctx, vector_data: VectorDataTable) -> VectorDat
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn flatten_path<I: 'n + Send>(_: impl Ctx, #[implementations(GraphicGroupTable, VectorDataTable)] graphic_group_input: Instances<I>) -> VectorDataTable
+async fn flatten_path<I: 'n + Send>(_: impl Ctx, #[implementations(GraphicGroupTable, VectorDataTable)] graphic_group_input: Table<I>) -> VectorDataTable
 where
-	GraphicElement: From<Instances<I>>,
+	GraphicElement: From<Table<I>>,
 {
 	// A node based solution to support passing through vector data could be a network node with a cache node connected to
 	// a Flatten Path connected to an if else node, another connection from the cache directly
@@ -2024,7 +2024,7 @@ fn point_inside(_: impl Ctx, source: VectorDataTable, point: DVec2) -> bool {
 }
 
 #[node_macro::node(category("General"), path(graphene_core::vector))]
-async fn count_elements<I>(_: impl Ctx, #[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>, RasterDataTable<GPU>)] source: Instances<I>) -> u64 {
+async fn count_elements<I>(_: impl Ctx, #[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>, RasterDataTable<GPU>)] source: Table<I>) -> u64 {
 	source.len() as u64
 }
 
@@ -2301,7 +2301,7 @@ mod test {
 		let bezpath = Rect::new(100., 100., 201., 201.).to_path(DEFAULT_ACCURACY);
 		let transform = DAffine2::from_scale(DVec2::new(2., 2.));
 		let instance = create_vector_data_instance(bezpath, transform);
-		let instances = (0..5).map(|_| instance.clone()).collect::<Instances<VectorData>>();
+		let instances = (0..5).map(|_| instance.clone()).collect::<Table<VectorData>>();
 
 		let length = super::path_length(Footprint::default(), instances).await;
 

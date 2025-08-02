@@ -1,6 +1,6 @@
 use crate::blending::AlphaBlending;
 use crate::bounds::BoundingBox;
-use crate::instances::{Instance, Instances};
+use crate::instances::{Instance, Table};
 use crate::math::quad::Quad;
 use crate::raster::image::Image;
 use crate::raster_types::{CPU, GPU, Raster, RasterDataTable};
@@ -26,7 +26,7 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 	pub struct GraphicGroup {
 		elements: Vec<(GraphicElement, Option<NodeId>)>,
 	}
-	pub type OldGraphicGroupTable = Instances<GraphicGroup>;
+	pub type OldGraphicGroupTable = Table<GraphicGroup>;
 
 	#[derive(serde::Serialize, serde::Deserialize)]
 	#[serde(untagged)]
@@ -73,7 +73,7 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 }
 
 // TODO: Rename to GraphicElementTable
-pub type GraphicGroupTable = Instances<GraphicElement>;
+pub type GraphicGroupTable = Table<GraphicElement>;
 
 impl From<VectorData> for GraphicGroupTable {
 	fn from(vector_data: VectorData) -> Self {
@@ -289,7 +289,7 @@ pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D)
 	})
 }
 
-pub type ArtboardGroupTable = Instances<Artboard>;
+pub type ArtboardGroupTable = Table<Artboard>;
 
 impl BoundingBox for ArtboardGroupTable {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
@@ -302,10 +302,10 @@ impl BoundingBox for ArtboardGroupTable {
 #[node_macro::node(category(""))]
 async fn layer<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>, RasterDataTable<GPU>)] mut stack: Instances<I>,
+	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>, RasterDataTable<GPU>)] mut stack: Table<I>,
 	#[implementations(GraphicElement, VectorData, Raster<CPU>, Raster<GPU>)] element: I,
 	node_path: Vec<NodeId>,
-) -> Instances<I> {
+) -> Table<I> {
 	// Get the penultimate element of the node path, or None if the path is too short
 	let source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 
@@ -569,8 +569,8 @@ impl<T: Clone> AtIndex for Vec<T> {
 		self.get(index).cloned()
 	}
 }
-impl<T: Clone> AtIndex for Instances<T> {
-	type Output = Instances<T>;
+impl<T: Clone> AtIndex for Table<T> {
+	type Output = Table<T>;
 
 	fn at_index(&self, index: usize) -> Option<Self::Output> {
 		let mut result_table = Self::default();
