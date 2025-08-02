@@ -25,6 +25,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_std::math::math_ext::QuadExt;
+use graphene_std::vector::VectorModification;
 use graphene_std::vector::misc::subpath_to_kurbo_bezpath;
 use graphene_std::*;
 use kurbo::{Line, Point};
@@ -145,9 +146,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				if first_layer.is_some() && has_single_selection && is_compatible {
 					if let Some(layer) = first_layer {
 						let node_type = "Path".to_string();
-						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &network_interface);
-						let is_modifiable = matches!(graph_layer.find_input("Path", 1), Some(TaggedValue::VectorModification(_)));
-						if !is_modifiable {
+						let path_node_with_no_diffs_exist = first_layer.is_some_and(|layer| {
+							let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &network_interface);
+							if let Some(TaggedValue::VectorModification(vector)) = graph_layer.find_input("Path", 1) {
+								let modification = *vector.clone();
+								modification == VectorModification::default()
+							} else {
+								false
+							}
+						});
+
+						if !path_node_with_no_diffs_exist {
 							responses.add(NodeGraphMessage::CreateNodeInLayerWithTransaction {
 								node_type: node_type.clone(),
 								layer: LayerNodeIdentifier::new_unchecked(layer.to_node()),

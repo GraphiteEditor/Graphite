@@ -23,7 +23,7 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
 use graphene_std::transform::ReferencePoint;
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, VectorData};
+use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, VectorData, VectorModification};
 use graphene_std::vector::{ManipulatorPointId, PointId, VectorModificationType};
 use std::vec;
 
@@ -2423,12 +2423,17 @@ impl Fsm for PathToolFsmState {
 
 					let is_compatible = compatible_type.as_deref() == Some("type:Instances<VectorData>");
 
-					let is_modifiable = first_layer.is_some_and(|layer| {
+					let path_node_with_no_diffs_exist = first_layer.is_some_and(|layer| {
 						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
-						matches!(graph_layer.find_input("Path", 1), Some(TaggedValue::VectorModification(_)))
+						if let Some(TaggedValue::VectorModification(vector)) = graph_layer.find_input("Path", 1) {
+							let modification = *vector.clone();
+							modification == VectorModification::default()
+						} else {
+							false
+						}
 					});
 
-					first_layer.is_some() && has_single_selection && is_compatible && !is_modifiable
+					first_layer.is_some() && has_single_selection && is_compatible && !path_node_with_no_diffs_exist
 				};
 				tool_data.update_selection_status(shape_editor, document);
 				self
