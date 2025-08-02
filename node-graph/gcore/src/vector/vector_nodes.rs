@@ -17,7 +17,6 @@ use crate::vector::misc::{handles_to_segment, segment_to_handles};
 use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
-
 use bezier_rs::ManipulatorGroup;
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
@@ -667,6 +666,7 @@ async fn auto_tangents(
 	source: VectorDataTable,
 	/// The amount of spread for the auto-tangents, from 0 (sharp corner) to 1 (full spread).
 	#[default(0.5)]
+	// TODO: Make this a soft range to allow any value to be typed in outside the slider range of 0 to 1
 	#[range((0., 1.))]
 	spread: f64,
 	/// If active, existing non-zero handles won't be affected.
@@ -2116,13 +2116,9 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl N
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::{
-		Node,
-		vector::{
-			algorithms::bezpath_algorithms::{TValue, trim_pathseg},
-			misc::pathseg_abs_diff_eq,
-		},
-	};
+	use crate::Node;
+	use crate::vector::algorithms::bezpath_algorithms::{TValue, trim_pathseg};
+	use crate::vector::misc::pathseg_abs_diff_eq;
 	use kurbo::{CubicBez, Ellipse, Point, Rect};
 	use std::pin::Pin;
 
@@ -2327,7 +2323,7 @@ mod test {
 		let morphed = morphed.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(
 			&morphed.point_domain.positions()[..4],
-			vec![DVec2::new(-50.0, -50.0), DVec2::new(50.0, -50.0), DVec2::new(50.0, 50.0), DVec2::new(-50.0, 50.0)]
+			vec![DVec2::new(-50., -50.), DVec2::new(50., -50.), DVec2::new(50., 50.), DVec2::new(-50., 50.)]
 		);
 	}
 

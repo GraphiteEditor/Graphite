@@ -195,7 +195,7 @@ impl VectorData {
 		Self::from_subpaths([subpath], false)
 	}
 
-	/// Construct some new vector data from a single bezpath with an identity transform and black fill.
+	/// Construct some new vector data from a single [`BezPath`] with an identity transform and black fill.
 	pub fn from_bezpath(bezpath: BezPath) -> Self {
 		let mut vector_data = Self::default();
 		vector_data.append_bezpath(bezpath);

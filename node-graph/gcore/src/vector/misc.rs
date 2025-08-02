@@ -1,11 +1,10 @@
-use std::ops::Sub;
-
+use super::PointId;
+use super::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
 use bezier_rs::{BezierHandles, ManipulatorGroup, Subpath};
 use dyn_any::DynAny;
 use glam::DVec2;
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
-
-use super::{PointId, algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE};
+use std::ops::Sub;
 
 /// Represents different ways of calculating the centroid.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
@@ -200,9 +199,9 @@ pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup
 	(manipulator_groups, is_closed)
 }
 
-/// Returns true if the Bezier curve is equivalent to a line.
+/// Returns true if the [`PathSeg`] is equivalent to a line.
 ///
-/// **NOTE**: This is different from simply checking if the segment is [`PathSeg::Line`] or [`PathSeg::Quad`] or [`PathSeg::Cubic`]. Bezier curve can also be a line if the control points are colinear to the start and end points. Therefore if the handles exceed the start and end point, it will still be considered as a line.
+/// This is different from simply checking if the segment is [`PathSeg::Line`] or [`PathSeg::Quad`] or [`PathSeg::Cubic`]. Bezier curve can also be a line if the control points are colinear to the start and end points. Therefore if the handles exceed the start and end point, it will still be considered as a line.
 pub fn is_linear(segment: PathSeg) -> bool {
 	let is_colinear = |a: Point, b: Point, c: Point| -> bool { ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs() < MAX_ABSOLUTE_DIFFERENCE };
 
@@ -222,7 +221,7 @@ pub fn get_segment_points(segment: PathSeg) -> Vec<Point> {
 	}
 }
 
-/// Returns true if the corresponding points of the two [PathSeg]'s are within the provided absolute value difference from each other.
+/// Returns true if the corresponding points of the two [`PathSeg`]s are within the provided absolute value difference from each other.
 pub fn pathseg_abs_diff_eq(seg1: PathSeg, seg2: PathSeg, max_abs_diff: f64) -> bool {
 	let seg1 = if is_linear(seg1) { PathSeg::Line(Line::new(seg1.start(), seg1.end())) } else { seg1 };
 	let seg2 = if is_linear(seg2) { PathSeg::Line(Line::new(seg2.start(), seg2.end())) } else { seg2 };
