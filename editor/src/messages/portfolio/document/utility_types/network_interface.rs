@@ -3445,16 +3445,13 @@ impl NodeNetworkInterface {
 	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<VectorData> {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
 
-		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name("Path") {
+		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer("Path") {
 			if let Some(vector_data) = self.document_metadata.vector_modify.get(&path_node) {
 				let mut modified = vector_data.clone();
 
-				let my_input = graph_layer
-					.upstream_visible_node_id_from_name_in_layer("Path")
-					.and_then(|id| self.document_network().nodes.get(&id))
-					.and_then(|node: &DocumentNode| node.inputs.get(1))
-					.and_then(|input| input.as_value());
-				if let Some(TaggedValue::VectorModification(modification)) = my_input {
+				let path_node = self.document_network().nodes.get(&path_node);
+				let modification_input = path_node.and_then(|node: &DocumentNode| node.inputs.get(1)).and_then(|input| input.as_value());
+				if let Some(TaggedValue::VectorModification(modification)) = modification_input {
 					modification.apply(&mut modified);
 				}
 				return Some(modified);
