@@ -20,12 +20,12 @@ use crate::messages::portfolio::document_migration::*;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use bezier_rs::BezierHandles;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
-use graph_craft::document::value::TaggedValue;
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::text::Font;
@@ -84,7 +84,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.menu_bar_message_handler.has_selected_nodes = false;
 				self.menu_bar_message_handler.has_selected_layers = false;
 				self.menu_bar_message_handler.has_selection_history = (false, false);
-				self.menu_bar_message_handler.single_path_node_compatible_layer_selected = false;
+				self.menu_bar_message_handler.make_path_editable_is_allowed = false;
 				self.menu_bar_message_handler.spreadsheet_view_open = self.spreadsheet.spreadsheet_view_open;
 				self.menu_bar_message_handler.message_logging_verbosity = message_logging_verbosity;
 				self.menu_bar_message_handler.reset_node_definitions_on_open = reset_node_definitions_on_open;
@@ -102,30 +102,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						let metadata = &document.network_interface.document_network_metadata().persistent_metadata;
 						(!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty())
 					};
-					self.menu_bar_message_handler.single_path_node_compatible_layer_selected = {
-						let selected_nodes = document.network_interface.selected_nodes();
-						let mut selected_layers = selected_nodes.selected_layers(document.metadata());
-						let first_layer = selected_layers.next();
-						let second_layer = selected_layers.next();
-						let has_single_selection = first_layer.is_some() && second_layer.is_none();
-
-						let compatible_type = first_layer.and_then(|layer| {
-							let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
-							graph_layer.horizontal_layer_flow().nth(1).map(|node_id| {
-								let (output_type, _) = document.network_interface.output_type(&node_id, 0, &[]);
-								format!("type:{}", output_type.nested_type())
-							})
-						});
-
-						let is_compatible = compatible_type.as_deref() == Some("type:Instances<VectorData>");
-
-						let is_modifiable = first_layer.is_some_and(|layer| {
-							let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
-							matches!(graph_layer.find_input("Path", 1), Some(TaggedValue::VectorModification(_)))
-						});
-
-						first_layer.is_some() && has_single_selection && is_compatible && !is_modifiable
-					}
+					self.menu_bar_message_handler.make_path_editable_is_allowed = make_path_editable_is_allowed(&document.network_interface, document.metadata()).is_some();
 				}
 
 				self.menu_bar_message_handler.process_message(message, responses, ());
