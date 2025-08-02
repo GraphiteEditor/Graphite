@@ -5,7 +5,7 @@ use graphene_core::blending::BlendMode;
 use graphene_core::bounds::BoundingBox;
 use graphene_core::color::{Alpha, Color, Pixel, Sample};
 use graphene_core::generic::FnNode;
-use graphene_core::instances::Instance;
+use graphene_core::table::Instance;
 use graphene_core::math::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::BitmapMut;
 use graphene_core::raster::image::Image;

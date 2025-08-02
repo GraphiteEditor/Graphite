@@ -5,7 +5,7 @@ use super::misc::{CentroidType, bezpath_from_manipulator_groups, bezpath_to_mani
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataExt, VectorDataTable};
 use crate::bounds::BoundingBox;
-use crate::instances::{Instance, InstanceMut, Table};
+use crate::table::{Instance, InstanceMut, Table};
 use crate::raster_types::{CPU, GPU, RasterDataTable};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
 use crate::transform::{Footprint, ReferencePoint, Transform};

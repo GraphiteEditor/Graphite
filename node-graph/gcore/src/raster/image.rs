@@ -1,7 +1,7 @@
 use super::Color;
 use crate::AlphaBlending;
 use crate::color::float_to_srgb_u8;
-use crate::instances::{Instance, Table};
+use crate::table::{Instance, Table};
 use crate::raster_types::Raster;
 use core::hash::{Hash, Hasher};
 use dyn_any::{DynAny, StaticType};

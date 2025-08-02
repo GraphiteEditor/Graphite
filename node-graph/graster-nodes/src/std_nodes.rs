@@ -6,7 +6,7 @@ use graphene_core::blending::AlphaBlending;
 use graphene_core::color::Color;
 use graphene_core::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
 use graphene_core::context::{Ctx, ExtractFootprint};
-use graphene_core::instances::Instance;
+use graphene_core::table::Instance;
 use graphene_core::math::bbox::Bbox;
 use graphene_core::raster::image::Image;
 use graphene_core::raster::{Bitmap, BitmapMut};

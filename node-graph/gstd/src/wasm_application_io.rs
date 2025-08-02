@@ -3,11 +3,11 @@ pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
 use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
 #[cfg(target_family = "wasm")]
-use graphene_core::instances::Table;
-#[cfg(target_family = "wasm")]
 use graphene_core::math::bbox::Bbox;
 use graphene_core::raster::image::Image;
 use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
+#[cfg(target_family = "wasm")]
+use graphene_core::table::Table;
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorDataTable;
 use graphene_core::{Color, Context, Ctx, ExtractFootprint, GraphicGroupTable, OwnedContextImpl, WasmNotSend};
@@ -232,7 +232,7 @@ async fn rasterize<T: WasmNotSend + 'n>(
 where
 	Table<T>: GraphicElementRendered,
 {
-	use graphene_core::instances::Instance;
+	use graphene_core::table::Instance;
 
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");

@@ -1,6 +1,6 @@
 use crate::blending::AlphaBlending;
 use crate::bounds::BoundingBox;
-use crate::instances::{Instance, Table};
+use crate::table::{Instance, Table};
 use crate::math::quad::Quad;
 use crate::raster::image::Image;
 use crate::raster_types::{CPU, GPU, Raster, RasterDataTable};

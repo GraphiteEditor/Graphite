@@ -1,4 +1,4 @@
-use crate::instances::Table;
+use crate::table::Table;
 use crate::raster_types::{CPU, GPU, RasterDataTable};
 use crate::transform::{ApplyTransform, Footprint, Transform};
 use crate::vector::VectorDataTable;

@@ -1,4 +1,4 @@
-use crate::instances::{InstanceRef, Table};
+use crate::table::{InstanceRef, Table};
 use crate::raster_types::{CPU, RasterDataTable};
 use crate::vector::VectorDataTable;
 use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, OwnedContextImpl};

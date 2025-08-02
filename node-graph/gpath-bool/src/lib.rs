@@ -1,7 +1,7 @@
 use bezier_rs::{ManipulatorGroup, Subpath};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
-use graphene_core::instances::{Instance, InstanceRef};
+use graphene_core::table::{Instance, InstanceRef};
 use graphene_core::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use graphene_core::vector::style::Fill;
 use graphene_core::vector::{PointId, VectorData, VectorDataTable};

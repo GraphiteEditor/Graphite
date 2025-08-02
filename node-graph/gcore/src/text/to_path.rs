@@ -1,5 +1,5 @@
 use super::TextAlign;
-use crate::instances::Instance;
+use crate::table::Instance;
 use crate::vector::{PointId, VectorData, VectorDataTable};
 use bezier_rs::{ManipulatorGroup, Subpath};
 use core::cell::RefCell;

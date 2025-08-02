@@ -1,4 +1,4 @@
-use crate::instances::Table;
+use crate::table::Table;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::vector::VectorData;
 use crate::{Artboard, Color, GraphicElement};

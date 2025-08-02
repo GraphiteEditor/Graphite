@@ -1,6 +1,6 @@
 use super::*;
 use crate::Ctx;
-use crate::instances::Instance;
+use crate::table::Instance;
 use crate::uuid::{NodeId, generate_uuid};
 use bezier_rs::BezierHandles;
 use dyn_any::DynAny;

@@ -1,7 +1,7 @@
 use crate::brush_stroke::BrushStroke;
 use crate::brush_stroke::BrushStyle;
 use dyn_any::DynAny;
-use graphene_core::instances::Instance;
+use graphene_core::table::Instance;
 use graphene_core::raster_types::CPU;
 use graphene_core::raster_types::Raster;
 use std::collections::HashMap;

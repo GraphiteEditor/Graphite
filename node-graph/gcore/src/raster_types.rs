@@ -1,6 +1,6 @@
 use crate::Color;
 use crate::bounds::BoundingBox;
-use crate::instances::Table;
+use crate::table::Table;
 use crate::math::quad::Quad;
 use crate::raster::Image;
 use core::ops::Deref;

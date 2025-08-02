@@ -11,7 +11,7 @@ pub mod extract_xy;
 pub mod generic;
 pub mod gradient;
 pub mod graphic_element;
-pub mod instances;
+pub mod table;
 pub mod logic;
 pub mod math;
 pub mod memo;

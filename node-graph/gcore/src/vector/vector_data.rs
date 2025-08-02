@@ -5,7 +5,7 @@ mod modification;
 use super::misc::{dvec2_to_point, point_to_dvec2};
 use super::style::{PathStyle, Stroke};
 use crate::bounds::BoundingBox;
-use crate::instances::Table;
+use crate::table::Table;
 use crate::math::quad::Quad;
 use crate::transform::Transform;
 use crate::vector::click_target::{ClickTargetType, FreePoint};
