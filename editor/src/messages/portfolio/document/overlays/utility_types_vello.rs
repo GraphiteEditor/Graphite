@@ -249,6 +249,10 @@ impl OverlayContext {
 		self.internal().hover_manipulator_handle(position, selected);
 	}
 
+	pub fn hover_manipulator_anchor(&mut self, position: DVec2, selected: bool) {
+		self.internal().hover_manipulator_anchor(position, selected);
+	}
+
 	pub fn manipulator_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
 		self.internal().manipulator_handle(position, selected, color);
 	}
