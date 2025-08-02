@@ -56,20 +56,20 @@ pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::ne
 
 pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 pub type DynFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n + Send>>;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 pub type DynFuture<'n, T> = Pin<Box<dyn std::future::Future<Output = T> + 'n>>;
 pub type LocalFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n>>;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n + Send>;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
 pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
 // TODO: is this safe? This is assumed to be send+sync.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n + Send + Sync;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
 pub type TypeErasedPinnedRef<'n> = Pin<&'n TypeErasedNode<'n>>;
 pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;

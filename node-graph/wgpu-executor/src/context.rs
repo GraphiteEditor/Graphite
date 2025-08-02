@@ -33,9 +33,9 @@ impl Context {
 			.request_device(&wgpu::DeviceDescriptor {
 				label: None,
 				// #[cfg(not(feature = "passthrough"))]
-				#[cfg(target_arch = "wasm32")]
+				#[cfg(target_family = "wasm")]
 				required_features: wgpu::Features::empty(),
-				#[cfg(not(target_arch = "wasm32"))]
+				#[cfg(not(target_family = "wasm"))]
 				required_features: wgpu::Features::PUSH_CONSTANTS,
 				// Currently disabled because not all backend support passthrough.
 				// TODO: reenable only when vulkan adapter is available

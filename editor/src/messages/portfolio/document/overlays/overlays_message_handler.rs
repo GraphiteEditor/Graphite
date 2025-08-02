@@ -11,9 +11,9 @@ pub struct OverlaysMessageContext<'a> {
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct OverlaysMessageHandler {
 	pub overlay_providers: HashSet<OverlayProvider>,
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(target_family = "wasm")]
 	canvas: Option<web_sys::HtmlCanvasElement>,
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(target_family = "wasm")]
 	context: Option<web_sys::CanvasRenderingContext2d>,
 }
 
@@ -24,7 +24,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 		let device_pixel_ratio = context.device_pixel_ratio;
 
 		match message {
-			#[cfg(target_arch = "wasm32")]
+			#[cfg(target_family = "wasm")]
 			OverlaysMessage::Draw => {
 				use super::utility_functions::overlay_canvas_element;
 				use super::utility_types::OverlayContext;
@@ -70,7 +70,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 			}
 			#[cfg(test)]
 			OverlaysMessage::Draw => {}
-			#[cfg(all(not(target_arch = "wasm32"), not(test)))]
+			#[cfg(all(not(target_family = "wasm"), not(test)))]
 			OverlaysMessage::Draw => {
 				use super::utility_types::OverlayContext;
 				let size = ipp.viewport_bounds.size();
