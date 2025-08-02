@@ -5,8 +5,6 @@ use graphene_std::Color;
 use graphene_std::raster::curve::Curve;
 use graphene_std::transform::ReferencePoint;
 use graphite_proc_macros::WidgetBuilder;
-use once_cell::sync::OnceCell;
-use std::sync::Arc;
 
 #[derive(Clone, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
@@ -20,7 +18,6 @@ pub struct CheckboxInput {
 
 	pub tooltip: String,
 
-	#[serde(rename = "forLabel", skip_serializing_if = "checkbox_id_is_empty")]
 	pub for_label: CheckboxId,
 
 	#[serde(skip)]
@@ -51,12 +48,12 @@ impl Default for CheckboxInput {
 	}
 }
 
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
-pub struct CheckboxId(Arc<OnceCell<u64>>);
+#[derive(Clone, Default, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CheckboxId(u64);
 
 impl CheckboxId {
-	pub fn fill(&mut self) {
-		let _ = self.0.set(graphene_std::uuid::generate_uuid());
+	pub fn new(&mut self) -> Self {
+		Self(graphene_std::uuid::generate_uuid())
 	}
 }
 impl specta::Type for CheckboxId {
@@ -64,31 +61,6 @@ impl specta::Type for CheckboxId {
 		// TODO: This might not be right, but it works for now. We just need the type `bigint | undefined`.
 		specta::datatype::DataType::Primitive(specta::datatype::PrimitiveType::u64)
 	}
-}
-impl serde::Serialize for CheckboxId {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: serde::Serializer,
-	{
-		self.0.get().copied().serialize(serializer)
-	}
-}
-impl<'a> serde::Deserialize<'a> for CheckboxId {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: serde::Deserializer<'a>,
-	{
-		let optional_id: Option<u64> = Option::deserialize(deserializer)?;
-		// TODO: This is potentially weird because after deserialization the two labels will be decoupled if the value not existent
-		let id = optional_id.unwrap_or(0);
-		let checkbox_id = CheckboxId(OnceCell::new().into());
-		checkbox_id.0.set(id).map_err(serde::de::Error::custom)?;
-		Ok(checkbox_id)
-	}
-}
-
-fn checkbox_id_is_empty(id: &CheckboxId) -> bool {
-	id.0.get().is_none()
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]

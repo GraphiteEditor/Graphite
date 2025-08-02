@@ -68,7 +68,6 @@ pub struct TextLabel {
 
 impl TextLabel {
 	pub fn for_checkbox(mut self, id: &mut CheckboxId) -> Self {
-		id.fill();
 		self.checkbox_id = id.clone();
 		self
 	}
