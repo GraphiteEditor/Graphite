@@ -17,7 +17,7 @@ use core::hash::Hash;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 pub use indexed::VectorDataIndex;
-use kurbo::{Affine, Rect, Shape};
+use kurbo::{Affine, BezPath, Rect, Shape};
 pub use modification::*;
 use std::collections::HashMap;
 
@@ -193,6 +193,13 @@ impl VectorData {
 	/// Construct some new vector data from a single subpath with an identity transform and black fill.
 	pub fn from_subpath(subpath: impl Borrow<bezier_rs::Subpath<PointId>>) -> Self {
 		Self::from_subpaths([subpath], false)
+	}
+
+	/// Construct some new vector data from a single [`BezPath`] with an identity transform and black fill.
+	pub fn from_bezpath(bezpath: BezPath) -> Self {
+		let mut vector_data = Self::default();
+		vector_data.append_bezpath(bezpath);
+		vector_data
 	}
 
 	/// Construct some new vector data from subpaths with an identity transform and black fill.
@@ -557,6 +564,30 @@ impl ManipulatorPointId {
 				let current = HandleId::end(segment);
 				let other = vector_data.segment_domain.all_connected(point).find(|&value| value != current);
 				other.map(|other| [current, other])
+			}
+		}
+	}
+
+	/// Finds all the connected handles of a point.
+	/// For an anchor it is all the connected handles.
+	/// For a handle it is all the handles connected to its corresponding anchor other than the current handle.
+	pub fn get_all_connected_handles(self, vector_data: &VectorData) -> Option<Vec<HandleId>> {
+		match self {
+			ManipulatorPointId::Anchor(point) => {
+				let connected = vector_data.all_connected(point).collect::<Vec<_>>();
+				Some(connected)
+			}
+			ManipulatorPointId::PrimaryHandle(segment) => {
+				let point = vector_data.segment_domain.segment_start_from_id(segment)?;
+				let current = HandleId::primary(segment);
+				let connected = vector_data.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>();
+				Some(connected)
+			}
+			ManipulatorPointId::EndHandle(segment) => {
+				let point = vector_data.segment_domain.segment_end_from_id(segment)?;
+				let current = HandleId::end(segment);
+				let connected = vector_data.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>();
+				Some(connected)
 			}
 		}
 	}

@@ -1,8 +1,9 @@
-use dyn_any::DynAny;
-use std::hash::Hash;
+use core::fmt::Display;
+use core::hash::{Hash, Hasher};
 
-#[derive(Copy, Clone, Debug, PartialEq, DynAny, specta::Type, serde::Serialize, serde::Deserialize)]
-#[serde(default)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", serde(default))]
 pub struct AlphaBlending {
 	pub blend_mode: BlendMode,
 	pub opacity: f32,
@@ -15,14 +16,14 @@ impl Default for AlphaBlending {
 	}
 }
 impl Hash for AlphaBlending {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.opacity.to_bits().hash(state);
 		self.fill.to_bits().hash(state);
 		self.blend_mode.hash(state);
 		self.clip.hash(state);
 	}
 }
-impl std::fmt::Display for AlphaBlending {
+impl Display for AlphaBlending {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let round = |x: f32| (x * 1e3).round() / 1e3;
 		write!(
@@ -62,9 +63,9 @@ impl AlphaBlending {
 	}
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, specta::Type)]
 #[repr(i32)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub enum BlendMode {
 	// Basic group
 	#[default]
@@ -189,18 +190,19 @@ impl BlendMode {
 	}
 
 	/// Renders the blend mode CSS style declaration.
+	#[cfg(feature = "std")]
 	pub fn render(&self) -> String {
 		format!(
 			r#" mix-blend-mode: {};"#,
 			self.to_svg_style_name().unwrap_or_else(|| {
-				warn!("Unsupported blend mode {self:?}");
+				log::warn!("Unsupported blend mode {self:?}");
 				"normal"
 			})
 		)
 	}
 }
 
-impl std::fmt::Display for BlendMode {
+impl Display for BlendMode {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			// Normal group

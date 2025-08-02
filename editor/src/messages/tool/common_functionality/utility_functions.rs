@@ -1,18 +1,21 @@
 use super::snapping::{SnapCandidatePoint, SnapData, SnapManager};
 use super::transformation_cage::{BoundingBoxManager, SizeSnapData};
 use crate::consts::ROTATE_INCREMENT;
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::get_text;
+use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_text};
 use crate::messages::tool::common_functionality::transformation_cage::SelectedEdges;
 use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
 use crate::messages::tool::utility_types::ToolType;
 use bezier_rs::{Bezier, BezierHandles};
 use glam::{DAffine2, DVec2};
+use graph_craft::concrete;
+use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
 use graphene_std::text::{FontCache, load_font};
-use graphene_std::vector::{HandleExt, HandleId, ManipulatorPointId, PointId, SegmentId, VectorData, VectorModificationType};
+use graphene_std::vector::{HandleExt, HandleId, ManipulatorPointId, PointId, SegmentId, VectorData, VectorDataTable, VectorModification, VectorModificationType};
 use kurbo::{CubicBez, Line, ParamCurveExtrema, PathSeg, Point, QuadBez};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
@@ -175,7 +178,7 @@ pub fn is_visible_point(
 	manipulator_point_id: ManipulatorPointId,
 	vector_data: &VectorData,
 	path_overlay_mode: PathOverlayMode,
-	frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+	frontier_handles_info: &Option<HashMap<SegmentId, Vec<PointId>>>,
 	selected_segments: Vec<SegmentId>,
 	selected_points: &HashSet<ManipulatorPointId>,
 ) -> bool {
@@ -201,7 +204,7 @@ pub fn is_visible_point(
 						warn!("No anchor for selected handle");
 						return false;
 					};
-					let Some(frontier_handles) = &frontier_handles_info else {
+					let Some(frontier_handles) = frontier_handles_info else {
 						warn!("No frontier handles info provided");
 						return false;
 					};
@@ -585,4 +588,37 @@ pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec
 	let len2 = b.exp().max(min_len2);
 
 	(d1 * len1, d2 * len2)
+}
+
+pub fn make_path_editable_is_allowed(network_interface: &NodeNetworkInterface, metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
+	// Must have exactly one layer selected
+	let selected_nodes = network_interface.selected_nodes();
+	let mut selected_layers = selected_nodes.selected_layers(metadata);
+	let first_layer = selected_layers.next()?;
+	if selected_layers.next().is_some() {
+		return None;
+	}
+
+	// Must be a layer of type VectorDataTable
+	let compatible_type = NodeGraphLayer::new(first_layer, network_interface)
+		.horizontal_layer_flow()
+		.nth(1)
+		.map(|node_id| {
+			let (output_type, _) = network_interface.output_type(&node_id, 0, &[]);
+			output_type.nested_type() == concrete!(VectorDataTable).nested_type()
+		})
+		.unwrap_or_default();
+	if !compatible_type {
+		return None;
+	}
+
+	// Must not already have an existing Path node, in the right-most part of the layer chain, which has an empty set of modifications
+	// (otherwise users could repeatedly keep running this command and stacking up empty Path nodes)
+	if let Some(TaggedValue::VectorModification(modifications)) = NodeGraphLayer::new(first_layer, network_interface).find_input("Path", 1) {
+		if modifications.as_ref() == &VectorModification::default() {
+			return None;
+		}
+	}
+
+	Some(first_layer)
 }

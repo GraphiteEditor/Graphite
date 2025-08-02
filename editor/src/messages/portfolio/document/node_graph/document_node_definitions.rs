@@ -630,8 +630,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::VectorData(VectorDataTable::default()), true),
 						NodeInput::value(
 							TaggedValue::Footprint(Footprint {
-								transform: DAffine2::from_scale_angle_translation(DVec2::new(100., 100.), 0., DVec2::new(0., 0.)),
-								resolution: UVec2::new(100, 100),
+								transform: DAffine2::from_scale_angle_translation(DVec2::new(1000., 1000.), 0., DVec2::new(0., 0.)),
+								resolution: UVec2::new(1000, 1000),
 								..Default::default()
 							}),
 							false,
@@ -851,7 +851,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: None,
 		},
 		DocumentNodeDefinition {
-			identifier: "Split Coordinate",
+			identifier: "Split Vec2",
 			category: "Math: Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
@@ -882,7 +882,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Coordinate", "TODO").into()],
+					input_metadata: vec![("Vec2", "TODO").into()],
 					output_names: vec!["X".to_string(), "Y".to_string()],
 					has_primary_output: false,
 					network_metadata: Some(NodeNetworkMetadata {
@@ -917,7 +917,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed(
-				"Decomposes the X and Y components of a 2D coordinate.\n\nThe inverse of this node is \"Coordinate Value\", which can have either or both its X and Y exposed as graph inputs.",
+				"Decomposes the X and Y components of a vec2.\n\nThe inverse of this node is \"Vec2 Value\", which can have either or both its X and Y parameters exposed as graph inputs.",
 			),
 			properties: None,
 		},
@@ -1304,6 +1304,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
 						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false),
+						NodeInput::value(TaggedValue::TextAlign(text::TextAlign::default()), false),
 						NodeInput::value(TaggedValue::Bool(false), false),
 					],
 					..Default::default()
@@ -1337,7 +1338,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
 								unit: Some(" px".to_string()),
-								min: Some(0.),
 								step: Some(0.1),
 								..Default::default()
 							}),
@@ -1372,6 +1372,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
+						InputMetadata::with_name_description_override("Align", "TODO", WidgetOverride::Custom("text_align".to_string())),
 						("Per-Glyph Instances", "Splits each text glyph into its own instance, i.e. row in the table of vector data.").into(),
 					],
 					output_names: vec!["Vector".to_string()],
@@ -2041,7 +2042,7 @@ fn static_input_properties() -> InputProperties {
 				.and_then(|value| value.as_bool())
 				.unwrap_or_default();
 
-			Ok(vec![node_properties::coordinate_widget(
+			Ok(vec![node_properties::vec2_widget(
 				ParameterWidgetsInfo::new(node_id, index, true, context),
 				&x,
 				&y,
@@ -2297,7 +2298,7 @@ fn static_input_properties() -> InputProperties {
 		"spline_input".to_string(),
 		Box::new(|node_id, index, context| {
 			Ok(vec![LayoutGroup::Row {
-				widgets: node_properties::array_of_coordinates_widget(ParameterWidgetsInfo::new(node_id, index, true, context), TextInput::default().centered(true)),
+				widgets: node_properties::array_of_vec2_widget(ParameterWidgetsInfo::new(node_id, index, true, context), TextInput::default().centered(true)),
 			}])
 		}),
 	);
@@ -2402,6 +2403,13 @@ fn static_input_properties() -> InputProperties {
 				ParameterWidgetsInfo::new(node_id, index, true, context),
 				ColorInput::default().allow_none(false),
 			)])
+		}),
+	);
+	map.insert(
+		"text_align".to_string(),
+		Box::new(|node_id, index, context| {
+			let choices = enum_choice::<text::TextAlign>().for_socket(ParameterWidgetsInfo::new(node_id, index, true, context)).property_row();
+			Ok(vec![choices])
 		}),
 	);
 	map

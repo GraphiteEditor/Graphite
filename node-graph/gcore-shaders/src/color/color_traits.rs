@@ -1,11 +1,10 @@
-use bytemuck::{Pod, Zeroable};
-use glam::DVec2;
-use std::fmt::Debug;
-
-#[cfg(target_arch = "spirv")]
-use spirv_std::num_traits::float::Float;
-
 pub use crate::blending::*;
+use bytemuck::{Pod, Zeroable};
+use core::fmt::Debug;
+use glam::DVec2;
+use num_derive::*;
+#[cfg(target_arch = "spirv")]
+use num_traits::float::Float;
 
 pub trait Linear {
 	fn from_f32(x: f32) -> Self;
@@ -64,7 +63,6 @@ impl<T: Linear + Debug + Copy> Channel for T {
 
 impl<T: Linear + Debug + Copy> LinearChannel for T {}
 
-use num_derive::*;
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Num, NumCast, NumOps, One, Zero, ToPrimitive, FromPrimitive)]
 pub struct SRGBGammaFloat(f32);
 
@@ -96,14 +94,6 @@ impl<T: Rec709Primaries> RGBPrimaries for T {
 }
 
 pub trait SRGB: Rec709Primaries {}
-
-pub trait Serde: serde::Serialize + for<'a> serde::Deserialize<'a> {}
-#[cfg(not(feature = "serde"))]
-pub trait Serde {}
-
-impl<T: serde::Serialize + for<'a> serde::Deserialize<'a>> Serde for T {}
-#[cfg(not(feature = "serde"))]
-impl<T> Serde for T {}
 
 // TODO: Come up with a better name for this trait
 pub trait Pixel: Clone + Pod + Zeroable + Default {

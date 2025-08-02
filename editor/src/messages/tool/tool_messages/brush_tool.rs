@@ -28,7 +28,6 @@ pub struct BrushTool {
 }
 
 pub struct BrushOptions {
-	legacy_warning_was_shown: bool,
 	diameter: f64,
 	hardness: f64,
 	flow: f64,
@@ -41,7 +40,6 @@ pub struct BrushOptions {
 impl Default for BrushOptions {
 	fn default() -> Self {
 		Self {
-			legacy_warning_was_shown: false,
 			diameter: DEFAULT_BRUSH_SIZE,
 			hardness: 0.,
 			flow: 100.,
@@ -79,7 +77,6 @@ pub enum BrushToolMessageOptionsUpdate {
 	Hardness(f64),
 	Spacing(f64),
 	WorkingColors(Option<Color>, Option<Color>),
-	NoDisplayLegacyWarning,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -144,7 +141,11 @@ impl LayoutHolder for BrushTool {
 
 		let draw_mode_entries: Vec<_> = [DrawMode::Draw, DrawMode::Erase, DrawMode::Restore]
 			.into_iter()
-			.map(|draw_mode| RadioEntryData::new(format!("{draw_mode:?}")).on_update(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::DrawMode(draw_mode)).into()))
+			.map(|draw_mode| {
+				RadioEntryData::new(format!("{draw_mode:?}"))
+					.label(format!("{draw_mode:?}"))
+					.on_update(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::DrawMode(draw_mode)).into())
+			})
 			.collect();
 		widgets.push(RadioInput::new(draw_mode_entries).selected_index(Some(self.options.draw_mode as u32)).widget_holder());
 
@@ -220,7 +221,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Brus
 				self.options.color.primary_working_color = primary;
 				self.options.color.secondary_working_color = secondary;
 			}
-			BrushToolMessageOptionsUpdate::NoDisplayLegacyWarning => self.options.legacy_warning_was_shown = true,
 		}
 
 		self.send_layout(responses, LayoutTarget::ToolOptions);
@@ -318,20 +318,6 @@ impl Fsm for BrushToolFsmState {
 			document, global_tool_data, input, ..
 		} = tool_action_data;
 
-		if !tool_options.legacy_warning_was_shown {
-			responses.add(DialogMessage::DisplayDialogError {
-				title: "Unsupported tool".into(),
-				description: "
-					The current Brush tool is a legacy feature with\n\
-					significant quality and performance limitations.\n\
-					It will be replaced soon by a new implementation.\n\
-					"
-				.trim()
-				.into(),
-			});
-			responses.add(BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::NoDisplayLegacyWarning));
-		}
-
 		let ToolMessage::Brush(event) = event else { return self };
 		match (self, event) {
 			(BrushToolFsmState::Ready, BrushToolMessage::DragStart) => {
@@ -379,8 +365,9 @@ impl Fsm for BrushToolFsmState {
 				else {
 					new_brush_layer(document, responses);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
-					responses.add(Message::StartBuffer);
-					responses.add(BrushToolMessage::DragStart);
+					responses.add(DeferMessage::AfterGraphRun {
+						messages: vec![BrushToolMessage::DragStart.into()],
+					});
 					BrushToolFsmState::Ready
 				}
 			}

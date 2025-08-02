@@ -10,6 +10,8 @@ use crate::messages::tool::common_functionality::gizmos::gizmo_manager::GizmoMan
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::resize::Resize;
+use crate::messages::tool::common_functionality::shapes::arc_shape::Arc;
+use crate::messages::tool::common_functionality::shapes::circle_shape::Circle;
 use crate::messages::tool::common_functionality::shapes::line_shape::{LineToolData, clicked_on_line_endpoints};
 use crate::messages::tool::common_functionality::shapes::polygon_shape::Polygon;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeToolModifierKey, ShapeType, anchor_overlays, transform_cage_overlays};
@@ -109,8 +111,29 @@ fn create_shape_option_widget(shape_type: ShapeType) -> WidgetHolder {
 		MenuListEntry::new("Star")
 			.label("Star")
 			.on_commit(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ShapeType(ShapeType::Star)).into()),
+		MenuListEntry::new("Circle")
+			.label("Circle")
+			.on_commit(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ShapeType(ShapeType::Circle)).into()),
+		MenuListEntry::new("Arc")
+			.label("Arc")
+			.on_commit(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ShapeType(ShapeType::Arc)).into()),
 	]];
 	DropdownInput::new(entries).selected_index(Some(shape_type as u32)).widget_holder()
+}
+
+fn create_arc_type_widget(arc_type: ArcType) -> WidgetHolder {
+	let entries = vec![
+		RadioEntryData::new("Open")
+			.label("Open")
+			.on_update(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ArcType(ArcType::Open)).into()),
+		RadioEntryData::new("Closed")
+			.label("Closed")
+			.on_update(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ArcType(ArcType::Closed)).into()),
+		RadioEntryData::new("Pie")
+			.label("Pie")
+			.on_update(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ArcType(ArcType::PieSlice)).into()),
+	];
+	RadioInput::new(entries).selected_index(Some(arc_type as u32)).widget_holder()
 }
 
 fn create_weight_widget(line_weight: f64) -> WidgetHolder {
@@ -133,6 +156,11 @@ impl LayoutHolder for ShapeTool {
 
 			if self.options.shape_type == ShapeType::Polygon || self.options.shape_type == ShapeType::Star {
 				widgets.push(create_sides_widget(self.options.vertices));
+				widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+			}
+
+			if self.options.shape_type == ShapeType::Arc {
+				widgets.push(create_arc_type_widget(self.options.arc_type));
 				widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 			}
 		}
@@ -205,7 +233,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 			}
 		}
 
-		self.fsm_state.update_hints(responses);
+		update_dynamic_hints(&self.fsm_state, responses, &self.tool_data);
 		self.send_layout(responses, LayoutTarget::ToolOptions);
 	}
 
@@ -311,7 +339,7 @@ pub struct ShapeToolData {
 	current_shape: ShapeType,
 
 	// Gizmos
-	gizmo_manger: GizmoManager,
+	gizmo_manager: GizmoManager,
 }
 
 impl ShapeToolData {
@@ -326,6 +354,23 @@ impl ShapeToolData {
 				snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
 			}
 		}
+	}
+
+	fn transform_cage_mouse_icon(&mut self, input: &InputPreprocessorMessageHandler) -> MouseCursorIcon {
+		let dragging_bounds = self
+			.bounding_box_manager
+			.as_mut()
+			.and_then(|bounding_box| bounding_box.check_selected_edges(input.mouse.position))
+			.is_some();
+
+		self.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Crosshair, |bounds| {
+			let cursor_icon = bounds.get_cursor(input, true, dragging_bounds, Some(self.skew_edge));
+			if cursor_icon == MouseCursorIcon::Default { MouseCursorIcon::Crosshair } else { cursor_icon }
+		})
+	}
+
+	fn shape_tool_modifier_keys() -> [Key; 3] {
+		[Key::Alt, Key::Shift, Key::Control]
 	}
 }
 
@@ -364,30 +409,34 @@ impl Fsm for ShapeToolFsmState {
 					.indicator_pos()
 					.map(|pos| document.metadata().document_to_viewport.transform_point2(pos))
 					.unwrap_or(input.mouse.position);
-				let is_resizing_or_rotating = matches!(self, ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::SkewingBounds { .. } | ShapeToolFsmState::RotatingBounds);
 
 				if matches!(self, Self::Ready(_)) && !input.keyboard.key(Key::Control) {
-					tool_data.gizmo_manger.handle_actions(mouse_position, document, responses);
-					tool_data.gizmo_manger.overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
+					tool_data.gizmo_manager.handle_actions(mouse_position, document, responses);
+					tool_data.gizmo_manager.overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
 				}
 
 				if matches!(self, ShapeToolFsmState::ModifyingGizmo) && !input.keyboard.key(Key::Control) {
-					tool_data.gizmo_manger.dragging_overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
+					tool_data.gizmo_manager.dragging_overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
+					let cursor = tool_data.gizmo_manager.mouse_cursor_icon().unwrap_or(MouseCursorIcon::Crosshair);
+					tool_data.cursor = cursor;
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 				}
 
 				let modifying_transform_cage = matches!(self, ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::RotatingBounds | ShapeToolFsmState::SkewingBounds { .. });
-				let hovering_over_gizmo = tool_data.gizmo_manger.hovering_over_gizmo();
+				let hovering_over_gizmo = tool_data.gizmo_manager.hovering_over_gizmo();
 
-				if !is_resizing_or_rotating && !matches!(self, ShapeToolFsmState::ModifyingGizmo) && !modifying_transform_cage && !hovering_over_gizmo {
+				if !matches!(self, ShapeToolFsmState::ModifyingGizmo) && !modifying_transform_cage && !hovering_over_gizmo {
 					tool_data.data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				}
 
 				if modifying_transform_cage && !matches!(self, ShapeToolFsmState::ModifyingGizmo) {
 					transform_cage_overlays(document, tool_data, &mut overlay_context);
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor: tool_data.cursor });
 				}
 
 				if input.keyboard.key(Key::Control) && matches!(self, ShapeToolFsmState::Ready(_)) {
 					anchor_overlays(document, &mut overlay_context);
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 				} else if matches!(self, ShapeToolFsmState::Ready(_)) {
 					Line::overlays(document, tool_data, &mut overlay_context);
 
@@ -409,7 +458,7 @@ impl Fsm for ShapeToolFsmState {
 						let edges = bounds.check_selected_edges(input.mouse.position);
 						let is_skewing = matches!(self, ShapeToolFsmState::SkewingBounds { .. });
 						let is_near_square = edges.is_some_and(|hover_edge| bounds.over_extended_edge_midpoint(input.mouse.position, hover_edge));
-						if is_skewing || (dragging_bounds && is_near_square && !is_resizing_or_rotating && !hovering_over_gizmo) {
+						if is_skewing || (dragging_bounds && is_near_square && !hovering_over_gizmo) {
 							bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
 						}
 						if !is_skewing && dragging_bounds && !hovering_over_gizmo {
@@ -418,10 +467,18 @@ impl Fsm for ShapeToolFsmState {
 							}
 						}
 					}
+
+					let cursor = tool_data.gizmo_manager.mouse_cursor_icon().unwrap_or_else(|| tool_data.transform_cage_mouse_icon(input));
+
+					tool_data.cursor = cursor;
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 				}
 
 				if matches!(self, ShapeToolFsmState::Drawing(_) | ShapeToolFsmState::DraggingLineEndpoints) {
 					Line::overlays(document, tool_data, &mut overlay_context);
+					if tool_options.shape_type == ShapeType::Circle {
+						tool_data.gizmo_manager.overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
+					}
 				}
 
 				self
@@ -538,8 +595,16 @@ impl Fsm for ShapeToolFsmState {
 
 				tool_data.line_data.drag_current = mouse_pos;
 
-				if tool_data.gizmo_manger.handle_click() {
+				if tool_data.gizmo_manager.handle_click() && !input.keyboard.key(Key::Accel) {
 					tool_data.data.drag_start = document.metadata().document_to_viewport.inverse().transform_point2(mouse_pos);
+					responses.add(DocumentMessage::StartTransaction);
+
+					let cursor = tool_data.gizmo_manager.mouse_cursor_icon().unwrap_or(MouseCursorIcon::Crosshair);
+					tool_data.cursor = cursor;
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
+					// Send a PointerMove message to refresh the cursor icon
+					responses.add(ShapeToolMessage::PointerMove(ShapeToolData::shape_tool_modifier_keys()));
+
 					return ShapeToolFsmState::ModifyingGizmo;
 				}
 
@@ -560,17 +625,31 @@ impl Fsm for ShapeToolFsmState {
 				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, None);
 
 				if !input.keyboard.key(Key::Control) {
+					// Helper function to update cursor and send pointer move message
+					let update_cursor_and_pointer = |tool_data: &mut ShapeToolData, responses: &mut VecDeque<Message>| {
+						let cursor = tool_data.transform_cage_mouse_icon(input);
+						tool_data.cursor = cursor;
+						responses.add(FrontendMessage::UpdateMouseCursor { cursor });
+						responses.add(ShapeToolMessage::PointerMove(ShapeToolData::shape_tool_modifier_keys()));
+					};
+
 					match (resize, rotate, skew) {
 						(true, false, false) => {
 							tool_data.get_snap_candidates(document, input);
+							update_cursor_and_pointer(tool_data, responses);
+
 							return ShapeToolFsmState::ResizingBounds;
 						}
 						(false, true, false) => {
 							tool_data.data.drag_start = mouse_pos;
+							update_cursor_and_pointer(tool_data, responses);
+
 							return ShapeToolFsmState::RotatingBounds;
 						}
 						(false, false, true) => {
 							tool_data.get_snap_candidates(document, input);
+							update_cursor_and_pointer(tool_data, responses);
+
 							return ShapeToolFsmState::SkewingBounds { skew: Key::Control };
 						}
 						_ => {}
@@ -578,7 +657,7 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Ellipse | ShapeType::Rectangle => tool_data.data.start(document, input),
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Rectangle | ShapeType::Ellipse => tool_data.data.start(document, input),
 					ShapeType::Line => {
 						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 						let snapped = tool_data.data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
@@ -591,6 +670,8 @@ impl Fsm for ShapeToolFsmState {
 				let node = match tool_data.current_shape {
 					ShapeType::Polygon => Polygon::create_node(tool_options.vertices),
 					ShapeType::Star => Star::create_node(tool_options.vertices),
+					ShapeType::Circle => Circle::create_node(),
+					ShapeType::Arc => Arc::create_node(tool_options.arc_type),
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
 					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
@@ -599,28 +680,32 @@ impl Fsm for ShapeToolFsmState {
 				let nodes = vec![(NodeId(0), node)];
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
 
-				responses.add(Message::StartBuffer);
+				let defered_responses = &mut VecDeque::new();
 
 				match tool_data.current_shape {
-					ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Polygon | ShapeType::Star => {
-						responses.add(GraphOperationMessage::TransformSet {
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Rectangle | ShapeType::Ellipse => {
+						defered_responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
 
-						tool_options.fill.apply_fill(layer, responses);
+						tool_options.fill.apply_fill(layer, defered_responses);
 					}
 					ShapeType::Line => {
 						tool_data.line_data.weight = tool_options.line_weight;
 						tool_data.line_data.editing_layer = Some(layer);
 					}
 				}
-				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
+				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
 
-				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
+				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
 				tool_data.data.layer = Some(layer);
+
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: defered_responses.drain(..).collect(),
+				});
 
 				ShapeToolFsmState::Drawing(tool_data.current_shape)
 			}
@@ -630,11 +715,13 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
+					ShapeType::Polygon => Polygon::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Star => Star::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Circle => Circle::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Arc => Arc::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Rectangle => Rectangle::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Ellipse => Ellipse::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Line => Line::update_shape(document, input, layer, tool_data, modifier, responses),
-					ShapeType::Polygon => Polygon::update_shape(document, input, layer, tool_data, modifier, responses),
-					ShapeType::Star => Star::update_shape(document, input, layer, tool_data, modifier, responses),
 				}
 
 				// Auto-panning
@@ -656,8 +743,7 @@ impl Fsm for ShapeToolFsmState {
 				self
 			}
 			(ShapeToolFsmState::ModifyingGizmo, ShapeToolMessage::PointerMove(..)) => {
-				responses.add(DocumentMessage::StartTransaction);
-				tool_data.gizmo_manger.handle_update(tool_data.data.drag_start, document, input, responses);
+				tool_data.gizmo_manager.handle_update(tool_data.data.drag_start, document, input, responses);
 
 				responses.add(OverlaysMessage::Draw);
 
@@ -728,7 +814,7 @@ impl Fsm for ShapeToolFsmState {
 					if cursor == MouseCursorIcon::Default { MouseCursorIcon::Crosshair } else { cursor }
 				});
 
-				if tool_data.cursor != cursor && !input.keyboard.key(Key::Control) && !all_selected_layers_line {
+				if tool_data.cursor != cursor {
 					tool_data.cursor = cursor;
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 				}
@@ -767,7 +853,7 @@ impl Fsm for ShapeToolFsmState {
 				input.mouse.finish_transaction(tool_data.data.drag_start, responses);
 				tool_data.data.cleanup(responses);
 
-				tool_data.gizmo_manger.handle_cleanup();
+				tool_data.gizmo_manager.handle_cleanup();
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
@@ -792,12 +878,13 @@ impl Fsm for ShapeToolFsmState {
 				tool_data.data.cleanup(responses);
 				tool_data.line_data.dragging_endpoint = None;
 
-				tool_data.gizmo_manger.handle_cleanup();
+				tool_data.gizmo_manager.handle_cleanup();
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
 				}
 
+				tool_data.cursor = MouseCursorIcon::Crosshair;
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 
 				ShapeToolFsmState::Ready(tool_data.current_shape)
@@ -814,6 +901,7 @@ impl Fsm for ShapeToolFsmState {
 				tool_data.data.cleanup(responses);
 				tool_data.current_shape = shape;
 
+				responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ShapeType(shape)));
 				ShapeToolFsmState::Ready(shape)
 			}
 			(_, ShapeToolMessage::HideShapeTypeWidget(hide)) => {
@@ -825,85 +913,100 @@ impl Fsm for ShapeToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
-		let hint_data = match self {
-			ShapeToolFsmState::Ready(shape) => {
-				let hint_groups = match shape {
-					ShapeType::Polygon | ShapeType::Star => vec![
-						HintGroup(vec![
-							HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polygon"),
-							HintInfo::keys([Key::Shift], "Constrain Regular").prepend_plus(),
-							HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
-						]),
-						HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Decrease/Increase Sides")]),
-					],
-					ShapeType::Ellipse => vec![HintGroup(vec![
-						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Ellipse"),
-						HintInfo::keys([Key::Shift], "Constrain Circular").prepend_plus(),
-						HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
-					])],
-					ShapeType::Line => vec![HintGroup(vec![
-						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Line"),
-						HintInfo::keys([Key::Shift], "15° Increments").prepend_plus(),
-						HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
-						HintInfo::keys([Key::Control], "Lock Angle").prepend_plus(),
-					])],
-					ShapeType::Rectangle => vec![HintGroup(vec![
-						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Rectangle"),
-						HintInfo::keys([Key::Shift], "Constrain Square").prepend_plus(),
-						HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
-					])],
-				};
-				HintData(hint_groups)
-			}
-			ShapeToolFsmState::Drawing(shape) => {
-				let mut common_hint_group = vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])];
-				let tool_hint_group = match shape {
-					ShapeType::Polygon | ShapeType::Star => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
-					ShapeType::Rectangle => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
-					ShapeType::Ellipse => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Circular"), HintInfo::keys([Key::Alt], "From Center")]),
-					ShapeType::Line => HintGroup(vec![
-						HintInfo::keys([Key::Shift], "15° Increments"),
-						HintInfo::keys([Key::Alt], "From Center"),
-						HintInfo::keys([Key::Control], "Lock Angle"),
-					]),
-				};
-
-				common_hint_group.push(tool_hint_group);
-
-				if matches!(shape, ShapeType::Polygon | ShapeType::Star) {
-					common_hint_group.push(HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Decrease/Increase Sides")]));
-				}
-
-				HintData(common_hint_group)
-			}
-			ShapeToolFsmState::DraggingLineEndpoints => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-				HintGroup(vec![
-					HintInfo::keys([Key::Shift], "15° Increments"),
-					HintInfo::keys([Key::Alt], "From Center"),
-					HintInfo::keys([Key::Control], "Lock Angle"),
-				]),
-			]),
-			ShapeToolFsmState::ResizingBounds => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-				HintGroup(vec![HintInfo::keys([Key::Alt], "From Pivot"), HintInfo::keys([Key::Shift], "Preserve Aspect Ratio")]),
-			]),
-			ShapeToolFsmState::RotatingBounds => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-				HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
-			]),
-			ShapeToolFsmState::SkewingBounds { .. } => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-				HintGroup(vec![HintInfo::keys([Key::Control], "Unlock Slide")]),
-			]),
-			ShapeToolFsmState::ModifyingGizmo => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
-		};
-
-		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+	fn update_hints(&self, _responses: &mut VecDeque<Message>) {
+		// Moved logic to update_dynamic_hints
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 	}
+}
+
+fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Message>, tool_data: &ShapeToolData) {
+	let hint_data = match state {
+		ShapeToolFsmState::Ready(_) => {
+			let hint_groups = match tool_data.current_shape {
+				ShapeType::Polygon | ShapeType::Star => vec![
+					HintGroup(vec![
+						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polygon"),
+						HintInfo::keys([Key::Shift], "Constrain Regular").prepend_plus(),
+						HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+					]),
+					HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Decrease/Increase Sides")]),
+				],
+				ShapeType::Ellipse => vec![HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Ellipse"),
+					HintInfo::keys([Key::Shift], "Constrain Circular").prepend_plus(),
+					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+				])],
+				ShapeType::Line => vec![HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Line"),
+					HintInfo::keys([Key::Shift], "15° Increments").prepend_plus(),
+					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+					HintInfo::keys([Key::Control], "Lock Angle").prepend_plus(),
+				])],
+				ShapeType::Rectangle => vec![HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Rectangle"),
+					HintInfo::keys([Key::Shift], "Constrain Square").prepend_plus(),
+					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+				])],
+				ShapeType::Circle => vec![HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Circle"),
+					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+				])],
+				ShapeType::Arc => vec![HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Arc"),
+					HintInfo::keys([Key::Shift], "Constrain Arc").prepend_plus(),
+					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+				])],
+			};
+			HintData(hint_groups)
+		}
+		ShapeToolFsmState::Drawing(shape) => {
+			let mut common_hint_group = vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])];
+			let tool_hint_group = match shape {
+				ShapeType::Polygon | ShapeType::Star | ShapeType::Arc => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
+				ShapeType::Rectangle => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
+				ShapeType::Ellipse => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Circular"), HintInfo::keys([Key::Alt], "From Center")]),
+				ShapeType::Line => HintGroup(vec![
+					HintInfo::keys([Key::Shift], "15° Increments"),
+					HintInfo::keys([Key::Alt], "From Center"),
+					HintInfo::keys([Key::Control], "Lock Angle"),
+				]),
+				ShapeType::Circle => HintGroup(vec![HintInfo::keys([Key::Alt], "From Center")]),
+			};
+
+			if !tool_hint_group.0.is_empty() {
+				common_hint_group.push(tool_hint_group);
+			}
+
+			if matches!(shape, ShapeType::Polygon | ShapeType::Star) {
+				common_hint_group.push(HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Decrease/Increase Sides")]));
+			}
+
+			HintData(common_hint_group)
+		}
+		ShapeToolFsmState::DraggingLineEndpoints => HintData(vec![
+			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+			HintGroup(vec![
+				HintInfo::keys([Key::Shift], "15° Increments"),
+				HintInfo::keys([Key::Alt], "From Center"),
+				HintInfo::keys([Key::Control], "Lock Angle"),
+			]),
+		]),
+		ShapeToolFsmState::ResizingBounds => HintData(vec![
+			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+			HintGroup(vec![HintInfo::keys([Key::Alt], "From Pivot"), HintInfo::keys([Key::Shift], "Preserve Aspect Ratio")]),
+		]),
+		ShapeToolFsmState::RotatingBounds => HintData(vec![
+			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+			HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
+		]),
+		ShapeToolFsmState::SkewingBounds { .. } => HintData(vec![
+			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+			HintGroup(vec![HintInfo::keys([Key::Control], "Unlock Slide")]),
+		]),
+		ShapeToolFsmState::ModifyingGizmo => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
+	};
+	responses.add(FrontendMessage::UpdateInputHints { hint_data });
 }

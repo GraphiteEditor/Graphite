@@ -1,4 +1,4 @@
-use cef::sys::CEF_API_VERSION_LAST;
+use cef::sys::{CEF_API_VERSION_LAST, cef_resultcode_t};
 use cef::{App, BrowserSettings, Client, DictionaryValue, ImplBrowser, ImplBrowserHost, ImplCommandLine, RenderHandler, RequestContext, WindowInfo, browser_host_create_browser_sync, initialize};
 use cef::{Browser, CefString, Settings, api_hash, args::Args, execute_process};
 use thiserror::Error;
@@ -7,10 +7,11 @@ use winit::event::WindowEvent;
 use crate::cef::dirs::{cef_cache_dir, cef_data_dir};
 
 use super::input::InputState;
+use super::ipc::{MessageType, SendMessage};
 use super::scheme_handler::{FRONTEND_DOMAIN, GRAPHITE_SCHEME};
 use super::{CefEventHandler, input};
 
-use super::internal::{AppImpl, ClientImpl, NonBrowserAppImpl, RenderHandlerImpl};
+use super::internal::{BrowserProcessAppImpl, BrowserProcessClientImpl, RenderHandlerImpl, RenderProcessAppImpl};
 
 pub(crate) struct Setup {}
 pub(crate) struct Initialized {}
@@ -42,7 +43,7 @@ impl Context<Setup> {
 
 		if !is_browser_process {
 			let process_type = CefString::from(&cmd.switch_value(Some(&switch)));
-			let mut app = NonBrowserAppImpl::app();
+			let mut app = RenderProcessAppImpl::app();
 			let ret = execute_process(Some(args.as_main_args()), Some(&mut app), std::ptr::null_mut());
 			if ret >= 0 {
 				return Err(SetupError::SubprocessFailed(process_type.to_string()));
@@ -70,15 +71,19 @@ impl Context<Setup> {
 		};
 
 		// Attention! Wrapping this in an extra App is necessary, otherwise the program still compiles but segfaults
-		let mut cef_app = App::new(AppImpl::new(event_handler.clone()));
+		let mut cef_app = App::new(BrowserProcessAppImpl::new(event_handler.clone()));
 
 		let result = initialize(Some(self.args.as_main_args()), Some(&settings), Some(&mut cef_app), std::ptr::null_mut());
 		if result != 1 {
-			return Err(InitError::InitializationFailed);
+			let cef_exit_code = cef::get_exit_code() as u32;
+			if cef_exit_code == cef_resultcode_t::CEF_RESULT_CODE_NORMAL_EXIT_PROCESS_NOTIFIED as u32 {
+				return Err(InitError::AlreadyRunning);
+			}
+			return Err(InitError::InitializationFailed(cef_exit_code));
 		}
 
-		let render_handler = RenderHandlerImpl::new(event_handler.clone());
-		let mut client = Client::new(ClientImpl::new(RenderHandler::new(render_handler)));
+		let render_handler = RenderHandler::new(RenderHandlerImpl::new(event_handler.clone()));
+		let mut client = Client::new(BrowserProcessClientImpl::new(render_handler, event_handler.clone()));
 
 		let url = CefString::from(format!("{GRAPHITE_SCHEME}://{FRONTEND_DOMAIN}/").as_str());
 
@@ -125,6 +130,10 @@ impl Context<Initialized> {
 			browser.host().unwrap().was_resized();
 		}
 	}
+
+	pub(crate) fn send_web_message(&self, message: &[u8]) {
+		self.send_message(MessageType::SendToJS, message);
+	}
 }
 
 impl<S: ContextState> Drop for Context<S> {
@@ -146,5 +155,7 @@ pub(crate) enum SetupError {
 #[derive(Error, Debug)]
 pub(crate) enum InitError {
 	#[error("initialization failed")]
-	InitializationFailed,
+	InitializationFailed(u32),
+	#[error("Another instance is already running")]
+	AlreadyRunning,
 }

@@ -1,7 +1,10 @@
 use crate::CustomEvent;
-use crate::FrameBuffer;
 use crate::WindowSize;
 use crate::render::GraphicsState;
+use crate::render::WgpuContext;
+use graph_craft::wasm_application_io::WasmApplicationIo;
+use graphite_editor::application::Editor;
+use graphite_editor::messages::prelude::*;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
@@ -12,7 +15,6 @@ use winit::event::StartCause;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::event_loop::ControlFlow;
-use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 use winit::window::WindowId;
 
@@ -22,42 +24,71 @@ pub(crate) struct WinitApp {
 	pub(crate) cef_context: cef::Context<cef::Initialized>,
 	pub(crate) window: Option<Arc<Window>>,
 	cef_schedule: Option<Instant>,
-	ui_frame_buffer: Option<FrameBuffer>,
 	window_size_sender: Sender<WindowSize>,
-	_viewport_frame_buffer: Option<FrameBuffer>,
 	graphics_state: Option<GraphicsState>,
-	event_loop_proxy: EventLoopProxy<CustomEvent>,
+	wgpu_context: WgpuContext,
+	pub(crate) editor: Editor,
 }
 
 impl WinitApp {
-	pub(crate) fn new(cef_context: cef::Context<cef::Initialized>, window_size_sender: Sender<WindowSize>, event_loop_proxy: EventLoopProxy<CustomEvent>) -> Self {
+	pub(crate) fn new(cef_context: cef::Context<cef::Initialized>, window_size_sender: Sender<WindowSize>, wgpu_context: WgpuContext) -> Self {
 		Self {
 			cef_context,
 			window: None,
 			cef_schedule: Some(Instant::now()),
-			_viewport_frame_buffer: None,
-			ui_frame_buffer: None,
 			graphics_state: None,
 			window_size_sender,
-			event_loop_proxy,
+			wgpu_context,
+			editor: Editor::new(),
 		}
+	}
+
+	fn dispatch_message(&mut self, message: Message) {
+		let responses = self.editor.handle_message(message);
+		self.send_messages_to_editor(responses);
+	}
+
+	fn send_messages_to_editor(&mut self, mut responses: Vec<FrontendMessage>) {
+		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::RenderOverlays(_))) {
+			let FrontendMessage::RenderOverlays(overlay_context) = message else { unreachable!() };
+			if let Some(graphics_state) = &mut self.graphics_state {
+				let scene = overlay_context.take_scene();
+				graphics_state.set_overlays_scene(scene);
+			}
+		}
+
+		if responses.is_empty() {
+			return;
+		}
+		let Ok(message) = ron::to_string(&responses) else {
+			tracing::error!("Failed to serialize Messages");
+			return;
+		};
+		self.cef_context.send_web_message(message.as_bytes());
 	}
 }
 
 impl ApplicationHandler<CustomEvent> for WinitApp {
 	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
 		// Set a timeout in case we miss any cef schedule requests
-		let timeout = Instant::now() + Duration::from_millis(100);
+		let timeout = Instant::now() + Duration::from_millis(10);
 		let wait_until = timeout.min(self.cef_schedule.unwrap_or(timeout));
+		self.cef_context.work();
+
 		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
 	}
 
-	fn new_events(&mut self, _event_loop: &ActiveEventLoop, _cause: StartCause) {
+	fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
 		if let Some(schedule) = self.cef_schedule
 			&& schedule < Instant::now()
 		{
 			self.cef_schedule = None;
 			self.cef_context.work();
+		}
+		if let StartCause::ResumeTimeReached { .. } = cause {
+			if let Some(window) = &self.window {
+				window.request_redraw();
+			}
 		}
 	}
 
@@ -71,34 +102,76 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 				)
 				.unwrap(),
 		);
-		let graphics_state = pollster::block_on(GraphicsState::new(window.clone()));
+		let graphics_state = GraphicsState::new(window.clone(), self.wgpu_context.clone());
 
 		self.window = Some(window);
 		self.graphics_state = Some(graphics_state);
 
 		tracing::info!("Winit window created and ready");
+
+		let application_io = WasmApplicationIo::new_with_context(self.wgpu_context.clone());
+
+		futures::executor::block_on(graphite_editor::node_graph_executor::replace_application_io(application_io));
 	}
 
 	fn user_event(&mut self, _: &ActiveEventLoop, event: CustomEvent) {
 		match event {
-			CustomEvent::UiUpdate(frame_buffer) => {
+			CustomEvent::UiUpdate(texture) => {
 				if let Some(graphics_state) = self.graphics_state.as_mut() {
-					graphics_state.update_texture(&frame_buffer);
+					graphics_state.resize(texture.width(), texture.height());
+					graphics_state.bind_ui_texture(texture);
 				}
-				self.ui_frame_buffer = Some(frame_buffer);
 				if let Some(window) = &self.window {
 					window.request_redraw();
 				}
 			}
 			CustomEvent::ScheduleBrowserWork(instant) => {
-				if let Some(graphics_state) = self.graphics_state.as_mut()
-					&& let Some(frame_buffer) = &self.ui_frame_buffer
-					&& graphics_state.ui_texture_outdated(frame_buffer)
-				{
+				if instant <= Instant::now() {
 					self.cef_context.work();
-					let _ = self.event_loop_proxy.send_event(CustomEvent::ScheduleBrowserWork(Instant::now() + Duration::from_millis(1)));
+				} else {
+					self.cef_schedule = Some(instant);
 				}
-				self.cef_schedule = Some(instant);
+			}
+			CustomEvent::MessageReceived { message } => {
+				if let Message::InputPreprocessor(_) = &message {
+					if let Some(window) = &self.window {
+						window.request_redraw();
+					}
+				}
+				if let Message::InputPreprocessor(InputPreprocessorMessage::BoundsOfViewports { bounds_of_viewports }) = &message {
+					if let Some(graphic_state) = &mut self.graphics_state {
+						let window_size = self.window.as_ref().unwrap().inner_size();
+						let window_size = glam::Vec2::new(window_size.width as f32, window_size.height as f32);
+						let top_left = bounds_of_viewports[0].top_left.as_vec2() / window_size;
+						let bottom_right = bounds_of_viewports[0].bottom_right.as_vec2() / window_size;
+						let offset = top_left.to_array();
+						let scale = (bottom_right - top_left).recip();
+						graphic_state.set_viewport_offset(offset);
+						graphic_state.set_viewport_scale(scale.to_array());
+					} else {
+						panic!("graphics state not intialized, viewport offset might be lost");
+					}
+				}
+
+				self.dispatch_message(message);
+			}
+			CustomEvent::NodeGraphRan { texture } => {
+				if let Some(texture) = texture
+					&& let Some(graphics_state) = &mut self.graphics_state
+				{
+					graphics_state.bind_viewport_texture(texture);
+				}
+				let mut responses = VecDeque::new();
+				let err = self.editor.poll_node_graph_evaluation(&mut responses);
+				if let Err(e) = err {
+					if e != "No active document" {
+						tracing::error!("Error poling node graph: {}", e);
+					}
+				}
+
+				for message in responses {
+					self.dispatch_message(message);
+				}
 			}
 		}
 	}
@@ -113,9 +186,6 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 			}
 			WindowEvent::Resized(PhysicalSize { width, height }) => {
 				let _ = self.window_size_sender.send(WindowSize::new(width as usize, height as usize));
-				if let Some(ref mut graphics_state) = self.graphics_state {
-					graphics_state.resize(width, height);
-				}
 				self.cef_context.notify_of_resize();
 			}
 
