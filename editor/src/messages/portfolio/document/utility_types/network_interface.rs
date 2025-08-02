@@ -1424,13 +1424,13 @@ impl NodeNetworkInterface {
 			.any(|id| id == potentially_upstream_node)
 	}
 
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(target_family = "wasm"))]
 	fn text_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<f64> {
 		warn!("Failed to find width of {node_id:#?} in network_path {network_path:?} due to non-wasm arch");
 		Some(0.)
 	}
 
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(target_family = "wasm")]
 	fn text_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<f64> {
 		let document = web_sys::window().unwrap().document().unwrap();
 		let div = match document.create_element("div") {

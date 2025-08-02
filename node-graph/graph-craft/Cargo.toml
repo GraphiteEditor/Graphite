@@ -38,7 +38,7 @@ tokio = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 
 # Workspace dependencies
-[target.'cfg(target_arch = "wasm32")'.dependencies]
+[target.'cfg(target_family = "wasm")'.dependencies]
 web-sys = { workspace = true, features = [
 	"Navigator",
 	"Gpu",
@@ -46,7 +46,7 @@ web-sys = { workspace = true, features = [
 js-sys = { workspace = true }
 wasm-bindgen = { workspace = true }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
 winit = { workspace = true }
 
 [dev-dependencies]

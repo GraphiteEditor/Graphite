@@ -134,9 +134,9 @@ impl NodeRuntime {
 	pub async fn run(&mut self) -> Option<ImageTexture> {
 		if self.editor_api.application_io.is_none() {
 			self.editor_api = WasmEditorApi {
-				#[cfg(all(not(test), target_arch = "wasm32"))]
+				#[cfg(all(not(test), target_family = "wasm"))]
 				application_io: Some(WasmApplicationIo::new().await.into()),
-				#[cfg(any(test, not(target_arch = "wasm32")))]
+				#[cfg(any(test, not(target_family = "wasm")))]
 				application_io: Some(WasmApplicationIo::new_offscreen().await.into()),
 				font_cache: self.editor_api.font_cache.clone(),
 				node_graph_message_sender: Box::new(self.sender.clone()),
