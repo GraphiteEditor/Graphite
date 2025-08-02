@@ -52,11 +52,11 @@ impl<T> Table<T> {
 		self.source_node_id.push(instance.source_node_id);
 	}
 
-	pub fn extend(&mut self, instances: Table<T>) {
-		self.instance.extend(instances.instance);
-		self.transform.extend(instances.transform);
-		self.alpha_blending.extend(instances.alpha_blending);
-		self.source_node_id.extend(instances.source_node_id);
+	pub fn extend(&mut self, table: Table<T>) {
+		self.instance.extend(table.instance);
+		self.transform.extend(table.transform);
+		self.alpha_blending.extend(table.alpha_blending);
+		self.source_node_id.extend(table.source_node_id);
 	}
 
 	pub fn instance_iter(self) -> impl DoubleEndedIterator<Item = Instance<T>> {
@@ -183,11 +183,11 @@ impl<T> FromIterator<Instance<T>> for Table<T> {
 	fn from_iter<I: IntoIterator<Item = Instance<T>>>(iter: I) -> Self {
 		let iter = iter.into_iter();
 		let (lower, _) = iter.size_hint();
-		let mut instances = Self::with_capacity(lower);
+		let mut table = Self::with_capacity(lower);
 		for instance in iter {
-			instances.push(instance);
+			table.push(instance);
 		}
-		instances
+		table
 	}
 }
 

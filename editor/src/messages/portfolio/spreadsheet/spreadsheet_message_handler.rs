@@ -155,8 +155,8 @@ impl InstanceLayout for GraphicElement {
 	}
 	fn identifier(&self) -> String {
 		match self {
-			Self::GraphicGroup(instances) => instances.identifier(),
-			Self::VectorData(instances) => instances.identifier(),
+			Self::GraphicGroup(table) => table.identifier(),
+			Self::VectorData(table) => table.identifier(),
 			Self::RasterDataCPU(_) => "RasterDataCPU".to_string(),
 			Self::RasterDataGPU(_) => "RasterDataGPU".to_string(),
 		}
@@ -167,8 +167,8 @@ impl InstanceLayout for GraphicElement {
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		match self {
-			Self::GraphicGroup(instances) => instances.layout_with_breadcrumb(data),
-			Self::VectorData(instances) => instances.layout_with_breadcrumb(data),
+			Self::GraphicGroup(table) => table.layout_with_breadcrumb(data),
+			Self::VectorData(table) => table.layout_with_breadcrumb(data),
 			Self::RasterDataCPU(_) => label("Raster frame not supported"),
 			Self::RasterDataGPU(_) => label("Raster frame not supported"),
 		}

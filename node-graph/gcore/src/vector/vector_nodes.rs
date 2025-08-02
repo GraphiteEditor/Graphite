@@ -5,9 +5,9 @@ use super::misc::{CentroidType, bezpath_from_manipulator_groups, bezpath_to_mani
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataExt, VectorDataTable};
 use crate::bounds::BoundingBox;
-use crate::table::{Instance, InstanceMut, Table};
 use crate::raster_types::{CPU, GPU, RasterDataTable};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
+use crate::table::{Instance, InstanceMut, Table};
 use crate::transform::{Footprint, ReferencePoint, Transform};
 use crate::vector::PointDomain;
 use crate::vector::algorithms::bezpath_algorithms::eval_pathseg_euclidean;
@@ -226,10 +226,10 @@ async fn repeat<I: 'n + Send + Clone>(
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: PixelSize,
 	angle: Angle,
-	#[default(4)] instances: IntegerCount,
+	#[default(4)] count: IntegerCount,
 ) -> Table<I> {
 	let angle = angle.to_radians();
-	let count = instances.max(1);
+	let count = count.max(1);
 	let total = (count - 1) as f64;
 
 	let mut result_table = Table::<I>::default();
@@ -262,9 +262,9 @@ async fn circular_repeat<I: 'n + Send + Clone>(
 	#[unit(" px")]
 	#[default(5)]
 	radius: f64,
-	#[default(5)] instances: IntegerCount,
+	#[default(5)] count: IntegerCount,
 ) -> Table<I> {
-	let count = instances.max(1);
+	let count = count.max(1);
 
 	let mut result_table = Table::<I>::default();
 
@@ -782,118 +782,6 @@ async fn auto_tangents(
 		})
 		.collect()
 }
-
-// TODO: Fix issues and reenable
-// #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-// async fn subdivide(
-// 	_: impl Ctx,
-// 	source: VectorDataTable,
-// 	#[default(1.)]
-// 	#[hard_min(1.)]
-// 	#[soft_max(8.)]
-// 	subdivisions: f64,
-// ) -> VectorDataTable {
-// 	fn subdivide_once(subpath: &Subpath<PointId>) -> Subpath<PointId> {
-// 		let original_groups = subpath.manipulator_groups();
-// 		let mut new_groups = Vec::new();
-// 		let is_closed = subpath.closed();
-// 		let mut last_in_handle = None;
-
-// 		for i in 0..original_groups.len() {
-// 			let start_idx = i;
-// 			let end_idx = (i + 1) % original_groups.len();
-
-// 			// Skip the last segment for open paths
-// 			if !is_closed && end_idx == 0 {
-// 				break;
-// 			}
-
-// 			let current_bezier = original_groups[start_idx].to_bezier(&original_groups[end_idx]);
-
-// 			// Create modified start point with original ID, but updated in_handle & out_handle
-// 			let mut start_point = original_groups[start_idx];
-// 			let [first, _] = current_bezier.split(TValue::Euclidean(0.5));
-// 			start_point.out_handle = first.handle_start();
-// 			start_point.in_handle = last_in_handle;
-// 			if new_groups.contains(&start_point) {
-// 				debug!("start_point already in");
-// 			} else {
-// 				new_groups.push(start_point);
-// 			}
-
-// 			// Add midpoint
-// 			let [first, second] = current_bezier.split(TValue::Euclidean(0.5));
-
-// 			let new_point = ManipulatorGroup {
-// 				anchor: first.end,
-// 				in_handle: first.handle_end(),
-// 				out_handle: second.handle_start(),
-// 				id: start_point.id.generate_from_hash(u64::MAX),
-// 			};
-// 			if new_groups.contains(&new_point) {
-// 				debug!("new_point already in");
-// 			} else {
-// 				new_groups.push(new_point);
-// 			}
-
-// 			last_in_handle = second.handle_end();
-// 		}
-
-// 		// Handle the final point for open paths
-// 		if !is_closed && !original_groups.is_empty() {
-// 			let mut last_point = *original_groups.last().unwrap();
-// 			last_point.in_handle = last_in_handle;
-// 			if new_groups.contains(&last_point) {
-// 				debug!("last_point already in");
-// 			} else {
-// 				new_groups.push(last_point);
-// 			}
-// 		} else if is_closed && !new_groups.is_empty() {
-// 			// Update the first point's in_handle for closed paths
-// 			new_groups[0].in_handle = last_in_handle;
-// 		}
-
-// 		Subpath::new(new_groups, is_closed)
-// 	}
-
-// 	let mut result_table = VectorDataTable::default();
-
-// 	for source_vector_data in source.instances() {
-// 		let source_transform = *source_vector_data.transform;
-// 		let source_vector_data = source_vector_data.instance;
-
-// 		let subdivisions = subdivisions as usize;
-
-//		let mut result = VectorData {
-//			style: source_vector_data.style.clone(),
-//			..Default::default()
-//		};
-
-// 		for mut subpath in source_vector_data.stroke_bezier_paths() {
-// 			subpath.apply_transform(source_transform);
-
-// 			if subpath.manipulator_groups().len() < 2 {
-// 				// Not enough points to subdivide
-// 				result.append_subpath(subpath, true);
-// 				continue;
-// 			}
-
-// 			// Apply subdivisions recursively
-// 			let mut current_subpath = subpath;
-// 			for _ in 0..subdivisions {
-// 				current_subpath = subdivide_once(&current_subpath);
-// 			}
-
-// 			current_subpath.apply_transform(source_transform.inverse());
-// 			result.append_subpath(current_subpath, true);
-// 		}
-
-// 		let pushed = result_table.push(result);
-// 		*pushed.transform = source_transform;
-// 	}
-
-// 	result_table
-// }
 
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
 async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
@@ -2150,39 +2038,39 @@ mod test {
 	#[tokio::test]
 	async fn repeat() {
 		let direction = DVec2::X * 1.5;
-		let instances = 3;
+		let count = 3;
 		let repeated = super::repeat(
 			Footprint::default(),
 			vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY)),
 			direction,
 			0.,
-			instances,
+			count,
 		)
 		.await;
 		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(vector_data.region_manipulator_groups().count(), 3);
 		for (index, (_, manipulator_groups)) in vector_data.region_manipulator_groups().enumerate() {
-			assert!((manipulator_groups[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
+			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
 		}
 	}
 	#[tokio::test]
 	async fn repeat_transform_position() {
 		let direction = DVec2::new(12., 10.);
-		let instances = 8;
+		let count = 8;
 		let repeated = super::repeat(
 			Footprint::default(),
 			vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY)),
 			direction,
 			0.,
-			instances,
+			count,
 		)
 		.await;
 		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(vector_data.region_manipulator_groups().count(), 8);
 		for (index, (_, manipulator_groups)) in vector_data.region_manipulator_groups().enumerate() {
-			assert!((manipulator_groups[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
+			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
 		}
 	}
 	#[tokio::test]
@@ -2301,9 +2189,9 @@ mod test {
 		let bezpath = Rect::new(100., 100., 201., 201.).to_path(DEFAULT_ACCURACY);
 		let transform = DAffine2::from_scale(DVec2::new(2., 2.));
 		let instance = create_vector_data_instance(bezpath, transform);
-		let instances = (0..5).map(|_| instance.clone()).collect::<Table<VectorData>>();
+		let table = (0..5).map(|_| instance.clone()).collect::<Table<VectorData>>();
 
-		let length = super::path_length(Footprint::default(), instances).await;
+		let length = super::path_length(Footprint::default(), table).await;
 
 		// 101 (each rectangle edge length) * 4 (rectangle perimeter) * 2 (scale) * 5 (number of rows)
 		assert_eq!(length, 101. * 4. * 2. * 5.);

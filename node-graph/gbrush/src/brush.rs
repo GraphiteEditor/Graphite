@@ -5,12 +5,12 @@ use graphene_core::blending::BlendMode;
 use graphene_core::bounds::BoundingBox;
 use graphene_core::color::{Alpha, Color, Pixel, Sample};
 use graphene_core::generic::FnNode;
-use graphene_core::table::Instance;
 use graphene_core::math::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::BitmapMut;
 use graphene_core::raster::image::Image;
 use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::registry::FutureWrapperNode;
+use graphene_core::table::Instance;
 use graphene_core::transform::Transform;
 use graphene_core::value::ClonedNode;
 use graphene_core::{Ctx, Node};
@@ -244,9 +244,9 @@ async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes
 				// EmptyImageNode::new(CopiedNode::new(stroke_to_layer), CopiedNode::new(Color::TRANSPARENT)).eval(())
 			};
 
-			let instances = blit_node.eval(blit_target).await;
-			assert_eq!(instances.len(), 1);
-			instances.instance_iter().next().unwrap_or_default()
+			let table = blit_node.eval(blit_target).await;
+			assert_eq!(table.len(), 1);
+			table.instance_iter().next().unwrap_or_default()
 		};
 
 		// Cache image before doing final blend, and store final stroke texture.

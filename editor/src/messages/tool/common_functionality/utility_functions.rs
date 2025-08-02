@@ -76,7 +76,7 @@ pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageH
 	let font_data = font_cache.get(font).map(|data| load_font(data));
 	let far = graphene_std::text::bounding_box(text, font_data, typesetting, false);
 
-	// TODO: Once the instances refactor is complete and per_glyph_instances can be removed (since it'll be the default),
+	// TODO: Once the instance tables refactor is complete and per_glyph_instances can be removed (since it'll be the default),
 	// TODO: remove this because the top of the dashed bounding overlay should no longer be based on the first line's baseline.
 	let vertical_offset = if per_glyph_instances {
 		DVec2::NEG_Y * typesetting.font_size * (1. + (typesetting.line_height_ratio - 1.) / 2.)
