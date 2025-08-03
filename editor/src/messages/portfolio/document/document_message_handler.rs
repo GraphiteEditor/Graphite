@@ -2157,7 +2157,7 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
 								TextLabel::new("Artboard Name".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
@@ -2175,7 +2175,7 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
 								TextLabel::new("G/R/S Measurement".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
@@ -2196,7 +2196,7 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
 								TextLabel::new("Quick Measurement".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
@@ -2214,7 +2214,7 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
 								TextLabel::new("Transform Cage".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
@@ -2232,7 +2232,7 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
 								TextLabel::new("Transform Dial".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
@@ -2250,7 +2250,7 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
 								TextLabel::new("Transform Pivot".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
@@ -2268,7 +2268,7 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
 								TextLabel::new("Transform Origin".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
@@ -2286,7 +2286,7 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
 								TextLabel::new("Hover Outline".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
@@ -2304,7 +2304,7 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
 								TextLabel::new("Selection Outline".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
@@ -2325,7 +2325,7 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
 								TextLabel::new("Path".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
@@ -2343,7 +2343,7 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
 								TextLabel::new("Anchors".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
@@ -2362,7 +2362,7 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
 								TextLabel::new("Handles".to_string())
 									.disabled(!self.overlays_visibility_settings.anchors)
@@ -2410,7 +2410,7 @@ impl DocumentMessageHandler {
 										.into()
 									})
 									.tooltip(tooltip)
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
 								TextLabel::new(name).tooltip(tooltip).for_checkbox(checkbox_id).widget_holder(),
 							]
@@ -2432,7 +2432,7 @@ impl DocumentMessageHandler {
 										.into()
 									})
 									.tooltip(tooltip)
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
 								TextLabel::new(name).tooltip(tooltip).for_checkbox(checkbox_id).widget_holder(),
 							]

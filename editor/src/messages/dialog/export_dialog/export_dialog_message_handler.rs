@@ -147,7 +147,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 
 		let checkbox_id = CheckboxId::new();
 		let transparent_background = vec![
-			TextLabel::new("Transparency").table_align(true).min_width(100).for_checkbox(checkbox_id.clone()).widget_holder(),
+			TextLabel::new("Transparency").table_align(true).min_width(100).for_checkbox(checkbox_id).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(self.transparent_background)
 				.disabled(self.file_type == FileType::Jpg)

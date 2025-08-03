@@ -81,7 +81,7 @@ impl PreferencesDialogMessageHandler {
 					}
 					.into()
 				})
-				.for_label(checkbox_id.clone())
+				.for_label(checkbox_id)
 				.widget_holder(),
 			TextLabel::new("Zoom with Scroll")
 				.table_align(true)
@@ -178,7 +178,7 @@ impl PreferencesDialogMessageHandler {
 				.tooltip(vello_tooltip)
 				.disabled(!preferences.supports_wgpu())
 				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::UseVello { use_vello: checkbox_input.checked }.into())
-				.for_label(checkbox_id.clone())
+				.for_label(checkbox_id)
 				.widget_holder(),
 			TextLabel::new("Vello Renderer")
 				.table_align(true)
@@ -197,7 +197,7 @@ impl PreferencesDialogMessageHandler {
 			CheckboxInput::new(preferences.vector_meshes)
 				.tooltip(vector_mesh_tooltip)
 				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::VectorMeshes { enabled: checkbox_input.checked }.into())
-				.for_label(checkbox_id.clone())
+				.for_label(checkbox_id)
 				.widget_holder(),
 			TextLabel::new("Vector Meshes").table_align(true).tooltip(vector_mesh_tooltip).for_checkbox(checkbox_id).widget_holder(),
 		];

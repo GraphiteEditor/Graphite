@@ -247,7 +247,7 @@ impl LayoutHolder for PathTool {
 				}
 			})
 			.tooltip(colinear_handles_tooltip)
-			.for_label(checkbox_id.clone())
+			.for_label(checkbox_id)
 			.widget_holder();
 		let colinear_handles_label = TextLabel::new("Colinear Handles")
 			.disabled(!self.tool_data.can_toggle_colinearity)

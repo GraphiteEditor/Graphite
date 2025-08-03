@@ -49,7 +49,7 @@ impl Default for CheckboxInput {
 	}
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CheckboxId(u64);
 
 impl CheckboxId {
