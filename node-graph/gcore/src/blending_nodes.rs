@@ -131,7 +131,7 @@ fn blend_mode<T: SetBlendMode>(
 	mut value: T,
 	blend_mode: BlendMode,
 ) -> T {
-	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or Instance<T>) rather than applying to each row in its own table, which produces the undesired result
+	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or TableRow<T>) rather than applying to each row in its own table, which produces the undesired result
 	value.set_blend_mode(blend_mode);
 	value
 }
@@ -147,7 +147,7 @@ fn opacity<T: MultiplyAlpha>(
 	mut value: T,
 	#[default(100.)] opacity: Percentage,
 ) -> T {
-	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or Instance<T>) rather than applying to each row in its own table, which produces the undesired result
+	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or TableRow<T>) rather than applying to each row in its own table, which produces the undesired result
 	value.multiply_alpha(opacity / 100.);
 	value
 }
@@ -166,7 +166,7 @@ fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill + SetClip>(
 	#[default(100.)] fill: Percentage,
 	#[default(false)] clip: bool,
 ) -> T {
-	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or Instance<T>) rather than applying to each row in its own table, which produces the undesired result
+	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or TableRow<T>) rather than applying to each row in its own table, which produces the undesired result
 	value.set_blend_mode(blend_mode);
 	value.multiply_alpha(opacity / 100.);
 	value.multiply_fill(fill / 100.);

@@ -6,7 +6,7 @@ use graphene_core::blending::AlphaBlending;
 use graphene_core::color::Color;
 use graphene_core::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
 use graphene_core::context::{Ctx, ExtractFootprint};
-use graphene_core::table::Instance;
+use graphene_core::table::TableRow;
 use graphene_core::math::bbox::Bbox;
 use graphene_core::raster::image::Image;
 use graphene_core::raster::{Bitmap, BitmapMut};
@@ -173,7 +173,7 @@ pub fn combine_channels(
 				}
 			}
 
-			Some(Instance {
+			Some(TableRow {
 				element: Raster::new_cpu(image),
 				transform,
 				alpha_blending,
@@ -383,7 +383,7 @@ pub fn noise_pattern(
 				}
 			}
 
-			return RasterDataTable::new_instance(Instance {
+			return RasterDataTable::new_instance(TableRow {
 				element: Raster::new_cpu(image),
 				transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
 				..Default::default()
@@ -445,7 +445,7 @@ pub fn noise_pattern(
 		}
 	}
 
-	RasterDataTable::new_instance(Instance {
+	RasterDataTable::new_instance(TableRow {
 		element: Raster::new_cpu(image),
 		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
 		..Default::default()
@@ -487,7 +487,7 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> RasterDataTable<CPU> {
 		}
 	}
 
-	RasterDataTable::new_instance(Instance {
+	RasterDataTable::new_instance(TableRow {
 		element: Raster::new_cpu(Image {
 			width,
 			height,

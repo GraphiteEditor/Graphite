@@ -232,7 +232,7 @@ async fn rasterize<T: WasmNotSend + 'n>(
 where
 	Table<T>: GraphicElementRendered,
 {
-	use graphene_core::table::Instance;
+	use graphene_core::table::TableRow;
 
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
@@ -277,7 +277,7 @@ where
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	RasterDataTable::new_instance(Instance {
+	RasterDataTable::new_instance(TableRow {
 		element: Raster::new_cpu(image),
 		transform: footprint.transform,
 		..Default::default()

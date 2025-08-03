@@ -18,21 +18,21 @@ pub struct Table<T> {
 }
 
 impl<T> Table<T> {
-	pub fn new(instance: T) -> Self {
+	pub fn new(element: T) -> Self {
 		Self {
-			element: vec![instance],
+			element: vec![element],
 			transform: vec![DAffine2::IDENTITY],
 			alpha_blending: vec![AlphaBlending::default()],
 			source_node_id: vec![None],
 		}
 	}
 
-	pub fn new_instance(instance: Instance<T>) -> Self {
+	pub fn new_instance(row: TableRow<T>) -> Self {
 		Self {
-			element: vec![instance.element],
-			transform: vec![instance.transform],
-			alpha_blending: vec![instance.alpha_blending],
-			source_node_id: vec![instance.source_node_id],
+			element: vec![row.element],
+			transform: vec![row.transform],
+			alpha_blending: vec![row.alpha_blending],
+			source_node_id: vec![row.source_node_id],
 		}
 	}
 
@@ -45,11 +45,11 @@ impl<T> Table<T> {
 		}
 	}
 
-	pub fn push(&mut self, instance: Instance<T>) {
-		self.element.push(instance.element);
-		self.transform.push(instance.transform);
-		self.alpha_blending.push(instance.alpha_blending);
-		self.source_node_id.push(instance.source_node_id);
+	pub fn push(&mut self, row: TableRow<T>) {
+		self.element.push(row.element);
+		self.transform.push(row.transform);
+		self.alpha_blending.push(row.alpha_blending);
+		self.source_node_id.push(row.source_node_id);
 	}
 
 	pub fn extend(&mut self, table: Table<T>) {
@@ -59,54 +59,54 @@ impl<T> Table<T> {
 		self.source_node_id.extend(table.source_node_id);
 	}
 
-	pub fn instance_iter(self) -> impl DoubleEndedIterator<Item = Instance<T>> {
+	pub fn instance_iter(self) -> impl DoubleEndedIterator<Item = TableRow<T>> {
 		self.element
 			.into_iter()
 			.zip(self.transform)
 			.zip(self.alpha_blending)
 			.zip(self.source_node_id)
-			.map(|(((instance, transform), alpha_blending), source_node_id)| Instance {
-				element: instance,
+			.map(|(((element, transform), alpha_blending), source_node_id)| TableRow {
+				element,
 				transform,
 				alpha_blending,
 				source_node_id,
 			})
 	}
 
-	pub fn instance_ref_iter(&self) -> impl DoubleEndedIterator<Item = InstanceRef<'_, T>> + Clone {
+	pub fn instance_ref_iter(&self) -> impl DoubleEndedIterator<Item = TableRowRef<'_, T>> + Clone {
 		self.element
 			.iter()
 			.zip(self.transform.iter())
 			.zip(self.alpha_blending.iter())
 			.zip(self.source_node_id.iter())
-			.map(|(((instance, transform), alpha_blending), source_node_id)| InstanceRef {
-				element: instance,
+			.map(|(((element, transform), alpha_blending), source_node_id)| TableRowRef {
+				element,
 				transform,
 				alpha_blending,
 				source_node_id,
 			})
 	}
 
-	pub fn instance_mut_iter(&mut self) -> impl DoubleEndedIterator<Item = InstanceMut<'_, T>> {
+	pub fn instance_mut_iter(&mut self) -> impl DoubleEndedIterator<Item = TableRowMut<'_, T>> {
 		self.element
 			.iter_mut()
 			.zip(self.transform.iter_mut())
 			.zip(self.alpha_blending.iter_mut())
 			.zip(self.source_node_id.iter_mut())
-			.map(|(((instance, transform), alpha_blending), source_node_id)| InstanceMut {
-				element: instance,
+			.map(|(((element, transform), alpha_blending), source_node_id)| TableRowMut {
+				element,
 				transform,
 				alpha_blending,
 				source_node_id,
 			})
 	}
 
-	pub fn get(&self, index: usize) -> Option<InstanceRef<'_, T>> {
+	pub fn get(&self, index: usize) -> Option<TableRowRef<'_, T>> {
 		if index >= self.element.len() {
 			return None;
 		}
 
-		Some(InstanceRef {
+		Some(TableRowRef {
 			element: &self.element[index],
 			transform: &self.transform[index],
 			alpha_blending: &self.alpha_blending[index],
@@ -114,12 +114,12 @@ impl<T> Table<T> {
 		})
 	}
 
-	pub fn get_mut(&mut self, index: usize) -> Option<InstanceMut<'_, T>> {
+	pub fn get_mut(&mut self, index: usize) -> Option<TableRowMut<'_, T>> {
 		if index >= self.element.len() {
 			return None;
 		}
 
-		Some(InstanceMut {
+		Some(TableRowMut {
 			element: &mut self.element[index],
 			transform: &mut self.transform[index],
 			alpha_blending: &mut self.alpha_blending[index],
@@ -149,8 +149,8 @@ impl<T> Default for Table<T> {
 
 impl<T: Hash> Hash for Table<T> {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		for instance in &self.element {
-			instance.hash(state);
+		for element in &self.element {
+			element.hash(state);
 		}
 	}
 }
@@ -179,13 +179,13 @@ unsafe impl<T: StaticType + 'static> StaticType for Table<T> {
 	type Static = Table<T>;
 }
 
-impl<T> FromIterator<Instance<T>> for Table<T> {
-	fn from_iter<I: IntoIterator<Item = Instance<T>>>(iter: I) -> Self {
+impl<T> FromIterator<TableRow<T>> for Table<T> {
+	fn from_iter<I: IntoIterator<Item = TableRow<T>>>(iter: I) -> Self {
 		let iter = iter.into_iter();
 		let (lower, _) = iter.size_hint();
 		let mut table = Self::with_capacity(lower);
-		for instance in iter {
-			table.push(instance);
+		for row in iter {
+			table.push(row);
 		}
 		table
 	}
@@ -202,19 +202,19 @@ fn one_source_node_id_default() -> Vec<Option<NodeId>> {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct InstanceRef<'a, T> {
+pub struct TableRowRef<'a, T> {
 	pub element: &'a T,
 	pub transform: &'a DAffine2,
 	pub alpha_blending: &'a AlphaBlending,
 	pub source_node_id: &'a Option<NodeId>,
 }
 
-impl<T> InstanceRef<'_, T> {
-	pub fn to_instance_cloned(self) -> Instance<T>
+impl<T> TableRowRef<'_, T> {
+	pub fn to_instance_cloned(self) -> TableRow<T>
 	where
 		T: Clone,
 	{
-		Instance {
+		TableRow {
 			element: self.element.clone(),
 			transform: *self.transform,
 			alpha_blending: *self.alpha_blending,
@@ -224,7 +224,7 @@ impl<T> InstanceRef<'_, T> {
 }
 
 #[derive(Debug)]
-pub struct InstanceMut<'a, T> {
+pub struct TableRowMut<'a, T> {
 	pub element: &'a mut T,
 	pub transform: &'a mut DAffine2,
 	pub alpha_blending: &'a mut AlphaBlending,
@@ -232,7 +232,7 @@ pub struct InstanceMut<'a, T> {
 }
 
 #[derive(Copy, Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct Instance<T> {
+pub struct TableRow<T> {
 	#[serde(alias = "instance")]
 	pub element: T,
 	pub transform: DAffine2,
@@ -240,12 +240,12 @@ pub struct Instance<T> {
 	pub source_node_id: Option<NodeId>,
 }
 
-impl<T> Instance<T> {
-	pub fn to_graphic_element<U>(self) -> Instance<U>
+impl<T> TableRow<T> {
+	pub fn to_graphic_element<U>(self) -> TableRow<U>
 	where
 		T: Into<U>,
 	{
-		Instance {
+		TableRow {
 			element: self.element.into(),
 			transform: self.transform,
 			alpha_blending: self.alpha_blending,
@@ -253,8 +253,8 @@ impl<T> Instance<T> {
 		}
 	}
 
-	pub fn to_instance_ref(&self) -> InstanceRef<'_, T> {
-		InstanceRef {
+	pub fn to_instance_ref(&self) -> TableRowRef<'_, T> {
+		TableRowRef {
 			element: &self.element,
 			transform: &self.transform,
 			alpha_blending: &self.alpha_blending,
@@ -262,8 +262,8 @@ impl<T> Instance<T> {
 		}
 	}
 
-	pub fn to_instance_mut(&mut self) -> InstanceMut<'_, T> {
-		InstanceMut {
+	pub fn to_instance_mut(&mut self) -> TableRowMut<'_, T> {
+		TableRowMut {
 			element: &mut self.element,
 			transform: &mut self.transform,
 			alpha_blending: &mut self.alpha_blending,

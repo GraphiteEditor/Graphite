@@ -1,5 +1,5 @@
-use crate::table::{InstanceRef, Table};
 use crate::raster_types::{CPU, RasterDataTable};
+use crate::table::{Table, TableRowRef};
 use crate::vector::VectorDataTable;
 use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use glam::DVec2;
@@ -18,7 +18,7 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + '
 ) -> Table<T> {
 	let mut result_table = Table::<T>::default();
 
-	for InstanceRef { element: points, transform, .. } in points.instance_ref_iter() {
+	for TableRowRef { element: points, transform, .. } in points.instance_ref_iter() {
 		let mut iteration = async |index, point| {
 			let transformed_point = transform.transform_point2(point);
 

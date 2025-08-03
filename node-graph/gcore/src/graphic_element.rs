@@ -1,6 +1,6 @@
 use crate::blending::AlphaBlending;
 use crate::bounds::BoundingBox;
-use crate::table::{Instance, Table};
+use crate::table::{TableRow, Table};
 use crate::math::quad::Quad;
 use crate::raster::image::Image;
 use crate::raster_types::{CPU, GPU, Raster, RasterDataTable};
@@ -39,7 +39,7 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 		EitherFormat::OldGraphicGroup(old) => {
 			let mut graphic_group_table = GraphicGroupTable::default();
 			for (graphic_element, source_node_id) in old.elements {
-				graphic_group_table.push(Instance {
+				graphic_group_table.push(TableRow {
 					element: graphic_element,
 					transform: old.transform,
 					alpha_blending: old.alpha_blending,
@@ -54,7 +54,7 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 				let mut graphic_group_table = GraphicGroupTable::default();
 				for instance in old_table.instance_ref_iter() {
 					for (graphic_element, source_node_id) in &instance.element.elements {
-						graphic_group_table.push(Instance {
+						graphic_group_table.push(TableRow {
 							element: graphic_element.clone(),
 							transform: *instance.transform,
 							alpha_blending: *instance.alpha_blending,
@@ -276,7 +276,7 @@ pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D)
 		EitherFormat::ArtboardGroup(artboard_group) => {
 			let mut table = ArtboardGroupTable::default();
 			for (artboard, source_node_id) in artboard_group.artboards {
-				table.push(Instance {
+				table.push(TableRow {
 					element: artboard,
 					transform: DAffine2::IDENTITY,
 					alpha_blending: AlphaBlending::default(),
@@ -309,7 +309,7 @@ async fn layer<I: 'n + Send + Clone>(
 	// Get the penultimate element of the node path, or None if the path is too short
 	let source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 
-	stack.push(Instance {
+	stack.push(TableRow {
 		element: element,
 		transform: DAffine2::IDENTITY,
 		alpha_blending: AlphaBlending::default(),
@@ -370,7 +370,7 @@ async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: boo
 				}
 				// Handle any leaf elements we encounter, which can be either non-GraphicGroup elements or GraphicGroups that we don't want to flatten
 				_ => {
-					output_group_table.push(Instance {
+					output_group_table.push(TableRow {
 						element: current_element,
 						transform: *current_instance.transform,
 						alpha_blending: *current_instance.alpha_blending,
@@ -408,7 +408,7 @@ async fn flatten_vector(_: impl Ctx, group: GraphicGroupTable) -> VectorDataTabl
 				// Handle any leaf elements we encounter, which can be either non-GraphicGroup elements or GraphicGroups that we don't want to flatten
 				GraphicElement::VectorData(vector_instance) => {
 					for current_element in vector_instance.instance_ref_iter() {
-						output_group_table.push(Instance {
+						output_group_table.push(TableRow {
 							element: current_element.element.clone(),
 							transform: *current_instance.transform * *current_element.transform,
 							alpha_blending: AlphaBlending {
@@ -476,7 +476,7 @@ pub async fn append_artboard(_ctx: impl Ctx, mut artboards: ArtboardGroupTable, 
 	// This is used to get the ID of the user-facing "Artboard" node (which encapsulates this internal "Append Artboard" node).
 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 
-	artboards.push(Instance {
+	artboards.push(TableRow {
 		element: artboard,
 		transform: DAffine2::IDENTITY,
 		alpha_blending: AlphaBlending::default(),

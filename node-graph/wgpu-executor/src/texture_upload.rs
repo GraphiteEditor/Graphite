@@ -1,7 +1,7 @@
 use crate::WgpuExecutor;
 use graphene_core::color::SRGBA8;
 use graphene_core::raster_types::{CPU, GPU, Raster, RasterDataTable};
-use graphene_core::table::Instance;
+use graphene_core::table::TableRow;
 use graphene_core::{Ctx, ExtractFootprint};
 use wgpu::util::{DeviceExt, TextureDataOrder};
 use wgpu::{Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages};
@@ -37,7 +37,7 @@ pub async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: Raste
 				bytemuck::cast_slice(rgba8_data.as_slice()),
 			);
 
-			Instance {
+			TableRow {
 				element: Raster::new_gpu(texture),
 				transform: *instance.transform,
 				alpha_blending: *instance.alpha_blending,

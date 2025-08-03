@@ -12,7 +12,7 @@ use graphene_std::application_io::{ImageTexture, NodeGraphUpdateMessage, NodeGra
 use graphene_std::memo::IORecord;
 use graphene_std::renderer::{GraphicElementRendered, RenderParams, SvgRender};
 use graphene_std::renderer::{RenderSvgSegmentList, SvgSegment};
-use graphene_std::table::Instance;
+use graphene_std::table::TableRow;
 use graphene_std::text::FontCache;
 use graphene_std::vector::style::ViewMode;
 use graphene_std::vector::{VectorData, VectorDataTable};
@@ -314,7 +314,7 @@ impl NodeRuntime {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			// Insert the vector modify if we are dealing with vector data
 			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, VectorDataTable>>() {
-				let default = Instance::default();
+				let default = TableRow::default();
 				self.vector_modify.insert(
 					parent_network_node_id,
 					record.output.instance_ref_iter().next().unwrap_or_else(|| default.to_instance_ref()).element.clone(),

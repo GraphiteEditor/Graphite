@@ -1,5 +1,5 @@
 use super::TextAlign;
-use crate::table::Instance;
+use crate::table::TableRow;
 use crate::vector::{PointId, VectorData, VectorDataTable};
 use bezier_rs::{ManipulatorGroup, Subpath};
 use core::cell::RefCell;
@@ -51,7 +51,7 @@ impl PathBuilder {
 		}
 
 		if per_glyph_instances {
-			self.vector_table.push(Instance {
+			self.vector_table.push(TableRow {
 				element: VectorData::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false),
 				transform: DAffine2::from_translation(glyph_offset),
 				..Default::default()

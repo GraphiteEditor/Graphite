@@ -1,6 +1,6 @@
 use super::*;
 use crate::Ctx;
-use crate::table::Instance;
+use crate::table::TableRow;
 use crate::uuid::{NodeId, generate_uuid};
 use bezier_rs::BezierHandles;
 use dyn_any::DynAny;
@@ -422,7 +422,7 @@ impl Hash for VectorModification {
 #[node_macro::node(category(""))]
 async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: Box<VectorModification>, node_path: Vec<NodeId>) -> VectorDataTable {
 	if vector_data.is_empty() {
-		vector_data.push(Instance::default());
+		vector_data.push(TableRow::default());
 	}
 	let vector_data_instance = vector_data.get_mut(0).expect("push should give one item");
 	modification.apply(vector_data_instance.element);

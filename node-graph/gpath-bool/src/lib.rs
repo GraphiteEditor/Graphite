@@ -1,7 +1,7 @@
 use bezier_rs::{ManipulatorGroup, Subpath};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
-use graphene_core::table::{Instance, InstanceRef};
+use graphene_core::table::{TableRow, TableRowRef};
 use graphene_core::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use graphene_core::vector::style::Fill;
 use graphene_core::vector::{PointId, VectorData, VectorDataTable};
@@ -66,7 +66,7 @@ async fn boolean_operation<I: Into<GraphicGroupTable> + 'n + Send + Clone>(
 	result_vector_data_table
 }
 
-fn boolean_operation_on_vector_data_table<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, VectorData>> + Clone, boolean_operation: BooleanOperation) -> VectorDataTable {
+fn boolean_operation_on_vector_data_table<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, VectorData>> + Clone, boolean_operation: BooleanOperation) -> VectorDataTable {
 	match boolean_operation {
 		BooleanOperation::Union => union(vector_data),
 		BooleanOperation::SubtractFront => subtract(vector_data),
@@ -76,7 +76,7 @@ fn boolean_operation_on_vector_data_table<'a>(vector_data: impl DoubleEndedItera
 	}
 }
 
-fn union<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, VectorData>>) -> VectorDataTable {
+fn union<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, VectorData>>) -> VectorDataTable {
 	// Reverse vector data so that the result style is the style of the first vector data
 	let mut vector_data_reversed = vector_data.rev();
 
@@ -84,7 +84,7 @@ fn union<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, Vector
 	let mut first_instance = result_vector_data_table.instance_mut_iter().next().expect("Expected the one instance we just pushed");
 
 	// Loop over all vector data and union it with the result
-	let default = Instance::default();
+	let default = TableRow::default();
 	let mut second_vector_data = Some(vector_data_reversed.next().unwrap_or(default.to_instance_ref()));
 	while let Some(lower_vector_data) = second_vector_data {
 		let transform_of_lower_into_space_of_upper = first_instance.transform.inverse() * *lower_vector_data.transform;
@@ -109,7 +109,7 @@ fn union<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, Vector
 	result_vector_data_table
 }
 
-fn subtract<'a>(vector_data: impl Iterator<Item = InstanceRef<'a, VectorData>>) -> VectorDataTable {
+fn subtract<'a>(vector_data: impl Iterator<Item = TableRowRef<'a, VectorData>>) -> VectorDataTable {
 	let mut vector_data = vector_data.into_iter();
 
 	let mut result_vector_data_table = VectorDataTable::new_instance(vector_data.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
@@ -140,13 +140,13 @@ fn subtract<'a>(vector_data: impl Iterator<Item = InstanceRef<'a, VectorData>>) 
 	result_vector_data_table
 }
 
-fn intersect<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, VectorData>>) -> VectorDataTable {
+fn intersect<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, VectorData>>) -> VectorDataTable {
 	let mut vector_data = vector_data.rev();
 
 	let mut result_vector_data_table = VectorDataTable::new_instance(vector_data.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
 	let mut first_instance = result_vector_data_table.instance_mut_iter().next().expect("Expected the one instance we just pushed");
 
-	let default = Instance::default();
+	let default = TableRow::default();
 	let mut second_vector_data = Some(vector_data.next().unwrap_or(default.to_instance_ref()));
 
 	// For each vector data, set the result to the intersection of that data and the result
@@ -172,10 +172,10 @@ fn intersect<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, Ve
 	result_vector_data_table
 }
 
-fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, VectorData>> + Clone) -> VectorDataTable {
+fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, VectorData>> + Clone) -> VectorDataTable {
 	let mut vector_data_iter = vector_data.clone().rev();
-	let mut any_intersection = Instance::default();
-	let default = Instance::default();
+	let mut any_intersection = TableRow::default();
+	let default = TableRow::default();
 	let mut second_vector_data = Some(vector_data_iter.next().unwrap_or(default.to_instance_ref()));
 
 	// Find where all vector data intersect at least once
@@ -193,7 +193,7 @@ fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, V
 		let boolean_intersection_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
 		let mut instance = from_path(&boolean_intersection_string);
 		instance.style = first_instance.element.style.clone();
-		let boolean_intersection_result = Instance {
+		let boolean_intersection_result = TableRow {
 			element: instance,
 			transform: *first_instance.transform,
 			alpha_blending: *first_instance.alpha_blending,
@@ -247,7 +247,7 @@ fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTab
 						let mut instance = VectorData::from_subpath(subpath);
 						instance.style.set_fill(Fill::Solid(Color::BLACK));
 
-						Instance {
+						TableRow {
 							element: instance,
 							..Default::default()
 						}
@@ -266,7 +266,7 @@ fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTab
 						let mut instance = VectorData::from_subpath(subpath);
 						instance.style.set_fill(Fill::Solid(Color::BLACK));
 
-						Instance {
+						TableRow {
 							element: instance,
 							..Default::default()
 						}

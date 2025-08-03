@@ -7,7 +7,7 @@ use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataE
 use crate::bounds::BoundingBox;
 use crate::raster_types::{CPU, GPU, RasterDataTable};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
-use crate::table::{Instance, InstanceMut, Table};
+use crate::table::{Table, TableRow, TableRowMut};
 use crate::transform::{Footprint, ReferencePoint, Transform};
 use crate::vector::PointDomain;
 use crate::vector::algorithms::bezpath_algorithms::eval_pathseg_euclidean;
@@ -29,11 +29,11 @@ use std::f64::consts::TAU;
 /// Implemented for types that can be converted to an iterator of vector data.
 /// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
 trait VectorDataTableIterMut {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = InstanceMut<'_, VectorData>>;
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, VectorData>>;
 }
 
 impl VectorDataTableIterMut for GraphicGroupTable {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = InstanceMut<'_, VectorData>> {
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, VectorData>> {
 		// Grab only the direct children
 		self.instance_mut_iter()
 			.filter_map(|element| element.element.as_vector_data_mut())
@@ -42,7 +42,7 @@ impl VectorDataTableIterMut for GraphicGroupTable {
 }
 
 impl VectorDataTableIterMut for VectorDataTable {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = InstanceMut<'_, VectorData>> {
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, VectorData>> {
 		self.instance_mut_iter()
 	}
 }
@@ -536,7 +536,7 @@ async fn round_corners(
 
 			result.upstream_graphic_group = upstream_graphic_group;
 
-			Instance {
+			TableRow {
 				element: result,
 				transform: source_transform,
 				alpha_blending: Default::default(),
@@ -773,7 +773,7 @@ async fn auto_tangents(
 				result.append_bezpath(softened_bezpath);
 			}
 
-			Instance {
+			TableRow {
 				element: result,
 				transform,
 				alpha_blending,
@@ -826,7 +826,7 @@ async fn vec2_to_point(_: impl Ctx, vec2: DVec2) -> VectorDataTable {
 	let mut point_domain = PointDomain::new();
 	point_domain.push(PointId::generate(), vec2);
 
-	VectorDataTable::new_instance(Instance {
+	VectorDataTable::new_instance(TableRow {
 		element: VectorData { point_domain, ..Default::default() },
 		..Default::default()
 	})
@@ -966,7 +966,7 @@ where
 	// A node based solution to support passing through vector data could be a network node with a cache node connected to
 	// a Flatten Path connected to an if else node, another connection from the cache directly
 	// To the if else node, and another connection from the cache to a matches type node connected to the if else node.
-	fn flatten_group(graphic_group_table: &GraphicGroupTable, output: &mut InstanceMut<VectorData>) {
+	fn flatten_group(graphic_group_table: &GraphicGroupTable, output: &mut TableRowMut<VectorData>) {
 		for (group_index, current_element) in graphic_group_table.instance_ref_iter().enumerate() {
 			match current_element.element {
 				GraphicElement::VectorData(vector_data_table) => {
@@ -1601,7 +1601,7 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 				vector_data_instance.append_bezpath(target_path);
 			}
 
-			Instance {
+			TableRow {
 				element: vector_data_instance,
 				alpha_blending: vector_data_alpha_blending,
 				..Default::default()
@@ -1888,7 +1888,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length) -> VectorDataTable {
 	source
 		.instance_iter()
-		.map(|source_instance| Instance {
+		.map(|source_instance| TableRow {
 			element: bevel_algorithm(source_instance.element, source_instance.transform, distance),
 			..source_instance
 		})
@@ -2025,10 +2025,10 @@ mod test {
 		VectorDataTable::new(VectorData::from_bezpath(bezpath))
 	}
 
-	fn create_vector_data_instance(bezpath: BezPath, transform: DAffine2) -> Instance<VectorData> {
+	fn create_vector_data_instance(bezpath: BezPath, transform: DAffine2) -> TableRow<VectorData> {
 		let mut instance = VectorData::default();
 		instance.append_bezpath(bezpath);
-		Instance {
+		TableRow {
 			element: instance,
 			transform,
 			..Default::default()

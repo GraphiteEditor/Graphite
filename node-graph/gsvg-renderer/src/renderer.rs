@@ -10,7 +10,7 @@ use graphene_core::math::quad::Quad;
 use graphene_core::raster::Image;
 use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
 use graphene_core::render_complexity::RenderComplexity;
-use graphene_core::table::Instance;
+use graphene_core::table::TableRow;
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::uuid::{NodeId, generate_uuid};
 use graphene_core::vector::VectorDataTable;
@@ -448,7 +448,7 @@ impl GraphicElementRendered for VectorDataTable {
 					fill_instance.style.clear_stroke();
 					fill_instance.style.set_fill(Fill::solid(Color::BLACK));
 
-					let vector_row = VectorDataTable::new_instance(Instance {
+					let vector_row = VectorDataTable::new_instance(TableRow {
 						element: fill_instance,
 						alpha_blending: *instance.alpha_blending,
 						transform: *instance.transform,
@@ -566,7 +566,7 @@ impl GraphicElementRendered for VectorDataTable {
 				fill_instance.style.clear_stroke();
 				fill_instance.style.set_fill(Fill::solid(Color::BLACK));
 
-				let vector_data = VectorDataTable::new_instance(Instance {
+				let vector_data = VectorDataTable::new_instance(TableRow {
 					element: fill_instance,
 					alpha_blending: *instance.alpha_blending,
 					transform: *instance.transform,
