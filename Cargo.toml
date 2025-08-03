@@ -195,6 +195,9 @@ poly-cool = "0.2.0"
 spirv-std = { git = "https://github.com/rust-gpu/rust-gpu", rev = "3f05f5482824e3b1fbb44c9ef90a8795a0204c7c" }
 cargo-gpu = { git = "https://github.com/rust-gpu/cargo-gpu", rev = "e8ba9a0421c27a715277da116a6f2d59cdd3266d" }
 
+[workspace.lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }
+
 [profile.dev]
 opt-level = 1
 
