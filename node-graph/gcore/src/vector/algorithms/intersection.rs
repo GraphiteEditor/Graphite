@@ -1,4 +1,4 @@
-use super::contants::MIN_SEPARATION_VALUE;
+use super::contants::{MAX_ABSOLUTE_DIFFERENCE, MIN_SEPARATION_VALUE};
 use kurbo::{BezPath, DEFAULT_ACCURACY, ParamCurve, PathSeg, Shape};
 
 /// Calculates the intersection points the bezpath has with a given segment and returns a list of `(usize, f64)` tuples,
@@ -123,6 +123,62 @@ pub fn filtered_all_segment_intersections(segment1: PathSeg, segment2: PathSeg, 
 		accumulator.push(*t);
 		accumulator
 	})
+}
+
+// TODO: Use an `impl Iterator` return type instead of a `Vec`
+/// Returns a list of parametric `t` values that correspond to the self intersection points of the current bezier curve. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
+/// If the difference between 2 adjacent `t` values is less than the minimum difference, the filtering takes the larger `t` value and discards the smaller `t` value.
+/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+/// - `minimum_separation` - The minimum difference between adjacent `t` values in sorted order
+pub fn pathseg_self_intersections(segment: PathSeg, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(f64, f64)> {
+	let (first_half, second_half) = segment.subdivide();
+	let mut intersection_t_values = segment_intersections(first_half, second_half, accuracy);
+
+	intersection_t_values.sort_by(|a, b| (a.0 + a.1).partial_cmp(&(b.0 + b.1)).unwrap());
+
+	intersection_t_values.iter().filter(|(t1, t2)| !(*t1 == 0.5 && *t2 == 0.)).fold(Vec::new(), |mut accumulator, t| {
+		if !accumulator.is_empty()
+			&& (accumulator.last().unwrap().0 - t.0).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE)
+			&& (accumulator.last().unwrap().1 - t.1).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE)
+		{
+			accumulator.pop();
+		}
+		accumulator.push(*t);
+		accumulator
+	})
+}
+
+/// Returns a list of `t` values that correspond to all the self intersection points of the subpath always considering it as a closed subpath. The index and `t` value of both will be returned that corresponds to a point.
+/// The points will be sorted based on their index and `t` repsectively.
+/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+///
+/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
+///
+/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
+pub fn bezpath_all_self_intersections(mut bezpath: BezPath, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
+	// TODO: Take the Bezpath as a reference instead of value to avoid allocation. Presently we do it so we can close the path.
+	bezpath.close_path();
+
+	let mut intersections_vec = Vec::new();
+	let err = error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
+	let num_curves = bezpath.segments().count();
+	// TODO: optimization opportunity - this for-loop currently compares all intersections with all curve-segments in the subpath collection
+	bezpath.segments().enumerate().for_each(|(i, other)| {
+		intersections_vec.extend(pathseg_self_intersections(other, error, minimum_separation).iter().flat_map(|value| [(i, value.0), (i, value.1)]));
+		bezpath.segments().enumerate().skip(i + 1).for_each(|(j, curve)| {
+			intersections_vec.extend(
+				filtered_all_segment_intersections(curve, other, error, minimum_separation)
+					.iter()
+					.filter(|&value| (j != i + 1 || value.0 > err || (1. - value.1) > err) && (j != num_curves - 1 || i != 0 || value.1 > err || (1. - value.0) > err))
+					.flat_map(|value| [(j, value.0), (i, value.1)]),
+			);
+		});
+	});
+
+	intersections_vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+	intersections_vec
 }
 
 #[cfg(test)]
