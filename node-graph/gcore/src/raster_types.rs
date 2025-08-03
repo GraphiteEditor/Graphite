@@ -163,9 +163,12 @@ mod gpu {
 #[cfg(not(feature = "wgpu"))]
 mod gpu {
 	use super::*;
+	use crate::raster_types::__private::Sealed;
 
-	#[derive(Clone, Debug)]
+	#[derive(Clone, Debug, PartialEq, Hash)]
 	pub struct GPU;
+
+	impl Sealed for Raster<GPU> {}
 
 	impl Storage for Raster<GPU> {
 		fn is_empty(&self) -> bool {

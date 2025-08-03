@@ -67,7 +67,7 @@ async fn image_color_palette(
 mod test {
 	use super::*;
 	use graphene_core::raster::image::Image;
-	use graphene_core::raster_types::{Raster, Raster};
+	use graphene_core::raster_types::Raster;
 
 	#[test]
 	fn test_image_color_palette() {

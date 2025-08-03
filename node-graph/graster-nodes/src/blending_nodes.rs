@@ -188,7 +188,8 @@ mod test {
 	use graphene_core::blending::BlendMode;
 	use graphene_core::color::Color;
 	use graphene_core::raster::image::Image;
-	use graphene_core::raster_types::{Raster, Raster};
+	use graphene_core::raster_types::Raster;
+	use graphene_core::table::Table;
 
 	#[tokio::test]
 	async fn color_overlay_multiply() {
