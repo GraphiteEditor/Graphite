@@ -12,10 +12,10 @@ use graphene_std::application_io::{ImageTexture, NodeGraphUpdateMessage, NodeGra
 use graphene_std::memo::IORecord;
 use graphene_std::renderer::{GraphicElementRendered, RenderParams, SvgRender};
 use graphene_std::renderer::{RenderSvgSegmentList, SvgSegment};
-use graphene_std::table::TableRow;
+use graphene_std::table::{Table, TableRow};
 use graphene_std::text::FontCache;
+use graphene_std::vector::VectorData;
 use graphene_std::vector::style::ViewMode;
-use graphene_std::vector::{VectorData, VectorDataTable};
 use graphene_std::wasm_application_io::{RenderOutputType, WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
@@ -313,7 +313,7 @@ impl NodeRuntime {
 			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_std::Artboard>>() {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			// Insert the vector modify if we are dealing with vector data
-			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, VectorDataTable>>() {
+			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, Table<VectorData>>>() {
 				let default = TableRow::default();
 				self.vector_modify
 					.insert(parent_network_node_id, record.output.iter_ref().next().unwrap_or_else(|| default.as_ref()).element.clone());

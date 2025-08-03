@@ -8,11 +8,13 @@ use graphene_application_io::{ImageTexture, SurfaceFrame};
 use graphene_brush::brush_cache::BrushCache;
 use graphene_brush::brush_stroke::BrushStroke;
 use graphene_core::raster::Image;
-use graphene_core::raster_types::CPU;
+use graphene_core::raster_types::{CPU, Raster};
+use graphene_core::table::Table;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
+use graphene_core::vector::VectorData;
 use graphene_core::vector::style::Fill;
-use graphene_core::{Color, MemoHash, Node, Type};
+use graphene_core::{Artboard, Color, GraphicElement, MemoHash, Node, Type};
 use graphene_svg_renderer::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
@@ -185,15 +187,15 @@ tagged_value! {
 	// ====================
 	// GRAPHICAL DATA TYPES
 	// ====================
-	GraphicElement(graphene_core::GraphicElement),
+	GraphicElement(GraphicElement),
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))] // TODO: Eventually remove this migration document upgrade code
-	VectorData(graphene_core::vector::VectorDataTable),
+	VectorData(Table<VectorData>),
 	#[cfg_attr(target_family = "wasm", serde(alias = "ImageFrame", deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
-	RasterData(graphene_core::raster_types::RasterDataTable<CPU>),
+	RasterData(Table<Raster<CPU>>),
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::graphic_element::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
-	GraphicGroup(graphene_core::GraphicGroupTable),
+	GraphicGroup(Table<GraphicElement>),
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::graphic_element::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
-	ArtboardGroup(graphene_core::ArtboardGroupTable),
+	ArtboardGroup(Table<Artboard>),
 	// ============
 	// STRUCT TYPES
 	// ============

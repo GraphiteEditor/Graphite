@@ -13,7 +13,9 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graph_craft::{Type, concrete};
+use graphene_std::Artboard;
 use graphene_std::math::quad::Quad;
+use graphene_std::table::Table;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::{PointId, VectorData, VectorModificationType};
@@ -507,8 +509,8 @@ impl NodeNetworkInterface {
 			InputConnector::Node { node_id, input_index } => (node_id, input_index),
 			InputConnector::Export(export_index) => {
 				let Some((encapsulating_node_id, encapsulating_node_id_path)) = network_path.split_last() else {
-					// The outermost network export defaults to an ArtboardGroupTable.
-					return Some((concrete!(graphene_std::ArtboardGroupTable), TypeSource::OuterMostExportDefault));
+					// The outermost network export defaults to a Table<Artboard>.
+					return Some((concrete!(Table<Artboard>), TypeSource::OuterMostExportDefault));
 				};
 
 				let output_type = self.output_type(encapsulating_node_id, export_index, encapsulating_node_id_path);

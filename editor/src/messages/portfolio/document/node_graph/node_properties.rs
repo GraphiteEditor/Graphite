@@ -19,16 +19,14 @@ use graphene_std::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
 };
-use graphene_std::raster_types::{CPU, GPU, RasterDataTable};
+use graphene_std::raster_types::{CPU, GPU, Raster};
+use graphene_std::table::Table;
 use graphene_std::text::{Font, TextAlign};
 use graphene_std::transform::{Footprint, ReferencePoint, Transform};
-use graphene_std::vector::VectorDataTable;
-use graphene_std::vector::misc::GridType;
-use graphene_std::vector::misc::{ArcType, MergeByDistanceAlgorithm};
-use graphene_std::vector::misc::{CentroidType, PointSpacingType};
-use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
-use graphene_std::vector::style::{GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
-use graphene_std::{GraphicGroupTable, NodeInputDecleration};
+use graphene_std::vector::VectorData;
+use graphene_std::vector::misc::{ArcType, CentroidType, GridType, MergeByDistanceAlgorithm, PointSpacingType};
+use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::{GraphicElement, NodeInputDecleration};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
@@ -185,9 +183,9 @@ pub(crate) fn property_from_type(
 						// ====================
 						// GRAPHICAL DATA TYPES
 						// ====================
-						Some(x) if x == TypeId::of::<VectorDataTable>() => vector_data_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<RasterDataTable<CPU>>() || x == TypeId::of::<RasterDataTable<GPU>>() => raster_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<GraphicGroupTable>() => group_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<Table<VectorData>>() => vector_data_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<Table<Raster<CPU>>>() || x == TypeId::of::<Table<Raster<GPU>>>() => raster_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<Table<GraphicElement>>() => group_widget(default_info).into(),
 						// ============
 						// STRUCT TYPES
 						// ============

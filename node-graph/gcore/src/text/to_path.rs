@@ -1,6 +1,6 @@
 use super::TextAlign;
-use crate::table::TableRow;
-use crate::vector::{PointId, VectorData, VectorDataTable};
+use crate::table::{Table, TableRow};
+use crate::vector::{PointId, VectorData};
 use bezier_rs::{ManipulatorGroup, Subpath};
 use core::cell::RefCell;
 use glam::{DAffine2, DVec2};
@@ -24,7 +24,7 @@ struct PathBuilder {
 	current_subpath: Subpath<PointId>,
 	origin: DVec2,
 	glyph_subpaths: Vec<Subpath<PointId>>,
-	vector_table: VectorDataTable,
+	vector_table: Table<VectorData>,
 	scale: f64,
 	id: PointId,
 }
@@ -205,19 +205,15 @@ fn layout_text(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 	Some(layout)
 }
 
-pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig, per_glyph_instances: bool) -> VectorDataTable {
+pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig, per_glyph_instances: bool) -> Table<VectorData> {
 	let Some(layout) = layout_text(str, font_data, typesetting) else {
-		return VectorDataTable::new_from_element(VectorData::default());
+		return Table::new_from_element(VectorData::default());
 	};
 
 	let mut path_builder = PathBuilder {
 		current_subpath: Subpath::new(Vec::new(), false),
 		glyph_subpaths: Vec::new(),
-		vector_table: if per_glyph_instances {
-			VectorDataTable::default()
-		} else {
-			VectorDataTable::new_from_element(VectorData::default())
-		},
+		vector_table: if per_glyph_instances { Table::new() } else { Table::new_from_element(VectorData::default()) },
 		scale: layout.scale() as f64,
 		id: PointId::ZERO,
 		origin: DVec2::default(),
@@ -232,7 +228,7 @@ pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 	}
 
 	if path_builder.vector_table.is_empty() {
-		path_builder.vector_table = VectorDataTable::new_from_element(VectorData::default());
+		path_builder.vector_table = Table::new_from_element(VectorData::default());
 	}
 
 	path_builder.vector_table

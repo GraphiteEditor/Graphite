@@ -19,11 +19,12 @@ use graph_craft::document::*;
 use graphene_std::brush::brush_cache::BrushCache;
 use graphene_std::extract_xy::XY;
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
-use graphene_std::raster_types::{CPU, RasterDataTable};
+use graphene_std::raster_types::{CPU, Raster};
+use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
 #[allow(unused_imports)]
 use graphene_std::transform::Footprint;
-use graphene_std::vector::VectorDataTable;
+use graphene_std::vector::VectorData;
 use graphene_std::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -268,8 +269,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroupTable::default()), true),
-						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroupTable::default()), true),
+						NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true),
+						NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true),
 					],
 					..Default::default()
 				},
@@ -361,7 +362,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								manual_composition: Some(concrete!(Context)),
 								inputs: vec![
-									NodeInput::network(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(ArtboardGroupTable))), 0),
+									NodeInput::network(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(Table<Artboard>))), 0),
 									NodeInput::node(NodeId(1), 0),
 									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
 								],
@@ -376,8 +377,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::ArtboardGroup(ArtboardGroupTable::default()), true),
-						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroupTable::default()), true),
+						NodeInput::value(TaggedValue::ArtboardGroup(Default::default()), true),
+						NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::new(1920., 1080.)), false),
 						NodeInput::value(TaggedValue::Color(Color::WHITE), false),
@@ -627,7 +628,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(VectorDataTable::default()), true),
+						NodeInput::value(TaggedValue::VectorData(Default::default()), true),
 						NodeInput::value(
 							TaggedValue::Footprint(Footprint {
 								transform: DAffine2::from_scale_angle_translation(DVec2::new(1000., 1000.), 0., DVec2::new(0., 0.)),
@@ -752,7 +753,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: [
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(RasterDataTable<CPU>), 0),
+									NodeInput::network(concrete!(Table<Raster<CPU>>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
@@ -761,7 +762,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(RasterDataTable<CPU>), 0),
+									NodeInput::network(concrete!(Table<Raster<CPU>>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
@@ -770,7 +771,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(RasterDataTable<CPU>), 0),
+									NodeInput::network(concrete!(Table<Raster<CPU>>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
@@ -779,7 +780,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(RasterDataTable<CPU>), 0),
+									NodeInput::network(concrete!(Table<Raster<CPU>>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
@@ -793,7 +794,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::RasterData(Default::default()), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -859,13 +860,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(RasterDataTable<CPU>), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
+								inputs: vec![NodeInput::network(concrete!(Table<Raster<CPU>>), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
 								implementation: DocumentNodeImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(RasterDataTable<CPU>), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
+								inputs: vec![NodeInput::network(concrete!(Table<Raster<CPU>>), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
 								implementation: DocumentNodeImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
@@ -878,7 +879,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::RasterData(Default::default()), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -931,7 +932,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(0), 0)],
 						nodes: vec![DocumentNode {
 							inputs: vec![
-								NodeInput::network(concrete!(RasterDataTable<CPU>), 0),
+								NodeInput::network(concrete!(Table<Raster<CPU>>), 0),
 								NodeInput::network(concrete!(Vec<brush::brush_stroke::BrushStroke>), 1),
 								NodeInput::network(concrete!(BrushCache), 2),
 							],
@@ -946,7 +947,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true),
+						NodeInput::value(TaggedValue::RasterData(Default::default()), true),
 						NodeInput::value(TaggedValue::BrushStrokes(Vec::new()), false),
 						NodeInput::value(TaggedValue::BrushCache(BrushCache::default()), false),
 					],
@@ -985,7 +986,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
-					inputs: vec![NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::RasterData(Default::default()), true)],
 					manual_composition: Some(concrete!(Context)),
 					..Default::default()
 				},
@@ -1004,7 +1005,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::ProtoNode(memo::impure_memo::IDENTIFIER),
-					inputs: vec![NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::RasterData(Default::default()), true)],
 					manual_composition: Some(concrete!(Context)),
 					..Default::default()
 				},
@@ -1098,7 +1099,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							},
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(RasterDataTable<CPU>), 0), NodeInput::node(NodeId(0), 0)],
+								inputs: vec![NodeInput::network(concrete!(Table<Raster<CPU>>), 0), NodeInput::node(NodeId(0), 0)],
 								manual_composition: Some(generic!(T)),
 								implementation: DocumentNodeImplementation::ProtoNode(wgpu_executor::texture_upload::upload_texture::IDENTIFIER),
 								..Default::default()
@@ -1116,7 +1117,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::RasterData(Default::default()), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1195,7 +1196,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		// 		document_node: DocumentNode {
 		// 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::CurvesNode"),
 		// 			inputs: vec![
-		// 				NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true),
+		// 				NodeInput::value(TaggedValue::RasterData(Default::default()), true),
 		// 				NodeInput::value(TaggedValue::Curve(Default::default()), false),
 		// 			],
 		// 			..Default::default()
@@ -1218,7 +1219,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: vec![
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(VectorDataTable), 0)],
+								inputs: vec![NodeInput::network(concrete!(Table<VectorData>), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
 								manual_composition: Some(generic!(T)),
 								skip_deduplication: true,
@@ -1242,7 +1243,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(VectorDataTable::default()), true),
+						NodeInput::value(TaggedValue::VectorData(Default::default()), true),
 						NodeInput::value(TaggedValue::VectorModification(Default::default()), false),
 					],
 					..Default::default()
@@ -1495,7 +1496,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(3), 0)],
 						nodes: vec![
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(VectorDataTable), 0), NodeInput::network(concrete!(vector::style::Fill), 1)],
+								inputs: vec![NodeInput::network(concrete!(Table<VectorData>), 0), NodeInput::network(concrete!(vector::style::Fill), 1)],
 								implementation: DocumentNodeImplementation::ProtoNode(path_bool::boolean_operation::IDENTIFIER),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
@@ -1526,7 +1527,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroupTable::default()), true),
+						NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true),
 						NodeInput::value(TaggedValue::BooleanOperation(path_bool::BooleanOperation::Union), false),
 					],
 					..Default::default()
@@ -1593,14 +1594,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(4), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(graphene_std::vector::VectorDataTable), 0)],
+								inputs: vec![NodeInput::network(concrete!(Table<VectorData>), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(vector::subpath_segment_lengths::IDENTIFIER),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(graphene_std::vector::VectorDataTable), 0),
+									NodeInput::network(concrete!(Table<VectorData>), 0),
 									NodeInput::network(concrete!(vector::misc::PointSpacingType), 1),
 									NodeInput::network(concrete!(f64), 2),
 									NodeInput::network(concrete!(u32), 3),
@@ -1639,7 +1640,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorDataTable::default()), true),
+						NodeInput::value(TaggedValue::VectorData(Default::default()), true),
 						NodeInput::value(TaggedValue::PointSpacingType(Default::default()), false),
 						NodeInput::value(TaggedValue::F64(100.), false),
 						NodeInput::value(TaggedValue::U32(100), false),
@@ -1760,7 +1761,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: [
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(graphene_std::vector::VectorDataTable), 0),
+									NodeInput::network(concrete!(Table<VectorData>), 0),
 									NodeInput::network(concrete!(f64), 1),
 									NodeInput::network(concrete!(u32), 2),
 								],
@@ -1794,7 +1795,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorDataTable::default()), true),
+						NodeInput::value(TaggedValue::VectorData(Default::default()), true),
 						NodeInput::value(TaggedValue::F64(10.), false),
 						NodeInput::value(TaggedValue::U32(0), false),
 					],

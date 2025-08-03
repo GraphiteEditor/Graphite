@@ -1,8 +1,9 @@
 use crate::raster::Image;
-use crate::raster_types::{CPU, RasterDataTable};
+use crate::raster_types::{CPU, Raster};
 use crate::registry::types::Percentage;
-use crate::vector::VectorDataTable;
-use crate::{BlendMode, Color, Ctx, GraphicElement, GraphicGroupTable};
+use crate::table::Table;
+use crate::vector::VectorData;
+use crate::{BlendMode, Color, Ctx, GraphicElement};
 
 pub(super) trait MultiplyAlpha {
 	fn multiply_alpha(&mut self, factor: f64);
@@ -13,21 +14,21 @@ impl MultiplyAlpha for Color {
 		*self = Color::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), (self.a() * factor as f32).clamp(0., 1.))
 	}
 }
-impl MultiplyAlpha for VectorDataTable {
+impl MultiplyAlpha for Table<VectorData> {
 	fn multiply_alpha(&mut self, factor: f64) {
 		for row in self.iter_mut() {
 			row.alpha_blending.opacity *= factor as f32;
 		}
 	}
 }
-impl MultiplyAlpha for GraphicGroupTable {
+impl MultiplyAlpha for Table<GraphicElement> {
 	fn multiply_alpha(&mut self, factor: f64) {
 		for row in self.iter_mut() {
 			row.alpha_blending.opacity *= factor as f32;
 		}
 	}
 }
-impl MultiplyAlpha for RasterDataTable<CPU>
+impl MultiplyAlpha for Table<Raster<CPU>>
 where
 	GraphicElement: From<Image<Color>>,
 {
@@ -46,21 +47,21 @@ impl MultiplyFill for Color {
 		*self = Color::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), (self.a() * factor as f32).clamp(0., 1.))
 	}
 }
-impl MultiplyFill for VectorDataTable {
+impl MultiplyFill for Table<VectorData> {
 	fn multiply_fill(&mut self, factor: f64) {
 		for row in self.iter_mut() {
 			row.alpha_blending.fill *= factor as f32;
 		}
 	}
 }
-impl MultiplyFill for GraphicGroupTable {
+impl MultiplyFill for Table<GraphicElement> {
 	fn multiply_fill(&mut self, factor: f64) {
 		for row in self.iter_mut() {
 			row.alpha_blending.fill *= factor as f32;
 		}
 	}
 }
-impl MultiplyFill for RasterDataTable<CPU> {
+impl MultiplyFill for Table<Raster<CPU>> {
 	fn multiply_fill(&mut self, factor: f64) {
 		for row in self.iter_mut() {
 			row.alpha_blending.fill *= factor as f32;
@@ -72,21 +73,21 @@ trait SetBlendMode {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode);
 }
 
-impl SetBlendMode for VectorDataTable {
+impl SetBlendMode for Table<VectorData> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
 		for row in self.iter_mut() {
 			row.alpha_blending.blend_mode = blend_mode;
 		}
 	}
 }
-impl SetBlendMode for GraphicGroupTable {
+impl SetBlendMode for Table<GraphicElement> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
 		for row in self.iter_mut() {
 			row.alpha_blending.blend_mode = blend_mode;
 		}
 	}
 }
-impl SetBlendMode for RasterDataTable<CPU> {
+impl SetBlendMode for Table<Raster<CPU>> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
 		for row in self.iter_mut() {
 			row.alpha_blending.blend_mode = blend_mode;
@@ -98,21 +99,21 @@ trait SetClip {
 	fn set_clip(&mut self, clip: bool);
 }
 
-impl SetClip for VectorDataTable {
+impl SetClip for Table<VectorData> {
 	fn set_clip(&mut self, clip: bool) {
 		for row in self.iter_mut() {
 			row.alpha_blending.clip = clip;
 		}
 	}
 }
-impl SetClip for GraphicGroupTable {
+impl SetClip for Table<GraphicElement> {
 	fn set_clip(&mut self, clip: bool) {
 		for row in self.iter_mut() {
 			row.alpha_blending.clip = clip;
 		}
 	}
 }
-impl SetClip for RasterDataTable<CPU> {
+impl SetClip for Table<Raster<CPU>> {
 	fn set_clip(&mut self, clip: bool) {
 		for row in self.iter_mut() {
 			row.alpha_blending.clip = clip;
@@ -124,9 +125,9 @@ impl SetClip for RasterDataTable<CPU> {
 fn blend_mode<T: SetBlendMode>(
 	_: impl Ctx,
 	#[implementations(
-		GraphicGroupTable,
-		VectorDataTable,
-		RasterDataTable<CPU>,
+		Table<GraphicElement>,
+		Table<VectorData>,
+		Table<Raster<CPU>>,
 	)]
 	mut value: T,
 	blend_mode: BlendMode,
@@ -140,9 +141,9 @@ fn blend_mode<T: SetBlendMode>(
 fn opacity<T: MultiplyAlpha>(
 	_: impl Ctx,
 	#[implementations(
-		GraphicGroupTable,
-		VectorDataTable,
-		RasterDataTable<CPU>,
+		Table<GraphicElement>,
+		Table<VectorData>,
+		Table<Raster<CPU>>,
 	)]
 	mut value: T,
 	#[default(100.)] opacity: Percentage,
@@ -156,9 +157,9 @@ fn opacity<T: MultiplyAlpha>(
 fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill + SetClip>(
 	_: impl Ctx,
 	#[implementations(
-		GraphicGroupTable,
-		VectorDataTable,
-		RasterDataTable<CPU>,
+		Table<GraphicElement>,
+		Table<VectorData>,
+		Table<Raster<CPU>>,
 	)]
 	mut value: T,
 	blend_mode: BlendMode,

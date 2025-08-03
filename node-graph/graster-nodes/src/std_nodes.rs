@@ -9,8 +9,8 @@ use graphene_core::context::{Ctx, ExtractFootprint};
 use graphene_core::math::bbox::Bbox;
 use graphene_core::raster::image::Image;
 use graphene_core::raster::{Bitmap, BitmapMut};
-use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
-use graphene_core::table::TableRow;
+use graphene_core::raster_types::{CPU, Raster};
+use graphene_core::table::{Table, TableRow};
 use graphene_core::transform::Transform;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
@@ -30,7 +30,7 @@ impl From<std::io::Error> for Error {
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: RasterDataTable<CPU>) -> RasterDataTable<CPU> {
+pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Table<Raster<CPU>>) -> Table<Raster<CPU>> {
 	image_frame
 		.iter()
 		.filter_map(|mut row| {
@@ -98,11 +98,11 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Rast
 pub fn combine_channels(
 	_: impl Ctx,
 	_primary: (),
-	#[expose] red: RasterDataTable<CPU>,
-	#[expose] green: RasterDataTable<CPU>,
-	#[expose] blue: RasterDataTable<CPU>,
-	#[expose] alpha: RasterDataTable<CPU>,
-) -> RasterDataTable<CPU> {
+	#[expose] red: Table<Raster<CPU>>,
+	#[expose] green: Table<Raster<CPU>>,
+	#[expose] blue: Table<Raster<CPU>>,
+	#[expose] alpha: Table<Raster<CPU>>,
+) -> Table<Raster<CPU>> {
 	let max_len = red.len().max(green.len()).max(blue.len()).max(alpha.len());
 	let red = red.iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
 	let green = green.iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
@@ -187,11 +187,11 @@ pub fn combine_channels(
 pub fn mask(
 	_: impl Ctx,
 	/// The image to be masked.
-	image: RasterDataTable<CPU>,
+	image: Table<Raster<CPU>>,
 	/// The stencil to be used for masking.
 	#[expose]
-	stencil: RasterDataTable<CPU>,
-) -> RasterDataTable<CPU> {
+	stencil: Table<Raster<CPU>>,
+) -> Table<Raster<CPU>> {
 	// TODO: Figure out what it means to support multiple stencil rows?
 	let Some(stencil) = stencil.iter().next() else {
 		// No stencil provided so we return the original image
@@ -233,7 +233,7 @@ pub fn mask(
 }
 
 #[node_macro::node(category(""))]
-pub fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<CPU>, bounds: DAffine2) -> RasterDataTable<CPU> {
+pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DAffine2) -> Table<Raster<CPU>> {
 	image
 		.iter()
 		.map(|mut row| {
@@ -280,13 +280,13 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<CPU>, bounds: 
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> RasterDataTable<CPU> {
+pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> Table<Raster<CPU>> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
 	let image = Image::new(width, height, color);
 
-	let mut result_table = RasterDataTable::new_from_element(Raster::new_cpu(image));
+	let mut result_table = Table::new_from_element(Raster::new_cpu(image));
 	let row = result_table.get_mut(0).unwrap();
 	*row.transform = transform;
 	*row.alpha_blending = AlphaBlending::default();
@@ -297,7 +297,7 @@ pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> RasterData
 
 /// Constructs a raster image.
 #[node_macro::node(category(""))]
-pub fn image_value(_: impl Ctx, _primary: (), image: RasterDataTable<CPU>) -> RasterDataTable<CPU> {
+pub fn image_value(_: impl Ctx, _primary: (), image: Table<Raster<CPU>>) -> Table<Raster<CPU>> {
 	image
 }
 
@@ -321,7 +321,7 @@ pub fn noise_pattern(
 	cellular_distance_function: CellularDistanceFunction,
 	cellular_return_type: CellularReturnType,
 	cellular_jitter: f64,
-) -> RasterDataTable<CPU> {
+) -> Table<Raster<CPU>> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
@@ -339,7 +339,7 @@ pub fn noise_pattern(
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return RasterDataTable::default();
+		return Table::new();
 	}
 
 	let footprint_scale = footprint.scale();
@@ -383,7 +383,7 @@ pub fn noise_pattern(
 				}
 			}
 
-			return RasterDataTable::new_from_row(TableRow {
+			return Table::new_from_row(TableRow {
 				element: Raster::new_cpu(image),
 				transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
 				..Default::default()
@@ -445,7 +445,7 @@ pub fn noise_pattern(
 		}
 	}
 
-	RasterDataTable::new_from_row(TableRow {
+	Table::new_from_row(TableRow {
 		element: Raster::new_cpu(image),
 		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
 		..Default::default()
@@ -453,7 +453,7 @@ pub fn noise_pattern(
 }
 
 #[node_macro::node(category("Raster: Pattern"))]
-pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> RasterDataTable<CPU> {
+pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Table<Raster<CPU>> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
@@ -465,7 +465,7 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> RasterDataTable<CPU> {
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return RasterDataTable::default();
+		return Table::new();
 	}
 
 	let scale = footprint.scale();
@@ -487,7 +487,7 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> RasterDataTable<CPU> {
 		}
 	}
 
-	RasterDataTable::new_from_row(TableRow {
+	Table::new_from_row(TableRow {
 		element: Raster::new_cpu(Image {
 			width,
 			height,

@@ -2,15 +2,16 @@ use graphene_core::color::Color;
 use graphene_core::context::Ctx;
 use graphene_core::raster::image::Image;
 use graphene_core::raster::{Bitmap, BitmapMut};
-use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
+use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::registry::types::PixelLength;
+use graphene_core::table::Table;
 
 /// Blurs the image with a Gaussian or blur kernel filter.
 #[node_macro::node(category("Raster: Filter"))]
 async fn blur(
 	_: impl Ctx,
 	/// The image to be blurred.
-	image_frame: RasterDataTable<CPU>,
+	image_frame: Table<Raster<CPU>>,
 	/// The radius of the blur kernel.
 	#[range((0., 100.))]
 	#[hard_min(0.)]
@@ -19,7 +20,7 @@ async fn blur(
 	box_blur: bool,
 	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
 	gamma: bool,
-) -> RasterDataTable<CPU> {
+) -> Table<Raster<CPU>> {
 	image_frame
 		.iter()
 		.map(|mut row| {

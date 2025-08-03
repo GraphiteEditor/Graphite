@@ -61,8 +61,6 @@ where
 	}
 }
 
-pub type RasterDataTable<Storage> = Table<Raster<Storage>>;
-
 pub use cpu::CPU;
 
 mod cpu {
@@ -198,7 +196,7 @@ mod gpu_common {
 	}
 }
 
-impl<T> BoundingBox for RasterDataTable<T>
+impl<T> BoundingBox for Table<Raster<T>>
 where
 	Raster<T>: Storage,
 {

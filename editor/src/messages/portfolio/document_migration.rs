@@ -10,10 +10,11 @@ use glam::IVec2;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::ProtoNodeIdentifier;
+use graphene_std::table::Table;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::uuid::NodeId;
+use graphene_std::vector::VectorData;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign};
-use graphene_std::vector::{VectorData, VectorDataTable};
 use std::collections::HashMap;
 
 const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
@@ -616,7 +617,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		};
 		let path_node = path_node_type.node_template_input_override([
-			Some(NodeInput::value(TaggedValue::VectorData(VectorDataTable::new_from_element(vector_data)), true)),
+			Some(NodeInput::value(TaggedValue::VectorData(Table::new_from_element(vector_data)), true)),
 			Some(NodeInput::value(TaggedValue::VectorModification(Default::default()), false)),
 		]);
 

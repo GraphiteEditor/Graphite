@@ -1,17 +1,17 @@
-use crate::raster_types::{CPU, RasterDataTable};
+use crate::raster_types::{CPU, Raster};
 use crate::table::{Table, TableRowRef};
-use crate::vector::VectorDataTable;
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, OwnedContextImpl};
+use crate::vector::VectorData;
+use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, OwnedContextImpl};
 use glam::DVec2;
 
 #[node_macro::node(name("Instance on Points"), category("Instancing"), path(graphene_core::vector))]
 async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx,
-	points: VectorDataTable,
+	points: Table<VectorData>,
 	#[implementations(
-		Context -> GraphicGroupTable,
-		Context -> VectorDataTable,
-		Context -> RasterDataTable<CPU>
+		Context -> Table<GraphicElement>,
+		Context -> Table<VectorData>,
+		Context -> Table<Raster<CPU>>
 	)]
 	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
 	reverse: bool,
@@ -50,9 +50,9 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + '
 async fn instance_repeat<T: Into<GraphicElement> + Default + Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
-		Context -> GraphicGroupTable,
-		Context -> VectorDataTable,
-		Context -> RasterDataTable<CPU>
+		Context -> Table<GraphicElement>,
+		Context -> Table<VectorData>,
+		Context -> Table<Raster<CPU>>
 	)]
 	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
 	#[default(1)] count: u64,
@@ -128,7 +128,7 @@ mod test {
 		);
 
 		let positions = [DVec2::new(40., 20.), DVec2::ONE, DVec2::new(-42., 9.), DVec2::new(10., 345.)];
-		let points = VectorDataTable::new_from_element(VectorData::from_subpath(Subpath::from_anchors_linear(positions, false)));
+		let points = Table::new_from_element(VectorData::from_subpath(Subpath::from_anchors_linear(positions, false)));
 		let generated = super::instance_on_points(owned, points, &rect, false).await;
 		assert_eq!(generated.len(), positions.len());
 		for (position, generated_row) in positions.into_iter().zip(generated.iter_ref()) {

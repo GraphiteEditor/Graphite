@@ -420,7 +420,7 @@ impl Hash for VectorModification {
 
 /// Applies a diff modification to a vector path.
 #[node_macro::node(category(""))]
-async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: Box<VectorModification>, node_path: Vec<NodeId>) -> VectorDataTable {
+async fn path_modify(_ctx: impl Ctx, mut vector_data: Table<VectorData>, modification: Box<VectorModification>, node_path: Vec<NodeId>) -> Table<VectorData> {
 	if vector_data.is_empty() {
 		vector_data.push(TableRow::default());
 	}
@@ -439,7 +439,7 @@ async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modificat
 
 /// Applies the vector path's local transformation to its geometry and resets it to the identity.
 #[node_macro::node(category("Vector"))]
-async fn apply_transform(_ctx: impl Ctx, mut vector_data: VectorDataTable) -> VectorDataTable {
+async fn apply_transform(_ctx: impl Ctx, mut vector_data: Table<VectorData>) -> Table<VectorData> {
 	for row in vector_data.iter_mut() {
 		let vector_data = row.element;
 		let transform = *row.transform;

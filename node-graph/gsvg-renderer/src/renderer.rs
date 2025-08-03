@@ -8,15 +8,15 @@ use graphene_core::bounds::BoundingBox;
 use graphene_core::color::Color;
 use graphene_core::math::quad::Quad;
 use graphene_core::raster::Image;
-use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
+use graphene_core::raster_types::{CPU, GPU, Raster};
 use graphene_core::render_complexity::RenderComplexity;
-use graphene_core::table::TableRow;
+use graphene_core::table::{Table, TableRow};
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::uuid::{NodeId, generate_uuid};
-use graphene_core::vector::VectorDataTable;
+use graphene_core::vector::VectorData;
 use graphene_core::vector::click_target::{ClickTarget, FreePoint};
 use graphene_core::vector::style::{Fill, Stroke, StrokeAlign, ViewMode};
-use graphene_core::{Artboard, ArtboardGroupTable, GraphicElement, GraphicGroupTable};
+use graphene_core::{Artboard, GraphicElement};
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -234,7 +234,7 @@ pub trait GraphicElementRendered: BoundingBox + RenderComplexity {
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {}
 }
 
-impl GraphicElementRendered for GraphicGroupTable {
+impl GraphicElementRendered for Table<GraphicElement> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let mut iter = self.iter_ref().peekable();
 		let mut mask_state = None;
@@ -408,7 +408,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 	}
 }
 
-impl GraphicElementRendered for VectorDataTable {
+impl GraphicElementRendered for Table<VectorData> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter_ref() {
 			let multiplied_transform = *row.transform;
@@ -448,7 +448,7 @@ impl GraphicElementRendered for VectorDataTable {
 					element.style.clear_stroke();
 					element.style.set_fill(Fill::solid(Color::BLACK));
 
-					let vector_row = VectorDataTable::new_from_row(TableRow {
+					let vector_row = Table::new_from_row(TableRow {
 						element,
 						alpha_blending: *row.alpha_blending,
 						transform: *row.transform,
@@ -566,7 +566,7 @@ impl GraphicElementRendered for VectorDataTable {
 				element.style.clear_stroke();
 				element.style.set_fill(Fill::solid(Color::BLACK));
 
-				let vector_data = VectorDataTable::new_from_row(TableRow {
+				let vector_data = Table::new_from_row(TableRow {
 					element,
 					alpha_blending: *row.alpha_blending,
 					transform: *row.transform,
@@ -907,7 +907,7 @@ impl GraphicElementRendered for Artboard {
 	}
 }
 
-impl GraphicElementRendered for ArtboardGroupTable {
+impl GraphicElementRendered for Table<Artboard> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for artboard in self.iter_ref() {
 			artboard.element.render_svg(render, render_params);
@@ -938,7 +938,7 @@ impl GraphicElementRendered for ArtboardGroupTable {
 	}
 }
 
-impl GraphicElementRendered for RasterDataTable<CPU> {
+impl GraphicElementRendered for Table<Raster<CPU>> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter_ref() {
 			let image = row.element;
@@ -1081,7 +1081,7 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 
 const LAZY_ARC_VEC_ZERO_U8: LazyLock<Arc<Vec<u8>>> = LazyLock::new(|| Arc::new(Vec::new()));
 
-impl GraphicElementRendered for RasterDataTable<GPU> {
+impl GraphicElementRendered for Table<Raster<GPU>> {
 	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {
 		log::warn!("tried to render texture as an svg");
 	}

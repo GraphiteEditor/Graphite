@@ -9,7 +9,7 @@ use crate::math::quad::Quad;
 use crate::table::Table;
 use crate::transform::Transform;
 use crate::vector::click_target::{ClickTargetType, FreePoint};
-use crate::{AlphaBlending, Color, GraphicGroupTable};
+use crate::{AlphaBlending, Color, GraphicElement};
 pub use attributes::*;
 use bezier_rs::{BezierHandles, ManipulatorGroup};
 use core::borrow::Borrow;
@@ -22,7 +22,7 @@ pub use modification::*;
 use std::collections::HashMap;
 
 // TODO: Eventually remove this migration document upgrade code
-pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<VectorDataTable, D::Error> {
+pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<VectorData>, D::Error> {
 	use serde::Deserialize;
 
 	#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
@@ -41,7 +41,7 @@ pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		pub region_domain: RegionDomain,
 
 		// Used to store the upstream graphic group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
-		pub upstream_graphic_group: Option<GraphicGroupTable>,
+		pub upstream_graphic_group: Option<Table<GraphicElement>>,
 	}
 
 	#[derive(serde::Serialize, serde::Deserialize)]
@@ -50,13 +50,13 @@ pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 	enum EitherFormat {
 		VectorData(VectorData),
 		OldVectorData(OldVectorData),
-		VectorDataTable(VectorDataTable),
+		VectorDataTable(Table<VectorData>),
 	}
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
-		EitherFormat::VectorData(vector_data) => VectorDataTable::new_from_element(vector_data),
+		EitherFormat::VectorData(vector_data) => Table::new_from_element(vector_data),
 		EitherFormat::OldVectorData(old) => {
-			let mut vector_data_table = VectorDataTable::new_from_element(VectorData {
+			let mut vector_data_table = Table::new_from_element(VectorData {
 				style: old.style,
 				colinear_manipulators: old.colinear_manipulators,
 				point_domain: old.point_domain,
@@ -71,8 +71,6 @@ pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		EitherFormat::VectorDataTable(vector_data_table) => vector_data_table,
 	})
 }
-
-pub type VectorDataTable = Table<VectorData>;
 
 /// [VectorData] is passed between nodes.
 /// It contains a list of subpaths (that may be open or closed), a transform, and some style information.
@@ -91,7 +89,7 @@ pub struct VectorData {
 	pub region_domain: RegionDomain,
 
 	// Used to store the upstream graphic group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
-	pub upstream_graphic_group: Option<GraphicGroupTable>,
+	pub upstream_graphic_group: Option<Table<GraphicElement>>,
 }
 
 impl Default for VectorData {
@@ -495,7 +493,7 @@ impl VectorData {
 	}
 }
 
-impl BoundingBox for VectorDataTable {
+impl BoundingBox for Table<VectorData> {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
 		self.iter_ref()
 			.flat_map(|row| {

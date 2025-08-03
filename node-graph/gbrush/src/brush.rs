@@ -8,7 +8,7 @@ use graphene_core::generic::FnNode;
 use graphene_core::math::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::BitmapMut;
 use graphene_core::raster::image::Image;
-use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
+use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::registry::FutureWrapperNode;
 use graphene_core::table::{Table, TableRow};
 use graphene_core::transform::Transform;
@@ -77,7 +77,7 @@ fn brush_stamp_generator(#[unit(" px")] diameter: f64, color: Color, hardness: f
 }
 
 #[node_macro::node(skip_impl)]
-fn blit<BlendFn>(mut target: RasterDataTable<CPU>, texture: Raster<CPU>, positions: Vec<DVec2>, blend_mode: BlendFn) -> RasterDataTable<CPU>
+fn blit<BlendFn>(mut target: Table<Raster<CPU>>, texture: Raster<CPU>, positions: Vec<DVec2>, blend_mode: BlendFn) -> Table<Raster<CPU>>
 where
 	BlendFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color>,
 {
@@ -179,7 +179,7 @@ pub fn blend_with_mode(background: TableRow<Raster<CPU>>, foreground: TableRow<R
 }
 
 #[node_macro::node(category("Raster"))]
-async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes: Vec<BrushStroke>, cache: BrushCache) -> RasterDataTable<CPU> {
+async fn brush(_: impl Ctx, mut image_frame_table: Table<Raster<CPU>>, strokes: Vec<BrushStroke>, cache: BrushCache) -> Table<Raster<CPU>> {
 	if image_frame_table.is_empty() {
 		image_frame_table.push(TableRow::default());
 	}
@@ -199,7 +199,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes
 
 	// TODO: Find a way to handle more than one row
 	let Some(mut actual_image) = extend_image_to_bounds((), Table::new_from_row(brush_plan.background), background_bounds).iter().next() else {
-		return RasterDataTable::default();
+		return Table::new();
 	};
 
 	let final_stroke_idx = brush_plan.strokes.len().saturating_sub(1);
@@ -391,7 +391,7 @@ mod test {
 	async fn test_brush_output_size() {
 		let image = brush(
 			(),
-			RasterDataTable::<CPU>::new_from_element(Raster::new_cpu(Image::<Color>::default())),
+			Table::new_from_element(Raster::new_cpu(Image::<Color>::default())),
 			vec![BrushStroke {
 				trace: vec![crate::brush_stroke::BrushInputSample { position: DVec2::ZERO }],
 				style: BrushStyle {

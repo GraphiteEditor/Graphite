@@ -5,12 +5,11 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::Context;
-use graphene_std::GraphicGroupTable;
 use graphene_std::memo::IORecord;
 use graphene_std::raster::Image;
 use graphene_std::table::Table;
-use graphene_std::vector::{VectorData, VectorDataTable};
-use graphene_std::{Artboard, ArtboardGroupTable, GraphicElement};
+use graphene_std::vector::VectorData;
+use graphene_std::{Artboard, GraphicElement};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -113,17 +112,17 @@ struct LayoutData<'a> {
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
 	// We simply try random types. TODO: better strategy.
 	#[allow(clippy::manual_map)]
-	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, ArtboardGroupTable>>() {
+	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Artboard>>>() {
 		Some(io.output.layout_with_breadcrumb(data))
-	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), ArtboardGroupTable>>() {
+	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), Table<Artboard>>>() {
 		Some(io.output.layout_with_breadcrumb(data))
-	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, VectorDataTable>>() {
+	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<VectorData>>>() {
 		Some(io.output.layout_with_breadcrumb(data))
-	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), VectorDataTable>>() {
+	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), Table<VectorData>>>() {
 		Some(io.output.layout_with_breadcrumb(data))
-	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, GraphicGroupTable>>() {
+	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<GraphicElement>>>() {
 		Some(io.output.layout_with_breadcrumb(data))
-	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), GraphicGroupTable>>() {
+	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), Table<GraphicElement>>>() {
 		Some(io.output.layout_with_breadcrumb(data))
 	} else {
 		None

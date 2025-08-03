@@ -1,13 +1,14 @@
 use graphene_core::context::Ctx;
 use graphene_core::raster::image::Image;
-use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
+use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::registry::types::Percentage;
+use graphene_core::table::Table;
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use std::cmp::{max, min};
 
 #[node_macro::node(category("Raster: Filter"))]
-async fn dehaze(_: impl Ctx, image_frame: RasterDataTable<CPU>, strength: Percentage) -> RasterDataTable<CPU> {
+async fn dehaze(_: impl Ctx, image_frame: Table<Raster<CPU>>, strength: Percentage) -> Table<Raster<CPU>> {
 	image_frame
 		.iter()
 		.map(|mut row| {
