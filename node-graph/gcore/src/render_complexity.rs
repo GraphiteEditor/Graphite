@@ -12,7 +12,7 @@ pub trait RenderComplexity {
 
 impl<T: RenderComplexity> RenderComplexity for Table<T> {
 	fn render_complexity(&self) -> usize {
-		self.instance_ref_iter().map(|instance| instance.element.render_complexity()).fold(0, usize::saturating_add)
+		self.iter_ref().map(|instance| instance.element.render_complexity()).fold(0, usize::saturating_add)
 	}
 }
 

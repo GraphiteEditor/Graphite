@@ -10,7 +10,7 @@ use graphene_core::raster::BitmapMut;
 use graphene_core::raster::image::Image;
 use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::registry::FutureWrapperNode;
-use graphene_core::table::TableRow;
+use graphene_core::table::{Table, TableRow};
 use graphene_core::transform::Transform;
 use graphene_core::value::ClonedNode;
 use graphene_core::{Ctx, Node};
@@ -85,7 +85,7 @@ where
 		return target;
 	}
 
-	for target_instance in target.instance_mut_iter() {
+	for target_instance in target.iter_mut() {
 		let target_width = target_instance.element.width;
 		let target_height = target_instance.element.height;
 		let target_size = DVec2::new(target_width as f64, target_height as f64);
@@ -130,7 +130,7 @@ where
 pub async fn create_brush_texture(brush_style: &BrushStyle) -> Raster<CPU> {
 	let stamp = brush_stamp_generator(brush_style.diameter, brush_style.color, brush_style.hardness, brush_style.flow);
 	let transform = DAffine2::from_scale_angle_translation(DVec2::splat(brush_style.diameter), 0., -DVec2::splat(brush_style.diameter / 2.));
-	let blank_texture = empty_image((), transform, Color::TRANSPARENT).instance_iter().next().unwrap_or_default();
+	let blank_texture = empty_image((), transform, Color::TRANSPARENT).iter().next().unwrap_or_default();
 	let image = blend_stamp_closure(stamp, blank_texture, |a, b| blend_colors(a, b, BlendMode::Normal, 1.));
 
 	image.element
@@ -184,9 +184,11 @@ async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes
 		image_frame_table.push(TableRow::default());
 	}
 	// TODO: Find a way to handle more than one instance
-	let image_frame_instance = image_frame_table.instance_ref_iter().next().expect("Expected the one instance we just pushed").to_instance_cloned();
+	let image_frame_instance = image_frame_table.iter_ref().next().expect("Expected the one instance we just pushed").into_cloned();
 
-	let [start, end] = image_frame_instance.clone().to_table().bounding_box(DAffine2::IDENTITY, false).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
+	let [start, end] = Table::new_from_row(image_frame_instance.clone())
+		.bounding_box(DAffine2::IDENTITY, false)
+		.unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 	let image_bbox = AxisAlignedBbox { start, end };
 	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
 	let bbox = if image_bbox.size().length() < 0.1 { stroke_bbox } else { stroke_bbox.union(&image_bbox) };
@@ -198,7 +200,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes
 	let mut brush_plan = cache.compute_brush_plan(image_frame_instance, &draw_strokes);
 
 	// TODO: Find a way to handle more than one instance
-	let Some(mut actual_image) = extend_image_to_bounds((), brush_plan.background.to_table(), background_bounds).instance_iter().next() else {
+	let Some(mut actual_image) = extend_image_to_bounds((), Table::new_from_row(brush_plan.background), background_bounds).iter().next() else {
 		return RasterDataTable::default();
 	};
 
@@ -238,7 +240,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes
 			);
 			let blit_target = if idx == 0 {
 				let target = core::mem::take(&mut brush_plan.first_stroke_texture);
-				extend_image_to_bounds((), target.to_table(), stroke_to_layer)
+				extend_image_to_bounds((), Table::new_from_row(target), stroke_to_layer)
 			} else {
 				empty_image((), stroke_to_layer, Color::TRANSPARENT)
 				// EmptyImageNode::new(CopiedNode::new(stroke_to_layer), CopiedNode::new(Color::TRANSPARENT)).eval(())
@@ -246,7 +248,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes
 
 			let table = blit_node.eval(blit_target).await;
 			assert_eq!(table.len(), 1);
-			table.instance_iter().next().unwrap_or_default()
+			table.iter().next().unwrap_or_default()
 		};
 
 		// Cache image before doing final blend, and store final stroke texture.
@@ -285,7 +287,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes
 						FutureWrapperNode::new(ClonedNode::new(positions)),
 						FutureWrapperNode::new(ClonedNode::new(blend_params)),
 					);
-					erase_restore_mask = blit_node.eval(erase_restore_mask.to_table()).await.instance_iter().next().unwrap_or_default();
+					erase_restore_mask = blit_node.eval(Table::new_from_row(erase_restore_mask)).await.iter().next().unwrap_or_default();
 				}
 				// Yes, this is essentially the same as the above, but we duplicate to inline the blend mode.
 				BlendMode::Restore => {
@@ -295,7 +297,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes
 						FutureWrapperNode::new(ClonedNode::new(positions)),
 						FutureWrapperNode::new(ClonedNode::new(blend_params)),
 					);
-					erase_restore_mask = blit_node.eval(erase_restore_mask.to_table()).await.instance_iter().next().unwrap_or_default();
+					erase_restore_mask = blit_node.eval(Table::new_from_row(erase_restore_mask)).await.iter().next().unwrap_or_default();
 				}
 				_ => unreachable!(),
 			}
@@ -305,7 +307,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes
 		actual_image = blend_image_closure(erase_restore_mask, actual_image, |a, b| blend_params.eval((a, b)));
 	}
 
-	let first_row = image_frame_table.instance_mut_iter().next().unwrap();
+	let first_row = image_frame_table.iter_mut().next().unwrap();
 	*first_row.element = actual_image.element;
 	*first_row.transform = actual_image.transform;
 	*first_row.alpha_blending = actual_image.alpha_blending;
@@ -391,7 +393,7 @@ mod test {
 	async fn test_brush_output_size() {
 		let image = brush(
 			(),
-			RasterDataTable::<CPU>::new(Raster::new_cpu(Image::<Color>::default())),
+			RasterDataTable::<CPU>::new_from_element(Raster::new_cpu(Image::<Color>::default())),
 			vec![BrushStroke {
 				trace: vec![crate::brush_stroke::BrushInputSample { position: DVec2::ZERO }],
 				style: BrushStyle {
@@ -406,6 +408,6 @@ mod test {
 			BrushCache::default(),
 		)
 		.await;
-		assert_eq!(image.instance_ref_iter().next().unwrap().element.width, 20);
+		assert_eq!(image.iter_ref().next().unwrap().element.width, 20);
 	}
 }

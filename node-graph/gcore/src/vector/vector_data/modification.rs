@@ -440,7 +440,7 @@ async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modificat
 /// Applies the vector path's local transformation to its geometry and resets it to the identity.
 #[node_macro::node(category("Vector"))]
 async fn apply_transform(_ctx: impl Ctx, mut vector_data: VectorDataTable) -> VectorDataTable {
-	for vector_data_instance in vector_data.instance_mut_iter() {
+	for vector_data_instance in vector_data.iter_mut() {
 		let vector_data = vector_data_instance.element;
 		let transform = *vector_data_instance.transform;
 

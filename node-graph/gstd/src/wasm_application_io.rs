@@ -101,7 +101,7 @@ fn string_to_bytes(_: impl Ctx, string: String) -> Vec<u8> {
 
 #[node_macro::node(category("Web Request"), name("Image to Bytes"))]
 fn image_to_bytes(_: impl Ctx, image: RasterDataTable<CPU>) -> Vec<u8> {
-	let Some(image) = image.instance_ref_iter().next() else { return vec![] };
+	let Some(image) = image.iter_ref().next() else { return vec![] };
 	image.element.data.iter().flat_map(|color| color.to_rgb8_srgb().into_iter()).collect::<Vec<u8>>()
 }
 
@@ -136,7 +136,7 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> RasterDataTable<CPU> {
 		..Default::default()
 	};
 
-	RasterDataTable::new(Raster::new_cpu(image))
+	RasterDataTable::new_from_element(Raster::new_cpu(image))
 }
 
 fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutputType {
@@ -249,8 +249,8 @@ where
 		..Default::default()
 	};
 
-	for instance in data.instance_mut_iter() {
-		*instance.transform = DAffine2::from_translation(-aabb.start) * *instance.transform;
+	for row in data.iter_mut() {
+		*row.transform = DAffine2::from_translation(-aabb.start) * *row.transform;
 	}
 	data.render_svg(&mut render, &render_params);
 	render.format_svg(glam::DVec2::ZERO, size);
@@ -277,7 +277,7 @@ where
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	RasterDataTable::new_instance(TableRow {
+	RasterDataTable::new_from_row(TableRow {
 		element: Raster::new_cpu(image),
 		transform: footprint.transform,
 		..Default::default()

@@ -30,7 +30,7 @@ mod adjust_std {
 	}
 	impl Adjust<Color> for RasterDataTable<CPU> {
 		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-			for instance in self.instance_mut_iter() {
+			for instance in self.iter_mut() {
 				for c in instance.element.data_mut().data.iter_mut() {
 					*c = map_fn(c);
 				}

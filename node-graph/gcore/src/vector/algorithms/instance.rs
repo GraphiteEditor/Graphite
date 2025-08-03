@@ -16,16 +16,16 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + '
 	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
 	reverse: bool,
 ) -> Table<T> {
-	let mut result_table = Table::<T>::default();
+	let mut result_table = Table::new();
 
-	for TableRowRef { element: points, transform, .. } in points.instance_ref_iter() {
+	for TableRowRef { element: points, transform, .. } in points.iter_ref() {
 		let mut iteration = async |index, point| {
 			let transformed_point = transform.transform_point2(point);
 
 			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_vararg(Box::new(transformed_point));
 			let generated_instance = instance.eval(new_ctx.into_context()).await;
 
-			for mut instanced in generated_instance.instance_iter() {
+			for mut instanced in generated_instance.iter() {
 				instanced.transform.translation = transformed_point;
 				result_table.push(instanced);
 			}
@@ -60,7 +60,7 @@ async fn instance_repeat<T: Into<GraphicElement> + Default + Send + Clone + 'sta
 ) -> Table<T> {
 	let count = count.max(1) as usize;
 
-	let mut result_table = Table::<T>::default();
+	let mut result_table = Table::new();
 
 	for index in 0..count {
 		let index = if reverse { count - index - 1 } else { index };
@@ -68,7 +68,7 @@ async fn instance_repeat<T: Into<GraphicElement> + Default + Send + Clone + 'sta
 		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index);
 		let generated_instance = instance.eval(new_ctx.into_context()).await;
 
-		for instanced in generated_instance.instance_iter() {
+		for instanced in generated_instance.iter() {
 			result_table.push(instanced);
 		}
 	}
@@ -128,10 +128,10 @@ mod test {
 		);
 
 		let positions = [DVec2::new(40., 20.), DVec2::ONE, DVec2::new(-42., 9.), DVec2::new(10., 345.)];
-		let points = VectorDataTable::new(VectorData::from_subpath(Subpath::from_anchors_linear(positions, false)));
+		let points = VectorDataTable::new_from_element(VectorData::from_subpath(Subpath::from_anchors_linear(positions, false)));
 		let repeated = super::instance_on_points(owned, points, &rect, false).await;
 		assert_eq!(repeated.len(), positions.len());
-		for (position, instanced) in positions.into_iter().zip(repeated.instance_ref_iter()) {
+		for (position, instanced) in positions.into_iter().zip(repeated.iter_ref()) {
 			let bounds = instanced.element.bounding_box_with_transform(*instanced.transform).unwrap();
 			assert!(position.abs_diff_eq((bounds[0] + bounds[1]) / 2., 1e-10));
 			assert_eq!((bounds[1] - bounds[0]).x, position.y);

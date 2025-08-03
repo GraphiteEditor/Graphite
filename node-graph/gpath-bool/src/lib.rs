@@ -48,10 +48,10 @@ async fn boolean_operation<I: Into<GraphicGroupTable> + 'n + Send + Clone>(
 	let group_of_paths = group_of_paths.into();
 
 	// The first index is the bottom of the stack
-	let mut result_vector_data_table = boolean_operation_on_vector_data_table(flatten_vector_data(&group_of_paths).instance_ref_iter(), operation);
+	let mut result_vector_data_table = boolean_operation_on_vector_data_table(flatten_vector_data(&group_of_paths).iter_ref(), operation);
 
 	// Replace the transformation matrix with a mutation of the vector points themselves
-	if let Some(result_vector_data) = result_vector_data_table.instance_mut_iter().next() {
+	if let Some(result_vector_data) = result_vector_data_table.iter_mut().next() {
 		let transform = *result_vector_data.transform;
 		*result_vector_data.transform = DAffine2::IDENTITY;
 
@@ -80,12 +80,12 @@ fn union<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector
 	// Reverse vector data so that the result style is the style of the first vector data
 	let mut vector_data_reversed = vector_data.rev();
 
-	let mut result_vector_data_table = VectorDataTable::new_instance(vector_data_reversed.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
-	let mut first_instance = result_vector_data_table.instance_mut_iter().next().expect("Expected the one instance we just pushed");
+	let mut result_vector_data_table = VectorDataTable::new_from_row(vector_data_reversed.next().map(|x| x.into_cloned()).unwrap_or_default());
+	let mut first_instance = result_vector_data_table.iter_mut().next().expect("Expected the one instance we just pushed");
 
 	// Loop over all vector data and union it with the result
 	let default = TableRow::default();
-	let mut second_vector_data = Some(vector_data_reversed.next().unwrap_or(default.to_instance_ref()));
+	let mut second_vector_data = Some(vector_data_reversed.next().unwrap_or(default.as_ref()));
 	while let Some(lower_vector_data) = second_vector_data {
 		let transform_of_lower_into_space_of_upper = first_instance.transform.inverse() * *lower_vector_data.transform;
 
@@ -112,8 +112,8 @@ fn union<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector
 fn subtract<'a>(vector_data: impl Iterator<Item = TableRowRef<'a, VectorData>>) -> VectorDataTable {
 	let mut vector_data = vector_data.into_iter();
 
-	let mut result_vector_data_table = VectorDataTable::new_instance(vector_data.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
-	let mut first_instance = result_vector_data_table.instance_mut_iter().next().expect("Expected the one instance we just pushed");
+	let mut result_vector_data_table = VectorDataTable::new_from_row(vector_data.next().map(|x| x.into_cloned()).unwrap_or_default());
+	let mut first_instance = result_vector_data_table.iter_mut().next().expect("Expected the one instance we just pushed");
 
 	let mut next_vector_data = vector_data.next();
 
@@ -143,11 +143,11 @@ fn subtract<'a>(vector_data: impl Iterator<Item = TableRowRef<'a, VectorData>>) 
 fn intersect<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, VectorData>>) -> VectorDataTable {
 	let mut vector_data = vector_data.rev();
 
-	let mut result_vector_data_table = VectorDataTable::new_instance(vector_data.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
-	let mut first_instance = result_vector_data_table.instance_mut_iter().next().expect("Expected the one instance we just pushed");
+	let mut result_vector_data_table = VectorDataTable::new_from_row(vector_data.next().map(|x| x.into_cloned()).unwrap_or_default());
+	let mut first_instance = result_vector_data_table.iter_mut().next().expect("Expected the one instance we just pushed");
 
 	let default = TableRow::default();
-	let mut second_vector_data = Some(vector_data.next().unwrap_or(default.to_instance_ref()));
+	let mut second_vector_data = Some(vector_data.next().unwrap_or(default.as_ref()));
 
 	// For each vector data, set the result to the intersection of that data and the result
 	while let Some(lower_vector_data) = second_vector_data {
@@ -176,13 +176,13 @@ fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, V
 	let mut vector_data_iter = vector_data.clone().rev();
 	let mut any_intersection = TableRow::default();
 	let default = TableRow::default();
-	let mut second_vector_data = Some(vector_data_iter.next().unwrap_or(default.to_instance_ref()));
+	let mut second_vector_data = Some(vector_data_iter.next().unwrap_or(default.as_ref()));
 
 	// Find where all vector data intersect at least once
 	while let Some(lower_vector_data) = second_vector_data {
 		let filtered_vector_data = vector_data.clone().filter(|v| *v != lower_vector_data).collect::<Vec<_>>().into_iter();
 		let unioned = boolean_operation_on_vector_data_table(filtered_vector_data, BooleanOperation::Union);
-		let first_instance = unioned.instance_ref_iter().next().expect("Expected at least one instance after the boolean union");
+		let first_instance = unioned.iter_ref().next().expect("Expected at least one instance after the boolean union");
 
 		let transform_of_lower_into_space_of_upper = first_instance.transform.inverse() * *lower_vector_data.transform;
 
@@ -218,18 +218,18 @@ fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, V
 
 	// Subtract the area where they intersect at least once from the union of all vector data
 	let union = boolean_operation_on_vector_data_table(vector_data, BooleanOperation::Union);
-	boolean_operation_on_vector_data_table(union.instance_ref_iter().chain(std::iter::once(any_intersection.to_instance_ref())), BooleanOperation::SubtractFront)
+	boolean_operation_on_vector_data_table(union.iter_ref().chain(std::iter::once(any_intersection.as_ref())), BooleanOperation::SubtractFront)
 }
 
 fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTable {
 	graphic_group_table
-		.instance_ref_iter()
+		.iter_ref()
 		.flat_map(|element| {
 			match element.element.clone() {
 				GraphicElement::VectorData(vector_data) => {
 					// Apply the parent group's transform to each element of vector data
 					vector_data
-						.instance_iter()
+						.iter()
 						.map(|mut sub_vector_data| {
 							sub_vector_data.transform = *element.transform * sub_vector_data.transform;
 
@@ -254,7 +254,7 @@ fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTab
 					};
 
 					// Apply the parent group's transform to each element of raster data
-					image.instance_ref_iter().map(|instance| make_instance(*element.transform * *instance.transform)).collect::<Vec<_>>()
+					image.iter_ref().map(|instance| make_instance(*element.transform * *instance.transform)).collect::<Vec<_>>()
 				}
 				GraphicElement::RasterDataGPU(image) => {
 					let make_instance = |transform| {
@@ -273,18 +273,18 @@ fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTab
 					};
 
 					// Apply the parent group's transform to each element of raster data
-					image.instance_ref_iter().map(|instance| make_instance(*element.transform * *instance.transform)).collect::<Vec<_>>()
+					image.iter_ref().map(|instance| make_instance(*element.transform * *instance.transform)).collect::<Vec<_>>()
 				}
 				GraphicElement::GraphicGroup(mut graphic_group) => {
 					// Apply the parent group's transform to each element of inner group
-					for sub_element in graphic_group.instance_mut_iter() {
+					for sub_element in graphic_group.iter_mut() {
 						*sub_element.transform = *element.transform * *sub_element.transform;
 					}
 
 					// Recursively flatten the inner group into vector data
-					let unioned = boolean_operation_on_vector_data_table(flatten_vector_data(&graphic_group).instance_ref_iter(), BooleanOperation::Union);
+					let unioned = boolean_operation_on_vector_data_table(flatten_vector_data(&graphic_group).iter_ref(), BooleanOperation::Union);
 
-					unioned.instance_iter().collect::<Vec<_>>()
+					unioned.iter().collect::<Vec<_>>()
 				}
 			}
 		})

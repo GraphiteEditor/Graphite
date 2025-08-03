@@ -289,7 +289,7 @@ impl<T: InstanceLayout> InstanceLayout for Table<T> {
 		}
 
 		let mut rows = self
-			.instance_ref_iter()
+			.iter_ref()
 			.enumerate()
 			.map(|(index, instance)| {
 				let (scale, angle, translation) = instance.transform.to_scale_angle_translation();

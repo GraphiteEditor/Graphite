@@ -35,7 +35,7 @@ mod blend_std {
 	impl Blend<Color> for RasterDataTable<CPU> {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut result_table = self.clone();
-			for (over, under) in result_table.instance_mut_iter().zip(under.instance_ref_iter()) {
+			for (over, under) in result_table.iter_mut().zip(under.iter_ref()) {
 				let data = over.element.data.iter().zip(under.element.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 
 				*over.element = Raster::new_cpu(Image {
@@ -198,8 +198,8 @@ mod test {
 		// 100% of the output should come from the multiplied value
 		let opacity = 100_f64;
 
-		let result = super::color_overlay((), RasterDataTable::new(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
-		let result = result.instance_ref_iter().next().unwrap().element;
+		let result = super::color_overlay((), RasterDataTable::new_from_element(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
+		let result = result.iter_ref().next().unwrap().element;
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));

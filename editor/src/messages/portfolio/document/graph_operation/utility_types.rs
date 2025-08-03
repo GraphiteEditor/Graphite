@@ -153,7 +153,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
-		let vector_data = VectorDataTable::new(VectorData::from_subpaths(subpaths, true));
+		let vector_data = VectorDataTable::new_from_element(VectorData::from_subpaths(subpaths, true));
 
 		let shape = resolve_document_node_type("Path")
 			.expect("Path node does not exist")

@@ -5,8 +5,8 @@ mod modification;
 use super::misc::{dvec2_to_point, point_to_dvec2};
 use super::style::{PathStyle, Stroke};
 use crate::bounds::BoundingBox;
-use crate::table::Table;
 use crate::math::quad::Quad;
+use crate::table::Table;
 use crate::transform::Transform;
 use crate::vector::click_target::{ClickTargetType, FreePoint};
 use crate::{AlphaBlending, Color, GraphicGroupTable};
@@ -54,9 +54,9 @@ pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 	}
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
-		EitherFormat::VectorData(vector_data) => VectorDataTable::new(vector_data),
+		EitherFormat::VectorData(vector_data) => VectorDataTable::new_from_element(vector_data),
 		EitherFormat::OldVectorData(old) => {
-			let mut vector_data_table = VectorDataTable::new(VectorData {
+			let mut vector_data_table = VectorDataTable::new_from_element(VectorData {
 				style: old.style,
 				colinear_manipulators: old.colinear_manipulators,
 				point_domain: old.point_domain,
@@ -64,8 +64,8 @@ pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 				region_domain: old.region_domain,
 				upstream_graphic_group: old.upstream_graphic_group,
 			});
-			*vector_data_table.instance_mut_iter().next().unwrap().transform = old.transform;
-			*vector_data_table.instance_mut_iter().next().unwrap().alpha_blending = old.alpha_blending;
+			*vector_data_table.iter_mut().next().unwrap().transform = old.transform;
+			*vector_data_table.iter_mut().next().unwrap().alpha_blending = old.alpha_blending;
 			vector_data_table
 		}
 		EitherFormat::VectorDataTable(vector_data_table) => vector_data_table,
@@ -497,7 +497,7 @@ impl VectorData {
 
 impl BoundingBox for VectorDataTable {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.instance_ref_iter()
+		self.iter_ref()
 			.flat_map(|instance| {
 				if !include_stroke {
 					return instance.element.bounding_box_with_transform(transform * *instance.transform);

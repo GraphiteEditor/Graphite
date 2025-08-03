@@ -6,11 +6,11 @@ use graphene_core::blending::AlphaBlending;
 use graphene_core::color::Color;
 use graphene_core::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
 use graphene_core::context::{Ctx, ExtractFootprint};
-use graphene_core::table::TableRow;
 use graphene_core::math::bbox::Bbox;
 use graphene_core::raster::image::Image;
 use graphene_core::raster::{Bitmap, BitmapMut};
 use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
+use graphene_core::table::TableRow;
 use graphene_core::transform::Transform;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
@@ -32,7 +32,7 @@ impl From<std::io::Error> for Error {
 #[node_macro::node(category("Debug: Raster"))]
 pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: RasterDataTable<CPU>) -> RasterDataTable<CPU> {
 	image_frame
-		.instance_iter()
+		.iter()
 		.filter_map(|mut image_frame_instance| {
 			let image_frame_transform = image_frame_instance.transform;
 			let image = image_frame_instance.element;
@@ -104,10 +104,10 @@ pub fn combine_channels(
 	#[expose] alpha: RasterDataTable<CPU>,
 ) -> RasterDataTable<CPU> {
 	let max_len = red.len().max(green.len()).max(blue.len()).max(alpha.len());
-	let red = red.instance_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
-	let green = green.instance_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
-	let blue = blue.instance_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
-	let alpha = alpha.instance_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
+	let red = red.iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
+	let green = green.iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
+	let blue = blue.iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
+	let alpha = alpha.iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
 
 	red.zip(green)
 		.zip(blue)
@@ -193,14 +193,14 @@ pub fn mask(
 	stencil: RasterDataTable<CPU>,
 ) -> RasterDataTable<CPU> {
 	// TODO: Support multiple stencil instances
-	let Some(stencil_instance) = stencil.instance_iter().next() else {
+	let Some(stencil_instance) = stencil.iter().next() else {
 		// No stencil provided so we return the original image
 		return image;
 	};
 	let stencil_size = DVec2::new(stencil_instance.element.width as f64, stencil_instance.element.height as f64);
 
 	image
-		.instance_iter()
+		.iter()
 		.filter_map(|mut image_instance| {
 			let image_size = DVec2::new(image_instance.element.width as f64, image_instance.element.height as f64);
 			let mask_size = stencil_instance.transform.decompose_scale();
@@ -235,7 +235,7 @@ pub fn mask(
 #[node_macro::node(category(""))]
 pub fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<CPU>, bounds: DAffine2) -> RasterDataTable<CPU> {
 	image
-		.instance_iter()
+		.iter()
 		.map(|mut image_instance| {
 			let image_aabb = Bbox::unit().affine_transform(image_instance.transform).to_axis_aligned_bbox();
 			let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
@@ -246,7 +246,7 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<CPU>, bounds: 
 			let image_data = &image_instance.element.data;
 			let (image_width, image_height) = (image_instance.element.width, image_instance.element.height);
 			if image_width == 0 || image_height == 0 {
-				return empty_image((), bounds, Color::TRANSPARENT).instance_iter().next().unwrap();
+				return empty_image((), bounds, Color::TRANSPARENT).iter().next().unwrap();
 			}
 
 			let orig_image_scale = DVec2::new(image_width as f64, image_height as f64);
@@ -286,7 +286,7 @@ pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> RasterData
 
 	let image = Image::new(width, height, color);
 
-	let mut result_table = RasterDataTable::new(Raster::new_cpu(image));
+	let mut result_table = RasterDataTable::new_from_element(Raster::new_cpu(image));
 	let image_instance = result_table.get_mut(0).unwrap();
 	*image_instance.transform = transform;
 	*image_instance.alpha_blending = AlphaBlending::default();
@@ -383,7 +383,7 @@ pub fn noise_pattern(
 				}
 			}
 
-			return RasterDataTable::new_instance(TableRow {
+			return RasterDataTable::new_from_row(TableRow {
 				element: Raster::new_cpu(image),
 				transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
 				..Default::default()
@@ -445,7 +445,7 @@ pub fn noise_pattern(
 		}
 	}
 
-	RasterDataTable::new_instance(TableRow {
+	RasterDataTable::new_from_row(TableRow {
 		element: Raster::new_cpu(image),
 		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
 		..Default::default()
@@ -487,7 +487,7 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> RasterDataTable<CPU> {
 		}
 	}
 
-	RasterDataTable::new_instance(TableRow {
+	RasterDataTable::new_from_row(TableRow {
 		element: Raster::new_cpu(Image {
 			width,
 			height,

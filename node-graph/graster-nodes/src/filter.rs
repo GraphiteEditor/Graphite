@@ -21,7 +21,7 @@ async fn blur(
 	gamma: bool,
 ) -> RasterDataTable<CPU> {
 	image_frame
-		.instance_iter()
+		.iter()
 		.map(|mut image_instance| {
 			let image = image_instance.element.clone();
 

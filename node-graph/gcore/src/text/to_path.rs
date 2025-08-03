@@ -207,7 +207,7 @@ fn layout_text(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 
 pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig, per_glyph_instances: bool) -> VectorDataTable {
 	let Some(layout) = layout_text(str, font_data, typesetting) else {
-		return VectorDataTable::new(VectorData::default());
+		return VectorDataTable::new_from_element(VectorData::default());
 	};
 
 	let mut path_builder = PathBuilder {
@@ -216,7 +216,7 @@ pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 		vector_table: if per_glyph_instances {
 			VectorDataTable::default()
 		} else {
-			VectorDataTable::new(VectorData::default())
+			VectorDataTable::new_from_element(VectorData::default())
 		},
 		scale: layout.scale() as f64,
 		id: PointId::ZERO,
@@ -232,7 +232,7 @@ pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 	}
 
 	if path_builder.vector_table.is_empty() {
-		path_builder.vector_table = VectorDataTable::new(VectorData::default());
+		path_builder.vector_table = VectorDataTable::new_from_element(VectorData::default());
 	}
 
 	path_builder.vector_table

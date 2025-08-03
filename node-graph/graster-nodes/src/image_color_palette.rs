@@ -17,7 +17,7 @@ async fn image_color_palette(
 	let mut histogram: Vec<usize> = vec![0; (bins + 1.) as usize];
 	let mut colors: Vec<Vec<Color>> = vec![vec![]; (bins + 1.) as usize];
 
-	for image_instance in image.instance_ref_iter() {
+	for image_instance in image.iter_ref() {
 		for pixel in image_instance.element.data.iter() {
 			let r = pixel.r() * GRID;
 			let g = pixel.g() * GRID;
@@ -72,7 +72,7 @@ mod test {
 	fn test_image_color_palette() {
 		let result = image_color_palette(
 			(),
-			RasterDataTable::new(Raster::new_cpu(Image {
+			RasterDataTable::new_from_element(Raster::new_cpu(Image {
 				width: 100,
 				height: 100,
 				data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],

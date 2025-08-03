@@ -1,5 +1,5 @@
-use crate::table::Table;
 use crate::raster_types::{CPU, GPU, RasterDataTable};
+use crate::table::Table;
 use crate::transform::{ApplyTransform, Footprint, Transform};
 use crate::vector::VectorDataTable;
 use crate::{CloneVarArgs, Context, Ctx, ExtractAll, GraphicGroupTable, OwnedContextImpl};
@@ -46,7 +46,7 @@ fn replace_transform<Data, TransformInput: Transform>(
 	#[implementations(VectorDataTable, RasterDataTable<CPU>, GraphicGroupTable)] mut data: Table<Data>,
 	#[implementations(DAffine2)] transform: TransformInput,
 ) -> Table<Data> {
-	for data_transform in data.instance_mut_iter() {
+	for data_transform in data.iter_mut() {
 		*data_transform.transform = transform.transform();
 	}
 	data
@@ -63,7 +63,7 @@ async fn extract_transform<T>(
 	)]
 	vector_data: Table<T>,
 ) -> DAffine2 {
-	vector_data.instance_ref_iter().next().map(|vector_data| *vector_data.transform).unwrap_or_default()
+	vector_data.iter_ref().next().map(|vector_data| *vector_data.transform).unwrap_or_default()
 }
 
 #[node_macro::node(category("Math: Transform"))]

@@ -315,10 +315,8 @@ impl NodeRuntime {
 			// Insert the vector modify if we are dealing with vector data
 			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, VectorDataTable>>() {
 				let default = TableRow::default();
-				self.vector_modify.insert(
-					parent_network_node_id,
-					record.output.instance_ref_iter().next().unwrap_or_else(|| default.to_instance_ref()).element.clone(),
-				);
+				self.vector_modify
+					.insert(parent_network_node_id, record.output.iter_ref().next().unwrap_or_else(|| default.as_ref()).element.clone());
 			} else {
 				log::warn!("Failed to downcast monitor node output {parent_network_node_id:?}");
 			}

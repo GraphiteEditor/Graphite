@@ -616,7 +616,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		};
 		let path_node = path_node_type.node_template_input_override([
-			Some(NodeInput::value(TaggedValue::VectorData(VectorDataTable::new(vector_data)), true)),
+			Some(NodeInput::value(TaggedValue::VectorData(VectorDataTable::new_from_element(vector_data)), true)),
 			Some(NodeInput::value(TaggedValue::VectorModification(Default::default()), false)),
 		]);
 
