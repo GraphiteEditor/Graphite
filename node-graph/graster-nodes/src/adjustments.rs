@@ -33,6 +33,7 @@ use num_traits::float::Float;
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, node_macro::ChoiceType)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
+#[repr(u32)]
 pub enum LuminanceCalculation {
 	#[default]
 	#[label("sRGB")]
@@ -562,6 +563,7 @@ pub enum RedGreenBlue {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
+#[repr(u32)]
 pub enum RedGreenBlueAlpha {
 	#[default]
 	Red,
