@@ -68,7 +68,7 @@ impl PreferencesDialogMessageHandler {
 				.widget_holder(),
 		];
 
-		let mut checkbox_id = CheckboxId::default();
+		let checkbox_id = CheckboxId::new();
 		let zoom_with_scroll_tooltip = "Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads)";
 		let zoom_with_scroll = vec![
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
@@ -86,7 +86,7 @@ impl PreferencesDialogMessageHandler {
 			TextLabel::new("Zoom with Scroll")
 				.table_align(true)
 				.tooltip(zoom_with_scroll_tooltip)
-				.for_checkbox(&mut checkbox_id)
+				.for_checkbox(checkbox_id)
 				.widget_holder(),
 		];
 
@@ -169,7 +169,7 @@ impl PreferencesDialogMessageHandler {
 			graph_wire_style,
 		];
 
-		let mut checkbox_id = CheckboxId::default();
+		let checkbox_id = CheckboxId::new();
 		let vello_tooltip = "Use the experimental Vello renderer (your browser must support WebGPU)";
 		let use_vello = vec![
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
@@ -184,11 +184,11 @@ impl PreferencesDialogMessageHandler {
 				.table_align(true)
 				.tooltip(vello_tooltip)
 				.disabled(!preferences.supports_wgpu())
-				.for_checkbox(&mut checkbox_id)
+				.for_checkbox(checkbox_id)
 				.widget_holder(),
 		];
 
-		let mut checkbox_id = CheckboxId::default();
+		let checkbox_id = CheckboxId::new();
 		let vector_mesh_tooltip =
 			"Allow tools to produce vector meshes, where more than two segments can connect to an anchor point.\n\nCurrently this does not properly handle stroke joins and fills.";
 		let vector_meshes = vec![
@@ -199,11 +199,7 @@ impl PreferencesDialogMessageHandler {
 				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::VectorMeshes { enabled: checkbox_input.checked }.into())
 				.for_label(checkbox_id.clone())
 				.widget_holder(),
-			TextLabel::new("Vector Meshes")
-				.table_align(true)
-				.tooltip(vector_mesh_tooltip)
-				.for_checkbox(&mut checkbox_id)
-				.widget_holder(),
+			TextLabel::new("Vector Meshes").table_align(true).tooltip(vector_mesh_tooltip).for_checkbox(checkbox_id).widget_holder(),
 		];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
