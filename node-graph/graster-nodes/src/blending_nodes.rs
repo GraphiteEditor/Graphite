@@ -132,7 +132,7 @@ pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendM
 }
 
 #[node_macro::node(category("Raster"), shader_node(PerPixelAdjust))]
-async fn blend<T: Blend<Color> + Send>(
+fn blend<T: Blend<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Raster<CPU>>,
@@ -198,7 +198,7 @@ mod test {
 	use graphene_core::table::Table;
 
 	#[tokio::test]
-	async fn color_overlay_multiply() {
+	fn color_overlay_multiply() {
 		let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
 		let image = Image::new(1, 1, image_color);
 
