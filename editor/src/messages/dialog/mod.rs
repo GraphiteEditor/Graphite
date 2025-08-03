@@ -10,7 +10,6 @@ mod dialog_message_handler;
 
 pub mod export_dialog;
 pub mod new_document_dialog;
-pub mod preferences_dialog;
 pub mod simple_dialogs;
 
 #[doc(inline)]

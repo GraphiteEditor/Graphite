@@ -662,7 +662,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					return;
 				}
 
-				let layers_to_move = self.network_interface.shallowest_unique_layers_sorted(&self.selection_network_path);
+				let layers_to_move = self.network_interface.shallowest_unique_layers(&self.selection_network_path).collect::<Vec<_>>();
 				// Offset the index for layers to move that are below another layer to move. For example when moving 1 and 2 between 3 and 4, 2 should be inserted at the same index as 1 since 1 is moved first.
 				let layers_to_move_with_insert_offset = layers_to_move
 					.iter()
@@ -717,7 +717,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::MoveSelectedLayersToGroup { parent } => {
 				// Group all shallowest unique selected layers in order
-				let all_layers_to_group_sorted = self.network_interface.shallowest_unique_layers_sorted(&self.selection_network_path);
+				let all_layers_to_group_sorted = self.network_interface.shallowest_unique_layers(&self.selection_network_path).collect::<Vec<_>>();
 
 				for layer_to_group in all_layers_to_group_sorted.into_iter().rev() {
 					responses.add(NodeGraphMessage::MoveLayerToStack {

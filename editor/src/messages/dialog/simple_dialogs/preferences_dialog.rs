@@ -4,38 +4,28 @@ use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 
-#[derive(ExtractField)]
-pub struct PreferencesDialogMessageContext<'a> {
+pub struct PreferencesDialog<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
-/// A dialog to allow users to customize Graphite editor options
-#[derive(Debug, Clone, Default, ExtractField)]
-pub struct PreferencesDialogMessageHandler {}
-
-#[message_handler_data]
-impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageContext<'_>> for PreferencesDialogMessageHandler {
-	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, context: PreferencesDialogMessageContext) {
-		let PreferencesDialogMessageContext { preferences } = context;
-
-		match message {
-			PreferencesDialogMessage::Confirm => {}
-		}
-
-		self.send_dialog_to_frontend(responses, preferences);
-	}
-
-	advertise_actions! {PreferencesDialogUpdate;}
-}
-
-// This doesn't actually implement the `DialogLayoutHolder` trait like the other dialog message handlers.
-// That's because we need to give `send_layout` the `preferences` argument, which is not part of the trait.
-// However, it's important to keep the methods in sync with those from the trait for consistency.
-impl PreferencesDialogMessageHandler {
+impl<'a> DialogLayoutHolder for PreferencesDialog<'a> {
 	const ICON: &'static str = "Settings";
 	const TITLE: &'static str = "Editor Preferences";
 
-	fn layout(&self, preferences: &PreferencesMessageHandler) -> Layout {
+	fn layout_buttons(&self) -> Layout {
+		let widgets = vec![
+			TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder(),
+			TextButton::new("Reset to Defaults").on_update(|_| PreferencesMessage::ResetToDefaults.into()).widget_holder(),
+		];
+
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+	}
+}
+
+impl<'a> LayoutHolder for PreferencesDialog<'a> {
+	fn layout(&self) -> Layout {
+		let preferences = self.preferences;
+
 		// ==========
 		// NAVIGATION
 		// ==========
@@ -216,58 +206,6 @@ impl PreferencesDialogMessageHandler {
 			LayoutGroup::Row { widgets: use_vello },
 			LayoutGroup::Row { widgets: vector_meshes },
 		]))
-	}
-
-	pub fn send_layout(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, preferences: &PreferencesMessageHandler) {
-		responses.add(LayoutMessage::SendLayout {
-			layout: self.layout(preferences),
-			layout_target,
-		})
-	}
-
-	fn layout_column_2(&self) -> Layout {
-		Layout::default()
-	}
-
-	fn send_layout_column_2(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {
-		responses.add(LayoutMessage::SendLayout {
-			layout: self.layout_column_2(),
-			layout_target,
-		});
-	}
-
-	fn layout_buttons(&self) -> Layout {
-		let widgets = vec![
-			TextButton::new("OK")
-				.emphasized(true)
-				.on_update(|_| {
-					DialogMessage::CloseDialogAndThen {
-						followups: vec![PreferencesDialogMessage::Confirm.into()],
-					}
-					.into()
-				})
-				.widget_holder(),
-			TextButton::new("Reset to Defaults").on_update(|_| PreferencesMessage::ResetToDefaults.into()).widget_holder(),
-		];
-
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
-	}
-
-	fn send_layout_buttons(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {
-		responses.add(LayoutMessage::SendLayout {
-			layout: self.layout_buttons(),
-			layout_target,
-		});
-	}
-
-	pub fn send_dialog_to_frontend(&self, responses: &mut VecDeque<Message>, preferences: &PreferencesMessageHandler) {
-		self.send_layout(responses, LayoutTarget::DialogColumn1, preferences);
-		self.send_layout_column_2(responses, LayoutTarget::DialogColumn2);
-		self.send_layout_buttons(responses, LayoutTarget::DialogButtons);
-		responses.add(FrontendMessage::DisplayDialog {
-			icon: Self::ICON.into(),
-			title: Self::TITLE.into(),
-		});
 	}
 }
 
