@@ -11,7 +11,7 @@ use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::table::Table;
 use graphene_core_shaders::color::Color;
 use graphene_core_shaders::context::Ctx;
-use graphene_core_shaders::registry::types::{Angle, Percentage, SignedPercentage};
+use graphene_core_shaders::registry::types::{AngleF32, PercentageF32, SignedPercentageF32};
 #[cfg(not(feature = "std"))]
 use num_traits::float::Float;
 
@@ -149,8 +149,8 @@ fn brightness_contrast<T: Adjust<Color>>(
 		GradientStops,
 	)]
 	mut input: T,
-	brightness: SignedPercentage,
-	contrast: SignedPercentage,
+	brightness: SignedPercentageF32,
+	contrast: SignedPercentageF32,
 	use_classic: bool,
 ) -> T {
 	if use_classic {
@@ -239,11 +239,11 @@ fn levels<T: Adjust<Color>>(
 		GradientStops,
 	)]
 	mut image: T,
-	#[default(0.)] shadows: Percentage,
-	#[default(50.)] midtones: Percentage,
-	#[default(100.)] highlights: Percentage,
-	#[default(0.)] output_minimums: Percentage,
-	#[default(100.)] output_maximums: Percentage,
+	#[default(0.)] shadows: PercentageF32,
+	#[default(50.)] midtones: PercentageF32,
+	#[default(100.)] highlights: PercentageF32,
+	#[default(0.)] output_minimums: PercentageF32,
+	#[default(100.)] output_maximums: PercentageF32,
 ) -> T {
 	image.adjust(|color| {
 		let color = color.to_gamma_srgb();
@@ -310,22 +310,22 @@ fn black_and_white<T: Adjust<Color>>(
 	#[default(Color::BLACK)] tint: Table<Color>,
 	#[default(40.)]
 	#[range((-200., 300.))]
-	reds: Percentage,
+	reds: PercentageF32,
 	#[default(60.)]
 	#[range((-200., 300.))]
-	yellows: Percentage,
+	yellows: PercentageF32,
 	#[default(40.)]
 	#[range((-200., 300.))]
-	greens: Percentage,
+	greens: PercentageF32,
 	#[default(60.)]
 	#[range((-200., 300.))]
-	cyans: Percentage,
+	cyans: PercentageF32,
 	#[default(20.)]
 	#[range((-200., 300.))]
-	blues: Percentage,
+	blues: PercentageF32,
 	#[default(80.)]
 	#[range((-200., 300.))]
-	magentas: Percentage,
+	magentas: PercentageF32,
 ) -> T {
 	let tint: Option<Color> = tint.into();
 	let tint = tint.unwrap_or(Color::BLACK);
@@ -383,9 +383,9 @@ fn hue_saturation<T: Adjust<Color>>(
 		GradientStops,
 	)]
 	mut input: T,
-	hue_shift: Angle,
-	saturation_shift: SignedPercentage,
-	lightness_shift: SignedPercentage,
+	hue_shift: AngleF32,
+	saturation_shift: SignedPercentageF32,
+	lightness_shift: SignedPercentageF32,
 ) -> T {
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
@@ -441,8 +441,8 @@ fn threshold<T: Adjust<Color>>(
 		GradientStops,
 	)]
 	mut image: T,
-	#[default(50.)] min_luminance: Percentage,
-	#[default(100.)] max_luminance: Percentage,
+	#[default(50.)] min_luminance: PercentageF32,
+	#[default(100.)] max_luminance: PercentageF32,
 	luminance_calc: LuminanceCalculation,
 ) -> T {
 	image.adjust(|color| {
@@ -487,7 +487,7 @@ fn vibrance<T: Adjust<Color>>(
 		GradientStops,
 	)]
 	mut image: T,
-	vibrance: SignedPercentage,
+	vibrance: SignedPercentageF32,
 ) -> T {
 	image.adjust(|color| {
 		let vibrance = vibrance as f32 / 100.;
@@ -959,21 +959,21 @@ fn exposure<T: Adjust<Color>>(
 		GradientStops,
 	)]
 	mut input: T,
-	exposure: f64,
-	offset: f64,
+	exposure: f32,
+	offset: f32,
 	#[default(1.)]
 	#[range((0.01, 10.))]
 	#[hard_min(0.0001)]
-	gamma_correction: f64,
+	gamma_correction: f32,
 ) -> T {
 	input.adjust(|color| {
 		let adjusted = color
 		// Exposure
-		.map_rgb(|c: f32| c * 2_f32.powf(exposure as f32))
+		.map_rgb(|c: f32| c * 2_f32.powf(exposure))
 		// Offset
-		.map_rgb(|c: f32| c + offset as f32)
+		.map_rgb(|c: f32| c + offset)
 		// Gamma correction
-		.gamma(gamma_correction as f32);
+		.gamma(gamma_correction);
 
 		adjusted.map_rgb(|c: f32| c.clamp(0., 1.))
 	});
