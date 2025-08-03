@@ -7,7 +7,7 @@ use graphene_core::table::Table;
 use graphene_core_shaders::Ctx;
 use graphene_core_shaders::blending::BlendMode;
 use graphene_core_shaders::color::{Color, Pixel};
-use graphene_core_shaders::registry::types::Percentage;
+use graphene_core_shaders::registry::types::{Percentage, PercentageF32};
 
 pub trait Blend<P: Pixel> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(P, P) -> P) -> Self;
@@ -71,7 +71,7 @@ mod blend_std {
 }
 
 #[inline(always)]
-pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f64) -> Color {
+pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f32) -> Color {
 	let target_color = match blend_mode {
 		// Other utility blend modes (hidden from the normal list) - do not have alpha blend
 		BlendMode::Erase => return background.alpha_subtract(foreground),
@@ -141,7 +141,7 @@ fn blend<T: Blend<Color> + Send>(
 	#[gpu_image]
 	under: T,
 	blend_mode: BlendMode,
-	#[default(100.)] opacity: Percentage,
+	#[default(100.)] opacity: PercentageF32,
 ) -> T {
 	over.blend(&under, |a, b| blend_colors(a, b, blend_mode, opacity / 100.))
 }
@@ -158,7 +158,7 @@ fn color_overlay<T: Adjust<Color>>(
 	mut image: T,
 	#[default(Color::BLACK)] color: Color,
 	blend_mode: BlendMode,
-	#[default(100.)] opacity: Percentage,
+	#[default(100.)] opacity: PercentageF32,
 ) -> T {
 	let opacity = (opacity as f32 / 100.).clamp(0., 1.);
 
@@ -183,7 +183,7 @@ where
 {
 	let blend_mode = blend_mode.eval(());
 	let opacity = opacity.eval(());
-	blend_colors(input.0, input.1, blend_mode, opacity / 100.)
+	blend_colors(input.0, input.1, blend_mode, opacity as f32 / 100.)
 }
 
 #[cfg(all(feature = "std", test))]
