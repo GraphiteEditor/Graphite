@@ -6,7 +6,7 @@ use crate::table::{Table, TableRow};
 use crate::transform::TransformMut;
 use crate::uuid::NodeId;
 use crate::vector::VectorData;
-use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, OwnedContextImpl};
+use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, Graphic, OwnedContextImpl};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2, IVec2};
 use std::hash::Hash;
@@ -14,7 +14,7 @@ use std::hash::Hash;
 /// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
 #[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct Artboard {
-	pub graphic_group: Table<GraphicElement>,
+	pub graphic_group: Table<Graphic>,
 	pub label: String,
 	pub location: IVec2,
 	pub dimensions: IVec2,
@@ -95,10 +95,10 @@ impl BoundingBox for Table<Artboard> {
 }
 
 #[node_macro::node(category(""))]
-async fn to_artboard<Data: Into<Table<GraphicElement>> + 'n>(
+async fn to_artboard<Data: Into<Table<Graphic>> + 'n>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
-		Context -> Table<GraphicElement>,
+		Context -> Table<Graphic>,
 		Context -> Table<VectorData>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,

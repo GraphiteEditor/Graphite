@@ -1,7 +1,7 @@
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::Table;
 use crate::vector::VectorData;
-use crate::{Artboard, Color, GraphicElement};
+use crate::{Artboard, Color, Graphic};
 use glam::DVec2;
 
 pub trait RenderComplexity {
@@ -22,7 +22,7 @@ impl RenderComplexity for Artboard {
 	}
 }
 
-impl RenderComplexity for GraphicElement {
+impl RenderComplexity for Graphic {
 	fn render_complexity(&self) -> usize {
 		match self {
 			Self::GraphicGroup(table) => table.render_complexity(),

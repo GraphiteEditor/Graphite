@@ -10,9 +10,9 @@ use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::table::Table;
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorData;
-use graphene_core::{Color, Context, Ctx, ExtractFootprint, GraphicElement, OwnedContextImpl, WasmNotSend};
+use graphene_core::{Color, Context, Ctx, ExtractFootprint, Graphic, OwnedContextImpl, WasmNotSend};
 use graphene_svg_renderer::RenderMetadata;
-use graphene_svg_renderer::{GraphicElementRendered, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
+use graphene_svg_renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 
 #[cfg(target_family = "wasm")]
 use base64::Engine;
@@ -139,7 +139,7 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> Table<Raster<CPU>> {
 	Table::new_from_element(Raster::new_cpu(image))
 }
 
-fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutputType {
+fn render_svg(data: impl Render, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutputType {
 	if !data.contains_artboard() && !render_params.hide_artboards {
 		render.leaf_tag("rect", |attributes| {
 			attributes.push("x", "0");
@@ -166,13 +166,7 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 
 #[cfg(feature = "vello")]
 #[cfg_attr(not(target_family = "wasm"), allow(dead_code))]
-async fn render_canvas(
-	render_config: RenderConfig,
-	data: impl GraphicElementRendered,
-	editor: &WasmEditorApi,
-	surface_handle: Option<wgpu_executor::WgpuSurface>,
-	render_params: RenderParams,
-) -> RenderOutputType {
+async fn render_canvas(render_config: RenderConfig, data: impl Render, editor: &WasmEditorApi, surface_handle: Option<wgpu_executor::WgpuSurface>, render_params: RenderParams) -> RenderOutputType {
 	use graphene_application_io::{ImageTexture, SurfaceFrame};
 
 	let footprint = render_config.viewport;
@@ -223,14 +217,14 @@ async fn rasterize<T: WasmNotSend + 'n>(
 	#[implementations(
 		Table<VectorData>,
 		Table<Raster<CPU>>,
-		Table<GraphicElement>,
+		Table<Graphic>,
 	)]
 	mut data: Table<T>,
 	footprint: Footprint,
 	surface_handle: Arc<graphene_application_io::SurfaceHandle<HtmlCanvasElement>>,
 ) -> Table<Raster<CPU>>
 where
-	Table<T>: GraphicElementRendered,
+	Table<T>: Render,
 {
 	use graphene_core::table::TableRow;
 
@@ -285,13 +279,13 @@ where
 }
 
 #[node_macro::node(category(""))]
-async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
+async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
 	render_config: RenderConfig,
 	editor_api: impl Node<Context<'static>, Output = &'a WasmEditorApi>,
 	#[implementations(
 		Context -> Table<VectorData>,
 		Context -> Table<Raster<CPU>>,
-		Context -> Table<GraphicElement>,
+		Context -> Table<Graphic>,
 		Context -> Table<Artboard>,
 		Context -> Artboard,
 		Context -> Option<Color>,

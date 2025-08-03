@@ -6611,7 +6611,7 @@ struct InputTransientMetadata {
 fn migrate_output_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
 	use serde::Deserialize;
 
-	const REPLACEMENTS: [(&str, &str); 12] = [
+	const REPLACEMENTS: &[(&str, &str)] = &[
 		// Single to table data
 		("VectorData", "Table<VectorData>"),
 		("GraphicGroup", "Table<GraphicGroup>"),
@@ -6622,11 +6622,13 @@ fn migrate_output_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 		("Instances<VectorData>", "Table<VectorData>"),
 		("Instances<GraphicGroup>", "Table<GraphicGroup>"),
 		("Instances<Image>", "Table<Image>"),
-		("Instances<GraphicElement>", "Table<GraphicElement>"),
+		("Instances<GraphicElement>", "Table<Graphic>"),
+		("Table<GraphicElement>", "Table<Graphic>"),
 		("Future<Instances<VectorData>>", "Future<Table<VectorData>>"),
 		("Future<Instances<GraphicGroup>>", "Future<Table<GraphicGroup>>"),
 		("Future<Instances<Image>>", "Future<Table<Image>>"),
-		("Future<Instances<GraphicElement>>", "Future<Table<GraphicElement>>"),
+		("Future<Instances<GraphicElement>>", "Future<Table<Graphic>>"),
+		("Future<Table<GraphicElement>>", "Future<Table<Graphic>>"),
 	];
 
 	let mut names = Vec::<String>::deserialize(deserializer)?;

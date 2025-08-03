@@ -9,7 +9,7 @@ use graphene_std::memo::IORecord;
 use graphene_std::raster::Image;
 use graphene_std::table::Table;
 use graphene_std::vector::VectorData;
-use graphene_std::{Artboard, GraphicElement};
+use graphene_std::{Artboard, Graphic};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -120,9 +120,9 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Some(io.output.layout_with_breadcrumb(data))
 	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), Table<VectorData>>>() {
 		Some(io.output.layout_with_breadcrumb(data))
-	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<GraphicElement>>>() {
+	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Graphic>>>() {
 		Some(io.output.layout_with_breadcrumb(data))
-	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), Table<GraphicElement>>>() {
+	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), Table<Graphic>>>() {
 		Some(io.output.layout_with_breadcrumb(data))
 	} else {
 		None
@@ -148,9 +148,9 @@ trait TableRowLayout {
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup>;
 }
 
-impl TableRowLayout for GraphicElement {
+impl TableRowLayout for Graphic {
 	fn type_name() -> &'static str {
-		"GraphicElement"
+		"Graphic"
 	}
 	fn identifier(&self) -> String {
 		match self {
@@ -160,7 +160,7 @@ impl TableRowLayout for GraphicElement {
 			Self::RasterDataGPU(_) => "RasterDataGPU".to_string(),
 		}
 	}
-	// Don't put a breadcrumb for GraphicElement
+	// Don't put a breadcrumb for Graphic
 	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		self.compute_layout(data)
 	}
@@ -168,8 +168,8 @@ impl TableRowLayout for GraphicElement {
 		match self {
 			Self::GraphicGroup(table) => table.layout_with_breadcrumb(data),
 			Self::VectorData(table) => table.layout_with_breadcrumb(data),
-			Self::RasterDataCPU(_) => label("Raster frame not supported"),
-			Self::RasterDataGPU(_) => label("Raster frame not supported"),
+			Self::RasterDataCPU(_) => label("Raster is not supported"),
+			Self::RasterDataGPU(_) => label("Raster is not supported"),
 		}
 	}
 }

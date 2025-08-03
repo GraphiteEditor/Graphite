@@ -10,163 +10,163 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use std::hash::Hash;
 
-/// The possible forms of graphical content held in a Vec by the `elements` field of [`GraphicElement`].
+/// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
 #[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
-pub enum GraphicElement {
+pub enum Graphic {
 	/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
-	GraphicGroup(Table<GraphicElement>),
+	GraphicGroup(Table<Graphic>),
 	/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
 	VectorData(Table<VectorData>),
 	RasterDataCPU(Table<Raster<CPU>>),
 	RasterDataGPU(Table<Raster<GPU>>),
 }
 
-impl Default for GraphicElement {
+impl Default for Graphic {
 	fn default() -> Self {
 		Self::GraphicGroup(Default::default())
 	}
 }
 
 // GraphicGroup
-impl From<Table<GraphicElement>> for GraphicElement {
-	fn from(graphic_group: Table<GraphicElement>) -> Self {
-		GraphicElement::GraphicGroup(graphic_group)
+impl From<Table<Graphic>> for Graphic {
+	fn from(graphic_group: Table<Graphic>) -> Self {
+		Graphic::GraphicGroup(graphic_group)
 	}
 }
 
 // VectorData
-impl From<VectorData> for GraphicElement {
+impl From<VectorData> for Graphic {
 	fn from(vector_data: VectorData) -> Self {
-		GraphicElement::VectorData(Table::new_from_element(vector_data))
+		Graphic::VectorData(Table::new_from_element(vector_data))
 	}
 }
-impl From<Table<VectorData>> for GraphicElement {
+impl From<Table<VectorData>> for Graphic {
 	fn from(vector_data: Table<VectorData>) -> Self {
-		GraphicElement::VectorData(vector_data)
+		Graphic::VectorData(vector_data)
 	}
 }
-impl From<VectorData> for Table<GraphicElement> {
+impl From<VectorData> for Table<Graphic> {
 	fn from(vector_data: VectorData) -> Self {
-		Table::new_from_element(GraphicElement::VectorData(Table::new_from_element(vector_data)))
+		Table::new_from_element(Graphic::VectorData(Table::new_from_element(vector_data)))
 	}
 }
-impl From<Table<VectorData>> for Table<GraphicElement> {
+impl From<Table<VectorData>> for Table<Graphic> {
 	fn from(vector_data: Table<VectorData>) -> Self {
-		Table::new_from_element(GraphicElement::VectorData(vector_data))
+		Table::new_from_element(Graphic::VectorData(vector_data))
 	}
 }
 
 // Raster<CPU>
-impl From<Raster<CPU>> for GraphicElement {
+impl From<Raster<CPU>> for Graphic {
 	fn from(raster_data: Raster<CPU>) -> Self {
-		GraphicElement::RasterDataCPU(Table::new_from_element(raster_data))
+		Graphic::RasterDataCPU(Table::new_from_element(raster_data))
 	}
 }
-impl From<Table<Raster<CPU>>> for GraphicElement {
+impl From<Table<Raster<CPU>>> for Graphic {
 	fn from(raster_data: Table<Raster<CPU>>) -> Self {
-		GraphicElement::RasterDataCPU(raster_data)
+		Graphic::RasterDataCPU(raster_data)
 	}
 }
-impl From<Raster<CPU>> for Table<GraphicElement> {
+impl From<Raster<CPU>> for Table<Graphic> {
 	fn from(raster_data: Raster<CPU>) -> Self {
-		Table::new_from_element(GraphicElement::RasterDataCPU(Table::new_from_element(raster_data)))
+		Table::new_from_element(Graphic::RasterDataCPU(Table::new_from_element(raster_data)))
 	}
 }
-impl From<Table<Raster<CPU>>> for Table<GraphicElement> {
+impl From<Table<Raster<CPU>>> for Table<Graphic> {
 	fn from(raster_data_table: Table<Raster<CPU>>) -> Self {
-		Table::new_from_element(GraphicElement::RasterDataCPU(raster_data_table))
+		Table::new_from_element(Graphic::RasterDataCPU(raster_data_table))
 	}
 }
 
 // Raster<GPU>
-impl From<Raster<GPU>> for GraphicElement {
+impl From<Raster<GPU>> for Graphic {
 	fn from(raster_data: Raster<GPU>) -> Self {
-		GraphicElement::RasterDataGPU(Table::new_from_element(raster_data))
+		Graphic::RasterDataGPU(Table::new_from_element(raster_data))
 	}
 }
-impl From<Table<Raster<GPU>>> for GraphicElement {
+impl From<Table<Raster<GPU>>> for Graphic {
 	fn from(raster_data: Table<Raster<GPU>>) -> Self {
-		GraphicElement::RasterDataGPU(raster_data)
+		Graphic::RasterDataGPU(raster_data)
 	}
 }
-impl From<Raster<GPU>> for Table<GraphicElement> {
+impl From<Raster<GPU>> for Table<Graphic> {
 	fn from(raster_data: Raster<GPU>) -> Self {
-		Table::new_from_element(GraphicElement::RasterDataGPU(Table::new_from_element(raster_data)))
+		Table::new_from_element(Graphic::RasterDataGPU(Table::new_from_element(raster_data)))
 	}
 }
-impl From<Table<Raster<GPU>>> for Table<GraphicElement> {
+impl From<Table<Raster<GPU>>> for Table<Graphic> {
 	fn from(raster_data_table: Table<Raster<GPU>>) -> Self {
-		Table::new_from_element(GraphicElement::RasterDataGPU(raster_data_table))
+		Table::new_from_element(Graphic::RasterDataGPU(raster_data_table))
 	}
 }
 
 // DAffine2
-impl From<DAffine2> for GraphicElement {
+impl From<DAffine2> for Graphic {
 	fn from(_: DAffine2) -> Self {
-		GraphicElement::default()
+		Graphic::default()
 	}
 }
-impl From<DAffine2> for Table<GraphicElement> {
+impl From<DAffine2> for Table<Graphic> {
 	fn from(_: DAffine2) -> Self {
 		Table::new()
 	}
 }
 
-impl GraphicElement {
-	pub fn as_group(&self) -> Option<&Table<GraphicElement>> {
+impl Graphic {
+	pub fn as_group(&self) -> Option<&Table<Graphic>> {
 		match self {
-			GraphicElement::GraphicGroup(group) => Some(group),
+			Graphic::GraphicGroup(group) => Some(group),
 			_ => None,
 		}
 	}
 
-	pub fn as_group_mut(&mut self) -> Option<&mut Table<GraphicElement>> {
+	pub fn as_group_mut(&mut self) -> Option<&mut Table<Graphic>> {
 		match self {
-			GraphicElement::GraphicGroup(group) => Some(group),
+			Graphic::GraphicGroup(group) => Some(group),
 			_ => None,
 		}
 	}
 
 	pub fn as_vector_data(&self) -> Option<&Table<VectorData>> {
 		match self {
-			GraphicElement::VectorData(data) => Some(data),
+			Graphic::VectorData(data) => Some(data),
 			_ => None,
 		}
 	}
 
 	pub fn as_vector_data_mut(&mut self) -> Option<&mut Table<VectorData>> {
 		match self {
-			GraphicElement::VectorData(data) => Some(data),
+			Graphic::VectorData(data) => Some(data),
 			_ => None,
 		}
 	}
 
 	pub fn as_raster(&self) -> Option<&Table<Raster<CPU>>> {
 		match self {
-			GraphicElement::RasterDataCPU(raster) => Some(raster),
+			Graphic::RasterDataCPU(raster) => Some(raster),
 			_ => None,
 		}
 	}
 
 	pub fn as_raster_mut(&mut self) -> Option<&mut Table<Raster<CPU>>> {
 		match self {
-			GraphicElement::RasterDataCPU(raster) => Some(raster),
+			Graphic::RasterDataCPU(raster) => Some(raster),
 			_ => None,
 		}
 	}
 
 	pub fn had_clip_enabled(&self) -> bool {
 		match self {
-			GraphicElement::VectorData(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
-			GraphicElement::GraphicGroup(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
-			GraphicElement::RasterDataCPU(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
-			GraphicElement::RasterDataGPU(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
+			Graphic::VectorData(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
+			Graphic::GraphicGroup(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
+			Graphic::RasterDataCPU(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
+			Graphic::RasterDataGPU(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
 		}
 	}
 
 	pub fn can_reduce_to_clip_path(&self) -> bool {
 		match self {
-			GraphicElement::VectorData(vector_data_table) => vector_data_table.iter_ref().all(|row| {
+			Graphic::VectorData(vector_data_table) => vector_data_table.iter_ref().all(|row| {
 				let style = &row.element.style;
 				let alpha_blending = &row.alpha_blending;
 				(alpha_blending.opacity > 1. - f32::EPSILON) && style.fill().is_opaque() && style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
@@ -176,18 +176,18 @@ impl GraphicElement {
 	}
 }
 
-impl BoundingBox for GraphicElement {
+impl BoundingBox for Graphic {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
 		match self {
-			GraphicElement::VectorData(vector_data) => vector_data.bounding_box(transform, include_stroke),
-			GraphicElement::RasterDataCPU(raster) => raster.bounding_box(transform, include_stroke),
-			GraphicElement::RasterDataGPU(raster) => raster.bounding_box(transform, include_stroke),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform, include_stroke),
+			Graphic::VectorData(vector_data) => vector_data.bounding_box(transform, include_stroke),
+			Graphic::RasterDataCPU(raster) => raster.bounding_box(transform, include_stroke),
+			Graphic::RasterDataGPU(raster) => raster.bounding_box(transform, include_stroke),
+			Graphic::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform, include_stroke),
 		}
 	}
 }
 
-impl BoundingBox for Table<GraphicElement> {
+impl BoundingBox for Table<Graphic> {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
 		self.iter_ref()
 			.filter_map(|element| element.element.bounding_box(transform * *element.transform, include_stroke))
@@ -198,8 +198,8 @@ impl BoundingBox for Table<GraphicElement> {
 #[node_macro::node(category(""))]
 async fn layer<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<GraphicElement>, Table<VectorData>, Table<Raster<CPU>>, Table<Raster<GPU>>)] mut stack: Table<I>,
-	#[implementations(GraphicElement, VectorData, Raster<CPU>, Raster<GPU>)] element: I,
+	#[implementations(Table<Graphic>, Table<VectorData>, Table<Raster<CPU>>, Table<Raster<GPU>>)] mut stack: Table<I>,
+	#[implementations(Graphic, VectorData, Raster<CPU>, Raster<GPU>)] element: I,
 	node_path: Vec<NodeId>,
 ) -> Table<I> {
 	// Get the penultimate element of the node path, or None if the path is too short
@@ -216,38 +216,38 @@ async fn layer<I: 'n + Send + Clone>(
 }
 
 #[node_macro::node(category("Debug"))]
-async fn to_element<Data: Into<GraphicElement> + 'n>(
+async fn to_element<Data: Into<Graphic> + 'n>(
 	_: impl Ctx,
 	#[implementations(
-		Table<GraphicElement>,
+		Table<Graphic>,
 	 	Table<VectorData>,
 		Table<Raster<CPU>>,
 	 	Table<Raster<GPU>>,
 		DAffine2,
 	)]
 	data: Data,
-) -> GraphicElement {
+) -> Graphic {
 	data.into()
 }
 
 #[node_macro::node(category("General"))]
-async fn to_group<Data: Into<Table<GraphicElement>> + 'n>(
+async fn to_group<Data: Into<Table<Graphic>> + 'n>(
 	_: impl Ctx,
 	#[implementations(
-		Table<GraphicElement>,
+		Table<Graphic>,
 		Table<VectorData>,
 		Table<Raster<CPU>>,
 		Table<Raster<GPU>>,
 	)]
 	element: Data,
-) -> Table<GraphicElement> {
+) -> Table<Graphic> {
 	element.into()
 }
 
 #[node_macro::node(category("General"))]
-async fn flatten_group(_: impl Ctx, group: Table<GraphicElement>, fully_flatten: bool) -> Table<GraphicElement> {
-	// TODO: Avoid mutable reference, instead return a new Table<GraphicElement>?
-	fn flatten_group(output_group_table: &mut Table<GraphicElement>, current_group_table: Table<GraphicElement>, fully_flatten: bool, recursion_depth: usize) {
+async fn flatten_group(_: impl Ctx, group: Table<Graphic>, fully_flatten: bool) -> Table<Graphic> {
+	// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
+	fn flatten_group(output_group_table: &mut Table<Graphic>, current_group_table: Table<Graphic>, fully_flatten: bool, recursion_depth: usize) {
 		for current_row in current_group_table.iter_ref() {
 			let current_element = current_row.element.clone();
 			let reference = *current_row.source_node_id;
@@ -256,7 +256,7 @@ async fn flatten_group(_: impl Ctx, group: Table<GraphicElement>, fully_flatten:
 
 			match current_element {
 				// If we're allowed to recurse, flatten any GraphicGroups we encounter
-				GraphicElement::GraphicGroup(mut current_element) if recurse => {
+				Graphic::GraphicGroup(mut current_element) if recurse => {
 					// Apply the parent group's transform to all child elements
 					for graphic_element in current_element.iter_mut() {
 						*graphic_element.transform = *current_row.transform * *graphic_element.transform;
@@ -284,16 +284,16 @@ async fn flatten_group(_: impl Ctx, group: Table<GraphicElement>, fully_flatten:
 }
 
 #[node_macro::node(category("Vector"))]
-async fn flatten_vector(_: impl Ctx, group: Table<GraphicElement>) -> Table<VectorData> {
-	// TODO: Avoid mutable reference, instead return a new Table<GraphicElement>?
-	fn flatten_group(output_group_table: &mut Table<VectorData>, current_group_table: Table<GraphicElement>) {
+async fn flatten_vector(_: impl Ctx, group: Table<Graphic>) -> Table<VectorData> {
+	// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
+	fn flatten_group(output_group_table: &mut Table<VectorData>, current_group_table: Table<Graphic>) {
 		for current_graphic_element_row in current_group_table.iter_ref() {
 			let current_element = current_graphic_element_row.element.clone();
 			let reference = *current_graphic_element_row.source_node_id;
 
 			match current_element {
 				// If we're allowed to recurse, flatten any GraphicGroups we encounter
-				GraphicElement::GraphicGroup(mut current_element) => {
+				Graphic::GraphicGroup(mut current_element) => {
 					// Apply the parent group's transform to all child elements
 					for graphic_element in current_element.iter_mut() {
 						*graphic_element.transform = *current_graphic_element_row.transform * *graphic_element.transform;
@@ -302,7 +302,7 @@ async fn flatten_vector(_: impl Ctx, group: Table<GraphicElement>) -> Table<Vect
 					flatten_group(output_group_table, current_element);
 				}
 				// Handle any leaf elements we encounter, which can be either non-GraphicGroup elements or GraphicGroups that we don't want to flatten
-				GraphicElement::VectorData(vector_table) => {
+				Graphic::VectorData(vector_table) => {
 					for current_vector_row in vector_table.iter_ref() {
 						output_group_table.push(TableRow {
 							element: current_vector_row.element.clone(),
@@ -341,7 +341,7 @@ fn index<T: AtIndex + Clone + Default>(
 		Vec<DVec2>,
 		Table<VectorData>,
 		Table<Raster<CPU>>,
-		Table<GraphicElement>,
+		Table<Graphic>,
 	)]
 	collection: T,
 	/// The index of the item to retrieve, starting from 0 for the first item.
@@ -379,18 +379,18 @@ impl<T: Clone> AtIndex for Table<T> {
 }
 
 // TODO: Eventually remove this migration document upgrade code
-pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<GraphicElement>, D::Error> {
+pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Graphic>, D::Error> {
 	use serde::Deserialize;
 
 	#[derive(Clone, Debug, PartialEq, DynAny, Default, serde::Serialize, serde::Deserialize)]
 	pub struct OldGraphicGroup {
-		elements: Vec<(GraphicElement, Option<NodeId>)>,
+		elements: Vec<(Graphic, Option<NodeId>)>,
 		transform: DAffine2,
 		alpha_blending: AlphaBlending,
 	}
 	#[derive(Clone, Debug, PartialEq, DynAny, Default, serde::Serialize, serde::Deserialize)]
 	pub struct GraphicGroup {
-		elements: Vec<(GraphicElement, Option<NodeId>)>,
+		elements: Vec<(Graphic, Option<NodeId>)>,
 	}
 
 	#[derive(serde::Serialize, serde::Deserialize)]
@@ -428,10 +428,10 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 					}
 				}
 				graphic_group_table
-			} else if let Ok(new_table) = serde_json::from_value::<Table<GraphicElement>>(value) {
+			} else if let Ok(new_table) = serde_json::from_value::<Table<Graphic>>(value) {
 				new_table
 			} else {
-				return Err(serde::de::Error::custom("Failed to deserialize Table<GraphicElement>"));
+				return Err(serde::de::Error::custom("Failed to deserialize Table<Graphic>"));
 			}
 		}
 	})

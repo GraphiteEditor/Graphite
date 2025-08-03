@@ -16,7 +16,7 @@ use crate::vector::misc::{MergeByDistanceAlgorithm, PointSpacingType, is_linear}
 use crate::vector::misc::{handles_to_segment, segment_to_handles};
 use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, RegionId};
-use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, OwnedContextImpl};
+use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, Graphic, OwnedContextImpl};
 use bezier_rs::ManipulatorGroup;
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
@@ -32,7 +32,7 @@ trait VectorDataTableIterMut {
 	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, VectorData>>;
 }
 
-impl VectorDataTableIterMut for Table<GraphicElement> {
+impl VectorDataTableIterMut for Table<Graphic> {
 	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, VectorData>> {
 		// Grab only the direct children
 		self.iter_mut()
@@ -50,7 +50,7 @@ impl VectorDataTableIterMut for Table<VectorData> {
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
 async fn assign_colors<T>(
 	_: impl Ctx,
-	#[implementations(Table<GraphicElement>, Table<VectorData>)]
+	#[implementations(Table<Graphic>, Table<VectorData>)]
 	#[widget(ParsedWidgetOverride::Hidden)]
 	/// The vector elements, or group of vector elements, to apply the fill and/or stroke style to.
 	mut vector_group: T,
@@ -115,10 +115,10 @@ async fn fill<F: Into<Fill> + 'n + Send, V>(
 		Table<VectorData>,
 		Table<VectorData>,
 		Table<VectorData>,
-		Table<GraphicElement>,
-		Table<GraphicElement>,
-		Table<GraphicElement>,
-		Table<GraphicElement>
+		Table<Graphic>,
+		Table<Graphic>,
+		Table<Graphic>,
+		Table<Graphic>
 	)]
 	/// The vector elements, or group of vector elements, to apply the fill to.
 	mut vector_data: V,
@@ -157,7 +157,7 @@ where
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
 async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	_: impl Ctx,
-	#[implementations(Table<VectorData>, Table<VectorData>, Table<GraphicElement>, Table<GraphicElement>)]
+	#[implementations(Table<VectorData>, Table<VectorData>, Table<Graphic>, Table<Graphic>)]
 	/// The vector elements, or group of vector elements, to apply the stroke to.
 	mut vector_data: Table<V>,
 	#[implementations(
@@ -220,8 +220,8 @@ where
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	// TODO: Implement other GraphicElementRendered types.
-	#[implementations(Table<GraphicElement>, Table<VectorData>, Table<Raster<CPU>>)] instance: Table<I>,
+	// TODO: Implement other graphical types.
+	#[implementations(Table<Graphic>, Table<VectorData>, Table<Raster<CPU>>)] instance: Table<I>,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: PixelSize,
@@ -256,8 +256,8 @@ async fn repeat<I: 'n + Send + Clone>(
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn circular_repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	// TODO: Implement other GraphicElementRendered types.
-	#[implementations(Table<GraphicElement>, Table<VectorData>, Table<Raster<CPU>>)] instance: Table<I>,
+	// TODO: Implement other graphical types.
+	#[implementations(Table<Graphic>, Table<VectorData>, Table<Raster<CPU>>)] instance: Table<I>,
 	angle_offset: Angle,
 	#[unit(" px")]
 	#[default(5)]
@@ -293,7 +293,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	points: Table<VectorData>,
 	#[expose]
 	/// Artwork to be copied and placed at each point.
-	#[implementations(Table<GraphicElement>, Table<VectorData>, Table<Raster<CPU>>)]
+	#[implementations(Table<Graphic>, Table<VectorData>, Table<Raster<CPU>>)]
 	instance: Table<I>,
 	/// Minimum range of randomized sizes given to each instance.
 	#[default(1)]
@@ -368,7 +368,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn mirror<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<GraphicElement>, Table<VectorData>, Table<Raster<CPU>>)] instance: Table<I>,
+	#[implementations(Table<Graphic>, Table<VectorData>, Table<Raster<CPU>>)] instance: Table<I>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
 	#[unit(" px")] offset: f64,
 	#[range((-90., 90.))] angle: Angle,
@@ -958,17 +958,17 @@ async fn solidify_stroke(_: impl Ctx, vector_data: Table<VectorData>) -> Table<V
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn flatten_path<I: 'n + Send>(_: impl Ctx, #[implementations(Table<GraphicElement>, Table<VectorData>)] graphic_group_input: Table<I>) -> Table<VectorData>
+async fn flatten_path<I: 'n + Send>(_: impl Ctx, #[implementations(Table<Graphic>, Table<VectorData>)] graphic_group_input: Table<I>) -> Table<VectorData>
 where
-	GraphicElement: From<Table<I>>,
+	Graphic: From<Table<I>>,
 {
 	// A node based solution to support passing through vector data could be a network node with a cache node connected to
 	// a Flatten Path connected to an if else node, another connection from the cache directly
 	// To the if else node, and another connection from the cache to a matches type node connected to the if else node.
-	fn flatten_group(graphic_group_table: &Table<GraphicElement>, output: &mut TableRowMut<VectorData>) {
+	fn flatten_group(graphic_group_table: &Table<Graphic>, output: &mut TableRowMut<VectorData>) {
 		for (group_index, current_element) in graphic_group_table.iter_ref().enumerate() {
 			match current_element.element {
-				GraphicElement::VectorData(vector_data_table) => {
+				Graphic::VectorData(vector_data_table) => {
 					// Loop through every row of the Table<VectorData> and concatenate each element's subpath into the output VectorData element.
 					for (vector_index, row) in vector_data_table.iter_ref().enumerate() {
 						let other = row.element;
@@ -985,7 +985,7 @@ where
 						output.element.style = row.element.style.clone();
 					}
 				}
-				GraphicElement::GraphicGroup(graphic_group) => {
+				Graphic::GraphicGroup(graphic_group) => {
 					let mut graphic_group = graphic_group.clone();
 					for row in graphic_group.iter_mut() {
 						*row.transform = *current_element.transform * *row.transform;
@@ -1005,7 +1005,7 @@ where
 	};
 
 	// Flatten the graphic group input into the output VectorData element
-	let base_graphic_group = Table::new_from_element(GraphicElement::from(graphic_group_input));
+	let base_graphic_group = Table::new_from_element(Graphic::from(graphic_group_input));
 	flatten_group(&base_graphic_group, &mut output);
 
 	// Return the single-row Table<VectorData> containing the flattened VectorData subpaths
@@ -1911,7 +1911,7 @@ fn point_inside(_: impl Ctx, source: Table<VectorData>, point: DVec2) -> bool {
 }
 
 #[node_macro::node(category("General"), path(graphene_core::vector))]
-async fn count_elements<I>(_: impl Ctx, #[implementations(Table<GraphicElement>, Table<VectorData>, Table<Raster<CPU>>, Table<Raster<GPU>>)] source: Table<I>) -> u64 {
+async fn count_elements<I>(_: impl Ctx, #[implementations(Table<Graphic>, Table<VectorData>, Table<Raster<CPU>>, Table<Raster<GPU>>)] source: Table<I>) -> u64 {
 	source.len() as u64
 }
 

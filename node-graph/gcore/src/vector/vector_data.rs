@@ -9,7 +9,7 @@ use crate::math::quad::Quad;
 use crate::table::Table;
 use crate::transform::Transform;
 use crate::vector::click_target::{ClickTargetType, FreePoint};
-use crate::{AlphaBlending, Color, GraphicElement};
+use crate::{AlphaBlending, Color, Graphic};
 pub use attributes::*;
 use bezier_rs::{BezierHandles, ManipulatorGroup};
 use core::borrow::Borrow;
@@ -41,7 +41,7 @@ pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		pub region_domain: RegionDomain,
 
 		// Used to store the upstream graphic group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
-		pub upstream_graphic_group: Option<Table<GraphicElement>>,
+		pub upstream_graphic_group: Option<Table<Graphic>>,
 	}
 
 	#[derive(serde::Serialize, serde::Deserialize)]
@@ -89,7 +89,7 @@ pub struct VectorData {
 	pub region_domain: RegionDomain,
 
 	// Used to store the upstream graphic group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
-	pub upstream_graphic_group: Option<Table<GraphicElement>>,
+	pub upstream_graphic_group: Option<Table<Graphic>>,
 }
 
 impl Default for VectorData {
