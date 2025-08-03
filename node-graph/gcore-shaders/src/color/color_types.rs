@@ -700,7 +700,7 @@ impl Color {
 		if c_s <= 0.5 {
 			c_b - (1. - 2. * c_s) * c_b * (1. - c_b)
 		} else {
-			let d: fn(f32) -> f32 = |x| if x <= 0.25 { ((16. * x - 12.) * x + 4.) * x } else { x.sqrt() };
+			let d = |x: f32| if x <= 0.25 { ((16. * x - 12.) * x + 4.) * x } else { x.sqrt() };
 			c_b + (2. * c_s - 1.) * (d(c_b) - c_b)
 		}
 	}
