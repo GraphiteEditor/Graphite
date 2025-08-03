@@ -32,7 +32,8 @@ use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool::{boolean_intersect, path_bool_lib};
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::{Raster, RasterDataTable};
+use graphene_std::raster_types::Raster;
+use graphene_std::table::Table;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::style::ViewMode;
@@ -837,7 +838,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let layer = graph_modification_utils::new_image_layer(RasterDataTable::new(Raster::new_cpu(image)), layer_node_id, self.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_image_layer(Table::new_from_element(Raster::new_cpu(image)), layer_node_id, self.new_layer_parent(true), responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
@@ -1302,10 +1303,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::UpdateUpstreamTransforms {
 				upstream_footprints,
 				local_transforms,
-				first_instance_source_id,
+				first_element_source_id,
 			} => {
 				self.network_interface.update_transforms(upstream_footprints, local_transforms);
-				self.network_interface.update_first_instance_source_id(first_instance_source_id);
+				self.network_interface.update_first_element_source_id(first_element_source_id);
 			}
 			DocumentMessage::UpdateClickTargets { click_targets } => {
 				// TODO: Allow non layer nodes to have click targets
@@ -2920,7 +2921,7 @@ impl DocumentMessageHandler {
 /// Create a network interface with a single export
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
-	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroupTable::default()), -1, "", &[]);
+	network_interface.add_export(TaggedValue::ArtboardGroup(Default::default()), -1, "", &[]);
 	network_interface
 }
 

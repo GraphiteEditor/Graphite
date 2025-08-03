@@ -91,10 +91,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 			}
 			#[cfg(all(not(target_family = "wasm"), test))]
 			OverlaysMessage::Draw => {
-				// Removes unused warnings in test builds
-				drop(responses);
-				drop(context);
-				drop(super::utility_types::OverlayContext::new(ipp.viewport_bounds.size(), device_pixel_ratio, visibility_settings));
+				let _ = (responses, visibility_settings, ipp, device_pixel_ratio);
 			}
 			OverlaysMessage::AddProvider(message) => {
 				self.overlay_providers.insert(message);

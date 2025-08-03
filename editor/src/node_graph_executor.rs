@@ -388,7 +388,7 @@ impl NodeGraphExecutor {
 		let graphene_std::renderer::RenderMetadata {
 			upstream_footprints: footprints,
 			local_transforms,
-			first_instance_source_id,
+			first_element_source_id,
 			click_targets,
 			clip_targets,
 		} = render_output_metadata;
@@ -397,7 +397,7 @@ impl NodeGraphExecutor {
 		responses.add(DocumentMessage::UpdateUpstreamTransforms {
 			upstream_footprints: footprints,
 			local_transforms,
-			first_instance_source_id,
+			first_element_source_id,
 		});
 		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
 		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });

@@ -2,7 +2,8 @@ use crate::adjust::Adjust;
 #[cfg(feature = "std")]
 use graphene_core::gradient::GradientStops;
 #[cfg(feature = "std")]
-use graphene_core::raster_types::{CPU, RasterDataTable};
+use graphene_core::raster_types::{CPU, Raster};
+use graphene_core::table::Table;
 use graphene_core_shaders::Ctx;
 use graphene_core_shaders::blending::BlendMode;
 use graphene_core_shaders::color::{Color, Pixel};
@@ -32,16 +33,18 @@ mod blend_std {
 	use core::cmp::Ordering;
 	use graphene_core::raster::Image;
 	use graphene_core::raster_types::Raster;
-	impl Blend<Color> for RasterDataTable<CPU> {
+	use graphene_core::table::Table;
+
+	impl Blend<Color> for Table<Raster<CPU>> {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut result_table = self.clone();
-			for (over, under) in result_table.instance_mut_iter().zip(under.instance_ref_iter()) {
-				let data = over.instance.data.iter().zip(under.instance.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
+			for (over, under) in result_table.iter_mut().zip(under.iter_ref()) {
+				let data = over.element.data.iter().zip(under.element.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 
-				*over.instance = Raster::new_cpu(Image {
+				*over.element = Raster::new_cpu(Image {
 					data,
-					width: over.instance.width,
-					height: over.instance.height,
+					width: over.element.width,
+					height: over.element.height,
 					base64_string: None,
 				});
 			}
@@ -124,14 +127,14 @@ async fn blend<T: Blend<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	over: T,
 	#[expose]
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	under: T,
@@ -146,7 +149,7 @@ fn color_overlay<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -185,7 +188,8 @@ mod test {
 	use graphene_core::blending::BlendMode;
 	use graphene_core::color::Color;
 	use graphene_core::raster::image::Image;
-	use graphene_core::raster_types::{Raster, RasterDataTable};
+	use graphene_core::raster_types::Raster;
+	use graphene_core::table::Table;
 
 	#[tokio::test]
 	async fn color_overlay_multiply() {
@@ -198,8 +202,8 @@ mod test {
 		// 100% of the output should come from the multiplied value
 		let opacity = 100_f64;
 
-		let result = super::color_overlay((), RasterDataTable::new(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
-		let result = result.instance_ref_iter().next().unwrap().instance;
+		let result = super::color_overlay((), Table::new_from_element(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
+		let result = result.iter_ref().next().unwrap().element;
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));

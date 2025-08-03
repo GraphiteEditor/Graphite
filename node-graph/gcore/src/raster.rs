@@ -6,10 +6,8 @@ pub mod color {
 pub mod image;
 
 pub use self::image::Image;
-use crate::GraphicGroupTable;
 pub use crate::color::*;
-use crate::raster_types::{CPU, RasterDataTable};
-use crate::vector::VectorDataTable;
+use crate::raster_types::CPU;
 use std::fmt::Debug;
 
 pub trait Bitmap {

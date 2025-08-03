@@ -1,17 +1,18 @@
 use graphene_core::context::Ctx;
 use graphene_core::raster::image::Image;
-use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
+use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::registry::types::Percentage;
+use graphene_core::table::Table;
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use std::cmp::{max, min};
 
 #[node_macro::node(category("Raster: Filter"))]
-async fn dehaze(_: impl Ctx, image_frame: RasterDataTable<CPU>, strength: Percentage) -> RasterDataTable<CPU> {
+async fn dehaze(_: impl Ctx, image_frame: Table<Raster<CPU>>, strength: Percentage) -> Table<Raster<CPU>> {
 	image_frame
-		.instance_iter()
-		.map(|mut image_frame_instance| {
-			let image = image_frame_instance.instance;
+		.iter()
+		.map(|mut row| {
+			let image = row.element;
 			// Prepare the image data for processing
 			let image_data = bytemuck::cast_vec(image.data.clone());
 			let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, image_data).expect("Failed to convert internal image format into image-rs data type.");
@@ -30,8 +31,8 @@ async fn dehaze(_: impl Ctx, image_frame: RasterDataTable<CPU>, strength: Percen
 				base64_string: None,
 			};
 
-			image_frame_instance.instance = Raster::new_cpu(dehazed_image);
-			image_frame_instance
+			row.element = Raster::new_cpu(dehazed_image);
+			row
 		})
 		.collect()
 }
