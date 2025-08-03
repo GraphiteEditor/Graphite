@@ -9,11 +9,8 @@ use std::hash::Hash;
 pub struct Table<T> {
 	#[serde(alias = "instances", alias = "instance")]
 	element: Vec<T>,
-	#[serde(default = "one_daffine2_default")]
 	transform: Vec<DAffine2>,
-	#[serde(default = "one_alpha_blending_default")]
 	alpha_blending: Vec<AlphaBlending>,
-	#[serde(default = "one_source_node_id_default")]
 	source_node_id: Vec<Option<NodeId>>,
 }
 
@@ -193,16 +190,6 @@ impl<T> FromIterator<TableRow<T>> for Table<T> {
 		}
 		table
 	}
-}
-
-fn one_daffine2_default() -> Vec<DAffine2> {
-	vec![DAffine2::IDENTITY]
-}
-fn one_alpha_blending_default() -> Vec<AlphaBlending> {
-	vec![AlphaBlending::default()]
-}
-fn one_source_node_id_default() -> Vec<Option<NodeId>> {
-	vec![None]
 }
 
 #[derive(Copy, Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
