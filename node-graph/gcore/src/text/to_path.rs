@@ -52,14 +52,14 @@ impl PathBuilder {
 
 		if per_glyph_instances {
 			self.vector_table.push(Instance {
-				instance: VectorData::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false),
+				element: VectorData::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false),
 				transform: DAffine2::from_translation(glyph_offset),
 				..Default::default()
 			});
 		} else {
 			for subpath in self.glyph_subpaths.drain(..) {
 				// Unwrapping here is ok because `self.vector_table` is initialized with a single `VectorData`
-				self.vector_table.get_mut(0).unwrap().instance.append_subpath(subpath, false);
+				self.vector_table.get_mut(0).unwrap().element.append_subpath(subpath, false);
 			}
 		}
 	}

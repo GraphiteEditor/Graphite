@@ -40,7 +40,7 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 			let mut graphic_group_table = GraphicGroupTable::default();
 			for (graphic_element, source_node_id) in old.elements {
 				graphic_group_table.push(Instance {
-					instance: graphic_element,
+					element: graphic_element,
 					transform: old.transform,
 					alpha_blending: old.alpha_blending,
 					source_node_id,
@@ -53,9 +53,9 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 			if let Ok(old_table) = serde_json::from_value::<OldGraphicGroupTable>(value.clone()) {
 				let mut graphic_group_table = GraphicGroupTable::default();
 				for instance in old_table.instance_ref_iter() {
-					for (graphic_element, source_node_id) in &instance.instance.elements {
+					for (graphic_element, source_node_id) in &instance.element.elements {
 						graphic_group_table.push(Instance {
-							instance: graphic_element.clone(),
+							element: graphic_element.clone(),
 							transform: *instance.transform,
 							alpha_blending: *instance.alpha_blending,
 							source_node_id: *source_node_id,
@@ -184,7 +184,7 @@ impl GraphicElement {
 	pub fn can_reduce_to_clip_path(&self) -> bool {
 		match self {
 			GraphicElement::VectorData(vector_data_table) => vector_data_table.instance_ref_iter().all(|instance_data| {
-				let style = &instance_data.instance.style;
+				let style = &instance_data.element.style;
 				let alpha_blending = &instance_data.alpha_blending;
 				(alpha_blending.opacity > 1. - f32::EPSILON) && style.fill().is_opaque() && style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
 			}),
@@ -207,7 +207,7 @@ impl BoundingBox for GraphicElement {
 impl BoundingBox for GraphicGroupTable {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
 		self.instance_ref_iter()
-			.filter_map(|element| element.instance.bounding_box(transform * *element.transform, include_stroke))
+			.filter_map(|element| element.element.bounding_box(transform * *element.transform, include_stroke))
 			.reduce(Quad::combine_bounds)
 	}
 }
@@ -277,7 +277,7 @@ pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D)
 			let mut table = ArtboardGroupTable::default();
 			for (artboard, source_node_id) in artboard_group.artboards {
 				table.push(Instance {
-					instance: artboard,
+					element: artboard,
 					transform: DAffine2::IDENTITY,
 					alpha_blending: AlphaBlending::default(),
 					source_node_id,
@@ -294,7 +294,7 @@ pub type ArtboardGroupTable = Table<Artboard>;
 impl BoundingBox for ArtboardGroupTable {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
 		self.instance_ref_iter()
-			.filter_map(|instance| instance.instance.bounding_box(transform, include_stroke))
+			.filter_map(|instance| instance.element.bounding_box(transform, include_stroke))
 			.reduce(Quad::combine_bounds)
 	}
 }
@@ -310,7 +310,7 @@ async fn layer<I: 'n + Send + Clone>(
 	let source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 
 	stack.push(Instance {
-		instance: element,
+		element: element,
 		transform: DAffine2::IDENTITY,
 		alpha_blending: AlphaBlending::default(),
 		source_node_id,
@@ -353,7 +353,7 @@ async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: boo
 	// TODO: Avoid mutable reference, instead return a new GraphicGroupTable?
 	fn flatten_group(output_group_table: &mut GraphicGroupTable, current_group_table: GraphicGroupTable, fully_flatten: bool, recursion_depth: usize) {
 		for current_instance in current_group_table.instance_ref_iter() {
-			let current_element = current_instance.instance.clone();
+			let current_element = current_instance.element.clone();
 			let reference = *current_instance.source_node_id;
 
 			let recurse = fully_flatten || recursion_depth == 0;
@@ -371,7 +371,7 @@ async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: boo
 				// Handle any leaf elements we encounter, which can be either non-GraphicGroup elements or GraphicGroups that we don't want to flatten
 				_ => {
 					output_group_table.push(Instance {
-						instance: current_element,
+						element: current_element,
 						transform: *current_instance.transform,
 						alpha_blending: *current_instance.alpha_blending,
 						source_node_id: reference,
@@ -392,7 +392,7 @@ async fn flatten_vector(_: impl Ctx, group: GraphicGroupTable) -> VectorDataTabl
 	// TODO: Avoid mutable reference, instead return a new GraphicGroupTable?
 	fn flatten_group(output_group_table: &mut VectorDataTable, current_group_table: GraphicGroupTable) {
 		for current_instance in current_group_table.instance_ref_iter() {
-			let current_element = current_instance.instance.clone();
+			let current_element = current_instance.element.clone();
 			let reference = *current_instance.source_node_id;
 
 			match current_element {
@@ -409,7 +409,7 @@ async fn flatten_vector(_: impl Ctx, group: GraphicGroupTable) -> VectorDataTabl
 				GraphicElement::VectorData(vector_instance) => {
 					for current_element in vector_instance.instance_ref_iter() {
 						output_group_table.push(Instance {
-							instance: current_element.instance.clone(),
+							element: current_element.element.clone(),
 							transform: *current_instance.transform * *current_element.transform,
 							alpha_blending: AlphaBlending {
 								blend_mode: current_element.alpha_blending.blend_mode,
@@ -477,7 +477,7 @@ pub async fn append_artboard(_ctx: impl Ctx, mut artboards: ArtboardGroupTable, 
 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 
 	artboards.push(Instance {
-		instance: artboard,
+		element: artboard,
 		transform: DAffine2::IDENTITY,
 		alpha_blending: AlphaBlending::default(),
 		source_node_id: encapsulating_node_id,

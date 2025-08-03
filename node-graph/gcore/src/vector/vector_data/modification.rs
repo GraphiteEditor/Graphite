@@ -425,7 +425,7 @@ async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modificat
 		vector_data.push(Instance::default());
 	}
 	let vector_data_instance = vector_data.get_mut(0).expect("push should give one item");
-	modification.apply(vector_data_instance.instance);
+	modification.apply(vector_data_instance.element);
 
 	// Update the source node id
 	let this_node_path = node_path.iter().rev().nth(1).copied();
@@ -441,7 +441,7 @@ async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modificat
 #[node_macro::node(category("Vector"))]
 async fn apply_transform(_ctx: impl Ctx, mut vector_data: VectorDataTable) -> VectorDataTable {
 	for vector_data_instance in vector_data.instance_mut_iter() {
-		let vector_data = vector_data_instance.instance;
+		let vector_data = vector_data_instance.element;
 		let transform = *vector_data_instance.transform;
 
 		for (_, point) in vector_data.point_domain.positions_mut() {

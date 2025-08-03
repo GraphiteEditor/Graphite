@@ -35,7 +35,7 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Rast
 		.instance_iter()
 		.filter_map(|mut image_frame_instance| {
 			let image_frame_transform = image_frame_instance.transform;
-			let image = image_frame_instance.instance;
+			let image = image_frame_instance.element;
 
 			// Resize the image using the image crate
 			let data = bytemuck::cast_vec(image.data.clone());
@@ -88,7 +88,7 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Rast
 			let new_transform = image_frame_transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
 
 			image_frame_instance.transform = new_transform;
-			image_frame_instance.instance = Raster::new_cpu(image);
+			image_frame_instance.element = Raster::new_cpu(image);
 			Some(image_frame_instance)
 		})
 		.collect()
@@ -114,10 +114,10 @@ pub fn combine_channels(
 		.zip(alpha)
 		.filter_map(|(((red, green), blue), alpha)| {
 			// Turn any default zero-sized image instances into None
-			let red = red.filter(|i| i.instance.width > 0 && i.instance.height > 0);
-			let green = green.filter(|i| i.instance.width > 0 && i.instance.height > 0);
-			let blue = blue.filter(|i| i.instance.width > 0 && i.instance.height > 0);
-			let alpha = alpha.filter(|i| i.instance.width > 0 && i.instance.height > 0);
+			let red = red.filter(|i| i.element.width > 0 && i.element.height > 0);
+			let green = green.filter(|i| i.element.width > 0 && i.element.height > 0);
+			let blue = blue.filter(|i| i.element.width > 0 && i.element.height > 0);
+			let alpha = alpha.filter(|i| i.element.width > 0 && i.element.height > 0);
 
 			// Get this instance's transform and alpha blending mode from the first non-empty channel
 			let (transform, alpha_blending, source_node_id) = [&red, &green, &blue, &alpha]
@@ -127,10 +127,10 @@ pub fn combine_channels(
 
 			// Get the common width and height of the channels, which must have equal dimensions
 			let channel_dimensions = [
-				red.as_ref().map(|r| (r.instance.width, r.instance.height)),
-				green.as_ref().map(|g| (g.instance.width, g.instance.height)),
-				blue.as_ref().map(|b| (b.instance.width, b.instance.height)),
-				alpha.as_ref().map(|a| (a.instance.width, a.instance.height)),
+				red.as_ref().map(|r| (r.element.width, r.element.height)),
+				green.as_ref().map(|g| (g.element.width, g.element.height)),
+				blue.as_ref().map(|b| (b.element.width, b.element.height)),
+				alpha.as_ref().map(|a| (a.element.width, a.element.height)),
 			];
 			if channel_dimensions.iter().all(Option::is_none)
 				|| channel_dimensions
@@ -150,22 +150,22 @@ pub fn combine_channels(
 				for x in 0..image.width() {
 					let image_pixel = image.get_pixel_mut(x, y).unwrap();
 
-					if let Some(r) = red.as_ref().and_then(|r| r.instance.get_pixel(x, y)) {
+					if let Some(r) = red.as_ref().and_then(|r| r.element.get_pixel(x, y)) {
 						image_pixel.set_red(r.l().cast_linear_channel());
 					} else {
 						image_pixel.set_red(Channel::from_linear(0.));
 					}
-					if let Some(g) = green.as_ref().and_then(|g| g.instance.get_pixel(x, y)) {
+					if let Some(g) = green.as_ref().and_then(|g| g.element.get_pixel(x, y)) {
 						image_pixel.set_green(g.l().cast_linear_channel());
 					} else {
 						image_pixel.set_green(Channel::from_linear(0.));
 					}
-					if let Some(b) = blue.as_ref().and_then(|b| b.instance.get_pixel(x, y)) {
+					if let Some(b) = blue.as_ref().and_then(|b| b.element.get_pixel(x, y)) {
 						image_pixel.set_blue(b.l().cast_linear_channel());
 					} else {
 						image_pixel.set_blue(Channel::from_linear(0.));
 					}
-					if let Some(a) = alpha.as_ref().and_then(|a| a.instance.get_pixel(x, y)) {
+					if let Some(a) = alpha.as_ref().and_then(|a| a.element.get_pixel(x, y)) {
 						image_pixel.set_alpha(a.l().cast_linear_channel());
 					} else {
 						image_pixel.set_alpha(Channel::from_linear(1.));
@@ -174,7 +174,7 @@ pub fn combine_channels(
 			}
 
 			Some(Instance {
-				instance: Raster::new_cpu(image),
+				element: Raster::new_cpu(image),
 				transform,
 				alpha_blending,
 				source_node_id,
@@ -197,12 +197,12 @@ pub fn mask(
 		// No stencil provided so we return the original image
 		return image;
 	};
-	let stencil_size = DVec2::new(stencil_instance.instance.width as f64, stencil_instance.instance.height as f64);
+	let stencil_size = DVec2::new(stencil_instance.element.width as f64, stencil_instance.element.height as f64);
 
 	image
 		.instance_iter()
 		.filter_map(|mut image_instance| {
-			let image_size = DVec2::new(image_instance.instance.width as f64, image_instance.instance.height as f64);
+			let image_size = DVec2::new(image_instance.element.width as f64, image_instance.element.height as f64);
 			let mask_size = stencil_instance.transform.decompose_scale();
 
 			if mask_size == DVec2::ZERO {
@@ -213,16 +213,16 @@ pub fn mask(
 			let bg_to_fg = image_instance.transform * DAffine2::from_scale(1. / image_size);
 			let stencil_transform_inverse = stencil_instance.transform.inverse();
 
-			for y in 0..image_instance.instance.height {
-				for x in 0..image_instance.instance.width {
+			for y in 0..image_instance.element.height {
+				for x in 0..image_instance.element.width {
 					let image_point = DVec2::new(x as f64, y as f64);
 					let mask_point = bg_to_fg.transform_point2(image_point);
 					let local_mask_point = stencil_transform_inverse.transform_point2(mask_point);
 					let mask_point = stencil_instance.transform.transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
 					let mask_point = (DAffine2::from_scale(stencil_size) * stencil_instance.transform.inverse()).transform_point2(mask_point);
 
-					let image_pixel = image_instance.instance.data_mut().get_pixel_mut(x, y).unwrap();
-					let mask_pixel = stencil_instance.instance.sample(mask_point);
+					let image_pixel = image_instance.element.data_mut().get_pixel_mut(x, y).unwrap();
+					let mask_pixel = stencil_instance.element.sample(mask_point);
 					*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().cast_linear_channel());
 				}
 			}
@@ -243,8 +243,8 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<CPU>, bounds: 
 				return image_instance;
 			}
 
-			let image_data = &image_instance.instance.data;
-			let (image_width, image_height) = (image_instance.instance.width, image_instance.instance.height);
+			let image_data = &image_instance.element.data;
+			let (image_width, image_height) = (image_instance.element.width, image_instance.element.height);
 			if image_width == 0 || image_height == 0 {
 				return empty_image((), bounds, Color::TRANSPARENT).instance_iter().next().unwrap();
 			}
@@ -272,7 +272,7 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<CPU>, bounds: 
 			// let layer_to_new_texture_space = (DAffine2::from_scale(1. / new_scale) * DAffine2::from_translation(new_start) * layer_to_image_space).inverse();
 			let new_texture_to_layer_space = image_instance.transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
 
-			image_instance.instance = Raster::new_cpu(new_image);
+			image_instance.element = Raster::new_cpu(new_image);
 			image_instance.transform = new_texture_to_layer_space;
 			image_instance
 		})
@@ -384,7 +384,7 @@ pub fn noise_pattern(
 			}
 
 			return RasterDataTable::new_instance(Instance {
-				instance: Raster::new_cpu(image),
+				element: Raster::new_cpu(image),
 				transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
 				..Default::default()
 			});
@@ -446,7 +446,7 @@ pub fn noise_pattern(
 	}
 
 	RasterDataTable::new_instance(Instance {
-		instance: Raster::new_cpu(image),
+		element: Raster::new_cpu(image),
 		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
 		..Default::default()
 	})
@@ -488,7 +488,7 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> RasterDataTable<CPU> {
 	}
 
 	RasterDataTable::new_instance(Instance {
-		instance: Raster::new_cpu(Image {
+		element: Raster::new_cpu(Image {
 			width,
 			height,
 			data,

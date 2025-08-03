@@ -102,7 +102,7 @@ fn string_to_bytes(_: impl Ctx, string: String) -> Vec<u8> {
 #[node_macro::node(category("Web Request"), name("Image to Bytes"))]
 fn image_to_bytes(_: impl Ctx, image: RasterDataTable<CPU>) -> Vec<u8> {
 	let Some(image) = image.instance_ref_iter().next() else { return vec![] };
-	image.instance.data.iter().flat_map(|color| color.to_rgb8_srgb().into_iter()).collect::<Vec<u8>>()
+	image.element.data.iter().flat_map(|color| color.to_rgb8_srgb().into_iter()).collect::<Vec<u8>>()
 }
 
 #[node_macro::node(category("Web Request"))]
@@ -278,7 +278,7 @@ where
 
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
 	RasterDataTable::new_instance(Instance {
-		instance: Raster::new_cpu(image),
+		element: Raster::new_cpu(image),
 		transform: footprint.transform,
 		..Default::default()
 	})

@@ -55,12 +55,12 @@ async fn boolean_operation<I: Into<GraphicGroupTable> + 'n + Send + Clone>(
 		let transform = *result_vector_data.transform;
 		*result_vector_data.transform = DAffine2::IDENTITY;
 
-		VectorData::transform(result_vector_data.instance, transform);
-		result_vector_data.instance.style.set_stroke_transform(DAffine2::IDENTITY);
-		result_vector_data.instance.upstream_graphic_group = Some(group_of_paths.clone());
+		VectorData::transform(result_vector_data.element, transform);
+		result_vector_data.element.style.set_stroke_transform(DAffine2::IDENTITY);
+		result_vector_data.element.upstream_graphic_group = Some(group_of_paths.clone());
 
 		// Clean up the boolean operation result by merging duplicated points
-		result_vector_data.instance.merge_by_distance_spatial(*result_vector_data.transform, 0.0001);
+		result_vector_data.element.merge_by_distance_spatial(*result_vector_data.transform, 0.0001);
 	}
 
 	result_vector_data_table
@@ -89,10 +89,10 @@ fn union<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, Vector
 	while let Some(lower_vector_data) = second_vector_data {
 		let transform_of_lower_into_space_of_upper = first_instance.transform.inverse() * *lower_vector_data.transform;
 
-		let result = &mut first_instance.instance;
+		let result = &mut first_instance.element;
 
 		let upper_path_string = to_path(result, DAffine2::IDENTITY);
-		let lower_path_string = to_path(lower_vector_data.instance, transform_of_lower_into_space_of_upper);
+		let lower_path_string = to_path(lower_vector_data.element, transform_of_lower_into_space_of_upper);
 
 		#[allow(unused_unsafe)]
 		let boolean_operation_string = unsafe { boolean_union(upper_path_string, lower_path_string) };
@@ -120,10 +120,10 @@ fn subtract<'a>(vector_data: impl Iterator<Item = InstanceRef<'a, VectorData>>) 
 	while let Some(lower_vector_data) = next_vector_data {
 		let transform_of_lower_into_space_of_upper = first_instance.transform.inverse() * *lower_vector_data.transform;
 
-		let result = &mut first_instance.instance;
+		let result = &mut first_instance.element;
 
 		let upper_path_string = to_path(result, DAffine2::IDENTITY);
-		let lower_path_string = to_path(lower_vector_data.instance, transform_of_lower_into_space_of_upper);
+		let lower_path_string = to_path(lower_vector_data.element, transform_of_lower_into_space_of_upper);
 
 		#[allow(unused_unsafe)]
 		let boolean_operation_string = unsafe { boolean_subtract(upper_path_string, lower_path_string) };
@@ -153,10 +153,10 @@ fn intersect<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, Ve
 	while let Some(lower_vector_data) = second_vector_data {
 		let transform_of_lower_into_space_of_upper = first_instance.transform.inverse() * *lower_vector_data.transform;
 
-		let result = &mut first_instance.instance;
+		let result = &mut first_instance.element;
 
 		let upper_path_string = to_path(result, DAffine2::IDENTITY);
-		let lower_path_string = to_path(lower_vector_data.instance, transform_of_lower_into_space_of_upper);
+		let lower_path_string = to_path(lower_vector_data.element, transform_of_lower_into_space_of_upper);
 
 		#[allow(unused_unsafe)]
 		let boolean_operation_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
@@ -186,15 +186,15 @@ fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, V
 
 		let transform_of_lower_into_space_of_upper = first_instance.transform.inverse() * *lower_vector_data.transform;
 
-		let upper_path_string = to_path(first_instance.instance, DAffine2::IDENTITY);
-		let lower_path_string = to_path(lower_vector_data.instance, transform_of_lower_into_space_of_upper);
+		let upper_path_string = to_path(first_instance.element, DAffine2::IDENTITY);
+		let lower_path_string = to_path(lower_vector_data.element, transform_of_lower_into_space_of_upper);
 
 		#[allow(unused_unsafe)]
 		let boolean_intersection_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
 		let mut instance = from_path(&boolean_intersection_string);
-		instance.style = first_instance.instance.style.clone();
+		instance.style = first_instance.element.style.clone();
 		let boolean_intersection_result = Instance {
-			instance,
+			element: instance,
 			transform: *first_instance.transform,
 			alpha_blending: *first_instance.alpha_blending,
 			source_node_id: *first_instance.source_node_id,
@@ -202,15 +202,15 @@ fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, V
 
 		let transform_of_lower_into_space_of_upper = boolean_intersection_result.transform.inverse() * any_intersection.transform;
 
-		let upper_path_string = to_path(&boolean_intersection_result.instance, DAffine2::IDENTITY);
-		let lower_path_string = to_path(&any_intersection.instance, transform_of_lower_into_space_of_upper);
+		let upper_path_string = to_path(&boolean_intersection_result.element, DAffine2::IDENTITY);
+		let lower_path_string = to_path(&any_intersection.element, transform_of_lower_into_space_of_upper);
 
 		#[allow(unused_unsafe)]
 		let union_result = from_path(&unsafe { boolean_union(upper_path_string, lower_path_string) });
-		any_intersection.instance = union_result;
+		any_intersection.element = union_result;
 
 		any_intersection.transform = boolean_intersection_result.transform;
-		any_intersection.instance.style = boolean_intersection_result.instance.style.clone();
+		any_intersection.element.style = boolean_intersection_result.element.style.clone();
 		any_intersection.alpha_blending = boolean_intersection_result.alpha_blending;
 
 		second_vector_data = vector_data_iter.next();
@@ -225,7 +225,7 @@ fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTab
 	graphic_group_table
 		.instance_ref_iter()
 		.flat_map(|element| {
-			match element.instance.clone() {
+			match element.element.clone() {
 				GraphicElement::VectorData(vector_data) => {
 					// Apply the parent group's transform to each element of vector data
 					vector_data
@@ -247,7 +247,10 @@ fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTab
 						let mut instance = VectorData::from_subpath(subpath);
 						instance.style.set_fill(Fill::Solid(Color::BLACK));
 
-						Instance { instance, ..Default::default() }
+						Instance {
+							element: instance,
+							..Default::default()
+						}
 					};
 
 					// Apply the parent group's transform to each element of raster data
@@ -263,7 +266,10 @@ fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTab
 						let mut instance = VectorData::from_subpath(subpath);
 						instance.style.set_fill(Fill::Solid(Color::BLACK));
 
-						Instance { instance, ..Default::default() }
+						Instance {
+							element: instance,
+							..Default::default()
+						}
 					};
 
 					// Apply the parent group's transform to each element of raster data

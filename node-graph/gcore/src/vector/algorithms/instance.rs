@@ -18,7 +18,7 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + '
 ) -> Table<T> {
 	let mut result_table = Table::<T>::default();
 
-	for InstanceRef { instance: points, transform, .. } in points.instance_ref_iter() {
+	for InstanceRef { element: points, transform, .. } in points.instance_ref_iter() {
 		let mut iteration = async |index, point| {
 			let transformed_point = transform.transform_point2(point);
 
@@ -132,7 +132,7 @@ mod test {
 		let repeated = super::instance_on_points(owned, points, &rect, false).await;
 		assert_eq!(repeated.len(), positions.len());
 		for (position, instanced) in positions.into_iter().zip(repeated.instance_ref_iter()) {
-			let bounds = instanced.instance.bounding_box_with_transform(*instanced.transform).unwrap();
+			let bounds = instanced.element.bounding_box_with_transform(*instanced.transform).unwrap();
 			assert!(position.abs_diff_eq((bounds[0] + bounds[1]) / 2., 1e-10));
 			assert_eq!((bounds[1] - bounds[0]).x, position.y);
 		}

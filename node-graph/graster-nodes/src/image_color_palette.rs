@@ -18,7 +18,7 @@ async fn image_color_palette(
 	let mut colors: Vec<Vec<Color>> = vec![vec![]; (bins + 1.) as usize];
 
 	for image_instance in image.instance_ref_iter() {
-		for pixel in image_instance.instance.data.iter() {
+		for pixel in image_instance.element.data.iter() {
 			let r = pixel.r() * GRID;
 			let g = pixel.g() * GRID;
 			let b = pixel.b() * GRID;

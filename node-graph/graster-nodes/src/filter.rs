@@ -23,7 +23,7 @@ async fn blur(
 	image_frame
 		.instance_iter()
 		.map(|mut image_instance| {
-			let image = image_instance.instance.clone();
+			let image = image_instance.element.clone();
 
 			// Run blur algorithm
 			let blurred_image = if radius < 0.1 {
@@ -35,7 +35,7 @@ async fn blur(
 				Raster::new_cpu(gaussian_blur_algorithm(image.into_data(), radius, gamma))
 			};
 
-			image_instance.instance = blurred_image;
+			image_instance.element = blurred_image;
 			image_instance
 		})
 		.collect()

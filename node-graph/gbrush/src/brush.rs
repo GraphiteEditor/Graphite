@@ -86,8 +86,8 @@ where
 	}
 
 	for target_instance in target.instance_mut_iter() {
-		let target_width = target_instance.instance.width;
-		let target_height = target_instance.instance.height;
+		let target_width = target_instance.element.width;
+		let target_height = target_instance.element.height;
 		let target_size = DVec2::new(target_width as f64, target_height as f64);
 
 		let texture_size = DVec2::new(texture.width as f64, texture.height as f64);
@@ -112,12 +112,12 @@ where
 			let max_y = (blit_area_offset.y + blit_area_dimensions.y).saturating_sub(1);
 			let max_x = (blit_area_offset.x + blit_area_dimensions.x).saturating_sub(1);
 			assert!(texture_index(max_x, max_y) < texture.data.len());
-			assert!(target_index(max_x, max_y) < target_instance.instance.data.len());
+			assert!(target_index(max_x, max_y) < target_instance.element.data.len());
 
 			for y in blit_area_offset.y..blit_area_offset.y + blit_area_dimensions.y {
 				for x in blit_area_offset.x..blit_area_offset.x + blit_area_dimensions.x {
 					let src_pixel = texture.data[texture_index(x, y)];
-					let dst_pixel = &mut target_instance.instance.data_mut().data[target_index(x + clamp_start.x, y + clamp_start.y)];
+					let dst_pixel = &mut target_instance.element.data_mut().data[target_index(x + clamp_start.x, y + clamp_start.y)];
 					*dst_pixel = blend_mode.eval((src_pixel, *dst_pixel));
 				}
 			}
@@ -133,7 +133,7 @@ pub async fn create_brush_texture(brush_style: &BrushStyle) -> Raster<CPU> {
 	let blank_texture = empty_image((), transform, Color::TRANSPARENT).instance_iter().next().unwrap_or_default();
 	let image = blend_stamp_closure(stamp, blank_texture, |a, b| blend_colors(a, b, BlendMode::Normal, 1.));
 
-	image.instance
+	image.element
 }
 
 pub fn blend_with_mode(background: Instance<Raster<CPU>>, foreground: Instance<Raster<CPU>>, blend_mode: BlendMode, opacity: f64) -> Instance<Raster<CPU>> {
@@ -262,7 +262,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes
 	if has_erase_strokes {
 		let opaque_image = Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE);
 		let mut erase_restore_mask = Instance {
-			instance: Raster::new_cpu(opaque_image),
+			element: Raster::new_cpu(opaque_image),
 			transform: background_bounds,
 			..Default::default()
 		};
@@ -306,7 +306,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes
 	}
 
 	let first_row = image_frame_table.instance_mut_iter().next().unwrap();
-	*first_row.instance = actual_image.instance;
+	*first_row.element = actual_image.element;
 	*first_row.transform = actual_image.transform;
 	*first_row.alpha_blending = actual_image.alpha_blending;
 	*first_row.source_node_id = actual_image.source_node_id;
@@ -315,8 +315,8 @@ async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes
 }
 
 pub fn blend_image_closure(foreground: Instance<Raster<CPU>>, mut background: Instance<Raster<CPU>>, map_fn: impl Fn(Color, Color) -> Color) -> Instance<Raster<CPU>> {
-	let foreground_size = DVec2::new(foreground.instance.width as f64, foreground.instance.height as f64);
-	let background_size = DVec2::new(background.instance.width as f64, background.instance.height as f64);
+	let foreground_size = DVec2::new(foreground.element.width as f64, foreground.element.height as f64);
+	let background_size = DVec2::new(background.element.width as f64, background.element.height as f64);
 
 	// Transforms a point from the background image to the foreground image
 	let background_to_foreground = DAffine2::from_scale(foreground_size) * foreground.transform.inverse() * background.transform * DAffine2::from_scale(1. / background_size);
@@ -333,8 +333,8 @@ pub fn blend_image_closure(foreground: Instance<Raster<CPU>>, mut background: In
 			let background_point = DVec2::new(x as f64, y as f64);
 			let foreground_point = background_to_foreground.transform_point2(background_point);
 
-			let source_pixel = foreground.instance.sample(foreground_point);
-			let Some(destination_pixel) = background.instance.data_mut().get_pixel_mut(x, y) else { continue };
+			let source_pixel = foreground.element.sample(foreground_point);
+			let Some(destination_pixel) = background.element.data_mut().get_pixel_mut(x, y) else { continue };
 
 			*destination_pixel = map_fn(source_pixel, *destination_pixel);
 		}
@@ -344,7 +344,7 @@ pub fn blend_image_closure(foreground: Instance<Raster<CPU>>, mut background: In
 }
 
 pub fn blend_stamp_closure(foreground: BrushStampGenerator<Color>, mut background: Instance<Raster<CPU>>, map_fn: impl Fn(Color, Color) -> Color) -> Instance<Raster<CPU>> {
-	let background_size = DVec2::new(background.instance.width as f64, background.instance.height as f64);
+	let background_size = DVec2::new(background.element.width as f64, background.element.height as f64);
 
 	// Transforms a point from the background image to the foreground image
 	let background_to_foreground = background.transform * DAffine2::from_scale(1. / background_size);
@@ -363,7 +363,7 @@ pub fn blend_stamp_closure(foreground: BrushStampGenerator<Color>, mut backgroun
 			let foreground_point = background_to_foreground.transform_point2(background_point);
 
 			let Some(source_pixel) = foreground.sample(foreground_point, area) else { continue };
-			let Some(destination_pixel) = background.instance.data_mut().get_pixel_mut(x, y) else { continue };
+			let Some(destination_pixel) = background.element.data_mut().get_pixel_mut(x, y) else { continue };
 
 			*destination_pixel = map_fn(source_pixel, *destination_pixel);
 		}
@@ -406,6 +406,6 @@ mod test {
 			BrushCache::default(),
 		)
 		.await;
-		assert_eq!(image.instance_ref_iter().next().unwrap().instance.width, 20);
+		assert_eq!(image.instance_ref_iter().next().unwrap().element.width, 20);
 	}
 }

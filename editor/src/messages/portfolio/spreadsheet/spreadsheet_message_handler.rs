@@ -279,7 +279,7 @@ impl<T: InstanceLayout> InstanceLayout for Table<T> {
 		if let Some(index) = data.desired_path.get(data.current_depth).copied() {
 			if let Some(instance) = self.get(index) {
 				data.current_depth += 1;
-				let result = instance.instance.layout_with_breadcrumb(data);
+				let result = instance.element.layout_with_breadcrumb(data);
 				data.current_depth -= 1;
 				return result;
 			} else {
@@ -297,7 +297,7 @@ impl<T: InstanceLayout> InstanceLayout for Table<T> {
 				let round = |x: f64| (x * 1e3).round() / 1e3;
 				vec![
 					TextLabel::new(format!("{}", index)).widget_holder(),
-					TextButton::new(instance.instance.identifier())
+					TextButton::new(instance.element.identifier())
 						.on_update(move |_| SpreadsheetMessage::PushToInstancePath { index }.into())
 						.widget_holder(),
 					TextLabel::new(format!(

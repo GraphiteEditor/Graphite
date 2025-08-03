@@ -13,7 +13,7 @@ pub async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: Raste
 	let table = input
 		.instance_ref_iter()
 		.map(|instance| {
-			let image = instance.instance;
+			let image = instance.element;
 			let rgba8_data: Vec<SRGBA8> = image.data.iter().map(|x| (*x).into()).collect();
 
 			let texture = device.create_texture_with_data(
@@ -38,7 +38,7 @@ pub async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: Raste
 			);
 
 			Instance {
-				instance: Raster::new_gpu(texture),
+				element: Raster::new_gpu(texture),
 				transform: *instance.transform,
 				alpha_blending: *instance.alpha_blending,
 				source_node_id: *instance.source_node_id,

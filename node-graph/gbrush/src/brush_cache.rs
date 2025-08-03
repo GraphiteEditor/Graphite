@@ -61,7 +61,7 @@ impl BrushCacheImpl {
 
 		// Check if the first non-blended stroke is an extension of the last one.
 		let mut first_stroke_texture = Instance {
-			instance: Raster::<CPU>::default(),
+			element: Raster::<CPU>::default(),
 			transform: glam::DAffine2::ZERO,
 			..Default::default()
 		};

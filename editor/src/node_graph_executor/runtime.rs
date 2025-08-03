@@ -317,7 +317,7 @@ impl NodeRuntime {
 				let default = Instance::default();
 				self.vector_modify.insert(
 					parent_network_node_id,
-					record.output.instance_ref_iter().next().unwrap_or_else(|| default.to_instance_ref()).instance.clone(),
+					record.output.instance_ref_iter().next().unwrap_or_else(|| default.to_instance_ref()).element.clone(),
 				);
 			} else {
 				log::warn!("Failed to downcast monitor node output {parent_network_node_id:?}");

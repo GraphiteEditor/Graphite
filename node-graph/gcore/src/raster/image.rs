@@ -1,8 +1,8 @@
 use super::Color;
 use crate::AlphaBlending;
 use crate::color::float_to_srgb_u8;
-use crate::table::{Instance, Table};
 use crate::raster_types::Raster;
+use crate::table::{Instance, Table};
 use core::hash::{Hash, Hasher};
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
@@ -257,7 +257,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		fn from(element: GraphicElement) -> Self {
 			match element {
 				GraphicElement::RasterFrame(RasterFrame::ImageFrame(image)) => Self {
-					image: image.instance_ref_iter().next().unwrap().instance.clone(),
+					image: image.instance_ref_iter().next().unwrap().element.clone(),
 				},
 				_ => panic!("Expected Image, found {:?}", element),
 			}
@@ -303,11 +303,11 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 				.instance_ref_iter()
 				.next()
 				.unwrap_or(Table::new(ImageFrame::default()).instance_ref_iter().next().unwrap())
-				.instance
+				.element
 				.image
 				.clone(),
 		)),
-		FormatVersions::ImageFrameTable(image_frame_table) => RasterDataTable::new(Raster::new_cpu(image_frame_table.instance_ref_iter().next().unwrap().instance.clone())),
+		FormatVersions::ImageFrameTable(image_frame_table) => RasterDataTable::new(Raster::new_cpu(image_frame_table.instance_ref_iter().next().unwrap().element.clone())),
 		FormatVersions::RasterDataTable(raster_data_table) => raster_data_table,
 	})
 }
@@ -358,7 +358,7 @@ pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializ
 		fn from(element: GraphicElement) -> Self {
 			match element {
 				GraphicElement::RasterFrame(RasterFrame::ImageFrame(image)) => Self {
-					image: image.instance_ref_iter().next().unwrap().instance.clone(),
+					image: image.instance_ref_iter().next().unwrap().element.clone(),
 				},
 				_ => panic!("Expected Image, found {:?}", element),
 			}
@@ -392,17 +392,17 @@ pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializ
 
 	Ok(match FormatVersions::deserialize(deserializer)? {
 		FormatVersions::Image(image) => Instance {
-			instance: Raster::new_cpu(image),
+			element: Raster::new_cpu(image),
 			..Default::default()
 		},
 		FormatVersions::OldImageFrame(image_frame_with_transform_and_blending) => Instance {
-			instance: Raster::new_cpu(image_frame_with_transform_and_blending.image),
+			element: Raster::new_cpu(image_frame_with_transform_and_blending.image),
 			transform: image_frame_with_transform_and_blending.transform,
 			alpha_blending: image_frame_with_transform_and_blending.alpha_blending,
 			source_node_id: None,
 		},
 		FormatVersions::ImageFrame(image_frame) => Instance {
-			instance: Raster::new_cpu(image_frame.instance_ref_iter().next().unwrap().instance.image.clone()),
+			element: Raster::new_cpu(image_frame.instance_ref_iter().next().unwrap().element.image.clone()),
 			..Default::default()
 		},
 		FormatVersions::RasterDataTable(image_frame_table) => image_frame_table.instance_iter().next().unwrap_or_default(),
