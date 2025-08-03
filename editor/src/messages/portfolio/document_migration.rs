@@ -12,7 +12,7 @@ use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::Tagged
 use graphene_std::ProtoNodeIdentifier;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::uuid::NodeId;
-use graphene_std::vector::style::{PaintOrder, StrokeAlign};
+use graphene_std::vector::style::{PaintOrder, StrokeAlign, StrokeScaling};
 use graphene_std::vector::{VectorData, VectorDataTable};
 use std::collections::HashMap;
 
@@ -572,6 +572,21 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 7), paint_order_input, network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 8), old_inputs[3].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 9), old_inputs[4].clone(), network_path);
+	}
+
+	// Upgrade Stroke node to add "Scaling" parameter
+	if reference == "Stroke" && inputs_count == 10 {
+		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		// Restore all existing inputs
+		for (index, input) in old_inputs.into_iter().enumerate() {
+			document.network_interface.set_input(&InputConnector::node(*node_id, index), input, network_path);
+		}
+
+		// Add the new scaling parameter at index 10
+		let scaling_input = NodeInput::value(TaggedValue::StrokeScaling(StrokeScaling::ScaleWithShape), false);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 10), scaling_input, network_path);
 	}
 
 	// Rename the old "Splines from Points" node to "Spline" and upgrade it to the new "Spline" node

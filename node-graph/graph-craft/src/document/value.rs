@@ -242,6 +242,7 @@ tagged_value! {
 	StrokeJoin(graphene_core::vector::style::StrokeJoin),
 	StrokeAlign(graphene_core::vector::style::StrokeAlign),
 	PaintOrder(graphene_core::vector::style::PaintOrder),
+	StrokeScaling(graphene_core::vector::style::StrokeScaling),
 	FillType(graphene_core::vector::style::FillType),
 	FillChoice(graphene_core::vector::style::FillChoice),
 	GradientType(graphene_core::vector::style::GradientType),
