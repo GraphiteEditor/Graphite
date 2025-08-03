@@ -2,7 +2,7 @@ use crate::raster_types::{CPU, Raster};
 use crate::registry::types::Percentage;
 use crate::table::Table;
 use crate::vector::VectorData;
-use crate::{BlendMode, Color, Ctx, GraphicElement};
+use crate::{BlendMode, Color, Ctx, Graphic};
 
 pub(super) trait MultiplyAlpha {
 	fn multiply_alpha(&mut self, factor: f64);
@@ -20,7 +20,7 @@ impl MultiplyAlpha for Table<VectorData> {
 		}
 	}
 }
-impl MultiplyAlpha for Table<GraphicElement> {
+impl MultiplyAlpha for Table<Graphic> {
 	fn multiply_alpha(&mut self, factor: f64) {
 		for row in self.iter_mut() {
 			row.alpha_blending.opacity *= factor as f32;
@@ -50,7 +50,7 @@ impl MultiplyFill for Table<VectorData> {
 		}
 	}
 }
-impl MultiplyFill for Table<GraphicElement> {
+impl MultiplyFill for Table<Graphic> {
 	fn multiply_fill(&mut self, factor: f64) {
 		for row in self.iter_mut() {
 			row.alpha_blending.fill *= factor as f32;
@@ -76,7 +76,7 @@ impl SetBlendMode for Table<VectorData> {
 		}
 	}
 }
-impl SetBlendMode for Table<GraphicElement> {
+impl SetBlendMode for Table<Graphic> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
 		for row in self.iter_mut() {
 			row.alpha_blending.blend_mode = blend_mode;
@@ -102,7 +102,7 @@ impl SetClip for Table<VectorData> {
 		}
 	}
 }
-impl SetClip for Table<GraphicElement> {
+impl SetClip for Table<Graphic> {
 	fn set_clip(&mut self, clip: bool) {
 		for row in self.iter_mut() {
 			row.alpha_blending.clip = clip;
@@ -121,7 +121,7 @@ impl SetClip for Table<Raster<CPU>> {
 fn blend_mode<T: SetBlendMode>(
 	_: impl Ctx,
 	#[implementations(
-		Table<GraphicElement>,
+		Table<Graphic>,
 		Table<VectorData>,
 		Table<Raster<CPU>>,
 	)]
@@ -137,7 +137,7 @@ fn blend_mode<T: SetBlendMode>(
 fn opacity<T: MultiplyAlpha>(
 	_: impl Ctx,
 	#[implementations(
-		Table<GraphicElement>,
+		Table<Graphic>,
 		Table<VectorData>,
 		Table<Raster<CPU>>,
 	)]
@@ -153,7 +153,7 @@ fn opacity<T: MultiplyAlpha>(
 fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill + SetClip>(
 	_: impl Ctx,
 	#[implementations(
-		Table<GraphicElement>,
+		Table<Graphic>,
 		Table<VectorData>,
 		Table<Raster<CPU>>,
 	)]

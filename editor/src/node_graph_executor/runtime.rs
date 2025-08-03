@@ -10,7 +10,7 @@ use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::Context;
 use graphene_std::application_io::{ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_std::memo::IORecord;
-use graphene_std::renderer::{GraphicElementRendered, RenderParams, SvgRender};
+use graphene_std::renderer::{Render, RenderParams, SvgRender};
 use graphene_std::renderer::{RenderSvgSegmentList, SvgSegment};
 use graphene_std::table::{Table, TableRow};
 use graphene_std::text::FontCache;
@@ -299,7 +299,7 @@ impl NodeRuntime {
 				continue;
 			};
 
-			// Extract the monitor node's stored `GraphicElement` data.
+			// Extract the monitor node's stored `Graphic` data.
 			let Ok(introspected_data) = self.executor.introspect(monitor_node_path) else {
 				// TODO: Fix the root of the issue causing the spam of this warning (this at least temporarily disables it in release builds)
 				#[cfg(debug_assertions)]
@@ -308,7 +308,7 @@ impl NodeRuntime {
 				continue;
 			};
 
-			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_std::GraphicElement>>() {
+			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_std::Graphic>>() {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_std::Artboard>>() {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
@@ -323,12 +323,12 @@ impl NodeRuntime {
 		}
 	}
 
-	// If this is `GraphicElement` data:
+	// If this is `Graphic` data:
 	// Regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
 	fn process_graphic_element(
 		thumbnail_renders: &mut HashMap<NodeId, Vec<SvgSegment>>,
 		parent_network_node_id: NodeId,
-		graphic_element: &impl GraphicElementRendered,
+		graphic_element: &impl Render,
 		responses: &mut VecDeque<FrontendMessage>,
 		update_thumbnails: bool,
 	) {
@@ -352,7 +352,7 @@ impl NodeRuntime {
 
 		let bounds = graphic_element.bounding_box(DAffine2::IDENTITY, true);
 
-		// Render the thumbnail from a `GraphicElement` into an SVG string
+		// Render the thumbnail from a `Graphic` into an SVG string
 		let render_params = RenderParams {
 			view_mode: ViewMode::Normal,
 			culling_bounds: bounds,

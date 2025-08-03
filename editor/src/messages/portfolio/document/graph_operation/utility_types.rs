@@ -17,7 +17,7 @@ use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::VectorData;
 use graphene_std::vector::style::{Fill, Stroke};
 use graphene_std::vector::{PointId, VectorModificationType};
-use graphene_std::{GraphicElement, NodeInputDecleration};
+use graphene_std::{Graphic, NodeInputDecleration};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -303,7 +303,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// TODO: Allow the path node to operate on Graphic Group data by utilizing the reference for each vector data in a group.
 		if node_definition.identifier == "Path" {
 			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type().clone();
-			if layer_input_type == concrete!(Table<GraphicElement>) {
+			if layer_input_type == concrete!(Table<Graphic>) {
 				let Some(flatten_path_definition) = resolve_document_node_type("Flatten Path") else {
 					log::error!("Flatten Path does not exist in ModifyInputsContext::existing_node_id");
 					return None;

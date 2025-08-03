@@ -1,15 +1,15 @@
 use crate::raster_types::{CPU, Raster};
 use crate::table::{Table, TableRowRef};
 use crate::vector::VectorData;
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, OwnedContextImpl};
+use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, Graphic, OwnedContextImpl};
 use glam::DVec2;
 
 #[node_macro::node(name("Instance on Points"), category("Instancing"), path(graphene_core::vector))]
-async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + 'static>(
+async fn instance_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx,
 	points: Table<VectorData>,
 	#[implementations(
-		Context -> Table<GraphicElement>,
+		Context -> Table<Graphic>,
 		Context -> Table<VectorData>,
 		Context -> Table<Raster<CPU>>
 	)]
@@ -47,10 +47,10 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + '
 }
 
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
-async fn instance_repeat<T: Into<GraphicElement> + Default + Send + Clone + 'static>(
+async fn instance_repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
-		Context -> Table<GraphicElement>,
+		Context -> Table<Graphic>,
 		Context -> Table<VectorData>,
 		Context -> Table<Raster<CPU>>
 	)]
