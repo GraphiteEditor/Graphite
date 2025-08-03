@@ -128,7 +128,7 @@ fn make_opaque<T: Adjust<Color>>(
 		if color.a() == 0. {
 			return color.with_alpha(1.);
 		}
-		Color::from_rgbaf32(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.).unwrap()
+		Color::from_rgbaf32_unchecked(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.)
 	});
 	input
 }
@@ -363,7 +363,7 @@ async fn black_and_white<T: Adjust<Color>>(
 		// TODO: Fix "Color" blend mode implementation so it matches the expected behavior perfectly (it's currently close)
 		let color = tint.with_luminance(luminance);
 
-		let color = Color::from_rgbaf32(color.r(), color.g(), color.b(), alpha_part).unwrap();
+		let color = Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), alpha_part);
 
 		color.to_linear_srgb()
 	});
