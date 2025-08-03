@@ -14,14 +14,14 @@ use graphene_std::{Artboard, ArtboardGroupTable, GraphicElement};
 use std::any::Any;
 use std::sync::Arc;
 
-/// The spreadsheet UI allows for instance data to be previewed.
+/// The spreadsheet UI allows for graph data to be previewed.
 #[derive(Default, Debug, Clone, ExtractField)]
 pub struct SpreadsheetMessageHandler {
 	/// Sets whether or not the spreadsheet is drawn.
 	pub spreadsheet_view_open: bool,
 	inspect_node: Option<NodeId>,
 	introspected_data: Option<Arc<dyn Any + Send + Sync>>,
-	instances_path: Vec<usize>,
+	element_path: Vec<usize>,
 	viewing_vector_data_domain: VectorDataDomain,
 }
 
@@ -46,12 +46,12 @@ impl MessageHandler<SpreadsheetMessage, ()> for SpreadsheetMessageHandler {
 				self.update_layout(responses)
 			}
 
-			SpreadsheetMessage::PushToInstancePath { index } => {
-				self.instances_path.push(index);
+			SpreadsheetMessage::PushToElementPath { index } => {
+				self.element_path.push(index);
 				self.update_layout(responses);
 			}
-			SpreadsheetMessage::TruncateInstancePath { len } => {
-				self.instances_path.truncate(len);
+			SpreadsheetMessage::TruncateElementPath { len } => {
+				self.element_path.truncate(len);
 				self.update_layout(responses);
 			}
 
@@ -78,7 +78,7 @@ impl SpreadsheetMessageHandler {
 		}
 		let mut layout_data = LayoutData {
 			current_depth: 0,
-			desired_path: &mut self.instances_path,
+			desired_path: &mut self.element_path,
 			breadcrumbs: Vec::new(),
 			vector_data_domain: self.viewing_vector_data_domain,
 		};
@@ -91,7 +91,7 @@ impl SpreadsheetMessageHandler {
 
 		if layout_data.breadcrumbs.len() > 1 {
 			let breadcrumb = BreadcrumbTrailButtons::new(layout_data.breadcrumbs)
-				.on_update(|&len| SpreadsheetMessage::TruncateInstancePath { len: len as usize }.into())
+				.on_update(|&len| SpreadsheetMessage::TruncateElementPath { len: len as usize }.into())
 				.widget_holder();
 			layout.insert(0, LayoutGroup::Row { widgets: vec![breadcrumb] });
 		}
@@ -139,7 +139,7 @@ fn label(x: impl Into<String>) -> Vec<LayoutGroup> {
 	vec![LayoutGroup::Row { widgets: error }]
 }
 
-trait InstanceLayout {
+trait TableRowLayout {
 	fn type_name() -> &'static str;
 	fn identifier(&self) -> String;
 	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
@@ -149,7 +149,7 @@ trait InstanceLayout {
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup>;
 }
 
-impl InstanceLayout for GraphicElement {
+impl TableRowLayout for GraphicElement {
 	fn type_name() -> &'static str {
 		"GraphicElement"
 	}
@@ -175,7 +175,7 @@ impl InstanceLayout for GraphicElement {
 	}
 }
 
-impl InstanceLayout for VectorData {
+impl TableRowLayout for VectorData {
 	fn type_name() -> &'static str {
 		"VectorData"
 	}
@@ -243,7 +243,7 @@ impl InstanceLayout for VectorData {
 	}
 }
 
-impl InstanceLayout for Image<Color> {
+impl TableRowLayout for Image<Color> {
 	fn type_name() -> &'static str {
 		"Image"
 	}
@@ -256,7 +256,7 @@ impl InstanceLayout for Image<Color> {
 	}
 }
 
-impl InstanceLayout for Artboard {
+impl TableRowLayout for Artboard {
 	fn type_name() -> &'static str {
 		"Artboard"
 	}
@@ -268,7 +268,7 @@ impl InstanceLayout for Artboard {
 	}
 }
 
-impl<T: InstanceLayout> InstanceLayout for Table<T> {
+impl<T: TableRowLayout> TableRowLayout for Table<T> {
 	fn type_name() -> &'static str {
 		"Table"
 	}
@@ -277,9 +277,9 @@ impl<T: InstanceLayout> InstanceLayout for Table<T> {
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		if let Some(index) = data.desired_path.get(data.current_depth).copied() {
-			if let Some(instance) = self.get(index) {
+			if let Some(row) = self.get(index) {
 				data.current_depth += 1;
-				let result = instance.element.layout_with_breadcrumb(data);
+				let result = row.element.layout_with_breadcrumb(data);
 				data.current_depth -= 1;
 				return result;
 			} else {
@@ -291,14 +291,14 @@ impl<T: InstanceLayout> InstanceLayout for Table<T> {
 		let mut rows = self
 			.iter_ref()
 			.enumerate()
-			.map(|(index, instance)| {
-				let (scale, angle, translation) = instance.transform.to_scale_angle_translation();
+			.map(|(index, row)| {
+				let (scale, angle, translation) = row.transform.to_scale_angle_translation();
 				let rotation = if angle == -0. { 0. } else { angle.to_degrees() };
 				let round = |x: f64| (x * 1e3).round() / 1e3;
 				vec![
 					TextLabel::new(format!("{}", index)).widget_holder(),
-					TextButton::new(instance.element.identifier())
-						.on_update(move |_| SpreadsheetMessage::PushToInstancePath { index }.into())
+					TextButton::new(row.element.identifier())
+						.on_update(move |_| SpreadsheetMessage::PushToElementPath { index }.into())
 						.widget_holder(),
 					TextLabel::new(format!(
 						"Location: ({} px, {} px) — Rotation: {rotation:2}° — Scale: ({}x, {}x)",
@@ -308,13 +308,13 @@ impl<T: InstanceLayout> InstanceLayout for Table<T> {
 						round(scale.y)
 					))
 					.widget_holder(),
-					TextLabel::new(format!("{}", instance.alpha_blending)).widget_holder(),
-					TextLabel::new(instance.source_node_id.map_or_else(|| "-".to_string(), |id| format!("{}", id.0))).widget_holder(),
+					TextLabel::new(format!("{}", row.alpha_blending)).widget_holder(),
+					TextLabel::new(row.source_node_id.map_or_else(|| "-".to_string(), |id| format!("{}", id.0))).widget_holder(),
 				]
 			})
 			.collect::<Vec<_>>();
 
-		rows.insert(0, column_headings(&["", "instance", "transform", "alpha_blending", "source_node_id"]));
+		rows.insert(0, column_headings(&["", "element", "transform", "alpha_blending", "source_node_id"]));
 
 		let table = vec![TextLabel::new("Table:").widget_holder()];
 		vec![LayoutGroup::Row { widgets: table }, LayoutGroup::Table { rows }]

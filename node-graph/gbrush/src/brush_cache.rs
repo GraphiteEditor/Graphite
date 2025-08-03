@@ -1,9 +1,9 @@
 use crate::brush_stroke::BrushStroke;
 use crate::brush_stroke::BrushStyle;
 use dyn_any::DynAny;
-use graphene_core::table::TableRow;
 use graphene_core::raster_types::CPU;
 use graphene_core::raster_types::Raster;
+use graphene_core::table::TableRow;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -20,11 +20,11 @@ struct BrushCacheImpl {
 	prev_input: Vec<BrushStroke>,
 
 	// The strokes that have been fully processed and blended into the background.
-	#[serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame_instance")]
+	#[serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame_row")]
 	background: TableRow<Raster<CPU>>,
-	#[serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame_instance")]
+	#[serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame_row")]
 	blended_image: TableRow<Raster<CPU>>,
-	#[serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame_instance")]
+	#[serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame_row")]
 	last_stroke_texture: TableRow<Raster<CPU>>,
 
 	// A cache for brush textures.

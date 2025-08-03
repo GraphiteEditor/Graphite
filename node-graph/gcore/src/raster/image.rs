@@ -230,7 +230,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 	impl serde::Serialize for RasterFrame {
 		fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
 			match self {
-				RasterFrame::ImageFrame(image_instances) => image_instances.serialize(serializer),
+				RasterFrame::ImageFrame(table) => table.serialize(serializer),
 			}
 		}
 	}
@@ -313,7 +313,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 }
 
 // TODO: Eventually remove this migration document upgrade code
-pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<TableRow<Raster<CPU>>, D::Error> {
+pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<TableRow<Raster<CPU>>, D::Error> {
 	use serde::Deserialize;
 
 	type ImageFrameTable<P> = Table<Image<P>>;
@@ -331,7 +331,7 @@ pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializ
 	impl serde::Serialize for RasterFrame {
 		fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
 			match self {
-				RasterFrame::ImageFrame(image_instances) => image_instances.serialize(serializer),
+				RasterFrame::ImageFrame(table) => table.serialize(serializer),
 			}
 		}
 	}
@@ -387,7 +387,7 @@ pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializ
 		OldImageFrame(OldImageFrame<Color>),
 		ImageFrame(Table<ImageFrame<Color>>),
 		RasterDataTable(RasterDataTable<CPU>),
-		ImageInstance(TableRow<Raster<CPU>>),
+		ImageTableRow(TableRow<Raster<CPU>>),
 	}
 
 	Ok(match FormatVersions::deserialize(deserializer)? {
@@ -406,7 +406,7 @@ pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializ
 			..Default::default()
 		},
 		FormatVersions::RasterDataTable(image_frame_table) => image_frame_table.iter().next().unwrap_or_default(),
-		FormatVersions::ImageInstance(image_instance) => image_instance,
+		FormatVersions::ImageTableRow(image_table_row) => image_table_row,
 	})
 }
 
@@ -455,23 +455,6 @@ impl From<Image<Color>> for Image<SRGBA8> {
 		}
 	}
 }
-
-// impl From<RasterDataTable<CPU>> for RasterDataTable<SRGBA8> {
-// 	fn from(image_frame_table: RasterDataTable<CPU>) -> Self {
-// 		let mut result_table = RasterDataTable::<SRGBA8>::default();
-
-// 		for image_frame_instance in image_frame_table.instance_iter() {
-// 			result_table.push(TableRow {
-// 				element: image_frame_instance.element,
-// 				transform: image_frame_instance.transform,
-// 				alpha_blending: image_frame_instance.alpha_blending,
-// 				source_node_id: image_frame_instance.source_node_id,
-// 			});
-// 		}
-
-// 		result_table
-// 	}
-// }
 
 impl From<Image<SRGBA8>> for Image<Color> {
 	fn from(image: Image<SRGBA8>) -> Self {

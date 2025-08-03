@@ -32,7 +32,7 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 	#[serde(untagged)]
 	enum EitherFormat {
 		OldGraphicGroup(OldGraphicGroup),
-		InstanceTable(serde_json::Value),
+		Table(serde_json::Value),
 	}
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
@@ -48,16 +48,16 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 			}
 			graphic_group_table
 		}
-		EitherFormat::InstanceTable(value) => {
+		EitherFormat::Table(value) => {
 			// Try to deserialize as either table format
 			if let Ok(old_table) = serde_json::from_value::<OldGraphicGroupTable>(value.clone()) {
 				let mut graphic_group_table = GraphicGroupTable::default();
-				for instance in old_table.iter_ref() {
-					for (graphic_element, source_node_id) in &instance.element.elements {
+				for row in old_table.iter_ref() {
+					for (graphic_element, source_node_id) in &row.element.elements {
 						graphic_group_table.push(TableRow {
 							element: graphic_element.clone(),
-							transform: *instance.transform,
-							alpha_blending: *instance.alpha_blending,
+							transform: *row.transform,
+							alpha_blending: *row.alpha_blending,
 							source_node_id: *source_node_id,
 						});
 					}
@@ -174,18 +174,18 @@ impl GraphicElement {
 
 	pub fn had_clip_enabled(&self) -> bool {
 		match self {
-			GraphicElement::VectorData(data) => data.iter_ref().all(|instance| instance.alpha_blending.clip),
-			GraphicElement::GraphicGroup(data) => data.iter_ref().all(|instance| instance.alpha_blending.clip),
-			GraphicElement::RasterDataCPU(data) => data.iter_ref().all(|instance| instance.alpha_blending.clip),
-			GraphicElement::RasterDataGPU(data) => data.iter_ref().all(|instance| instance.alpha_blending.clip),
+			GraphicElement::VectorData(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
+			GraphicElement::GraphicGroup(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
+			GraphicElement::RasterDataCPU(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
+			GraphicElement::RasterDataGPU(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
 		}
 	}
 
 	pub fn can_reduce_to_clip_path(&self) -> bool {
 		match self {
-			GraphicElement::VectorData(vector_data_table) => vector_data_table.iter_ref().all(|instance_data| {
-				let style = &instance_data.element.style;
-				let alpha_blending = &instance_data.alpha_blending;
+			GraphicElement::VectorData(vector_data_table) => vector_data_table.iter_ref().all(|row| {
+				let style = &row.element.style;
+				let alpha_blending = &row.alpha_blending;
 				(alpha_blending.opacity > 1. - f32::EPSILON) && style.fill().is_opaque() && style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
 			}),
 			_ => false,
@@ -293,9 +293,7 @@ pub type ArtboardGroupTable = Table<Artboard>;
 
 impl BoundingBox for ArtboardGroupTable {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.iter_ref()
-			.filter_map(|instance| instance.element.bounding_box(transform, include_stroke))
-			.reduce(Quad::combine_bounds)
+		self.iter_ref().filter_map(|row| row.element.bounding_box(transform, include_stroke)).reduce(Quad::combine_bounds)
 	}
 }
 
@@ -352,9 +350,9 @@ async fn to_group<Data: Into<GraphicGroupTable> + 'n>(
 async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: bool) -> GraphicGroupTable {
 	// TODO: Avoid mutable reference, instead return a new GraphicGroupTable?
 	fn flatten_group(output_group_table: &mut GraphicGroupTable, current_group_table: GraphicGroupTable, fully_flatten: bool, recursion_depth: usize) {
-		for current_instance in current_group_table.iter_ref() {
-			let current_element = current_instance.element.clone();
-			let reference = *current_instance.source_node_id;
+		for current_row in current_group_table.iter_ref() {
+			let current_element = current_row.element.clone();
+			let reference = *current_row.source_node_id;
 
 			let recurse = fully_flatten || recursion_depth == 0;
 
@@ -363,7 +361,7 @@ async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: boo
 				GraphicElement::GraphicGroup(mut current_element) if recurse => {
 					// Apply the parent group's transform to all child elements
 					for graphic_element in current_element.iter_mut() {
-						*graphic_element.transform = *current_instance.transform * *graphic_element.transform;
+						*graphic_element.transform = *current_row.transform * *graphic_element.transform;
 					}
 
 					flatten_group(output_group_table, current_element, fully_flatten, recursion_depth + 1);
@@ -372,8 +370,8 @@ async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: boo
 				_ => {
 					output_group_table.push(TableRow {
 						element: current_element,
-						transform: *current_instance.transform,
-						alpha_blending: *current_instance.alpha_blending,
+						transform: *current_row.transform,
+						alpha_blending: *current_row.alpha_blending,
 						source_node_id: reference,
 					});
 				}
@@ -391,31 +389,31 @@ async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: boo
 async fn flatten_vector(_: impl Ctx, group: GraphicGroupTable) -> VectorDataTable {
 	// TODO: Avoid mutable reference, instead return a new GraphicGroupTable?
 	fn flatten_group(output_group_table: &mut VectorDataTable, current_group_table: GraphicGroupTable) {
-		for current_instance in current_group_table.iter_ref() {
-			let current_element = current_instance.element.clone();
-			let reference = *current_instance.source_node_id;
+		for current_graphic_element_row in current_group_table.iter_ref() {
+			let current_element = current_graphic_element_row.element.clone();
+			let reference = *current_graphic_element_row.source_node_id;
 
 			match current_element {
 				// If we're allowed to recurse, flatten any GraphicGroups we encounter
 				GraphicElement::GraphicGroup(mut current_element) => {
 					// Apply the parent group's transform to all child elements
 					for graphic_element in current_element.iter_mut() {
-						*graphic_element.transform = *current_instance.transform * *graphic_element.transform;
+						*graphic_element.transform = *current_graphic_element_row.transform * *graphic_element.transform;
 					}
 
 					flatten_group(output_group_table, current_element);
 				}
 				// Handle any leaf elements we encounter, which can be either non-GraphicGroup elements or GraphicGroups that we don't want to flatten
-				GraphicElement::VectorData(vector_instance) => {
-					for current_element in vector_instance.iter_ref() {
+				GraphicElement::VectorData(vector_table) => {
+					for current_vector_row in vector_table.iter_ref() {
 						output_group_table.push(TableRow {
-							element: current_element.element.clone(),
-							transform: *current_instance.transform * *current_element.transform,
+							element: current_vector_row.element.clone(),
+							transform: *current_graphic_element_row.transform * *current_vector_row.transform,
 							alpha_blending: AlphaBlending {
-								blend_mode: current_element.alpha_blending.blend_mode,
-								opacity: current_instance.alpha_blending.opacity * current_element.alpha_blending.opacity,
-								fill: current_element.alpha_blending.fill,
-								clip: current_element.alpha_blending.clip,
+								blend_mode: current_vector_row.alpha_blending.blend_mode,
+								opacity: current_graphic_element_row.alpha_blending.opacity * current_vector_row.alpha_blending.opacity,
+								fill: current_vector_row.alpha_blending.fill,
+								clip: current_vector_row.alpha_blending.clip,
 							},
 							source_node_id: reference,
 						});

@@ -204,9 +204,9 @@ where
 {
 	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
 		self.iter_ref()
-			.filter(|instance| !instance.element.is_empty()) // Eliminate empty images
-			.flat_map(|instance| {
-				let transform = transform * *instance.transform;
+			.filter(|row| !row.element.is_empty()) // Eliminate empty images
+			.flat_map(|row| {
+				let transform = transform * *row.transform;
 				(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
 			})
 			.reduce(Quad::combine_bounds)

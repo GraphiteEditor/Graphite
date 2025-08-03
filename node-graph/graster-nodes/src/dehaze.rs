@@ -10,8 +10,8 @@ use std::cmp::{max, min};
 async fn dehaze(_: impl Ctx, image_frame: RasterDataTable<CPU>, strength: Percentage) -> RasterDataTable<CPU> {
 	image_frame
 		.iter()
-		.map(|mut image_frame_instance| {
-			let image = image_frame_instance.element;
+		.map(|mut row| {
+			let image = row.element;
 			// Prepare the image data for processing
 			let image_data = bytemuck::cast_vec(image.data.clone());
 			let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, image_data).expect("Failed to convert internal image format into image-rs data type.");
@@ -30,8 +30,8 @@ async fn dehaze(_: impl Ctx, image_frame: RasterDataTable<CPU>, strength: Percen
 				base64_string: None,
 			};
 
-			image_frame_instance.element = Raster::new_cpu(dehazed_image);
-			image_frame_instance
+			row.element = Raster::new_cpu(dehazed_image);
+			row
 		})
 		.collect()
 }

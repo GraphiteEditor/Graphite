@@ -25,9 +25,9 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + '
 			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_vararg(Box::new(transformed_point));
 			let generated_instance = instance.eval(new_ctx.into_context()).await;
 
-			for mut instanced in generated_instance.iter() {
-				instanced.transform.translation = transformed_point;
-				result_table.push(instanced);
+			for mut generated_row in generated_instance.iter() {
+				generated_row.transform.translation = transformed_point;
+				result_table.push(generated_row);
 			}
 		};
 
@@ -68,8 +68,8 @@ async fn instance_repeat<T: Into<GraphicElement> + Default + Send + Clone + 'sta
 		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index);
 		let generated_instance = instance.eval(new_ctx.into_context()).await;
 
-		for instanced in generated_instance.iter() {
-			result_table.push(instanced);
+		for generated_row in generated_instance.iter() {
+			result_table.push(generated_row);
 		}
 	}
 
@@ -129,10 +129,10 @@ mod test {
 
 		let positions = [DVec2::new(40., 20.), DVec2::ONE, DVec2::new(-42., 9.), DVec2::new(10., 345.)];
 		let points = VectorDataTable::new_from_element(VectorData::from_subpath(Subpath::from_anchors_linear(positions, false)));
-		let repeated = super::instance_on_points(owned, points, &rect, false).await;
-		assert_eq!(repeated.len(), positions.len());
-		for (position, instanced) in positions.into_iter().zip(repeated.iter_ref()) {
-			let bounds = instanced.element.bounding_box_with_transform(*instanced.transform).unwrap();
+		let generated = super::instance_on_points(owned, points, &rect, false).await;
+		assert_eq!(generated.len(), positions.len());
+		for (position, generated_row) in positions.into_iter().zip(generated.iter_ref()) {
+			let bounds = generated_row.element.bounding_box_with_transform(*generated_row.transform).unwrap();
 			assert!(position.abs_diff_eq((bounds[0] + bounds[1]) / 2., 1e-10));
 			assert_eq!((bounds[1] - bounds[0]).x, position.y);
 		}

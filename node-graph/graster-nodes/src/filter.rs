@@ -22,8 +22,8 @@ async fn blur(
 ) -> RasterDataTable<CPU> {
 	image_frame
 		.iter()
-		.map(|mut image_instance| {
-			let image = image_instance.element.clone();
+		.map(|mut row| {
+			let image = row.element.clone();
 
 			// Run blur algorithm
 			let blurred_image = if radius < 0.1 {
@@ -35,8 +35,8 @@ async fn blur(
 				Raster::new_cpu(gaussian_blur_algorithm(image.into_data(), radius, gamma))
 			};
 
-			image_instance.element = blurred_image;
-			image_instance
+			row.element = blurred_image;
+			row
 		})
 		.collect()
 }

@@ -81,15 +81,15 @@ fn union<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector
 	let mut vector_data_reversed = vector_data.rev();
 
 	let mut result_vector_data_table = VectorDataTable::new_from_row(vector_data_reversed.next().map(|x| x.into_cloned()).unwrap_or_default());
-	let mut first_instance = result_vector_data_table.iter_mut().next().expect("Expected the one instance we just pushed");
+	let mut first_row = result_vector_data_table.iter_mut().next().expect("Expected the one row we just pushed");
 
 	// Loop over all vector data and union it with the result
 	let default = TableRow::default();
 	let mut second_vector_data = Some(vector_data_reversed.next().unwrap_or(default.as_ref()));
 	while let Some(lower_vector_data) = second_vector_data {
-		let transform_of_lower_into_space_of_upper = first_instance.transform.inverse() * *lower_vector_data.transform;
+		let transform_of_lower_into_space_of_upper = first_row.transform.inverse() * *lower_vector_data.transform;
 
-		let result = &mut first_instance.element;
+		let result = &mut first_row.element;
 
 		let upper_path_string = to_path(result, DAffine2::IDENTITY);
 		let lower_path_string = to_path(lower_vector_data.element, transform_of_lower_into_space_of_upper);
@@ -113,14 +113,14 @@ fn subtract<'a>(vector_data: impl Iterator<Item = TableRowRef<'a, VectorData>>) 
 	let mut vector_data = vector_data.into_iter();
 
 	let mut result_vector_data_table = VectorDataTable::new_from_row(vector_data.next().map(|x| x.into_cloned()).unwrap_or_default());
-	let mut first_instance = result_vector_data_table.iter_mut().next().expect("Expected the one instance we just pushed");
+	let mut first_row = result_vector_data_table.iter_mut().next().expect("Expected the one row we just pushed");
 
 	let mut next_vector_data = vector_data.next();
 
 	while let Some(lower_vector_data) = next_vector_data {
-		let transform_of_lower_into_space_of_upper = first_instance.transform.inverse() * *lower_vector_data.transform;
+		let transform_of_lower_into_space_of_upper = first_row.transform.inverse() * *lower_vector_data.transform;
 
-		let result = &mut first_instance.element;
+		let result = &mut first_row.element;
 
 		let upper_path_string = to_path(result, DAffine2::IDENTITY);
 		let lower_path_string = to_path(lower_vector_data.element, transform_of_lower_into_space_of_upper);
@@ -144,16 +144,16 @@ fn intersect<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, Ve
 	let mut vector_data = vector_data.rev();
 
 	let mut result_vector_data_table = VectorDataTable::new_from_row(vector_data.next().map(|x| x.into_cloned()).unwrap_or_default());
-	let mut first_instance = result_vector_data_table.iter_mut().next().expect("Expected the one instance we just pushed");
+	let mut first_row = result_vector_data_table.iter_mut().next().expect("Expected the one row we just pushed");
 
 	let default = TableRow::default();
 	let mut second_vector_data = Some(vector_data.next().unwrap_or(default.as_ref()));
 
 	// For each vector data, set the result to the intersection of that data and the result
 	while let Some(lower_vector_data) = second_vector_data {
-		let transform_of_lower_into_space_of_upper = first_instance.transform.inverse() * *lower_vector_data.transform;
+		let transform_of_lower_into_space_of_upper = first_row.transform.inverse() * *lower_vector_data.transform;
 
-		let result = &mut first_instance.element;
+		let result = &mut first_row.element;
 
 		let upper_path_string = to_path(result, DAffine2::IDENTITY);
 		let lower_path_string = to_path(lower_vector_data.element, transform_of_lower_into_space_of_upper);
@@ -182,22 +182,22 @@ fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, V
 	while let Some(lower_vector_data) = second_vector_data {
 		let filtered_vector_data = vector_data.clone().filter(|v| *v != lower_vector_data).collect::<Vec<_>>().into_iter();
 		let unioned = boolean_operation_on_vector_data_table(filtered_vector_data, BooleanOperation::Union);
-		let first_instance = unioned.iter_ref().next().expect("Expected at least one instance after the boolean union");
+		let first_row = unioned.iter_ref().next().expect("Expected at least one row after the boolean union");
 
-		let transform_of_lower_into_space_of_upper = first_instance.transform.inverse() * *lower_vector_data.transform;
+		let transform_of_lower_into_space_of_upper = first_row.transform.inverse() * *lower_vector_data.transform;
 
-		let upper_path_string = to_path(first_instance.element, DAffine2::IDENTITY);
+		let upper_path_string = to_path(first_row.element, DAffine2::IDENTITY);
 		let lower_path_string = to_path(lower_vector_data.element, transform_of_lower_into_space_of_upper);
 
 		#[allow(unused_unsafe)]
 		let boolean_intersection_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
-		let mut instance = from_path(&boolean_intersection_string);
-		instance.style = first_instance.element.style.clone();
+		let mut element = from_path(&boolean_intersection_string);
+		element.style = first_row.element.style.clone();
 		let boolean_intersection_result = TableRow {
-			element: instance,
-			transform: *first_instance.transform,
-			alpha_blending: *first_instance.alpha_blending,
-			source_node_id: *first_instance.source_node_id,
+			element,
+			transform: *first_row.transform,
+			alpha_blending: *first_row.alpha_blending,
+			source_node_id: *first_row.source_node_id,
 		};
 
 		let transform_of_lower_into_space_of_upper = boolean_intersection_result.transform.inverse() * any_intersection.transform;
@@ -238,42 +238,36 @@ fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTab
 						.collect::<Vec<_>>()
 				}
 				GraphicElement::RasterDataCPU(image) => {
-					let make_instance = |transform| {
+					let make_row = |transform| {
 						// Convert the image frame into a rectangular subpath with the image's transform
 						let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
 						// Create a vector data table row from the rectangular subpath, with a default black fill
-						let mut instance = VectorData::from_subpath(subpath);
-						instance.style.set_fill(Fill::Solid(Color::BLACK));
+						let mut element = VectorData::from_subpath(subpath);
+						element.style.set_fill(Fill::Solid(Color::BLACK));
 
-						TableRow {
-							element: instance,
-							..Default::default()
-						}
+						TableRow { element, ..Default::default() }
 					};
 
 					// Apply the parent group's transform to each element of raster data
-					image.iter_ref().map(|instance| make_instance(*element.transform * *instance.transform)).collect::<Vec<_>>()
+					image.iter_ref().map(|row| make_row(*element.transform * *row.transform)).collect::<Vec<_>>()
 				}
 				GraphicElement::RasterDataGPU(image) => {
-					let make_instance = |transform| {
+					let make_row = |transform| {
 						// Convert the image frame into a rectangular subpath with the image's transform
 						let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
 						// Create a vector data table row from the rectangular subpath, with a default black fill
-						let mut instance = VectorData::from_subpath(subpath);
-						instance.style.set_fill(Fill::Solid(Color::BLACK));
+						let mut element = VectorData::from_subpath(subpath);
+						element.style.set_fill(Fill::Solid(Color::BLACK));
 
-						TableRow {
-							element: instance,
-							..Default::default()
-						}
+						TableRow { element, ..Default::default() }
 					};
 
 					// Apply the parent group's transform to each element of raster data
-					image.iter_ref().map(|instance| make_instance(*element.transform * *instance.transform)).collect::<Vec<_>>()
+					image.iter_ref().map(|row| make_row(*element.transform * *row.transform)).collect::<Vec<_>>()
 				}
 				GraphicElement::GraphicGroup(mut graphic_group) => {
 					// Apply the parent group's transform to each element of inner group

@@ -498,21 +498,21 @@ impl VectorData {
 impl BoundingBox for VectorDataTable {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
 		self.iter_ref()
-			.flat_map(|instance| {
+			.flat_map(|row| {
 				if !include_stroke {
-					return instance.element.bounding_box_with_transform(transform * *instance.transform);
+					return row.element.bounding_box_with_transform(transform * *row.transform);
 				}
 
-				let stroke_width = instance.element.style.stroke().map(|s| s.weight()).unwrap_or_default();
+				let stroke_width = row.element.style.stroke().map(|s| s.weight()).unwrap_or_default();
 
-				let miter_limit = instance.element.style.stroke().map(|s| s.join_miter_limit).unwrap_or(1.);
+				let miter_limit = row.element.style.stroke().map(|s| s.join_miter_limit).unwrap_or(1.);
 
 				let scale = transform.decompose_scale();
 
 				// We use the full line width here to account for different styles of stroke caps
 				let offset = DVec2::splat(stroke_width * scale.x.max(scale.y) * miter_limit);
 
-				instance.element.bounding_box_with_transform(transform * *instance.transform).map(|[a, b]| [a - offset, b + offset])
+				row.element.bounding_box_with_transform(transform * *row.transform).map(|[a, b]| [a - offset, b + offset])
 			})
 			.reduce(Quad::combine_bounds)
 	}

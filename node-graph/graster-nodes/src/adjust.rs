@@ -10,8 +10,8 @@ impl Adjust<Color> for Color {
 }
 impl Adjust<Color> for Option<Color> {
 	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-		if let Some(v) = self {
-			*v = map_fn(v)
+		if let Some(color) = self {
+			*color = map_fn(color)
 		}
 	}
 }
@@ -23,16 +23,16 @@ mod adjust_std {
 	use graphene_core::raster_types::{CPU, RasterDataTable};
 	impl Adjust<Color> for GradientStops {
 		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-			for (_pos, c) in self.iter_mut() {
-				*c = map_fn(c);
+			for (_, color) in self.iter_mut() {
+				*color = map_fn(color);
 			}
 		}
 	}
 	impl Adjust<Color> for RasterDataTable<CPU> {
 		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-			for instance in self.iter_mut() {
-				for c in instance.element.data_mut().data.iter_mut() {
-					*c = map_fn(c);
+			for row in self.iter_mut() {
+				for color in row.element.data_mut().data.iter_mut() {
+					*color = map_fn(color);
 				}
 			}
 		}

@@ -85,14 +85,14 @@ where
 		return target;
 	}
 
-	for target_instance in target.iter_mut() {
-		let target_width = target_instance.element.width;
-		let target_height = target_instance.element.height;
+	for table_row in target.iter_mut() {
+		let target_width = table_row.element.width;
+		let target_height = table_row.element.height;
 		let target_size = DVec2::new(target_width as f64, target_height as f64);
 
 		let texture_size = DVec2::new(texture.width as f64, texture.height as f64);
 
-		let document_to_target = DAffine2::from_translation(-texture_size / 2.) * DAffine2::from_scale(target_size) * target_instance.transform.inverse();
+		let document_to_target = DAffine2::from_translation(-texture_size / 2.) * DAffine2::from_scale(target_size) * table_row.transform.inverse();
 
 		for position in &positions {
 			let start = document_to_target.transform_point2(*position).round();
@@ -112,12 +112,12 @@ where
 			let max_y = (blit_area_offset.y + blit_area_dimensions.y).saturating_sub(1);
 			let max_x = (blit_area_offset.x + blit_area_dimensions.x).saturating_sub(1);
 			assert!(texture_index(max_x, max_y) < texture.data.len());
-			assert!(target_index(max_x, max_y) < target_instance.element.data.len());
+			assert!(target_index(max_x, max_y) < table_row.element.data.len());
 
 			for y in blit_area_offset.y..blit_area_offset.y + blit_area_dimensions.y {
 				for x in blit_area_offset.x..blit_area_offset.x + blit_area_dimensions.x {
 					let src_pixel = texture.data[texture_index(x, y)];
-					let dst_pixel = &mut target_instance.element.data_mut().data[target_index(x + clamp_start.x, y + clamp_start.y)];
+					let dst_pixel = &mut table_row.element.data_mut().data[target_index(x + clamp_start.x, y + clamp_start.y)];
 					*dst_pixel = blend_mode.eval((src_pixel, *dst_pixel));
 				}
 			}
@@ -183,12 +183,10 @@ async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes
 	if image_frame_table.is_empty() {
 		image_frame_table.push(TableRow::default());
 	}
-	// TODO: Find a way to handle more than one instance
-	let image_frame_instance = image_frame_table.iter_ref().next().expect("Expected the one instance we just pushed").into_cloned();
+	// TODO: Find a way to handle more than one row
+	let table_row = image_frame_table.iter_ref().next().expect("Expected the one row we just pushed").into_cloned();
 
-	let [start, end] = Table::new_from_row(image_frame_instance.clone())
-		.bounding_box(DAffine2::IDENTITY, false)
-		.unwrap_or([DVec2::ZERO, DVec2::ZERO]);
+	let [start, end] = Table::new_from_row(table_row.clone()).bounding_box(DAffine2::IDENTITY, false).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 	let image_bbox = AxisAlignedBbox { start, end };
 	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
 	let bbox = if image_bbox.size().length() < 0.1 { stroke_bbox } else { stroke_bbox.union(&image_bbox) };
@@ -197,9 +195,9 @@ async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes
 	let mut draw_strokes: Vec<_> = strokes.iter().filter(|&s| !matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore)).cloned().collect();
 	let erase_restore_strokes: Vec<_> = strokes.iter().filter(|&s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore)).cloned().collect();
 
-	let mut brush_plan = cache.compute_brush_plan(image_frame_instance, &draw_strokes);
+	let mut brush_plan = cache.compute_brush_plan(table_row, &draw_strokes);
 
-	// TODO: Find a way to handle more than one instance
+	// TODO: Find a way to handle more than one row
 	let Some(mut actual_image) = extend_image_to_bounds((), Table::new_from_row(brush_plan.background), background_bounds).iter().next() else {
 		return RasterDataTable::default();
 	};

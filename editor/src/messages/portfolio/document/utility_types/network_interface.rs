@@ -3558,8 +3558,8 @@ impl NodeNetworkInterface {
 	}
 
 	/// Update the cached first instance source id of the layers
-	pub fn update_first_instance_source_id(&mut self, new: HashMap<NodeId, Option<NodeId>>) {
-		self.document_metadata.first_instance_source_ids = new;
+	pub fn update_first_element_source_id(&mut self, new: HashMap<NodeId, Option<NodeId>>) {
+		self.document_metadata.first_element_source_ids = new;
 	}
 
 	/// Update the cached click targets of the layers
@@ -6609,7 +6609,7 @@ struct InputTransientMetadata {
 fn migrate_output_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
 	use serde::Deserialize;
 
-	const REPLACEMENTS: [(&str, &str); 7] = [
+	const REPLACEMENTS: [(&str, &str); 12] = [
 		// Single to table data
 		("VectorData", "Table<VectorData>"),
 		("GraphicGroup", "Table<GraphicGroup>"),
@@ -6620,6 +6620,11 @@ fn migrate_output_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 		("Instances<VectorData>", "Table<VectorData>"),
 		("Instances<GraphicGroup>", "Table<GraphicGroup>"),
 		("Instances<Image>", "Table<Image>"),
+		("Instances<GraphicElement>", "Table<GraphicElement>"),
+		("Future<Instances<VectorData>>", "Future<Table<VectorData>>"),
+		("Future<Instances<GraphicGroup>>", "Future<Table<GraphicGroup>>"),
+		("Future<Instances<Image>>", "Future<Table<Image>>"),
+		("Future<Instances<GraphicElement>>", "Future<Table<GraphicElement>>"),
 	];
 
 	let mut names = Vec::<String>::deserialize(deserializer)?;

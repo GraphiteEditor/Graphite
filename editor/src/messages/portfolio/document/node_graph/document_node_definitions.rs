@@ -1373,7 +1373,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							}),
 						),
 						InputMetadata::with_name_description_override("Align", "TODO", WidgetOverride::Custom("text_align".to_string())),
-						("Per-Glyph Instances", "Splits each text glyph into its own instance, i.e. row in the table of vector data.").into(),
+						("Per-Glyph Instances", "Splits each text glyph into its own row in the table of vector data.").into(),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()

@@ -54,7 +54,7 @@ pub struct PortfolioMessageHandler {
 	pub persistent_data: PersistentData,
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
-	/// The spreadsheet UI allows for instance data to be previewed.
+	/// The spreadsheet UI allows for graph data to be previewed.
 	pub spreadsheet: SpreadsheetMessageHandler,
 	device_pixel_ratio: Option<f64>,
 	pub reset_node_definitions_on_open: bool,

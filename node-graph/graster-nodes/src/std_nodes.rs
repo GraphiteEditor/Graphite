@@ -33,9 +33,9 @@ impl From<std::io::Error> for Error {
 pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: RasterDataTable<CPU>) -> RasterDataTable<CPU> {
 	image_frame
 		.iter()
-		.filter_map(|mut image_frame_instance| {
-			let image_frame_transform = image_frame_instance.transform;
-			let image = image_frame_instance.element;
+		.filter_map(|mut row| {
+			let image_frame_transform = row.transform;
+			let image = row.element;
 
 			// Resize the image using the image crate
 			let data = bytemuck::cast_vec(image.data.clone());
@@ -87,9 +87,9 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Rast
 
 			let new_transform = image_frame_transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
 
-			image_frame_instance.transform = new_transform;
-			image_frame_instance.element = Raster::new_cpu(image);
-			Some(image_frame_instance)
+			row.transform = new_transform;
+			row.element = Raster::new_cpu(image);
+			Some(row)
 		})
 		.collect()
 }
@@ -113,13 +113,13 @@ pub fn combine_channels(
 		.zip(blue)
 		.zip(alpha)
 		.filter_map(|(((red, green), blue), alpha)| {
-			// Turn any default zero-sized image instances into None
+			// Turn any default zero-sized image rows into None
 			let red = red.filter(|i| i.element.width > 0 && i.element.height > 0);
 			let green = green.filter(|i| i.element.width > 0 && i.element.height > 0);
 			let blue = blue.filter(|i| i.element.width > 0 && i.element.height > 0);
 			let alpha = alpha.filter(|i| i.element.width > 0 && i.element.height > 0);
 
-			// Get this instance's transform and alpha blending mode from the first non-empty channel
+			// Get this row's transform and alpha blending mode from the first non-empty channel
 			let (transform, alpha_blending, source_node_id) = [&red, &green, &blue, &alpha]
 				.iter()
 				.find_map(|i| i.as_ref())
@@ -142,7 +142,7 @@ pub fn combine_channels(
 			}
 			let &(width, height) = channel_dimensions.iter().flatten().next()?;
 
-			// Create a new image for this instance output
+			// Create a new image for the output element
 			let mut image = Image::new(width, height, Color::TRANSPARENT);
 
 			// Iterate over all pixels in the image and set the color channels
@@ -192,42 +192,42 @@ pub fn mask(
 	#[expose]
 	stencil: RasterDataTable<CPU>,
 ) -> RasterDataTable<CPU> {
-	// TODO: Support multiple stencil instances
-	let Some(stencil_instance) = stencil.iter().next() else {
+	// TODO: Figure out what it means to support multiple stencil rows?
+	let Some(stencil) = stencil.iter().next() else {
 		// No stencil provided so we return the original image
 		return image;
 	};
-	let stencil_size = DVec2::new(stencil_instance.element.width as f64, stencil_instance.element.height as f64);
+	let stencil_size = DVec2::new(stencil.element.width as f64, stencil.element.height as f64);
 
 	image
 		.iter()
-		.filter_map(|mut image_instance| {
-			let image_size = DVec2::new(image_instance.element.width as f64, image_instance.element.height as f64);
-			let mask_size = stencil_instance.transform.decompose_scale();
+		.filter_map(|mut row| {
+			let image_size = DVec2::new(row.element.width as f64, row.element.height as f64);
+			let mask_size = stencil.transform.decompose_scale();
 
 			if mask_size == DVec2::ZERO {
 				return None;
 			}
 
 			// Transforms a point from the background image to the foreground image
-			let bg_to_fg = image_instance.transform * DAffine2::from_scale(1. / image_size);
-			let stencil_transform_inverse = stencil_instance.transform.inverse();
+			let bg_to_fg = row.transform * DAffine2::from_scale(1. / image_size);
+			let stencil_transform_inverse = stencil.transform.inverse();
 
-			for y in 0..image_instance.element.height {
-				for x in 0..image_instance.element.width {
+			for y in 0..row.element.height {
+				for x in 0..row.element.width {
 					let image_point = DVec2::new(x as f64, y as f64);
 					let mask_point = bg_to_fg.transform_point2(image_point);
 					let local_mask_point = stencil_transform_inverse.transform_point2(mask_point);
-					let mask_point = stencil_instance.transform.transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
-					let mask_point = (DAffine2::from_scale(stencil_size) * stencil_instance.transform.inverse()).transform_point2(mask_point);
+					let mask_point = stencil.transform.transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
+					let mask_point = (DAffine2::from_scale(stencil_size) * stencil.transform.inverse()).transform_point2(mask_point);
 
-					let image_pixel = image_instance.element.data_mut().get_pixel_mut(x, y).unwrap();
-					let mask_pixel = stencil_instance.element.sample(mask_point);
+					let image_pixel = row.element.data_mut().get_pixel_mut(x, y).unwrap();
+					let mask_pixel = stencil.element.sample(mask_point);
 					*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().cast_linear_channel());
 				}
 			}
 
-			Some(image_instance)
+			Some(row)
 		})
 		.collect()
 }
@@ -236,21 +236,21 @@ pub fn mask(
 pub fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<CPU>, bounds: DAffine2) -> RasterDataTable<CPU> {
 	image
 		.iter()
-		.map(|mut image_instance| {
-			let image_aabb = Bbox::unit().affine_transform(image_instance.transform).to_axis_aligned_bbox();
+		.map(|mut row| {
+			let image_aabb = Bbox::unit().affine_transform(row.transform).to_axis_aligned_bbox();
 			let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
 			if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
-				return image_instance;
+				return row;
 			}
 
-			let image_data = &image_instance.element.data;
-			let (image_width, image_height) = (image_instance.element.width, image_instance.element.height);
+			let image_data = &row.element.data;
+			let (image_width, image_height) = (row.element.width, row.element.height);
 			if image_width == 0 || image_height == 0 {
 				return empty_image((), bounds, Color::TRANSPARENT).iter().next().unwrap();
 			}
 
 			let orig_image_scale = DVec2::new(image_width as f64, image_height as f64);
-			let layer_to_image_space = DAffine2::from_scale(orig_image_scale) * image_instance.transform.inverse();
+			let layer_to_image_space = DAffine2::from_scale(orig_image_scale) * row.transform.inverse();
 			let bounds_in_image_space = Bbox::unit().affine_transform(layer_to_image_space * bounds).to_axis_aligned_bbox();
 
 			let new_start = bounds_in_image_space.start.floor().min(DVec2::ZERO);
@@ -270,11 +270,11 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<CPU>, bounds: 
 
 			// Compute new transform.
 			// let layer_to_new_texture_space = (DAffine2::from_scale(1. / new_scale) * DAffine2::from_translation(new_start) * layer_to_image_space).inverse();
-			let new_texture_to_layer_space = image_instance.transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
+			let new_texture_to_layer_space = row.transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
 
-			image_instance.element = Raster::new_cpu(new_image);
-			image_instance.transform = new_texture_to_layer_space;
-			image_instance
+			row.element = Raster::new_cpu(new_image);
+			row.transform = new_texture_to_layer_space;
+			row
 		})
 		.collect()
 }
@@ -287,9 +287,9 @@ pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> RasterData
 	let image = Image::new(width, height, color);
 
 	let mut result_table = RasterDataTable::new_from_element(Raster::new_cpu(image));
-	let image_instance = result_table.get_mut(0).unwrap();
-	*image_instance.transform = transform;
-	*image_instance.alpha_blending = AlphaBlending::default();
+	let row = result_table.get_mut(0).unwrap();
+	*row.transform = transform;
+	*row.alpha_blending = AlphaBlending::default();
 
 	// Callers of empty_image can safely unwrap on returned table
 	result_table

@@ -48,7 +48,7 @@ macro_rules! create_ids {
 	};
 }
 
-create_ids! { InstanceId, PointId, SegmentId, RegionId, StrokeId, FillId }
+create_ids! { PointId, SegmentId, RegionId, StrokeId, FillId }
 
 /// A no-op hasher that allows writing u64s (the id type).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

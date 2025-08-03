@@ -15,15 +15,15 @@ impl MultiplyAlpha for Color {
 }
 impl MultiplyAlpha for VectorDataTable {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for instance in self.iter_mut() {
-			instance.alpha_blending.opacity *= factor as f32;
+		for row in self.iter_mut() {
+			row.alpha_blending.opacity *= factor as f32;
 		}
 	}
 }
 impl MultiplyAlpha for GraphicGroupTable {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for instance in self.iter_mut() {
-			instance.alpha_blending.opacity *= factor as f32;
+		for row in self.iter_mut() {
+			row.alpha_blending.opacity *= factor as f32;
 		}
 	}
 }
@@ -32,8 +32,8 @@ where
 	GraphicElement: From<Image<Color>>,
 {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for instance in self.iter_mut() {
-			instance.alpha_blending.opacity *= factor as f32;
+		for row in self.iter_mut() {
+			row.alpha_blending.opacity *= factor as f32;
 		}
 	}
 }
@@ -48,22 +48,22 @@ impl MultiplyFill for Color {
 }
 impl MultiplyFill for VectorDataTable {
 	fn multiply_fill(&mut self, factor: f64) {
-		for instance in self.iter_mut() {
-			instance.alpha_blending.fill *= factor as f32;
+		for row in self.iter_mut() {
+			row.alpha_blending.fill *= factor as f32;
 		}
 	}
 }
 impl MultiplyFill for GraphicGroupTable {
 	fn multiply_fill(&mut self, factor: f64) {
-		for instance in self.iter_mut() {
-			instance.alpha_blending.fill *= factor as f32;
+		for row in self.iter_mut() {
+			row.alpha_blending.fill *= factor as f32;
 		}
 	}
 }
 impl MultiplyFill for RasterDataTable<CPU> {
 	fn multiply_fill(&mut self, factor: f64) {
-		for instance in self.iter_mut() {
-			instance.alpha_blending.fill *= factor as f32;
+		for row in self.iter_mut() {
+			row.alpha_blending.fill *= factor as f32;
 		}
 	}
 }
@@ -74,22 +74,22 @@ trait SetBlendMode {
 
 impl SetBlendMode for VectorDataTable {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		for instance in self.iter_mut() {
-			instance.alpha_blending.blend_mode = blend_mode;
+		for row in self.iter_mut() {
+			row.alpha_blending.blend_mode = blend_mode;
 		}
 	}
 }
 impl SetBlendMode for GraphicGroupTable {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		for instance in self.iter_mut() {
-			instance.alpha_blending.blend_mode = blend_mode;
+		for row in self.iter_mut() {
+			row.alpha_blending.blend_mode = blend_mode;
 		}
 	}
 }
 impl SetBlendMode for RasterDataTable<CPU> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		for instance in self.iter_mut() {
-			instance.alpha_blending.blend_mode = blend_mode;
+		for row in self.iter_mut() {
+			row.alpha_blending.blend_mode = blend_mode;
 		}
 	}
 }
@@ -100,22 +100,22 @@ trait SetClip {
 
 impl SetClip for VectorDataTable {
 	fn set_clip(&mut self, clip: bool) {
-		for instance in self.iter_mut() {
-			instance.alpha_blending.clip = clip;
+		for row in self.iter_mut() {
+			row.alpha_blending.clip = clip;
 		}
 	}
 }
 impl SetClip for GraphicGroupTable {
 	fn set_clip(&mut self, clip: bool) {
-		for instance in self.iter_mut() {
-			instance.alpha_blending.clip = clip;
+		for row in self.iter_mut() {
+			row.alpha_blending.clip = clip;
 		}
 	}
 }
 impl SetClip for RasterDataTable<CPU> {
 	fn set_clip(&mut self, clip: bool) {
-		for instance in self.iter_mut() {
-			instance.alpha_blending.clip = clip;
+		for row in self.iter_mut() {
+			row.alpha_blending.clip = clip;
 		}
 	}
 }
