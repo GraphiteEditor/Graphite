@@ -1,5 +1,5 @@
-use glam::DVec2;
 use kurbo::{BezPath, CubicBez, ParamCurve, PathEl, PathSeg, QuadBez, Vec2};
+use std::f64;
 
 use crate::math::polynomial::pathseg_to_parametric_polynomial;
 
@@ -104,7 +104,7 @@ fn pathseg_length_centroid_and_length(segment: PathSeg, accuracy: Option<f64>) -
 /// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two.
 ///
 /// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
-pub fn bezpath_area_centroid_and_area(mut bezpath: BezPath, error: Option<f64>, minimum_separation: Option<f64>) -> Option<(DVec2, f64)> {
+pub fn bezpath_area_centroid_and_area(mut bezpath: BezPath, error: Option<f64>, minimum_separation: Option<f64>) -> Option<(Vec2, f64)> {
 	let all_intersections = bezpath_all_self_intersections(bezpath.clone(), error, minimum_separation);
 	let mut current_sign: f64 = 1.;
 
@@ -145,8 +145,8 @@ pub fn bezpath_area_centroid_and_area(mut bezpath: BezPath, error: Option<f64>, 
 		.reduce(|(x1, y1, area1), (x2, y2, area2)| (x1 + x2, y1 + y2, area1 + area2))?;
 
 	if area.abs() < error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE) {
-		return Some((DVec2::NAN, 0.));
+		return Some((Vec2::new(f64::NAN, f64::NAN), 0.));
 	}
 
-	Some((DVec2::new(x_sum / area, y_sum / area), area.abs()))
+	Some((Vec2::new(x_sum / area, y_sum / area), area.abs()))
 }

@@ -1,4 +1,5 @@
 use super::algorithms::bezpath_algorithms::{self, TValue, evaluate_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
+use super::algorithms::centroid::{bezpath_area_centroid_and_area, bezpath_length_centroid_and_length};
 use super::algorithms::offset_subpath::offset_bezpath;
 use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use super::misc::{CentroidType, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
@@ -2075,11 +2076,13 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl N
 	let mut sum = 0.;
 
 	for vector_data_instance in vector_data.instance_ref_iter() {
-		for subpath in vector_data_instance.instance.stroke_bezier_paths() {
+		for bezpath in vector_data_instance.instance.stroke_bezpath_iter() {
 			let partial = match centroid_type {
-				CentroidType::Area => subpath.area_centroid_and_area(Some(1e-3), Some(1e-3)).filter(|(_, area)| *area > 0.),
-				CentroidType::Length => subpath.length_centroid_and_length(None, true),
+				CentroidType::Area => bezpath_area_centroid_and_area(bezpath, Some(1e-3), Some(1e-3)).filter(|(_, area)| *area > 0.),
+				CentroidType::Length => bezpath_length_centroid_and_length(bezpath, None, true),
 			};
+			let partial = partial.map(|(centroid, area)| (DVec2::new(centroid.x, centroid.y), area));
+
 			if let Some((subpath_centroid, area_or_length)) = partial {
 				let subpath_centroid = vector_data_instance.transform.transform_point2(subpath_centroid);
 
