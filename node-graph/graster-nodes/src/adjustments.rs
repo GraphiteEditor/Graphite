@@ -69,7 +69,7 @@ fn luminance<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::node(category("Raster"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster"), cfg(feature = "std"))]
 fn gamma_correction<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -143,7 +143,7 @@ fn make_opaque<T: Adjust<Color>>(
 //
 // Some further analysis available at:
 // https://geraldbakker.nl/psnumbers/brightness-contrast.html
-#[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), properties("brightness_contrast_properties"), shader_node(PerPixelAdjust))]
+#[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), properties("brightness_contrast_properties"), cfg(feature = "std"))]
 fn brightness_contrast<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -651,7 +651,7 @@ pub enum DomainWarpType {
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27mixr%27%20%3D%20Channel%20Mixer
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Lab%20color%20only-,Channel%20Mixer,-Key%20is%20%27mixr
-#[node_macro::node(category("Raster: Adjustment"), properties("channel_mixer_properties"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), properties("channel_mixer_properties"), cfg(feature = "std"))]
 fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -781,7 +781,7 @@ pub enum SelectiveColorChoice {
 //
 // Algorithm based on:
 // https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
-#[node_macro::node(category("Raster: Adjustment"), properties("selective_color_properties"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), properties("selective_color_properties"), cfg(feature = "std"))]
 fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
