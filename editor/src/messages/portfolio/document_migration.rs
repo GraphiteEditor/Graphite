@@ -387,7 +387,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::image_value::IDENTIFIER,
-		aliases: &["graphene_std::raster::ImageValueNode"],
+		aliases: &["graphene_std::raster::ImageValueNode", "graphene_std::raster::ImageNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER,
