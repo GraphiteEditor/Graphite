@@ -19,12 +19,16 @@ pub struct NewDocumentDialogMessageHandler {
 #[message_handler_data]
 impl<'a> MessageHandler<NewDocumentDialogMessage, NewDocumentDialogMessageContext<'a>> for NewDocumentDialogMessageHandler {
 	fn process_message(&mut self, message: NewDocumentDialogMessage, responses: &mut VecDeque<Message>, context: NewDocumentDialogMessageContext<'a>) {
+		let mut dismiss = false;
+
 		match message {
 			NewDocumentDialogMessage::Name(name) => self.name = name,
 			NewDocumentDialogMessage::Infinite(infinite) => self.infinite = infinite,
 			NewDocumentDialogMessage::DimensionsX(x) => self.dimensions.x = x as u32,
 			NewDocumentDialogMessage::DimensionsY(y) => self.dimensions.y = y as u32,
 			NewDocumentDialogMessage::Submit => {
+				responses.add(FrontendMessage::DisplayDialogDismiss);
+				dismiss = true;
 				responses.add(PortfolioMessage::NewDocumentWithName { name: self.name.clone() });
 
 				let create_artboard = !self.infinite && self.dimensions.x > 0 && self.dimensions.y > 0;
@@ -48,7 +52,10 @@ impl<'a> MessageHandler<NewDocumentDialogMessage, NewDocumentDialogMessageContex
 			}
 		}
 
-		self.send_dialog_to_frontend(responses);
+		// Don't send the dialogue if the form was already dismissed (this would reopen it)
+		if !dismiss {
+			self.send_dialog_to_frontend(responses);
+		}
 	}
 
 	advertise_actions! {NewDocumentDialogUpdate;}
@@ -60,15 +67,7 @@ impl DialogLayoutHolder for NewDocumentDialogMessageHandler {
 
 	fn layout_buttons(&self) -> Layout {
 		let widgets = vec![
-			TextButton::new("OK")
-				.emphasized(true)
-				.on_update(|_| {
-					DialogMessage::CloseDialogAndThen {
-						followups: vec![NewDocumentDialogMessage::Submit.into()],
-					}
-					.into()
-				})
-				.widget_holder(),
+			TextButton::new("OK").emphasized(true).on_update(|_| NewDocumentDialogMessage::Submit.into()).widget_holder(),
 			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder(),
 		];
 
