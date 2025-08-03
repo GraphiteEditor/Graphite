@@ -339,7 +339,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							// Ensure this ID is kept in sync with the ID in set_alias so that the name input is kept in sync with the alias
 							DocumentNode {
 								manual_composition: Some(generic!(T)),
-								implementation: DocumentNodeImplementation::ProtoNode(graphic_element::to_artboard::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(artboard::to_artboard::IDENTIFIER),
 								inputs: vec![
 									NodeInput::network(concrete!(TaggedValue), 1),
 									NodeInput::value(TaggedValue::String(String::from("Artboard")), false),
@@ -366,7 +366,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::node(NodeId(1), 0),
 									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
 								],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic_element::append_artboard::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(artboard::append_artboard::IDENTIFIER),
 								..Default::default()
 							},
 						]

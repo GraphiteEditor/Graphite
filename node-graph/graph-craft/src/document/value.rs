@@ -194,12 +194,12 @@ tagged_value! {
 	RasterData(Table<Raster<CPU>>),
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::graphic_element::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
 	GraphicGroup(Table<GraphicElement>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::graphic_element::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::artboard::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
 	ArtboardGroup(Table<Artboard>),
 	// ============
 	// STRUCT TYPES
 	// ============
-	Artboard(graphene_core::Artboard),
+	Artboard(Artboard),
 	Image(graphene_core::raster::Image<Color>),
 	Color(graphene_core::raster::color::Color),
 	OptionalColor(Option<graphene_core::raster::color::Color>),

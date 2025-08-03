@@ -177,7 +177,7 @@ fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer:
 			"graphene_core::table::Table<graphene_core::raster::image::Image<graphene_core::raster::color::Color>>".to_string()
 		}
 		"graphene_core::instances::Instances<graphene_core::vector::vector_data::VectorData>" => "graphene_core::table::Table<graphene_core::vector::vector_data::VectorData>".to_string(),
-		"graphene_core::instances::Instances<graphene_core::graphic_element::Artboard>" => "graphene_core::table::Table<graphene_core::graphic_element::Artboard>".to_string(),
+		"graphene_core::instances::Instances<graphene_core::graphic_element::Artboard>" => "graphene_core::table::Table<graphene_core::artboard::Artboard>".to_string(),
 		_ => name,
 	};
 

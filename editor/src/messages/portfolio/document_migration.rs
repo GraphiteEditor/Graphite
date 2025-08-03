@@ -30,12 +30,12 @@ pub struct NodeReplacement<'a> {
 const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	// graphic element
 	NodeReplacement {
-		node: graphene_std::graphic_element::append_artboard::IDENTIFIER,
-		aliases: &["graphene_core::AddArtboardNode"],
+		node: graphene_std::artboard::append_artboard::IDENTIFIER,
+		aliases: &["graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic_element::to_artboard::IDENTIFIER,
-		aliases: &["graphene_core::ConstructArtboardNode"],
+		node: graphene_std::artboard::to_artboard::IDENTIFIER,
+		aliases: &["graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::graphic_element::to_element::IDENTIFIER,

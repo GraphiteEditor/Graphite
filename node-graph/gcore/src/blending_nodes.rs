@@ -1,4 +1,3 @@
-use crate::raster::Image;
 use crate::raster_types::{CPU, Raster};
 use crate::registry::types::Percentage;
 use crate::table::Table;
@@ -28,10 +27,7 @@ impl MultiplyAlpha for Table<GraphicElement> {
 		}
 	}
 }
-impl MultiplyAlpha for Table<Raster<CPU>>
-where
-	GraphicElement: From<Image<Color>>,
-{
+impl MultiplyAlpha for Table<Raster<CPU>> {
 	fn multiply_alpha(&mut self, factor: f64) {
 		for row in self.iter_mut() {
 			row.alpha_blending.opacity *= factor as f32;
