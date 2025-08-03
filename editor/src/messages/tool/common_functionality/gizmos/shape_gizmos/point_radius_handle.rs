@@ -142,14 +142,7 @@ impl PointRadiusHandle {
 		}
 	}
 
-	pub fn overlays(
-		&self,
-		selected_star_layer: Option<LayerNodeIdentifier>,
-		document: &DocumentMessageHandler,
-		input: &InputPreprocessorMessageHandler,
-		mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	) {
+	pub fn overlays(&self, selected_star_layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, overlay_context: &mut OverlayContext) {
 		match &self.handle_state {
 			PointRadiusHandleState::Inactive => {
 				let Some(layer) = selected_star_layer else { return };
@@ -161,22 +154,9 @@ impl PointRadiusHandle {
 					for i in 0..(2 * sides) {
 						let point = star_vertex_position(viewport, i as i32, sides, radius1, radius2);
 						let center = viewport.transform_point2(DVec2::ZERO);
-						let viewport_diagonal = input.viewport_bounds.size().length();
 
 						// If the user zooms out such that shape is very small hide the gizmo
 						if point.distance(center) < GIZMO_HIDE_THRESHOLD {
-							return;
-						}
-
-						if point.distance(mouse_position) < 5. {
-							let Some(direction) = (point - center).try_normalize() else { continue };
-
-							overlay_context.manipulator_handle(point, true, None);
-							let angle = ((i as f64) * PI) / (sides as f64);
-							overlay_context.line(center, center + direction * viewport_diagonal, None, None);
-
-							draw_snapping_ticks(&self.snap_radii, direction, viewport, angle, overlay_context);
-
 							return;
 						}
 
@@ -191,19 +171,9 @@ impl PointRadiusHandle {
 					for i in 0..sides {
 						let point = polygon_vertex_position(viewport, i as i32, sides, radius);
 						let center = viewport.transform_point2(DVec2::ZERO);
-						let viewport_diagonal = input.viewport_bounds.size().length();
 
 						// If the user zooms out such that shape is very small hide the gizmo
 						if point.distance(center) < GIZMO_HIDE_THRESHOLD {
-							return;
-						}
-
-						if point.distance(mouse_position) < 5. {
-							let Some(direction) = (point - center).try_normalize() else { continue };
-
-							overlay_context.manipulator_handle(point, true, None);
-							overlay_context.line(center, center + direction * viewport_diagonal, None, None);
-
 							return;
 						}
 
@@ -233,11 +203,9 @@ impl PointRadiusHandle {
 
 					// Make the ticks for snapping
 
-					// If dragging to make radius negative don't show the
-					if (mouse_position - center).dot(direction) < 0. {
-						return;
+					if (radius1.signum() * radius2.signum()).is_sign_positive() {
+						draw_snapping_ticks(&self.snap_radii, direction, viewport, angle, overlay_context);
 					}
-					draw_snapping_ticks(&self.snap_radii, direction, viewport, angle, overlay_context);
 
 					return;
 				}
@@ -368,25 +336,36 @@ impl PointRadiusHandle {
 			return snap_radii;
 		};
 
-		let other_index = if radius_index == 3 { 2 } else { 3 };
-
-		let Some(&TaggedValue::F64(other_radius)) = node_inputs[other_index].as_value() else {
+		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (node_inputs[2].as_value(), node_inputs[3].as_value()) else {
 			return snap_radii;
 		};
+
+		let other_radius = if radius_index == 3 { radius_1 } else { radius_2 };
+
 		let Some(&TaggedValue::U32(sides)) = node_inputs[1].as_value() else {
 			return snap_radii;
 		};
 
+		let both_radii_negative = radius_1.is_sign_negative() && radius_2.is_sign_negative();
+		let both_radii_negative_or_positive = (radius_1.signum() * radius_2.signum()).is_sign_positive();
+
+		// When only one of the radius is negative no need for snapping
+		if !both_radii_negative_or_positive {
+			return snap_radii;
+		}
+
+		let sign = if both_radii_negative { -1. } else { 1. };
+
 		// Inner radius for 90°
 		let b = FRAC_PI_4 * 3. - PI / (sides as f64);
 		let angle = b.sin();
-		let required_radius = (other_radius / angle) * FRAC_1_SQRT_2;
+		let required_radius = (other_radius.abs() * sign / angle) * FRAC_1_SQRT_2;
 
 		snap_radii.push(required_radius);
 
 		// Also push the case when the when it length increases more than the other
 
-		let flipped = other_radius * angle * SQRT_2;
+		let flipped = other_radius.abs() * sign * angle * SQRT_2;
 
 		snap_radii.push(flipped);
 
@@ -401,11 +380,11 @@ impl PointRadiusHandle {
 				break;
 			}
 
-			if other_radius * factor > 1e-6 {
-				snap_radii.push(other_radius * factor);
+			if other_radius.abs() * factor > 1e-6 {
+				snap_radii.push(other_radius.abs() * sign * factor);
 			}
 
-			snap_radii.push((other_radius * 1.) / factor);
+			snap_radii.push((other_radius.abs() * sign) / factor);
 		}
 
 		snap_radii
@@ -441,21 +420,21 @@ impl PointRadiusHandle {
 		};
 
 		let viewport_transform = document.network_interface.document_metadata().transform_to_viewport(layer);
-		let document_transform = document.network_interface.document_metadata().transform_to_document(layer);
 		let center = viewport_transform.transform_point2(DVec2::ZERO);
 		let radius_index = self.radius_index;
 
 		let original_radius = self.initial_radius;
 
-		let delta = viewport_transform.inverse().transform_point2(input.mouse.position) - document_transform.inverse().transform_point2(drag_start);
-		let radius = document.metadata().document_to_viewport.transform_point2(drag_start) - center;
+		let delta = viewport_transform.inverse().transform_point2(input.mouse.position) - viewport_transform.inverse().transform_point2(drag_start);
+		let radius = drag_start - center;
 		let projection = delta.project_onto(radius);
 		let sign = radius.dot(delta).signum();
 
-		let mut net_delta = projection.length() * sign;
+		let mut net_delta = projection.length() * sign * original_radius.signum();
 		let new_radius = original_radius + net_delta;
 
 		self.update_state(PointRadiusHandleState::Dragging);
+		self.check_if_radius_flipped(original_radius, new_radius, document, layer, radius_index);
 		if let Some((index, snapped_delta)) = self.check_snapping(new_radius, original_radius) {
 			net_delta = snapped_delta;
 			self.update_state(PointRadiusHandleState::Snapped(index));
@@ -466,5 +445,24 @@ impl PointRadiusHandle {
 			input: NodeInput::value(TaggedValue::F64(original_radius + net_delta), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
+	}
+
+	fn check_if_radius_flipped(&mut self, original_radius: f64, new_radius: f64, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, radius_index: usize) {
+		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star") else {
+			return;
+		};
+
+		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (node_inputs[2].as_value(), node_inputs[3].as_value()) else {
+			return;
+		};
+
+		let other_radius = if radius_index == 3 { radius_1 } else { radius_2 };
+
+		let flipped = (other_radius.is_sign_positive() && original_radius.is_sign_negative() && new_radius.is_sign_positive())
+			|| (other_radius.is_sign_negative() && original_radius.is_sign_positive() && new_radius.is_sign_negative());
+
+		if flipped {
+			self.snap_radii = Self::calculate_snap_radii(document, layer, radius_index);
+		}
 	}
 }

@@ -118,16 +118,19 @@ impl RadiusHandle {
 				let viewport = document.metadata().transform_to_viewport(layer);
 				let center = viewport.transform_point2(DVec2::ZERO);
 
-				let start_point = viewport.transform_point2(calculate_circle_point_position(0., radius)).distance(center);
-				let end_point = viewport.transform_point2(calculate_circle_point_position(FRAC_PI_2, radius)).distance(center);
+				let x_point = viewport.transform_point2(calculate_circle_point_position(0., radius));
+				let y_point = viewport.transform_point2(calculate_circle_point_position(FRAC_PI_2, radius));
+
+				let direction_x = viewport.transform_vector2(DVec2::X);
+				let direction_y = viewport.transform_vector2(-DVec2::Y);
 
 				if let Some(stroke_width) = get_stroke_width(layer, &document.network_interface) {
 					let spacing = Self::calculate_extra_spacing(viewport, radius, center, stroke_width, 15.);
-					let smaller_radius_x = (start_point - spacing).abs();
-					let smaller_radius_y = (end_point - spacing).abs();
+					let smaller_radius_x = (x_point - direction_x * spacing).distance(center);
+					let smaller_radius_y = (y_point - direction_y * spacing).distance(center);
 
-					let larger_radius_x = (start_point + spacing).abs();
-					let larger_radius_y = (end_point + spacing).abs();
+					let larger_radius_x = (x_point + direction_x * spacing).distance(center);
+					let larger_radius_y = (y_point + direction_y * spacing).distance(center);
 
 					overlay_context.dashed_ellipse(center, smaller_radius_x, smaller_radius_y, None, None, None, None, None, None, Some(4.), Some(4.), Some(0.5));
 					overlay_context.dashed_ellipse(center, larger_radius_x, larger_radius_y, None, None, None, None, None, None, Some(4.), Some(4.), Some(0.5));
@@ -135,7 +138,20 @@ impl RadiusHandle {
 					return;
 				}
 
-				overlay_context.dashed_ellipse(center, start_point, end_point, None, None, None, None, None, None, Some(4.), Some(4.), Some(0.5));
+				overlay_context.dashed_ellipse(
+					center,
+					x_point.distance(center),
+					y_point.distance(center),
+					None,
+					None,
+					None,
+					None,
+					None,
+					None,
+					Some(4.),
+					Some(4.),
+					Some(0.5),
+				);
 			}
 		}
 	}
@@ -153,7 +169,7 @@ impl RadiusHandle {
 		let center = viewport_transform.transform_point2(DVec2::ZERO);
 
 		let delta_vector = viewport_transform.inverse().transform_point2(input.mouse.position) - viewport_transform.inverse().transform_point2(self.previous_mouse_position);
-		let radius = document.metadata().document_to_viewport.transform_point2(drag_start) - center;
+		let radius = drag_start - center;
 		let sign = radius.dot(delta_vector).signum();
 
 		let net_delta = delta_vector.length() * sign * self.initial_radius.signum();
