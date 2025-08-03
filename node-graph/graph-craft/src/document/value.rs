@@ -168,25 +168,18 @@ tagged_value! {
 	U64(u64),
 	Bool(bool),
 	String(String),
-	#[serde(alias = "IVec2", alias = "UVec2")]
-	DVec2(DVec2),
-	DAffine2(DAffine2),
 	OptionalF64(Option<f64>),
-	OptionalDVec2(Option<DVec2>),
-	// ==========================
-	// PRIMITIVE COLLECTION TYPES
-	// ==========================
+	// ========================
+	// LISTS OF PRIMITIVE TYPES
+	// ========================
 	#[serde(alias = "VecF32")] // TODO: Eventually remove this alias document upgrade code
 	VecF64(Vec<f64>),
-	VecU64(Vec<u64>),
 	VecDVec2(Vec<DVec2>),
 	F64Array4([f64; 4]),
 	NodePath(Vec<NodeId>),
-	#[serde(alias = "ManipulatorGroupIds")] // TODO: Eventually remove this alias document upgrade code
-	PointIds(Vec<graphene_core::vector::PointId>),
-	// ====================
-	// GRAPHICAL DATA TYPES
-	// ====================
+	// ===========
+	// TABLE TYPES
+	// ===========
 	GraphicElement(GraphicElement),
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))] // TODO: Eventually remove this migration document upgrade code
 	VectorData(Table<VectorData>),
@@ -199,13 +192,12 @@ tagged_value! {
 	// ============
 	// STRUCT TYPES
 	// ============
-	Artboard(Artboard),
-	Image(graphene_core::raster::Image<Color>),
-	Color(graphene_core::raster::color::Color),
-	OptionalColor(Option<graphene_core::raster::color::Color>),
+	#[serde(alias = "IVec2", alias = "UVec2")]
+	DVec2(DVec2),
+	DAffine2(DAffine2),
+	Color(Color),
+	OptionalColor(Option<Color>),
 	Palette(Vec<Color>),
-	Subpaths(Vec<bezier_rs::Subpath<graphene_core::vector::PointId>>),
-	Fill(graphene_core::vector::style::Fill),
 	Stroke(graphene_core::vector::style::Stroke),
 	Gradient(graphene_core::vector::style::Gradient),
 	#[serde(alias = "GradientPositions")] // TODO: Eventually remove this alias document upgrade code
@@ -217,10 +209,10 @@ tagged_value! {
 	Curve(graphene_raster_nodes::curve::Curve),
 	Footprint(graphene_core::transform::Footprint),
 	VectorModification(Box<graphene_core::vector::VectorModification>),
-	FontCache(Arc<graphene_core::text::FontCache>),
 	// ==========
 	// ENUM TYPES
 	// ==========
+	Fill(graphene_core::vector::style::Fill),
 	BlendMode(graphene_core::blending::BlendMode),
 	LuminanceCalculation(graphene_raster_nodes::adjustments::LuminanceCalculation),
 	XY(graphene_core::extract_xy::XY),
@@ -245,7 +237,6 @@ tagged_value! {
 	StrokeAlign(graphene_core::vector::style::StrokeAlign),
 	PaintOrder(graphene_core::vector::style::PaintOrder),
 	FillType(graphene_core::vector::style::FillType),
-	FillChoice(graphene_core::vector::style::FillChoice),
 	GradientType(graphene_core::vector::style::GradientType),
 	ReferencePoint(graphene_core::transform::ReferencePoint),
 	CentroidType(graphene_core::vector::misc::CentroidType),
