@@ -180,8 +180,7 @@ tagged_value! {
 	// ===========
 	// TABLE TYPES
 	// ===========
-	#[serde(alias = "GraphicElement")]
-	Graphic(Graphic),
+	GraphicUnused(Graphic), // TODO: This is unused but removing it causes `cargo test` to infinitely recurse its type solving; figure out why and then remove this
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::vector::migrate_vector"))] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "VectorData")]
 	Vector(Table<Vector>),
@@ -192,7 +191,8 @@ tagged_value! {
 	#[serde(alias = "GraphicGroup")]
 	Group(Table<Graphic>),
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::artboard::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
-	ArtboardGroup(Table<Artboard>),
+	#[serde(alias = "ArtboardGroup")]
+	Artboard(Table<Artboard>),
 	// ============
 	// STRUCT TYPES
 	// ============

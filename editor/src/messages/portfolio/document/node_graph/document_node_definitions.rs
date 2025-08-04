@@ -377,7 +377,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::ArtboardGroup(Default::default()), true),
+						NodeInput::value(TaggedValue::Artboard(Default::default()), true),
 						NodeInput::value(TaggedValue::Group(Default::default()), true),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::new(1920., 1080.)), false),

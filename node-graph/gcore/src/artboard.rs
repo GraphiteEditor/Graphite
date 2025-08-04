@@ -68,7 +68,7 @@ pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D)
 	#[serde(untagged)]
 	enum EitherFormat {
 		ArtboardGroup(ArtboardGroup),
-		ArtboardGroupTable(Table<Artboard>),
+		ArtboardTable(Table<Artboard>),
 	}
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
@@ -84,7 +84,7 @@ pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D)
 			}
 			table
 		}
-		EitherFormat::ArtboardGroupTable(artboard_group_table) => artboard_group_table,
+		EitherFormat::ArtboardTable(artboard_group_table) => artboard_group_table,
 	})
 }
 

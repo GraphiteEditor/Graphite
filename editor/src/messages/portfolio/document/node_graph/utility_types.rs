@@ -29,7 +29,7 @@ impl FrontendGraphDataType {
 			| TaggedValue::VecDVec2(_)
 			| TaggedValue::DAffine2(_) => Self::Number,
 			TaggedValue::Group(_) => Self::Group,
-			TaggedValue::ArtboardGroup(_) => Self::Artboard,
+			TaggedValue::Artboard(_) => Self::Artboard,
 			_ => Self::General,
 		}
 	}

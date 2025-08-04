@@ -131,7 +131,7 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Creates an artboard as the primary export for the document network
 	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_document_node_type("Artboard").expect("Node").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::ArtboardGroup(Default::default()), true)),
+			Some(NodeInput::value(TaggedValue::Artboard(Default::default()), true)),
 			Some(NodeInput::value(TaggedValue::Group(Default::default()), true)),
 			Some(NodeInput::value(TaggedValue::DVec2(artboard.location.into()), false)),
 			Some(NodeInput::value(TaggedValue::DVec2(artboard.dimensions.into()), false)),
