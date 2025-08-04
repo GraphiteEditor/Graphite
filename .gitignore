@@ -3,6 +3,7 @@ target/
 *.exrc
 perf.data*
 profile.json
+profile.json.gz
 flamegraph.svg
 .idea/
 .direnv
