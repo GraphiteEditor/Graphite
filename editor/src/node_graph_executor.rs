@@ -379,7 +379,7 @@ impl NodeGraphExecutor {
 			TaggedValue::OptionalColor(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::Vector(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::GraphicGroup(render_object) => Self::debug_render(render_object, transform, responses),
-			TaggedValue::RasterData(render_object) => Self::debug_render(render_object, transform, responses),
+			TaggedValue::Raster(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::Palette(render_object) => Self::debug_render(render_object, transform, responses),
 			_ => {
 				return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));

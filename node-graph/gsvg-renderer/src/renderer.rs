@@ -1141,8 +1141,8 @@ impl Render for Graphic {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
 			Graphic::Vector(vector) => vector.render_svg(render, render_params),
-			Graphic::RasterDataCPU(raster) => raster.render_svg(render, render_params),
-			Graphic::RasterDataGPU(_raster) => (),
+			Graphic::RasterCPU(raster) => raster.render_svg(render, render_params),
+			Graphic::RasterGPU(_raster) => (),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.render_svg(render, render_params),
 		}
 	}
@@ -1151,8 +1151,8 @@ impl Render for Graphic {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
 			Graphic::Vector(vector) => vector.render_to_vello(scene, transform, context, render_params),
-			Graphic::RasterDataCPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
-			Graphic::RasterDataGPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
+			Graphic::RasterCPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
+			Graphic::RasterGPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.render_to_vello(scene, transform, context, render_params),
 		}
 	}
@@ -1171,7 +1171,7 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, *vector.transform);
 					}
 				}
-				Graphic::RasterDataCPU(raster_frame) => {
+				Graphic::RasterCPU(raster_frame) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than one row of images
@@ -1179,7 +1179,7 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, *image.transform);
 					}
 				}
-				Graphic::RasterDataGPU(raster_frame) => {
+				Graphic::RasterGPU(raster_frame) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than one row of images
@@ -1192,8 +1192,8 @@ impl Render for Graphic {
 
 		match self {
 			Graphic::Vector(vector) => vector.collect_metadata(metadata, footprint, element_id),
-			Graphic::RasterDataCPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
-			Graphic::RasterDataGPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
+			Graphic::RasterCPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
+			Graphic::RasterGPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.collect_metadata(metadata, footprint, element_id),
 		}
 	}
@@ -1201,8 +1201,8 @@ impl Render for Graphic {
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		match self {
 			Graphic::Vector(vector) => vector.add_upstream_click_targets(click_targets),
-			Graphic::RasterDataCPU(raster) => raster.add_upstream_click_targets(click_targets),
-			Graphic::RasterDataGPU(raster) => raster.add_upstream_click_targets(click_targets),
+			Graphic::RasterCPU(raster) => raster.add_upstream_click_targets(click_targets),
+			Graphic::RasterGPU(raster) => raster.add_upstream_click_targets(click_targets),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.add_upstream_click_targets(click_targets),
 		}
 	}
@@ -1211,8 +1211,8 @@ impl Render for Graphic {
 		match self {
 			Graphic::Vector(vector) => vector.contains_artboard(),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.contains_artboard(),
-			Graphic::RasterDataCPU(raster) => raster.contains_artboard(),
-			Graphic::RasterDataGPU(raster) => raster.contains_artboard(),
+			Graphic::RasterCPU(raster) => raster.contains_artboard(),
+			Graphic::RasterGPU(raster) => raster.contains_artboard(),
 		}
 	}
 
@@ -1220,8 +1220,8 @@ impl Render for Graphic {
 		match self {
 			Graphic::Vector(vector) => vector.new_ids_from_hash(reference),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.new_ids_from_hash(reference),
-			Graphic::RasterDataCPU(_) => (),
-			Graphic::RasterDataGPU(_) => (),
+			Graphic::RasterCPU(_) => (),
+			Graphic::RasterGPU(_) => (),
 		}
 	}
 }

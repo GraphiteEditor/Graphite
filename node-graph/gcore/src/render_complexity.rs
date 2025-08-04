@@ -27,8 +27,8 @@ impl RenderComplexity for Graphic {
 		match self {
 			Self::GraphicGroup(table) => table.render_complexity(),
 			Self::Vector(table) => table.render_complexity(),
-			Self::RasterDataCPU(table) => table.render_complexity(),
-			Self::RasterDataGPU(table) => table.render_complexity(),
+			Self::RasterCPU(table) => table.render_complexity(),
+			Self::RasterGPU(table) => table.render_complexity(),
 		}
 	}
 }

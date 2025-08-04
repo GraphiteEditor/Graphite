@@ -18,7 +18,7 @@ pub enum FrontendGraphDataType {
 impl FrontendGraphDataType {
 	pub fn from_type(input: &Type) -> Self {
 		match TaggedValue::from_type_or_none(input) {
-			TaggedValue::RasterData(_) => Self::Raster,
+			TaggedValue::Raster(_) => Self::Raster,
 			TaggedValue::Vector(_) => Self::Vector,
 			TaggedValue::U32(_)
 			| TaggedValue::U64(_)

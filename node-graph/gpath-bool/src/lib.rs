@@ -237,7 +237,7 @@ fn flatten_vector(graphic_group_table: &Table<Graphic>) -> Table<Vector> {
 						})
 						.collect::<Vec<_>>()
 				}
-				Graphic::RasterDataCPU(image) => {
+				Graphic::RasterCPU(image) => {
 					let make_row = |transform| {
 						// Convert the image frame into a rectangular subpath with the image's transform
 						let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
@@ -250,10 +250,10 @@ fn flatten_vector(graphic_group_table: &Table<Graphic>) -> Table<Vector> {
 						TableRow { element, ..Default::default() }
 					};
 
-					// Apply the parent group's transform to each element of raster data
+					// Apply the parent group's transform to each raster element
 					image.iter_ref().map(|row| make_row(*element.transform * *row.transform)).collect::<Vec<_>>()
 				}
-				Graphic::RasterDataGPU(image) => {
+				Graphic::RasterGPU(image) => {
 					let make_row = |transform| {
 						// Convert the image frame into a rectangular subpath with the image's transform
 						let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
@@ -266,7 +266,7 @@ fn flatten_vector(graphic_group_table: &Table<Graphic>) -> Table<Vector> {
 						TableRow { element, ..Default::default() }
 					};
 
-					// Apply the parent group's transform to each element of raster data
+					// Apply the parent group's transform to each raster element
 					image.iter_ref().map(|row| make_row(*element.transform * *row.transform)).collect::<Vec<_>>()
 				}
 				Graphic::GraphicGroup(mut graphic_group) => {

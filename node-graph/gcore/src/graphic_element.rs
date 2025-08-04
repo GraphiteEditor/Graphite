@@ -17,8 +17,8 @@ pub enum Graphic {
 	GraphicGroup(Table<Graphic>),
 	/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
 	Vector(Table<Vector>),
-	RasterDataCPU(Table<Raster<CPU>>),
-	RasterDataGPU(Table<Raster<GPU>>),
+	RasterCPU(Table<Raster<CPU>>),
+	RasterGPU(Table<Raster<GPU>>),
 }
 
 impl Default for Graphic {
@@ -58,45 +58,45 @@ impl From<Table<Vector>> for Table<Graphic> {
 
 // Raster<CPU>
 impl From<Raster<CPU>> for Graphic {
-	fn from(raster_data: Raster<CPU>) -> Self {
-		Graphic::RasterDataCPU(Table::new_from_element(raster_data))
+	fn from(raster: Raster<CPU>) -> Self {
+		Graphic::RasterCPU(Table::new_from_element(raster))
 	}
 }
 impl From<Table<Raster<CPU>>> for Graphic {
-	fn from(raster_data: Table<Raster<CPU>>) -> Self {
-		Graphic::RasterDataCPU(raster_data)
+	fn from(raster: Table<Raster<CPU>>) -> Self {
+		Graphic::RasterCPU(raster)
 	}
 }
 impl From<Raster<CPU>> for Table<Graphic> {
-	fn from(raster_data: Raster<CPU>) -> Self {
-		Table::new_from_element(Graphic::RasterDataCPU(Table::new_from_element(raster_data)))
+	fn from(raster: Raster<CPU>) -> Self {
+		Table::new_from_element(Graphic::RasterCPU(Table::new_from_element(raster)))
 	}
 }
 impl From<Table<Raster<CPU>>> for Table<Graphic> {
-	fn from(raster_data_table: Table<Raster<CPU>>) -> Self {
-		Table::new_from_element(Graphic::RasterDataCPU(raster_data_table))
+	fn from(raster: Table<Raster<CPU>>) -> Self {
+		Table::new_from_element(Graphic::RasterCPU(raster))
 	}
 }
 
 // Raster<GPU>
 impl From<Raster<GPU>> for Graphic {
-	fn from(raster_data: Raster<GPU>) -> Self {
-		Graphic::RasterDataGPU(Table::new_from_element(raster_data))
+	fn from(raster: Raster<GPU>) -> Self {
+		Graphic::RasterGPU(Table::new_from_element(raster))
 	}
 }
 impl From<Table<Raster<GPU>>> for Graphic {
-	fn from(raster_data: Table<Raster<GPU>>) -> Self {
-		Graphic::RasterDataGPU(raster_data)
+	fn from(raster: Table<Raster<GPU>>) -> Self {
+		Graphic::RasterGPU(raster)
 	}
 }
 impl From<Raster<GPU>> for Table<Graphic> {
-	fn from(raster_data: Raster<GPU>) -> Self {
-		Table::new_from_element(Graphic::RasterDataGPU(Table::new_from_element(raster_data)))
+	fn from(raster: Raster<GPU>) -> Self {
+		Table::new_from_element(Graphic::RasterGPU(Table::new_from_element(raster)))
 	}
 }
 impl From<Table<Raster<GPU>>> for Table<Graphic> {
-	fn from(raster_data_table: Table<Raster<GPU>>) -> Self {
-		Table::new_from_element(Graphic::RasterDataGPU(raster_data_table))
+	fn from(raster: Table<Raster<GPU>>) -> Self {
+		Table::new_from_element(Graphic::RasterGPU(raster))
 	}
 }
 
@@ -143,14 +143,14 @@ impl Graphic {
 
 	pub fn as_raster(&self) -> Option<&Table<Raster<CPU>>> {
 		match self {
-			Graphic::RasterDataCPU(raster) => Some(raster),
+			Graphic::RasterCPU(raster) => Some(raster),
 			_ => None,
 		}
 	}
 
 	pub fn as_raster_mut(&mut self) -> Option<&mut Table<Raster<CPU>>> {
 		match self {
-			Graphic::RasterDataCPU(raster) => Some(raster),
+			Graphic::RasterCPU(raster) => Some(raster),
 			_ => None,
 		}
 	}
@@ -159,8 +159,8 @@ impl Graphic {
 		match self {
 			Graphic::Vector(vector) => vector.iter_ref().all(|row| row.alpha_blending.clip),
 			Graphic::GraphicGroup(group) => group.iter_ref().all(|row| row.alpha_blending.clip),
-			Graphic::RasterDataCPU(raster) => raster.iter_ref().all(|row| row.alpha_blending.clip),
-			Graphic::RasterDataGPU(raster) => raster.iter_ref().all(|row| row.alpha_blending.clip),
+			Graphic::RasterCPU(raster) => raster.iter_ref().all(|row| row.alpha_blending.clip),
+			Graphic::RasterGPU(raster) => raster.iter_ref().all(|row| row.alpha_blending.clip),
 		}
 	}
 
@@ -180,8 +180,8 @@ impl BoundingBox for Graphic {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
 		match self {
 			Graphic::Vector(vector) => vector.bounding_box(transform, include_stroke),
-			Graphic::RasterDataCPU(raster) => raster.bounding_box(transform, include_stroke),
-			Graphic::RasterDataGPU(raster) => raster.bounding_box(transform, include_stroke),
+			Graphic::RasterCPU(raster) => raster.bounding_box(transform, include_stroke),
+			Graphic::RasterGPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform, include_stroke),
 		}
 	}

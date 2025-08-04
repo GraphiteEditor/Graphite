@@ -794,7 +794,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::RasterData(Default::default()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::Raster(Default::default()), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -879,7 +879,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::RasterData(Default::default()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::Raster(Default::default()), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -947,7 +947,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::RasterData(Default::default()), true),
+						NodeInput::value(TaggedValue::Raster(Default::default()), true),
 						NodeInput::value(TaggedValue::BrushStrokes(Vec::new()), false),
 						NodeInput::value(TaggedValue::BrushCache(BrushCache::default()), false),
 					],
@@ -986,7 +986,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
-					inputs: vec![NodeInput::value(TaggedValue::RasterData(Default::default()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::Raster(Default::default()), true)],
 					manual_composition: Some(concrete!(Context)),
 					..Default::default()
 				},
@@ -1005,7 +1005,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::ProtoNode(memo::impure_memo::IDENTIFIER),
-					inputs: vec![NodeInput::value(TaggedValue::RasterData(Default::default()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::Raster(Default::default()), true)],
 					manual_composition: Some(concrete!(Context)),
 					..Default::default()
 				},
@@ -1117,7 +1117,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::RasterData(Default::default()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::Raster(Default::default()), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1196,7 +1196,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		// 		document_node: DocumentNode {
 		// 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::CurvesNode"),
 		// 			inputs: vec![
-		// 				NodeInput::value(TaggedValue::RasterData(Default::default()), true),
+		// 				NodeInput::value(TaggedValue::Raster(Default::default()), true),
 		// 				NodeInput::value(TaggedValue::Curve(Default::default()), false),
 		// 			],
 		// 			..Default::default()

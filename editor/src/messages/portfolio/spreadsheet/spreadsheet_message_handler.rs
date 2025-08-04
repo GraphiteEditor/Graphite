@@ -156,8 +156,8 @@ impl TableRowLayout for Graphic {
 		match self {
 			Self::GraphicGroup(table) => table.identifier(),
 			Self::Vector(table) => table.identifier(),
-			Self::RasterDataCPU(_) => "RasterDataCPU".to_string(),
-			Self::RasterDataGPU(_) => "RasterDataGPU".to_string(),
+			Self::RasterCPU(_) => "Raster (on CPU)".to_string(),
+			Self::RasterGPU(_) => "Raster (on GPU)".to_string(),
 		}
 	}
 	// Don't put a breadcrumb for Graphic
@@ -168,8 +168,8 @@ impl TableRowLayout for Graphic {
 		match self {
 			Self::GraphicGroup(table) => table.layout_with_breadcrumb(data),
 			Self::Vector(table) => table.layout_with_breadcrumb(data),
-			Self::RasterDataCPU(_) => label("Raster is not supported"),
-			Self::RasterDataGPU(_) => label("Raster is not supported"),
+			Self::RasterCPU(_) => label("Raster is not supported"),
+			Self::RasterGPU(_) => label("Raster is not supported"),
 		}
 	}
 }
