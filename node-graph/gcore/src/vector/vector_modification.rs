@@ -1,14 +1,16 @@
 use super::*;
 use crate::Ctx;
-use crate::table::TableRow;
+use crate::table::{Table, TableRow};
 use crate::uuid::{NodeId, generate_uuid};
+use crate::vector::misc::{HandleId, HandleType, point_to_dvec2};
 use bezier_rs::BezierHandles;
 use dyn_any::DynAny;
+use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, PathEl, Point};
 use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasher;
 
-/// Represents a procedural change to the [`PointDomain`] in [`VectorData`].
+/// Represents a procedural change to the [`PointDomain`] in [`Vector`].
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PointModification {
 	add: Vec<PointId>,
@@ -58,12 +60,12 @@ impl PointModification {
 		}
 	}
 
-	/// Create a new modification that will convert an empty [`VectorData`] into the target [`VectorData`].
-	pub fn create_from_vector(vector_data: &VectorData) -> Self {
+	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
+	pub fn create_from_vector(vector: &Vector) -> Self {
 		Self {
-			add: vector_data.point_domain.ids().to_vec(),
+			add: vector.point_domain.ids().to_vec(),
 			remove: HashSet::new(),
-			delta: vector_data.point_domain.ids().iter().copied().zip(vector_data.point_domain.positions().iter().cloned()).collect(),
+			delta: vector.point_domain.ids().iter().copied().zip(vector.point_domain.positions().iter().cloned()).collect(),
 		}
 	}
 
@@ -79,7 +81,7 @@ impl PointModification {
 	}
 }
 
-/// Represents a procedural change to the [`SegmentDomain`] in [`VectorData`].
+/// Represents a procedural change to the [`SegmentDomain`] in [`Vector`].
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SegmentModification {
 	add: Vec<SegmentId>,
@@ -177,11 +179,11 @@ impl SegmentModification {
 			let Some(&stroke) = self.stroke.get(&add_id) else { continue };
 
 			let Some(start_index) = point_domain.resolve_id(start) else {
-				warn!("invalid start id: {:#?}", start);
+				warn!("invalid start id: {start:#?}");
 				continue;
 			};
 			let Some(end_index) = point_domain.resolve_id(end) else {
-				warn!("invalid end id: {:#?}", end);
+				warn!("invalid end id: {end:#?}");
 				continue;
 			};
 
@@ -206,27 +208,25 @@ impl SegmentModification {
 
 		assert!(
 			segment_domain.start_point().iter().all(|&index| index < point_domain.ids().len()),
-			"index should be in range {:#?}",
-			segment_domain
+			"index should be in range {segment_domain:#?}"
 		);
 		assert!(
 			segment_domain.end_point().iter().all(|&index| index < point_domain.ids().len()),
-			"index should be in range {:#?}",
-			segment_domain
+			"index should be in range {segment_domain:#?}"
 		);
 	}
 
-	/// Create a new modification that will convert an empty [`VectorData`] into the target [`VectorData`].
-	pub fn create_from_vector(vector_data: &VectorData) -> Self {
-		let point_id = |(&segment, &index)| (segment, vector_data.point_domain.ids()[index]);
+	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
+	pub fn create_from_vector(vector: &Vector) -> Self {
+		let point_id = |(&segment, &index)| (segment, vector.point_domain.ids()[index]);
 		Self {
-			add: vector_data.segment_domain.ids().to_vec(),
+			add: vector.segment_domain.ids().to_vec(),
 			remove: HashSet::new(),
-			start_point: vector_data.segment_domain.ids().iter().zip(vector_data.segment_domain.start_point()).map(point_id).collect(),
-			end_point: vector_data.segment_domain.ids().iter().zip(vector_data.segment_domain.end_point()).map(point_id).collect(),
-			handle_primary: vector_data.segment_bezier_iter().map(|(id, b, _, _)| (id, b.handle_start().map(|handle| handle - b.start))).collect(),
-			handle_end: vector_data.segment_bezier_iter().map(|(id, b, _, _)| (id, b.handle_end().map(|handle| handle - b.end))).collect(),
-			stroke: vector_data.segment_domain.ids().iter().copied().zip(vector_data.segment_domain.stroke().iter().cloned()).collect(),
+			start_point: vector.segment_domain.ids().iter().zip(vector.segment_domain.start_point()).map(point_id).collect(),
+			end_point: vector.segment_domain.ids().iter().zip(vector.segment_domain.end_point()).map(point_id).collect(),
+			handle_primary: vector.segment_bezier_iter().map(|(id, b, _, _)| (id, b.handle_start().map(|handle| handle - b.start))).collect(),
+			handle_end: vector.segment_bezier_iter().map(|(id, b, _, _)| (id, b.handle_end().map(|handle| handle - b.end))).collect(),
+			stroke: vector.segment_domain.ids().iter().copied().zip(vector.segment_domain.stroke().iter().cloned()).collect(),
 		}
 	}
 
@@ -251,7 +251,7 @@ impl SegmentModification {
 	}
 }
 
-/// Represents a procedural change to the [`RegionDomain`] in [`VectorData`].
+/// Represents a procedural change to the [`RegionDomain`] in [`Vector`].
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RegionModification {
 	add: Vec<RegionId>,
@@ -284,18 +284,18 @@ impl RegionModification {
 		}
 	}
 
-	/// Create a new modification that will convert an empty [`VectorData`] into the target [`VectorData`].
-	pub fn create_from_vector(vector_data: &VectorData) -> Self {
+	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
+	pub fn create_from_vector(vector: &Vector) -> Self {
 		Self {
-			add: vector_data.region_domain.ids().to_vec(),
+			add: vector.region_domain.ids().to_vec(),
 			remove: HashSet::new(),
-			segment_range: vector_data.region_domain.ids().iter().copied().zip(vector_data.region_domain.segment_range().iter().cloned()).collect(),
-			fill: vector_data.region_domain.ids().iter().copied().zip(vector_data.region_domain.fill().iter().cloned()).collect(),
+			segment_range: vector.region_domain.ids().iter().copied().zip(vector.region_domain.segment_range().iter().cloned()).collect(),
+			fill: vector.region_domain.ids().iter().copied().zip(vector.region_domain.fill().iter().cloned()).collect(),
 		}
 	}
 }
 
-/// Represents a procedural change to the [`VectorData`].
+/// Represents a procedural change to the [`Vector`].
 #[derive(Clone, Debug, Default, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct VectorModification {
 	points: PointModification,
@@ -327,27 +327,27 @@ pub enum VectorModificationType {
 }
 
 impl VectorModification {
-	/// Apply this modification to the specified [`VectorData`].
-	pub fn apply(&self, vector_data: &mut VectorData) {
-		self.points.apply(&mut vector_data.point_domain, &mut vector_data.segment_domain);
-		self.segments.apply(&mut vector_data.segment_domain, &vector_data.point_domain);
-		self.regions.apply(&mut vector_data.region_domain);
+	/// Apply this modification to the specified [`Vector`].
+	pub fn apply(&self, vector: &mut Vector) {
+		self.points.apply(&mut vector.point_domain, &mut vector.segment_domain);
+		self.segments.apply(&mut vector.segment_domain, &vector.point_domain);
+		self.regions.apply(&mut vector.region_domain);
 
-		let valid = |val: &[HandleId; 2]| vector_data.segment_domain.ids().contains(&val[0].segment) && vector_data.segment_domain.ids().contains(&val[1].segment);
-		vector_data
+		let valid = |val: &[HandleId; 2]| vector.segment_domain.ids().contains(&val[0].segment) && vector.segment_domain.ids().contains(&val[1].segment);
+		vector
 			.colinear_manipulators
 			.retain(|val| !self.remove_g1_continuous.contains(val) && !self.remove_g1_continuous.contains(&[val[1], val[0]]) && valid(val));
 
 		for handles in &self.add_g1_continuous {
-			if !vector_data.colinear_manipulators.iter().any(|test| test == handles || test == &[handles[1], handles[0]]) && valid(handles) {
-				vector_data.colinear_manipulators.push(*handles);
+			if !vector.colinear_manipulators.iter().any(|test| test == handles || test == &[handles[1], handles[0]]) && valid(handles) {
+				vector.colinear_manipulators.push(*handles);
 			}
 		}
 	}
 
 	/// Add a [`VectorModificationType`] to this modification.
-	pub fn modify(&mut self, vector_data_modification: &VectorModificationType) {
-		match vector_data_modification {
+	pub fn modify(&mut self, vector_modification: &VectorModificationType) {
+		match vector_modification {
 			VectorModificationType::InsertSegment { id, points, handles } => self.segments.push(*id, *points, *handles, StrokeId::ZERO),
 			VectorModificationType::InsertPoint { id, position } => self.points.push(*id, *position),
 
@@ -400,13 +400,13 @@ impl VectorModification {
 		}
 	}
 
-	/// Create a new modification that will convert an empty [`VectorData`] into the target [`VectorData`].
-	pub fn create_from_vector(vector_data: &VectorData) -> Self {
+	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
+	pub fn create_from_vector(vector: &Vector) -> Self {
 		Self {
-			points: PointModification::create_from_vector(vector_data),
-			segments: SegmentModification::create_from_vector(vector_data),
-			regions: RegionModification::create_from_vector(vector_data),
-			add_g1_continuous: vector_data.colinear_manipulators.iter().copied().collect(),
+			points: PointModification::create_from_vector(vector),
+			segments: SegmentModification::create_from_vector(vector),
+			regions: RegionModification::create_from_vector(vector),
+			add_g1_continuous: vector.colinear_manipulators.iter().copied().collect(),
 			remove_g1_continuous: HashSet::new(),
 		}
 	}
@@ -420,38 +420,38 @@ impl Hash for VectorModification {
 
 /// Applies a diff modification to a vector path.
 #[node_macro::node(category(""))]
-async fn path_modify(_ctx: impl Ctx, mut vector_data: Table<VectorData>, modification: Box<VectorModification>, node_path: Vec<NodeId>) -> Table<VectorData> {
-	if vector_data.is_empty() {
-		vector_data.push(TableRow::default());
+async fn path_modify(_ctx: impl Ctx, mut vector: Table<Vector>, modification: Box<VectorModification>, node_path: Vec<NodeId>) -> Table<Vector> {
+	if vector.is_empty() {
+		vector.push(TableRow::default());
 	}
-	let row = vector_data.get_mut(0).expect("push should give one item");
+	let row = vector.get_mut(0).expect("push should give one item");
 	modification.apply(row.element);
 
 	// Update the source node id
 	let this_node_path = node_path.iter().rev().nth(1).copied();
 	*row.source_node_id = row.source_node_id.or(this_node_path);
 
-	if vector_data.len() > 1 {
-		warn!("The path modify ran on {} rows of vector data. Only the first can be modified.", vector_data.len());
+	if vector.len() > 1 {
+		warn!("The path modify ran on {} vector rows. Only the first can be modified.", vector.len());
 	}
-	vector_data
+	vector
 }
 
 /// Applies the vector path's local transformation to its geometry and resets it to the identity.
 #[node_macro::node(category("Vector"))]
-async fn apply_transform(_ctx: impl Ctx, mut vector_data: Table<VectorData>) -> Table<VectorData> {
-	for row in vector_data.iter_mut() {
-		let vector_data = row.element;
+async fn apply_transform(_ctx: impl Ctx, mut vector: Table<Vector>) -> Table<Vector> {
+	for row in vector.iter_mut() {
+		let vector = row.element;
 		let transform = *row.transform;
 
-		for (_, point) in vector_data.point_domain.positions_mut() {
+		for (_, point) in vector.point_domain.positions_mut() {
 			*point = transform.transform_point2(*point);
 		}
 
 		*row.transform = DAffine2::IDENTITY;
 	}
 
-	vector_data
+	vector
 }
 
 // Do we want to enforce that all serialized/deserialized hashmaps are a vec of tuples?
@@ -524,11 +524,11 @@ pub struct AppendBezpath<'a> {
 	last_segment_id: Option<SegmentId>,
 	point_id: PointId,
 	segment_id: SegmentId,
-	vector_data: &'a mut VectorData,
+	vector: &'a mut Vector,
 }
 
 impl<'a> AppendBezpath<'a> {
-	fn new(vector_data: &'a mut VectorData) -> Self {
+	fn new(vector: &'a mut Vector) -> Self {
 		Self {
 			first_point: None,
 			last_point: None,
@@ -536,9 +536,9 @@ impl<'a> AppendBezpath<'a> {
 			last_point_index: None,
 			first_segment_id: None,
 			last_segment_id: None,
-			point_id: vector_data.point_domain.next_id(),
-			segment_id: vector_data.segment_domain.next_id(),
-			vector_data,
+			point_id: vector.point_domain.next_id(),
+			segment_id: vector.segment_domain.next_id(),
+			vector,
 		}
 	}
 
@@ -555,28 +555,28 @@ impl<'a> AppendBezpath<'a> {
 
 		// Create a new segment.
 		let next_segment_id = self.segment_id.next_id();
-		self.vector_data
+		self.vector
 			.segment_domain
 			.push(next_segment_id, self.last_point_index.unwrap(), self.first_point_index.unwrap(), handle, StrokeId::ZERO);
 
 		// Create a new region.
-		let next_region_id = self.vector_data.region_domain.next_id();
+		let next_region_id = self.vector.region_domain.next_id();
 		let first_segment_id = self.first_segment_id.unwrap_or(next_segment_id);
 		let last_segment_id = next_segment_id;
 
-		self.vector_data.region_domain.push(next_region_id, first_segment_id..=last_segment_id, FillId::ZERO);
+		self.vector.region_domain.push(next_region_id, first_segment_id..=last_segment_id, FillId::ZERO);
 	}
 
 	fn append_segment(&mut self, end_point: Point, handle: BezierHandles) {
 		// Append the point.
-		let next_point_index = self.vector_data.point_domain.ids().len();
+		let next_point_index = self.vector.point_domain.ids().len();
 		let next_point_id = self.point_id.next_id();
 
-		self.vector_data.point_domain.push(next_point_id, point_to_dvec2(end_point));
+		self.vector.point_domain.push(next_point_id, point_to_dvec2(end_point));
 
 		// Append the segment.
 		let next_segment_id = self.segment_id.next_id();
-		self.vector_data
+		self.vector
 			.segment_domain
 			.push(next_segment_id, self.last_point_index.unwrap(), next_point_index, handle, StrokeId::ZERO);
 
@@ -593,8 +593,8 @@ impl<'a> AppendBezpath<'a> {
 		self.last_point = Some(point);
 
 		// Append the first point.
-		let next_point_index = self.vector_data.point_domain.ids().len();
-		self.vector_data.point_domain.push(self.point_id.next_id(), point_to_dvec2(point));
+		let next_point_index = self.vector.point_domain.ids().len();
+		self.vector.point_domain.push(self.point_id.next_id(), point_to_dvec2(point));
 
 		// Update the state.
 		self.first_point_index = Some(next_point_index);
@@ -610,8 +610,8 @@ impl<'a> AppendBezpath<'a> {
 		self.last_segment_id = None;
 	}
 
-	pub fn append_bezpath(vector_data: &'a mut VectorData, bezpath: BezPath) {
-		let mut this = Self::new(vector_data);
+	pub fn append_bezpath(vector: &'a mut Vector, bezpath: BezPath) {
+		let mut this = Self::new(vector);
 		let mut elements = bezpath.elements().iter().peekable();
 
 		while let Some(element) = elements.next() {
@@ -656,12 +656,11 @@ impl<'a> AppendBezpath<'a> {
 	}
 }
 
-pub trait VectorDataExt {
-	/// Appends a Kurbo BezPath to the vector data.
+pub trait VectorExt {
 	fn append_bezpath(&mut self, bezpath: BezPath);
 }
 
-impl VectorDataExt for VectorData {
+impl VectorExt for Vector {
 	fn append_bezpath(&mut self, bezpath: BezPath) {
 		AppendBezpath::append_bezpath(self, bezpath);
 	}
@@ -689,16 +688,16 @@ mod tests {
 
 	#[test]
 	fn modify_new() {
-		let vector_data = VectorData::from_subpaths(
+		let vector = Vector::from_subpaths(
 			[bezier_rs::Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE), bezier_rs::Subpath::new_rect(DVec2::NEG_ONE, DVec2::ZERO)],
 			false,
 		);
 
-		let modify = VectorModification::create_from_vector(&vector_data);
+		let modify = VectorModification::create_from_vector(&vector);
 
-		let mut new = VectorData::default();
+		let mut new = Vector::default();
 		modify.apply(&mut new);
-		assert_eq!(vector_data, new);
+		assert_eq!(vector, new);
 	}
 
 	#[test]
@@ -715,32 +714,32 @@ mod tests {
 				false,
 			),
 		];
-		let mut vector_data = VectorData::from_subpaths(subpaths, false);
+		let mut vector = Vector::from_subpaths(subpaths, false);
 
-		let mut modify_new = VectorModification::create_from_vector(&vector_data);
+		let mut modify_new = VectorModification::create_from_vector(&vector);
 		let mut modify_original = VectorModification::default();
 
 		for modification in [&mut modify_new, &mut modify_original] {
-			let point = vector_data.point_domain.ids()[0];
+			let point = vector.point_domain.ids()[0];
 			modification.modify(&VectorModificationType::ApplyPointDelta { point, delta: DVec2::X * 0.5 });
-			let point = vector_data.point_domain.ids()[9];
+			let point = vector.point_domain.ids()[9];
 			modification.modify(&VectorModificationType::ApplyPointDelta { point, delta: DVec2::X });
 		}
 
-		let mut new = VectorData::default();
+		let mut new = Vector::default();
 		modify_new.apply(&mut new);
 
-		modify_original.apply(&mut vector_data);
+		modify_original.apply(&mut vector);
 
-		assert_eq!(vector_data, new);
-		assert_eq!(vector_data.point_domain.positions()[0], DVec2::X);
-		assert_eq!(vector_data.point_domain.positions()[9], DVec2::new(11., 0.));
+		assert_eq!(vector, new);
+		assert_eq!(vector.point_domain.positions()[0], DVec2::X);
+		assert_eq!(vector.point_domain.positions()[9], DVec2::new(11., 0.));
 		assert_eq!(
-			vector_data.segment_bezier_iter().nth(8).unwrap().1,
+			vector.segment_bezier_iter().nth(8).unwrap().1,
 			Bezier::from_quadratic_dvec2(DVec2::new(0., 0.), DVec2::new(5., 10.), DVec2::new(11., 0.))
 		);
 		assert_eq!(
-			vector_data.segment_bezier_iter().nth(9).unwrap().1,
+			vector.segment_bezier_iter().nth(9).unwrap().1,
 			Bezier::from_quadratic_dvec2(DVec2::new(11., 0.), DVec2::new(16., 10.), DVec2::new(20., 0.))
 		);
 	}

@@ -910,7 +910,7 @@ mod tests {
 		let attr = quote!(category("Vector: Shape"));
 		let input = quote!(
 			/// Test
-			fn circle(_: impl Ctx, #[default(50.)] radius: f64) -> VectorData {
+			fn circle(_: impl Ctx, #[default(50.)] radius: f64) -> Vector {
 				// Implementation details...
 			}
 		);
@@ -937,7 +937,7 @@ mod tests {
 				ty: parse_quote!(impl Ctx),
 				implementations: Punctuated::new(),
 			},
-			output_type: parse_quote!(VectorData),
+			output_type: parse_quote!(Vector),
 			is_async: false,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("radius"),

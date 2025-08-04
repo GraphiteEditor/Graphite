@@ -1,11 +1,11 @@
 use crate::raster_types::{CPU, Raster};
 use crate::table::Table;
-use crate::vector::VectorData;
+use crate::vector::Vector;
 use crate::{Color, Ctx};
 use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category("Debug"), name("Log to Console"))]
-fn log_to_console<T: std::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, Table<VectorData>, DAffine2, Color, Option<Color>)] value: T) -> T {
+fn log_to_console<T: std::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, Table<Vector>, DAffine2, Color, Option<Color>)] value: T) -> T {
 	// KEEP THIS `debug!()` - It acts as the output for the debug node itself
 	log::debug!("{:#?}", value);
 	value

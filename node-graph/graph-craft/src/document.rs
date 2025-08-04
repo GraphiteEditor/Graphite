@@ -920,7 +920,7 @@ impl NodeNetwork {
 		if !node.visible && node.implementation != identity_node {
 			node.implementation = identity_node;
 
-			// Connect layer node to the graphic group below
+			// Connect layer node to the group below
 			node.inputs.drain(1..);
 			node.manual_composition = None;
 			self.nodes.insert(id, node);

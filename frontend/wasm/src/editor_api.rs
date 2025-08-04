@@ -636,7 +636,7 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Paste vector data into a new layer from a serialized JSON representation
+	/// Paste vector into a new layer from a serialized JSON representation
 	#[wasm_bindgen(js_name = pasteSerializedVector)]
 	pub fn paste_serialized_vector(&self, data: String) {
 		let message = PortfolioMessage::PasteSerializedVector { data };

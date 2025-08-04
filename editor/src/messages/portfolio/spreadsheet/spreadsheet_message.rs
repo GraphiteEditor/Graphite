@@ -19,13 +19,13 @@ pub enum SpreadsheetMessage {
 		len: usize,
 	},
 
-	ViewVectorDataDomain {
-		domain: VectorDataDomain,
+	ViewVectorDomain {
+		domain: VectorDomain,
 	},
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
-pub enum VectorDataDomain {
+pub enum VectorDomain {
 	#[default]
 	Points,
 	Segments,
