@@ -791,6 +791,16 @@ export class TriggerImport extends JsMessage {}
 
 export class TriggerPaste extends JsMessage {}
 
+export class TriggerSaveDocument extends JsMessage {
+	readonly documentId!: bigint;
+
+	readonly name!: string;
+
+	readonly path!: string | undefined;
+
+	readonly document!: string;
+}
+
 export class TriggerDownloadImage extends JsMessage {
 	readonly svg!: string;
 
@@ -1647,6 +1657,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayRemoveEditableTextbox,
 	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
+	TriggerSaveDocument,
 	TriggerDownloadImage,
 	TriggerDownloadTextFile,
 	TriggerFetchAndOpenDocument,
