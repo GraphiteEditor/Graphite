@@ -16,7 +16,6 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -27,17 +26,14 @@
     flake-compat.url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
   };
 
-  outputs = { nixpkgs, nixpkgs-unstable, rust-overlay, flake-utils, ... }:
+  outputs = { nixpkgs, rust-overlay, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs {
           inherit system overlays;
         };
-        pkgs-unstable = import nixpkgs-unstable {
-          inherit system overlays;
-        };
-
+ 
         rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
           targets = [ "wasm32-unknown-unknown" ];
           extensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
@@ -75,10 +71,8 @@
         buildInputs = with pkgs; [
           # System libraries
           wayland
-          wayland.dev
           openssl
           vulkan-loader
-          mesa
           libraw
           libGL
         ];
@@ -90,11 +84,10 @@
           pkgs.nodePackages.npm
           pkgs.binaryen
           pkgs.wasm-bindgen-cli
-          pkgs-unstable.wasm-pack
+          pkgs.wasm-pack
           pkgs.pkg-config
           pkgs.git
-          pkgs.gobject-introspection
-          pkgs-unstable.cargo-about
+          pkgs.cargo-about
 
           # Linker
           pkgs.mold
