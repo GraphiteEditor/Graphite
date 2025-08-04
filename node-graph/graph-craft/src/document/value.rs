@@ -188,7 +188,8 @@ tagged_value! {
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ImageFrame", alias = "RasterData")]
 	Raster(Table<Raster<CPU>>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::graphic_element::migrate_group"))] // TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::graphic::migrate_group"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(alias = "GraphicGroup")]
 	Group(Table<Graphic>),
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::artboard::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
 	ArtboardGroup(Table<Artboard>),

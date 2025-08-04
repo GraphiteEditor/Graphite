@@ -137,9 +137,9 @@ pub fn handles_to_segment(start: DVec2, handles: BezierHandles, end: DVec2) -> P
 }
 
 pub fn subpath_to_kurbo_bezpath(subpath: Subpath<PointId>) -> BezPath {
-	let maniputor_groups = subpath.manipulator_groups();
+	let manipulator_groups = subpath.manipulator_groups();
 	let closed = subpath.closed();
-	bezpath_from_manipulator_groups(maniputor_groups, closed)
+	bezpath_from_manipulator_groups(manipulator_groups, closed)
 }
 
 pub fn bezpath_from_manipulator_groups(manipulator_groups: &[ManipulatorGroup<PointId>], closed: bool) -> BezPath {
@@ -182,8 +182,8 @@ pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup
 			kurbo::PathEl::LineTo(point) => ManipulatorGroup::new(point_to_dvec2(point), None, None),
 			kurbo::PathEl::QuadTo(point, point1) => ManipulatorGroup::new(point_to_dvec2(point1), Some(point_to_dvec2(point)), None),
 			kurbo::PathEl::CurveTo(point, point1, point2) => {
-				if let Some(last_maipulator_group) = manipulator_groups.last_mut() {
-					last_maipulator_group.out_handle = Some(point_to_dvec2(point));
+				if let Some(last_manipulator_group) = manipulator_groups.last_mut() {
+					last_manipulator_group.out_handle = Some(point_to_dvec2(point));
 				}
 				ManipulatorGroup::new(point_to_dvec2(point2), Some(point_to_dvec2(point1)), None)
 			}

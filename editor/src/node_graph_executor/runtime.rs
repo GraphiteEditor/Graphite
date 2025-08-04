@@ -309,9 +309,9 @@ impl NodeRuntime {
 			};
 
 			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_std::Graphic>>() {
-				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
+				Self::process_graphic(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_std::Artboard>>() {
-				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
+				Self::process_graphic(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			// Insert the vector modify if we are dealing with vector data
 			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, Table<Vector>>>() {
 				let default = TableRow::default();
@@ -323,12 +323,11 @@ impl NodeRuntime {
 		}
 	}
 
-	// If this is `Graphic` data:
-	// Regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
-	fn process_graphic_element(
+	// If this is `Graphic` data, regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
+	fn process_graphic(
 		thumbnail_renders: &mut HashMap<NodeId, Vec<SvgSegment>>,
 		parent_network_node_id: NodeId,
-		graphic_element: &impl Render,
+		graphic: &impl Render,
 		responses: &mut VecDeque<FrontendMessage>,
 		update_thumbnails: bool,
 	) {
@@ -339,7 +338,7 @@ impl NodeRuntime {
 		}
 
 		// Skip thumbnails if the layer is too complex (for performance)
-		if graphic_element.render_complexity() > 1000 {
+		if graphic.render_complexity() > 1000 {
 			let old = thumbnail_renders.insert(parent_network_node_id, Vec::new());
 			if old.is_none_or(|v| !v.is_empty()) {
 				responses.push_back(FrontendMessage::UpdateNodeThumbnail {
@@ -350,7 +349,7 @@ impl NodeRuntime {
 			return;
 		}
 
-		let bounds = graphic_element.bounding_box(DAffine2::IDENTITY, true);
+		let bounds = graphic.bounding_box(DAffine2::IDENTITY, true);
 
 		// Render the thumbnail from a `Graphic` into an SVG string
 		let render_params = RenderParams {
@@ -363,7 +362,7 @@ impl NodeRuntime {
 			alignment_parent_transform: None,
 		};
 		let mut render = SvgRender::new();
-		graphic_element.render_svg(&mut render, &render_params);
+		graphic.render_svg(&mut render, &render_params);
 
 		// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag
 		let [min, max] = bounds.unwrap_or_default();

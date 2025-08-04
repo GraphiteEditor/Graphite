@@ -232,14 +232,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							// Secondary (left) input type coercion
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 1)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic_element::to_element::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::to_element::IDENTIFIER),
 								manual_composition: Some(concrete!(Context)),
 								..Default::default()
 							},
 							// Primary (bottom) input type coercion
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic_element::to_group::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::to_group::IDENTIFIER),
 								manual_composition: Some(concrete!(Context)),
 								..Default::default()
 							},
@@ -258,7 +258,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::node(NodeId(2), 0),
 									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
 								],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic_element::layer::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::layer::IDENTIFIER),
 								..Default::default()
 							},
 						]

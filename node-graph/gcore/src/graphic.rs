@@ -256,8 +256,8 @@ async fn flatten_group(_: impl Ctx, group: Table<Graphic>, fully_flatten: bool) 
 				// If we're allowed to recurse, flatten any groups we encounter
 				Graphic::Group(mut current_element) if recurse => {
 					// Apply the parent group's transform to all child elements
-					for graphic_element in current_element.iter_mut() {
-						*graphic_element.transform = *current_row.transform * *graphic_element.transform;
+					for graphic in current_element.iter_mut() {
+						*graphic.transform = *current_row.transform * *graphic.transform;
 					}
 
 					flatten_group(output_group_table, current_element, fully_flatten, recursion_depth + 1);
@@ -285,33 +285,33 @@ async fn flatten_group(_: impl Ctx, group: Table<Graphic>, fully_flatten: bool) 
 async fn flatten_vector(_: impl Ctx, group: Table<Graphic>) -> Table<Vector> {
 	// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
 	fn flatten_group(output_group_table: &mut Table<Vector>, current_group_table: Table<Graphic>) {
-		for current_graphic_element_row in current_group_table.iter_ref() {
-			let current_element = current_graphic_element_row.element.clone();
-			let reference = *current_graphic_element_row.source_node_id;
+		for current_graphic_row in current_group_table.iter_ref() {
+			let current_graphic = current_graphic_row.element.clone();
+			let source_node_id = *current_graphic_row.source_node_id;
 
-			match current_element {
+			match current_graphic {
 				// If we're allowed to recurse, flatten any groups we encounter
-				Graphic::Group(mut current_element) => {
+				Graphic::Group(mut current_graphic_table) => {
 					// Apply the parent group's transform to all child elements
-					for graphic_element in current_element.iter_mut() {
-						*graphic_element.transform = *current_graphic_element_row.transform * *graphic_element.transform;
+					for graphic in current_graphic_table.iter_mut() {
+						*graphic.transform = *current_graphic_row.transform * *graphic.transform;
 					}
 
-					flatten_group(output_group_table, current_element);
+					flatten_group(output_group_table, current_graphic_table);
 				}
 				// Handle any leaf elements we encounter, which can be either non-group elements or groups that we don't want to flatten
 				Graphic::Vector(vector_table) => {
 					for current_vector_row in vector_table.iter_ref() {
 						output_group_table.push(TableRow {
 							element: current_vector_row.element.clone(),
-							transform: *current_graphic_element_row.transform * *current_vector_row.transform,
+							transform: *current_graphic_row.transform * *current_vector_row.transform,
 							alpha_blending: AlphaBlending {
 								blend_mode: current_vector_row.alpha_blending.blend_mode,
-								opacity: current_graphic_element_row.alpha_blending.opacity * current_vector_row.alpha_blending.opacity,
+								opacity: current_graphic_row.alpha_blending.opacity * current_vector_row.alpha_blending.opacity,
 								fill: current_vector_row.alpha_blending.fill,
 								clip: current_vector_row.alpha_blending.clip,
 							},
-							source_node_id: reference,
+							source_node_id,
 						});
 					}
 				}
@@ -401,9 +401,9 @@ pub fn migrate_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resul
 	Ok(match EitherFormat::deserialize(deserializer)? {
 		EitherFormat::OldGraphicGroup(old) => {
 			let mut group_table = Table::new();
-			for (graphic_element, source_node_id) in old.elements {
+			for (graphic, source_node_id) in old.elements {
 				group_table.push(TableRow {
-					element: graphic_element,
+					element: graphic,
 					transform: old.transform,
 					alpha_blending: old.alpha_blending,
 					source_node_id,
@@ -416,9 +416,9 @@ pub fn migrate_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resul
 			if let Ok(old_table) = serde_json::from_value::<Table<GraphicGroup>>(value.clone()) {
 				let mut group_table = Table::new();
 				for row in old_table.iter_ref() {
-					for (graphic_element, source_node_id) in &row.element.elements {
+					for (graphic, source_node_id) in &row.element.elements {
 						group_table.push(TableRow {
-							element: graphic_element.clone(),
+							element: graphic.clone(),
 							transform: *row.transform,
 							alpha_blending: *row.alpha_blending,
 							source_node_id: *source_node_id,
