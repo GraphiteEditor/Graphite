@@ -53,7 +53,7 @@ pub fn subsegment_intersections(segment1: PathSeg, min_t1: f64, max_t1: f64, seg
 		(segment1, PathSeg::Line(line)) => segment1.intersect_line(line).iter().map(|i| (i.segment_t, i.line_t)).collect(),
 		(segment1, segment2) => {
 			let mut intersections = Vec::new();
-			segment_intersections_inner(segment1, min_t2, min_t2, segment2, min_t1, min_t2, accuracy, &mut intersections);
+			segment_intersections_inner(segment1, min_t1, max_t1, segment2, min_t2, max_t2, accuracy, &mut intersections);
 			intersections
 		}
 	}
@@ -225,6 +225,7 @@ pub fn bezpath_all_self_intersections(mut bezpath: BezPath, error: Option<f64>, 
 	bezpath.segments().enumerate().for_each(|(i, other)| {
 		let other_self_intersection = pathseg_self_intersections(other, error, minimum_separation);
 		intersections_vec.extend(other_self_intersection.iter().flat_map(|value| [(i, value.0), (i, value.1)]));
+
 		bezpath.segments().enumerate().skip(i + 1).for_each(|(j, curve)| {
 			let all_segment_intersections = filtered_all_segment_intersections(curve, other, error, minimum_separation);
 			intersections_vec.extend(
