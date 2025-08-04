@@ -240,7 +240,6 @@ impl EditorHandle {
 
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 					handle(|handle| {
-						log::debug!("animation frame");
 						handle.dispatch(InputPreprocessorMessage::CurrentTime {
 							timestamp: js_sys::Date::now() as u64,
 						});
