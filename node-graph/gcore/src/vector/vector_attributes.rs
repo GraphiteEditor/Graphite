@@ -1,5 +1,5 @@
-use crate::vector::misc::dvec2_to_point;
-use crate::vector::vector_data::{HandleId, Vector};
+use crate::vector::misc::{HandleId, dvec2_to_point};
+use crate::vector::vector_types::Vector;
 use bezier_rs::{BezierHandles, ManipulatorGroup};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};

@@ -1,9 +1,7 @@
-mod attributes;
-mod indexed;
-mod modification;
-
-use super::misc::{dvec2_to_point, point_to_dvec2};
+use super::misc::dvec2_to_point;
 use super::style::{PathStyle, Stroke};
+pub use super::vector_attributes::*;
+pub use super::vector_modification::*;
 use crate::bounds::BoundingBox;
 use crate::math::quad::Quad;
 use crate::table::Table;
@@ -11,14 +9,11 @@ use crate::transform::Transform;
 use crate::vector::click_target::{ClickTargetType, FreePoint};
 use crate::vector::misc::{HandleId, ManipulatorPointId};
 use crate::{AlphaBlending, Color, Graphic};
-pub use attributes::*;
 use bezier_rs::{BezierHandles, ManipulatorGroup};
 use core::borrow::Borrow;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
-pub use indexed::VectorIndex;
 use kurbo::{Affine, BezPath, Rect, Shape};
-pub use modification::*;
 use std::collections::HashMap;
 
 /// Represents vector graphics data, composed of Bézier curves in a path or mesh arrangement.

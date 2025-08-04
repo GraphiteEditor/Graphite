@@ -1,10 +1,11 @@
 use super::*;
 use crate::Ctx;
-use crate::table::TableRow;
+use crate::table::{Table, TableRow};
 use crate::uuid::{NodeId, generate_uuid};
-use crate::vector::misc::HandleType;
+use crate::vector::misc::{HandleId, HandleType, point_to_dvec2};
 use bezier_rs::BezierHandles;
 use dyn_any::DynAny;
+use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, PathEl, Point};
 use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasher;
@@ -178,11 +179,11 @@ impl SegmentModification {
 			let Some(&stroke) = self.stroke.get(&add_id) else { continue };
 
 			let Some(start_index) = point_domain.resolve_id(start) else {
-				warn!("invalid start id: {:#?}", start);
+				warn!("invalid start id: {start:#?}");
 				continue;
 			};
 			let Some(end_index) = point_domain.resolve_id(end) else {
-				warn!("invalid end id: {:#?}", end);
+				warn!("invalid end id: {end:#?}");
 				continue;
 			};
 
@@ -207,13 +208,11 @@ impl SegmentModification {
 
 		assert!(
 			segment_domain.start_point().iter().all(|&index| index < point_domain.ids().len()),
-			"index should be in range {:#?}",
-			segment_domain
+			"index should be in range {segment_domain:#?}"
 		);
 		assert!(
 			segment_domain.end_point().iter().all(|&index| index < point_domain.ids().len()),
-			"index should be in range {:#?}",
-			segment_domain
+			"index should be in range {segment_domain:#?}"
 		);
 	}
 

@@ -456,7 +456,11 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::path_bool::boolean_operation::IDENTIFIER,
 		aliases: &["graphene_std::vector::BooleanOperationNode"],
 	},
-	// brush
+	NodeReplacement {
+		node: graphene_std::vector::path_modify::IDENTIFIER,
+		aliases: &["graphene_core::vector::vector_data::modification::PathModifyNode"],
+	},
+	// Brush
 	NodeReplacement {
 		node: graphene_std::brush::brush::brush_stamp_generator::IDENTIFIER,
 		aliases: &["graphene_std::brush::BrushStampGeneratorNode"],
