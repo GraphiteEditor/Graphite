@@ -48,7 +48,7 @@ async fn boolean_operation<I: Into<Table<Graphic>> + 'n + Send + Clone>(
 	let group_of_paths = group_of_paths.into();
 
 	// The first index is the bottom of the stack
-	let mut result_vector_table = boolean_operation_on_vector_table(flatten_vector(&group_of_paths).iter_ref(), operation);
+	let mut result_vector_table = boolean_operation_on_vector_table(flatten_vector(&group_of_paths).iter(), operation);
 
 	// Replace the transformation matrix with a mutation of the vector points themselves
 	if let Some(result_vector) = result_vector_table.iter_mut().next() {
@@ -182,7 +182,7 @@ fn difference<'a>(vector: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector
 	while let Some(lower_vector) = second_vector {
 		let filtered_vector = vector.clone().filter(|v| *v != lower_vector).collect::<Vec<_>>().into_iter();
 		let unioned = boolean_operation_on_vector_table(filtered_vector, BooleanOperation::Union);
-		let first_row = unioned.iter_ref().next().expect("Expected at least one row after the boolean union");
+		let first_row = unioned.iter().next().expect("Expected at least one row after the boolean union");
 
 		let transform_of_lower_into_space_of_upper = first_row.transform.inverse() * *lower_vector.transform;
 
@@ -218,18 +218,18 @@ fn difference<'a>(vector: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector
 
 	// Subtract the area where they intersect at least once from the union of all vector paths
 	let union = boolean_operation_on_vector_table(vector, BooleanOperation::Union);
-	boolean_operation_on_vector_table(union.iter_ref().chain(std::iter::once(any_intersection.as_ref())), BooleanOperation::SubtractFront)
+	boolean_operation_on_vector_table(union.iter().chain(std::iter::once(any_intersection.as_ref())), BooleanOperation::SubtractFront)
 }
 
 fn flatten_vector(group_table: &Table<Graphic>) -> Table<Vector> {
 	group_table
-		.iter_ref()
+		.iter()
 		.flat_map(|element| {
 			match element.element.clone() {
 				Graphic::Vector(vector) => {
 					// Apply the parent group's transform to each element of the vector table
 					vector
-						.iter()
+						.into_iter()
 						.map(|mut sub_vector| {
 							sub_vector.transform = *element.transform * sub_vector.transform;
 
@@ -251,7 +251,7 @@ fn flatten_vector(group_table: &Table<Graphic>) -> Table<Vector> {
 					};
 
 					// Apply the parent group's transform to each raster element
-					image.iter_ref().map(|row| make_row(*element.transform * *row.transform)).collect::<Vec<_>>()
+					image.iter().map(|row| make_row(*element.transform * *row.transform)).collect::<Vec<_>>()
 				}
 				Graphic::RasterGPU(image) => {
 					let make_row = |transform| {
@@ -267,7 +267,7 @@ fn flatten_vector(group_table: &Table<Graphic>) -> Table<Vector> {
 					};
 
 					// Apply the parent group's transform to each raster element
-					image.iter_ref().map(|row| make_row(*element.transform * *row.transform)).collect::<Vec<_>>()
+					image.iter().map(|row| make_row(*element.transform * *row.transform)).collect::<Vec<_>>()
 				}
 				Graphic::Group(mut group) => {
 					// Apply the parent group's transform to each element of inner group
@@ -276,9 +276,9 @@ fn flatten_vector(group_table: &Table<Graphic>) -> Table<Vector> {
 					}
 
 					// Recursively flatten the inner group into the vector table
-					let unioned = boolean_operation_on_vector_table(flatten_vector(&group).iter_ref(), BooleanOperation::Union);
+					let unioned = boolean_operation_on_vector_table(flatten_vector(&group).iter(), BooleanOperation::Union);
 
-					unioned.iter().collect::<Vec<_>>()
+					unioned.into_iter().collect::<Vec<_>>()
 				}
 			}
 		})

@@ -288,7 +288,7 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 		}
 
 		let mut rows = self
-			.iter_ref()
+			.iter()
 			.enumerate()
 			.map(|(index, row)| {
 				let (scale, angle, translation) = row.transform.to_scale_angle_translation();

@@ -18,14 +18,14 @@ async fn instance_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>
 ) -> Table<T> {
 	let mut result_table = Table::new();
 
-	for TableRowRef { element: points, transform, .. } in points.iter_ref() {
+	for TableRowRef { element: points, transform, .. } in points.iter() {
 		let mut iteration = async |index, point| {
 			let transformed_point = transform.transform_point2(point);
 
 			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_vararg(Box::new(transformed_point));
 			let generated_instance = instance.eval(new_ctx.into_context()).await;
 
-			for mut generated_row in generated_instance.iter() {
+			for mut generated_row in generated_instance.into_iter() {
 				generated_row.transform.translation = transformed_point;
 				result_table.push(generated_row);
 			}
@@ -68,7 +68,7 @@ async fn instance_repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index);
 		let generated_instance = instance.eval(new_ctx.into_context()).await;
 
-		for generated_row in generated_instance.iter() {
+		for generated_row in generated_instance.into_iter() {
 			result_table.push(generated_row);
 		}
 	}
@@ -131,7 +131,7 @@ mod test {
 		let points = Table::new_from_element(Vector::from_subpath(Subpath::from_anchors_linear(positions, false)));
 		let generated = super::instance_on_points(owned, points, &rect, false).await;
 		assert_eq!(generated.len(), positions.len());
-		for (position, generated_row) in positions.into_iter().zip(generated.iter_ref()) {
+		for (position, generated_row) in positions.into_iter().zip(generated.iter()) {
 			let bounds = generated_row.element.bounding_box_with_transform(*generated_row.transform).unwrap();
 			assert!(position.abs_diff_eq((bounds[0] + bounds[1]) / 2., 1e-10));
 			assert_eq!((bounds[1] - bounds[0]).x, position.y);

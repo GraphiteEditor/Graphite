@@ -256,7 +256,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		fn from(element: GraphicElement) -> Self {
 			match element {
 				GraphicElement::RasterFrame(RasterFrame::ImageFrame(image)) => Self {
-					image: image.iter_ref().next().unwrap().element.clone(),
+					image: image.iter().next().unwrap().element.clone(),
 				},
 				_ => panic!("Expected Image, found {:?}", element),
 			}
@@ -298,14 +298,14 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		}
 		FormatVersions::ImageFrameTable(image_frame) => Table::new_from_element(Raster::new_cpu(
 			image_frame
-				.iter_ref()
+				.iter()
 				.next()
-				.unwrap_or(Table::new_from_element(ImageFrame::default()).iter_ref().next().unwrap())
+				.unwrap_or(Table::new_from_element(ImageFrame::default()).iter().next().unwrap())
 				.element
 				.image
 				.clone(),
 		)),
-		FormatVersions::ImageTable(table) => Table::new_from_element(Raster::new_cpu(table.iter_ref().next().unwrap().element.clone())),
+		FormatVersions::ImageTable(table) => Table::new_from_element(Raster::new_cpu(table.iter().next().unwrap().element.clone())),
 		FormatVersions::RasterTable(table) => table,
 	})
 }
@@ -354,7 +354,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 		fn from(element: GraphicElement) -> Self {
 			match element {
 				GraphicElement::RasterFrame(RasterFrame::ImageFrame(image)) => Self {
-					image: image.iter_ref().next().unwrap().element.clone(),
+					image: image.iter().next().unwrap().element.clone(),
 				},
 				_ => panic!("Expected Image, found {:?}", element),
 			}
@@ -398,10 +398,10 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 			source_node_id: None,
 		},
 		FormatVersions::ImageFrameTable(image_frame) => TableRow {
-			element: Raster::new_cpu(image_frame.iter_ref().next().unwrap().element.image.clone()),
+			element: Raster::new_cpu(image_frame.iter().next().unwrap().element.image.clone()),
 			..Default::default()
 		},
-		FormatVersions::RasterTable(image_frame_table) => image_frame_table.iter().next().unwrap_or_default(),
+		FormatVersions::RasterTable(image_frame_table) => image_frame_table.into_iter().next().unwrap_or_default(),
 		FormatVersions::RasterTableRow(image_table_row) => image_table_row,
 	})
 }

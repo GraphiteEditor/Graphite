@@ -155,16 +155,16 @@ impl Graphic {
 
 	pub fn had_clip_enabled(&self) -> bool {
 		match self {
-			Graphic::Vector(vector) => vector.iter_ref().all(|row| row.alpha_blending.clip),
-			Graphic::Group(group) => group.iter_ref().all(|row| row.alpha_blending.clip),
-			Graphic::RasterCPU(raster) => raster.iter_ref().all(|row| row.alpha_blending.clip),
-			Graphic::RasterGPU(raster) => raster.iter_ref().all(|row| row.alpha_blending.clip),
+			Graphic::Vector(vector) => vector.iter().all(|row| row.alpha_blending.clip),
+			Graphic::Group(group) => group.iter().all(|row| row.alpha_blending.clip),
+			Graphic::RasterCPU(raster) => raster.iter().all(|row| row.alpha_blending.clip),
+			Graphic::RasterGPU(raster) => raster.iter().all(|row| row.alpha_blending.clip),
 		}
 	}
 
 	pub fn can_reduce_to_clip_path(&self) -> bool {
 		match self {
-			Graphic::Vector(vector) => vector.iter_ref().all(|row| {
+			Graphic::Vector(vector) => vector.iter().all(|row| {
 				let style = &row.element.style;
 				let alpha_blending = &row.alpha_blending;
 				(alpha_blending.opacity > 1. - f32::EPSILON) && style.fill().is_opaque() && style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
@@ -187,7 +187,7 @@ impl BoundingBox for Graphic {
 
 impl BoundingBox for Table<Graphic> {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.iter_ref()
+		self.iter()
 			.filter_map(|element| element.element.bounding_box(transform * *element.transform, include_stroke))
 			.reduce(Quad::combine_bounds)
 	}
@@ -246,7 +246,7 @@ async fn to_group<Data: Into<Table<Graphic>> + 'n>(
 async fn flatten_group(_: impl Ctx, group: Table<Graphic>, fully_flatten: bool) -> Table<Graphic> {
 	// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
 	fn flatten_group(output_group_table: &mut Table<Graphic>, current_group_table: Table<Graphic>, fully_flatten: bool, recursion_depth: usize) {
-		for current_row in current_group_table.iter_ref() {
+		for current_row in current_group_table.iter() {
 			let current_element = current_row.element.clone();
 			let reference = *current_row.source_node_id;
 
@@ -285,7 +285,7 @@ async fn flatten_group(_: impl Ctx, group: Table<Graphic>, fully_flatten: bool) 
 async fn flatten_vector(_: impl Ctx, group: Table<Graphic>) -> Table<Vector> {
 	// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
 	fn flatten_group(output_group_table: &mut Table<Vector>, current_group_table: Table<Graphic>) {
-		for current_graphic_row in current_group_table.iter_ref() {
+		for current_graphic_row in current_group_table.iter() {
 			let current_graphic = current_graphic_row.element.clone();
 			let source_node_id = *current_graphic_row.source_node_id;
 
@@ -301,7 +301,7 @@ async fn flatten_vector(_: impl Ctx, group: Table<Graphic>) -> Table<Vector> {
 				}
 				// Handle any leaf elements we encounter, which can be either non-group elements or groups that we don't want to flatten
 				Graphic::Vector(vector_table) => {
-					for current_vector_row in vector_table.iter_ref() {
+					for current_vector_row in vector_table.iter() {
 						output_group_table.push(TableRow {
 							element: current_vector_row.element.clone(),
 							transform: *current_graphic_row.transform * *current_vector_row.transform,
@@ -367,7 +367,7 @@ impl<T: Clone> AtIndex for Table<T> {
 
 	fn at_index(&self, index: usize) -> Option<Self::Output> {
 		let mut result_table = Self::default();
-		if let Some(row) = self.iter_ref().nth(index) {
+		if let Some(row) = self.iter().nth(index) {
 			result_table.push(row.into_cloned());
 			Some(result_table)
 		} else {
@@ -415,7 +415,7 @@ pub fn migrate_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resul
 			// Try to deserialize as either table format
 			if let Ok(old_table) = serde_json::from_value::<Table<GraphicGroup>>(value.clone()) {
 				let mut group_table = Table::new();
-				for row in old_table.iter_ref() {
+				for row in old_table.iter() {
 					for (graphic, source_node_id) in &row.element.elements {
 						group_table.push(TableRow {
 							element: graphic.clone(),

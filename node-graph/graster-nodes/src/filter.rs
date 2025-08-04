@@ -22,7 +22,7 @@ async fn blur(
 	gamma: bool,
 ) -> Table<Raster<CPU>> {
 	image_frame
-		.iter()
+		.into_iter()
 		.map(|mut row| {
 			let image = row.element.clone();
 

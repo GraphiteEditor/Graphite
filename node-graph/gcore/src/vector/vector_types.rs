@@ -436,7 +436,7 @@ impl Vector {
 
 impl BoundingBox for Table<Vector> {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.iter_ref()
+		self.iter()
 			.flat_map(|row| {
 				if !include_stroke {
 					return row.element.bounding_box_with_transform(transform * *row.transform);

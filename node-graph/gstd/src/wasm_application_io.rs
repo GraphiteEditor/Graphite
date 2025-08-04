@@ -101,7 +101,7 @@ fn string_to_bytes(_: impl Ctx, string: String) -> Vec<u8> {
 
 #[node_macro::node(category("Web Request"), name("Image to Bytes"))]
 fn image_to_bytes(_: impl Ctx, image: Table<Raster<CPU>>) -> Vec<u8> {
-	let Some(image) = image.iter_ref().next() else { return vec![] };
+	let Some(image) = image.iter().next() else { return vec![] };
 	image.element.data.iter().flat_map(|color| color.to_rgb8_srgb().into_iter()).collect::<Vec<u8>>()
 }
 

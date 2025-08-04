@@ -10,7 +10,7 @@ use std::cmp::{max, min};
 #[node_macro::node(category("Raster: Filter"))]
 async fn dehaze(_: impl Ctx, image_frame: Table<Raster<CPU>>, strength: Percentage) -> Table<Raster<CPU>> {
 	image_frame
-		.iter()
+		.into_iter()
 		.map(|mut row| {
 			let image = row.element;
 			// Prepare the image data for processing

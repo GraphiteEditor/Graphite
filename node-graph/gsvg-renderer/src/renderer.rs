@@ -236,7 +236,7 @@ pub trait Render: BoundingBox + RenderComplexity {
 
 impl Render for Table<Graphic> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		let mut iter = self.iter_ref().peekable();
+		let mut iter = self.iter().peekable();
 		let mut mask_state = None;
 
 		while let Some(row) = iter.next() {
@@ -288,7 +288,7 @@ impl Render for Table<Graphic> {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
-		let mut iter = self.iter_ref().peekable();
+		let mut iter = self.iter().peekable();
 		let mut mask_element_and_transform = None;
 
 		while let Some(row) = iter.next() {
@@ -356,7 +356,7 @@ impl Render for Table<Graphic> {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
-		for row in self.iter_ref() {
+		for row in self.iter() {
 			if let Some(element_id) = row.source_node_id {
 				let mut footprint = footprint;
 				footprint.transform *= *row.transform;
@@ -368,7 +368,7 @@ impl Render for Table<Graphic> {
 		if let Some(group_id) = element_id {
 			let mut all_upstream_click_targets = Vec::new();
 
-			for row in self.iter_ref() {
+			for row in self.iter() {
 				let mut new_click_targets = Vec::new();
 				row.element.add_upstream_click_targets(&mut new_click_targets);
 
@@ -384,7 +384,7 @@ impl Render for Table<Graphic> {
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for row in self.iter_ref() {
+		for row in self.iter() {
 			let mut new_click_targets = Vec::new();
 
 			row.element.add_upstream_click_targets(&mut new_click_targets);
@@ -398,7 +398,7 @@ impl Render for Table<Graphic> {
 	}
 
 	fn contains_artboard(&self) -> bool {
-		self.iter_ref().any(|row| row.element.contains_artboard())
+		self.iter().any(|row| row.element.contains_artboard())
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
@@ -410,7 +410,7 @@ impl Render for Table<Graphic> {
 
 impl Render for Table<Vector> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for row in self.iter_ref() {
+		for row in self.iter() {
 			let multiplied_transform = *row.transform;
 			let vector = &row.element;
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
@@ -519,7 +519,7 @@ impl Render for Table<Vector> {
 		use vello::kurbo::{Cap, Join};
 		use vello::peniko;
 
-		for row in self.iter_ref() {
+		for row in self.iter() {
 			let multiplied_transform = parent_transform * *row.transform;
 			let has_real_stroke = row.element.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
@@ -728,7 +728,7 @@ impl Render for Table<Vector> {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
-		for row in self.iter_ref() {
+		for row in self.iter() {
 			let transform = *row.transform;
 			let vector = row.element;
 
@@ -772,7 +772,7 @@ impl Render for Table<Vector> {
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for row in self.iter_ref() {
+		for row in self.iter() {
 			let stroke_width = row.element.style.stroke().as_ref().map_or(0., Stroke::weight);
 			let filled = row.element.style.fill() != &Fill::None;
 			let fill = |mut subpath: Subpath<_>| {
@@ -909,38 +909,38 @@ impl Render for Artboard {
 
 impl Render for Table<Artboard> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for artboard in self.iter_ref() {
+		for artboard in self.iter() {
 			artboard.element.render_svg(render, render_params);
 		}
 	}
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
-		for row in self.iter_ref() {
+		for row in self.iter() {
 			row.element.render_to_vello(scene, transform, context, render_params);
 		}
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
-		for row in self.iter_ref() {
+		for row in self.iter() {
 			row.element.collect_metadata(metadata, footprint, *row.source_node_id);
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for row in self.iter_ref() {
+		for row in self.iter() {
 			row.element.add_upstream_click_targets(click_targets);
 		}
 	}
 
 	fn contains_artboard(&self) -> bool {
-		self.iter_ref().count() > 0
+		self.iter().count() > 0
 	}
 }
 
 impl Render for Table<Raster<CPU>> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for row in self.iter_ref() {
+		for row in self.iter() {
 			let image = row.element;
 			let transform = *row.transform;
 
@@ -1029,7 +1029,7 @@ impl Render for Table<Raster<CPU>> {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
-		for row in self.iter_ref() {
+		for row in self.iter() {
 			let image = &row.element;
 			if image.data.is_empty() {
 				continue;
@@ -1068,7 +1068,7 @@ impl Render for Table<Raster<CPU>> {
 		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the graphical data table
-		if let Some(image) = self.iter_ref().next() {
+		if let Some(image) = self.iter().next() {
 			metadata.local_transforms.insert(element_id, *image.transform);
 		}
 	}
@@ -1090,7 +1090,7 @@ impl Render for Table<Raster<GPU>> {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams) {
 		use vello::peniko;
 
-		for row in self.iter_ref() {
+		for row in self.iter() {
 			let blend_mode = *row.alpha_blending;
 			let mut layer = false;
 			if blend_mode != Default::default() {
@@ -1126,7 +1126,7 @@ impl Render for Table<Raster<GPU>> {
 		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the graphical data table
-		if let Some(image) = self.iter_ref().next() {
+		if let Some(image) = self.iter().next() {
 			metadata.local_transforms.insert(element_id, *image.transform);
 		}
 	}
@@ -1166,7 +1166,7 @@ impl Render for Graphic {
 				Graphic::Vector(vector) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than one row of the graphical data table
-					if let Some(vector) = vector.iter_ref().next() {
+					if let Some(vector) = vector.iter().next() {
 						metadata.first_element_source_id.insert(element_id, *vector.source_node_id);
 						metadata.local_transforms.insert(element_id, *vector.transform);
 					}
@@ -1175,7 +1175,7 @@ impl Render for Graphic {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than one row of images
-					if let Some(image) = raster_frame.iter_ref().next() {
+					if let Some(image) = raster_frame.iter().next() {
 						metadata.local_transforms.insert(element_id, *image.transform);
 					}
 				}
@@ -1183,7 +1183,7 @@ impl Render for Graphic {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than one row of images
-					if let Some(image) = raster_frame.iter_ref().next() {
+					if let Some(image) = raster_frame.iter().next() {
 						metadata.local_transforms.insert(element_id, *image.transform);
 					}
 				}

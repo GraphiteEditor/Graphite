@@ -63,7 +63,7 @@ async fn extract_transform<T>(
 	)]
 	vector: Table<T>,
 ) -> DAffine2 {
-	vector.iter_ref().next().map(|row| *row.transform).unwrap_or_default()
+	vector.iter().next().map(|row| *row.transform).unwrap_or_default()
 }
 
 #[node_macro::node(category("Math: Transform"))]

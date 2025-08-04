@@ -60,48 +60,6 @@ impl<T> Table<T> {
 		self.source_node_id.extend(table.source_node_id);
 	}
 
-	pub fn iter(self) -> impl DoubleEndedIterator<Item = TableRow<T>> {
-		self.element
-			.into_iter()
-			.zip(self.transform)
-			.zip(self.alpha_blending)
-			.zip(self.source_node_id)
-			.map(|(((element, transform), alpha_blending), source_node_id)| TableRow {
-				element,
-				transform,
-				alpha_blending,
-				source_node_id,
-			})
-	}
-
-	pub fn iter_ref(&self) -> impl DoubleEndedIterator<Item = TableRowRef<'_, T>> + Clone {
-		self.element
-			.iter()
-			.zip(self.transform.iter())
-			.zip(self.alpha_blending.iter())
-			.zip(self.source_node_id.iter())
-			.map(|(((element, transform), alpha_blending), source_node_id)| TableRowRef {
-				element,
-				transform,
-				alpha_blending,
-				source_node_id,
-			})
-	}
-
-	pub fn iter_mut(&mut self) -> impl DoubleEndedIterator<Item = TableRowMut<'_, T>> {
-		self.element
-			.iter_mut()
-			.zip(self.transform.iter_mut())
-			.zip(self.alpha_blending.iter_mut())
-			.zip(self.source_node_id.iter_mut())
-			.map(|(((element, transform), alpha_blending), source_node_id)| TableRowMut {
-				element,
-				transform,
-				alpha_blending,
-				source_node_id,
-			})
-	}
-
 	pub fn get(&self, index: usize) -> Option<TableRowRef<'_, T>> {
 		if index >= self.element.len() {
 			return None;
@@ -134,6 +92,75 @@ impl<T> Table<T> {
 
 	pub fn is_empty(&self) -> bool {
 		self.element.is_empty()
+	}
+
+	/// Borrows a [`Table`] and returns an iterator of [`TableRowRef`]s, each containing references to the data of the respective row from the table.
+	pub fn iter(&self) -> impl DoubleEndedIterator<Item = TableRowRef<'_, T>> + Clone {
+		self.element
+			.iter()
+			.zip(self.transform.iter())
+			.zip(self.alpha_blending.iter())
+			.zip(self.source_node_id.iter())
+			.map(|(((element, transform), alpha_blending), source_node_id)| TableRowRef {
+				element,
+				transform,
+				alpha_blending,
+				source_node_id,
+			})
+	}
+
+	/// Mutably borrows a [`Table`] and returns an iterator of [`TableRowMut`]s, each containing mutable references to the data of the respective row from the table.
+	pub fn iter_mut(&mut self) -> impl DoubleEndedIterator<Item = TableRowMut<'_, T>> {
+		self.element
+			.iter_mut()
+			.zip(self.transform.iter_mut())
+			.zip(self.alpha_blending.iter_mut())
+			.zip(self.source_node_id.iter_mut())
+			.map(|(((element, transform), alpha_blending), source_node_id)| TableRowMut {
+				element,
+				transform,
+				alpha_blending,
+				source_node_id,
+			})
+	}
+}
+
+impl<T> IntoIterator for Table<T> {
+	type Item = TableRow<T>;
+	type IntoIter = TableRowIter<T>;
+
+	/// Consumes a [`Table`] and returns an iterator of [`TableRow`]s, each containing the owned data of the respective row from the original table.
+	fn into_iter(self) -> Self::IntoIter {
+		TableRowIter {
+			element: self.element.into_iter(),
+			transform: self.transform.into_iter(),
+			alpha_blending: self.alpha_blending.into_iter(),
+			source_node_id: self.source_node_id.into_iter(),
+		}
+	}
+}
+
+pub struct TableRowIter<T> {
+	element: std::vec::IntoIter<T>,
+	transform: std::vec::IntoIter<DAffine2>,
+	alpha_blending: std::vec::IntoIter<AlphaBlending>,
+	source_node_id: std::vec::IntoIter<Option<NodeId>>,
+}
+impl<T> Iterator for TableRowIter<T> {
+	type Item = TableRow<T>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let element = self.element.next()?;
+		let transform = self.transform.next()?;
+		let alpha_blending = self.alpha_blending.next()?;
+		let source_node_id = self.source_node_id.next()?;
+
+		Some(TableRow {
+			element,
+			transform,
+			alpha_blending,
+			source_node_id,
+		})
 	}
 }
 

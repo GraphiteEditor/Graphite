@@ -130,7 +130,7 @@ where
 pub async fn create_brush_texture(brush_style: &BrushStyle) -> Raster<CPU> {
 	let stamp = brush_stamp_generator(brush_style.diameter, brush_style.color, brush_style.hardness, brush_style.flow);
 	let transform = DAffine2::from_scale_angle_translation(DVec2::splat(brush_style.diameter), 0., -DVec2::splat(brush_style.diameter / 2.));
-	let blank_texture = empty_image((), transform, Color::TRANSPARENT).iter().next().unwrap_or_default();
+	let blank_texture = empty_image((), transform, Color::TRANSPARENT).into_iter().next().unwrap_or_default();
 	let image = blend_stamp_closure(stamp, blank_texture, |a, b| blend_colors(a, b, BlendMode::Normal, 1.));
 
 	image.element
@@ -184,7 +184,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: Table<Raster<CPU>>, strokes: 
 		image_frame_table.push(TableRow::default());
 	}
 	// TODO: Find a way to handle more than one row
-	let table_row = image_frame_table.iter_ref().next().expect("Expected the one row we just pushed").into_cloned();
+	let table_row = image_frame_table.iter().next().expect("Expected the one row we just pushed").into_cloned();
 
 	let [start, end] = Table::new_from_row(table_row.clone()).bounding_box(DAffine2::IDENTITY, false).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 	let image_bbox = AxisAlignedBbox { start, end };
@@ -198,7 +198,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: Table<Raster<CPU>>, strokes: 
 	let mut brush_plan = cache.compute_brush_plan(table_row, &draw_strokes);
 
 	// TODO: Find a way to handle more than one row
-	let Some(mut actual_image) = extend_image_to_bounds((), Table::new_from_row(brush_plan.background), background_bounds).iter().next() else {
+	let Some(mut actual_image) = extend_image_to_bounds((), Table::new_from_row(brush_plan.background), background_bounds).into_iter().next() else {
 		return Table::new();
 	};
 
@@ -246,7 +246,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: Table<Raster<CPU>>, strokes: 
 
 			let table = blit_node.eval(blit_target).await;
 			assert_eq!(table.len(), 1);
-			table.iter().next().unwrap_or_default()
+			table.into_iter().next().unwrap_or_default()
 		};
 
 		// Cache image before doing final blend, and store final stroke texture.
@@ -285,7 +285,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: Table<Raster<CPU>>, strokes: 
 						FutureWrapperNode::new(ClonedNode::new(positions)),
 						FutureWrapperNode::new(ClonedNode::new(blend_params)),
 					);
-					erase_restore_mask = blit_node.eval(Table::new_from_row(erase_restore_mask)).await.iter().next().unwrap_or_default();
+					erase_restore_mask = blit_node.eval(Table::new_from_row(erase_restore_mask)).await.into_iter().next().unwrap_or_default();
 				}
 				// Yes, this is essentially the same as the above, but we duplicate to inline the blend mode.
 				BlendMode::Restore => {
@@ -295,7 +295,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: Table<Raster<CPU>>, strokes: 
 						FutureWrapperNode::new(ClonedNode::new(positions)),
 						FutureWrapperNode::new(ClonedNode::new(blend_params)),
 					);
-					erase_restore_mask = blit_node.eval(Table::new_from_row(erase_restore_mask)).await.iter().next().unwrap_or_default();
+					erase_restore_mask = blit_node.eval(Table::new_from_row(erase_restore_mask)).await.into_iter().next().unwrap_or_default();
 				}
 				_ => unreachable!(),
 			}
@@ -406,6 +406,6 @@ mod test {
 			BrushCache::default(),
 		)
 		.await;
-		assert_eq!(image.iter_ref().next().unwrap().element.width, 20);
+		assert_eq!(image.iter().next().unwrap().element.width, 20);
 	}
 }
