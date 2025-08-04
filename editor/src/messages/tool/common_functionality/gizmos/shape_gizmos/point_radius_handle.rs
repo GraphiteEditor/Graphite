@@ -202,7 +202,6 @@ impl PointRadiusHandle {
 					star_outline(Some(layer), document, overlay_context);
 
 					// Make the ticks for snapping
-
 					if (radius1.signum() * radius2.signum()).is_sign_positive() {
 						draw_snapping_ticks(&self.snap_radii, direction, viewport, angle, overlay_context);
 					}
@@ -347,10 +346,10 @@ impl PointRadiusHandle {
 		};
 
 		let both_radii_negative = radius_1.is_sign_negative() && radius_2.is_sign_negative();
-		let both_radii_negative_or_positive = (radius_1.signum() * radius_2.signum()).is_sign_positive();
+		let both_radii_same_sign = (radius_1.signum() * radius_2.signum()).is_sign_positive();
 
-		// When only one of the radius is negative no need for snapping
-		if !both_radii_negative_or_positive {
+		// When only one of the radii is negative, no need for snapping
+		if !both_radii_same_sign {
 			return snap_radii;
 		}
 
@@ -434,7 +433,9 @@ impl PointRadiusHandle {
 		let new_radius = original_radius + net_delta;
 
 		self.update_state(PointRadiusHandleState::Dragging);
+
 		self.check_if_radius_flipped(original_radius, new_radius, document, layer, radius_index);
+
 		if let Some((index, snapped_delta)) = self.check_snapping(new_radius, original_radius) {
 			net_delta = snapped_delta;
 			self.update_state(PointRadiusHandleState::Snapped(index));

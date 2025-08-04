@@ -138,20 +138,9 @@ impl RadiusHandle {
 					return;
 				}
 
-				overlay_context.dashed_ellipse(
-					center,
-					x_point.distance(center),
-					y_point.distance(center),
-					None,
-					None,
-					None,
-					None,
-					None,
-					None,
-					Some(4.),
-					Some(4.),
-					Some(0.5),
-				);
+				let radius_x = x_point.distance(center);
+				let radius_y = y_point.distance(center);
+				overlay_context.dashed_ellipse(center, radius_x, radius_y, None, None, None, None, None, None, Some(4.), Some(4.), Some(0.5));
 			}
 		}
 	}
