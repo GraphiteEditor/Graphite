@@ -3,11 +3,12 @@ use crate::adjust::Adjust;
 use graphene_core::gradient::GradientStops;
 #[cfg(feature = "std")]
 use graphene_core::raster_types::{CPU, Raster};
+#[cfg(feature = "std")]
 use graphene_core::table::Table;
 use graphene_core_shaders::Ctx;
 use graphene_core_shaders::blending::BlendMode;
 use graphene_core_shaders::color::{Color, Pixel};
-use graphene_core_shaders::registry::types::{Percentage, PercentageF32};
+use graphene_core_shaders::registry::types::PercentageF32;
 
 pub trait Blend<P: Pixel> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(P, P) -> P) -> Self;
@@ -179,7 +180,7 @@ fn color_overlay<T: Adjust<Color>>(
 fn blend_color_pair<BlendModeNode, OpacityNode>(input: (Color, Color), blend_mode: &'n BlendModeNode, opacity: &'n OpacityNode) -> Color
 where
 	BlendModeNode: graphene_core::Node<'n, (), Output = BlendMode> + 'n,
-	OpacityNode: graphene_core::Node<'n, (), Output = Percentage> + 'n,
+	OpacityNode: graphene_core::Node<'n, (), Output = graphene_core_shaders::registry::types::Percentage> + 'n,
 {
 	let blend_mode = blend_mode.eval(());
 	let opacity = opacity.eval(());
@@ -203,7 +204,7 @@ mod test {
 		let overlay_color = Color::GREEN;
 
 		// 100% of the output should come from the multiplied value
-		let opacity = 100_f64;
+		let opacity = 100.;
 
 		let result = super::color_overlay((), Table::new_from_element(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
 		let result = result.iter().next().unwrap().element;
