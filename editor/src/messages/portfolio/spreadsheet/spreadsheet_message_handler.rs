@@ -1,4 +1,4 @@
-use super::VectorDataDomain;
+use super::VectorDomain;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, LayoutTarget, WidgetLayout};
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::*;
@@ -21,7 +21,7 @@ pub struct SpreadsheetMessageHandler {
 	inspect_node: Option<NodeId>,
 	introspected_data: Option<Arc<dyn Any + Send + Sync>>,
 	element_path: Vec<usize>,
-	viewing_vector_data_domain: VectorDataDomain,
+	viewing_vector_data_domain: VectorDomain,
 }
 
 #[message_handler_data]
@@ -54,7 +54,7 @@ impl MessageHandler<SpreadsheetMessage, ()> for SpreadsheetMessageHandler {
 				self.update_layout(responses);
 			}
 
-			SpreadsheetMessage::ViewVectorDataDomain { domain } => {
+			SpreadsheetMessage::ViewVectorDomain { domain } => {
 				self.viewing_vector_data_domain = domain;
 				self.update_layout(responses);
 			}
@@ -106,7 +106,7 @@ struct LayoutData<'a> {
 	current_depth: usize,
 	desired_path: &'a mut Vec<usize>,
 	breadcrumbs: Vec<String>,
-	vector_data_domain: VectorDataDomain,
+	vector_data_domain: VectorDomain,
 }
 
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
@@ -195,19 +195,19 @@ impl TableRowLayout for Vector {
 			.widget_holder(),
 		];
 
-		let domain_entries = [VectorDataDomain::Points, VectorDataDomain::Segments, VectorDataDomain::Regions]
+		let domain_entries = [VectorDomain::Points, VectorDomain::Segments, VectorDomain::Regions]
 			.into_iter()
 			.map(|domain| {
 				RadioEntryData::new(format!("{domain:?}"))
 					.label(format!("{domain:?}"))
-					.on_update(move |_| SpreadsheetMessage::ViewVectorDataDomain { domain }.into())
+					.on_update(move |_| SpreadsheetMessage::ViewVectorDomain { domain }.into())
 			})
 			.collect();
 		let domain = vec![RadioInput::new(domain_entries).selected_index(Some(data.vector_data_domain as u32)).widget_holder()];
 
 		let mut table_rows = Vec::new();
 		match data.vector_data_domain {
-			VectorDataDomain::Points => {
+			VectorDomain::Points => {
 				table_rows.push(column_headings(&["", "position"]));
 				table_rows.extend(
 					self.point_domain
@@ -215,7 +215,7 @@ impl TableRowLayout for Vector {
 						.map(|(id, position)| vec![TextLabel::new(format!("{}", id.inner())).widget_holder(), TextLabel::new(format!("{}", position)).widget_holder()]),
 				);
 			}
-			VectorDataDomain::Segments => {
+			VectorDomain::Segments => {
 				table_rows.push(column_headings(&["", "start_index", "end_index", "handles"]));
 				table_rows.extend(self.segment_domain.iter().map(|(id, start, end, handles)| {
 					vec![
@@ -226,7 +226,7 @@ impl TableRowLayout for Vector {
 					]
 				}));
 			}
-			VectorDataDomain::Regions => {
+			VectorDomain::Regions => {
 				table_rows.push(column_headings(&["", "segment_range", "fill"]));
 				table_rows.extend(self.region_domain.iter().map(|(id, segment_range, fill)| {
 					vec![

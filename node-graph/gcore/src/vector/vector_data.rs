@@ -16,7 +16,7 @@ use core::borrow::Borrow;
 use core::hash::Hash;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
-pub use indexed::VectorDataIndex;
+pub use indexed::VectorIndex;
 use kurbo::{Affine, BezPath, Rect, Shape};
 pub use modification::*;
 use std::collections::HashMap;
@@ -48,13 +48,13 @@ pub fn migrate_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resu
 	#[serde(untagged)]
 	#[allow(clippy::large_enum_variant)]
 	enum EitherFormat {
-		VectorData(Vector),
+		Vector(Vector),
 		OldVectorData(OldVectorData),
-		VectorDataTable(Table<Vector>),
+		VectorTable(Table<Vector>),
 	}
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
-		EitherFormat::VectorData(vector_data) => Table::new_from_element(vector_data),
+		EitherFormat::Vector(vector_data) => Table::new_from_element(vector_data),
 		EitherFormat::OldVectorData(old) => {
 			let mut vector_data_table = Table::new_from_element(Vector {
 				style: old.style,
@@ -68,7 +68,7 @@ pub fn migrate_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resu
 			*vector_data_table.iter_mut().next().unwrap().alpha_blending = old.alpha_blending;
 			vector_data_table
 		}
-		EitherFormat::VectorDataTable(vector_data_table) => vector_data_table,
+		EitherFormat::VectorTable(vector_data_table) => vector_data_table,
 	})
 }
 

@@ -12,7 +12,7 @@ pub struct Point {
 /// Useful indexes to speed up various operations on [`Vector`].
 ///
 /// Important: It is the user's responsibility to ensure the indexes remain valid after mutations to the data.
-pub struct VectorDataIndex {
+pub struct VectorIndex {
 	/// Points and segments form a graph. Store it here in a form amenable to graph algorithms.
 	///
 	/// Currently, segment data is not stored as it is not used, but it could easily be added.
@@ -23,8 +23,8 @@ pub struct VectorDataIndex {
 	// TODO: faces
 }
 
-impl VectorDataIndex {
-	/// Construct a [`VectorDataIndex`] by building indexes from the given [`Vector`]. Takes `O(n)` time.
+impl VectorIndex {
+	/// Construct a [`VectorIndex`] by building indexes from the given [`Vector`]. Takes `O(n)` time.
 	pub fn build_from(data: &Vector) -> Self {
 		let point_to_offset = data.point_domain.ids().iter().copied().enumerate().map(|(a, b)| (b, a)).collect::<FxHashMap<_, _>>();
 

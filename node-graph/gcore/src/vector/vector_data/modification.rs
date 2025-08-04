@@ -656,12 +656,12 @@ impl<'a> AppendBezpath<'a> {
 	}
 }
 
-pub trait VectorDataExt {
+pub trait VectorExt {
 	/// Appends a Kurbo BezPath to the vector data.
 	fn append_bezpath(&mut self, bezpath: BezPath);
 }
 
-impl VectorDataExt for Vector {
+impl VectorExt for Vector {
 	fn append_bezpath(&mut self, bezpath: BezPath) {
 		AppendBezpath::append_bezpath(self, bezpath);
 	}

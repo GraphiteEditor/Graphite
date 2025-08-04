@@ -1,4 +1,4 @@
-use crate::vector::{PointDomain, PointId, SegmentDomain, Vector, VectorDataIndex};
+use crate::vector::{PointDomain, PointId, SegmentDomain, Vector, VectorIndex};
 use glam::{DAffine2, DVec2};
 use petgraph::prelude::UnGraphMap;
 use rustc_hash::FxHashSet;
@@ -12,7 +12,7 @@ pub trait MergeByDistanceExt {
 impl MergeByDistanceExt for Vector {
 	fn merge_by_distance_topological(&mut self, distance: f64) {
 		// Treat self as an undirected graph
-		let indices = VectorDataIndex::build_from(self);
+		let indices = VectorIndex::build_from(self);
 
 		// TODO: We lose information on the winding order by using an undirected graph. Switch to a directed graph and fix the algorithm to handle that.
 		// Graph containing only short edges, referencing the data graph

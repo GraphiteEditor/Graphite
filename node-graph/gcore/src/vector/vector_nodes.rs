@@ -3,7 +3,7 @@ use super::algorithms::offset_subpath::offset_bezpath;
 use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use super::misc::{CentroidType, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
-use super::{PointId, SegmentDomain, SegmentId, StrokeId, Vector, VectorDataExt};
+use super::{PointId, SegmentDomain, SegmentId, StrokeId, Vector, VectorExt};
 use crate::bounds::BoundingBox;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
@@ -28,11 +28,11 @@ use std::f64::consts::TAU;
 
 /// Implemented for types that can be converted to an iterator of vector data.
 /// Used for the fill and stroke node so they can be used on `Vector` or `GraphicGroup`.
-trait VectorDataTableIterMut {
+trait VectorTableIterMut {
 	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, Vector>>;
 }
 
-impl VectorDataTableIterMut for Table<Graphic> {
+impl VectorTableIterMut for Table<Graphic> {
 	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, Vector>> {
 		// Grab only the direct children
 		self.iter_mut()
@@ -41,7 +41,7 @@ impl VectorDataTableIterMut for Table<Graphic> {
 	}
 }
 
-impl VectorDataTableIterMut for Table<Vector> {
+impl VectorTableIterMut for Table<Vector> {
 	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, Vector>> {
 		self.iter_mut()
 	}
@@ -75,7 +75,7 @@ async fn assign_colors<T>(
 	repeat_every: u32,
 ) -> T
 where
-	T: VectorDataTableIterMut + 'n + Send,
+	T: VectorTableIterMut + 'n + Send,
 {
 	let length = vector_group.vector_iter_mut().count();
 	let gradient = if reverse { gradient.reversed() } else { gradient };
@@ -139,7 +139,7 @@ async fn fill<F: Into<Fill> + 'n + Send, V>(
 	_backup_gradient: Gradient,
 ) -> V
 where
-	V: VectorDataTableIterMut + 'n + Send,
+	V: VectorTableIterMut + 'n + Send,
 {
 	let fill: Fill = fill.into();
 	for vector in vector_data.vector_iter_mut() {
@@ -192,7 +192,7 @@ async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	dash_offset: f64,
 ) -> Table<V>
 where
-	Table<V>: VectorDataTableIterMut + 'n + Send,
+	Table<V>: VectorTableIterMut + 'n + Send,
 {
 	let stroke = Stroke {
 		color: color.into(),
