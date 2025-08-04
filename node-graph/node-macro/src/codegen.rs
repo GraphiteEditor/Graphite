@@ -406,7 +406,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 			#register_node_impl
 
-			#[cfg_attr(not(target_arch = "wasm32"), ctor)]
+			#[cfg_attr(not(target_family = "wasm"), ctor)]
 			fn register_metadata() {
 				let metadata = NodeMetadata {
 					display_name: #display_name,
@@ -618,7 +618,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 
 	Ok(quote! {
 
-		#[cfg_attr(not(target_arch = "wasm32"), ctor)]
+		#[cfg_attr(not(target_family = "wasm"), ctor)]
 		fn register_node() {
 			let mut registry = NODE_REGISTRY.lock().unwrap();
 			registry.insert(
@@ -628,7 +628,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 				]
 			);
 		}
-		#[cfg(target_arch = "wasm32")]
+		#[cfg(target_family = "wasm")]
 		#[unsafe(no_mangle)]
 		extern "C" fn #registry_name() {
 			register_node();

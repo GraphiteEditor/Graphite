@@ -64,7 +64,7 @@ impl ShapeGizmoHandler for StarGizmoHandler {
 		overlay_context: &mut OverlayContext,
 	) {
 		self.number_of_points_dial.overlays(document, selected_star_layer, shape_editor, mouse_position, overlay_context);
-		self.point_radius_handle.overlays(selected_star_layer, document, input, mouse_position, overlay_context);
+		self.point_radius_handle.overlays(selected_star_layer, document, input, overlay_context);
 
 		star_outline(selected_star_layer, document, overlay_context);
 	}
@@ -82,7 +82,7 @@ impl ShapeGizmoHandler for StarGizmoHandler {
 		}
 
 		if self.point_radius_handle.is_dragging_or_snapped() {
-			self.point_radius_handle.overlays(None, document, input, mouse_position, overlay_context);
+			self.point_radius_handle.overlays(None, document, input, overlay_context);
 		}
 	}
 

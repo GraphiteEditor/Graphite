@@ -11,7 +11,8 @@ use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::Color;
 use graphene_std::NodeInputDecleration;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::{CPU, GPU, RasterDataTable};
+use graphene_std::raster_types::{CPU, GPU, Raster};
+use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::Gradient;
 use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorModificationType};
@@ -211,7 +212,7 @@ pub fn new_vector_layer(subpaths: Vec<Subpath<PointId>>, id: NodeId, parent: Lay
 }
 
 /// Create a new bitmap layer.
-pub fn new_image_layer(image_frame: RasterDataTable<CPU>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+pub fn new_image_layer(image_frame: Table<Raster<CPU>>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	let insert_index = 0;
 	responses.add(GraphOperationMessage::NewBitmapLayer {
 		id,
@@ -433,6 +434,16 @@ impl<'a> NodeGraphLayer<'a> {
 			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
 	}
 
+	/// Node id of a visible node if it exists in the layer's primary flow until another layer
+	pub fn upstream_visible_node_id_from_name_in_layer(&self, node_name: &str) -> Option<NodeId> {
+		// `.skip(1)` is used to skip self
+		self.horizontal_layer_flow()
+			.skip(1)
+			.take_while(|node_id| !self.network_interface.is_layer(node_id, &[]))
+			.filter(|node_id| self.network_interface.is_visible(node_id, &[]))
+			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
+	}
+
 	/// Node id of a protonode if it exists in the layer's primary flow
 	pub fn upstream_node_id_from_protonode(&self, protonode_identifier: ProtoNodeIdentifier) -> Option<NodeId> {
 		self.horizontal_layer_flow()
@@ -447,10 +458,11 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// Find all of the inputs of a specific node within the layer's primary flow, up until the next layer is reached.
 	pub fn find_node_inputs(&self, node_name: &str) -> Option<&'a Vec<NodeInput>> {
+		// `.skip(1)` is used to skip self
 		self.horizontal_layer_flow()
-			.skip(1)// Skip self
-			.take_while(|node_id| !self.network_interface.is_layer(node_id,&[]))
-			.find(|node_id| self.network_interface.reference(node_id,&[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
+			.skip(1)
+			.take_while(|node_id| !self.network_interface.is_layer(node_id, &[]))
+			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
 			.and_then(|node_id| self.network_interface.document_network().nodes.get(&node_id).map(|node| &node.inputs))
 	}
 
@@ -464,6 +476,6 @@ impl<'a> NodeGraphLayer<'a> {
 	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
 		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]).0.nested_type().clone();
 
-		layer_input_type == concrete!(RasterDataTable<CPU>) || layer_input_type == concrete!(RasterDataTable<GPU>)
+		layer_input_type == concrete!(Table<Raster<CPU>>) || layer_input_type == concrete!(Table<Raster<GPU>>)
 	}
 }

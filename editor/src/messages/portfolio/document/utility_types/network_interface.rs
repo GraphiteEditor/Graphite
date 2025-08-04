@@ -13,7 +13,9 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graph_craft::{Type, concrete};
+use graphene_std::Artboard;
 use graphene_std::math::quad::Quad;
+use graphene_std::table::Table;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::{PointId, VectorData, VectorModificationType};
@@ -507,8 +509,8 @@ impl NodeNetworkInterface {
 			InputConnector::Node { node_id, input_index } => (node_id, input_index),
 			InputConnector::Export(export_index) => {
 				let Some((encapsulating_node_id, encapsulating_node_id_path)) = network_path.split_last() else {
-					// The outermost network export defaults to an ArtboardGroupTable.
-					return Some((concrete!(graphene_std::ArtboardGroupTable), TypeSource::OuterMostExportDefault));
+					// The outermost network export defaults to a Table<Artboard>.
+					return Some((concrete!(Table<Artboard>), TypeSource::OuterMostExportDefault));
 				};
 
 				let output_type = self.output_type(encapsulating_node_id, export_index, encapsulating_node_id_path);
@@ -1424,13 +1426,13 @@ impl NodeNetworkInterface {
 			.any(|id| id == potentially_upstream_node)
 	}
 
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(target_family = "wasm"))]
 	fn text_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<f64> {
 		warn!("Failed to find width of {node_id:#?} in network_path {network_path:?} due to non-wasm arch");
 		Some(0.)
 	}
 
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(target_family = "wasm")]
 	fn text_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<f64> {
 		let document = web_sys::window().unwrap().document().unwrap();
 		let div = match document.create_element("div") {
@@ -3445,12 +3447,17 @@ impl NodeNetworkInterface {
 	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<VectorData> {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
 
-		if let Some(vector_data) = graph_layer.upstream_node_id_from_name("Path").and_then(|node| self.document_metadata.vector_modify.get(&node)) {
-			let mut modified = vector_data.clone();
-			if let Some(TaggedValue::VectorModification(modification)) = graph_layer.find_input("Path", 1) {
-				modification.apply(&mut modified);
+		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer("Path") {
+			if let Some(vector_data) = self.document_metadata.vector_modify.get(&path_node) {
+				let mut modified = vector_data.clone();
+
+				let path_node = self.document_network().nodes.get(&path_node);
+				let modification_input = path_node.and_then(|node: &DocumentNode| node.inputs.get(1)).and_then(|input| input.as_value());
+				if let Some(TaggedValue::VectorModification(modification)) = modification_input {
+					modification.apply(&mut modified);
+				}
+				return Some(modified);
 			}
-			return Some(modified);
 		}
 
 		self.document_metadata
@@ -3553,8 +3560,8 @@ impl NodeNetworkInterface {
 	}
 
 	/// Update the cached first instance source id of the layers
-	pub fn update_first_instance_source_id(&mut self, new: HashMap<NodeId, Option<NodeId>>) {
-		self.document_metadata.first_instance_source_ids = new;
+	pub fn update_first_element_source_id(&mut self, new: HashMap<NodeId, Option<NodeId>>) {
+		self.document_metadata.first_element_source_ids = new;
 	}
 
 	/// Update the cached click targets of the layers
@@ -6604,11 +6611,24 @@ struct InputTransientMetadata {
 fn migrate_output_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
 	use serde::Deserialize;
 
-	const REPLACEMENTS: [(&str, &str); 4] = [
-		("VectorData", "Instances<VectorData>"),
-		("GraphicGroup", "Instances<GraphicGroup>"),
-		("ImageFrame", "Instances<Image>"),
-		("Instances<ImageFrame>", "Instances<Image>"),
+	const REPLACEMENTS: &[(&str, &str)] = &[
+		// Single to table data
+		("VectorData", "Table<VectorData>"),
+		("GraphicGroup", "Table<GraphicGroup>"),
+		("ImageFrame", "Table<Image>"),
+		// `ImageFrame` to `Image` rename
+		("Instances<ImageFrame>", "Table<Image>"),
+		// `Instances` to `Table` rename
+		("Instances<VectorData>", "Table<VectorData>"),
+		("Instances<GraphicGroup>", "Table<GraphicGroup>"),
+		("Instances<Image>", "Table<Image>"),
+		("Instances<GraphicElement>", "Table<Graphic>"),
+		("Table<GraphicElement>", "Table<Graphic>"),
+		("Future<Instances<VectorData>>", "Future<Table<VectorData>>"),
+		("Future<Instances<GraphicGroup>>", "Future<Table<GraphicGroup>>"),
+		("Future<Instances<Image>>", "Future<Table<Image>>"),
+		("Future<Instances<GraphicElement>>", "Future<Table<Graphic>>"),
+		("Future<Table<GraphicElement>>", "Future<Table<Graphic>>"),
 	];
 
 	let mut names = Vec::<String>::deserialize(deserializer)?;

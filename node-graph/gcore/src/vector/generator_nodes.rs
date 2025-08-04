@@ -2,21 +2,22 @@ use super::misc::{ArcType, AsU64, GridType};
 use super::{PointId, SegmentId, StrokeId};
 use crate::Ctx;
 use crate::registry::types::{Angle, PixelSize};
-use crate::vector::{HandleId, VectorData, VectorDataTable};
+use crate::table::Table;
+use crate::vector::{HandleId, VectorData};
 use bezier_rs::Subpath;
 use glam::DVec2;
 
 trait CornerRadius {
-	fn generate(self, size: DVec2, clamped: bool) -> VectorDataTable;
+	fn generate(self, size: DVec2, clamped: bool) -> Table<VectorData>;
 }
 impl CornerRadius for f64 {
-	fn generate(self, size: DVec2, clamped: bool) -> VectorDataTable {
+	fn generate(self, size: DVec2, clamped: bool) -> Table<VectorData> {
 		let clamped_radius = if clamped { self.clamp(0., size.x.min(size.y).max(0.) / 2.) } else { self };
-		VectorDataTable::new(VectorData::from_subpath(Subpath::new_rounded_rect(size / -2., size / 2., [clamped_radius; 4])))
+		Table::new_from_element(VectorData::from_subpath(Subpath::new_rounded_rect(size / -2., size / 2., [clamped_radius; 4])))
 	}
 }
 impl CornerRadius for [f64; 4] {
-	fn generate(self, size: DVec2, clamped: bool) -> VectorDataTable {
+	fn generate(self, size: DVec2, clamped: bool) -> Table<VectorData> {
 		let clamped_radius = if clamped {
 			// Algorithm follows the CSS spec: <https://drafts.csswg.org/css-backgrounds/#corner-overlap>
 
@@ -32,7 +33,7 @@ impl CornerRadius for [f64; 4] {
 		} else {
 			self
 		};
-		VectorDataTable::new(VectorData::from_subpath(Subpath::new_rounded_rect(size / -2., size / 2., clamped_radius)))
+		Table::new_from_element(VectorData::from_subpath(Subpath::new_rounded_rect(size / -2., size / 2., clamped_radius)))
 	}
 }
 
@@ -43,9 +44,9 @@ fn circle(
 	#[unit(" px")]
 	#[default(50.)]
 	radius: f64,
-) -> VectorDataTable {
+) -> Table<VectorData> {
 	let radius = radius.abs();
-	VectorDataTable::new(VectorData::from_subpath(Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
+	Table::new_from_element(VectorData::from_subpath(Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
@@ -60,8 +61,8 @@ fn arc(
 	#[range((0., 360.))]
 	sweep_angle: Angle,
 	arc_type: ArcType,
-) -> VectorDataTable {
-	VectorDataTable::new(VectorData::from_subpath(Subpath::new_arc(
+) -> Table<VectorData> {
+	Table::new_from_element(VectorData::from_subpath(Subpath::new_arc(
 		radius,
 		start_angle / 360. * std::f64::consts::TAU,
 		sweep_angle / 360. * std::f64::consts::TAU,
@@ -83,7 +84,7 @@ fn ellipse(
 	#[unit(" px")]
 	#[default(25)]
 	radius_y: f64,
-) -> VectorDataTable {
+) -> Table<VectorData> {
 	let radius = DVec2::new(radius_x, radius_y);
 	let corner1 = -radius;
 	let corner2 = radius;
@@ -97,7 +98,7 @@ fn ellipse(
 			.push([HandleId::end(ellipse.segment_domain.ids()[i]), HandleId::primary(ellipse.segment_domain.ids()[(i + 1) % len])]);
 	}
 
-	VectorDataTable::new(ellipse)
+	Table::new_from_element(ellipse)
 }
 
 #[node_macro::node(category("Vector: Shape"), properties("rectangle_properties"))]
@@ -113,7 +114,7 @@ fn rectangle<T: CornerRadius>(
 	_individual_corner_radii: bool, // TODO: Move this to the bottom once we have a migration capability
 	#[implementations(f64, [f64; 4])] corner_radius: T,
 	#[default(true)] clamped: bool,
-) -> VectorDataTable {
+) -> Table<VectorData> {
 	corner_radius.generate(DVec2::new(width, height), clamped)
 }
 
@@ -128,10 +129,10 @@ fn regular_polygon<T: AsU64>(
 	#[unit(" px")]
 	#[default(50)]
 	radius: f64,
-) -> VectorDataTable {
+) -> Table<VectorData> {
 	let points = sides.as_u64();
 	let radius: f64 = radius * 2.;
-	VectorDataTable::new(VectorData::from_subpath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
+	Table::new_from_element(VectorData::from_subpath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
@@ -148,17 +149,17 @@ fn star<T: AsU64>(
 	#[unit(" px")]
 	#[default(25)]
 	radius_2: f64,
-) -> VectorDataTable {
+) -> Table<VectorData> {
 	let points = sides.as_u64();
 	let diameter: f64 = radius_1 * 2.;
 	let inner_diameter = radius_2 * 2.;
 
-	VectorDataTable::new(VectorData::from_subpath(Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
+	Table::new_from_element(VectorData::from_subpath(Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn line(_: impl Ctx, _primary: (), #[default(0., 0.)] start: PixelSize, #[default(100., 100.)] end: PixelSize) -> VectorDataTable {
-	VectorDataTable::new(VectorData::from_subpath(Subpath::new_line(start, end)))
+fn line(_: impl Ctx, _primary: (), #[default(0., 0.)] start: PixelSize, #[default(100., 100.)] end: PixelSize) -> Table<VectorData> {
+	Table::new_from_element(VectorData::from_subpath(Subpath::new_line(start, end)))
 }
 
 trait GridSpacing {
@@ -188,7 +189,7 @@ fn grid<T: GridSpacing>(
 	#[default(10)] columns: u32,
 	#[default(10)] rows: u32,
 	#[default(30., 30.)] angles: DVec2,
-) -> VectorDataTable {
+) -> Table<VectorData> {
 	let (x_spacing, y_spacing) = spacing.as_dvec2().into();
 	let (angle_a, angle_b) = angles.into();
 
@@ -270,7 +271,7 @@ fn grid<T: GridSpacing>(
 		}
 	}
 
-	VectorDataTable::new(vector_data)
+	Table::new_from_element(vector_data)
 }
 
 #[cfg(test)]
@@ -284,9 +285,9 @@ mod tests {
 
 		// Works properly
 		let grid = grid((), (), GridType::Isometric, 10., 5, 5, (30., 30.).into());
-		assert_eq!(grid.instance_ref_iter().next().unwrap().instance.point_domain.ids().len(), 5 * 5);
-		assert_eq!(grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-		for (_, bezier, _, _) in grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter() {
+		assert_eq!(grid.iter_ref().next().unwrap().element.point_domain.ids().len(), 5 * 5);
+		assert_eq!(grid.iter_ref().next().unwrap().element.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+		for (_, bezier, _, _) in grid.iter_ref().next().unwrap().element.segment_bezier_iter() {
 			assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
 			assert!(
 				((bezier.start - bezier.end).length() - 10.).abs() < 1e-5,
@@ -299,9 +300,9 @@ mod tests {
 	#[test]
 	fn skew_isometric_grid_test() {
 		let grid = grid((), (), GridType::Isometric, 10., 5, 5, (40., 30.).into());
-		assert_eq!(grid.instance_ref_iter().next().unwrap().instance.point_domain.ids().len(), 5 * 5);
-		assert_eq!(grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-		for (_, bezier, _, _) in grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter() {
+		assert_eq!(grid.iter_ref().next().unwrap().element.point_domain.ids().len(), 5 * 5);
+		assert_eq!(grid.iter_ref().next().unwrap().element.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+		for (_, bezier, _, _) in grid.iter_ref().next().unwrap().element.segment_bezier_iter() {
 			assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
 			let vector = bezier.start - bezier.end;
 			let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;

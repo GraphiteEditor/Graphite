@@ -10,10 +10,11 @@ use glam::IVec2;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::ProtoNodeIdentifier;
+use graphene_std::table::Table;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::uuid::NodeId;
+use graphene_std::vector::VectorData;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign};
-use graphene_std::vector::{VectorData, VectorDataTable};
 use std::collections::HashMap;
 
 const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
@@ -29,16 +30,16 @@ pub struct NodeReplacement<'a> {
 const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	// graphic element
 	NodeReplacement {
-		node: graphene_std::graphic_element::append_artboard::IDENTIFIER,
-		aliases: &["graphene_core::AddArtboardNode"],
+		node: graphene_std::artboard::append_artboard::IDENTIFIER,
+		aliases: &["graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic_element::to_artboard::IDENTIFIER,
-		aliases: &["graphene_core::ConstructArtboardNode"],
+		node: graphene_std::artboard::to_artboard::IDENTIFIER,
+		aliases: &["graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::graphic_element::to_element::IDENTIFIER,
-		aliases: &["graphene_core::ToGraphicElementNode"],
+		aliases: &["graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::graphic_element::to_group::IDENTIFIER,
@@ -386,7 +387,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::image_value::IDENTIFIER,
-		aliases: &["graphene_std::raster::ImageValueNode"],
+		aliases: &["graphene_std::raster::ImageValueNode", "graphene_std::raster::ImageNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER,
@@ -616,7 +617,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		};
 		let path_node = path_node_type.node_template_input_override([
-			Some(NodeInput::value(TaggedValue::VectorData(VectorDataTable::new(vector_data)), true)),
+			Some(NodeInput::value(TaggedValue::VectorData(Table::new_from_element(vector_data)), true)),
 			Some(NodeInput::value(TaggedValue::VectorModification(Default::default()), false)),
 		]);
 

@@ -356,7 +356,7 @@ fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVe
 mod test_freehand {
 	use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta};
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-	use crate::messages::tool::common_functionality::graph_modification_utils::get_stroke_width;
+	use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_stroke_width};
 	use crate::messages::tool::tool_messages::freehand_tool::FreehandOptionsUpdate;
 	use crate::test_utils::test_prelude::*;
 	use glam::{DAffine2, DVec2};
@@ -368,6 +368,10 @@ mod test_freehand {
 
 		layers
 			.filter_map(|layer| {
+				let graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
+				// Only get layers with path nodes
+				let _ = graph_layer.upstream_visible_node_id_from_name_in_layer("Path")?;
+
 				let vector_data = document.network_interface.compute_modified_vector(layer)?;
 				let transform = document.metadata().transform_to_viewport(layer);
 				Some((vector_data, transform))
@@ -376,9 +380,7 @@ mod test_freehand {
 	}
 
 	fn verify_path_points(vector_data_list: &[(VectorData, DAffine2)], expected_captured_points: &[DVec2], tolerance: f64) -> Result<(), String> {
-		if vector_data_list.len() == 0 {
-			return Err("No vector data found after drawing".to_string());
-		}
+		assert_eq!(vector_data_list.len(), 1, "there should be one vector data");
 
 		let path_data = vector_data_list.iter().find(|(data, _)| data.point_domain.ids().len() > 0).ok_or("Could not find path data")?;
 
@@ -386,15 +388,7 @@ mod test_freehand {
 		let point_count = vector_data.point_domain.ids().len();
 		let segment_count = vector_data.segment_domain.ids().len();
 
-		let actual_positions: Vec<DVec2> = vector_data
-			.point_domain
-			.ids()
-			.iter()
-			.filter_map(|&point_id| {
-				let position = vector_data.point_domain.position_from_id(point_id)?;
-				Some(transform.transform_point2(position))
-			})
-			.collect();
+		let actual_positions: Vec<DVec2> = vector_data.point_domain.positions().iter().map(|&position| transform.transform_point2(position)).collect();
 
 		if segment_count != point_count - 1 {
 			return Err(format!("Expected segments to be one less than points, got {} segments for {} points", segment_count, point_count));

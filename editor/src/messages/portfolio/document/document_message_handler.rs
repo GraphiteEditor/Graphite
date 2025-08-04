@@ -32,7 +32,8 @@ use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool::{boolean_intersect, path_bool_lib};
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::{Raster, RasterDataTable};
+use graphene_std::raster_types::Raster;
+use graphene_std::table::Table;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::style::ViewMode;
@@ -837,7 +838,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let layer = graph_modification_utils::new_image_layer(RasterDataTable::new(Raster::new_cpu(image)), layer_node_id, self.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_image_layer(Table::new_from_element(Raster::new_cpu(image)), layer_node_id, self.new_layer_parent(true), responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
@@ -1302,10 +1303,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::UpdateUpstreamTransforms {
 				upstream_footprints,
 				local_transforms,
-				first_instance_source_id,
+				first_element_source_id,
 			} => {
 				self.network_interface.update_transforms(upstream_footprints, local_transforms);
-				self.network_interface.update_first_instance_source_id(first_instance_source_id);
+				self.network_interface.update_first_element_source_id(first_element_source_id);
 			}
 			DocumentMessage::UpdateClickTargets { click_targets } => {
 				// TODO: Allow non layer nodes to have click targets
@@ -1434,20 +1435,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 							y: transform.translation.y,
 						},
 					})
-				}
-				// Some parts of the editior (e.g. navigation messages) depend on these bounds to be present
-				let bounds = if self.graph_view_overlay_open {
-					self.network_interface.all_nodes_bounding_box(&self.breadcrumb_network_path).cloned()
-				} else {
-					self.network_interface.document_bounds_document_space(true)
-				};
-				if bounds.is_some() {
-					responses.add(DeferMessage::TriggerNavigationReady);
-				} else {
-					// If we don't have bounds yet, we need wait until the node graph has run once more
-					responses.add(DeferMessage::AfterGraphRun {
-						messages: vec![DocumentMessage::PTZUpdate.into()],
-					});
 				}
 			}
 			DocumentMessage::SelectionStepBack => {
@@ -2160,7 +2147,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.artboard_name)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2170,15 +2157,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Artboard Name".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Artboard Name".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.transform_measurement)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2188,9 +2175,9 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("G/R/S Measurement".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("G/R/S Measurement".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
@@ -2199,7 +2186,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.quick_measurement)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2209,15 +2196,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Quick Measurement".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Quick Measurement".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.transform_cage)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2227,15 +2214,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Transform Cage".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Transform Cage".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.compass_rose)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2245,15 +2232,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Transform Dial".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Transform Dial".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.pivot)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2263,15 +2250,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Transform Pivot".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Transform Pivot".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.pivot)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2281,15 +2268,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Transform Origin".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Transform Origin".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.hover_outline)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2299,15 +2286,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Hover Outline".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Hover Outline".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.selection_outline)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2317,9 +2304,9 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Selection Outline".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Selection Outline".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
@@ -2328,7 +2315,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.path)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2338,15 +2325,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Path".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Path".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.anchors)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2356,15 +2343,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Anchors".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Anchors".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.handles)
 									.disabled(!self.overlays_visibility_settings.anchors)
@@ -2375,11 +2362,11 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
 								TextLabel::new("Handles".to_string())
 									.disabled(!self.overlays_visibility_settings.anchors)
-									.for_checkbox(&mut checkbox_id)
+									.for_checkbox(checkbox_id)
 									.widget_holder(),
 							]
 						},
@@ -2412,7 +2399,7 @@ impl DocumentMessageHandler {
 					.into_iter()
 					.chain(SNAP_FUNCTIONS_FOR_BOUNDING_BOXES.into_iter().map(|(name, closure, tooltip)| LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(*closure(&mut snapping_state))
 									.on_update(move |input: &CheckboxInput| {
@@ -2423,9 +2410,9 @@ impl DocumentMessageHandler {
 										.into()
 									})
 									.tooltip(tooltip)
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new(name).tooltip(tooltip).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new(name).tooltip(tooltip).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					}))
@@ -2434,7 +2421,7 @@ impl DocumentMessageHandler {
 					}])
 					.chain(SNAP_FUNCTIONS_FOR_PATHS.into_iter().map(|(name, closure, tooltip)| LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(*closure(&mut snapping_state2))
 									.on_update(move |input: &CheckboxInput| {
@@ -2445,9 +2432,9 @@ impl DocumentMessageHandler {
 										.into()
 									})
 									.tooltip(tooltip)
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new(name).tooltip(tooltip).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new(name).tooltip(tooltip).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					}))
@@ -2920,7 +2907,7 @@ impl DocumentMessageHandler {
 /// Create a network interface with a single export
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
-	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroupTable::default()), -1, "", &[]);
+	network_interface.add_export(TaggedValue::ArtboardGroup(Default::default()), -1, "", &[]);
 	network_interface
 }
 

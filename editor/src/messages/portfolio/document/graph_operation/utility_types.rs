@@ -11,12 +11,13 @@ use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Artboard;
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::{CPU, RasterDataTable};
+use graphene_std::raster_types::{CPU, Raster};
+use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::vector::VectorData;
 use graphene_std::vector::style::{Fill, Stroke};
 use graphene_std::vector::{PointId, VectorModificationType};
-use graphene_std::vector::{VectorData, VectorDataTable};
-use graphene_std::{GraphicGroupTable, NodeInputDecleration};
+use graphene_std::{Graphic, NodeInputDecleration};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -130,8 +131,8 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Creates an artboard as the primary export for the document network
 	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_document_node_type("Artboard").expect("Node").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroupTable::default()), true)),
-			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_std::GraphicGroupTable::default()), true)),
+			Some(NodeInput::value(TaggedValue::ArtboardGroup(Default::default()), true)),
+			Some(NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true)),
 			Some(NodeInput::value(TaggedValue::DVec2(artboard.location.into()), false)),
 			Some(NodeInput::value(TaggedValue::DVec2(artboard.dimensions.into()), false)),
 			Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
@@ -143,7 +144,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn insert_boolean_data(&mut self, operation: graphene_std::path_bool::BooleanOperation, layer: LayerNodeIdentifier) {
 		let boolean = resolve_document_node_type("Boolean Operation").expect("Boolean node does not exist").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_std::GraphicGroupTable::default()), true)),
+			Some(NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true)),
 			Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
 		]);
 
@@ -153,7 +154,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
-		let vector_data = VectorDataTable::new(VectorData::from_subpaths(subpaths, true));
+		let vector_data = Table::new_from_element(VectorData::from_subpaths(subpaths, true));
 
 		let shape = resolve_document_node_type("Path")
 			.expect("Path node does not exist")
@@ -218,7 +219,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
 	}
 
-	pub fn insert_image_data(&mut self, image_frame: RasterDataTable<CPU>, layer: LayerNodeIdentifier) {
+	pub fn insert_image_data(&mut self, image_frame: Table<Raster<CPU>>, layer: LayerNodeIdentifier) {
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let image = resolve_document_node_type("Image Value")
 			.expect("ImageValue node does not exist")
@@ -302,7 +303,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// TODO: Allow the path node to operate on Graphic Group data by utilizing the reference for each vector data in a group.
 		if node_definition.identifier == "Path" {
 			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type().clone();
-			if layer_input_type == concrete!(GraphicGroupTable) {
+			if layer_input_type == concrete!(Table<Graphic>) {
 				let Some(flatten_path_definition) = resolve_document_node_type("Flatten Path") else {
 					log::error!("Flatten Path does not exist in ModifyInputsContext::existing_node_id");
 					return None;

@@ -48,7 +48,7 @@ macro_rules! create_ids {
 	};
 }
 
-create_ids! { InstanceId, PointId, SegmentId, RegionId, StrokeId, FillId }
+create_ids! { PointId, SegmentId, RegionId, StrokeId, FillId }
 
 /// A no-op hasher that allows writing u64s (the id type).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -305,7 +305,7 @@ impl SegmentDomain {
 		&self.stroke
 	}
 
-	pub(crate) fn push(&mut self, id: SegmentId, start: usize, end: usize, handles: BezierHandles, stroke: StrokeId) {
+	pub fn push(&mut self, id: SegmentId, start: usize, end: usize, handles: BezierHandles, stroke: StrokeId) {
 		debug_assert!(!self.id.contains(&id), "Tried to push an existing point to a point domain");
 
 		self.id.push(id);

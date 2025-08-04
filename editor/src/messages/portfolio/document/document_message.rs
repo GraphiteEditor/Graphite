@@ -182,7 +182,7 @@ pub enum DocumentMessage {
 	UpdateUpstreamTransforms {
 		upstream_footprints: HashMap<NodeId, Footprint>,
 		local_transforms: HashMap<NodeId, DAffine2>,
-		first_instance_source_id: HashMap<NodeId, Option<NodeId>>,
+		first_element_source_id: HashMap<NodeId, Option<NodeId>>,
 	},
 	UpdateClickTargets {
 		click_targets: HashMap<NodeId, Vec<ClickTarget>>,

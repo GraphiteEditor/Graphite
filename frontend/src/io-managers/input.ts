@@ -303,13 +303,19 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (!dataTransfer || targetIsTextField(e.target || undefined)) return;
 		e.preventDefault();
 
+		const LAYER_DATA = "graphite/layer: ";
+		const NODES_DATA = "graphite/nodes: ";
+		const VECTOR_DATA = "graphite/vector: ";
+
 		Array.from(dataTransfer.items).forEach(async (item) => {
 			if (item.type === "text/plain") {
 				item.getAsString((text) => {
-					if (text.startsWith("graphite/layer: ")) {
-						editor.handle.pasteSerializedData(text.substring(16, text.length));
-					} else if (text.startsWith("graphite/nodes: ")) {
-						editor.handle.pasteSerializedNodes(text.substring(16, text.length));
+					if (text.startsWith(LAYER_DATA)) {
+						editor.handle.pasteSerializedData(text.substring(LAYER_DATA.length, text.length));
+					} else if (text.startsWith(NODES_DATA)) {
+						editor.handle.pasteSerializedNodes(text.substring(NODES_DATA.length, text.length));
+					} else if (text.startsWith(VECTOR_DATA)) {
+						editor.handle.pasteSerializedVector(text.substring(VECTOR_DATA.length, text.length));
 					}
 				});
 			}

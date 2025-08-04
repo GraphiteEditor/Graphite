@@ -1,8 +1,8 @@
 use crate::Color;
 use crate::bounds::BoundingBox;
-use crate::instances::Instances;
 use crate::math::quad::Quad;
 use crate::raster::Image;
+use crate::table::Table;
 use core::ops::Deref;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -60,8 +60,6 @@ where
 		&mut self.storage
 	}
 }
-
-pub type RasterDataTable<Storage> = Instances<Raster<Storage>>;
 
 pub use cpu::CPU;
 
@@ -165,9 +163,12 @@ mod gpu {
 #[cfg(not(feature = "wgpu"))]
 mod gpu {
 	use super::*;
+	use crate::raster_types::__private::Sealed;
 
-	#[derive(Clone, Debug)]
+	#[derive(Clone, Debug, PartialEq, Hash)]
 	pub struct GPU;
+
+	impl Sealed for Raster<GPU> {}
 
 	impl Storage for Raster<GPU> {
 		fn is_empty(&self) -> bool {
@@ -198,15 +199,15 @@ mod gpu_common {
 	}
 }
 
-impl<T> BoundingBox for RasterDataTable<T>
+impl<T> BoundingBox for Table<Raster<T>>
 where
 	Raster<T>: Storage,
 {
 	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.instance_ref_iter()
-			.filter(|instance| !instance.instance.is_empty()) // Eliminate empty images
-			.flat_map(|instance| {
-				let transform = transform * *instance.transform;
+		self.iter_ref()
+			.filter(|row| !row.element.is_empty()) // Eliminate empty images
+			.flat_map(|row| {
+				let transform = transform * *row.transform;
 				(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
 			})
 			.reduce(Quad::combine_bounds)

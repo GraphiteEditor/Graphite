@@ -1,10 +1,11 @@
-use crate::raster_types::{CPU, RasterDataTable};
-use crate::vector::VectorDataTable;
+use crate::raster_types::{CPU, Raster};
+use crate::table::Table;
+use crate::vector::VectorData;
 use crate::{Color, Ctx};
 use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category("Debug"), name("Log to Console"))]
-fn log_to_console<T: std::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2, Color, Option<Color>)] value: T) -> T {
+fn log_to_console<T: std::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, Table<VectorData>, DAffine2, Color, Option<Color>)] value: T) -> T {
 	// KEEP THIS `debug!()` - It acts as the output for the debug node itself
 	log::debug!("{:#?}", value);
 	value
@@ -30,6 +31,6 @@ fn unwrap<T: Default>(_: impl Ctx, #[implementations(Option<f64>, Option<f32>, O
 
 /// Meant for debugging purposes, not general use. Clones the input value.
 #[node_macro::node(category("Debug"))]
-fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&RasterDataTable<CPU>)] value: &'i T) -> T {
+fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&Table<Raster<CPU>>)] value: &'i T) -> T {
 	value.clone()
 }
