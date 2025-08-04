@@ -1,6 +1,7 @@
 use crate::CustomEvent;
 use crate::WindowSize;
 use crate::dialogs::dialog_open_graphite_file;
+use crate::dialogs::dialog_save_graphite_file;
 use crate::render::GraphicsState;
 use crate::render::WgpuContext;
 use graph_craft::wasm_application_io::WasmApplicationIo;
@@ -78,6 +79,31 @@ impl WinitApp {
 					let _ = event_loop_proxy.send_event(CustomEvent::DispatchMessage(message));
 				}
 			});
+		}
+
+		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerSaveDocument { .. })) {
+			let FrontendMessage::TriggerSaveDocument { document_id, name, path, document } = message else {
+				unreachable!()
+			};
+			if let Some(path) = path {
+				let _ = std::fs::write(&path, document);
+			} else {
+				let event_loop_proxy = self.event_loop_proxy.clone();
+				let _ = thread::spawn(move || {
+					let path = futures::executor::block_on(dialog_save_graphite_file(name));
+					if let Some(path) = path {
+						if let Err(e) = std::fs::write(&path, document) {
+							tracing::error!("Failed to save file: {}: {}", path.display(), e);
+						} else {
+							let message = Message::Portfolio(PortfolioMessage::DocumentPassMessage {
+								document_id,
+								message: DocumentMessage::SavedDocument { path: Some(path) },
+							});
+							let _ = event_loop_proxy.send_event(CustomEvent::DispatchMessage(message));
+						}
+					}
+				});
+			}
 		}
 
 		if responses.is_empty() {

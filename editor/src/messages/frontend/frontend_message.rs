@@ -12,6 +12,7 @@ use graph_craft::document::NodeId;
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
 use graphene_std::text::{Font, TextAlign};
+use std::path::PathBuf;
 
 #[cfg(not(target_family = "wasm"))]
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -62,6 +63,12 @@ pub enum FrontendMessage {
 	TriggerAboutGraphiteLocalizedCommitDate {
 		#[serde(rename = "commitDate")]
 		commit_date: String,
+	},
+	TriggerSaveDocument {
+		document_id: DocumentId,
+		name: String,
+		path: Option<PathBuf>,
+		document: String,
 	},
 	TriggerDownloadImage {
 		svg: String,

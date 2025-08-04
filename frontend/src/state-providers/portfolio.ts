@@ -6,6 +6,7 @@ import { type Editor } from "@graphite/editor";
 import {
 	type FrontendDocumentDetails,
 	TriggerFetchAndOpenDocument,
+	TriggerSaveDocument,
 	TriggerDownloadImage,
 	TriggerDownloadTextFile,
 	TriggerImport,
@@ -83,6 +84,9 @@ export function createPortfolioState(editor: Editor) {
 
 		const imageData = await extractPixelData(new Blob([data.content.data], { type: data.type }));
 		editor.handle.pasteImage(data.filename, new Uint8Array(imageData.data), imageData.width, imageData.height);
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerSaveDocument, (triggerSaveDocument) => {
+		downloadFileText(triggerSaveDocument.name, triggerSaveDocument.document);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerDownloadTextFile, (triggerFileDownload) => {
 		downloadFileText(triggerFileDownload.name, triggerFileDownload.document);
