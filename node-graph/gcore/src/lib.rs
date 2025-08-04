@@ -41,7 +41,7 @@ pub use graphene_core_shaders::AsU32;
 pub use graphene_core_shaders::blending;
 pub use graphene_core_shaders::choice_type;
 pub use graphene_core_shaders::color;
-pub use graphic_element::GraphicElement;
+pub use graphic_element::Graphic;
 pub use memo::MemoHash;
 pub use num_traits;
 use std::any::TypeId;

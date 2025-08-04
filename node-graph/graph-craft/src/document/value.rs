@@ -14,7 +14,7 @@ use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
 use graphene_core::vector::VectorData;
 use graphene_core::vector::style::Fill;
-use graphene_core::{Artboard, Color, GraphicElement, MemoHash, Node, Type};
+use graphene_core::{Artboard, Color, Graphic, MemoHash, Node, Type};
 use graphene_svg_renderer::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
@@ -180,13 +180,15 @@ tagged_value! {
 	// ===========
 	// TABLE TYPES
 	// ===========
-	GraphicElement(GraphicElement),
+	#[serde(alias = "GraphicElement")]
+	Graphic(Graphic),
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))] // TODO: Eventually remove this migration document upgrade code
 	VectorData(Table<VectorData>),
-	#[cfg_attr(target_family = "wasm", serde(alias = "ImageFrame", deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(alias = "ImageFrame")]
 	RasterData(Table<Raster<CPU>>),
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::graphic_element::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
-	GraphicGroup(Table<GraphicElement>),
+	GraphicGroup(Table<Graphic>),
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::artboard::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
 	ArtboardGroup(Table<Artboard>),
 	// ============

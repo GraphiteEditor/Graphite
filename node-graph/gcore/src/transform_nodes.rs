@@ -2,7 +2,7 @@ use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::Table;
 use crate::transform::{ApplyTransform, Footprint, Transform};
 use crate::vector::VectorData;
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, GraphicElement, OwnedContextImpl};
+use crate::{CloneVarArgs, Context, Ctx, ExtractAll, Graphic, OwnedContextImpl};
 use core::f64;
 use glam::{DAffine2, DVec2};
 
@@ -13,7 +13,7 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 		Context -> DAffine2,
 		Context -> DVec2,
 		Context -> Table<VectorData>,
-		Context -> Table<GraphicElement>,
+		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
 	)]
@@ -43,7 +43,7 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 #[node_macro::node(category(""))]
 fn replace_transform<Data, TransformInput: Transform>(
 	_: impl Ctx,
-	#[implementations(Table<VectorData>, Table<Raster<CPU>>, Table<GraphicElement>)] mut data: Table<Data>,
+	#[implementations(Table<VectorData>, Table<Raster<CPU>>, Table<Graphic>)] mut data: Table<Data>,
 	#[implementations(DAffine2)] transform: TransformInput,
 ) -> Table<Data> {
 	for data_transform in data.iter_mut() {
@@ -56,7 +56,7 @@ fn replace_transform<Data, TransformInput: Transform>(
 async fn extract_transform<T>(
 	_: impl Ctx,
 	#[implementations(
-		Table<GraphicElement>,
+		Table<Graphic>,
 		Table<VectorData>,
 		Table<Raster<CPU>>,
 		Table<Raster<GPU>>,
@@ -91,7 +91,7 @@ async fn boundless_footprint<T: 'n + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
 		Context -> Table<VectorData>,
-		Context -> Table<GraphicElement>,
+		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
 		Context -> String,
@@ -109,7 +109,7 @@ async fn freeze_real_time<T: 'n + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
 		Context -> Table<VectorData>,
-		Context -> Table<GraphicElement>,
+		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
 		Context -> String,

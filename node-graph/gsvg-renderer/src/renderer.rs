@@ -16,7 +16,7 @@ use graphene_core::uuid::{NodeId, generate_uuid};
 use graphene_core::vector::VectorData;
 use graphene_core::vector::click_target::{ClickTarget, FreePoint};
 use graphene_core::vector::style::{Fill, Stroke, StrokeAlign, ViewMode};
-use graphene_core::{Artboard, GraphicElement};
+use graphene_core::{Artboard, Graphic};
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -212,7 +212,7 @@ pub struct RenderMetadata {
 }
 
 // TODO: Rename to "Graphical"
-pub trait GraphicElementRendered: BoundingBox + RenderComplexity {
+pub trait Render: BoundingBox + RenderComplexity {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 
 	#[cfg(feature = "vello")]
@@ -234,7 +234,7 @@ pub trait GraphicElementRendered: BoundingBox + RenderComplexity {
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {}
 }
 
-impl GraphicElementRendered for Table<GraphicElement> {
+impl Render for Table<Graphic> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let mut iter = self.iter_ref().peekable();
 		let mut mask_state = None;
@@ -408,7 +408,7 @@ impl GraphicElementRendered for Table<GraphicElement> {
 	}
 }
 
-impl GraphicElementRendered for Table<VectorData> {
+impl Render for Table<VectorData> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter_ref() {
 			let multiplied_transform = *row.transform;
@@ -811,7 +811,7 @@ impl GraphicElementRendered for Table<VectorData> {
 	}
 }
 
-impl GraphicElementRendered for Artboard {
+impl Render for Artboard {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		if !render_params.hide_artboards {
 			// Background
@@ -907,7 +907,7 @@ impl GraphicElementRendered for Artboard {
 	}
 }
 
-impl GraphicElementRendered for Table<Artboard> {
+impl Render for Table<Artboard> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for artboard in self.iter_ref() {
 			artboard.element.render_svg(render, render_params);
@@ -938,7 +938,7 @@ impl GraphicElementRendered for Table<Artboard> {
 	}
 }
 
-impl GraphicElementRendered for Table<Raster<CPU>> {
+impl Render for Table<Raster<CPU>> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter_ref() {
 			let image = row.element;
@@ -1081,7 +1081,7 @@ impl GraphicElementRendered for Table<Raster<CPU>> {
 
 const LAZY_ARC_VEC_ZERO_U8: LazyLock<Arc<Vec<u8>>> = LazyLock::new(|| Arc::new(Vec::new()));
 
-impl GraphicElementRendered for Table<Raster<GPU>> {
+impl Render for Table<Raster<GPU>> {
 	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {
 		log::warn!("tried to render texture as an svg");
 	}
@@ -1137,33 +1137,33 @@ impl GraphicElementRendered for Table<Raster<GPU>> {
 	}
 }
 
-impl GraphicElementRendered for GraphicElement {
+impl Render for Graphic {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
-			GraphicElement::VectorData(vector_data) => vector_data.render_svg(render, render_params),
-			GraphicElement::RasterDataCPU(raster) => raster.render_svg(render, render_params),
-			GraphicElement::RasterDataGPU(_raster) => (),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_svg(render, render_params),
+			Graphic::VectorData(vector_data) => vector_data.render_svg(render, render_params),
+			Graphic::RasterDataCPU(raster) => raster.render_svg(render, render_params),
+			Graphic::RasterDataGPU(_raster) => (),
+			Graphic::GraphicGroup(graphic_group) => graphic_group.render_svg(render, render_params),
 		}
 	}
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
-			GraphicElement::VectorData(vector_data) => vector_data.render_to_vello(scene, transform, context, render_params),
-			GraphicElement::RasterDataCPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
-			GraphicElement::RasterDataGPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_to_vello(scene, transform, context, render_params),
+			Graphic::VectorData(vector_data) => vector_data.render_to_vello(scene, transform, context, render_params),
+			Graphic::RasterDataCPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
+			Graphic::RasterDataGPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
+			Graphic::GraphicGroup(graphic_group) => graphic_group.render_to_vello(scene, transform, context, render_params),
 		}
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			match self {
-				GraphicElement::GraphicGroup(_) => {
+				Graphic::GraphicGroup(_) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 				}
-				GraphicElement::VectorData(vector_data) => {
+				Graphic::VectorData(vector_data) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than one row of the graphical data table
 					if let Some(vector_data) = vector_data.iter_ref().next() {
@@ -1171,7 +1171,7 @@ impl GraphicElementRendered for GraphicElement {
 						metadata.local_transforms.insert(element_id, *vector_data.transform);
 					}
 				}
-				GraphicElement::RasterDataCPU(raster_frame) => {
+				Graphic::RasterDataCPU(raster_frame) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than one row of images
@@ -1179,7 +1179,7 @@ impl GraphicElementRendered for GraphicElement {
 						metadata.local_transforms.insert(element_id, *image.transform);
 					}
 				}
-				GraphicElement::RasterDataGPU(raster_frame) => {
+				Graphic::RasterDataGPU(raster_frame) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than one row of images
@@ -1191,37 +1191,37 @@ impl GraphicElementRendered for GraphicElement {
 		}
 
 		match self {
-			GraphicElement::VectorData(vector_data) => vector_data.collect_metadata(metadata, footprint, element_id),
-			GraphicElement::RasterDataCPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
-			GraphicElement::RasterDataGPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.collect_metadata(metadata, footprint, element_id),
+			Graphic::VectorData(vector_data) => vector_data.collect_metadata(metadata, footprint, element_id),
+			Graphic::RasterDataCPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
+			Graphic::RasterDataGPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
+			Graphic::GraphicGroup(graphic_group) => graphic_group.collect_metadata(metadata, footprint, element_id),
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		match self {
-			GraphicElement::VectorData(vector_data) => vector_data.add_upstream_click_targets(click_targets),
-			GraphicElement::RasterDataCPU(raster) => raster.add_upstream_click_targets(click_targets),
-			GraphicElement::RasterDataGPU(raster) => raster.add_upstream_click_targets(click_targets),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.add_upstream_click_targets(click_targets),
+			Graphic::VectorData(vector_data) => vector_data.add_upstream_click_targets(click_targets),
+			Graphic::RasterDataCPU(raster) => raster.add_upstream_click_targets(click_targets),
+			Graphic::RasterDataGPU(raster) => raster.add_upstream_click_targets(click_targets),
+			Graphic::GraphicGroup(graphic_group) => graphic_group.add_upstream_click_targets(click_targets),
 		}
 	}
 
 	fn contains_artboard(&self) -> bool {
 		match self {
-			GraphicElement::VectorData(vector_data) => vector_data.contains_artboard(),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.contains_artboard(),
-			GraphicElement::RasterDataCPU(raster) => raster.contains_artboard(),
-			GraphicElement::RasterDataGPU(raster) => raster.contains_artboard(),
+			Graphic::VectorData(vector_data) => vector_data.contains_artboard(),
+			Graphic::GraphicGroup(graphic_group) => graphic_group.contains_artboard(),
+			Graphic::RasterDataCPU(raster) => raster.contains_artboard(),
+			Graphic::RasterDataGPU(raster) => raster.contains_artboard(),
 		}
 	}
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		match self {
-			GraphicElement::VectorData(vector_data) => vector_data.new_ids_from_hash(reference),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.new_ids_from_hash(reference),
-			GraphicElement::RasterDataCPU(_) => (),
-			GraphicElement::RasterDataGPU(_) => (),
+			Graphic::VectorData(vector_data) => vector_data.new_ids_from_hash(reference),
+			Graphic::GraphicGroup(graphic_group) => graphic_group.new_ids_from_hash(reference),
+			Graphic::RasterDataCPU(_) => (),
+			Graphic::RasterDataGPU(_) => (),
 		}
 	}
 }
@@ -1240,7 +1240,7 @@ fn text_attributes(attributes: &mut SvgRenderAttrs) {
 	attributes.push("font-size", "30");
 }
 
-impl<P: Primitive> GraphicElementRendered for P {
+impl<P: Primitive> Render for P {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
 		render.parent_tag("text", text_attributes, |render| render.leaf_node(format!("{self}")));
 	}
@@ -1249,7 +1249,7 @@ impl<P: Primitive> GraphicElementRendered for P {
 	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
 }
 
-impl GraphicElementRendered for Option<Color> {
+impl Render for Option<Color> {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
 		let Some(color) = self else {
 			render.parent_tag("text", |_| {}, |render| render.leaf_node("Empty color"));
@@ -1273,7 +1273,7 @@ impl GraphicElementRendered for Option<Color> {
 	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
 }
 
-impl GraphicElementRendered for Vec<Color> {
+impl Render for Vec<Color> {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
 		for (index, &color) in self.iter().enumerate() {
 			render.leaf_tag("rect", |attributes| {

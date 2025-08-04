@@ -9,7 +9,7 @@ use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_std::application_io::TimingInformation;
 use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig};
 use graphene_std::renderer::RenderSvgSegmentList;
-use graphene_std::renderer::{GraphicElementRendered, RenderParams, SvgRender};
+use graphene_std::renderer::{Render, RenderParams, SvgRender};
 use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
 use graphene_std::text::FontCache;
 use graphene_std::transform::Footprint;
@@ -321,7 +321,7 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	fn debug_render(render_object: impl GraphicElementRendered, transform: DAffine2, responses: &mut VecDeque<Message>) {
+	fn debug_render(render_object: impl Render, transform: DAffine2, responses: &mut VecDeque<Message>) {
 		// Setup rendering
 		let mut render = SvgRender::new();
 		let render_params = RenderParams {

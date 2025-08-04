@@ -1,6 +1,6 @@
 use crate::Artboard;
 use crate::Color;
-use crate::GraphicElement;
+use crate::Graphic;
 use crate::gradient::GradientStops;
 use crate::graphene_core::registry::types::TextArea;
 use crate::raster_types::{CPU, GPU, Raster};
@@ -17,7 +17,7 @@ fn to_string<T: std::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f6
 #[node_macro::node(category("Text"))]
 fn serialize<T: serde::Serialize>(
 	_: impl Ctx,
-	#[implementations(String, bool, f64, u32, u64, DVec2, DAffine2, Color, Option<Color>, Table<GraphicElement>, Table<VectorData>, Table<Raster<CPU>>)] value: T,
+	#[implementations(String, bool, f64, u32, u64, DVec2, DAffine2, Color, Option<Color>, Table<Graphic>, Table<VectorData>, Table<Raster<CPU>>)] value: T,
 ) -> String {
 	serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string())
 }
@@ -61,10 +61,10 @@ async fn switch<T, C: Send + 'n + Clone>(
 		Context -> DAffine2,
 		Context -> Table<Artboard>,
 		Context -> Table<VectorData>,
-		Context -> Table<GraphicElement>,
+		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
-		Context -> GraphicElement,
+		Context -> Graphic,
 		Context -> Color,
 		Context -> Option<Color>,
 		Context -> GradientStops,
@@ -82,10 +82,10 @@ async fn switch<T, C: Send + 'n + Clone>(
 		Context -> DAffine2,
 		Context -> Table<Artboard>,
 		Context -> Table<VectorData>,
-		Context -> Table<GraphicElement>,
+		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
-		Context -> GraphicElement,
+		Context -> Graphic,
 		Context -> Color,
 		Context -> Option<Color>,
 		Context -> GradientStops,

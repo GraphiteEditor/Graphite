@@ -5,7 +5,7 @@ use graphene_core::table::{Table, TableRow, TableRowRef};
 use graphene_core::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use graphene_core::vector::style::Fill;
 use graphene_core::vector::{PointId, VectorData};
-use graphene_core::{Color, Ctx, GraphicElement};
+use graphene_core::{Color, Ctx, Graphic};
 pub use path_bool as path_bool_lib;
 use path_bool::{FillRule, PathBooleanOperation};
 use std::ops::Mul;
@@ -32,10 +32,10 @@ pub enum BooleanOperation {
 
 /// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
 #[node_macro::node(category(""))]
-async fn boolean_operation<I: Into<Table<GraphicElement>> + 'n + Send + Clone>(
+async fn boolean_operation<I: Into<Table<Graphic>> + 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The group of paths to perform the boolean operation on. Nested groups are automatically flattened.
-	#[implementations(Table<GraphicElement>, Table<VectorData>)]
+	#[implementations(Table<Graphic>, Table<VectorData>)]
 	group_of_paths: I,
 	/// Which boolean operation to perform on the paths.
 	///
@@ -221,12 +221,12 @@ fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, V
 	boolean_operation_on_vector_data_table(union.iter_ref().chain(std::iter::once(any_intersection.as_ref())), BooleanOperation::SubtractFront)
 }
 
-fn flatten_vector_data(graphic_group_table: &Table<GraphicElement>) -> Table<VectorData> {
+fn flatten_vector_data(graphic_group_table: &Table<Graphic>) -> Table<VectorData> {
 	graphic_group_table
 		.iter_ref()
 		.flat_map(|element| {
 			match element.element.clone() {
-				GraphicElement::VectorData(vector_data) => {
+				Graphic::VectorData(vector_data) => {
 					// Apply the parent group's transform to each element of vector data
 					vector_data
 						.iter()
@@ -237,7 +237,7 @@ fn flatten_vector_data(graphic_group_table: &Table<GraphicElement>) -> Table<Vec
 						})
 						.collect::<Vec<_>>()
 				}
-				GraphicElement::RasterDataCPU(image) => {
+				Graphic::RasterDataCPU(image) => {
 					let make_row = |transform| {
 						// Convert the image frame into a rectangular subpath with the image's transform
 						let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
@@ -253,7 +253,7 @@ fn flatten_vector_data(graphic_group_table: &Table<GraphicElement>) -> Table<Vec
 					// Apply the parent group's transform to each element of raster data
 					image.iter_ref().map(|row| make_row(*element.transform * *row.transform)).collect::<Vec<_>>()
 				}
-				GraphicElement::RasterDataGPU(image) => {
+				Graphic::RasterDataGPU(image) => {
 					let make_row = |transform| {
 						// Convert the image frame into a rectangular subpath with the image's transform
 						let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
@@ -269,7 +269,7 @@ fn flatten_vector_data(graphic_group_table: &Table<GraphicElement>) -> Table<Vec
 					// Apply the parent group's transform to each element of raster data
 					image.iter_ref().map(|row| make_row(*element.transform * *row.transform)).collect::<Vec<_>>()
 				}
-				GraphicElement::GraphicGroup(mut graphic_group) => {
+				Graphic::GraphicGroup(mut graphic_group) => {
 					// Apply the parent group's transform to each element of inner group
 					for sub_element in graphic_group.iter_mut() {
 						*sub_element.transform = *element.transform * *sub_element.transform;
