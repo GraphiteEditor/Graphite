@@ -25,8 +25,8 @@ impl MessageHandler<DeferMessage, ()> for DeferMessageHandler {
 					return;
 				}
 				// Find the index of the last message we can process
-				let num_elements_to_remove = self.after_graph_run.binary_search_by_key(&(execution_id + 1), |x| x.0).unwrap_or_else(|pos| pos - 1);
-				let elements = self.after_graph_run.drain(0..=num_elements_to_remove);
+				let split = self.after_graph_run.partition_point(|&(id, _)| id <= execution_id);
+				let elements = self.after_graph_run.drain(..split);
 				for (_, message) in elements.rev() {
 					responses.add_front(message);
 				}
