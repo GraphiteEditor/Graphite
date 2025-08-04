@@ -2089,6 +2089,7 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl N
 				sum += area_or_length;
 				centroid += area_or_length * subpath_centroid;
 			}
+			info!("----------------------------------");
 		}
 	}
 
