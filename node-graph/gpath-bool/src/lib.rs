@@ -57,7 +57,7 @@ async fn boolean_operation<I: Into<Table<Graphic>> + 'n + Send + Clone>(
 
 		Vector::transform(result_vector.element, transform);
 		result_vector.element.style.set_stroke_transform(DAffine2::IDENTITY);
-		result_vector.element.upstream_graphic_group = Some(group_of_paths.clone());
+		result_vector.element.upstream_group = Some(group_of_paths.clone());
 
 		// Clean up the boolean operation result by merging duplicated points
 		result_vector.element.merge_by_distance_spatial(*result_vector.transform, 0.0001);
@@ -221,8 +221,8 @@ fn difference<'a>(vector: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector
 	boolean_operation_on_vector_table(union.iter_ref().chain(std::iter::once(any_intersection.as_ref())), BooleanOperation::SubtractFront)
 }
 
-fn flatten_vector(graphic_group_table: &Table<Graphic>) -> Table<Vector> {
-	graphic_group_table
+fn flatten_vector(group_table: &Table<Graphic>) -> Table<Vector> {
+	group_table
 		.iter_ref()
 		.flat_map(|element| {
 			match element.element.clone() {
@@ -269,14 +269,14 @@ fn flatten_vector(graphic_group_table: &Table<Graphic>) -> Table<Vector> {
 					// Apply the parent group's transform to each raster element
 					image.iter_ref().map(|row| make_row(*element.transform * *row.transform)).collect::<Vec<_>>()
 				}
-				Graphic::GraphicGroup(mut graphic_group) => {
+				Graphic::Group(mut group) => {
 					// Apply the parent group's transform to each element of inner group
-					for sub_element in graphic_group.iter_mut() {
+					for sub_element in group.iter_mut() {
 						*sub_element.transform = *element.transform * *sub_element.transform;
 					}
 
 					// Recursively flatten the inner group into the vector table
-					let unioned = boolean_operation_on_vector_table(flatten_vector(&graphic_group).iter_ref(), BooleanOperation::Union);
+					let unioned = boolean_operation_on_vector_table(flatten_vector(&group).iter_ref(), BooleanOperation::Union);
 
 					unioned.iter().collect::<Vec<_>>()
 				}

@@ -6614,23 +6614,25 @@ fn migrate_output_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 	const REPLACEMENTS: &[(&str, &str)] = &[
 		// Single to table data
 		("VectorData", "Table<Vector>"),
-		("GraphicGroup", "Table<GraphicGroup>"),
+		("GraphicGroup", "Table<Group>"),
 		("ImageFrame", "Table<Image>"),
 		// `ImageFrame` to `Image` rename
 		("Instances<ImageFrame>", "Table<Image>"),
 		// `Instances` to `Table` rename
 		("Instances<VectorData>", "Table<Vector>"),
-		("Instances<GraphicGroup>", "Table<GraphicGroup>"),
+		("Instances<GraphicGroup>", "Table<Group>"),
 		("Instances<Image>", "Table<Image>"),
 		("Instances<GraphicElement>", "Table<Graphic>"),
 		("Table<GraphicElement>", "Table<Graphic>"),
 		("Future<Instances<Vector>>", "Future<Table<Vector>>"),
-		("Future<Instances<GraphicGroup>>", "Future<Table<GraphicGroup>>"),
+		("Future<Instances<GraphicGroup>>", "Future<Table<Group>>"),
 		("Future<Instances<Image>>", "Future<Table<Image>>"),
 		("Future<Instances<GraphicElement>>", "Future<Table<Graphic>>"),
 		("Future<Table<GraphicElement>>", "Future<Table<Graphic>>"),
 		("Future<Table<VectorData>>", "Future<Table<Vector>>"),
 		("Table<VectorData>", "Table<Vector>"),
+		("Table<GraphicGroup>", "Table<Group>"),
+		("Future<Table<GraphicGroup>>", "Future<Table<Group>>"),
 	];
 
 	let mut names = Vec::<String>::deserialize(deserializer)?;

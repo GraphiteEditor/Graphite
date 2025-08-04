@@ -18,14 +18,14 @@ impl<T: RenderComplexity> RenderComplexity for Table<T> {
 
 impl RenderComplexity for Artboard {
 	fn render_complexity(&self) -> usize {
-		self.graphic_group.render_complexity()
+		self.group.render_complexity()
 	}
 }
 
 impl RenderComplexity for Graphic {
 	fn render_complexity(&self) -> usize {
 		match self {
-			Self::GraphicGroup(table) => table.render_complexity(),
+			Self::Group(table) => table.render_complexity(),
 			Self::Vector(table) => table.render_complexity(),
 			Self::RasterCPU(table) => table.render_complexity(),
 			Self::RasterGPU(table) => table.render_complexity(),

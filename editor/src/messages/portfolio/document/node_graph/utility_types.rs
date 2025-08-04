@@ -28,7 +28,7 @@ impl FrontendGraphDataType {
 			| TaggedValue::VecF64(_)
 			| TaggedValue::VecDVec2(_)
 			| TaggedValue::DAffine2(_) => Self::Number,
-			TaggedValue::GraphicGroup(_) => Self::Group,
+			TaggedValue::Group(_) => Self::Group,
 			TaggedValue::ArtboardGroup(_) => Self::Artboard,
 			_ => Self::General,
 		}

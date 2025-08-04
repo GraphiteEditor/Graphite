@@ -167,7 +167,7 @@ fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer:
 	let name = match name.as_str() {
 		"f32" => "f64".to_string(),
 		"graphene_core::transform::Footprint" => "std::option::Option<std::sync::Arc<graphene_core::context::OwnedContextImpl>>".to_string(),
-		"graphene_core::graphic_element::GraphicGroup" => "graphene_core::table::Table<graphene_core::graphic_element::GraphicGroup>".to_string(),
+		"graphene_core::graphic_element::GraphicGroup" => "graphene_core::table::Table<graphene_core::graphic_element::Graphic>".to_string(),
 		"graphene_core::raster::image::ImageFrame<Color>"
 		| "graphene_core::raster::image::ImageFrame<graphene_core::raster::color::Color>"
 		| "graphene_core::instances::Instances<graphene_core::raster::image::ImageFrame<Color>>"

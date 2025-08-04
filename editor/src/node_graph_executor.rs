@@ -378,7 +378,7 @@ impl NodeGraphExecutor {
 			TaggedValue::DVec2(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::OptionalColor(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::Vector(render_object) => Self::debug_render(render_object, transform, responses),
-			TaggedValue::GraphicGroup(render_object) => Self::debug_render(render_object, transform, responses),
+			TaggedValue::Group(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::Raster(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::Palette(render_object) => Self::debug_render(render_object, transform, responses),
 			_ => {

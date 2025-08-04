@@ -269,8 +269,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true),
-						NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true),
+						NodeInput::value(TaggedValue::Group(Default::default()), true),
+						NodeInput::value(TaggedValue::Group(Default::default()), true),
 					],
 					..Default::default()
 				},
@@ -378,7 +378,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::ArtboardGroup(Default::default()), true),
-						NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true),
+						NodeInput::value(TaggedValue::Group(Default::default()), true),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::new(1920., 1080.)), false),
 						NodeInput::value(TaggedValue::Color(Color::WHITE), false),
@@ -1527,7 +1527,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true),
+						NodeInput::value(TaggedValue::Group(Default::default()), true),
 						NodeInput::value(TaggedValue::BooleanOperation(path_bool::BooleanOperation::Union), false),
 					],
 					..Default::default()

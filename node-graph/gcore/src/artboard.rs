@@ -14,7 +14,7 @@ use std::hash::Hash;
 /// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
 #[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct Artboard {
-	pub graphic_group: Table<Graphic>,
+	pub group: Table<Graphic>,
 	pub label: String,
 	pub location: IVec2,
 	pub dimensions: IVec2,
@@ -31,7 +31,7 @@ impl Default for Artboard {
 impl Artboard {
 	pub fn new(location: IVec2, dimensions: IVec2) -> Self {
 		Self {
-			graphic_group: Table::new(),
+			group: Table::new(),
 			label: "Artboard".to_string(),
 			location: location.min(location + dimensions),
 			dimensions: dimensions.abs(),
@@ -47,7 +47,7 @@ impl BoundingBox for Artboard {
 		if self.clip {
 			Some(artboard_bounds)
 		} else {
-			[self.graphic_group.bounding_box(transform, include_stroke), Some(artboard_bounds)]
+			[self.group.bounding_box(transform, include_stroke), Some(artboard_bounds)]
 				.into_iter()
 				.flatten()
 				.reduce(Quad::combine_bounds)
@@ -112,7 +112,6 @@ async fn to_artboard<Data: Into<Table<Graphic>> + 'n>(
 	clip: bool,
 ) -> Artboard {
 	let location = location.as_ivec2();
-	let dimensions = dimensions.as_ivec2().max(IVec2::ONE);
 
 	let footprint = ctx.try_footprint().copied();
 	let mut new_ctx = OwnedContextImpl::from(ctx);
@@ -120,13 +119,19 @@ async fn to_artboard<Data: Into<Table<Graphic>> + 'n>(
 		footprint.translate(location.as_dvec2());
 		new_ctx = new_ctx.with_footprint(footprint);
 	}
-	let graphic_group = contents.eval(new_ctx.into_context()).await;
+	let group = contents.eval(new_ctx.into_context()).await.into();
+
+	let dimensions = dimensions.as_ivec2().max(IVec2::ONE);
+
+	let location = location.min(location + dimensions);
+
+	let dimensions = dimensions.abs();
 
 	Artboard {
-		graphic_group: graphic_group.into(),
+		group,
 		label,
-		location: location.min(location + dimensions),
-		dimensions: dimensions.abs(),
+		location,
+		dimensions,
 		background,
 		clip,
 	}

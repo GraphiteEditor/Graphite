@@ -365,7 +365,7 @@ impl Render for Table<Graphic> {
 			}
 		}
 
-		if let Some(graphic_group_id) = element_id {
+		if let Some(group_id) = element_id {
 			let mut all_upstream_click_targets = Vec::new();
 
 			for row in self.iter_ref() {
@@ -379,7 +379,7 @@ impl Render for Table<Graphic> {
 				all_upstream_click_targets.extend(new_click_targets);
 			}
 
-			metadata.click_targets.insert(graphic_group_id, all_upstream_click_targets);
+			metadata.click_targets.insert(group_id, all_upstream_click_targets);
 		}
 	}
 
@@ -764,9 +764,9 @@ impl Render for Table<Vector> {
 				metadata.click_targets.entry(element_id).or_insert(click_targets);
 			}
 
-			if let Some(upstream_graphic_group) = &vector.upstream_graphic_group {
+			if let Some(upstream_group) = &vector.upstream_group {
 				footprint.transform *= transform;
-				upstream_graphic_group.collect_metadata(metadata, footprint, None);
+				upstream_group.collect_metadata(metadata, footprint, None);
 			}
 		}
 	}
@@ -853,7 +853,7 @@ impl Render for Artboard {
 			},
 			// Artboard contents
 			|render| {
-				self.graphic_group.render_svg(render, render_params);
+				self.group.render_svg(render, render_params);
 			},
 		);
 	}
@@ -875,9 +875,9 @@ impl Render for Artboard {
 			let blend_mode = peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcOver);
 			scene.push_layer(blend_mode, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
-		// Since the graphic group's transform is right multiplied in when rendering the graphic group, we just need to right multiply by the offset here.
+		// Since the group's transform is right multiplied in when rendering the group, we just need to right multiply by the offset here.
 		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2());
-		self.graphic_group.render_to_vello(scene, child_transform, context, render_params);
+		self.group.render_to_vello(scene, child_transform, context, render_params);
 		if self.clip {
 			scene.pop_layer();
 		}
@@ -894,7 +894,7 @@ impl Render for Artboard {
 			}
 		}
 		footprint.transform *= self.transform();
-		self.graphic_group.collect_metadata(metadata, footprint, None);
+		self.group.collect_metadata(metadata, footprint, None);
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
@@ -1142,8 +1142,8 @@ impl Render for Graphic {
 		match self {
 			Graphic::Vector(vector) => vector.render_svg(render, render_params),
 			Graphic::RasterCPU(raster) => raster.render_svg(render, render_params),
-			Graphic::RasterGPU(_raster) => (),
-			Graphic::GraphicGroup(graphic_group) => graphic_group.render_svg(render, render_params),
+			Graphic::RasterGPU(_) => (),
+			Graphic::Group(group) => group.render_svg(render, render_params),
 		}
 	}
 
@@ -1153,14 +1153,14 @@ impl Render for Graphic {
 			Graphic::Vector(vector) => vector.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterCPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterGPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
-			Graphic::GraphicGroup(graphic_group) => graphic_group.render_to_vello(scene, transform, context, render_params),
+			Graphic::Group(group) => group.render_to_vello(scene, transform, context, render_params),
 		}
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			match self {
-				Graphic::GraphicGroup(_) => {
+				Graphic::Group(_) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 				}
 				Graphic::Vector(vector) => {
@@ -1194,7 +1194,7 @@ impl Render for Graphic {
 			Graphic::Vector(vector) => vector.collect_metadata(metadata, footprint, element_id),
 			Graphic::RasterCPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
 			Graphic::RasterGPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
-			Graphic::GraphicGroup(graphic_group) => graphic_group.collect_metadata(metadata, footprint, element_id),
+			Graphic::Group(group) => group.collect_metadata(metadata, footprint, element_id),
 		}
 	}
 
@@ -1203,14 +1203,14 @@ impl Render for Graphic {
 			Graphic::Vector(vector) => vector.add_upstream_click_targets(click_targets),
 			Graphic::RasterCPU(raster) => raster.add_upstream_click_targets(click_targets),
 			Graphic::RasterGPU(raster) => raster.add_upstream_click_targets(click_targets),
-			Graphic::GraphicGroup(graphic_group) => graphic_group.add_upstream_click_targets(click_targets),
+			Graphic::Group(group) => group.add_upstream_click_targets(click_targets),
 		}
 	}
 
 	fn contains_artboard(&self) -> bool {
 		match self {
 			Graphic::Vector(vector) => vector.contains_artboard(),
-			Graphic::GraphicGroup(graphic_group) => graphic_group.contains_artboard(),
+			Graphic::Group(group) => group.contains_artboard(),
 			Graphic::RasterCPU(raster) => raster.contains_artboard(),
 			Graphic::RasterGPU(raster) => raster.contains_artboard(),
 		}
@@ -1219,7 +1219,7 @@ impl Render for Graphic {
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		match self {
 			Graphic::Vector(vector) => vector.new_ids_from_hash(reference),
-			Graphic::GraphicGroup(graphic_group) => graphic_group.new_ids_from_hash(reference),
+			Graphic::Group(group) => group.new_ids_from_hash(reference),
 			Graphic::RasterCPU(_) => (),
 			Graphic::RasterGPU(_) => (),
 		}

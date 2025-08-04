@@ -132,7 +132,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_document_node_type("Artboard").expect("Node").node_template_input_override([
 			Some(NodeInput::value(TaggedValue::ArtboardGroup(Default::default()), true)),
-			Some(NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true)),
+			Some(NodeInput::value(TaggedValue::Group(Default::default()), true)),
 			Some(NodeInput::value(TaggedValue::DVec2(artboard.location.into()), false)),
 			Some(NodeInput::value(TaggedValue::DVec2(artboard.dimensions.into()), false)),
 			Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
@@ -144,7 +144,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn insert_boolean_data(&mut self, operation: graphene_std::path_bool::BooleanOperation, layer: LayerNodeIdentifier) {
 		let boolean = resolve_document_node_type("Boolean Operation").expect("Boolean node does not exist").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true)),
+			Some(NodeInput::value(TaggedValue::Group(Default::default()), true)),
 			Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
 		]);
 
@@ -296,11 +296,12 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn create_node(&mut self, reference: &str) -> Option<NodeId> {
 		let output_layer = self.get_output_layer()?;
 		let Some(node_definition) = resolve_document_node_type(reference) else {
-			log::error!("Node type {} does not exist in ModifyInputsContext::existing_node_id", reference);
+			log::error!("Node type {reference} does not exist in ModifyInputsContext::existing_node_id");
 			return None;
 		};
-		// If inserting a path node, insert a Flatten Path if the type is a graphic group.
-		// TODO: Allow the path node to operate on Graphic Group data by utilizing the reference for each Vector in a group.
+
+		// If inserting a path node, insert a Flatten Path if the type is Group.
+		// TODO: Allow the path node to operate on Group data by utilizing the reference for each Vector in a group.
 		if node_definition.identifier == "Path" {
 			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type().clone();
 			if layer_input_type == concrete!(Table<Graphic>) {

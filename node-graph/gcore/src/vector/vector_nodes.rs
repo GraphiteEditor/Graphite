@@ -27,7 +27,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::f64::consts::TAU;
 
 /// Implemented for types that can be converted to an iterator of vector rows.
-/// Used for the fill and stroke node so they can be used on `Vector` or `GraphicGroup`.
+/// Used for the fill and stroke node so they can be used on `Table<Graphic>` or `Table<Vector>`.
 trait VectorTableIterMut {
 	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, Vector>>;
 }
@@ -447,7 +447,7 @@ async fn round_corners(
 			let source_node_id = source.source_node_id;
 			let source = source.element;
 
-			let upstream_graphic_group = source.upstream_graphic_group.clone();
+			let upstream_group = source.upstream_group.clone();
 
 			// Flip the roundness to help with user intuition
 			let roundness = 1. - roundness;
@@ -532,7 +532,7 @@ async fn round_corners(
 				result.append_bezpath(rounded_subpath);
 			}
 
-			result.upstream_graphic_group = upstream_graphic_group;
+			result.upstream_group = upstream_group;
 
 			TableRow {
 				element: result,
@@ -956,7 +956,7 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn flatten_path<I: 'n + Send>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] graphic_group_input: Table<I>) -> Table<Vector>
+async fn flatten_path<I: 'n + Send>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: Table<I>) -> Table<Vector>
 where
 	Graphic: From<Table<I>>,
 {
@@ -965,8 +965,8 @@ where
 	// connected to a Flatten Path connected to an if else node, another connection from the cache directly to
 	// the if else node, and another connection from the cache to a matches type node connected to the if else node.
 
-	fn flatten_group(graphic_group_table: &Table<Graphic>, output: &mut TableRowMut<Vector>) {
-		for (group_index, current_element) in graphic_group_table.iter_ref().enumerate() {
+	fn flatten_group(group: &Table<Graphic>, output: &mut TableRowMut<Vector>) {
+		for (group_index, current_element) in group.iter_ref().enumerate() {
 			match current_element.element {
 				Graphic::Vector(vector) => {
 					// Loop through every row of the `Table<Vector>` and concatenate each element's subpath into the output `Vector` element.
@@ -985,13 +985,13 @@ where
 						output.element.style = row.element.style.clone();
 					}
 				}
-				Graphic::GraphicGroup(graphic_group) => {
-					let mut graphic_group = graphic_group.clone();
-					for row in graphic_group.iter_mut() {
+				Graphic::Group(group) => {
+					let mut group = group.clone();
+					for row in group.iter_mut() {
 						*row.transform = *current_element.transform * *row.transform;
 					}
 
-					flatten_group(&graphic_group, output);
+					flatten_group(&group, output);
 				}
 				_ => {}
 			}
@@ -1004,9 +1004,9 @@ where
 		return output_table;
 	};
 
-	// Flatten the graphic group input into the output `Vector` element
-	let base_graphic_group = Table::new_from_element(Graphic::from(graphic_group_input));
-	flatten_group(&base_graphic_group, &mut output);
+	// Flatten the group input into the output `Vector` element
+	let base_group = Table::new_from_element(Graphic::from(content));
+	flatten_group(&base_group, &mut output);
 
 	// Return the single-row Table<Vector> containing the flattened Vector subpaths
 	output_table
@@ -1034,7 +1034,7 @@ async fn sample_polyline(
 				region_domain: Default::default(),
 				colinear_manipulators: Default::default(),
 				style: std::mem::take(&mut row.element.style),
-				upstream_graphic_group: std::mem::take(&mut row.element.upstream_graphic_group),
+				upstream_group: std::mem::take(&mut row.element.upstream_group),
 			};
 			// Transfer the stroke transform from the input vector content to the result.
 			result.style.set_stroke_transform(row.transform);

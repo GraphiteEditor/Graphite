@@ -29,8 +29,8 @@ pub struct Vector {
 	pub segment_domain: SegmentDomain,
 	pub region_domain: RegionDomain,
 
-	// Used to store the upstream graphic group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
-	pub upstream_graphic_group: Option<Table<Graphic>>,
+	// Used to store the upstream group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
+	pub upstream_group: Option<Table<Graphic>>,
 }
 
 impl Default for Vector {
@@ -41,7 +41,7 @@ impl Default for Vector {
 			point_domain: PointDomain::new(),
 			segment_domain: SegmentDomain::new(),
 			region_domain: RegionDomain::new(),
-			upstream_graphic_group: None,
+			upstream_group: None,
 		}
 	}
 }
@@ -476,7 +476,7 @@ pub fn migrate_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resu
 		pub segment_domain: SegmentDomain,
 		pub region_domain: RegionDomain,
 
-		// Used to store the upstream graphic group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
+		// Used to store the upstream group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
 		pub upstream_graphic_group: Option<Table<Graphic>>,
 	}
 
@@ -498,7 +498,7 @@ pub fn migrate_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resu
 				point_domain: old.point_domain,
 				segment_domain: old.segment_domain,
 				region_domain: old.region_domain,
-				upstream_graphic_group: old.upstream_graphic_group,
+				upstream_group: old.upstream_graphic_group,
 			});
 			*vector_table.iter_mut().next().unwrap().transform = old.transform;
 			*vector_table.iter_mut().next().unwrap().alpha_blending = old.alpha_blending;
