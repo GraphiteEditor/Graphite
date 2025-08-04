@@ -72,11 +72,11 @@ impl WinitApp {
 						tracing::error!("Failed to read file: {}", path.display());
 						String::new()
 					});
-					let message = Message::Portfolio(PortfolioMessage::OpenDocumentFile {
+					let message = PortfolioMessage::OpenDocumentFile {
 						document_name: path.file_name().and_then(|s| s.to_str()).unwrap_or("unknown").to_string(),
 						document_serialized_content: content,
-					});
-					let _ = event_loop_proxy.send_event(CustomEvent::DispatchMessage(message));
+					};
+					let _ = event_loop_proxy.send_event(CustomEvent::DispatchMessage(message.into()));
 				}
 			});
 		}
