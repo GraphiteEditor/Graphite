@@ -29,7 +29,8 @@ use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::text::Font;
-use graphene_std::vector::{HandleId, PointId, SegmentId, Vector, VectorModificationType};
+use graphene_std::vector::misc::HandleId;
+use graphene_std::vector::{PointId, SegmentId, Vector, VectorModificationType};
 use std::vec;
 
 #[derive(ExtractField)]

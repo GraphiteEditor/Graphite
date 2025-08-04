@@ -13,8 +13,8 @@ use crate::messages::tool::common_functionality::utility_functions::{is_intersec
 use crate::messages::tool::tool_messages::path_tool::{PathOverlayMode, PointSelectState};
 use bezier_rs::{Bezier, BezierHandles, Subpath, TValue};
 use glam::{DAffine2, DVec2};
-use graphene_std::vector::{HandleExt, HandleId, SegmentId};
-use graphene_std::vector::{ManipulatorPointId, PointId, Vector, VectorModificationType};
+use graphene_std::vector::misc::{HandleId, ManipulatorPointId};
+use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModificationType};
 use std::f64::consts::TAU;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -1544,8 +1544,8 @@ impl ShapeState {
 					// Update segment
 					let HandleId { ty, segment } = handle;
 					let modification_type = match ty {
-						graphene_std::vector::HandleType::Primary => VectorModificationType::SetStartPoint { segment, id },
-						graphene_std::vector::HandleType::End => VectorModificationType::SetEndPoint { segment, id },
+						graphene_std::vector::misc::HandleType::Primary => VectorModificationType::SetStartPoint { segment, id },
+						graphene_std::vector::misc::HandleType::End => VectorModificationType::SetEndPoint { segment, id },
 					};
 
 					responses.add(GraphOperationMessage::Vector { layer, modification_type });

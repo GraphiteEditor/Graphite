@@ -14,8 +14,8 @@ use crate::messages::tool::common_functionality::utility_functions::{calculate_s
 use bezier_rs::{Bezier, BezierHandles};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
-use graphene_std::vector::{HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, StrokeId, Vector};
-use graphene_std::vector::{PointId, VectorModificationType};
+use graphene_std::vector::misc::{HandleId, ManipulatorPointId};
+use graphene_std::vector::{NoHashBuilder, PointId, SegmentId, StrokeId, Vector, VectorModificationType};
 
 #[derive(Default, ExtractField)]
 pub struct PenTool {

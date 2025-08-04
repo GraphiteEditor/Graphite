@@ -16,7 +16,8 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
 use graphene_std::table::Table;
 use graphene_std::text::{FontCache, load_font};
-use graphene_std::vector::{HandleExt, HandleId, ManipulatorPointId, PointId, SegmentId, Vector, VectorModification, VectorModificationType};
+use graphene_std::vector::misc::{HandleId, ManipulatorPointId};
+use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModification, VectorModificationType};
 use kurbo::{CubicBez, Line, ParamCurveExtrema, PathSeg, Point, QuadBez};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.

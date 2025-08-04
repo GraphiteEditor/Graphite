@@ -14,8 +14,9 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::Gradient;
-use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 
 /// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.

@@ -11,8 +11,8 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 use glam::{DAffine2, DVec2};
 use graphene_std::renderer::Quad;
-use graphene_std::vector::ManipulatorPointId;
 use graphene_std::vector::click_target::ClickTargetType;
+use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::{Vector, VectorModificationType};
 use std::f64::consts::{PI, TAU};
 

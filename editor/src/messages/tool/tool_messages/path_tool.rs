@@ -27,8 +27,8 @@ use graphene_std::renderer::Quad;
 use graphene_std::transform::ReferencePoint;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, Vector};
-use graphene_std::vector::{ManipulatorPointId, PointId, VectorModificationType};
+use graphene_std::vector::misc::{HandleId, ManipulatorPointId};
+use graphene_std::vector::{HandleExt, NoHashBuilder, PointId, SegmentId, Vector, VectorModificationType};
 use std::vec;
 
 #[derive(Default, ExtractField)]

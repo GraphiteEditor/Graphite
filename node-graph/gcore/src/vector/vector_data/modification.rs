@@ -2,6 +2,7 @@ use super::*;
 use crate::Ctx;
 use crate::table::TableRow;
 use crate::uuid::{NodeId, generate_uuid};
+use crate::vector::misc::HandleType;
 use bezier_rs::BezierHandles;
 use dyn_any::DynAny;
 use kurbo::{BezPath, PathEl, Point};

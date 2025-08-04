@@ -3,7 +3,8 @@ use super::{PointId, SegmentId, StrokeId};
 use crate::Ctx;
 use crate::registry::types::{Angle, PixelSize};
 use crate::table::Table;
-use crate::vector::{HandleId, Vector};
+use crate::vector::Vector;
+use crate::vector::misc::HandleId;
 use bezier_rs::Subpath;
 use glam::DVec2;
 
