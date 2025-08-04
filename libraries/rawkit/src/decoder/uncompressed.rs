@@ -1,7 +1,8 @@
 use crate::tiff::file::TiffRead;
 use crate::tiff::tags::{BitsPerSample, BlackLevel, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, RowsPerStrip, StripByteCounts, StripOffsets, Tag, WhiteBalanceRggbLevels};
+use crate::tiff::values::CompressionValue;
 use crate::tiff::{Ifd, TiffError};
-use crate::{RawImage, SubtractBlack, Transform};
+use crate::{OrientationValue, RawImage, SubtractBlack};
 use rawkit_proc_macros::Tag;
 use std::io::{Read, Seek};
 
@@ -26,7 +27,7 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 
 	assert!(ifd.strip_offsets.len() == ifd.strip_byte_counts.len());
 	assert!(ifd.strip_offsets.len() == 1);
-	assert!(ifd.compression == 1); // 1 is the value for uncompressed format
+	assert!(ifd.compression == CompressionValue::Uncompressed);
 
 	let image_width: usize = ifd.image_width.try_into().unwrap();
 	let image_height: usize = ifd.image_height.try_into().unwrap();
@@ -57,7 +58,7 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 		cfa_pattern: ifd.cfa_pattern.try_into().unwrap(),
 		maximum: if bits_per_sample == 16 { u16::MAX } else { (1 << bits_per_sample) - 1 },
 		black: SubtractBlack::CfaGrid(ifd.black_level),
-		transform: Transform::Horizontal,
+		orientation: OrientationValue::Horizontal,
 		camera_model: None,
 		camera_white_balance: ifd.white_balance_levels.map(|arr| arr.map(|x| x as f64)),
 		white_balance: None,
