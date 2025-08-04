@@ -16,27 +16,18 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    rust-overlay = {
-      url = "github:oxalica/rust-overlay";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     flake-utils.url = "github:numtide/flake-utils";
 
     # This is used to provide a identical development shell at `shell.nix` for users that do not use flakes
     flake-compat.url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
   };
 
-  outputs = { nixpkgs, rust-overlay, flake-utils, ... }:
+  outputs = { nixpkgs, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        overlays = [ (import rust-overlay) ];
+        overlays = [];
         pkgs = import nixpkgs {
           inherit system overlays;
-        };
- 
-        rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
-          targets = [ "wasm32-unknown-unknown" ];
-          extensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
         };
 
         libcef = pkgs.libcef.overrideAttrs (finalAttrs: previousAttrs: {
@@ -79,7 +70,7 @@
 
         # Development tools that don't need to be in LD_LIBRARY_PATH
         buildTools =  [
-          rustc-wasm
+          pkgs.rustup
           pkgs.nodejs
           pkgs.nodePackages.npm
           pkgs.binaryen
@@ -108,6 +99,8 @@
         # Development shell configuration
         devShells.default = pkgs.mkShell {
           packages = buildInputs ++ buildTools ++ devTools;
+
+          nativeBuildInputs = [ pkgs.rustup ];
 
           LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath buildInputs}:${libcefPath}";
           CEF_PATH = libcefPath;
