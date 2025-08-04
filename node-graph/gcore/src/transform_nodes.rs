@@ -61,9 +61,9 @@ async fn extract_transform<T>(
 		Table<Raster<CPU>>,
 		Table<Raster<GPU>>,
 	)]
-	vector_data: Table<T>,
+	vector: Table<T>,
 ) -> DAffine2 {
-	vector_data.iter_ref().next().map(|vector_data| *vector_data.transform).unwrap_or_default()
+	vector.iter_ref().next().map(|row| *row.transform).unwrap_or_default()
 }
 
 #[node_macro::node(category("Math: Transform"))]

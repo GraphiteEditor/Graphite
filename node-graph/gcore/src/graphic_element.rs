@@ -36,23 +36,23 @@ impl From<Table<Graphic>> for Graphic {
 
 // Vector
 impl From<Vector> for Graphic {
-	fn from(vector_data: Vector) -> Self {
-		Graphic::Vector(Table::new_from_element(vector_data))
+	fn from(vector: Vector) -> Self {
+		Graphic::Vector(Table::new_from_element(vector))
 	}
 }
 impl From<Table<Vector>> for Graphic {
-	fn from(vector_data: Table<Vector>) -> Self {
-		Graphic::Vector(vector_data)
+	fn from(vector: Table<Vector>) -> Self {
+		Graphic::Vector(vector)
 	}
 }
 impl From<Vector> for Table<Graphic> {
-	fn from(vector_data: Vector) -> Self {
-		Table::new_from_element(Graphic::Vector(Table::new_from_element(vector_data)))
+	fn from(vector: Vector) -> Self {
+		Table::new_from_element(Graphic::Vector(Table::new_from_element(vector)))
 	}
 }
 impl From<Table<Vector>> for Table<Graphic> {
-	fn from(vector_data: Table<Vector>) -> Self {
-		Table::new_from_element(Graphic::Vector(vector_data))
+	fn from(vector: Table<Vector>) -> Self {
+		Table::new_from_element(Graphic::Vector(vector))
 	}
 }
 
@@ -127,16 +127,16 @@ impl Graphic {
 		}
 	}
 
-	pub fn as_vector_data(&self) -> Option<&Table<Vector>> {
+	pub fn as_vector(&self) -> Option<&Table<Vector>> {
 		match self {
-			Graphic::Vector(data) => Some(data),
+			Graphic::Vector(vector) => Some(vector),
 			_ => None,
 		}
 	}
 
-	pub fn as_vector_data_mut(&mut self) -> Option<&mut Table<Vector>> {
+	pub fn as_vector_mut(&mut self) -> Option<&mut Table<Vector>> {
 		match self {
-			Graphic::Vector(data) => Some(data),
+			Graphic::Vector(vector) => Some(vector),
 			_ => None,
 		}
 	}
@@ -157,16 +157,16 @@ impl Graphic {
 
 	pub fn had_clip_enabled(&self) -> bool {
 		match self {
-			Graphic::Vector(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
-			Graphic::GraphicGroup(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
-			Graphic::RasterDataCPU(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
-			Graphic::RasterDataGPU(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
+			Graphic::Vector(vector) => vector.iter_ref().all(|row| row.alpha_blending.clip),
+			Graphic::GraphicGroup(group) => group.iter_ref().all(|row| row.alpha_blending.clip),
+			Graphic::RasterDataCPU(raster) => raster.iter_ref().all(|row| row.alpha_blending.clip),
+			Graphic::RasterDataGPU(raster) => raster.iter_ref().all(|row| row.alpha_blending.clip),
 		}
 	}
 
 	pub fn can_reduce_to_clip_path(&self) -> bool {
 		match self {
-			Graphic::Vector(vector_data_table) => vector_data_table.iter_ref().all(|row| {
+			Graphic::Vector(vector) => vector.iter_ref().all(|row| {
 				let style = &row.element.style;
 				let alpha_blending = &row.alpha_blending;
 				(alpha_blending.opacity > 1. - f32::EPSILON) && style.fill().is_opaque() && style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
@@ -179,7 +179,7 @@ impl Graphic {
 impl BoundingBox for Graphic {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
 		match self {
-			Graphic::Vector(vector_data) => vector_data.bounding_box(transform, include_stroke),
+			Graphic::Vector(vector) => vector.bounding_box(transform, include_stroke),
 			Graphic::RasterDataCPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::RasterDataGPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform, include_stroke),

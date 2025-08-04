@@ -57,7 +57,7 @@ impl std::hash::Hash for Vector {
 }
 
 impl Vector {
-	/// Push a subpath to the vector data
+	/// Add a Bezier-rs subpath to this path.
 	pub fn append_subpath(&mut self, subpath: impl Borrow<bezier_rs::Subpath<PointId>>, preserve_id: bool) {
 		let subpath: &bezier_rs::Subpath<PointId> = subpath.borrow();
 		let stroke_id = StrokeId::ZERO;
@@ -129,40 +129,40 @@ impl Vector {
 		self.point_domain.push(id, point.position);
 	}
 
-	/// Construct some new vector data from a single subpath with an identity transform and black fill.
+	/// Construct some new vector path from a single Bezier-rs subpath with an identity transform and black fill.
 	pub fn from_subpath(subpath: impl Borrow<bezier_rs::Subpath<PointId>>) -> Self {
 		Self::from_subpaths([subpath], false)
 	}
 
-	/// Construct some new vector data from a single [`BezPath`] with an identity transform and black fill.
+	/// Construct some new vector path from a single [`BezPath`] with an identity transform and black fill.
 	pub fn from_bezpath(bezpath: BezPath) -> Self {
-		let mut vector_data = Self::default();
-		vector_data.append_bezpath(bezpath);
-		vector_data
+		let mut vector = Self::default();
+		vector.append_bezpath(bezpath);
+		vector
 	}
 
-	/// Construct some new vector data from subpaths with an identity transform and black fill.
+	/// Construct some new vector path from Bezier-rs subpaths with an identity transform and black fill.
 	pub fn from_subpaths(subpaths: impl IntoIterator<Item = impl Borrow<bezier_rs::Subpath<PointId>>>, preserve_id: bool) -> Self {
-		let mut vector_data = Self::default();
+		let mut vector = Self::default();
 
 		for subpath in subpaths.into_iter() {
-			vector_data.append_subpath(subpath, preserve_id);
+			vector.append_subpath(subpath, preserve_id);
 		}
 
-		vector_data
+		vector
 	}
 
 	pub fn from_target_types(target_types: impl IntoIterator<Item = impl Borrow<ClickTargetType>>, preserve_id: bool) -> Self {
-		let mut vector_data = Self::default();
+		let mut vector = Self::default();
 
 		for target_type in target_types.into_iter() {
 			match target_type.borrow() {
-				ClickTargetType::Subpath(subpath) => vector_data.append_subpath(subpath, preserve_id),
-				ClickTargetType::FreePoint(point) => vector_data.append_free_point(point, preserve_id),
+				ClickTargetType::Subpath(subpath) => vector.append_subpath(subpath, preserve_id),
+				ClickTargetType::FreePoint(point) => vector.append_free_point(point, preserve_id),
 			}
 		}
 
-		vector_data
+		vector
 	}
 
 	/// Compute the bounding boxes of the bezpaths without any transform
@@ -315,12 +315,12 @@ impl Vector {
 		self.point_domain.resolve_id(point).map_or(0, |point| self.segment_domain.connected_count(point))
 	}
 
-	pub fn check_point_inside_shape(&self, vector_data_transform: DAffine2, point: DVec2) -> bool {
+	pub fn check_point_inside_shape(&self, transform: DAffine2, point: DVec2) -> bool {
 		let number = self
 			.stroke_bezpath_iter()
 			.map(|mut bezpath| {
 				// TODO: apply transform to points instead of modifying the paths
-				bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
+				bezpath.apply_affine(Affine::new(transform.to_cols_array()));
 				bezpath.close_path();
 				let bbox = bezpath.bounding_box();
 				(bezpath, bbox)
@@ -490,9 +490,9 @@ pub fn migrate_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resu
 	}
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
-		EitherFormat::Vector(vector_data) => Table::new_from_element(vector_data),
+		EitherFormat::Vector(vector) => Table::new_from_element(vector),
 		EitherFormat::OldVectorData(old) => {
-			let mut vector_data_table = Table::new_from_element(Vector {
+			let mut vector_table = Table::new_from_element(Vector {
 				style: old.style,
 				colinear_manipulators: old.colinear_manipulators,
 				point_domain: old.point_domain,
@@ -500,11 +500,11 @@ pub fn migrate_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resu
 				region_domain: old.region_domain,
 				upstream_graphic_group: old.upstream_graphic_group,
 			});
-			*vector_data_table.iter_mut().next().unwrap().transform = old.transform;
-			*vector_data_table.iter_mut().next().unwrap().alpha_blending = old.alpha_blending;
-			vector_data_table
+			*vector_table.iter_mut().next().unwrap().transform = old.transform;
+			*vector_table.iter_mut().next().unwrap().alpha_blending = old.alpha_blending;
+			vector_table
 		}
-		EitherFormat::VectorTable(vector_data_table) => vector_data_table,
+		EitherFormat::VectorTable(vector_table) => vector_table,
 	})
 }
 
@@ -528,13 +528,13 @@ mod tests {
 	#[test]
 	fn construct_closed_subpath() {
 		let circle = bezier_rs::Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
-		let vector_data = Vector::from_subpath(&circle);
-		assert_eq!(vector_data.point_domain.ids().len(), 4);
-		let bezier_paths = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
+		let vector = Vector::from_subpath(&circle);
+		assert_eq!(vector.point_domain.ids().len(), 4);
+		let bezier_paths = vector.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
 		assert_eq!(bezier_paths.len(), 4);
 		assert!(bezier_paths.iter().all(|&bezier| circle.iter().any(|original_bezier| original_bezier == bezier)));
 
-		let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
+		let generated = vector.stroke_bezier_paths().collect::<Vec<_>>();
 		assert_subpath_eq(&generated, &[circle]);
 	}
 
@@ -542,12 +542,12 @@ mod tests {
 	fn construct_open_subpath() {
 		let bezier = bezier_rs::Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::NEG_ONE, DVec2::ONE, DVec2::X);
 		let subpath = bezier_rs::Subpath::from_bezier(&bezier);
-		let vector_data = Vector::from_subpath(&subpath);
-		assert_eq!(vector_data.point_domain.ids().len(), 2);
-		let bezier_paths = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
+		let vector = Vector::from_subpath(&subpath);
+		assert_eq!(vector.point_domain.ids().len(), 2);
+		let bezier_paths = vector.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
 		assert_eq!(bezier_paths, vec![bezier]);
 
-		let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
+		let generated = vector.stroke_bezier_paths().collect::<Vec<_>>();
 		assert_subpath_eq(&generated, &[subpath]);
 	}
 
@@ -557,14 +557,14 @@ mod tests {
 		let curve = bezier_rs::Subpath::from_bezier(&curve);
 		let circle = bezier_rs::Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
 
-		let vector_data = Vector::from_subpaths([&curve, &circle], false);
-		assert_eq!(vector_data.point_domain.ids().len(), 6);
+		let vector = Vector::from_subpaths([&curve, &circle], false);
+		assert_eq!(vector.point_domain.ids().len(), 6);
 
-		let bezier_paths = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
+		let bezier_paths = vector.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
 		assert_eq!(bezier_paths.len(), 5);
 		assert!(bezier_paths.iter().all(|&bezier| circle.iter().chain(curve.iter()).any(|original_bezier| original_bezier == bezier)));
 
-		let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
+		let generated = vector.stroke_bezier_paths().collect::<Vec<_>>();
 		assert_subpath_eq(&generated, &[curve, circle]);
 	}
 }

@@ -153,12 +153,12 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&boolean_id, layer, &[]);
 	}
 
-	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
-		let vector_data = Table::new_from_element(Vector::from_subpaths(subpaths, true));
+	pub fn insert_vector(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
+		let vector = Table::new_from_element(Vector::from_subpaths(subpaths, true));
 
 		let shape = resolve_document_node_type("Path")
 			.expect("Path node does not exist")
-			.node_template_input_override([Some(NodeInput::value(TaggedValue::Vector(vector_data), false))]);
+			.node_template_input_override([Some(NodeInput::value(TaggedValue::Vector(vector), false))]);
 		let shape_id = NodeId::new();
 		self.network_interface.insert_node(shape_id, shape, &[]);
 		self.network_interface.move_node_to_chain_start(&shape_id, layer, &[]);
@@ -300,7 +300,7 @@ impl<'a> ModifyInputsContext<'a> {
 			return None;
 		};
 		// If inserting a path node, insert a Flatten Path if the type is a graphic group.
-		// TODO: Allow the path node to operate on Graphic Group data by utilizing the reference for each vector data in a group.
+		// TODO: Allow the path node to operate on Graphic Group data by utilizing the reference for each Vector in a group.
 		if node_definition.identifier == "Path" {
 			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type().clone();
 			if layer_input_type == concrete!(Table<Graphic>) {

@@ -183,7 +183,7 @@ pub(crate) fn property_from_type(
 						// ====================
 						// GRAPHICAL DATA TYPES
 						// ====================
-						Some(x) if x == TypeId::of::<Table<Vector>>() => vector_data_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<Table<Vector>>() => vector_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<Table<Raster<CPU>>>() || x == TypeId::of::<Table<Raster<GPU>>>() => raster_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<Table<Graphic>>() => group_widget(default_info).into(),
 						// ============
@@ -794,11 +794,11 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetH
 	(first_widgets, second_widgets)
 }
 
-pub fn vector_data_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetHolder> {
+pub fn vector_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(parameter_widgets_info);
 
 	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-	widgets.push(TextLabel::new("Vector data is supplied through the node graph").widget_holder());
+	widgets.push(TextLabel::new("Vector is supplied through the node graph").widget_holder());
 
 	widgets
 }

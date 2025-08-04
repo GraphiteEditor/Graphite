@@ -604,7 +604,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						let stroke = graphene_std::vector::style::Stroke::new(Some(stroke_color.to_gamma_srgb()), DEFAULT_STROKE_WIDTH);
 						responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
 
-						// Create new point ids and add those into the existing vector data
+						// Create new point ids and add those into the existing Vector path
 						let mut points_map = HashMap::new();
 						for (point, position) in new_vector.point_domain.iter() {
 							let new_point_id = PointId::generate();
@@ -613,7 +613,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
 						}
 
-						// Create new segment ids and add the segments into the existing vector data
+						// Create new segment ids and add the segments into the existing Vector path
 						let mut segments_map = HashMap::new();
 						for (segment_id, bezier, start, end) in new_vector.segment_bezier_iter() {
 							let new_segment_id = SegmentId::generate();

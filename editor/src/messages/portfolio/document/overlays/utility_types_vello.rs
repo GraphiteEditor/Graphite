@@ -338,8 +338,8 @@ impl OverlayContext {
 	}
 
 	/// Used by the Pen and Path tools to outline the path of the shape.
-	pub fn outline_vector(&mut self, vector_data: &Vector, transform: DAffine2) {
-		self.internal().outline_vector(vector_data, transform);
+	pub fn outline_vector(&mut self, vector: &Vector, transform: DAffine2) {
+		self.internal().outline_vector(vector, transform);
 	}
 
 	/// Used by the Pen tool in order to show how the bezier curve would look like.
@@ -834,12 +834,12 @@ impl OverlayContextInternal {
 	}
 
 	/// Used by the Pen and Path tools to outline the path of the shape.
-	fn outline_vector(&mut self, vector_data: &Vector, transform: DAffine2) {
+	fn outline_vector(&mut self, vector: &Vector, transform: DAffine2) {
 		let vello_transform = self.get_transform();
 		let mut path = BezPath::new();
 
 		let mut last_point = None;
-		for (_, bezier, start_id, end_id) in vector_data.segment_bezier_iter() {
+		for (_, bezier, start_id, end_id) in vector.segment_bezier_iter() {
 			let move_to = last_point != Some(start_id);
 			last_point = Some(end_id);
 

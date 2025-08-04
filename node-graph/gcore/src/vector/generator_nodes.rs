@@ -194,7 +194,7 @@ fn grid<T: GridSpacing>(
 	let (x_spacing, y_spacing) = spacing.as_dvec2().into();
 	let (angle_a, angle_b) = angles.into();
 
-	let mut vector_data = Vector::default();
+	let mut vector = Vector::default();
 	let mut segment_id = SegmentId::ZERO;
 	let mut point_id = PointId::ZERO;
 
@@ -204,13 +204,13 @@ fn grid<T: GridSpacing>(
 			for y in 0..rows {
 				for x in 0..columns {
 					// Add current point to the grid
-					let current_index = vector_data.point_domain.ids().len();
-					vector_data.point_domain.push(point_id.next_id(), DVec2::new(x_spacing * x as f64, y_spacing * y as f64));
+					let current_index = vector.point_domain.ids().len();
+					vector.point_domain.push(point_id.next_id(), DVec2::new(x_spacing * x as f64, y_spacing * y as f64));
 
 					// Helper function to connect points with line segments
 					let mut push_segment = |to_index: Option<usize>| {
 						if let Some(other_index) = to_index {
-							vector_data
+							vector
 								.segment_domain
 								.push(segment_id.next_id(), other_index, current_index, bezier_rs::BezierHandles::Linear, StrokeId::ZERO);
 						}
@@ -234,7 +234,7 @@ fn grid<T: GridSpacing>(
 			for y in 0..rows {
 				for x in 0..columns {
 					// Add current point to the grid with offset for odd columns
-					let current_index = vector_data.point_domain.ids().len();
+					let current_index = vector.point_domain.ids().len();
 
 					let a_angles_eaten = x.div_ceil(2) as f64;
 					let b_angles_eaten = (x / 2) as f64;
@@ -242,12 +242,12 @@ fn grid<T: GridSpacing>(
 					let offset_y_fraction = b_angles_eaten * tan_b - a_angles_eaten * tan_a;
 
 					let position = DVec2::new(spacing.x * x as f64, spacing.y * y as f64 + offset_y_fraction * spacing.x);
-					vector_data.point_domain.push(point_id.next_id(), position);
+					vector.point_domain.push(point_id.next_id(), position);
 
 					// Helper function to connect points with line segments
 					let mut push_segment = |to_index: Option<usize>| {
 						if let Some(other_index) = to_index {
-							vector_data
+							vector
 								.segment_domain
 								.push(segment_id.next_id(), other_index, current_index, bezier_rs::BezierHandles::Linear, StrokeId::ZERO);
 						}
@@ -272,7 +272,7 @@ fn grid<T: GridSpacing>(
 		}
 	}
 
-	Table::new_from_element(vector_data)
+	Table::new_from_element(vector)
 }
 
 #[cfg(test)]

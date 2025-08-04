@@ -48,14 +48,12 @@ where
 	let mut best_distance_squared = max_distance * max_distance;
 	for layer in layers {
 		let viewspace = document.metadata().transform_to_viewport(layer);
-		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
-			continue;
-		};
-		for id in vector_data.extendable_points(preferences.vector_meshes) {
+		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
+		for id in vector.extendable_points(preferences.vector_meshes) {
 			if exclude(id) {
 				continue;
 			}
-			let Some(point) = vector_data.point_domain.position_from_id(id) else { continue };
+			let Some(point) = vector.point_domain.position_from_id(id) else { continue };
 
 			let distance_squared = viewspace.transform_point2(point).distance_squared(goal);
 
@@ -89,16 +87,16 @@ pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageH
 	Quad::from_box([DVec2::ZERO + vertical_offset, far + vertical_offset])
 }
 
-pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector_data: &Vector, prefer_handle_direction: bool) -> Option<f64> {
-	let is_start = |point: PointId, segment: SegmentId| vector_data.segment_start_from_id(segment) == Some(point);
-	let anchor_position = vector_data.point_domain.position_from_id(anchor)?;
-	let end_handle = ManipulatorPointId::EndHandle(segment).get_position(vector_data);
-	let start_handle = ManipulatorPointId::PrimaryHandle(segment).get_position(vector_data);
+pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector: &Vector, prefer_handle_direction: bool) -> Option<f64> {
+	let is_start = |point: PointId, segment: SegmentId| vector.segment_start_from_id(segment) == Some(point);
+	let anchor_position = vector.point_domain.position_from_id(anchor)?;
+	let end_handle = ManipulatorPointId::EndHandle(segment).get_position(vector);
+	let start_handle = ManipulatorPointId::PrimaryHandle(segment).get_position(vector);
 
 	let start_point = if is_start(anchor, segment) {
-		vector_data.segment_end_from_id(segment).and_then(|id| vector_data.point_domain.position_from_id(id))
+		vector.segment_end_from_id(segment).and_then(|id| vector.point_domain.position_from_id(id))
 	} else {
-		vector_data.segment_start_from_id(segment).and_then(|id| vector_data.point_domain.position_from_id(id))
+		vector.segment_start_from_id(segment).and_then(|id| vector.point_domain.position_from_id(id))
 	};
 
 	let required_handle = if is_start(anchor, segment) {
@@ -116,9 +114,9 @@ pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector_data:
 	required_handle.map(|handle| -(handle - anchor_position).angle_to(DVec2::X))
 }
 
-pub fn adjust_handle_colinearity(handle: HandleId, anchor_position: DVec2, target_control_point: DVec2, vector_data: &Vector, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-	let Some(other_handle) = vector_data.other_colinear_handle(handle) else { return };
-	let Some(handle_position) = other_handle.to_manipulator_point().get_position(vector_data) else {
+pub fn adjust_handle_colinearity(handle: HandleId, anchor_position: DVec2, target_control_point: DVec2, vector: &Vector, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+	let Some(other_handle) = vector.other_colinear_handle(handle) else { return };
+	let Some(handle_position) = other_handle.to_manipulator_point().get_position(vector) else {
 		return;
 	};
 	let Some(direction) = (anchor_position - target_control_point).try_normalize() else { return };
@@ -133,12 +131,12 @@ pub fn restore_previous_handle_position(
 	handle: HandleId,
 	original_c: DVec2,
 	anchor_position: DVec2,
-	vector_data: &Vector,
+	vector: &Vector,
 	layer: LayerNodeIdentifier,
 	responses: &mut VecDeque<Message>,
 ) -> Option<HandleId> {
-	let other_handle = vector_data.other_colinear_handle(handle)?;
-	let handle_position = other_handle.to_manipulator_point().get_position(vector_data)?;
+	let other_handle = vector.other_colinear_handle(handle)?;
+	let handle_position = other_handle.to_manipulator_point().get_position(vector)?;
 	let direction = (anchor_position - original_c).try_normalize()?;
 
 	let old_relative_position = (handle_position - anchor_position).length() * direction;
@@ -152,16 +150,8 @@ pub fn restore_previous_handle_position(
 	Some(other_handle)
 }
 
-pub fn restore_g1_continuity(
-	handle: HandleId,
-	other_handle: HandleId,
-	control_point: DVec2,
-	anchor_position: DVec2,
-	vector_data: &Vector,
-	layer: LayerNodeIdentifier,
-	responses: &mut VecDeque<Message>,
-) {
-	let Some(handle_position) = other_handle.to_manipulator_point().get_position(vector_data) else {
+pub fn restore_g1_continuity(handle: HandleId, other_handle: HandleId, control_point: DVec2, anchor_position: DVec2, vector: &Vector, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+	let Some(handle_position) = other_handle.to_manipulator_point().get_position(vector) else {
 		return;
 	};
 	let Some(direction) = (anchor_position - control_point).try_normalize() else { return };
@@ -178,7 +168,7 @@ pub fn restore_g1_continuity(
 /// Check whether a point is visible in the current overlay mode.
 pub fn is_visible_point(
 	manipulator_point_id: ManipulatorPointId,
-	vector_data: &Vector,
+	vector: &Vector,
 	path_overlay_mode: PathOverlayMode,
 	frontier_handles_info: &Option<HashMap<SegmentId, Vec<PointId>>>,
 	selected_segments: Vec<SegmentId>,
@@ -195,14 +185,14 @@ pub fn is_visible_point(
 					}
 
 					// Either the segment is a part of selected segments or the opposite handle is a part of existing selection
-					let Some(handle_pair) = manipulator_point_id.get_handle_pair(vector_data) else { return false };
+					let Some(handle_pair) = manipulator_point_id.get_handle_pair(vector) else { return false };
 					let other_handle = handle_pair[1].to_manipulator_point();
 
 					// Return whether the list of selected points contain the other handle
 					selected_points.contains(&other_handle)
 				}
 				(PathOverlayMode::FrontierHandles, false) => {
-					let Some(anchor) = manipulator_point_id.get_anchor(vector_data) else {
+					let Some(anchor) = manipulator_point_id.get_anchor(vector) else {
 						warn!("No anchor for selected handle");
 						return false;
 					};

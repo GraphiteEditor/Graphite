@@ -896,7 +896,7 @@ impl Vector {
 		}
 
 		StrokePathIter {
-			vector_data: self,
+			vector: self,
 			points,
 			skip: 0,
 			done_one: false,
@@ -952,13 +952,11 @@ impl Vector {
 		self.stroke_bezier_paths().flat_map(|mut path| std::mem::take(path.manipulator_groups_mut()))
 	}
 
-	/// Get manipulator by id
 	pub fn manipulator_group_id(&self, id: impl Into<PointId>) -> Option<ManipulatorGroup<PointId>> {
 		let id = id.into();
 		self.manipulator_groups().find(|group| group.id == id)
 	}
 
-	/// Transforms this vector data
 	pub fn transform(&mut self, transform: DAffine2) {
 		self.point_domain.transform(transform);
 		self.segment_domain.transform(transform);
@@ -1026,7 +1024,7 @@ impl StrokePathIterPointMetadata {
 
 #[derive(Clone)]
 pub struct StrokePathIter<'a> {
-	vector_data: &'a Vector,
+	vector: &'a Vector,
 	points: Vec<StrokePathIterPointMetadata>,
 	skip: usize,
 	done_one: bool,
@@ -1056,29 +1054,29 @@ impl Iterator for StrokePathIter<'_> {
 			let Some(val) = self.points[point_index].take_first() else {
 				// Dead end
 				groups.push(ManipulatorGroup {
-					anchor: self.vector_data.point_domain.positions()[point_index],
+					anchor: self.vector.point_domain.positions()[point_index],
 					in_handle,
 					out_handle: None,
-					id: self.vector_data.point_domain.ids()[point_index],
+					id: self.vector.point_domain.ids()[point_index],
 				});
 
 				break;
 			};
 
-			let mut handles = self.vector_data.segment_domain.handles()[val.segment_index];
+			let mut handles = self.vector.segment_domain.handles()[val.segment_index];
 			if val.start_from_end {
 				handles = handles.reversed();
 			}
 			let next_point_index = if val.start_from_end {
-				self.vector_data.segment_domain.start_point()[val.segment_index]
+				self.vector.segment_domain.start_point()[val.segment_index]
 			} else {
-				self.vector_data.segment_domain.end_point()[val.segment_index]
+				self.vector.segment_domain.end_point()[val.segment_index]
 			};
 			groups.push(ManipulatorGroup {
-				anchor: self.vector_data.point_domain.positions()[point_index],
+				anchor: self.vector.point_domain.positions()[point_index],
 				in_handle,
 				out_handle: handles.start(),
-				id: self.vector_data.point_domain.ids()[point_index],
+				id: self.vector.point_domain.ids()[point_index],
 			});
 
 			in_handle = handles.end();
@@ -1102,7 +1100,7 @@ impl bezier_rs::Identifier for PointId {
 	}
 }
 
-/// Represents the conversion of ids used when concatenating vector data with conflicting ids.
+/// Represents the conversion of IDs used when concatenating vector paths with conflicting IDs.
 pub struct IdMap {
 	pub point_offset: usize,
 	pub point_map: HashMap<PointId, PointId>,

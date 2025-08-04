@@ -35,7 +35,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 	if first_layer == second_layer {
 		return;
 	}
-	// Calculate the downstream transforms in order to bring the other vector data into the same layer space
+	// Calculate the downstream transforms in order to bring the other vector geometry into the same layer space
 	let first_layer_transform = document.metadata().downstream_transform_to_document(first_layer);
 	let second_layer_transform = document.metadata().downstream_transform_to_document(second_layer);
 
@@ -163,24 +163,24 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 /// Merge the `first_endpoint` with `second_endpoint`.
 pub fn merge_points(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, first_endpoint: PointId, second_endpont: PointId, responses: &mut VecDeque<Message>) {
 	let transform = document.metadata().transform_to_document(layer);
-	let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { return };
+	let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
 
-	let segment = vector_data.segment_bezier_iter().find(|(_, _, start, end)| *end == second_endpont || *start == second_endpont);
+	let segment = vector.segment_bezier_iter().find(|(_, _, start, end)| *end == second_endpont || *start == second_endpont);
 	let Some((segment, _, mut segment_start_point, mut segment_end_point)) = segment else {
 		log::error!("Could not get the segment for second_endpoint.");
 		return;
 	};
 
 	let mut handles = [None; 2];
-	if let Some(handle_position) = ManipulatorPointId::PrimaryHandle(segment).get_position(&vector_data) {
-		let anchor_position = ManipulatorPointId::Anchor(segment_start_point).get_position(&vector_data).unwrap();
+	if let Some(handle_position) = ManipulatorPointId::PrimaryHandle(segment).get_position(&vector) {
+		let anchor_position = ManipulatorPointId::Anchor(segment_start_point).get_position(&vector).unwrap();
 		let handle_position = transform.transform_point2(handle_position);
 		let anchor_position = transform.transform_point2(anchor_position);
 		let anchor_to_handle = handle_position - anchor_position;
 		handles[0] = Some(anchor_to_handle);
 	}
-	if let Some(handle_position) = ManipulatorPointId::EndHandle(segment).get_position(&vector_data) {
-		let anchor_position = ManipulatorPointId::Anchor(segment_end_point).get_position(&vector_data).unwrap();
+	if let Some(handle_position) = ManipulatorPointId::EndHandle(segment).get_position(&vector) {
+		let anchor_position = ManipulatorPointId::Anchor(segment_end_point).get_position(&vector).unwrap();
 		let handle_position = transform.transform_point2(handle_position);
 		let anchor_position = transform.transform_point2(anchor_position);
 		let anchor_to_handle = handle_position - anchor_position;

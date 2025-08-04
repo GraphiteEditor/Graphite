@@ -209,7 +209,7 @@ impl MergeByDistanceExt for Vector {
 			}
 		}
 
-		// Create new vector data
+		// Create new vector geometry
 		self.point_domain = new_point_domain;
 		self.segment_domain = new_segment_domain;
 	}

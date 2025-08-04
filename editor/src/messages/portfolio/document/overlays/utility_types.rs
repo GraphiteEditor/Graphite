@@ -757,12 +757,12 @@ impl OverlayContext {
 	}
 
 	/// Used by the Pen and Path tools to outline the path of the shape.
-	pub fn outline_vector(&mut self, vector_data: &Vector, transform: DAffine2) {
+	pub fn outline_vector(&mut self, vector: &Vector, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
 		let mut last_point = None;
-		for (_, bezier, start_id, end_id) in vector_data.segment_bezier_iter() {
+		for (_, bezier, start_id, end_id) in vector.segment_bezier_iter() {
 			let move_to = last_point != Some(start_id);
 			last_point = Some(end_id);
 

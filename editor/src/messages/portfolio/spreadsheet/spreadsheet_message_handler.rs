@@ -21,7 +21,7 @@ pub struct SpreadsheetMessageHandler {
 	inspect_node: Option<NodeId>,
 	introspected_data: Option<Arc<dyn Any + Send + Sync>>,
 	element_path: Vec<usize>,
-	viewing_vector_data_domain: VectorDomain,
+	viewing_vector_domain: VectorDomain,
 }
 
 #[message_handler_data]
@@ -55,7 +55,7 @@ impl MessageHandler<SpreadsheetMessage, ()> for SpreadsheetMessageHandler {
 			}
 
 			SpreadsheetMessage::ViewVectorDomain { domain } => {
-				self.viewing_vector_data_domain = domain;
+				self.viewing_vector_domain = domain;
 				self.update_layout(responses);
 			}
 		}
@@ -79,7 +79,7 @@ impl SpreadsheetMessageHandler {
 			current_depth: 0,
 			desired_path: &mut self.element_path,
 			breadcrumbs: Vec::new(),
-			vector_data_domain: self.viewing_vector_data_domain,
+			vector_domain: self.viewing_vector_domain,
 		};
 		let mut layout = self
 			.introspected_data
@@ -106,7 +106,7 @@ struct LayoutData<'a> {
 	current_depth: usize,
 	desired_path: &'a mut Vec<usize>,
 	breadcrumbs: Vec<String>,
-	vector_data_domain: VectorDomain,
+	vector_domain: VectorDomain,
 }
 
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
@@ -179,7 +179,7 @@ impl TableRowLayout for Vector {
 		"Vector"
 	}
 	fn identifier(&self) -> String {
-		format!("Vector Data (points={}, segments={})", self.point_domain.ids().len(), self.segment_domain.ids().len())
+		format!("Vector ({} points, {} segments)", self.point_domain.ids().len(), self.segment_domain.ids().len())
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let colinear = self.colinear_manipulators.iter().map(|[a, b]| format!("[{a} / {b}]")).collect::<Vec<_>>().join(", ");
@@ -203,10 +203,10 @@ impl TableRowLayout for Vector {
 					.on_update(move |_| SpreadsheetMessage::ViewVectorDomain { domain }.into())
 			})
 			.collect();
-		let domain = vec![RadioInput::new(domain_entries).selected_index(Some(data.vector_data_domain as u32)).widget_holder()];
+		let domain = vec![RadioInput::new(domain_entries).selected_index(Some(data.vector_domain as u32)).widget_holder()];
 
 		let mut table_rows = Vec::new();
-		match data.vector_data_domain {
+		match data.vector_domain {
 			VectorDomain::Points => {
 				table_rows.push(column_headings(&["", "position"]));
 				table_rows.extend(

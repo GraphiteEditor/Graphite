@@ -682,7 +682,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("Rasterizes the given vector data"),
+			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
 		DocumentNodeDefinition {
@@ -1249,8 +1249,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Vector Data", "TODO").into(), ("Modification", "TODO").into()],
-					output_names: vec!["Vector Data".to_string()],
+					input_metadata: vec![("Content", "TODO").into(), ("Modification", "TODO").into()],
+					output_names: vec!["Modified".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
 							node_metadata: [
@@ -1374,7 +1374,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							}),
 						),
 						InputMetadata::with_name_description_override("Align", "TODO", WidgetOverride::Custom("text_align".to_string())),
-						("Per-Glyph Instances", "Splits each text glyph into its own row in the table of vector data.").into(),
+						("Per-Glyph Instances", "Splits each text glyph into its own row in the table of vector geometry.").into(),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
@@ -1704,7 +1704,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					input_metadata: vec![
-						("Vector Data", "The shape to be resampled and converted into a polyline.").into(),
+						("Content", "The shape to be resampled and converted into a polyline.").into(),
 						("Spacing", node_properties::SAMPLE_POLYLINE_TOOLTIP_SPACING).into(),
 						InputMetadata::with_name_description_override(
 							"Separation",
@@ -1847,7 +1847,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					input_metadata: vec![
-						("Vector Data", "TODO").into(),
+						("Content", "TODO").into(),
 						InputMetadata::with_name_description_override(
 							"Separation Disk Diameter",
 							"TODO",

@@ -28,7 +28,7 @@ fn text<'i: 'n>(
 	#[default(0.)]
 	tilt: f64,
 	align: TextAlign,
-	/// Splits each text glyph into its own row in the table of vector data.
+	/// Splits each text glyph into its own row in the table of vector geometry.
 	#[default(false)]
 	per_glyph_instances: bool,
 ) -> Table<Vector> {

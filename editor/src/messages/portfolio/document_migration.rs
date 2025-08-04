@@ -595,13 +595,13 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		}
 
-		// Obtain the document node for the given node ID, extract the vector points, and create vector data from the list of points
+		// Obtain the document node for the given node ID, extract the vector points, and create a Vector path from the list of points
 		let node = document.network_interface.document_node(node_id, network_path)?;
 		let Some(TaggedValue::VecDVec2(points)) = node.inputs.get(1).and_then(|tagged_value| tagged_value.as_value()) else {
 			log::error!("The old Spline node's input at index 1 is not a TaggedValue::VecDVec2");
 			return None;
 		};
-		let vector_data = Vector::from_subpath(Subpath::from_anchors_linear(points.to_vec(), false));
+		let vector = Vector::from_subpath(Subpath::from_anchors_linear(points.to_vec(), false));
 
 		// Retrieve the output connectors linked to the "Spline" node's output port
 		let Some(spline_outputs) = document.network_interface.outward_wires(network_path)?.get(&OutputConnector::node(*node_id, 0)).cloned() else {
@@ -615,13 +615,13 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		};
 
-		// Get the "Path" node definition and fill it in with the vector data and default vector modification
+		// Get the "Path" node definition and fill it in with the Vector path and default vector modification
 		let Some(path_node_type) = resolve_document_node_type("Path") else {
 			log::error!("Path node does not exist.");
 			return None;
 		};
 		let path_node = path_node_type.node_template_input_override([
-			Some(NodeInput::value(TaggedValue::Vector(Table::new_from_element(vector_data)), true)),
+			Some(NodeInput::value(TaggedValue::Vector(Table::new_from_element(vector)), true)),
 			Some(NodeInput::value(TaggedValue::VectorModification(Default::default()), false)),
 		]);
 

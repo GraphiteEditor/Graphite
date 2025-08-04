@@ -42,9 +42,9 @@ pub fn selected_segments(network_interface: &NodeNetworkInterface, shape_editor:
 	// TODO: Currently if there are two duplicate layers, both of their segments get overlays
 	// Adding segments which are are connected to selected anchors
 	for layer in network_interface.selected_nodes().selected_layers(network_interface.document_metadata()) {
-		let Some(vector_data) = network_interface.compute_modified_vector(layer) else { continue };
+		let Some(vector) = network_interface.compute_modified_vector(layer) else { continue };
 
-		for (segment_id, _bezier, start, end) in vector_data.segment_bezier_iter() {
+		for (segment_id, _bezier, start, end) in vector.segment_bezier_iter() {
 			if selected_anchors.contains(&start) || selected_anchors.contains(&end) {
 				selected_segments.push(segment_id);
 			}
@@ -118,14 +118,14 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 	let display_anchors = overlay_context.visibility_settings.anchors();
 
 	for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
-		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 		let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 		if display_path {
-			overlay_context.outline_vector(&vector_data, transform);
+			overlay_context.outline_vector(&vector, transform);
 		}
 
 		// Get the selected segments and then add a bold line overlay on them
-		for (segment_id, bezier, _, _) in vector_data.segment_bezier_iter() {
+		for (segment_id, bezier, _, _) in vector.segment_bezier_iter() {
 			let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) else {
 				continue;
 			};
@@ -139,30 +139,30 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 		let is_selected = |point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_point_selected(point));
 
 		if display_handles {
-			let opposite_handles_data: Vec<(PointId, SegmentId)> = shape_editor.selected_points().filter_map(|point_id| vector_data.adjacent_segment(point_id)).collect();
+			let opposite_handles_data: Vec<(PointId, SegmentId)> = shape_editor.selected_points().filter_map(|point_id| vector.adjacent_segment(point_id)).collect();
 
 			match draw_handles {
 				DrawHandles::All => {
-					vector_data.segment_bezier_iter().for_each(|(segment_id, bezier, _start, _end)| {
+					vector.segment_bezier_iter().for_each(|(segment_id, bezier, _start, _end)| {
 						overlay_bezier_handles(bezier, segment_id, transform, is_selected, overlay_context);
 					});
 				}
 				DrawHandles::SelectedAnchors(ref selected_segments) => {
-					vector_data
+					vector
 						.segment_bezier_iter()
 						.filter(|(segment_id, ..)| selected_segments.contains(segment_id))
 						.for_each(|(segment_id, bezier, _start, _end)| {
 							overlay_bezier_handles(bezier, segment_id, transform, is_selected, overlay_context);
 						});
 
-					for (segment_id, bezier, start, end) in vector_data.segment_bezier_iter() {
+					for (segment_id, bezier, start, end) in vector.segment_bezier_iter() {
 						if let Some((corresponding_anchor, _)) = opposite_handles_data.iter().find(|(_, adj_segment_id)| adj_segment_id == &segment_id) {
 							overlay_bezier_handle_specific_point(bezier, segment_id, (start, end), *corresponding_anchor, transform, is_selected, overlay_context);
 						}
 					}
 				}
 				DrawHandles::FrontierHandles(ref segment_endpoints) => {
-					vector_data
+					vector
 						.segment_bezier_iter()
 						.filter(|(segment_id, ..)| segment_endpoints.contains_key(segment_id))
 						.for_each(|(segment_id, bezier, start, end)| {
@@ -179,7 +179,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 		}
 
 		if display_anchors {
-			for (&id, &position) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
+			for (&id, &position) in vector.point_domain.ids().iter().zip(vector.point_domain.positions()) {
 				overlay_context.manipulator_anchor(transform.transform_point2(position), is_selected(ManipulatorPointId::Anchor(id)), None);
 			}
 		}
@@ -192,7 +192,7 @@ pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &
 	}
 
 	for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
-		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
+		let Some(vector) = document.network_interface.compute_modified_vector(layer) else {
 			continue;
 		};
 		//let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
@@ -200,8 +200,8 @@ pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &
 		let selected = shape_editor.selected_shape_state.get(&layer);
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_point_selected(point));
 
-		for point in vector_data.extendable_points(preferences.vector_meshes) {
-			let Some(position) = vector_data.point_domain.position_from_id(point) else { continue };
+		for point in vector.extendable_points(preferences.vector_meshes) {
+			let Some(position) = vector.point_domain.position_from_id(point) else { continue };
 			let position = transform.transform_point2(position);
 			overlay_context.manipulator_anchor(position, is_selected(selected, ManipulatorPointId::Anchor(point)), None);
 		}

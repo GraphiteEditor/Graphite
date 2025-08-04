@@ -412,16 +412,16 @@ impl Render for Table<Vector> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter_ref() {
 			let multiplied_transform = *row.transform;
-			let vector_data = &row.element;
+			let vector = &row.element;
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
-			let has_real_stroke = vector_data.style.stroke().filter(|stroke| stroke.weight() > 0.);
+			let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
 			let applied_stroke_transform = set_stroke_transform.unwrap_or(*row.transform);
 			let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
 			let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
-			let layer_bounds = vector_data.bounding_box().unwrap_or_default();
-			let transformed_bounds = vector_data.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
+			let layer_bounds = vector.bounding_box().unwrap_or_default();
+			let transformed_bounds = vector.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
 
 			let mut path = String::new();
 
@@ -429,12 +429,12 @@ impl Render for Table<Vector> {
 				let _ = subpath.subpath_to_svg(&mut path, applied_stroke_transform);
 			}
 
-			let connected = vector_data.stroke_bezier_paths().all(|path| path.closed());
-			let can_draw_aligned_stroke = vector_data.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered()) && connected;
+			let connected = vector.stroke_bezier_paths().all(|path| path.closed());
+			let can_draw_aligned_stroke = vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered()) && connected;
 			let mut push_id = None;
 
 			if can_draw_aligned_stroke {
-				let mask_type = if vector_data.style.stroke().unwrap().align == StrokeAlign::Inside {
+				let mask_type = if vector.style.stroke().unwrap().align == StrokeAlign::Inside {
 					MaskType::Clip
 				} else {
 					MaskType::Mask
@@ -566,7 +566,7 @@ impl Render for Table<Vector> {
 				element.style.clear_stroke();
 				element.style.set_fill(Fill::solid(Color::BLACK));
 
-				let vector_data = Table::new_from_row(TableRow {
+				let vector_table = Table::new_from_row(TableRow {
 					element,
 					alpha_blending: *row.alpha_blending,
 					transform: *row.transform,
@@ -580,7 +580,7 @@ impl Render for Table<Vector> {
 				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
 				scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-				vector_data.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
+				vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
 				scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
 			}
 
@@ -730,11 +730,11 @@ impl Render for Table<Vector> {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
 		for row in self.iter_ref() {
 			let transform = *row.transform;
-			let vector_data = row.element;
+			let vector = row.element;
 
 			if let Some(element_id) = element_id {
-				let stroke_width = vector_data.style.stroke().as_ref().map_or(0., Stroke::weight);
-				let filled = vector_data.style.fill() != &Fill::None;
+				let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::weight);
+				let filled = vector.style.fill() != &Fill::None;
 				let fill = |mut subpath: Subpath<_>| {
 					if filled {
 						subpath.set_closed(true);
@@ -743,9 +743,9 @@ impl Render for Table<Vector> {
 				};
 
 				// For free-floating anchors, we need to add a click target for each
-				let single_anchors_targets = vector_data.point_domain.ids().iter().filter_map(|&point_id| {
-					if vector_data.connected_count(point_id) == 0 {
-						let anchor = vector_data.point_domain.position_from_id(point_id).unwrap_or_default();
+				let single_anchors_targets = vector.point_domain.ids().iter().filter_map(|&point_id| {
+					if vector.connected_count(point_id) == 0 {
+						let anchor = vector.point_domain.position_from_id(point_id).unwrap_or_default();
 						let point = FreePoint::new(point_id, anchor);
 
 						Some(ClickTarget::new_with_free_point(point))
@@ -754,7 +754,7 @@ impl Render for Table<Vector> {
 					}
 				});
 
-				let click_targets = vector_data
+				let click_targets = vector
 					.stroke_bezier_paths()
 					.map(fill)
 					.map(|subpath| ClickTarget::new_with_subpath(subpath, stroke_width))
@@ -764,7 +764,7 @@ impl Render for Table<Vector> {
 				metadata.click_targets.entry(element_id).or_insert(click_targets);
 			}
 
-			if let Some(upstream_graphic_group) = &vector_data.upstream_graphic_group {
+			if let Some(upstream_graphic_group) = &vector.upstream_graphic_group {
 				footprint.transform *= transform;
 				upstream_graphic_group.collect_metadata(metadata, footprint, None);
 			}
@@ -1140,7 +1140,7 @@ impl Render for Table<Raster<GPU>> {
 impl Render for Graphic {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
-			Graphic::Vector(vector_data) => vector_data.render_svg(render, render_params),
+			Graphic::Vector(vector) => vector.render_svg(render, render_params),
 			Graphic::RasterDataCPU(raster) => raster.render_svg(render, render_params),
 			Graphic::RasterDataGPU(_raster) => (),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.render_svg(render, render_params),
@@ -1150,7 +1150,7 @@ impl Render for Graphic {
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
-			Graphic::Vector(vector_data) => vector_data.render_to_vello(scene, transform, context, render_params),
+			Graphic::Vector(vector) => vector.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterDataCPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterDataGPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.render_to_vello(scene, transform, context, render_params),
@@ -1163,12 +1163,12 @@ impl Render for Graphic {
 				Graphic::GraphicGroup(_) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 				}
-				Graphic::Vector(vector_data) => {
+				Graphic::Vector(vector) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than one row of the graphical data table
-					if let Some(vector_data) = vector_data.iter_ref().next() {
-						metadata.first_element_source_id.insert(element_id, *vector_data.source_node_id);
-						metadata.local_transforms.insert(element_id, *vector_data.transform);
+					if let Some(vector) = vector.iter_ref().next() {
+						metadata.first_element_source_id.insert(element_id, *vector.source_node_id);
+						metadata.local_transforms.insert(element_id, *vector.transform);
 					}
 				}
 				Graphic::RasterDataCPU(raster_frame) => {
@@ -1191,7 +1191,7 @@ impl Render for Graphic {
 		}
 
 		match self {
-			Graphic::Vector(vector_data) => vector_data.collect_metadata(metadata, footprint, element_id),
+			Graphic::Vector(vector) => vector.collect_metadata(metadata, footprint, element_id),
 			Graphic::RasterDataCPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
 			Graphic::RasterDataGPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.collect_metadata(metadata, footprint, element_id),
@@ -1200,7 +1200,7 @@ impl Render for Graphic {
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		match self {
-			Graphic::Vector(vector_data) => vector_data.add_upstream_click_targets(click_targets),
+			Graphic::Vector(vector) => vector.add_upstream_click_targets(click_targets),
 			Graphic::RasterDataCPU(raster) => raster.add_upstream_click_targets(click_targets),
 			Graphic::RasterDataGPU(raster) => raster.add_upstream_click_targets(click_targets),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.add_upstream_click_targets(click_targets),
@@ -1209,7 +1209,7 @@ impl Render for Graphic {
 
 	fn contains_artboard(&self) -> bool {
 		match self {
-			Graphic::Vector(vector_data) => vector_data.contains_artboard(),
+			Graphic::Vector(vector) => vector.contains_artboard(),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.contains_artboard(),
 			Graphic::RasterDataCPU(raster) => raster.contains_artboard(),
 			Graphic::RasterDataGPU(raster) => raster.contains_artboard(),
@@ -1218,7 +1218,7 @@ impl Render for Graphic {
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		match self {
-			Graphic::Vector(vector_data) => vector_data.new_ids_from_hash(reference),
+			Graphic::Vector(vector) => vector.new_ids_from_hash(reference),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.new_ids_from_hash(reference),
 			Graphic::RasterDataCPU(_) => (),
 			Graphic::RasterDataGPU(_) => (),
