@@ -1,5 +1,5 @@
 use crate::vector::misc::dvec2_to_point;
-use crate::vector::vector_data::{HandleId, VectorData};
+use crate::vector::vector_data::{HandleId, Vector};
 use bezier_rs::{BezierHandles, ManipulatorGroup};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -673,7 +673,7 @@ impl FoundSubpath {
 	}
 }
 
-impl VectorData {
+impl Vector {
 	/// Construct a [`kurbo::PathSeg`] by resolving the points from their ids.
 	fn path_segment_from_index(&self, start: usize, end: usize, handles: BezierHandles) -> PathSeg {
 		let start = dvec2_to_point(self.point_domain.positions()[start]);
@@ -1026,7 +1026,7 @@ impl StrokePathIterPointMetadata {
 
 #[derive(Clone)]
 pub struct StrokePathIter<'a> {
-	vector_data: &'a VectorData,
+	vector_data: &'a Vector,
 	points: Vec<StrokePathIterPointMetadata>,
 	skip: usize,
 	done_one: bool,

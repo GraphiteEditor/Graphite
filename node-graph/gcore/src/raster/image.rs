@@ -3,7 +3,7 @@ use crate::AlphaBlending;
 use crate::color::float_to_srgb_u8;
 use crate::raster_types::Raster;
 use crate::table::{Table, TableRow};
-use crate::vector::VectorData;
+use crate::vector::Vector;
 use core::hash::{Hash, Hasher};
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
@@ -239,7 +239,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
 		GraphicGroup(Table<GraphicElement>),
 		/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
-		VectorData(Table<VectorData>),
+		VectorData(Table<Vector>),
 		RasterFrame(RasterFrame),
 	}
 
@@ -338,7 +338,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 		/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
 		GraphicGroup(Table<GraphicElement>),
 		/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
-		VectorData(Table<VectorData>),
+		VectorData(Table<Vector>),
 		RasterFrame(RasterFrame),
 	}
 

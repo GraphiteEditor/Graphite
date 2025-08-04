@@ -3,21 +3,21 @@ use super::{PointId, SegmentId, StrokeId};
 use crate::Ctx;
 use crate::registry::types::{Angle, PixelSize};
 use crate::table::Table;
-use crate::vector::{HandleId, VectorData};
+use crate::vector::{HandleId, Vector};
 use bezier_rs::Subpath;
 use glam::DVec2;
 
 trait CornerRadius {
-	fn generate(self, size: DVec2, clamped: bool) -> Table<VectorData>;
+	fn generate(self, size: DVec2, clamped: bool) -> Table<Vector>;
 }
 impl CornerRadius for f64 {
-	fn generate(self, size: DVec2, clamped: bool) -> Table<VectorData> {
+	fn generate(self, size: DVec2, clamped: bool) -> Table<Vector> {
 		let clamped_radius = if clamped { self.clamp(0., size.x.min(size.y).max(0.) / 2.) } else { self };
-		Table::new_from_element(VectorData::from_subpath(Subpath::new_rounded_rect(size / -2., size / 2., [clamped_radius; 4])))
+		Table::new_from_element(Vector::from_subpath(Subpath::new_rounded_rect(size / -2., size / 2., [clamped_radius; 4])))
 	}
 }
 impl CornerRadius for [f64; 4] {
-	fn generate(self, size: DVec2, clamped: bool) -> Table<VectorData> {
+	fn generate(self, size: DVec2, clamped: bool) -> Table<Vector> {
 		let clamped_radius = if clamped {
 			// Algorithm follows the CSS spec: <https://drafts.csswg.org/css-backgrounds/#corner-overlap>
 
@@ -33,7 +33,7 @@ impl CornerRadius for [f64; 4] {
 		} else {
 			self
 		};
-		Table::new_from_element(VectorData::from_subpath(Subpath::new_rounded_rect(size / -2., size / 2., clamped_radius)))
+		Table::new_from_element(Vector::from_subpath(Subpath::new_rounded_rect(size / -2., size / 2., clamped_radius)))
 	}
 }
 
@@ -44,9 +44,9 @@ fn circle(
 	#[unit(" px")]
 	#[default(50.)]
 	radius: f64,
-) -> Table<VectorData> {
+) -> Table<Vector> {
 	let radius = radius.abs();
-	Table::new_from_element(VectorData::from_subpath(Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
+	Table::new_from_element(Vector::from_subpath(Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
@@ -61,8 +61,8 @@ fn arc(
 	#[range((0., 360.))]
 	sweep_angle: Angle,
 	arc_type: ArcType,
-) -> Table<VectorData> {
-	Table::new_from_element(VectorData::from_subpath(Subpath::new_arc(
+) -> Table<Vector> {
+	Table::new_from_element(Vector::from_subpath(Subpath::new_arc(
 		radius,
 		start_angle / 360. * std::f64::consts::TAU,
 		sweep_angle / 360. * std::f64::consts::TAU,
@@ -84,12 +84,12 @@ fn ellipse(
 	#[unit(" px")]
 	#[default(25)]
 	radius_y: f64,
-) -> Table<VectorData> {
+) -> Table<Vector> {
 	let radius = DVec2::new(radius_x, radius_y);
 	let corner1 = -radius;
 	let corner2 = radius;
 
-	let mut ellipse = VectorData::from_subpath(Subpath::new_ellipse(corner1, corner2));
+	let mut ellipse = Vector::from_subpath(Subpath::new_ellipse(corner1, corner2));
 
 	let len = ellipse.segment_domain.ids().len();
 	for i in 0..len {
@@ -114,7 +114,7 @@ fn rectangle<T: CornerRadius>(
 	_individual_corner_radii: bool, // TODO: Move this to the bottom once we have a migration capability
 	#[implementations(f64, [f64; 4])] corner_radius: T,
 	#[default(true)] clamped: bool,
-) -> Table<VectorData> {
+) -> Table<Vector> {
 	corner_radius.generate(DVec2::new(width, height), clamped)
 }
 
@@ -129,10 +129,10 @@ fn regular_polygon<T: AsU64>(
 	#[unit(" px")]
 	#[default(50)]
 	radius: f64,
-) -> Table<VectorData> {
+) -> Table<Vector> {
 	let points = sides.as_u64();
 	let radius: f64 = radius * 2.;
-	Table::new_from_element(VectorData::from_subpath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
+	Table::new_from_element(Vector::from_subpath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
@@ -149,17 +149,17 @@ fn star<T: AsU64>(
 	#[unit(" px")]
 	#[default(25)]
 	radius_2: f64,
-) -> Table<VectorData> {
+) -> Table<Vector> {
 	let points = sides.as_u64();
 	let diameter: f64 = radius_1 * 2.;
 	let inner_diameter = radius_2 * 2.;
 
-	Table::new_from_element(VectorData::from_subpath(Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
+	Table::new_from_element(Vector::from_subpath(Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn line(_: impl Ctx, _primary: (), #[default(0., 0.)] start: PixelSize, #[default(100., 100.)] end: PixelSize) -> Table<VectorData> {
-	Table::new_from_element(VectorData::from_subpath(Subpath::new_line(start, end)))
+fn line(_: impl Ctx, _primary: (), #[default(0., 0.)] start: PixelSize, #[default(100., 100.)] end: PixelSize) -> Table<Vector> {
+	Table::new_from_element(Vector::from_subpath(Subpath::new_line(start, end)))
 }
 
 trait GridSpacing {
@@ -189,11 +189,11 @@ fn grid<T: GridSpacing>(
 	#[default(10)] columns: u32,
 	#[default(10)] rows: u32,
 	#[default(30., 30.)] angles: DVec2,
-) -> Table<VectorData> {
+) -> Table<Vector> {
 	let (x_spacing, y_spacing) = spacing.as_dvec2().into();
 	let (angle_a, angle_b) = angles.into();
 
-	let mut vector_data = VectorData::default();
+	let mut vector_data = Vector::default();
 	let mut segment_id = SegmentId::ZERO;
 	let mut point_id = PointId::ZERO;
 

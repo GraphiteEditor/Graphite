@@ -13,7 +13,7 @@ use glam::{DAffine2, DVec2};
 use graphene_std::renderer::Quad;
 use graphene_std::vector::ManipulatorPointId;
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::{VectorData, VectorModificationType};
+use graphene_std::vector::{Vector, VectorModificationType};
 use std::f64::consts::{PI, TAU};
 
 const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays(context).into();
@@ -693,7 +693,7 @@ impl TransformLayerMessageHandler {
 fn calculate_pivot(
 	document: &DocumentMessageHandler,
 	selected_points: &Vec<&ManipulatorPointId>,
-	vector_data: &VectorData,
+	vector_data: &Vector,
 	viewspace: DAffine2,
 	get_location: impl Fn(&ManipulatorPointId) -> Option<DVec2>,
 	gizmo: &mut PivotGizmo,

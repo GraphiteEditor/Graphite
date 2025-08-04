@@ -23,7 +23,7 @@ use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::table::Table;
 use graphene_std::text::{Font, TextAlign};
 use graphene_std::transform::{Footprint, ReferencePoint, Transform};
-use graphene_std::vector::VectorData;
+use graphene_std::vector::Vector;
 use graphene_std::vector::misc::{ArcType, CentroidType, GridType, MergeByDistanceAlgorithm, PointSpacingType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Graphic, NodeInputDecleration};
@@ -183,7 +183,7 @@ pub(crate) fn property_from_type(
 						// ====================
 						// GRAPHICAL DATA TYPES
 						// ====================
-						Some(x) if x == TypeId::of::<Table<VectorData>>() => vector_data_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<Table<Vector>>() => vector_data_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<Table<Raster<CPU>>>() || x == TypeId::of::<Table<Raster<GPU>>>() => raster_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<Table<Graphic>>() => group_widget(default_info).into(),
 						// ============

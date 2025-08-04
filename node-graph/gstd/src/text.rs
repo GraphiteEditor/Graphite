@@ -1,6 +1,6 @@
 use graph_craft::wasm_application_io::WasmEditorApi;
 pub use graphene_core::text::*;
-use graphene_core::{Ctx, table::Table, vector::VectorData};
+use graphene_core::{Ctx, table::Table, vector::Vector};
 
 #[node_macro::node(category(""))]
 fn text<'i: 'n>(
@@ -31,7 +31,7 @@ fn text<'i: 'n>(
 	/// Splits each text glyph into its own row in the table of vector data.
 	#[default(false)]
 	per_glyph_instances: bool,
-) -> Table<VectorData> {
+) -> Table<Vector> {
 	let typesetting = TypesettingConfig {
 		font_size,
 		line_height_ratio,

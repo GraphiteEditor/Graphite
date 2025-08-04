@@ -1,4 +1,4 @@
-use super::{PointId, SegmentId, VectorData};
+use super::{PointId, SegmentId, Vector};
 use glam::DVec2;
 use petgraph::graph::{EdgeIndex, NodeIndex, UnGraph};
 use rustc_hash::FxHashMap;
@@ -9,7 +9,7 @@ pub struct Point {
 	pub position: DVec2,
 }
 
-/// Useful indexes to speed up various operations on `VectorData`.
+/// Useful indexes to speed up various operations on [`Vector`].
 ///
 /// Important: It is the user's responsibility to ensure the indexes remain valid after mutations to the data.
 pub struct VectorDataIndex {
@@ -24,8 +24,8 @@ pub struct VectorDataIndex {
 }
 
 impl VectorDataIndex {
-	/// Construct a [`VectorDataIndex`] by building indexes from the given [`VectorData`]. Takes `O(n)` time.
-	pub fn build_from(data: &VectorData) -> Self {
+	/// Construct a [`VectorDataIndex`] by building indexes from the given [`Vector`]. Takes `O(n)` time.
+	pub fn build_from(data: &Vector) -> Self {
 		let point_to_offset = data.point_domain.ids().iter().copied().enumerate().map(|(a, b)| (b, a)).collect::<FxHashMap<_, _>>();
 
 		let mut point_to_node = FxHashMap::default();
@@ -83,7 +83,7 @@ impl VectorDataIndex {
 	/// # Panics
 	///
 	/// Will panic if `id` isn't in the data.
-	pub fn point_position(&self, id: PointId, data: &VectorData) -> DVec2 {
+	pub fn point_position(&self, id: PointId, data: &Vector) -> DVec2 {
 		let offset = self.point_to_offset[&id];
 		data.point_domain.positions()[offset]
 	}

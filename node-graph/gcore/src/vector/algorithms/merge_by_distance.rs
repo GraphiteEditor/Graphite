@@ -1,4 +1,4 @@
-use crate::vector::{PointDomain, PointId, SegmentDomain, VectorData, VectorDataIndex};
+use crate::vector::{PointDomain, PointId, SegmentDomain, Vector, VectorDataIndex};
 use glam::{DAffine2, DVec2};
 use petgraph::prelude::UnGraphMap;
 use rustc_hash::FxHashSet;
@@ -9,7 +9,7 @@ pub trait MergeByDistanceExt {
 	fn merge_by_distance_spatial(&mut self, transform: DAffine2, distance: f64);
 }
 
-impl MergeByDistanceExt for VectorData {
+impl MergeByDistanceExt for Vector {
 	fn merge_by_distance_topological(&mut self, distance: f64) {
 		// Treat self as an undirected graph
 		let indices = VectorDataIndex::build_from(self);

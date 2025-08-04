@@ -4,7 +4,7 @@ use glam::{DAffine2, DVec2};
 use graphene_core::table::{Table, TableRow, TableRowRef};
 use graphene_core::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use graphene_core::vector::style::Fill;
-use graphene_core::vector::{PointId, VectorData};
+use graphene_core::vector::{PointId, Vector};
 use graphene_core::{Color, Ctx, Graphic};
 pub use path_bool as path_bool_lib;
 use path_bool::{FillRule, PathBooleanOperation};
@@ -35,7 +35,7 @@ pub enum BooleanOperation {
 async fn boolean_operation<I: Into<Table<Graphic>> + 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The group of paths to perform the boolean operation on. Nested groups are automatically flattened.
-	#[implementations(Table<Graphic>, Table<VectorData>)]
+	#[implementations(Table<Graphic>, Table<Vector>)]
 	group_of_paths: I,
 	/// Which boolean operation to perform on the paths.
 	///
@@ -44,7 +44,7 @@ async fn boolean_operation<I: Into<Table<Graphic>> + 'n + Send + Clone>(
 	/// Intersection cuts away all but the overlapping areas shared by every path.
 	/// Difference cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
 	operation: BooleanOperation,
-) -> Table<VectorData> {
+) -> Table<Vector> {
 	let group_of_paths = group_of_paths.into();
 
 	// The first index is the bottom of the stack
@@ -55,7 +55,7 @@ async fn boolean_operation<I: Into<Table<Graphic>> + 'n + Send + Clone>(
 		let transform = *result_vector_data.transform;
 		*result_vector_data.transform = DAffine2::IDENTITY;
 
-		VectorData::transform(result_vector_data.element, transform);
+		Vector::transform(result_vector_data.element, transform);
 		result_vector_data.element.style.set_stroke_transform(DAffine2::IDENTITY);
 		result_vector_data.element.upstream_graphic_group = Some(group_of_paths.clone());
 
@@ -66,7 +66,7 @@ async fn boolean_operation<I: Into<Table<Graphic>> + 'n + Send + Clone>(
 	result_vector_data_table
 }
 
-fn boolean_operation_on_vector_data_table<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, VectorData>> + Clone, boolean_operation: BooleanOperation) -> Table<VectorData> {
+fn boolean_operation_on_vector_data_table<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector>> + Clone, boolean_operation: BooleanOperation) -> Table<Vector> {
 	match boolean_operation {
 		BooleanOperation::Union => union(vector_data),
 		BooleanOperation::SubtractFront => subtract(vector_data),
@@ -76,7 +76,7 @@ fn boolean_operation_on_vector_data_table<'a>(vector_data: impl DoubleEndedItera
 	}
 }
 
-fn union<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, VectorData>>) -> Table<VectorData> {
+fn union<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector>>) -> Table<Vector> {
 	// Reverse vector data so that the result style is the style of the first vector data
 	let mut vector_data_reversed = vector_data.rev();
 
@@ -109,7 +109,7 @@ fn union<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector
 	result_vector_data_table
 }
 
-fn subtract<'a>(vector_data: impl Iterator<Item = TableRowRef<'a, VectorData>>) -> Table<VectorData> {
+fn subtract<'a>(vector_data: impl Iterator<Item = TableRowRef<'a, Vector>>) -> Table<Vector> {
 	let mut vector_data = vector_data.into_iter();
 
 	let mut result_vector_data_table = Table::new_from_row(vector_data.next().map(|x| x.into_cloned()).unwrap_or_default());
@@ -140,7 +140,7 @@ fn subtract<'a>(vector_data: impl Iterator<Item = TableRowRef<'a, VectorData>>) 
 	result_vector_data_table
 }
 
-fn intersect<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, VectorData>>) -> Table<VectorData> {
+fn intersect<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector>>) -> Table<Vector> {
 	let mut vector_data = vector_data.rev();
 
 	let mut result_vector_data_table = Table::new_from_row(vector_data.next().map(|x| x.into_cloned()).unwrap_or_default());
@@ -172,7 +172,7 @@ fn intersect<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, Ve
 	result_vector_data_table
 }
 
-fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, VectorData>> + Clone) -> Table<VectorData> {
+fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector>> + Clone) -> Table<Vector> {
 	let mut vector_data_iter = vector_data.clone().rev();
 	let mut any_intersection = TableRow::default();
 	let default = TableRow::default();
@@ -221,12 +221,12 @@ fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = TableRowRef<'a, V
 	boolean_operation_on_vector_data_table(union.iter_ref().chain(std::iter::once(any_intersection.as_ref())), BooleanOperation::SubtractFront)
 }
 
-fn flatten_vector_data(graphic_group_table: &Table<Graphic>) -> Table<VectorData> {
+fn flatten_vector_data(graphic_group_table: &Table<Graphic>) -> Table<Vector> {
 	graphic_group_table
 		.iter_ref()
 		.flat_map(|element| {
 			match element.element.clone() {
-				Graphic::VectorData(vector_data) => {
+				Graphic::Vector(vector_data) => {
 					// Apply the parent group's transform to each element of vector data
 					vector_data
 						.iter()
@@ -244,7 +244,7 @@ fn flatten_vector_data(graphic_group_table: &Table<Graphic>) -> Table<VectorData
 						subpath.apply_transform(transform);
 
 						// Create a vector data table row from the rectangular subpath, with a default black fill
-						let mut element = VectorData::from_subpath(subpath);
+						let mut element = Vector::from_subpath(subpath);
 						element.style.set_fill(Fill::Solid(Color::BLACK));
 
 						TableRow { element, ..Default::default() }
@@ -260,7 +260,7 @@ fn flatten_vector_data(graphic_group_table: &Table<Graphic>) -> Table<VectorData
 						subpath.apply_transform(transform);
 
 						// Create a vector data table row from the rectangular subpath, with a default black fill
-						let mut element = VectorData::from_subpath(subpath);
+						let mut element = Vector::from_subpath(subpath);
 						element.style.set_fill(Fill::Solid(Color::BLACK));
 
 						TableRow { element, ..Default::default() }
@@ -285,7 +285,7 @@ fn flatten_vector_data(graphic_group_table: &Table<Graphic>) -> Table<VectorData
 		.collect()
 }
 
-fn to_path(vector: &VectorData, transform: DAffine2) -> Vec<path_bool::PathSegment> {
+fn to_path(vector: &Vector, transform: DAffine2) -> Vec<path_bool::PathSegment> {
 	let mut path = Vec::new();
 	for subpath in vector.stroke_bezier_paths() {
 		to_path_segments(&mut path, &subpath, transform);
@@ -318,7 +318,7 @@ fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &Subpath<Po
 	}
 }
 
-fn from_path(path_data: &[Path]) -> VectorData {
+fn from_path(path_data: &[Path]) -> Vector {
 	const EPSILON: f64 = 1e-5;
 
 	fn is_close(a: DVec2, b: DVec2) -> bool {
@@ -362,7 +362,7 @@ fn from_path(path_data: &[Path]) -> VectorData {
 		}
 	}
 
-	VectorData::from_subpaths(all_subpaths, false)
+	Vector::from_subpaths(all_subpaths, false)
 }
 
 type Path = Vec<path_bool::PathSegment>;

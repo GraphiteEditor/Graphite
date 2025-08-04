@@ -29,7 +29,7 @@ use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::text::Font;
-use graphene_std::vector::{HandleId, PointId, SegmentId, VectorData, VectorModificationType};
+use graphene_std::vector::{HandleId, PointId, SegmentId, Vector, VectorModificationType};
 use std::vec;
 
 #[derive(ExtractField)]
@@ -567,7 +567,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// If not using Path tool, create new layers and add paths into those
 				if let Some(document) = self.active_document() {
-					let Ok(data) = serde_json::from_str::<Vec<(LayerNodeIdentifier, VectorData, DAffine2)>>(&data) else {
+					let Ok(data) = serde_json::from_str::<Vec<(LayerNodeIdentifier, Vector, DAffine2)>>(&data) else {
 						return;
 					};
 

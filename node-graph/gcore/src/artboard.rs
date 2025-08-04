@@ -5,7 +5,7 @@ use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::{Table, TableRow};
 use crate::transform::TransformMut;
 use crate::uuid::NodeId;
-use crate::vector::VectorData;
+use crate::vector::Vector;
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, Graphic, OwnedContextImpl};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2, IVec2};
@@ -99,7 +99,7 @@ async fn to_artboard<Data: Into<Table<Graphic>> + 'n>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
 		Context -> Table<Graphic>,
-		Context -> Table<VectorData>,
+		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
 		Context -> DAffine2,

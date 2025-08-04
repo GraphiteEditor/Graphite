@@ -548,9 +548,9 @@ mod test_spline_tool {
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_std::vector::PointId;
-	use graphene_std::vector::VectorData;
+	use graphene_std::vector::Vector;
 
-	fn assert_point_positions(vector_data: &VectorData, layer_to_viewport: DAffine2, expected_points: &[DVec2], epsilon: f64) {
+	fn assert_point_positions(vector_data: &Vector, layer_to_viewport: DAffine2, expected_points: &[DVec2], epsilon: f64) {
 		let points_in_viewport: Vec<DVec2> = vector_data
 			.point_domain
 			.ids()

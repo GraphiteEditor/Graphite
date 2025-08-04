@@ -4,7 +4,7 @@ use crate::math::quad::Quad;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::{Table, TableRow};
 use crate::uuid::NodeId;
-use crate::vector::VectorData;
+use crate::vector::Vector;
 use crate::{Color, Ctx};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -16,7 +16,7 @@ pub enum Graphic {
 	/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
 	GraphicGroup(Table<Graphic>),
 	/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
-	VectorData(Table<VectorData>),
+	Vector(Table<Vector>),
 	RasterDataCPU(Table<Raster<CPU>>),
 	RasterDataGPU(Table<Raster<GPU>>),
 }
@@ -34,25 +34,25 @@ impl From<Table<Graphic>> for Graphic {
 	}
 }
 
-// VectorData
-impl From<VectorData> for Graphic {
-	fn from(vector_data: VectorData) -> Self {
-		Graphic::VectorData(Table::new_from_element(vector_data))
+// Vector
+impl From<Vector> for Graphic {
+	fn from(vector_data: Vector) -> Self {
+		Graphic::Vector(Table::new_from_element(vector_data))
 	}
 }
-impl From<Table<VectorData>> for Graphic {
-	fn from(vector_data: Table<VectorData>) -> Self {
-		Graphic::VectorData(vector_data)
+impl From<Table<Vector>> for Graphic {
+	fn from(vector_data: Table<Vector>) -> Self {
+		Graphic::Vector(vector_data)
 	}
 }
-impl From<VectorData> for Table<Graphic> {
-	fn from(vector_data: VectorData) -> Self {
-		Table::new_from_element(Graphic::VectorData(Table::new_from_element(vector_data)))
+impl From<Vector> for Table<Graphic> {
+	fn from(vector_data: Vector) -> Self {
+		Table::new_from_element(Graphic::Vector(Table::new_from_element(vector_data)))
 	}
 }
-impl From<Table<VectorData>> for Table<Graphic> {
-	fn from(vector_data: Table<VectorData>) -> Self {
-		Table::new_from_element(Graphic::VectorData(vector_data))
+impl From<Table<Vector>> for Table<Graphic> {
+	fn from(vector_data: Table<Vector>) -> Self {
+		Table::new_from_element(Graphic::Vector(vector_data))
 	}
 }
 
@@ -127,16 +127,16 @@ impl Graphic {
 		}
 	}
 
-	pub fn as_vector_data(&self) -> Option<&Table<VectorData>> {
+	pub fn as_vector_data(&self) -> Option<&Table<Vector>> {
 		match self {
-			Graphic::VectorData(data) => Some(data),
+			Graphic::Vector(data) => Some(data),
 			_ => None,
 		}
 	}
 
-	pub fn as_vector_data_mut(&mut self) -> Option<&mut Table<VectorData>> {
+	pub fn as_vector_data_mut(&mut self) -> Option<&mut Table<Vector>> {
 		match self {
-			Graphic::VectorData(data) => Some(data),
+			Graphic::Vector(data) => Some(data),
 			_ => None,
 		}
 	}
@@ -157,7 +157,7 @@ impl Graphic {
 
 	pub fn had_clip_enabled(&self) -> bool {
 		match self {
-			Graphic::VectorData(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
+			Graphic::Vector(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
 			Graphic::GraphicGroup(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
 			Graphic::RasterDataCPU(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
 			Graphic::RasterDataGPU(data) => data.iter_ref().all(|row| row.alpha_blending.clip),
@@ -166,7 +166,7 @@ impl Graphic {
 
 	pub fn can_reduce_to_clip_path(&self) -> bool {
 		match self {
-			Graphic::VectorData(vector_data_table) => vector_data_table.iter_ref().all(|row| {
+			Graphic::Vector(vector_data_table) => vector_data_table.iter_ref().all(|row| {
 				let style = &row.element.style;
 				let alpha_blending = &row.alpha_blending;
 				(alpha_blending.opacity > 1. - f32::EPSILON) && style.fill().is_opaque() && style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
@@ -179,7 +179,7 @@ impl Graphic {
 impl BoundingBox for Graphic {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
 		match self {
-			Graphic::VectorData(vector_data) => vector_data.bounding_box(transform, include_stroke),
+			Graphic::Vector(vector_data) => vector_data.bounding_box(transform, include_stroke),
 			Graphic::RasterDataCPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::RasterDataGPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform, include_stroke),
@@ -198,8 +198,8 @@ impl BoundingBox for Table<Graphic> {
 #[node_macro::node(category(""))]
 async fn layer<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Graphic>, Table<VectorData>, Table<Raster<CPU>>, Table<Raster<GPU>>)] mut stack: Table<I>,
-	#[implementations(Graphic, VectorData, Raster<CPU>, Raster<GPU>)] element: I,
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)] mut stack: Table<I>,
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>)] element: I,
 	node_path: Vec<NodeId>,
 ) -> Table<I> {
 	// Get the penultimate element of the node path, or None if the path is too short
@@ -220,7 +220,7 @@ async fn to_element<Data: Into<Graphic> + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Graphic>,
-	 	Table<VectorData>,
+	 	Table<Vector>,
 		Table<Raster<CPU>>,
 	 	Table<Raster<GPU>>,
 		DAffine2,
@@ -235,7 +235,7 @@ async fn to_group<Data: Into<Table<Graphic>> + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Graphic>,
-		Table<VectorData>,
+		Table<Vector>,
 		Table<Raster<CPU>>,
 		Table<Raster<GPU>>,
 	)]
@@ -284,9 +284,9 @@ async fn flatten_group(_: impl Ctx, group: Table<Graphic>, fully_flatten: bool) 
 }
 
 #[node_macro::node(category("Vector"))]
-async fn flatten_vector(_: impl Ctx, group: Table<Graphic>) -> Table<VectorData> {
+async fn flatten_vector(_: impl Ctx, group: Table<Graphic>) -> Table<Vector> {
 	// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
-	fn flatten_group(output_group_table: &mut Table<VectorData>, current_group_table: Table<Graphic>) {
+	fn flatten_group(output_group_table: &mut Table<Vector>, current_group_table: Table<Graphic>) {
 		for current_graphic_element_row in current_group_table.iter_ref() {
 			let current_element = current_graphic_element_row.element.clone();
 			let reference = *current_graphic_element_row.source_node_id;
@@ -302,7 +302,7 @@ async fn flatten_vector(_: impl Ctx, group: Table<Graphic>) -> Table<VectorData>
 					flatten_group(output_group_table, current_element);
 				}
 				// Handle any leaf elements we encounter, which can be either non-GraphicGroup elements or GraphicGroups that we don't want to flatten
-				Graphic::VectorData(vector_table) => {
+				Graphic::Vector(vector_table) => {
 					for current_vector_row in vector_table.iter_ref() {
 						output_group_table.push(TableRow {
 							element: current_vector_row.element.clone(),
@@ -339,7 +339,7 @@ fn index<T: AtIndex + Clone + Default>(
 		Vec<Option<Color>>,
 		Vec<f64>, Vec<u64>,
 		Vec<DVec2>,
-		Table<VectorData>,
+		Table<Vector>,
 		Table<Raster<CPU>>,
 		Table<Graphic>,
 	)]

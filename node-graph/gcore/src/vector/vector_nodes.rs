@@ -3,7 +3,7 @@ use super::algorithms::offset_subpath::offset_bezpath;
 use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use super::misc::{CentroidType, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
-use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataExt};
+use super::{PointId, SegmentDomain, SegmentId, StrokeId, Vector, VectorDataExt};
 use crate::bounds::BoundingBox;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
@@ -27,13 +27,13 @@ use std::collections::hash_map::DefaultHasher;
 use std::f64::consts::TAU;
 
 /// Implemented for types that can be converted to an iterator of vector data.
-/// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
+/// Used for the fill and stroke node so they can be used on `Vector` or `GraphicGroup`.
 trait VectorDataTableIterMut {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, VectorData>>;
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, Vector>>;
 }
 
 impl VectorDataTableIterMut for Table<Graphic> {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, VectorData>> {
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, Vector>> {
 		// Grab only the direct children
 		self.iter_mut()
 			.filter_map(|element| element.element.as_vector_data_mut())
@@ -41,8 +41,8 @@ impl VectorDataTableIterMut for Table<Graphic> {
 	}
 }
 
-impl VectorDataTableIterMut for Table<VectorData> {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, VectorData>> {
+impl VectorDataTableIterMut for Table<Vector> {
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, Vector>> {
 		self.iter_mut()
 	}
 }
@@ -50,7 +50,7 @@ impl VectorDataTableIterMut for Table<VectorData> {
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
 async fn assign_colors<T>(
 	_: impl Ctx,
-	#[implementations(Table<Graphic>, Table<VectorData>)]
+	#[implementations(Table<Graphic>, Table<Vector>)]
 	#[widget(ParsedWidgetOverride::Hidden)]
 	/// The vector elements, or group of vector elements, to apply the fill and/or stroke style to.
 	mut vector_group: T,
@@ -111,10 +111,10 @@ where
 async fn fill<F: Into<Fill> + 'n + Send, V>(
 	_: impl Ctx,
 	#[implementations(
-		Table<VectorData>,
-		Table<VectorData>,
-		Table<VectorData>,
-		Table<VectorData>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
 		Table<Graphic>,
 		Table<Graphic>,
 		Table<Graphic>,
@@ -157,7 +157,7 @@ where
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
 async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	_: impl Ctx,
-	#[implementations(Table<VectorData>, Table<VectorData>, Table<Graphic>, Table<Graphic>)]
+	#[implementations(Table<Vector>, Table<Vector>, Table<Graphic>, Table<Graphic>)]
 	/// The vector elements, or group of vector elements, to apply the stroke to.
 	mut vector_data: Table<V>,
 	#[implementations(
@@ -221,7 +221,7 @@ where
 async fn repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	// TODO: Implement other graphical types.
-	#[implementations(Table<Graphic>, Table<VectorData>, Table<Raster<CPU>>)] instance: Table<I>,
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>)] instance: Table<I>,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: PixelSize,
@@ -257,7 +257,7 @@ async fn repeat<I: 'n + Send + Clone>(
 async fn circular_repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	// TODO: Implement other graphical types.
-	#[implementations(Table<Graphic>, Table<VectorData>, Table<Raster<CPU>>)] instance: Table<I>,
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>)] instance: Table<I>,
 	angle_offset: Angle,
 	#[unit(" px")]
 	#[default(5)]
@@ -290,10 +290,10 @@ async fn circular_repeat<I: 'n + Send + Clone>(
 #[node_macro::node(name("Copy to Points"), category("Instancing"), path(graphene_core::vector))]
 async fn copy_to_points<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	points: Table<VectorData>,
+	points: Table<Vector>,
 	#[expose]
 	/// Artwork to be copied and placed at each point.
-	#[implementations(Table<Graphic>, Table<VectorData>, Table<Raster<CPU>>)]
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>)]
 	instance: Table<I>,
 	/// Minimum range of randomized sizes given to each instance.
 	#[default(1)]
@@ -368,7 +368,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn mirror<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Graphic>, Table<VectorData>, Table<Raster<CPU>>)] instance: Table<I>,
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>)] instance: Table<I>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
 	#[unit(" px")] offset: f64,
 	#[range((-90., 90.))] angle: Angle,
@@ -425,7 +425,7 @@ where
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
 async fn round_corners(
 	_: impl Ctx,
-	source: Table<VectorData>,
+	source: Table<Vector>,
 	#[hard_min(0.)]
 	#[default(10.)]
 	radius: PixelLength,
@@ -440,7 +440,7 @@ async fn round_corners(
 	#[hard_max(180.)]
 	#[default(5.)]
 	min_angle_threshold: Angle,
-) -> Table<VectorData> {
+) -> Table<Vector> {
 	source
 		.iter_ref()
 		.map(|source| {
@@ -456,7 +456,7 @@ async fn round_corners(
 			// Convert 0-100 to 0-0.5
 			let edge_length_limit = edge_length_limit * 0.005;
 
-			let mut result = VectorData {
+			let mut result = Vector {
 				style: source.style.clone(),
 				..Default::default()
 			};
@@ -549,12 +549,12 @@ async fn round_corners(
 #[node_macro::node(name("Merge by Distance"), category("Vector: Modifier"), path(graphene_core::vector))]
 pub fn merge_by_distance(
 	_: impl Ctx,
-	vector_data: Table<VectorData>,
+	vector_data: Table<Vector>,
 	#[default(0.1)]
 	#[hard_min(0.0001)]
 	distance: PixelLength,
 	algorithm: MergeByDistanceAlgorithm,
-) -> Table<VectorData> {
+) -> Table<Vector> {
 	match algorithm {
 		MergeByDistanceAlgorithm::Spatial => vector_data
 			.iter()
@@ -574,7 +574,7 @@ pub fn merge_by_distance(
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn box_warp(_: impl Ctx, vector_data: Table<VectorData>, #[expose] rectangle: Table<VectorData>) -> Table<VectorData> {
+async fn box_warp(_: impl Ctx, vector_data: Table<Vector>, #[expose] rectangle: Table<Vector>) -> Table<Vector> {
 	let Some((target, target_transform)) = rectangle.get(0).map(|rect| (rect.element, rect.transform)) else {
 		return vector_data;
 	};
@@ -663,7 +663,7 @@ fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 #[node_macro::node(category("Vector: Modifier"), name("Auto-Tangents"), path(graphene_core::vector))]
 async fn auto_tangents(
 	_: impl Ctx,
-	source: Table<VectorData>,
+	source: Table<Vector>,
 	/// The amount of spread for the auto-tangents, from 0 (sharp corner) to 1 (full spread).
 	#[default(0.5)]
 	// TODO: Make this a soft range to allow any value to be typed in outside the slider range of 0 to 1
@@ -672,7 +672,7 @@ async fn auto_tangents(
 	/// If active, existing non-zero handles won't be affected.
 	#[default(true)]
 	preserve_existing: bool,
-) -> Table<VectorData> {
+) -> Table<Vector> {
 	source
 		.iter_ref()
 		.map(|source| {
@@ -681,7 +681,7 @@ async fn auto_tangents(
 			let source_node_id = *source.source_node_id;
 			let source = source.element;
 
-			let mut result = VectorData {
+			let mut result = Vector {
 				style: source.style.clone(),
 				..Default::default()
 			};
@@ -784,7 +784,7 @@ async fn auto_tangents(
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn bounding_box(_: impl Ctx, vector_data: Table<VectorData>) -> Table<VectorData> {
+async fn bounding_box(_: impl Ctx, vector_data: Table<Vector>) -> Table<Vector> {
 	vector_data
 		.iter()
 		.map(|mut row| {
@@ -793,7 +793,7 @@ async fn bounding_box(_: impl Ctx, vector_data: Table<VectorData>) -> Table<Vect
 			let mut result = vector_data
 				.bounding_box_rect()
 				.map(|bbox| {
-					let mut vector_data = VectorData::default();
+					let mut vector_data = Vector::default();
 					vector_data.append_bezpath(bbox.to_path(DEFAULT_ACCURACY));
 					vector_data
 				})
@@ -809,7 +809,7 @@ async fn bounding_box(_: impl Ctx, vector_data: Table<VectorData>) -> Table<Vect
 }
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
-async fn dimensions(_: impl Ctx, vector_data: Table<VectorData>) -> DVec2 {
+async fn dimensions(_: impl Ctx, vector_data: Table<Vector>) -> DVec2 {
 	vector_data
 		.iter_ref()
 		.filter_map(|vector_data| vector_data.element.bounding_box_with_transform(*vector_data.transform))
@@ -822,19 +822,19 @@ async fn dimensions(_: impl Ctx, vector_data: Table<VectorData>) -> DVec2 {
 ///
 /// This is useful in conjunction with nodes that repeat it, followed by the "Points to Polyline" node to string together a path of the points.
 #[node_macro::node(category("Vector"), name("Vec2 to Point"), path(graphene_core::vector))]
-async fn vec2_to_point(_: impl Ctx, vec2: DVec2) -> Table<VectorData> {
+async fn vec2_to_point(_: impl Ctx, vec2: DVec2) -> Table<Vector> {
 	let mut point_domain = PointDomain::new();
 	point_domain.push(PointId::generate(), vec2);
 
 	Table::new_from_row(TableRow {
-		element: VectorData { point_domain, ..Default::default() },
+		element: Vector { point_domain, ..Default::default() },
 		..Default::default()
 	})
 }
 
 /// Creates a polyline from a series of vector points, replacing any existing segments and regions that may already exist.
 #[node_macro::node(category("Vector"), name("Points to Polyline"), path(graphene_core::vector))]
-async fn points_to_polyline(_: impl Ctx, mut points: Table<VectorData>, #[default(true)] closed: bool) -> Table<VectorData> {
+async fn points_to_polyline(_: impl Ctx, mut points: Table<Vector>, #[default(true)] closed: bool) -> Table<Vector> {
 	for row in points.iter_mut() {
 		let mut segment_domain = SegmentDomain::new();
 
@@ -861,7 +861,7 @@ async fn points_to_polyline(_: impl Ctx, mut points: Table<VectorData>, #[defaul
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector), properties("offset_path_properties"))]
-async fn offset_path(_: impl Ctx, vector_data: Table<VectorData>, distance: f64, join: StrokeJoin, #[default(4.)] miter_limit: f64) -> Table<VectorData> {
+async fn offset_path(_: impl Ctx, vector_data: Table<Vector>, distance: f64, join: StrokeJoin, #[default(4.)] miter_limit: f64) -> Table<Vector> {
 	vector_data
 		.iter()
 		.map(|mut row| {
@@ -869,7 +869,7 @@ async fn offset_path(_: impl Ctx, vector_data: Table<VectorData>, distance: f64,
 			let vector_data = row.element;
 
 			let bezpaths = vector_data.stroke_bezpath_iter();
-			let mut result = VectorData {
+			let mut result = Vector {
 				style: vector_data.style.clone(),
 				..Default::default()
 			};
@@ -904,7 +904,7 @@ async fn offset_path(_: impl Ctx, vector_data: Table<VectorData>, distance: f64,
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn solidify_stroke(_: impl Ctx, vector_data: Table<VectorData>) -> Table<VectorData> {
+async fn solidify_stroke(_: impl Ctx, vector_data: Table<Vector>) -> Table<Vector> {
 	vector_data
 		.iter()
 		.map(|mut row| {
@@ -912,7 +912,7 @@ async fn solidify_stroke(_: impl Ctx, vector_data: Table<VectorData>) -> Table<V
 
 			let stroke = vector_data.style.stroke().clone().unwrap_or_default();
 			let bezpaths = vector_data.stroke_bezpath_iter();
-			let mut result = VectorData::default();
+			let mut result = Vector::default();
 
 			// Taking the existing stroke data and passing it to kurbo::stroke to generate new fill paths.
 			let join = match stroke.join {
@@ -958,18 +958,18 @@ async fn solidify_stroke(_: impl Ctx, vector_data: Table<VectorData>) -> Table<V
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn flatten_path<I: 'n + Send>(_: impl Ctx, #[implementations(Table<Graphic>, Table<VectorData>)] graphic_group_input: Table<I>) -> Table<VectorData>
+async fn flatten_path<I: 'n + Send>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] graphic_group_input: Table<I>) -> Table<Vector>
 where
 	Graphic: From<Table<I>>,
 {
 	// A node based solution to support passing through vector data could be a network node with a cache node connected to
 	// a Flatten Path connected to an if else node, another connection from the cache directly
 	// To the if else node, and another connection from the cache to a matches type node connected to the if else node.
-	fn flatten_group(graphic_group_table: &Table<Graphic>, output: &mut TableRowMut<VectorData>) {
+	fn flatten_group(graphic_group_table: &Table<Graphic>, output: &mut TableRowMut<Vector>) {
 		for (group_index, current_element) in graphic_group_table.iter_ref().enumerate() {
 			match current_element.element {
-				Graphic::VectorData(vector_data_table) => {
-					// Loop through every row of the Table<VectorData> and concatenate each element's subpath into the output VectorData element.
+				Graphic::Vector(vector_data_table) => {
+					// Loop through every row of the `Table<Vector>` and concatenate each element's subpath into the output `Vector` element.
 					for (vector_index, row) in vector_data_table.iter_ref().enumerate() {
 						let other = row.element;
 						let transform = *current_element.transform * *row.transform;
@@ -998,17 +998,17 @@ where
 		}
 	}
 
-	// Create a table with one element of empty VectorData, then get a mutable reference to it which we append flattened subpaths to
-	let mut output_table = Table::new_from_element(VectorData::default());
+	// Create a table with one empty `Vector` element, then get a mutable reference to it which we append flattened subpaths to
+	let mut output_table = Table::new_from_element(Vector::default());
 	let Some(mut output) = output_table.iter_mut().next() else {
 		return output_table;
 	};
 
-	// Flatten the graphic group input into the output VectorData element
+	// Flatten the graphic group input into the output `Vector` element
 	let base_graphic_group = Table::new_from_element(Graphic::from(graphic_group_input));
 	flatten_group(&base_graphic_group, &mut output);
 
-	// Return the single-row Table<VectorData> containing the flattened VectorData subpaths
+	// Return the single-row Table<Vector> containing the flattened Vector subpaths
 	output_table
 }
 
@@ -1016,7 +1016,7 @@ where
 #[node_macro::node(category(""), path(graphene_core::vector))]
 async fn sample_polyline(
 	_: impl Ctx,
-	vector_data: Table<VectorData>,
+	vector_data: Table<Vector>,
 	spacing: PointSpacingType,
 	#[unit(" px")] separation: f64,
 	quantity: u32,
@@ -1024,11 +1024,11 @@ async fn sample_polyline(
 	#[unit(" px")] stop_offset: f64,
 	adaptive_spacing: bool,
 	subpath_segment_lengths: Vec<f64>,
-) -> Table<VectorData> {
+) -> Table<Vector> {
 	vector_data
 		.iter()
 		.map(|mut row| {
-			let mut result = VectorData {
+			let mut result = Vector {
 				point_domain: Default::default(),
 				segment_domain: Default::default(),
 				region_domain: Default::default(),
@@ -1084,7 +1084,7 @@ async fn sample_polyline(
 ///
 /// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn split_path(_: impl Ctx, mut vector_data: Table<VectorData>, progress: Fraction, parameterized_distance: bool, reverse: bool) -> Table<VectorData> {
+async fn split_path(_: impl Ctx, mut vector_data: Table<Vector>, progress: Fraction, parameterized_distance: bool, reverse: bool) -> Table<Vector> {
 	let euclidian = !parameterized_distance;
 
 	let bezpaths = vector_data
@@ -1099,7 +1099,7 @@ async fn split_path(_: impl Ctx, mut vector_data: Table<VectorData>, progress: F
 	let index = if t_value >= bezpath_count { (bezpath_count - 1.) as usize } else { t_value as usize };
 
 	if let Some((row_index, bezpath)) = bezpaths.get(index).cloned() {
-		let mut result_vector_data = VectorData {
+		let mut result_vector_data = Vector {
 			style: vector_data.get(row_index).unwrap().element.style.clone(),
 			..Default::default()
 		};
@@ -1125,7 +1125,7 @@ async fn split_path(_: impl Ctx, mut vector_data: Table<VectorData>, progress: F
 
 /// Splits path segments into separate disconnected pieces where each is a distinct subpath.
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn split_segments(_: impl Ctx, mut vector_data: Table<VectorData>) -> Table<VectorData> {
+async fn split_segments(_: impl Ctx, mut vector_data: Table<Vector>) -> Table<Vector> {
 	// Iterate through every segment and make a copy of each of its endpoints, then reassign each segment's endpoints to its own unique point copy
 	for row in vector_data.iter_mut() {
 		let points_count = row.element.point_domain.ids().len();
@@ -1187,7 +1187,7 @@ async fn split_segments(_: impl Ctx, mut vector_data: Table<VectorData>) -> Tabl
 async fn position_on_path(
 	_: impl Ctx,
 	/// The path to traverse.
-	vector_data: Table<VectorData>,
+	vector_data: Table<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
 	progress: Fraction,
 	/// Swap the direction of the path.
@@ -1226,7 +1226,7 @@ async fn position_on_path(
 async fn tangent_on_path(
 	_: impl Ctx,
 	/// The path to traverse.
-	vector_data: Table<VectorData>,
+	vector_data: Table<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
 	progress: Fraction,
 	/// Swap the direction of the path.
@@ -1270,19 +1270,19 @@ async fn tangent_on_path(
 #[node_macro::node(category(""), path(graphene_core::vector))]
 async fn poisson_disk_points(
 	_: impl Ctx,
-	vector_data: Table<VectorData>,
+	vector_data: Table<Vector>,
 	#[unit(" px")]
 	#[default(10.)]
 	#[hard_min(0.01)]
 	separation_disk_diameter: f64,
 	seed: SeedValue,
-) -> Table<VectorData> {
+) -> Table<Vector> {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
 	vector_data
 		.iter()
 		.map(|mut row| {
-			let mut result = VectorData::default();
+			let mut result = Vector::default();
 
 			let path_with_bounding_boxes: Vec<_> = row
 				.element
@@ -1316,7 +1316,7 @@ async fn poisson_disk_points(
 }
 
 #[node_macro::node(category(""), path(graphene_core::vector))]
-async fn subpath_segment_lengths(_: impl Ctx, vector_data: Table<VectorData>) -> Vec<f64> {
+async fn subpath_segment_lengths(_: impl Ctx, vector_data: Table<Vector>) -> Vec<f64> {
 	vector_data
 		.iter()
 		.flat_map(|vector_data| {
@@ -1334,7 +1334,7 @@ async fn subpath_segment_lengths(_: impl Ctx, vector_data: Table<VectorData>) ->
 }
 
 #[node_macro::node(name("Spline"), category("Vector: Modifier"), path(graphene_core::vector))]
-async fn spline(_: impl Ctx, vector_data: Table<VectorData>) -> Table<VectorData> {
+async fn spline(_: impl Ctx, vector_data: Table<Vector>) -> Table<Vector> {
 	vector_data
 		.iter()
 		.filter_map(|mut row| {
@@ -1381,12 +1381,12 @@ async fn spline(_: impl Ctx, vector_data: Table<VectorData>) -> Table<VectorData
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
 async fn jitter_points(
 	_: impl Ctx,
-	vector_data: Table<VectorData>,
+	vector_data: Table<Vector>,
 	#[unit(" px")]
 	#[default(5.)]
 	amount: f64,
 	seed: SeedValue,
-) -> Table<VectorData> {
+) -> Table<Vector> {
 	vector_data
 		.iter()
 		.map(|mut row| {
@@ -1442,7 +1442,7 @@ async fn jitter_points(
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn morph(_: impl Ctx, source: Table<VectorData>, #[expose] target: Table<VectorData>, #[default(0.5)] time: Fraction) -> Table<VectorData> {
+async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction) -> Table<Vector> {
 	/// Subdivides the last segment of the bezpath to until it appends 'count' number of segments.
 	fn make_new_segments(bezpath: &mut BezPath, count: usize) {
 		let bezpath_segment_count = bezpath.segments().count();
@@ -1492,7 +1492,7 @@ async fn morph(_: impl Ctx, source: Table<VectorData>, #[expose] target: Table<V
 		.iter()
 		.zip(target.iter())
 		.map(|(source_row, target_row)| {
-			let mut vector_data = VectorData::default();
+			let mut vector_data = Vector::default();
 
 			// Lerp styles
 			let vector_data_alpha_blending = source_row.alpha_blending.lerp(&target_row.alpha_blending, time as f32);
@@ -1609,7 +1609,7 @@ async fn morph(_: impl Ctx, source: Table<VectorData>, #[expose] target: Table<V
 		.collect()
 }
 
-fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2, distance: f64) -> VectorData {
+fn bevel_algorithm(mut vector_data: Vector, vector_data_transform: DAffine2, distance: f64) -> Vector {
 	// Splits a bézier curve based on a distance measurement
 	fn split_distance(bezier: PathSeg, distance: f64, length: f64) -> PathSeg {
 		let parametric = eval_pathseg_euclidean(bezier, (distance / length).clamp(0., 1.), DEFAULT_ACCURACY);
@@ -1617,7 +1617,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 	}
 
 	/// Produces a list that corresponds with the point ID. The value is how many segments are connected.
-	fn segments_connected_count(vector_data: &VectorData) -> Vec<usize> {
+	fn segments_connected_count(vector_data: &Vector) -> Vec<usize> {
 		// Count the number of segments connecting to each point.
 		let mut segments_connected_count = vec![0; vector_data.point_domain.ids().len()];
 		for &point_index in vector_data.segment_domain.start_point().iter().chain(vector_data.segment_domain.end_point()) {
@@ -1759,7 +1759,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 		sorted_segments
 	}
 
-	fn update_existing_segments(vector_data: &mut VectorData, vector_data_transform: DAffine2, distance: f64, segments_connected: &mut [usize]) -> Vec<[usize; 2]> {
+	fn update_existing_segments(vector_data: &mut Vector, vector_data_transform: DAffine2, distance: f64, segments_connected: &mut [usize]) -> Vec<[usize; 2]> {
 		let mut next_id = vector_data.point_domain.next_id();
 		let mut new_segments = Vec::new();
 
@@ -1865,7 +1865,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 		new_segments
 	}
 
-	fn insert_new_segments(vector_data: &mut VectorData, new_segments: &[[usize; 2]]) {
+	fn insert_new_segments(vector_data: &mut Vector, new_segments: &[[usize; 2]]) {
 		let mut next_id = vector_data.segment_domain.next_id();
 
 		for &[start, end] in new_segments {
@@ -1884,7 +1884,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-fn bevel(_: impl Ctx, source: Table<VectorData>, #[default(10.)] distance: Length) -> Table<VectorData> {
+fn bevel(_: impl Ctx, source: Table<Vector>, #[default(10.)] distance: Length) -> Table<Vector> {
 	source
 		.iter()
 		.map(|row| TableRow {
@@ -1895,7 +1895,7 @@ fn bevel(_: impl Ctx, source: Table<VectorData>, #[default(10.)] distance: Lengt
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-fn close_path(_: impl Ctx, source: Table<VectorData>) -> Table<VectorData> {
+fn close_path(_: impl Ctx, source: Table<Vector>) -> Table<Vector> {
 	source
 		.iter()
 		.map(|mut row| {
@@ -1906,17 +1906,17 @@ fn close_path(_: impl Ctx, source: Table<VectorData>) -> Table<VectorData> {
 }
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
-fn point_inside(_: impl Ctx, source: Table<VectorData>, point: DVec2) -> bool {
+fn point_inside(_: impl Ctx, source: Table<Vector>, point: DVec2) -> bool {
 	source.iter().any(|row| row.element.check_point_inside_shape(row.transform, point))
 }
 
 #[node_macro::node(category("General"), path(graphene_core::vector))]
-async fn count_elements<I>(_: impl Ctx, #[implementations(Table<Graphic>, Table<VectorData>, Table<Raster<CPU>>, Table<Raster<GPU>>)] source: Table<I>) -> u64 {
+async fn count_elements<I>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)] source: Table<I>) -> u64 {
 	source.len() as u64
 }
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
-async fn path_length(_: impl Ctx, source: Table<VectorData>) -> f64 {
+async fn path_length(_: impl Ctx, source: Table<Vector>) -> f64 {
 	source
 		.iter()
 		.map(|row| {
@@ -1933,7 +1933,7 @@ async fn path_length(_: impl Ctx, source: Table<VectorData>) -> f64 {
 }
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
-async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<Context<'static>, Output = Table<VectorData>>) -> f64 {
+async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<Context<'static>, Output = Table<Vector>>) -> f64 {
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector_data = vector_data.eval(new_ctx).await;
 
@@ -1947,7 +1947,7 @@ async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<
 }
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
-async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<Context<'static>, Output = Table<VectorData>>, centroid_type: CentroidType) -> DVec2 {
+async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<Context<'static>, Output = Table<Vector>>, centroid_type: CentroidType) -> DVec2 {
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector_data = vector_data.eval(new_ctx).await;
 
@@ -2012,12 +2012,12 @@ mod test {
 		}
 	}
 
-	fn vector_node_from_bezpath(bezpath: BezPath) -> Table<VectorData> {
-		Table::new_from_element(VectorData::from_bezpath(bezpath))
+	fn vector_node_from_bezpath(bezpath: BezPath) -> Table<Vector> {
+		Table::new_from_element(Vector::from_bezpath(bezpath))
 	}
 
-	fn create_vector_row(bezpath: BezPath, transform: DAffine2) -> TableRow<VectorData> {
-		let mut row = VectorData::default();
+	fn create_vector_row(bezpath: BezPath, transform: DAffine2) -> TableRow<Vector> {
+		let mut row = Vector::default();
 		row.append_bezpath(bezpath);
 		TableRow {
 			element: row,
@@ -2089,8 +2089,8 @@ mod test {
 
 		assert_eq!(&manipulator_groups_anchors[..4], &[DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.),]);
 
-		// Test a VectorData with non-zero rotation
-		let square = VectorData::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
+		// Test a rectangular path with non-zero rotation
+		let square = Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
 		let mut square = Table::new_from_element(square);
 		*square.get_mut(0).unwrap().transform *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4);
 		let bounding_box = BoundingBoxNode {
@@ -2112,7 +2112,7 @@ mod test {
 		let points = Rect::new(-10., -10., 10., 10.).to_path(DEFAULT_ACCURACY);
 		let element = Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY);
 
-		let expected_points = VectorData::from_bezpath(points.clone()).point_domain.positions().to_vec();
+		let expected_points = Vector::from_bezpath(points.clone()).point_domain.positions().to_vec();
 
 		let copy_to_points = super::copy_to_points(Footprint::default(), vector_node_from_bezpath(points), vector_node_from_bezpath(element), 1., 1., 0., 0, 0., 0).await;
 		let flatten_path = super::flatten_path(Footprint::default(), copy_to_points).await;
@@ -2180,7 +2180,7 @@ mod test {
 		let bezpath = Rect::new(100., 100., 201., 201.).to_path(DEFAULT_ACCURACY);
 		let transform = DAffine2::from_scale(DVec2::new(2., 2.));
 		let row = create_vector_row(bezpath, transform);
-		let table = (0..5).map(|_| row.clone()).collect::<Table<VectorData>>();
+		let table = (0..5).map(|_| row.clone()).collect::<Table<Vector>>();
 
 		let length = super::path_length(Footprint::default(), table).await;
 
@@ -2207,7 +2207,7 @@ mod test {
 	}
 
 	#[track_caller]
-	fn contains_segment(vector: VectorData, target: PathSeg) {
+	fn contains_segment(vector: Vector, target: PathSeg) {
 		let segments = vector.segment_iter().map(|x| x.1);
 		let count = segments
 			.filter(|segment| pathseg_abs_diff_eq(*segment, target, 0.01) || pathseg_abs_diff_eq(segment.reverse(), target, 0.01))
@@ -2276,7 +2276,7 @@ mod test {
 		source.line_to(Point::ZERO);
 		source.push(curve.as_path_el());
 
-		let vector_data = VectorData::from_bezpath(source);
+		let vector_data = Vector::from_bezpath(source);
 		let mut vector_data_table = Table::new_from_element(vector_data.clone());
 
 		*vector_data_table.get_mut(0).unwrap().transform = DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.));

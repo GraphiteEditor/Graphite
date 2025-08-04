@@ -5,19 +5,19 @@ use crate::gradient::GradientStops;
 use crate::graphene_core::registry::types::TextArea;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::Table;
-use crate::vector::VectorData;
+use crate::vector::Vector;
 use crate::{Context, Ctx};
 use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category("Text"))]
-fn to_string<T: std::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, DAffine2, Table<VectorData>)] value: T) -> String {
+fn to_string<T: std::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, DAffine2, Table<Vector>)] value: T) -> String {
 	format!("{:?}", value)
 }
 
 #[node_macro::node(category("Text"))]
 fn serialize<T: serde::Serialize>(
 	_: impl Ctx,
-	#[implementations(String, bool, f64, u32, u64, DVec2, DAffine2, Color, Option<Color>, Table<Graphic>, Table<VectorData>, Table<Raster<CPU>>)] value: T,
+	#[implementations(String, bool, f64, u32, u64, DVec2, DAffine2, Color, Option<Color>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>)] value: T,
 ) -> String {
 	serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string())
 }
@@ -60,7 +60,7 @@ async fn switch<T, C: Send + 'n + Clone>(
 		Context -> DVec2,
 		Context -> DAffine2,
 		Context -> Table<Artboard>,
-		Context -> Table<VectorData>,
+		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
@@ -81,7 +81,7 @@ async fn switch<T, C: Send + 'n + Clone>(
 		Context -> DVec2,
 		Context -> DAffine2,
 		Context -> Table<Artboard>,
-		Context -> Table<VectorData>,
+		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,

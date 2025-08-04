@@ -1,6 +1,6 @@
 use super::TextAlign;
 use crate::table::{Table, TableRow};
-use crate::vector::{PointId, VectorData};
+use crate::vector::{PointId, Vector};
 use bezier_rs::{ManipulatorGroup, Subpath};
 use core::cell::RefCell;
 use glam::{DAffine2, DVec2};
@@ -24,7 +24,7 @@ struct PathBuilder {
 	current_subpath: Subpath<PointId>,
 	origin: DVec2,
 	glyph_subpaths: Vec<Subpath<PointId>>,
-	vector_table: Table<VectorData>,
+	vector_table: Table<Vector>,
 	scale: f64,
 	id: PointId,
 }
@@ -52,13 +52,13 @@ impl PathBuilder {
 
 		if per_glyph_instances {
 			self.vector_table.push(TableRow {
-				element: VectorData::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false),
+				element: Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false),
 				transform: DAffine2::from_translation(glyph_offset),
 				..Default::default()
 			});
 		} else {
 			for subpath in self.glyph_subpaths.drain(..) {
-				// Unwrapping here is ok because `self.vector_table` is initialized with a single `VectorData`
+				// Unwrapping here is ok because `self.vector_table` is initialized with a single `Vector` table element
 				self.vector_table.get_mut(0).unwrap().element.append_subpath(subpath, false);
 			}
 		}
@@ -205,15 +205,15 @@ fn layout_text(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 	Some(layout)
 }
 
-pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig, per_glyph_instances: bool) -> Table<VectorData> {
+pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig, per_glyph_instances: bool) -> Table<Vector> {
 	let Some(layout) = layout_text(str, font_data, typesetting) else {
-		return Table::new_from_element(VectorData::default());
+		return Table::new_from_element(Vector::default());
 	};
 
 	let mut path_builder = PathBuilder {
 		current_subpath: Subpath::new(Vec::new(), false),
 		glyph_subpaths: Vec::new(),
-		vector_table: if per_glyph_instances { Table::new() } else { Table::new_from_element(VectorData::default()) },
+		vector_table: if per_glyph_instances { Table::new() } else { Table::new_from_element(Vector::default()) },
 		scale: layout.scale() as f64,
 		id: PointId::ZERO,
 		origin: DVec2::default(),
@@ -228,7 +228,7 @@ pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 	}
 
 	if path_builder.vector_table.is_empty() {
-		path_builder.vector_table = Table::new_from_element(VectorData::default());
+		path_builder.vector_table = Table::new_from_element(Vector::default());
 	}
 
 	path_builder.vector_table

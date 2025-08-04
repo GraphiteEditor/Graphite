@@ -14,7 +14,7 @@ use crate::messages::tool::tool_messages::path_tool::{PathOverlayMode, PointSele
 use bezier_rs::{Bezier, BezierHandles, Subpath, TValue};
 use glam::{DAffine2, DVec2};
 use graphene_std::vector::{HandleExt, HandleId, SegmentId};
-use graphene_std::vector::{ManipulatorPointId, PointId, VectorData, VectorModificationType};
+use graphene_std::vector::{ManipulatorPointId, PointId, Vector, VectorModificationType};
 use std::f64::consts::TAU;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -164,13 +164,13 @@ pub struct ShapeState {
 pub struct SelectedPointsInfo {
 	pub points: Vec<ManipulatorPointInfo>,
 	pub offset: DVec2,
-	pub vector_data: VectorData,
+	pub vector_data: Vector,
 }
 
 #[derive(Debug)]
 pub struct SelectedSegmentsInfo {
 	pub segments: Vec<SegmentId>,
-	pub vector_data: VectorData,
+	pub vector_data: Vector,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -856,7 +856,7 @@ impl ShapeState {
 		});
 	}
 
-	pub fn move_anchor(&self, point: PointId, vector_data: &VectorData, delta: DVec2, layer: LayerNodeIdentifier, selected: Option<&SelectedLayerState>, responses: &mut VecDeque<Message>) {
+	pub fn move_anchor(&self, point: PointId, vector_data: &Vector, delta: DVec2, layer: LayerNodeIdentifier, selected: Option<&SelectedLayerState>, responses: &mut VecDeque<Message>) {
 		// Move anchor
 		responses.add(GraphOperationMessage::Vector {
 			layer,
@@ -948,7 +948,7 @@ impl ShapeState {
 		if first_is_colinear { ManipulatorAngle::Colinear } else { ManipulatorAngle::Free }
 	}
 
-	pub fn convert_manipulator_handles_to_colinear(&self, vector_data: &VectorData, point_id: PointId, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier) {
+	pub fn convert_manipulator_handles_to_colinear(&self, vector_data: &Vector, point_id: PointId, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier) {
 		let Some(anchor_position) = ManipulatorPointId::Anchor(point_id).get_position(vector_data) else {
 			return;
 		};
@@ -1320,7 +1320,7 @@ impl ShapeState {
 			.collect::<HashMap<_, _>>()
 	}
 
-	pub fn dissolve_segment(&self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData, segment: SegmentId, points: [PointId; 2]) {
+	pub fn dissolve_segment(&self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &Vector, segment: SegmentId, points: [PointId; 2]) {
 		// Checking which point is terminal point
 		let is_point1_terminal = vector_data.connected_count(points[0]) == 1;
 		let is_point2_terminal = vector_data.connected_count(points[1]) == 1;
@@ -1343,7 +1343,7 @@ impl ShapeState {
 		}
 	}
 
-	fn dissolve_anchor(anchor: PointId, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData) -> Option<[(HandleId, PointId); 2]> {
+	fn dissolve_anchor(anchor: PointId, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &Vector) -> Option<[(HandleId, PointId); 2]> {
 		// Delete point
 		let modification_type = VectorModificationType::RemovePoint { id: anchor };
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });

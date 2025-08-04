@@ -13,7 +13,7 @@ use graphene_core::render_complexity::RenderComplexity;
 use graphene_core::table::{Table, TableRow};
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::uuid::{NodeId, generate_uuid};
-use graphene_core::vector::VectorData;
+use graphene_core::vector::Vector;
 use graphene_core::vector::click_target::{ClickTarget, FreePoint};
 use graphene_core::vector::style::{Fill, Stroke, StrokeAlign, ViewMode};
 use graphene_core::{Artboard, Graphic};
@@ -408,7 +408,7 @@ impl Render for Table<Graphic> {
 	}
 }
 
-impl Render for Table<VectorData> {
+impl Render for Table<Vector> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter_ref() {
 			let multiplied_transform = *row.transform;
@@ -1140,7 +1140,7 @@ impl Render for Table<Raster<GPU>> {
 impl Render for Graphic {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
-			Graphic::VectorData(vector_data) => vector_data.render_svg(render, render_params),
+			Graphic::Vector(vector_data) => vector_data.render_svg(render, render_params),
 			Graphic::RasterDataCPU(raster) => raster.render_svg(render, render_params),
 			Graphic::RasterDataGPU(_raster) => (),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.render_svg(render, render_params),
@@ -1150,7 +1150,7 @@ impl Render for Graphic {
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
-			Graphic::VectorData(vector_data) => vector_data.render_to_vello(scene, transform, context, render_params),
+			Graphic::Vector(vector_data) => vector_data.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterDataCPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterDataGPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.render_to_vello(scene, transform, context, render_params),
@@ -1163,7 +1163,7 @@ impl Render for Graphic {
 				Graphic::GraphicGroup(_) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 				}
-				Graphic::VectorData(vector_data) => {
+				Graphic::Vector(vector_data) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than one row of the graphical data table
 					if let Some(vector_data) = vector_data.iter_ref().next() {
@@ -1191,7 +1191,7 @@ impl Render for Graphic {
 		}
 
 		match self {
-			Graphic::VectorData(vector_data) => vector_data.collect_metadata(metadata, footprint, element_id),
+			Graphic::Vector(vector_data) => vector_data.collect_metadata(metadata, footprint, element_id),
 			Graphic::RasterDataCPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
 			Graphic::RasterDataGPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.collect_metadata(metadata, footprint, element_id),
@@ -1200,7 +1200,7 @@ impl Render for Graphic {
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		match self {
-			Graphic::VectorData(vector_data) => vector_data.add_upstream_click_targets(click_targets),
+			Graphic::Vector(vector_data) => vector_data.add_upstream_click_targets(click_targets),
 			Graphic::RasterDataCPU(raster) => raster.add_upstream_click_targets(click_targets),
 			Graphic::RasterDataGPU(raster) => raster.add_upstream_click_targets(click_targets),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.add_upstream_click_targets(click_targets),
@@ -1209,7 +1209,7 @@ impl Render for Graphic {
 
 	fn contains_artboard(&self) -> bool {
 		match self {
-			Graphic::VectorData(vector_data) => vector_data.contains_artboard(),
+			Graphic::Vector(vector_data) => vector_data.contains_artboard(),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.contains_artboard(),
 			Graphic::RasterDataCPU(raster) => raster.contains_artboard(),
 			Graphic::RasterDataGPU(raster) => raster.contains_artboard(),
@@ -1218,7 +1218,7 @@ impl Render for Graphic {
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		match self {
-			Graphic::VectorData(vector_data) => vector_data.new_ids_from_hash(reference),
+			Graphic::Vector(vector_data) => vector_data.new_ids_from_hash(reference),
 			Graphic::GraphicGroup(graphic_group) => graphic_group.new_ids_from_hash(reference),
 			Graphic::RasterDataCPU(_) => (),
 			Graphic::RasterDataGPU(_) => (),

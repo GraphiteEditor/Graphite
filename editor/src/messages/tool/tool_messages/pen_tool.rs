@@ -14,7 +14,7 @@ use crate::messages::tool::common_functionality::utility_functions::{calculate_s
 use bezier_rs::{Bezier, BezierHandles};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
-use graphene_std::vector::{HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, StrokeId, VectorData};
+use graphene_std::vector::{HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, StrokeId, Vector};
 use graphene_std::vector::{PointId, VectorModificationType};
 
 #[derive(Default, ExtractField)]
@@ -395,7 +395,7 @@ impl PenToolData {
 	}
 
 	/// Check whether target handle is primary, end, or `self.handle_end`
-	fn check_end_handle_type(&self, vector_data: &VectorData) -> TargetHandle {
+	fn check_end_handle_type(&self, vector_data: &Vector) -> TargetHandle {
 		match (self.handle_end, self.prior_segment_endpoint, self.prior_segment, self.path_closed) {
 			(Some(_), _, _, false) => TargetHandle::PreviewInHandle,
 			(None, Some(point), Some(segment), false) | (Some(_), Some(point), Some(segment), true) => {
@@ -409,7 +409,7 @@ impl PenToolData {
 		}
 	}
 
-	fn check_grs_end_handle(&self, vector_data: &VectorData) -> TargetHandle {
+	fn check_grs_end_handle(&self, vector_data: &Vector) -> TargetHandle {
 		let Some(point) = self.latest_point().map(|point| point.id) else { return TargetHandle::None };
 		let Some(segment) = self.prior_segment else { return TargetHandle::None };
 
@@ -420,7 +420,7 @@ impl PenToolData {
 		}
 	}
 
-	fn get_opposite_handle_type(&self, handle_type: TargetHandle, vector_data: &VectorData) -> TargetHandle {
+	fn get_opposite_handle_type(&self, handle_type: TargetHandle, vector_data: &Vector) -> TargetHandle {
 		match handle_type {
 			TargetHandle::FuturePreviewOutHandle => self.check_end_handle_type(vector_data),
 			TargetHandle::PreviewInHandle => match (self.path_closed, self.prior_segment_endpoint, self.prior_segment) {
@@ -472,7 +472,7 @@ impl PenToolData {
 		}
 	}
 
-	fn target_handle_position(&self, handle_type: TargetHandle, vector_data: &VectorData) -> Option<DVec2> {
+	fn target_handle_position(&self, handle_type: TargetHandle, vector_data: &Vector) -> Option<DVec2> {
 		match handle_type {
 			TargetHandle::PriorOutHandle(segment) => ManipulatorPointId::PrimaryHandle(segment).get_position(vector_data),
 			TargetHandle::PriorInHandle(segment) => ManipulatorPointId::EndHandle(segment).get_position(vector_data),
@@ -610,7 +610,7 @@ impl PenToolData {
 	fn close_path_on_point(
 		&mut self,
 		snap_data: SnapData,
-		vector_data: &VectorData,
+		vector_data: &Vector,
 		document: &DocumentMessageHandler,
 		preferences: &PreferencesMessageHandler,
 		id: PointId,
@@ -758,7 +758,7 @@ impl PenToolData {
 		transform: &DAffine2,
 		snap_data: &SnapData<'_>,
 		mouse: &DVec2,
-		vector_data: &VectorData,
+		vector_data: &Vector,
 		input: &InputPreprocessorMessageHandler,
 	) -> Option<DVec2> {
 		let reference_handle = if self.path_closed { TargetHandle::PreviewInHandle } else { TargetHandle::FuturePreviewOutHandle };
@@ -894,7 +894,7 @@ impl PenToolData {
 		Some(PenToolFsmState::DraggingHandle(self.handle_mode))
 	}
 
-	fn move_anchor_and_handles(&mut self, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>, vector_data: &VectorData) {
+	fn move_anchor_and_handles(&mut self, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>, vector_data: &Vector) {
 		if self.handle_end.is_none() {
 			if let Some(latest_pt) = self.latest_point_mut() {
 				latest_pt.pos += delta;
@@ -1020,7 +1020,7 @@ impl PenToolData {
 	}
 
 	/// Makes the opposite handle equidistant or locks its length.
-	fn adjust_handle_length(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData) {
+	fn adjust_handle_length(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &Vector) {
 		let opposite_handle_type = self.get_opposite_handle_type(self.handle_type, vector_data);
 		match self.handle_mode {
 			HandleMode::ColinearEquidistant => {
@@ -1057,7 +1057,7 @@ impl PenToolData {
 		}
 	}
 
-	fn apply_colinear_constraint(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, anchor_pos: DVec2, vector_data: &VectorData) {
+	fn apply_colinear_constraint(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, anchor_pos: DVec2, vector_data: &Vector) {
 		let Some(handle) = self.target_handle_position(self.handle_type, vector_data) else {
 			return;
 		};
@@ -1355,7 +1355,7 @@ impl PenToolData {
 		}
 	}
 
-	fn set_lock_angle(&mut self, vector_data: &VectorData, anchor: PointId, segment: Option<SegmentId>) {
+	fn set_lock_angle(&mut self, vector_data: &Vector, anchor: PointId, segment: Option<SegmentId>) {
 		let anchor_position = vector_data.point_domain.position_from_id(anchor);
 
 		let Some((anchor_position, segment)) = anchor_position.zip(segment) else {

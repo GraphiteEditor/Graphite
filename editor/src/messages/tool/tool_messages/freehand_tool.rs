@@ -360,9 +360,9 @@ mod test_freehand {
 	use crate::messages::tool::tool_messages::freehand_tool::FreehandOptionsUpdate;
 	use crate::test_utils::test_prelude::*;
 	use glam::{DAffine2, DVec2};
-	use graphene_std::vector::VectorData;
+	use graphene_std::vector::Vector;
 
-	async fn get_vector_data(editor: &mut EditorTestUtils) -> Vec<(VectorData, DAffine2)> {
+	async fn get_vector_data(editor: &mut EditorTestUtils) -> Vec<(Vector, DAffine2)> {
 		let document = editor.active_document();
 		let layers = document.metadata().all_layers();
 
@@ -379,7 +379,7 @@ mod test_freehand {
 			.collect()
 	}
 
-	fn verify_path_points(vector_data_list: &[(VectorData, DAffine2)], expected_captured_points: &[DVec2], tolerance: f64) -> Result<(), String> {
+	fn verify_path_points(vector_data_list: &[(Vector, DAffine2)], expected_captured_points: &[DVec2], tolerance: f64) -> Result<(), String> {
 		assert_eq!(vector_data_list.len(), 1, "there should be one vector data");
 
 		let path_data = vector_data_list.iter().find(|(data, _)| data.point_domain.ids().len() > 0).ok_or("Could not find path data")?;

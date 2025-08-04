@@ -27,7 +27,7 @@ use graphene_std::renderer::Quad;
 use graphene_std::transform::ReferencePoint;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, VectorData};
+use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, Vector};
 use graphene_std::vector::{ManipulatorPointId, PointId, VectorModificationType};
 use std::vec;
 
@@ -285,7 +285,7 @@ impl LayoutHolder for PathTool {
 		.selected_index(Some(self.options.path_overlay_mode as u32))
 		.widget_holder();
 
-		// Works only if a single layer is selected and its type is vectordata
+		// Works only if a single layer is selected and its type is Vector
 		let path_node_button = TextButton::new("Make Path Editable")
 			.icon(Some("NodeShape".into()))
 			.tooltip("Make Path Editable")
@@ -1158,7 +1158,7 @@ impl PathToolData {
 		self.snapping_axis = None;
 	}
 
-	fn get_normalized_tangent(&mut self, point: PointId, segment: SegmentId, vector_data: &VectorData) -> Option<DVec2> {
+	fn get_normalized_tangent(&mut self, point: PointId, segment: SegmentId, vector_data: &Vector) -> Option<DVec2> {
 		let other_point = vector_data.other_point(segment, point)?;
 		let position = ManipulatorPointId::Anchor(point).get_position(vector_data)?;
 
@@ -2587,7 +2587,7 @@ impl Fsm for PathToolFsmState {
 					// Also get the transform node that is applied on the layer if it exists
 					let transform = document.metadata().transform_to_document(layer);
 
-					let mut new_vector_data = VectorData::default();
+					let mut new_vector_data = Vector::default();
 
 					let mut selected_points_by_segment = HashSet::new();
 					old_vector_data
@@ -2650,7 +2650,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::Paste { data }) => {
 				// Deserialize the data
-				if let Ok(data) = serde_json::from_str::<Vec<(LayerNodeIdentifier, VectorData, DAffine2)>>(&data) {
+				if let Ok(data) = serde_json::from_str::<Vec<(LayerNodeIdentifier, Vector, DAffine2)>>(&data) {
 					shape_editor.deselect_all_points();
 					responses.add(DocumentMessage::AddTransaction);
 					let mut new_layers = Vec::new();
@@ -3143,7 +3143,7 @@ fn calculate_lock_angle(
 	shape_state: &mut ShapeState,
 	responses: &mut VecDeque<Message>,
 	document: &DocumentMessageHandler,
-	vector_data: &VectorData,
+	vector_data: &Vector,
 	handle_id: ManipulatorPointId,
 	tangent_to_neighboring_tangents: bool,
 ) -> Option<f64> {
@@ -3195,7 +3195,7 @@ fn calculate_lock_angle(
 	}
 }
 
-fn check_handle_over_adjacent_anchor(handle_id: ManipulatorPointId, vector_data: &VectorData) -> Option<PointId> {
+fn check_handle_over_adjacent_anchor(handle_id: ManipulatorPointId, vector_data: &Vector) -> Option<PointId> {
 	let (anchor, handle_position) = handle_id.get_anchor(vector_data).zip(handle_id.get_position(vector_data))?;
 
 	let check_if_close = |point_id: &PointId| {
@@ -3207,12 +3207,7 @@ fn check_handle_over_adjacent_anchor(handle_id: ManipulatorPointId, vector_data:
 
 	vector_data.connected_points(anchor).find(check_if_close)
 }
-fn calculate_adjacent_anchor_tangent(
-	currently_dragged_handle: ManipulatorPointId,
-	anchor: Option<PointId>,
-	adjacent_anchor: Option<PointId>,
-	vector_data: &VectorData,
-) -> (Option<f64>, Option<DVec2>) {
+fn calculate_adjacent_anchor_tangent(currently_dragged_handle: ManipulatorPointId, anchor: Option<PointId>, adjacent_anchor: Option<PointId>, vector_data: &Vector) -> (Option<f64>, Option<DVec2>) {
 	// Early return if no anchor or no adjacent anchors
 
 	let Some((dragged_handle_anchor, adjacent_anchor)) = anchor.zip(adjacent_anchor) else {

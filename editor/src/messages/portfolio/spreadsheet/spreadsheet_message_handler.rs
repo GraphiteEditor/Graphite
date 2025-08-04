@@ -8,7 +8,7 @@ use graphene_std::Context;
 use graphene_std::memo::IORecord;
 use graphene_std::raster::Image;
 use graphene_std::table::Table;
-use graphene_std::vector::VectorData;
+use graphene_std::vector::Vector;
 use graphene_std::{Artboard, Graphic};
 use std::any::Any;
 use std::sync::Arc;
@@ -116,9 +116,9 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Some(io.output.layout_with_breadcrumb(data))
 	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), Table<Artboard>>>() {
 		Some(io.output.layout_with_breadcrumb(data))
-	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<VectorData>>>() {
+	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Vector>>>() {
 		Some(io.output.layout_with_breadcrumb(data))
-	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), Table<VectorData>>>() {
+	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), Table<Vector>>>() {
 		Some(io.output.layout_with_breadcrumb(data))
 	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Graphic>>>() {
 		Some(io.output.layout_with_breadcrumb(data))
@@ -155,7 +155,7 @@ impl TableRowLayout for Graphic {
 	fn identifier(&self) -> String {
 		match self {
 			Self::GraphicGroup(table) => table.identifier(),
-			Self::VectorData(table) => table.identifier(),
+			Self::Vector(table) => table.identifier(),
 			Self::RasterDataCPU(_) => "RasterDataCPU".to_string(),
 			Self::RasterDataGPU(_) => "RasterDataGPU".to_string(),
 		}
@@ -167,16 +167,16 @@ impl TableRowLayout for Graphic {
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		match self {
 			Self::GraphicGroup(table) => table.layout_with_breadcrumb(data),
-			Self::VectorData(table) => table.layout_with_breadcrumb(data),
+			Self::Vector(table) => table.layout_with_breadcrumb(data),
 			Self::RasterDataCPU(_) => label("Raster is not supported"),
 			Self::RasterDataGPU(_) => label("Raster is not supported"),
 		}
 	}
 }
 
-impl TableRowLayout for VectorData {
+impl TableRowLayout for Vector {
 	fn type_name() -> &'static str {
-		"VectorData"
+		"Vector"
 	}
 	fn identifier(&self) -> String {
 		format!("Vector Data (points={}, segments={})", self.point_domain.ids().len(), self.segment_domain.ids().len())

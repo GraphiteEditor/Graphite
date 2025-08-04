@@ -1,6 +1,6 @@
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::Table;
-use crate::vector::VectorData;
+use crate::vector::Vector;
 use crate::{Artboard, Color, Graphic};
 use glam::DVec2;
 
@@ -26,14 +26,14 @@ impl RenderComplexity for Graphic {
 	fn render_complexity(&self) -> usize {
 		match self {
 			Self::GraphicGroup(table) => table.render_complexity(),
-			Self::VectorData(table) => table.render_complexity(),
+			Self::Vector(table) => table.render_complexity(),
 			Self::RasterDataCPU(table) => table.render_complexity(),
 			Self::RasterDataGPU(table) => table.render_complexity(),
 		}
 	}
 }
 
-impl RenderComplexity for VectorData {
+impl RenderComplexity for Vector {
 	fn render_complexity(&self) -> usize {
 		self.segment_domain.ids().len()
 	}

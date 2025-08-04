@@ -14,7 +14,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::VectorData;
+use graphene_std::vector::Vector;
 use graphene_std::vector::style::{Fill, Stroke};
 use graphene_std::vector::{PointId, VectorModificationType};
 use graphene_std::{Graphic, NodeInputDecleration};
@@ -154,11 +154,11 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
-		let vector_data = Table::new_from_element(VectorData::from_subpaths(subpaths, true));
+		let vector_data = Table::new_from_element(Vector::from_subpaths(subpaths, true));
 
 		let shape = resolve_document_node_type("Path")
 			.expect("Path node does not exist")
-			.node_template_input_override([Some(NodeInput::value(TaggedValue::VectorData(vector_data), false))]);
+			.node_template_input_override([Some(NodeInput::value(TaggedValue::Vector(vector_data), false))]);
 		let shape_id = NodeId::new();
 		self.network_interface.insert_node(shape_id, shape, &[]);
 		self.network_interface.move_node_to_chain_start(&shape_id, layer, &[]);

@@ -14,7 +14,7 @@ use graphene_std::renderer::{Render, RenderParams, SvgRender};
 use graphene_std::renderer::{RenderSvgSegmentList, SvgSegment};
 use graphene_std::table::{Table, TableRow};
 use graphene_std::text::FontCache;
-use graphene_std::vector::VectorData;
+use graphene_std::vector::Vector;
 use graphene_std::vector::style::ViewMode;
 use graphene_std::wasm_application_io::{RenderOutputType, WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
@@ -51,7 +51,7 @@ pub struct NodeRuntime {
 	// TODO: Remove, it doesn't need to be persisted anymore
 	/// The current renders of the thumbnails for layer nodes.
 	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
-	vector_modify: HashMap<NodeId, VectorData>,
+	vector_modify: HashMap<NodeId, Vector>,
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
@@ -313,7 +313,7 @@ impl NodeRuntime {
 			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_std::Artboard>>() {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			// Insert the vector modify if we are dealing with vector data
-			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, Table<VectorData>>>() {
+			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, Table<Vector>>>() {
 				let default = TableRow::default();
 				self.vector_modify
 					.insert(parent_network_node_id, record.output.iter_ref().next().unwrap_or_else(|| default.as_ref()).element.clone());

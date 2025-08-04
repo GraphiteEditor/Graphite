@@ -13,7 +13,7 @@ use graphene_std::ProtoNodeIdentifier;
 use graphene_std::table::Table;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::uuid::NodeId;
-use graphene_std::vector::VectorData;
+use graphene_std::vector::Vector;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use std::collections::HashMap;
 
@@ -597,7 +597,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			log::error!("The old Spline node's input at index 1 is not a TaggedValue::VecDVec2");
 			return None;
 		};
-		let vector_data = VectorData::from_subpath(Subpath::from_anchors_linear(points.to_vec(), false));
+		let vector_data = Vector::from_subpath(Subpath::from_anchors_linear(points.to_vec(), false));
 
 		// Retrieve the output connectors linked to the "Spline" node's output port
 		let Some(spline_outputs) = document.network_interface.outward_wires(network_path)?.get(&OutputConnector::node(*node_id, 0)).cloned() else {
@@ -617,7 +617,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		};
 		let path_node = path_node_type.node_template_input_override([
-			Some(NodeInput::value(TaggedValue::VectorData(Table::new_from_element(vector_data)), true)),
+			Some(NodeInput::value(TaggedValue::Vector(Table::new_from_element(vector_data)), true)),
 			Some(NodeInput::value(TaggedValue::VectorModification(Default::default()), false)),
 		]);
 

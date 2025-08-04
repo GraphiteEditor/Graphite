@@ -16,7 +16,7 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
 use graphene_std::table::Table;
 use graphene_std::text::{FontCache, load_font};
-use graphene_std::vector::{HandleExt, HandleId, ManipulatorPointId, PointId, SegmentId, VectorData, VectorModification, VectorModificationType};
+use graphene_std::vector::{HandleExt, HandleId, ManipulatorPointId, PointId, SegmentId, Vector, VectorModification, VectorModificationType};
 use kurbo::{CubicBez, Line, ParamCurveExtrema, PathSeg, Point, QuadBez};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
@@ -88,7 +88,7 @@ pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageH
 	Quad::from_box([DVec2::ZERO + vertical_offset, far + vertical_offset])
 }
 
-pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector_data: &VectorData, prefer_handle_direction: bool) -> Option<f64> {
+pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector_data: &Vector, prefer_handle_direction: bool) -> Option<f64> {
 	let is_start = |point: PointId, segment: SegmentId| vector_data.segment_start_from_id(segment) == Some(point);
 	let anchor_position = vector_data.point_domain.position_from_id(anchor)?;
 	let end_handle = ManipulatorPointId::EndHandle(segment).get_position(vector_data);
@@ -115,7 +115,7 @@ pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector_data:
 	required_handle.map(|handle| -(handle - anchor_position).angle_to(DVec2::X))
 }
 
-pub fn adjust_handle_colinearity(handle: HandleId, anchor_position: DVec2, target_control_point: DVec2, vector_data: &VectorData, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+pub fn adjust_handle_colinearity(handle: HandleId, anchor_position: DVec2, target_control_point: DVec2, vector_data: &Vector, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
 	let Some(other_handle) = vector_data.other_colinear_handle(handle) else { return };
 	let Some(handle_position) = other_handle.to_manipulator_point().get_position(vector_data) else {
 		return;
@@ -132,7 +132,7 @@ pub fn restore_previous_handle_position(
 	handle: HandleId,
 	original_c: DVec2,
 	anchor_position: DVec2,
-	vector_data: &VectorData,
+	vector_data: &Vector,
 	layer: LayerNodeIdentifier,
 	responses: &mut VecDeque<Message>,
 ) -> Option<HandleId> {
@@ -156,7 +156,7 @@ pub fn restore_g1_continuity(
 	other_handle: HandleId,
 	control_point: DVec2,
 	anchor_position: DVec2,
-	vector_data: &VectorData,
+	vector_data: &Vector,
 	layer: LayerNodeIdentifier,
 	responses: &mut VecDeque<Message>,
 ) {
@@ -177,7 +177,7 @@ pub fn restore_g1_continuity(
 /// Check whether a point is visible in the current overlay mode.
 pub fn is_visible_point(
 	manipulator_point_id: ManipulatorPointId,
-	vector_data: &VectorData,
+	vector_data: &Vector,
 	path_overlay_mode: PathOverlayMode,
 	frontier_handles_info: &Option<HashMap<SegmentId, Vec<PointId>>>,
 	selected_segments: Vec<SegmentId>,
@@ -600,13 +600,13 @@ pub fn make_path_editable_is_allowed(network_interface: &NodeNetworkInterface, m
 		return None;
 	}
 
-	// Must be a layer of type Table<VectorData>
+	// Must be a layer of type Table<Vector>
 	let compatible_type = NodeGraphLayer::new(first_layer, network_interface)
 		.horizontal_layer_flow()
 		.nth(1)
 		.map(|node_id| {
 			let (output_type, _) = network_interface.output_type(&node_id, 0, &[]);
-			output_type.nested_type() == concrete!(Table<VectorData>).nested_type()
+			output_type.nested_type() == concrete!(Table<Vector>).nested_type()
 		})
 		.unwrap_or_default();
 	if !compatible_type {
