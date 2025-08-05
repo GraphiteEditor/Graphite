@@ -32,7 +32,7 @@ impl From<std::io::Error> for Error {
 #[node_macro::node(category("Debug: Raster"))]
 pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Table<Raster<CPU>>) -> Table<Raster<CPU>> {
 	image_frame
-		.iter()
+		.into_iter()
 		.filter_map(|mut row| {
 			let image_frame_transform = row.transform;
 			let image = row.element;
@@ -104,10 +104,10 @@ pub fn combine_channels(
 	#[expose] alpha: Table<Raster<CPU>>,
 ) -> Table<Raster<CPU>> {
 	let max_len = red.len().max(green.len()).max(blue.len()).max(alpha.len());
-	let red = red.iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
-	let green = green.iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
-	let blue = blue.iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
-	let alpha = alpha.iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
+	let red = red.into_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
+	let green = green.into_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
+	let blue = blue.into_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
+	let alpha = alpha.into_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
 
 	red.zip(green)
 		.zip(blue)
@@ -193,14 +193,14 @@ pub fn mask(
 	stencil: Table<Raster<CPU>>,
 ) -> Table<Raster<CPU>> {
 	// TODO: Figure out what it means to support multiple stencil rows?
-	let Some(stencil) = stencil.iter().next() else {
+	let Some(stencil) = stencil.into_iter().next() else {
 		// No stencil provided so we return the original image
 		return image;
 	};
 	let stencil_size = DVec2::new(stencil.element.width as f64, stencil.element.height as f64);
 
 	image
-		.iter()
+		.into_iter()
 		.filter_map(|mut row| {
 			let image_size = DVec2::new(row.element.width as f64, row.element.height as f64);
 			let mask_size = stencil.transform.decompose_scale();
@@ -235,7 +235,7 @@ pub fn mask(
 #[node_macro::node(category(""))]
 pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DAffine2) -> Table<Raster<CPU>> {
 	image
-		.iter()
+		.into_iter()
 		.map(|mut row| {
 			let image_aabb = Bbox::unit().affine_transform(row.transform).to_axis_aligned_bbox();
 			let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
@@ -246,7 +246,7 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DA
 			let image_data = &row.element.data;
 			let (image_width, image_height) = (row.element.width, row.element.height);
 			if image_width == 0 || image_height == 0 {
-				return empty_image((), bounds, Color::TRANSPARENT).iter().next().unwrap();
+				return empty_image((), bounds, Color::TRANSPARENT).into_iter().next().unwrap();
 			}
 
 			let orig_image_scale = DVec2::new(image_width as f64, image_height as f64);

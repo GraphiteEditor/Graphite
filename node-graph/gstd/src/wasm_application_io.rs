@@ -9,7 +9,7 @@ use graphene_core::raster::image::Image;
 use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::table::Table;
 use graphene_core::transform::Footprint;
-use graphene_core::vector::VectorData;
+use graphene_core::vector::Vector;
 use graphene_core::{Color, Context, Ctx, ExtractFootprint, Graphic, OwnedContextImpl, WasmNotSend};
 use graphene_svg_renderer::RenderMetadata;
 use graphene_svg_renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
@@ -101,7 +101,7 @@ fn string_to_bytes(_: impl Ctx, string: String) -> Vec<u8> {
 
 #[node_macro::node(category("Web Request"), name("Image to Bytes"))]
 fn image_to_bytes(_: impl Ctx, image: Table<Raster<CPU>>) -> Vec<u8> {
-	let Some(image) = image.iter_ref().next() else { return vec![] };
+	let Some(image) = image.iter().next() else { return vec![] };
 	image.element.data.iter().flat_map(|color| color.to_rgb8_srgb().into_iter()).collect::<Vec<u8>>()
 }
 
@@ -215,7 +215,7 @@ async fn render_canvas(render_config: RenderConfig, data: impl Render, editor: &
 async fn rasterize<T: WasmNotSend + 'n>(
 	_: impl Ctx,
 	#[implementations(
-		Table<VectorData>,
+		Table<Vector>,
 		Table<Raster<CPU>>,
 		Table<Graphic>,
 	)]
@@ -283,7 +283,7 @@ async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
 	render_config: RenderConfig,
 	editor_api: impl Node<Context<'static>, Output = &'a WasmEditorApi>,
 	#[implementations(
-		Context -> Table<VectorData>,
+		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Graphic>,
 		Context -> Table<Artboard>,

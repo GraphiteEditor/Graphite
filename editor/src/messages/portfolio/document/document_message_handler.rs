@@ -37,6 +37,7 @@ use graphene_std::table::Table;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::style::ViewMode;
+use std::path::PathBuf;
 use std::time::Duration;
 
 #[derive(ExtractField)]
@@ -115,6 +116,9 @@ pub struct DocumentMessageHandler {
 	/// Stack of document network snapshots for future history states.
 	#[serde(skip)]
 	document_redo_history: VecDeque<NodeNetworkInterface>,
+	/// The path of the to the document file.
+	#[serde(skip)]
+	path: Option<PathBuf>,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
 	#[serde(skip)]
 	saved_hash: Option<u64>,
@@ -162,6 +166,7 @@ impl Default for DocumentMessageHandler {
 			selection_network_path: Vec::new(),
 			document_undo_history: VecDeque::new(),
 			document_redo_history: VecDeque::new(),
+			path: None,
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
@@ -692,7 +697,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					});
 
 					if layer_to_move.parent(self.metadata()) != Some(parent) {
-						// TODO: Fix this so it works when dragging a layer into a group parent which has a Transform node, which used to work before #2689 caused this regression by removing the empty VectorData table row.
+						// TODO: Fix this so it works when dragging a layer into a group parent which has a Transform node, which used to work before #2689 caused this regression by removing the empty vector table row.
 						// TODO: See #2688 for this issue.
 						let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(layer_to_move);
 						let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
@@ -996,10 +1001,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					true => self.name.clone(),
 					false => self.name.clone() + FILE_SAVE_SUFFIX,
 				};
-				responses.add(FrontendMessage::TriggerDownloadTextFile {
-					document: self.serialize_document(),
+				responses.add(FrontendMessage::TriggerSaveDocument {
+					document_id,
 					name,
+					path: self.path.clone(),
+					document: self.serialize_document(),
 				})
+			}
+			DocumentMessage::SavedDocument { path } => {
+				self.path = path;
 			}
 			DocumentMessage::SelectParentLayer => {
 				let selected_nodes = self.network_interface.selected_nodes();
@@ -2907,7 +2917,7 @@ impl DocumentMessageHandler {
 /// Create a network interface with a single export
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
-	network_interface.add_export(TaggedValue::ArtboardGroup(Default::default()), -1, "", &[]);
+	network_interface.add_export(TaggedValue::Artboard(Default::default()), -1, "", &[]);
 	network_interface
 }
 

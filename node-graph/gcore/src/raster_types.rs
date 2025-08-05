@@ -204,7 +204,7 @@ where
 	Raster<T>: Storage,
 {
 	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.iter_ref()
+		self.iter()
 			.filter(|row| !row.element.is_empty()) // Eliminate empty images
 			.flat_map(|row| {
 				let transform = transform * *row.transform;

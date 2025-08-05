@@ -1,7 +1,7 @@
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::Table;
 use crate::transform::{ApplyTransform, Footprint, Transform};
-use crate::vector::VectorData;
+use crate::vector::Vector;
 use crate::{CloneVarArgs, Context, Ctx, ExtractAll, Graphic, OwnedContextImpl};
 use core::f64;
 use glam::{DAffine2, DVec2};
@@ -12,7 +12,7 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 	#[implementations(
 		Context -> DAffine2,
 		Context -> DVec2,
-		Context -> Table<VectorData>,
+		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
@@ -43,7 +43,7 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 #[node_macro::node(category(""))]
 fn replace_transform<Data, TransformInput: Transform>(
 	_: impl Ctx,
-	#[implementations(Table<VectorData>, Table<Raster<CPU>>, Table<Graphic>)] mut data: Table<Data>,
+	#[implementations(Table<Vector>, Table<Raster<CPU>>, Table<Graphic>)] mut data: Table<Data>,
 	#[implementations(DAffine2)] transform: TransformInput,
 ) -> Table<Data> {
 	for data_transform in data.iter_mut() {
@@ -57,13 +57,13 @@ async fn extract_transform<T>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Graphic>,
-		Table<VectorData>,
+		Table<Vector>,
 		Table<Raster<CPU>>,
 		Table<Raster<GPU>>,
 	)]
-	vector_data: Table<T>,
+	vector: Table<T>,
 ) -> DAffine2 {
-	vector_data.iter_ref().next().map(|vector_data| *vector_data.transform).unwrap_or_default()
+	vector.iter().next().map(|row| *row.transform).unwrap_or_default()
 }
 
 #[node_macro::node(category("Math: Transform"))]
@@ -90,7 +90,7 @@ fn decompose_scale(_: impl Ctx, transform: DAffine2) -> DVec2 {
 async fn boundless_footprint<T: 'n + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
-		Context -> Table<VectorData>,
+		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
@@ -108,7 +108,7 @@ async fn boundless_footprint<T: 'n + 'static>(
 async fn freeze_real_time<T: 'n + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
-		Context -> Table<VectorData>,
+		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,

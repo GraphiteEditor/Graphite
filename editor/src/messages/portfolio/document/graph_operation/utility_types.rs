@@ -14,7 +14,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::VectorData;
+use graphene_std::vector::Vector;
 use graphene_std::vector::style::{Fill, Stroke};
 use graphene_std::vector::{PointId, VectorModificationType};
 use graphene_std::{Graphic, NodeInputDecleration};
@@ -131,8 +131,8 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Creates an artboard as the primary export for the document network
 	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_document_node_type("Artboard").expect("Node").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::ArtboardGroup(Default::default()), true)),
-			Some(NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true)),
+			Some(NodeInput::value(TaggedValue::Artboard(Default::default()), true)),
+			Some(NodeInput::value(TaggedValue::Group(Default::default()), true)),
 			Some(NodeInput::value(TaggedValue::DVec2(artboard.location.into()), false)),
 			Some(NodeInput::value(TaggedValue::DVec2(artboard.dimensions.into()), false)),
 			Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
@@ -144,7 +144,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn insert_boolean_data(&mut self, operation: graphene_std::path_bool::BooleanOperation, layer: LayerNodeIdentifier) {
 		let boolean = resolve_document_node_type("Boolean Operation").expect("Boolean node does not exist").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true)),
+			Some(NodeInput::value(TaggedValue::Group(Default::default()), true)),
 			Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
 		]);
 
@@ -153,12 +153,12 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&boolean_id, layer, &[]);
 	}
 
-	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
-		let vector_data = Table::new_from_element(VectorData::from_subpaths(subpaths, true));
+	pub fn insert_vector(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
+		let vector = Table::new_from_element(Vector::from_subpaths(subpaths, true));
 
 		let shape = resolve_document_node_type("Path")
 			.expect("Path node does not exist")
-			.node_template_input_override([Some(NodeInput::value(TaggedValue::VectorData(vector_data), false))]);
+			.node_template_input_override([Some(NodeInput::value(TaggedValue::Vector(vector), false))]);
 		let shape_id = NodeId::new();
 		self.network_interface.insert_node(shape_id, shape, &[]);
 		self.network_interface.move_node_to_chain_start(&shape_id, layer, &[]);
@@ -223,7 +223,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let image = resolve_document_node_type("Image Value")
 			.expect("ImageValue node does not exist")
-			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::RasterData(image_frame), false))]);
+			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::Raster(image_frame), false))]);
 
 		let image_id = NodeId::new();
 		self.network_interface.insert_node(image_id, image, &[]);
@@ -296,11 +296,12 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn create_node(&mut self, reference: &str) -> Option<NodeId> {
 		let output_layer = self.get_output_layer()?;
 		let Some(node_definition) = resolve_document_node_type(reference) else {
-			log::error!("Node type {} does not exist in ModifyInputsContext::existing_node_id", reference);
+			log::error!("Node type {reference} does not exist in ModifyInputsContext::existing_node_id");
 			return None;
 		};
-		// If inserting a path node, insert a Flatten Path if the type is a graphic group.
-		// TODO: Allow the path node to operate on Graphic Group data by utilizing the reference for each vector data in a group.
+
+		// If inserting a path node, insert a Flatten Path if the type is Group.
+		// TODO: Allow the path node to operate on Group data by utilizing the reference for each Vector in a group.
 		if node_definition.identifier == "Path" {
 			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type().clone();
 			if layer_input_type == concrete!(Table<Graphic>) {
