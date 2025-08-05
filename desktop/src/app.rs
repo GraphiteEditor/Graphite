@@ -55,6 +55,10 @@ impl WinitApp {
 	}
 
 	fn send_messages_to_editor(&mut self, mut responses: Vec<FrontendMessage>) {
+		if responses.is_empty() {
+			return;
+		}
+
 		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::RenderOverlays(_))) {
 			let FrontendMessage::RenderOverlays(overlay_context) = message else { unreachable!() };
 			if let Some(graphics_state) = &mut self.graphics_state {
@@ -106,9 +110,15 @@ impl WinitApp {
 			}
 		}
 
-		if responses.is_empty() {
-			return;
+		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerVisitLink { .. })) {
+			let _ = thread::spawn(move || {
+				let FrontendMessage::TriggerVisitLink { url } = message else { unreachable!() };
+				if let Err(e) = open::that(&url) {
+					tracing::error!("Failed to open URL: {}: {}", url, e);
+				}
+			});
 		}
+
 		let Ok(message) = ron::to_string(&responses) else {
 			tracing::error!("Failed to serialize Messages");
 			return;
