@@ -21,6 +21,7 @@ use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::{PointId, Vector, VectorModificationType};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use interpreted_executor::node_registry::NODE_REGISTRY;
+use kurbo::BezPath;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -2713,8 +2714,7 @@ impl NodeNetworkInterface {
 		let thick = vertical_end && vertical_start;
 		let vector_wire = build_vector_wire(output_position, input_position, vertical_start, vertical_end, graph_wire_style);
 
-		let mut path_string = String::new();
-		let _ = vector_wire.subpath_to_svg(&mut path_string, DAffine2::IDENTITY);
+		let path_string = vector_wire.to_svg();
 		let data_type = FrontendGraphDataType::from_type(&self.input_type(&input, network_path).0);
 		let wire_path_update = Some(WirePath {
 			path_string,
@@ -2731,14 +2731,14 @@ impl NodeNetworkInterface {
 	}
 
 	/// Returns the vector subpath and a boolean of whether the wire should be thick.
-	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(Subpath<PointId>, bool)> {
+	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(BezPath, bool)> {
 		let Some(input_position) = self.get_input_center(input, network_path) else {
 			log::error!("Could not get dom rect for wire end: {:?}", input);
 			return None;
 		};
 		// An upstream output could not be found, so the wire does not exist, but it should still be loaded as as empty vector
 		let Some(upstream_output) = self.upstream_output_connector(input, network_path) else {
-			return Some((Subpath::from_anchors(std::iter::empty(), false), false));
+			return Some((BezPath::new(), false));
 		};
 		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
 			log::error!("Could not get dom rect for wire start: {:?}", upstream_output);
@@ -2752,8 +2752,7 @@ impl NodeNetworkInterface {
 
 	pub fn wire_path_from_input(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, dashed: bool, network_path: &[NodeId]) -> Option<WirePath> {
 		let (vector_wire, thick) = self.vector_wire_from_input(input, graph_wire_style, network_path)?;
-		let mut path_string = String::new();
-		let _ = vector_wire.subpath_to_svg(&mut path_string, DAffine2::IDENTITY);
+		let path_string = vector_wire.to_svg();
 		let data_type = FrontendGraphDataType::from_type(&self.input_type(input, network_path).0);
 		Some(WirePath {
 			path_string,

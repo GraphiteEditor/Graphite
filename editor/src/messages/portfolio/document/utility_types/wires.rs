@@ -1,8 +1,9 @@
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use bezier_rs::{ManipulatorGroup, Subpath};
 use glam::{DVec2, IVec2};
-use graphene_std::uuid::NodeId;
 use graphene_std::vector::PointId;
+use graphene_std::{uuid::NodeId, vector::misc::dvec2_to_point};
+use kurbo::{BezPath, Point};
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct WirePath {
@@ -53,7 +54,7 @@ impl GraphWireStyle {
 	}
 }
 
-pub fn build_vector_wire(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool, graph_wire_style: GraphWireStyle) -> Subpath<PointId> {
+pub fn build_vector_wire(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool, graph_wire_style: GraphWireStyle) -> BezPath {
 	let grid_spacing = 24.;
 	match graph_wire_style {
 		GraphWireStyle::Direct => {
@@ -85,40 +86,24 @@ pub fn build_vector_wire(output_position: DVec2, input_position: DVec2, vertical
 			let delta01 = DVec2::new((locations[1].x - locations[0].x) * smoothing, (locations[1].y - locations[0].y) * smoothing);
 			let delta23 = DVec2::new((locations[3].x - locations[2].x) * smoothing, (locations[3].y - locations[2].y) * smoothing);
 
-			Subpath::new(
-				vec![
-					ManipulatorGroup {
-						anchor: locations[0],
-						in_handle: None,
-						out_handle: None,
-						id: PointId::generate(),
-					},
-					ManipulatorGroup {
-						anchor: locations[1],
-						in_handle: None,
-						out_handle: Some(locations[1] + delta01),
-						id: PointId::generate(),
-					},
-					ManipulatorGroup {
-						anchor: locations[2],
-						in_handle: Some(locations[2] - delta23),
-						out_handle: None,
-						id: PointId::generate(),
-					},
-					ManipulatorGroup {
-						anchor: locations[3],
-						in_handle: None,
-						out_handle: None,
-						id: PointId::generate(),
-					},
-				],
-				false,
-			)
+			let mut wire = BezPath::new();
+			wire.move_to(dvec2_to_point(locations[0]));
+			wire.line_to(dvec2_to_point(locations[1]));
+			wire.curve_to(dvec2_to_point(locations[1] + delta01), dvec2_to_point(locations[2] - delta23), dvec2_to_point(locations[2]));
+			wire.line_to(dvec2_to_point(locations[3]));
+			wire
 		}
-		GraphWireStyle::GridAligned => {
-			let locations = straight_wire_paths(output_position, input_position, vertical_out, vertical_in);
-			straight_wire_subpath(locations)
-		}
+		GraphWireStyle::GridAligned => straight_wire_paths(output_position, input_position, vertical_out, vertical_in)
+			.iter()
+			.fold(BezPath::new(), |mut bezpath, point| {
+				let point = Point::new(point.x as f64, point.y as f64);
+				if bezpath.elements().is_empty() {
+					bezpath.move_to(point);
+				} else {
+					bezpath.line_to(point);
+				}
+				bezpath
+			}),
 	}
 }
 
