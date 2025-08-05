@@ -51,8 +51,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 	let vp_cord = (in.tex_coords - constants.viewport_offset) * constants.viewport_scale;
 
-	let ov = textureSample(t_overlays, s_diffuse, vp_cord);
-	let vp = textureSample(t_viewport, s_diffuse, vp_cord);
+	let ov_raw = textureSample(t_overlays, s_diffuse, vp_cord);
+	let ov = vec4<f32>(srgb_to_linear(ov_raw.rgb), ov_raw.a);
+	let vp_raw = textureSample(t_viewport, s_diffuse, vp_cord);
+	let vp = vec4<f32>(srgb_to_linear(vp_raw.rgb), vp_raw.a);
 
 	if (ov.a < 0.001) {
 		return blend(ui, vp);
@@ -60,6 +62,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 	let comp = blend(ov, vp);
 	return blend(ui, comp);
+}
+
+fn srgb_to_linear(srgb: vec3<f32>) -> vec3<f32> {
+	return select(
+		pow((srgb + 0.055) / 1.055, vec3<f32>(2.4)),
+		srgb / 12.92,
+		srgb <= vec3<f32>(0.04045)
+	);
 }
 
 fn blend(fg: vec4<f32>, bg: vec4<f32>) -> vec4<f32> {
