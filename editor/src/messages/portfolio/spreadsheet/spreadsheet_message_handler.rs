@@ -179,7 +179,13 @@ impl TableRowLayout for Vector {
 		"Vector"
 	}
 	fn identifier(&self) -> String {
-		format!("Vector ({} points, {} segments)", self.point_domain.ids().len(), self.segment_domain.ids().len())
+		format!(
+			"Vector ({} point{}, {} segment{})",
+			self.point_domain.ids().len(),
+			if self.point_domain.ids().len() == 1 { "" } else { "s" },
+			self.segment_domain.ids().len(),
+			if self.segment_domain.ids().len() == 1 { "" } else { "s" }
+		)
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let colinear = self.colinear_manipulators.iter().map(|[a, b]| format!("[{a} / {b}]")).collect::<Vec<_>>().join(", ");
@@ -247,10 +253,10 @@ impl TableRowLayout for Image<Color> {
 		"Image"
 	}
 	fn identifier(&self) -> String {
-		format!("Image (width={}, height={})", self.width, self.height)
+		format!("Image ({}x{})", self.width, self.height)
 	}
 	fn compute_layout(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let rows = vec![vec![TextLabel::new(format!("Image (width={}, height={})", self.width, self.height)).widget_holder()]];
+		let rows = vec![vec![TextLabel::new(format!("Image ({}x{})", self.width, self.height)).widget_holder()]];
 		vec![LayoutGroup::Table { rows }]
 	}
 }
@@ -272,7 +278,7 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 		"Table"
 	}
 	fn identifier(&self) -> String {
-		format!("Table<{}> (length={})", T::type_name(), self.len())
+		format!("Table<{}> ({} row{})", T::type_name(), self.len(), if self.len() == 1 { "" } else { "s" })
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		if let Some(index) = data.desired_path.get(data.current_depth).copied() {
@@ -295,7 +301,7 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 				let rotation = if angle == -0. { 0. } else { angle.to_degrees() };
 				let round = |x: f64| (x * 1e3).round() / 1e3;
 				vec![
-					TextLabel::new(format!("{}", index)).widget_holder(),
+					TextLabel::new(format!("{index}")).widget_holder(),
 					TextButton::new(row.element.identifier())
 						.on_update(move |_| SpreadsheetMessage::PushToElementPath { index }.into())
 						.widget_holder(),
@@ -315,7 +321,6 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 
 		rows.insert(0, column_headings(&["", "element", "transform", "alpha_blending", "source_node_id"]));
 
-		let table = vec![TextLabel::new("Table:").widget_holder()];
-		vec![LayoutGroup::Row { widgets: table }, LayoutGroup::Table { rows }]
+		vec![LayoutGroup::Table { rows }]
 	}
 }

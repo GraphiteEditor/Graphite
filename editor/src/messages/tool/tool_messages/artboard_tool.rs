@@ -564,13 +564,17 @@ impl Fsm for ArtboardToolFsmState {
 #[cfg(test)]
 mod test_artboard {
 	pub use crate::test_utils::test_prelude::*;
+	use graphene_std::table::Table;
 
-	async fn get_artboards(editor: &mut EditorTestUtils) -> Vec<graphene_std::Artboard> {
+	async fn get_artboards(editor: &mut EditorTestUtils) -> Table<graphene_std::Artboard> {
 		let instrumented = match editor.eval_graph().await {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {}", e),
 		};
-		instrumented.grab_all_input::<graphene_std::artboard::append_artboard::ArtboardInput>(&editor.runtime).collect()
+		instrumented
+			.grab_all_input::<graphene_std::graphic::extend::NewInput<graphene_std::Artboard>>(&editor.runtime)
+			.flatten()
+			.collect()
 	}
 
 	#[tokio::test]
@@ -582,8 +586,8 @@ mod test_artboard {
 		let artboards = get_artboards(&mut editor).await;
 
 		assert_eq!(artboards.len(), 1);
-		assert_eq!(artboards[0].location, IVec2::new(10, 0));
-		assert_eq!(artboards[0].dimensions, IVec2::new(10, 11));
+		assert_eq!(artboards.get(0).unwrap().element.location, IVec2::new(10, 0));
+		assert_eq!(artboards.get(0).unwrap().element.dimensions, IVec2::new(10, 11));
 	}
 
 	#[tokio::test]
@@ -594,8 +598,8 @@ mod test_artboard {
 
 		let artboards = get_artboards(&mut editor).await;
 		assert_eq!(artboards.len(), 1);
-		assert_eq!(artboards[0].location, IVec2::new(-10, 10));
-		assert_eq!(artboards[0].dimensions, IVec2::new(20, 20));
+		assert_eq!(artboards.get(0).unwrap().element.location, IVec2::new(-10, 10));
+		assert_eq!(artboards.get(0).unwrap().element.dimensions, IVec2::new(20, 20));
 	}
 
 	#[tokio::test]
@@ -613,9 +617,9 @@ mod test_artboard {
 
 		let artboards = get_artboards(&mut editor).await;
 		assert_eq!(artboards.len(), 1);
-		assert_eq!(artboards[0].location, IVec2::new(0, 0));
+		assert_eq!(artboards.get(0).unwrap().element.location, IVec2::new(0, 0));
 		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 10.);
-		assert_eq!(artboards[0].dimensions, desired_size.round().as_ivec2());
+		assert_eq!(artboards.get(0).unwrap().element.dimensions, desired_size.round().as_ivec2());
 	}
 
 	#[tokio::test]
@@ -634,9 +638,9 @@ mod test_artboard {
 
 		let artboards = get_artboards(&mut editor).await;
 		assert_eq!(artboards.len(), 1);
-		assert_eq!(artboards[0].location, DVec2::splat(f64::consts::FRAC_1_SQRT_2 * -10.).as_ivec2());
+		assert_eq!(artboards.get(0).unwrap().element.location, DVec2::splat(f64::consts::FRAC_1_SQRT_2 * -10.).as_ivec2());
 		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 20.);
-		assert_eq!(artboards[0].dimensions, desired_size.round().as_ivec2());
+		assert_eq!(artboards.get(0).unwrap().element.dimensions, desired_size.round().as_ivec2());
 	}
 
 	#[tokio::test]
