@@ -965,8 +965,8 @@ where
 	// connected to a Flatten Path connected to an if else node, another connection from the cache directly to
 	// the if else node, and another connection from the cache to a matches type node connected to the if else node.
 
-	fn flatten_group(group: &Table<Graphic>, output: &mut TableRowMut<Vector>) {
-		for (group_index, current_element) in group.iter().enumerate() {
+	fn flatten_table(output: &mut TableRowMut<Vector>, graphic_table: &Table<Graphic>) {
+		for (current_index, current_element) in graphic_table.iter().enumerate() {
 			match current_element.element {
 				Graphic::Vector(vector) => {
 					// Loop through every row of the `Table<Vector>` and concatenate each element's subpath into the output `Vector` element.
@@ -976,7 +976,7 @@ where
 						let node_id = current_element.source_node_id.map(|node_id| node_id.0).unwrap_or_default();
 
 						let mut hasher = DefaultHasher::new();
-						(group_index, vector_index, node_id).hash(&mut hasher);
+						(current_index, vector_index, node_id).hash(&mut hasher);
 						let collision_hash_seed = hasher.finish();
 
 						output.element.concat(other, transform, collision_hash_seed);
@@ -985,13 +985,13 @@ where
 						output.element.style = row.element.style.clone();
 					}
 				}
-				Graphic::Group(group) => {
-					let mut group = group.clone();
-					for row in group.iter_mut() {
+				Graphic::Group(graphic) => {
+					let mut graphic = graphic.clone();
+					for row in graphic.iter_mut() {
 						*row.transform = *current_element.transform * *row.transform;
 					}
 
-					flatten_group(&group, output);
+					flatten_table(output, &graphic);
 				}
 				_ => {}
 			}
@@ -1000,13 +1000,11 @@ where
 
 	// Create a table with one empty `Vector` element, then get a mutable reference to it which we append flattened subpaths to
 	let mut output_table = Table::new_from_element(Vector::default());
-	let Some(mut output) = output_table.iter_mut().next() else {
-		return output_table;
-	};
+	let Some(mut output) = output_table.iter_mut().next() else { return output_table };
 
-	// Flatten the group input into the output `Vector` element
-	let base_group = Table::new_from_element(Graphic::from(content));
-	flatten_group(&base_group, &mut output);
+	// Flatten the graphic input into the output `Vector` element
+	let base_graphic_table = Table::new_from_element(Graphic::from(content));
+	flatten_table(&mut output, &base_graphic_table);
 
 	// Return the single-row Table<Vector> containing the flattened Vector subpaths
 	output_table

@@ -95,7 +95,7 @@ impl BoundingBox for Table<Artboard> {
 }
 
 #[node_macro::node(category(""))]
-async fn to_artboard<Data: Into<Table<Graphic>> + 'n>(
+async fn create_artboard<T: Into<Table<Graphic>> + 'n>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
 		Context -> Table<Graphic>,
@@ -104,13 +104,13 @@ async fn to_artboard<Data: Into<Table<Graphic>> + 'n>(
 		Context -> Table<Raster<GPU>>,
 		Context -> DAffine2,
 	)]
-	contents: impl Node<Context<'static>, Output = Data>,
+	content: impl Node<Context<'static>, Output = T>,
 	label: String,
 	location: DVec2,
 	dimensions: DVec2,
 	background: Color,
 	clip: bool,
-) -> Artboard {
+) -> Table<Artboard> {
 	let location = location.as_ivec2();
 
 	let footprint = ctx.try_footprint().copied();
@@ -119,7 +119,7 @@ async fn to_artboard<Data: Into<Table<Graphic>> + 'n>(
 		footprint.translate(location.as_dvec2());
 		new_ctx = new_ctx.with_footprint(footprint);
 	}
-	let group = contents.eval(new_ctx.into_context()).await.into();
+	let group = content.eval(new_ctx.into_context()).await.into();
 
 	let dimensions = dimensions.as_ivec2().max(IVec2::ONE);
 
@@ -127,28 +127,12 @@ async fn to_artboard<Data: Into<Table<Graphic>> + 'n>(
 
 	let dimensions = dimensions.abs();
 
-	Artboard {
+	Table::new_from_element(Artboard {
 		group,
 		label,
 		location,
 		dimensions,
 		background,
 		clip,
-	}
-}
-
-#[node_macro::node(category(""))]
-pub async fn append_artboard(_ctx: impl Ctx, mut artboards: Table<Artboard>, artboard: Artboard, node_path: Vec<NodeId>) -> Table<Artboard> {
-	// Get the penultimate element of the node path, or None if the path is too short.
-	// This is used to get the ID of the user-facing "Artboard" node (which encapsulates this internal "Append Artboard" node).
-	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
-
-	artboards.push(TableRow {
-		element: artboard,
-		transform: DAffine2::IDENTITY,
-		alpha_blending: AlphaBlending::default(),
-		source_node_id: encapsulating_node_id,
-	});
-
-	artboards
+	})
 }
