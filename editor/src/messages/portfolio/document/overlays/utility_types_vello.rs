@@ -378,7 +378,8 @@ impl OverlayContext {
 	}
 
 	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
-		self.internal().text(text, font_color, background_color, transform, padding, pivot);
+		let mut internal = self.internal();
+		internal.text(text, font_color, background_color, transform, padding, pivot);
 	}
 
 	pub fn translation_box(&mut self, translation: DVec2, quad: Quad, typed_string: Option<String>) {
@@ -972,32 +973,102 @@ impl OverlayContextInternal {
 	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
 	/// Used by the fill tool to show the area to be filled.
 	fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
-		// TODO: Implement pattern fill in Vello
-		// For now, just fill with a semi-transparent version of the color
+		const PATTERN_WIDTH: u32 = 4;
+		const PATTERN_HEIGHT: u32 = 4;
+
+		// Create a 4x4 pixel pattern with colored pixels at (0,0) and (2,2)
+		// This matches the Canvas2D checkerboard pattern
+		let mut data = vec![0u8; (PATTERN_WIDTH * PATTERN_HEIGHT * 4) as usize];
+		let rgba = color.to_rgba8_srgb();
+		
+		// Set pixels at (0,0) and (2,2) to the specified color
+		let pixels = [(0, 0), (2, 2)];
+		for &(x, y) in &pixels {
+			let index = ((y * PATTERN_WIDTH + x) * 4) as usize;
+			data[index..index + 4].copy_from_slice(&rgba);
+		}
+
+		let image = peniko::Image {
+			data: data.into(),
+			format: peniko::ImageFormat::Rgba8,
+			width: PATTERN_WIDTH,
+			height: PATTERN_HEIGHT,
+			x_extend: peniko::Extend::Repeat,
+			y_extend: peniko::Extend::Repeat,
+			alpha: 1.0,
+			quality: peniko::ImageQuality::default(),
+		};
+
 		let path = self.push_path(subpaths, transform);
-		let semi_transparent_color = color.with_alpha(0.5);
+		let brush = peniko::Brush::Image(image);
 
-		self.scene.fill(
-			peniko::Fill::NonZero,
-			self.get_transform(),
-			peniko::Color::from_rgba8(
-				(semi_transparent_color.r() * 255.) as u8,
-				(semi_transparent_color.g() * 255.) as u8,
-				(semi_transparent_color.b() * 255.) as u8,
-				(semi_transparent_color.a() * 255.) as u8,
-			),
+		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), &brush, None, &path);
+	}
+
+	fn get_width(&self, text: &str) -> f64 {
+		// Basic text width estimation that matches the text() function implementation
+		// This uses the same character width estimation for consistency
+		// Note: This is primarily used for manual positioning calculations, but ideally
+		// the pivot system in text() should handle centering automatically
+		const CHAR_WIDTH: f64 = 7.0; // Approximate character width at 12px font size
+		text.len() as f64 * CHAR_WIDTH
+	}
+
+	fn text(&mut self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
+		// For now, implement a basic text rendering approach
+		// This is a simplified version that can be enhanced later with full font support
+		
+		// Calculate approximate text dimensions (basic estimation)
+		let char_width = 7.0; // Approximate character width at 12px font size
+		let char_height = 12.0; // Font size
+		let text_width = text.len() as f64 * char_width;
+		let text_height = char_height;
+		
+		// Calculate position based on pivot
+		let mut position = DVec2::ZERO;
+		match pivot[0] {
+			Pivot::Start => position.x = padding,
+			Pivot::Middle => position.x = -text_width / 2.0,
+			Pivot::End => position.x = -padding - text_width,
+		}
+		match pivot[1] {
+			Pivot::Start => position.y = padding + text_height,
+			Pivot::Middle => position.y = text_height / 2.0,
+			Pivot::End => position.y = -padding,
+		}
+		
+		let text_transform = transform * DAffine2::from_translation(position);
+		let device_transform = self.get_transform();
+		let combined_transform = kurbo::Affine::new(text_transform.to_cols_array());
+		let vello_transform = device_transform * combined_transform;
+		
+		// Draw background if specified
+		if let Some(bg_color) = background_color {
+			let bg_rect = kurbo::Rect::new(
+				-padding,
+				-padding, 
+				text_width + padding,
+				text_height + padding
+			);
+			self.scene.fill(
+				peniko::Fill::NonZero,
+				vello_transform,
+				Self::parse_color(bg_color),
+				None,
+				&bg_rect,
+			);
+		}
+		
+		// For now, draw a simple rectangle to represent text
+		// TODO: Implement proper font rendering using vello's text capabilities
+		let text_rect = kurbo::Rect::new(0.0, 0.0, text_width, text_height);
+		self.scene.stroke(
+			&kurbo::Stroke::new(1.0),
+			vello_transform,
+			Self::parse_color(font_color),
 			None,
-			&path,
+			&text_rect,
 		);
-	}
-
-	fn get_width(&self, _text: &str) -> f64 {
-		// TODO: Implement proper text measurement in Vello
-		0.
-	}
-
-	fn text(&self, _text: &str, _font_color: &str, _background_color: Option<&str>, _transform: DAffine2, _padding: f64, _pivot: [Pivot; 2]) {
-		// TODO: Implement text rendering in Vello
 	}
 
 	fn translation_box(&mut self, translation: DVec2, quad: Quad, typed_string: Option<String>) {
