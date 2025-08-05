@@ -1220,20 +1220,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 										log::debug!("preferences.graph_wire_style: {:?}", preferences.graph_wire_style);
 										let (wire, is_stack) = network_interface.vector_wire_from_input(&input, preferences.graph_wire_style, selection_network_path)?;
 
-										let node_bbox = kurbo::Rect::new(node_bbox[0].x, node_bbox[0].y, node_bbox[1].x, node_bbox[1].y);
-										let inside = bezpath_is_inside_bezpath(&wire, &node_bbox.to_path(DEFAULT_ACCURACY), None, None);
+										let node_bbox = kurbo::Rect::new(node_bbox[0].x, node_bbox[0].y, node_bbox[1].x, node_bbox[1].y).to_path(DEFAULT_ACCURACY);
+										let inside = bezpath_is_inside_bezpath(&wire, &node_bbox, None, None);
 
-										let intersect = wire.segments().any(|segment| {
-											let top_line = Line::new(Point::new(node_bbox.x0, node_bbox.y0), Point::new(node_bbox.x1, node_bbox.y0));
-											let bottom_line = Line::new(Point::new(node_bbox.x0, node_bbox.y1), Point::new(node_bbox.x1, node_bbox.y1));
-											let left_line = Line::new(Point::new(node_bbox.x0, node_bbox.y0), Point::new(node_bbox.x0, node_bbox.y1));
-											let right_line = Line::new(Point::new(node_bbox.x1, node_bbox.y0), Point::new(node_bbox.x1, node_bbox.y1));
-
-											!segment.intersect_line(top_line).is_empty()
-												|| !segment.intersect_line(bottom_line).is_empty()
-												|| !segment.intersect_line(left_line).is_empty()
-												|| !segment.intersect_line(right_line).is_empty()
-										});
+										let intersect = wire
+											.segments()
+											.any(|segment| node_bbox.segments().filter_map(|segment| segment.as_line()).any(|line| !segment.intersect_line(line).is_empty()));
 
 										(intersect || inside).then_some((input, is_stack))
 									})
