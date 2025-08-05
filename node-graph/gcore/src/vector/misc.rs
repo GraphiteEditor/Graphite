@@ -1,7 +1,7 @@
 use super::PointId;
 use super::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
 use crate::vector::{SegmentId, Vector};
-use bezier_rs::{BezierHandles, ManipulatorGroup, Subpath};
+use bezier_rs::{BezierHandles, ManipulatorGroup};
 use dyn_any::DynAny;
 use glam::DVec2;
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
@@ -134,12 +134,6 @@ pub fn handles_to_segment(start: DVec2, handles: BezierHandles, end: DVec2) -> P
 			PathSeg::Cubic(CubicBez::new(p0, p1, p2, p3))
 		}
 	}
-}
-
-pub fn subpath_to_kurbo_bezpath(subpath: Subpath<PointId>) -> BezPath {
-	let manipulator_groups = subpath.manipulator_groups();
-	let closed = subpath.closed();
-	bezpath_from_manipulator_groups(manipulator_groups, closed)
 }
 
 pub fn bezpath_from_manipulator_groups(manipulator_groups: &[ManipulatorGroup<PointId>], closed: bool) -> BezPath {

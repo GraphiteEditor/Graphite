@@ -20,15 +20,13 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{self
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
-use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_std::math::math_ext::QuadExt;
 use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
-use graphene_std::vector::misc::subpath_to_kurbo_bezpath;
 use graphene_std::*;
-use kurbo::{DEFAULT_ACCURACY, Line, Point, Shape};
+use kurbo::{DEFAULT_ACCURACY, Shape};
 use renderer::Quad;
 use std::cmp::Ordering;
 
