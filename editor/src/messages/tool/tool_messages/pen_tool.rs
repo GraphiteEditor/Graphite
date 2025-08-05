@@ -1249,6 +1249,7 @@ impl PenToolData {
 		responses.add(DeferMessage::AfterGraphRun {
 			messages: vec![PenToolMessage::AddPointLayerPosition { layer, viewport }.into()],
 		});
+		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	/// Perform extension of an existing path
