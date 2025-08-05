@@ -28,30 +28,48 @@ pub struct NodeReplacement<'a> {
 }
 
 const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
-	// graphic element
+	// artboard
 	NodeReplacement {
-		node: graphene_std::artboard::append_artboard::IDENTIFIER,
-		aliases: &["graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"],
+		node: graphene_std::artboard::create_artboard::IDENTIFIER,
+		aliases: &[
+			"graphene_core::ConstructArtboardNode",
+			"graphene_core::graphic_element::ToArtboardNode",
+			"graphene_core::artboard::ToArtboardNode",
+		],
+	},
+	// graphic
+	NodeReplacement {
+		node: graphene_std::graphic::to_graphic::IDENTIFIER,
+		aliases: &[
+			"graphene_core::ToGraphicGroupNode",
+			"graphene_core::graphic_element::ToGroupNode",
+			"graphene_core::graphic::ToGroupNode",
+		],
 	},
 	NodeReplacement {
-		node: graphene_std::artboard::to_artboard::IDENTIFIER,
-		aliases: &["graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"],
+		node: graphene_std::graphic::wrap_graphic::IDENTIFIER,
+		aliases: &[
+			// Converted from "To Element"
+			"graphene_core::ToGraphicElementNode",
+			"graphene_core::graphic_element::ToElementNode",
+			"graphene_core::graphic::ToElementNode",
+		],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic::to_element::IDENTIFIER,
-		aliases: &["graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"],
+		node: graphene_std::graphic::extend_table::IDENTIFIER,
+		aliases: &[
+			"graphene_core::graphic_element::LayerNode",
+			"graphene_core::graphic::LayerNode",
+			// Converted from "Append Artboard"
+			"graphene_core::AddArtboardNode",
+			"graphene_core::graphic_element::AppendArtboardNode",
+			"graphene_core::graphic::AppendArtboardNode",
+			"graphene_core::artboard::AppendArtboardNode",
+		],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic::to_group::IDENTIFIER,
-		aliases: &["graphene_core::ToGraphicGroupNode", "graphene_core::graphic_element::ToGroupNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::graphic::layer::IDENTIFIER,
-		aliases: &["graphene_core::graphic_element::LayerNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::graphic::flatten_group::IDENTIFIER,
-		aliases: &["graphene_core::graphic_element::FlattenGroupNode"],
+		node: graphene_std::graphic::flatten_table::IDENTIFIER,
+		aliases: &["graphene_core::graphic_element::FlattenGroupNode", "graphene_core::graphic::FlattenGroupNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::graphic::flatten_vector::IDENTIFIER,
@@ -245,8 +263,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::ops::SomeNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::debug::unwrap::IDENTIFIER,
-		aliases: &["graphene_core::ops::UnwrapNode"],
+		node: graphene_std::debug::unwrap_option::IDENTIFIER,
+		aliases: &["graphene_core::ops::UnwrapNode", "graphene_core::debug::UnwrapNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::debug::clone::IDENTIFIER,
@@ -812,7 +830,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[3].clone(), network_path);
 	}
 
-	// Upgrade artboard name being passed as hidden value input to "To Artboard"
+	// Upgrade artboard name being passed as hidden value input to "Create Artboard"
 	if reference == "Artboard" && reset_node_definitions_on_open {
 		let label = document.network_interface.display_name(node_id, network_path);
 		document

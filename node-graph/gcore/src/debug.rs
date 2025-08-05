@@ -7,7 +7,7 @@ use glam::{DAffine2, DVec2};
 #[node_macro::node(category("Debug"), name("Log to Console"))]
 fn log_to_console<T: std::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, Table<Vector>, DAffine2, Color, Option<Color>)] value: T) -> T {
 	// KEEP THIS `debug!()` - It acts as the output for the debug node itself
-	log::debug!("{:#?}", value);
+	log::debug!("{value:#?}");
 	value
 }
 
@@ -25,7 +25,7 @@ fn some<T>(_: impl Ctx, #[implementations(f64, f32, u32, u64, String, Color)] in
 
 /// Meant for debugging purposes, not general use. Unwraps the input value from an Option, returning the default value if the input is None.
 #[node_macro::node(category("Debug"))]
-fn unwrap<T: Default>(_: impl Ctx, #[implementations(Option<f64>, Option<f32>, Option<u32>, Option<u64>, Option<String>, Option<Color>)] input: Option<T>) -> T {
+fn unwrap_option<T: Default>(_: impl Ctx, #[implementations(Option<f64>, Option<u32>, Option<u64>, Option<String>, Option<Color>)] input: Option<T>) -> T {
 	input.unwrap_or_default()
 }
 

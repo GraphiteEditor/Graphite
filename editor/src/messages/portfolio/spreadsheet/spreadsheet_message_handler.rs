@@ -247,10 +247,10 @@ impl TableRowLayout for Image<Color> {
 		"Image"
 	}
 	fn identifier(&self) -> String {
-		format!("Image (width={}, height={})", self.width, self.height)
+		format!("Image ({}x{})", self.width, self.height)
 	}
 	fn compute_layout(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let rows = vec![vec![TextLabel::new(format!("Image (width={}, height={})", self.width, self.height)).widget_holder()]];
+		let rows = vec![vec![TextLabel::new(format!("Image ({}x{})", self.width, self.height)).widget_holder()]];
 		vec![LayoutGroup::Table { rows }]
 	}
 }
@@ -272,7 +272,7 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 		"Table"
 	}
 	fn identifier(&self) -> String {
-		format!("Table<{}> (length={})", T::type_name(), self.len())
+		format!("Table<{}> ({} row)", T::type_name(), self.len())
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		if let Some(index) = data.desired_path.get(data.current_depth).copied() {

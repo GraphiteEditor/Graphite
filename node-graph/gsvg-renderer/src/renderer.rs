@@ -827,7 +827,7 @@ impl Render for Artboard {
 			});
 		}
 
-		// Contents group (includes the artwork but not the background)
+		// Content group (includes the artwork but not the background)
 		render.parent_tag(
 			// SVG group tag
 			"g",
@@ -851,7 +851,7 @@ impl Render for Artboard {
 					attributes.push("clip-path", selector);
 				}
 			},
-			// Artboard contents
+			// Artboard content
 			|render| {
 				self.group.render_svg(render, render_params);
 			},
@@ -1067,9 +1067,9 @@ impl Render for Table<Raster<CPU>> {
 
 		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
 		metadata.upstream_footprints.insert(element_id, footprint);
-		// TODO: Find a way to handle more than one row of the graphical data table
-		if let Some(image) = self.iter().next() {
-			metadata.local_transforms.insert(element_id, *image.transform);
+		// TODO: Find a way to handle more than one row of the raster table
+		if let Some(raster) = self.iter().next() {
+			metadata.local_transforms.insert(element_id, *raster.transform);
 		}
 	}
 
@@ -1125,9 +1125,9 @@ impl Render for Table<Raster<GPU>> {
 
 		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
 		metadata.upstream_footprints.insert(element_id, footprint);
-		// TODO: Find a way to handle more than one row of the graphical data table
-		if let Some(image) = self.iter().next() {
-			metadata.local_transforms.insert(element_id, *image.transform);
+		// TODO: Find a way to handle more than one row of the raster table
+		if let Some(raster) = self.iter().next() {
+			metadata.local_transforms.insert(element_id, *raster.transform);
 		}
 	}
 
@@ -1165,7 +1165,7 @@ impl Render for Graphic {
 				}
 				Graphic::Vector(vector) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
-					// TODO: Find a way to handle more than one row of the graphical data table
+					// TODO: Find a way to handle more than one row of the vector table
 					if let Some(vector) = vector.iter().next() {
 						metadata.first_element_source_id.insert(element_id, *vector.source_node_id);
 						metadata.local_transforms.insert(element_id, *vector.transform);

@@ -7,7 +7,6 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graph_craft::{ProtoNodeIdentifier, concrete};
-use graphene_std::Context;
 use graphene_std::application_io::{ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_std::memo::IORecord;
 use graphene_std::renderer::{Render, RenderParams, SvgRender};
@@ -17,6 +16,7 @@ use graphene_std::text::FontCache;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::ViewMode;
 use graphene_std::wasm_application_io::{RenderOutputType, WasmApplicationIo, WasmEditorApi};
+use graphene_std::{Artboard, Context, Graphic};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use once_cell::sync::Lazy;
@@ -308,9 +308,9 @@ impl NodeRuntime {
 				continue;
 			};
 
-			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_std::Graphic>>() {
+			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Graphic>>>() {
 				Self::process_graphic(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
-			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_std::Artboard>>() {
+			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Artboard>>>() {
 				Self::process_graphic(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			// Insert the vector modify if we are dealing with vector data
 			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, Table<Vector>>>() {

@@ -5,7 +5,7 @@ use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::{Table, TableRow};
 use crate::uuid::NodeId;
 use crate::vector::Vector;
-use crate::{Color, Ctx};
+use crate::{Artboard, Color, Ctx};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use std::hash::Hash;
@@ -194,27 +194,26 @@ impl BoundingBox for Table<Graphic> {
 }
 
 #[node_macro::node(category(""))]
-async fn layer<I: 'n + Send + Clone>(
+async fn extend_table<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)] mut stack: Table<I>,
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>)] element: I,
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)] base: Table<I>,
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)] new: Table<I>,
 	node_path: Vec<NodeId>,
 ) -> Table<I> {
 	// Get the penultimate element of the node path, or None if the path is too short
+	// This is used to get the ID of the user-facing parent layer-style node (which encapsulates this internal "Extend Table" node).
 	let source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 
-	stack.push(TableRow {
-		element,
-		transform: DAffine2::IDENTITY,
-		alpha_blending: AlphaBlending::default(),
-		source_node_id,
-	});
+	let mut base = base;
+	for row in new.into_iter() {
+		base.push(TableRow { source_node_id, ..row });
+	}
 
-	stack
+	base
 }
 
 #[node_macro::node(category("Debug"))]
-async fn to_element<Data: Into<Graphic> + 'n>(
+async fn wrap_graphic<T: Into<Graphic> + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Graphic>,
@@ -223,13 +222,13 @@ async fn to_element<Data: Into<Graphic> + 'n>(
 	 	Table<Raster<GPU>>,
 		DAffine2,
 	)]
-	data: Data,
-) -> Graphic {
-	data.into()
+	data: T,
+) -> Table<Graphic> {
+	Table::new_from_element(data.into())
 }
 
-#[node_macro::node(category("General"))]
-async fn to_group<Data: Into<Table<Graphic>> + 'n>(
+#[node_macro::node(category("Type Conversion"))]
+async fn to_graphic<T: Into<Table<Graphic>> + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Graphic>,
@@ -237,34 +236,34 @@ async fn to_group<Data: Into<Table<Graphic>> + 'n>(
 		Table<Raster<CPU>>,
 		Table<Raster<GPU>>,
 	)]
-	element: Data,
+	element: T,
 ) -> Table<Graphic> {
 	element.into()
 }
 
 #[node_macro::node(category("General"))]
-async fn flatten_group(_: impl Ctx, group: Table<Graphic>, fully_flatten: bool) -> Table<Graphic> {
+async fn flatten_table(_: impl Ctx, content: Table<Graphic>, fully_flatten: bool) -> Table<Graphic> {
 	// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
-	fn flatten_group(output_group_table: &mut Table<Graphic>, current_group_table: Table<Graphic>, fully_flatten: bool, recursion_depth: usize) {
-		for current_row in current_group_table.iter() {
+	fn flatten_table(output_graphic_table: &mut Table<Graphic>, current_graphic_table: Table<Graphic>, fully_flatten: bool, recursion_depth: usize) {
+		for current_row in current_graphic_table.iter() {
 			let current_element = current_row.element.clone();
 			let reference = *current_row.source_node_id;
 
 			let recurse = fully_flatten || recursion_depth == 0;
 
 			match current_element {
-				// If we're allowed to recurse, flatten any groups we encounter
+				// If we're allowed to recurse, flatten any graphics we encounter
 				Graphic::Group(mut current_element) if recurse => {
-					// Apply the parent group's transform to all child elements
+					// Apply the parent graphic's transform to all child elements
 					for graphic in current_element.iter_mut() {
 						*graphic.transform = *current_row.transform * *graphic.transform;
 					}
 
-					flatten_group(output_group_table, current_element, fully_flatten, recursion_depth + 1);
+					flatten_table(output_graphic_table, current_element, fully_flatten, recursion_depth + 1);
 				}
-				// Handle any leaf elements we encounter, which can be either non-group elements or groups that we don't want to flatten
+				// Push any leaf Graphic elements we encounter, which can be either Graphic table elements beyond the recursion depth, or table elements other than Graphic tables
 				_ => {
-					output_group_table.push(TableRow {
+					output_graphic_table.push(TableRow {
 						element: current_element,
 						transform: *current_row.transform,
 						alpha_blending: *current_row.alpha_blending,
@@ -276,33 +275,33 @@ async fn flatten_group(_: impl Ctx, group: Table<Graphic>, fully_flatten: bool) 
 	}
 
 	let mut output = Table::new();
-	flatten_group(&mut output, group, fully_flatten, 0);
+	flatten_table(&mut output, content, fully_flatten, 0);
 
 	output
 }
 
 #[node_macro::node(category("Vector"))]
-async fn flatten_vector(_: impl Ctx, group: Table<Graphic>) -> Table<Vector> {
+async fn flatten_vector(_: impl Ctx, content: Table<Graphic>) -> Table<Vector> {
 	// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
-	fn flatten_group(output_group_table: &mut Table<Vector>, current_group_table: Table<Graphic>) {
-		for current_graphic_row in current_group_table.iter() {
+	fn flatten_table(output_vector_table: &mut Table<Vector>, current_graphic_table: Table<Graphic>) {
+		for current_graphic_row in current_graphic_table.iter() {
 			let current_graphic = current_graphic_row.element.clone();
 			let source_node_id = *current_graphic_row.source_node_id;
 
 			match current_graphic {
-				// If we're allowed to recurse, flatten any groups we encounter
+				// If we're allowed to recurse, flatten any tables we encounter
 				Graphic::Group(mut current_graphic_table) => {
-					// Apply the parent group's transform to all child elements
+					// Apply the parent graphic's transform to all child elements
 					for graphic in current_graphic_table.iter_mut() {
 						*graphic.transform = *current_graphic_row.transform * *graphic.transform;
 					}
 
-					flatten_group(output_group_table, current_graphic_table);
+					flatten_table(output_vector_table, current_graphic_table);
 				}
-				// Handle any leaf elements we encounter, which can be either non-group elements or groups that we don't want to flatten
+				// Push any leaf Vector elements we encounter
 				Graphic::Vector(vector_table) => {
 					for current_vector_row in vector_table.iter() {
-						output_group_table.push(TableRow {
+						output_vector_table.push(TableRow {
 							element: current_vector_row.element.clone(),
 							transform: *current_graphic_row.transform * *current_vector_row.transform,
 							alpha_blending: AlphaBlending {
@@ -321,7 +320,7 @@ async fn flatten_vector(_: impl Ctx, group: Table<Graphic>) -> Table<Vector> {
 	}
 
 	let mut output = Table::new();
-	flatten_group(&mut output, group);
+	flatten_table(&mut output, content);
 
 	output
 }
