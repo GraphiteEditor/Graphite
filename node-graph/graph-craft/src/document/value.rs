@@ -4,14 +4,17 @@ use crate::wasm_application_io::WasmEditorApi;
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
-use graphene_application_io::SurfaceFrame;
+use graphene_application_io::{ImageTexture, SurfaceFrame};
 use graphene_brush::brush_cache::BrushCache;
 use graphene_brush::brush_stroke::BrushStroke;
-use graphene_core::raster_types::CPU;
+use graphene_core::raster::Image;
+use graphene_core::raster_types::{CPU, Raster};
+use graphene_core::table::Table;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
+use graphene_core::vector::VectorData;
 use graphene_core::vector::style::Fill;
-use graphene_core::{Color, MemoHash, Node, Type};
+use graphene_core::{Artboard, Color, Graphic, MemoHash, Node, Type};
 use graphene_svg_renderer::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
@@ -165,44 +168,38 @@ tagged_value! {
 	U64(u64),
 	Bool(bool),
 	String(String),
-	#[serde(alias = "IVec2", alias = "UVec2")]
-	DVec2(DVec2),
-	DAffine2(DAffine2),
 	OptionalF64(Option<f64>),
-	OptionalDVec2(Option<DVec2>),
-	// ==========================
-	// PRIMITIVE COLLECTION TYPES
-	// ==========================
+	// ========================
+	// LISTS OF PRIMITIVE TYPES
+	// ========================
 	#[serde(alias = "VecF32")] // TODO: Eventually remove this alias document upgrade code
 	VecF64(Vec<f64>),
-	VecU64(Vec<u64>),
 	VecDVec2(Vec<DVec2>),
 	F64Array4([f64; 4]),
 	NodePath(Vec<NodeId>),
-	#[serde(alias = "ManipulatorGroupIds")] // TODO: Eventually remove this alias document upgrade code
-	PointIds(Vec<graphene_core::vector::PointId>),
-	// ====================
-	// GRAPHICAL DATA TYPES
-	// ====================
-	GraphicElement(graphene_core::GraphicElement),
-	#[cfg_attr(target_arch = "wasm32", serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))] // TODO: Eventually remove this migration document upgrade code
-	VectorData(graphene_core::vector::VectorDataTable),
-	#[cfg_attr(target_arch = "wasm32", serde(alias = "ImageFrame", deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
-	RasterData(graphene_core::raster_types::RasterDataTable<CPU>),
-	#[cfg_attr(target_arch = "wasm32", serde(deserialize_with = "graphene_core::graphic_element::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
-	GraphicGroup(graphene_core::GraphicGroupTable),
-	#[cfg_attr(target_arch = "wasm32", serde(deserialize_with = "graphene_core::graphic_element::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
-	ArtboardGroup(graphene_core::ArtboardGroupTable),
+	// ===========
+	// TABLE TYPES
+	// ===========
+	#[serde(alias = "GraphicElement")]
+	Graphic(Graphic),
+	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))] // TODO: Eventually remove this migration document upgrade code
+	VectorData(Table<VectorData>),
+	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(alias = "ImageFrame")]
+	RasterData(Table<Raster<CPU>>),
+	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::graphic_element::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
+	GraphicGroup(Table<Graphic>),
+	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::artboard::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
+	ArtboardGroup(Table<Artboard>),
 	// ============
 	// STRUCT TYPES
 	// ============
-	Artboard(graphene_core::Artboard),
-	Image(graphene_core::raster::Image<Color>),
-	Color(graphene_core::raster::color::Color),
-	OptionalColor(Option<graphene_core::raster::color::Color>),
+	#[serde(alias = "IVec2", alias = "UVec2")]
+	DVec2(DVec2),
+	DAffine2(DAffine2),
+	Color(Color),
+	OptionalColor(Option<Color>),
 	Palette(Vec<Color>),
-	Subpaths(Vec<bezier_rs::Subpath<graphene_core::vector::PointId>>),
-	Fill(graphene_core::vector::style::Fill),
 	Stroke(graphene_core::vector::style::Stroke),
 	Gradient(graphene_core::vector::style::Gradient),
 	#[serde(alias = "GradientPositions")] // TODO: Eventually remove this alias document upgrade code
@@ -214,10 +211,10 @@ tagged_value! {
 	Curve(graphene_raster_nodes::curve::Curve),
 	Footprint(graphene_core::transform::Footprint),
 	VectorModification(Box<graphene_core::vector::VectorModification>),
-	FontCache(Arc<graphene_core::text::FontCache>),
 	// ==========
 	// ENUM TYPES
 	// ==========
+	Fill(graphene_core::vector::style::Fill),
 	BlendMode(graphene_core::blending::BlendMode),
 	LuminanceCalculation(graphene_raster_nodes::adjustments::LuminanceCalculation),
 	XY(graphene_core::extract_xy::XY),
@@ -242,11 +239,11 @@ tagged_value! {
 	StrokeAlign(graphene_core::vector::style::StrokeAlign),
 	PaintOrder(graphene_core::vector::style::PaintOrder),
 	FillType(graphene_core::vector::style::FillType),
-	FillChoice(graphene_core::vector::style::FillChoice),
 	GradientType(graphene_core::vector::style::GradientType),
 	ReferencePoint(graphene_core::transform::ReferencePoint),
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_path_bool::BooleanOperation),
+	TextAlign(graphene_core::text::TextAlign),
 }
 
 impl TaggedValue {
@@ -424,10 +421,15 @@ pub struct RenderOutput {
 	pub metadata: RenderMetadata,
 }
 
-#[derive(Debug, Clone, PartialEq, dyn_any::DynAny, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Hash, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub enum RenderOutputType {
 	CanvasFrame(SurfaceFrame),
-	Svg(String),
+	#[serde(skip)]
+	Texture(ImageTexture),
+	Svg {
+		svg: String,
+		image_data: Vec<(u64, Image<Color>)>,
+	},
 	Image(Vec<u8>),
 }
 

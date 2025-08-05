@@ -3,13 +3,13 @@ use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::document::value::{RenderOutput, TaggedValue};
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, generate_uuid};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_std::application_io::TimingInformation;
 use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig};
 use graphene_std::renderer::RenderSvgSegmentList;
-use graphene_std::renderer::{GraphicElementRendered, RenderParams, SvgRender};
+use graphene_std::renderer::{Render, RenderParams, SvgRender};
 use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
 use graphene_std::text::FontCache;
 use graphene_std::transform::Footprint;
@@ -29,7 +29,6 @@ pub struct ExecutionRequest {
 	render_config: RenderConfig,
 }
 
-#[cfg_attr(feature = "decouple-execution", derive(serde::Serialize, serde::Deserialize))]
 pub struct ExecutionResponse {
 	execution_id: u64,
 	result: Result<TaggedValue, String>,
@@ -46,7 +45,6 @@ pub struct CompilationResponse {
 	node_graph_errors: GraphErrors,
 }
 
-#[cfg_attr(feature = "decouple-execution", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeGraphUpdate {
 	ExecutionResponse(ExecutionResponse),
 	CompilationResponse(CompilationResponse),
@@ -56,6 +54,7 @@ pub enum NodeGraphUpdate {
 #[derive(Debug, Default)]
 pub struct NodeGraphExecutor {
 	runtime_io: NodeRuntimeIO,
+	current_execution_id: u64,
 	futures: HashMap<u64, ExecutionContext>,
 	node_graph_hash: u64,
 	old_inspect_node: Option<NodeId>,
@@ -78,13 +77,15 @@ impl NodeGraphExecutor {
 			futures: Default::default(),
 			runtime_io: NodeRuntimeIO::with_channels(request_sender, response_receiver),
 			node_graph_hash: 0,
+			current_execution_id: 0,
 			old_inspect_node: None,
 		};
 		(node_runtime, node_executor)
 	}
 	/// Execute the network by flattening it and creating a borrow stack.
-	fn queue_execution(&self, render_config: RenderConfig) -> u64 {
-		let execution_id = generate_uuid();
+	fn queue_execution(&mut self, render_config: RenderConfig) -> u64 {
+		let execution_id = self.current_execution_id;
+		self.current_execution_id += 1;
 		let request = ExecutionRequest { execution_id, render_config };
 		self.runtime_io.send(GraphRuntimeRequest::ExecutionRequest(request)).expect("Failed to send generation request");
 
@@ -105,7 +106,7 @@ impl NodeGraphExecutor {
 	#[cfg(test)]
 	pub(crate) fn update_node_graph_instrumented(&mut self, document: &mut DocumentMessageHandler) -> Result<Instrumented, String> {
 		// We should always invalidate the cache.
-		self.node_graph_hash = generate_uuid();
+		self.node_graph_hash = crate::application::generate_uuid();
 		let mut network = document.network_interface.document_network().clone();
 		let instrumented = Instrumented::new(&mut network);
 
@@ -132,7 +133,7 @@ impl NodeGraphExecutor {
 	}
 
 	/// Adds an evaluate request for whatever current network is cached.
-	pub(crate) fn submit_current_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, time: TimingInformation) -> Result<(), String> {
+	pub(crate) fn submit_current_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, time: TimingInformation) -> Result<Message, String> {
 		let render_config = RenderConfig {
 			viewport: Footprint {
 				transform: document.metadata().document_to_viewport,
@@ -154,7 +155,7 @@ impl NodeGraphExecutor {
 
 		self.futures.insert(execution_id, ExecutionContext { export_config: None });
 
-		Ok(())
+		Ok(DeferMessage::SetGraphSubmissionIndex(execution_id).into())
 	}
 
 	/// Evaluates a node graph, computing the entire graph
@@ -165,11 +166,9 @@ impl NodeGraphExecutor {
 		time: TimingInformation,
 		inspect_node: Option<NodeId>,
 		ignore_hash: bool,
-	) -> Result<(), String> {
+	) -> Result<Message, String> {
 		self.update_node_graph(document, inspect_node, ignore_hash)?;
-		self.submit_current_node_graph_evaluation(document, viewport_resolution, time)?;
-
-		Ok(())
+		self.submit_current_node_graph_evaluation(document, viewport_resolution, time)
 	}
 
 	/// Evaluates a node graph for export
@@ -213,7 +212,7 @@ impl NodeGraphExecutor {
 
 	fn export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let TaggedValue::RenderOutput(RenderOutput {
-			data: graphene_std::wasm_application_io::RenderOutputType::Svg(svg),
+			data: graphene_std::wasm_application_io::RenderOutputType::Svg { svg, .. },
 			..
 		}) = node_graph_output
 		else {
@@ -280,6 +279,7 @@ impl NodeGraphExecutor {
 					} else {
 						self.process_node_graph_output(node_graph_output, transform, responses)?
 					}
+					responses.add(DeferMessage::TriggerGraphRun(execution_id));
 
 					// Update the spreadsheet on the frontend using the value of the inspect result.
 					if self.old_inspect_node.is_some() {
@@ -321,7 +321,7 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	fn debug_render(render_object: impl GraphicElementRendered, transform: DAffine2, responses: &mut VecDeque<Message>) {
+	fn debug_render(render_object: impl Render, transform: DAffine2, responses: &mut VecDeque<Message>) {
 		// Setup rendering
 		let mut render = SvgRender::new();
 		let render_params = RenderParams {
@@ -350,19 +350,21 @@ impl NodeGraphExecutor {
 		match node_graph_output {
 			TaggedValue::RenderOutput(render_output) => {
 				match render_output.data {
-					graphene_std::wasm_application_io::RenderOutputType::Svg(svg) => {
+					graphene_std::wasm_application_io::RenderOutputType::Svg { svg, image_data } => {
 						// Send to frontend
+						responses.add(FrontendMessage::UpdateImageData { image_data });
 						responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 					}
 					graphene_std::wasm_application_io::RenderOutputType::CanvasFrame(frame) => {
 						let matrix = format_transform_matrix(frame.transform);
-						let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{}\"", matrix) };
+						let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{matrix}\"") };
 						let svg = format!(
-							r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="canvas{}"></div></foreignObject></svg>"#,
+							r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}"></div></foreignObject></svg>"#,
 							frame.resolution.x, frame.resolution.y, frame.surface_id.0
 						);
 						responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 					}
+					graphene_std::wasm_application_io::RenderOutputType::Texture { .. } => {}
 					_ => {
 						return Err(format!("Invalid node graph output type: {:#?}", render_output.data));
 					}
@@ -383,9 +385,22 @@ impl NodeGraphExecutor {
 				return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
 			}
 		};
-		responses.add(Message::EndBuffer {
-			render_metadata: render_output_metadata,
+		let graphene_std::renderer::RenderMetadata {
+			upstream_footprints: footprints,
+			local_transforms,
+			first_element_source_id,
+			click_targets,
+			clip_targets,
+		} = render_output_metadata;
+
+		// Run these update state messages immediately
+		responses.add(DocumentMessage::UpdateUpstreamTransforms {
+			upstream_footprints: footprints,
+			local_transforms,
+			first_element_source_id,
 		});
+		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
+		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
 		responses.add(DocumentMessage::RenderScrollbars);
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);

@@ -5,11 +5,11 @@ mod modification;
 use super::misc::{dvec2_to_point, point_to_dvec2};
 use super::style::{PathStyle, Stroke};
 use crate::bounds::BoundingBox;
-use crate::instances::Instances;
 use crate::math::quad::Quad;
+use crate::table::Table;
 use crate::transform::Transform;
 use crate::vector::click_target::{ClickTargetType, FreePoint};
-use crate::{AlphaBlending, Color, GraphicGroupTable};
+use crate::{AlphaBlending, Color, Graphic};
 pub use attributes::*;
 use bezier_rs::{BezierHandles, ManipulatorGroup};
 use core::borrow::Borrow;
@@ -17,12 +17,12 @@ use core::hash::Hash;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 pub use indexed::VectorDataIndex;
-use kurbo::{Affine, Rect, Shape};
+use kurbo::{Affine, BezPath, Rect, Shape};
 pub use modification::*;
 use std::collections::HashMap;
 
 // TODO: Eventually remove this migration document upgrade code
-pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<VectorDataTable, D::Error> {
+pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<VectorData>, D::Error> {
 	use serde::Deserialize;
 
 	#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
@@ -41,7 +41,7 @@ pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		pub region_domain: RegionDomain,
 
 		// Used to store the upstream graphic group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
-		pub upstream_graphic_group: Option<GraphicGroupTable>,
+		pub upstream_graphic_group: Option<Table<Graphic>>,
 	}
 
 	#[derive(serde::Serialize, serde::Deserialize)]
@@ -50,13 +50,13 @@ pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 	enum EitherFormat {
 		VectorData(VectorData),
 		OldVectorData(OldVectorData),
-		VectorDataTable(VectorDataTable),
+		VectorDataTable(Table<VectorData>),
 	}
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
-		EitherFormat::VectorData(vector_data) => VectorDataTable::new(vector_data),
+		EitherFormat::VectorData(vector_data) => Table::new_from_element(vector_data),
 		EitherFormat::OldVectorData(old) => {
-			let mut vector_data_table = VectorDataTable::new(VectorData {
+			let mut vector_data_table = Table::new_from_element(VectorData {
 				style: old.style,
 				colinear_manipulators: old.colinear_manipulators,
 				point_domain: old.point_domain,
@@ -64,15 +64,13 @@ pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 				region_domain: old.region_domain,
 				upstream_graphic_group: old.upstream_graphic_group,
 			});
-			*vector_data_table.instance_mut_iter().next().unwrap().transform = old.transform;
-			*vector_data_table.instance_mut_iter().next().unwrap().alpha_blending = old.alpha_blending;
+			*vector_data_table.iter_mut().next().unwrap().transform = old.transform;
+			*vector_data_table.iter_mut().next().unwrap().alpha_blending = old.alpha_blending;
 			vector_data_table
 		}
 		EitherFormat::VectorDataTable(vector_data_table) => vector_data_table,
 	})
 }
-
-pub type VectorDataTable = Instances<VectorData>;
 
 /// [VectorData] is passed between nodes.
 /// It contains a list of subpaths (that may be open or closed), a transform, and some style information.
@@ -91,7 +89,7 @@ pub struct VectorData {
 	pub region_domain: RegionDomain,
 
 	// Used to store the upstream graphic group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
-	pub upstream_graphic_group: Option<GraphicGroupTable>,
+	pub upstream_graphic_group: Option<Table<Graphic>>,
 }
 
 impl Default for VectorData {
@@ -193,6 +191,13 @@ impl VectorData {
 	/// Construct some new vector data from a single subpath with an identity transform and black fill.
 	pub fn from_subpath(subpath: impl Borrow<bezier_rs::Subpath<PointId>>) -> Self {
 		Self::from_subpaths([subpath], false)
+	}
+
+	/// Construct some new vector data from a single [`BezPath`] with an identity transform and black fill.
+	pub fn from_bezpath(bezpath: BezPath) -> Self {
+		let mut vector_data = Self::default();
+		vector_data.append_bezpath(bezpath);
+		vector_data
 	}
 
 	/// Construct some new vector data from subpaths with an identity transform and black fill.
@@ -488,24 +493,24 @@ impl VectorData {
 	}
 }
 
-impl BoundingBox for VectorDataTable {
+impl BoundingBox for Table<VectorData> {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.instance_ref_iter()
-			.flat_map(|instance| {
+		self.iter_ref()
+			.flat_map(|row| {
 				if !include_stroke {
-					return instance.instance.bounding_box_with_transform(transform * *instance.transform);
+					return row.element.bounding_box_with_transform(transform * *row.transform);
 				}
 
-				let stroke_width = instance.instance.style.stroke().map(|s| s.weight()).unwrap_or_default();
+				let stroke_width = row.element.style.stroke().map(|s| s.weight()).unwrap_or_default();
 
-				let miter_limit = instance.instance.style.stroke().map(|s| s.join_miter_limit).unwrap_or(1.);
+				let miter_limit = row.element.style.stroke().map(|s| s.join_miter_limit).unwrap_or(1.);
 
 				let scale = transform.decompose_scale();
 
 				// We use the full line width here to account for different styles of stroke caps
 				let offset = DVec2::splat(stroke_width * scale.x.max(scale.y) * miter_limit);
 
-				instance.instance.bounding_box_with_transform(transform * *instance.transform).map(|[a, b]| [a - offset, b + offset])
+				row.element.bounding_box_with_transform(transform * *row.transform).map(|[a, b]| [a - offset, b + offset])
 			})
 			.reduce(Quad::combine_bounds)
 	}
@@ -557,6 +562,30 @@ impl ManipulatorPointId {
 				let current = HandleId::end(segment);
 				let other = vector_data.segment_domain.all_connected(point).find(|&value| value != current);
 				other.map(|other| [current, other])
+			}
+		}
+	}
+
+	/// Finds all the connected handles of a point.
+	/// For an anchor it is all the connected handles.
+	/// For a handle it is all the handles connected to its corresponding anchor other than the current handle.
+	pub fn get_all_connected_handles(self, vector_data: &VectorData) -> Option<Vec<HandleId>> {
+		match self {
+			ManipulatorPointId::Anchor(point) => {
+				let connected = vector_data.all_connected(point).collect::<Vec<_>>();
+				Some(connected)
+			}
+			ManipulatorPointId::PrimaryHandle(segment) => {
+				let point = vector_data.segment_domain.segment_start_from_id(segment)?;
+				let current = HandleId::primary(segment);
+				let connected = vector_data.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>();
+				Some(connected)
+			}
+			ManipulatorPointId::EndHandle(segment) => {
+				let point = vector_data.segment_domain.segment_end_from_id(segment)?;
+				let current = HandleId::end(segment);
+				let connected = vector_data.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>();
+				Some(connected)
 			}
 		}
 	}

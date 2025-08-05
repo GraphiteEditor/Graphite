@@ -1,36 +1,12 @@
 use crate::{Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
 use dyn_any::{DynAny, StaticType};
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::{LazyLock, Mutex};
 
-pub mod types {
-	/// 0% - 100%
-	pub type Percentage = f64;
-	/// -100% - 100%
-	pub type SignedPercentage = f64;
-	/// -180° - 180°
-	pub type Angle = f64;
-	/// Ends in the unit of x
-	pub type Multiplier = f64;
-	/// Non-negative integer with px unit
-	pub type PixelLength = f64;
-	/// Non-negative
-	pub type Length = f64;
-	/// 0 to 1
-	pub type Fraction = f64;
-	/// Unsigned integer
-	pub type IntegerCount = u32;
-	/// Unsigned integer to be used for random seeds
-	pub type SeedValue = u32;
-	/// DVec2 with px unit
-	pub type PixelSize = glam::DVec2;
-	/// String with one or more than one line
-	pub type TextArea = String;
-}
+pub use graphene_core_shaders::registry::types;
 
 // Translation struct between macro and definition
 #[derive(Clone)]
@@ -59,33 +35,6 @@ pub struct FieldMetadata {
 	pub unit: Option<&'static str>,
 }
 
-pub trait ChoiceTypeStatic: Sized + Copy + crate::AsU32 + Send + Sync {
-	const WIDGET_HINT: ChoiceWidgetHint;
-	const DESCRIPTION: Option<&'static str>;
-	fn list() -> &'static [&'static [(Self, VariantMetadata)]];
-}
-
-pub enum ChoiceWidgetHint {
-	Dropdown,
-	RadioButtons,
-}
-
-/// Translation struct between macro and definition.
-#[derive(Clone, Debug)]
-pub struct VariantMetadata {
-	/// Name as declared in source code.
-	pub name: Cow<'static, str>,
-
-	/// Name to be displayed in UI.
-	pub label: Cow<'static, str>,
-
-	/// User-facing documentation text.
-	pub docstring: Option<Cow<'static, str>>,
-
-	/// Name of icon to display in radio buttons and such.
-	pub icon: Option<Cow<'static, str>>,
-}
-
 #[derive(Clone, Debug)]
 pub enum RegistryWidgetOverride {
 	None,
@@ -107,20 +56,20 @@ pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::ne
 
 pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 pub type DynFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n + Send>>;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 pub type DynFuture<'n, T> = Pin<Box<dyn std::future::Future<Output = T> + 'n>>;
 pub type LocalFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n>>;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n + Send>;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
 pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
 // TODO: is this safe? This is assumed to be send+sync.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n + Send + Sync;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
 pub type TypeErasedPinnedRef<'n> = Pin<&'n TypeErasedNode<'n>>;
 pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;

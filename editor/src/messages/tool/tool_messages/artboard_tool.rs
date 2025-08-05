@@ -12,6 +12,7 @@ use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use graph_craft::document::NodeId;
 use graphene_std::renderer::Quad;
+use graphene_std::table::Table;
 
 #[derive(Default, ExtractField)]
 pub struct ArtboardTool {
@@ -337,7 +338,7 @@ impl Fsm for ArtboardToolFsmState {
 					responses.add(GraphOperationMessage::NewArtboard {
 						id,
 						artboard: graphene_std::Artboard {
-							graphic_group: graphene_std::GraphicGroupTable::default(),
+							graphic_group: Table::new(),
 							label: String::from("Artboard"),
 							location: start.min(end).round().as_ivec2(),
 							dimensions: (start.round() - end.round()).abs().as_ivec2(),
@@ -568,7 +569,7 @@ mod test_artboard {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {}", e),
 		};
-		instrumented.grab_all_input::<graphene_std::graphic_element::append_artboard::ArtboardInput>(&editor.runtime).collect()
+		instrumented.grab_all_input::<graphene_std::artboard::append_artboard::ArtboardInput>(&editor.runtime).collect()
 	}
 
 	#[tokio::test]

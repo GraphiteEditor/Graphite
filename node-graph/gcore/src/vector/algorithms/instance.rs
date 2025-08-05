@@ -1,33 +1,33 @@
-use crate::instances::{InstanceRef, Instances};
-use crate::raster_types::{CPU, RasterDataTable};
-use crate::vector::VectorDataTable;
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, OwnedContextImpl};
+use crate::raster_types::{CPU, Raster};
+use crate::table::{Table, TableRowRef};
+use crate::vector::VectorData;
+use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, Graphic, OwnedContextImpl};
 use glam::DVec2;
 
 #[node_macro::node(name("Instance on Points"), category("Instancing"), path(graphene_core::vector))]
-async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + 'static>(
+async fn instance_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx,
-	points: VectorDataTable,
+	points: Table<VectorData>,
 	#[implementations(
-		Context -> GraphicGroupTable,
-		Context -> VectorDataTable,
-		Context -> RasterDataTable<CPU>
+		Context -> Table<Graphic>,
+		Context -> Table<VectorData>,
+		Context -> Table<Raster<CPU>>
 	)]
-	instance: impl Node<'n, Context<'static>, Output = Instances<T>>,
+	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
 	reverse: bool,
-) -> Instances<T> {
-	let mut result_table = Instances::<T>::default();
+) -> Table<T> {
+	let mut result_table = Table::new();
 
-	for InstanceRef { instance: points, transform, .. } in points.instance_ref_iter() {
+	for TableRowRef { element: points, transform, .. } in points.iter_ref() {
 		let mut iteration = async |index, point| {
 			let transformed_point = transform.transform_point2(point);
 
 			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_vararg(Box::new(transformed_point));
 			let generated_instance = instance.eval(new_ctx.into_context()).await;
 
-			for mut instanced in generated_instance.instance_iter() {
-				instanced.transform.translation = transformed_point;
-				result_table.push(instanced);
+			for mut generated_row in generated_instance.iter() {
+				generated_row.transform.translation = transformed_point;
+				result_table.push(generated_row);
 			}
 		};
 
@@ -47,20 +47,20 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + '
 }
 
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
-async fn instance_repeat<T: Into<GraphicElement> + Default + Send + Clone + 'static>(
+async fn instance_repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
-		Context -> GraphicGroupTable,
-		Context -> VectorDataTable,
-		Context -> RasterDataTable<CPU>
+		Context -> Table<Graphic>,
+		Context -> Table<VectorData>,
+		Context -> Table<Raster<CPU>>
 	)]
-	instance: impl Node<'n, Context<'static>, Output = Instances<T>>,
+	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
 	#[default(1)] count: u64,
 	reverse: bool,
-) -> Instances<T> {
+) -> Table<T> {
 	let count = count.max(1) as usize;
 
-	let mut result_table = Instances::<T>::default();
+	let mut result_table = Table::new();
 
 	for index in 0..count {
 		let index = if reverse { count - index - 1 } else { index };
@@ -68,8 +68,8 @@ async fn instance_repeat<T: Into<GraphicElement> + Default + Send + Clone + 'sta
 		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index);
 		let generated_instance = instance.eval(new_ctx.into_context()).await;
 
-		for instanced in generated_instance.instance_iter() {
-			result_table.push(instanced);
+		for generated_row in generated_instance.iter() {
+			result_table.push(generated_row);
 		}
 	}
 
@@ -128,11 +128,11 @@ mod test {
 		);
 
 		let positions = [DVec2::new(40., 20.), DVec2::ONE, DVec2::new(-42., 9.), DVec2::new(10., 345.)];
-		let points = VectorDataTable::new(VectorData::from_subpath(Subpath::from_anchors_linear(positions, false)));
-		let repeated = super::instance_on_points(owned, points, &rect, false).await;
-		assert_eq!(repeated.len(), positions.len());
-		for (position, instanced) in positions.into_iter().zip(repeated.instance_ref_iter()) {
-			let bounds = instanced.instance.bounding_box_with_transform(*instanced.transform).unwrap();
+		let points = Table::new_from_element(VectorData::from_subpath(Subpath::from_anchors_linear(positions, false)));
+		let generated = super::instance_on_points(owned, points, &rect, false).await;
+		assert_eq!(generated.len(), positions.len());
+		for (position, generated_row) in positions.into_iter().zip(generated.iter_ref()) {
+			let bounds = generated_row.element.bounding_box_with_transform(*generated_row.transform).unwrap();
 			assert!(position.abs_diff_eq((bounds[0] + bounds[1]) / 2., 1e-10));
 			assert_eq!((bounds[1] - bounds[0]).x, position.y);
 		}

@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
-use crate::messages::prelude::{DocumentMessageHandler, FrontendMessage, InputPreprocessorMessageHandler, NodeGraphMessage};
+use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage};
 use crate::messages::prelude::{GraphOperationMessage, Responses};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
@@ -63,7 +63,7 @@ impl RowColumnGizmo {
 		}
 	}
 
-	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler) {
 		let Some((grid_type, spacing, columns, rows, angles)) = extract_grid_parameters(layer, document) else {
 			return;
 		};
@@ -76,7 +76,6 @@ impl RowColumnGizmo {
 			self.spacing = spacing;
 			self.initial_mouse_start = None;
 			self.update_state(RowColumnGizmoState::Hover);
-			responses.add(FrontendMessage::UpdateMouseCursor { cursor: self.gizmo_type.mouse_icon() });
 		}
 	}
 
@@ -104,10 +103,10 @@ impl RowColumnGizmo {
 		let Some(layer) = self.layer else { return };
 		let viewport = document.metadata().transform_to_viewport(layer);
 
-		let Some((grid_type, spacing, columns, rows, angles)) = extract_grid_parameters(layer, document) else {
+		let Some((grid_type, _, columns, rows, angles)) = extract_grid_parameters(layer, document) else {
 			return;
 		};
-		let direction = self.gizmo_type.direction(grid_type, spacing, angles, viewport);
+		let direction = self.gizmo_type.direction(viewport);
 		let delta_vector = input.mouse.position - self.initial_mouse_start.unwrap_or(drag_start);
 
 		let viewport_spacing = get_viewport_grid_spacing(grid_type, angles, self.spacing, viewport);
@@ -121,7 +120,7 @@ impl RowColumnGizmo {
 		};
 
 		let dimensions_delta = new_dimension as i32 - self.gizmo_type.initial_dimension(rows, columns) as i32;
-		let transform = self.transform_grid(dimensions_delta, grid_type, viewport_spacing, angles, viewport);
+		let transform = self.transform_grid(dimensions_delta, viewport_spacing, viewport);
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, self.gizmo_type.index()),
@@ -145,14 +144,14 @@ impl RowColumnGizmo {
 		}
 	}
 
-	fn transform_grid(&self, dimensions_delta: i32, grid_type: GridType, spacing: DVec2, angles: DVec2, viewport: DAffine2) -> DAffine2 {
+	fn transform_grid(&self, dimensions_delta: i32, spacing: DVec2, viewport: DAffine2) -> DAffine2 {
 		match self.gizmo_type {
 			RowColumnGizmoType::Top => {
-				let move_up_by = self.gizmo_type.direction(grid_type, spacing, angles, viewport) * dimensions_delta as f64 * spacing.y;
+				let move_up_by = self.gizmo_type.direction(viewport) * dimensions_delta as f64 * spacing.y;
 				DAffine2::from_translation(move_up_by)
 			}
 			RowColumnGizmoType::Left => {
-				let move_left_by = self.gizmo_type.direction(grid_type, spacing, angles, viewport) * dimensions_delta as f64 * spacing.x;
+				let move_left_by = self.gizmo_type.direction(viewport) * dimensions_delta as f64 * spacing.x;
 				DAffine2::from_translation(move_left_by)
 			}
 			RowColumnGizmoType::Down | RowColumnGizmoType::Right | RowColumnGizmoType::None => DAffine2::IDENTITY,
@@ -225,28 +224,52 @@ fn get_viewport_grid_spacing(grid_type: GridType, angles: DVec2, spacing: DVec2,
 
 fn get_rectangle_top_line_points(columns: u32, rows: u32, spacing: DVec2) -> (DVec2, DVec2) {
 	let (top_left, top_right, _, _) = get_corners(columns, rows, spacing);
-	let offset = if columns == 1 || rows == 1 { DVec2::ZERO } else { DVec2::new(spacing.x * 0.5, 0.) };
+	let offset = if columns == 1 || rows == 1 {
+		DVec2::ZERO
+	} else if columns == 2 {
+		DVec2::new(spacing.x * 0.25, 0.)
+	} else {
+		DVec2::new(spacing.x * 0.5, 0.)
+	};
 
 	(top_left + offset, top_right - offset)
 }
 
 fn get_rectangle_bottom_line_points(columns: u32, rows: u32, spacing: DVec2) -> (DVec2, DVec2) {
 	let (_, _, bottom_right, bottom_left) = get_corners(columns, rows, spacing);
-	let offset = if columns == 1 || rows == 1 { DVec2::ZERO } else { DVec2::new(spacing.x * 0.5, 0.) };
+	let offset = if columns == 1 || rows == 1 {
+		DVec2::ZERO
+	} else if columns == 2 {
+		DVec2::new(spacing.x * 0.25, 0.)
+	} else {
+		DVec2::new(spacing.x * 0.5, 0.)
+	};
 
 	(bottom_left + offset, bottom_right - offset)
 }
 
 fn get_rectangle_right_line_points(columns: u32, rows: u32, spacing: DVec2) -> (DVec2, DVec2) {
 	let (_, top_right, bottom_right, _) = get_corners(columns, rows, spacing);
-	let offset = if columns == 1 || rows == 1 { DVec2::ZERO } else { DVec2::new(0., -spacing.y * 0.5) };
+	let offset = if columns == 1 || rows == 1 {
+		DVec2::ZERO
+	} else if rows == 2 {
+		DVec2::new(0., -spacing.y * 0.25)
+	} else {
+		DVec2::new(0., -spacing.y * 0.5)
+	};
 
 	(top_right - offset, bottom_right + offset)
 }
 
 fn get_rectangle_left_line_points(columns: u32, rows: u32, spacing: DVec2) -> (DVec2, DVec2) {
 	let (top_left, _, _, bottom_left) = get_corners(columns, rows, spacing);
-	let offset = if columns == 1 || rows == 1 { DVec2::ZERO } else { DVec2::new(0., -spacing.y * 0.5) };
+	let offset = if columns == 1 || rows == 1 {
+		DVec2::ZERO
+	} else if rows == 2 {
+		DVec2::new(0., -spacing.y * 0.25)
+	} else {
+		DVec2::new(0., -spacing.y * 0.5)
+	};
 
 	(top_left - offset, bottom_left + offset)
 }
@@ -317,44 +340,6 @@ fn calculate_isometric_left_line_points(columns: u32, rows: u32, spacing: DVec2,
 	(top_left - offset, bottom_left + offset)
 }
 
-fn calculate_rectangle_side_direction(spacing: DVec2, viewport: DAffine2) -> DVec2 {
-	let p0 = DVec2::ZERO;
-	let p1 = DVec2::new(spacing.x, 0.);
-	(viewport.transform_point2(p1) - viewport.transform_point2(p0)).normalize()
-}
-
-fn calculate_rectangle_top_direction(spacing: DVec2, viewport: DAffine2) -> DVec2 {
-	let p0 = DVec2::ZERO;
-	let p1 = DVec2::new(0., spacing.y);
-	(viewport.transform_point2(p0) - viewport.transform_point2(p1)).try_normalize().unwrap_or(DVec2::ZERO)
-}
-
-fn calculate_isometric_side_direction(angles: DVec2, spacing: DVec2, viewport: Option<DAffine2>) -> DVec2 {
-	let first_point = calculate_isometric_point(0, 0, angles, spacing);
-	let first_row_last_column = calculate_isometric_point(2, 0, angles, spacing);
-
-	if let Some(viewport) = viewport {
-		return (viewport.transform_point2(first_row_last_column) - viewport.transform_point2(first_point))
-			.try_normalize()
-			.unwrap_or_default();
-	}
-
-	(first_row_last_column - first_point).try_normalize().unwrap_or_default()
-}
-
-fn calculate_isometric_top_direction(angles: DVec2, spacing: DVec2, viewport: Option<DAffine2>) -> DVec2 {
-	let first_point = calculate_isometric_point(0, 0, angles, spacing);
-	let first_row_last_column = calculate_isometric_point(0, 1, angles, spacing);
-
-	if let Some(viewport) = viewport {
-		return (viewport.transform_point2(first_row_last_column) - viewport.transform_point2(first_point))
-			.try_normalize()
-			.unwrap_or_default();
-	}
-
-	(first_point - first_row_last_column).try_normalize().unwrap_or_default()
-}
-
 #[derive(Clone, Debug, Default, PartialEq)]
 pub enum RowColumnGizmoType {
 	#[default]
@@ -387,7 +372,7 @@ impl RowColumnGizmoType {
 
 	fn line(&self, grid_type: GridType, columns: u32, rows: u32, spacing: DVec2, angles: DVec2, viewport: DAffine2) -> Line {
 		let (p0, p1) = self.get_line_points(grid_type, columns, rows, spacing, angles);
-		let direction = self.direction(grid_type, spacing, angles, viewport);
+		let direction = self.direction(viewport);
 		let gap = GRID_ROW_COLUMN_GIZMO_OFFSET * direction;
 
 		convert_to_gizmo_line(viewport.transform_point2(p0) + gap, viewport.transform_point2(p1) + gap)
@@ -408,36 +393,12 @@ impl RowColumnGizmoType {
 		};
 	}
 
-	fn direction(&self, grid_type: GridType, spacing: DVec2, angles: DVec2, viewport: DAffine2) -> DVec2 {
+	pub fn direction(&self, viewport: DAffine2) -> DVec2 {
 		match self {
-			RowColumnGizmoType::Top => {
-				if grid_type == GridType::Rectangular {
-					calculate_rectangle_top_direction(spacing, viewport)
-				} else {
-					-calculate_isometric_top_direction(angles, spacing, Some(viewport))
-				}
-			}
-			RowColumnGizmoType::Down => {
-				if grid_type == GridType::Rectangular {
-					-calculate_rectangle_top_direction(spacing, viewport)
-				} else {
-					calculate_isometric_top_direction(angles, spacing, Some(viewport))
-				}
-			}
-			RowColumnGizmoType::Right => {
-				if grid_type == GridType::Rectangular {
-					calculate_rectangle_side_direction(spacing, viewport)
-				} else {
-					calculate_isometric_side_direction(angles, spacing, Some(viewport))
-				}
-			}
-			RowColumnGizmoType::Left => {
-				if grid_type == GridType::Rectangular {
-					-calculate_rectangle_side_direction(spacing, viewport)
-				} else {
-					-calculate_isometric_side_direction(angles, spacing, Some(viewport))
-				}
-			}
+			RowColumnGizmoType::Top => viewport.transform_vector2(-DVec2::Y),
+			RowColumnGizmoType::Down => viewport.transform_vector2(DVec2::Y),
+			RowColumnGizmoType::Right => viewport.transform_vector2(DVec2::X),
+			RowColumnGizmoType::Left => viewport.transform_vector2(-DVec2::X),
 			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a line"),
 		}
 	}
@@ -466,7 +427,7 @@ impl RowColumnGizmoType {
 		}
 	}
 
-	fn mouse_icon(&self) -> MouseCursorIcon {
+	pub fn mouse_icon(&self) -> MouseCursorIcon {
 		match self {
 			RowColumnGizmoType::Top | RowColumnGizmoType::Down => MouseCursorIcon::NSResize,
 			RowColumnGizmoType::Right | RowColumnGizmoType::Left => MouseCursorIcon::EWResize,

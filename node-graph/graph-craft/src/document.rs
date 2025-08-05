@@ -42,7 +42,7 @@ pub struct DocumentNode {
 	/// In the root network, it is resolved when evaluating the borrow tree.
 	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input)
 	/// by using network.update_click_target(node_id).
-	#[cfg_attr(target_arch = "wasm32", serde(alias = "outputs"))]
+	#[cfg_attr(target_family = "wasm", serde(alias = "outputs"))]
 	pub inputs: Vec<NodeInput>,
 	/// Manual composition is the methodology by which most nodes are implemented, involving a call argument and upstream inputs.
 	/// By contrast, automatic composition is an alternative way to handle the composition of nodes as they execute in the graph.
@@ -552,7 +552,7 @@ pub struct OldDocumentNode {
 	///
 	/// In the root network, it is resolved when evaluating the borrow tree.
 	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input) by using network.update_click_target(node_id).
-	#[cfg_attr(target_arch = "wasm32", serde(alias = "outputs"))]
+	#[cfg_attr(target_family = "wasm", serde(alias = "outputs"))]
 	pub inputs: Vec<NodeInput>,
 	pub manual_composition: Option<Type>,
 	// TODO: Remove once this references its definition instead (see above TODO).
@@ -657,7 +657,7 @@ pub struct NodeNetwork {
 	/// The list of data outputs that are exported from this network to the parent network.
 	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
 	// TODO: Eventually remove this alias document upgrade code
-	#[cfg_attr(target_arch = "wasm32", serde(alias = "outputs", deserialize_with = "deserialize_exports"))]
+	#[cfg_attr(target_family = "wasm", serde(alias = "outputs", deserialize_with = "deserialize_exports"))]
 	pub exports: Vec<NodeInput>,
 	// TODO: Instead of storing import types in each NodeInput::Network connection, the types are stored here. This is similar to how types need to be defined for parameters when creating a function in Rust.
 	// pub import_types: Vec<Type>,

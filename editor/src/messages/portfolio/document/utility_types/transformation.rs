@@ -517,7 +517,7 @@ impl<'a> Selected<'a> {
 		tool_type: &'a ToolType,
 		pen_handle: Option<&'a mut DVec2>,
 	) -> Self {
-		// If user is using the Select tool then use the original layer transforms
+		// If user is using the Select tool or Shape tool then use the original layer transforms
 		if (*tool_type == ToolType::Select || *tool_type == ToolType::Shape) && (*original_transforms == OriginalTransforms::Path(HashMap::new())) {
 			*original_transforms = OriginalTransforms::Layer(HashMap::new());
 		}

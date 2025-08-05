@@ -1,3 +1,5 @@
+pub mod arc_shape;
+pub mod circle_shape;
 pub mod ellipse_shape;
 pub mod grid_shape;
 pub mod line_shape;

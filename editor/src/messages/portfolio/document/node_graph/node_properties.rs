@@ -19,16 +19,14 @@ use graphene_std::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
 };
-use graphene_std::raster_types::{CPU, GPU, RasterDataTable};
-use graphene_std::text::Font;
+use graphene_std::raster_types::{CPU, GPU, Raster};
+use graphene_std::table::Table;
+use graphene_std::text::{Font, TextAlign};
 use graphene_std::transform::{Footprint, ReferencePoint, Transform};
-use graphene_std::vector::VectorDataTable;
-use graphene_std::vector::misc::GridType;
-use graphene_std::vector::misc::{ArcType, MergeByDistanceAlgorithm};
-use graphene_std::vector::misc::{CentroidType, PointSpacingType};
-use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
-use graphene_std::vector::style::{GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
-use graphene_std::{GraphicGroupTable, NodeInputDecleration};
+use graphene_std::vector::VectorData;
+use graphene_std::vector::misc::{ArcType, CentroidType, GridType, MergeByDistanceAlgorithm, PointSpacingType};
+use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::{Graphic, NodeInputDecleration};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
@@ -160,7 +158,7 @@ pub(crate) fn property_from_type(
 				Some("Fraction") => number_widget(default_info, number_input.mode_range().min(min(0.)).max(max(1.))).into(),
 				Some("IntegerCount") => number_widget(default_info, number_input.int().min(min(1.))).into(),
 				Some("SeedValue") => number_widget(default_info, number_input.int().min(min(0.))).into(),
-				Some("PixelSize") => coordinate_widget(default_info, "X", "Y", unit.unwrap_or(" px"), None, false),
+				Some("PixelSize") => vec2_widget(default_info, "X", "Y", unit.unwrap_or(" px"), None, false),
 				Some("TextArea") => text_area_widget(default_info).into(),
 
 				// For all other types, use TypeId-based matching
@@ -175,19 +173,19 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<u64>() => number_widget(default_info, number_input.int().min(min(0.))).into(),
 						Some(x) if x == TypeId::of::<bool>() => bool_widget(default_info, CheckboxInput::default()).into(),
 						Some(x) if x == TypeId::of::<String>() => text_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<DVec2>() => coordinate_widget(default_info, "X", "Y", "", None, false),
+						Some(x) if x == TypeId::of::<DVec2>() => vec2_widget(default_info, "X", "Y", "", None, false),
 						Some(x) if x == TypeId::of::<DAffine2>() => transform_widget(default_info, &mut extra_widgets),
 						// ==========================
 						// PRIMITIVE COLLECTION TYPES
 						// ==========================
 						Some(x) if x == TypeId::of::<Vec<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
-						Some(x) if x == TypeId::of::<Vec<DVec2>>() => array_of_coordinates_widget(default_info, TextInput::default()).into(),
+						Some(x) if x == TypeId::of::<Vec<DVec2>>() => array_of_vec2_widget(default_info, TextInput::default()).into(),
 						// ====================
 						// GRAPHICAL DATA TYPES
 						// ====================
-						Some(x) if x == TypeId::of::<VectorDataTable>() => vector_data_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<RasterDataTable<CPU>>() || x == TypeId::of::<RasterDataTable<GPU>>() => raster_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<GraphicGroupTable>() => group_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<Table<VectorData>>() => vector_data_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<Table<Raster<CPU>>>() || x == TypeId::of::<Table<Raster<GPU>>>() => raster_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<Table<Graphic>>() => group_widget(default_info).into(),
 						// ============
 						// STRUCT TYPES
 						// ============
@@ -223,6 +221,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<StrokeAlign>() => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<PaintOrder>() => enum_choice::<PaintOrder>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<ArcType>() => enum_choice::<ArcType>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<TextAlign>() => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<MergeByDistanceAlgorithm>() => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<PointSpacingType>() => enum_choice::<PointSpacingType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<BooleanOperation>() => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
@@ -479,6 +478,10 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 		resolution_widgets.push(
 			NumberInput::new(Some((footprint.resolution.as_dvec2() / bounds).x * 100.))
 				.label("Resolution")
+				.mode_range()
+				.min(0.)
+				.range_min(Some(1.))
+				.range_max(Some(100.))
 				.unit("%")
 				.on_update(update_value(
 					move |x: &NumberInput| {
@@ -625,7 +628,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 	}
 }
 
-pub fn coordinate_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, unit: &str, min: Option<f64>, is_integer: bool) -> LayoutGroup {
+pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, unit: &str, min: Option<f64>, is_integer: bool) -> LayoutGroup {
 	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
 
 	let mut widgets = start_widgets(parameter_widgets_info);
@@ -722,7 +725,7 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 	widgets
 }
 
-pub fn array_of_coordinates_widget(parameter_widgets_info: ParameterWidgetsInfo, text_props: TextInput) -> Vec<WidgetHolder> {
+pub fn array_of_vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, text_props: TextInput) -> Vec<WidgetHolder> {
 	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
 
 	let mut widgets = start_widgets(parameter_widgets_info);
@@ -1248,7 +1251,7 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	if let Some(&TaggedValue::GridType(grid_type)) = grid_type_input.as_non_exposed_value() {
 		match grid_type {
 			GridType::Rectangular => {
-				let spacing = coordinate_widget(ParameterWidgetsInfo::new(node_id, SpacingInput::<f64>::INDEX, true, context), "W", "H", " px", Some(0.), false);
+				let spacing = vec2_widget(ParameterWidgetsInfo::new(node_id, SpacingInput::<f64>::INDEX, true, context), "W", "H", " px", Some(0.), false);
 				widgets.push(spacing);
 			}
 			GridType::Isometric => {
@@ -1258,7 +1261,7 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						NumberInput::default().label("H").min(0.).unit(" px"),
 					),
 				};
-				let angles = coordinate_widget(ParameterWidgetsInfo::new(node_id, AnglesInput::INDEX, true, context), "", "", "°", None, false);
+				let angles = vec2_widget(ParameterWidgetsInfo::new(node_id, AnglesInput::INDEX, true, context), "", "", "°", None, false);
 				widgets.extend([spacing, angles]);
 			}
 		}
@@ -1938,7 +1941,7 @@ pub mod choice {
 	use super::ParameterWidgetsInfo;
 	use crate::messages::tool::tool_messages::tool_prelude::*;
 	use graph_craft::document::value::TaggedValue;
-	use graphene_std::registry::{ChoiceTypeStatic, ChoiceWidgetHint};
+	use graphene_std::choice_type::{ChoiceTypeStatic, ChoiceWidgetHint};
 	use std::marker::PhantomData;
 
 	pub trait WidgetFactory {
@@ -1998,10 +2001,7 @@ pub mod choice {
 						.map(|(item, metadata)| {
 							let updater = updater_factory();
 							let committer = committer_factory();
-							MenuListEntry::new(metadata.name.as_ref())
-								.label(metadata.label.as_ref())
-								.on_update(move |_| updater(item))
-								.on_commit(committer)
+							MenuListEntry::new(metadata.name).label(metadata.label).on_update(move |_| updater(item)).on_commit(committer)
 						})
 						.collect()
 				})
@@ -2020,11 +2020,11 @@ pub mod choice {
 				.map(|(item, var_meta)| {
 					let updater = updater_factory();
 					let committer = committer_factory();
-					let entry = RadioEntryData::new(var_meta.name.as_ref()).on_update(move |_| updater(item)).on_commit(committer);
-					match (var_meta.icon.as_deref(), var_meta.docstring.as_deref()) {
-						(None, None) => entry.label(var_meta.label.as_ref()),
-						(None, Some(doc)) => entry.label(var_meta.label.as_ref()).tooltip(doc),
-						(Some(icon), None) => entry.icon(icon).tooltip(var_meta.label.as_ref()),
+					let entry = RadioEntryData::new(var_meta.name).on_update(move |_| updater(item)).on_commit(committer);
+					match (var_meta.icon, var_meta.docstring) {
+						(None, None) => entry.label(var_meta.label),
+						(None, Some(doc)) => entry.label(var_meta.label).tooltip(doc),
+						(Some(icon), None) => entry.icon(icon).tooltip(var_meta.label),
 						(Some(icon), Some(doc)) => entry.icon(icon).tooltip(format!("{}\n\n{}", var_meta.label, doc)),
 					}
 				})

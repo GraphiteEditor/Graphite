@@ -2,10 +2,9 @@
 extern crate log;
 
 pub mod animation;
-pub mod blending;
+pub mod artboard;
 pub mod blending_nodes;
 pub mod bounds;
-pub mod color;
 pub mod consts;
 pub mod context;
 pub mod debug;
@@ -13,7 +12,6 @@ pub mod extract_xy;
 pub mod generic;
 pub mod gradient;
 pub mod graphic_element;
-pub mod instances;
 pub mod logic;
 pub mod math;
 pub mod memo;
@@ -24,6 +22,7 @@ pub mod raster_types;
 pub mod registry;
 pub mod render_complexity;
 pub mod structural;
+pub mod table;
 pub mod text;
 pub mod transform;
 pub mod transform_nodes;
@@ -32,14 +31,19 @@ pub mod value;
 pub mod vector;
 
 pub use crate as graphene_core;
+pub use artboard::Artboard;
 pub use blending::*;
+pub use color::Color;
 pub use context::*;
 pub use ctor;
 pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
-pub use graphic_element::{Artboard, ArtboardGroupTable, GraphicElement, GraphicGroupTable};
+pub use graphene_core_shaders::AsU32;
+pub use graphene_core_shaders::blending;
+pub use graphene_core_shaders::choice_type;
+pub use graphene_core_shaders::color;
+pub use graphic_element::Graphic;
 pub use memo::MemoHash;
 pub use num_traits;
-pub use raster::Color;
 use std::any::TypeId;
 use std::future::Future;
 use std::pin::Pin;
@@ -164,13 +168,4 @@ pub trait NodeInputDecleration {
 	const INDEX: usize;
 	fn identifier() -> ProtoNodeIdentifier;
 	type Result;
-}
-
-pub trait AsU32 {
-	fn as_u32(&self) -> u32;
-}
-impl AsU32 for u32 {
-	fn as_u32(&self) -> u32 {
-		*self
-	}
 }

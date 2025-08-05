@@ -11,9 +11,11 @@ use crate::messages::tool::common_functionality::gizmos::shape_gizmos::number_of
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::point_radius_handle::PointRadiusHandle;
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::point_radius_handle::PointRadiusHandleState;
 use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::shape_utility::polygon_outline;
+use crate::messages::tool::tool_messages::shape_tool::ShapeOptionsUpdate;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
@@ -67,7 +69,7 @@ impl ShapeGizmoHandler for PolygonGizmoHandler {
 		overlay_context: &mut OverlayContext,
 	) {
 		self.number_of_points_dial.overlays(document, selected_polygon_layer, shape_editor, mouse_position, overlay_context);
-		self.point_radius_handle.overlays(selected_polygon_layer, document, input, mouse_position, overlay_context);
+		self.point_radius_handle.overlays(selected_polygon_layer, document, input, overlay_context);
 
 		polygon_outline(selected_polygon_layer, document, overlay_context);
 	}
@@ -85,8 +87,20 @@ impl ShapeGizmoHandler for PolygonGizmoHandler {
 		}
 
 		if self.point_radius_handle.is_dragging_or_snapped() {
-			self.point_radius_handle.overlays(None, document, input, mouse_position, overlay_context);
+			self.point_radius_handle.overlays(None, document, input, overlay_context);
 		}
+	}
+
+	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
+		if self.number_of_points_dial.is_dragging() || self.number_of_points_dial.is_hovering() {
+			return Some(MouseCursorIcon::EWResize);
+		}
+
+		if self.point_radius_handle.is_dragging_or_snapped() || self.point_radius_handle.hovered() {
+			return Some(MouseCursorIcon::Default);
+		}
+
+		None
 	}
 
 	fn cleanup(&mut self) {
@@ -112,7 +126,7 @@ impl Polygon {
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
-		let [center, lock_ratio, _, _] = modifier;
+		let [center, lock_ratio, _] = modifier;
 
 		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, center, lock_ratio) {
 			// TODO: We need to determine how to allow the polygon node to make irregular shapes
@@ -146,6 +160,35 @@ impl Polygon {
 				transform_in: TransformIn::Viewport,
 				skip_rerender: false,
 			});
+		}
+	}
+
+	pub fn increase_decrease_sides(increase: bool, document: &DocumentMessageHandler, shape_tool_data: &mut ShapeToolData, responses: &mut VecDeque<Message>) {
+		if let Some(layer) = shape_tool_data.data.layer {
+			let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface).or(graph_modification_utils::get_star_id(layer, &document.network_interface)) else {
+				return;
+			};
+
+			let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface)
+				.find_node_inputs("Regular Polygon")
+				.or(NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star"))
+			else {
+				return;
+			};
+
+			let Some(&TaggedValue::U32(n)) = node_inputs.get(1).unwrap().as_value() else {
+				return;
+			};
+
+			let new_dimension = if increase { n + 1 } else { (n - 1).max(3) };
+
+			responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(new_dimension)));
+
+			responses.add(NodeGraphMessage::SetInput {
+				input_connector: InputConnector::node(node_id, 1),
+				input: NodeInput::value(TaggedValue::U32(new_dimension), false),
+			});
+			responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
 	}
 }

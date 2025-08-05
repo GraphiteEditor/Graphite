@@ -1,7 +1,7 @@
-use crate::instances::Instances;
 use crate::raster_types::{CPU, GPU, Raster};
+use crate::table::Table;
 use crate::vector::VectorData;
-use crate::{Artboard, Color, GraphicElement};
+use crate::{Artboard, Color, Graphic};
 use glam::DVec2;
 
 pub trait RenderComplexity {
@@ -10,9 +10,9 @@ pub trait RenderComplexity {
 	}
 }
 
-impl<T: RenderComplexity> RenderComplexity for Instances<T> {
+impl<T: RenderComplexity> RenderComplexity for Table<T> {
 	fn render_complexity(&self) -> usize {
-		self.instance_ref_iter().map(|instance| instance.instance.render_complexity()).fold(0, usize::saturating_add)
+		self.iter_ref().map(|row| row.element.render_complexity()).fold(0, usize::saturating_add)
 	}
 }
 
@@ -22,13 +22,13 @@ impl RenderComplexity for Artboard {
 	}
 }
 
-impl RenderComplexity for GraphicElement {
+impl RenderComplexity for Graphic {
 	fn render_complexity(&self) -> usize {
 		match self {
-			Self::GraphicGroup(instances) => instances.render_complexity(),
-			Self::VectorData(instances) => instances.render_complexity(),
-			Self::RasterDataCPU(instances) => instances.render_complexity(),
-			Self::RasterDataGPU(instances) => instances.render_complexity(),
+			Self::GraphicGroup(table) => table.render_complexity(),
+			Self::VectorData(table) => table.render_complexity(),
+			Self::RasterDataCPU(table) => table.render_complexity(),
+			Self::RasterDataGPU(table) => table.render_complexity(),
 		}
 	}
 }
