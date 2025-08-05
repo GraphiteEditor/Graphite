@@ -1313,46 +1313,18 @@ impl NodeNetworkInterface {
 			.reduce(Quad::combine_bounds)
 	}
 
-	/// Layers excluding ones that are children of other layers in the list.
+	/// Layers excluding ones that are children of other layers in the list in layer tree order.
 	// TODO: Cache this
-	pub fn shallowest_unique_layers(&self, network_path: &[NodeId]) -> impl Iterator<Item = LayerNodeIdentifier> + use<> {
-		let mut sorted_layers = if let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) {
-			selected_nodes
-				.selected_layers(self.document_metadata())
-				.map(|layer| {
-					let mut layer_path = layer.ancestors(&self.document_metadata).collect::<Vec<_>>();
-					layer_path.reverse();
-					layer_path
-				})
-				.collect::<Vec<_>>()
-		} else {
-			log::error!("Could not get selected nodes in shallowest_unique_layers");
-			Vec::new()
-		};
-
-		// Sorting here creates groups of similar UUID paths
-		sorted_layers.sort();
-		sorted_layers.dedup_by(|a, b| a.starts_with(b));
-		sorted_layers.into_iter().map(|mut path| {
-			let layer = path.pop().expect("Path should not be empty");
-			assert!(
-				layer != LayerNodeIdentifier::ROOT_PARENT,
-				"The root parent cannot be selected, so it cannot be a shallowest selected layer"
-			);
-			layer
-		})
-	}
-
-	pub fn shallowest_unique_layers_sorted(&self, network_path: &[NodeId]) -> Vec<LayerNodeIdentifier> {
-		let all_layers_to_group = self.shallowest_unique_layers(network_path).collect::<Vec<_>>();
-		// Ensure nodes are grouped in the correct order
-		let mut all_layers_to_group_sorted = Vec::new();
-		for descendant in LayerNodeIdentifier::ROOT_PARENT.descendants(self.document_metadata()) {
-			if all_layers_to_group.contains(&descendant) {
-				all_layers_to_group_sorted.push(descendant);
-			};
+	// Now allocation free!
+	pub fn shallowest_unique_layers(&self, network_path: &[NodeId]) -> ShallowestSelectionIter<'_> {
+		// Avoids the clone and filtering from from the selected_nodes_in_nested_network.
+		let metadata = self.network_metadata(network_path);
+		let selection = metadata.and_then(|metadata| metadata.persistent_metadata.selection_undo_history.back());
+		ShallowestSelectionIter {
+			selection: selection.map_or([].as_slice(), |selection| selection.0.as_slice()),
+			next: Some(LayerNodeIdentifier::ROOT_PARENT),
+			metadata: self.document_metadata(),
 		}
-		all_layers_to_group_sorted
 	}
 
 	/// Ancestor that is shared by all layers and that is deepest (more nested). Default may be the root. Skips selected non-folder, non-artboard layers
@@ -7020,4 +6992,33 @@ pub enum TransactionStatus {
 	Modified,
 	#[default]
 	Finished,
+}
+
+/// Iterate through the shallowest selected layers without allocating
+#[derive(Clone)]
+pub struct ShallowestSelectionIter<'a> {
+	next: Option<LayerNodeIdentifier>,
+	selection: &'a [NodeId], // TODO: should be HashSet to avoid duplicates.
+	metadata: &'a DocumentMetadata,
+}
+
+impl Iterator for ShallowestSelectionIter<'_> {
+	type Item = LayerNodeIdentifier;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		while let Some(layer_node) = self.next.take() {
+			// Ignoring the children of this layer, find the next layer that would be displayed in the tree
+			let below_in_tree = || layer_node.ancestors(self.metadata).find_map(|ancestor| ancestor.next_sibling(self.metadata));
+
+			// If the current layer is selected, return it.
+			if layer_node != LayerNodeIdentifier::ROOT_PARENT && self.selection.contains(&layer_node.to_node()) {
+				self.next = below_in_tree(); // Go straight to below and don't look at children
+				return Some(layer_node);
+			}
+			// Go to children or otherwise go to below in the tree
+			self.next = layer_node.first_child(self.metadata).or_else(below_in_tree);
+		}
+
+		None
+	}
 }

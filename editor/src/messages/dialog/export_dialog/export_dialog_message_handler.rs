@@ -43,16 +43,22 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 			ExportDialogMessage::TransparentBackground(transparent_background) => self.transparent_background = transparent_background,
 			ExportDialogMessage::ExportBounds(export_area) => self.bounds = export_area,
 
-			ExportDialogMessage::Submit => responses.add_front(PortfolioMessage::SubmitDocumentExport {
-				file_name: portfolio.active_document().map(|document| document.name.clone()).unwrap_or_default(),
-				file_type: self.file_type,
-				scale_factor: self.scale_factor,
-				bounds: self.bounds,
-				transparent_background: self.file_type != FileType::Jpg && self.transparent_background,
-			}),
+			ExportDialogMessage::Submit => {
+				responses.add(FrontendMessage::DisplayDialogDismiss);
+				responses.add(PortfolioMessage::SubmitDocumentExport {
+					file_name: portfolio.active_document().map(|document| document.name.clone()).unwrap_or_default(),
+					file_type: self.file_type,
+					scale_factor: self.scale_factor,
+					bounds: self.bounds,
+					transparent_background: self.file_type != FileType::Jpg && self.transparent_background,
+				});
+			}
 		}
 
-		self.send_dialog_to_frontend(responses);
+		// Don't send the dialogue if the form was already submitted
+		if message != ExportDialogMessage::Submit {
+			self.send_dialog_to_frontend(responses);
+		}
 	}
 
 	advertise_actions! {ExportDialogUpdate;}
@@ -64,15 +70,7 @@ impl DialogLayoutHolder for ExportDialogMessageHandler {
 
 	fn layout_buttons(&self) -> Layout {
 		let widgets = vec![
-			TextButton::new("Export")
-				.emphasized(true)
-				.on_update(|_| {
-					DialogMessage::CloseDialogAndThen {
-						followups: vec![ExportDialogMessage::Submit.into()],
-					}
-					.into()
-				})
-				.widget_holder(),
+			TextButton::new("Export").emphasized(true).on_update(|_| ExportDialogMessage::Submit.into()).widget_holder(),
 			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder(),
 		];
 
