@@ -194,15 +194,54 @@ impl BoundingBox for Table<Graphic> {
 }
 
 #[node_macro::node(category(""))]
-async fn extend_table<I: 'n + Send + Clone>(
+async fn source_node_id<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)] base: Table<I>,
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)] new: Table<I>,
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)] content: Table<I>,
 	node_path: Vec<NodeId>,
 ) -> Table<I> {
 	// Get the penultimate element of the node path, or None if the path is too short
-	// This is used to get the ID of the user-facing parent layer-style node (which encapsulates this internal "Extend Table" node).
+	// This is used to get the ID of the user-facing parent layer-style node (which encapsulates this internal node).
 	let source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
+
+	let mut content = content;
+	for row in content.iter_mut() {
+		*row.source_node_id = source_node_id;
+	}
+
+	content
+}
+
+/// Joins two tables of the same type, extending the base table with the rows of the new table.
+#[node_macro::node(category("General"))]
+async fn extend<I: 'n + Send + Clone>(
+	_: impl Ctx,
+	/// The table whose rows will appear at the start of the extended table.
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)]
+	base: Table<I>,
+	/// The table whose rows will appear at the end of the extended table.
+	#[expose]
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)]
+	new: Table<I>,
+) -> Table<I> {
+	let mut base = base;
+	base.extend(new);
+
+	base
+}
+
+// TODO: Eventually remove this document upgrade code
+#[node_macro::node(category(""))]
+async fn legacy_layer_extend<I: 'n + Send + Clone>(
+	_: impl Ctx,
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)] base: Table<I>,
+	#[expose]
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)]
+	new: Table<I>,
+	nested_node_path: Vec<NodeId>,
+) -> Table<I> {
+	// Get the penultimate element of the node path, or None if the path is too short
+	// This is used to get the ID of the user-facing parent layer-style node (which encapsulates this internal node).
+	let source_node_id = nested_node_path.get(nested_node_path.len().wrapping_sub(2)).copied();
 
 	let mut base = base;
 	for row in new.into_iter() {
@@ -212,7 +251,8 @@ async fn extend_table<I: 'n + Send + Clone>(
 	base
 }
 
-#[node_macro::node(category("Debug"))]
+/// Places a table of graphical content into an element of a new wrapper graphic table.
+#[node_macro::node(category("General"))]
 async fn wrap_graphic<T: Into<Graphic> + 'n>(
 	_: impl Ctx,
 	#[implementations(
@@ -222,11 +262,13 @@ async fn wrap_graphic<T: Into<Graphic> + 'n>(
 	 	Table<Raster<GPU>>,
 		DAffine2,
 	)]
-	data: T,
+	content: T,
 ) -> Table<Graphic> {
-	Table::new_from_element(data.into())
+	Table::new_from_element(content.into())
 }
 
+/// Converts a table of graphical content into a graphic table by placing it into an element of a new wrapper graphic table.
+/// If it is already a graphic table, it is not wrapped again. Use the 'Wrap Graphic' node if wrapping is always desired.
 #[node_macro::node(category("Type Conversion"))]
 async fn to_graphic<T: Into<Table<Graphic>> + 'n>(
 	_: impl Ctx,
@@ -236,13 +278,13 @@ async fn to_graphic<T: Into<Table<Graphic>> + 'n>(
 		Table<Raster<CPU>>,
 		Table<Raster<GPU>>,
 	)]
-	element: T,
+	content: T,
 ) -> Table<Graphic> {
-	element.into()
+	content.into()
 }
 
 #[node_macro::node(category("General"))]
-async fn flatten_table(_: impl Ctx, content: Table<Graphic>, fully_flatten: bool) -> Table<Graphic> {
+async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten: bool) -> Table<Graphic> {
 	// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
 	fn flatten_table(output_graphic_table: &mut Table<Graphic>, current_graphic_table: Table<Graphic>, fully_flatten: bool, recursion_depth: usize) {
 		for current_row in current_graphic_table.iter() {

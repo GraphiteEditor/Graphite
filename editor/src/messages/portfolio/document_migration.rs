@@ -56,7 +56,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic::extend_table::IDENTIFIER,
+		node: graphene_std::graphic::legacy_layer_extend::IDENTIFIER,
 		aliases: &[
 			"graphene_core::graphic_element::LayerNode",
 			"graphene_core::graphic::LayerNode",
@@ -68,7 +68,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic::flatten_table::IDENTIFIER,
+		node: graphene_std::graphic::flatten_graphic::IDENTIFIER,
 		aliases: &["graphene_core::graphic_element::FlattenGroupNode", "graphene_core::graphic::FlattenGroupNode"],
 	},
 	NodeReplacement {

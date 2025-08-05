@@ -227,15 +227,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(3), 0)],
+						exports: vec![NodeInput::node(NodeId(4), 0)],
 						nodes: [
-							// Secondary (left) input type coercion
-							DocumentNode {
-								inputs: vec![NodeInput::network(generic!(T), 1)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::wrap_graphic::IDENTIFIER),
-								manual_composition: Some(concrete!(Context)),
-								..Default::default()
-							},
 							// Primary (bottom) input type coercion
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 0)],
@@ -243,9 +236,23 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								manual_composition: Some(concrete!(Context)),
 								..Default::default()
 							},
+							// Secondary (left) input type coercion
+							DocumentNode {
+								inputs: vec![NodeInput::network(generic!(T), 1)],
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::wrap_graphic::IDENTIFIER),
+								manual_composition: Some(concrete!(Context)),
+								..Default::default()
+							},
+							// Store the ID of the parent node (which encapsulates this sub-network) in each row we are extending the table with.
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::source_node_id::IDENTIFIER),
+								manual_composition: Some(concrete!(Context)),
+								..Default::default()
+							},
 							// The monitor node is used to display a thumbnail in the UI
 							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
+								inputs: vec![NodeInput::node(NodeId(2), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
 								manual_composition: Some(concrete!(Context)),
 								skip_deduplication: true,
@@ -253,12 +260,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								manual_composition: Some(generic!(T)),
-								inputs: vec![
-									NodeInput::node(NodeId(1), 0),
-									NodeInput::node(NodeId(2), 0),
-									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::extend_table::IDENTIFIER),
+								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(3), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::extend::IDENTIFIER),
 								..Default::default()
 							},
 						]
@@ -283,16 +286,24 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Wrap Graphic".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -1)),
+										display_name: "To Graphic".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -3)),
 										..Default::default()
 									},
 									..Default::default()
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "To Graphic".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
+										display_name: "Wrap Graphic".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -1)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Source Node ID".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -1)),
 										..Default::default()
 									},
 									..Default::default()
@@ -307,7 +318,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Extend Table".to_string(),
+										display_name: "Extend".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -3)),
 										..Default::default()
 									},
@@ -334,7 +345,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(2), 0)],
+						exports: vec![NodeInput::node(NodeId(3), 0)],
 						nodes: [
 							// Ensure this ID is kept in sync with the ID in set_alias so that the name input is kept in sync with the alias
 							DocumentNode {
@@ -350,10 +361,17 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								],
 								..Default::default()
 							},
+							// Store the ID of the parent node (which encapsulates this sub-network) in each row we are extending the table with.
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::source_node_id::IDENTIFIER),
+								manual_composition: Some(concrete!(Context)),
+								..Default::default()
+							},
 							// The monitor node is used to display a thumbnail in the UI.
 							// TODO: Check if thumbnail is reversed
 							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
+								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
 								manual_composition: Some(generic!(T)),
 								skip_deduplication: true,
@@ -363,10 +381,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								manual_composition: Some(concrete!(Context)),
 								inputs: vec![
 									NodeInput::network(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(Table<Artboard>))), 0),
-									NodeInput::node(NodeId(1), 0),
+									NodeInput::node(NodeId(2), 0),
 									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
 								],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::extend_table::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::extend::IDENTIFIER),
 								..Default::default()
 							},
 						]
@@ -423,6 +441,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Create Artboard".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -3)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Source Node ID".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
 										..Default::default()
 									},
@@ -438,7 +464,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Extend Table".to_string(),
+										display_name: "Extend".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -4)),
 										..Default::default()
 									},
