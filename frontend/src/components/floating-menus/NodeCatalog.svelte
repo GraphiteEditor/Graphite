@@ -129,7 +129,7 @@
 
 <style lang="scss" global>
 	.node-catalog {
-		max-height: 40vh;
+		max-height: 30vh;
 		min-width: 250px;
 		display: flex;
 		flex-direction: column;

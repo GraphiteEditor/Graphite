@@ -3,7 +3,7 @@ use crate::AlphaBlending;
 use crate::color::float_to_srgb_u8;
 use crate::raster_types::Raster;
 use crate::table::{Table, TableRow};
-use crate::vector::VectorData;
+use crate::vector::Vector;
 use core::hash::{Hash, Hasher};
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
@@ -239,7 +239,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
 		GraphicGroup(Table<GraphicElement>),
 		/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
-		VectorData(Table<VectorData>),
+		VectorData(Table<Vector>),
 		RasterFrame(RasterFrame),
 	}
 
@@ -256,7 +256,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		fn from(element: GraphicElement) -> Self {
 			match element {
 				GraphicElement::RasterFrame(RasterFrame::ImageFrame(image)) => Self {
-					image: image.iter_ref().next().unwrap().element.clone(),
+					image: image.iter().next().unwrap().element.clone(),
 				},
 				_ => panic!("Expected Image, found {:?}", element),
 			}
@@ -283,31 +283,30 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 	enum FormatVersions {
 		Image(Image<Color>),
 		OldImageFrame(OldImageFrame<Color>),
-		ImageFrame(Table<ImageFrame<Color>>),
-		ImageFrameTable(Table<Image<Color>>),
-		RasterDataTable(Table<Raster<CPU>>),
+		ImageFrameTable(Table<ImageFrame<Color>>),
+		ImageTable(Table<Image<Color>>),
+		RasterTable(Table<Raster<CPU>>),
 	}
 
 	Ok(match FormatVersions::deserialize(deserializer)? {
 		FormatVersions::Image(image) => Table::new_from_element(Raster::new_cpu(image)),
-		FormatVersions::OldImageFrame(image_frame_with_transform_and_blending) => {
-			let OldImageFrame { image, transform, alpha_blending } = image_frame_with_transform_and_blending;
+		FormatVersions::OldImageFrame(OldImageFrame { image, transform, alpha_blending }) => {
 			let mut image_frame_table = Table::new_from_element(Raster::new_cpu(image));
 			*image_frame_table.iter_mut().next().unwrap().transform = transform;
 			*image_frame_table.iter_mut().next().unwrap().alpha_blending = alpha_blending;
 			image_frame_table
 		}
-		FormatVersions::ImageFrame(image_frame) => Table::new_from_element(Raster::new_cpu(
+		FormatVersions::ImageFrameTable(image_frame) => Table::new_from_element(Raster::new_cpu(
 			image_frame
-				.iter_ref()
+				.iter()
 				.next()
-				.unwrap_or(Table::new_from_element(ImageFrame::default()).iter_ref().next().unwrap())
+				.unwrap_or(Table::new_from_element(ImageFrame::default()).iter().next().unwrap())
 				.element
 				.image
 				.clone(),
 		)),
-		FormatVersions::ImageFrameTable(image_frame_table) => Table::new_from_element(Raster::new_cpu(image_frame_table.iter_ref().next().unwrap().element.clone())),
-		FormatVersions::RasterDataTable(raster_data_table) => raster_data_table,
+		FormatVersions::ImageTable(table) => Table::new_from_element(Raster::new_cpu(table.iter().next().unwrap().element.clone())),
+		FormatVersions::RasterTable(table) => table,
 	})
 }
 
@@ -338,7 +337,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 		/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
 		GraphicGroup(Table<GraphicElement>),
 		/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
-		VectorData(Table<VectorData>),
+		VectorData(Table<Vector>),
 		RasterFrame(RasterFrame),
 	}
 
@@ -355,7 +354,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 		fn from(element: GraphicElement) -> Self {
 			match element {
 				GraphicElement::RasterFrame(RasterFrame::ImageFrame(image)) => Self {
-					image: image.iter_ref().next().unwrap().element.clone(),
+					image: image.iter().next().unwrap().element.clone(),
 				},
 				_ => panic!("Expected Image, found {:?}", element),
 			}
@@ -382,9 +381,9 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 	enum FormatVersions {
 		Image(Image<Color>),
 		OldImageFrame(OldImageFrame<Color>),
-		ImageFrame(Table<ImageFrame<Color>>),
-		RasterDataTable(Table<Raster<CPU>>),
-		ImageTableRow(TableRow<Raster<CPU>>),
+		ImageFrameTable(Table<ImageFrame<Color>>),
+		RasterTable(Table<Raster<CPU>>),
+		RasterTableRow(TableRow<Raster<CPU>>),
 	}
 
 	Ok(match FormatVersions::deserialize(deserializer)? {
@@ -398,12 +397,12 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 			alpha_blending: image_frame_with_transform_and_blending.alpha_blending,
 			source_node_id: None,
 		},
-		FormatVersions::ImageFrame(image_frame) => TableRow {
-			element: Raster::new_cpu(image_frame.iter_ref().next().unwrap().element.image.clone()),
+		FormatVersions::ImageFrameTable(image_frame) => TableRow {
+			element: Raster::new_cpu(image_frame.iter().next().unwrap().element.image.clone()),
 			..Default::default()
 		},
-		FormatVersions::RasterDataTable(image_frame_table) => image_frame_table.iter().next().unwrap_or_default(),
-		FormatVersions::ImageTableRow(image_table_row) => image_table_row,
+		FormatVersions::RasterTable(image_frame_table) => image_frame_table.into_iter().next().unwrap_or_default(),
+		FormatVersions::RasterTableRow(image_table_row) => image_table_row,
 	})
 }
 

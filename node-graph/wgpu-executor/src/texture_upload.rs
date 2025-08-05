@@ -11,7 +11,7 @@ pub async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: Table
 	let device = &executor.context.device;
 	let queue = &executor.context.queue;
 	let table = input
-		.iter_ref()
+		.iter()
 		.map(|row| {
 			let image = row.element;
 			let rgba8_data: Vec<SRGBA8> = image.data.iter().map(|x| (*x).into()).collect();

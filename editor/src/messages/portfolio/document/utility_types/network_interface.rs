@@ -18,7 +18,7 @@ use graphene_std::math::quad::Quad;
 use graphene_std::table::Table;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
-use graphene_std::vector::{PointId, VectorData, VectorModificationType};
+use graphene_std::vector::{PointId, Vector, VectorModificationType};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use interpreted_executor::node_registry::NODE_REGISTRY;
 use serde_json::{Value, json};
@@ -675,7 +675,7 @@ impl NodeNetworkInterface {
 						let valid_implementation = (0..number_of_inputs).filter(|iterator_index| iterator_index != input_index).all(|iterator_index| {
 							let input_type = self.input_type(&InputConnector::node(*node_id, iterator_index), network_path).0;
 							// Value inputs are stored as concrete, so they are compared to the nested type. Node inputs are stored as fn, so they are compared to the entire type.
-							// For example a node input of (Footprint) -> VectorData would not be compatible with () -> VectorData
+							// For example a node input of (Footprint) -> Vector would not be compatible with () -> Vector
 							node_io.inputs.get(iterator_index).map(|ty| ty.nested_type().clone()).as_ref() == Some(&input_type) || node_io.inputs.get(iterator_index) == Some(&input_type)
 						});
 						if valid_implementation { node_io.inputs.get(*input_index).cloned() } else { None }
@@ -3444,12 +3444,12 @@ impl NodeNetworkInterface {
 		(layer_widths, chain_widths, has_left_input_wire)
 	}
 
-	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<VectorData> {
+	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<Vector> {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
 
 		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer("Path") {
-			if let Some(vector_data) = self.document_metadata.vector_modify.get(&path_node) {
-				let mut modified = vector_data.clone();
+			if let Some(vector) = self.document_metadata.vector_modify.get(&path_node) {
+				let mut modified = vector.clone();
 
 				let path_node = self.document_network().nodes.get(&path_node);
 				let modification_input = path_node.and_then(|node: &DocumentNode| node.inputs.get(1)).and_then(|input| input.as_value());
@@ -3464,7 +3464,7 @@ impl NodeNetworkInterface {
 			.click_targets
 			.get(&layer)
 			.map(|click| click.iter().map(ClickTarget::target_type))
-			.map(|target_types| VectorData::from_target_types(target_types, true))
+			.map(|target_types| Vector::from_target_types(target_types, true))
 	}
 
 	/// Loads the structure of layer nodes from a node graph.
@@ -3575,7 +3575,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Update the vector modify of the layers
-	pub fn update_vector_modify(&mut self, new_vector_modify: HashMap<NodeId, VectorData>) {
+	pub fn update_vector_modify(&mut self, new_vector_modify: HashMap<NodeId, Vector>) {
 		self.document_metadata.vector_modify = new_vector_modify;
 	}
 }
@@ -6613,22 +6613,26 @@ fn migrate_output_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 
 	const REPLACEMENTS: &[(&str, &str)] = &[
 		// Single to table data
-		("VectorData", "Table<VectorData>"),
-		("GraphicGroup", "Table<GraphicGroup>"),
+		("VectorData", "Table<Vector>"),
+		("GraphicGroup", "Table<Group>"),
 		("ImageFrame", "Table<Image>"),
 		// `ImageFrame` to `Image` rename
 		("Instances<ImageFrame>", "Table<Image>"),
 		// `Instances` to `Table` rename
-		("Instances<VectorData>", "Table<VectorData>"),
-		("Instances<GraphicGroup>", "Table<GraphicGroup>"),
+		("Instances<VectorData>", "Table<Vector>"),
+		("Instances<GraphicGroup>", "Table<Group>"),
 		("Instances<Image>", "Table<Image>"),
 		("Instances<GraphicElement>", "Table<Graphic>"),
 		("Table<GraphicElement>", "Table<Graphic>"),
-		("Future<Instances<VectorData>>", "Future<Table<VectorData>>"),
-		("Future<Instances<GraphicGroup>>", "Future<Table<GraphicGroup>>"),
+		("Future<Instances<Vector>>", "Future<Table<Vector>>"),
+		("Future<Instances<GraphicGroup>>", "Future<Table<Group>>"),
 		("Future<Instances<Image>>", "Future<Table<Image>>"),
 		("Future<Instances<GraphicElement>>", "Future<Table<Graphic>>"),
 		("Future<Table<GraphicElement>>", "Future<Table<Graphic>>"),
+		("Future<Table<VectorData>>", "Future<Table<Vector>>"),
+		("Table<VectorData>", "Table<Vector>"),
+		("Table<GraphicGroup>", "Table<Group>"),
+		("Future<Table<GraphicGroup>>", "Future<Table<Group>>"),
 	];
 
 	let mut names = Vec::<String>::deserialize(deserializer)?;

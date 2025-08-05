@@ -1,7 +1,7 @@
 import { type Editor } from "@graphite/editor";
 
-export function updateBoundsOfViewports(editor: Editor, container: HTMLElement) {
-	const viewports = Array.from(container.querySelectorAll("[data-viewport]"));
+export function updateBoundsOfViewports(editor: Editor) {
+	const viewports = Array.from(window.document.querySelectorAll("[data-viewport-container]"));
 	const boundsOfViewports = viewports.map((canvas) => {
 		const bounds = canvas.getBoundingClientRect();
 		return [bounds.left, bounds.top, bounds.right, bounds.bottom];

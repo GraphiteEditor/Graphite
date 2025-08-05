@@ -38,7 +38,7 @@ mod blend_std {
 	impl Blend<Color> for Table<Raster<CPU>> {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut result_table = self.clone();
-			for (over, under) in result_table.iter_mut().zip(under.iter_ref()) {
+			for (over, under) in result_table.iter_mut().zip(under.iter()) {
 				let data = over.element.data.iter().zip(under.element.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 
 				*over.element = Raster::new_cpu(Image {
@@ -203,7 +203,7 @@ mod test {
 		let opacity = 100_f64;
 
 		let result = super::color_overlay((), Table::new_from_element(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
-		let result = result.iter_ref().next().unwrap().element;
+		let result = result.iter().next().unwrap().element;
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));

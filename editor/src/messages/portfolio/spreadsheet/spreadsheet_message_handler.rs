@@ -1,4 +1,4 @@
-use super::VectorDataDomain;
+use super::VectorDomain;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, LayoutTarget, WidgetLayout};
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::*;
@@ -8,7 +8,7 @@ use graphene_std::Context;
 use graphene_std::memo::IORecord;
 use graphene_std::raster::Image;
 use graphene_std::table::Table;
-use graphene_std::vector::VectorData;
+use graphene_std::vector::Vector;
 use graphene_std::{Artboard, Graphic};
 use std::any::Any;
 use std::sync::Arc;
@@ -21,7 +21,7 @@ pub struct SpreadsheetMessageHandler {
 	inspect_node: Option<NodeId>,
 	introspected_data: Option<Arc<dyn Any + Send + Sync>>,
 	element_path: Vec<usize>,
-	viewing_vector_data_domain: VectorDataDomain,
+	viewing_vector_domain: VectorDomain,
 }
 
 #[message_handler_data]
@@ -54,8 +54,8 @@ impl MessageHandler<SpreadsheetMessage, ()> for SpreadsheetMessageHandler {
 				self.update_layout(responses);
 			}
 
-			SpreadsheetMessage::ViewVectorDataDomain { domain } => {
-				self.viewing_vector_data_domain = domain;
+			SpreadsheetMessage::ViewVectorDomain { domain } => {
+				self.viewing_vector_domain = domain;
 				self.update_layout(responses);
 			}
 		}
@@ -79,7 +79,7 @@ impl SpreadsheetMessageHandler {
 			current_depth: 0,
 			desired_path: &mut self.element_path,
 			breadcrumbs: Vec::new(),
-			vector_data_domain: self.viewing_vector_data_domain,
+			vector_domain: self.viewing_vector_domain,
 		};
 		let mut layout = self
 			.introspected_data
@@ -106,7 +106,7 @@ struct LayoutData<'a> {
 	current_depth: usize,
 	desired_path: &'a mut Vec<usize>,
 	breadcrumbs: Vec<String>,
-	vector_data_domain: VectorDataDomain,
+	vector_domain: VectorDomain,
 }
 
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
@@ -116,9 +116,9 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Some(io.output.layout_with_breadcrumb(data))
 	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), Table<Artboard>>>() {
 		Some(io.output.layout_with_breadcrumb(data))
-	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<VectorData>>>() {
+	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Vector>>>() {
 		Some(io.output.layout_with_breadcrumb(data))
-	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), Table<VectorData>>>() {
+	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), Table<Vector>>>() {
 		Some(io.output.layout_with_breadcrumb(data))
 	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Graphic>>>() {
 		Some(io.output.layout_with_breadcrumb(data))
@@ -154,10 +154,10 @@ impl TableRowLayout for Graphic {
 	}
 	fn identifier(&self) -> String {
 		match self {
-			Self::GraphicGroup(table) => table.identifier(),
-			Self::VectorData(table) => table.identifier(),
-			Self::RasterDataCPU(_) => "RasterDataCPU".to_string(),
-			Self::RasterDataGPU(_) => "RasterDataGPU".to_string(),
+			Self::Group(group) => group.identifier(),
+			Self::Vector(vector) => vector.identifier(),
+			Self::RasterCPU(_) => "Raster (on CPU)".to_string(),
+			Self::RasterGPU(_) => "Raster (on GPU)".to_string(),
 		}
 	}
 	// Don't put a breadcrumb for Graphic
@@ -166,48 +166,54 @@ impl TableRowLayout for Graphic {
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		match self {
-			Self::GraphicGroup(table) => table.layout_with_breadcrumb(data),
-			Self::VectorData(table) => table.layout_with_breadcrumb(data),
-			Self::RasterDataCPU(_) => label("Raster is not supported"),
-			Self::RasterDataGPU(_) => label("Raster is not supported"),
+			Self::Group(table) => table.layout_with_breadcrumb(data),
+			Self::Vector(table) => table.layout_with_breadcrumb(data),
+			Self::RasterCPU(_) => label("Raster is not supported"),
+			Self::RasterGPU(_) => label("Raster is not supported"),
 		}
 	}
 }
 
-impl TableRowLayout for VectorData {
+impl TableRowLayout for Vector {
 	fn type_name() -> &'static str {
-		"VectorData"
+		"Vector"
 	}
 	fn identifier(&self) -> String {
-		format!("Vector Data (points={}, segments={})", self.point_domain.ids().len(), self.segment_domain.ids().len())
+		format!(
+			"Vector ({} point{}, {} segment{})",
+			self.point_domain.ids().len(),
+			if self.point_domain.ids().len() == 1 { "" } else { "s" },
+			self.segment_domain.ids().len(),
+			if self.segment_domain.ids().len() == 1 { "" } else { "s" }
+		)
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let colinear = self.colinear_manipulators.iter().map(|[a, b]| format!("[{a} / {b}]")).collect::<Vec<_>>().join(", ");
 		let colinear = if colinear.is_empty() { "None" } else { &colinear };
 		let style = vec![
 			TextLabel::new(format!(
-				"{}\n\nColinear Handle IDs: {}\n\nUpstream Graphic Group Table: {}",
+				"{}\n\nColinear Handle IDs: {}\n\nUpstream Group Table: {}",
 				self.style,
 				colinear,
-				if self.upstream_graphic_group.is_some() { "Yes" } else { "No" }
+				if self.upstream_group.is_some() { "Yes" } else { "No" }
 			))
 			.multiline(true)
 			.widget_holder(),
 		];
 
-		let domain_entries = [VectorDataDomain::Points, VectorDataDomain::Segments, VectorDataDomain::Regions]
+		let domain_entries = [VectorDomain::Points, VectorDomain::Segments, VectorDomain::Regions]
 			.into_iter()
 			.map(|domain| {
 				RadioEntryData::new(format!("{domain:?}"))
 					.label(format!("{domain:?}"))
-					.on_update(move |_| SpreadsheetMessage::ViewVectorDataDomain { domain }.into())
+					.on_update(move |_| SpreadsheetMessage::ViewVectorDomain { domain }.into())
 			})
 			.collect();
-		let domain = vec![RadioInput::new(domain_entries).selected_index(Some(data.vector_data_domain as u32)).widget_holder()];
+		let domain = vec![RadioInput::new(domain_entries).selected_index(Some(data.vector_domain as u32)).widget_holder()];
 
 		let mut table_rows = Vec::new();
-		match data.vector_data_domain {
-			VectorDataDomain::Points => {
+		match data.vector_domain {
+			VectorDomain::Points => {
 				table_rows.push(column_headings(&["", "position"]));
 				table_rows.extend(
 					self.point_domain
@@ -215,7 +221,7 @@ impl TableRowLayout for VectorData {
 						.map(|(id, position)| vec![TextLabel::new(format!("{}", id.inner())).widget_holder(), TextLabel::new(format!("{}", position)).widget_holder()]),
 				);
 			}
-			VectorDataDomain::Segments => {
+			VectorDomain::Segments => {
 				table_rows.push(column_headings(&["", "start_index", "end_index", "handles"]));
 				table_rows.extend(self.segment_domain.iter().map(|(id, start, end, handles)| {
 					vec![
@@ -226,7 +232,7 @@ impl TableRowLayout for VectorData {
 					]
 				}));
 			}
-			VectorDataDomain::Regions => {
+			VectorDomain::Regions => {
 				table_rows.push(column_headings(&["", "segment_range", "fill"]));
 				table_rows.extend(self.region_domain.iter().map(|(id, segment_range, fill)| {
 					vec![
@@ -247,10 +253,10 @@ impl TableRowLayout for Image<Color> {
 		"Image"
 	}
 	fn identifier(&self) -> String {
-		format!("Image (width={}, height={})", self.width, self.height)
+		format!("Image ({}x{})", self.width, self.height)
 	}
 	fn compute_layout(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let rows = vec![vec![TextLabel::new(format!("Image (width={}, height={})", self.width, self.height)).widget_holder()]];
+		let rows = vec![vec![TextLabel::new(format!("Image ({}x{})", self.width, self.height)).widget_holder()]];
 		vec![LayoutGroup::Table { rows }]
 	}
 }
@@ -263,7 +269,7 @@ impl TableRowLayout for Artboard {
 		self.label.clone()
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		self.graphic_group.compute_layout(data)
+		self.group.compute_layout(data)
 	}
 }
 
@@ -272,7 +278,7 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 		"Table"
 	}
 	fn identifier(&self) -> String {
-		format!("Table<{}> (length={})", T::type_name(), self.len())
+		format!("Table<{}> ({} row{})", T::type_name(), self.len(), if self.len() == 1 { "" } else { "s" })
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		if let Some(index) = data.desired_path.get(data.current_depth).copied() {
@@ -288,14 +294,14 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 		}
 
 		let mut rows = self
-			.iter_ref()
+			.iter()
 			.enumerate()
 			.map(|(index, row)| {
 				let (scale, angle, translation) = row.transform.to_scale_angle_translation();
 				let rotation = if angle == -0. { 0. } else { angle.to_degrees() };
 				let round = |x: f64| (x * 1e3).round() / 1e3;
 				vec![
-					TextLabel::new(format!("{}", index)).widget_holder(),
+					TextLabel::new(format!("{index}")).widget_holder(),
 					TextButton::new(row.element.identifier())
 						.on_update(move |_| SpreadsheetMessage::PushToElementPath { index }.into())
 						.widget_holder(),
@@ -315,7 +321,6 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 
 		rows.insert(0, column_headings(&["", "element", "transform", "alpha_blending", "source_node_id"]));
 
-		let table = vec![TextLabel::new("Table:").widget_holder()];
-		vec![LayoutGroup::Row { widgets: table }, LayoutGroup::Table { rows }]
+		vec![LayoutGroup::Table { rows }]
 	}
 }

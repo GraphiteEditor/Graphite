@@ -239,7 +239,7 @@ impl EditorHandle {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
-					editor_and_handle(|_, handle| {
+					handle(|handle| {
 						handle.dispatch(InputPreprocessorMessage::CurrentTime {
 							timestamp: js_sys::Date::now() as u64,
 						});
@@ -636,7 +636,7 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Paste vector data into a new layer from a serialized JSON representation
+	/// Paste vector into a new layer from a serialized JSON representation
 	#[wasm_bindgen(js_name = pasteSerializedVector)]
 	pub fn paste_serialized_vector(&self, data: String) {
 		let message = PortfolioMessage::PasteSerializedVector { data };
@@ -914,7 +914,10 @@ fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
 fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T {
 	EDITOR.with(|editor| {
 		let mut guard = editor.try_lock();
-		let Ok(Some(editor)) = guard.as_deref_mut() else { return T::default() };
+		let Ok(Some(editor)) = guard.as_deref_mut() else {
+			log::error!("Failed to borrow editor");
+			return T::default();
+		};
 
 		callback(editor)
 	})
@@ -922,17 +925,24 @@ fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) ->
 
 /// Provides access to the `Editor` and its `EditorHandle` by calling the given closure with them as arguments.
 pub(crate) fn editor_and_handle(callback: impl FnOnce(&mut Editor, &mut EditorHandle)) {
-	EDITOR_HANDLE.with(|editor_handle| {
+	handle(|editor_handle| {
 		editor(|editor| {
-			let mut guard = editor_handle.try_lock();
-			let Ok(Some(editor_handle)) = guard.as_deref_mut() else {
-				log::error!("Failed to borrow editor handle");
-				return;
-			};
-
 			// Call the closure with the editor and its handle
 			callback(editor, editor_handle);
 		})
+	});
+}
+/// Provides access to the `EditorHandle` by calling the given closure with them as arguments.
+pub(crate) fn handle(callback: impl FnOnce(&mut EditorHandle)) {
+	EDITOR_HANDLE.with(|editor_handle| {
+		let mut guard = editor_handle.try_lock();
+		let Ok(Some(editor_handle)) = guard.as_deref_mut() else {
+			log::error!("Failed to borrow editor handle");
+			return;
+		};
+
+		// Call the closure with the editor and its handle
+		callback(editor_handle);
 	});
 }
 

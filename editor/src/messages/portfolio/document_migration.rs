@@ -13,7 +13,7 @@ use graphene_std::ProtoNodeIdentifier;
 use graphene_std::table::Table;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::uuid::NodeId;
-use graphene_std::vector::VectorData;
+use graphene_std::vector::Vector;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use std::collections::HashMap;
 
@@ -28,22 +28,56 @@ pub struct NodeReplacement<'a> {
 }
 
 const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
-	// graphic element
+	// artboard
 	NodeReplacement {
-		node: graphene_std::artboard::append_artboard::IDENTIFIER,
-		aliases: &["graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"],
+		node: graphene_std::artboard::create_artboard::IDENTIFIER,
+		aliases: &[
+			"graphene_core::ConstructArtboardNode",
+			"graphene_core::graphic_element::ToArtboardNode",
+			"graphene_core::artboard::ToArtboardNode",
+		],
+	},
+	// graphic
+	NodeReplacement {
+		node: graphene_std::graphic::to_graphic::IDENTIFIER,
+		aliases: &[
+			"graphene_core::ToGraphicGroupNode",
+			"graphene_core::graphic_element::ToGroupNode",
+			"graphene_core::graphic::ToGroupNode",
+		],
 	},
 	NodeReplacement {
-		node: graphene_std::artboard::to_artboard::IDENTIFIER,
-		aliases: &["graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"],
+		node: graphene_std::graphic::wrap_graphic::IDENTIFIER,
+		aliases: &[
+			// Converted from "To Element"
+			"graphene_core::ToGraphicElementNode",
+			"graphene_core::graphic_element::ToElementNode",
+			"graphene_core::graphic::ToElementNode",
+		],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic_element::to_element::IDENTIFIER,
-		aliases: &["graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"],
+		node: graphene_std::graphic::legacy_layer_extend::IDENTIFIER,
+		aliases: &[
+			"graphene_core::graphic_element::LayerNode",
+			"graphene_core::graphic::LayerNode",
+			// Converted from "Append Artboard"
+			"graphene_core::AddArtboardNode",
+			"graphene_core::graphic_element::AppendArtboardNode",
+			"graphene_core::graphic::AppendArtboardNode",
+			"graphene_core::artboard::AppendArtboardNode",
+		],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic_element::to_group::IDENTIFIER,
-		aliases: &["graphene_core::ToGraphicGroupNode"],
+		node: graphene_std::graphic::flatten_graphic::IDENTIFIER,
+		aliases: &["graphene_core::graphic_element::FlattenGroupNode", "graphene_core::graphic::FlattenGroupNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::flatten_vector::IDENTIFIER,
+		aliases: &["graphene_core::graphic_element::FlattenVectorNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::index::IDENTIFIER,
+		aliases: &["graphene_core::graphic_element::IndexNode"],
 	},
 	// math_nodes
 	NodeReplacement {
@@ -229,8 +263,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::ops::SomeNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::debug::unwrap::IDENTIFIER,
-		aliases: &["graphene_core::ops::UnwrapNode"],
+		node: graphene_std::debug::unwrap_option::IDENTIFIER,
+		aliases: &["graphene_core::ops::UnwrapNode", "graphene_core::debug::UnwrapNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::debug::clone::IDENTIFIER,
@@ -456,6 +490,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::path_bool::boolean_operation::IDENTIFIER,
 		aliases: &["graphene_std::vector::BooleanOperationNode"],
 	},
+	NodeReplacement {
+		node: graphene_std::vector::path_modify::IDENTIFIER,
+		aliases: &["graphene_core::vector::vector_data::modification::PathModifyNode"],
+	},
 	// brush
 	NodeReplacement {
 		node: graphene_std::brush::brush::brush_stamp_generator::IDENTIFIER,
@@ -591,13 +629,13 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		}
 
-		// Obtain the document node for the given node ID, extract the vector points, and create vector data from the list of points
+		// Obtain the document node for the given node ID, extract the vector points, and create a Vector path from the list of points
 		let node = document.network_interface.document_node(node_id, network_path)?;
 		let Some(TaggedValue::VecDVec2(points)) = node.inputs.get(1).and_then(|tagged_value| tagged_value.as_value()) else {
 			log::error!("The old Spline node's input at index 1 is not a TaggedValue::VecDVec2");
 			return None;
 		};
-		let vector_data = VectorData::from_subpath(Subpath::from_anchors_linear(points.to_vec(), false));
+		let vector = Vector::from_subpath(Subpath::from_anchors_linear(points.to_vec(), false));
 
 		// Retrieve the output connectors linked to the "Spline" node's output port
 		let Some(spline_outputs) = document.network_interface.outward_wires(network_path)?.get(&OutputConnector::node(*node_id, 0)).cloned() else {
@@ -611,13 +649,13 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		};
 
-		// Get the "Path" node definition and fill it in with the vector data and default vector modification
+		// Get the "Path" node definition and fill it in with the Vector path and default vector modification
 		let Some(path_node_type) = resolve_document_node_type("Path") else {
 			log::error!("Path node does not exist.");
 			return None;
 		};
 		let path_node = path_node_type.node_template_input_override([
-			Some(NodeInput::value(TaggedValue::VectorData(Table::new_from_element(vector_data)), true)),
+			Some(NodeInput::value(TaggedValue::Vector(Table::new_from_element(vector)), true)),
 			Some(NodeInput::value(TaggedValue::VectorModification(Default::default()), false)),
 		]);
 
@@ -792,7 +830,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[3].clone(), network_path);
 	}
 
-	// Upgrade artboard name being passed as hidden value input to "To Artboard"
+	// Upgrade artboard name being passed as hidden value input to "Create Artboard"
 	if reference == "Artboard" && reset_node_definitions_on_open {
 		let label = document.network_interface.display_name(node_id, network_path);
 		document

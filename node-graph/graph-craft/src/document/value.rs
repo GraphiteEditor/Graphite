@@ -12,7 +12,7 @@ use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::table::Table;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
-use graphene_core::vector::VectorData;
+use graphene_core::vector::Vector;
 use graphene_core::vector::style::Fill;
 use graphene_core::{Artboard, Color, Graphic, MemoHash, Node, Type};
 use graphene_svg_renderer::RenderMetadata;
@@ -180,17 +180,19 @@ tagged_value! {
 	// ===========
 	// TABLE TYPES
 	// ===========
-	#[serde(alias = "GraphicElement")]
-	Graphic(Graphic),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))] // TODO: Eventually remove this migration document upgrade code
-	VectorData(Table<VectorData>),
+	GraphicUnused(Graphic), // TODO: This is unused but removing it causes `cargo test` to infinitely recurse its type solving; figure out why and then remove this
+	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::vector::migrate_vector"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(alias = "VectorData")]
+	Vector(Table<Vector>),
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "ImageFrame")]
-	RasterData(Table<Raster<CPU>>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::graphic_element::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
-	GraphicGroup(Table<Graphic>),
+	#[serde(alias = "ImageFrame", alias = "RasterData")]
+	Raster(Table<Raster<CPU>>),
+	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::graphic::migrate_group"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(alias = "GraphicGroup")]
+	Group(Table<Graphic>),
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::artboard::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
-	ArtboardGroup(Table<Artboard>),
+	#[serde(alias = "ArtboardGroup")]
+	Artboard(Table<Artboard>),
 	// ============
 	// STRUCT TYPES
 	// ============

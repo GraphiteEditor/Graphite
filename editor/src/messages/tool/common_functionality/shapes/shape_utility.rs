@@ -210,12 +210,12 @@ pub fn transform_cage_overlays(document: &DocumentMessageHandler, tool_data: &mu
 
 pub fn anchor_overlays(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 	for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
-		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 		let transform = document.metadata().transform_to_viewport(layer);
 
-		overlay_context.outline_vector(&vector_data, transform);
+		overlay_context.outline_vector(&vector, transform);
 
-		for (_, &position) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
+		for (_, &position) in vector.point_domain.ids().iter().zip(vector.point_domain.positions()) {
 			overlay_context.manipulator_anchor(transform.transform_point2(position), false, None);
 		}
 	}
