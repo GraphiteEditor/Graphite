@@ -49,21 +49,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 		return ui;
 	}
 
-	let vp_cord = (in.tex_coords - constants.viewport_offset) * constants.viewport_scale;
+	let viewport_coordinate = (in.tex_coords - constants.viewport_offset) * constants.viewport_scale;
 
 	// Vello renders its values to an `RgbaUnorm` texture, but if we try to use this in the main rendering pipeline
 	// which renders to an `Srgb` surface, gamma mapping is applied twice. This converts back to linear to compensate.
-	let ov_raw = textureSample(t_overlays, s_diffuse, vp_cord);
-	let ov = vec4<f32>(srgb_to_linear(ov_raw.rgb), ov_raw.a);
-	let vp_raw = textureSample(t_viewport, s_diffuse, vp_cord);
-	let vp = vec4<f32>(srgb_to_linear(vp_raw.rgb), vp_raw.a);
+	let overlay_raw = textureSample(t_overlays, s_diffuse, viewport_coordinate);
+	let overlay = vec4<f32>(srgb_to_linear(overlay_raw.rgb), overlay_raw.a);
+	let viewport_raw = textureSample(t_viewport, s_diffuse, viewport_coordinate);
+	let viewport = vec4<f32>(srgb_to_linear(viewport_raw.rgb), viewport_raw.a);
 
-	if (ov.a < 0.001) {
-		return blend(ui, vp);
+	if (overlay.a < 0.001) {
+		return blend(ui, viewport);
 	}
 
-	let comp = blend(ov, vp);
-	return blend(ui, comp);
+	let composite = blend(overlay, viewport);
+	return blend(ui, composite);
 }
 
 fn srgb_to_linear(srgb: vec3<f32>) -> vec3<f32> {
