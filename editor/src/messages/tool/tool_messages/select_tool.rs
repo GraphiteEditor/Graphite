@@ -6,7 +6,6 @@ use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::preferences::SelectionMode;
@@ -15,54 +14,25 @@ use crate::messages::tool::common_functionality::compass_rose::{Axis, CompassRos
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::measure;
-use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
+use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType};
 use crate::messages::tool::common_functionality::shape_editor::SelectionShapeType;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::{resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_transform_cage};
+use crate::messages::tool::tool_messages::select_tool::options::NestedSelectionBehavior;
 use bezier_rs::Subpath;
 use glam::DMat2;
 use graph_craft::document::NodeId;
-use graphene_std::path_bool::BooleanOperation;
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::transform::ReferencePoint;
-use std::fmt;
+
+pub mod options;
 
 #[derive(Default, ExtractField)]
 pub struct SelectTool {
 	fsm_state: SelectToolFsmState,
 	tool_data: SelectToolData,
-}
-
-#[allow(dead_code)]
-#[derive(Default)]
-pub struct SelectOptions {
-	nested_selection_behavior: NestedSelectionBehavior,
-}
-
-#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
-pub enum SelectOptionsUpdate {
-	NestedSelectionBehavior(NestedSelectionBehavior),
-	PivotGizmoType(PivotGizmoType),
-	TogglePivotGizmoType(bool),
-	TogglePivotPinned,
-}
-
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
-pub enum NestedSelectionBehavior {
-	#[default]
-	Shallowest,
-	Deepest,
-}
-
-impl fmt::Display for NestedSelectionBehavior {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			NestedSelectionBehavior::Deepest => write!(f, "Deep Select"),
-			NestedSelectionBehavior::Shallowest => write!(f, "Shallow Select"),
-		}
-	}
 }
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -95,7 +65,7 @@ pub enum SelectToolMessage {
 	Enter,
 	PointerMove(SelectToolPointerKeys),
 	PointerOutsideViewport(SelectToolPointerKeys),
-	SelectOptions(SelectOptionsUpdate),
+	SelectOptions(options::SelectOptionsUpdate),
 	SetPivot {
 		position: ReferencePoint,
 	},
@@ -121,200 +91,19 @@ impl ToolMetadata for SelectTool {
 	}
 }
 
-impl SelectTool {
-	fn deep_selection_widget(&self) -> WidgetHolder {
-		let layer_selection_behavior_entries = [NestedSelectionBehavior::Shallowest, NestedSelectionBehavior::Deepest]
-			.iter()
-			.map(|mode| {
-				MenuListEntry::new(format!("{mode:?}"))
-					.label(mode.to_string())
-					.on_commit(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(*mode)).into())
-			})
-			.collect();
-
-		DropdownInput::new(vec![layer_selection_behavior_entries])
-			.selected_index(Some((self.tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest) as u32))
-			.tooltip(
-				"Selection Mode\n\
-				\n\
-				Shallow Select: clicks initially select the least-nested layers and double clicks drill deeper into the folder hierarchy.\n\
-				Deep Select: clicks directly select the most-nested layers in the folder hierarchy.",
-			)
-			.widget_holder()
-	}
-
-	fn alignment_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> + use<> {
-		[AlignAxis::X, AlignAxis::Y]
-			.into_iter()
-			.flat_map(|axis| [(axis, AlignAggregate::Min), (axis, AlignAggregate::Center), (axis, AlignAggregate::Max)])
-			.map(move |(axis, aggregate)| {
-				let (icon, tooltip) = match (axis, aggregate) {
-					(AlignAxis::X, AlignAggregate::Min) => ("AlignLeft", "Align Left"),
-					(AlignAxis::X, AlignAggregate::Center) => ("AlignHorizontalCenter", "Align Horizontal Center"),
-					(AlignAxis::X, AlignAggregate::Max) => ("AlignRight", "Align Right"),
-					(AlignAxis::Y, AlignAggregate::Min) => ("AlignTop", "Align Top"),
-					(AlignAxis::Y, AlignAggregate::Center) => ("AlignVerticalCenter", "Align Vertical Center"),
-					(AlignAxis::Y, AlignAggregate::Max) => ("AlignBottom", "Align Bottom"),
-				};
-				IconButton::new(icon, 24)
-					.tooltip(tooltip)
-					.on_update(move |_| DocumentMessage::AlignSelectedLayers { axis, aggregate }.into())
-					.disabled(disabled)
-					.widget_holder()
-			})
-	}
-
-	fn flip_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> + use<> {
-		[(FlipAxis::X, "Horizontal"), (FlipAxis::Y, "Vertical")].into_iter().map(move |(flip_axis, name)| {
-			IconButton::new("Flip".to_string() + name, 24)
-				.tooltip("Flip ".to_string() + name)
-				.on_update(move |_| DocumentMessage::FlipSelectedLayers { flip_axis }.into())
-				.disabled(disabled)
-				.widget_holder()
-		})
-	}
-
-	fn turn_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> + use<> {
-		[(-90., "TurnNegative90", "Turn -90°"), (90., "TurnPositive90", "Turn 90°")]
-			.into_iter()
-			.map(move |(degrees, icon, name)| {
-				IconButton::new(icon, 24)
-					.tooltip(name)
-					.on_update(move |_| DocumentMessage::RotateSelectedLayers { degrees }.into())
-					.disabled(disabled)
-					.widget_holder()
-			})
-	}
-
-	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetHolder> + use<> {
-		let list = <BooleanOperation as graphene_std::choice_type::ChoiceTypeStatic>::list();
-		list.iter().flat_map(|i| i.iter()).map(move |(operation, info)| {
-			let mut tooltip = info.label.to_string();
-			if let Some(doc) = info.docstring.as_deref() {
-				tooltip.push_str("\n\n");
-				tooltip.push_str(doc);
-			}
-			IconButton::new(info.icon.as_deref().unwrap(), 24)
-				.tooltip(tooltip)
-				.disabled(selected_count == 0)
-				.on_update(move |_| {
-					let group_folder_type = GroupFolderType::BooleanOperation(*operation);
-					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
-				})
-				.widget_holder()
-		})
-	}
-}
-
-impl LayoutHolder for SelectTool {
-	fn layout(&self) -> Layout {
-		let mut widgets = Vec::new();
-
-		// Select mode (Deep/Shallow)
-		widgets.push(self.deep_selection_widget());
-
-		// Pivot gizmo type (checkbox + dropdown for pivot/origin)
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.extend(pivot_gizmo_type_widget(self.tool_data.pivot_gizmo.state, PivotToolSource::Select));
-
-		if self.tool_data.pivot_gizmo.state.is_pivot_type() {
-			// Nine-position reference point widget
-			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
-			widgets.push(pivot_reference_point_widget(
-				self.tool_data.selected_layers_count == 0 || !self.tool_data.pivot_gizmo.state.is_pivot(),
-				self.tool_data.pivot_gizmo.pivot.to_pivot_position(),
-				PivotToolSource::Select,
-			));
-
-			// Pivot pin button
-			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
-
-			let pin_active = self.tool_data.pivot_gizmo.pin_active();
-			let pin_enabled = self.tool_data.pivot_gizmo.pivot.old_pivot_position == ReferencePoint::None && !self.tool_data.pivot_gizmo.state.disabled;
-
-			if pin_active || pin_enabled {
-				widgets.push(pin_pivot_widget(pin_active, pin_enabled, PivotToolSource::Select));
-			}
-		}
-
-		// Align
-		let disabled = self.tool_data.selected_layers_count < 2;
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.extend(self.alignment_widgets(disabled));
-		// widgets.push(
-		// 	PopoverButton::new()
-		// 		.popover_layout(vec![
-		// 			LayoutGroup::Row {
-		// 				widgets: vec![TextLabel::new("Align").bold(true).widget_holder()],
-		// 			},
-		// 			LayoutGroup::Row {
-		// 				widgets: vec![TextLabel::new("Coming soon").widget_holder()],
-		// 			},
-		// 		])
-		// 		.disabled(disabled)
-		// 		.widget_holder(),
-		// );
-
-		// Flip
-		let disabled = self.tool_data.selected_layers_count == 0;
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.extend(self.flip_widgets(disabled));
-
-		// Turn
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.extend(self.turn_widgets(disabled));
-
-		// Boolean
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.extend(self.boolean_widgets(self.tool_data.selected_layers_count));
-
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
-	}
-}
-
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for SelectTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		let mut redraw_reference_pivot = false;
-
 		if let ToolMessage::Select(SelectToolMessage::SelectOptions(ref option_update)) = message {
-			match option_update {
-				SelectOptionsUpdate::NestedSelectionBehavior(nested_selection_behavior) => {
-					self.tool_data.nested_selection_behavior = *nested_selection_behavior;
-					responses.add(ToolMessage::UpdateHints);
-				}
-				SelectOptionsUpdate::PivotGizmoType(gizmo_type) => {
-					if !self.tool_data.pivot_gizmo.state.disabled {
-						self.tool_data.pivot_gizmo.state.gizmo_type = *gizmo_type;
-						responses.add(ToolMessage::UpdateHints);
-						let pivot_gizmo = self.tool_data.pivot_gizmo();
-						responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
-						responses.add(NodeGraphMessage::RunDocumentGraph);
-						redraw_reference_pivot = true;
-					}
-				}
-				SelectOptionsUpdate::TogglePivotGizmoType(state) => {
-					self.tool_data.pivot_gizmo.state.disabled = !state;
-					responses.add(ToolMessage::UpdateHints);
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-					redraw_reference_pivot = true;
-				}
-
-				SelectOptionsUpdate::TogglePivotPinned => {
-					self.tool_data.pivot_gizmo.pivot.pinned = !self.tool_data.pivot_gizmo.pivot.pinned;
-					responses.add(ToolMessage::UpdateHints);
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-					redraw_reference_pivot = true;
-				}
-			}
+			self.update_tool_options(option_update, responses);
 		}
 
 		self.fsm_state.process_event(message, &mut self.tool_data, context, &(), responses, false);
 
-		if self.tool_data.pivot_gizmo.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed || redraw_reference_pivot {
+		if self.tool_data.pivot_gizmo.pivot.should_refresh_pivot_position() || self.tool_data.pivot_changed {
 			// Send the layout containing the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
 			self.send_layout(responses, LayoutTarget::ToolOptions);
-			self.tool_data.selected_layers_changed = false;
+			self.tool_data.pivot_changed = false;
 		}
 	}
 
@@ -327,7 +116,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 		);
 
 		let additional = match self.fsm_state {
-			SelectToolFsmState::Ready { .. } => actions!(SelectToolMessageDiscriminant; DragStart),
+			SelectToolFsmState::Ready => actions!(SelectToolMessageDiscriminant; DragStart),
 			_ => actions!(SelectToolMessageDiscriminant; DragStop),
 		};
 		common.extend(additional);
@@ -348,9 +137,7 @@ impl ToolTransition for SelectTool {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum SelectToolFsmState {
-	Ready {
-		selection: NestedSelectionBehavior,
-	},
+	Ready,
 	Drawing {
 		selection_shape: SelectionShapeType,
 		has_drawn: bool,
@@ -372,8 +159,7 @@ enum SelectToolFsmState {
 
 impl Default for SelectToolFsmState {
 	fn default() -> Self {
-		let selection = NestedSelectionBehavior::Deepest;
-		SelectToolFsmState::Ready { selection }
+		SelectToolFsmState::Ready
 	}
 }
 
@@ -398,9 +184,9 @@ struct SelectToolData {
 	compass_rose: CompassRose,
 	line_center: DVec2,
 	skew_edge: EdgeBool,
-	nested_selection_behavior: NestedSelectionBehavior,
+	nested_selection_behavior: options::NestedSelectionBehavior,
 	selected_layers_count: usize,
-	selected_layers_changed: bool,
+	pivot_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
 }
@@ -593,7 +379,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
 				let selected_layers_count = document.network_interface.selected_nodes().selected_unlocked_layers(&document.network_interface).count();
-				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
+				tool_data.pivot_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
 
 				// Outline selected layers, but not artboards
@@ -996,7 +782,7 @@ impl Fsm for SelectToolFsmState {
 				self
 			}
 			(
-				SelectToolFsmState::Ready { .. },
+				SelectToolFsmState::Ready,
 				SelectToolMessage::DragStart {
 					extend_selection,
 					remove_from_selection,
@@ -1128,8 +914,7 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 
-				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::Ready { selection }
+				SelectToolFsmState::Ready
 			}
 			(
 				SelectToolFsmState::Dragging {
@@ -1287,7 +1072,7 @@ impl Fsm for SelectToolFsmState {
 
 				SelectToolFsmState::Drawing { selection_shape, has_drawn: true }
 			}
-			(SelectToolFsmState::Ready { .. }, SelectToolMessage::PointerMove(_)) => {
+			(SelectToolFsmState::Ready, SelectToolMessage::PointerMove(_)) => {
 				let dragging_bounds = tool_data
 					.bounding_box_manager
 					.as_mut()
@@ -1312,8 +1097,7 @@ impl Fsm for SelectToolFsmState {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 				}
 
-				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::Ready { selection }
+				SelectToolFsmState::Ready
 			}
 			(
 				SelectToolFsmState::Dragging {
@@ -1451,8 +1235,7 @@ impl Fsm for SelectToolFsmState {
 				let pivot_gizmo = tool_data.pivot_gizmo();
 				responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
 
-				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::Ready { selection }
+				SelectToolFsmState::Ready
 			}
 			(
 				SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds | SelectToolFsmState::DraggingPivot,
@@ -1475,8 +1258,7 @@ impl Fsm for SelectToolFsmState {
 					}
 				}
 
-				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::Ready { selection }
+				SelectToolFsmState::Ready
 			}
 			(SelectToolFsmState::Drawing { selection_shape, .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
 				let quad = tool_data.selection_quad();
@@ -1549,10 +1331,9 @@ impl Fsm for SelectToolFsmState {
 
 				responses.add(OverlaysMessage::Draw);
 
-				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::Ready { selection }
+				SelectToolFsmState::Ready
 			}
-			(SelectToolFsmState::Ready { .. }, SelectToolMessage::Enter) => {
+			(SelectToolFsmState::Ready, SelectToolMessage::Enter) => {
 				let selected_nodes = document.network_interface.selected_nodes();
 				let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 
@@ -1564,8 +1345,7 @@ impl Fsm for SelectToolFsmState {
 					}
 				}
 
-				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::Ready { selection }
+				SelectToolFsmState::Ready
 			}
 			(SelectToolFsmState::Dragging { .. }, SelectToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
@@ -1574,8 +1354,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.lasso_polygon.clear();
 				responses.add(OverlaysMessage::Draw);
 
-				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::Ready { selection }
+				SelectToolFsmState::Ready
 			}
 			(_, SelectToolMessage::Abort) => {
 				tool_data.layers_dragging.retain(|layer| {
@@ -1595,8 +1374,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.lasso_polygon.clear();
 				responses.add(OverlaysMessage::Draw);
 
-				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::Ready { selection }
+				SelectToolFsmState::Ready
 			}
 			(_, SelectToolMessage::SetPivot { position }) => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -1650,13 +1428,14 @@ impl Fsm for SelectToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, _: &Self::ToolData, _: &ToolActionMessageContext, _: &Self::ToolOptions, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, tool_data: &Self::ToolData, _: &ToolActionMessageContext, _: &Self::ToolOptions, responses: &mut VecDeque<Message>) {
 		match self {
-			SelectToolFsmState::Ready { selection } => {
+			SelectToolFsmState::Ready => {
+				let selection = tool_data.nested_selection_behavior;
 				let hint_data = HintData(vec![
 					HintGroup({
 						let mut hints = vec![HintInfo::mouse(MouseMotion::Lmb, "Select Object"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()];
-						if *selection == NestedSelectionBehavior::Shallowest {
+						if selection == NestedSelectionBehavior::Shallowest {
 							hints.extend([HintInfo::keys([Key::Accel], "Deepest").prepend_plus(), HintInfo::mouse(MouseMotion::LmbDouble, "Deepen")]);
 						}
 						hints

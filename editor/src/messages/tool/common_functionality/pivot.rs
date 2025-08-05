@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::path_tool::PathOptionsUpdate;
-use crate::messages::tool::tool_messages::select_tool::SelectOptionsUpdate;
+use crate::messages::tool::tool_messages::select_tool::options::SelectOptionsUpdate;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{DAffine2, DVec2};
 use graphene_std::transform::ReferencePoint;
