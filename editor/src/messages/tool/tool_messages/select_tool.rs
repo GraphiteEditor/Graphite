@@ -1650,22 +1650,7 @@ impl Fsm for SelectToolFsmState {
 		}
 	}
 
-	fn standard_tool_messages(&self, message: &ToolMessage, responses: &mut VecDeque<Message>) -> bool {
-		// Check for standard hits or cursor events
-		match message {
-			ToolMessage::UpdateHints => {
-				self.update_hints(responses);
-				true
-			}
-			ToolMessage::UpdateCursor => {
-				self.update_cursor(responses);
-				true
-			}
-			_ => false,
-		}
-	}
-
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, _: &Self::ToolData, _: &ToolActionMessageContext, _: &Self::ToolOptions, responses: &mut VecDeque<Message>) {
 		match self {
 			SelectToolFsmState::Ready { selection } => {
 				let hint_data = HintData(vec![
@@ -1752,7 +1737,7 @@ impl Fsm for SelectToolFsmState {
 		}
 	}
 
-	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
+	fn update_cursor(&self, _: &Self::ToolData, _: &ToolActionMessageContext, _: &Self::ToolOptions, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
 }

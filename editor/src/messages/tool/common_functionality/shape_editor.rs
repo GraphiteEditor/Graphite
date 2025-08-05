@@ -1596,7 +1596,7 @@ impl ShapeState {
 	}
 
 	pub fn find_nearest_visible_point_indices(
-		&mut self,
+		&self,
 		network_interface: &NodeNetworkInterface,
 		mouse_position: DVec2,
 		select_threshold: f64,
