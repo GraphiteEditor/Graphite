@@ -15,7 +15,6 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
-use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document_migration::*;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
@@ -259,12 +258,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				};
 
 				let mut copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
-					let mut ordered_last_elements = active_document.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
-
-					ordered_last_elements.sort_by_key(|layer| {
-						let Some(parent) = layer.parent(active_document.metadata()) else { return usize::MAX };
-						DocumentMessageHandler::get_calculated_insert_index(active_document.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
-					});
+					let ordered_last_elements = active_document.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
 
 					for layer in ordered_last_elements.into_iter() {
 						let layer_node_id = layer.to_node();
