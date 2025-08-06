@@ -34,9 +34,9 @@ pub enum BooleanOperation {
 #[node_macro::node(category(""))]
 async fn boolean_operation<I: Into<Table<Graphic>> + 'n + Send + Clone>(
 	_: impl Ctx,
-	/// The group of paths to perform the boolean operation on. Nested groups are automatically flattened.
+	/// The table of vector paths to perform the boolean operation on. Nested tables are automatically flattened.
 	#[implementations(Table<Graphic>, Table<Vector>)]
-	group_of_paths: I,
+	content: I,
 	/// Which boolean operation to perform on the paths.
 	///
 	/// Union combines all paths while cutting out overlapping areas (even the interiors of a single path).
@@ -45,10 +45,10 @@ async fn boolean_operation<I: Into<Table<Graphic>> + 'n + Send + Clone>(
 	/// Difference cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
 	operation: BooleanOperation,
 ) -> Table<Vector> {
-	let group_of_paths = group_of_paths.into();
+	let content = content.into();
 
 	// The first index is the bottom of the stack
-	let mut result_vector_table = boolean_operation_on_vector_table(flatten_vector(&group_of_paths).iter(), operation);
+	let mut result_vector_table = boolean_operation_on_vector_table(flatten_vector(&content).iter(), operation);
 
 	// Replace the transformation matrix with a mutation of the vector points themselves
 	if let Some(result_vector) = result_vector_table.iter_mut().next() {
@@ -57,7 +57,7 @@ async fn boolean_operation<I: Into<Table<Graphic>> + 'n + Send + Clone>(
 
 		Vector::transform(result_vector.element, transform);
 		result_vector.element.style.set_stroke_transform(DAffine2::IDENTITY);
-		result_vector.element.upstream_group = Some(group_of_paths.clone());
+		result_vector.element.upstream_nested_layers = Some(content.clone());
 
 		// Clean up the boolean operation result by merging duplicated points
 		result_vector.element.merge_by_distance_spatial(*result_vector.transform, 0.0001);
@@ -221,13 +221,13 @@ fn difference<'a>(vector: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector
 	boolean_operation_on_vector_table(union.iter().chain(std::iter::once(any_intersection.as_ref())), BooleanOperation::SubtractFront)
 }
 
-fn flatten_vector(group_table: &Table<Graphic>) -> Table<Vector> {
-	group_table
+fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
+	graphic_table
 		.iter()
 		.flat_map(|element| {
 			match element.element.clone() {
 				Graphic::Vector(vector) => {
-					// Apply the parent group's transform to each element of the vector table
+					// Apply the parent graphic's transform to each element of the vector table
 					vector
 						.into_iter()
 						.map(|mut sub_vector| {
@@ -250,7 +250,7 @@ fn flatten_vector(group_table: &Table<Graphic>) -> Table<Vector> {
 						TableRow { element, ..Default::default() }
 					};
 
-					// Apply the parent group's transform to each raster element
+					// Apply the parent graphic's transform to each raster element
 					image.iter().map(|row| make_row(*element.transform * *row.transform)).collect::<Vec<_>>()
 				}
 				Graphic::RasterGPU(image) => {
@@ -266,17 +266,17 @@ fn flatten_vector(group_table: &Table<Graphic>) -> Table<Vector> {
 						TableRow { element, ..Default::default() }
 					};
 
-					// Apply the parent group's transform to each raster element
+					// Apply the parent graphic's transform to each raster element
 					image.iter().map(|row| make_row(*element.transform * *row.transform)).collect::<Vec<_>>()
 				}
-				Graphic::Group(mut group) => {
-					// Apply the parent group's transform to each element of inner group
-					for sub_element in group.iter_mut() {
+				Graphic::Graphic(mut graphic) => {
+					// Apply the parent graphic's transform to each element of inner table
+					for sub_element in graphic.iter_mut() {
 						*sub_element.transform = *element.transform * *sub_element.transform;
 					}
 
-					// Recursively flatten the inner group into the vector table
-					let unioned = boolean_operation_on_vector_table(flatten_vector(&group).iter(), BooleanOperation::Union);
+					// Recursively flatten the inner table into the output vector table
+					let unioned = boolean_operation_on_vector_table(flatten_vector(&graphic).iter(), BooleanOperation::Union);
 
 					unioned.into_iter().collect::<Vec<_>>()
 				}
@@ -329,7 +329,7 @@ fn from_path(path_data: &[Path]) -> Vector {
 
 	for path in path_data.iter().filter(|path| !path.is_empty()) {
 		let cubics: Vec<[DVec2; 4]> = path.iter().map(|segment| segment.to_cubic()).collect();
-		let mut groups = Vec::new();
+		let mut manipulators_list = Vec::new();
 		let mut current_start = None;
 
 		for (index, cubic) in cubics.iter().enumerate() {
@@ -337,27 +337,27 @@ fn from_path(path_data: &[Path]) -> Vector {
 
 			if current_start.is_none() || !is_close(start, current_start.unwrap()) {
 				// Start a new subpath
-				if !groups.is_empty() {
-					all_subpaths.push(Subpath::new(std::mem::take(&mut groups), true));
+				if !manipulators_list.is_empty() {
+					all_subpaths.push(Subpath::new(std::mem::take(&mut manipulators_list), true));
 				}
 				// Use the correct in-handle (None) and out-handle for the start point
-				groups.push(ManipulatorGroup::new(start, None, Some(handle1)));
+				manipulators_list.push(ManipulatorGroup::new(start, None, Some(handle1)));
 			} else {
 				// Update the out-handle of the previous point
-				if let Some(last) = groups.last_mut() {
+				if let Some(last) = manipulators_list.last_mut() {
 					last.out_handle = Some(handle1);
 				}
 			}
 
 			// Add the end point with the correct in-handle and out-handle (None)
-			groups.push(ManipulatorGroup::new(end, Some(handle2), None));
+			manipulators_list.push(ManipulatorGroup::new(end, Some(handle2), None));
 
 			current_start = Some(end);
 
 			// Check if this is the last segment
 			if index == cubics.len() - 1 {
-				all_subpaths.push(Subpath::new(groups, true));
-				groups = Vec::new(); // Reset groups for the next path
+				all_subpaths.push(Subpath::new(manipulators_list, true));
+				manipulators_list = Vec::new(); // Reset manipulators for the next path
 			}
 		}
 	}

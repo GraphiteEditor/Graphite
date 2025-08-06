@@ -359,8 +359,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 
 								choices
 									.into_iter()
-									.map(|group| {
-										group
+									.map(|section| {
+										section
 											.into_iter()
 											.map(|(axis, aggregate, icon, name)| MenuBarEntry {
 												label: name.into(),

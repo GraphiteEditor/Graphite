@@ -154,7 +154,7 @@ impl TableRowLayout for Graphic {
 	}
 	fn identifier(&self) -> String {
 		match self {
-			Self::Group(group) => group.identifier(),
+			Self::Graphic(graphic) => graphic.identifier(),
 			Self::Vector(vector) => vector.identifier(),
 			Self::RasterCPU(_) => "Raster (on CPU)".to_string(),
 			Self::RasterGPU(_) => "Raster (on GPU)".to_string(),
@@ -166,7 +166,7 @@ impl TableRowLayout for Graphic {
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		match self {
-			Self::Group(table) => table.layout_with_breadcrumb(data),
+			Self::Graphic(table) => table.layout_with_breadcrumb(data),
 			Self::Vector(table) => table.layout_with_breadcrumb(data),
 			Self::RasterCPU(_) => label("Raster is not supported"),
 			Self::RasterGPU(_) => label("Raster is not supported"),
@@ -192,10 +192,10 @@ impl TableRowLayout for Vector {
 		let colinear = if colinear.is_empty() { "None" } else { &colinear };
 		let style = vec![
 			TextLabel::new(format!(
-				"{}\n\nColinear Handle IDs: {}\n\nUpstream Group Table: {}",
+				"{}\n\nColinear Handle IDs: {}\nPreserves Reference to Upstream Nested Layers for Editing by Tools: {}",
 				self.style,
 				colinear,
-				if self.upstream_group.is_some() { "Yes" } else { "No" }
+				if self.upstream_nested_layers.is_some() { "Yes" } else { "No" }
 			))
 			.multiline(true)
 			.widget_holder(),
@@ -269,7 +269,7 @@ impl TableRowLayout for Artboard {
 		self.label.clone()
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		self.group.compute_layout(data)
+		self.content.compute_layout(data)
 	}
 }
 
