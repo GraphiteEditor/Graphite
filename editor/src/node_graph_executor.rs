@@ -290,7 +290,7 @@ impl NodeGraphExecutor {
 					} else {
 						self.process_node_graph_output(node_graph_output, transform, responses)?
 					}
-					responses.add(DeferMessage::TriggerGraphRun(execution_id, execution_context.document_id));
+					responses.add_front(DeferMessage::TriggerGraphRun(execution_id, execution_context.document_id));
 
 					// Update the spreadsheet on the frontend using the value of the inspect result.
 					if self.old_inspect_node.is_some() {

@@ -353,7 +353,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						inspect_node,
 						true,
 					) {
-						responses.add(message);
+						responses.add_front(message);
 					}
 				}
 
@@ -935,7 +935,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							description,
 						});
 					}
-					Ok(message) => responses.add(message),
+					Ok(message) => responses.add_front(message),
 				}
 			}
 			PortfolioMessage::ToggleRulers => {
