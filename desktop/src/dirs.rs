@@ -1,7 +1,7 @@
 use std::fs::create_dir_all;
 use std::path::PathBuf;
 
-static APP_NAME: &str = "graphite-desktop";
+use crate::consts::APP_DIRECTORY_NAME;
 
 pub(crate) fn ensure_dir_exists(path: &PathBuf) {
 	if !path.exists() {
@@ -10,7 +10,7 @@ pub(crate) fn ensure_dir_exists(path: &PathBuf) {
 }
 
 pub(crate) fn graphite_data_dir() -> PathBuf {
-	let path = dirs::data_dir().expect("Failed to get data directory").join(APP_NAME);
+	let path = dirs::data_dir().expect("Failed to get data directory").join(APP_DIRECTORY_NAME);
 	ensure_dir_exists(&path);
 	path
 }
