@@ -122,7 +122,7 @@ impl ClickTarget {
 				}
 
 				// Check if shape is entirely within selection
-				let any_point_from_subpath = subpath.manipulator_groups().first().map(|group| group.anchor);
+				let any_point_from_subpath = subpath.manipulator_groups().first().map(|manipulators| manipulators.anchor);
 				any_point_from_subpath.is_some_and(|shape_point| bezier_iter().map(|bezier| bezier.winding(shape_point)).sum::<i32>() != 0)
 			}
 			ClickTargetType::FreePoint(point) => bezier_iter().map(|bezier: bezier_rs::Bezier| bezier.winding(point.position)).sum::<i32>() != 0,

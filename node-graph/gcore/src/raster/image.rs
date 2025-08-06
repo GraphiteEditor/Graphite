@@ -356,7 +356,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 				GraphicElement::RasterFrame(RasterFrame::ImageFrame(image)) => Self {
 					image: image.iter().next().unwrap().element.clone(),
 				},
-				_ => panic!("Expected Image, found {:?}", element),
+				_ => panic!("Expected Image, found {element:?}"),
 			}
 		}
 	}
