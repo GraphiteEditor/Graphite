@@ -533,7 +533,13 @@
 							y={cursorTop}
 						/>
 					{/if}
-					<div class:viewport={!$appWindow.viewportHolePunch} class:viewport-transparent={$appWindow.viewportHolePunch} on:pointerdown={(e) => canvasPointerDown(e)} bind:this={viewport} data-viewport>
+					<div
+						class:viewport={!$appWindow.viewportHolePunch}
+						class:viewport-transparent={$appWindow.viewportHolePunch}
+						on:pointerdown={(e) => canvasPointerDown(e)}
+						bind:this={viewport}
+						data-viewport
+					>
 						{#if !$appWindow.viewportHolePunch}
 							<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 								{@html artworkSvg}
@@ -762,7 +768,8 @@
 						background: var(--color-2-mildblack);
 					}
 
-					.viewport, .viewport-transparent {
+					.viewport,
+					.viewport-transparent {
 						width: 100%;
 						height: 100%;
 						// Allows the SVG to be placed at explicit integer values of width and height to prevent non-pixel-perfect SVG scaling
