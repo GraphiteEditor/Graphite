@@ -1,6 +1,7 @@
 use crate::CustomEvent;
 use crate::WindowSize;
 use crate::dialogs::dialog_open_graphite_file;
+use crate::dialogs::dialog_save_file;
 use crate::dialogs::dialog_save_graphite_file;
 use crate::render::GraphicsState;
 use crate::render::WgpuContext;
@@ -92,7 +93,7 @@ impl WinitApp {
 				let _ = thread::spawn(move || {
 					let path = futures::executor::block_on(dialog_save_graphite_file(name));
 					if let Some(path) = path {
-						if let Err(e) = std::fs::write(&path, document) {
+						if let Err(e) = std::fs::write(&path, content) {
 							tracing::error!("Failed to save file: {}: {}", path.display(), e);
 						} else {
 							let message = Message::Portfolio(PortfolioMessage::DocumentPassMessage {
@@ -104,6 +105,18 @@ impl WinitApp {
 					}
 				});
 			}
+		}
+
+		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerSaveFile { .. })) {
+			let FrontendMessage::TriggerSaveFile { name, content } = message else { unreachable!() };
+			let _ = thread::spawn(move || {
+				let path = futures::executor::block_on(dialog_save_file(name));
+				if let Some(path) = path {
+					if let Err(e) = std::fs::write(&path, content) {
+						tracing::error!("Failed to save file: {}: {}", path.display(), e);
+					}
+				}
+			});
 		}
 
 		if responses.is_empty() {
