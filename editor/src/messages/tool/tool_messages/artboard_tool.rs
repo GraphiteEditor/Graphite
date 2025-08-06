@@ -339,7 +339,7 @@ impl Fsm for ArtboardToolFsmState {
 					responses.add(GraphOperationMessage::NewArtboard {
 						id,
 						artboard: Artboard {
-							group: Table::new(),
+							content: Table::new(),
 							label: String::from("Artboard"),
 							location: start.min(end).round().as_ivec2(),
 							dimensions: (start.round() - end.round()).abs().as_ivec2(),

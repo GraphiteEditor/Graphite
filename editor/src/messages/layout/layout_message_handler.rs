@@ -59,8 +59,8 @@ impl LayoutMessageHandler {
 	/// Get the widget path for the widget with the specified id
 	fn get_widget_path(widget_layout: &WidgetLayout, widget_id: WidgetId) -> Option<(&WidgetHolder, Vec<usize>)> {
 		let mut stack = widget_layout.layout.iter().enumerate().map(|(index, val)| (vec![index], val)).collect::<Vec<_>>();
-		while let Some((mut widget_path, group)) = stack.pop() {
-			match group {
+		while let Some((mut widget_path, layout_group)) = stack.pop() {
+			match layout_group {
 				// Check if any of the widgets in the current column or row have the correct id
 				LayoutGroup::Column { widgets } | LayoutGroup::Row { widgets } => {
 					for (index, widget) in widgets.iter().enumerate() {
