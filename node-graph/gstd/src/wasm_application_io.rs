@@ -16,7 +16,6 @@ use graphene_svg_renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRende
 
 #[cfg(target_family = "wasm")]
 use base64::Engine;
-#[cfg(target_family = "wasm")]
 use glam::DAffine2;
 use std::sync::Arc;
 #[cfg(target_family = "wasm")]
@@ -169,7 +168,8 @@ fn render_svg(data: impl Render, mut render: SvgRender, render_params: RenderPar
 async fn render_canvas(render_config: RenderConfig, data: impl Render, editor: &WasmEditorApi, surface_handle: Option<wgpu_executor::WgpuSurface>, render_params: RenderParams) -> RenderOutputType {
 	use graphene_application_io::{ImageTexture, SurfaceFrame};
 
-	let footprint = render_config.viewport;
+	let mut footprint = render_config.viewport;
+	footprint.resolution = footprint.resolution.max(glam::UVec2::splat(1));
 	let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() else {
 		unreachable!("Attempted to render with Vello when no GPU executor is available");
 	};
@@ -196,7 +196,7 @@ async fn render_canvas(render_config: RenderConfig, data: impl Render, editor: &
 		let frame = SurfaceFrame {
 			surface_id: surface_handle.window_id,
 			resolution: render_config.viewport.resolution,
-			transform: glam::DAffine2::IDENTITY,
+			transform: DAffine2::IDENTITY,
 		};
 
 		RenderOutputType::CanvasFrame(frame)

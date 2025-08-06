@@ -14,9 +14,9 @@ pub trait Linear {
 	fn lerp(self, other: Self, value: Self) -> Self
 	where
 		Self: Sized + Copy,
-		Self: std::ops::Sub<Self, Output = Self>,
-		Self: std::ops::Mul<Self, Output = Self>,
-		Self: std::ops::Add<Self, Output = Self>,
+		Self: core::ops::Sub<Self, Output = Self>,
+		Self: core::ops::Mul<Self, Output = Self>,
+		Self: core::ops::Add<Self, Output = Self>,
 	{
 		self + (other - self) * value
 	}
@@ -97,7 +97,7 @@ pub trait SRGB: Rec709Primaries {}
 
 // TODO: Come up with a better name for this trait
 pub trait Pixel: Clone + Pod + Zeroable + Default {
-	#[cfg(not(target_arch = "spirv"))]
+	#[cfg(feature = "std")]
 	fn to_bytes(&self) -> Vec<u8> {
 		bytemuck::bytes_of(self).to_vec()
 	}
