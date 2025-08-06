@@ -13,7 +13,7 @@ use std::hash::Hash;
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
 #[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum Graphic {
-	Group(Table<Graphic>),
+	Graphic(Table<Graphic>),
 	Vector(Table<Vector>),
 	RasterCPU(Table<Raster<CPU>>),
 	RasterGPU(Table<Raster<GPU>>),
@@ -21,14 +21,14 @@ pub enum Graphic {
 
 impl Default for Graphic {
 	fn default() -> Self {
-		Self::Group(Default::default())
+		Self::Graphic(Default::default())
 	}
 }
 
-// Group
+// Graphic
 impl From<Table<Graphic>> for Graphic {
-	fn from(group: Table<Graphic>) -> Self {
-		Graphic::Group(group)
+	fn from(graphic: Table<Graphic>) -> Self {
+		Graphic::Graphic(graphic)
 	}
 }
 
@@ -111,16 +111,16 @@ impl From<DAffine2> for Table<Graphic> {
 }
 
 impl Graphic {
-	pub fn as_group(&self) -> Option<&Table<Graphic>> {
+	pub fn as_graphic(&self) -> Option<&Table<Graphic>> {
 		match self {
-			Graphic::Group(group) => Some(group),
+			Graphic::Graphic(graphic) => Some(graphic),
 			_ => None,
 		}
 	}
 
-	pub fn as_group_mut(&mut self) -> Option<&mut Table<Graphic>> {
+	pub fn as_graphic_mut(&mut self) -> Option<&mut Table<Graphic>> {
 		match self {
-			Graphic::Group(group) => Some(group),
+			Graphic::Graphic(graphic) => Some(graphic),
 			_ => None,
 		}
 	}
@@ -156,7 +156,7 @@ impl Graphic {
 	pub fn had_clip_enabled(&self) -> bool {
 		match self {
 			Graphic::Vector(vector) => vector.iter().all(|row| row.alpha_blending.clip),
-			Graphic::Group(group) => group.iter().all(|row| row.alpha_blending.clip),
+			Graphic::Graphic(graphic) => graphic.iter().all(|row| row.alpha_blending.clip),
 			Graphic::RasterCPU(raster) => raster.iter().all(|row| row.alpha_blending.clip),
 			Graphic::RasterGPU(raster) => raster.iter().all(|row| row.alpha_blending.clip),
 		}
@@ -180,7 +180,7 @@ impl BoundingBox for Graphic {
 			Graphic::Vector(vector) => vector.bounding_box(transform, include_stroke),
 			Graphic::RasterCPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(raster) => raster.bounding_box(transform, include_stroke),
-			Graphic::Group(group) => group.bounding_box(transform, include_stroke),
+			Graphic::Graphic(graphic) => graphic.bounding_box(transform, include_stroke),
 		}
 	}
 }
@@ -295,7 +295,7 @@ async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten: bo
 
 			match current_element {
 				// If we're allowed to recurse, flatten any graphics we encounter
-				Graphic::Group(mut current_element) if recurse => {
+				Graphic::Graphic(mut current_element) if recurse => {
 					// Apply the parent graphic's transform to all child elements
 					for graphic in current_element.iter_mut() {
 						*graphic.transform = *current_row.transform * *graphic.transform;
@@ -332,7 +332,7 @@ async fn flatten_vector(_: impl Ctx, content: Table<Graphic>) -> Table<Vector> {
 
 			match current_graphic {
 				// If we're allowed to recurse, flatten any tables we encounter
-				Graphic::Group(mut current_graphic_table) => {
+				Graphic::Graphic(mut current_graphic_table) => {
 					// Apply the parent graphic's transform to all child elements
 					for graphic in current_graphic_table.iter_mut() {
 						*graphic.transform = *current_graphic_row.transform * *graphic.transform;
@@ -418,7 +418,7 @@ impl<T: Clone> AtIndex for Table<T> {
 }
 
 // TODO: Eventually remove this migration document upgrade code
-pub fn migrate_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Graphic>, D::Error> {
+pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Graphic>, D::Error> {
 	use serde::Deserialize;
 
 	#[derive(Clone, Debug, PartialEq, DynAny, Default, serde::Serialize, serde::Deserialize)]
@@ -441,24 +441,24 @@ pub fn migrate_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resul
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
 		EitherFormat::OldGraphicGroup(old) => {
-			let mut group_table = Table::new();
+			let mut graphic_table = Table::new();
 			for (graphic, source_node_id) in old.elements {
-				group_table.push(TableRow {
+				graphic_table.push(TableRow {
 					element: graphic,
 					transform: old.transform,
 					alpha_blending: old.alpha_blending,
 					source_node_id,
 				});
 			}
-			group_table
+			graphic_table
 		}
 		EitherFormat::Table(value) => {
 			// Try to deserialize as either table format
 			if let Ok(old_table) = serde_json::from_value::<Table<GraphicGroup>>(value.clone()) {
-				let mut group_table = Table::new();
+				let mut graphic_table = Table::new();
 				for row in old_table.iter() {
 					for (graphic, source_node_id) in &row.element.elements {
-						group_table.push(TableRow {
+						graphic_table.push(TableRow {
 							element: graphic.clone(),
 							transform: *row.transform,
 							alpha_blending: *row.alpha_blending,
@@ -466,7 +466,7 @@ pub fn migrate_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resul
 						});
 					}
 				}
-				group_table
+				graphic_table
 			} else if let Ok(new_table) = serde_json::from_value::<Table<Graphic>>(value) {
 				new_table
 			} else {

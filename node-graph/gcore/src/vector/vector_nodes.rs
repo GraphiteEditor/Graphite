@@ -50,7 +50,7 @@ async fn assign_colors<T>(
 	_: impl Ctx,
 	#[implementations(Table<Graphic>, Table<Vector>)]
 	#[widget(ParsedWidgetOverride::Hidden)]
-	/// The vector elements, or group of vector elements, to apply the fill and/or stroke style to.
+	/// The content with vector paths to apply the fill and/or stroke style to.
 	mut content: T,
 	#[default(true)]
 	/// Whether to style the fill.
@@ -118,7 +118,7 @@ async fn fill<F: Into<Fill> + 'n + Send, V>(
 		Table<Graphic>,
 		Table<Graphic>
 	)]
-	/// The vector elements, or group of vector elements, to apply the fill to.
+	/// The content with vector paths to apply the fill style to.
 	mut content: V,
 	#[implementations(
 		Fill,
@@ -156,7 +156,7 @@ where
 async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	_: impl Ctx,
 	#[implementations(Table<Vector>, Table<Vector>, Table<Graphic>, Table<Graphic>)]
-	/// The vector elements, or group of vector elements, to apply the stroke to.
+	/// The content with vector paths to apply the stroke style to.
 	mut content: Table<V>,
 	#[implementations(
 		Option<Color>,
@@ -447,7 +447,7 @@ async fn round_corners(
 			let source_node_id = source.source_node_id;
 			let source = source.element;
 
-			let upstream_group = source.upstream_group.clone();
+			let upstream_nested_layers = source.upstream_nested_layers.clone();
 
 			// Flip the roundness to help with user intuition
 			let roundness = 1. - roundness;
@@ -532,7 +532,7 @@ async fn round_corners(
 				result.append_bezpath(rounded_subpath);
 			}
 
-			result.upstream_group = upstream_group;
+			result.upstream_nested_layers = upstream_nested_layers;
 
 			TableRow {
 				element: result,
@@ -687,18 +687,18 @@ async fn auto_tangents(
 			for mut subpath in source.stroke_bezier_paths() {
 				subpath.apply_transform(transform);
 
-				let groups = subpath.manipulator_groups();
-				if groups.len() < 2 {
+				let manipulators_list = subpath.manipulator_groups();
+				if manipulators_list.len() < 2 {
 					// Not enough points for softening or handle removal
 					result.append_subpath(subpath, true);
 					continue;
 				}
 
-				let mut new_groups = Vec::with_capacity(groups.len());
+				let mut new_manipulators_list = Vec::with_capacity(manipulators_list.len());
 				let is_closed = subpath.closed();
 
-				for i in 0..groups.len() {
-					let curr = &groups[i];
+				for i in 0..manipulators_list.len() {
+					let curr = &manipulators_list[i];
 
 					if preserve_existing {
 						// Check if this point has handles that are meaningfully different from the anchor
@@ -706,15 +706,15 @@ async fn auto_tangents(
 							|| (curr.out_handle.is_some() && !curr.out_handle.unwrap().abs_diff_eq(curr.anchor, 1e-5));
 
 						// If the point already has handles, or if it's an endpoint of an open path, keep it as is.
-						if has_handles || (!is_closed && (i == 0 || i == groups.len() - 1)) {
-							new_groups.push(*curr);
+						if has_handles || (!is_closed && (i == 0 || i == manipulators_list.len() - 1)) {
+							new_manipulators_list.push(*curr);
 							continue;
 						}
 					}
 
 					// If spread is 0, remove handles for this point, making it a sharp corner.
 					if spread == 0. {
-						new_groups.push(ManipulatorGroup {
+						new_manipulators_list.push(ManipulatorGroup {
 							anchor: curr.anchor,
 							in_handle: None,
 							out_handle: None,
@@ -724,12 +724,12 @@ async fn auto_tangents(
 					}
 
 					// Get previous and next points for auto-tangent calculation
-					let prev_idx = if i == 0 { if is_closed { groups.len() - 1 } else { i } } else { i - 1 };
-					let next_idx = if i == groups.len() - 1 { if is_closed { 0 } else { i } } else { i + 1 };
+					let prev_idx = if i == 0 { if is_closed { manipulators_list.len() - 1 } else { i } } else { i - 1 };
+					let next_idx = if i == manipulators_list.len() - 1 { if is_closed { 0 } else { i } } else { i + 1 };
 
-					let prev = groups[prev_idx].anchor;
+					let prev = manipulators_list[prev_idx].anchor;
 					let curr_pos = curr.anchor;
-					let next = groups[next_idx].anchor;
+					let next = manipulators_list[next_idx].anchor;
 
 					// Calculate directions from current point to adjacent points
 					let dir_prev = (prev - curr_pos).normalize_or_zero();
@@ -738,7 +738,7 @@ async fn auto_tangents(
 					// Check if we have valid directions (e.g., points are not coincident)
 					if dir_prev.length_squared() < 1e-5 || dir_next.length_squared() < 1e-5 {
 						// Fallback: keep the original manipulator group (which has no active handles here)
-						new_groups.push(*curr);
+						new_manipulators_list.push(*curr);
 						continue;
 					}
 
@@ -758,7 +758,7 @@ async fn auto_tangents(
 					let out_length = (next - curr_pos).length() / 3. * spread;
 
 					// Create new manipulator group with calculated auto-tangents
-					new_groups.push(ManipulatorGroup {
+					new_manipulators_list.push(ManipulatorGroup {
 						anchor: curr_pos,
 						in_handle: Some(curr_pos + handle_dir * in_length),
 						out_handle: Some(curr_pos - handle_dir * out_length),
@@ -766,7 +766,7 @@ async fn auto_tangents(
 					});
 				}
 
-				let mut softened_bezpath = bezpath_from_manipulator_groups(&new_groups, is_closed);
+				let mut softened_bezpath = bezpath_from_manipulator_groups(&new_manipulators_list, is_closed);
 				softened_bezpath.apply_affine(Affine::new(transform.inverse().to_cols_array()));
 				result.append_bezpath(softened_bezpath);
 			}
@@ -985,7 +985,7 @@ where
 						output.element.style = row.element.style.clone();
 					}
 				}
-				Graphic::Group(graphic) => {
+				Graphic::Graphic(graphic) => {
 					let mut graphic = graphic.clone();
 					for row in graphic.iter_mut() {
 						*row.transform = *current_element.transform * *row.transform;
@@ -1032,7 +1032,7 @@ async fn sample_polyline(
 				region_domain: Default::default(),
 				colinear_manipulators: Default::default(),
 				style: std::mem::take(&mut row.element.style),
-				upstream_group: std::mem::take(&mut row.element.upstream_group),
+				upstream_nested_layers: std::mem::take(&mut row.element.upstream_nested_layers),
 			};
 			// Transfer the stroke transform from the input vector content to the result.
 			result.style.set_stroke_transform(row.transform);
@@ -1343,7 +1343,7 @@ async fn spline(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 
 			let mut segment_domain = SegmentDomain::default();
 			for (manipulator_groups, closed) in row.element.stroke_manipulator_groups() {
-				let positions = manipulator_groups.iter().map(|group| group.anchor).collect::<Vec<_>>();
+				let positions = manipulator_groups.iter().map(|manipulators| manipulators.anchor).collect::<Vec<_>>();
 				let closed = closed && positions.len() > 2;
 
 				// Compute control point handles for Bezier spline.
@@ -2075,7 +2075,14 @@ mod test {
 		let bounding_box = super::bounding_box((), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY))).await;
 		let bounding_box = bounding_box.iter().next().unwrap().element;
 		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
-		let manipulator_groups_anchors = bounding_box.region_manipulator_groups().next().unwrap().1.iter().map(|group| group.anchor).collect::<Vec<DVec2>>();
+		let manipulator_groups_anchors = bounding_box
+			.region_manipulator_groups()
+			.next()
+			.unwrap()
+			.1
+			.iter()
+			.map(|manipulators| manipulators.anchor)
+			.collect::<Vec<DVec2>>();
 
 		assert_eq!(&manipulator_groups_anchors[..4], &[DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.),]);
 
@@ -2086,7 +2093,14 @@ mod test {
 		let bounding_box = BoundingBoxNode { content: FutureWrapperNode(square) }.eval(Footprint::default()).await;
 		let bounding_box = bounding_box.iter().next().unwrap().element;
 		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
-		let manipulator_groups_anchors = bounding_box.region_manipulator_groups().next().unwrap().1.iter().map(|group| group.anchor).collect::<Vec<DVec2>>();
+		let manipulator_groups_anchors = bounding_box
+			.region_manipulator_groups()
+			.next()
+			.unwrap()
+			.1
+			.iter()
+			.map(|manipulators| manipulators.anchor)
+			.collect::<Vec<DVec2>>();
 
 		let expected_bounding_box = [DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.)];
 		for i in 0..4 {
@@ -2108,7 +2122,7 @@ mod test {
 
 		for (index, (_, manipulator_groups)) in flattened_copy_to_points.region_manipulator_groups().enumerate() {
 			let offset = expected_points[index];
-			let manipulator_groups_anchors = manipulator_groups.iter().map(|group| group.anchor).collect::<Vec<DVec2>>();
+			let manipulator_groups_anchors = manipulator_groups.iter().map(|manipulators| manipulators.anchor).collect::<Vec<DVec2>>();
 			assert_eq!(
 				&manipulator_groups_anchors,
 				&[offset + DVec2::NEG_ONE, offset + DVec2::new(1., -1.), offset + DVec2::ONE, offset + DVec2::new(-1., 1.),]

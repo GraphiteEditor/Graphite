@@ -192,7 +192,7 @@ export type ContextMenuInformation = {
 	contextMenuData: "CreateNode" | { type: "CreateNode"; compatibleType: string } | { nodeId: bigint; currentlyIsNode: boolean };
 };
 
-export type FrontendGraphDataType = "General" | "Raster" | "Vector" | "Number" | "Group" | "Artboard";
+export type FrontendGraphDataType = "General" | "Raster" | "Vector" | "Number" | "Graphic" | "Artboard";
 
 export class Node {
 	readonly index!: bigint;

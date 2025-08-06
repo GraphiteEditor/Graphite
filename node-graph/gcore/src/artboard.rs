@@ -14,7 +14,7 @@ use std::hash::Hash;
 /// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
 #[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct Artboard {
-	pub group: Table<Graphic>,
+	pub content: Table<Graphic>,
 	pub label: String,
 	pub location: IVec2,
 	pub dimensions: IVec2,
@@ -31,7 +31,7 @@ impl Default for Artboard {
 impl Artboard {
 	pub fn new(location: IVec2, dimensions: IVec2) -> Self {
 		Self {
-			group: Table::new(),
+			content: Table::new(),
 			label: "Artboard".to_string(),
 			location: location.min(location + dimensions),
 			dimensions: dimensions.abs(),
@@ -47,7 +47,7 @@ impl BoundingBox for Artboard {
 		if self.clip {
 			Some(artboard_bounds)
 		} else {
-			[self.group.bounding_box(transform, include_stroke), Some(artboard_bounds)]
+			[self.content.bounding_box(transform, include_stroke), Some(artboard_bounds)]
 				.into_iter()
 				.flatten()
 				.reduce(Quad::combine_bounds)
@@ -56,7 +56,7 @@ impl BoundingBox for Artboard {
 }
 
 // TODO: Eventually remove this migration document upgrade code
-pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Artboard>, D::Error> {
+pub fn migrate_artboard<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Artboard>, D::Error> {
 	use serde::Deserialize;
 
 	#[derive(Clone, Default, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
@@ -84,7 +84,7 @@ pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D)
 			}
 			table
 		}
-		EitherFormat::ArtboardTable(artboard_group_table) => artboard_group_table,
+		EitherFormat::ArtboardTable(artboard_table) => artboard_table,
 	})
 }
 
@@ -119,7 +119,7 @@ async fn create_artboard<T: Into<Table<Graphic>> + 'n>(
 		footprint.translate(location.as_dvec2());
 		new_ctx = new_ctx.with_footprint(footprint);
 	}
-	let group = content.eval(new_ctx.into_context()).await.into();
+	let content = content.eval(new_ctx.into_context()).await.into();
 
 	let dimensions = dimensions.as_ivec2().max(IVec2::ONE);
 
@@ -128,7 +128,7 @@ async fn create_artboard<T: Into<Table<Graphic>> + 'n>(
 	let dimensions = dimensions.abs();
 
 	Table::new_from_element(Artboard {
-		group,
+		content,
 		label,
 		location,
 		dimensions,

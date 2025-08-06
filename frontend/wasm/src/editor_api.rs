@@ -744,7 +744,7 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Merge a group of nodes into a subnetwork
+	/// Merge the selected nodes into a subnetwork
 	#[wasm_bindgen(js_name = mergeSelectedNodes)]
 	pub fn merge_nodes(&self) {
 		let message = NodeGraphMessage::MergeSelectedNodes;

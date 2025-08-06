@@ -224,7 +224,7 @@ pub trait Render: BoundingBox + RenderComplexity {
 	// TODO: Store all click targets in a vec which contains the AABB, click target, and path
 	// fn add_click_targets(&self, click_targets: &mut Vec<([DVec2; 2], ClickTarget, Vec<NodeId>)>, current_path: Option<NodeId>) {}
 
-	/// Recursively iterate over data in the render (including groups upstream from vector data in the case of a boolean operation) to collect the footprints, click targets, and vector modify.
+	/// Recursively iterate over data in the render (including nested layer stacks upstream of a vector node, in the case of a boolean operation) to collect the footprints, click targets, and vector modify.
 	fn collect_metadata(&self, _metadata: &mut RenderMetadata, _footprint: Footprint, _element_id: Option<NodeId>) {}
 
 	fn contains_artboard(&self) -> bool {
@@ -365,7 +365,7 @@ impl Render for Table<Graphic> {
 			}
 		}
 
-		if let Some(group_id) = element_id {
+		if let Some(element_id) = element_id {
 			let mut all_upstream_click_targets = Vec::new();
 
 			for row in self.iter() {
@@ -379,7 +379,7 @@ impl Render for Table<Graphic> {
 				all_upstream_click_targets.extend(new_click_targets);
 			}
 
-			metadata.click_targets.insert(group_id, all_upstream_click_targets);
+			metadata.click_targets.insert(element_id, all_upstream_click_targets);
 		}
 	}
 
@@ -764,9 +764,9 @@ impl Render for Table<Vector> {
 				metadata.click_targets.entry(element_id).or_insert(click_targets);
 			}
 
-			if let Some(upstream_group) = &vector.upstream_group {
+			if let Some(upstream_nested_layers) = &vector.upstream_nested_layers {
 				footprint.transform *= transform;
-				upstream_group.collect_metadata(metadata, footprint, None);
+				upstream_nested_layers.collect_metadata(metadata, footprint, None);
 			}
 		}
 	}
@@ -813,6 +813,7 @@ impl Render for Table<Vector> {
 
 impl Render for Artboard {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		// Rectangle for the artboard
 		if !render_params.hide_artboards {
 			// Background
 			render.leaf_tag("rect", |attributes| {
@@ -827,7 +828,7 @@ impl Render for Artboard {
 			});
 		}
 
-		// Content group (includes the artwork but not the background)
+		// Artwork
 		render.parent_tag(
 			// SVG group tag
 			"g",
@@ -851,9 +852,9 @@ impl Render for Artboard {
 					attributes.push("clip-path", selector);
 				}
 			},
-			// Artboard content
+			// Artwork content
 			|render| {
-				self.group.render_svg(render, render_params);
+				self.content.render_svg(render, render_params);
 			},
 		);
 	}
@@ -875,9 +876,9 @@ impl Render for Artboard {
 			let blend_mode = peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcOver);
 			scene.push_layer(blend_mode, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
-		// Since the group's transform is right multiplied in when rendering the group, we just need to right multiply by the offset here.
+		// Since the content's transform is right multiplied in when rendering the content, we just need to right multiply by the artboard offset here.
 		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2());
-		self.group.render_to_vello(scene, child_transform, context, render_params);
+		self.content.render_to_vello(scene, child_transform, context, render_params);
 		if self.clip {
 			scene.pop_layer();
 		}
@@ -894,7 +895,7 @@ impl Render for Artboard {
 			}
 		}
 		footprint.transform *= self.transform();
-		self.group.collect_metadata(metadata, footprint, None);
+		self.content.collect_metadata(metadata, footprint, None);
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
@@ -1140,27 +1141,27 @@ impl Render for Table<Raster<GPU>> {
 impl Render for Graphic {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
+			Graphic::Graphic(graphic) => graphic.render_svg(render, render_params),
 			Graphic::Vector(vector) => vector.render_svg(render, render_params),
 			Graphic::RasterCPU(raster) => raster.render_svg(render, render_params),
 			Graphic::RasterGPU(_) => (),
-			Graphic::Group(group) => group.render_svg(render, render_params),
 		}
 	}
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
+			Graphic::Graphic(graphic) => graphic.render_to_vello(scene, transform, context, render_params),
 			Graphic::Vector(vector) => vector.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterCPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterGPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
-			Graphic::Group(group) => group.render_to_vello(scene, transform, context, render_params),
 		}
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			match self {
-				Graphic::Group(_) => {
+				Graphic::Graphic(_) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 				}
 				Graphic::Vector(vector) => {
@@ -1191,26 +1192,26 @@ impl Render for Graphic {
 		}
 
 		match self {
+			Graphic::Graphic(graphic) => graphic.collect_metadata(metadata, footprint, element_id),
 			Graphic::Vector(vector) => vector.collect_metadata(metadata, footprint, element_id),
 			Graphic::RasterCPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
 			Graphic::RasterGPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
-			Graphic::Group(group) => group.collect_metadata(metadata, footprint, element_id),
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		match self {
+			Graphic::Graphic(graphic) => graphic.add_upstream_click_targets(click_targets),
 			Graphic::Vector(vector) => vector.add_upstream_click_targets(click_targets),
 			Graphic::RasterCPU(raster) => raster.add_upstream_click_targets(click_targets),
 			Graphic::RasterGPU(raster) => raster.add_upstream_click_targets(click_targets),
-			Graphic::Group(group) => group.add_upstream_click_targets(click_targets),
 		}
 	}
 
 	fn contains_artboard(&self) -> bool {
 		match self {
+			Graphic::Graphic(graphic) => graphic.contains_artboard(),
 			Graphic::Vector(vector) => vector.contains_artboard(),
-			Graphic::Group(group) => group.contains_artboard(),
 			Graphic::RasterCPU(raster) => raster.contains_artboard(),
 			Graphic::RasterGPU(raster) => raster.contains_artboard(),
 		}
@@ -1218,8 +1219,8 @@ impl Render for Graphic {
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		match self {
+			Graphic::Graphic(graphic) => graphic.new_ids_from_hash(reference),
 			Graphic::Vector(vector) => vector.new_ids_from_hash(reference),
-			Graphic::Group(group) => group.new_ids_from_hash(reference),
 			Graphic::RasterCPU(_) => (),
 			Graphic::RasterGPU(_) => (),
 		}

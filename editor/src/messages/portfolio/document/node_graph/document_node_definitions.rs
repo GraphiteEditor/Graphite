@@ -86,7 +86,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	let custom = vec![
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
-			identifier: "Identity",
+			identifier: "Passthrough",
 			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
@@ -95,13 +95,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("In", "TODO").into()],
+					input_metadata: vec![("Content", "TODO").into()],
 					output_names: vec!["Out".to_string()],
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes."),
-			properties: Some("identity_properties"),
+			description: Cow::Borrowed("Returns the input value without changing it. This is useful for rerouting wires for organization purposes."),
+			properties: None,
 		},
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
@@ -272,8 +272,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::Group(Default::default()), true),
-						NodeInput::value(TaggedValue::Group(Default::default()), true),
+						NodeInput::value(TaggedValue::Graphic(Default::default()), true),
+						NodeInput::value(TaggedValue::Graphic(Default::default()), true),
 					],
 					..Default::default()
 				},
@@ -336,7 +336,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("Merge attaches a layer to the stack's group."),
+			description: Cow::Borrowed("Merges new content as an entry into the graphic table that represents a layer compositing stack."),
 			properties: None,
 		},
 		DocumentNodeDefinition {
@@ -396,7 +396,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::Artboard(Default::default()), true),
-						NodeInput::value(TaggedValue::Group(Default::default()), true),
+						NodeInput::value(TaggedValue::Graphic(Default::default()), true),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::new(1920., 1080.)), false),
 						NodeInput::value(TaggedValue::Color(Color::WHITE), false),
@@ -1553,7 +1553,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::Group(Default::default()), true),
+						NodeInput::value(TaggedValue::Graphic(Default::default()), true),
 						NodeInput::value(TaggedValue::BooleanOperation(path_bool::BooleanOperation::Union), false),
 					],
 					..Default::default()
@@ -1603,7 +1603,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_metadata: vec![("Group of Paths", "TODO").into(), ("Operation", "TODO").into()],
+					input_metadata: vec![("Content", "TODO").into(), ("Operation", "TODO").into()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -1926,12 +1926,8 @@ fn static_node_properties() -> NodeProperties {
 	map.insert("grid_properties".to_string(), Box::new(node_properties::grid_properties));
 	map.insert("sample_polyline_properties".to_string(), Box::new(node_properties::sample_polyline_properties));
 	map.insert(
-		"identity_properties".to_string(),
-		Box::new(|_node_id, _context| node_properties::string_properties("The identity node passes its data through.")),
-	);
-	map.insert(
 		"monitor_properties".to_string(),
-		Box::new(|_node_id, _context| node_properties::string_properties("The Monitor node is used by the editor to access the data flowing through it.")),
+		Box::new(|_node_id, _context| node_properties::string_properties("Used internally by the editor to obtain a layer thumbnail.")),
 	);
 	map
 }
