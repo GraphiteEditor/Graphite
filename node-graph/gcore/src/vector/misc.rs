@@ -212,12 +212,16 @@ fn pathseg_to_points(segment: PathSeg) -> [Option<Point>; 4] {
 	}
 }
 
-fn bezpath_loose_bounding_box(bezpath: &BezPath) -> Rect {
-	let expand = |bbox: Rect, point: Point| Rect::new(bbox.x0.min(point.x), bbox.y0.min(point.y), bbox.x1.max(point.x), bbox.y1.max(point.y));
+pub fn bezpath_loose_bounding_box(bezpath: &BezPath) -> Option<Rect> {
+	let to_rect = |point: Point| Rect::new(point.x, point.y, point.x, point.y);
+	let combine = |r1: Rect, r2: Rect| Rect::new(r1.x0.min(r2.x0), r1.y0.min(r2.y0), r1.x1.max(r2.x1), r1.y1.max(r2.y1));
 
-	bezpath.segments().fold(Rect::new(0., 0., 0., 0.), |bbox, segment| {
-		pathseg_to_points(segment).into_iter().filter_map(|point| point).fold(bbox, |bbox, point| expand(bbox, point))
-	})
+	bezpath
+		.segments()
+		.flat_map(|segment| pathseg_to_points(segment))
+		.flat_map(|point| point)
+		.map(|point| to_rect(point))
+		.reduce(|bbox1, bbox2| combine(bbox1, bbox2))
 }
 
 /// Returns true if the [`PathSeg`] is equivalent to a line.
