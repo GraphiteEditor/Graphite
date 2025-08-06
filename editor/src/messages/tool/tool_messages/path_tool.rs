@@ -2567,6 +2567,7 @@ impl Fsm for PathToolFsmState {
 				} else {
 					PathToolFsmState::Ready
 				}
+			}
 			(_, PathToolMessage::Copy { clipboard }) => {
 				// TODO: Add support for selected segments
 
