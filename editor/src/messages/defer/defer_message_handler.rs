@@ -17,12 +17,7 @@ impl MessageHandler<DeferMessage, DeferMessageContext<'_>> for DeferMessageHandl
 	fn process_message(&mut self, message: DeferMessage, responses: &mut VecDeque<Message>, context: DeferMessageContext) {
 		match message {
 			DeferMessage::AfterGraphRun { mut messages } => {
-				log::debug!("defering after graph run");
-				log::debug!("active document: {:?}", context.portfolio.active_document_id);
-				log::debug!("messages: {messages:?}");
-				log::debug!("queue state: {:?}", self.after_graph_run);
 				let after_graph_run = self.after_graph_run.entry(context.portfolio.active_document_id.unwrap_or(DocumentId(0))).or_default();
-				log::debug!("messages in queue {}", after_graph_run.len());
 				after_graph_run.extend(messages.drain(..).map(|m| (self.current_graph_submission_id, m)));
 			}
 			DeferMessage::AfterNavigationReady { messages } => {
@@ -32,7 +27,6 @@ impl MessageHandler<DeferMessage, DeferMessageContext<'_>> for DeferMessageHandl
 				self.current_graph_submission_id = execution_id + 1;
 			}
 			DeferMessage::TriggerGraphRun(execution_id, document_id) => {
-				log::debug!("triggering graph run {execution_id}, document_id {document_id:?}");
 				let after_graph_run = self.after_graph_run.entry(document_id).or_default();
 				if after_graph_run.is_empty() {
 					return;
@@ -41,13 +35,11 @@ impl MessageHandler<DeferMessage, DeferMessageContext<'_>> for DeferMessageHandl
 				let split = after_graph_run.partition_point(|&(id, _)| id <= execution_id);
 				let elements = after_graph_run.drain(..split);
 				for (_, message) in elements.rev() {
-					log::debug!("dispatching {:?}", message.to_discriminant());
 					responses.add_front(message);
 				}
 				if !after_graph_run.is_empty() {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
-				log::debug!("messages left in queue {:?}", after_graph_run);
 			}
 			DeferMessage::TriggerNavigationReady => {
 				for message in self.after_viewport_resize.drain(..).rev() {
