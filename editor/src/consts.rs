@@ -160,17 +160,6 @@ pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;
 pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
 
 // GRID INPUT INDICES
-
-// grid_type: GridType,
-// 	#[unit(" px")]
-// 	#[hard_min(0.)]
-// 	#[default(10)]
-// 	#[implementations(f64, DVec2)]
-// 	spacing: T,
-// 	#[default(10)] columns: u32,
-// 	#[default(10)] rows: u32,
-// #[default(30., 30.)] angles: DVec2,
-
 pub const GRID_TYPE_INDEX: usize = 1;
 pub const GRID_SPACING_INDEX: usize = 2;
 pub const GRID_COLUMNS_INDEX: usize = 3;

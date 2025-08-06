@@ -53,5 +53,5 @@
 	"files.associations": {
 		"*.graphite": "json"
 	},
-	"rust-analyzer.checkOnSave": false
+	"rust-analyzer.checkOnSave": true
 }
