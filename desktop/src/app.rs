@@ -107,6 +107,15 @@ impl WinitApp {
 			}
 		}
 
+		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerVisitLink { .. })) {
+			let _ = thread::spawn(move || {
+				let FrontendMessage::TriggerVisitLink { url } = message else { unreachable!() };
+				if let Err(e) = open::that(&url) {
+					tracing::error!("Failed to open URL: {}: {}", url, e);
+				}
+			});
+		}
+
 		if responses.is_empty() {
 			return;
 		}
