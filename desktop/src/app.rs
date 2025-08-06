@@ -2,6 +2,7 @@ use crate::CustomEvent;
 use crate::WindowSize;
 use crate::consts::APP_NAME;
 use crate::dialogs::dialog_open_graphite_file;
+use crate::dialogs::dialog_save_file;
 use crate::dialogs::dialog_save_graphite_file;
 use crate::render::GraphicsState;
 use crate::render::WgpuContext;
@@ -83,17 +84,17 @@ impl WinitApp {
 		}
 
 		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerSaveDocument { .. })) {
-			let FrontendMessage::TriggerSaveDocument { document_id, name, path, document } = message else {
+			let FrontendMessage::TriggerSaveDocument { document_id, name, path, content } = message else {
 				unreachable!()
 			};
 			if let Some(path) = path {
-				let _ = std::fs::write(&path, document);
+				let _ = std::fs::write(&path, content);
 			} else {
 				let event_loop_proxy = self.event_loop_proxy.clone();
 				let _ = thread::spawn(move || {
 					let path = futures::executor::block_on(dialog_save_graphite_file(name));
 					if let Some(path) = path {
-						if let Err(e) = std::fs::write(&path, document) {
+						if let Err(e) = std::fs::write(&path, content) {
 							tracing::error!("Failed to save file: {}: {}", path.display(), e);
 						} else {
 							let message = Message::Portfolio(PortfolioMessage::DocumentPassMessage {
@@ -105,6 +106,18 @@ impl WinitApp {
 					}
 				});
 			}
+		}
+
+		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerSaveFile { .. })) {
+			let FrontendMessage::TriggerSaveFile { name, content } = message else { unreachable!() };
+			let _ = thread::spawn(move || {
+				let path = futures::executor::block_on(dialog_save_file(name));
+				if let Some(path) = path {
+					if let Err(e) = std::fs::write(&path, content) {
+						tracing::error!("Failed to save file: {}: {}", path.display(), e);
+					}
+				}
+			});
 		}
 
 		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerVisitLink { .. })) {

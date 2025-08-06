@@ -1005,7 +1005,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					document_id,
 					name,
 					path: self.path.clone(),
-					document: self.serialize_document(),
+					content: self.serialize_document().into_bytes(),
 				})
 			}
 			DocumentMessage::SavedDocument { path } => {
