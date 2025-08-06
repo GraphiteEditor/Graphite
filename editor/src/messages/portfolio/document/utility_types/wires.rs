@@ -526,6 +526,6 @@ fn straight_wire_to_bezpath(locations: Vec<IVec2>) -> BezPath {
 		path.line_to(to_point(corner_start));
 		path.curve_to(to_point(corner_start_mid), to_point(corner_end_mid), to_point(corner_end));
 	}
-	path.move_to(to_point(*locations.last().unwrap()));
+	path.line_to(to_point(*locations.last().unwrap()));
 	path
 }
