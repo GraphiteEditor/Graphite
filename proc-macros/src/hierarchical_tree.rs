@@ -12,57 +12,76 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 		_ => return Err(syn::Error::new(Span::call_site(), "Tried to derive HierarchicalTree for non-enum")),
 	};
 
-	let build_message_tree = data.variants.iter().map(|variant| {
-		let variant_type = &variant.ident;
+	let build_message_tree: Result<Vec<_>, syn::Error> = data
+		.variants
+		.iter()
+		.map(|variant| {
+			let variant_type = &variant.ident;
 
-		let has_child = variant
-			.attrs
-			.iter()
-			.any(|attr| attr.path().get_ident().is_some_and(|ident| ident == "sub_discriminant" || ident == "child"));
+			let has_child = variant
+				.attrs
+				.iter()
+				.any(|attr| attr.path().get_ident().is_some_and(|ident| ident == "sub_discriminant" || ident == "child"));
 
-		match &variant.fields {
-			Fields::Unit => quote! {
-				message_tree.add_variant(DebugMessageTree::new(stringify!(#variant_type)));
-			},
-			Fields::Unnamed(fields) => {
-				let field_type = &fields.unnamed.first().unwrap().ty;
-				if has_child {
-					quote! {
-						{
-							let mut variant_tree = DebugMessageTree::new(stringify!(#variant_type));
-							let field_name = stringify!(#field_type);
-							const message_string: &str = "Message";
-							if message_string == &field_name[field_name.len().saturating_sub(message_string.len())..] {
-								// The field is a Message type, recursively build its tree
-								let sub_tree = #field_type::build_message_tree();
-								variant_tree.add_variant(sub_tree);
-							} else {
-								variant_tree.add_fields(vec![format!("{field_name}")]);
+			match &variant.fields {
+				Fields::Unit => Ok(quote! {
+					message_tree.add_variant(DebugMessageTree::new(stringify!(#variant_type)));
+				}),
+				Fields::Unnamed(fields) => {
+					if has_child {
+						let field_type = &fields.unnamed.first().unwrap().ty;
+						Ok(quote! {
+							{
+								let mut variant_tree = DebugMessageTree::new(stringify!(#variant_type));
+								let field_name = stringify!(#field_type);
+								const message_string: &str = "Message";
+								if message_string == &field_name[field_name.len().saturating_sub(message_string.len())..] {
+									// The field is a Message type, recursively build its tree
+									let sub_tree = #field_type::build_message_tree();
+									variant_tree.add_variant(sub_tree);
+								} else {
+									variant_tree.add_fields(vec![format!("{field_name}")]);
+								}
+								message_tree.add_variant(variant_tree);
 							}
+						})
+					} else {
+						let error_msg = match fields.unnamed.len() {
+							0 => format!(
+								"Remove the unneeded `()` from the {}() message enum variant.",
+								variant_type.to_string(),
+							),
+						 	_ => {
+								let field_types = fields.unnamed.iter().map(|f| f.ty.to_token_stream().to_string()).collect::<Vec<_>>().join(", ");
+								format!("The {} message should be defined as a struct-style (not tuple-style) enum variant to maintain a consistent shape throughout all editor messages.\nReplace {} with a named field within {{ curly braces }} instead of an element within (parentheses).",
+								variant_type.to_string(),
+								field_types
+								)
+							}
+						};
+						return Err(syn::Error::new(
+							Span::call_site(),
+							error_msg
+						));
+					}
+				}
+				Fields::Named(fields) => {
+					let names = fields.named.iter().map(|f| f.ident.as_ref().unwrap());
+					let ty = fields.named.iter().map(|f| clean_rust_type_syntax(f.ty.to_token_stream().to_string()));
+					Ok(quote! {
+						{
+							let mut field_names = Vec::new();
+							#(field_names.push(format!("{}: {}",stringify!(#names), #ty));)*
+							let mut variant_tree = DebugMessageTree::new(stringify!(#variant_type));
+							variant_tree.add_fields(field_names);
 							message_tree.add_variant(variant_tree);
 						}
-					}
-				} else {
-					quote! {
-						message_tree.add_variant(DebugMessageTree::new(stringify!(#variant_type)));
-					}
+					})
 				}
 			}
-			Fields::Named(fields) => {
-				let names = fields.named.iter().map(|f| f.ident.as_ref().unwrap());
-				let ty = fields.named.iter().map(|f| clean_rust_type_syntax(f.ty.to_token_stream().to_string()));
-				quote! {
-					{
-						let mut field_names = Vec::new();
-						#(field_names.push(format!("{}: {}",stringify!(#names), #ty));)*
-						let mut variant_tree = DebugMessageTree::new(stringify!(#variant_type));
-						variant_tree.add_fields(field_names);
-						message_tree.add_variant(variant_tree);
-					}
-				}
-			}
-		}
-	});
+		})
+		.collect();
+	let build_message_tree = build_message_tree?;
 
 	let res = quote! {
 		impl HierarchicalTree for #input_type {

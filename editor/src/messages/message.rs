@@ -119,7 +119,7 @@ mod test {
 			const FRONTEND_MESSAGE_STR: &str = "FrontendMessage";
 			if data.name().is_empty() && tree.name() != FRONTEND_MESSAGE_STR {
 				panic!("{}'s MessageHandler is missing #[message_handler_data]", tree.name());
-			} else {
+			} else if tree.name() != FRONTEND_MESSAGE_STR {
 				file.write_all(format!("{}{}{} `{}`\n", prefix, branch, data.name(), data.path()).as_bytes()).unwrap();
 
 				for (i, field) in data.fields().iter().enumerate() {
