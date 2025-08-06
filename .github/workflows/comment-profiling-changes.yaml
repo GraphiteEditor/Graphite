@@ -10,38 +10,57 @@ jobs:
   profile:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install Valgrind
         run: |
           sudo apt update
           sudo apt install -y valgrind
 
-      - name: Cache dependencies
-        uses: actions/cache@v3
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          # Cache on Cargo.lock file
+          cache-on-failure: true
+
+      - name: Cache iai-callgrind binary
+        id: cache-iai
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/iai-callgrind-runner
+          key: ${{ runner.os }}-iai-callgrind-runner-0.12.3
 
       - name: Install iai-callgrind
+        if: steps.cache-iai.outputs.cache-hit != 'true'
         run: |
           cargo install iai-callgrind-runner@0.12.3
+
+      - name: Validate benchmark compilation
+        run: |
+          # Compile all benchmarks to catch issues early
+          cargo bench --no-run --bench compile_demo_art_iai
+          cargo bench --no-run --bench update_executor_iai
+          cargo bench --no-run --bench run_once_iai
+          cargo bench --no-run --bench run_cached_iai
 
       - name: Checkout master branch
         run: |
           git fetch origin master:master
           git checkout master
+
+      - name: Cache benchmark baselines
+        uses: actions/cache@v4
+        with:
+          path: target/iai
+          key: ${{ runner.os }}-benchmark-baselines-${{ hashFiles('**/Cargo.lock') }}-master-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            ${{ runner.os }}-benchmark-baselines-${{ hashFiles('**/Cargo.lock') }}-master-
+            ${{ runner.os }}-benchmark-baselines-
 
       - name: Run baseline benchmarks
         run: |
@@ -49,11 +68,9 @@ jobs:
           cargo bench --bench compile_demo_art_iai -- --save-baseline=master
           
           # Runtime benchmarks
-          cd node-graph/interpreted-executor
           cargo bench --bench update_executor_iai -- --save-baseline=master
           cargo bench --bench run_once_iai -- --save-baseline=master
           cargo bench --bench run_cached_iai -- --save-baseline=master
-          cd ../..
 
       - name: Checkout PR branch
         run: |
@@ -66,11 +83,9 @@ jobs:
           COMPILE_OUTPUT=$(cargo bench --bench compile_demo_art_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g')
           
           # Runtime benchmarks
-          cd node-graph/interpreted-executor
           UPDATE_OUTPUT=$(cargo bench --bench update_executor_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g')
           RUN_ONCE_OUTPUT=$(cargo bench --bench run_once_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g')
           RUN_CACHED_OUTPUT=$(cargo bench --bench run_cached_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g')
-          cd ../..
           
           # Store outputs
           echo "COMPILE_OUTPUT<<EOF" >> $GITHUB_OUTPUT
@@ -90,7 +105,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Make old comments collapsed by default
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
@@ -115,7 +130,7 @@ jobs:
             }
 
       - name: Comment PR
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
