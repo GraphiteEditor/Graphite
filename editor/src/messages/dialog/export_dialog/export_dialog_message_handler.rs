@@ -111,19 +111,19 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			(ExportBounds::Selection, "Selection".to_string(), !self.has_selection),
 		];
 		let artboards = self.artboards.iter().map(|(&layer, name)| (ExportBounds::Artboard(layer), name.to_string(), false)).collect();
-		let groups = [standard_bounds, artboards];
+		let choices = [standard_bounds, artboards];
 
 		let current_bounds = if !self.has_selection && self.bounds == ExportBounds::Selection {
 			ExportBounds::AllArtwork
 		} else {
 			self.bounds
 		};
-		let index = groups.iter().flatten().position(|(bounds, _, _)| *bounds == current_bounds).unwrap();
+		let index = choices.iter().flatten().position(|(bounds, _, _)| *bounds == current_bounds).unwrap();
 
-		let mut entries = groups
+		let mut entries = choices
 			.into_iter()
-			.map(|group| {
-				group
+			.map(|choice| {
+				choice
 					.into_iter()
 					.map(|(val, name, disabled)| {
 						MenuListEntry::new(format!("{val:?}"))

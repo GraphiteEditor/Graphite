@@ -1,7 +1,7 @@
 use super::PointId;
 use super::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
 use crate::vector::{SegmentId, Vector};
-use bezier_rs::{BezierHandles, ManipulatorGroup, Subpath};
+use bezier_rs::{BezierHandles, ManipulatorGroup};
 use dyn_any::DynAny;
 use glam::DVec2;
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
@@ -136,12 +136,6 @@ pub fn handles_to_segment(start: DVec2, handles: BezierHandles, end: DVec2) -> P
 	}
 }
 
-pub fn subpath_to_kurbo_bezpath(subpath: Subpath<PointId>) -> BezPath {
-	let manipulator_groups = subpath.manipulator_groups();
-	let closed = subpath.closed();
-	bezpath_from_manipulator_groups(manipulator_groups, closed)
-}
-
 pub fn bezpath_from_manipulator_groups(manipulator_groups: &[ManipulatorGroup<PointId>], closed: bool) -> BezPath {
 	let mut bezpath = kurbo::BezPath::new();
 	let mut out_handle;
@@ -188,9 +182,9 @@ pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup
 				ManipulatorGroup::new(point_to_dvec2(point2), Some(point_to_dvec2(point1)), None)
 			}
 			kurbo::PathEl::ClosePath => {
-				if let Some(last_group) = manipulator_groups.pop() {
-					if let Some(first_group) = manipulator_groups.first_mut() {
-						first_group.out_handle = last_group.in_handle;
+				if let Some(last_manipulators) = manipulator_groups.pop() {
+					if let Some(first_manipulators) = manipulator_groups.first_mut() {
+						first_manipulators.out_handle = last_manipulators.in_handle;
 					}
 				}
 				is_closed = true;

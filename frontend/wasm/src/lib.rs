@@ -21,6 +21,7 @@ pub static LOGGER: WasmLog = WasmLog;
 
 thread_local! {
 	pub static EDITOR: Mutex<Option<editor::application::Editor>> = const { Mutex::new(None) };
+	pub static MESSAGE_BUFFER: std::cell::RefCell<Vec<Message>> = const { std::cell::RefCell::new(Vec::new()) };
 	pub static EDITOR_HANDLE: Mutex<Option<editor_api::EditorHandle>> = const { Mutex::new(None) };
 }
 
