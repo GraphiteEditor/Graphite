@@ -234,11 +234,11 @@ impl NodeGraphExecutor {
 		};
 
 		if file_type == FileType::Svg {
-			responses.add(FrontendMessage::TriggerDownloadTextFile { document: svg, name });
+			responses.add(FrontendMessage::TriggerSaveFile { name, content: svg.into_bytes() });
 		} else {
 			let mime = file_type.to_mime().to_string();
 			let size = (size * scale_factor).into();
-			responses.add(FrontendMessage::TriggerDownloadImage { svg, name, mime, size });
+			responses.add(FrontendMessage::TriggerExportImage { svg, name, mime, size });
 		}
 		Ok(())
 	}

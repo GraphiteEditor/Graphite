@@ -82,11 +82,11 @@ impl WinitApp {
 		}
 
 		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerSaveDocument { .. })) {
-			let FrontendMessage::TriggerSaveDocument { document_id, name, path, document } = message else {
+			let FrontendMessage::TriggerSaveDocument { document_id, name, path, content } = message else {
 				unreachable!()
 			};
 			if let Some(path) = path {
-				let _ = std::fs::write(&path, document);
+				let _ = std::fs::write(&path, content);
 			} else {
 				let event_loop_proxy = self.event_loop_proxy.clone();
 				let _ = thread::spawn(move || {
