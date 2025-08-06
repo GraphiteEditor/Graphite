@@ -1,7 +1,7 @@
 use crate::messages::prelude::*;
 use crate::node_graph_executor::InspectResult;
 
-/// The spreadsheet UI allows for instance data to be previewed.
+/// The spreadsheet UI allows for graph data to be previewed.
 #[impl_message(Message, PortfolioMessage, Spreadsheet)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum SpreadsheetMessage {
@@ -12,20 +12,20 @@ pub enum SpreadsheetMessage {
 		inspect_result: InspectResult,
 	},
 
-	PushToInstancePath {
+	PushToElementPath {
 		index: usize,
 	},
-	TruncateInstancePath {
+	TruncateElementPath {
 		len: usize,
 	},
 
-	ViewVectorDataDomain {
-		domain: VectorDataDomain,
+	ViewVectorDomain {
+		domain: VectorDomain,
 	},
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
-pub enum VectorDataDomain {
+pub enum VectorDomain {
 	#[default]
 	Points,
 	Segments,

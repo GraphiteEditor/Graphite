@@ -2,7 +2,7 @@ use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
 	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COLOR_OVERLAY_YELLOW_DULL,
 	COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE,
-	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
+	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, SEGMENT_SELECTED_THICKNESS,
 };
 use crate::messages::prelude::Message;
 use bezier_rs::{Bezier, Subpath};
@@ -12,7 +12,7 @@ use glam::{DAffine2, DVec2};
 use graphene_std::Color;
 use graphene_std::math::quad::Quad;
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::{PointId, SegmentId, VectorData};
+use graphene_std::vector::{PointId, SegmentId, Vector};
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
@@ -23,7 +23,7 @@ pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
 }
 
-// Types of overlays used by DocumentMessage to enable/disable select group of overlays in the frontend
+/// Types of overlays used by DocumentMessage to enable/disable the selected set of viewport overlays.
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OverlaysType {
 	ArtboardName,
@@ -460,6 +460,42 @@ impl OverlayContext {
 		self.square(position, None, Some(color_fill), Some(color_stroke));
 	}
 
+	pub fn hover_manipulator_handle(&mut self, position: DVec2, selected: bool) {
+		self.start_dpi_aware_transform();
+
+		let position = position.round() - DVec2::splat(0.5);
+
+		self.render_context.begin_path();
+		self.render_context
+			.arc(position.x, position.y, (MANIPULATOR_GROUP_MARKER_SIZE + 2.) / 2., 0., TAU)
+			.expect("Failed to draw the circle");
+
+		self.render_context.set_fill_style_str(COLOR_OVERLAY_BLUE_50);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE_50);
+		self.render_context.fill();
+		self.render_context.stroke();
+
+		self.render_context.begin_path();
+		self.render_context
+			.arc(position.x, position.y, MANIPULATOR_GROUP_MARKER_SIZE / 2., 0., TAU)
+			.expect("Failed to draw the circle");
+
+		let color_fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
+
+		self.render_context.set_fill_style_str(color_fill);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		self.render_context.fill();
+		self.render_context.stroke();
+
+		self.end_dpi_aware_transform();
+	}
+
+	pub fn hover_manipulator_anchor(&mut self, position: DVec2, selected: bool) {
+		self.square(position, Some(MANIPULATOR_GROUP_MARKER_SIZE + 2.), Some(COLOR_OVERLAY_BLUE_50), Some(COLOR_OVERLAY_BLUE_50));
+		let color_fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
+		self.square(position, None, Some(color_fill), Some(COLOR_OVERLAY_BLUE));
+	}
+
 	/// Transforms the canvas context to adjust for DPI scaling
 	///
 	/// Overwrites all existing tranforms. This operation can be reversed with [`Self::reset_transform`].
@@ -721,12 +757,12 @@ impl OverlayContext {
 	}
 
 	/// Used by the Pen and Path tools to outline the path of the shape.
-	pub fn outline_vector(&mut self, vector_data: &VectorData, transform: DAffine2) {
+	pub fn outline_vector(&mut self, vector: &Vector, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
 		let mut last_point = None;
-		for (_, bezier, start_id, end_id) in vector_data.segment_bezier_iter() {
+		for (_, bezier, start_id, end_id) in vector.segment_bezier_iter() {
 			let move_to = last_point != Some(start_id);
 			last_point = Some(end_id);
 
@@ -758,7 +794,7 @@ impl OverlayContext {
 		self.render_context.begin_path();
 		self.bezier_command(bezier, transform, true);
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
-		self.render_context.set_line_width(4.);
+		self.render_context.set_line_width(SEGMENT_SELECTED_THICKNESS);
 		self.render_context.stroke();
 
 		self.render_context.set_line_width(1.);
@@ -772,7 +808,7 @@ impl OverlayContext {
 		self.render_context.begin_path();
 		self.bezier_command(bezier, transform, true);
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE_50);
-		self.render_context.set_line_width(4.);
+		self.render_context.set_line_width(SEGMENT_SELECTED_THICKNESS);
 		self.render_context.stroke();
 
 		self.render_context.set_line_width(1.);

@@ -6,7 +6,8 @@ use core::fmt::Debug;
 #[cfg(feature = "std")]
 use graphene_core::gradient::GradientStops;
 #[cfg(feature = "std")]
-use graphene_core::raster_types::{CPU, RasterDataTable};
+use graphene_core::raster_types::{CPU, Raster};
+use graphene_core::table::Table;
 use graphene_core_shaders::color::Color;
 use graphene_core_shaders::context::Ctx;
 use graphene_core_shaders::registry::types::{Angle, Percentage, SignedPercentage};
@@ -44,7 +45,7 @@ fn luminance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -68,7 +69,7 @@ fn gamma_correction<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -88,7 +89,7 @@ fn extract_channel<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -111,7 +112,7 @@ fn make_opaque<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -136,7 +137,7 @@ fn brightness_contrast<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -225,7 +226,7 @@ fn levels<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -292,7 +293,7 @@ async fn black_and_white<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -364,7 +365,7 @@ async fn hue_saturation<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -398,7 +399,7 @@ async fn invert<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -420,7 +421,7 @@ async fn threshold<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -465,7 +466,7 @@ async fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -630,7 +631,7 @@ async fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -758,7 +759,7 @@ async fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -900,7 +901,7 @@ async fn posterize<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -933,7 +934,7 @@ async fn exposure<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	mut input: T,

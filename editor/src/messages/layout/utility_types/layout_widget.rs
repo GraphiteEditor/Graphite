@@ -653,7 +653,7 @@ impl DiffUpdate {
 		};
 
 		match self {
-			Self::SubLayout(sub_layout) => sub_layout.iter_mut().flat_map(|group| group.iter_mut()).for_each(convert_tooltip),
+			Self::SubLayout(sub_layout) => sub_layout.iter_mut().flat_map(|layout_group| layout_group.iter_mut()).for_each(convert_tooltip),
 			Self::LayoutGroup(layout_group) => layout_group.iter_mut().for_each(convert_tooltip),
 			Self::Widget(widget_holder) => convert_tooltip(widget_holder),
 		}

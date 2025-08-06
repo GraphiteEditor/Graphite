@@ -11,8 +11,9 @@ use glam::{DAffine2, DVec2};
 use graphene_std::Color;
 use graphene_std::math::quad::Quad;
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::{PointId, SegmentId, VectorData};
+use graphene_std::vector::{PointId, SegmentId, Vector};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex, MutexGuard};
 use vello::Scene;
 use vello::kurbo::{self, BezPath};
 use vello::peniko;
@@ -23,7 +24,7 @@ pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
 }
 
-// Types of overlays used by DocumentMessage to enable/disable select group of overlays in the frontend
+/// Types of overlays used by DocumentMessage to enable/disable the selected set of viewport overlays.
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OverlaysType {
 	ArtboardName,
@@ -132,17 +133,33 @@ impl OverlaysVisibilitySettings {
 	}
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct OverlayContext {
 	// Serde functionality isn't used but is required by the message system macros
 	#[serde(skip)]
 	#[specta(skip)]
-	pub scene: Scene,
+	internal: Arc<Mutex<OverlayContextInternal>>,
 	pub size: DVec2,
 	// The device pixel ratio is a property provided by the browser window and is the CSS pixel size divided by the physical monitor's pixel size.
 	// It allows better pixel density of visualizations on high-DPI displays where the OS display scaling is not 100%, or where the browser is zoomed.
 	pub device_pixel_ratio: f64,
 	pub visibility_settings: OverlaysVisibilitySettings,
+}
+
+impl Clone for OverlayContext {
+	fn clone(&self) -> Self {
+		let internal = self.internal.lock().expect("Failed to lock internal overlay context");
+		let size = internal.size;
+		let device_pixel_ratio = internal.device_pixel_ratio;
+		let visibility_settings = internal.visibility_settings;
+		drop(internal); // Explicitly release the lock before cloning the Arc<Mutex<_>>
+		Self {
+			internal: self.internal.clone(),
+			size,
+			device_pixel_ratio,
+			visibility_settings,
+		}
+	}
 }
 
 // Manual implementations since Scene doesn't implement PartialEq or Debug
@@ -167,7 +184,7 @@ impl std::fmt::Debug for OverlayContext {
 impl Default for OverlayContext {
 	fn default() -> Self {
 		Self {
-			scene: Scene::new(),
+			internal: Mutex::new(OverlayContextInternal::default()).into(),
 			size: DVec2::ZERO,
 			device_pixel_ratio: 1.0,
 			visibility_settings: OverlaysVisibilitySettings::default(),
@@ -181,6 +198,235 @@ impl core::hash::Hash for OverlayContext {
 }
 
 impl OverlayContext {
+	pub(super) fn new(size: DVec2, device_pixel_ratio: f64, visibility_settings: OverlaysVisibilitySettings) -> Self {
+		Self {
+			internal: Arc::new(Mutex::new(OverlayContextInternal::new(size, device_pixel_ratio, visibility_settings))),
+			size,
+			device_pixel_ratio,
+			visibility_settings,
+		}
+	}
+
+	pub fn take_scene(self) -> Scene {
+		let mut internal = self.internal.lock().expect("Failed to lock internal overlay context");
+		std::mem::take(&mut *internal).scene
+	}
+
+	fn internal(&'_ self) -> MutexGuard<'_, OverlayContextInternal> {
+		self.internal.lock().expect("Failed to lock internal overlay context")
+	}
+
+	pub fn quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>) {
+		self.internal().quad(quad, stroke_color, color_fill);
+	}
+
+	pub fn draw_triangle(&mut self, base: DVec2, direction: DVec2, size: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
+		self.internal().draw_triangle(base, direction, size, color_fill, color_stroke);
+	}
+
+	pub fn dashed_quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+		self.internal().dashed_quad(quad, stroke_color, color_fill, dash_width, dash_gap_width, dash_offset);
+	}
+
+	pub fn polygon(&mut self, polygon: &[DVec2], stroke_color: Option<&str>, color_fill: Option<&str>) {
+		self.internal().polygon(polygon, stroke_color, color_fill);
+	}
+
+	pub fn dashed_polygon(&mut self, polygon: &[DVec2], stroke_color: Option<&str>, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+		self.internal().dashed_polygon(polygon, stroke_color, color_fill, dash_width, dash_gap_width, dash_offset);
+	}
+
+	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>) {
+		self.internal().line(start, end, color, thickness);
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+		self.internal().dashed_line(start, end, color, thickness, dash_width, dash_gap_width, dash_offset);
+	}
+
+	pub fn hover_manipulator_handle(&mut self, position: DVec2, selected: bool) {
+		self.internal().hover_manipulator_handle(position, selected);
+	}
+
+	pub fn hover_manipulator_anchor(&mut self, position: DVec2, selected: bool) {
+		self.internal().hover_manipulator_anchor(position, selected);
+	}
+
+	pub fn manipulator_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
+		self.internal().manipulator_handle(position, selected, color);
+	}
+
+	pub fn manipulator_anchor(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
+		self.internal().manipulator_anchor(position, selected, color);
+	}
+
+	pub fn square(&mut self, position: DVec2, size: Option<f64>, color_fill: Option<&str>, color_stroke: Option<&str>) {
+		self.internal().square(position, size, color_fill, color_stroke);
+	}
+
+	pub fn pixel(&mut self, position: DVec2, color: Option<&str>) {
+		self.internal().pixel(position, color);
+	}
+
+	pub fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
+		self.internal().circle(position, radius, color_fill, color_stroke);
+	}
+
+	pub fn dashed_ellipse(
+		&mut self,
+		center: DVec2,
+		radius_x: f64,
+		radius_y: f64,
+		rotation: Option<f64>,
+		start_angle: Option<f64>,
+		end_angle: Option<f64>,
+		counterclockwise: Option<bool>,
+		color_fill: Option<&str>,
+		color_stroke: Option<&str>,
+		dash_width: Option<f64>,
+		dash_gap_width: Option<f64>,
+		dash_offset: Option<f64>,
+	) {
+		self.internal().dashed_ellipse(
+			center,
+			radius_x,
+			radius_y,
+			rotation,
+			start_angle,
+			end_angle,
+			counterclockwise,
+			color_fill,
+			color_stroke,
+			dash_width,
+			dash_gap_width,
+			dash_offset,
+		);
+	}
+
+	pub fn draw_arc(&mut self, center: DVec2, radius: f64, start_from: f64, end_at: f64) {
+		self.internal().draw_arc(center, radius, start_from, end_at);
+	}
+
+	pub fn draw_arc_gizmo_angle(&mut self, pivot: DVec2, bold_radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
+		self.internal().draw_arc_gizmo_angle(pivot, bold_radius, arc_radius, offset_angle, angle);
+	}
+
+	pub fn draw_angle(&mut self, pivot: DVec2, radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
+		self.internal().draw_angle(pivot, radius, arc_radius, offset_angle, angle);
+	}
+
+	pub fn draw_scale(&mut self, start: DVec2, scale: f64, radius: f64, text: &str) {
+		self.internal().draw_scale(start, scale, radius, text);
+	}
+
+	pub fn compass_rose(&mut self, compass_center: DVec2, angle: f64, show_compass_with_hover_ring: Option<bool>) {
+		self.internal().compass_rose(compass_center, angle, show_compass_with_hover_ring);
+	}
+
+	pub fn pivot(&mut self, position: DVec2, angle: f64) {
+		self.internal().pivot(position, angle);
+	}
+
+	pub fn dowel_pin(&mut self, position: DVec2, angle: f64, color: Option<&str>) {
+		self.internal().dowel_pin(position, angle, color);
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn arc_sweep_angle(&mut self, offset_angle: f64, angle: f64, end_point_position: DVec2, bold_radius: f64, pivot: DVec2, text: &str, transform: DAffine2) {
+		self.internal().arc_sweep_angle(offset_angle, angle, end_point_position, bold_radius, pivot, text, transform);
+	}
+
+	/// Used by the Pen and Path tools to outline the path of the shape.
+	pub fn outline_vector(&mut self, vector: &Vector, transform: DAffine2) {
+		self.internal().outline_vector(vector, transform);
+	}
+
+	/// Used by the Pen tool in order to show how the bezier curve would look like.
+	pub fn outline_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+		self.internal().outline_bezier(bezier, transform);
+	}
+
+	/// Used by the path tool segment mode in order to show the selected segments.
+	pub fn outline_select_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+		self.internal().outline_select_bezier(bezier, transform);
+	}
+
+	pub fn outline_overlay_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+		self.internal().outline_overlay_bezier(bezier, transform);
+	}
+
+	/// Used by the Select tool to outline a path or a free point when selected or hovered.
+	pub fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
+		self.internal().outline(target_types, transform, color);
+	}
+
+	/// Fills the area inside the path. Assumes `color` is in gamma space.
+	/// Used by the Pen tool to show the path being closed.
+	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
+		self.internal().fill_path(subpaths, transform, color);
+	}
+
+	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
+	/// Used by the fill tool to show the area to be filled.
+	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
+		self.internal().fill_path_pattern(subpaths, transform, color);
+	}
+
+	pub fn get_width(&self, text: &str) -> f64 {
+		self.internal().get_width(text)
+	}
+
+	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
+		self.internal().text(text, font_color, background_color, transform, padding, pivot);
+	}
+
+	pub fn translation_box(&mut self, translation: DVec2, quad: Quad, typed_string: Option<String>) {
+		self.internal().translation_box(translation, quad, typed_string);
+	}
+}
+
+pub enum Pivot {
+	Start,
+	Middle,
+	End,
+}
+
+pub enum DrawHandles {
+	All,
+	SelectedAnchors(Vec<SegmentId>),
+	FrontierHandles(HashMap<SegmentId, Vec<PointId>>),
+	None,
+}
+
+pub(super) struct OverlayContextInternal {
+	scene: Scene,
+	size: DVec2,
+	device_pixel_ratio: f64,
+	visibility_settings: OverlaysVisibilitySettings,
+}
+
+impl Default for OverlayContextInternal {
+	fn default() -> Self {
+		Self {
+			scene: Scene::new(),
+			size: DVec2::ZERO,
+			device_pixel_ratio: 1.0,
+			visibility_settings: OverlaysVisibilitySettings::default(),
+		}
+	}
+}
+
+impl OverlayContextInternal {
+	pub(super) fn new(size: DVec2, device_pixel_ratio: f64, visibility_settings: OverlaysVisibilitySettings) -> Self {
+		Self {
+			scene: Scene::new(),
+			size,
+			device_pixel_ratio,
+			visibility_settings,
+		}
+	}
+
 	fn parse_color(color: &str) -> peniko::Color {
 		let hex = color.trim_start_matches('#');
 		let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
@@ -190,11 +436,11 @@ impl OverlayContext {
 		peniko::Color::from_rgba8(r, g, b, a)
 	}
 
-	pub fn quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>) {
+	fn quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>) {
 		self.dashed_polygon(&quad.0, stroke_color, color_fill, None, None, None);
 	}
 
-	pub fn draw_triangle(&mut self, base: DVec2, direction: DVec2, size: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
+	fn draw_triangle(&mut self, base: DVec2, direction: DVec2, size: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
 		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
 		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
 		let normal = direction.perp();
@@ -215,15 +461,15 @@ impl OverlayContext {
 		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color_stroke), None, &path);
 	}
 
-	pub fn dashed_quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+	fn dashed_quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
 		self.dashed_polygon(&quad.0, stroke_color, color_fill, dash_width, dash_gap_width, dash_offset);
 	}
 
-	pub fn polygon(&mut self, polygon: &[DVec2], stroke_color: Option<&str>, color_fill: Option<&str>) {
+	fn polygon(&mut self, polygon: &[DVec2], stroke_color: Option<&str>, color_fill: Option<&str>) {
 		self.dashed_polygon(polygon, stroke_color, color_fill, None, None, None);
 	}
 
-	pub fn dashed_polygon(&mut self, polygon: &[DVec2], stroke_color: Option<&str>, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+	fn dashed_polygon(&mut self, polygon: &[DVec2], stroke_color: Option<&str>, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
 		if polygon.len() < 2 {
 			return;
 		}
@@ -255,12 +501,12 @@ impl OverlayContext {
 		self.scene.stroke(&stroke, transform, Self::parse_color(stroke_color), None, &path);
 	}
 
-	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>) {
+	fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>) {
 		self.dashed_line(start, end, color, thickness, None, None, None)
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+	fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
 		let transform = self.get_transform();
 
 		let start = start.round() - DVec2::splat(0.5);
@@ -280,7 +526,7 @@ impl OverlayContext {
 		self.scene.stroke(&stroke, transform, Self::parse_color(color.unwrap_or(COLOR_OVERLAY_BLUE)), None, &path);
 	}
 
-	pub fn manipulator_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
+	fn manipulator_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
 		let transform = self.get_transform();
 		let position = position.round() - DVec2::splat(0.5);
 
@@ -293,17 +539,41 @@ impl OverlayContext {
 			.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color.unwrap_or(COLOR_OVERLAY_BLUE)), None, &circle);
 	}
 
-	pub fn manipulator_anchor(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
+	fn hover_manipulator_handle(&mut self, position: DVec2, selected: bool) {
+		let transform = self.get_transform();
+
+		let position = position.round() - DVec2::splat(0.5);
+
+		let circle = kurbo::Circle::new((position.x, position.y), (MANIPULATOR_GROUP_MARKER_SIZE + 2.) / 2.);
+
+		let fill = COLOR_OVERLAY_BLUE_50;
+		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(fill), None, &circle);
+		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(COLOR_OVERLAY_BLUE_50), None, &circle);
+
+		let inner_circle = kurbo::Circle::new((position.x, position.y), MANIPULATOR_GROUP_MARKER_SIZE / 2.);
+
+		let color_fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
+		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &circle);
+		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &inner_circle);
+	}
+
+	fn manipulator_anchor(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
 		let color_stroke = color.unwrap_or(COLOR_OVERLAY_BLUE);
 		let color_fill = if selected { color_stroke } else { COLOR_OVERLAY_WHITE };
 		self.square(position, None, Some(color_fill), Some(color_stroke));
+	}
+
+	fn hover_manipulator_anchor(&mut self, position: DVec2, selected: bool) {
+		self.square(position, Some(MANIPULATOR_GROUP_MARKER_SIZE + 2.), Some(COLOR_OVERLAY_BLUE_50), Some(COLOR_OVERLAY_BLUE_50));
+		let color_fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
+		self.square(position, None, Some(color_fill), Some(COLOR_OVERLAY_BLUE));
 	}
 
 	fn get_transform(&self) -> kurbo::Affine {
 		kurbo::Affine::scale(self.device_pixel_ratio)
 	}
 
-	pub fn square(&mut self, position: DVec2, size: Option<f64>, color_fill: Option<&str>, color_stroke: Option<&str>) {
+	fn square(&mut self, position: DVec2, size: Option<f64>, color_fill: Option<&str>, color_stroke: Option<&str>) {
 		let size = size.unwrap_or(MANIPULATOR_GROUP_MARKER_SIZE);
 		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
 		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
@@ -319,7 +589,7 @@ impl OverlayContext {
 		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color_stroke), None, &rect);
 	}
 
-	pub fn pixel(&mut self, position: DVec2, color: Option<&str>) {
+	fn pixel(&mut self, position: DVec2, color: Option<&str>) {
 		let size = 1.;
 		let color_fill = color.unwrap_or(COLOR_OVERLAY_WHITE);
 
@@ -332,7 +602,7 @@ impl OverlayContext {
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &rect);
 	}
 
-	pub fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
+	fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
 		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
 		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
 		let position = position.round();
@@ -345,7 +615,7 @@ impl OverlayContext {
 		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color_stroke), None, &circle);
 	}
 
-	pub fn dashed_ellipse(
+	fn dashed_ellipse(
 		&mut self,
 		_center: DVec2,
 		_radius_x: f64,
@@ -362,7 +632,7 @@ impl OverlayContext {
 	) {
 	}
 
-	pub fn draw_arc(&mut self, center: DVec2, radius: f64, start_from: f64, end_at: f64) {
+	fn draw_arc(&mut self, center: DVec2, radius: f64, start_from: f64, end_at: f64) {
 		let segments = ((end_at - start_from).abs() / (std::f64::consts::PI / 4.)).ceil() as usize;
 		let step = (end_at - start_from) / segments as f64;
 		let half_step = step / 2.;
@@ -396,13 +666,13 @@ impl OverlayContext {
 		self.scene.stroke(&kurbo::Stroke::new(1.0), self.get_transform(), Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
-	pub fn draw_arc_gizmo_angle(&mut self, pivot: DVec2, bold_radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
+	fn draw_arc_gizmo_angle(&mut self, pivot: DVec2, bold_radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
 		let end_point1 = pivot + bold_radius * DVec2::from_angle(angle + offset_angle);
 		self.line(pivot, end_point1, None, None);
 		self.draw_arc(pivot, arc_radius, offset_angle, (angle) % TAU + offset_angle);
 	}
 
-	pub fn draw_angle(&mut self, pivot: DVec2, radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
+	fn draw_angle(&mut self, pivot: DVec2, radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
 		let end_point1 = pivot + radius * DVec2::from_angle(angle + offset_angle);
 		let end_point2 = pivot + radius * DVec2::from_angle(offset_angle);
 		self.line(pivot, end_point1, None, None);
@@ -410,7 +680,7 @@ impl OverlayContext {
 		self.draw_arc(pivot, arc_radius, offset_angle, (angle) % TAU + offset_angle);
 	}
 
-	pub fn draw_scale(&mut self, start: DVec2, scale: f64, radius: f64, text: &str) {
+	fn draw_scale(&mut self, start: DVec2, scale: f64, radius: f64, text: &str) {
 		let sign = scale.signum();
 		let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05).to_rgba_hex_srgb();
 		fill_color.insert(0, '#');
@@ -428,7 +698,7 @@ impl OverlayContext {
 		)
 	}
 
-	pub fn compass_rose(&mut self, compass_center: DVec2, angle: f64, show_compass_with_hover_ring: Option<bool>) {
+	fn compass_rose(&mut self, compass_center: DVec2, angle: f64, show_compass_with_hover_ring: Option<bool>) {
 		const HOVER_RING_OUTER_RADIUS: f64 = COMPASS_ROSE_HOVER_RING_DIAMETER / 2.;
 		const MAIN_RING_OUTER_RADIUS: f64 = COMPASS_ROSE_MAIN_RING_DIAMETER / 2.;
 		const MAIN_RING_INNER_RADIUS: f64 = COMPASS_ROSE_RING_INNER_DIAMETER / 2.;
@@ -484,7 +754,7 @@ impl OverlayContext {
 			.stroke(&kurbo::Stroke::new(MAIN_RING_STROKE_WIDTH), transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &circle);
 	}
 
-	pub fn pivot(&mut self, position: DVec2, angle: f64) {
+	fn pivot(&mut self, position: DVec2, angle: f64) {
 		let uv = DVec2::from_angle(angle);
 		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
 
@@ -515,7 +785,7 @@ impl OverlayContext {
 		self.scene.stroke(&stroke, transform, Self::parse_color(COLOR_OVERLAY_YELLOW), None, &path);
 	}
 
-	pub fn dowel_pin(&mut self, position: DVec2, angle: f64, color: Option<&str>) {
+	fn dowel_pin(&mut self, position: DVec2, angle: f64, color: Option<&str>) {
 		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
 		let color = color.unwrap_or(COLOR_OVERLAY_YELLOW_DULL);
 
@@ -557,19 +827,19 @@ impl OverlayContext {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	pub fn arc_sweep_angle(&mut self, offset_angle: f64, angle: f64, end_point_position: DVec2, bold_radius: f64, pivot: DVec2, text: &str, transform: DAffine2) {
+	fn arc_sweep_angle(&mut self, offset_angle: f64, angle: f64, end_point_position: DVec2, bold_radius: f64, pivot: DVec2, text: &str, transform: DAffine2) {
 		self.manipulator_handle(end_point_position, true, None);
 		self.draw_arc_gizmo_angle(pivot, bold_radius, ARC_SWEEP_GIZMO_RADIUS, offset_angle, angle.to_radians());
 		self.text(text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 	}
 
 	/// Used by the Pen and Path tools to outline the path of the shape.
-	pub fn outline_vector(&mut self, vector_data: &VectorData, transform: DAffine2) {
+	fn outline_vector(&mut self, vector: &Vector, transform: DAffine2) {
 		let vello_transform = self.get_transform();
 		let mut path = BezPath::new();
 
 		let mut last_point = None;
-		for (_, bezier, start_id, end_id) in vector_data.segment_bezier_iter() {
+		for (_, bezier, start_id, end_id) in vector.segment_bezier_iter() {
 			let move_to = last_point != Some(start_id);
 			last_point = Some(end_id);
 
@@ -580,7 +850,7 @@ impl OverlayContext {
 	}
 
 	/// Used by the Pen tool in order to show how the bezier curve would look like.
-	pub fn outline_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	fn outline_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
 		let vello_transform = self.get_transform();
 		let mut path = BezPath::new();
 		self.bezier_to_path(bezier, transform, true, &mut path);
@@ -589,7 +859,7 @@ impl OverlayContext {
 	}
 
 	/// Used by the path tool segment mode in order to show the selected segments.
-	pub fn outline_select_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	fn outline_select_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
 		let vello_transform = self.get_transform();
 		let mut path = BezPath::new();
 		self.bezier_to_path(bezier, transform, true, &mut path);
@@ -597,7 +867,7 @@ impl OverlayContext {
 		self.scene.stroke(&kurbo::Stroke::new(4.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
-	pub fn outline_overlay_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	fn outline_overlay_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
 		let vello_transform = self.get_transform();
 		let mut path = BezPath::new();
 		self.bezier_to_path(bezier, transform, true, &mut path);
@@ -671,7 +941,7 @@ impl OverlayContext {
 	}
 
 	/// Used by the Select tool to outline a path or a free point when selected or hovered.
-	pub fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
+	fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
 		let mut subpaths: Vec<bezier_rs::Subpath<PointId>> = vec![];
 
 		for target_type in target_types {
@@ -693,7 +963,7 @@ impl OverlayContext {
 
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed.
-	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
+	fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
 		let path = self.push_path(subpaths, transform);
 
 		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), Self::parse_color(color), None, &path);
@@ -701,7 +971,7 @@ impl OverlayContext {
 
 	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
 	/// Used by the fill tool to show the area to be filled.
-	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
+	fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
 		// TODO: Implement pattern fill in Vello
 		// For now, just fill with a semi-transparent version of the color
 		let path = self.push_path(subpaths, transform);
@@ -721,16 +991,16 @@ impl OverlayContext {
 		);
 	}
 
-	pub fn get_width(&self, _text: &str) -> f64 {
+	fn get_width(&self, _text: &str) -> f64 {
 		// TODO: Implement proper text measurement in Vello
 		0.
 	}
 
-	pub fn text(&self, _text: &str, _font_color: &str, _background_color: Option<&str>, _transform: DAffine2, _padding: f64, _pivot: [Pivot; 2]) {
+	fn text(&self, _text: &str, _font_color: &str, _background_color: Option<&str>, _transform: DAffine2, _padding: f64, _pivot: [Pivot; 2]) {
 		// TODO: Implement text rendering in Vello
 	}
 
-	pub fn translation_box(&mut self, translation: DVec2, quad: Quad, typed_string: Option<String>) {
+	fn translation_box(&mut self, translation: DVec2, quad: Quad, typed_string: Option<String>) {
 		if translation.x.abs() > 1e-3 {
 			self.dashed_line(quad.top_left(), quad.top_right(), None, None, Some(2.), Some(2.), Some(0.5));
 
@@ -759,17 +1029,4 @@ impl OverlayContext {
 			self.line(quad.bottom_left(), quad.bottom_right(), None, None);
 		}
 	}
-}
-
-pub enum Pivot {
-	Start,
-	Middle,
-	End,
-}
-
-pub enum DrawHandles {
-	All,
-	SelectedAnchors(Vec<SegmentId>),
-	FrontierHandles(HashMap<SegmentId, Vec<PointId>>),
-	None,
 }

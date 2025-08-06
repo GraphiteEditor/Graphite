@@ -8,7 +8,8 @@ use crate::messages::tool::tool_messages::path_tool::PathOptionsUpdate;
 use crate::messages::tool::tool_messages::select_tool::SelectOptionsUpdate;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{DAffine2, DVec2};
-use graphene_std::{transform::ReferencePoint, vector::ManipulatorPointId};
+use graphene_std::transform::ReferencePoint;
+use graphene_std::vector::misc::ManipulatorPointId;
 use std::fmt;
 
 pub fn pin_pivot_widget(active: bool, enabled: bool, source: PivotToolSource) -> WidgetHolder {

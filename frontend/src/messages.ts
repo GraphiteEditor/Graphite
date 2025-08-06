@@ -192,7 +192,7 @@ export type ContextMenuInformation = {
 	contextMenuData: "CreateNode" | { type: "CreateNode"; compatibleType: string } | { nodeId: bigint; currentlyIsNode: boolean };
 };
 
-export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Group" | "Artboard";
+export type FrontendGraphDataType = "General" | "Raster" | "Vector" | "Number" | "Graphic" | "Artboard";
 
 export class Node {
 	readonly index!: bigint;
@@ -791,6 +791,16 @@ export class TriggerImport extends JsMessage {}
 
 export class TriggerPaste extends JsMessage {}
 
+export class TriggerSaveDocument extends JsMessage {
+	readonly documentId!: bigint;
+
+	readonly name!: string;
+
+	readonly path!: string | undefined;
+
+	readonly document!: string;
+}
+
 export class TriggerDownloadImage extends JsMessage {
 	readonly svg!: string;
 
@@ -1348,7 +1358,7 @@ export class TextLabel extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 
-	checkboxId!: bigint | undefined;
+	forCheckbox!: bigint | undefined;
 }
 
 export type ReferencePoint = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";
@@ -1647,6 +1657,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayRemoveEditableTextbox,
 	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
+	TriggerSaveDocument,
 	TriggerDownloadImage,
 	TriggerDownloadTextFile,
 	TriggerFetchAndOpenDocument,

@@ -8,7 +8,7 @@ use graph_craft::document::NodeId;
 use graphene_std::math::quad::Quad;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
-use graphene_std::vector::{PointId, VectorData};
+use graphene_std::vector::{PointId, Vector};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 
@@ -22,11 +22,11 @@ use std::num::NonZeroU64;
 pub struct DocumentMetadata {
 	pub upstream_footprints: HashMap<NodeId, Footprint>,
 	pub local_transforms: HashMap<NodeId, DAffine2>,
-	pub first_instance_source_ids: HashMap<NodeId, Option<NodeId>>,
+	pub first_element_source_ids: HashMap<NodeId, Option<NodeId>>,
 	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
 	pub click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	pub clip_targets: HashSet<NodeId>,
-	pub vector_modify: HashMap<NodeId, VectorData>,
+	pub vector_modify: HashMap<NodeId, Vector>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 }
@@ -90,8 +90,8 @@ impl DocumentMetadata {
 
 		let mut use_local = true;
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
-		if let Some(path_node) = graph_layer.upstream_node_id_from_name("Path") {
-			if let Some(&source) = self.first_instance_source_ids.get(&layer.to_node()) {
+		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer("Path") {
+			if let Some(&source) = self.first_element_source_ids.get(&layer.to_node()) {
 				if !network_interface
 					.upstream_flow_back_from_nodes(vec![path_node], &[], FlowType::HorizontalFlow)
 					.any(|upstream| Some(upstream) == source)
@@ -303,10 +303,10 @@ impl LayerNodeIdentifier {
 		child.ancestors(metadata).any(|ancestor| ancestor == self)
 	}
 
-	/// Is the layer last child of parent group? Used for clipping
+	/// Is the layer the last child of its stack? Used for clipping
 	pub fn can_be_clipped(self, metadata: &DocumentMetadata) -> bool {
 		self.parent(metadata)
-			.map_or(false, |layer| layer.last_child(metadata).expect("Parent accessed via child should have children") != self)
+			.is_some_and(|layer| layer.last_child(metadata).expect("Parent accessed via child should have children") != self)
 	}
 
 	/// Iterator over all direct children (excluding self and recursive children)

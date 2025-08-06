@@ -471,7 +471,7 @@
 			rulerVertical?.resize();
 
 			// Send the new bounds of the viewports to the backend
-			if (viewport.parentElement) updateBoundsOfViewports(editor, viewport.parentElement);
+			if (viewport.parentElement) updateBoundsOfViewports(editor);
 		});
 		if (viewport) viewportResizeObserver.observe(viewport);
 	});
@@ -679,7 +679,7 @@
 								}
 
 								.color-vector {
-									fill: var(--color-data-vectordata);
+									fill: var(--color-data-vector);
 								}
 
 								.color-raster {

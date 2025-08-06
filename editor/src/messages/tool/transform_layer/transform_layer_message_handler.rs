@@ -11,9 +11,9 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 use glam::{DAffine2, DVec2};
 use graphene_std::renderer::Quad;
-use graphene_std::vector::ManipulatorPointId;
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::{VectorData, VectorModificationType};
+use graphene_std::vector::misc::ManipulatorPointId;
+use graphene_std::vector::{Vector, VectorModificationType};
 use std::f64::consts::{PI, TAU};
 
 const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays(context).into();
@@ -124,14 +124,14 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.grab_target = self.local_pivot;
 			}
 			// Here vector data from all layers is not considered which can be a problem in pivot calculation
-			else if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
+			else if let Some(vector) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
 				*selected.original_transforms = OriginalTransforms::default();
 
 				let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
 				let selected_segments = shape_editor.selected_segments().collect::<HashSet<_>>();
 				let mut affected_points = shape_editor.selected_points().copied().collect::<Vec<_>>();
 
-				for (segment_id, _, start, end) in vector_data.segment_bezier_iter() {
+				for (segment_id, _, start, end) in vector.segment_bezier_iter() {
 					if selected_segments.contains(&segment_id) {
 						affected_points.push(ManipulatorPointId::Anchor(start));
 						affected_points.push(ManipulatorPointId::Anchor(end));
@@ -140,11 +140,11 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 				let affected_point_refs = affected_points.iter().collect();
 
-				let get_location = |point: &&ManipulatorPointId| point.get_position(&vector_data).map(|position| viewspace.transform_point2(position));
+				let get_location = |point: &&ManipulatorPointId| point.get_position(&vector).map(|position| viewspace.transform_point2(position));
 				if let (Some((new_pivot, grab_target)), bounds) = calculate_pivot(
 					document,
 					&affected_point_refs,
-					&vector_data,
+					&vector,
 					viewspace,
 					|point: &ManipulatorPointId| get_location(&point),
 					&mut self.pivot_gizmo,
@@ -363,12 +363,12 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					}
 				}
 
-				if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
+				if let Some(vector) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
 					if let [point] = selected_points.as_slice() {
 						if matches!(point, ManipulatorPointId::Anchor(_)) {
-							if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
-								let handle1_length = handle1.length(&vector_data);
-								let handle2_length = handle2.length(&vector_data);
+							if let Some([handle1, handle2]) = point.get_handle_pair(&vector) {
+								let handle1_length = handle1.length(&vector);
+								let handle2_length = handle2.length(&vector);
 
 								if (handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool) {
 									// G should work for this point but not R and S
@@ -379,7 +379,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 								}
 							}
 						} else {
-							let handle_length = point.as_handle().map(|handle| handle.length(&vector_data));
+							let handle_length = point.as_handle().map(|handle| handle.length(&vector));
 
 							if handle_length == Some(0.) {
 								selected.original_transforms.clear();
@@ -694,7 +694,7 @@ impl TransformLayerMessageHandler {
 fn calculate_pivot(
 	document: &DocumentMessageHandler,
 	selected_points: &Vec<&ManipulatorPointId>,
-	vector_data: &VectorData,
+	vector: &Vector,
 	viewspace: DAffine2,
 	get_location: impl Fn(&ManipulatorPointId) -> Option<DVec2>,
 	gizmo: &mut PivotGizmo,
@@ -737,8 +737,8 @@ fn calculate_pivot(
 		ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
 			// Get the anchor position and transform it to the pivot
 			let (Some(pivot_position), Some(position)) = (
-				point.get_anchor_position(vector_data).map(|anchor_position| viewspace.transform_point2(anchor_position)),
-				point.get_position(vector_data),
+				point.get_anchor_position(vector).map(|anchor_position| viewspace.transform_point2(anchor_position)),
+				point.get_position(vector),
 			) else {
 				return (None, None);
 			};
@@ -775,15 +775,15 @@ fn project_edge_to_quad(edge: DVec2, quad: &Quad, local: bool, axis_constraint: 
 
 fn update_colinear_handles(selected_layers: &[LayerNodeIdentifier], document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	for &layer in selected_layers {
-		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
-		for [handle1, handle2] in &vector_data.colinear_manipulators {
+		for [handle1, handle2] in &vector.colinear_manipulators {
 			let manipulator1 = handle1.to_manipulator_point();
 			let manipulator2 = handle2.to_manipulator_point();
 
-			let Some(anchor) = manipulator1.get_anchor_position(&vector_data) else { continue };
-			let Some(pos1) = manipulator1.get_position(&vector_data).map(|pos| pos - anchor) else { continue };
-			let Some(pos2) = manipulator2.get_position(&vector_data).map(|pos| pos - anchor) else { continue };
+			let Some(anchor) = manipulator1.get_anchor_position(&vector) else { continue };
+			let Some(pos1) = manipulator1.get_position(&vector).map(|pos| pos - anchor) else { continue };
+			let Some(pos2) = manipulator2.get_position(&vector).map(|pos| pos - anchor) else { continue };
 
 			let angle = pos1.angle_to(pos2);
 
