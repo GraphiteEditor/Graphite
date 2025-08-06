@@ -124,7 +124,7 @@ impl CefEventHandler for CefHandler {
 		let str = std::str::from_utf8(message).unwrap();
 		match ron::from_str(str) {
 			Ok(message) => {
-				let _ = self.event_loop_proxy.send_event(CustomEvent::MessageReceived { message });
+				let _ = self.event_loop_proxy.send_event(CustomEvent::MessageReceived(message));
 			}
 			Err(e) => {
 				tracing::error!("Failed to deserialize message {:?}", e)

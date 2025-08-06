@@ -385,25 +385,19 @@ impl TextToolData {
 			parent: document.new_layer_parent(true),
 			insert_index: 0,
 		});
-		responses.add(DeferMessage::AfterGraphRun {
-			messages: vec![
-				GraphOperationMessage::FillSet {
-					layer: self.layer,
-					fill: if editing_text.color.is_some() {
-						Fill::Solid(editing_text.color.unwrap().to_gamma_srgb())
-					} else {
-						Fill::None
-					},
-				}
-				.into(),
-				GraphOperationMessage::TransformSet {
-					layer: self.layer,
-					transform: editing_text.transform,
-					transform_in: TransformIn::Viewport,
-					skip_rerender: true,
-				}
-				.into(),
-			],
+		responses.add(GraphOperationMessage::FillSet {
+			layer: self.layer,
+			fill: if editing_text.color.is_some() {
+				Fill::Solid(editing_text.color.unwrap().to_gamma_srgb())
+			} else {
+				Fill::None
+			},
+		});
+		responses.add(GraphOperationMessage::TransformSet {
+			layer: self.layer,
+			transform: editing_text.transform,
+			transform_in: TransformIn::Viewport,
+			skip_rerender: true,
 		});
 		self.editing_text = Some(editing_text);
 

@@ -13,7 +13,7 @@
 	export let minWidth = 0;
 	export let multiline = false;
 	export let tooltip: string | undefined = undefined;
-	export let checkboxId: bigint | undefined = undefined;
+	export let forCheckbox: bigint | undefined = undefined;
 
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
@@ -34,7 +34,7 @@
 	style:min-width={minWidth > 0 ? `${minWidth}px` : undefined}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	title={tooltip}
-	for={checkboxId !== undefined ? `checkbox-input-${checkboxId}` : undefined}
+	for={forCheckbox !== undefined ? `checkbox-input-${forCheckbox}` : undefined}
 >
 	<slot />
 </label>

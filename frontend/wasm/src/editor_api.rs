@@ -5,7 +5,7 @@
 // on the dispatcher messaging system and more complex Rust data types.
 //
 use crate::helpers::translate_key;
-use crate::{EDITOR, EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error};
+use crate::{EDITOR, EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
 use editor::application::Editor;
 use editor::consts::FILE_SAVE_SUFFIX;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
@@ -157,12 +157,23 @@ impl EditorHandle {
 	#[cfg(not(feature = "native"))]
 	fn dispatch<T: Into<Message>>(&self, message: T) {
 		// Process no further messages after a crash to avoid spamming the console
+
+		use crate::MESSAGE_BUFFER;
 		if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 			return;
 		}
 
 		// Get the editor, dispatch the message, and store the `FrontendMessage` queue response
-		let frontend_messages = editor(|editor| editor.handle_message(message.into()));
+		let frontend_messages = EDITOR.with(|editor| {
+			let mut guard = editor.try_lock();
+			let Ok(Some(editor)) = guard.as_deref_mut() else {
+				// Enqueue messages which can't be procssed currently
+				MESSAGE_BUFFER.with_borrow_mut(|buffer| buffer.push(message.into()));
+				return vec![];
+			};
+
+			editor.handle_message(message)
+		});
 
 		// Send each `FrontendMessage` to the JavaScript frontend
 		for message in frontend_messages.into_iter() {
@@ -239,7 +250,14 @@ impl EditorHandle {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
-					editor_and_handle(|_, handle| {
+					handle(|handle| {
+						// Process all messages that have been queued up
+						let messages = MESSAGE_BUFFER.take();
+
+						for message in messages {
+							handle.dispatch(message);
+						}
+
 						handle.dispatch(InputPreprocessorMessage::CurrentTime {
 							timestamp: js_sys::Date::now() as u64,
 						});
@@ -629,10 +647,17 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Paste layers from a serialized json representation
+	/// Paste layers from a serialized JSON representation
 	#[wasm_bindgen(js_name = pasteSerializedData)]
 	pub fn paste_serialized_data(&self, data: String) {
 		let message = PortfolioMessage::PasteSerializedData { data };
+		self.dispatch(message);
+	}
+
+	/// Paste vector into a new layer from a serialized JSON representation
+	#[wasm_bindgen(js_name = pasteSerializedVector)]
+	pub fn paste_serialized_vector(&self, data: String) {
+		let message = PortfolioMessage::PasteSerializedVector { data };
 		self.dispatch(message);
 	}
 
@@ -719,7 +744,7 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Merge a group of nodes into a subnetwork
+	/// Merge the selected nodes into a subnetwork
 	#[wasm_bindgen(js_name = mergeSelectedNodes)]
 	pub fn merge_nodes(&self) {
 		let message = NodeGraphMessage::MergeSelectedNodes;
@@ -907,7 +932,10 @@ fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
 fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T {
 	EDITOR.with(|editor| {
 		let mut guard = editor.try_lock();
-		let Ok(Some(editor)) = guard.as_deref_mut() else { return T::default() };
+		let Ok(Some(editor)) = guard.as_deref_mut() else {
+			log::error!("Failed to borrow editor");
+			return T::default();
+		};
 
 		callback(editor)
 	})
@@ -915,17 +943,24 @@ fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) ->
 
 /// Provides access to the `Editor` and its `EditorHandle` by calling the given closure with them as arguments.
 pub(crate) fn editor_and_handle(callback: impl FnOnce(&mut Editor, &mut EditorHandle)) {
-	EDITOR_HANDLE.with(|editor_handle| {
+	handle(|editor_handle| {
 		editor(|editor| {
-			let mut guard = editor_handle.try_lock();
-			let Ok(Some(editor_handle)) = guard.as_deref_mut() else {
-				log::error!("Failed to borrow editor handle");
-				return;
-			};
-
 			// Call the closure with the editor and its handle
 			callback(editor, editor_handle);
 		})
+	});
+}
+/// Provides access to the `EditorHandle` by calling the given closure with them as arguments.
+pub(crate) fn handle(callback: impl FnOnce(&mut EditorHandle)) {
+	EDITOR_HANDLE.with(|editor_handle| {
+		let mut guard = editor_handle.try_lock();
+		let Ok(Some(editor_handle)) = guard.as_deref_mut() else {
+			log::error!("Failed to borrow editor handle");
+			return;
+		};
+
+		// Call the closure with the editor and its handle
+		callback(editor_handle);
 	});
 }
 
@@ -968,7 +1003,7 @@ fn auto_save_all_documents() {
 		return;
 	}
 
-	editor_and_handle(|_, handle| {
+	handle(|handle| {
 		handle.dispatch(PortfolioMessage::AutoSaveAllDocuments);
 	});
 }

@@ -115,10 +115,10 @@
 		--color-data-general-dim: #8a8a8a;
 		--color-data-raster: #e4bb72;
 		--color-data-raster-dim: #8b7752;
-		--color-data-vectordata: #65bbe5;
-		--color-data-vectordata-dim: #4b778c;
-		--color-data-group: #66b195;
-		--color-data-group-dim: #3d725e;
+		--color-data-vector: #65bbe5;
+		--color-data-vector-dim: #4b778c;
+		--color-data-graphic: #66b195;
+		--color-data-graphic-dim: #3d725e;
 		--color-data-artboard: #fbf9eb;
 		--color-data-artboard-dim: #b9b9a9;
 		--color-data-number: #c9a699;

@@ -356,45 +356,38 @@ fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVe
 mod test_freehand {
 	use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta};
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-	use crate::messages::tool::common_functionality::graph_modification_utils::get_stroke_width;
+	use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_stroke_width};
 	use crate::messages::tool::tool_messages::freehand_tool::FreehandOptionsUpdate;
 	use crate::test_utils::test_prelude::*;
 	use glam::{DAffine2, DVec2};
-	use graphene_std::vector::VectorData;
+	use graphene_std::vector::Vector;
 
-	async fn get_vector_data(editor: &mut EditorTestUtils) -> Vec<(VectorData, DAffine2)> {
+	async fn get_vector_and_transform_list(editor: &mut EditorTestUtils) -> Vec<(Vector, DAffine2)> {
 		let document = editor.active_document();
 		let layers = document.metadata().all_layers();
 
 		layers
 			.filter_map(|layer| {
-				let vector_data = document.network_interface.compute_modified_vector(layer)?;
+				let graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
+				// Only get layers with path nodes
+				let _ = graph_layer.upstream_visible_node_id_from_name_in_layer("Path")?;
+
+				let vector = document.network_interface.compute_modified_vector(layer)?;
 				let transform = document.metadata().transform_to_viewport(layer);
-				Some((vector_data, transform))
+				Some((vector, transform))
 			})
 			.collect()
 	}
 
-	fn verify_path_points(vector_data_list: &[(VectorData, DAffine2)], expected_captured_points: &[DVec2], tolerance: f64) -> Result<(), String> {
-		if vector_data_list.len() == 0 {
-			return Err("No vector data found after drawing".to_string());
-		}
+	fn verify_path_points(vector_and_transform_list: &[(Vector, DAffine2)], expected_captured_points: &[DVec2], tolerance: f64) -> Result<(), String> {
+		assert_eq!(vector_and_transform_list.len(), 1, "There should be one row of Vector geometry");
 
-		let path_data = vector_data_list.iter().find(|(data, _)| data.point_domain.ids().len() > 0).ok_or("Could not find path data")?;
+		let (vector, transform) = vector_and_transform_list.iter().find(|(data, _)| data.point_domain.ids().len() > 0).ok_or("Could not find path data")?;
 
-		let (vector_data, transform) = path_data;
-		let point_count = vector_data.point_domain.ids().len();
-		let segment_count = vector_data.segment_domain.ids().len();
+		let point_count = vector.point_domain.ids().len();
+		let segment_count = vector.segment_domain.ids().len();
 
-		let actual_positions: Vec<DVec2> = vector_data
-			.point_domain
-			.ids()
-			.iter()
-			.filter_map(|&point_id| {
-				let position = vector_data.point_domain.position_from_id(point_id)?;
-				Some(transform.transform_point2(position))
-			})
-			.collect();
+		let actual_positions: Vec<DVec2> = vector.point_domain.positions().iter().map(|&position| transform.transform_point2(position)).collect();
 
 		if segment_count != point_count - 1 {
 			return Err(format!("Expected segments to be one less than points, got {} segments for {} points", segment_count, point_count));
@@ -441,8 +434,8 @@ mod test_freehand {
 		let expected_captured_points = &mouse_points[1..];
 		editor.drag_path(&mouse_points, ModifierKeys::empty()).await;
 
-		let vector_data_list = get_vector_data(&mut editor).await;
-		verify_path_points(&vector_data_list, expected_captured_points, 1.).expect("Path points verification failed");
+		let vector_and_transform_list = get_vector_and_transform_list(&mut editor).await;
+		verify_path_points(&vector_and_transform_list, expected_captured_points, 1.).expect("Path points verification failed");
 	}
 
 	#[tokio::test]
@@ -474,12 +467,12 @@ mod test_freehand {
 			)
 			.await;
 
-		let initial_vector_data = get_vector_data(&mut editor).await;
-		assert!(!initial_vector_data.is_empty(), "No vector data found after initial drawing");
+		let initial_vector_and_transform_list = get_vector_and_transform_list(&mut editor).await;
+		assert!(!initial_vector_and_transform_list.is_empty(), "No Vector geometry found after initial drawing");
 
-		let (initial_data, transform) = &initial_vector_data[0];
-		let initial_point_count = initial_data.point_domain.ids().len();
-		let initial_segment_count = initial_data.segment_domain.ids().len();
+		let (initial_vector, initial_transform) = &initial_vector_and_transform_list[0];
+		let initial_point_count = initial_vector.point_domain.ids().len();
+		let initial_segment_count = initial_vector.segment_domain.ids().len();
 
 		assert!(initial_point_count >= 2, "Expected at least 2 points in initial path, found {}", initial_point_count);
 		assert_eq!(
@@ -490,15 +483,15 @@ mod test_freehand {
 			initial_segment_count
 		);
 
-		let extendable_points = initial_data.extendable_points(false).collect::<Vec<_>>();
+		let extendable_points = initial_vector.extendable_points(false).collect::<Vec<_>>();
 		assert!(!extendable_points.is_empty(), "No extendable points found in the path");
 
 		let endpoint_id = extendable_points[0];
-		let endpoint_pos_option = initial_data.point_domain.position_from_id(endpoint_id);
+		let endpoint_pos_option = initial_vector.point_domain.position_from_id(endpoint_id);
 		assert!(endpoint_pos_option.is_some(), "Could not find position for endpoint");
 
 		let endpoint_pos = endpoint_pos_option.unwrap();
-		let endpoint_viewport_pos = transform.transform_point2(endpoint_pos);
+		let endpoint_viewport_pos = initial_transform.transform_point2(endpoint_pos);
 
 		assert!(endpoint_viewport_pos.is_finite(), "Endpoint position is not finite");
 
@@ -533,12 +526,12 @@ mod test_freehand {
 			)
 			.await;
 
-		let extended_vector_data = get_vector_data(&mut editor).await;
-		assert!(!extended_vector_data.is_empty(), "No vector data found after extension");
+		let extended_vector_and_transform = get_vector_and_transform_list(&mut editor).await;
+		assert!(!extended_vector_and_transform.is_empty(), "No Vector geometry found after extension");
 
-		let (extended_data, _) = &extended_vector_data[0];
-		let extended_point_count = extended_data.point_domain.ids().len();
-		let extended_segment_count = extended_data.segment_domain.ids().len();
+		let (extended_vector, _) = &extended_vector_and_transform[0];
+		let extended_point_count = extended_vector.point_domain.ids().len();
+		let extended_segment_count = extended_vector.segment_domain.ids().len();
 
 		assert!(
 			extended_point_count > initial_point_count,
@@ -591,12 +584,12 @@ mod test_freehand {
 			)
 			.await;
 
-		let initial_vector_data = get_vector_data(&mut editor).await;
-		assert!(!initial_vector_data.is_empty(), "No vector data found after initial drawing");
+		let initial_vector_and_transform = get_vector_and_transform_list(&mut editor).await;
+		assert!(!initial_vector_and_transform.is_empty(), "No vector geometry found after initial drawing");
 
-		let (initial_data, _) = &initial_vector_data[0];
-		let initial_point_count = initial_data.point_domain.ids().len();
-		let initial_segment_count = initial_data.segment_domain.ids().len();
+		let (initial_vector, _) = &initial_vector_and_transform[0];
+		let initial_point_count = initial_vector.point_domain.ids().len();
+		let initial_segment_count = initial_vector.segment_domain.ids().len();
 
 		let existing_layer_id = {
 			let document = editor.active_document();
@@ -642,8 +635,8 @@ mod test_freehand {
 			)
 			.await;
 
-		let final_vector_data = get_vector_data(&mut editor).await;
-		assert!(!final_vector_data.is_empty(), "No vector data found after second drawing");
+		let final_vector_and_transform = get_vector_and_transform_list(&mut editor).await;
+		assert!(!final_vector_and_transform.is_empty(), "No vector geometry found after second drawing");
 
 		// Verify we still have only one layer
 		let layer_count = {
@@ -652,9 +645,9 @@ mod test_freehand {
 		};
 		assert_eq!(layer_count, 1, "Expected only one layer after drawing with Shift key");
 
-		let (final_data, _) = &final_vector_data[0];
-		let final_point_count = final_data.point_domain.ids().len();
-		let final_segment_count = final_data.segment_domain.ids().len();
+		let (final_vector, _) = &final_vector_and_transform[0];
+		let final_point_count = final_vector.point_domain.ids().len();
+		let final_segment_count = final_vector.segment_domain.ids().len();
 
 		assert!(
 			final_point_count > initial_point_count,

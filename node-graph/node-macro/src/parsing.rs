@@ -910,7 +910,7 @@ mod tests {
 		let attr = quote!(category("Vector: Shape"));
 		let input = quote!(
 			/// Test
-			fn circle(_: impl Ctx, #[default(50.)] radius: f64) -> VectorData {
+			fn circle(_: impl Ctx, #[default(50.)] radius: f64) -> Vector {
 				// Implementation details...
 			}
 		);
@@ -937,7 +937,7 @@ mod tests {
 				ty: parse_quote!(impl Ctx),
 				implementations: Punctuated::new(),
 			},
-			output_type: parse_quote!(VectorData),
+			output_type: parse_quote!(Vector),
 			is_async: false,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("radius"),
@@ -969,7 +969,7 @@ mod tests {
 	fn test_node_with_implementations() {
 		let attr = quote!(category("Raster: Adjustment"));
 		let input = quote!(
-			fn levels<P: Pixel>(image: RasterDataTable<P>, #[implementations(f32, f64)] shadows: f64) -> RasterDataTable<P> {
+			fn levels<P: Pixel>(image: Table<Raster<P>>, #[implementations(f32, f64)] shadows: f64) -> Table<Raster<P>> {
 				// Implementation details...
 			}
 		);
@@ -993,10 +993,10 @@ mod tests {
 			where_clause: None,
 			input: Input {
 				pat_ident: pat_ident("image"),
-				ty: parse_quote!(RasterDataTable<P>),
+				ty: parse_quote!(Table<Raster<P>>),
 				implementations: Punctuated::new(),
 			},
-			output_type: parse_quote!(RasterDataTable<P>),
+			output_type: parse_quote!(Table<Raster<P>>),
 			is_async: false,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("shadows"),
@@ -1099,7 +1099,7 @@ mod tests {
 	fn test_async_node() {
 		let attr = quote!(category("IO"));
 		let input = quote!(
-			async fn load_image(api: &WasmEditorApi, #[expose] path: String) -> RasterDataTable<CPU> {
+			async fn load_image(api: &WasmEditorApi, #[expose] path: String) -> Table<Raster<CPU>> {
 				// Implementation details...
 			}
 		);
@@ -1126,7 +1126,7 @@ mod tests {
 				ty: parse_quote!(&WasmEditorApi),
 				implementations: Punctuated::new(),
 			},
-			output_type: parse_quote!(RasterDataTable<CPU>),
+			output_type: parse_quote!(Table<Raster<CPU>>),
 			is_async: true,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("path"),
@@ -1248,7 +1248,7 @@ mod tests {
 	fn test_invalid_implementation_syntax() {
 		let attr = quote!(category("Test"));
 		let input = quote!(
-			fn test_node(_: (), #[implementations((Footprint, Color), (Footprint, RasterDataTable<CPU>))] input: impl Node<Footprint, Output = T>) -> T {
+			fn test_node(_: (), #[implementations((Footprint, Color), (Footprint, Table<Raster<CPU>>))] input: impl Node<Footprint, Output = T>) -> T {
 				// Implementation details...
 			}
 		);
@@ -1274,10 +1274,10 @@ mod tests {
 				#[implementations((), #tuples, Footprint)] footprint: F,
 				#[implementations(
 				() -> Color,
-				() -> RasterDataTable<CPU>,
+				() -> Table<Raster<CPU>>,
 				() -> GradientStops,
 				Footprint -> Color,
-				Footprint -> RasterDataTable<CPU>,
+				Footprint -> Table<Raster<CPU>>,
 				Footprint -> GradientStops,
 			)]
 				image: impl Node<F, Output = T>,

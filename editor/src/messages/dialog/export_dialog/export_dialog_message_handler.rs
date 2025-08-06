@@ -111,19 +111,19 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			(ExportBounds::Selection, "Selection".to_string(), !self.has_selection),
 		];
 		let artboards = self.artboards.iter().map(|(&layer, name)| (ExportBounds::Artboard(layer), name.to_string(), false)).collect();
-		let groups = [standard_bounds, artboards];
+		let choices = [standard_bounds, artboards];
 
 		let current_bounds = if !self.has_selection && self.bounds == ExportBounds::Selection {
 			ExportBounds::AllArtwork
 		} else {
 			self.bounds
 		};
-		let index = groups.iter().flatten().position(|(bounds, _, _)| *bounds == current_bounds).unwrap();
+		let index = choices.iter().flatten().position(|(bounds, _, _)| *bounds == current_bounds).unwrap();
 
-		let mut entries = groups
+		let mut entries = choices
 			.into_iter()
-			.map(|group| {
-				group
+			.map(|choice| {
+				choice
 					.into_iter()
 					.map(|(val, name, disabled)| {
 						MenuListEntry::new(format!("{val:?}"))
@@ -145,14 +145,14 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			DropdownInput::new(entries).selected_index(Some(index as u32)).widget_holder(),
 		];
 
-		let mut checkbox_id = CheckboxId::default();
+		let checkbox_id = CheckboxId::new();
 		let transparent_background = vec![
-			TextLabel::new("Transparency").table_align(true).min_width(100).for_checkbox(&mut checkbox_id).widget_holder(),
+			TextLabel::new("Transparency").table_align(true).min_width(100).for_checkbox(checkbox_id).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(self.transparent_background)
 				.disabled(self.file_type == FileType::Jpg)
 				.on_update(move |value: &CheckboxInput| ExportDialogMessage::TransparentBackground(value.checked).into())
-				.for_label(checkbox_id.clone())
+				.for_label(checkbox_id)
 				.widget_holder(),
 		];
 

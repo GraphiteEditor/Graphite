@@ -42,7 +42,7 @@ pub struct DocumentNode {
 	/// In the root network, it is resolved when evaluating the borrow tree.
 	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input)
 	/// by using network.update_click_target(node_id).
-	#[cfg_attr(target_arch = "wasm32", serde(alias = "outputs"))]
+	#[cfg_attr(target_family = "wasm", serde(alias = "outputs"))]
 	pub inputs: Vec<NodeInput>,
 	/// Manual composition is the methodology by which most nodes are implemented, involving a call argument and upstream inputs.
 	/// By contrast, automatic composition is an alternative way to handle the composition of nodes as they execute in the graph.
@@ -390,37 +390,13 @@ impl NodeInput {
 	}
 }
 
+// TODO: Eventually remove this document upgrade code
 #[derive(Clone, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 /// Represents the implementation of a node, which can be a nested [`NodeNetwork`], a proto [`ProtoNodeIdentifier`], or `Extract`.
 pub enum OldDocumentNodeImplementation {
-	/// This describes a (document) node built out of a subgraph of other (document) nodes.
-	///
-	/// A nested [`NodeNetwork`] that is flattened by the [`NodeNetwork::flatten`] function.
 	Network(OldNodeNetwork),
-	/// This describes a (document) node implemented as a proto node.
-	///
-	/// A proto node identifier which can be found in `node_registry.rs`.
-	#[serde(alias = "Unresolved")] // TODO: Eventually remove this alias document upgrade code
+	#[serde(alias = "Unresolved")]
 	ProtoNode(ProtoNodeIdentifier),
-	/// The Extract variant is a tag which tells the compilation process to do something special. It invokes language-level functionality built for use by the ExtractNode to enable metaprogramming.
-	/// When the ExtractNode is compiled, it gets replaced by a value node containing a representation of the source code for the function/lambda of the document node that's fed into the ExtractNode
-	/// (but only that one document node, not upstream nodes).
-	///
-	/// This is explained in more detail here: <https://www.youtube.com/watch?v=72KJa3jQClo>
-	///
-	/// Currently we use it for GPU execution, where a node has to get "extracted" to its source code representation and stored as a value that can be given to the GpuCompiler node at runtime
-	/// (to become a compute shader). Future use could involve the addition of an InjectNode to convert the source code form back into an executable node, enabling metaprogramming in the node graph.
-	/// We would use an assortment of nodes that operate on Graphene source code (just data, no different from any other data flowing through the graph) to make graph transformations.
-	///
-	/// We use this for dealing with macros in a syntactic way of modifying the node graph from within the graph itself. Just like we often deal with lambdas to represent a whole group of
-	/// operations/code/logic, this allows us to basically deal with a lambda at a meta/source-code level, because we need to pass the GPU SPIR-V compiler the source code for a lambda,
-	/// not the executable logic of a lambda.
-	///
-	/// This is analogous to how Rust macros operate at the level of source code, not executable code. When we speak of source code, that represents Graphene's source code in the form of a
-	/// DocumentNode network, not the text form of Rust's source code. (Analogous to the token stream/AST of a Rust macro.)
-	///
-	/// `DocumentNode`s with a `DocumentNodeImplementation::Extract` are converted into a `ClonedNode` that returns the `DocumentNode` specified by the single `NodeInput::Node`. The referenced node
-	/// (specified by the single `NodeInput::Node`) is removed from the network, and any `NodeInput::Node`s used by the referenced node are replaced with a generically typed network input.
 	Extract,
 }
 
@@ -552,7 +528,7 @@ pub struct OldDocumentNode {
 	///
 	/// In the root network, it is resolved when evaluating the borrow tree.
 	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input) by using network.update_click_target(node_id).
-	#[cfg_attr(target_arch = "wasm32", serde(alias = "outputs"))]
+	#[cfg_attr(target_family = "wasm", serde(alias = "outputs"))]
 	pub inputs: Vec<NodeInput>,
 	pub manual_composition: Option<Type>,
 	// TODO: Remove once this references its definition instead (see above TODO).
@@ -657,7 +633,7 @@ pub struct NodeNetwork {
 	/// The list of data outputs that are exported from this network to the parent network.
 	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
 	// TODO: Eventually remove this alias document upgrade code
-	#[cfg_attr(target_arch = "wasm32", serde(alias = "outputs", deserialize_with = "deserialize_exports"))]
+	#[cfg_attr(target_family = "wasm", serde(alias = "outputs", deserialize_with = "deserialize_exports"))]
 	pub exports: Vec<NodeInput>,
 	// TODO: Instead of storing import types in each NodeInput::Network connection, the types are stored here. This is similar to how types need to be defined for parameters when creating a function in Rust.
 	// pub import_types: Vec<Type>,
@@ -915,12 +891,13 @@ impl NodeNetwork {
 			warn!("The node which was supposed to be flattened does not exist in the network, id {node_id} network {self:#?}");
 			return;
 		};
+
 		// If the node is hidden, replace it with an identity node
 		let identity_node = DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into());
 		if !node.visible && node.implementation != identity_node {
 			node.implementation = identity_node;
 
-			// Connect layer node to the graphic group below
+			// Connect layer node to the group below
 			node.inputs.drain(1..);
 			node.manual_composition = None;
 			self.nodes.insert(id, node);

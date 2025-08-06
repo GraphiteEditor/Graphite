@@ -1,5 +1,5 @@
-use crate::vector::misc::dvec2_to_point;
-use crate::vector::vector_data::{HandleId, VectorData};
+use crate::vector::misc::{HandleId, dvec2_to_point};
+use crate::vector::vector_types::Vector;
 use bezier_rs::{BezierHandles, ManipulatorGroup};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -48,7 +48,7 @@ macro_rules! create_ids {
 	};
 }
 
-create_ids! { InstanceId, PointId, SegmentId, RegionId, StrokeId, FillId }
+create_ids! { PointId, SegmentId, RegionId, StrokeId, FillId }
 
 /// A no-op hasher that allows writing u64s (the id type).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -305,7 +305,7 @@ impl SegmentDomain {
 		&self.stroke
 	}
 
-	pub(crate) fn push(&mut self, id: SegmentId, start: usize, end: usize, handles: BezierHandles, stroke: StrokeId) {
+	pub fn push(&mut self, id: SegmentId, start: usize, end: usize, handles: BezierHandles, stroke: StrokeId) {
 		debug_assert!(!self.id.contains(&id), "Tried to push an existing point to a point domain");
 
 		self.id.push(id);
@@ -673,7 +673,7 @@ impl FoundSubpath {
 	}
 }
 
-impl VectorData {
+impl Vector {
 	/// Construct a [`kurbo::PathSeg`] by resolving the points from their ids.
 	fn path_segment_from_index(&self, start: usize, end: usize, handles: BezierHandles) -> PathSeg {
 		let start = dvec2_to_point(self.point_domain.positions()[start]);
@@ -811,13 +811,13 @@ impl VectorData {
 	/// Construct a [`bezier_rs::Bezier`] curve from an iterator of segments with (handles, start point, end point) independently of discontinuities.
 	pub fn subpath_from_segments_ignore_discontinuities(&self, segments: impl Iterator<Item = (BezierHandles, usize, usize)>) -> Option<bezier_rs::Subpath<PointId>> {
 		let mut first_point = None;
-		let mut groups = Vec::new();
+		let mut manipulators_list = Vec::new();
 		let mut last: Option<(usize, BezierHandles)> = None;
 
 		for (handle, start, end) in segments {
 			first_point = Some(first_point.unwrap_or(start));
 
-			groups.push(ManipulatorGroup {
+			manipulators_list.push(ManipulatorGroup {
 				anchor: self.point_domain.positions()[start],
 				in_handle: last.and_then(|(_, handle)| handle.end()),
 				out_handle: handle.start(),
@@ -827,13 +827,13 @@ impl VectorData {
 			last = Some((end, handle));
 		}
 
-		let closed = groups.len() > 1 && last.map(|(point, _)| point) == first_point;
+		let closed = manipulators_list.len() > 1 && last.map(|(point, _)| point) == first_point;
 
 		if let Some((end, last_handle)) = last {
 			if closed {
-				groups[0].in_handle = last_handle.end();
+				manipulators_list[0].in_handle = last_handle.end();
 			} else {
-				groups.push(ManipulatorGroup {
+				manipulators_list.push(ManipulatorGroup {
 					anchor: self.point_domain.positions()[end],
 					in_handle: last_handle.end(),
 					out_handle: None,
@@ -842,7 +842,7 @@ impl VectorData {
 			}
 		}
 
-		Some(bezier_rs::Subpath::new(groups, closed))
+		Some(bezier_rs::Subpath::new(manipulators_list, closed))
 	}
 
 	/// Construct a [`bezier_rs::Bezier`] curve for each region, skipping invalid regions.
@@ -896,7 +896,7 @@ impl VectorData {
 		}
 
 		StrokePathIter {
-			vector_data: self,
+			vector: self,
 			points,
 			skip: 0,
 			done_one: false,
@@ -905,7 +905,7 @@ impl VectorData {
 
 	/// Construct a [`bezier_rs::Bezier`] curve for stroke.
 	pub fn stroke_bezier_paths(&self) -> impl Iterator<Item = bezier_rs::Subpath<PointId>> {
-		self.build_stroke_path_iter().map(|(group, closed)| bezier_rs::Subpath::new(group, closed))
+		self.build_stroke_path_iter().map(|(manipulators_list, closed)| bezier_rs::Subpath::new(manipulators_list, closed))
 	}
 
 	/// Construct and return an iterator of Vec of `(bezier_rs::ManipulatorGroup<PointId>], bool)` for stroke.
@@ -916,15 +916,15 @@ impl VectorData {
 
 	/// Construct a [`kurbo::BezPath`] curve for stroke.
 	pub fn stroke_bezpath_iter(&self) -> impl Iterator<Item = kurbo::BezPath> {
-		self.build_stroke_path_iter().map(|(group, closed)| {
+		self.build_stroke_path_iter().map(|(manipulators_list, closed)| {
 			let mut bezpath = kurbo::BezPath::new();
 			let mut out_handle;
 
-			let Some(first) = group.first() else { return bezpath };
+			let Some(first) = manipulators_list.first() else { return bezpath };
 			bezpath.move_to(dvec2_to_point(first.anchor));
 			out_handle = first.out_handle;
 
-			for manipulator in group.iter().skip(1) {
+			for manipulator in manipulators_list.iter().skip(1) {
 				match (out_handle, manipulator.in_handle) {
 					(Some(handle_start), Some(handle_end)) => bezpath.curve_to(dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(manipulator.anchor)),
 					(None, None) => bezpath.line_to(dvec2_to_point(manipulator.anchor)),
@@ -952,13 +952,11 @@ impl VectorData {
 		self.stroke_bezier_paths().flat_map(|mut path| std::mem::take(path.manipulator_groups_mut()))
 	}
 
-	/// Get manipulator by id
 	pub fn manipulator_group_id(&self, id: impl Into<PointId>) -> Option<ManipulatorGroup<PointId>> {
 		let id = id.into();
-		self.manipulator_groups().find(|group| group.id == id)
+		self.manipulator_groups().find(|manipulators| manipulators.id == id)
 	}
 
-	/// Transforms this vector data
 	pub fn transform(&mut self, transform: DAffine2) {
 		self.point_domain.transform(transform);
 		self.segment_domain.transform(transform);
@@ -1026,7 +1024,7 @@ impl StrokePathIterPointMetadata {
 
 #[derive(Clone)]
 pub struct StrokePathIter<'a> {
-	vector_data: &'a VectorData,
+	vector: &'a Vector,
 	points: Vec<StrokePathIterPointMetadata>,
 	skip: usize,
 	done_one: bool,
@@ -1049,36 +1047,36 @@ impl Iterator for StrokePathIter<'_> {
 
 		// There will always be one (seeing as we checked above)
 		let mut point_index = current_start;
-		let mut groups = Vec::new();
+		let mut manipulators_list = Vec::new();
 		let mut in_handle = None;
 		let mut closed = false;
 		loop {
 			let Some(val) = self.points[point_index].take_first() else {
 				// Dead end
-				groups.push(ManipulatorGroup {
-					anchor: self.vector_data.point_domain.positions()[point_index],
+				manipulators_list.push(ManipulatorGroup {
+					anchor: self.vector.point_domain.positions()[point_index],
 					in_handle,
 					out_handle: None,
-					id: self.vector_data.point_domain.ids()[point_index],
+					id: self.vector.point_domain.ids()[point_index],
 				});
 
 				break;
 			};
 
-			let mut handles = self.vector_data.segment_domain.handles()[val.segment_index];
+			let mut handles = self.vector.segment_domain.handles()[val.segment_index];
 			if val.start_from_end {
 				handles = handles.reversed();
 			}
 			let next_point_index = if val.start_from_end {
-				self.vector_data.segment_domain.start_point()[val.segment_index]
+				self.vector.segment_domain.start_point()[val.segment_index]
 			} else {
-				self.vector_data.segment_domain.end_point()[val.segment_index]
+				self.vector.segment_domain.end_point()[val.segment_index]
 			};
-			groups.push(ManipulatorGroup {
-				anchor: self.vector_data.point_domain.positions()[point_index],
+			manipulators_list.push(ManipulatorGroup {
+				anchor: self.vector.point_domain.positions()[point_index],
 				in_handle,
 				out_handle: handles.start(),
-				id: self.vector_data.point_domain.ids()[point_index],
+				id: self.vector.point_domain.ids()[point_index],
 			});
 
 			in_handle = handles.end();
@@ -1087,12 +1085,12 @@ impl Iterator for StrokePathIter<'_> {
 			self.points[next_point_index].take_eq(val.flipped());
 			if next_point_index == current_start {
 				closed = true;
-				groups[0].in_handle = in_handle;
+				manipulators_list[0].in_handle = in_handle;
 				break;
 			}
 		}
 
-		Some((groups, closed))
+		Some((manipulators_list, closed))
 	}
 }
 
@@ -1102,7 +1100,7 @@ impl bezier_rs::Identifier for PointId {
 	}
 }
 
-/// Represents the conversion of ids used when concatenating vector data with conflicting ids.
+/// Represents the conversion of IDs used when concatenating vector paths with conflicting IDs.
 pub struct IdMap {
 	pub point_offset: usize,
 	pub point_map: HashMap<PointId, PointId>,

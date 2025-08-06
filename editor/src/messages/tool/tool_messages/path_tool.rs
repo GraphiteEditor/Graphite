@@ -1,11 +1,14 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, DRILL_THROUGH_THRESHOLD,
-	HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DEFAULT_STROKE_WIDTH, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD,
+	DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
+use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::transformation::Axis;
@@ -17,14 +20,15 @@ use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedLayerState, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
-use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate};
+use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate, make_path_editable_is_allowed};
 use bezier_rs::{Bezier, BezierHandles, TValue};
-use graph_craft::document::value::TaggedValue;
+use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::transform::ReferencePoint;
+use graphene_std::uuid::NodeId;
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::{HandleExt, HandleId, NoHashBuilder, SegmentId, VectorData};
-use graphene_std::vector::{ManipulatorPointId, PointId, VectorModificationType};
+use graphene_std::vector::misc::{HandleId, ManipulatorPointId};
+use graphene_std::vector::{HandleExt, NoHashBuilder, PointId, SegmentId, Vector, VectorModificationType};
 use std::vec;
 
 #[derive(Default, ExtractField)]
@@ -122,6 +126,17 @@ pub enum PathToolMessage {
 		overlay_context: OverlayContext,
 	},
 	StartSlidingPoint,
+	Copy {
+		clipboard: Clipboard,
+	},
+	Cut {
+		clipboard: Clipboard,
+	},
+	Paste {
+		data: String,
+	},
+	DeleteSelected,
+	Duplicate,
 	TogglePointEditing,
 	ToggleSegmentEditing,
 }
@@ -222,7 +237,7 @@ impl LayoutHolder for PathTool {
 		})
 		// TODO: Remove `unwrap_or_default` once checkboxes are capable of displaying a mixed state
 		.unwrap_or_default();
-		let mut checkbox_id = CheckboxId::default();
+		let checkbox_id = CheckboxId::new();
 		let colinear_handle_checkbox = CheckboxInput::new(colinear_handles_state)
 			.disabled(!self.tool_data.can_toggle_colinearity)
 			.on_update(|&CheckboxInput { checked, .. }| {
@@ -233,12 +248,12 @@ impl LayoutHolder for PathTool {
 				}
 			})
 			.tooltip(colinear_handles_tooltip)
-			.for_label(checkbox_id.clone())
+			.for_label(checkbox_id)
 			.widget_holder();
 		let colinear_handles_label = TextLabel::new("Colinear Handles")
 			.disabled(!self.tool_data.can_toggle_colinearity)
 			.tooltip(colinear_handles_tooltip)
-			.for_checkbox(&mut checkbox_id)
+			.for_checkbox(checkbox_id)
 			.widget_holder();
 
 		let point_editing_mode = CheckboxInput::new(self.options.path_editing_mode.point_editing_mode)
@@ -271,12 +286,12 @@ impl LayoutHolder for PathTool {
 		.selected_index(Some(self.options.path_overlay_mode as u32))
 		.widget_holder();
 
-		// Works only if a single layer is selected and its type is vectordata
+		// Works only if a single layer is selected and its type is Vector
 		let path_node_button = TextButton::new("Make Path Editable")
 			.icon(Some("NodeShape".into()))
 			.tooltip("Make Path Editable")
 			.on_update(|_| NodeGraphMessage::AddPathNode.into())
-			.disabled(!self.tool_data.single_path_node_compatible_layer_selected)
+			.disabled(!self.tool_data.make_path_editable_is_allowed)
 			.widget_holder();
 
 		let [_checkbox, _dropdown] = {
@@ -405,6 +420,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				ClosePath,
 				PointerMove,
 				StartSlidingPoint,
+				Copy,
+				Cut,
+				DeleteSelected,
+				Paste,
+				Duplicate,
 				TogglePointEditing,
 				ToggleSegmentEditing
 			),
@@ -419,6 +439,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				DeleteAndBreakPath,
 				SwapSelectedHandles,
 				StartSlidingPoint,
+				Copy,
+				Cut,
+				DeleteSelected,
+				Paste,
+				Duplicate,
 				TogglePointEditing,
 				ToggleSegmentEditing
 			),
@@ -549,7 +574,7 @@ struct PathToolData {
 	drill_through_cycle_count: usize,
 	hovered_layers: Vec<LayerNodeIdentifier>,
 	ghost_outline: Vec<(Vec<ClickTargetType>, LayerNodeIdentifier)>,
-	single_path_node_compatible_layer_selected: bool,
+	make_path_editable_is_allowed: bool,
 }
 
 impl PathToolData {
@@ -598,10 +623,10 @@ impl PathToolData {
 		self.can_toggle_colinearity = match &selection_status {
 			SelectionStatus::None => false,
 			SelectionStatus::One(single_selected_point) => {
-				let vector_data = document.network_interface.compute_modified_vector(single_selected_point.layer).unwrap();
-				if single_selected_point.id.get_handle_pair(&vector_data).is_some() {
-					let anchor = single_selected_point.id.get_anchor(&vector_data).expect("Cannot find connected anchor");
-					vector_data.all_connected(anchor).count() <= 2
+				let vector = document.network_interface.compute_modified_vector(single_selected_point.layer).unwrap();
+				if single_selected_point.id.get_handle_pair(&vector).is_some() {
+					let anchor = single_selected_point.id.get_anchor(&vector).expect("Cannot find connected anchor");
+					vector.all_connected(anchor).count() <= 2
 				} else {
 					false
 				}
@@ -740,13 +765,13 @@ impl PathToolData {
 				if handle_drag_from_anchor {
 					if let Some((layer, point)) = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
 						// Check that selected point is an anchor
-						if let (Some(point_id), Some(vector_data)) = (point.as_anchor(), document.network_interface.compute_modified_vector(layer)) {
-							let handles = vector_data.all_connected(point_id).collect::<Vec<_>>();
+						if let (Some(point_id), Some(vector)) = (point.as_anchor(), document.network_interface.compute_modified_vector(layer)) {
+							let handles = vector.all_connected(point_id).collect::<Vec<_>>();
 							self.alt_clicked_on_anchor = true;
 							for handle in &handles {
 								let modification_type = handle.set_relative_position(DVec2::ZERO);
 								responses.add(GraphOperationMessage::Vector { layer, modification_type });
-								for &handles in &vector_data.colinear_manipulators {
+								for &handles in &vector.colinear_manipulators {
 									if handles.contains(handle) {
 										let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
 										responses.add(GraphOperationMessage::Vector { layer, modification_type });
@@ -762,16 +787,16 @@ impl PathToolData {
 					}
 				}
 
-				if let Some((Some(point), Some(vector_data))) = shape_editor
+				if let Some((Some(point), Some(vector))) = shape_editor
 					.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
 					.map(|(layer, point)| (point.as_anchor(), document.network_interface.compute_modified_vector(layer)))
 				{
-					let handles = vector_data
+					let handles = vector
 						.all_connected(point)
-						.filter(|handle| handle.length(&vector_data) < 1e-6)
+						.filter(|handle| handle.length(&vector) < 1e-6)
 						.map(|handle| handle.to_manipulator_point())
 						.collect::<Vec<_>>();
-					let endpoint = vector_data.extendable_points(false).any(|anchor| point == anchor);
+					let endpoint = vector.extendable_points(false).any(|anchor| point == anchor);
 
 					if drag_zero_handle && (handles.len() == 1 && !endpoint) {
 						shape_editor.deselect_all_points();
@@ -862,27 +887,25 @@ impl PathToolData {
 		let mut manipulators = HashMap::with_hasher(NoHashBuilder);
 		let mut unselected = Vec::new();
 		for (&layer, state) in &shape_editor.selected_shape_state {
-			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
-				continue;
-			};
+			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 			let transform = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
 
 			let mut layer_manipulators = HashSet::with_hasher(NoHashBuilder);
 			for point in state.selected_points() {
-				let Some(anchor) = point.get_anchor(&vector_data) else { continue };
+				let Some(anchor) = point.get_anchor(&vector) else { continue };
 				layer_manipulators.insert(anchor);
-				let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) else { continue };
+				let Some([handle1, handle2]) = point.get_handle_pair(&vector) else { continue };
 				let Some(handle) = point.as_handle() else { continue };
 				// Check which handle is selected and which is opposite
 				let opposite = if handle == handle1 { handle2 } else { handle1 };
 
 				self.opposite_handle_position = if self.opposite_handle_position.is_none() {
-					opposite.to_manipulator_point().get_position(&vector_data)
+					opposite.to_manipulator_point().get_position(&vector)
 				} else {
 					self.opposite_handle_position
 				};
 			}
-			for (&id, &position) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
+			for (&id, &position) in vector.point_domain.ids().iter().zip(vector.point_domain.positions()) {
 				if layer_manipulators.contains(&id) {
 					continue;
 				}
@@ -935,17 +958,17 @@ impl PathToolData {
 					return false;
 				};
 
-				let Some(vector_data) = document.network_interface.compute_modified_vector(*layer) else {
+				let Some(vector) = document.network_interface.compute_modified_vector(*layer) else {
 					self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
 					return false;
 				};
 
 				// Check if handle has a pair (to ignore handles of edges of open paths)
-				if let Some(handle_pair) = selected_handle_id.get_handle_pair(&vector_data) {
+				if let Some(handle_pair) = selected_handle_id.get_handle_pair(&vector) {
 					let opposite_handle_length = handle_pair.iter().filter(|&&h| h.to_manipulator_point() != selected_handle_id).find_map(|&h| {
-						let opp_handle_pos = h.to_manipulator_point().get_position(&vector_data)?;
-						let opp_anchor_id = h.to_manipulator_point().get_anchor(&vector_data)?;
-						let opp_anchor_pos = vector_data.point_domain.position_from_id(opp_anchor_id)?;
+						let opp_handle_pos = h.to_manipulator_point().get_position(&vector)?;
+						let opp_anchor_id = h.to_manipulator_point().get_anchor(&vector)?;
+						let opp_anchor_pos = vector.point_domain.position_from_id(opp_anchor_id)?;
 						Some((opp_handle_pos - opp_anchor_pos).length())
 					});
 
@@ -976,11 +999,11 @@ impl PathToolData {
 		let handle_id = selected_handle.to_manipulator_point();
 
 		let layer_to_document = document.metadata().transform_to_document_if_feeds(*layer, &document.network_interface);
-		let vector_data = document.network_interface.compute_modified_vector(*layer)?;
+		let vector = document.network_interface.compute_modified_vector(*layer)?;
 
-		let handle_position_local = selected_handle.to_manipulator_point().get_position(&vector_data)?;
-		let anchor_id = selected_handle.to_manipulator_point().get_anchor(&vector_data)?;
-		let anchor_position_local = vector_data.point_domain.position_from_id(anchor_id)?;
+		let handle_position_local = selected_handle.to_manipulator_point().get_position(&vector)?;
+		let anchor_id = selected_handle.to_manipulator_point().get_anchor(&vector)?;
+		let anchor_position_local = vector.point_domain.position_from_id(anchor_id)?;
 
 		let handle_position_document = layer_to_document.transform_point2(handle_position_local);
 		let anchor_position_document = layer_to_document.transform_point2(anchor_position_local);
@@ -1003,24 +1026,24 @@ impl PathToolData {
 	) -> f64 {
 		let current_angle = -handle_vector.angle_to(DVec2::X);
 
-		if let Some((vector_data, layer)) = shape_editor
+		if let Some((vector, layer)) = shape_editor
 			.selected_shape_state
 			.iter()
 			.next()
-			.and_then(|(layer, _)| document.network_interface.compute_modified_vector(*layer).map(|vector_data| (vector_data, layer)))
+			.and_then(|(layer, _)| document.network_interface.compute_modified_vector(*layer).map(|vector| (vector, layer)))
 		{
-			let adjacent_anchor = check_handle_over_adjacent_anchor(handle_id, &vector_data);
+			let adjacent_anchor = check_handle_over_adjacent_anchor(handle_id, &vector);
 			let mut required_angle = None;
 
 			// If the handle is dragged over one of its adjacent anchors while holding down the Ctrl key, compute the angle based on the tangent formed with the neighboring anchor points.
 			if adjacent_anchor.is_some() && lock_angle && !self.angle_locked {
-				let anchor = handle_id.get_anchor(&vector_data);
-				let (angle, anchor_position) = calculate_adjacent_anchor_tangent(handle_id, anchor, adjacent_anchor, &vector_data);
+				let anchor = handle_id.get_anchor(&vector);
+				let (angle, anchor_position) = calculate_adjacent_anchor_tangent(handle_id, anchor, adjacent_anchor, &vector);
 
 				let layer_to_document = document.metadata().transform_to_document_if_feeds(*layer, &document.network_interface);
 
 				self.adjacent_anchor_offset = handle_id
-					.get_anchor_position(&vector_data)
+					.get_anchor_position(&vector)
 					.and_then(|handle_anchor| anchor_position.map(|adjacent_anchor| layer_to_document.transform_point2(adjacent_anchor) - layer_to_document.transform_point2(handle_anchor)));
 
 				required_angle = angle;
@@ -1028,7 +1051,7 @@ impl PathToolData {
 
 			// If the handle is dragged near its adjacent anchors while holding down the Ctrl key, compute the angle using the tangent direction of neighboring segments.
 			if relative_vector.length() < 25. && lock_angle && !self.angle_locked {
-				required_angle = calculate_lock_angle(self, shape_editor, responses, document, &vector_data, handle_id, tangent_to_neighboring_tangents);
+				required_angle = calculate_lock_angle(self, shape_editor, responses, document, &vector, handle_id, tangent_to_neighboring_tangents);
 			}
 
 			// Finalize and apply angle locking if a valid target angle was determined.
@@ -1137,17 +1160,17 @@ impl PathToolData {
 		self.snapping_axis = None;
 	}
 
-	fn get_normalized_tangent(&mut self, point: PointId, segment: SegmentId, vector_data: &VectorData) -> Option<DVec2> {
-		let other_point = vector_data.other_point(segment, point)?;
-		let position = ManipulatorPointId::Anchor(point).get_position(vector_data)?;
+	fn get_normalized_tangent(&mut self, point: PointId, segment: SegmentId, vector: &Vector) -> Option<DVec2> {
+		let other_point = vector.other_point(segment, point)?;
+		let position = ManipulatorPointId::Anchor(point).get_position(vector)?;
 
-		let mut handles = vector_data.all_connected(other_point);
+		let mut handles = vector.all_connected(other_point);
 		let other_handle = handles.find(|handle| handle.segment == segment)?;
 
-		let target_position = if other_handle.length(vector_data) == 0. {
-			ManipulatorPointId::Anchor(other_point).get_position(vector_data)?
+		let target_position = if other_handle.length(vector) == 0. {
+			ManipulatorPointId::Anchor(other_point).get_position(vector)?
 		} else {
-			other_handle.to_manipulator_point().get_position(vector_data)?
+			other_handle.to_manipulator_point().get_position(vector)?
 		};
 
 		let tangent_vector = target_position - position;
@@ -1186,14 +1209,12 @@ impl PathToolData {
 			let Some(layer) = document.network_interface.selected_nodes().selected_layers(document.metadata()).next() else {
 				return false;
 			};
-			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
-				return false;
-			};
+			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return false };
 
 			let Some(point_id) = anchor.as_anchor() else { return false };
 
 			let mut connected_segments = [None, None];
-			for (segment, bezier, start, end) in vector_data.segment_bezier_iter() {
+			for (segment, bezier, start, end) in vector.segment_bezier_iter() {
 				if start == point_id || end == point_id {
 					match (connected_segments[0], connected_segments[1]) {
 						(None, None) => connected_segments[0] = Some(SlidingSegmentData { segment_id: segment, bezier, start }),
@@ -1227,7 +1248,7 @@ impl PathToolData {
 		let anchor = sliding_point_info.anchor;
 		let layer = sliding_point_info.layer;
 
-		let Some(vector_data) = network_interface.compute_modified_vector(layer) else { return };
+		let Some(vector) = network_interface.compute_modified_vector(layer) else { return };
 		let transform = network_interface.document_metadata().transform_to_viewport_if_feeds(layer, network_interface);
 		let layer_pos = transform.inverse().transform_point2(target_position);
 
@@ -1246,12 +1267,12 @@ impl PathToolData {
 		};
 
 		// Move the anchor to the new position
-		let Some(current_position) = ManipulatorPointId::Anchor(anchor).get_position(&vector_data) else {
+		let Some(current_position) = ManipulatorPointId::Anchor(anchor).get_position(&vector) else {
 			return;
 		};
 		let delta = new_position - current_position;
 
-		shape_editor.move_anchor(anchor, &vector_data, delta, layer, None, responses);
+		shape_editor.move_anchor(anchor, &vector, delta, layer, None, responses);
 
 		// Make a split at the t_value
 		let [first, second] = closer_segment.bezier.split(TValue::Parametric(t_value));
@@ -1393,19 +1414,19 @@ impl PathToolData {
 				let Some(layer) = document.network_interface.selected_nodes().selected_layers(document.metadata()).next() else {
 					return;
 				};
-				let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { return };
-				let Some(point_id) = shape_editor.selected_points().next().unwrap().get_anchor(&vector_data) else {
+				let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
+				let Some(point_id) = shape_editor.selected_points().next().unwrap().get_anchor(&vector) else {
 					return;
 				};
 
-				if vector_data.connected_count(point_id) == 2 {
-					let connected_segments: Vec<HandleId> = vector_data.all_connected(point_id).collect();
+				if vector.connected_count(point_id) == 2 {
+					let connected_segments: Vec<HandleId> = vector.all_connected(point_id).collect();
 					let segment1 = connected_segments[0];
-					let Some(tangent1) = self.get_normalized_tangent(point_id, segment1.segment, &vector_data) else {
+					let Some(tangent1) = self.get_normalized_tangent(point_id, segment1.segment, &vector) else {
 						return;
 					};
 					let segment2 = connected_segments[1];
-					let Some(tangent2) = self.get_normalized_tangent(point_id, segment2.segment, &vector_data) else {
+					let Some(tangent2) = self.get_normalized_tangent(point_id, segment2.segment, &vector) else {
 						return;
 					};
 
@@ -1539,11 +1560,11 @@ impl Fsm for PathToolFsmState {
 						let selected_layers = shape_editor.selected_layers().cloned().collect::<Vec<_>>();
 
 						for layer in selected_layers {
-							let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+							let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 							let selected_state = shape_editor.selected_shape_state.entry(layer).or_default();
 
-							for (segment, _, start, end) in vector_data.segment_bezier_iter() {
+							for (segment, _, start, end) in vector.segment_bezier_iter() {
 								if selected_state.is_segment_selected(segment) {
 									selected_state.select_point(ManipulatorPointId::Anchor(start));
 									selected_state.select_point(ManipulatorPointId::Anchor(end));
@@ -1584,11 +1605,11 @@ impl Fsm for PathToolFsmState {
 						let selected_layers = shape_editor.selected_layers().cloned().collect::<Vec<_>>();
 
 						for layer in selected_layers {
-							let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+							let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 							let selected_state = shape_editor.selected_shape_state.entry(layer).or_default();
 
-							for (segment, _, start, end) in vector_data.segment_bezier_iter() {
+							for (segment, _, start, end) in vector.segment_bezier_iter() {
 								let first_selected = selected_state.is_point_selected(ManipulatorPointId::Anchor(start));
 								let second_selected = selected_state.is_point_selected(ManipulatorPointId::Anchor(end));
 								if first_selected && second_selected {
@@ -1637,12 +1658,12 @@ impl Fsm for PathToolFsmState {
 							let mut segment_endpoints: HashMap<SegmentId, Vec<PointId>> = HashMap::new();
 
 							for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
-								let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+								let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 								// The points which are part of only one segment will be rendered
 								let mut selected_segments_by_point: HashMap<PointId, Vec<SegmentId>> = HashMap::new();
 
-								for (segment_id, _bezier, start, end) in vector_data.segment_bezier_iter() {
+								for (segment_id, _bezier, start, end) in vector.segment_bezier_iter() {
 									if selected_segments.contains(&segment_id) {
 										selected_segments_by_point.entry(start).or_default().push(segment_id);
 										selected_segments_by_point.entry(end).or_default().push(segment_id);
@@ -1695,8 +1716,8 @@ impl Fsm for PathToolFsmState {
 							);
 
 							let Some((layer, manipulator_point_id)) = nearest_visible_point_indices else { return };
-							let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { return };
-							let Some(position) = manipulator_point_id.get_position(&vector_data) else {
+							let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
+							let Some(position) = manipulator_point_id.get_position(&vector) else {
 								error!("No position for hovered point");
 								return;
 							};
@@ -1821,10 +1842,10 @@ impl Fsm for PathToolFsmState {
 						};
 
 						for (layer, points) in points_inside {
-							let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+							let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 							for point in points {
-								let Some(position) = point.get_position(&vector_data) else { continue };
+								let Some(position) = point.get_position(&vector) else { continue };
 
 								let transform = document.metadata().transform_to_viewport(layer);
 								let position = transform.transform_point2(position);
@@ -1839,11 +1860,11 @@ impl Fsm for PathToolFsmState {
 						}
 
 						for (layer, segments) in segments_inside {
-							let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+							let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 							let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 
-							for (segment, bezier, _, _) in vector_data.segment_bezier_iter() {
+							for (segment, bezier, _, _) in vector.segment_bezier_iter() {
 								if segments.contains(&segment) {
 									overlay_context.outline_overlay_bezier(bezier, transform);
 								}
@@ -2250,7 +2271,7 @@ impl Fsm for PathToolFsmState {
 					shape_editor.deselect_all_segments();
 
 					for (layer, (selected_points, selected_segments)) in &tool_data.saved_selection_before_handle_drag {
-						let Some(state) = shape_editor.selected_shape_state.get_mut(&layer) else { continue };
+						let Some(state) = shape_editor.selected_shape_state.get_mut(layer) else { continue };
 						selected_points.iter().for_each(|point| state.select_point(*point));
 						selected_segments.iter().for_each(|segment| state.select_segment(*segment));
 					}
@@ -2362,14 +2383,14 @@ impl Fsm for PathToolFsmState {
 
 					if !drag_occurred && !tool_data.molding_segment && ((point_mode && !segment_mode) || (segment_mode && tool_data.segment_editing_modifier)) {
 						if tool_data.delete_segment_pressed {
-							if let Some(vector_data) = document.network_interface.compute_modified_vector(segment.layer()) {
-								shape_editor.dissolve_segment(responses, segment.layer(), &vector_data, segment.segment(), segment.points());
+							if let Some(vector) = document.network_interface.compute_modified_vector(segment.layer()) {
+								shape_editor.dissolve_segment(responses, segment.layer(), &vector, segment.segment(), segment.points());
 							}
 						} else {
 							let is_segment_selected = shape_editor
 								.selected_shape_state
 								.get(&segment.layer())
-								.map_or(false, |state| state.is_segment_selected(segment.segment()));
+								.is_some_and(|state| state.is_segment_selected(segment.segment()));
 
 							segment.adjusted_insert_and_select(shape_editor, responses, extend_selection, point_mode, is_segment_selected);
 							tool_data.segment = None;
@@ -2480,7 +2501,7 @@ impl Fsm for PathToolFsmState {
 					shape_editor.deselect_all_segments();
 
 					for (layer, (selected_points, selected_segments)) in &tool_data.saved_selection_before_handle_drag {
-						let Some(state) = shape_editor.selected_shape_state.get_mut(&layer) else { continue };
+						let Some(state) = shape_editor.selected_shape_state.get_mut(layer) else { continue };
 						selected_points.iter().for_each(|point| state.select_point(*point));
 						selected_segments.iter().for_each(|segment| state.select_segment(*segment));
 					}
@@ -2546,6 +2567,297 @@ impl Fsm for PathToolFsmState {
 				} else {
 					PathToolFsmState::Ready
 				}
+			(_, PathToolMessage::Copy { clipboard }) => {
+				// TODO: Add support for selected segments
+
+				let mut buffer = Vec::new();
+
+				for (&layer, layer_selection_state) in &shape_editor.selected_shape_state {
+					if layer_selection_state.is_empty() {
+						continue;
+					}
+
+					let Some(old_vector) = document.network_interface.compute_modified_vector(layer) else { continue };
+
+					// Also get the transform node that is applied on the layer if it exists
+					let transform = document.metadata().transform_to_document(layer);
+
+					let mut new_vector = Vector::default();
+
+					let mut selected_points_by_segment = HashSet::new();
+					old_vector
+						.segment_bezier_iter()
+						.filter(|(segment, _, _, _)| layer_selection_state.is_segment_selected(*segment))
+						.for_each(|(_, _, start, end)| {
+							selected_points_by_segment.insert(start);
+							selected_points_by_segment.insert(end);
+						});
+
+					// Add all the selected points
+					for (point, position) in old_vector.point_domain.iter() {
+						if layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(point)) || selected_points_by_segment.contains(&point) {
+							new_vector.point_domain.push(point, position);
+						}
+					}
+
+					let find_index = |id: PointId| new_vector.point_domain.iter().enumerate().find(|(_, (point_id, _))| *point_id == id).map(|(index, _)| index);
+
+					// Add segments which have selected ends
+					for ((segment_id, bezier, start, end), stroke) in old_vector.segment_bezier_iter().zip(old_vector.segment_domain.stroke().iter()) {
+						let both_ends_selected = layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(start)) && layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(end));
+
+						let segment_selected = layer_selection_state.is_segment_selected(segment_id);
+
+						if both_ends_selected || segment_selected {
+							let Some((start_index, end_index)) = find_index(start).zip(find_index(end)) else {
+								error!("Point does not exist in point domain");
+								return PathToolFsmState::Ready;
+							};
+							new_vector.segment_domain.push(segment_id, start_index, end_index, bezier.handles, *stroke);
+						}
+					}
+
+					for handles in old_vector.colinear_manipulators {
+						if new_vector.segment_domain.ids().contains(&handles[0].segment) && new_vector.segment_domain.ids().contains(&handles[1].segment) {
+							new_vector.colinear_manipulators.push(handles);
+						}
+					}
+
+					buffer.push((layer, new_vector, transform));
+				}
+
+				if clipboard == Clipboard::Device {
+					let mut copy_text = String::from("graphite/vector: ");
+					copy_text += &serde_json::to_string(&buffer).expect("Could not serialize paste");
+
+					responses.add(FrontendMessage::TriggerTextCopy { copy_text });
+				}
+				// TODO: Add implementation for internal clipboard
+
+				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::Cut { clipboard }) => {
+				responses.add(PathToolMessage::Copy { clipboard });
+				// Delete the selected points/segments
+				responses.add(PathToolMessage::DeleteSelected);
+
+				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::Paste { data }) => {
+				// Deserialize the data
+				if let Ok(data) = serde_json::from_str::<Vec<(LayerNodeIdentifier, Vector, DAffine2)>>(&data) {
+					shape_editor.deselect_all_points();
+					responses.add(DocumentMessage::AddTransaction);
+					let mut new_layers = Vec::new();
+					for (layer, new_vector, transform) in data {
+						// If layer is not selected then create a new selected layer
+						let layer = if shape_editor.selected_shape_state.contains_key(&layer) {
+							layer
+						} else {
+							let Some(node_type) = resolve_document_node_type("Path") else {
+								error!("Could not resolve node type for Path");
+								continue;
+							};
+							let nodes = vec![(NodeId(0), node_type.default_node_template())];
+
+							let parent = document.new_layer_parent(false);
+
+							let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
+
+							let fill_color = Color::WHITE;
+							let stroke_color = Color::BLACK;
+
+							let fill = graphene_std::vector::style::Fill::solid(fill_color.to_gamma_srgb());
+							responses.add(GraphOperationMessage::FillSet { layer, fill });
+
+							let stroke = graphene_std::vector::style::Stroke::new(Some(stroke_color.to_gamma_srgb()), DEFAULT_STROKE_WIDTH);
+							responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+
+							new_layers.push(layer);
+
+							responses.add(GraphOperationMessage::TransformSet {
+								layer,
+								transform,
+								transform_in: TransformIn::Local,
+								skip_rerender: false,
+							});
+
+							layer
+						};
+
+						// Create new point ids and add those into the existing vector content
+						let mut points_map = HashMap::new();
+						for (point, position) in new_vector.point_domain.iter() {
+							let new_point_id = PointId::generate();
+							points_map.insert(point, new_point_id);
+
+							let modification_type = VectorModificationType::InsertPoint { id: new_point_id, position };
+
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+
+						// Create new segment ids and add the segments into the existing vector content
+						let mut segments_map = HashMap::new();
+						for (segment_id, bezier, start, end) in new_vector.segment_bezier_iter() {
+							let new_segment_id = SegmentId::generate();
+
+							segments_map.insert(segment_id, new_segment_id);
+
+							let handles = match bezier.handles {
+								BezierHandles::Linear => [None, None],
+								BezierHandles::Quadratic { handle } => [Some(handle - bezier.start), None],
+								BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start), Some(handle_end - bezier.end)],
+							};
+
+							let points = [points_map[&start], points_map[&end]];
+							let modification_type = VectorModificationType::InsertSegment { id: new_segment_id, points, handles };
+
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+
+						// Set G1 continuity
+						for handles in new_vector.colinear_manipulators {
+							let to_new_handle = |handle: HandleId| -> HandleId {
+								HandleId {
+									ty: handle.ty,
+									segment: segments_map[&handle.segment],
+								}
+							};
+							let new_handles = [to_new_handle(handles[0]), to_new_handle(handles[1])];
+							let modification_type = VectorModificationType::SetG1Continuous { handles: new_handles, enabled: true };
+
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+
+						shape_editor.selected_shape_state.entry(layer).or_insert(Default::default());
+
+						// Set selection to newly inserted points
+						let Some(state) = shape_editor.selected_shape_state.get_mut(&layer) else {
+							error!("No state for layer: {layer:?}");
+							continue;
+						};
+
+						// If point editing mode is enabled, select all the pasted points
+						if tool_options.path_editing_mode.point_editing_mode {
+							points_map.values().for_each(|point| state.select_point(ManipulatorPointId::Anchor(*point)));
+						}
+						// If segment editing mode is enabled, select all the pasted segments
+						if tool_options.path_editing_mode.segment_editing_mode {
+							segments_map.values().for_each(|segment| state.select_segment(*segment));
+						}
+					}
+
+					// If there are new layers created, we need to center them in the viewport
+					if !new_layers.is_empty() {
+						responses.add(Message::Defer(DeferMessage::AfterGraphRun {
+							messages: vec![PortfolioMessage::CenterPastedLayers { layers: new_layers }.into()],
+						}));
+					}
+				}
+
+				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::DeleteSelected) => {
+				// Delete the selected points and segments
+				shape_editor.delete_point_and_break_path(document, responses);
+				shape_editor.delete_selected_segments(document, responses);
+
+				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::Duplicate) => {
+				responses.add(DocumentMessage::AddTransaction);
+
+				// Copy the existing selected geometry and paste it in the existing layers
+				for (layer, layer_selection_state) in shape_editor.selected_shape_state.clone() {
+					if layer_selection_state.is_empty() {
+						continue;
+					}
+					let Some(old_vector) = document.network_interface.compute_modified_vector(layer) else {
+						continue;
+					};
+
+					// Add all the selected points
+					let mut selected_points_by_segment = HashSet::new();
+					old_vector
+						.segment_bezier_iter()
+						.filter(|(segment, _, _, _)| layer_selection_state.is_segment_selected(*segment))
+						.for_each(|(_, _, start, end)| {
+							selected_points_by_segment.insert(start);
+							selected_points_by_segment.insert(end);
+						});
+
+					let mut points_map = HashMap::new();
+					for (point, position) in old_vector.point_domain.iter() {
+						// TODO: Either the point is selected or it is an endpoint of a selected segment
+
+						if layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(point)) || selected_points_by_segment.contains(&point) {
+							// Insert the same point with a new id
+							let new_id = PointId::generate();
+							points_map.insert(point, new_id);
+
+							let modification_type = VectorModificationType::InsertPoint { id: new_id, position };
+
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+					}
+
+					let mut segments_map = HashMap::new();
+
+					for (segment_id, bezier, start, end) in old_vector.segment_bezier_iter() {
+						let both_ends_selected = layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(start)) && layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(end));
+
+						let segment_selected = layer_selection_state.is_segment_selected(segment_id);
+
+						if both_ends_selected || segment_selected {
+							let new_id = SegmentId::generate();
+							segments_map.insert(segment_id, new_id);
+
+							let handles = match bezier.handles {
+								BezierHandles::Linear => [None, None],
+								BezierHandles::Quadratic { handle } => [Some(handle - bezier.start), None],
+								BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start), Some(handle_end - bezier.end)],
+							};
+
+							let points = [points_map[&start], points_map[&end]];
+							let modification_type = VectorModificationType::InsertSegment { id: new_id, points, handles };
+
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+					}
+
+					for handles in old_vector.colinear_manipulators {
+						let to_new_handle = |handle: HandleId| -> HandleId {
+							HandleId {
+								ty: handle.ty,
+								segment: segments_map[&handle.segment],
+							}
+						};
+
+						if segments_map.contains_key(&handles[0].segment) && segments_map.contains_key(&handles[1].segment) {
+							let new_handles = [to_new_handle(handles[0]), to_new_handle(handles[1])];
+							let modification_type = VectorModificationType::SetG1Continuous { handles: new_handles, enabled: true };
+
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+					}
+
+					shape_editor.deselect_all_points();
+					shape_editor.deselect_all_segments();
+
+					// Set selection to newly inserted points and segments
+					let Some(state) = shape_editor.selected_shape_state.get_mut(&layer) else {
+						error!("No state for layer: {layer:?}");
+						continue;
+					};
+					if tool_options.path_editing_mode.point_editing_mode {
+						points_map.values().for_each(|point| state.select_point(ManipulatorPointId::Anchor(*point)));
+					}
+					if tool_options.path_editing_mode.segment_editing_mode {
+						segments_map.values().for_each(|segment| state.select_segment(*segment));
+					}
+				}
+
+				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::DoubleClick { extend_selection, shrink_selection }) => {
 				// Double-clicked on a point (flip smooth/sharp behavior)
@@ -2696,30 +3008,7 @@ impl Fsm for PathToolFsmState {
 					colinear,
 				};
 
-				tool_data.single_path_node_compatible_layer_selected = {
-					let selected_nodes = document.network_interface.selected_nodes();
-					let mut selected_layers = selected_nodes.selected_layers(document.metadata());
-					let first_layer = selected_layers.next();
-					let second_layer = selected_layers.next();
-					let has_single_selection = first_layer.is_some() && second_layer.is_none();
-
-					let compatible_type = first_layer.and_then(|layer| {
-						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
-						graph_layer.horizontal_layer_flow().nth(1).map(|node_id| {
-							let (output_type, _) = document.network_interface.output_type(&node_id, 0, &[]);
-							format!("type:{}", output_type.nested_type())
-						})
-					});
-
-					let is_compatible = compatible_type.as_deref() == Some("type:Instances<VectorData>");
-
-					let is_modifiable = first_layer.is_some_and(|layer| {
-						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
-						matches!(graph_layer.find_input("Path", 1), Some(TaggedValue::VectorModification(_)))
-					});
-
-					first_layer.is_some() && has_single_selection && is_compatible && !is_modifiable
-				};
+				tool_data.make_path_editable_is_allowed = make_path_editable_is_allowed(&document.network_interface, document.metadata()).is_some();
 				tool_data.update_selection_status(shape_editor, document);
 				self
 			}
@@ -2810,13 +3099,13 @@ fn get_selection_status(network_interface: &NodeNetworkInterface, shape_state: &
 		let Some(layer) = selection_layers.find(|(_, v)| *v > 0).map(|(k, _)| k) else {
 			return SelectionStatus::None;
 		};
-		let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
+		let Some(vector) = network_interface.compute_modified_vector(layer) else {
 			return SelectionStatus::None;
 		};
 		let Some(&point) = shape_state.selected_points().next() else {
 			return SelectionStatus::None;
 		};
-		let Some(local_position) = point.get_position(&vector_data) else {
+		let Some(local_position) = point.get_position(&vector) else {
 			return SelectionStatus::None;
 		};
 
@@ -2824,7 +3113,7 @@ fn get_selection_status(network_interface: &NodeNetworkInterface, shape_state: &
 			.document_metadata()
 			.transform_to_document_if_feeds(layer, network_interface)
 			.transform_point2(local_position);
-		let manipulator_angle = if vector_data.colinear(point) { ManipulatorAngle::Colinear } else { ManipulatorAngle::Free };
+		let manipulator_angle = if vector.colinear(point) { ManipulatorAngle::Colinear } else { ManipulatorAngle::Free };
 
 		return SelectionStatus::One(SingleSelectedPoint {
 			coordinates,
@@ -2849,40 +3138,40 @@ fn calculate_lock_angle(
 	shape_state: &mut ShapeState,
 	responses: &mut VecDeque<Message>,
 	document: &DocumentMessageHandler,
-	vector_data: &VectorData,
+	vector: &Vector,
 	handle_id: ManipulatorPointId,
 	tangent_to_neighboring_tangents: bool,
 ) -> Option<f64> {
-	let anchor = handle_id.get_anchor(vector_data)?;
-	let anchor_position = vector_data.point_domain.position_from_id(anchor);
+	let anchor = handle_id.get_anchor(vector)?;
+	let anchor_position = vector.point_domain.position_from_id(anchor);
 	let current_segment = handle_id.get_segment();
-	let points_connected = vector_data.connected_count(anchor);
+	let points_connected = vector.connected_count(anchor);
 
 	let (anchor_position, segment) = anchor_position.zip(current_segment)?;
 	if points_connected == 1 {
-		calculate_segment_angle(anchor, segment, vector_data, false)
+		calculate_segment_angle(anchor, segment, vector, false)
 	} else {
 		let opposite_handle = handle_id
-			.get_handle_pair(vector_data)
+			.get_handle_pair(vector)
 			.iter()
 			.flatten()
 			.find(|&h| h.to_manipulator_point() != handle_id)
 			.copied()
 			.map(|h| h.to_manipulator_point());
-		let opposite_handle_position = opposite_handle.and_then(|h| h.get_position(vector_data)).filter(|pos| (pos - anchor_position).length() > 1e-6);
+		let opposite_handle_position = opposite_handle.and_then(|h| h.get_position(vector)).filter(|pos| (pos - anchor_position).length() > 1e-6);
 
 		if let Some(opposite_pos) = opposite_handle_position {
-			if !vector_data.colinear_manipulators.iter().flatten().map(|h| h.to_manipulator_point()).any(|h| h == handle_id) {
+			if !vector.colinear_manipulators.iter().flatten().map(|h| h.to_manipulator_point()).any(|h| h == handle_id) {
 				shape_state.convert_selected_manipulators_to_colinear_handles(responses, document);
 				tool_data.temporary_colinear_handles = true;
 			}
 			Some(-(opposite_pos - anchor_position).angle_to(DVec2::X))
 		} else {
-			let angle_1 = vector_data
+			let angle_1 = vector
 				.adjacent_segment(&handle_id)
-				.and_then(|(_, adjacent_segment)| calculate_segment_angle(anchor, adjacent_segment, vector_data, false));
+				.and_then(|(_, adjacent_segment)| calculate_segment_angle(anchor, adjacent_segment, vector, false));
 
-			let angle_2 = calculate_segment_angle(anchor, segment, vector_data, false);
+			let angle_2 = calculate_segment_angle(anchor, segment, vector, false);
 
 			match (angle_1, angle_2) {
 				(Some(angle_1), Some(angle_2)) => {
@@ -2901,37 +3190,32 @@ fn calculate_lock_angle(
 	}
 }
 
-fn check_handle_over_adjacent_anchor(handle_id: ManipulatorPointId, vector_data: &VectorData) -> Option<PointId> {
-	let (anchor, handle_position) = handle_id.get_anchor(vector_data).zip(handle_id.get_position(vector_data))?;
+fn check_handle_over_adjacent_anchor(handle_id: ManipulatorPointId, vector: &Vector) -> Option<PointId> {
+	let (anchor, handle_position) = handle_id.get_anchor(vector).zip(handle_id.get_position(vector))?;
 
 	let check_if_close = |point_id: &PointId| {
-		let Some(anchor_position) = vector_data.point_domain.position_from_id(*point_id) else {
+		let Some(anchor_position) = vector.point_domain.position_from_id(*point_id) else {
 			return false;
 		};
 		(anchor_position - handle_position).length() < 10.
 	};
 
-	vector_data.connected_points(anchor).find(check_if_close)
+	vector.connected_points(anchor).find(check_if_close)
 }
-fn calculate_adjacent_anchor_tangent(
-	currently_dragged_handle: ManipulatorPointId,
-	anchor: Option<PointId>,
-	adjacent_anchor: Option<PointId>,
-	vector_data: &VectorData,
-) -> (Option<f64>, Option<DVec2>) {
+fn calculate_adjacent_anchor_tangent(currently_dragged_handle: ManipulatorPointId, anchor: Option<PointId>, adjacent_anchor: Option<PointId>, vector: &Vector) -> (Option<f64>, Option<DVec2>) {
 	// Early return if no anchor or no adjacent anchors
 
 	let Some((dragged_handle_anchor, adjacent_anchor)) = anchor.zip(adjacent_anchor) else {
 		return (None, None);
 	};
-	let adjacent_anchor_position = vector_data.point_domain.position_from_id(adjacent_anchor);
+	let adjacent_anchor_position = vector.point_domain.position_from_id(adjacent_anchor);
 
-	let handles: Vec<_> = vector_data.all_connected(adjacent_anchor).filter(|handle| handle.length(vector_data) > 1e-6).collect();
+	let handles: Vec<_> = vector.all_connected(adjacent_anchor).filter(|handle| handle.length(vector) > 1e-6).collect();
 
 	match handles.len() {
 		0 => {
 			// Find non-shared segments
-			let non_shared_segment: Vec<_> = vector_data
+			let non_shared_segment: Vec<_> = vector
 				.segment_bezier_iter()
 				.filter_map(|(segment_id, _, start, end)| {
 					let touches_adjacent = start == adjacent_anchor || end == adjacent_anchor;
@@ -2943,7 +3227,7 @@ fn calculate_adjacent_anchor_tangent(
 
 			match non_shared_segment.first() {
 				Some(&segment) => {
-					let angle = calculate_segment_angle(adjacent_anchor, segment, vector_data, true);
+					let angle = calculate_segment_angle(adjacent_anchor, segment, vector, true);
 					(angle, adjacent_anchor_position)
 				}
 				None => (None, None),
@@ -2952,7 +3236,7 @@ fn calculate_adjacent_anchor_tangent(
 
 		1 => {
 			let segment = handles[0].segment;
-			let angle = calculate_segment_angle(adjacent_anchor, segment, vector_data, true);
+			let angle = calculate_segment_angle(adjacent_anchor, segment, vector, true);
 			(angle, adjacent_anchor_position)
 		}
 
@@ -2967,7 +3251,7 @@ fn calculate_adjacent_anchor_tangent(
 			};
 
 			let angle = shared_segment_handle
-				.get_position(vector_data)
+				.get_position(vector)
 				.zip(adjacent_anchor_position)
 				.map(|(handle, anchor)| -(handle - anchor).angle_to(DVec2::X));
 
@@ -3002,8 +3286,8 @@ fn update_dynamic_hints(
 					shape_editor.selected_points().next(),
 					document.network_interface.selected_nodes().selected_layers(document.metadata()).next(),
 				) {
-					if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-						single_colinear_anchor_selected = vector_data.colinear(*anchor)
+					if let Some(vector) = document.network_interface.compute_modified_vector(layer) {
+						single_colinear_anchor_selected = vector.colinear(*anchor)
 					}
 				}
 			}
@@ -3154,9 +3438,9 @@ fn update_dynamic_hints(
 					let handle1 = HandleId::primary(segment.segment());
 					let handle2 = HandleId::end(segment.segment());
 
-					if let Some(vector_data) = document.network_interface.compute_modified_vector(segment.layer()) {
-						let other_handle1 = vector_data.other_colinear_handle(handle1);
-						let other_handle2 = vector_data.other_colinear_handle(handle2);
+					if let Some(vector) = document.network_interface.compute_modified_vector(segment.layer()) {
+						let other_handle1 = vector.other_colinear_handle(handle1);
+						let other_handle2 = vector.other_colinear_handle(handle2);
 						if other_handle1.is_some() || other_handle2.is_some() {
 							has_colinear_anchors = true;
 						}

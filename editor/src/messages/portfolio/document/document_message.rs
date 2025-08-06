@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use super::utility_types::misc::{GroupFolderType, SnappingState};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -105,6 +107,9 @@ pub enum DocumentMessage {
 	RenderRulers,
 	RenderScrollbars,
 	SaveDocument,
+	SavedDocument {
+		path: Option<PathBuf>,
+	},
 	SelectParentLayer,
 	SelectAllLayers,
 	SelectedLayersLower,
@@ -182,7 +187,7 @@ pub enum DocumentMessage {
 	UpdateUpstreamTransforms {
 		upstream_footprints: HashMap<NodeId, Footprint>,
 		local_transforms: HashMap<NodeId, DAffine2>,
-		first_instance_source_id: HashMap<NodeId, Option<NodeId>>,
+		first_element_source_id: HashMap<NodeId, Option<NodeId>>,
 	},
 	UpdateClickTargets {
 		click_targets: HashMap<NodeId, Vec<ClickTarget>>,

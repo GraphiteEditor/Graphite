@@ -9,11 +9,11 @@ use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_std::application_io::TimingInformation;
 use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig};
 use graphene_std::renderer::RenderSvgSegmentList;
-use graphene_std::renderer::{GraphicElementRendered, RenderParams, SvgRender};
+use graphene_std::renderer::{Render, RenderParams, SvgRender};
 use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
 use graphene_std::text::FontCache;
 use graphene_std::transform::Footprint;
-use graphene_std::vector::VectorData;
+use graphene_std::vector::Vector;
 use graphene_std::vector::style::ViewMode;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 
@@ -34,7 +34,7 @@ pub struct ExecutionResponse {
 	result: Result<TaggedValue, String>,
 	responses: VecDeque<FrontendMessage>,
 	transform: DAffine2,
-	vector_modify: HashMap<NodeId, VectorData>,
+	vector_modify: HashMap<NodeId, Vector>,
 	/// The resulting value from the temporary inspected during execution
 	inspect_result: Option<InspectResult>,
 }
@@ -321,7 +321,7 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	fn debug_render(render_object: impl GraphicElementRendered, transform: DAffine2, responses: &mut VecDeque<Message>) {
+	fn debug_render(render_object: impl Render, transform: DAffine2, responses: &mut VecDeque<Message>) {
 		// Setup rendering
 		let mut render = SvgRender::new();
 		let render_params = RenderParams {
@@ -377,9 +377,9 @@ impl NodeGraphExecutor {
 			TaggedValue::F64(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::DVec2(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::OptionalColor(render_object) => Self::debug_render(render_object, transform, responses),
-			TaggedValue::VectorData(render_object) => Self::debug_render(render_object, transform, responses),
-			TaggedValue::GraphicGroup(render_object) => Self::debug_render(render_object, transform, responses),
-			TaggedValue::RasterData(render_object) => Self::debug_render(render_object, transform, responses),
+			TaggedValue::Vector(render_object) => Self::debug_render(render_object, transform, responses),
+			TaggedValue::Graphic(render_object) => Self::debug_render(render_object, transform, responses),
+			TaggedValue::Raster(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::Palette(render_object) => Self::debug_render(render_object, transform, responses),
 			_ => {
 				return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
@@ -388,7 +388,7 @@ impl NodeGraphExecutor {
 		let graphene_std::renderer::RenderMetadata {
 			upstream_footprints: footprints,
 			local_transforms,
-			first_instance_source_id,
+			first_element_source_id,
 			click_targets,
 			clip_targets,
 		} = render_output_metadata;
@@ -397,7 +397,7 @@ impl NodeGraphExecutor {
 		responses.add(DocumentMessage::UpdateUpstreamTransforms {
 			upstream_footprints: footprints,
 			local_transforms,
-			first_instance_source_id,
+			first_element_source_id,
 		});
 		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
 		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });

@@ -46,9 +46,9 @@ pub struct TargetTexture {
 	size: UVec2,
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 pub type Window = web_sys::HtmlCanvasElement;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 pub type Window = Arc<winit::window::Window>;
 
 unsafe impl StaticType for Surface {
@@ -158,11 +158,9 @@ impl WgpuExecutor {
 		});
 		let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-		let [r, g, b, _] = background.to_rgba8_srgb();
+		let [r, g, b, a] = background.to_rgba8_srgb();
 		let render_params = RenderParams {
-			// We are using an explicit opaque color here to eliminate the alpha premultiplication step
-			// which would be required to support a transparent webgpu canvas
-			base_color: vello::peniko::Color::from_rgba8(r, g, b, 0xff),
+			base_color: vello::peniko::Color::from_rgba8(r, g, b, a),
 			width: size.x,
 			height: size.y,
 			antialiasing_method: AaConfig::Msaa16,
@@ -188,12 +186,12 @@ impl WgpuExecutor {
 		Ok(texture)
 	}
 
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(target_family = "wasm")]
 	pub fn create_surface(&self, canvas: graphene_application_io::WasmSurfaceHandle) -> Result<SurfaceHandle<Surface>> {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
 		self.create_surface_inner(surface, canvas.window_id)
 	}
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(target_family = "wasm"))]
 	pub fn create_surface(&self, window: SurfaceHandle<Window>) -> Result<SurfaceHandle<Surface>> {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Window(Box::new(window.surface)))?;
 		self.create_surface_inner(surface, window.window_id)

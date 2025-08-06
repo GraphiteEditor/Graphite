@@ -8,7 +8,8 @@ use graph_craft::document::NodeId;
 use graphene_std::Artboard;
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::{CPU, RasterDataTable};
+use graphene_std::raster_types::{CPU, Raster};
+use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::PointId;
 use graphene_std::vector::VectorModificationType;
@@ -69,7 +70,7 @@ pub enum GraphOperationMessage {
 	},
 	NewBitmapLayer {
 		id: NodeId,
-		image_frame: RasterDataTable<CPU>,
+		image_frame: Table<Raster<CPU>>,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},

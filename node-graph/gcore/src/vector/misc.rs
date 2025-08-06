@@ -1,6 +1,7 @@
 use super::PointId;
 use super::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
-use bezier_rs::{BezierHandles, ManipulatorGroup, Subpath};
+use crate::vector::{SegmentId, Vector};
+use bezier_rs::{BezierHandles, ManipulatorGroup};
 use dyn_any::DynAny;
 use glam::DVec2;
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
@@ -135,12 +136,6 @@ pub fn handles_to_segment(start: DVec2, handles: BezierHandles, end: DVec2) -> P
 	}
 }
 
-pub fn subpath_to_kurbo_bezpath(subpath: Subpath<PointId>) -> BezPath {
-	let maniputor_groups = subpath.manipulator_groups();
-	let closed = subpath.closed();
-	bezpath_from_manipulator_groups(maniputor_groups, closed)
-}
-
 pub fn bezpath_from_manipulator_groups(manipulator_groups: &[ManipulatorGroup<PointId>], closed: bool) -> BezPath {
 	let mut bezpath = kurbo::BezPath::new();
 	let mut out_handle;
@@ -181,15 +176,15 @@ pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup
 			kurbo::PathEl::LineTo(point) => ManipulatorGroup::new(point_to_dvec2(point), None, None),
 			kurbo::PathEl::QuadTo(point, point1) => ManipulatorGroup::new(point_to_dvec2(point1), Some(point_to_dvec2(point)), None),
 			kurbo::PathEl::CurveTo(point, point1, point2) => {
-				if let Some(last_maipulator_group) = manipulator_groups.last_mut() {
-					last_maipulator_group.out_handle = Some(point_to_dvec2(point));
+				if let Some(last_manipulator_group) = manipulator_groups.last_mut() {
+					last_manipulator_group.out_handle = Some(point_to_dvec2(point));
 				}
 				ManipulatorGroup::new(point_to_dvec2(point2), Some(point_to_dvec2(point1)), None)
 			}
 			kurbo::PathEl::ClosePath => {
-				if let Some(last_group) = manipulator_groups.pop() {
-					if let Some(first_group) = manipulator_groups.first_mut() {
-						first_group.out_handle = last_group.in_handle;
+				if let Some(last_manipulators) = manipulator_groups.pop() {
+					if let Some(first_manipulators) = manipulator_groups.first_mut() {
+						first_manipulators.out_handle = last_manipulators.in_handle;
 					}
 				}
 				is_closed = true;
@@ -236,4 +231,183 @@ pub fn pathseg_abs_diff_eq(seg1: PathSeg, seg2: PathSeg, max_abs_diff: f64) -> b
 	let cmp = |a: f64, b: f64| a.sub(b).abs() < max_abs_diff;
 
 	seg1_points.len() == seg2_points.len() && seg1_points.into_iter().zip(seg2_points).all(|(a, b)| cmp(a.x, b.x) && cmp(a.y, b.y))
+}
+
+/// A selectable part of a curve, either an anchor (start or end of a bézier) or a handle (doesn't necessarily go through the bézier but influences curvature).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
+pub enum ManipulatorPointId {
+	/// A control anchor - the start or end point of a bézier.
+	Anchor(PointId),
+	/// The handle for a bézier - the first handle on a cubic and the only handle on a quadratic.
+	PrimaryHandle(SegmentId),
+	/// The end handle on a cubic bézier.
+	EndHandle(SegmentId),
+}
+
+impl ManipulatorPointId {
+	/// Attempt to retrieve the manipulator position in layer space (no transformation applied).
+	#[must_use]
+	#[track_caller]
+	pub fn get_position(&self, vector: &Vector) -> Option<DVec2> {
+		match self {
+			ManipulatorPointId::Anchor(id) => vector.point_domain.position_from_id(*id),
+			ManipulatorPointId::PrimaryHandle(id) => vector.segment_from_id(*id).and_then(|bezier| bezier.handle_start()),
+			ManipulatorPointId::EndHandle(id) => vector.segment_from_id(*id).and_then(|bezier| bezier.handle_end()),
+		}
+	}
+
+	pub fn get_anchor_position(&self, vector: &Vector) -> Option<DVec2> {
+		match self {
+			ManipulatorPointId::EndHandle(_) | ManipulatorPointId::PrimaryHandle(_) => self.get_anchor(vector).and_then(|id| vector.point_domain.position_from_id(id)),
+			_ => self.get_position(vector),
+		}
+	}
+
+	/// Attempt to get a pair of handles. For an anchor this is the first two handles connected. For a handle it is self and the first opposing handle.
+	#[must_use]
+	pub fn get_handle_pair(self, vector: &Vector) -> Option<[HandleId; 2]> {
+		match self {
+			ManipulatorPointId::Anchor(point) => vector.all_connected(point).take(2).collect::<Vec<_>>().try_into().ok(),
+			ManipulatorPointId::PrimaryHandle(segment) => {
+				let point = vector.segment_domain.segment_start_from_id(segment)?;
+				let current = HandleId::primary(segment);
+				let other = vector.segment_domain.all_connected(point).find(|&value| value != current);
+				other.map(|other| [current, other])
+			}
+			ManipulatorPointId::EndHandle(segment) => {
+				let point = vector.segment_domain.segment_end_from_id(segment)?;
+				let current = HandleId::end(segment);
+				let other = vector.segment_domain.all_connected(point).find(|&value| value != current);
+				other.map(|other| [current, other])
+			}
+		}
+	}
+
+	/// Finds all the connected handles of a point.
+	/// For an anchor it is all the connected handles.
+	/// For a handle it is all the handles connected to its corresponding anchor other than the current handle.
+	pub fn get_all_connected_handles(self, vector: &Vector) -> Option<Vec<HandleId>> {
+		match self {
+			ManipulatorPointId::Anchor(point) => {
+				let connected = vector.all_connected(point).collect::<Vec<_>>();
+				Some(connected)
+			}
+			ManipulatorPointId::PrimaryHandle(segment) => {
+				let point = vector.segment_domain.segment_start_from_id(segment)?;
+				let current = HandleId::primary(segment);
+				let connected = vector.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>();
+				Some(connected)
+			}
+			ManipulatorPointId::EndHandle(segment) => {
+				let point = vector.segment_domain.segment_end_from_id(segment)?;
+				let current = HandleId::end(segment);
+				let connected = vector.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>();
+				Some(connected)
+			}
+		}
+	}
+
+	/// Attempt to find the closest anchor. If self is already an anchor then it is just self. If it is a start or end handle, then the start or end point is chosen.
+	#[must_use]
+	pub fn get_anchor(self, vector: &Vector) -> Option<PointId> {
+		match self {
+			ManipulatorPointId::Anchor(point) => Some(point),
+			ManipulatorPointId::PrimaryHandle(segment) => vector.segment_start_from_id(segment),
+			ManipulatorPointId::EndHandle(segment) => vector.segment_end_from_id(segment),
+		}
+	}
+
+	/// Attempt to convert self to a [`HandleId`], returning none for an anchor.
+	#[must_use]
+	pub fn as_handle(self) -> Option<HandleId> {
+		match self {
+			ManipulatorPointId::PrimaryHandle(segment) => Some(HandleId::primary(segment)),
+			ManipulatorPointId::EndHandle(segment) => Some(HandleId::end(segment)),
+			ManipulatorPointId::Anchor(_) => None,
+		}
+	}
+
+	/// Attempt to convert self to an anchor, returning None for a handle.
+	#[must_use]
+	pub fn as_anchor(self) -> Option<PointId> {
+		match self {
+			ManipulatorPointId::Anchor(point) => Some(point),
+			_ => None,
+		}
+	}
+
+	pub fn get_segment(self) -> Option<SegmentId> {
+		match self {
+			ManipulatorPointId::PrimaryHandle(segment) | ManipulatorPointId::EndHandle(segment) => Some(segment),
+			_ => None,
+		}
+	}
+}
+
+/// The type of handle found on a bézier curve.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
+pub enum HandleType {
+	/// The first handle on a cubic bézier or the only handle on a quadratic bézier.
+	Primary,
+	/// The second handle on a cubic bézier.
+	End,
+}
+
+/// Represents a primary or end handle found in a particular segment.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
+pub struct HandleId {
+	pub ty: HandleType,
+	pub segment: SegmentId,
+}
+
+impl std::fmt::Display for HandleId {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self.ty {
+			// I haven't checked if "out" and "in" are reversed, or are accurate translations of the "primary" and "end" terms used in the `HandleType` enum, so this naming is an assumption.
+			HandleType::Primary => write!(f, "{} out", self.segment.inner()),
+			HandleType::End => write!(f, "{} in", self.segment.inner()),
+		}
+	}
+}
+
+impl HandleId {
+	/// Construct a handle for the first handle on a cubic bézier or the only handle on a quadratic bézier.
+	#[must_use]
+	pub const fn primary(segment: SegmentId) -> Self {
+		Self { ty: HandleType::Primary, segment }
+	}
+
+	/// Construct a handle for the end handle on a cubic bézier.
+	#[must_use]
+	pub const fn end(segment: SegmentId) -> Self {
+		Self { ty: HandleType::End, segment }
+	}
+
+	/// Convert to [`ManipulatorPointId`].
+	#[must_use]
+	pub fn to_manipulator_point(self) -> ManipulatorPointId {
+		match self.ty {
+			HandleType::Primary => ManipulatorPointId::PrimaryHandle(self.segment),
+			HandleType::End => ManipulatorPointId::EndHandle(self.segment),
+		}
+	}
+
+	/// Calculate the magnitude of the handle from the anchor.
+	pub fn length(self, vector: &Vector) -> f64 {
+		let Some(anchor_position) = self.to_manipulator_point().get_anchor_position(vector) else {
+			// TODO: This was previously an unwrap which was encountered, so this is a temporary way to avoid a crash
+			return 0.;
+		};
+		let handle_position = self.to_manipulator_point().get_position(vector);
+		handle_position.map(|pos| (pos - anchor_position).length()).unwrap_or(f64::MAX)
+	}
+
+	/// Convert an end handle to the primary handle and a primary handle to an end handle. Note that the new handle may not exist (e.g. for a quadratic bézier).
+	#[must_use]
+	pub fn opposite(self) -> Self {
+		match self.ty {
+			HandleType::Primary => Self::end(self.segment),
+			HandleType::End => Self::primary(self.segment),
+		}
+	}
 }
