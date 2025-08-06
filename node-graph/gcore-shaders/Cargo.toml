@@ -7,7 +7,7 @@ authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "MIT OR Apache-2.0"
 
 [features]
-std = ["dep:dyn-any", "dep:serde", "dep:specta", "dep:log"]
+std = ["dep:dyn-any", "dep:serde", "dep:specta", "dep:log", "half/std", "half/serde"]
 
 [dependencies]
 # Local std dependencies
@@ -16,7 +16,7 @@ dyn-any = { workspace = true, optional = true }
 # Workspace dependencies
 bytemuck = { workspace = true }
 glam = { version = "0.29", default-features = false, features = ["nostd-libm", "scalar-math"] }
-half = { workspace = true }
+half = { workspace = true, default-features = false }
 num-derive = { workspace = true }
 num-traits = { workspace = true }
 

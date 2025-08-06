@@ -798,10 +798,10 @@ export class TriggerSaveDocument extends JsMessage {
 
 	readonly path!: string | undefined;
 
-	readonly document!: string;
+	readonly content!: Uint8Array;
 }
 
-export class TriggerDownloadImage extends JsMessage {
+export class TriggerExportImage extends JsMessage {
 	readonly svg!: string;
 
 	readonly name!: string;
@@ -812,10 +812,10 @@ export class TriggerDownloadImage extends JsMessage {
 	readonly size!: XY;
 }
 
-export class TriggerDownloadTextFile extends JsMessage {
-	readonly document!: string;
-
+export class TriggerSaveFile extends JsMessage {
 	readonly name!: string;
+
+	readonly content!: Uint8Array;
 }
 
 export class TriggerSavePreferences extends JsMessage {
@@ -1658,8 +1658,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerSaveDocument,
-	TriggerDownloadImage,
-	TriggerDownloadTextFile,
+	TriggerSaveFile,
+	TriggerExportImage,
 	TriggerFetchAndOpenDocument,
 	TriggerFontLoad,
 	TriggerImport,

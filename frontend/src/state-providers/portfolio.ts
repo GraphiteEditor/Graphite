@@ -7,8 +7,8 @@ import {
 	type FrontendDocumentDetails,
 	TriggerFetchAndOpenDocument,
 	TriggerSaveDocument,
-	TriggerDownloadImage,
-	TriggerDownloadTextFile,
+	TriggerExportImage,
+	TriggerSaveFile,
 	TriggerImport,
 	TriggerOpenDocument,
 	UpdateActiveDocument,
@@ -18,7 +18,7 @@ import {
 	patchWidgetLayout,
 	UpdateSpreadsheetLayout,
 } from "@graphite/messages";
-import { downloadFileText, downloadFileBlob, upload } from "@graphite/utility-functions/files";
+import { downloadFile, downloadFileBlob, upload } from "@graphite/utility-functions/files";
 import { extractPixelData, rasterizeSVG } from "@graphite/utility-functions/rasterization";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -86,13 +86,13 @@ export function createPortfolioState(editor: Editor) {
 		editor.handle.pasteImage(data.filename, new Uint8Array(imageData.data), imageData.width, imageData.height);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerSaveDocument, (triggerSaveDocument) => {
-		downloadFileText(triggerSaveDocument.name, triggerSaveDocument.document);
+		downloadFile(triggerSaveDocument.name, triggerSaveDocument.content);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerDownloadTextFile, (triggerFileDownload) => {
-		downloadFileText(triggerFileDownload.name, triggerFileDownload.document);
+	editor.subscriptions.subscribeJsMessage(TriggerSaveFile, (triggerFileDownload) => {
+		downloadFile(triggerFileDownload.name, triggerFileDownload.content);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerDownloadImage, async (triggerDownloadImage) => {
-		const { svg, name, mime, size } = triggerDownloadImage;
+	editor.subscriptions.subscribeJsMessage(TriggerExportImage, async (TriggerExportImage) => {
+		const { svg, name, mime, size } = TriggerExportImage;
 
 		// Fill the canvas with white if it'll be a JPEG (which does not support transparency and defaults to black)
 		const backgroundColor = mime.endsWith("jpeg") ? "white" : undefined;
