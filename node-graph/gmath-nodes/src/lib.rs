@@ -348,21 +348,21 @@ fn random<U: num_traits::float::Float>(
 }
 
 /// Convert a number to an integer of the type u32, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
-#[node_macro::node(name("To u32"), category("Math: Numeric"))]
+#[node_macro::node(name("To u32"), category("Type Conversion"))]
 fn to_u32<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U) -> u32 {
 	let value = U::clamp(value, U::from(0.).unwrap(), U::from(u32::MAX as f64).unwrap());
 	value.to_u32().unwrap()
 }
 
 /// Convert a number to an integer of the type u64, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
-#[node_macro::node(name("To u64"), category("Math: Numeric"))]
+#[node_macro::node(name("To u64"), category("Type Conversion"))]
 fn to_u64<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U) -> u64 {
 	let value = U::clamp(value, U::from(0.).unwrap(), U::from(u64::MAX as f64).unwrap());
 	value.to_u64().unwrap()
 }
 
 /// Convert an integer to a decimal number of the type f64, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
-#[node_macro::node(name("To f64"), category("Math: Numeric"))]
+#[node_macro::node(name("To f64"), category("Type Conversion"))]
 fn to_f64<U: num_traits::int::PrimInt>(_: impl Ctx, #[implementations(u32, u64)] value: U) -> f64 {
 	value.to_f64().unwrap()
 }

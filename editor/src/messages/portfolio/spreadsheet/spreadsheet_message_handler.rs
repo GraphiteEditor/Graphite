@@ -154,7 +154,7 @@ impl TableRowLayout for Graphic {
 	}
 	fn identifier(&self) -> String {
 		match self {
-			Self::Group(group) => group.identifier(),
+			Self::Graphic(graphic) => graphic.identifier(),
 			Self::Vector(vector) => vector.identifier(),
 			Self::RasterCPU(_) => "Raster (on CPU)".to_string(),
 			Self::RasterGPU(_) => "Raster (on GPU)".to_string(),
@@ -166,7 +166,7 @@ impl TableRowLayout for Graphic {
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		match self {
-			Self::Group(table) => table.layout_with_breadcrumb(data),
+			Self::Graphic(table) => table.layout_with_breadcrumb(data),
 			Self::Vector(table) => table.layout_with_breadcrumb(data),
 			Self::RasterCPU(_) => label("Raster is not supported"),
 			Self::RasterGPU(_) => label("Raster is not supported"),
@@ -179,17 +179,23 @@ impl TableRowLayout for Vector {
 		"Vector"
 	}
 	fn identifier(&self) -> String {
-		format!("Vector ({} points, {} segments)", self.point_domain.ids().len(), self.segment_domain.ids().len())
+		format!(
+			"Vector ({} point{}, {} segment{})",
+			self.point_domain.ids().len(),
+			if self.point_domain.ids().len() == 1 { "" } else { "s" },
+			self.segment_domain.ids().len(),
+			if self.segment_domain.ids().len() == 1 { "" } else { "s" }
+		)
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let colinear = self.colinear_manipulators.iter().map(|[a, b]| format!("[{a} / {b}]")).collect::<Vec<_>>().join(", ");
 		let colinear = if colinear.is_empty() { "None" } else { &colinear };
 		let style = vec![
 			TextLabel::new(format!(
-				"{}\n\nColinear Handle IDs: {}\n\nUpstream Group Table: {}",
+				"{}\n\nColinear Handle IDs: {}\nPreserves Reference to Upstream Nested Layers for Editing by Tools: {}",
 				self.style,
 				colinear,
-				if self.upstream_group.is_some() { "Yes" } else { "No" }
+				if self.upstream_nested_layers.is_some() { "Yes" } else { "No" }
 			))
 			.multiline(true)
 			.widget_holder(),
@@ -247,10 +253,10 @@ impl TableRowLayout for Image<Color> {
 		"Image"
 	}
 	fn identifier(&self) -> String {
-		format!("Image (width={}, height={})", self.width, self.height)
+		format!("Image ({}x{})", self.width, self.height)
 	}
 	fn compute_layout(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let rows = vec![vec![TextLabel::new(format!("Image (width={}, height={})", self.width, self.height)).widget_holder()]];
+		let rows = vec![vec![TextLabel::new(format!("Image ({}x{})", self.width, self.height)).widget_holder()]];
 		vec![LayoutGroup::Table { rows }]
 	}
 }
@@ -263,7 +269,7 @@ impl TableRowLayout for Artboard {
 		self.label.clone()
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		self.group.compute_layout(data)
+		self.content.compute_layout(data)
 	}
 }
 
@@ -272,7 +278,7 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 		"Table"
 	}
 	fn identifier(&self) -> String {
-		format!("Table<{}> (length={})", T::type_name(), self.len())
+		format!("Table<{}> ({} row{})", T::type_name(), self.len(), if self.len() == 1 { "" } else { "s" })
 	}
 	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		if let Some(index) = data.desired_path.get(data.current_depth).copied() {
@@ -295,7 +301,7 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 				let rotation = if angle == -0. { 0. } else { angle.to_degrees() };
 				let round = |x: f64| (x * 1e3).round() / 1e3;
 				vec![
-					TextLabel::new(format!("{}", index)).widget_holder(),
+					TextLabel::new(format!("{index}")).widget_holder(),
 					TextButton::new(row.element.identifier())
 						.on_update(move |_| SpreadsheetMessage::PushToElementPath { index }.into())
 						.widget_holder(),
@@ -315,7 +321,6 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 
 		rows.insert(0, column_headings(&["", "element", "transform", "alpha_blending", "source_node_id"]));
 
-		let table = vec![TextLabel::new("Table:").widget_holder()];
-		vec![LayoutGroup::Row { widgets: table }, LayoutGroup::Table { rows }]
+		vec![LayoutGroup::Table { rows }]
 	}
 }

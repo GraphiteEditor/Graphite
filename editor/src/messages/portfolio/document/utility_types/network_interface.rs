@@ -6613,25 +6613,27 @@ fn migrate_output_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 	const REPLACEMENTS: &[(&str, &str)] = &[
 		// Single to table data
 		("VectorData", "Table<Vector>"),
-		("GraphicGroup", "Table<Group>"),
+		("GraphicGroup", "Table<Graphic>"),
 		("ImageFrame", "Table<Image>"),
 		// `ImageFrame` to `Image` rename
 		("Instances<ImageFrame>", "Table<Image>"),
 		// `Instances` to `Table` rename
 		("Instances<VectorData>", "Table<Vector>"),
-		("Instances<GraphicGroup>", "Table<Group>"),
+		("Instances<GraphicGroup>", "Table<Graphic>"),
 		("Instances<Image>", "Table<Image>"),
 		("Instances<GraphicElement>", "Table<Graphic>"),
 		("Table<GraphicElement>", "Table<Graphic>"),
 		("Future<Instances<Vector>>", "Future<Table<Vector>>"),
-		("Future<Instances<GraphicGroup>>", "Future<Table<Group>>"),
+		("Future<Instances<GraphicGroup>>", "Future<Table<Graphic>>"),
 		("Future<Instances<Image>>", "Future<Table<Image>>"),
 		("Future<Instances<GraphicElement>>", "Future<Table<Graphic>>"),
 		("Future<Table<GraphicElement>>", "Future<Table<Graphic>>"),
 		("Future<Table<VectorData>>", "Future<Table<Vector>>"),
 		("Table<VectorData>", "Table<Vector>"),
-		("Table<GraphicGroup>", "Table<Group>"),
-		("Future<Table<GraphicGroup>>", "Future<Table<Group>>"),
+		("Table<GraphicGroup>", "Table<Graphic>"),
+		("Future<Table<GraphicGroup>>", "Future<Table<Graphic>>"),
+		("Table<Group>", "Table<Graphic>"),
+		("Future<Table<Group>>", "Future<Table<Graphic>>"),
 	];
 
 	let mut names = Vec::<String>::deserialize(deserializer)?;

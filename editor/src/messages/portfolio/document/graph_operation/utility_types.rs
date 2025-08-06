@@ -132,7 +132,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_document_node_type("Artboard").expect("Node").node_template_input_override([
 			Some(NodeInput::value(TaggedValue::Artboard(Default::default()), true)),
-			Some(NodeInput::value(TaggedValue::Group(Default::default()), true)),
+			Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
 			Some(NodeInput::value(TaggedValue::DVec2(artboard.location.into()), false)),
 			Some(NodeInput::value(TaggedValue::DVec2(artboard.dimensions.into()), false)),
 			Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
@@ -144,7 +144,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn insert_boolean_data(&mut self, operation: graphene_std::path_bool::BooleanOperation, layer: LayerNodeIdentifier) {
 		let boolean = resolve_document_node_type("Boolean Operation").expect("Boolean node does not exist").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::Group(Default::default()), true)),
+			Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
 			Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
 		]);
 
@@ -263,7 +263,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Gets the node id of a node with a specific reference (name) that is upstream (leftward) from the layer node, but before reaching another upstream layer stack.
-	/// For example, if given a group layer, this would find a requested "Transform" or "Boolean Operation" node in its chain, between the group layer and its layer stack child contents.
+	/// For example, if given a parent layer, this would find a requested "Transform" or "Boolean Operation" node in its chain, between the parent layer and its layer stack child contents.
 	/// It would also travel up an entire layer that's not fed by a stack until reaching the generator node, such as a "Rectangle" or "Path" layer.
 	pub fn locate_node_in_layer_chain(reference_name: &str, left_of_layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 		let upstream = network_interface.upstream_flow_back_from_nodes(vec![left_of_layer.to_node()], &[], network_interface::FlowType::HorizontalFlow);
@@ -300,8 +300,8 @@ impl<'a> ModifyInputsContext<'a> {
 			return None;
 		};
 
-		// If inserting a path node, insert a Flatten Path if the type is Group.
-		// TODO: Allow the path node to operate on Group data by utilizing the reference for each Vector in a group.
+		// If inserting a 'Path' node, insert a 'Flatten Path' node if the type is `Graphic`.
+		// TODO: Allow the 'Path' node to operate on table data by utilizing the reference (index or ID?) for each row.
 		if node_definition.identifier == "Path" {
 			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type().clone();
 			if layer_input_type == concrete!(Table<Graphic>) {

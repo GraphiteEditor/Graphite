@@ -163,8 +163,8 @@ impl LayoutHolder for BrushTool {
 
 		let blend_mode_entries: Vec<Vec<_>> = BlendMode::list()
 			.iter()
-			.map(|group| {
-				group
+			.map(|section| {
+				section
 					.iter()
 					.map(|blend_mode| {
 						MenuListEntry::new(format!("{blend_mode:?}"))

@@ -182,9 +182,9 @@ pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup
 				ManipulatorGroup::new(point_to_dvec2(point2), Some(point_to_dvec2(point1)), None)
 			}
 			kurbo::PathEl::ClosePath => {
-				if let Some(last_group) = manipulator_groups.pop() {
-					if let Some(first_group) = manipulator_groups.first_mut() {
-						first_group.out_handle = last_group.in_handle;
+				if let Some(last_manipulators) = manipulator_groups.pop() {
+					if let Some(first_manipulators) = manipulator_groups.first_mut() {
+						first_manipulators.out_handle = last_manipulators.in_handle;
 					}
 				}
 				is_closed = true;

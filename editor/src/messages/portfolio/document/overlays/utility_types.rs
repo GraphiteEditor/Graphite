@@ -23,7 +23,7 @@ pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
 }
 
-// Types of overlays used by DocumentMessage to enable/disable select group of overlays in the frontend
+/// Types of overlays used by DocumentMessage to enable/disable the selected set of viewport overlays.
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OverlaysType {
 	ArtboardName,

@@ -29,8 +29,10 @@ pub struct Vector {
 	pub segment_domain: SegmentDomain,
 	pub region_domain: RegionDomain,
 
-	// Used to store the upstream group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
-	pub upstream_group: Option<Table<Graphic>>,
+	/// Used to store the upstream group/folder of nested layers during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved for the child layers.
+	/// Without this, the tools would be working with a collapsed version of the data which has no reference to the original child layers that were booleaned together, resulting in the inner layers not being editable.
+	#[serde(alias = "upstream_group")]
+	pub upstream_nested_layers: Option<Table<Graphic>>,
 }
 
 impl Default for Vector {
@@ -41,7 +43,7 @@ impl Default for Vector {
 			point_domain: PointDomain::new(),
 			segment_domain: SegmentDomain::new(),
 			region_domain: RegionDomain::new(),
-			upstream_group: None,
+			upstream_nested_layers: None,
 		}
 	}
 }
@@ -468,15 +470,12 @@ pub fn migrate_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resu
 
 		pub style: PathStyle,
 
-		/// A list of all manipulator groups (referenced in `subpaths`) that have colinear handles (where they're locked at 180° angles from one another).
-		/// This gets read in `graph_operation_message_handler.rs` by calling `inputs.as_mut_slice()` (search for the string `"Shape does not have both `subpath` and `colinear_manipulators` inputs"` to find it).
 		pub colinear_manipulators: Vec<[HandleId; 2]>,
 
 		pub point_domain: PointDomain,
 		pub segment_domain: SegmentDomain,
 		pub region_domain: RegionDomain,
 
-		// Used to store the upstream group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
 		pub upstream_graphic_group: Option<Table<Graphic>>,
 	}
 
@@ -498,7 +497,7 @@ pub fn migrate_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resu
 				point_domain: old.point_domain,
 				segment_domain: old.segment_domain,
 				region_domain: old.region_domain,
-				upstream_group: old.upstream_graphic_group,
+				upstream_nested_layers: old.upstream_graphic_group,
 			});
 			*vector_table.iter_mut().next().unwrap().transform = old.transform;
 			*vector_table.iter_mut().next().unwrap().alpha_blending = old.alpha_blending;
