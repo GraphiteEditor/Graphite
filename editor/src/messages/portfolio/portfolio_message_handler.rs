@@ -347,6 +347,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let inspect_node = self.inspect_node_id();
 					if let Ok(message) = self.executor.submit_node_graph_evaluation(
 						self.documents.get_mut(document_id).expect("Tried to render non-existent document"),
+						*document_id,
 						ipp.viewport_bounds.size().as_uvec2(),
 						timing_information,
 						inspect_node,
@@ -378,16 +379,19 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::NewDocumentWithName { name } => {
 				let mut new_document = DocumentMessageHandler::default();
 				new_document.name = name;
-				responses.add(DocumentMessage::PTZUpdate);
+				let mut new_responses = VecDeque::new();
+				new_responses.add(DocumentMessage::PTZUpdate);
 
 				let document_id = DocumentId(generate_uuid());
 				if self.active_document().is_some() {
-					responses.add(BroadcastEvent::ToolAbort);
-					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
+					new_responses.add(BroadcastEvent::ToolAbort);
+					new_responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
-				self.load_document(new_document, document_id, responses, false);
-				responses.add(PortfolioMessage::SelectDocument { document_id });
+				self.load_document(new_document, document_id, &mut new_responses, false);
+				new_responses.add(PortfolioMessage::SelectDocument { document_id });
+				new_responses.extend(responses.drain(..));
+				*responses = new_responses;
 			}
 			PortfolioMessage::NextDocument => {
 				if let Some(active_document_id) = self.active_document_id {
@@ -899,7 +903,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					transparent_background,
 					..Default::default()
 				};
-				let result = self.executor.submit_document_export(document, export_config);
+				let result = self.executor.submit_document_export(document, self.active_document_id.unwrap(), export_config);
 
 				if let Err(description) = result {
 					responses.add(DialogMessage::DisplayDialogError {
@@ -917,6 +921,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let inspect_node = self.inspect_node_id();
 				let result = self.executor.submit_node_graph_evaluation(
 					self.documents.get_mut(&document_id).expect("Tried to render non-existent document"),
+					document_id,
 					ipp.viewport_bounds.size().as_uvec2(),
 					timing_information,
 					inspect_node,
