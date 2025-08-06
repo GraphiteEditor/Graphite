@@ -37,10 +37,10 @@ pub enum Message {
 	Workspace(WorkspaceMessage),
 
 	// Messages
-	NoOp,
 	Batched {
 		messages: Box<[Message]>,
 	},
+	NoOp,
 }
 
 /// Provides an impl of `specta::Type` for `MessageDiscriminant`, the struct created by `impl_message`.
