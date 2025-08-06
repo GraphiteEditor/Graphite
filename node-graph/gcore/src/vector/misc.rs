@@ -3,8 +3,8 @@ use super::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
 use crate::vector::{SegmentId, Vector};
 use bezier_rs::{BezierHandles, ManipulatorGroup, Subpath};
 use dyn_any::DynAny;
-use glam::DVec2;
-use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez, Rect};
+use glam::{DAffine2, DVec2};
+use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathEl, PathSeg, Point, QuadBez, Rect};
 use std::ops::Sub;
 
 /// Represents different ways of calculating the centroid.
@@ -204,7 +204,7 @@ pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup
 	(manipulator_groups, is_closed)
 }
 
-fn pathseg_to_points(segment: PathSeg) -> [Option<Point>; 4] {
+pub fn pathseg_to_points(segment: PathSeg) -> [Option<Point>; 4] {
 	match segment {
 		PathSeg::Line(line) => [Some(line.p0), None, None, Some(line.p1)],
 		PathSeg::Quad(quad_bez) => [Some(quad_bez.p0), None, Some(quad_bez.p1), Some(quad_bez.p2)],
@@ -222,6 +222,32 @@ pub fn bezpath_loose_bounding_box(bezpath: &BezPath) -> Option<Rect> {
 		.flat_map(|point| point)
 		.map(|point| to_rect(point))
 		.reduce(|bbox1, bbox2| combine(bbox1, bbox2))
+}
+
+pub fn is_bezpath_closed(bezpath: &BezPath) -> bool {
+	bezpath.elements().last().is_some_and(|el| *el == PathEl::ClosePath)
+}
+
+pub fn combine_rect(r1: Rect, r2: Rect) -> Rect {
+	Rect::new(r1.x0.min(r2.x0), r1.y0.min(r2.y0), r1.x1.max(r2.x1), r1.y1.max(r2.y1))
+}
+
+pub fn rect_from_minmax(minmax: [DVec2; 2]) -> Rect {
+	Rect::new(minmax[0].x, minmax[0].y, minmax[1].x, minmax[1].y)
+}
+
+pub fn rect_to_minmax(rect: Rect) -> [DVec2; 2] {
+	[DVec2::new(rect.min_x(), rect.min_y()), DVec2::new(rect.max_x(), rect.max_y())]
+}
+
+pub fn transform_rect(rect: Rect, transform: DAffine2) -> Rect {
+	let min = transform.transform_point2(DVec2::new(rect.x0, rect.y0));
+	let max = transform.transform_point2(DVec2::new(rect.x1, rect.y1));
+	Rect::new(min.x, min.y, max.x, max.y)
+}
+
+pub fn rect_with_size(point: DVec2, size: f64) -> Rect {
+	Rect::new(point.x - size / 2., point.y - size / 2., point.x + size / 2., point.y + size / 2.)
 }
 
 /// Returns true if the [`PathSeg`] is equivalent to a line.

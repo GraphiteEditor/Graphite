@@ -4,14 +4,15 @@ use crate::consts::{
 	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
-use bezier_rs::{Bezier, Subpath};
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
 use graphene_std::Color;
 use graphene_std::math::quad::Quad;
 use graphene_std::vector::click_target::ClickTargetType;
+use graphene_std::vector::misc::{is_bezpath_closed, point_to_dvec2};
 use graphene_std::vector::{PointId, SegmentId, Vector};
+use kurbo::{Affine, ParamCurve, PathSeg};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use vello::Scene;
@@ -343,17 +344,17 @@ impl OverlayContext {
 	}
 
 	/// Used by the Pen tool in order to show how the bezier curve would look like.
-	pub fn outline_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
-		self.internal().outline_bezier(bezier, transform);
+	pub fn outline_bezier(&mut self, segment: PathSeg, transform: DAffine2) {
+		self.internal().outline_bezier(segment, transform);
 	}
 
 	/// Used by the path tool segment mode in order to show the selected segments.
-	pub fn outline_select_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
-		self.internal().outline_select_bezier(bezier, transform);
+	pub fn outline_select_bezier(&mut self, segment: PathSeg, transform: DAffine2) {
+		self.internal().outline_select_bezier(segment, transform);
 	}
 
-	pub fn outline_overlay_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
-		self.internal().outline_overlay_bezier(bezier, transform);
+	pub fn outline_overlay_bezier(&mut self, segment: PathSeg, transform: DAffine2) {
+		self.internal().outline_overlay_bezier(segment, transform);
 	}
 
 	/// Used by the Select tool to outline a path or a free point when selected or hovered.
@@ -363,14 +364,14 @@ impl OverlayContext {
 
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed.
-	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		self.internal().fill_path(subpaths, transform, color);
+	pub fn fill_path(&mut self, bezpaths: impl Iterator<Item = impl Borrow<BezPath>>, transform: DAffine2, color: &str) {
+		self.internal().fill_path(bezpaths, transform, color);
 	}
 
 	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
 	/// Used by the fill tool to show the area to be filled.
-	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
-		self.internal().fill_path_pattern(subpaths, transform, color);
+	pub fn fill_path_pattern(&mut self, bezpaths: impl Iterator<Item = impl Borrow<BezPath>>, transform: DAffine2, color: &Color) {
+		self.internal().fill_path_pattern(bezpaths, transform, color);
 	}
 
 	pub fn get_width(&self, text: &str) -> f64 {
@@ -839,18 +840,18 @@ impl OverlayContextInternal {
 		let mut path = BezPath::new();
 
 		let mut last_point = None;
-		for (_, bezier, start_id, end_id) in vector.segment_bezier_iter() {
+		for (_, segment, start_id, end_id) in vector.segment_iter() {
 			let move_to = last_point != Some(start_id);
 			last_point = Some(end_id);
 
-			self.bezier_to_path(bezier, transform, move_to, &mut path);
+			self.bezier_to_path(segment, transform, move_to, &mut path);
 		}
 
 		self.scene.stroke(&kurbo::Stroke::new(1.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
 	/// Used by the Pen tool in order to show how the bezier curve would look like.
-	fn outline_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	fn outline_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
 		let vello_transform = self.get_transform();
 		let mut path = BezPath::new();
 		self.bezier_to_path(bezier, transform, true, &mut path);
@@ -859,7 +860,7 @@ impl OverlayContextInternal {
 	}
 
 	/// Used by the path tool segment mode in order to show the selected segments.
-	fn outline_select_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	fn outline_select_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
 		let vello_transform = self.get_transform();
 		let mut path = BezPath::new();
 		self.bezier_to_path(bezier, transform, true, &mut path);
@@ -867,7 +868,7 @@ impl OverlayContextInternal {
 		self.scene.stroke(&kurbo::Stroke::new(4.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
-	fn outline_overlay_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	fn outline_overlay_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
 		let vello_transform = self.get_transform();
 		let mut path = BezPath::new();
 		self.bezier_to_path(bezier, transform, true, &mut path);
@@ -875,55 +876,46 @@ impl OverlayContextInternal {
 		self.scene.stroke(&kurbo::Stroke::new(4.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE_50), None, &path);
 	}
 
-	fn bezier_to_path(&self, bezier: Bezier, transform: DAffine2, move_to: bool, path: &mut BezPath) {
-		let Bezier { start, end, handles } = bezier.apply_transformation(|point| transform.transform_point2(point));
+	fn bezier_to_path(&self, bezier: PathSeg, transform: DAffine2, move_to: bool, path: &mut BezPath) {
+		let segment = Affine::new(transform.to_cols_array()) * bezier;
 		if move_to {
-			path.move_to(kurbo::Point::new(start.x, start.y));
+			path.move_to(segment.start());
 		}
-
-		match handles {
-			bezier_rs::BezierHandles::Linear => path.line_to(kurbo::Point::new(end.x, end.y)),
-			bezier_rs::BezierHandles::Quadratic { handle } => path.quad_to(kurbo::Point::new(handle.x, handle.y), kurbo::Point::new(end.x, end.y)),
-			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => path.curve_to(
-				kurbo::Point::new(handle_start.x, handle_start.y),
-				kurbo::Point::new(handle_end.x, handle_end.y),
-				kurbo::Point::new(end.x, end.y),
-			),
-		}
+		path.push(segment.as_path_el());
 	}
 
-	fn push_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) -> BezPath {
+	fn push_path(&mut self, bezpaths: impl Iterator<Item = impl Borrow<BezPath>>, transform: DAffine2) -> BezPath {
 		let mut path = BezPath::new();
 
-		for subpath in subpaths {
-			let subpath = subpath.borrow();
-			let mut curves = subpath.iter().peekable();
+		for bezpath in bezpaths {
+			let bezpath = bezpath.borrow();
+			let mut segments = bezpath.segments().peekable();
 
-			let Some(first) = curves.peek() else {
+			let Some(first) = segments.peek() else {
 				continue;
 			};
 
-			let start_point = transform.transform_point2(first.start());
+			let start_point = transform.transform_point2(point_to_dvec2(first.start()));
 			path.move_to(kurbo::Point::new(start_point.x, start_point.y));
 
-			for curve in curves {
-				match curve.handles {
-					bezier_rs::BezierHandles::Linear => {
-						let a = transform.transform_point2(curve.end());
+			for segment in segments {
+				match segment {
+					PathSeg::Line(line) => {
+						let a = transform.transform_point2(point_to_dvec2(line.p1));
 						let a = a.round() - DVec2::splat(0.5);
 						path.line_to(kurbo::Point::new(a.x, a.y));
 					}
-					bezier_rs::BezierHandles::Quadratic { handle } => {
-						let a = transform.transform_point2(handle);
-						let b = transform.transform_point2(curve.end());
+					PathSeg::Quad(quad_bez) => {
+						let a = transform.transform_point2(point_to_dvec2(quad_bez.p1));
+						let b = transform.transform_point2(point_to_dvec2(quad_bez.p2));
 						let a = a.round() - DVec2::splat(0.5);
 						let b = b.round() - DVec2::splat(0.5);
 						path.quad_to(kurbo::Point::new(a.x, a.y), kurbo::Point::new(b.x, b.y));
 					}
-					bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
-						let a = transform.transform_point2(handle_start);
-						let b = transform.transform_point2(handle_end);
-						let c = transform.transform_point2(curve.end());
+					PathSeg::Cubic(cubic_bez) => {
+						let a = transform.transform_point2(point_to_dvec2(cubic_bez.p1));
+						let b = transform.transform_point2(point_to_dvec2(cubic_bez.p2));
+						let c = transform.transform_point2(point_to_dvec2(cubic_bez.p3));
 						let a = a.round() - DVec2::splat(0.5);
 						let b = b.round() - DVec2::splat(0.5);
 						let c = c.round() - DVec2::splat(0.5);
@@ -932,7 +924,7 @@ impl OverlayContextInternal {
 				}
 			}
 
-			if subpath.closed() {
+			if is_bezpath_closed(bezpath) {
 				path.close_path();
 			}
 		}
@@ -942,14 +934,14 @@ impl OverlayContextInternal {
 
 	/// Used by the Select tool to outline a path or a free point when selected or hovered.
 	fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
-		let mut subpaths: Vec<bezier_rs::Subpath<PointId>> = vec![];
+		let mut subpaths: Vec<BezPath> = vec![];
 
 		for target_type in target_types {
 			match target_type.borrow() {
 				ClickTargetType::FreePoint(point) => {
 					self.manipulator_anchor(transform.transform_point2(point.position), false, None);
 				}
-				ClickTargetType::Subpath(subpath) => subpaths.push(subpath.clone()),
+				ClickTargetType::BezPath(subpath) => subpaths.push(subpath.clone()),
 			}
 		}
 
@@ -963,18 +955,18 @@ impl OverlayContextInternal {
 
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed.
-	fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		let path = self.push_path(subpaths, transform);
+	fn fill_path(&mut self, bezpaths: impl Iterator<Item = impl Borrow<BezPath>>, transform: DAffine2, color: &str) {
+		let path = self.push_path(bezpaths, transform);
 
 		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), Self::parse_color(color), None, &path);
 	}
 
 	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
 	/// Used by the fill tool to show the area to be filled.
-	fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
+	fn fill_path_pattern(&mut self, bezpaths: impl Iterator<Item = impl Borrow<BezPath>>, transform: DAffine2, color: &Color) {
 		// TODO: Implement pattern fill in Vello
 		// For now, just fill with a semi-transparent version of the color
-		let path = self.push_path(subpaths, transform);
+		let path = self.push_path(bezpaths, transform);
 		let semi_transparent_color = color.with_alpha(0.5);
 
 		self.scene.fill(

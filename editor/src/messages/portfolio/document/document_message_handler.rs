@@ -35,8 +35,11 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Raster;
 use graphene_std::table::Table;
 use graphene_std::vector::PointId;
+use graphene_std::vector::algorithms::intersection::bezpath_and_segment_intersections;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
+use graphene_std::vector::misc::{dvec2_to_point, pathseg_to_points, point_to_dvec2, rect_from_minmax};
 use graphene_std::vector::style::ViewMode;
+use kurbo::{Affine, BezPath, CubicBez, Line, PathSeg, QuadBez, Rect, Shape};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -973,6 +976,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
+				let viewport_mid_rect = Rect::new(viewport_mid.x, viewport_mid.y, viewport_mid.x, viewport_mid.y);
 				let [bounds1, bounds2] = if !self.graph_view_overlay_open {
 					self.metadata().document_bounds_viewport_space().unwrap_or([viewport_mid; 2])
 				} else {
@@ -1627,24 +1631,29 @@ impl DocumentMessageHandler {
 		layer_left >= quad_left && layer_right <= quad_right && layer_top <= quad_top && layer_bottom >= quad_bottom
 	}
 
-	pub fn is_layer_fully_inside_polygon(&self, layer: &LayerNodeIdentifier, ipp: &InputPreprocessorMessageHandler, mut viewport_polygon: Subpath<PointId>) -> bool {
+	pub fn is_layer_fully_inside_polygon(&self, layer: &LayerNodeIdentifier, ipp: &InputPreprocessorMessageHandler, mut viewport_polygon: BezPath) -> bool {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
-		viewport_polygon.apply_transform(document_to_viewport.inverse());
+		viewport_polygon.apply_affine(Affine::new(document_to_viewport.to_cols_array()).inverse());
 
 		let layer_click_targets = self.network_interface.document_metadata().click_targets(*layer);
 		let layer_transform = self.network_interface.document_metadata().transform_to_document(*layer);
 
 		layer_click_targets.is_some_and(|targets| {
 			targets.iter().all(|target| match target.target_type() {
-				ClickTargetType::Subpath(subpath) => {
-					let mut subpath = subpath.clone();
-					subpath.apply_transform(layer_transform);
-					subpath.is_inside_subpath(&viewport_polygon, None, None)
+				ClickTargetType::BezPath(bezpath) => {
+					let mut bezpath = bezpath.clone();
+					bezpath.apply_affine(Affine::new(layer_transform.to_cols_array()));
+
+					// TODO: Refactor this into function bezpath_is_inside_bepath()
+					let inside = |segment: PathSeg| pathseg_to_points(segment).iter().filter_map(|point| *point).all(|point| viewport_polygon.contains(point));
+					let intersects = |segment: PathSeg| !bezpath_and_segment_intersections(&viewport_polygon, segment, None, None).is_empty();
+
+					bezpath.segments().all(|segment| inside(segment)) && !bezpath.segments().all(|target_segment| intersects(target_segment))
 				}
 				ClickTargetType::FreePoint(point) => {
 					let mut point = *point;
 					point.apply_transform(layer_transform);
-					viewport_polygon.contains_point(point.position)
+					viewport_polygon.contains(dvec2_to_point(point.position))
 				}
 			})
 		})
@@ -2949,21 +2958,21 @@ fn quad_to_path_lib_segments(quad: Quad) -> Vec<path_bool_lib::PathSegment> {
 }
 
 fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> Vec<path_bool_lib::PathSegment> {
-	let segment = |bezier: bezier_rs::Bezier| match bezier.handles {
-		bezier_rs::BezierHandles::Linear => path_bool_lib::PathSegment::Line(bezier.start, bezier.end),
-		bezier_rs::BezierHandles::Quadratic { handle } => path_bool_lib::PathSegment::Quadratic(bezier.start, handle, bezier.end),
-		bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => path_bool_lib::PathSegment::Cubic(bezier.start, handle_start, handle_end, bezier.end),
+	let to_path_bool_segment = |segment: PathSeg| match segment {
+		PathSeg::Line(line) => path_bool_lib::PathSegment::Line(point_to_dvec2(line.p0), point_to_dvec2(line.p1)),
+		PathSeg::Quad(quad) => path_bool_lib::PathSegment::Quadratic(point_to_dvec2(quad.p0), point_to_dvec2(quad.p1), point_to_dvec2(quad.p2)),
+		PathSeg::Cubic(cubic) => path_bool_lib::PathSegment::Cubic(point_to_dvec2(cubic.p0), point_to_dvec2(cubic.p1), point_to_dvec2(cubic.p2), point_to_dvec2(cubic.p3)),
 	};
 	click_targets
 		.filter_map(|target| {
-			if let ClickTargetType::Subpath(subpath) = target.target_type() {
-				Some(subpath.iter())
+			if let ClickTargetType::BezPath(subpath) = target.target_type() {
+				Some(subpath.segments())
 			} else {
 				None
 			}
 		})
 		.flatten()
-		.map(|bezier| segment(bezier.apply_transformation(|x| transform.transform_point2(x))))
+		.map(|kurbo_segment| to_path_bool_segment(Affine::new(transform.to_cols_array()) * kurbo_segment))
 		.collect()
 }
 
@@ -2988,14 +2997,15 @@ impl<'a> ClickXRayIter<'a> {
 	fn check_layer_area_target(&mut self, click_targets: Option<&Vec<ClickTarget>>, clip: bool, layer: LayerNodeIdentifier, path: Vec<path_bool_lib::PathSegment>, transform: DAffine2) -> XRayResult {
 		// Convert back to Bezier-rs types for intersections
 		let segment = |bezier: &path_bool_lib::PathSegment| match *bezier {
-			path_bool_lib::PathSegment::Line(start, end) => bezier_rs::Bezier::from_linear_dvec2(start, end),
-			path_bool_lib::PathSegment::Cubic(start, h1, h2, end) => bezier_rs::Bezier::from_cubic_dvec2(start, h1, h2, end),
-			path_bool_lib::PathSegment::Quadratic(start, h1, end) => bezier_rs::Bezier::from_quadratic_dvec2(start, h1, end),
+			path_bool_lib::PathSegment::Line(start, end) => PathSeg::Line(Line::new(dvec2_to_point(start), dvec2_to_point(end))),
+			path_bool_lib::PathSegment::Cubic(start, h1, h2, end) => PathSeg::Cubic(CubicBez::new(dvec2_to_point(start), dvec2_to_point(h1), dvec2_to_point(h2), dvec2_to_point(end))),
+			path_bool_lib::PathSegment::Quadratic(start, h1, end) => PathSeg::Quad(QuadBez::new(dvec2_to_point(start), dvec2_to_point(h1), dvec2_to_point(end))),
 			path_bool_lib::PathSegment::Arc(_, _, _, _, _, _, _) => unimplemented!(),
 		};
-		let get_clip = || path.iter().map(segment);
+		let clip_bezpath = BezPath::from_path_segments(path.iter().map(segment));
 
-		let intersects = click_targets.is_some_and(|targets| targets.iter().any(|target| target.intersect_path(get_clip, transform)));
+		// TODO: Avoid cloning bezpath.
+		let intersects = click_targets.is_some_and(|targets| targets.iter().any(|target| target.intersect_path(clip_bezpath.clone(), transform)));
 		let clicked = intersects;
 		let mut use_children = !clip || intersects;
 

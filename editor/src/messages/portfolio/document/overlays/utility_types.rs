@@ -13,6 +13,7 @@ use graphene_std::Color;
 use graphene_std::math::quad::Quad;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::{PointId, SegmentId, Vector};
+use kurbo::PathSeg;
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
@@ -788,7 +789,7 @@ impl OverlayContext {
 	}
 
 	/// Used by the path tool segment mode in order to show the selected segments.
-	pub fn outline_select_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	pub fn outline_select_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
@@ -885,13 +886,13 @@ impl OverlayContext {
 
 	/// Used by the Select tool to outline a path or a free point when selected or hovered.
 	pub fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
-		let mut subpaths: Vec<bezier_rs::Subpath<PointId>> = vec![];
+		let mut subpaths: Vec<Bezpath> = vec![];
 
 		target_types.for_each(|target_type| match target_type.borrow() {
 			ClickTargetType::FreePoint(point) => {
 				self.manipulator_anchor(transform.transform_point2(point.position), false, None);
 			}
-			ClickTargetType::Subpath(subpath) => subpaths.push(subpath.clone()),
+			ClickTargetType::BezPath(subpath) => subpaths.push(subpath.clone()),
 		});
 
 		if !subpaths.is_empty() {

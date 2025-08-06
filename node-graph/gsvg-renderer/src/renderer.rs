@@ -1,6 +1,5 @@
 use crate::render_ext::RenderExt;
 use crate::to_peniko::BlendModeExt;
-use bezier_rs::Subpath;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_core::blending::BlendMode;
@@ -15,6 +14,7 @@ use graphene_core::transform::{Footprint, Transform};
 use graphene_core::uuid::{NodeId, generate_uuid};
 use graphene_core::vector::Vector;
 use graphene_core::vector::click_target::{ClickTarget, FreePoint};
+use graphene_core::vector::misc::is_bezpath_closed;
 use graphene_core::vector::style::{Fill, Stroke, StrokeAlign, ViewMode};
 use graphene_core::{Artboard, Graphic};
 use num_traits::Zero;
@@ -23,6 +23,7 @@ use std::fmt::Write;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
+use vello::kurbo::{BezPath, DEFAULT_ACCURACY, Rect, Shape};
 #[cfg(feature = "vello")]
 use vello::*;
 
@@ -735,11 +736,11 @@ impl Render for Table<Vector> {
 			if let Some(element_id) = element_id {
 				let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::weight);
 				let filled = vector.style.fill() != &Fill::None;
-				let fill = |mut subpath: Subpath<_>| {
-					if filled {
-						subpath.set_closed(true);
+				let fill = |mut bezpath: BezPath| {
+					if filled && !is_bezpath_closed(&bezpath) {
+						bezpath.close_path();
 					}
-					subpath
+					bezpath
 				};
 
 				// For free-floating anchors, we need to add a click target for each
@@ -755,9 +756,9 @@ impl Render for Table<Vector> {
 				});
 
 				let click_targets = vector
-					.stroke_bezier_paths()
+					.stroke_bezpath_iter()
 					.map(fill)
-					.map(|subpath| ClickTarget::new_with_subpath(subpath, stroke_width))
+					.map(|bezpath| ClickTarget::new_with_bezpath(bezpath, stroke_width))
 					.chain(single_anchors_targets.into_iter())
 					.collect::<Vec<ClickTarget>>();
 
@@ -775,14 +776,14 @@ impl Render for Table<Vector> {
 		for row in self.iter() {
 			let stroke_width = row.element.style.stroke().as_ref().map_or(0., Stroke::weight);
 			let filled = row.element.style.fill() != &Fill::None;
-			let fill = |mut subpath: Subpath<_>| {
-				if filled {
-					subpath.set_closed(true);
+			let fill = |mut bezpath: BezPath| {
+				if filled && !is_bezpath_closed(&bezpath) {
+					bezpath.close_path();
 				}
-				subpath
+				bezpath
 			};
-			click_targets.extend(row.element.stroke_bezier_paths().map(fill).map(|subpath| {
-				let mut click_target = ClickTarget::new_with_subpath(subpath, stroke_width);
+			click_targets.extend(row.element.stroke_bezpath_iter().map(fill).map(|subpath| {
+				let mut click_target = ClickTarget::new_with_bezpath(subpath, stroke_width);
 				click_target.apply_transform(*row.transform);
 				click_target
 			}));
@@ -885,8 +886,8 @@ impl Render for Artboard {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
-			let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
-			metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
+			let bezpath = Rect::new(0., 0., self.dimensions.x as f64, self.dimensions.y as f64).to_path(DEFAULT_ACCURACY);
+			metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_bezpath(bezpath, 0.)]);
 			metadata.upstream_footprints.insert(element_id, footprint);
 			metadata.local_transforms.insert(element_id, DAffine2::from_translation(self.location.as_dvec2()));
 			if self.clip {
@@ -898,8 +899,8 @@ impl Render for Artboard {
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let subpath_rectangle = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
-		click_targets.push(ClickTarget::new_with_subpath(subpath_rectangle, 0.));
+		let bezpath_rectangle = Rect::new(0., 0., self.dimensions.x as f64, self.dimensions.y as f64).to_path(DEFAULT_ACCURACY);
+		click_targets.push(ClickTarget::new_with_bezpath(bezpath_rectangle, 0.));
 	}
 
 	fn contains_artboard(&self) -> bool {
@@ -1063,9 +1064,9 @@ impl Render for Table<Raster<CPU>> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		let Some(element_id) = element_id else { return };
-		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+		let bezpath = Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY);
 
-		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
+		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_bezpath(bezpath, 0.)]);
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the graphical data table
 		if let Some(image) = self.iter().next() {
@@ -1074,8 +1075,8 @@ impl Render for Table<Raster<CPU>> {
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-		click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
+		let bezpath = Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY);
+		click_targets.push(ClickTarget::new_with_bezpath(bezpath, 0.));
 	}
 }
 
@@ -1121,9 +1122,9 @@ impl Render for Table<Raster<GPU>> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		let Some(element_id) = element_id else { return };
-		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+		let bezpath = Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY);
 
-		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
+		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_bezpath(bezpath, 0.)]);
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the graphical data table
 		if let Some(image) = self.iter().next() {
@@ -1132,8 +1133,8 @@ impl Render for Table<Raster<GPU>> {
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-		click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
+		let bezpath = Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY);
+		click_targets.push(ClickTarget::new_with_bezpath(bezpath, 0.));
 	}
 }
 

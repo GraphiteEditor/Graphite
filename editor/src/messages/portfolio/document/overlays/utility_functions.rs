@@ -125,7 +125,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 		}
 
 		// Get the selected segments and then add a bold line overlay on them
-		for (segment_id, bezier, _, _) in vector.segment_bezier_iter() {
+		for (segment_id, bezier, _, _) in vector.segment_iter() {
 			let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) else {
 				continue;
 			};

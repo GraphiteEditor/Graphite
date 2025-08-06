@@ -5,10 +5,12 @@ use crate::messages::portfolio::document::utility_types::network_interface::Flow
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
-use graphene_std::math::quad::Quad;
+use graphene_std::renderer::Quad;
 use graphene_std::transform::Footprint;
+use graphene_std::vector::Vector;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
-use graphene_std::vector::{PointId, Vector};
+use graphene_std::vector::misc::{rect_to_minmax, transform_rect};
+use kurbo::{BezPath, Shape};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 
@@ -154,7 +156,7 @@ impl DocumentMetadata {
 		self.click_targets(layer)?
 			.iter()
 			.filter_map(|click_target| match click_target.target_type() {
-				ClickTargetType::Subpath(subpath) => subpath.bounding_box_with_transform(transform),
+				ClickTargetType::BezPath(bezpath) => Some(rect_to_minmax(transform_rect(bezpath.bounding_box(), transform))),
 				ClickTargetType::FreePoint(_) => click_target.bounding_box_with_transform(transform),
 			})
 			.reduce(Quad::combine_bounds)
@@ -196,11 +198,11 @@ impl DocumentMetadata {
 		self.all_layers().filter_map(|layer| self.bounding_box_viewport(layer)).reduce(Quad::combine_bounds)
 	}
 
-	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &bezier_rs::Subpath<PointId>> {
+	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &BezPath> {
 		static EMPTY: Vec<ClickTarget> = Vec::new();
 		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
 		click_targets.iter().filter_map(|target| match target.target_type() {
-			ClickTargetType::Subpath(subpath) => Some(subpath),
+			ClickTargetType::BezPath(subpath) => Some(subpath),
 			_ => None,
 		})
 	}

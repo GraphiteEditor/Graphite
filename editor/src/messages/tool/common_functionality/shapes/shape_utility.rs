@@ -328,7 +328,7 @@ pub fn star_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessa
 	let diameter: f64 = radius1 * 2.;
 	let inner_diameter = radius2 * 2.;
 
-	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::Subpath(Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter))];
+	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::BezPath(Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter))];
 
 	overlay_context.outline(subpath.iter(), viewport, None);
 }
@@ -345,7 +345,7 @@ pub fn polygon_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMe
 	let points = sides as u64;
 	let radius: f64 = radius * 2.;
 
-	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::Subpath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius))];
+	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::BezPath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius))];
 
 	overlay_context.outline(subpath.iter(), viewport, None);
 }
@@ -358,7 +358,7 @@ pub fn arc_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessag
 		return;
 	};
 
-	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::Subpath(Subpath::new_arc(
+	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::BezPath(Subpath::new_arc(
 		radius,
 		start_angle / 360. * std::f64::consts::TAU,
 		sweep_angle / 360. * std::f64::consts::TAU,

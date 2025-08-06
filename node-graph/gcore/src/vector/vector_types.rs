@@ -157,7 +157,7 @@ impl Vector {
 
 		for target_type in target_types.into_iter() {
 			match target_type.borrow() {
-				ClickTargetType::Subpath(subpath) => vector.append_subpath(subpath, preserve_id),
+				ClickTargetType::BezPath(bezpath) => vector.append_bezpath(bezpath.clone()),
 				ClickTargetType::FreePoint(point) => vector.append_free_point(point, preserve_id),
 			}
 		}

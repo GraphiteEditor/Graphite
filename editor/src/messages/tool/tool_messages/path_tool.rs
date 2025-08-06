@@ -1737,7 +1737,7 @@ impl Fsm for PathToolFsmState {
 							if tool_options.path_editing_mode.segment_editing_mode && !tool_data.segment_editing_modifier {
 								let transform = document.metadata().transform_to_viewport_if_feeds(closest_segment.layer(), &document.network_interface);
 
-								overlay_context.outline_overlay_bezier(closest_segment.bezier(), transform);
+								overlay_context.outline_overlay_bezier(closest_segment.to_pathseg(), transform);
 
 								// Draw the anchors again
 								let display_anchors = overlay_context.visibility_settings.anchors();
@@ -1865,9 +1865,9 @@ impl Fsm for PathToolFsmState {
 
 							let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 
-							for (segment, bezier, _, _) in vector.segment_bezier_iter() {
-								if segments.contains(&segment) {
-									overlay_context.outline_overlay_bezier(bezier, transform);
+							for (segment_id, segment, _, _) in vector.segment_iter() {
+								if segments.contains(&segment_id) {
+									overlay_context.outline_overlay_bezier(segment, transform);
 								}
 							}
 						}

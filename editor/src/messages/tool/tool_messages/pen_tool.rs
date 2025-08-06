@@ -14,7 +14,7 @@ use crate::messages::tool::common_functionality::utility_functions::{calculate_s
 use bezier_rs::{Bezier, BezierHandles};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
-use graphene_std::vector::misc::{HandleId, ManipulatorPointId};
+use graphene_std::vector::misc::{HandleId, ManipulatorPointId, bezpath_from_manipulator_groups, handles_to_segment};
 use graphene_std::vector::{NoHashBuilder, PointId, SegmentId, StrokeId, Vector, VectorModificationType};
 
 #[derive(Default, ExtractField)]
@@ -1603,7 +1603,7 @@ impl Fsm for PenToolFsmState {
 					let bezier = Bezier { start, handles, end };
 					if (end - start).length_squared() > f64::EPSILON {
 						// Draw the curve for the currently-being-placed segment
-						overlay_context.outline_bezier(bezier, transform);
+						overlay_context.outline_bezier(handles_to_segment(start, handles, end), transform);
 					}
 				}
 
@@ -1738,6 +1738,7 @@ impl Fsm for PenToolFsmState {
 									});
 									vector.subpath_from_segments_ignore_discontinuities(segments)
 								})
+								.map(|subpath| bezpath_from_manipulator_groups(subpath.manipulator_groups(), subpath.closed))
 								.collect();
 
 							let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())

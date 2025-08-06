@@ -24,11 +24,9 @@ use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
-use graphene_std::math::math_ext::QuadExt;
 use graphene_std::vector::misc::subpath_to_kurbo_bezpath;
 use graphene_std::*;
-use kurbo::{Line, Point};
-use renderer::Quad;
+use kurbo::{DEFAULT_ACCURACY, Line, Point, Rect, Shape};
 use std::cmp::Ordering;
 
 #[derive(Debug, ExtractField)]
@@ -1853,8 +1851,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							log::error!("Could not get transient metadata for node {node_id}");
 							continue;
 						};
-						let quad = Quad::from_box([box_selection_start, box_selection_end_graph]);
-						if click_targets.node_click_target.intersect_path(|| quad.bezier_lines(), DAffine2::IDENTITY) {
+						let quad = Rect::new(box_selection_start.x, box_selection_start.y, box_selection_end_graph.x, box_selection_end_graph.y).to_path(DEFAULT_ACCURACY);
+						if click_targets.node_click_target.intersect_path(quad, DAffine2::IDENTITY) {
 							nodes.insert(node_id);
 						}
 					}

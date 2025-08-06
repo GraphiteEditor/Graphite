@@ -48,6 +48,7 @@ impl LayerSnapper {
 		}
 	}
 
+	///////// Find why
 	pub fn collect_paths(&mut self, snap_data: &mut SnapData, first_point: bool) {
 		if !first_point {
 			return;
@@ -69,9 +70,9 @@ impl LayerSnapper {
 
 			if document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::IntersectionPoint)) || document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::AlongPath)) {
 				for subpath in document.metadata().layer_outline(layer) {
-					for (start_index, curve) in subpath.iter().enumerate() {
-						let document_curve = curve.apply_transformation(|p| transform.transform_point2(p));
-						let start = subpath.manipulator_groups()[start_index].id;
+					for (start_index, curve) in subpath.segments().enumerate() {
+						let document_curve = curve.app(|p| transform.transform_point2(p));
+						let start = 0;
 						if snap_data.ignore_manipulator(layer, start) || snap_data.ignore_manipulator(layer, subpath.manipulator_groups()[(start_index + 1) % subpath.len()].id) {
 							continue;
 						}

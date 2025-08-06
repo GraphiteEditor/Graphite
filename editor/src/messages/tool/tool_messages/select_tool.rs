@@ -27,6 +27,7 @@ use graphene_std::path_bool::BooleanOperation;
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::transform::ReferencePoint;
+use graphene_std::vector::misc::bezpath_from_manipulator_groups;
 use std::fmt;
 
 #[derive(Default, ExtractField)]
@@ -463,6 +464,7 @@ impl SelectToolData {
 			return false;
 		}
 		let polygon = Subpath::from_anchors_linear(self.lasso_polygon.clone(), true);
+		let polygon = bezpath_from_manipulator_groups(polygon.manipulator_groups(), polygon.closed);
 		document.is_layer_fully_inside_polygon(layer, input, polygon)
 	}
 

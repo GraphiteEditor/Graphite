@@ -13,8 +13,9 @@ use crate::messages::tool::common_functionality::utility_functions::{is_intersec
 use crate::messages::tool::tool_messages::path_tool::{PathOverlayMode, PointSelectState};
 use bezier_rs::{Bezier, BezierHandles, Subpath, TValue};
 use glam::{DAffine2, DVec2};
-use graphene_std::vector::misc::{HandleId, ManipulatorPointId};
+use graphene_std::vector::misc::{HandleId, ManipulatorPointId, handles_to_segment};
 use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModificationType};
+use kurbo::PathSeg;
 use std::f64::consts::TAU;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -207,6 +208,10 @@ impl ClosestSegment {
 
 	pub fn bezier(&self) -> Bezier {
 		self.bezier
+	}
+
+	pub fn to_pathseg(&self) -> PathSeg {
+		handles_to_segment(self.bezier.start, self.bezier.handles, self.bezier.end)
 	}
 
 	pub fn closest_point_document(&self) -> DVec2 {
