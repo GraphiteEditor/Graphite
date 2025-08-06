@@ -466,3 +466,70 @@ pub fn round_line_join(bezpath1: &BezPath, bezpath2: &BezPath, center: DVec2) ->
 
 	compute_circular_subpath_details(left, arc_point, right, center, Some(angle))
 }
+
+/// Returns `true` if the `bezpath1` is completely inside the `bezpath2`.
+pub fn bezpath_is_inside_bezpath(bezpath1: &BezPath, bezpath2: &BezPath, accuracy: Option<f64>, minimum_separation: Option<f64>) -> bool {
+	// Eliminate any possibility of one being inside the other, if either of them is empty
+	if bezpath1.is_empty() || bezpath2.is_empty() {
+		return false;
+	}
+
+	let inner_bbox = bezpath1.bounding_box();
+	let outer_bbox = bezpath2.bounding_box();
+
+	// Eliminate bezpath1 if its bounding box is not completely inside the bezpath2's bounding box.
+	// Reasoning:
+	// If the inner bezpath bounding box is larger than the outer bezpath bounding box in any direction
+	// then the inner bezpath is intersecting with or outside the outer bezpath.
+	if !outer_bbox.contains_rect(inner_bbox) {
+		return false;
+	}
+
+	// Eliminate bezpath1 if any of its anchor points are outside the bezpath2.
+	if !bezpath1.elements().iter().filter_map(|el| el.end_point()).all(|point| bezpath2.contains(point)) {
+		return false;
+	}
+
+	// Eliminate this subpath if it intersects with the other subpath.
+	if !bezpath_intersections(bezpath1, bezpath2, accuracy, minimum_separation).is_empty() {
+		return false;
+	}
+
+	// At this point:
+	// (1) This subpath's bounding box is inside the other subpath's bounding box,
+	// (2) Its anchors are inside the other subpath, and
+	// (3) It is not intersecting with the other subpath.
+	// Hence, this subpath is completely inside the given other subpath.
+	true
+}
+
+#[cfg(test)]
+mod tests {
+	// TODO: add more intersection tests
+
+	use super::bezpath_is_inside_bezpath;
+	use kurbo::{BezPath, DEFAULT_ACCURACY, Line, Point, Rect, Shape};
+
+	#[test]
+	fn is_inside_subpath() {
+		let boundary_polygon = Rect::new(100., 100., 500., 500.).to_path(DEFAULT_ACCURACY);
+
+		let mut curve_intersection = BezPath::new();
+		curve_intersection.move_to(Point::new(189., 289.));
+		curve_intersection.quad_to(Point::new(9., 286.), Point::new(45., 410.));
+		assert!(!bezpath_is_inside_bezpath(&curve_intersection, &boundary_polygon, None, None));
+
+		let mut curve_outside = BezPath::new();
+		curve_outside.move_to(Point::new(115., 37.));
+		curve_outside.quad_to(Point::new(51.4, 91.8), Point::new(76.5, 242.));
+		assert!(!bezpath_is_inside_bezpath(&curve_outside, &boundary_polygon, None, None));
+
+		let mut curve_inside = BezPath::new();
+		curve_inside.move_to(Point::new(210.1, 133.5));
+		curve_inside.curve_to(Point::new(150.2, 436.9), Point::new(436., 285.), Point::new(247.6, 240.7));
+		assert!(bezpath_is_inside_bezpath(&curve_inside, &boundary_polygon, None, None));
+
+		let line_inside = Line::new(Point::new(101., 101.5), Point::new(150.2, 499.)).to_path(DEFAULT_ACCURACY);
+		assert!(bezpath_is_inside_bezpath(&line_inside, &boundary_polygon, None, None));
+	}
+}

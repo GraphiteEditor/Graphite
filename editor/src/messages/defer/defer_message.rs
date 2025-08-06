@@ -4,7 +4,7 @@ use crate::messages::prelude::*;
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum DeferMessage {
 	SetGraphSubmissionIndex(u64),
-	TriggerGraphRun(u64),
+	TriggerGraphRun(u64, DocumentId),
 	AfterGraphRun { messages: Vec<Message> },
 	TriggerNavigationReady,
 	AfterNavigationReady { messages: Vec<Message> },

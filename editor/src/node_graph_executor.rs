@@ -63,6 +63,7 @@ pub struct NodeGraphExecutor {
 #[derive(Debug, Clone)]
 struct ExecutionContext {
 	export_config: Option<ExportConfig>,
+	document_id: DocumentId,
 }
 
 impl NodeGraphExecutor {
@@ -133,7 +134,13 @@ impl NodeGraphExecutor {
 	}
 
 	/// Adds an evaluate request for whatever current network is cached.
-	pub(crate) fn submit_current_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, time: TimingInformation) -> Result<Message, String> {
+	pub(crate) fn submit_current_node_graph_evaluation(
+		&mut self,
+		document: &mut DocumentMessageHandler,
+		document_id: DocumentId,
+		viewport_resolution: UVec2,
+		time: TimingInformation,
+	) -> Result<Message, String> {
 		let render_config = RenderConfig {
 			viewport: Footprint {
 				transform: document.metadata().document_to_viewport,
@@ -153,7 +160,7 @@ impl NodeGraphExecutor {
 		// Execute the node graph
 		let execution_id = self.queue_execution(render_config);
 
-		self.futures.insert(execution_id, ExecutionContext { export_config: None });
+		self.futures.insert(execution_id, ExecutionContext { export_config: None, document_id });
 
 		Ok(DeferMessage::SetGraphSubmissionIndex(execution_id).into())
 	}
@@ -162,17 +169,18 @@ impl NodeGraphExecutor {
 	pub fn submit_node_graph_evaluation(
 		&mut self,
 		document: &mut DocumentMessageHandler,
+		document_id: DocumentId,
 		viewport_resolution: UVec2,
 		time: TimingInformation,
 		inspect_node: Option<NodeId>,
 		ignore_hash: bool,
 	) -> Result<Message, String> {
 		self.update_node_graph(document, inspect_node, ignore_hash)?;
-		self.submit_current_node_graph_evaluation(document, viewport_resolution, time)
+		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, time)
 	}
 
 	/// Evaluates a node graph for export
-	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, mut export_config: ExportConfig) -> Result<(), String> {
+	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, mut export_config: ExportConfig) -> Result<(), String> {
 		let network = document.network_interface.document_network().clone();
 
 		// Calculate the bounding box of the region to be exported
@@ -204,7 +212,10 @@ impl NodeGraphExecutor {
 			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, inspect_node: None }))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
-		let execution_context = ExecutionContext { export_config: Some(export_config) };
+		let execution_context = ExecutionContext {
+			export_config: Some(export_config),
+			document_id,
+		};
 		self.futures.insert(execution_id, execution_context);
 
 		Ok(())
@@ -234,11 +245,11 @@ impl NodeGraphExecutor {
 		};
 
 		if file_type == FileType::Svg {
-			responses.add(FrontendMessage::TriggerDownloadTextFile { document: svg, name });
+			responses.add(FrontendMessage::TriggerSaveFile { name, content: svg.into_bytes() });
 		} else {
 			let mime = file_type.to_mime().to_string();
 			let size = (size * scale_factor).into();
-			responses.add(FrontendMessage::TriggerDownloadImage { svg, name, mime, size });
+			responses.add(FrontendMessage::TriggerExportImage { svg, name, mime, size });
 		}
 		Ok(())
 	}
@@ -279,7 +290,7 @@ impl NodeGraphExecutor {
 					} else {
 						self.process_node_graph_output(node_graph_output, transform, responses)?
 					}
-					responses.add(DeferMessage::TriggerGraphRun(execution_id));
+					responses.add_front(DeferMessage::TriggerGraphRun(execution_id, execution_context.document_id));
 
 					// Update the spreadsheet on the frontend using the value of the inspect result.
 					if self.old_inspect_node.is_some() {
@@ -378,7 +389,7 @@ impl NodeGraphExecutor {
 			TaggedValue::DVec2(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::OptionalColor(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::Vector(render_object) => Self::debug_render(render_object, transform, responses),
-			TaggedValue::Group(render_object) => Self::debug_render(render_object, transform, responses),
+			TaggedValue::Graphic(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::Raster(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::Palette(render_object) => Self::debug_render(render_object, transform, responses),
 			_ => {

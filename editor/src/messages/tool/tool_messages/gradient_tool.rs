@@ -674,6 +674,7 @@ mod test_gradient {
 		let folder = layers.next().unwrap();
 		let rectangle = layers.next().unwrap();
 		assert_eq!(rectangle.parent(metadata), Some(folder));
+
 		// Transform the group
 		editor
 			.handle_message(GraphOperationMessage::TransformSet {

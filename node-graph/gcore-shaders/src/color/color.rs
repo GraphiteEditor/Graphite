@@ -1,21 +1,31 @@
 use super::color_traits::{Alpha, AlphaMut, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGB, RGBMut, Rec709Primaries, SRGB};
 use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
 use bytemuck::{Pod, Zeroable};
+use core::fmt::Debug;
 use core::hash::Hash;
 use half::f16;
 #[cfg(target_arch = "spirv")]
-use spirv_std::num_traits::Euclid;
+use num_traits::Euclid;
 #[cfg(target_arch = "spirv")]
-use spirv_std::num_traits::float::Float;
+use num_traits::float::Float;
 
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable)]
+#[derive(Default, Clone, Copy, PartialEq, Pod, Zeroable)]
+#[cfg_attr(not(target_arch = "spirv"), derive(Debug))]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
 pub struct RGBA16F {
 	red: f16,
 	green: f16,
 	blue: f16,
 	alpha: f16,
+}
+
+/// hack around half still masking out impl Debug for f16 on spirv
+#[cfg(target_arch = "spirv")]
+impl core::fmt::Debug for RGBA16F {
+	fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		Ok(())
+	}
 }
 
 impl From<Color> for RGBA16F {
@@ -215,7 +225,7 @@ pub struct Color {
 
 #[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for Color {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.red.to_bits().hash(state);
 		self.green.to_bits().hash(state);
 		self.blue.to_bits().hash(state);
@@ -256,7 +266,7 @@ impl AlphaMut for Color {
 }
 
 impl Pixel for Color {
-	#[cfg(not(target_arch = "spirv"))]
+	#[cfg(feature = "std")]
 	fn to_bytes(&self) -> Vec<u8> {
 		self.to_rgba8_srgb().to_vec()
 	}
@@ -793,6 +803,7 @@ impl Color {
 	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
 	/// assert_eq!("3240a261", color.to_rgba_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
+	#[cfg(feature = "std")]
 	pub fn to_rgba_hex_srgb(&self) -> String {
 		let gamma = self.to_gamma_srgb();
 		format!(
@@ -810,6 +821,7 @@ impl Color {
 	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
 	/// assert_eq!("3240a2", color.to_rgb_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
+	#[cfg(feature = "std")]
 	pub fn to_rgb_hex_srgb(&self) -> String {
 		self.to_gamma_srgb().to_rgb_hex_srgb_from_gamma()
 	}
@@ -820,6 +832,7 @@ impl Color {
 	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
 	/// assert_eq!("3240a2", color.to_rgb_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
+	#[cfg(feature = "std")]
 	pub fn to_rgb_hex_srgb_from_gamma(&self) -> String {
 		format!("{:02x?}{:02x?}{:02x?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8)
 	}

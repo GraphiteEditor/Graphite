@@ -32,6 +32,11 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 								artboard: graphene_std::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
 							}
 							.into(),
+							NodeGraphMessage::ForceRunDocumentGraph.into(),
+							DeferMessage::AfterGraphRun {
+								messages: vec![DeferMessage::TriggerNavigationReady.into()],
+							}
+							.into(),
 						],
 					});
 					responses.add(DeferMessage::AfterNavigationReady {

@@ -10,6 +10,8 @@ use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
 use graphene_std::Color;
 use graphene_std::math::quad::Quad;
+use graphene_std::table::Table;
+use graphene_std::text::{TextAlign, TypesettingConfig, load_font, to_path};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use std::collections::HashMap;
@@ -24,7 +26,7 @@ pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
 }
 
-// Types of overlays used by DocumentMessage to enable/disable select group of overlays in the frontend
+/// Types of overlays used by DocumentMessage to enable/disable the selected set of viewport overlays.
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OverlaysType {
 	ArtboardName,
@@ -378,7 +380,8 @@ impl OverlayContext {
 	}
 
 	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
-		self.internal().text(text, font_color, background_color, transform, padding, pivot);
+		let mut internal = self.internal();
+		internal.text(text, font_color, background_color, transform, padding, pivot);
 	}
 
 	pub fn translation_box(&mut self, translation: DVec2, quad: Quad, typed_string: Option<String>) {
@@ -972,32 +975,195 @@ impl OverlayContextInternal {
 	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
 	/// Used by the fill tool to show the area to be filled.
 	fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
-		// TODO: Implement pattern fill in Vello
-		// For now, just fill with a semi-transparent version of the color
+		const PATTERN_WIDTH: u32 = 4;
+		const PATTERN_HEIGHT: u32 = 4;
+
+		// Create a 4x4 pixel pattern with colored pixels at (0,0) and (2,2)
+		// This matches the Canvas2D checkerboard pattern
+		let mut data = vec![0u8; (PATTERN_WIDTH * PATTERN_HEIGHT * 4) as usize];
+		let rgba = color.to_rgba8_srgb();
+
+		// ┌▄▄┬──┬──┬──┐
+		// ├▀▀┼──┼──┼──┤
+		// ├──┼──┼▄▄┼──┤
+		// ├──┼──┼▀▀┼──┤
+		// └──┴──┴──┴──┘
+		// Set pixels at (0,0) and (2,2) to the specified color
+		let pixels = [(0, 0), (2, 2)];
+		for &(x, y) in &pixels {
+			let index = ((y * PATTERN_WIDTH + x) * 4) as usize;
+			data[index..index + 4].copy_from_slice(&rgba);
+		}
+
+		let image = peniko::Image {
+			data: data.into(),
+			format: peniko::ImageFormat::Rgba8,
+			width: PATTERN_WIDTH,
+			height: PATTERN_HEIGHT,
+			x_extend: peniko::Extend::Repeat,
+			y_extend: peniko::Extend::Repeat,
+			alpha: 1.0,
+			quality: peniko::ImageQuality::default(),
+		};
+
 		let path = self.push_path(subpaths, transform);
-		let semi_transparent_color = color.with_alpha(0.5);
+		let brush = peniko::Brush::Image(image);
 
-		self.scene.fill(
-			peniko::Fill::NonZero,
-			self.get_transform(),
-			peniko::Color::from_rgba8(
-				(semi_transparent_color.r() * 255.) as u8,
-				(semi_transparent_color.g() * 255.) as u8,
-				(semi_transparent_color.b() * 255.) as u8,
-				(semi_transparent_color.a() * 255.) as u8,
-			),
-			None,
-			&path,
-		);
+		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), &brush, None, &path);
 	}
 
-	fn get_width(&self, _text: &str) -> f64 {
-		// TODO: Implement proper text measurement in Vello
-		0.
+	fn get_width(&self, text: &str) -> f64 {
+		// Use the actual text-to-path system to get precise text width
+		const FONT_SIZE: f64 = 12.0;
+
+		let typesetting = TypesettingConfig {
+			font_size: FONT_SIZE,
+			line_height_ratio: 1.2,
+			character_spacing: 0.0,
+			max_width: None,
+			max_height: None,
+			tilt: 0.0,
+			align: TextAlign::Left,
+		};
+
+		// Load Source Sans Pro font data
+		const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
+		let font_blob = Some(load_font(FONT_DATA));
+
+		// Convert text to paths and calculate actual bounds
+		let text_table = to_path(text, font_blob, typesetting, false);
+		let text_bounds = self.calculate_text_bounds(&text_table);
+		text_bounds.width()
 	}
 
-	fn text(&self, _text: &str, _font_color: &str, _background_color: Option<&str>, _transform: DAffine2, _padding: f64, _pivot: [Pivot; 2]) {
-		// TODO: Implement text rendering in Vello
+	fn text(&mut self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
+		// Use the proper text-to-path system for accurate text rendering
+		const FONT_SIZE: f64 = 12.0;
+
+		// Create typesetting configuration
+		let typesetting = TypesettingConfig {
+			font_size: FONT_SIZE,
+			line_height_ratio: 1.2,
+			character_spacing: 0.0,
+			max_width: None,
+			max_height: None,
+			tilt: 0.0,
+			align: TextAlign::Left, // We'll handle alignment manually via pivot
+		};
+
+		// Load Source Sans Pro font data
+		const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
+		let font_blob = Some(load_font(FONT_DATA));
+
+		// Convert text to vector paths using the existing text system
+		let text_table = to_path(text, font_blob, typesetting, false);
+		// Calculate text bounds from the generated paths
+		let text_bounds = self.calculate_text_bounds(&text_table);
+		let text_width = text_bounds.width();
+		let text_height = text_bounds.height();
+
+		// Calculate position based on pivot
+		let mut position = DVec2::ZERO;
+		match pivot[0] {
+			Pivot::Start => position.x = padding,
+			Pivot::Middle => position.x = -text_width / 2.0,
+			Pivot::End => position.x = -padding - text_width,
+		}
+		match pivot[1] {
+			Pivot::Start => position.y = padding,
+			Pivot::Middle => position.y -= text_height * 0.5,
+			Pivot::End => position.y = -padding - text_height,
+		}
+
+		let text_transform = transform * DAffine2::from_translation(position);
+		let device_transform = self.get_transform();
+		let combined_transform = kurbo::Affine::new(text_transform.to_cols_array());
+		let vello_transform = device_transform * combined_transform;
+
+		// Draw background if specified
+		if let Some(bg_color) = background_color {
+			let bg_rect = kurbo::Rect::new(
+				text_bounds.min_x() - padding,
+				text_bounds.min_y() - padding,
+				text_bounds.max_x() + padding,
+				text_bounds.max_y() + padding,
+			);
+			self.scene.fill(peniko::Fill::NonZero, vello_transform, Self::parse_color(bg_color), None, &bg_rect);
+		}
+
+		// Render the actual text paths
+		self.render_text_paths(&text_table, font_color, vello_transform);
+	}
+
+	// Calculate bounds of text from vector table
+	fn calculate_text_bounds(&self, text_table: &Table<Vector>) -> kurbo::Rect {
+		let mut min_x = f64::INFINITY;
+		let mut min_y = f64::INFINITY;
+		let mut max_x = f64::NEG_INFINITY;
+		let mut max_y = f64::NEG_INFINITY;
+
+		for row in text_table.iter() {
+			// Use the existing segment_bezier_iter to get all bezier curves
+			for (_, bezier, _, _) in row.element.segment_bezier_iter() {
+				let transformed_bezier = bezier.apply_transformation(|point| row.transform.transform_point2(point));
+
+				// Add start and end points to bounds
+				let points = [transformed_bezier.start, transformed_bezier.end];
+				for point in points {
+					min_x = min_x.min(point.x);
+					min_y = min_y.min(point.y);
+					max_x = max_x.max(point.x);
+					max_y = max_y.max(point.y);
+				}
+
+				// Add handle points if they exist
+				match transformed_bezier.handles {
+					bezier_rs::BezierHandles::Quadratic { handle } => {
+						min_x = min_x.min(handle.x);
+						min_y = min_y.min(handle.y);
+						max_x = max_x.max(handle.x);
+						max_y = max_y.max(handle.y);
+					}
+					bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
+						for handle in [handle_start, handle_end] {
+							min_x = min_x.min(handle.x);
+							min_y = min_y.min(handle.y);
+							max_x = max_x.max(handle.x);
+							max_y = max_y.max(handle.y);
+						}
+					}
+					_ => {}
+				}
+			}
+		}
+
+		if min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite() {
+			kurbo::Rect::new(min_x, min_y, max_x, max_y)
+		} else {
+			// Fallback for empty text
+			kurbo::Rect::new(0.0, 0.0, 0.0, 12.0)
+		}
+	}
+
+	// Render text paths to the vello scene using existing infrastructure
+	fn render_text_paths(&mut self, text_table: &Table<Vector>, font_color: &str, base_transform: kurbo::Affine) {
+		let color = Self::parse_color(font_color);
+
+		for row in text_table.iter() {
+			// Use the existing bezier_to_path infrastructure to convert Vector to BezPath
+			let mut path = BezPath::new();
+			let mut last_point = None;
+
+			for (_, bezier, start_id, end_id) in row.element.segment_bezier_iter() {
+				let move_to = last_point != Some(start_id);
+				last_point = Some(end_id);
+
+				self.bezier_to_path(bezier, row.transform.clone(), move_to, &mut path);
+			}
+
+			// Render the path
+			self.scene.fill(peniko::Fill::NonZero, base_transform, color, None, &path);
+		}
 	}
 
 	fn translation_box(&mut self, translation: DVec2, quad: Quad, typed_string: Option<String>) {

@@ -1,6 +1,8 @@
 use crate::CustomEvent;
 use crate::WindowSize;
+use crate::consts::APP_NAME;
 use crate::dialogs::dialog_open_graphite_file;
+use crate::dialogs::dialog_save_file;
 use crate::dialogs::dialog_save_graphite_file;
 use crate::render::GraphicsState;
 use crate::render::WgpuContext;
@@ -82,17 +84,17 @@ impl WinitApp {
 		}
 
 		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerSaveDocument { .. })) {
-			let FrontendMessage::TriggerSaveDocument { document_id, name, path, document } = message else {
+			let FrontendMessage::TriggerSaveDocument { document_id, name, path, content } = message else {
 				unreachable!()
 			};
 			if let Some(path) = path {
-				let _ = std::fs::write(&path, document);
+				let _ = std::fs::write(&path, content);
 			} else {
 				let event_loop_proxy = self.event_loop_proxy.clone();
 				let _ = thread::spawn(move || {
 					let path = futures::executor::block_on(dialog_save_graphite_file(name));
 					if let Some(path) = path {
-						if let Err(e) = std::fs::write(&path, document) {
+						if let Err(e) = std::fs::write(&path, content) {
 							tracing::error!("Failed to save file: {}: {}", path.display(), e);
 						} else {
 							let message = Message::Portfolio(PortfolioMessage::DocumentPassMessage {
@@ -104,6 +106,27 @@ impl WinitApp {
 					}
 				});
 			}
+		}
+
+		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerSaveFile { .. })) {
+			let FrontendMessage::TriggerSaveFile { name, content } = message else { unreachable!() };
+			let _ = thread::spawn(move || {
+				let path = futures::executor::block_on(dialog_save_file(name));
+				if let Some(path) = path {
+					if let Err(e) = std::fs::write(&path, content) {
+						tracing::error!("Failed to save file: {}: {}", path.display(), e);
+					}
+				}
+			});
+		}
+
+		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerVisitLink { .. })) {
+			let _ = thread::spawn(move || {
+				let FrontendMessage::TriggerVisitLink { url } = message else { unreachable!() };
+				if let Err(e) = open::that(&url) {
+					tracing::error!("Failed to open URL: {}: {}", url, e);
+				}
+			});
 		}
 
 		if responses.is_empty() {
@@ -142,15 +165,24 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 	}
 
 	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-		let window = Arc::new(
-			event_loop
-				.create_window(
-					Window::default_attributes()
-						.with_title("CEF Offscreen Rendering")
-						.with_inner_size(winit::dpi::LogicalSize::new(1200, 800)),
-				)
-				.unwrap(),
-		);
+		let mut window = Window::default_attributes()
+			.with_title(APP_NAME)
+			.with_min_inner_size(winit::dpi::LogicalSize::new(400, 300))
+			.with_inner_size(winit::dpi::LogicalSize::new(1200, 800));
+
+		#[cfg(target_family = "unix")]
+		{
+			use crate::consts::APP_ID;
+			use winit::platform::wayland::ActiveEventLoopExtWayland;
+
+			window = if event_loop.is_wayland() {
+				winit::platform::wayland::WindowAttributesExtWayland::with_name(window, APP_ID, "")
+			} else {
+				winit::platform::x11::WindowAttributesExtX11::with_name(window, APP_ID, APP_NAME)
+			}
+		}
+
+		let window = Arc::new(event_loop.create_window(window).unwrap());
 		let graphics_state = GraphicsState::new(window.clone(), self.wgpu_context.clone());
 
 		self.window = Some(window);

@@ -20,3 +20,7 @@ pub(crate) async fn dialog_save_graphite_file(name: String) -> Option<PathBuf> {
 		.await
 		.map(|f| f.path().to_path_buf())
 }
+
+pub(crate) async fn dialog_save_file(name: String) -> Option<PathBuf> {
+	AsyncFileDialog::new().set_title("Save File").set_file_name(name).save_file().await.map(|f| f.path().to_path_buf())
+}

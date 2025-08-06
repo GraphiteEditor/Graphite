@@ -684,6 +684,7 @@ impl Fsm for ShapeToolFsmState {
 				responses.add(DeferMessage::AfterGraphRun {
 					messages: defered_responses.drain(..).collect(),
 				});
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 
 				ShapeToolFsmState::Drawing(tool_data.current_shape)
 			}
