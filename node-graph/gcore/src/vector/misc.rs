@@ -4,7 +4,7 @@ use crate::vector::{SegmentId, Vector};
 use bezier_rs::{BezierHandles, ManipulatorGroup, Subpath};
 use dyn_any::DynAny;
 use glam::DVec2;
-use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
+use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez, Rect};
 use std::ops::Sub;
 
 /// Represents different ways of calculating the centroid.
@@ -202,6 +202,22 @@ pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup
 	}
 
 	(manipulator_groups, is_closed)
+}
+
+fn pathseg_to_points(segment: PathSeg) -> [Option<Point>; 4] {
+	match segment {
+		PathSeg::Line(line) => [Some(line.p0), None, None, Some(line.p1)],
+		PathSeg::Quad(quad_bez) => [Some(quad_bez.p0), None, Some(quad_bez.p1), Some(quad_bez.p2)],
+		PathSeg::Cubic(cubic_bez) => [Some(cubic_bez.p0), Some(cubic_bez.p1), Some(cubic_bez.p2), Some(cubic_bez.p3)],
+	}
+}
+
+fn bezpath_loose_bounding_box(bezpath: &BezPath) -> Rect {
+	let expand = |bbox: Rect, point: Point| Rect::new(bbox.x0.min(point.x), bbox.y0.min(point.y), bbox.x1.max(point.x), bbox.y1.max(point.y));
+
+	bezpath.segments().fold(Rect::new(0., 0., 0., 0.), |bbox, segment| {
+		pathseg_to_points(segment).into_iter().filter_map(|point| point).fold(bbox, |bbox, point| expand(bbox, point))
+	})
 }
 
 /// Returns true if the [`PathSeg`] is equivalent to a line.
