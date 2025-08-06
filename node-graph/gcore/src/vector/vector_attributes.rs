@@ -128,7 +128,10 @@ impl PointDomain {
 	}
 
 	pub fn push(&mut self, id: PointId, position: DVec2) {
-    // debug_assert!(!self.id.contains(&id));
+		if self.id.contains(&id) {
+			return;
+		}
+
 		self.id.push(id);
 		self.position.push(position);
 	}

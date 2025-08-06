@@ -29,7 +29,7 @@ impl ShapeGizmoHandler for GridGizmoHandler {
 		self.row_column_gizmo.is_hovered()
 	}
 
-	fn handle_state(&mut self, selected_grid_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_state(&mut self, selected_grid_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, _responses: &mut VecDeque<Message>) {
 		self.row_column_gizmo.handle_actions(selected_grid_layer, mouse_position, document);
 	}
 
@@ -76,7 +76,7 @@ impl ShapeGizmoHandler for GridGizmoHandler {
 
 	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
 		if self.row_column_gizmo.is_hovered() || self.row_column_gizmo.is_dragging() {
-			Some(self.row_column_gizmo.gizmo_type.mouse_icon());
+			return Some(self.row_column_gizmo.gizmo_type.mouse_icon());
 		}
 
 		None
@@ -105,168 +105,153 @@ impl Grid {
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
-		match grid_type {
-			GridType::Rectangular => {
-				Self::draw_rectangular_grid(document, layer, shape_tool_data, ipp, responses, modifier);
+		let [center, lock_ratio, _] = modifier;
+		let is_isometric = grid_type == GridType::Isometric;
+
+		let Some(node_id) = graph_modification_utils::get_grid_id(layer, &document.network_interface) else {
+			return;
+		};
+
+		let start = shape_tool_data.data.viewport_drag_start(document);
+		let end = ipp.mouse.position;
+
+		let (translation, dimensions, angle) = calculate_grid_params(start, end, is_isometric, ipp.keyboard.key(center), ipp.keyboard.key(lock_ratio));
+
+		// Set dimensions/spacing
+		let input_index = if is_isometric { GRID_SPACING_INDEX } else { 2 };
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(node_id, input_index),
+			input: NodeInput::value(TaggedValue::DVec2(dimensions), false),
+		});
+
+		// Set angle for isometric grids
+		if let Some(angle_deg) = angle {
+			responses.add(NodeGraphMessage::SetInput {
+				input_connector: InputConnector::node(node_id, GRID_ANGLE_INDEX),
+				input: NodeInput::value(TaggedValue::DVec2(DVec2::splat(angle_deg)), false),
+			});
+		}
+
+		// Set transform
+		responses.add(GraphOperationMessage::TransformSet {
+			layer,
+			transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., translation),
+			transform_in: TransformIn::Viewport,
+			skip_rerender: false,
+		});
+	}
+}
+
+fn calculate_grid_params(start: DVec2, end: DVec2, is_isometric: bool, center: bool, lock_ratio: bool) -> (DVec2, DVec2, Option<f64>) {
+	let raw_dimensions = (start - end).abs();
+	let mouse_delta = end - start;
+	let dimensions;
+	let mut translation = start;
+	let mut angle = None;
+
+	match (center, lock_ratio) {
+		// Both center and lock_ratio: Centered + square/fixed-angle grid
+		(true, true) => {
+			if is_isometric {
+				// Fix angle at 30 degree - standardized isometric view
+				angle = Some(30_f64);
+
+				// Calculate the width based on given height and angle 30°
+				let width = calculate_isometric_x_position(raw_dimensions.y / 9., (30_f64).to_radians(), (30_f64).to_radians()).abs();
+
+				// To make draw from center: shift x by half of width and y by half of height (mouse_delta.y)
+				translation -= DVec2::new(width / 2., mouse_delta.y / 2.);
+				dimensions = DVec2::splat(raw_dimensions.y) / 9.;
+
+				// Adjust for negative upward drag - compensate for coordinate system
+				if end.y < start.y {
+					translation -= DVec2::new(0., start.y - end.y);
+				}
+			} else {
+				// We want to make both dimensions same so we choose whichever is bigger and shift to make center
+				let max = raw_dimensions.x.max(raw_dimensions.y);
+				let distance_to_center = max;
+				translation = start - distance_to_center;
+				dimensions = 2. * DVec2::splat(max) / 9.; // 2x because centering halves the effective area
 			}
-			GridType::Isometric => {
-				Self::draw_isometric_grid(document, layer, shape_tool_data, ipp, responses, modifier);
+		}
+
+		// Only center: Centered grid with free aspect ratio
+		(true, false) => {
+			if is_isometric {
+				// Calculate angle from mouse movement - dynamic angle based on drag direction
+				angle = Some((raw_dimensions.y / (mouse_delta.x * 2.)).atan().to_degrees());
+
+				// To make draw from center: shift by half of mouse movement
+				translation -= mouse_delta / 2.;
+				dimensions = DVec2::splat(raw_dimensions.y) / 9.;
+
+				// Adjust for upward drag - maintain proper grid positioning
+				if end.y < start.y {
+					translation -= DVec2::new(0., start.y - end.y);
+				}
+			} else {
+				// Logic: Rectangular centered grid using exact drag proportions
+				let distance_to_center = raw_dimensions;
+				translation = start - distance_to_center;
+				dimensions = 2. * raw_dimensions / 9.; // 2x for centering
+			}
+		}
+
+		// Only lock_ratio: Square/fixed-angle grid from drag start point
+		(false, true) => {
+			let max: f64;
+			if is_isometric {
+				dimensions = DVec2::splat(raw_dimensions.y) / 9.;
+
+				// Use 30° for angle - consistent isometric standard
+				angle = Some(30. as f64);
+				max = raw_dimensions.y;
+			} else {
+				// Logic: Force square grid by using larger dimension
+				max = raw_dimensions.x.max(raw_dimensions.y);
+				dimensions = DVec2::splat(max) / 9.;
+			}
+
+			// Adjust for negative drag directions - maintain grid at intended position
+			if end.y < start.y {
+				translation -= DVec2::new(0., max);
+			}
+			if end.x < start.x {
+				translation -= DVec2::new(max, 0.);
+			}
+		}
+
+		// Neither center nor lock_ratio: Free-form grid following exact user input
+		(false, false) => {
+			if is_isometric {
+				// Calculate angle from mouse movement - fully dynamic
+				// Logic: Angle represents user's exact intended perspective
+				angle = Some((raw_dimensions.y / (mouse_delta.x * 2.)).atan().to_degrees());
+				dimensions = DVec2::splat(raw_dimensions.y) / 9.;
+			} else {
+				// Use exact drag dimensions for grid spacing - what you drag is what you get
+				// Logic: Direct mapping of user gesture to grid parameters
+				dimensions = raw_dimensions / 9.;
+
+				// Adjust for leftward drag - keep grid positioned correctly
+				if end.x < start.x {
+					translation -= DVec2::new(start.x - end.x, 0.);
+				}
+			}
+
+			// Adjust for upward drag (common to both grid types)
+			// Logic: Compensate for coordinate system where Y increases downward
+			if end.y < start.y {
+				translation -= DVec2::new(0., start.y - end.y);
 			}
 		}
 	}
 
-	pub fn draw_rectangular_grid(
-		document: &DocumentMessageHandler,
-		layer: LayerNodeIdentifier,
-		shape_tool_data: &mut ShapeToolData,
-		ipp: &InputPreprocessorMessageHandler,
-		responses: &mut VecDeque<Message>,
-		modifier: ShapeToolModifierKey,
-	) {
-		let [center, lock_ratio, _] = modifier;
-		let mut translation = shape_tool_data.data.viewport_drag_start(document);
+	(translation, dimensions, angle)
+}
 
-		let start = shape_tool_data.data.viewport_drag_start(document);
-		let end = ipp.mouse.position;
-		let mut dimensions = (start - end).abs();
-
-		if ipp.keyboard.key(center) && ipp.keyboard.key(lock_ratio) {
-			let max = dimensions.x.max(dimensions.y);
-			let distance_to_make_center = max;
-			translation = shape_tool_data.data.viewport_drag_start(document) - distance_to_make_center;
-			dimensions = 2. * DVec2::splat(max) / 9.;
-		} else if ipp.keyboard.key(lock_ratio) {
-			let max = dimensions.x.max(dimensions.y);
-			dimensions = DVec2::splat(max) / 9.;
-
-			if end.y < start.y {
-				translation -= DVec2::new(0., max)
-			}
-
-			if end.x < start.x {
-				translation -= DVec2::new(max, 0.)
-			}
-		} else if ipp.keyboard.key(center) {
-			let distance_to_make_center = dimensions;
-			translation = shape_tool_data.data.viewport_drag_start(document) - distance_to_make_center;
-			dimensions = 2. * dimensions / 9.;
-		} else {
-			dimensions = dimensions / 9.;
-			if end.x < start.x {
-				translation -= DVec2::new(start.x - end.x, 0.)
-			}
-
-			if end.y < start.y {
-				translation -= DVec2::new(0., start.y - end.y)
-			}
-		};
-
-		let Some(node_id) = graph_modification_utils::get_grid_id(layer, &document.network_interface) else {
-			return;
-		};
-
-		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 2),
-			input: NodeInput::value(TaggedValue::DVec2(dimensions), false),
-		});
-
-		responses.add(GraphOperationMessage::TransformSet {
-			layer,
-			transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., translation),
-			transform_in: TransformIn::Viewport,
-			skip_rerender: false,
-		});
-	}
-
-	pub fn draw_isometric_grid(
-		document: &DocumentMessageHandler,
-		layer: LayerNodeIdentifier,
-		shape_tool_data: &mut ShapeToolData,
-		ipp: &InputPreprocessorMessageHandler,
-		responses: &mut VecDeque<Message>,
-		modifier: ShapeToolModifierKey,
-	) {
-		let [center, lock_ratio, _] = modifier;
-		let mut translation = shape_tool_data.data.viewport_drag_start(document);
-		let Some(node_id) = graph_modification_utils::get_grid_id(layer, &document.network_interface) else {
-			return;
-		};
-
-		let start = shape_tool_data.data.viewport_drag_start(document);
-		let end = ipp.mouse.position;
-		let mut dimensions = (start - end).abs();
-
-		if ipp.keyboard.key(center) && ipp.keyboard.key(lock_ratio) {
-			let distance_to_make_center = DVec2::splat(dimensions.y);
-			translation = shape_tool_data.data.viewport_drag_start(document) - distance_to_make_center;
-			dimensions = 2. * DVec2::splat(dimensions.y) / 9.;
-		} else if ipp.keyboard.key(center) {
-			// let mouse_x_position = end.x - start.x;
-			// let angle = ((dimensions.y) / (mouse_x_position * 2.)).atan();
-			// responses.add(NodeGraphMessage::SetInput {
-			// 	input_connector: InputConnector::node(node_id, GRID_ANGLE_INDEX),
-			// 	input: NodeInput::value(TaggedValue::DVec2(DVec2::splat((angle).to_degrees())), false),
-			// });
-			// translation -= DVec2::new((dimensions).x * 2., (dimensions).y * 2.);
-
-			let mouse_x_position = end.x - start.x;
-			let angle = ((dimensions.y) / (mouse_x_position * 2.)).atan();
-			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, GRID_ANGLE_INDEX),
-				input: NodeInput::value(TaggedValue::DVec2(DVec2::splat((angle).to_degrees())), false),
-			});
-
-			translation -= (end - start) / 2.;
-			dimensions = DVec2::splat(dimensions.y) / 9.;
-
-			if end.y < start.y {
-				translation -= DVec2::new(0., start.y - end.y)
-			}
-		} else if ipp.keyboard.key(lock_ratio) {
-			let max = dimensions.x.max(dimensions.y);
-			dimensions = DVec2::splat(max) / 9.;
-
-			if end.y < start.y {
-				translation -= DVec2::new(0., max)
-			}
-
-			if end.x < start.x {
-				translation -= DVec2::new(max, 0.)
-			}
-
-			let mouse_x_position = end.x - start.x;
-			let angle = (0.5 as f64).atan();
-			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, GRID_ANGLE_INDEX),
-				input: NodeInput::value(TaggedValue::DVec2(DVec2::splat((angle).to_degrees())), false),
-			});
-		} else {
-			let mouse_x_position = end.x - start.x;
-			let angle = ((dimensions.y) / (mouse_x_position * 2.)).atan();
-			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, GRID_ANGLE_INDEX),
-				input: NodeInput::value(TaggedValue::DVec2(DVec2::splat((angle).to_degrees())), false),
-			});
-
-			dimensions = DVec2::splat(dimensions.y) / 9.;
-
-			if end.y < start.y {
-				translation -= DVec2::new(0., start.y - end.y)
-			}
-		};
-
-		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, GRID_SPACING_INDEX),
-			input: NodeInput::value(TaggedValue::DVec2(dimensions), false),
-		});
-
-		responses.add(GraphOperationMessage::TransformSet {
-			layer,
-			transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., translation),
-			transform_in: TransformIn::Viewport,
-			skip_rerender: false,
-		});
-	}
-
-	pub fn change_row_columns() {}
+fn calculate_isometric_x_position(y_spacing: f64, rad_a: f64, rad_b: f64) -> f64 {
+	let spacing_x = y_spacing / (rad_a.tan() + rad_b.tan());
+	spacing_x * 9. as f64
 }

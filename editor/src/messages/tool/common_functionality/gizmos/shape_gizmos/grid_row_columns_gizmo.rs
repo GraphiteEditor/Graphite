@@ -68,6 +68,7 @@ impl RowColumnGizmo {
 			return;
 		};
 		let viewport = document.metadata().transform_to_viewport(layer);
+
 		if let Some(gizmo_type) = check_if_over_gizmo(grid_type, columns, rows, spacing, angles, mouse_position, viewport) {
 			self.layer = Some(layer);
 			self.gizmo_type = gizmo_type;
@@ -90,12 +91,6 @@ impl RowColumnGizmo {
 			let line = self.gizmo_type.line(grid_type, columns, rows, spacing, angles, viewport);
 			let (p0, p1) = get_line_endpoints(line);
 			overlay_context.dashed_line(p0, p1, None, None, Some(5.), Some(5.), Some(0.5));
-
-			if matches!(self.gizmo_state, RowColumnGizmoState::Hover) {
-				let line = self.gizmo_type.opposite(grid_type, columns, rows, spacing, angles, viewport);
-				let (p0, p1) = get_line_endpoints(line);
-				overlay_context.dashed_line(p0, p1, None, None, Some(5.), Some(5.), Some(0.5));
-			}
 		}
 	}
 
@@ -109,10 +104,14 @@ impl RowColumnGizmo {
 		let direction = self.gizmo_type.direction(viewport);
 		let delta_vector = input.mouse.position - self.initial_mouse_start.unwrap_or(drag_start);
 
-		let viewport_spacing = get_viewport_grid_spacing(grid_type, angles, self.spacing, viewport);
-		let delta = delta_vector.dot(direction);
+		let projection = delta_vector.project_onto(self.gizmo_type.direction(viewport));
+		let delta = viewport.inverse().transform_vector2(projection).length() * delta_vector.dot(direction).signum();
 
-		let dimensions_to_add = (delta / (self.gizmo_type.spacing(viewport_spacing))).floor() as i32;
+		if delta.abs() < 1e-6 {
+			return;
+		}
+
+		let dimensions_to_add = (delta / (self.gizmo_type.spacing(self.spacing, grid_type, angles))).floor() as i32;
 		let new_dimension = (self.initial_dimension() as i32 + dimensions_to_add).max(1) as u32;
 
 		let Some(node_id) = graph_modification_utils::get_grid_id(layer, &document.network_interface) else {
@@ -120,7 +119,7 @@ impl RowColumnGizmo {
 		};
 
 		let dimensions_delta = new_dimension as i32 - self.gizmo_type.initial_dimension(rows, columns) as i32;
-		let transform = self.transform_grid(dimensions_delta, viewport_spacing, viewport);
+		let transform = self.transform_grid(dimensions_delta, self.spacing, grid_type, angles, viewport);
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, self.gizmo_type.index()),
@@ -144,14 +143,14 @@ impl RowColumnGizmo {
 		}
 	}
 
-	fn transform_grid(&self, dimensions_delta: i32, spacing: DVec2, viewport: DAffine2) -> DAffine2 {
-		match self.gizmo_type {
+	fn transform_grid(&self, dimensions_delta: i32, spacing: DVec2, grid_type: GridType, angles: DVec2, viewport: DAffine2) -> DAffine2 {
+		match &self.gizmo_type {
 			RowColumnGizmoType::Top => {
 				let move_up_by = self.gizmo_type.direction(viewport) * dimensions_delta as f64 * spacing.y;
 				DAffine2::from_translation(move_up_by)
 			}
 			RowColumnGizmoType::Left => {
-				let move_left_by = self.gizmo_type.direction(viewport) * dimensions_delta as f64 * spacing.x;
+				let move_left_by = self.gizmo_type.direction(viewport) * dimensions_delta as f64 * &self.gizmo_type.spacing(spacing, grid_type, angles);
 				DAffine2::from_translation(move_left_by)
 			}
 			RowColumnGizmoType::Down | RowColumnGizmoType::Right | RowColumnGizmoType::None => DAffine2::IDENTITY,
@@ -166,6 +165,7 @@ fn check_if_over_gizmo(grid_type: GridType, columns: u32, rows: u32, spacing: DV
 
 	for gizmo_type in RowColumnGizmoType::all() {
 		let line = gizmo_type.line(grid_type, columns, rows, spacing, angles, viewport);
+
 		if line.nearest(mouse_point, accuracy).distance_sq < threshold {
 			return Some(gizmo_type);
 		}
@@ -195,31 +195,6 @@ fn get_corners(columns: u32, rows: u32, spacing: DVec2) -> (DVec2, DVec2, DVec2,
 	let point3 = DVec2::new(0., y_distance);
 
 	(point0, point1, point2, point3)
-}
-
-fn get_viewport_grid_spacing(grid_type: GridType, angles: DVec2, spacing: DVec2, viewport: DAffine2) -> DVec2 {
-	match grid_type {
-		GridType::Rectangular => {
-			let p0 = DVec2::ZERO;
-			let p1 = DVec2::new(spacing.x, 0.);
-			let p2 = DVec2::new(0., spacing.y);
-
-			let viewport_spacing_x = (viewport.transform_point2(p0) - viewport.transform_point2(p1)).length();
-			let viewport_spacing_y = (viewport.transform_point2(p0) - viewport.transform_point2(p2)).length();
-
-			DVec2::new(viewport_spacing_x, viewport_spacing_y)
-		}
-		GridType::Isometric => {
-			let p0 = calculate_isometric_point(0, 0, angles, spacing);
-			let p1 = calculate_isometric_point(1, 0, angles, spacing);
-			let p2 = calculate_isometric_point(0, 1, angles, spacing);
-
-			let viewport_spacing_x = viewport.transform_point2(p0).x - viewport.transform_point2(p1).x;
-			let viewport_spacing_y = viewport.transform_point2(p0).y - viewport.transform_point2(p2).y;
-
-			DVec2::new(viewport_spacing_x.abs(), viewport_spacing_y.abs())
-		}
-	}
 }
 
 fn get_rectangle_top_line_points(columns: u32, rows: u32, spacing: DVec2) -> (DVec2, DVec2) {
@@ -373,14 +348,9 @@ impl RowColumnGizmoType {
 	fn line(&self, grid_type: GridType, columns: u32, rows: u32, spacing: DVec2, angles: DVec2, viewport: DAffine2) -> Line {
 		let (p0, p1) = self.get_line_points(grid_type, columns, rows, spacing, angles);
 		let direction = self.direction(viewport);
-		let gap = GRID_ROW_COLUMN_GIZMO_OFFSET * direction;
+		let gap = GRID_ROW_COLUMN_GIZMO_OFFSET * direction.normalize();
 
 		convert_to_gizmo_line(viewport.transform_point2(p0) + gap, viewport.transform_point2(p1) + gap)
-	}
-
-	fn opposite(&self, grid_type: GridType, columns: u32, rows: u32, spacing: DVec2, angles: DVec2, viewport: DAffine2) -> Line {
-		let opposite_gizmo_type = self.opposite_gizmo_type();
-		opposite_gizmo_type.line(grid_type, columns, rows, spacing, angles, viewport)
 	}
 
 	fn opposite_gizmo_type(&self) -> Self {
@@ -411,10 +381,16 @@ impl RowColumnGizmoType {
 		}
 	}
 
-	fn spacing(&self, spacing: DVec2) -> f64 {
+	fn spacing(&self, spacing: DVec2, grid_type: GridType, angles: DVec2) -> f64 {
 		match self {
 			RowColumnGizmoType::Top | RowColumnGizmoType::Down => spacing.y,
-			RowColumnGizmoType::Right | RowColumnGizmoType::Left => spacing.x,
+			RowColumnGizmoType::Right | RowColumnGizmoType::Left => {
+				if grid_type == GridType::Rectangular {
+					spacing.x
+				} else {
+					spacing.y / (angles.x.to_radians().tan() + angles.y.to_radians().tan())
+				}
+			}
 			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
 		}
 	}
