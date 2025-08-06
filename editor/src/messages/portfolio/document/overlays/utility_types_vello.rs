@@ -983,6 +983,11 @@ impl OverlayContextInternal {
 		let mut data = vec![0u8; (PATTERN_WIDTH * PATTERN_HEIGHT * 4) as usize];
 		let rgba = color.to_rgba8_srgb();
 
+		// ┌▄▄┬──┬──┬──┐
+		// ├▀▀┼──┼──┼──┤
+		// ├──┼──┼▄▄┼──┤
+		// ├──┼──┼▀▀┼──┤
+		// └──┴──┴──┴──┘
 		// Set pixels at (0,0) and (2,2) to the specified color
 		let pixels = [(0, 0), (2, 2)];
 		for &(x, y) in &pixels {
@@ -1065,9 +1070,9 @@ impl OverlayContextInternal {
 			Pivot::End => position.x = -padding - text_width,
 		}
 		match pivot[1] {
-			Pivot::Start => position.y = padding + text_height * 0.8, // Account for baseline
-			Pivot::Middle => position.y = text_height * 0.3,          // Center on x-height
-			Pivot::End => position.y = -padding - text_height * 0.2,
+			Pivot::Start => position.y = padding,
+			Pivot::Middle => position.y -= text_height * 0.5,
+			Pivot::End => position.y = -padding - text_height,
 		}
 
 		let text_transform = transform * DAffine2::from_translation(position);
