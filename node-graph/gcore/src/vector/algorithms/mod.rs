@@ -1,4 +1,5 @@
 pub mod bezpath_algorithms;
+pub mod centroid;
 mod contants;
 pub mod instance;
 pub mod intersection;

@@ -1,4 +1,4 @@
-use super::contants::MIN_SEPARATION_VALUE;
+use super::contants::{MAX_ABSOLUTE_DIFFERENCE, MIN_SEPARATION_VALUE};
 use kurbo::{BezPath, DEFAULT_ACCURACY, ParamCurve, PathSeg, Shape};
 
 /// Calculates the intersection points the bezpath has with a given segment and returns a list of `(usize, f64)` tuples,
@@ -40,6 +40,20 @@ pub fn segment_intersections(segment1: PathSeg, segment2: PathSeg, accuracy: Opt
 		(segment1, segment2) => {
 			let mut intersections = Vec::new();
 			segment_intersections_inner(segment1, 0., 1., segment2, 0., 1., accuracy, &mut intersections);
+			intersections
+		}
+	}
+}
+
+pub fn subsegment_intersections(segment1: PathSeg, min_t1: f64, max_t1: f64, segment2: PathSeg, min_t2: f64, max_t2: f64, accuracy: Option<f64>) -> Vec<(f64, f64)> {
+	let accuracy = accuracy.unwrap_or(DEFAULT_ACCURACY);
+
+	match (segment1, segment2) {
+		(PathSeg::Line(line), segment2) => segment2.intersect_line(line).iter().map(|i| (i.line_t, i.segment_t)).collect(),
+		(segment1, PathSeg::Line(line)) => segment1.intersect_line(line).iter().map(|i| (i.segment_t, i.line_t)).collect(),
+		(segment1, segment2) => {
+			let mut intersections = Vec::new();
+			segment_intersections_inner(segment1, min_t1, max_t1, segment2, min_t2, max_t2, accuracy, &mut intersections);
 			intersections
 		}
 	}
@@ -123,6 +137,109 @@ pub fn filtered_all_segment_intersections(segment1: PathSeg, segment2: PathSeg, 
 		accumulator.push(*t);
 		accumulator
 	})
+}
+
+// TODO: Use an `impl Iterator` return type instead of a `Vec`
+/// Returns a list of parametric `t` values that correspond to the self intersection points of the current bezier curve. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
+/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/libraries/bezier-rs#bezier/intersect-self/solo" title="Self Intersection Demo"></iframe>
+fn pathseg_unfiltered_self_intersections(segment: PathSeg, error: Option<f64>) -> Vec<(f64, f64)> {
+	let cubic_bez = match segment {
+		PathSeg::Line(_) | PathSeg::Quad(_) => return vec![],
+		PathSeg::Cubic(cubic_bez) => cubic_bez,
+	};
+
+	let error = error.unwrap_or(0.5);
+
+	// Get 2 copies of the reduced curves
+	let quads1 = cubic_bez.to_quads(DEFAULT_ACCURACY).map(|(t1, t2, quad_bez)| (t1, t2, PathSeg::Quad(quad_bez))).collect::<Vec<_>>();
+	let quads2 = quads1.clone();
+
+	let num_curves = quads1.len();
+
+	// Adjacent reduced curves cannot intersect
+	if num_curves <= 2 {
+		return vec![];
+	}
+
+	// For each curve, look for intersections with every curve that is at least 2 indices away
+	quads1
+		.iter()
+		.take(num_curves - 2)
+		.enumerate()
+		.flat_map(|(index, &subsegment)| intersections_between_vectors_of_path_segments(&[subsegment], &quads2[index + 2..], error))
+		.collect()
+}
+
+/// Helper function to compute intersections between lists of subcurves.
+/// This function uses the algorithm implemented in `intersections_between_subcurves`.
+fn intersections_between_vectors_of_path_segments(subcurves1: &[(f64, f64, PathSeg)], subcurves2: &[(f64, f64, PathSeg)], error: f64) -> Vec<(f64, f64)> {
+	let segment_pairs = subcurves1.iter().flat_map(move |(t11, t12, curve1)| {
+		subcurves2
+			.iter()
+			.filter_map(move |(t21, t22, curve2)| curve1.bounding_box().overlaps(curve2.bounding_box()).then_some((t11, t12, curve1, t21, t22, curve2)))
+	});
+
+	segment_pairs
+		.flat_map(|(&t11, &t12, &curve1, &t21, &t22, &curve2)| subsegment_intersections(curve1, t11, t12, curve2, t21, t22, Some(error)))
+		.collect::<Vec<(f64, f64)>>()
+}
+
+// TODO: Use an `impl Iterator` return type instead of a `Vec`
+/// Returns a list of parametric `t` values that correspond to the self intersection points of the current bezier curve. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
+/// If the difference between 2 adjacent `t` values is less than the minimum difference, the filtering takes the larger `t` value and discards the smaller `t` value.
+/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+/// - `minimum_separation` - The minimum difference between adjacent `t` values in sorted order
+pub fn pathseg_self_intersections(segment: PathSeg, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(f64, f64)> {
+	let mut intersection_t_values = pathseg_unfiltered_self_intersections(segment, accuracy);
+	intersection_t_values.sort_by(|a, b| (a.0 + a.1).partial_cmp(&(b.0 + b.1)).unwrap());
+
+	intersection_t_values.iter().fold(Vec::new(), |mut accumulator, t| {
+		if !accumulator.is_empty()
+			&& (accumulator.last().unwrap().0 - t.0).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE)
+			&& (accumulator.last().unwrap().1 - t.1).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE)
+		{
+			accumulator.pop();
+		}
+		accumulator.push(*t);
+		accumulator
+	})
+}
+
+/// Returns a list of `t` values that correspond to all the self intersection points of the subpath always considering it as a closed subpath. The index and `t` value of both will be returned that corresponds to a point.
+/// The points will be sorted based on their index and `t` repsectively.
+/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+///
+/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
+///
+/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
+pub fn bezpath_all_self_intersections(mut bezpath: BezPath, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
+	// TODO: Take the Bezpath as a reference instead of value to avoid allocation. Presently we do it so we can close the path.
+	bezpath.close_path();
+
+	let mut intersections_vec = Vec::new();
+	let err = error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
+	let num_curves = bezpath.segments().count();
+	// TODO: optimization opportunity - this for-loop currently compares all intersections with all curve-segments in the subpath collection
+	bezpath.segments().enumerate().for_each(|(i, other)| {
+		let other_self_intersection = pathseg_self_intersections(other, error, minimum_separation);
+		intersections_vec.extend(other_self_intersection.iter().flat_map(|value| [(i, value.0), (i, value.1)]));
+
+		bezpath.segments().enumerate().skip(i + 1).for_each(|(j, curve)| {
+			let all_segment_intersections = filtered_all_segment_intersections(curve, other, error, minimum_separation);
+			intersections_vec.extend(
+				all_segment_intersections
+					.iter()
+					.filter(|&value| (j != i + 1 || value.0 > err || (1. - value.1) > err) && (j != num_curves - 1 || i != 0 || value.1 > err || (1. - value.0) > err))
+					.flat_map(|value| [(j, value.0), (i, value.1)]),
+			);
+		});
+	});
+
+	intersections_vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+	intersections_vec
 }
 
 #[cfg(test)]
