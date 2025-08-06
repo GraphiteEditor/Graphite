@@ -1959,8 +1959,8 @@ pub mod choice {
 		{
 			let items = E::list()
 				.iter()
-				.map(|group| {
-					group
+				.map(|section| {
+					section
 						.iter()
 						.map(|(item, metadata)| {
 							let updater = updater_factory();
@@ -1980,7 +1980,7 @@ pub mod choice {
 		{
 			let items = E::list()
 				.iter()
-				.flat_map(|group| group.iter())
+				.flat_map(|section| section.iter())
 				.map(|(item, var_meta)| {
 					let updater = updater_factory();
 					let committer = committer_factory();
