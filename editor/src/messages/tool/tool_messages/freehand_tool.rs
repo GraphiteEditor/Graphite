@@ -259,10 +259,14 @@ impl Fsm for FreehandToolFsmState {
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::PointerMove) => {
 				if let Some(layer) = tool_data.layer {
-					let transform = document.metadata().transform_to_viewport(layer);
-					let position = transform.inverse().transform_point2(input.mouse.position);
+					if !document.metadata().upstream_footprints.contains_key(&layer.to_node()) {
+						warn!("Freehand tool layer not exist");
+					} else {
+						let transform = document.metadata().transform_to_viewport(layer);
+						let position = transform.inverse().transform_point2(input.mouse.position);
 
-					extend_path_with_next_segment(tool_data, position, true, responses);
+						extend_path_with_next_segment(tool_data, position, true, responses);
+					}
 				}
 
 				FreehandToolFsmState::Drawing
