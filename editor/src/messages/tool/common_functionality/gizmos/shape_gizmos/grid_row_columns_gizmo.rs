@@ -14,7 +14,7 @@ use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::vector::misc::{GridType, dvec2_to_point, get_line_endpoints};
-use kurbo::{Line, ParamCurveNearest};
+use kurbo::{Line, ParamCurveNearest, Rect};
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -164,9 +164,9 @@ fn check_if_over_gizmo(grid_type: GridType, columns: u32, rows: u32, spacing: DV
 	let threshold = 20.;
 
 	for gizmo_type in RowColumnGizmoType::all() {
-		let line = gizmo_type.line(grid_type, columns, rows, spacing, angles, viewport);
+		let rect = gizmo_type.rect(grid_type, columns, rows, spacing, angles, viewport);
 
-		if line.nearest(mouse_point, accuracy).distance_sq < threshold {
+		if rect.contains(mouse_point) {
 			return Some(gizmo_type);
 		}
 	}
@@ -350,7 +350,21 @@ impl RowColumnGizmoType {
 		let direction = self.direction(viewport);
 		let gap = GRID_ROW_COLUMN_GIZMO_OFFSET * direction.normalize();
 
-		convert_to_gizmo_line(viewport.transform_point2(p0) + gap, viewport.transform_point2(p1) + gap)
+		convert_to_gizmo_line(viewport.transform_point2(p0 + gap), viewport.transform_point2(p1 + gap))
+	}
+
+	fn rect(&self, grid_type: GridType, columns: u32, rows: u32, spacing: DVec2, angles: DVec2, viewport: DAffine2) -> Rect {
+		let (p0, p1) = self.get_line_points(grid_type, columns, rows, spacing, angles);
+		let direction = self.direction(viewport);
+		let gap = GRID_ROW_COLUMN_GIZMO_OFFSET * direction.normalize();
+
+		let (x0, x1) = match self {
+			Self::Top | Self::Left => (viewport.transform_point2(p0 + gap), viewport.transform_point2(p1)),
+			Self::Right | Self::Down => (viewport.transform_point2(p0), viewport.transform_point2(p1 + gap)),
+			Self::None => panic!("RowColumnGizmoType::None does not have opposite"),
+		};
+
+		Rect::new(x0.x, x0.y, x1.x, x1.y)
 	}
 
 	fn opposite_gizmo_type(&self) -> Self {
