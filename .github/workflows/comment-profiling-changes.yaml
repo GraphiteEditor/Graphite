@@ -156,7 +156,7 @@ jobs:
               return str.padStart(len);
             }
 
-            function processBenchmarkOutput(benchmarkOutput, sectionTitle) {
+            function processBenchmarkOutput(benchmarkOutput, sectionTitle, isLast = false) {
               let sectionBody = "";
               let hasResults = false;
               let hasSignificantChanges = false;
@@ -199,21 +199,39 @@ jobs:
               if (hasResults) {
                 // Wrap section in collapsible details, open only if there are significant changes
                 const openAttribute = hasSignificantChanges ? " open" : "";
-                return `<details${openAttribute}>\n<summary><h2>${sectionTitle}</h2></summary>\n\n${sectionBody}\n---\n</details>`;
+                const ruler = isLast ? "" : "\n\n---";
+                return `<details${openAttribute}>\n<summary><h2>${sectionTitle}</h2></summary>\n\n${sectionBody}${ruler}\n</details>`;
               }
               return "";
             }
 
             // Process each benchmark category
-            const compileSection = processBenchmarkOutput(compileOutput, "🔧 Graph Compile Time");
-            const updateSection = processBenchmarkOutput(updateOutput, "🔄 Executor Update");
-            const runOnceSection = processBenchmarkOutput(runOnceOutput, "🚀 Render: Cold Execution");
-            const runCachedSection = processBenchmarkOutput(runCachedOutput, "⚡ Render: Cached Execution");
+            const sections = [
+              { output: compileOutput, title: "🔧 Graph Compilation" },
+              { output: updateOutput, title: "🔄 Executor Update" },
+              { output: runOnceOutput, title: "🚀 Render: Cold Execution" },
+              { output: runCachedOutput, title: "⚡ Render: Cached Execution" }
+            ];
+
+            // Generate sections and determine which ones have results
+            const generatedSections = sections.map(({ output, title }) => 
+              processBenchmarkOutput(output, title, true) // temporarily mark all as last
+            ).filter(section => section.length > 0);
+
+            // Re-generate with correct isLast flags
+            let sectionIndex = 0;
+            const finalSections = sections.map(({ output, title }) => {
+              const section = processBenchmarkOutput(output, title, true); // check if it has results
+              if (section.length > 0) {
+                const isLast = sectionIndex === generatedSections.length - 1;
+                sectionIndex++;
+                return processBenchmarkOutput(output, title, isLast);
+              }
+              return "";
+            }).filter(section => section.length > 0);
 
             // Combine all sections
-            commentBody = [compileSection, updateSection, runOnceSection, runCachedSection]
-              .filter(section => section.length > 0)
-              .join("\n\n");
+            commentBody = finalSections.join("\n\n");
 
             if (commentBody.length > 0) {
               const output = `
