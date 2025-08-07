@@ -393,12 +393,24 @@ impl TextToolData {
 				Fill::None
 			},
 		});
-		responses.add(GraphOperationMessage::TransformSet {
-			layer: self.layer,
-			transform: editing_text.transform,
-			transform_in: TransformIn::Viewport,
-			skip_rerender: true,
+
+		responses.add(DeferMessage::AfterGraphRun {
+			messages: vec![
+				GraphOperationMessage::TransformSet {
+					layer: self.layer,
+					transform: editing_text.transform,
+					transform_in: TransformIn::Viewport,
+					skip_rerender: true,
+				}
+				.into(),
+				DeferMessage::AfterGraphRun {
+					messages: vec![OverlaysMessage::Draw.into()],
+				}
+				.into(),
+				NodeGraphMessage::RunDocumentGraph.into(),
+			],
 		});
+
 		self.editing_text = Some(editing_text);
 
 		self.set_editing(true, font_cache, responses);
@@ -475,9 +487,9 @@ impl Fsm for TextToolFsmState {
 		let ToolMessage::Text(event) = event else { return self };
 		match (self, event) {
 			(TextToolFsmState::Editing, TextToolMessage::Overlays(mut overlay_context)) => {
-				responses.add(FrontendMessage::DisplayEditableTextboxTransform {
-					transform: document.metadata().transform_to_viewport(tool_data.layer).to_cols_array(),
-				});
+				let t = document.metadata().transform_to_viewport(tool_data.layer);
+				warn!("Set transform {t}");
+				responses.add(FrontendMessage::DisplayEditableTextboxTransform { transform: t.to_cols_array() });
 				if let Some(editing_text) = tool_data.editing_text.as_mut() {
 					let font_data = font_cache.get(&editing_text.font).map(|data| load_font(data));
 					let far = graphene_std::text::bounding_box(&tool_data.new_text, font_data, editing_text.typesetting, false);
