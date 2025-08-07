@@ -1,6 +1,5 @@
 use crate::blending::AlphaBlending;
 use crate::bounds::BoundingBox;
-use crate::math::quad::Quad;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::{Table, TableRow};
 use crate::uuid::NodeId;
@@ -182,14 +181,6 @@ impl BoundingBox for Graphic {
 			Graphic::RasterGPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::Graphic(graphic) => graphic.bounding_box(transform, include_stroke),
 		}
-	}
-}
-
-impl BoundingBox for Table<Graphic> {
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.iter()
-			.filter_map(|element| element.element.bounding_box(transform * *element.transform, include_stroke))
-			.reduce(Quad::combine_bounds)
 	}
 }
 

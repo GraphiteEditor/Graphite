@@ -1,8 +1,9 @@
-use crate::AlphaBlending;
+use crate::bounds::BoundingBox;
 use crate::transform::ApplyTransform;
 use crate::uuid::NodeId;
+use crate::{AlphaBlending, math::quad::Quad};
 use dyn_any::StaticType;
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use std::hash::Hash;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -122,6 +123,14 @@ impl<T> Table<T> {
 				alpha_blending,
 				source_node_id,
 			})
+	}
+}
+
+impl<T: BoundingBox> BoundingBox for Table<T> {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
+		self.iter()
+			.filter_map(|row| row.element.bounding_box(transform * *row.transform, include_stroke))
+			.reduce(Quad::combine_bounds)
 	}
 }
 

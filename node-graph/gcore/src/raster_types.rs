@@ -2,7 +2,6 @@ use crate::Color;
 use crate::bounds::BoundingBox;
 use crate::math::quad::Quad;
 use crate::raster::Image;
-use crate::table::Table;
 use core::ops::Deref;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -199,17 +198,15 @@ mod gpu_common {
 	}
 }
 
-impl<T> BoundingBox for Table<Raster<T>>
+impl<T> BoundingBox for Raster<T>
 where
 	Raster<T>: Storage,
 {
 	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.iter()
-			.filter(|row| !row.element.is_empty()) // Eliminate empty images
-			.flat_map(|row| {
-				let transform = transform * *row.transform;
-				(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
-			})
-			.reduce(Quad::combine_bounds)
+		if self.is_empty() {
+			return None;
+		}
+
+		(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
 	}
 }
