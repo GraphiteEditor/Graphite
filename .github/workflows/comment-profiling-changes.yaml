@@ -213,7 +213,7 @@ jobs:
             // Combine all sections
             commentBody = [compileSection, updateSection, runOnceSection, runCachedSection]
               .filter(section => section.length > 0)
-              .join("\n\n");
+              .join("\n\n---\n\n");
 
             if (commentBody.length > 0) {
               const output = `
