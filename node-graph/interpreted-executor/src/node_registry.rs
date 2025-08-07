@@ -4,7 +4,9 @@ use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::raster::color::Color;
 use graphene_core::raster::*;
-use graphene_core::raster_types::{CPU, GPU, Raster};
+#[cfg(feature = "gpu")]
+use graphene_core::raster_types::GPU;
+use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::{Artboard, concrete, generic};
 use graphene_core::{Cow, ProtoNodeIdentifier, Type};
 use graphene_core::{NodeIO, NodeIOTypes};
