@@ -3293,16 +3293,12 @@ fn update_dynamic_hints(
 				}
 			}
 
-			let mut drag_selected_hints = vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")];
+			let drag_selected_hints = vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")];
 			let mut delete_selected_hints = vec![HintInfo::keys([Key::Delete], "Delete Selected")];
 
 			if at_least_one_anchor_selected {
 				delete_selected_hints.push(HintInfo::keys([Key::Accel], "No Dissolve").prepend_plus());
 				delete_selected_hints.push(HintInfo::keys([Key::Shift], "Cut Anchor").prepend_plus());
-			}
-
-			if single_colinear_anchor_selected {
-				drag_selected_hints.push(HintInfo::multi_keys([[Key::Control], [Key::Shift]], "Slide").prepend_plus());
 			}
 
 			let segment_edit = tool_options.path_editing_mode.segment_editing_mode;
@@ -3369,9 +3365,15 @@ fn update_dynamic_hints(
 				let mut groups = vec![
 					HintGroup(drag_selected_hints),
 					HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR], [Key::KeyS]], "Grab/Rotate/Scale Selected")]),
-					HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
-					HintGroup(delete_selected_hints),
 				];
+
+				if single_colinear_anchor_selected {
+					groups.push(HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyG]], "Slide")]));
+				}
+
+				groups.push(HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]));
+				groups.push(HintGroup(delete_selected_hints));
+
 				hint_data.append(&mut groups);
 			}
 
