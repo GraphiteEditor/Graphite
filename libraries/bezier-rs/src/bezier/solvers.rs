@@ -105,10 +105,21 @@ impl Bezier {
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/tangents-to-point/solo" title="Tangents to Point Demo"></iframe>
 	#[must_use]
 	pub fn tangents_to_point(self, point: DVec2) -> Vec<f64> {
-		let sbasis: crate::SymmetricalBasisPair = to_symmetrical_basis_pair(self);
-		let derivative = sbasis.derivative();
-		let cross = (sbasis - point).cross(&derivative);
-		SymmetricalBasis::roots(&cross)
+		// We solve deriv(t) \times (self(t) - point) = 0. In principle, this is a quintic.
+		// In fact, the highest-order term cancels out so it's at most a quartic.
+		let (mut x, mut y) = self.parametric_polynomial();
+		let x = x.coefficients_mut();
+		let y = y.coefficients_mut();
+		x[0] -= point.x;
+		y[0] -= point.y;
+		let poly = poly_cool::Poly::new([
+			x[0] * y[1] - y[0] * x[1],
+			2.0 * (x[0] * y[2] - y[0] * x[2]),
+			x[2] * y[1] - y[2] * x[1] + 2.0 * (x[1] * y[2] - y[1] * x[2]) + 3.0 * (x[0] * y[3] - y[0] * x[3]),
+			x[3] * y[1] - y[3] * x[1] + 3.0 * (x[1] * y[3] - y[1] * x[3]),
+			2.0 * (x[3] * y[2] - y[3] * x[2]) + 3.0 * (x[2] * y[3] - y[2] * x[3]),
+		]);
+		poly.roots_between(0.0, 1.0, 1e-8)
 	}
 
 	/// Returns a normalized unit vector representing the direction of the normal at the point `t` along the curve.
