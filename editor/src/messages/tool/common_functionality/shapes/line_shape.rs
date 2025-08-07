@@ -70,13 +70,16 @@ impl Line {
 			return;
 		};
 
+		let transform_from_document = document.metadata().transform_to_document(layer).inverse();
+		let layer_points = document_points.map(|point| transform_from_document.transform_point2(point));
+
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 1),
-			input: NodeInput::value(TaggedValue::DVec2(document_points[0]), false),
+			input: NodeInput::value(TaggedValue::DVec2(layer_points[0]), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 2),
-			input: NodeInput::value(TaggedValue::DVec2(document_points[1]), false),
+			input: NodeInput::value(TaggedValue::DVec2(layer_points[1]), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
