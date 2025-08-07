@@ -9,6 +9,7 @@ use graphene_brush::brush_cache::BrushCache;
 use graphene_brush::brush_stroke::BrushStroke;
 use graphene_core::raster::Image;
 use graphene_core::raster_types::{CPU, Raster};
+use graphene_core::selection::IndexOperationFilter;
 use graphene_core::table::Table;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
@@ -246,6 +247,7 @@ tagged_value! {
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_path_bool::BooleanOperation),
 	TextAlign(graphene_core::text::TextAlign),
+	IndexOperationFilter(IndexOperationFilter),
 }
 
 impl TaggedValue {

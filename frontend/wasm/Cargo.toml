@@ -62,7 +62,7 @@ wasm-opt = ["-Os", "-g"]
 [package.metadata.wasm-pack.profile.profiling.wasm-bindgen]
 debug-js-glue = true
 demangle-name-section = true
-dwarf-debug-info = true
+dwarf-debug-info = false
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
