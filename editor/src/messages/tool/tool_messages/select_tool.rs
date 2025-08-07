@@ -6,7 +6,7 @@ use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
+use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkInterface, ShallowestSelectionIter};
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::compass_rose::{Axis, CompassRose};
@@ -25,8 +25,10 @@ use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::transform::ReferencePoint;
 
+mod drag_state;
 mod duplicate;
 pub mod options;
+use drag_state::*;
 
 #[derive(Default, ExtractField)]
 pub struct SelectTool {
@@ -159,85 +161,6 @@ enum SelectToolFsmState {
 impl Default for SelectToolFsmState {
 	fn default() -> Self {
 		SelectToolFsmState::Ready
-	}
-}
-
-/// Represents the current drag in progress
-#[derive(Clone, Debug, Default)]
-struct DragState {
-	pub start_document: DVec2,
-	pub current_document: DVec2,
-	/// Selection mode is set when the drag exceeds a certain distance. Once resolved, the selection mode cannot change.
-	resolved_selection_mode: Option<SelectionMode>,
-}
-
-impl DragState {
-	pub fn new(input: &InputPreprocessorMessageHandler, metadata: &DocumentMetadata) -> Self {
-		let document_mouse = metadata.document_to_viewport.inverse().transform_point2(input.mouse.position);
-		Self {
-			start_document: document_mouse,
-			current_document: document_mouse,
-			resolved_selection_mode: None,
-		}
-	}
-	pub fn set_current(&mut self, input: &InputPreprocessorMessageHandler, metadata: &DocumentMetadata) {
-		self.current_document = metadata.document_to_viewport.inverse().transform_point2(input.mouse.position);
-	}
-
-	pub fn start_viewport(&self, metadata: &DocumentMetadata) -> DVec2 {
-		metadata.document_to_viewport.transform_point2(self.start_document)
-	}
-
-	pub fn current_viewport(&self, metadata: &DocumentMetadata) -> DVec2 {
-		metadata.document_to_viewport.transform_point2(self.current_document)
-	}
-
-	pub fn start_current_viewport(&self, metadata: &DocumentMetadata) -> [DVec2; 2] {
-		[self.start_viewport(metadata), self.current_viewport(metadata)]
-	}
-
-	pub fn total_drag_delta_document(&self) -> DVec2 {
-		self.current_document - self.start_document
-	}
-
-	pub fn total_drag_delta_viewport(&self, metadata: &DocumentMetadata) -> DVec2 {
-		metadata.document_to_viewport.transform_vector2(self.total_drag_delta_document())
-	}
-
-	pub fn inverse_drag_delta_viewport(&self, metadata: &DocumentMetadata) -> DVec2 {
-		-self.total_drag_delta_viewport(metadata)
-	}
-
-	fn update_selection_mode(&mut self, metadata: &DocumentMetadata, preferences: &PreferencesMessageHandler) -> SelectionMode {
-		if let Some(resolved_selection_mode) = self.resolved_selection_mode {
-			return resolved_selection_mode;
-		}
-		if preferences.get_selection_mode() != SelectionMode::Directional {
-			self.resolved_selection_mode = Some(preferences.get_selection_mode());
-			return preferences.get_selection_mode();
-		}
-
-		let [start, current] = self.start_current_viewport(metadata);
-
-		// Drag direction cannot be resolved TODO: why not consider only X distance?
-		if start.distance_squared(current) >= DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD.powi(2) {
-			let selection_mode = if current.x < start.x { SelectionMode::Touched } else { SelectionMode::Enclosed };
-			self.resolved_selection_mode = Some(selection_mode);
-			return selection_mode;
-		}
-
-		SelectionMode::default()
-	}
-
-	/// A viewport quad representing the drag bounds. Expanded if the start == end
-	pub fn expanded_selection_box_viewport(&self, metadata: &DocumentMetadata) -> [DVec2; 2] {
-		let [start, current] = self.start_current_viewport(metadata);
-		if start == current {
-			let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-			[current - tolerance, current + tolerance]
-		} else {
-			[start, current]
-		}
 	}
 }
 
@@ -879,6 +802,7 @@ impl Fsm for SelectToolFsmState {
 
 				let snap_data = SnapData::ignore(document, input, ignore);
 				let [start, current] = tool_data.drag.start_current_viewport(document.metadata());
+
 				let e0 = tool_data
 					.bounding_box_manager
 					.as_ref()
@@ -893,7 +817,7 @@ impl Fsm for SelectToolFsmState {
 				};
 
 				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-				for layer in document.network_interface.shallowest_unique_layers(&[]) {
+				for layer in ShallowestSelectionIter::new(document.metadata(), &tool_data.layers_dragging) {
 					responses.add_front(GraphOperationMessage::TransformChange {
 						layer,
 						transform: DAffine2::from_translation(mouse_delta),
@@ -901,9 +825,8 @@ impl Fsm for SelectToolFsmState {
 						skip_rerender: false,
 					});
 				}
-				tool_data.drag.current_document += document.metadata().document_to_viewport.inverse().transform_vector2(mouse_delta);
 
-				info!("current {} mouse {}", tool_data.drag.current_viewport(document.metadata()), input.mouse.position);
+				tool_data.drag.offset_viewport(mouse_delta, document.metadata());
 
 				// Auto-panning
 				let messages = [

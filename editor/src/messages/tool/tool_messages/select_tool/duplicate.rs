@@ -1,5 +1,5 @@
 use super::super::tool_prelude::*;
-use super::DragState;
+use super::drag_state::DragState;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::tool::tool_messages::select_tool::LayerNodeIdentifier;

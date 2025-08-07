@@ -1317,15 +1317,11 @@ impl NodeNetworkInterface {
 	/// Layers excluding ones that are children of other layers in the list in layer tree order.
 	// TODO: Cache this
 	// Now allocation free!
-	pub fn shallowest_unique_layers(&self, network_path: &[NodeId]) -> ShallowestSelectionIter<'_> {
+	pub fn shallowest_unique_layers(&self, network_path: &[NodeId]) -> ShallowestSelectionIter<'_, NodeId> {
 		// Avoids the clone and filtering from from the selected_nodes_in_nested_network.
 		let metadata = self.network_metadata(network_path);
 		let selection = metadata.and_then(|metadata| metadata.persistent_metadata.selection_undo_history.back());
-		ShallowestSelectionIter {
-			selection: selection.map_or([].as_slice(), |selection| selection.0.as_slice()),
-			next: Some(LayerNodeIdentifier::ROOT_PARENT),
-			metadata: self.document_metadata(),
-		}
+		ShallowestSelectionIter::new(self.document_metadata(), selection.map_or([].as_slice(), |selection| selection.0.as_slice()))
 	}
 
 	/// Ancestor that is shared by all layers and that is deepest (more nested). Default may be the root. Skips selected non-folder, non-artboard layers
@@ -6997,13 +6993,23 @@ pub enum TransactionStatus {
 
 /// Iterate through the shallowest selected layers without allocating
 #[derive(Clone)]
-pub struct ShallowestSelectionIter<'a> {
+pub struct ShallowestSelectionIter<'a, T: PartialEq<LayerNodeIdentifier>> {
 	next: Option<LayerNodeIdentifier>,
-	selection: &'a [NodeId], // TODO: should be HashSet to avoid duplicates.
+	selection: &'a [T], // TODO: should be HashSet to avoid duplicates.
 	metadata: &'a DocumentMetadata,
 }
 
-impl Iterator for ShallowestSelectionIter<'_> {
+impl<'a, T: PartialEq<LayerNodeIdentifier>> ShallowestSelectionIter<'a, T> {
+	pub fn new(metadata: &'a DocumentMetadata, selection: &'a [T]) -> Self {
+		ShallowestSelectionIter {
+			selection,
+			next: Some(LayerNodeIdentifier::ROOT_PARENT),
+			metadata,
+		}
+	}
+}
+
+impl<T: PartialEq<LayerNodeIdentifier>> Iterator for ShallowestSelectionIter<'_, T> {
 	type Item = LayerNodeIdentifier;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -7012,7 +7018,7 @@ impl Iterator for ShallowestSelectionIter<'_> {
 			let below_in_tree = || layer_node.ancestors(self.metadata).find_map(|ancestor| ancestor.next_sibling(self.metadata));
 
 			// If the current layer is selected, return it.
-			if layer_node != LayerNodeIdentifier::ROOT_PARENT && self.selection.contains(&layer_node.to_node()) {
+			if layer_node != LayerNodeIdentifier::ROOT_PARENT && self.selection.iter().any(|selection| *selection == layer_node) {
 				self.next = below_in_tree(); // Go straight to below and don't look at children
 				return Some(layer_node);
 			}
