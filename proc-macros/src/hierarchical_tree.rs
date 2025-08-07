@@ -34,8 +34,8 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 							{
 								let mut variant_tree = DebugMessageTree::new(stringify!(#variant_type));
 								let field_name = stringify!(#field_type);
-								const message_string: &str = "Message";
-								if message_string == &field_name[field_name.len().saturating_sub(message_string.len())..] {
+								const MESSAGE_SUFFIX: &str = "Message";
+								if MESSAGE_SUFFIX == &field_name[field_name.len().saturating_sub(MESSAGE_SUFFIX.len())..] {
 									// The field is a Message type, recursively build its tree
 									let sub_tree = #field_type::build_message_tree();
 									variant_tree.add_variant(sub_tree);
@@ -47,22 +47,26 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 						})
 					} else {
 						let error_msg = match fields.unnamed.len() {
-							0 => format!(
-								"Remove the unneeded `()` from the {}() message enum variant.",
-								variant_type.to_string(),
-							),
-						 	_ => {
+							0 => format!("Remove the unnecessary `()` from the `{}` message enum variant.", variant_type),
+							1 => {
+								let field_type = &fields.unnamed.first().unwrap().ty;
+								format!(
+									"The `{}` message should be defined as a struct-style (not tuple-style) enum variant to maintain consistent formatting across all editor messages.\n\
+									Replace `{}` with a named field using {{curly braces}} instead of a positional field using (parentheses).",
+									variant_type,
+									field_type.to_token_stream()
+								)
+							}
+							_ => {
 								let field_types = fields.unnamed.iter().map(|f| f.ty.to_token_stream().to_string()).collect::<Vec<_>>().join(", ");
-								format!("The {} message should be defined as a struct-style (not tuple-style) enum variant to maintain a consistent shape throughout all editor messages.\nReplace {} with a named field within {{ curly braces }} instead of an element within (parentheses).",
-								variant_type.to_string(),
-								field_types
+								format!(
+									"The `{}` message should be defined as a struct-style (not tuple-style) enum variant to maintain consistent formatting across all editor messages.\n\
+									Replace `{}` with named fields using {{curly braces}} instead of positional fields using (parentheses).",
+									variant_type, field_types
 								)
 							}
 						};
-						return Err(syn::Error::new(
-							Span::call_site(),
-							error_msg
-						));
+						return Err(syn::Error::new(Span::call_site(), error_msg));
 					}
 				}
 				Fields::Named(fields) => {
