@@ -34,10 +34,46 @@
           inherit system overlays;
         };
 
-        rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
+        rustExtensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
+
+        rust = pkgs.rust-bin.stable.latest.default.override {
           targets = [ "wasm32-unknown-unknown" ];
-          extensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
+          extensions = rustExtensions;
         };
+
+        rustNightlyPkg = pkgs.rust-bin.nightly."2025-06-23".default.override {
+          extensions = rustExtensions ++ [ "rustc-dev" "llvm-tools" ];
+        };
+
+        rustPlatformNightly = pkgs.makeRustPlatform {
+          cargo = rustNightlyPkg;
+          rustc = rustNightlyPkg;
+        };
+
+        rustc_codegen_spirv = (rustPlatformNightly.buildRustPackage.override {
+          stdenv = pkgs.llvmPackages.stdenv;
+        }) (finalAttrs: {
+          pname = "rustc_codegen_spirv";
+          version = "0-unstable-2025-08-04";
+          src = pkgs.fetchFromGitHub {
+            owner = "Rust-GPU";
+            repo = "rust-gpu";
+            rev = "c12f216121820580731440ee79ebc7403d6ea04f";
+            hash = "sha256-rG1cZvOV0vYb1dETOzzbJ0asYdE039UZImobXZfKIno=";
+          };
+          cargoHash = "sha256-AEigcEc5wiBd3zLqWN/2HSbkfOVFneAqNvg9HsouZf4=";
+
+          cargoBuildFlags = [ "-p" "rustc_codegen_spirv" ];
+          doCheck = false;
+        });
+
+        cargoRustGpuBuild = pkgs.writeShellScriptBin "cargo-rust-gpu" ''
+          #!${pkgs.bash}/bin/bash
+
+          export PATH="${pkgs.lib.makeBinPath [rustNightlyPkg]}"
+          export RUSTFLAGS="-Zcodegen-backend=${rustc_codegen_spirv}/lib/librustc_codegen_spirv.so"
+          exec cargo +nightly $@
+        '';
 
         libcef = pkgs.libcef.overrideAttrs (finalAttrs: previousAttrs: {
           version = "139.0.17";
@@ -85,7 +121,7 @@
 
         # Development tools that don't need to be in LD_LIBRARY_PATH
         buildTools =  [
-          rustc-wasm
+          rust
           pkgs.nodejs
           pkgs.nodePackages.npm
           pkgs.binaryen
@@ -97,6 +133,8 @@
 
           # Linker
           pkgs.mold
+
+          cargoRustGpuBuild
         ];
         # Development tools that don't need to be in LD_LIBRARY_PATH
         devTools = with pkgs; [
