@@ -2365,6 +2365,8 @@ impl Fsm for PathToolFsmState {
 				tool_data.ghost_outline.clear();
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let drag_occurred = tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD;
+				let mut segment_dissolved = false;
+				let mut point_inserted = false;
 
 				let nearest_point = shape_editor.find_nearest_visible_point_indices(
 					&document.network_interface,
@@ -2385,6 +2387,7 @@ impl Fsm for PathToolFsmState {
 						if tool_data.delete_segment_pressed {
 							if let Some(vector) = document.network_interface.compute_modified_vector(segment.layer()) {
 								shape_editor.dissolve_segment(responses, segment.layer(), &vector, segment.segment(), segment.points());
+								segment_dissolved = true;
 							}
 						} else {
 							let is_segment_selected = shape_editor
@@ -2393,11 +2396,7 @@ impl Fsm for PathToolFsmState {
 								.is_some_and(|state| state.is_segment_selected(segment.segment()));
 
 							segment.adjusted_insert_and_select(shape_editor, responses, extend_selection, point_mode, is_segment_selected);
-							tool_data.segment = None;
-							tool_data.molding_info = None;
-							tool_data.molding_segment = false;
-							tool_data.temporary_adjacent_handles_while_molding = None;
-							return PathToolFsmState::Ready;
+							point_inserted = true;
 						}
 					}
 
@@ -2405,6 +2404,11 @@ impl Fsm for PathToolFsmState {
 					tool_data.molding_info = None;
 					tool_data.molding_segment = false;
 					tool_data.temporary_adjacent_handles_while_molding = None;
+
+					if segment_dissolved || point_inserted {
+						responses.add(DocumentMessage::EndTransaction);
+						return PathToolFsmState::Ready;
+					}
 				}
 
 				let segment_mode = tool_options.path_editing_mode.segment_editing_mode;
@@ -2562,6 +2566,7 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::StartSlidingPoint) => {
+				responses.add(DocumentMessage::StartTransaction);
 				if tool_data.start_sliding_point(shape_editor, document) {
 					PathToolFsmState::SlidingPoint
 				} else {

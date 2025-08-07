@@ -379,7 +379,6 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 								responses.add(TransformLayerMessage::CancelTransformOperation);
 
 								// Start sliding point
-								responses.add(DocumentMessage::AddTransaction);
 								responses.add(DeferMessage::AfterGraphRun {
 									messages: vec![PathToolMessage::StartSlidingPoint.into()],
 								});
