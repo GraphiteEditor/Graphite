@@ -5,8 +5,7 @@
 // on the dispatcher messaging system and more complex Rust data types.
 //
 use crate::helpers::translate_key;
-use crate::{EDITOR, EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
-use editor::application::Editor;
+use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
 use editor::consts::FILE_SAVE_SUFFIX;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
@@ -27,6 +26,11 @@ use std::time::Duration;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData, window};
+
+#[cfg(not(feature = "native"))]
+use crate::EDITOR;
+#[cfg(not(feature = "native"))]
+use editor::application::Editor;
 
 static IMAGE_DATA_HASH: AtomicU64 = AtomicU64::new(0);
 
@@ -140,6 +144,7 @@ impl EditorHandle {
 
 #[wasm_bindgen]
 impl EditorHandle {
+	#[cfg(not(feature = "native"))]
 	#[wasm_bindgen(constructor)]
 	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
 		let editor = Editor::new();
@@ -147,6 +152,16 @@ impl EditorHandle {
 		if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
 		}
+		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
+			log::error!("Attempted to initialize the editor handle more than once");
+		}
+		editor_handle
+	}
+
+	#[cfg(feature = "native")]
+	#[wasm_bindgen(constructor)]
+	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
+		let editor_handle = EditorHandle { frontend_message_handler_callback };
 		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
 			log::error!("Attempted to initialize the editor handle more than once");
 		}
@@ -247,6 +262,7 @@ impl EditorHandle {
 			let g = f.clone();
 
 			*g.borrow_mut() = Some(Closure::new(move |_timestamp| {
+				#[cfg(not(feature = "native"))]
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
@@ -929,6 +945,7 @@ fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
 }
 
 /// Provides access to the `Editor` by calling the given closure with it as an argument.
+#[cfg(not(feature = "native"))]
 fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T {
 	EDITOR.with(|editor| {
 		let mut guard = editor.try_lock();
@@ -942,6 +959,7 @@ fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) ->
 }
 
 /// Provides access to the `Editor` and its `EditorHandle` by calling the given closure with them as arguments.
+#[cfg(not(feature = "native"))]
 pub(crate) fn editor_and_handle(callback: impl FnOnce(&mut Editor, &mut EditorHandle)) {
 	handle(|editor_handle| {
 		editor(|editor| {
@@ -964,6 +982,7 @@ pub(crate) fn handle(callback: impl FnOnce(&mut EditorHandle)) {
 	});
 }
 
+#[cfg(not(feature = "native"))]
 async fn poll_node_graph_evaluation() {
 	// Process no further messages after a crash to avoid spamming the console
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
