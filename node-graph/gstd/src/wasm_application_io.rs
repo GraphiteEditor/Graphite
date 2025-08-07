@@ -319,9 +319,13 @@ async fn render<'a: 'n, T: 'n + Render + WasmNotSend + std::fmt::Debug>(
 
 	let data = data.eval(ctx.clone()).await;
 	let editor_api = editor_api.eval(None).await;
-	for _ in 0..10000 {
-		println!("slow print {:?}", data);
+	let mut hasher = std::collections::hash_map::DefaultHasher::new();
+	for _ in 0..1000 {
+		use std::hash::Hash;
+		format!("{:?}", data).hash(&mut hasher);
 	}
+	use std::hash::Hasher;
+	println!("sum: {}", hasher.finish());
 
 	#[cfg(all(feature = "vello", not(test), target_family = "wasm"))]
 	let _surface_handle = _surface_handle.eval(None).await;

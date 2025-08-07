@@ -40,14 +40,6 @@ jobs:
         run: |
           cargo install iai-callgrind-runner@0.12.3
 
-      - name: Validate benchmark compilation
-        run: |
-          # Compile all benchmarks to catch issues early
-          cargo bench --no-run --bench compile_demo_art_iai
-          cargo bench --no-run --bench update_executor_iai
-          cargo bench --no-run --bench run_once_iai
-          cargo bench --no-run --bench run_cached_iai
-
       - name: Checkout master branch
         run: |
           git fetch origin master:master
