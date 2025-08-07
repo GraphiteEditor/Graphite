@@ -159,6 +159,7 @@ jobs:
             function processBenchmarkOutput(benchmarkOutput, sectionTitle) {
               let sectionBody = "";
               let hasResults = false;
+              let hasSignificantChanges = false;
               
               for (const benchmark of benchmarkOutput) {
                 if (benchmark.callgrind_summary && benchmark.callgrind_summary.summaries) {
@@ -189,19 +190,22 @@ jobs:
                     
                     if (Math.abs(irDiff.diff_pct) > 5) {
                       significantChanges = true;
+                      hasSignificantChanges = true;
                     }
                   }
                 }
               }
               
               if (hasResults) {
-                return `## ${sectionTitle}\n\n${sectionBody}`;
+                // Wrap section in collapsible details, open only if there are significant changes
+                const openAttribute = hasSignificantChanges ? " open" : "";
+                return `<details${openAttribute}>\n<summary>${sectionTitle}</summary>\n\n${sectionBody}</details>`;
               }
               return "";
             }
 
             // Process each benchmark category
-            const compileSection = processBenchmarkOutput(compileOutput, "🔧 Compile Time");
+            const compileSection = processBenchmarkOutput(compileOutput, "🔧 Graph Compile Time");
             const updateSection = processBenchmarkOutput(updateOutput, "🔄 Executor Update");
             const runOnceSection = processBenchmarkOutput(runOnceOutput, "🚀 Cold Execution");
             const runCachedSection = processBenchmarkOutput(runCachedOutput, "⚡ Cached Execution");
@@ -209,7 +213,7 @@ jobs:
             // Combine all sections
             commentBody = [compileSection, updateSection, runOnceSection, runCachedSection]
               .filter(section => section.length > 0)
-              .join("---\n\n");
+              .join("\n\n");
 
             if (commentBody.length > 0) {
               const output = `
