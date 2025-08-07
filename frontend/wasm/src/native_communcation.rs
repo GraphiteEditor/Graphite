@@ -1,4 +1,4 @@
-use editor::{application::Editor, messages::prelude::FrontendMessage};
+use editor::messages::prelude::FrontendMessage;
 use js_sys::{ArrayBuffer, Uint8Array};
 use wasm_bindgen::prelude::*;
 
@@ -9,12 +9,12 @@ pub fn receive_native_message(buffer: ArrayBuffer) {
 	let buffer = Uint8Array::new(buffer.as_ref()).to_vec();
 	match ron::from_str::<Vec<FrontendMessage>>(str::from_utf8(buffer.as_slice()).unwrap()) {
 		Ok(messages) => {
-			let callback = move |_: &mut Editor, handle: &mut EditorHandle| {
+			let callback = move |handle: &mut EditorHandle| {
 				for message in messages {
 					handle.send_frontend_message_to_js_rust_proxy(message);
 				}
 			};
-			editor_api::editor_and_handle(callback);
+			editor_api::handle(callback);
 		}
 		Err(e) => log::error!("Failed to deserialize frontend messages: {e:?}"),
 	}
