@@ -798,7 +798,7 @@ export class TriggerSaveDocument extends JsMessage {
 
 	readonly path!: string | undefined;
 
-	readonly content!: Uint8Array;
+	readonly content!: ArrayBuffer;
 }
 
 export class TriggerExportImage extends JsMessage {
@@ -815,7 +815,7 @@ export class TriggerExportImage extends JsMessage {
 export class TriggerSaveFile extends JsMessage {
 	readonly name!: string;
 
-	readonly content!: Uint8Array;
+	readonly content!: ArrayBuffer;
 }
 
 export class TriggerSavePreferences extends JsMessage {
