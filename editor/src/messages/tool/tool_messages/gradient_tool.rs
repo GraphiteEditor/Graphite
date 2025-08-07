@@ -351,7 +351,8 @@ impl Fsm for GradientToolFsmState {
 					let (start, end) = (transform.transform_point2(gradient.start), transform.transform_point2(gradient.end));
 
 					// Compute the distance from the mouse to the gradient line in viewport space
-					let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();
+					let direction = (end - start).normalize_or_zero();
+					let distance = direction.dot(mouse - start);
 
 					// If click is on the line then insert point
 					if distance < (SELECTION_THRESHOLD * 2.) {
