@@ -5,7 +5,7 @@
 // on the dispatcher messaging system and more complex Rust data types.
 //
 use crate::helpers::translate_key;
-use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
+use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error};
 use editor::consts::FILE_SAVE_SUFFIX;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
@@ -28,7 +28,7 @@ use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData, window};
 
 #[cfg(not(feature = "native"))]
-use crate::EDITOR;
+use crate::{EDITOR, MESSAGE_BUFFER};
 #[cfg(not(feature = "native"))]
 use editor::application::Editor;
 
@@ -928,6 +928,7 @@ pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
 }
 
 /// Helper function for calling JS's `requestAnimationFrame` with the given closure
+#[cfg(not(feature = "native"))]
 fn request_animation_frame(f: &Closure<dyn FnMut(f64)>) {
 	web_sys::window()
 		.expect("No global `window` exists")
