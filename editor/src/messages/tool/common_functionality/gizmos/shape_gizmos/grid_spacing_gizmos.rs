@@ -90,12 +90,6 @@ impl GridSpacingGizmo {
 					let line = gizmo_type.line(self.column_index, self.row_index, spacing, viewport, stroke_width);
 					let (p0, p1) = get_line_endpoints(line);
 					overlay_context.dashed_line(p0, p1, None, None, Some(5.), Some(5.), Some(0.5));
-
-					if matches!(self.gizmo_state, GridSpacingGizmoState::Hover) {
-						let line = gizmo_type.opposite_gizmo_type().line(self.column_index, self.row_index, spacing, viewport, stroke_width);
-						let (p0, p1) = get_line_endpoints(line);
-						overlay_context.dashed_line(p0, p1, None, None, Some(5.), Some(5.), Some(0.5));
-					}
 				}
 			}
 		}
@@ -110,7 +104,7 @@ impl GridSpacingGizmo {
 		};
 
 		let Some(gizmo_type) = &self.gizmo_type else { return };
-		let direction = gizmo_type.direction(spacing, viewport);
+		let direction = gizmo_type.direction(self.initial_spacing, viewport);
 		let delta_vector = input.mouse.position - drag_start;
 
 		let delta = delta_vector.dot(direction);
@@ -120,22 +114,23 @@ impl GridSpacingGizmo {
 		};
 
 		let new_spacing = gizmo_type.new_spacing(delta, self.initial_spacing);
-		let delta_spacing = new_spacing - spacing;
-
-		// let transform = self.transform_grid(dimensions_delta, grid_type, viewport_spacing, angles, viewport);
+		let spacing_delta = new_spacing - spacing;
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, GRID_SPACING_INDEX),
 			input: NodeInput::value(TaggedValue::DVec2(new_spacing), false),
 		});
 
-		// responses.add(GraphOperationMessage::TransformChange {
-		// 	layer,
-		// 	transform: DAffine2::from_translation(-delta_spacing * direction),
-		// 	transform_in: TransformIn::Viewport,
-		// 	skip_rerender: false,
-		// });
+		let transform = self.transform_grid(spacing_delta, direction);
 
+		responses.add(GraphOperationMessage::TransformChange {
+			layer,
+			transform,
+			transform_in: TransformIn::Viewport,
+			skip_rerender: false,
+		});
+
+		log::info!("{:?}", (self.row_index, self.column_index));
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 
 		// if self.initial_dimension() as i32 + dimensions_to_add < 1 {
@@ -146,7 +141,45 @@ impl GridSpacingGizmo {
 		// }
 	}
 
-	fn transform_grid(&self, dimensions_delta: i32, grid_type: GridType, spacing: DVec2, angles: DVec2, viewport: DAffine2) {}
+	fn transform_grid(&self, spacing_delta: DVec2, direction: DVec2) -> DAffine2 {
+		if let Some(gizmo_type) = &self.gizmo_type {
+			match gizmo_type {
+				GridSpacingGizmoType::Right => {
+					if self.column_index == 0 {
+						DAffine2::IDENTITY
+					} else {
+						DAffine2::from_translation(-spacing_delta * direction * (self.column_index) as f64)
+					}
+				}
+				GridSpacingGizmoType::Down => {
+					if self.row_index == 0 {
+						DAffine2::IDENTITY
+					} else {
+						DAffine2::from_translation(-spacing_delta * direction * (self.row_index) as f64)
+					}
+				}
+				GridSpacingGizmoType::Left => {
+					if self.column_index == 0 {
+						DAffine2::from_translation(spacing_delta * direction)
+					} else {
+						DAffine2::from_translation(spacing_delta * direction * (self.column_index + 1) as f64)
+					}
+				}
+				GridSpacingGizmoType::Top => {
+					if self.row_index == 0 {
+						DAffine2::from_translation(spacing_delta * direction)
+					} else {
+						DAffine2::from_translation(spacing_delta * direction * (self.row_index + 1) as f64)
+					}
+				}
+
+				GridSpacingGizmoType::None => DAffine2::IDENTITY,
+				_ => DAffine2::from_translation(spacing_delta * direction),
+			}
+		} else {
+			DAffine2::IDENTITY
+		}
+	}
 }
 
 fn check_if_over_gizmo(grid_type: GridType, columns: u32, rows: u32, spacing: DVec2, mouse_position: DVec2, viewport: DAffine2) -> Option<(u32, u32)> {

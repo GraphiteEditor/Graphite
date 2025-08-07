@@ -91,12 +91,6 @@ impl RowColumnGizmo {
 			let line = self.gizmo_type.line(grid_type, columns, rows, spacing, angles, viewport);
 			let (p0, p1) = get_line_endpoints(line);
 			overlay_context.dashed_line(p0, p1, None, None, Some(5.), Some(5.), Some(0.5));
-
-			if matches!(self.gizmo_state, RowColumnGizmoState::Hover) {
-				let line = self.gizmo_type.opposite(grid_type, columns, rows, spacing, angles, viewport);
-				let (p0, p1) = get_line_endpoints(line);
-				overlay_context.dashed_line(p0, p1, None, None, Some(5.), Some(5.), Some(0.5));
-			}
 		}
 	}
 
