@@ -33,32 +33,16 @@ impl<'a> MessageHandler<NewDocumentDialogMessage, NewDocumentDialogMessageContex
 						id: NodeId::new(),
 						artboard: graphene_std::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
 					});
-					responses.add(NavigationMessage::CanvasPan {
-						delta: self.dimensions.as_dvec2() * -0.5,
-					});
+					responses.add(NavigationMessage::CanvasPan { delta: self.dimensions.as_dvec2() });
 					responses.add(NodeGraphMessage::RunDocumentGraph);
+					// If we already have bounds, we won't receive a viewport bounds update so we just fabricate one ourselves
 					if *context.viewport_bounds != ViewportBounds::default() {
-						log::debug!("already got bounds");
 						responses.add(InputPreprocessorMessage::BoundsOfViewports {
 							bounds_of_viewports: vec![context.viewport_bounds.clone()],
 						});
 					}
 					responses.add(DeferMessage::AfterNavigationReady {
-						messages: vec![
-							// DeferMessage::AfterGraphRun {
-							// 	messages: vec![
-							// 		DeferMessage::AfterGraphRun {
-							// 			messages: vec![DocumentMessage::ZoomCanvasToFitAll.into(), DocumentMessage::DeselectAllLayers.into()],
-							// 		}
-							// 		.into(),
-							// 		DocumentMessage::ZoomCanvasToFitAll.into(),
-							// 		DocumentMessage::DeselectAllLayers.into(),
-							// 	],
-							// }
-							// .into(),
-							DocumentMessage::ZoomCanvasToFitAll.into(),
-							DocumentMessage::DeselectAllLayers.into(),
-						],
+						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into(), DocumentMessage::DeselectAllLayers.into()],
 					});
 				}
 			}

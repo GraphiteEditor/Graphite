@@ -17,7 +17,6 @@ impl MessageHandler<DeferMessage, DeferMessageContext<'_>> for DeferMessageHandl
 	fn process_message(&mut self, message: DeferMessage, responses: &mut VecDeque<Message>, context: DeferMessageContext) {
 		match message {
 			DeferMessage::AfterGraphRun { mut messages } => {
-				log::debug!("queing run");
 				let after_graph_run = self.after_graph_run.entry(context.portfolio.active_document_id.unwrap_or(DocumentId(0))).or_default();
 				after_graph_run.extend(messages.drain(..).map(|m| (self.current_graph_submission_id, m)));
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -29,7 +28,6 @@ impl MessageHandler<DeferMessage, DeferMessageContext<'_>> for DeferMessageHandl
 				self.current_graph_submission_id = execution_id + 1;
 			}
 			DeferMessage::TriggerGraphRun(execution_id, document_id) => {
-				log::debug!("trigger run");
 				let after_graph_run = self.after_graph_run.entry(document_id).or_default();
 				if after_graph_run.is_empty() {
 					return;
@@ -47,7 +45,6 @@ impl MessageHandler<DeferMessage, DeferMessageContext<'_>> for DeferMessageHandl
 				}
 			}
 			DeferMessage::TriggerNavigationReady => {
-				log::debug!("navigation ready");
 				for message in self.after_viewport_resize.drain(..).rev() {
 					responses.add_front(message);
 				}
