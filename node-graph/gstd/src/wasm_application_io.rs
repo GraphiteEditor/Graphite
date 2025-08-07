@@ -279,7 +279,7 @@ where
 }
 
 #[node_macro::node(category(""))]
-async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
+async fn render<'a: 'n, T: 'n + Render + WasmNotSend + std::fmt::Debug>(
 	render_config: RenderConfig,
 	editor_api: impl Node<Context<'static>, Output = &'a WasmEditorApi>,
 	#[implementations(
@@ -319,6 +319,7 @@ async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
 
 	let data = data.eval(ctx.clone()).await;
 	let editor_api = editor_api.eval(None).await;
+	log::debug!("slow print {:?}", data);
 
 	#[cfg(all(feature = "vello", not(test), target_family = "wasm"))]
 	let _surface_handle = _surface_handle.eval(None).await;
