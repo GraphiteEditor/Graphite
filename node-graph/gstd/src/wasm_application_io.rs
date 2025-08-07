@@ -319,7 +319,9 @@ async fn render<'a: 'n, T: 'n + Render + WasmNotSend + std::fmt::Debug>(
 
 	let data = data.eval(ctx.clone()).await;
 	let editor_api = editor_api.eval(None).await;
-	log::debug!("slow print {:?}", data);
+	for _ in 0..10000 {
+		println!("slow print {:?}", data);
+	}
 
 	#[cfg(all(feature = "vello", not(test), target_family = "wasm"))]
 	let _surface_handle = _surface_handle.eval(None).await;

@@ -53,16 +53,21 @@ jobs:
           git fetch origin master:master
           git checkout master
 
+      - name: Get master commit SHA
+        id: master-sha
+        run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
       - name: Cache benchmark baselines
+        id: cache-benchmark-baselines
         uses: actions/cache@v4
         with:
           path: target/iai
-          key: ${{ runner.os }}-benchmark-baselines-${{ hashFiles('**/Cargo.lock') }}-master-${{ github.event.pull_request.base.sha }}
+          key: ${{ runner.os }}-benchmark-baselines-master-${{ steps.master-sha.outputs.sha }}
           restore-keys: |
-            ${{ runner.os }}-benchmark-baselines-${{ hashFiles('**/Cargo.lock') }}-master-
-            ${{ runner.os }}-benchmark-baselines-
+            ${{ runner.os }}-benchmark-baselines-master-
 
       - name: Run baseline benchmarks
+        if: steps.cache-benchmark-baselines.outputs.cache-hit != 'true'
         run: |
           # Compile benchmarks
           cargo bench --bench compile_demo_art_iai -- --save-baseline=master
