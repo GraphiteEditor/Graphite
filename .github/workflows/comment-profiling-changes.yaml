@@ -234,15 +234,7 @@ jobs:
             commentBody = finalSections.join("\n\n");
 
             if (commentBody.length > 0) {
-              const output = `
-              <details open>
-
-              <summary>Performance Benchmark Results</summary>
-
-              ${commentBody}
-
-              </details>
-              `;
+              const output = `<details open>\n<summary>Performance Benchmark Results</summary>\n\n${commentBody}\n</details>`;
 
               if (significantChanges) {
                 github.rest.issues.createComment({
