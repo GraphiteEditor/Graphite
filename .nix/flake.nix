@@ -50,9 +50,7 @@
           rustc = rustNightlyPkg;
         };
 
-        rustc_codegen_spirv = (rustPlatformNightly.buildRustPackage.override {
-          stdenv = pkgs.llvmPackages.stdenv;
-        }) (finalAttrs: {
+        rustc_codegen_spirv = rustPlatformNightly.buildRustPackage (finalAttrs: {
           pname = "rustc_codegen_spirv";
           version = "0-unstable-2025-08-04";
           src = pkgs.fetchFromGitHub {
@@ -63,18 +61,31 @@
           };
           cargoHash = "sha256-en3BYJWQabH064xeAwYQrvcr6EuWg/QjvsG+Jd6HHCk";
 
-          cargoBuildFlags = [ "-p" "rustc_codegen_spirv" ];
+          cargoBuildFlags = [ "-p" "rustc_codegen_spirv" "--features=use-installed-tools" "--no-default-features" ];
 
           doCheck = false;
         });
 
-        cargoRustGpuBuild = pkgs.writeShellScriptBin "cargo-rust-gpu" ''
+        cargoGpuPkg = rustPlatformNightly.buildRustPackage (finalAttrs: {
+          pname = "cargo-gpu";
+          version = "0-unstable-2025-07-24";
+          src = pkgs.fetchFromGitHub {
+            owner = "Rust-GPU";
+            repo = "cargo-gpu";
+            rev = "a2ad3574dd32142ff661994e0d79448a45d18f47";
+            hash = "sha256-YGu9Cuw+pcN9/rCuCxImouzsQ3ScHF+cW6zgxMm0XGI=";
+          };
+          cargoHash = "sha256-tyad9kO90uwAnMQYa09takIBXifrumSx2C4rpSK95aM=";
+
+          doCheck = false;
+        });
+
+        cargoNightlyPkg = pkgs.writeShellScriptBin "cargo-nightly" ''
           #!${pkgs.bash}/bin/bash
 
-          export PATH="${pkgs.lib.makeBinPath [rustNightlyPkg]}"
-          export RUSTFLAGS="-Zcodegen-backend=${rustc_codegen_spirv}/lib/librustc_codegen_spirv.so"
-          exec cargo +nightly $@
+          exec ${rustNightlyPkg}/bin/cargo $@
         '';
+
 
         libcef = pkgs.libcef.overrideAttrs (finalAttrs: previousAttrs: {
           version = "139.0.17";
@@ -135,7 +146,9 @@
           # Linker
           pkgs.mold
 
-          cargoRustGpuBuild
+          pkgs.spirv-tools
+          cargoNightlyPkg
+          cargoGpuPkg
         ];
         # Development tools that don't need to be in LD_LIBRARY_PATH
         devTools = with pkgs; [
@@ -157,6 +170,8 @@
           LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath buildInputs}:${libcefPath}";
           CEF_PATH = libcefPath;
           XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS";
+
+          RUSTC_CODEGEN_SPIRV="${rustc_codegen_spirv}/lib/librustc_codegen_spirv.so";
 
           shellHook = ''
             alias cargo='mold --run cargo'
