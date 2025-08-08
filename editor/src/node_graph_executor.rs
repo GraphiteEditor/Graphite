@@ -83,6 +83,13 @@ impl NodeGraphExecutor {
 		};
 		(node_runtime, node_executor)
 	}
+
+	/// It is useful to get the current execution id for tests to check if any more exeuctions have been queued.
+	#[cfg(test)]
+	pub(crate) fn current_execution_id(&self) -> u64 {
+		self.current_execution_id
+	}
+
 	/// Execute the network by flattening it and creating a borrow stack.
 	fn queue_execution(&mut self, render_config: RenderConfig) -> u64 {
 		let execution_id = self.current_execution_id;

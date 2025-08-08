@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::{LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_THRESHOLD};
+use crate::consts::{DRAG_THRESHOLD, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_THRESHOLD};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -29,6 +29,7 @@ pub enum GradientToolMessage {
 	// Tool-specific messages
 	DeleteStop,
 	InsertStop,
+	InsertStopProxy,
 	PointerDown,
 	PointerMove { constrain_axis: Key },
 	PointerOutsideViewport { constrain_axis: Key },
@@ -84,6 +85,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 		PointerMove,
 		Abort,
 		InsertStop,
+		InsertStopProxy,
 		DeleteStop,
 	);
 }
@@ -117,6 +119,7 @@ enum GradientToolFsmState {
 /// Computes the transform from gradient space to viewport space (where gradient space is 0..1)
 fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
 	let bounds = document.metadata().nonzero_bounding_box(layer);
+	println!("Bounds {bounds:?}");
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
 	let multiplied = document.metadata().transform_to_viewport(layer);
@@ -237,6 +240,7 @@ struct GradientToolData {
 	snap_manager: SnapManager,
 	drag_start: DVec2,
 	auto_panning: AutoPanning,
+	pointer_up_abort: bool,
 }
 
 impl Fsm for GradientToolFsmState {
@@ -343,6 +347,7 @@ impl Fsm for GradientToolFsmState {
 				self
 			}
 			(_, GradientToolMessage::InsertStop) => {
+				println!("GradientToolMessage::InsertStop insert stop --------------------------");
 				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 					let Some(mut gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					// TODO: This transform is incorrect. I think this is since it is based on the Footprint which has not been updated yet
@@ -351,8 +356,9 @@ impl Fsm for GradientToolFsmState {
 					let (start, end) = (transform.transform_point2(gradient.start), transform.transform_point2(gradient.end));
 
 					// Compute the distance from the mouse to the gradient line in viewport space
-					let direction = (end - start).normalize_or_zero();
-					let distance = direction.dot(mouse - start);
+					let distance = (end - start).normalize_or_zero().perp_dot(mouse - start).abs();
+
+					println!(">    distance {distance} start {start} end {end} mouse {mouse}");
 
 					// If click is on the line then insert point
 					if distance < (SELECTION_THRESHOLD * 2.) {
@@ -374,6 +380,20 @@ impl Fsm for GradientToolFsmState {
 						}
 					}
 				}
+
+				self
+			}
+			// The undo system clears all clear targets only for double click messages after an abort. This hack fixes that.
+			(_, GradientToolMessage::InsertStopProxy) => {
+				if tool_data.pointer_up_abort {
+					let metadata = document.metadata();
+					let all_empty = metadata.click_targets.is_empty() && metadata.upstream_footprints.is_empty() && metadata.local_transforms.is_empty();
+					assert!(all_empty, "document metada is properly implemented so the InsertStopProxy should be removed {metadata:#?}");
+				}
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: vec![GradientToolMessage::InsertStop.into()],
+				});
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 
 				self
 			}
@@ -494,7 +514,10 @@ impl Fsm for GradientToolFsmState {
 				state
 			}
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerUp) => {
-				input.mouse.finish_transaction(tool_data.drag_start, responses);
+				let drag_too_small = tool_data.drag_start.distance(input.mouse.position) <= DRAG_THRESHOLD;
+				responses.add(if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction });
+				tool_data.pointer_up_abort = drag_too_small;
+
 				tool_data.snap_manager.cleanup(responses);
 				let was_dragging = tool_data.selected_gradient.is_some();
 
@@ -695,6 +718,17 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
+	async fn double_click_empty_space() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, -5., -5., 105., 105., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+		editor.pointer_up_double_click(DVec2::new(300., 300.)).await;
+		let (updated_gradient, _) = get_gradient(&mut editor).await;
+		assert_eq!(updated_gradient.stops.len(), 2, "Expected 2 stops, found {}", updated_gradient.stops.len());
+	}
+
+	#[tokio::test]
 	async fn double_click_insert_stop() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
@@ -709,7 +743,7 @@ mod test_gradient {
 		assert_eq!(initial_gradient.stops.len(), 2, "Expected 2 stops, found {}", initial_gradient.stops.len());
 
 		editor.select_tool(ToolType::Gradient).await;
-		editor.double_click(DVec2::new(50., 0.)).await;
+		editor.pointer_up_double_click(DVec2::new(50., 0.)).await;
 
 		// Check that a new stop has been added
 		let (updated_gradient, _) = get_gradient(&mut editor).await;
@@ -803,7 +837,7 @@ mod test_gradient {
 		editor.select_tool(ToolType::Gradient).await;
 
 		// Add a middle stop at 50%
-		editor.double_click(DVec2::new(50., 0.)).await;
+		editor.pointer_up_double_click(DVec2::new(50., 0.)).await;
 
 		let (initial_gradient, _) = get_gradient(&mut editor).await;
 		assert_eq!(initial_gradient.stops.len(), 3, "Expected 3 stops, found {}", initial_gradient.stops.len());
@@ -878,8 +912,8 @@ mod test_gradient {
 		editor.select_tool(ToolType::Gradient).await;
 
 		// Add two middle stops
-		editor.double_click(DVec2::new(25., 0.)).await;
-		editor.double_click(DVec2::new(75., 0.)).await;
+		editor.pointer_up_double_click(DVec2::new(25., 0.)).await;
+		editor.pointer_up_double_click(DVec2::new(75., 0.)).await;
 
 		let (updated_gradient, _) = get_gradient(&mut editor).await;
 		assert_eq!(updated_gradient.stops.len(), 4, "Expected 4 stops, found {}", updated_gradient.stops.len());

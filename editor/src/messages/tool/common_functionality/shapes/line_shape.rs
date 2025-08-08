@@ -354,33 +354,27 @@ mod test_line_tool {
 
 		let artboard_id = editor.get_selected_layer().await.expect("Should have selected the artboard");
 
+		let transform = DAffine2::from_angle(45_f64.to_radians());
 		editor
 			.handle_message(GraphOperationMessage::TransformChange {
 				layer: artboard_id,
-				transform: DAffine2::from_angle(45_f64.to_radians()),
+				transform,
 				transform_in: TransformIn::Local,
 				skip_rerender: false,
 			})
 			.await;
 
-		editor.drag_tool(ToolType::Line, 50., 50., 150., 150., ModifierKeys::empty()).await;
+		let expected_start = DVec2::new(55., 42.);
+		let expected_end = DVec2::new(124., 142.);
+		editor
+			.drag_tool(ToolType::Line, expected_start.x, expected_start.y, expected_end.x, expected_end.y, ModifierKeys::empty())
+			.await;
 
 		let (start_input, end_input) = get_line_node_inputs(&mut editor).await.expect("Line was not created successfully within transformed artboard");
-		// The line should still be diagonal with equal change in x and y
-		let line_vector = end_input - start_input;
-		// Verifying the line is approximately 100*sqrt(2) units in length (diagonal of 100x100 square)
-		let line_length = line_vector.length();
-		assert!(
-			(line_length - 141.42).abs() < 1., // 100 * sqrt(2) ~= 141.42
-			"Line length should be approximately 141.42 units. Got: {line_length}"
-		);
-		assert!((line_vector.x - 100.).abs() < 1., "X-component of line vector should be approximately 100. Got: {}", line_vector.x);
-		assert!(
-			(line_vector.y.abs() - 100.).abs() < 1.,
-			"Absolute Y-component of line vector should be approximately 100. Got: {}",
-			line_vector.y.abs()
-		);
-		let angle_degrees = line_vector.angle_to(DVec2::X).to_degrees();
-		assert!((angle_degrees - (-45.)).abs() < 1., "Line angle should be close to -45 degrees. Got: {angle_degrees}");
+		let document = editor.editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap();
+		assert_eq!(document.metadata().document_to_viewport, DAffine2::IDENTITY);
+		let [start_viewport, end_viewport] = [start_input, end_input].map(|point| transform.transform_point2(point));
+		assert!(start_viewport.abs_diff_eq(expected_start, 1e-10), "expected line to start at {expected_start} not {start_viewport}");
+		assert!(end_viewport.abs_diff_eq(expected_end, 1e-10), "expected line to end at {expected_end} not {end_viewport}");
 	}
 }
