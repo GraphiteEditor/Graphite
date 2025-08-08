@@ -35,22 +35,19 @@
         };
 
         rustExtensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
-
         rust = pkgs.rust-bin.stable.latest.default.override {
           targets = [ "wasm32-unknown-unknown" ];
           extensions = rustExtensions;
         };
 
-        rustNightlyPkg = pkgs.rust-bin.nightly."2025-06-23".default.override {
+        rustGPUToolchainPkg = pkgs.rust-bin.nightly."2025-06-23".default.override {
           extensions = rustExtensions ++ [ "rustc-dev" "llvm-tools" ];
         };
-
-        rustPlatformNightly = pkgs.makeRustPlatform {
-          cargo = rustNightlyPkg;
-          rustc = rustNightlyPkg;
+        rustGPUToolchainRustPlatform = pkgs.makeRustPlatform {
+          cargo = rustGPUToolchainPkg;
+          rustc = rustGPUToolchainPkg;
         };
-
-        rustc_codegen_spirv = rustPlatformNightly.buildRustPackage (finalAttrs: {
+        rustc_codegen_spirv = rustGPUToolchainRustPlatform.buildRustPackage (finalAttrs: {
           pname = "rustc_codegen_spirv";
           version = "0-unstable-2025-08-04";
           src = pkgs.fetchFromGitHub {
@@ -60,31 +57,28 @@
             hash = "sha256-rG1cZvOV0vYb1dETOzzbJ0asYdE039UZImobXZfKIno=";
           };
           cargoHash = "sha256-AEigcEc5wiBd3zLqWN/2HSbkfOVFneAqNvg9HsouZf4=";
-
           cargoBuildFlags = [ "-p" "rustc_codegen_spirv" "--features=use-installed-tools" "--no-default-features" ];
           doCheck = false;
         });
 
-        cargoGpuPkg = rustPlatformNightly.buildRustPackage (finalAttrs: {
-          pname = "cargo-gpu";
-          version = "0-unstable-2025-07-24";
-          src = pkgs.fetchFromGitHub {
-            owner = "Rust-GPU";
-            repo = "cargo-gpu";
-            rev = "a2ad3574dd32142ff661994e0d79448a45d18f47";
-            hash = "sha256-YGu9Cuw+pcN9/rCuCxImouzsQ3ScHF+cW6zgxMm0XGI=";
-          };
-          cargoHash = "sha256-tyad9kO90uwAnMQYa09takIBXifrumSx2C4rpSK95aM=";
+        # Wrapper script for running rust commands with the rust toolchain used by rust-gpu.
+        # For example `rust-gpu cargo --version` or `rust-gpu rustc --version`.
+        execWithRustGPUEnvironment = pkgs.writeShellScriptBin "rust-gpu" ''
+          #!${pkgs.lib.getExe pkgs.bash}
 
-          doCheck = false;
-        });
+          filtered_args=()
+          for arg in "$@"; do
+            case "$arg" in
+              +nightly|+nightly-*) ;;
+              *) filtered_args+=("$arg") ;;
+            esac
+          done
 
-        cargoNightlyPkg = pkgs.writeShellScriptBin "cargo-nightly" ''
-          #!${pkgs.bash}/bin/bash
+          export PATH="${pkgs.lib.makeBinPath [ rustGPUToolchainPkg pkgs.spirv-tools ]}:$PATH"
+          export RUSTC_CODEGEN_SPIRV_PATH="${rustc_codegen_spirv}/lib/librustc_codegen_spirv.so"
 
-          exec ${rustNightlyPkg}/bin/cargo $@
+          exec ${"\${filtered_args[@]}"}
         '';
-
 
         libcef = pkgs.libcef.overrideAttrs (finalAttrs: previousAttrs: {
           version = "139.0.17";
@@ -98,7 +92,6 @@
             strip $out/lib/*
           '';
         });
-
         libcefPath = pkgs.runCommand "libcef-path" {} ''
           mkdir -p $out
 
@@ -145,9 +138,7 @@
           # Linker
           pkgs.mold
 
-          pkgs.spirv-tools
-          cargoNightlyPkg
-          cargoGpuPkg
+          execWithRustGPUEnvironment
         ];
         # Development tools that don't need to be in LD_LIBRARY_PATH
         devTools = with pkgs; [
@@ -169,8 +160,6 @@
           LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath buildInputs}:${libcefPath}";
           CEF_PATH = libcefPath;
           XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS";
-
-          RUSTC_CODEGEN_SPIRV="${rustc_codegen_spirv}/lib/librustc_codegen_spirv.so";
 
           shellHook = ''
             alias cargo='mold --run cargo'
