@@ -1,11 +1,13 @@
-use bezier_rs::{ManipulatorGroup, Subpath};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
+use graphene_core::subpath::{ManipulatorGroup, Subpath};
 use graphene_core::table::{Table, TableRow, TableRowRef};
 use graphene_core::vector::algorithms::merge_by_distance::MergeByDistanceExt;
+use graphene_core::vector::misc::{point_to_dvec2, transform_pathseg};
 use graphene_core::vector::style::Fill;
 use graphene_core::vector::{PointId, Vector};
 use graphene_core::{Color, Ctx, Graphic};
+use kurbo::{ParamCurve, Point};
 pub use path_bool as path_bool_lib;
 use path_bool::{FillRule, PathBooleanOperation};
 use std::ops::Mul;
@@ -296,25 +298,25 @@ fn to_path(vector: &Vector, transform: DAffine2) -> Vec<path_bool::PathSegment> 
 fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &Subpath<PointId>, transform: DAffine2) {
 	use path_bool::PathSegment;
 	let mut global_start = None;
-	let mut global_end = DVec2::ZERO;
+	let mut global_end = Point::ZERO;
 	for bezier in subpath.iter() {
 		const EPS: f64 = 1e-8;
-		let transformed = bezier.apply_transformation(|pos| transform.transform_point2(pos).mul(EPS.recip()).round().mul(EPS));
-		let start = transformed.start;
-		let end = transformed.end;
+		let transformed = transform_pathseg(bezier, |pos| transform.transform_point2(pos).mul(EPS.recip()).round().mul(EPS));
+		let start = transformed.start();
+		let end = transformed.end();
 		if global_start.is_none() {
 			global_start = Some(start);
 		}
 		global_end = end;
-		let segment = match transformed.handles {
-			bezier_rs::BezierHandles::Linear => PathSegment::Line(start, end),
-			bezier_rs::BezierHandles::Quadratic { handle } => PathSegment::Quadratic(start, handle, end),
-			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => PathSegment::Cubic(start, handle_start, handle_end, end),
+		let segment = match transformed {
+			kurbo::PathSeg::Line(line) => PathSegment::Line(point_to_dvec2(line.p0), point_to_dvec2(line.p1)),
+			kurbo::PathSeg::Quad(quad_bez) => PathSegment::Quadratic(point_to_dvec2(quad_bez.p0), point_to_dvec2(quad_bez.p1), point_to_dvec2(quad_bez.p2)),
+			kurbo::PathSeg::Cubic(cubic_bez) => PathSegment::Cubic(point_to_dvec2(cubic_bez.p0), point_to_dvec2(cubic_bez.p1), point_to_dvec2(cubic_bez.p2), point_to_dvec2(cubic_bez.p3)),
 		};
 		path.push(segment);
 	}
 	if let Some(start) = global_start {
-		path.push(PathSegment::Line(global_end, start));
+		path.push(PathSegment::Line(point_to_dvec2(global_end), point_to_dvec2(start)));
 	}
 }
 

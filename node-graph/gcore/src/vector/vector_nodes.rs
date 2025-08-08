@@ -7,6 +7,7 @@ use super::{PointId, SegmentDomain, SegmentId, StrokeId, Vector, VectorExt};
 use crate::bounds::BoundingBox;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
+use crate::subpath::{BezierHandles, ManipulatorGroup};
 use crate::table::{Table, TableRow, TableRowMut};
 use crate::transform::{Footprint, ReferencePoint, Transform};
 use crate::vector::PointDomain;
@@ -17,7 +18,6 @@ use crate::vector::misc::{handles_to_segment, segment_to_handles};
 use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, Graphic, OwnedContextImpl};
-use bezier_rs::ManipulatorGroup;
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
@@ -840,11 +840,11 @@ async fn points_to_polyline(_: impl Ctx, mut points: Table<Vector>, #[default(tr
 
 		if points_count > 2 {
 			(0..points_count - 1).for_each(|i| {
-				segment_domain.push(SegmentId::generate(), i, i + 1, bezier_rs::BezierHandles::Linear, StrokeId::generate());
+				segment_domain.push(SegmentId::generate(), i, i + 1, BezierHandles::Linear, StrokeId::generate());
 			});
 
 			if closed {
-				segment_domain.push(SegmentId::generate(), points_count - 1, 0, bezier_rs::BezierHandles::Linear, StrokeId::generate());
+				segment_domain.push(SegmentId::generate(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
 
 				row.element
 					.region_domain
@@ -1364,7 +1364,7 @@ async fn spline(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 
 					let handle_start = first_handles[i];
 					let handle_end = positions[next_index] * 2. - first_handles[next_index];
-					let handles = bezier_rs::BezierHandles::Cubic { handle_start, handle_end };
+					let handles = BezierHandles::Cubic { handle_start, handle_end };
 
 					segment_domain.push(SegmentId::generate(), start_index, end_index, handles, stroke_id);
 				}
@@ -1418,14 +1418,14 @@ async fn jitter_points(
 				}
 
 				match handles {
-					bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
+					BezierHandles::Cubic { handle_start, handle_end } => {
 						*handle_start += start_delta;
 						*handle_end += end_delta;
 					}
-					bezier_rs::BezierHandles::Quadratic { handle } => {
+					BezierHandles::Quadratic { handle } => {
 						*handle = row.transform.transform_point2(*handle) + (start_delta + end_delta) / 2.;
 					}
-					bezier_rs::BezierHandles::Linear => {}
+					BezierHandles::Linear => {}
 				}
 			}
 
@@ -1859,7 +1859,7 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 		let mut next_id = vector.segment_domain.next_id();
 
 		for &[start, end] in new_segments {
-			let handles = bezier_rs::BezierHandles::Linear;
+			let handles = BezierHandles::Linear;
 			vector.segment_domain.push(next_id.next_id(), start, end, handles, StrokeId::ZERO);
 		}
 	}

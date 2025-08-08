@@ -1961,7 +1961,6 @@ name = "graphene-core"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "bezier-rs",
  "bytemuck",
  "ctor",
  "dyn-any",
@@ -2018,10 +2017,10 @@ dependencies = [
 name = "graphene-path-bool"
 version = "0.1.0"
 dependencies = [
- "bezier-rs",
  "dyn-any",
  "glam",
  "graphene-core",
+ "kurbo",
  "log",
  "node-macro",
  "path-bool",
@@ -2089,10 +2088,10 @@ name = "graphene-svg-renderer"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "bezier-rs",
  "dyn-any",
  "glam",
  "graphene-core",
+ "kurbo",
  "log",
  "num-traits",
  "serde",
@@ -2130,7 +2129,6 @@ dependencies = [
 name = "graphite-editor"
 version = "0.0.0"
 dependencies = [
- "bezier-rs",
  "bitflags 2.9.1",
  "bytemuck",
  "derivative",
@@ -2139,6 +2137,7 @@ dependencies = [
  "futures",
  "glam",
  "graph-craft",
+ "graphene-core",
  "graphene-std",
  "graphite-proc-macros",
  "interpreted-executor",

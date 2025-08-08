@@ -1,6 +1,5 @@
 use crate::render_ext::RenderExt;
 use crate::to_peniko::BlendModeExt;
-use bezier_rs::Subpath;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_core::blending::BlendMode;
@@ -10,6 +9,7 @@ use graphene_core::math::quad::Quad;
 use graphene_core::raster::Image;
 use graphene_core::raster_types::{CPU, GPU, Raster};
 use graphene_core::render_complexity::RenderComplexity;
+use graphene_core::subpath::Subpath;
 use graphene_core::table::{Table, TableRow};
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::uuid::{NodeId, generate_uuid};
@@ -17,6 +17,7 @@ use graphene_core::vector::Vector;
 use graphene_core::vector::click_target::{ClickTarget, FreePoint};
 use graphene_core::vector::style::{Fill, Stroke, StrokeAlign, ViewMode};
 use graphene_core::{Artboard, Graphic};
+use kurbo::Affine;
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -425,8 +426,9 @@ impl Render for Table<Vector> {
 
 			let mut path = String::new();
 
-			for subpath in row.element.stroke_bezier_paths() {
-				let _ = subpath.subpath_to_svg(&mut path, applied_stroke_transform);
+			for mut bezpath in row.element.stroke_bezpath_iter() {
+				bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+				path.push_str(bezpath.to_svg().as_str());
 			}
 
 			let connected = vector.stroke_bezier_paths().all(|path| path.closed());
@@ -531,8 +533,11 @@ impl Render for Table<Vector> {
 
 			let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
 			let mut path = kurbo::BezPath::new();
-			for subpath in row.element.stroke_bezier_paths() {
-				subpath.to_vello_path(applied_stroke_transform, &mut path);
+			for mut bezpath in row.element.stroke_bezpath_iter() {
+				bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+				for element in bezpath {
+					path.push(element);
+				}
 			}
 
 			// If we're using opacity or a blend mode, we need to push a layer

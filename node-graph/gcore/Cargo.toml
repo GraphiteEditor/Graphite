@@ -29,7 +29,6 @@ rustc-hash = { workspace = true }
 dyn-any = { workspace = true }
 ctor = { workspace = true }
 rand_chacha = { workspace = true }
-bezier-rs = { workspace = true }
 specta = { workspace = true }
 image = { workspace = true }
 tinyvec = { workspace = true }

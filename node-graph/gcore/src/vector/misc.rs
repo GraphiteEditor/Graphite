@@ -1,7 +1,7 @@
 use super::PointId;
 use super::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
+use crate::subpath::{BezierHandles, ManipulatorGroup};
 use crate::vector::{SegmentId, Vector};
-use bezier_rs::{BezierHandles, ManipulatorGroup};
 use dyn_any::DynAny;
 use glam::DVec2;
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
@@ -115,18 +115,18 @@ pub fn segment_to_handles(segment: &PathSeg) -> BezierHandles {
 
 pub fn handles_to_segment(start: DVec2, handles: BezierHandles, end: DVec2) -> PathSeg {
 	match handles {
-		bezier_rs::BezierHandles::Linear => {
+		BezierHandles::Linear => {
 			let p0 = dvec2_to_point(start);
 			let p1 = dvec2_to_point(end);
 			PathSeg::Line(Line::new(p0, p1))
 		}
-		bezier_rs::BezierHandles::Quadratic { handle } => {
+		BezierHandles::Quadratic { handle } => {
 			let p0 = dvec2_to_point(start);
 			let p1 = dvec2_to_point(handle);
 			let p2 = dvec2_to_point(end);
 			PathSeg::Quad(QuadBez::new(p0, p1, p2))
 		}
-		bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
+		BezierHandles::Cubic { handle_start, handle_end } => {
 			let p0 = dvec2_to_point(start);
 			let p1 = dvec2_to_point(handle_start);
 			let p2 = dvec2_to_point(handle_end);
@@ -217,6 +217,15 @@ pub fn get_segment_points(segment: PathSeg) -> Vec<Point> {
 		PathSeg::Line(line) => [line.p0, line.p1].to_vec(),
 		PathSeg::Quad(quad_bez) => [quad_bez.p0, quad_bez.p1, quad_bez.p2].to_vec(),
 		PathSeg::Cubic(cubic_bez) => [cubic_bez.p0, cubic_bez.p1, cubic_bez.p2, cubic_bez.p3].to_vec(),
+	}
+}
+
+pub fn transform_pathseg(segment: PathSeg, transform: impl Fn(DVec2) -> DVec2) -> PathSeg {
+	let transform = |point: Point| dvec2_to_point(transform(point_to_dvec2(point)));
+	match segment {
+		PathSeg::Line(line) => PathSeg::Line(Line::new(transform(line.p0), transform(line.p1))),
+		PathSeg::Quad(quad_bez) => PathSeg::Quad(QuadBez::new(transform(quad_bez.p0), transform(quad_bez.p1), transform(quad_bez.p2))),
+		PathSeg::Cubic(cubic_bez) => PathSeg::Cubic(CubicBez::new(transform(cubic_bez.p0), transform(cubic_bez.p0), transform(cubic_bez.p0), transform(cubic_bez.p0))),
 	}
 }
 
