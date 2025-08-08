@@ -56,10 +56,10 @@
           src = pkgs.fetchFromGitHub {
             owner = "Rust-GPU";
             repo = "rust-gpu";
-            rev = "df1628a032d22c864397417c2871b74d602af986";
-            hash = "sha256-AFt3Nc+NqK8DxNUhDBcOUmk3XDVcoToVeFIMYNszdbY=";
+            rev = "3f05f5482824e3b1fbb44c9ef90a8795a0204c7c";
+            hash = "sha256-ygNxjkzuvcO2jLYhayNuIthhH6/seCbTq3M0IkbsDrY=";
           };
-          cargoHash = "sha256-en3BYJWQabH064xeAwYQrvcr6EuWg/QjvsG+Jd6HHCk";
+          cargoHash = "sha256-SzTvKUG/da//pHb7hN230wRsQ6BYAkP8HoXqJO30/dU=";
 
           cargoBuildFlags = [ "-p" "rustc_codegen_spirv" "--features=use-installed-tools" "--no-default-features" ];
 
