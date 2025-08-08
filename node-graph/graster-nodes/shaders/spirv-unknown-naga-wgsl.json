@@ -1,0 +1,26 @@
+{
+	"allows-weak-linkage": false,
+	"arch": "spirv",
+	"crt-objects-fallback": "false",
+	"crt-static-allows-dylibs": true,
+	"crt-static-respected": true,
+	"data-layout": "e-m:e-p:32:32:32-i64:64-n8:16:32:64",
+	"dll-prefix": "",
+	"dll-suffix": ".spv.json",
+	"dynamic-linking": true,
+	"emit-debug-gdb-scripts": false,
+	"env": "naga-wgsl",
+	"linker-flavor": "unix",
+	"linker-is-gnu": false,
+	"llvm-target": "spirv-unknown-naga-wgsl",
+	"main-needs-argc-argv": false,
+	"metadata": {
+		"description": null,
+		"host_tools": null,
+		"std": null,
+		"tier": null
+	},
+	"panic-strategy": "abort",
+	"simd-types-indirect": false,
+	"target-pointer-width": "32"
+}
