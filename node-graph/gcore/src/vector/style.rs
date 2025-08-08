@@ -24,7 +24,7 @@ impl std::fmt::Display for Fill {
 		match self {
 			Self::None => write!(f, "None"),
 			Self::Solid(color) => write!(f, "#{} (Alpha: {}%)", color.to_rgb_hex_srgb(), color.a() * 100.),
-			Self::Gradient(gradient) => write!(f, "{}", gradient),
+			Self::Gradient(gradient) => write!(f, "{gradient}"),
 		}
 	}
 }

@@ -67,7 +67,7 @@ impl ShapeGizmoHandler for PolygonGizmoHandler {
 		overlay_context: &mut OverlayContext,
 	) {
 		self.number_of_points_dial.overlays(document, selected_polygon_layer, shape_editor, mouse_position, overlay_context);
-		self.point_radius_handle.overlays(selected_polygon_layer, document, input, mouse_position, overlay_context);
+		self.point_radius_handle.overlays(selected_polygon_layer, document, input, overlay_context);
 
 		polygon_outline(selected_polygon_layer, document, overlay_context);
 	}
@@ -85,7 +85,7 @@ impl ShapeGizmoHandler for PolygonGizmoHandler {
 		}
 
 		if self.point_radius_handle.is_dragging_or_snapped() {
-			self.point_radius_handle.overlays(None, document, input, mouse_position, overlay_context);
+			self.point_radius_handle.overlays(None, document, input, overlay_context);
 		}
 	}
 

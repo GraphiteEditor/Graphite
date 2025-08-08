@@ -26,6 +26,7 @@ pub enum ShapeType {
 	#[default]
 	Polygon = 0,
 	Star,
+	Circle,
 	Arc,
 	Rectangle,
 	Ellipse,
@@ -37,6 +38,7 @@ impl ShapeType {
 		(match self {
 			Self::Polygon => "Polygon",
 			Self::Star => "Star",
+			Self::Circle => "Circle",
 			Self::Arc => "Arc",
 			Self::Rectangle => "Rectangle",
 			Self::Ellipse => "Ellipse",
@@ -203,12 +205,12 @@ pub fn transform_cage_overlays(document: &DocumentMessageHandler, tool_data: &mu
 
 pub fn anchor_overlays(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 	for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
-		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 		let transform = document.metadata().transform_to_viewport(layer);
 
-		overlay_context.outline_vector(&vector_data, transform);
+		overlay_context.outline_vector(&vector, transform);
 
-		for (_, &position) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
+		for (_, &position) in vector.point_domain.ids().iter().zip(vector.point_domain.positions()) {
 			overlay_context.manipulator_anchor(transform.transform_point2(position), false, None);
 		}
 	}
@@ -280,6 +282,19 @@ pub fn arc_end_points_ignore_layer(radius: f64, start_angle: f64, sweep_angle: f
 }
 
 /// Calculate the viewport position of a star vertex given its index
+/// Extract the node input values of Circle.
+/// Returns an option of (radius).
+pub fn extract_circle_radius(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<f64> {
+	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Circle")?;
+
+	let Some(&TaggedValue::F64(radius)) = node_inputs.get(1)?.as_value() else {
+		return None;
+	};
+
+	Some(radius)
+}
+
+/// Calculate the viewport position of as a star vertex given its index
 pub fn star_vertex_position(viewport: DAffine2, vertex_index: i32, n: u32, radius1: f64, radius2: f64) -> DVec2 {
 	let angle = ((vertex_index as f64) * PI) / (n as f64);
 	let radius = if vertex_index % 2 == 0 { radius1 } else { radius2 };

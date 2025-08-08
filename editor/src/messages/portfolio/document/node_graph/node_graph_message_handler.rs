@@ -17,17 +17,16 @@ use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle,
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_clip_mode};
+use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
-use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
-use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_std::math::math_ext::QuadExt;
-use graphene_std::vector::misc::subpath_to_kurbo_bezpath;
+use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
 use graphene_std::*;
-use kurbo::{Line, Point};
+use kurbo::{DEFAULT_ACCURACY, Shape};
 use renderer::Quad;
 use std::cmp::Ordering;
 
@@ -126,35 +125,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_layer_id] });
 			}
 			NodeGraphMessage::AddPathNode => {
-				let selected_nodes = network_interface.selected_nodes();
-				let mut selected_layers = selected_nodes.selected_layers(network_interface.document_metadata());
-				let first_layer = selected_layers.next();
-				let second_layer = selected_layers.next();
-				let has_single_selection = first_layer.is_some() && second_layer.is_none();
-
-				let compatible_type = first_layer.and_then(|layer| {
-					let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &network_interface);
-					graph_layer.horizontal_layer_flow().nth(1).and_then(|node_id| {
-						let (output_type, _) = network_interface.output_type(&node_id, 0, &[]);
-						Some(format!("type:{}", output_type.nested_type()))
-					})
-				});
-
-				let is_compatible = compatible_type.as_deref() == Some("type:Instances<VectorData>");
-
-				if first_layer.is_some() && has_single_selection && is_compatible {
-					if let Some(layer) = first_layer {
-						let node_type = "Path".to_string();
-						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &network_interface);
-						let is_modifiable = matches!(graph_layer.find_input("Path", 1), Some(TaggedValue::VectorModification(_)));
-						if !is_modifiable {
-							responses.add(NodeGraphMessage::CreateNodeInLayerWithTransaction {
-								node_type: node_type.clone(),
-								layer: LayerNodeIdentifier::new_unchecked(layer.to_node()),
-							});
-							responses.add(BroadcastEvent::SelectionChanged);
-						}
-					}
+				if let Some(layer) = make_path_editable_is_allowed(network_interface, network_interface.document_metadata()) {
+					responses.add(NodeGraphMessage::CreateNodeInLayerWithTransaction { node_type: "Path".to_string(), layer });
+					responses.add(BroadcastEvent::SelectionChanged);
 				}
 			}
 			NodeGraphMessage::AddImport => {
@@ -984,8 +957,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							to_connector_is_layer,
 							GraphWireStyle::Direct,
 						);
-						let mut path_string = String::new();
-						let _ = vector_wire.subpath_to_svg(&mut path_string, DAffine2::IDENTITY);
+						let path_string = vector_wire.to_svg();
 						let wire_path = WirePath {
 							path_string,
 							data_type: self.wire_in_progress_type,
@@ -1222,7 +1194,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 								.filter(|input| input.1.as_value().is_some())
 								.map(|input| input.0);
 							if let Some(selected_node_input_connect_index) = selected_node_input_connect_index {
-								let Some(bounding_box) = network_interface.node_bounding_box(&selected_node_id, selection_network_path) else {
+								let Some(node_bbox) = network_interface.node_bounding_box(&selected_node_id, selection_network_path) else {
 									log::error!("Could not get bounding box for node: {selected_node_id}");
 									return;
 								};
@@ -1246,31 +1218,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 										log::debug!("preferences.graph_wire_style: {:?}", preferences.graph_wire_style);
 										let (wire, is_stack) = network_interface.vector_wire_from_input(&input, preferences.graph_wire_style, selection_network_path)?;
 
-										let bbox_rect = kurbo::Rect::new(bounding_box[0].x, bounding_box[0].y, bounding_box[1].x, bounding_box[1].y);
+										let node_bbox = kurbo::Rect::new(node_bbox[0].x, node_bbox[0].y, node_bbox[1].x, node_bbox[1].y).to_path(DEFAULT_ACCURACY);
+										let inside = bezpath_is_inside_bezpath(&wire, &node_bbox, None, None);
 
-										let p1 = DVec2::new(bbox_rect.x0, bbox_rect.y0);
-										let p2 = DVec2::new(bbox_rect.x1, bbox_rect.y0);
-										let p3 = DVec2::new(bbox_rect.x1, bbox_rect.y1);
-										let p4 = DVec2::new(bbox_rect.x0, bbox_rect.y1);
-										let ps = [p1, p2, p3, p4];
-
-										let inside = wire.is_inside_subpath(&Subpath::from_anchors_linear(ps, true), None, None);
-
-										let wire = subpath_to_kurbo_bezpath(wire);
-
-										let intersect = wire.segments().any(|segment| {
-											let rect = kurbo::Rect::new(bounding_box[0].x, bounding_box[0].y, bounding_box[1].x, bounding_box[1].y);
-
-											let top_line = Line::new(Point::new(rect.x0, rect.y0), Point::new(rect.x1, rect.y0));
-											let bottom_line = Line::new(Point::new(rect.x0, rect.y1), Point::new(rect.x1, rect.y1));
-											let left_line = Line::new(Point::new(rect.x0, rect.y0), Point::new(rect.x0, rect.y1));
-											let right_line = Line::new(Point::new(rect.x1, rect.y0), Point::new(rect.x1, rect.y1));
-
-											!segment.intersect_line(top_line).is_empty()
-												|| !segment.intersect_line(bottom_line).is_empty()
-												|| !segment.intersect_line(left_line).is_empty()
-												|| !segment.intersect_line(right_line).is_empty()
-										});
+										let intersect = wire
+											.segments()
+											.any(|segment| node_bbox.segments().filter_map(|segment| segment.as_line()).any(|line| !segment.intersect_line(line).is_empty()));
 
 										(intersect || inside).then_some((input, is_stack))
 									})

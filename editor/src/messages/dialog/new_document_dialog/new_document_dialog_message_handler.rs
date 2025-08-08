@@ -1,7 +1,12 @@
-use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
+use crate::messages::{input_mapper::utility_types::input_mouse::ViewportBounds, layout::utility_types::widget_prelude::*};
 use glam::{IVec2, UVec2};
 use graph_craft::document::NodeId;
+
+#[derive(ExtractField)]
+pub struct NewDocumentDialogMessageContext<'a> {
+	pub viewport_bounds: &'a ViewportBounds,
+}
 
 /// A dialog to allow users to set some initial options about a new document.
 #[derive(Debug, Clone, Default, ExtractField)]
@@ -12,8 +17,8 @@ pub struct NewDocumentDialogMessageHandler {
 }
 
 #[message_handler_data]
-impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHandler {
-	fn process_message(&mut self, message: NewDocumentDialogMessage, responses: &mut VecDeque<Message>, _: ()) {
+impl<'a> MessageHandler<NewDocumentDialogMessage, NewDocumentDialogMessageContext<'a>> for NewDocumentDialogMessageHandler {
+	fn process_message(&mut self, message: NewDocumentDialogMessage, responses: &mut VecDeque<Message>, context: NewDocumentDialogMessageContext<'a>) {
 		match message {
 			NewDocumentDialogMessage::Name(name) => self.name = name,
 			NewDocumentDialogMessage::Infinite(infinite) => self.infinite = infinite,
@@ -24,16 +29,18 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 
 				let create_artboard = !self.infinite && self.dimensions.x > 0 && self.dimensions.y > 0;
 				if create_artboard {
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-					responses.add(DeferMessage::AfterGraphRun {
-						messages: vec![
-							GraphOperationMessage::NewArtboard {
-								id: NodeId::new(),
-								artboard: graphene_std::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
-							}
-							.into(),
-						],
+					responses.add(GraphOperationMessage::NewArtboard {
+						id: NodeId::new(),
+						artboard: graphene_std::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
 					});
+					responses.add(NavigationMessage::CanvasPan { delta: self.dimensions.as_dvec2() });
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					// If we already have bounds, we won't receive a viewport bounds update so we just fabricate one ourselves
+					if *context.viewport_bounds != ViewportBounds::default() {
+						responses.add(InputPreprocessorMessage::BoundsOfViewports {
+							bounds_of_viewports: vec![context.viewport_bounds.clone()],
+						});
+					}
 					responses.add(DeferMessage::AfterNavigationReady {
 						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into(), DocumentMessage::DeselectAllLayers.into()],
 					});
@@ -80,13 +87,13 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 				.widget_holder(),
 		];
 
-		let mut checkbox_id = CheckboxId::default();
+		let checkbox_id = CheckboxId::new();
 		let infinite = vec![
-			TextLabel::new("Infinite Canvas").table_align(true).min_width(90).for_checkbox(&mut checkbox_id).widget_holder(),
+			TextLabel::new("Infinite Canvas").table_align(true).min_width(90).for_checkbox(checkbox_id).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(self.infinite)
 				.on_update(|checkbox_input: &CheckboxInput| NewDocumentDialogMessage::Infinite(checkbox_input.checked).into())
-				.for_label(checkbox_id.clone())
+				.for_label(checkbox_id)
 				.widget_holder(),
 		];
 

@@ -6,6 +6,8 @@ use graphite_editor::messages::prelude::Message;
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
 
+pub(crate) mod consts;
+
 mod cef;
 use cef::{Setup, WindowSize};
 
@@ -17,12 +19,15 @@ use app::WinitApp;
 
 mod dirs;
 
+mod dialogs;
+
 #[derive(Debug)]
 pub(crate) enum CustomEvent {
 	UiUpdate(wgpu::Texture),
 	ScheduleBrowserWork(Instant),
-	MessageReceived { message: Message },
-	NodeGraphRan { texture: Option<wgpu::Texture> },
+	DispatchMessage(Message),
+	MessageReceived(Message),
+	NodeGraphRan(Option<wgpu::Texture>),
 }
 
 fn main() {
@@ -63,9 +68,7 @@ fn main() {
 			let last_render = Instant::now();
 			let (has_run, texture) = futures::executor::block_on(graphite_editor::node_graph_executor::run_node_graph());
 			if has_run {
-				let _ = rendering_loop_proxy.send_event(CustomEvent::NodeGraphRan {
-					texture: texture.map(|t| (*t.texture).clone()),
-				});
+				let _ = rendering_loop_proxy.send_event(CustomEvent::NodeGraphRan(texture.map(|t| (*t.texture).clone())));
 			}
 			let frame_time = Duration::from_secs_f32((target_fps as f32).recip());
 			let sleep = last_render + frame_time - Instant::now();
@@ -73,7 +76,7 @@ fn main() {
 		}
 	});
 
-	let mut winit_app = WinitApp::new(cef_context, window_size_sender, wgpu_context);
+	let mut winit_app = WinitApp::new(cef_context, window_size_sender, wgpu_context, event_loop.create_proxy());
 
 	event_loop.run_app(&mut winit_app).unwrap();
 }

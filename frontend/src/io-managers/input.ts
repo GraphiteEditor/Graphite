@@ -43,7 +43,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: AddEventListenerOptions }[] = [
-		{ target: window, eventName: "resize", action: () => updateBoundsOfViewports(editor, window.document.body) },
+		{ target: window, eventName: "resize", action: () => updateBoundsOfViewports(editor) },
 		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent) => onBeforeUnload(e) },
 		{ target: window, eventName: "keyup", action: (e: KeyboardEvent) => onKeyUp(e) },
 		{ target: window, eventName: "keydown", action: (e: KeyboardEvent) => onKeyDown(e) },
@@ -303,13 +303,19 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (!dataTransfer || targetIsTextField(e.target || undefined)) return;
 		e.preventDefault();
 
+		const LAYER_DATA = "graphite/layer: ";
+		const NODES_DATA = "graphite/nodes: ";
+		const VECTOR_DATA = "graphite/vector: ";
+
 		Array.from(dataTransfer.items).forEach(async (item) => {
 			if (item.type === "text/plain") {
 				item.getAsString((text) => {
-					if (text.startsWith("graphite/layer: ")) {
-						editor.handle.pasteSerializedData(text.substring(16, text.length));
-					} else if (text.startsWith("graphite/nodes: ")) {
-						editor.handle.pasteSerializedNodes(text.substring(16, text.length));
+					if (text.startsWith(LAYER_DATA)) {
+						editor.handle.pasteSerializedData(text.substring(LAYER_DATA.length, text.length));
+					} else if (text.startsWith(NODES_DATA)) {
+						editor.handle.pasteSerializedNodes(text.substring(NODES_DATA.length, text.length));
+					} else if (text.startsWith(VECTOR_DATA)) {
+						editor.handle.pasteSerializedVector(text.substring(VECTOR_DATA.length, text.length));
 					}
 				});
 			}
@@ -516,7 +522,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	// Bind the event listeners
 	bindListeners();
 	// Resize on creation
-	updateBoundsOfViewports(editor, window.document.body);
+	updateBoundsOfViewports(editor);
 
 	// Return the destructor
 	return unbindListeners;

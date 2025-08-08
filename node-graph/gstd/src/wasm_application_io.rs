@@ -2,26 +2,24 @@ use graph_craft::document::value::RenderOutput;
 pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
 use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
-#[cfg(target_arch = "wasm32")]
-use graphene_core::instances::Instances;
-#[cfg(target_arch = "wasm32")]
+use graphene_core::Artboard;
+#[cfg(target_family = "wasm")]
 use graphene_core::math::bbox::Bbox;
 use graphene_core::raster::image::Image;
-use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
+use graphene_core::raster_types::{CPU, Raster};
+use graphene_core::table::Table;
 use graphene_core::transform::Footprint;
-use graphene_core::vector::VectorDataTable;
-use graphene_core::{Color, Context, Ctx, ExtractFootprint, GraphicGroupTable, OwnedContextImpl, WasmNotSend};
+use graphene_core::vector::Vector;
+use graphene_core::{Color, Context, Ctx, ExtractFootprint, Graphic, OwnedContextImpl, WasmNotSend};
 use graphene_svg_renderer::RenderMetadata;
-use graphene_svg_renderer::{GraphicElementRendered, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
+use graphene_svg_renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 use base64::Engine;
-#[cfg(target_arch = "wasm32")]
-use glam::DAffine2;
 use std::sync::Arc;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 use wasm_bindgen::JsCast;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 #[cfg(feature = "wgpu")]
@@ -32,7 +30,7 @@ async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<W
 
 #[node_macro::node(category("Web Request"))]
 async fn get_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, discard_result: bool) -> String {
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(target_family = "wasm")]
 	{
 		if discard_result {
 			wasm_bindgen_futures::spawn_local(async move {
@@ -41,7 +39,7 @@ async fn get_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, disc
 			return String::new();
 		}
 	}
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(target_family = "wasm"))]
 	{
 		#[cfg(feature = "tokio")]
 		if discard_result {
@@ -62,7 +60,7 @@ async fn get_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, disc
 
 #[node_macro::node(category("Web Request"))]
 async fn post_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, body: Vec<u8>, discard_result: bool) -> String {
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(target_family = "wasm")]
 	{
 		if discard_result {
 			wasm_bindgen_futures::spawn_local(async move {
@@ -71,7 +69,7 @@ async fn post_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, bod
 			return String::new();
 		}
 	}
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(target_family = "wasm"))]
 	{
 		#[cfg(feature = "tokio")]
 		if discard_result {
@@ -100,9 +98,9 @@ fn string_to_bytes(_: impl Ctx, string: String) -> Vec<u8> {
 }
 
 #[node_macro::node(category("Web Request"), name("Image to Bytes"))]
-fn image_to_bytes(_: impl Ctx, image: RasterDataTable<CPU>) -> Vec<u8> {
-	let Some(image) = image.instance_ref_iter().next() else { return vec![] };
-	image.instance.data.iter().flat_map(|color| color.to_rgb8_srgb().into_iter()).collect::<Vec<u8>>()
+fn image_to_bytes(_: impl Ctx, image: Table<Raster<CPU>>) -> Vec<u8> {
+	let Some(image) = image.iter().next() else { return vec![] };
+	image.element.data.iter().flat_map(|color| color.to_rgb8_srgb().into_iter()).collect::<Vec<u8>>()
 }
 
 #[node_macro::node(category("Web Request"))]
@@ -121,9 +119,9 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")]
 }
 
 #[node_macro::node(category("Web Request"))]
-fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> RasterDataTable<CPU> {
+fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> Table<Raster<CPU>> {
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
-		return RasterDataTable::default();
+		return Table::new();
 	};
 	let image = image.to_rgba32f();
 	let image = Image {
@@ -136,10 +134,10 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> RasterDataTable<CPU> {
 		..Default::default()
 	};
 
-	RasterDataTable::new(Raster::new_cpu(image))
+	Table::new_from_element(Raster::new_cpu(image))
 }
 
-fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutputType {
+fn render_svg(data: impl Render, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutputType {
 	if !data.contains_artboard() && !render_params.hide_artboards {
 		render.leaf_tag("rect", |attributes| {
 			attributes.push("x", "0");
@@ -165,17 +163,12 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 }
 
 #[cfg(feature = "vello")]
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-async fn render_canvas(
-	render_config: RenderConfig,
-	data: impl GraphicElementRendered,
-	editor: &WasmEditorApi,
-	surface_handle: Option<wgpu_executor::WgpuSurface>,
-	render_params: RenderParams,
-) -> RenderOutputType {
+#[cfg_attr(not(target_family = "wasm"), allow(dead_code))]
+async fn render_canvas(render_config: RenderConfig, data: impl Render, editor: &WasmEditorApi, surface_handle: Option<wgpu_executor::WgpuSurface>, render_params: RenderParams) -> RenderOutputType {
 	use graphene_application_io::{ImageTexture, SurfaceFrame};
 
-	let footprint = render_config.viewport;
+	let mut footprint = render_config.viewport;
+	footprint.resolution = footprint.resolution.max(glam::UVec2::splat(1));
 	let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() else {
 		unreachable!("Attempted to render with Vello when no GPU executor is available");
 	};
@@ -216,27 +209,27 @@ async fn render_canvas(
 	}
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
 async fn rasterize<T: WasmNotSend + 'n>(
 	_: impl Ctx,
 	#[implementations(
-		VectorDataTable,
-		RasterDataTable<CPU>,
-		GraphicGroupTable,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Graphic>,
 	)]
-	mut data: Instances<T>,
+	mut data: Table<T>,
 	footprint: Footprint,
 	surface_handle: Arc<graphene_application_io::SurfaceHandle<HtmlCanvasElement>>,
-) -> RasterDataTable<CPU>
+) -> Table<Raster<CPU>>
 where
-	Instances<T>: GraphicElementRendered,
+	Table<T>: Render,
 {
-	use graphene_core::instances::Instance;
+	use graphene_core::table::TableRow;
 
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
-		return RasterDataTable::default();
+		return Table::new();
 	}
 
 	let mut render = SvgRender::new();
@@ -249,8 +242,8 @@ where
 		..Default::default()
 	};
 
-	for instance in data.instance_mut_iter() {
-		*instance.transform = DAffine2::from_translation(-aabb.start) * *instance.transform;
+	for row in data.iter_mut() {
+		*row.transform = glam::DAffine2::from_translation(-aabb.start) * *row.transform;
 	}
 	data.render_svg(&mut render, &render_params);
 	render.format_svg(glam::DVec2::ZERO, size);
@@ -277,23 +270,23 @@ where
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	RasterDataTable::new_instance(Instance {
-		instance: Raster::new_cpu(image),
+	Table::new_from_row(TableRow {
+		element: Raster::new_cpu(image),
 		transform: footprint.transform,
 		..Default::default()
 	})
 }
 
 #[node_macro::node(category(""))]
-async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
+async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
 	render_config: RenderConfig,
 	editor_api: impl Node<Context<'static>, Output = &'a WasmEditorApi>,
 	#[implementations(
-		Context -> VectorDataTable,
-		Context -> RasterDataTable<CPU>,
-		Context -> GraphicGroupTable,
-		Context -> graphene_core::Artboard,
-		Context -> graphene_core::ArtboardGroupTable,
+		Context -> Table<Vector>,
+		Context -> Table<Raster<CPU>>,
+		Context -> Table<Graphic>,
+		Context -> Table<Artboard>,
+		Context -> Artboard,
 		Context -> Option<Color>,
 		Context -> Vec<Color>,
 		Context -> bool,
@@ -326,13 +319,13 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	let data = data.eval(ctx.clone()).await;
 	let editor_api = editor_api.eval(None).await;
 
-	#[cfg(all(feature = "vello", not(test), target_arch = "wasm32"))]
+	#[cfg(all(feature = "vello", not(test), target_family = "wasm"))]
 	let _surface_handle = _surface_handle.eval(None).await;
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(target_family = "wasm"))]
 	let _surface_handle: Option<wgpu_executor::WgpuSurface> = None;
 
 	let use_vello = editor_api.editor_preferences.use_vello();
-	#[cfg(all(feature = "vello", not(test), target_arch = "wasm32"))]
+	#[cfg(all(feature = "vello", not(test), target_family = "wasm"))]
 	let use_vello = use_vello && _surface_handle.is_some();
 
 	let mut metadata = RenderMetadata::default();

@@ -19,6 +19,7 @@ graphite-editor = { path = "../editor", features = [
 	"ron",
 	"vello",
 ] }
+graphene-std = { workspace = true }
 graph-craft = { workspace = true }
 wgpu-executor = { workspace = true }
 
@@ -34,3 +35,7 @@ dirs = { workspace = true }
 ron = { workspace = true}
 bytemuck = { workspace = true }
 glam = { workspace = true }
+vello = { workspace = true }
+derivative = { workspace = true }
+rfd = { workspace = true }
+open = { workspace = true }

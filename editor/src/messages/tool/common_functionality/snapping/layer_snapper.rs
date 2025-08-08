@@ -455,8 +455,8 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 	}
 
 	// Anchors
-	for (index, group) in subpath.manipulator_groups().iter().enumerate() {
-		if snap_data.ignore_manipulator(layer, group.id) {
+	for (index, manipulators) in subpath.manipulator_groups().iter().enumerate() {
+		if snap_data.ignore_manipulator(layer, manipulators.id) {
 			continue;
 		}
 
@@ -464,12 +464,12 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 			return;
 		}
 
-		let colinear = are_manipulator_handles_colinear(group, to_document, subpath, index);
+		let colinear = are_manipulator_handles_colinear(manipulators, to_document, subpath, index);
 
 		// Colinear handles
 		if colinear && document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::AnchorPointWithColinearHandles)) {
 			points.push(SnapCandidatePoint::new(
-				to_document.transform_point2(group.anchor),
+				to_document.transform_point2(manipulators.anchor),
 				SnapSource::Path(PathSnapSource::AnchorPointWithColinearHandles),
 				SnapTarget::Path(PathSnapTarget::AnchorPointWithColinearHandles),
 				Some(layer),
@@ -478,7 +478,7 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 		// Free handles
 		else if !colinear && document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::AnchorPointWithFreeHandles)) {
 			points.push(SnapCandidatePoint::new(
-				to_document.transform_point2(group.anchor),
+				to_document.transform_point2(manipulators.anchor),
 				SnapSource::Path(PathSnapSource::AnchorPointWithFreeHandles),
 				SnapTarget::Path(PathSnapTarget::AnchorPointWithFreeHandles),
 				Some(layer),
@@ -487,10 +487,10 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 	}
 }
 
-pub fn are_manipulator_handles_colinear(group: &bezier_rs::ManipulatorGroup<PointId>, to_document: DAffine2, subpath: &Subpath<PointId>, index: usize) -> bool {
-	let anchor = group.anchor;
-	let handle_in = group.in_handle.map(|handle| anchor - handle).filter(handle_not_under(to_document));
-	let handle_out = group.out_handle.map(|handle| handle - anchor).filter(handle_not_under(to_document));
+pub fn are_manipulator_handles_colinear(manipulators: &bezier_rs::ManipulatorGroup<PointId>, to_document: DAffine2, subpath: &Subpath<PointId>, index: usize) -> bool {
+	let anchor = manipulators.anchor;
+	let handle_in = manipulators.in_handle.map(|handle| anchor - handle).filter(handle_not_under(to_document));
+	let handle_out = manipulators.out_handle.map(|handle| handle - anchor).filter(handle_not_under(to_document));
 	let anchor_is_endpoint = !subpath.closed() && (index == 0 || index == subpath.len() - 1);
 
 	// Unless this is an endpoint, check if both handles are colinear (within an angular epsilon)

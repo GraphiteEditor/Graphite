@@ -12,9 +12,14 @@ use graph_craft::document::NodeId;
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
 use graphene_std::text::{Font, TextAlign};
+use std::path::PathBuf;
+
+#[cfg(not(target_family = "wasm"))]
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 
 #[impl_message(Message, Frontend)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(derivative::Derivative, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derivative(Debug, PartialEq)]
 pub enum FrontendMessage {
 	// Display prefix: make the frontend show something, like a dialog
 	DisplayDialog {
@@ -59,15 +64,21 @@ pub enum FrontendMessage {
 		#[serde(rename = "commitDate")]
 		commit_date: String,
 	},
-	TriggerDownloadImage {
+	TriggerSaveDocument {
+		document_id: DocumentId,
+		name: String,
+		path: Option<PathBuf>,
+		content: Vec<u8>,
+	},
+	TriggerSaveFile {
+		name: String,
+		content: Vec<u8>,
+	},
+	TriggerExportImage {
 		svg: String,
 		name: String,
 		mime: String,
 		size: (f64, f64),
-	},
-	TriggerDownloadTextFile {
-		document: String,
-		name: String,
 	},
 	TriggerFetchAndOpenDocument {
 		name: String,
@@ -318,4 +329,10 @@ pub enum FrontendMessage {
 	UpdateViewportHolePunch {
 		active: bool,
 	},
+	#[cfg(not(target_family = "wasm"))]
+	RenderOverlays(
+		#[serde(skip, default = "OverlayContext::default")]
+		#[derivative(Debug = "ignore", PartialEq = "ignore")]
+		OverlayContext,
+	),
 }

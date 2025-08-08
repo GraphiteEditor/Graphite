@@ -192,7 +192,7 @@ export type ContextMenuInformation = {
 	contextMenuData: "CreateNode" | { type: "CreateNode"; compatibleType: string } | { nodeId: bigint; currentlyIsNode: boolean };
 };
 
-export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Group" | "Artboard";
+export type FrontendGraphDataType = "General" | "Raster" | "Vector" | "Number" | "Graphic" | "Artboard";
 
 export class Node {
 	readonly index!: bigint;
@@ -791,7 +791,17 @@ export class TriggerImport extends JsMessage {}
 
 export class TriggerPaste extends JsMessage {}
 
-export class TriggerDownloadImage extends JsMessage {
+export class TriggerSaveDocument extends JsMessage {
+	readonly documentId!: bigint;
+
+	readonly name!: string;
+
+	readonly path!: string | undefined;
+
+	readonly content!: ArrayBuffer;
+}
+
+export class TriggerExportImage extends JsMessage {
 	readonly svg!: string;
 
 	readonly name!: string;
@@ -802,10 +812,10 @@ export class TriggerDownloadImage extends JsMessage {
 	readonly size!: XY;
 }
 
-export class TriggerDownloadTextFile extends JsMessage {
-	readonly document!: string;
-
+export class TriggerSaveFile extends JsMessage {
 	readonly name!: string;
+
+	readonly content!: ArrayBuffer;
 }
 
 export class TriggerSavePreferences extends JsMessage {
@@ -1348,7 +1358,7 @@ export class TextLabel extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 
-	checkboxId!: bigint | undefined;
+	forCheckbox!: bigint | undefined;
 }
 
 export type ReferencePoint = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";
@@ -1647,8 +1657,9 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayRemoveEditableTextbox,
 	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
-	TriggerDownloadImage,
-	TriggerDownloadTextFile,
+	TriggerSaveDocument,
+	TriggerSaveFile,
+	TriggerExportImage,
 	TriggerFetchAndOpenDocument,
 	TriggerFontLoad,
 	TriggerImport,

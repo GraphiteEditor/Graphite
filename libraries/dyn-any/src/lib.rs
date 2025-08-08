@@ -363,31 +363,31 @@ fn simple_downcast_panic() {
 	assert_eq!(*downcast::<u32>(x).expect("attempted to perform invalid downcast"), 3_u32);
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 pub trait WasmNotSend: Send {}
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 pub trait WasmNotSend {}
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 impl<T: Send> WasmNotSend for T {}
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 impl<T> WasmNotSend for T {}
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 pub trait WasmNotSync: Sync {}
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 pub trait WasmNotSync {}
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 impl<T: Sync> WasmNotSync for T {}
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 impl<T> WasmNotSync for T {}
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 #[cfg(feature = "alloc")]
 pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n + Send>>;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 #[cfg(feature = "alloc")]
 pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;

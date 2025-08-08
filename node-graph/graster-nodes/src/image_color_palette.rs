@@ -1,11 +1,12 @@
 use graphene_core::color::Color;
 use graphene_core::context::Ctx;
-use graphene_core::raster_types::{CPU, RasterDataTable};
+use graphene_core::raster_types::{CPU, Raster};
+use graphene_core::table::Table;
 
 #[node_macro::node(category("Color"))]
 async fn image_color_palette(
 	_: impl Ctx,
-	image: RasterDataTable<CPU>,
+	image: Table<Raster<CPU>>,
 	#[hard_min(1.)]
 	#[soft_max(28.)]
 	max_size: u32,
@@ -17,8 +18,8 @@ async fn image_color_palette(
 	let mut histogram: Vec<usize> = vec![0; (bins + 1.) as usize];
 	let mut colors: Vec<Vec<Color>> = vec![vec![]; (bins + 1.) as usize];
 
-	for image_instance in image.instance_ref_iter() {
-		for pixel in image_instance.instance.data.iter() {
+	for row in image.iter() {
+		for pixel in row.element.data.iter() {
 			let r = pixel.r() * GRID;
 			let g = pixel.g() * GRID;
 			let b = pixel.b() * GRID;
@@ -66,13 +67,13 @@ async fn image_color_palette(
 mod test {
 	use super::*;
 	use graphene_core::raster::image::Image;
-	use graphene_core::raster_types::{Raster, RasterDataTable};
+	use graphene_core::raster_types::Raster;
 
 	#[test]
 	fn test_image_color_palette() {
 		let result = image_color_palette(
 			(),
-			RasterDataTable::new(Raster::new_cpu(Image {
+			Table::new_from_element(Raster::new_cpu(Image {
 				width: 100,
 				height: 100,
 				data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],

@@ -11,6 +11,7 @@ use glam::{DAffine2, DVec2};
 use graph_craft::Type;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
+use graphene_std::NodeInputDecleration;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::extract_xy::XY;
 use graphene_std::path_bool::BooleanOperation;
@@ -19,16 +20,10 @@ use graphene_std::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
 };
-use graphene_std::raster_types::{CPU, GPU, RasterDataTable};
 use graphene_std::text::{Font, TextAlign};
 use graphene_std::transform::{Footprint, ReferencePoint, Transform};
-use graphene_std::vector::VectorDataTable;
-use graphene_std::vector::misc::GridType;
-use graphene_std::vector::misc::{ArcType, MergeByDistanceAlgorithm};
-use graphene_std::vector::misc::{CentroidType, PointSpacingType};
-use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
-use graphene_std::vector::style::{GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
-use graphene_std::{GraphicGroupTable, NodeInputDecleration};
+use graphene_std::vector::misc::{ArcType, CentroidType, GridType, MergeByDistanceAlgorithm, PointSpacingType};
+use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
@@ -182,12 +177,6 @@ pub(crate) fn property_from_type(
 						// ==========================
 						Some(x) if x == TypeId::of::<Vec<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
 						Some(x) if x == TypeId::of::<Vec<DVec2>>() => array_of_vec2_widget(default_info, TextInput::default()).into(),
-						// ====================
-						// GRAPHICAL DATA TYPES
-						// ====================
-						Some(x) if x == TypeId::of::<VectorDataTable>() => vector_data_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<RasterDataTable<CPU>>() || x == TypeId::of::<RasterDataTable<GPU>>() => raster_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<GraphicGroupTable>() => group_widget(default_info).into(),
 						// ============
 						// STRUCT TYPES
 						// ============
@@ -794,33 +783,6 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetH
 		second_widgets = Some(second_row);
 	}
 	(first_widgets, second_widgets)
-}
-
-pub fn vector_data_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(parameter_widgets_info);
-
-	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-	widgets.push(TextLabel::new("Vector data is supplied through the node graph").widget_holder());
-
-	widgets
-}
-
-pub fn raster_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(parameter_widgets_info);
-
-	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-	widgets.push(TextLabel::new("Raster data is supplied through the node graph").widget_holder());
-
-	widgets
-}
-
-pub fn group_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(parameter_widgets_info);
-
-	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-	widgets.push(TextLabel::new("Group data is supplied through the node graph").widget_holder());
-
-	widgets
 }
 
 pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props: NumberInput) -> Vec<WidgetHolder> {
@@ -1882,7 +1844,7 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 								let mut expression = x.value.trim().to_string();
 
 								if ["+", "-", "*", "/", "^", "%"].iter().any(|&infix| infix == expression) {
-									expression = format!("A {} B", expression);
+									expression = format!("A {expression} B");
 								} else if expression == "^" {
 									expression = String::from("A^B");
 								}
@@ -1997,8 +1959,8 @@ pub mod choice {
 		{
 			let items = E::list()
 				.iter()
-				.map(|group| {
-					group
+				.map(|section| {
+					section
 						.iter()
 						.map(|(item, metadata)| {
 							let updater = updater_factory();
@@ -2018,7 +1980,7 @@ pub mod choice {
 		{
 			let items = E::list()
 				.iter()
-				.flat_map(|group| group.iter())
+				.flat_map(|section| section.iter())
 				.map(|(item, var_meta)| {
 					let updater = updater_factory();
 					let committer = committer_factory();
@@ -2080,7 +2042,7 @@ pub mod choice {
 		pub fn property_row(self) -> LayoutGroup {
 			let ParameterWidgetsInfo { document_node, node_id, index, .. } = self.parameter_info;
 			let Some(document_node) = document_node else {
-				log::error!("Could not get document node when building property row for node {:?}", node_id);
+				log::error!("Could not get document node when building property row for node {node_id:?}");
 				return LayoutGroup::Row { widgets: Vec::new() };
 			};
 

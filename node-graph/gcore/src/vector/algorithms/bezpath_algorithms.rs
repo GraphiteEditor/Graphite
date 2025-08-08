@@ -56,25 +56,26 @@ pub fn split_bezpath_at_segment(bezpath: &BezPath, segment_index: usize, t: f64)
 }
 
 /// Splits the [`BezPath`] at a `t` value which lies in the range of [0, 1].
-/// Returns [`None`] if the given [`BezPath`] has no segments or `t` is within f64::EPSILON of 0 or 1.
-pub fn split_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Option<(BezPath, BezPath)> {
-	if t <= f64::EPSILON || (1. - t) <= f64::EPSILON || bezpath.segments().count() == 0 {
+/// Returns [`None`] if the given [`BezPath`] has no segments.
+pub fn split_bezpath(bezpath: &BezPath, t_value: TValue) -> Option<(BezPath, BezPath)> {
+	if bezpath.segments().count() == 0 {
 		return None;
 	}
 
 	// Get the segment which lies at the split.
-	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, None);
+	let (segment_index, t) = eval_bezpath(bezpath, t_value, None);
 	split_bezpath_at_segment(bezpath, segment_index, t)
 }
 
-pub fn evaluate_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> Point {
-	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, segments_length);
+pub fn evaluate_bezpath(bezpath: &BezPath, t_value: TValue, segments_length: Option<&[f64]>) -> Point {
+	let (segment_index, t) = eval_bezpath(bezpath, t_value, segments_length);
 	bezpath.get_seg(segment_index + 1).unwrap().eval(t)
 }
 
-pub fn tangent_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> Point {
-	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, segments_length);
+pub fn tangent_on_bezpath(bezpath: &BezPath, t_value: TValue, segments_length: Option<&[f64]>) -> Point {
+	let (segment_index, t) = eval_bezpath(bezpath, t_value, segments_length);
 	let segment = bezpath.get_seg(segment_index + 1).unwrap();
+
 	match segment {
 		PathSeg::Line(line) => line.deriv().eval(t),
 		PathSeg::Quad(quad_bez) => quad_bez.deriv().eval(t),
@@ -180,23 +181,35 @@ pub fn sample_polyline_on_bezpath(
 	Some(sample_bezpath)
 }
 
-pub fn t_value_to_parametric(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> (usize, f64) {
-	if euclidian {
-		let (segment_index, t) = bezpath_t_value_to_parametric(bezpath, BezPathTValue::GlobalEuclidean(t), segments_length);
-		let segment = bezpath.get_seg(segment_index + 1).unwrap();
-		return (segment_index, eval_pathseg_euclidean(segment, t, DEFAULT_ACCURACY));
+#[derive(Debug, Clone, Copy)]
+pub enum TValue {
+	Parametric(f64),
+	Euclidean(f64),
+}
+
+/// Return the subsegment for the given [TValue] range. Returns None if parametric value of `t1` is greater than `t2`.
+pub fn trim_pathseg(segment: PathSeg, t1: TValue, t2: TValue) -> Option<PathSeg> {
+	let t1 = eval_pathseg(segment, t1);
+	let t2 = eval_pathseg(segment, t2);
+
+	if t1 > t2 { None } else { Some(segment.subsegment(t1..t2)) }
+}
+
+pub fn eval_pathseg(segment: PathSeg, t_value: TValue) -> f64 {
+	match t_value {
+		TValue::Parametric(t) => t,
+		TValue::Euclidean(t) => eval_pathseg_euclidean(segment, t, DEFAULT_ACCURACY),
 	}
-	bezpath_t_value_to_parametric(bezpath, BezPathTValue::GlobalParametric(t), segments_length)
 }
 
 /// Finds the t value of point on the given path segment i.e fractional distance along the segment's total length.
 /// It uses a binary search to find the value `t` such that the ratio `length_up_to_t / total_length` approximates the input `distance`.
-pub fn eval_pathseg_euclidean(path_segment: PathSeg, distance: f64, accuracy: f64) -> f64 {
+pub fn eval_pathseg_euclidean(segment: PathSeg, distance: f64, accuracy: f64) -> f64 {
 	let mut low_t = 0.;
 	let mut mid_t = 0.5;
 	let mut high_t = 1.;
 
-	let total_length = path_segment.perimeter(accuracy);
+	let total_length = segment.perimeter(accuracy);
 
 	if !total_length.is_finite() || total_length <= f64::EPSILON {
 		return 0.;
@@ -205,7 +218,7 @@ pub fn eval_pathseg_euclidean(path_segment: PathSeg, distance: f64, accuracy: f6
 	let distance = distance.clamp(0., 1.);
 
 	while high_t - low_t > accuracy {
-		let current_length = path_segment.subsegment(0.0..mid_t).perimeter(accuracy);
+		let current_length = segment.subsegment(0.0..mid_t).perimeter(accuracy);
 		let current_distance = current_length / total_length;
 
 		if current_distance > distance {
@@ -222,7 +235,7 @@ pub fn eval_pathseg_euclidean(path_segment: PathSeg, distance: f64, accuracy: f6
 /// Converts from a bezpath (composed of multiple segments) to a point along a certain segment represented.
 /// The returned tuple represents the segment index and the `t` value along that segment.
 /// Both the input global `t` value and the output `t` value are in euclidean space, meaning there is a constant rate of change along the arc length.
-fn global_euclidean_to_local_euclidean(bezpath: &BezPath, global_t: f64, lengths: &[f64], total_length: f64) -> (usize, f64) {
+fn eval_bazpath_to_euclidean(bezpath: &BezPath, global_t: f64, lengths: &[f64], total_length: f64) -> (usize, f64) {
 	let mut accumulator = 0.;
 	for (index, length) in lengths.iter().enumerate() {
 		let length_ratio = length / total_length;
@@ -234,19 +247,14 @@ fn global_euclidean_to_local_euclidean(bezpath: &BezPath, global_t: f64, lengths
 	(bezpath.segments().count() - 1, 1.)
 }
 
-enum BezPathTValue {
-	GlobalEuclidean(f64),
-	GlobalParametric(f64),
-}
-
-/// Convert a [BezPathTValue] to a parametric `(segment_index, t)` tuple.
-/// - Asserts that `t` values contained within the `SubpathTValue` argument lie in the range [0, 1].
-fn bezpath_t_value_to_parametric(bezpath: &BezPath, t: BezPathTValue, precomputed_segments_length: Option<&[f64]>) -> (usize, f64) {
+/// Convert a [TValue] to a parametric `(segment_index, t)` tuple.
+/// - Asserts that `t` values contained within the `TValue` argument lie in the range [0, 1].
+fn eval_bezpath(bezpath: &BezPath, t: TValue, precomputed_segments_length: Option<&[f64]>) -> (usize, f64) {
 	let segment_count = bezpath.segments().count();
 	assert!(segment_count >= 1);
 
 	match t {
-		BezPathTValue::GlobalEuclidean(t) => {
+		TValue::Euclidean(t) => {
 			let computed_segments_length;
 
 			let segments_length = if let Some(segments_length) = precomputed_segments_length {
@@ -258,16 +266,18 @@ fn bezpath_t_value_to_parametric(bezpath: &BezPath, t: BezPathTValue, precompute
 
 			let total_length = segments_length.iter().sum();
 
-			global_euclidean_to_local_euclidean(bezpath, t, segments_length, total_length)
+			let (segment_index, t) = eval_bazpath_to_euclidean(bezpath, t, segments_length, total_length);
+			let segment = bezpath.get_seg(segment_index + 1).unwrap();
+			(segment_index, eval_pathseg_euclidean(segment, t, DEFAULT_ACCURACY))
 		}
-		BezPathTValue::GlobalParametric(global_t) => {
-			assert!((0.0..=1.).contains(&global_t));
+		TValue::Parametric(t) => {
+			assert!((0.0..=1.).contains(&t));
 
-			if global_t == 1. {
+			if t == 1. {
 				return (segment_count - 1, 1.);
 			}
 
-			let scaled_t = global_t * segment_count as f64;
+			let scaled_t = t * segment_count as f64;
 			let segment_index = scaled_t.floor() as usize;
 			let t = scaled_t - segment_index as f64;
 
@@ -455,4 +465,71 @@ pub fn round_line_join(bezpath1: &BezPath, bezpath2: &BezPath, center: DVec2) ->
 	}
 
 	compute_circular_subpath_details(left, arc_point, right, center, Some(angle))
+}
+
+/// Returns `true` if the `bezpath1` is completely inside the `bezpath2`.
+pub fn bezpath_is_inside_bezpath(bezpath1: &BezPath, bezpath2: &BezPath, accuracy: Option<f64>, minimum_separation: Option<f64>) -> bool {
+	// Eliminate any possibility of one being inside the other, if either of them is empty
+	if bezpath1.is_empty() || bezpath2.is_empty() {
+		return false;
+	}
+
+	let inner_bbox = bezpath1.bounding_box();
+	let outer_bbox = bezpath2.bounding_box();
+
+	// Eliminate bezpath1 if its bounding box is not completely inside the bezpath2's bounding box.
+	// Reasoning:
+	// If the inner bezpath bounding box is larger than the outer bezpath bounding box in any direction
+	// then the inner bezpath is intersecting with or outside the outer bezpath.
+	if !outer_bbox.contains_rect(inner_bbox) {
+		return false;
+	}
+
+	// Eliminate bezpath1 if any of its anchor points are outside the bezpath2.
+	if !bezpath1.elements().iter().filter_map(|el| el.end_point()).all(|point| bezpath2.contains(point)) {
+		return false;
+	}
+
+	// Eliminate this subpath if it intersects with the other subpath.
+	if !bezpath_intersections(bezpath1, bezpath2, accuracy, minimum_separation).is_empty() {
+		return false;
+	}
+
+	// At this point:
+	// (1) This subpath's bounding box is inside the other subpath's bounding box,
+	// (2) Its anchors are inside the other subpath, and
+	// (3) It is not intersecting with the other subpath.
+	// Hence, this subpath is completely inside the given other subpath.
+	true
+}
+
+#[cfg(test)]
+mod tests {
+	// TODO: add more intersection tests
+
+	use super::bezpath_is_inside_bezpath;
+	use kurbo::{BezPath, DEFAULT_ACCURACY, Line, Point, Rect, Shape};
+
+	#[test]
+	fn is_inside_subpath() {
+		let boundary_polygon = Rect::new(100., 100., 500., 500.).to_path(DEFAULT_ACCURACY);
+
+		let mut curve_intersection = BezPath::new();
+		curve_intersection.move_to(Point::new(189., 289.));
+		curve_intersection.quad_to(Point::new(9., 286.), Point::new(45., 410.));
+		assert!(!bezpath_is_inside_bezpath(&curve_intersection, &boundary_polygon, None, None));
+
+		let mut curve_outside = BezPath::new();
+		curve_outside.move_to(Point::new(115., 37.));
+		curve_outside.quad_to(Point::new(51.4, 91.8), Point::new(76.5, 242.));
+		assert!(!bezpath_is_inside_bezpath(&curve_outside, &boundary_polygon, None, None));
+
+		let mut curve_inside = BezPath::new();
+		curve_inside.move_to(Point::new(210.1, 133.5));
+		curve_inside.curve_to(Point::new(150.2, 436.9), Point::new(436., 285.), Point::new(247.6, 240.7));
+		assert!(bezpath_is_inside_bezpath(&curve_inside, &boundary_polygon, None, None));
+
+		let line_inside = Line::new(Point::new(101., 101.5), Point::new(150.2, 499.)).to_path(DEFAULT_ACCURACY);
+		assert!(bezpath_is_inside_bezpath(&line_inside, &boundary_polygon, None, None));
+	}
 }

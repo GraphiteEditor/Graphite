@@ -2,7 +2,8 @@
 
 use crate::adjust::Adjust;
 use graphene_core::gradient::GradientStops;
-use graphene_core::raster_types::{CPU, RasterDataTable};
+use graphene_core::raster_types::{CPU, Raster};
+use graphene_core::table::Table;
 use graphene_core::{Color, Ctx};
 
 // Aims for interoperable compatibility with:
@@ -13,7 +14,7 @@ async fn gradient_map<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
 		GradientStops,
 	)]
 	mut image: T,
