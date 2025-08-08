@@ -13,9 +13,13 @@ homepage = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/bez
 repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/bezier-rs"
 documentation = "https://graphite.rs/libraries/bezier-rs/"
 
+[features]
+std = ["glam/std"]
+
 [dependencies]
 # Required dependencies
 glam = { workspace = true }
+poly-cool = { workspace = true }
 
 # Optional local dependencies
 dyn-any = { version = "0.3.0", path = "../dyn-any", optional = true }

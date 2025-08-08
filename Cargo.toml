@@ -165,6 +165,7 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing = "0.1.41"
 rfd = "0.15.4"
 open = "5.3.2"
+poly-cool = "0.2.0"
 
 [profile.dev]
 opt-level = 1
