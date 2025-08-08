@@ -131,6 +131,7 @@ pub const ARC_SNAP_THRESHOLD: f64 = 5.;
 pub const ARC_SWEEP_GIZMO_RADIUS: f64 = 14.;
 pub const ARC_SWEEP_GIZMO_TEXT_HEIGHT: f64 = 12.;
 pub const GIZMO_HIDE_THRESHOLD: f64 = 20.;
+pub const GRID_ROW_COLUMN_GIZMO_OFFSET: f64 = 15.;
 
 // SCROLLBARS
 pub const SCROLLBAR_SPACING: f64 = 0.1;
@@ -157,3 +158,10 @@ pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;
 
 // INPUT
 pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
+
+// GRID INPUT INDICES
+pub const GRID_TYPE_INDEX: usize = 1;
+pub const GRID_SPACING_INDEX: usize = 2;
+pub const GRID_COLUMNS_INDEX: usize = 3;
+pub const GRID_ROW_INDEX: usize = 4;
+pub const GRID_ANGLE_INDEX: usize = 5;
