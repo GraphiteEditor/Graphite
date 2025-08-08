@@ -193,6 +193,7 @@ tagged_value! {
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::artboard::migrate_artboard"))] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ArtboardGroup")]
 	Artboard(Table<Artboard>),
+	ColorTable(Table<Color>), // TODO: Rename to Color
 	// ============
 	// STRUCT TYPES
 	// ============

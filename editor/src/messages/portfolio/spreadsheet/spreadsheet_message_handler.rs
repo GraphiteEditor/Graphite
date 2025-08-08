@@ -158,6 +158,7 @@ impl TableRowLayout for Graphic {
 			Self::Vector(vector) => vector.identifier(),
 			Self::RasterCPU(_) => "Raster (on CPU)".to_string(),
 			Self::RasterGPU(_) => "Raster (on GPU)".to_string(),
+			Self::Color(_) => "Color".to_string(),
 		}
 	}
 	// Don't put a breadcrumb for Graphic
@@ -170,6 +171,12 @@ impl TableRowLayout for Graphic {
 			Self::Vector(table) => table.layout_with_breadcrumb(data),
 			Self::RasterCPU(_) => label("Raster is not supported"),
 			Self::RasterGPU(_) => label("Raster is not supported"),
+			Self::Color(color) => {
+				let rows = vec![vec![
+					TextLabel::new(format!("Colors:\n{}", color.iter().map(|color| color.element.to_rgba_hex_srgb()).collect::<Vec<_>>().join("\n"))).widget_holder(),
+				]];
+				vec![LayoutGroup::Table { rows }]
+			}
 		}
 	}
 }

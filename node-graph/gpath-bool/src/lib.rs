@@ -280,6 +280,21 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 
 					unioned.into_iter().collect::<Vec<_>>()
 				}
+				Graphic::Color(color) => color
+					.into_iter()
+					.map(|row| {
+						let mut element = Vector::default();
+						element.style.set_fill(Fill::Solid(row.element));
+						element.style.set_stroke_transform(DAffine2::IDENTITY);
+
+						TableRow {
+							element,
+							transform: row.transform,
+							alpha_blending: row.alpha_blending,
+							source_node_id: row.source_node_id,
+						}
+					})
+					.collect::<Vec<_>>(),
 			}
 		})
 		.collect()

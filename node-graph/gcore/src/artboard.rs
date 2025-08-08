@@ -1,5 +1,5 @@
 use crate::blending::AlphaBlending;
-use crate::bounds::BoundingBox;
+use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::math::quad::Quad;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::{Table, TableRow};
@@ -42,15 +42,16 @@ impl Artboard {
 }
 
 impl BoundingBox for Artboard {
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		let artboard_bounds = (transform * Quad::from_box([self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()])).bounding_box();
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
+		let artboard_bounds = || (transform * Quad::from_box([self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()])).bounding_box();
+
 		if self.clip {
-			Some(artboard_bounds)
-		} else {
-			[self.content.bounding_box(transform, include_stroke), Some(artboard_bounds)]
-				.into_iter()
-				.flatten()
-				.reduce(Quad::combine_bounds)
+			return RenderBoundingBox::Rectangle(artboard_bounds());
+		}
+
+		match self.content.bounding_box(transform, include_stroke) {
+			RenderBoundingBox::Rectangle(content_bounds) => RenderBoundingBox::Rectangle(Quad::combine_bounds(content_bounds, artboard_bounds())),
+			other => other,
 		}
 	}
 }

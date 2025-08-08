@@ -4,7 +4,7 @@ use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_f
 use super::misc::{CentroidType, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, Vector, VectorExt};
-use crate::bounds::BoundingBox;
+use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
 use crate::table::{Table, TableRow, TableRowMut};
@@ -366,7 +366,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn mirror<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>)] instance: Table<I>,
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>)] content: Table<I>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
 	#[unit(" px")] offset: f64,
 	#[range((-90., 90.))] angle: Angle,
@@ -375,14 +375,12 @@ async fn mirror<I: 'n + Send + Clone>(
 where
 	Table<I>: BoundingBox,
 {
-	let mut result_table = Table::new();
-
 	// Normalize the direction vector
 	let normal = DVec2::from_angle(angle.to_radians());
 
-	// The mirror reference is based on the bounding box (at least for now, until we have proper local layer origins)
-	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY, false) else {
-		return result_table;
+	// The mirror reference may be based on the bounding box if an explicit reference point is chosen
+	let RenderBoundingBox::Rectangle(bounding_box) = content.bounding_box(DAffine2::IDENTITY, false) else {
+		return content;
 	};
 
 	let reference_point_location = relative_to_bounds.point_in_bounding_box((bounding_box[0], bounding_box[1]).into());
@@ -404,15 +402,17 @@ where
 		reflection * DAffine2::from_translation(DVec2::from_angle(angle.to_radians()) * DVec2::splat(-offset))
 	};
 
+	let mut result_table = Table::new();
+
 	// Add original instance depending on the keep_original flag
 	if keep_original {
-		for instance in instance.clone().into_iter() {
+		for instance in content.clone().into_iter() {
 			result_table.push(instance);
 		}
 	}
 
 	// Create and add mirrored instance
-	for mut row in instance.into_iter() {
+	for mut row in content.into_iter() {
 		row.transform = reflected_transform * row.transform;
 		result_table.push(row);
 	}
