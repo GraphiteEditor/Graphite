@@ -1,5 +1,5 @@
 use crate::blending::AlphaBlending;
-use crate::bounds::BoundingBox;
+use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::{Table, TableRow};
 use crate::uuid::NodeId;
@@ -16,6 +16,7 @@ pub enum Graphic {
 	Vector(Table<Vector>),
 	RasterCPU(Table<Raster<CPU>>),
 	RasterGPU(Table<Raster<GPU>>),
+	Color(Table<Color>),
 }
 
 impl Default for Graphic {
@@ -97,6 +98,28 @@ impl From<Table<Raster<GPU>>> for Table<Graphic> {
 	}
 }
 
+// Color
+impl From<Color> for Graphic {
+	fn from(color: Color) -> Self {
+		Graphic::Color(Table::new_from_element(color))
+	}
+}
+impl From<Table<Color>> for Graphic {
+	fn from(color: Table<Color>) -> Self {
+		Graphic::Color(color)
+	}
+}
+impl From<Color> for Table<Graphic> {
+	fn from(color: Color) -> Self {
+		Table::new_from_element(Graphic::Color(Table::new_from_element(color)))
+	}
+}
+impl From<Table<Color>> for Table<Graphic> {
+	fn from(color: Table<Color>) -> Self {
+		Table::new_from_element(Graphic::Color(color))
+	}
+}
+
 // DAffine2
 impl From<DAffine2> for Graphic {
 	fn from(_: DAffine2) -> Self {
@@ -158,6 +181,7 @@ impl Graphic {
 			Graphic::Graphic(graphic) => graphic.iter().all(|row| row.alpha_blending.clip),
 			Graphic::RasterCPU(raster) => raster.iter().all(|row| row.alpha_blending.clip),
 			Graphic::RasterGPU(raster) => raster.iter().all(|row| row.alpha_blending.clip),
+			Graphic::Color(color) => color.iter().all(|row| row.alpha_blending.clip),
 		}
 	}
 
@@ -174,12 +198,13 @@ impl Graphic {
 }
 
 impl BoundingBox for Graphic {
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		match self {
 			Graphic::Vector(vector) => vector.bounding_box(transform, include_stroke),
 			Graphic::RasterCPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::Graphic(graphic) => graphic.bounding_box(transform, include_stroke),
+			Graphic::Color(color) => color.bounding_box(transform, include_stroke),
 		}
 	}
 }
@@ -249,8 +274,9 @@ async fn wrap_graphic<T: Into<Graphic> + 'n>(
 	#[implementations(
 		Table<Graphic>,
 	 	Table<Vector>,
-		Table<Raster<CPU>>,
+		 Table<Raster<CPU>>,
 	 	Table<Raster<GPU>>,
+	 	Table<Color>,
 		DAffine2,
 	)]
 	content: T,
@@ -268,6 +294,7 @@ async fn to_graphic<T: Into<Table<Graphic>> + 'n>(
 		Table<Vector>,
 		Table<Raster<CPU>>,
 		Table<Raster<GPU>>,
+		Table<Color>,
 	)]
 	content: T,
 ) -> Table<Graphic> {
