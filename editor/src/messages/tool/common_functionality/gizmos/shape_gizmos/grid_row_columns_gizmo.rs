@@ -161,12 +161,13 @@ impl RowColumnGizmo {
 fn check_if_over_gizmo(grid_type: GridType, columns: u32, rows: u32, spacing: DVec2, angles: DVec2, mouse_position: DVec2, viewport: DAffine2) -> Option<RowColumnGizmoType> {
 	let mouse_point = dvec2_to_point(mouse_position);
 	let accuracy = 1e-6;
-	let threshold = 20.;
+	let threshold = 32.;
 
 	for gizmo_type in RowColumnGizmoType::all() {
+		let line = gizmo_type.line(grid_type, columns, rows, spacing, angles, viewport);
 		let rect = gizmo_type.rect(grid_type, columns, rows, spacing, angles, viewport);
 
-		if rect.contains(mouse_point) {
+		if rect.contains(mouse_point) || line.nearest(mouse_point, accuracy).distance_sq < threshold {
 			return Some(gizmo_type);
 		}
 	}
@@ -348,7 +349,7 @@ impl RowColumnGizmoType {
 	fn line(&self, grid_type: GridType, columns: u32, rows: u32, spacing: DVec2, angles: DVec2, viewport: DAffine2) -> Line {
 		let (p0, p1) = self.get_line_points(grid_type, columns, rows, spacing, angles);
 		let direction = self.direction(viewport);
-		let gap = GRID_ROW_COLUMN_GIZMO_OFFSET * direction.normalize();
+		let gap = GRID_ROW_COLUMN_GIZMO_OFFSET * viewport.inverse().transform_vector2(direction).normalize();
 
 		convert_to_gizmo_line(viewport.transform_point2(p0 + gap), viewport.transform_point2(p1 + gap))
 	}
