@@ -262,7 +262,6 @@ function generateRustLicenses(): LicenseInfo[] | undefined {
 		const { stdout, stderr, status } = spawnSync("cargo", ["about", "generate", "about.hbs"], {
 			cwd: path.join(__dirname, ".."),
 			encoding: "utf8",
-			timeout: 60000, // One minute
 			shell: true,
 			windowsHide: true, // Hide the terminal on Windows
 		});
