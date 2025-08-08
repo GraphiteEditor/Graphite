@@ -16,7 +16,6 @@ use graphene_svg_renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRende
 
 #[cfg(target_family = "wasm")]
 use base64::Engine;
-use glam::DAffine2;
 use std::sync::Arc;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::JsCast;
@@ -196,7 +195,7 @@ async fn render_canvas(render_config: RenderConfig, data: impl Render, editor: &
 		let frame = SurfaceFrame {
 			surface_id: surface_handle.window_id,
 			resolution: render_config.viewport.resolution,
-			transform: DAffine2::IDENTITY,
+			transform: glam::DAffine2::IDENTITY,
 		};
 
 		RenderOutputType::CanvasFrame(frame)
@@ -244,7 +243,7 @@ where
 	};
 
 	for row in data.iter_mut() {
-		*row.transform = DAffine2::from_translation(-aabb.start) * *row.transform;
+		*row.transform = glam::DAffine2::from_translation(-aabb.start) * *row.transform;
 	}
 	data.render_svg(&mut render, &render_params);
 	render.format_svg(glam::DVec2::ZERO, size);
