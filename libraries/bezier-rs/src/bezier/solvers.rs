@@ -1,7 +1,6 @@
 use super::*;
 use crate::polynomial::Polynomial;
 use crate::utils::{TValue, solve_cubic, solve_quadratic};
-use crate::{SymmetricalBasis, to_symmetrical_basis_pair};
 use glam::DMat2;
 use std::ops::Range;
 
@@ -10,8 +9,10 @@ impl Bezier {
 	/// Get roots as [[x], [y]]
 	#[must_use]
 	pub fn roots(self) -> [Vec<f64>; 2] {
-		let s_basis = to_symmetrical_basis_pair(self);
-		[s_basis.x.roots(), s_basis.y.roots()]
+		let (x, y) = self.parametric_polynomial();
+		let x = poly_cool::Poly::new(x.coefficients().iter().copied());
+		let y = poly_cool::Poly::new(y.coefficients().iter().copied());
+		[x.roots_between(0.0, 1.0, 1e-8), y.roots_between(0.0, 1.0, 1e-8)]
 	}
 
 	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point `t` along the curve using De Casteljau's algorithm.
