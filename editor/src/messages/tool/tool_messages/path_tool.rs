@@ -2,7 +2,7 @@ use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
 	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DEFAULT_STROKE_WIDTH, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD,
-	DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, POINT_MERGE_THRESHOLD, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
@@ -297,6 +297,7 @@ impl LayoutHolder for PathTool {
 		let merge_button = IconButton::new("Folder", 24)
 			.tooltip("Merge selected points")
 			.on_update(|_| PathToolMessage::MergeSelectedPoints.into())
+			.disabled(!self.tool_data.merging_points_enabled)
 			.widget_holder();
 
 		let [_checkbox, _dropdown] = {
@@ -581,6 +582,7 @@ struct PathToolData {
 	hovered_layers: Vec<LayerNodeIdentifier>,
 	ghost_outline: Vec<(Vec<ClickTargetType>, LayerNodeIdentifier)>,
 	make_path_editable_is_allowed: bool,
+	merging_points_enabled: bool,
 }
 
 impl PathToolData {
@@ -640,6 +642,64 @@ impl PathToolData {
 			SelectionStatus::Multiple(_) => true,
 		};
 		self.selection_status = selection_status;
+	}
+
+	fn update_merge_point_toggle(&mut self, shape_editor: &ShapeState, document: &DocumentMessageHandler, vector_meshes: bool) {
+		let mut non_empty_layers = shape_editor.selected_shape_state.iter().filter(|(_, state)| !state.is_empty());
+		let Some((layer, _)) = non_empty_layers.next() else {
+			self.merging_points_enabled = false;
+			return;
+		};
+
+		if non_empty_layers.next().is_some() {
+			self.merging_points_enabled = false;
+			return;
+		}
+
+		if !vector_meshes {
+			// Check that only two points are selected such that they are endpoints
+			let all_anchors = shape_editor.selected_points().all(|point| matches!(point, ManipulatorPointId::Anchor(_)));
+			let points = shape_editor
+				.selected_points()
+				.filter_map(|point| if let ManipulatorPointId::Anchor(anchor) = point { Some(anchor) } else { None })
+				.collect::<Vec<_>>();
+
+			if points.len() == 2 && all_anchors {
+				let Some(layer) = shape_editor.selected_layers().next() else { return };
+				let Some(vector) = document.network_interface.compute_modified_vector(*layer) else { return };
+				if points.iter().all(|point| vector.all_connected(**point).count() == 1) {
+					self.merging_points_enabled = true;
+					return;
+				}
+			}
+			self.merging_points_enabled = false;
+			return;
+		}
+
+		let points = shape_editor.selected_points().collect::<Vec<_>>();
+		let all_anchors = points.iter().all(|point| matches!(point, ManipulatorPointId::Anchor(_)));
+
+		if points.len() < 2 || !all_anchors {
+			self.merging_points_enabled = false;
+			return;
+		}
+
+		let Some(vector) = document.network_interface.compute_modified_vector(*layer) else { return };
+		let positions = points.iter().filter_map(|point| point.get_position(&vector)).collect::<Vec<_>>();
+
+		let mut sum = DVec2::default();
+		for position in &positions {
+			sum += position;
+		}
+		let centroid = sum / (positions.len() as f64);
+
+		for position in positions {
+			if position.distance(centroid) > POINT_MERGE_THRESHOLD {
+				self.merging_points_enabled = false;
+				return;
+			}
+		}
+		self.merging_points_enabled = true;
 	}
 
 	fn remove_saved_points(&mut self) {
@@ -3019,6 +3079,10 @@ impl Fsm for PathToolFsmState {
 
 				tool_data.make_path_editable_is_allowed = make_path_editable_is_allowed(&document.network_interface, document.metadata()).is_some();
 				tool_data.update_selection_status(shape_editor, document);
+				tool_data.update_merge_point_toggle(shape_editor, document, tool_action_data.preferences.vector_meshes);
+
+				// TODO: Here add a toggle for the disable of the merge points button
+
 				self
 			}
 			(_, PathToolMessage::ManipulatorMakeHandlesColinear) => {
@@ -3047,71 +3111,83 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(_, PathToolMessage::MergeSelectedPoints) => {
-				// Get all the selected points and merge the selected points
 				// Assuming that all these points are on the same layer
+				let mut non_empty_layers = shape_editor.selected_shape_state.iter().filter(|(_, state)| !state.is_empty());
 
-				//TODO: Check here that there are more than two points selected and all are within certain threshold
+				// If all layers are empty, or no layer selected
+				let Some((layer, _)) = non_empty_layers.next() else {
+					return PathToolFsmState::Ready;
+				};
 
-				if let Some(layer) = shape_editor.selected_layers().next() {
-					responses.add(DocumentMessage::AddTransaction);
-					let state = shape_editor.selected_shape_state.get(layer).expect("No state for selected layer");
-					let points = state
-						.selected_points()
-						.filter_map(|point| if let ManipulatorPointId::Anchor(anchor) = point { Some(anchor) } else { None });
+				// If selected points are of more than one layer
+				if non_empty_layers.next().is_some() {
+					return PathToolFsmState::Ready;
+				}
 
-					// Calculate the centroid
+				let points = shape_editor.selected_points().collect::<Vec<_>>();
+				let all_anchors = points.iter().all(|point| matches!(point, ManipulatorPointId::Anchor(_)));
+				if points.len() < 2 || !all_anchors {
+					return PathToolFsmState::Ready;
+				}
 
-					if let Some(vector_data) = document.network_interface.compute_modified_vector(*layer) {
-						let positions = points.filter_map(|point| ManipulatorPointId::Anchor(point).get_position(&vector_data));
+				responses.add(DocumentMessage::StartTransaction);
+				let state = shape_editor.selected_shape_state.get(layer).expect("No state for selected layer");
+				let points = state
+					.selected_points()
+					.filter_map(|point| if let ManipulatorPointId::Anchor(anchor) = point { Some(anchor) } else { None });
 
-						let mut sum = DVec2::default();
-						let mut count = 0 as f64;
+				// Calculate the centroid
+				if let Some(vector) = document.network_interface.compute_modified_vector(*layer) {
+					let positions = points.filter_map(|point| ManipulatorPointId::Anchor(point).get_position(&vector)).collect::<Vec<_>>();
+					let mut sum = DVec2::default();
+					for position in &positions {
+						sum += position;
+					}
+					let centroid = sum / (positions.len() as f64);
 
-						for position in positions {
-							sum += position;
-							count += 1.;
+					for position in &positions {
+						if position.distance(centroid) > POINT_MERGE_THRESHOLD {
+							return PathToolFsmState::Ready;
 						}
+					}
 
-						let centroid = sum / count;
+					// Add a new point with the new coordinates
+					let new_id = PointId::generate();
+					let modification_type = VectorModificationType::InsertPoint { id: new_id, position: centroid };
+					responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
 
-						// Add a new point with the new coordinates
-						let new_id = PointId::generate();
-						let modification_type = VectorModificationType::InsertPoint { id: new_id, position: centroid };
+					// Remove old points
+					for point in state
+						.selected_points()
+						.filter_map(|point| if let ManipulatorPointId::Anchor(anchor) = point { Some(anchor) } else { None })
+					{
+						let modification_type = VectorModificationType::RemovePoint { id: point };
 						responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+					}
 
-						// Remove old points
-						for point in state
-							.selected_points()
-							.filter_map(|point| if let ManipulatorPointId::Anchor(anchor) = point { Some(anchor) } else { None })
-						{
-							let modification_type = VectorModificationType::RemovePoint { id: point };
+					// Find those segments which were connected to just one of the selected points
+					for (_, bezier, start, end) in vector.segment_bezier_iter() {
+						let id = SegmentId::generate();
+						let handles = |handles: BezierHandles| -> [Option<DVec2>; 2] {
+							match handles {
+								BezierHandles::Linear => [None, None],
+								BezierHandles::Quadratic { handle } => [Some(handle - bezier.start), None],
+								BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start), Some(handle_end - bezier.end)],
+							}
+						};
+
+						if state.is_point_selected(ManipulatorPointId::Anchor(start)) {
+							let points = [new_id, end];
+							let handles = handles(bezier.handles);
+							let modification_type = VectorModificationType::InsertSegment { id, points, handles };
+							responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+						} else if state.is_point_selected(ManipulatorPointId::Anchor(end)) {
+							let points = [start, new_id];
+							let handles = handles(bezier.handles);
+							let modification_type = VectorModificationType::InsertSegment { id, points, handles };
 							responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
 						}
-
-						// Find those segments which were connected to just one of the selected points
-						for (_, bezier, start, end) in vector_data.segment_bezier_iter() {
-							if state.is_point_selected(ManipulatorPointId::Anchor(start)) {
-								let id = SegmentId::generate();
-								let points = [new_id, end];
-								let handles = match bezier.handles {
-									BezierHandles::Linear => [None, None],
-									BezierHandles::Quadratic { handle } => [Some(handle - bezier.start), None],
-									BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start), Some(handle_end - bezier.end)],
-								};
-								let modification_type = VectorModificationType::InsertSegment { id, points, handles };
-								responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
-							} else if state.is_point_selected(ManipulatorPointId::Anchor(end)) {
-								let id = SegmentId::generate();
-								let points = [start, new_id];
-								let handles = match bezier.handles {
-									BezierHandles::Linear => [None, None],
-									BezierHandles::Quadratic { handle } => [Some(handle - bezier.start), None],
-									BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start), Some(handle_end - bezier.end)],
-								};
-								let modification_type = VectorModificationType::InsertSegment { id, points, handles };
-								responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
-							}
-						}
+						responses.add(DocumentMessage::EndTransaction);
 					}
 				}
 
