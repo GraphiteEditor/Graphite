@@ -2164,7 +2164,7 @@ impl Fsm for PenToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, _: &Self::ToolData, _: &ToolActionMessageContext, _: &Self::ToolOptions, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			PenToolFsmState::Ready | PenToolFsmState::GRSHandle => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::Lmb, "Draw Path"),
@@ -2226,7 +2226,7 @@ impl Fsm for PenToolFsmState {
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
-	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
+	fn update_cursor(&self, _: &Self::ToolData, _: &ToolActionMessageContext, _: &Self::ToolOptions, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
 }

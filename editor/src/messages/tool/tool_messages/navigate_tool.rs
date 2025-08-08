@@ -145,7 +145,7 @@ impl Fsm for NavigateToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, _: &Self::ToolData, _: &ToolActionMessageContext, _: &Self::ToolOptions, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			NavigateToolFsmState::Ready | NavigateToolFsmState::ZoomOrClickZooming => HintData(vec![
 				HintGroup(vec![
@@ -169,7 +169,7 @@ impl Fsm for NavigateToolFsmState {
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
-	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
+	fn update_cursor(&self, _: &Self::ToolData, _: &ToolActionMessageContext, _: &Self::ToolOptions, responses: &mut VecDeque<Message>) {
 		let cursor = match *self {
 			NavigateToolFsmState::Ready => MouseCursorIcon::ZoomIn,
 			NavigateToolFsmState::Tilting => MouseCursorIcon::Default,

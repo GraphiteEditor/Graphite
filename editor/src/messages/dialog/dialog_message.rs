@@ -8,8 +8,6 @@ pub enum DialogMessage {
 	ExportDialog(ExportDialogMessage),
 	#[child]
 	NewDocumentDialog(NewDocumentDialogMessage),
-	#[child]
-	PreferencesDialog(PreferencesDialogMessage),
 
 	// Messages
 	CloseAllDocumentsWithConfirmation,

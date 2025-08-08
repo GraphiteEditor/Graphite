@@ -451,6 +451,19 @@ impl LayerNodeIdentifier {
 	}
 }
 
+impl PartialEq<NodeId> for LayerNodeIdentifier {
+	fn eq(&self, other: &NodeId) -> bool {
+		self.to_node() == *other
+	}
+}
+
+// Implement <BookFormat> == <Book> comparisons
+impl PartialEq<LayerNodeIdentifier> for NodeId {
+	fn eq(&self, other: &LayerNodeIdentifier) -> bool {
+		other.to_node() == *self
+	}
+}
+
 // ========
 // AxisIter
 // ========

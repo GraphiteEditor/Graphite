@@ -78,7 +78,8 @@ impl ScrollDelta {
 	}
 }
 
-// TODO: Document the difference between this and EditorMouseState
+/// This is similar to [`EditorMouseState`] except that the position is stored relative to the viewport rather than relative to the UI.
+/// Convert using [`EditorMouseState::to_mouse_state`]
 #[derive(Debug, Copy, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MouseState {
 	pub position: ViewportPosition,
@@ -94,7 +95,8 @@ impl MouseState {
 	}
 }
 
-// TODO: Document the difference between this and MouseState
+/// This is similar to [`MouseState`] except that the position is stored relative to the UI rather than relative to the viewport.
+/// Convert using [`EditorMouseState::to_mouse_state`]
 #[derive(Debug, Copy, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EditorMouseState {
 	pub editor_position: EditorPosition,

@@ -83,6 +83,13 @@ impl NodeGraphExecutor {
 		};
 		(node_runtime, node_executor)
 	}
+
+	/// It is useful to get the current execution id for tests to check if any more exeuctions have been queued.
+	#[cfg(test)]
+	pub(crate) fn current_execution_id(&self) -> u64 {
+		self.current_execution_id
+	}
+
 	/// Execute the network by flattening it and creating a borrow stack.
 	fn queue_execution(&mut self, render_config: RenderConfig) -> u64 {
 		let execution_id = self.current_execution_id;
@@ -290,7 +297,7 @@ impl NodeGraphExecutor {
 					} else {
 						self.process_node_graph_output(node_graph_output, transform, responses)?
 					}
-					responses.add_front(DeferMessage::TriggerGraphRun(execution_id, execution_context.document_id));
+					responses.add(DeferMessage::TriggerGraphRun(execution_id, execution_context.document_id));
 
 					// Update the spreadsheet on the frontend using the value of the inspect result.
 					if self.old_inspect_node.is_some() {

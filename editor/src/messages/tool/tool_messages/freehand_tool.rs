@@ -259,10 +259,14 @@ impl Fsm for FreehandToolFsmState {
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::PointerMove) => {
 				if let Some(layer) = tool_data.layer {
-					let transform = document.metadata().transform_to_viewport(layer);
-					let position = transform.inverse().transform_point2(input.mouse.position);
+					if !document.metadata().upstream_footprints.contains_key(&layer.to_node()) {
+						warn!("Freehand tool layer not exist");
+					} else {
+						let transform = document.metadata().transform_to_viewport(layer);
+						let position = transform.inverse().transform_point2(input.mouse.position);
 
-					extend_path_with_next_segment(tool_data, position, true, responses);
+						extend_path_with_next_segment(tool_data, position, true, responses);
+					}
 				}
 
 				FreehandToolFsmState::Drawing
@@ -297,7 +301,7 @@ impl Fsm for FreehandToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, _: &Self::ToolData, _: &ToolActionMessageContext, _: &Self::ToolOptions, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			FreehandToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polyline"),
@@ -310,7 +314,7 @@ impl Fsm for FreehandToolFsmState {
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
-	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
+	fn update_cursor(&self, _: &Self::ToolData, _: &ToolActionMessageContext, _: &Self::ToolOptions, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
 }

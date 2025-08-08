@@ -124,7 +124,7 @@ impl Fsm for EyedropperToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, _: &Self::ToolData, _: &ToolActionMessageContext, _: &Self::ToolOptions, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			EyedropperToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::Lmb, "Sample to Primary"),
@@ -138,7 +138,7 @@ impl Fsm for EyedropperToolFsmState {
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
-	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
+	fn update_cursor(&self, _: &Self::ToolData, _: &ToolActionMessageContext, _: &Self::ToolOptions, responses: &mut VecDeque<Message>) {
 		let cursor = match *self {
 			EyedropperToolFsmState::Ready => MouseCursorIcon::Default,
 			EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary => MouseCursorIcon::None,
