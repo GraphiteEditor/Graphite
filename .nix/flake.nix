@@ -33,11 +33,52 @@
         pkgs = import nixpkgs {
           inherit system overlays;
         };
- 
-        rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
+
+        rustExtensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
+        rust = pkgs.rust-bin.stable.latest.default.override {
           targets = [ "wasm32-unknown-unknown" ];
-          extensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
+          extensions = rustExtensions;
         };
+
+        rustGPUToolchainPkg = pkgs.rust-bin.nightly."2025-06-23".default.override {
+          extensions = rustExtensions ++ [ "rustc-dev" "llvm-tools" ];
+        };
+        rustGPUToolchainRustPlatform = pkgs.makeRustPlatform {
+          cargo = rustGPUToolchainPkg;
+          rustc = rustGPUToolchainPkg;
+        };
+        rustc_codegen_spirv = rustGPUToolchainRustPlatform.buildRustPackage (finalAttrs: {
+          pname = "rustc_codegen_spirv";
+          version = "0-unstable-2025-08-04";
+          src = pkgs.fetchFromGitHub {
+            owner = "Rust-GPU";
+            repo = "rust-gpu";
+            rev = "df1628a032d22c864397417c2871b74d602af986";
+            hash = "sha256-AFt3Nc+NqK8DxNUhDBcOUmk3XDVcoToVeFIMYNszdbY=";
+          };
+          cargoHash = "sha256-en3BYJWQabH064xeAwYQrvcr6EuWg/QjvsG+Jd6HHCk";
+          cargoBuildFlags = [ "-p" "rustc_codegen_spirv" "--features=use-installed-tools" "--no-default-features" ];
+          doCheck = false;
+        });
+
+        # Wrapper script for running rust commands with the rust toolchain used by rust-gpu.
+        # For example `rust-gpu cargo --version` or `rust-gpu rustc --version`.
+        execWithRustGPUEnvironment = pkgs.writeShellScriptBin "rust-gpu" ''
+          #!${pkgs.lib.getExe pkgs.bash}
+
+          filtered_args=()
+          for arg in "$@"; do
+            case "$arg" in
+              +nightly|+nightly-*) ;;
+              *) filtered_args+=("$arg") ;;
+            esac
+          done
+
+          export PATH="${pkgs.lib.makeBinPath [ rustGPUToolchainPkg pkgs.spirv-tools ]}:$PATH"
+          export RUSTC_CODEGEN_SPIRV_PATH="${rustc_codegen_spirv}/lib/librustc_codegen_spirv.so"
+
+          exec ${"\${filtered_args[@]}"}
+        '';
 
         libcef = pkgs.libcef.overrideAttrs (finalAttrs: previousAttrs: {
           version = "138.0.26";
@@ -51,7 +92,6 @@
             strip $out/lib/*
           '';
         });
-
         libcefPath = pkgs.runCommand "libcef-path" {} ''
           mkdir -p $out
 
@@ -79,7 +119,7 @@
 
         # Development tools that don't need to be in LD_LIBRARY_PATH
         buildTools =  [
-          rustc-wasm
+          rust
           pkgs.nodejs
           pkgs.nodePackages.npm
           pkgs.binaryen
@@ -91,6 +131,8 @@
 
           # Linker
           pkgs.mold
+
+          execWithRustGPUEnvironment
         ];
         # Development tools that don't need to be in LD_LIBRARY_PATH
         devTools = with pkgs; [
