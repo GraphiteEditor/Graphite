@@ -33,11 +33,56 @@
         pkgs = import nixpkgs {
           inherit system overlays;
         };
- 
-        rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
+
+        rustExtensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
+
+        rust = pkgs.rust-bin.stable.latest.default.override {
           targets = [ "wasm32-unknown-unknown" ];
-          extensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
+          extensions = rustExtensions;
         };
+
+        rustGPUToolchainPkg = pkgs.rust-bin.nightly."2025-06-23".default.override {
+          extensions = rustExtensions ++ [ "rustc-dev" "llvm-tools" ];
+        };
+
+        rustPlatformRustGPUToolchain = pkgs.makeRustPlatform {
+          cargo = rustGPUToolchainPkg;
+          rustc = rustGPUToolchainPkg;
+        };
+
+        rustc_codegen_spirv = rustPlatformRustGPUToolchain.buildRustPackage (finalAttrs: {
+          pname = "rustc_codegen_spirv";
+          version = "0-unstable-2025-08-04";
+          src = pkgs.fetchFromGitHub {
+            owner = "Rust-GPU";
+            repo = "rust-gpu";
+            rev = "3f05f5482824e3b1fbb44c9ef90a8795a0204c7c";
+            hash = "sha256-ygNxjkzuvcO2jLYhayNuIthhH6/seCbTq3M0IkbsDrY=";
+          };
+          cargoHash = "sha256-SzTvKUG/da//pHb7hN230wRsQ6BYAkP8HoXqJO30/dU=";
+
+          cargoBuildFlags = [ "-p" "rustc_codegen_spirv" "--features=use-installed-tools" "--no-default-features" ];
+
+          doCheck = false;
+        });
+
+
+        cargoRustGPUPkg = pkgs.writeShellScriptBin "cargo" ''
+          #!${pkgs.bash}/bin/bash
+
+          filtered_args=()
+          for arg in "$@"; do
+            case "$arg" in
+              +nightly|+nightly-*) ;;
+              *) filtered_args+=("$arg") ;;
+            esac
+          done
+
+          echo "running cargo with rust-gpu toolchain"
+          echo "cargo ${"\${filtered_args[@]}"}"
+          exec ${rustGPUToolchainPkg}/bin/cargo ${"\${filtered_args[@]}"}
+        '';
+
 
         libcef = pkgs.libcef.overrideAttrs (finalAttrs: previousAttrs: {
           version = "138.0.26";
@@ -79,7 +124,7 @@
 
         # Development tools that don't need to be in LD_LIBRARY_PATH
         buildTools =  [
-          rustc-wasm
+          # rust
           pkgs.nodejs
           pkgs.nodePackages.npm
           pkgs.binaryen
@@ -91,6 +136,10 @@
 
           # Linker
           pkgs.mold
+
+          pkgs.spirv-tools
+          cargoRustGPUPkg
+          rustGPUToolchainPkg
         ];
         # Development tools that don't need to be in LD_LIBRARY_PATH
         devTools = with pkgs; [
@@ -112,6 +161,8 @@
           LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath buildInputs}:${libcefPath}";
           CEF_PATH = libcefPath;
           XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS";
+
+          RUSTC_CODEGEN_SPIRV_PATH="${rustc_codegen_spirv}/lib/librustc_codegen_spirv.so";
 
           shellHook = ''
             alias cargo='mold --run cargo'
