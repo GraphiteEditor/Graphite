@@ -151,6 +151,7 @@ pub const COLOR_OVERLAY_BLACK_75: &str = "#000000bf";
 
 // DOCUMENT
 pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
+pub const FILE_EXTENSION: &str = "graphite";
 pub const FILE_SAVE_SUFFIX: &str = ".graphite";
 pub const MAX_UNDO_HISTORY_LEN: usize = 100; // TODO: Add this to user preferences
 pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;

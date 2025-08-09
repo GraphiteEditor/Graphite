@@ -501,7 +501,8 @@ mod test {
 			);
 
 			let responses = editor.editor.handle_message(PortfolioMessage::OpenDocumentFile {
-				document_name: document_name.into(),
+				document_name: Some(document_name.to_string()),
+				document_path: None,
 				document_serialized_content,
 			});
 

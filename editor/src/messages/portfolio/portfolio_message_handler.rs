@@ -3,7 +3,7 @@ use super::document::utility_types::network_interface;
 use super::spreadsheet::SpreadsheetMessageHandler;
 use super::utility_types::{PanelType, PersistentData};
 use crate::application::generate_uuid;
-use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH};
+use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
@@ -408,12 +408,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::OpenDocumentFile {
 				document_name,
+				document_path,
 				document_serialized_content,
 			} => {
 				let document_id = DocumentId(generate_uuid());
 				responses.add(PortfolioMessage::OpenDocumentFileWithId {
 					document_id,
 					document_name,
+					document_path,
 					document_is_auto_saved: false,
 					document_is_saved: true,
 					document_serialized_content,
@@ -428,6 +430,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::OpenDocumentFileWithId {
 				document_id,
 				document_name,
+				document_path,
 				document_is_auto_saved,
 				document_is_saved,
 				document_serialized_content,
@@ -439,10 +442,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let document_serialized_content = document_migration_string_preprocessing(document_serialized_content);
 
 				// Deserialize the document
-				let document = DocumentMessageHandler::deserialize_document(&document_serialized_content).map(|mut document| {
-					document.name.clone_from(&document_name);
-					document
-				});
+				let document = DocumentMessageHandler::deserialize_document(&document_serialized_content);
 
 				// Display an error to the user if the document could not be opened
 				let mut document = match document {
@@ -502,6 +502,30 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Set the save state of the document based on what's given to us by the caller to this message
 				document.set_auto_save_state(document_is_auto_saved);
 				document.set_save_state(document_is_saved);
+
+				let document_name_from_path = document_path.as_ref().and_then(|path| {
+					if path.extension().is_some_and(|e| e == FILE_EXTENSION) {
+						path.file_stem().map(|n| n.to_string_lossy().to_string())
+					} else {
+						None
+					}
+				});
+
+				match (document_name, document_path, document_name_from_path) {
+					(Some(name), _, None) => {
+						document.name = name;
+					}
+					(_, Some(path), Some(name)) => {
+						document.name = name;
+						document.path = Some(path);
+					}
+					(_, _, Some(name)) => {
+						document.name = name;
+					}
+					_ => {
+						document.name = DEFAULT_DOCUMENT_NAME.to_string();
+					}
+				}
 
 				// Load the document into the portfolio so it opens in the editor
 				self.load_document(document, document_id, responses, to_front);

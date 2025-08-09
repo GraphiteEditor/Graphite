@@ -425,7 +425,8 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = openDocumentFile)]
 	pub fn open_document_file(&self, document_name: String, document_serialized_content: String) {
 		let message = PortfolioMessage::OpenDocumentFile {
-			document_name,
+			document_name: Some(document_name),
+			document_path: None,
 			document_serialized_content,
 		};
 		self.dispatch(message);
@@ -436,7 +437,8 @@ impl EditorHandle {
 		let document_id = DocumentId(document_id);
 		let message = PortfolioMessage::OpenDocumentFileWithId {
 			document_id,
-			document_name,
+			document_name: Some(document_name),
+			document_path: None,
 			document_is_auto_saved: true,
 			document_is_saved,
 			document_serialized_content,

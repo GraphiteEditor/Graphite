@@ -75,7 +75,8 @@ impl WinitApp {
 						String::new()
 					});
 					let message = PortfolioMessage::OpenDocumentFile {
-						document_name: path.file_name().and_then(|s| s.to_str()).unwrap_or("unknown").to_string(),
+						document_name: None,
+						document_path: Some(path),
 						document_serialized_content: content,
 					};
 					let _ = event_loop_proxy.send_event(CustomEvent::DispatchMessage(message.into()));
