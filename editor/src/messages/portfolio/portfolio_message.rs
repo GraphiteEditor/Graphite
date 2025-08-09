@@ -15,8 +15,6 @@ pub enum PortfolioMessage {
 	MenuBar(MenuBarMessage),
 	#[child]
 	Document(DocumentMessage),
-	#[child]
-	Spreadsheet(SpreadsheetMessage),
 
 	// Messages
 	Init,

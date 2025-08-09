@@ -1,6 +1,7 @@
 mod document_message;
 mod document_message_handler;
 
+pub mod data_panel;
 pub mod graph_operation;
 pub mod navigation;
 pub mod node_graph;

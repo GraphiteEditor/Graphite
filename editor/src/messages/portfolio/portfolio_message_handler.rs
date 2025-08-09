@@ -1,6 +1,5 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document::utility_types::network_interface;
-use super::spreadsheet::SpreadsheetMessageHandler;
 use super::utility_types::{PanelType, PersistentData};
 use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH};
@@ -55,8 +54,6 @@ pub struct PortfolioMessageHandler {
 	pub persistent_data: PersistentData,
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
-	/// The spreadsheet UI allows for graph data to be previewed.
-	pub spreadsheet: SpreadsheetMessageHandler,
 	device_pixel_ratio: Option<f64>,
 	pub reset_node_definitions_on_open: bool,
 }
@@ -86,7 +83,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.menu_bar_message_handler.has_selected_layers = false;
 				self.menu_bar_message_handler.has_selection_history = (false, false);
 				self.menu_bar_message_handler.make_path_editable_is_allowed = false;
-				self.menu_bar_message_handler.spreadsheet_view_open = self.spreadsheet.spreadsheet_view_open;
+				self.menu_bar_message_handler.data_panel_open = self.active_document().map(|document| document.data_panel_message_handler.open).unwrap_or_default();
 				self.menu_bar_message_handler.message_logging_verbosity = message_logging_verbosity;
 				self.menu_bar_message_handler.reset_node_definitions_on_open = reset_node_definitions_on_open;
 
@@ -107,9 +104,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 
 				self.menu_bar_message_handler.process_message(message, responses, ());
-			}
-			PortfolioMessage::Spreadsheet(message) => {
-				self.spreadsheet.process_message(message, responses, ());
 			}
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
@@ -1114,7 +1108,7 @@ impl PortfolioMessageHandler {
 	/// Get the id of the node that should be used as the target for the spreadsheet
 	pub fn inspect_node_id(&self) -> Option<NodeId> {
 		// Spreadsheet not open, skipping
-		if !self.spreadsheet.spreadsheet_view_open {
+		if !self.active_document().map(|document| document.data_panel_message_handler.open).unwrap_or_default() {
 			return None;
 		}
 

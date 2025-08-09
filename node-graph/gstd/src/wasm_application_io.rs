@@ -137,7 +137,9 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> Table<Raster<CPU>> {
 	Table::new_from_element(Raster::new_cpu(image))
 }
 
-fn render_svg(data: impl Render, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutputType {
+fn render_svg(data: impl Render, mut render: SvgRender, render_params: RenderParams) -> RenderOutputType {
+	let footprint = render_params.footprint;
+
 	if !data.contains_artboard() && !render_params.hide_artboards {
 		render.leaf_tag("rect", |attributes| {
 			attributes.push("x", "0");
@@ -237,7 +239,7 @@ where
 	let size = aabb.size();
 	let resolution = footprint.resolution;
 	let render_params = RenderParams {
-		culling_bounds: None,
+		footprint,
 		for_export: true,
 		..Default::default()
 	};
@@ -282,10 +284,11 @@ async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
 	render_config: RenderConfig,
 	editor_api: impl Node<Context<'static>, Output = &'a WasmEditorApi>,
 	#[implementations(
+		Context -> Table<Artboard>,
+		Context -> Table<Graphic>,
 		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,
-		Context -> Table<Graphic>,
-		Context -> Table<Artboard>,
+		Context -> Table<Color>,
 		Context -> Artboard,
 		Context -> Option<Color>,
 		Context -> Vec<Color>,
@@ -308,7 +311,7 @@ async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
 	let RenderConfig { hide_artboards, for_export, .. } = render_config;
 	let render_params = RenderParams {
 		view_mode: render_config.view_mode,
-		culling_bounds: None,
+		footprint,
 		thumbnail: false,
 		hide_artboards,
 		for_export,
@@ -333,7 +336,7 @@ async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
 
 	let output_format = render_config.export_format;
 	let data = match output_format {
-		ExportFormat::Svg => render_svg(data, SvgRender::new(), render_params, footprint),
+		ExportFormat::Svg => render_svg(data, SvgRender::new(), render_params),
 		ExportFormat::Canvas => {
 			if use_vello && editor_api.application_io.as_ref().unwrap().gpu_executor().is_some() {
 				#[cfg(all(feature = "vello", not(test)))]
@@ -342,9 +345,9 @@ async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
 					metadata,
 				};
 				#[cfg(any(not(feature = "vello"), test))]
-				render_svg(data, SvgRender::new(), render_params, footprint)
+				render_svg(data, SvgRender::new(), render_params)
 			} else {
-				render_svg(data, SvgRender::new(), render_params, footprint)
+				render_svg(data, SvgRender::new(), render_params)
 			}
 		}
 		_ => todo!("Non-SVG render output for {output_format:?}"),

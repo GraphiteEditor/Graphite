@@ -1,6 +1,7 @@
-use crate::AlphaBlending;
+use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::transform::ApplyTransform;
 use crate::uuid::NodeId;
+use crate::{AlphaBlending, math::quad::Quad};
 use dyn_any::StaticType;
 use glam::DAffine2;
 use std::hash::Hash;
@@ -122,6 +123,28 @@ impl<T> Table<T> {
 				alpha_blending,
 				source_node_id,
 			})
+	}
+}
+
+impl<T: BoundingBox> BoundingBox for Table<T> {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
+		let mut combined_bounds = None;
+
+		for row in self.iter() {
+			match row.element.bounding_box(transform * *row.transform, include_stroke) {
+				RenderBoundingBox::None => continue,
+				RenderBoundingBox::Infinite => return RenderBoundingBox::Infinite,
+				RenderBoundingBox::Rectangle(bounds) => match combined_bounds {
+					Some(existing) => combined_bounds = Some(Quad::combine_bounds(existing, bounds)),
+					None => combined_bounds = Some(bounds),
+				},
+			}
+		}
+
+		match combined_bounds {
+			Some(bounds) => RenderBoundingBox::Rectangle(bounds),
+			None => RenderBoundingBox::None,
+		}
 	}
 }
 

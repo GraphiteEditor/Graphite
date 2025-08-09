@@ -40,6 +40,7 @@
 	export let allowNone = false;
 	// export let allowTransparency = false; // TODO: Implement
 	export let direction: MenuDirection = "Bottom";
+	export let readOnly = false;
 	// TODO: See if this should be made to follow the pattern of DropdownInput.svelte so this could be removed
 	export let open: boolean;
 
@@ -133,6 +134,8 @@
 	}
 
 	function onPointerDown(e: PointerEvent) {
+		if (readOnly) return;
+
 		const target = (e.target || undefined) as HTMLElement | undefined;
 		draggingPickerTrack = target?.closest("[data-saturation-value-picker], [data-hue-picker], [data-alpha-picker]") || undefined;
 
@@ -417,8 +420,8 @@
 		}}
 	>
 		<LayoutCol class="pickers-and-gradient">
-			<LayoutRow class="pickers">
-				<LayoutCol class="saturation-value-picker" on:pointerdown={onPointerDown} data-saturation-value-picker>
+			<LayoutRow class="pickers" classes={{ "read-only": readOnly }}>
+				<LayoutCol class="saturation-value-picker" title={readOnly ? "Color is read-only" : undefined} on:pointerdown={onPointerDown} data-saturation-value-picker>
 					{#if !isNone}
 						<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`} />
 					{/if}
@@ -432,12 +435,12 @@
 						/>
 					{/if}
 				</LayoutCol>
-				<LayoutCol class="hue-picker" on:pointerdown={onPointerDown} data-hue-picker>
+				<LayoutCol class="hue-picker" title={readOnly ? "Color is read-only" : undefined} on:pointerdown={onPointerDown} data-hue-picker>
 					{#if !isNone}
 						<div class="selection-needle" style:top={`${(1 - hue) * 100}%`} />
 					{/if}
 				</LayoutCol>
-				<LayoutCol class="alpha-picker" on:pointerdown={onPointerDown} data-alpha-picker>
+				<LayoutCol class="alpha-picker" title={readOnly ? "Color is read-only" : undefined} on:pointerdown={onPointerDown} data-alpha-picker>
 					{#if !isNone}
 						<div class="selection-needle" style:top={`${(1 - alpha) * 100}%`} />
 					{/if}
@@ -478,7 +481,7 @@
 				styles={{ "--outline-amount": outlineFactor }}
 				tooltip={!newColor.equals(oldColor) ? "Comparison between the present color choice (left) and the color before any change was made (right)" : "The present color choice"}
 			>
-				{#if !newColor.equals(oldColor)}
+				{#if !newColor.equals(oldColor) && !readOnly}
 					<div class="swap-button-background"></div>
 					<IconButton class="swap-button" icon="SwapHorizontal" size={16} action={swapNewWithOld} tooltip="Swap" />
 				{/if}
@@ -500,6 +503,7 @@
 				<LayoutRow>
 					<TextInput
 						value={newColor.toHexOptionalAlpha() || "-"}
+						disabled={readOnly}
 						on:commitText={({ detail }) => {
 							dispatch("startHistoryTransaction");
 							setColorCode(detail);
@@ -520,6 +524,7 @@
 						{/if}
 						<NumberInput
 							value={strength}
+							disabled={readOnly}
 							on:value={({ detail }) => {
 								strength = detail;
 								setColorRGB(channel, detail);
@@ -547,6 +552,7 @@
 						{/if}
 						<NumberInput
 							value={strength}
+							disabled={readOnly}
 							on:value={({ detail }) => {
 								strength = detail;
 								setColorHSV(channel, detail);
@@ -573,6 +579,7 @@
 				<Separator type="Related" />
 				<NumberInput
 					value={!isNone ? alpha * 100 : undefined}
+					disabled={readOnly}
 					on:value={({ detail }) => {
 						if (detail !== undefined) alpha = detail / 100;
 						setColorAlphaPercent(detail);
@@ -591,26 +598,28 @@
 				/>
 			</LayoutRow>
 			<LayoutRow class="leftover-space" />
-			<LayoutRow>
-				{#if allowNone && !gradient}
-					<button class="preset-color none" on:click={() => setColorPreset("none")} title="Set to no color" tabindex="0"></button>
+			{#if !readOnly}
+				<LayoutRow>
+					{#if allowNone && !gradient}
+						<button class="preset-color none" on:click={() => setColorPreset("none")} title="Set to no color" tabindex="0"></button>
+						<Separator type="Related" />
+					{/if}
+					<button class="preset-color black" on:click={() => setColorPreset("black")} title="Set to black" tabindex="0"></button>
 					<Separator type="Related" />
-				{/if}
-				<button class="preset-color black" on:click={() => setColorPreset("black")} title="Set to black" tabindex="0"></button>
-				<Separator type="Related" />
-				<button class="preset-color white" on:click={() => setColorPreset("white")} title="Set to white" tabindex="0"></button>
-				<Separator type="Related" />
-				<button class="preset-color pure" on:click={setColorPresetSubtile} tabindex="-1">
-					<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c" title="Set to red" />
-					<div data-pure-tile="yellow" style="--pure-color: #ffff00; --pure-color-gray: #e3e3e3" title="Set to yellow" />
-					<div data-pure-tile="green" style="--pure-color: #00ff00; --pure-color-gray: #969696" title="Set to green" />
-					<div data-pure-tile="cyan" style="--pure-color: #00ffff; --pure-color-gray: #b2b2b2" title="Set to cyan" />
-					<div data-pure-tile="blue" style="--pure-color: #0000ff; --pure-color-gray: #1c1c1c" title="Set to blue" />
-					<div data-pure-tile="magenta" style="--pure-color: #ff00ff; --pure-color-gray: #696969" title="Set to magenta" />
-				</button>
-				<Separator type="Related" />
-				<IconButton icon="Eyedropper" size={24} action={activateEyedropperSample} tooltip="Sample a pixel color from the document" />
-			</LayoutRow>
+					<button class="preset-color white" on:click={() => setColorPreset("white")} title="Set to white" tabindex="0"></button>
+					<Separator type="Related" />
+					<button class="preset-color pure" on:click={setColorPresetSubtile} tabindex="-1">
+						<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c" title="Set to red" />
+						<div data-pure-tile="yellow" style="--pure-color: #ffff00; --pure-color-gray: #e3e3e3" title="Set to yellow" />
+						<div data-pure-tile="green" style="--pure-color: #00ff00; --pure-color-gray: #969696" title="Set to green" />
+						<div data-pure-tile="cyan" style="--pure-color: #00ffff; --pure-color-gray: #b2b2b2" title="Set to cyan" />
+						<div data-pure-tile="blue" style="--pure-color: #0000ff; --pure-color-gray: #1c1c1c" title="Set to blue" />
+						<div data-pure-tile="magenta" style="--pure-color: #ff00ff; --pure-color-gray: #696969" title="Set to magenta" />
+					</button>
+					<Separator type="Related" />
+					<IconButton icon="Eyedropper" size={24} action={activateEyedropperSample} tooltip="Sample a pixel color from the document" />
+				</LayoutRow>
+			{/if}
 		</LayoutCol>
 	</LayoutRow>
 </FloatingMenu>
@@ -756,6 +765,19 @@
 						border-style: solid;
 						border-width: 4px 4px 4px 0;
 						border-color: transparent var(--selection-needle-color) transparent transparent;
+					}
+				}
+			}
+
+			.pickers.read-only {
+				.saturation-value-picker,
+				.hue-picker,
+				.alpha-picker {
+					transition: opacity 0.1s;
+					cursor: not-allowed;
+
+					&:hover {
+						opacity: 0.5;
 					}
 				}
 			}
@@ -954,7 +976,7 @@
 						// For the least jarring luminance conversion, these colors are derived by placing a black layer with the "desaturate" blend mode over the colors.
 						// We don't use the CSS `filter: grayscale(1);` property because it produces overly dark tones for bright colors with a noticeable jump on hover.
 						background: var(--pure-color-gray);
-						transition: background-color 0.2s ease;
+						transition: background-color 0.1s;
 					}
 
 					&:hover div {

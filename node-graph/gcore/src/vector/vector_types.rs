@@ -2,7 +2,7 @@ use super::misc::dvec2_to_point;
 use super::style::{PathStyle, Stroke};
 pub use super::vector_attributes::*;
 pub use super::vector_modification::*;
-use crate::bounds::BoundingBox;
+use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::math::quad::Quad;
 use crate::table::Table;
 use crate::transform::Transform;
@@ -437,8 +437,9 @@ impl Vector {
 }
 
 impl BoundingBox for Table<Vector> {
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.iter()
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
+		let bounds = self
+			.iter()
 			.flat_map(|row| {
 				if !include_stroke {
 					return row.element.bounding_box_with_transform(transform * *row.transform);
@@ -455,7 +456,12 @@ impl BoundingBox for Table<Vector> {
 
 				row.element.bounding_box_with_transform(transform * *row.transform).map(|[a, b]| [a - offset, b + offset])
 			})
-			.reduce(Quad::combine_bounds)
+			.reduce(Quad::combine_bounds);
+
+		match bounds {
+			Some(bounds) => RenderBoundingBox::Rectangle(bounds),
+			None => RenderBoundingBox::None,
+		}
 	}
 }
 

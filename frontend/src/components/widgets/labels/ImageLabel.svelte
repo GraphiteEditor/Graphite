@@ -1,31 +1,31 @@
 <script lang="ts">
-	import { IMAGE_BASE64_STRINGS } from "@graphite/utility-functions/images";
-
 	let className = "";
 	export { className as class };
 	export let classes: Record<string, boolean> = {};
 
-	export let image: string;
+	export let url: string;
 	export let width: string | undefined;
 	export let height: string | undefined;
 	export let tooltip: string | undefined = undefined;
-	// Callbacks
-	export let action: (e?: MouseEvent) => void;
 
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
 		.join(" ");
 </script>
 
-<img src={IMAGE_BASE64_STRINGS[image]} style:width style:height class={`image-button ${className} ${extraClasses}`.trim()} title={tooltip} alt="" on:click={action} />
+<img src={url} style:width style:height class={`image-label ${className} ${extraClasses}`.trim()} title={tooltip} alt="" />
 
 <style lang="scss" global>
-	.image-button {
+	.image-label {
 		width: auto;
 		height: auto;
 		border-radius: 2px;
+		background-image: var(--color-transparent-checkered-background);
+		background-size: var(--color-transparent-checkered-background-size);
+		background-position: var(--color-transparent-checkered-background-position);
+		background-repeat: var(--color-transparent-checkered-background-repeat);
 
-		+ .image-button.image-button {
+		+ .image-label.image-label {
 			margin-left: 8px;
 		}
 	}

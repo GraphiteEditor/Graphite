@@ -28,7 +28,6 @@ export function createPortfolioState(editor: Editor) {
 		documents: [] as FrontendDocumentDetails[],
 		activeDocumentIndex: 0,
 		spreadsheetOpen: false,
-		spreadsheetNode: BigInt(0) as bigint | undefined,
 		spreadsheetWidgets: defaultWidgetLayout(),
 	});
 
@@ -110,7 +109,6 @@ export function createPortfolioState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateSpreadsheetState, async (updateSpreadsheetState) => {
 		update((state) => {
 			state.spreadsheetOpen = updateSpreadsheetState.open;
-			state.spreadsheetNode = updateSpreadsheetState.node;
 			return state;
 		});
 	});

@@ -2,7 +2,7 @@ use crate::Artboard;
 use crate::math::bbox::AxisAlignedBbox;
 pub use crate::vector::ReferencePoint;
 use core::f64;
-use glam::{DAffine2, DMat2, DVec2};
+use glam::{DAffine2, DMat2, DVec2, UVec2};
 
 pub trait Transform {
 	fn transform(&self) -> DAffine2;
@@ -89,7 +89,7 @@ pub struct Footprint {
 	/// Inverse of the transform which will be applied to the node output during the rendering process
 	pub transform: DAffine2,
 	/// Resolution of the target output area in pixels
-	pub resolution: glam::UVec2,
+	pub resolution: UVec2,
 	/// Quality of the render, this may be used by caching nodes to decide if the cached render is sufficient
 	pub quality: RenderQuality,
 }
@@ -103,7 +103,7 @@ impl Default for Footprint {
 impl Footprint {
 	pub const DEFAULT: Self = Self {
 		transform: DAffine2::IDENTITY,
-		resolution: glam::UVec2::new(1920, 1080),
+		resolution: UVec2::new(1920, 1080),
 		quality: RenderQuality::Full,
 	};
 
@@ -112,7 +112,7 @@ impl Footprint {
 			matrix2: DMat2::from_diagonal(DVec2::splat(f64::INFINITY)),
 			translation: DVec2::ZERO,
 		},
-		resolution: glam::UVec2::new(0, 0),
+		resolution: UVec2::ZERO,
 		quality: RenderQuality::Full,
 	};
 
