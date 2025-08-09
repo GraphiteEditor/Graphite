@@ -47,6 +47,7 @@ web-sys = { workspace = true }
 bytemuck = { workspace = true }
 vello = { workspace = true }
 tracing = { workspace = true }
+base64 = { workspace = true }
 
 # Required dependencies
 spin = "0.9.8"

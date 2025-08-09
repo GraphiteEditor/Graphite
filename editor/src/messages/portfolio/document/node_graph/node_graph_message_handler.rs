@@ -2329,9 +2329,9 @@ impl NodeGraphMessageHandler {
 							.icon(Some("Node".to_string()))
 							.tooltip("Add an operation to the end of this layer's chain of nodes")
 							.popover_layout({
-								let layer_identifier = LayerNodeIdentifier::new(layer, &context.network_interface);
+								let layer_identifier = LayerNodeIdentifier::new(layer, context.network_interface);
 								let compatible_type = {
-									let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer_identifier, &context.network_interface);
+									let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer_identifier, context.network_interface);
 									let node_type = graph_layer.horizontal_layer_flow().nth(1);
 									if let Some(node_id) = node_type {
 										let (output_type, _) = context.network_interface.output_type(&node_id, 0, &[]);

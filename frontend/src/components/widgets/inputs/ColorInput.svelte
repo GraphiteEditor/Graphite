@@ -14,6 +14,7 @@
 
 	export let value: FillChoice;
 	export let disabled = false;
+	export let readOnly = false;
 	export let allowNone = false;
 	// export let allowTransparency = false; // TODO: Implement
 	export let tooltip: string | undefined = undefined;
@@ -33,6 +34,7 @@
 	</button>
 	<ColorPicker
 		{open}
+		{readOnly}
 		on:open={({ detail }) => (open = detail)}
 		colorOrGradient={value}
 		on:colorOrGradient={({ detail }) => {

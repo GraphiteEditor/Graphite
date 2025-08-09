@@ -16,7 +16,7 @@ pub struct MenuBarMessageHandler {
 	pub has_selected_nodes: bool,
 	pub has_selected_layers: bool,
 	pub has_selection_history: (bool, bool),
-	pub spreadsheet_view_open: bool,
+	pub data_panel_open: bool,
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 	pub reset_node_definitions_on_open: bool,
 	pub make_path_editable_is_allowed: bool,
@@ -587,8 +587,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 					}],
 					vec![MenuBarEntry {
 						label: "Window: Spreadsheet".into(),
-						icon: Some(if self.spreadsheet_view_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
-						action: MenuBarEntry::create_action(|_| SpreadsheetMessage::ToggleOpen.into()),
+						icon: Some(if self.data_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
+						action: MenuBarEntry::create_action(|_| DataPanelMessage::ToggleOpen.into()),
 						disabled: no_active_document,
 						..MenuBarEntry::default()
 					}],

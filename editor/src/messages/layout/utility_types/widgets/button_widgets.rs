@@ -170,6 +170,9 @@ pub struct ColorInput {
 
 	pub disabled: bool,
 
+	#[serde(rename = "readOnly")]
+	pub read_only: bool,
+
 	// TODO: Implement
 	// #[serde(rename = "allowTransparency")]
 	// #[derivative(Default(value = "false"))]

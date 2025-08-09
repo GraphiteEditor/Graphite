@@ -293,10 +293,10 @@ impl NodeGraphExecutor {
 					}
 					responses.add_front(DeferMessage::TriggerGraphRun(execution_id, execution_context.document_id));
 
-					// Update the spreadsheet on the frontend using the value of the inspect result.
+					// Update the Data panel on the frontend using the value of the inspect result.
 					if self.old_inspect_node.is_some() {
 						if let Some(inspect_result) = inspect_result {
-							responses.add(SpreadsheetMessage::UpdateLayout { inspect_result });
+							responses.add(DataPanelMessage::UpdateLayout { inspect_result });
 						}
 					}
 				}

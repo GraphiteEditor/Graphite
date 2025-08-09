@@ -765,8 +765,6 @@ export class UpdateGraphFadeArtwork extends JsMessage {
 
 export class UpdateSpreadsheetState extends JsMessage {
 	readonly open!: boolean;
-
-	readonly node!: bigint | undefined;
 }
 
 export class UpdateMouseCursor extends JsMessage {
@@ -983,6 +981,8 @@ export class ColorInput extends WidgetProps {
 
 	disabled!: boolean;
 
+	readOnly!: boolean;
+
 	allowNone!: boolean;
 
 	// allowTransparency!: boolean; // TODO: Implement
@@ -1129,6 +1129,19 @@ export class IconLabel extends WidgetProps {
 
 export class ImageButton extends WidgetProps {
 	image!: IconName;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	width!: string | undefined;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	height!: string | undefined;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltip!: string | undefined;
+}
+
+export class ImageLabel extends WidgetProps {
+	url!: string;
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	width!: string | undefined;
@@ -1332,6 +1345,8 @@ export class TextInput extends WidgetProps {
 
 	minWidth!: number;
 
+	maxWidth!: number;
+
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 }
@@ -1383,6 +1398,7 @@ const widgetSubTypes = [
 	{ value: FontInput, name: "FontInput" },
 	{ value: IconButton, name: "IconButton" },
 	{ value: ImageButton, name: "ImageButton" },
+	{ value: ImageLabel, name: "ImageLabel" },
 	{ value: IconLabel, name: "IconLabel" },
 	{ value: NodeCatalog, name: "NodeCatalog" },
 	{ value: NumberInput, name: "NumberInput" },
