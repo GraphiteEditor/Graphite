@@ -1,10 +1,11 @@
 use super::intersection::bezpath_intersections;
 use super::poisson_disk::poisson_disk_sample;
-use super::util::segment_tangent;
+use super::symmetrical_basis::{SymmetricalBasis, to_symmetrical_basis_pair};
+use super::util::pathseg_tangent;
 use crate::vector::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
 use crate::vector::misc::{PointSpacingType, dvec2_to_point, point_to_dvec2};
 use glam::{DMat2, DVec2};
-use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, QuadBez, Rect, Shape};
+use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
 use std::f64::consts::{FRAC_PI_2, PI};
 
 /// Splits the [`BezPath`] at segment index at `t` value which lie in the range of [0, 1].
@@ -185,6 +186,51 @@ pub fn sample_polyline_on_bezpath(
 pub enum TValue {
 	Parametric(f64),
 	Euclidean(f64),
+}
+
+/// Default LUT step size in `compute_lookup_table` function.
+pub const DEFAULT_LUT_STEP_SIZE: usize = 10;
+
+/// Return a selection of equidistant points on the bezier curve.
+/// If no value is provided for `steps`, then the function will default `steps` to be 10.
+/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#bezier/lookup-table/solo" title="Lookup-Table Demo"></iframe>
+pub fn pathseg_compute_lookup_table(segment: PathSeg, steps: Option<usize>, eucliean: bool) -> impl Iterator<Item = DVec2> {
+	let steps = steps.unwrap_or(DEFAULT_LUT_STEP_SIZE);
+
+	(0..=steps).map(move |t| {
+		let tvalue = if eucliean {
+			TValue::Euclidean(t as f64 / steps as f64)
+		} else {
+			TValue::Parametric(t as f64 / steps as f64)
+		};
+		let t = eval_pathseg(segment, tvalue);
+		point_to_dvec2(segment.eval(t))
+	})
+}
+
+/// Find the `t`-value(s) such that the normal(s) at `t` pass through the specified point.
+pub fn pathseg_normals_to_point(segment: PathSeg, point: Point) -> Vec<f64> {
+	let point = DVec2::new(point.x, point.y);
+
+	let sbasis = to_symmetrical_basis_pair(segment);
+	let derivative = sbasis.derivative();
+	let cross = (sbasis - point).dot(&derivative);
+
+	SymmetricalBasis::roots(&cross)
+}
+
+/// Find the `t`-value(s) such that the tangent(s) at `t` pass through the given point.
+pub fn pathseg_tangents_to_point(segment: PathSeg, point: Point) -> Vec<f64> {
+	segment.to_cubic().tangents_to_point(point).to_vec()
+}
+
+fn parameters(cubic_bez: CubicBez) -> (Vec2, Vec2, Vec2, Vec2) {
+	let c = (cubic_bez.p1 - cubic_bez.p0) * 3.0;
+	let b = (cubic_bez.p2 - cubic_bez.p1) * 3.0 - c;
+	let d = cubic_bez.p0.to_vec2();
+	let a = cubic_bez.p3.to_vec2() - d - c - b;
+
+	(a, b, c, d)
 }
 
 /// Return the subsegment for the given [TValue] range. Returns None if parametric value of `t1` is greater than `t2`.
@@ -392,8 +438,8 @@ pub fn miter_line_join(bezpath1: &BezPath, bezpath2: &BezPath, miter_limit: Opti
 	let in_segment = bezpath1.segments().last()?;
 	let out_segment = bezpath2.segments().next()?;
 
-	let in_tangent = segment_tangent(in_segment, 1.);
-	let out_tangent = segment_tangent(out_segment, 0.);
+	let in_tangent = pathseg_tangent(in_segment, 1.);
+	let out_tangent = pathseg_tangent(out_segment, 0.);
 
 	if in_tangent == DVec2::ZERO || out_tangent == DVec2::ZERO {
 		// Avoid panic from normalizing zero vectors
@@ -454,7 +500,7 @@ pub fn round_line_join(bezpath1: &BezPath, bezpath2: &BezPath, center: DVec2) ->
 	let center_to_left = left - center;
 
 	let in_segment = bezpath1.segments().last();
-	let in_tangent = in_segment.map(|in_segment| segment_tangent(in_segment, 1.));
+	let in_tangent = in_segment.map(|in_segment| pathseg_tangent(in_segment, 1.));
 
 	let mut angle = center_to_right.angle_to(center_to_left) / 2.;
 	let mut arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);

@@ -6,10 +6,10 @@ use glam::DVec2;
 use kurbo::PathSeg;
 
 pub struct PathSegPoints {
-	p0: DVec2,
-	p1: Option<DVec2>,
-	p2: Option<DVec2>,
-	p3: DVec2,
+	pub p0: DVec2,
+	pub p1: Option<DVec2>,
+	pub p2: Option<DVec2>,
+	pub p3: DVec2,
 }
 
 impl PathSegPoints {

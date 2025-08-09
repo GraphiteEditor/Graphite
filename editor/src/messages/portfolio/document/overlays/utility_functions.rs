@@ -3,8 +3,8 @@ use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
 use crate::messages::tool::tool_messages::tool_prelude::{DocumentMessageHandler, PreferencesMessageHandler};
-use bezier_rs::{Bezier, BezierHandles};
 use glam::{DAffine2, DVec2};
+use graphene_core::subpath::{Bezier, BezierHandles};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::{PointId, SegmentId};
 use wasm_bindgen::JsCast;
@@ -125,7 +125,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 		}
 
 		// Get the selected segments and then add a bold line overlay on them
-		for (segment_id, bezier, _, _) in vector.segment_bezier_iter() {
+		for (segment_id, bezier, _, _) in vector.segment_iter() {
 			let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) else {
 				continue;
 			};

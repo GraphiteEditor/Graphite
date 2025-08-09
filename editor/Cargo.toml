@@ -24,6 +24,7 @@ graphite-proc-macros = { workspace = true }
 graph-craft = { workspace = true }
 interpreted-executor = { workspace = true }
 graphene-std = { workspace = true }
+graphene-core = { workspace = true }
 preprocessor = { workspace = true }
 
 # Workspace dependencies
@@ -33,7 +34,6 @@ bitflags = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-bezier-rs = { workspace = true }
 kurbo = { workspace = true }
 futures = { workspace = true }
 glam = { workspace = true }

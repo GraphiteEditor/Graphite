@@ -10,14 +10,16 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, PathSnapTarget, SnapTarget};
 use crate::messages::prelude::*;
 pub use alignment_snapper::*;
-use bezier_rs::TValue;
 pub use distribution_snapper::*;
 use glam::{DAffine2, DVec2};
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::NoHashBuilder;
 use graphene_std::vector::PointId;
+use graphene_std::vector::algorithms::intersection::filtered_segment_intersections;
+use graphene_std::vector::misc::point_to_dvec2;
 pub use grid_snapper::*;
+use kurbo::ParamCurve;
 pub use layer_snapper::*;
 pub use snap_results::*;
 use std::cmp::Ordering;
@@ -141,8 +143,8 @@ fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<S
 			if curve_i.start == curve_j.start && curve_i.layer == curve_j.layer {
 				continue;
 			}
-			for curve_i_t in curve_i.document_curve.intersections(&curve_j.document_curve, None, None) {
-				let snapped_point_document = curve_i.document_curve.evaluate(TValue::Parametric(curve_i_t));
+			for curve_i_t in filtered_segment_intersections(curve_i.document_curve, curve_j.document_curve, None, None) {
+				let snapped_point_document = point_to_dvec2(curve_i.document_curve.eval(curve_i_t));
 				let distance = snap_to.distance(snapped_point_document);
 				let i_closer = curve_i.point.distance < curve_j.point.distance;
 				let close = if i_closer { curve_i } else { curve_j };
@@ -165,6 +167,7 @@ fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<S
 	}
 	best
 }
+
 fn get_grid_intersection(snap_to: DVec2, lines: &[SnappedLine]) -> Option<SnappedPoint> {
 	let mut best = None;
 	for line_i in lines {

@@ -211,8 +211,8 @@ pub fn is_linear(segment: PathSeg) -> bool {
 	}
 }
 
-/// Get an iterator over the coordinates of all points in a path segment.
-pub fn get_segment_points(segment: PathSeg) -> Vec<Point> {
+/// Get an vec of all the points in a path segment.
+pub fn pathseg_points_vec(segment: PathSeg) -> Vec<Point> {
 	match segment {
 		PathSeg::Line(line) => [line.p0, line.p1].to_vec(),
 		PathSeg::Quad(quad_bez) => [quad_bez.p0, quad_bez.p1, quad_bez.p2].to_vec(),
@@ -234,8 +234,8 @@ pub fn pathseg_abs_diff_eq(seg1: PathSeg, seg2: PathSeg, max_abs_diff: f64) -> b
 	let seg1 = if is_linear(seg1) { PathSeg::Line(Line::new(seg1.start(), seg1.end())) } else { seg1 };
 	let seg2 = if is_linear(seg2) { PathSeg::Line(Line::new(seg2.start(), seg2.end())) } else { seg2 };
 
-	let seg1_points = get_segment_points(seg1);
-	let seg2_points = get_segment_points(seg2);
+	let seg1_points = pathseg_points_vec(seg1);
+	let seg2_points = pathseg_points_vec(seg2);
 
 	let cmp = |a: f64, b: f64| a.sub(b).abs() < max_abs_diff;
 

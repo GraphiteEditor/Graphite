@@ -244,9 +244,14 @@ impl Vector {
 		self.segment_domain.end_point().iter().map(|&index| self.point_domain.ids()[index])
 	}
 
-	pub fn push(&mut self, id: SegmentId, start: PointId, end: PointId, handles: BezierHandles, stroke: StrokeId) {
+	pub fn push(&mut self, id: SegmentId, start: PointId, end: PointId, handles: (Option<DVec2>, Option<DVec2>), stroke: StrokeId) {
 		let [Some(start), Some(end)] = [start, end].map(|id| self.point_domain.resolve_id(id)) else {
 			return;
+		};
+		let handles = match handles {
+			(None, None) => BezierHandles::Linear,
+			(None, Some(handle)) | (Some(handle), None) => BezierHandles::Quadratic { handle },
+			(Some(handle_start), Some(handle_end)) => BezierHandles::Cubic { handle_start, handle_end },
 		};
 		self.segment_domain.push(id, start, end, handles, stroke)
 	}

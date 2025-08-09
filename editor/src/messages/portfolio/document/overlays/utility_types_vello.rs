@@ -4,20 +4,22 @@ use crate::consts::{
 	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
-use bezier_rs::{Bezier, Subpath};
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
+use graphene_core::subpath::{self, Subpath};
 use graphene_std::Color;
 use graphene_std::math::quad::Quad;
 use graphene_std::table::Table;
 use graphene_std::text::{TextAlign, TypesettingConfig, load_font, to_path};
 use graphene_std::vector::click_target::ClickTargetType;
+use graphene_std::vector::misc::point_to_dvec2;
 use graphene_std::vector::{PointId, SegmentId, Vector};
+use kurbo::{self, BezPath, ParamCurve};
+use kurbo::{Affine, PathSeg};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use vello::Scene;
-use vello::kurbo::{self, BezPath};
 use vello::peniko;
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
@@ -345,16 +347,16 @@ impl OverlayContext {
 	}
 
 	/// Used by the Pen tool in order to show how the bezier curve would look like.
-	pub fn outline_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	pub fn outline_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
 		self.internal().outline_bezier(bezier, transform);
 	}
 
 	/// Used by the path tool segment mode in order to show the selected segments.
-	pub fn outline_select_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	pub fn outline_select_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
 		self.internal().outline_select_bezier(bezier, transform);
 	}
 
-	pub fn outline_overlay_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	pub fn outline_overlay_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
 		self.internal().outline_overlay_bezier(bezier, transform);
 	}
 
@@ -842,7 +844,7 @@ impl OverlayContextInternal {
 		let mut path = BezPath::new();
 
 		let mut last_point = None;
-		for (_, bezier, start_id, end_id) in vector.segment_bezier_iter() {
+		for (_, bezier, start_id, end_id) in vector.segment_iter() {
 			let move_to = last_point != Some(start_id);
 			last_point = Some(end_id);
 
@@ -853,7 +855,7 @@ impl OverlayContextInternal {
 	}
 
 	/// Used by the Pen tool in order to show how the bezier curve would look like.
-	fn outline_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	fn outline_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
 		let vello_transform = self.get_transform();
 		let mut path = BezPath::new();
 		self.bezier_to_path(bezier, transform, true, &mut path);
@@ -862,7 +864,7 @@ impl OverlayContextInternal {
 	}
 
 	/// Used by the path tool segment mode in order to show the selected segments.
-	fn outline_select_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	fn outline_select_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
 		let vello_transform = self.get_transform();
 		let mut path = BezPath::new();
 		self.bezier_to_path(bezier, transform, true, &mut path);
@@ -870,7 +872,7 @@ impl OverlayContextInternal {
 		self.scene.stroke(&kurbo::Stroke::new(4.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
-	fn outline_overlay_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	fn outline_overlay_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
 		let vello_transform = self.get_transform();
 		let mut path = BezPath::new();
 		self.bezier_to_path(bezier, transform, true, &mut path);
@@ -878,21 +880,12 @@ impl OverlayContextInternal {
 		self.scene.stroke(&kurbo::Stroke::new(4.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE_50), None, &path);
 	}
 
-	fn bezier_to_path(&self, bezier: Bezier, transform: DAffine2, move_to: bool, path: &mut BezPath) {
-		let Bezier { start, end, handles } = bezier.apply_transformation(|point| transform.transform_point2(point));
+	fn bezier_to_path(&self, bezier: PathSeg, transform: DAffine2, move_to: bool, path: &mut BezPath) {
+		let bezier = Affine::new(transform.to_cols_array()) * bezier;
 		if move_to {
-			path.move_to(kurbo::Point::new(start.x, start.y));
+			path.move_to(bezier.start());
 		}
-
-		match handles {
-			bezier_rs::BezierHandles::Linear => path.line_to(kurbo::Point::new(end.x, end.y)),
-			bezier_rs::BezierHandles::Quadratic { handle } => path.quad_to(kurbo::Point::new(handle.x, handle.y), kurbo::Point::new(end.x, end.y)),
-			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => path.curve_to(
-				kurbo::Point::new(handle_start.x, handle_start.y),
-				kurbo::Point::new(handle_end.x, handle_end.y),
-				kurbo::Point::new(end.x, end.y),
-			),
-		}
+		path.push(bezier.as_path_el());
 	}
 
 	fn push_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) -> BezPath {
@@ -906,27 +899,27 @@ impl OverlayContextInternal {
 				continue;
 			};
 
-			let start_point = transform.transform_point2(first.start());
+			let start_point = transform.transform_point2(point_to_dvec2(first.start()));
 			path.move_to(kurbo::Point::new(start_point.x, start_point.y));
 
 			for curve in curves {
-				match curve.handles {
-					bezier_rs::BezierHandles::Linear => {
-						let a = transform.transform_point2(curve.end());
+				match curve {
+					PathSeg::Line(line) => {
+						let a = transform.transform_point2(point_to_dvec2(line.p1));
 						let a = a.round() - DVec2::splat(0.5);
 						path.line_to(kurbo::Point::new(a.x, a.y));
 					}
-					bezier_rs::BezierHandles::Quadratic { handle } => {
-						let a = transform.transform_point2(handle);
-						let b = transform.transform_point2(curve.end());
+					PathSeg::Quad(quad_bez) => {
+						let a = transform.transform_point2(point_to_dvec2(quad_bez.p1));
+						let b = transform.transform_point2(point_to_dvec2(quad_bez.p2));
 						let a = a.round() - DVec2::splat(0.5);
 						let b = b.round() - DVec2::splat(0.5);
 						path.quad_to(kurbo::Point::new(a.x, a.y), kurbo::Point::new(b.x, b.y));
 					}
-					bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
-						let a = transform.transform_point2(handle_start);
-						let b = transform.transform_point2(handle_end);
-						let c = transform.transform_point2(curve.end());
+					PathSeg::Cubic(cubic_bez) => {
+						let a = transform.transform_point2(point_to_dvec2(cubic_bez.p1));
+						let b = transform.transform_point2(point_to_dvec2(cubic_bez.p2));
+						let c = transform.transform_point2(point_to_dvec2(cubic_bez.p3));
 						let a = a.round() - DVec2::splat(0.5);
 						let b = b.round() - DVec2::splat(0.5);
 						let c = c.round() - DVec2::splat(0.5);
@@ -945,7 +938,7 @@ impl OverlayContextInternal {
 
 	/// Used by the Select tool to outline a path or a free point when selected or hovered.
 	fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
-		let mut subpaths: Vec<bezier_rs::Subpath<PointId>> = vec![];
+		let mut subpaths: Vec<subpath::Subpath<PointId>> = vec![];
 
 		for target_type in target_types {
 			match target_type.borrow() {
@@ -1118,13 +1111,13 @@ impl OverlayContextInternal {
 
 				// Add handle points if they exist
 				match transformed_bezier.handles {
-					bezier_rs::BezierHandles::Quadratic { handle } => {
+					subpath::BezierHandles::Quadratic { handle } => {
 						min_x = min_x.min(handle.x);
 						min_y = min_y.min(handle.y);
 						max_x = max_x.max(handle.x);
 						max_y = max_y.max(handle.y);
 					}
-					bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
+					subpath::BezierHandles::Cubic { handle_start, handle_end } => {
 						for handle in [handle_start, handle_end] {
 							min_x = min_x.min(handle.x);
 							min_y = min_y.min(handle.y);
@@ -1154,7 +1147,7 @@ impl OverlayContextInternal {
 			let mut path = BezPath::new();
 			let mut last_point = None;
 
-			for (_, bezier, start_id, end_id) in row.element.segment_bezier_iter() {
+			for (_, bezier, start_id, end_id) in row.element.segment_iter() {
 				let move_to = last_point != Some(start_id);
 				last_point = Some(end_id);
 

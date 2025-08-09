@@ -11,10 +11,10 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::transformation_cage::BoundingBoxManager;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::*;
-use bezier_rs::Subpath;
 use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_core::subpath::{self, Subpath};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{ArcType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
@@ -363,9 +363,9 @@ pub fn arc_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessag
 		start_angle / 360. * std::f64::consts::TAU,
 		sweep_angle / 360. * std::f64::consts::TAU,
 		match arc_type {
-			ArcType::Open => bezier_rs::ArcType::Open,
-			ArcType::Closed => bezier_rs::ArcType::Closed,
-			ArcType::PieSlice => bezier_rs::ArcType::PieSlice,
+			ArcType::Open => subpath::ArcType::Open,
+			ArcType::Closed => subpath::ArcType::Closed,
+			ArcType::PieSlice => subpath::ArcType::PieSlice,
 		},
 	))];
 	let viewport = document.metadata().transform_to_viewport(layer);

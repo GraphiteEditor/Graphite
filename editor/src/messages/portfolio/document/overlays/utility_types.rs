@@ -5,14 +5,16 @@ use crate::consts::{
 	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, SEGMENT_SELECTED_THICKNESS,
 };
 use crate::messages::prelude::Message;
-use bezier_rs::{Bezier, Subpath};
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
+use graphene_core::subpath::Subpath;
 use graphene_std::Color;
 use graphene_std::math::quad::Quad;
 use graphene_std::vector::click_target::ClickTargetType;
+use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
 use graphene_std::vector::{PointId, SegmentId, Vector};
+use kurbo::{self, Affine, CubicBez, ParamCurve, PathSeg};
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
@@ -571,11 +573,7 @@ impl OverlayContext {
 			let handle_start = start + start_vec.perp() * radius * factor;
 			let handle_end = end - end_vec.perp() * radius * factor;
 
-			let bezier = Bezier {
-				start,
-				end,
-				handles: bezier_rs::BezierHandles::Cubic { handle_start, handle_end },
-			};
+			let bezier = PathSeg::Cubic(CubicBez::new(dvec2_to_point(start), dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(end)));
 
 			self.bezier_command(bezier, DAffine2::IDENTITY, i == 0);
 		}
@@ -762,7 +760,7 @@ impl OverlayContext {
 
 		self.render_context.begin_path();
 		let mut last_point = None;
-		for (_, bezier, start_id, end_id) in vector.segment_bezier_iter() {
+		for (_, bezier, start_id, end_id) in vector.segment_iter() {
 			let move_to = last_point != Some(start_id);
 			last_point = Some(end_id);
 
@@ -776,7 +774,7 @@ impl OverlayContext {
 	}
 
 	/// Used by the Pen tool in order to show how the bezier curve would look like.
-	pub fn outline_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	pub fn outline_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
@@ -788,7 +786,7 @@ impl OverlayContext {
 	}
 
 	/// Used by the path tool segment mode in order to show the selected segments.
-	pub fn outline_select_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	pub fn outline_select_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
@@ -802,7 +800,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn outline_overlay_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	pub fn outline_overlay_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
@@ -816,18 +814,18 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	fn bezier_command(&self, bezier: Bezier, transform: DAffine2, move_to: bool) {
+	fn bezier_command(&self, bezier: PathSeg, transform: DAffine2, move_to: bool) {
 		self.start_dpi_aware_transform();
 
-		let Bezier { start, end, handles } = bezier.apply_transformation(|point| transform.transform_point2(point));
+		let bezier = Affine::new(transform.to_cols_array()) * bezier;
 		if move_to {
-			self.render_context.move_to(start.x, start.y);
+			self.render_context.move_to(bezier.start().x, bezier.start().y);
 		}
-
-		match handles {
-			bezier_rs::BezierHandles::Linear => self.render_context.line_to(end.x, end.y),
-			bezier_rs::BezierHandles::Quadratic { handle } => self.render_context.quadratic_curve_to(handle.x, handle.y, end.x, end.y),
-			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => self.render_context.bezier_curve_to(handle_start.x, handle_start.y, handle_end.x, handle_end.y, end.x, end.y),
+		match bezier.as_path_el() {
+			kurbo::PathEl::LineTo(point) => self.render_context.line_to(point.x, point.y),
+			kurbo::PathEl::QuadTo(point, point1) => self.render_context.quadratic_curve_to(point.x, point.y, point1.x, point1.y),
+			kurbo::PathEl::CurveTo(point, point1, point2) => self.render_context.bezier_curve_to(point.x, point.y, point1.x, point1.y, point2.x, point2.y),
+			_ => unreachable!(),
 		}
 
 		self.end_dpi_aware_transform();
@@ -841,36 +839,35 @@ impl OverlayContext {
 			let subpath = subpath.borrow();
 			let mut curves = subpath.iter().peekable();
 
-			let Some(first) = curves.peek() else {
+			let Some(&first) = curves.peek() else {
 				continue;
 			};
 
-			self.render_context.move_to(transform.transform_point2(first.start()).x, transform.transform_point2(first.start()).y);
-			for curve in curves {
-				match curve.handles {
-					bezier_rs::BezierHandles::Linear => {
-						let a = transform.transform_point2(curve.end());
-						let a = a.round() - DVec2::splat(0.5);
+			let start_point = transform.transform_point2(point_to_dvec2(first.start()));
+			self.render_context.move_to(start_point.x, start_point.y);
 
-						self.render_context.line_to(a.x, a.y)
+			for curve in curves {
+				match curve {
+					PathSeg::Line(line) => {
+						let a = transform.transform_point2(point_to_dvec2(line.p1));
+						let a = a.round() - DVec2::splat(0.5);
+						self.render_context.line_to(a.x, a.y);
 					}
-					bezier_rs::BezierHandles::Quadratic { handle } => {
-						let a = transform.transform_point2(handle);
-						let b = transform.transform_point2(curve.end());
+					PathSeg::Quad(quad_bez) => {
+						let a = transform.transform_point2(point_to_dvec2(quad_bez.p1));
+						let b = transform.transform_point2(point_to_dvec2(quad_bez.p2));
 						let a = a.round() - DVec2::splat(0.5);
 						let b = b.round() - DVec2::splat(0.5);
-
-						self.render_context.quadratic_curve_to(a.x, a.y, b.x, b.y)
+						self.render_context.quadratic_curve_to(a.x, a.y, b.x, b.y);
 					}
-					bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
-						let a = transform.transform_point2(handle_start);
-						let b = transform.transform_point2(handle_end);
-						let c = transform.transform_point2(curve.end());
+					PathSeg::Cubic(cubic_bez) => {
+						let a = transform.transform_point2(point_to_dvec2(cubic_bez.p1));
+						let b = transform.transform_point2(point_to_dvec2(cubic_bez.p2));
+						let c = transform.transform_point2(point_to_dvec2(cubic_bez.p3));
 						let a = a.round() - DVec2::splat(0.5);
 						let b = b.round() - DVec2::splat(0.5);
 						let c = c.round() - DVec2::splat(0.5);
-
-						self.render_context.bezier_curve_to(a.x, a.y, b.x, b.y, c.x, c.y)
+						self.render_context.bezier_curve_to(a.x, a.y, b.x, b.y, c.x, c.y);
 					}
 				}
 			}
@@ -885,7 +882,7 @@ impl OverlayContext {
 
 	/// Used by the Select tool to outline a path or a free point when selected or hovered.
 	pub fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
-		let mut subpaths: Vec<bezier_rs::Subpath<PointId>> = vec![];
+		let mut subpaths: Vec<Subpath<PointId>> = vec![];
 
 		target_types.for_each(|target_type| match target_type.borrow() {
 			ClickTargetType::FreePoint(point) => {

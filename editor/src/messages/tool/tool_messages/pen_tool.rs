@@ -11,11 +11,12 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{self
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, closest_point, should_extend};
-use bezier_rs::{Bezier, BezierHandles};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
-use graphene_std::vector::misc::{HandleId, ManipulatorPointId};
+use graphene_std::subpath::pathseg_points;
+use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use graphene_std::vector::{NoHashBuilder, PointId, SegmentId, StrokeId, Vector, VectorModificationType};
+use kurbo::{CubicBez, PathSeg};
 
 #[derive(Default, ExtractField)]
 pub struct PenTool {
@@ -1257,7 +1258,7 @@ impl PenToolData {
 		let vector = document.network_interface.compute_modified_vector(layer);
 		let (handle_start, in_segment) = if let Some(vector) = &vector {
 			vector
-				.segment_bezier_iter()
+				.segment_iter()
 				.find_map(|(segment_id, bezier, start, end)| {
 					let is_end = point == end;
 					let is_start = point == start;
@@ -1265,15 +1266,16 @@ impl PenToolData {
 						return None;
 					}
 
-					let handle = match bezier.handles {
-						BezierHandles::Cubic { handle_start, handle_end, .. } => {
+					let points = pathseg_points(bezier);
+					let handle = match (points.p1, points.p2) {
+						(Some(p1), Some(p2)) => {
 							if is_start {
-								handle_start
+								p1
 							} else {
-								handle_end
+								p2
 							}
 						}
-						BezierHandles::Quadratic { handle } => handle,
+						(Some(p1), None) | (None, Some(p1)) => p1,
 						_ => return None,
 					};
 					Some((segment_id, is_end, handle))
@@ -1599,9 +1601,8 @@ impl Fsm for PenToolFsmState {
 				let handle_start = tool_data.latest_point().map(|point| transform.transform_point2(point.handle_start));
 
 				if let (Some((start, handle_start)), Some(handle_end)) = (tool_data.latest_point().map(|point| (point.pos, point.handle_start)), tool_data.handle_end) {
-					let handles = BezierHandles::Cubic { handle_start, handle_end };
 					let end = tool_data.next_point;
-					let bezier = Bezier { start, handles, end };
+					let bezier = PathSeg::Cubic(CubicBez::new(dvec2_to_point(start), dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(end)));
 					if (end - start).length_squared() > f64::EPSILON {
 						// Draw the curve for the currently-being-placed segment
 						overlay_context.outline_bezier(bezier, transform);
@@ -1723,7 +1724,7 @@ impl Fsm for PenToolFsmState {
 						// We have the point. Join the 2 vertices and check if any path is closed.
 						if let Some(end) = closest_point {
 							let segment_id = SegmentId::generate();
-							vector.push(segment_id, start, end, BezierHandles::Cubic { handle_start, handle_end }, StrokeId::ZERO);
+							vector.push(segment_id, start, end, (Some(handle_start), Some(handle_end)), StrokeId::ZERO);
 
 							let grouped_segments = vector.auto_join_paths();
 							let closed_paths = grouped_segments.iter().filter(|path| path.is_closed() && path.contains(segment_id));

@@ -9,16 +9,17 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{Node
 use crate::messages::tool::common_functionality::transformation_cage::SelectedEdges;
 use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
 use crate::messages::tool::utility_types::ToolType;
-use bezier_rs::{Bezier, BezierHandles};
 use glam::{DAffine2, DVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
+use graphene_core::subpath::{Bezier, BezierHandles};
 use graphene_std::renderer::Quad;
 use graphene_std::table::Table;
 use graphene_std::text::{FontCache, load_font};
-use graphene_std::vector::misc::{HandleId, ManipulatorPointId};
+use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
+use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModification, VectorModificationType};
-use kurbo::{CubicBez, Line, ParamCurveExtrema, PathSeg, Point, QuadBez};
+use kurbo::{CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, PathSeg, Point, QuadBez, Shape};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
 pub fn should_extend(
@@ -206,25 +207,6 @@ pub fn is_visible_point(
 			}
 		}
 	}
-}
-
-/// Function to find the bounding box of bezier (uses method from kurbo)
-pub fn calculate_bezier_bbox(bezier: Bezier) -> [DVec2; 2] {
-	let start = Point::new(bezier.start.x, bezier.start.y);
-	let end = Point::new(bezier.end.x, bezier.end.y);
-	let bbox = match bezier.handles {
-		BezierHandles::Cubic { handle_start, handle_end } => {
-			let p1 = Point::new(handle_start.x, handle_start.y);
-			let p2 = Point::new(handle_end.x, handle_end.y);
-			CubicBez::new(start, p1, p2, end).bounding_box()
-		}
-		BezierHandles::Quadratic { handle } => {
-			let p1 = Point::new(handle.x, handle.y);
-			QuadBez::new(start, p1, end).bounding_box()
-		}
-		BezierHandles::Linear => Line::new(start, end).bounding_box(),
-	};
-	[DVec2::new(bbox.x0, bbox.y0), DVec2::new(bbox.x1, bbox.y1)]
 }
 
 pub fn is_intersecting(bezier: Bezier, quad: [DVec2; 2], transform: DAffine2) -> bool {
@@ -496,19 +478,19 @@ pub fn log_optimization(a: f64, b: f64, p1: DVec2, p3: DVec2, d1: DVec2, d2: DVe
 	let c1 = p1 + d1 * start_handle_length;
 	let c2 = p3 + d2 * end_handle_length;
 
-	let new_curve = Bezier::from_cubic_coordinates(p1.x, p1.y, c1.x, c1.y, c2.x, c2.y, p3.x, p3.y);
+	let new_curve = PathSeg::Cubic(CubicBez::new(Point::new(p1.x, p1.y), Point::new(c1.x, c1.y), Point::new(c2.x, c2.y), Point::new(p3.x, p3.y)));
 
 	// Sample 2*n points from new curve and get the L2 metric between all of points
-	let points = new_curve.compute_lookup_table(Some(2 * n), None).collect::<Vec<_>>();
+	let points = pathseg_compute_lookup_table(new_curve, Some(2 * n), false);
 
-	let dist = points1.iter().zip(points.iter()).map(|(p1, p2)| (p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sum::<f64>();
+	let dist = points1.iter().zip(points).map(|(p1, p2)| (p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sum::<f64>();
 
 	dist / (2 * n) as f64
 }
 
 /// Calculates optimal handle lengths with adam optimization.
 #[allow(clippy::too_many_arguments)]
-pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, min_len1: f64, min_len2: f64, farther_segment: Bezier, other_segment: Bezier) -> (DVec2, DVec2) {
+pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, min_len1: f64, min_len2: f64, farther_segment: PathSeg, other_segment: PathSeg) -> (DVec2, DVec2) {
 	let h = 1e-6;
 	let tol = 1e-6;
 	let max_iter = 200;
@@ -530,21 +512,25 @@ pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec
 
 	let n = 20;
 
-	let farther_segment = if farther_segment.start.distance(p1) >= f64::EPSILON {
+	let farther_segment = if farther_segment.start().distance(dvec2_to_point(p1)) >= f64::EPSILON {
 		farther_segment.reverse()
 	} else {
 		farther_segment
 	};
 
-	let other_segment = if other_segment.end.distance(p3) >= f64::EPSILON { other_segment.reverse() } else { other_segment };
+	let other_segment = if other_segment.end().distance(dvec2_to_point(p3)) >= f64::EPSILON {
+		other_segment.reverse()
+	} else {
+		other_segment
+	};
 
 	// Now we sample points proportional to the lengths of the beziers
-	let l1 = farther_segment.length(None);
-	let l2 = other_segment.length(None);
+	let l1 = farther_segment.perimeter(DEFAULT_ACCURACY);
+	let l2 = other_segment.perimeter(DEFAULT_ACCURACY);
 	let ratio = l1 / (l1 + l2);
 	let n_points1 = ((2 * n) as f64 * ratio).floor() as usize;
-	let mut points1 = farther_segment.compute_lookup_table(Some(n_points1), None).collect::<Vec<_>>();
-	let mut points2 = other_segment.compute_lookup_table(Some(n), None).collect::<Vec<_>>();
+	let mut points1 = pathseg_compute_lookup_table(farther_segment, Some(n_points1), false).collect::<Vec<_>>();
+	let mut points2 = pathseg_compute_lookup_table(other_segment, Some(n), false).collect::<Vec<_>>();
 	points1.append(&mut points2);
 
 	let f = |a: f64, b: f64| -> f64 { log_optimization(a, b, p1, p3, d1, d2, &points1, n) };

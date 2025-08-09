@@ -1,6 +1,6 @@
 use super::graph_modification_utils::merge_layers;
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
-use super::utility_functions::{adjust_handle_colinearity, calculate_bezier_bbox, calculate_segment_angle, restore_g1_continuity, restore_previous_handle_position};
+use super::utility_functions::{adjust_handle_colinearity, calculate_segment_angle, restore_g1_continuity, restore_previous_handle_position};
 use crate::consts::HANDLE_LENGTH_FACTOR;
 use crate::messages::portfolio::document::overlays::utility_functions::selected_segments;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
@@ -9,12 +9,15 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
-use crate::messages::tool::common_functionality::utility_functions::{is_intersecting, is_visible_point};
+use crate::messages::tool::common_functionality::utility_functions::is_visible_point;
 use crate::messages::tool::tool_messages::path_tool::{PathOverlayMode, PointSelectState};
-use bezier_rs::{Bezier, BezierHandles, Subpath, TValue};
 use glam::{DAffine2, DVec2};
-use graphene_std::vector::misc::{HandleId, ManipulatorPointId};
+use graphene_core::subpath::{BezierHandles, Subpath};
+use graphene_std::subpath::{PathSegPoints, pathseg_points};
+use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
+use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point, point_to_dvec2};
 use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModificationType};
+use kurbo::{Affine, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveNearest, PathSeg, Rect, Shape};
 use std::f64::consts::TAU;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -26,7 +29,7 @@ pub enum SelectionChange {
 
 #[derive(Clone, Copy, Debug)]
 pub enum SelectionShape<'a> {
-	Box([DVec2; 2]),
+	Box(Rect),
 	Lasso(&'a Vec<DVec2>),
 }
 
@@ -185,7 +188,7 @@ pub type OpposingHandleLengths = HashMap<LayerNodeIdentifier, HashMap<HandleId, 
 pub struct ClosestSegment {
 	layer: LayerNodeIdentifier,
 	segment: SegmentId,
-	bezier: Bezier,
+	bezier: PathSeg,
 	points: [PointId; 2],
 	colinear: [Option<HandleId>; 2],
 	t: f64,
@@ -205,12 +208,12 @@ impl ClosestSegment {
 		self.points
 	}
 
-	pub fn bezier(&self) -> Bezier {
+	pub fn pathseg(&self) -> PathSeg {
 		self.bezier
 	}
 
 	pub fn closest_point_document(&self) -> DVec2 {
-		self.bezier.evaluate(TValue::Parametric(self.t))
+		point_to_dvec2(self.bezier.eval(self.t))
 	}
 
 	pub fn closest_point_to_viewport(&self) -> DVec2 {
@@ -219,7 +222,7 @@ impl ClosestSegment {
 
 	pub fn closest_point(&self, document_metadata: &DocumentMetadata, network_interface: &NodeNetworkInterface) -> DVec2 {
 		let transform = document_metadata.transform_to_viewport_if_feeds(self.layer, network_interface);
-		let bezier_point = self.bezier.evaluate(TValue::Parametric(self.t));
+		let bezier_point = point_to_dvec2(self.bezier.eval(self.t));
 		transform.transform_point2(bezier_point)
 	}
 
@@ -228,10 +231,10 @@ impl ClosestSegment {
 		let transform = document_metadata.transform_to_viewport_if_feeds(self.layer, network_interface);
 		let layer_mouse_pos = transform.inverse().transform_point2(mouse_position);
 
-		let t = self.bezier.project(layer_mouse_pos).clamp(0., 1.);
+		let t = self.bezier.nearest(dvec2_to_point(layer_mouse_pos), DEFAULT_ACCURACY).t.clamp(0., 1.);
 		self.t = t;
 
-		let bezier_point = self.bezier.evaluate(TValue::Parametric(t));
+		let bezier_point = point_to_dvec2(self.bezier.eval(t));
 		let bezier_point = transform.transform_point2(bezier_point);
 		self.bezier_point_to_viewport = bezier_point;
 	}
@@ -249,22 +252,24 @@ impl ClosestSegment {
 		let transform = document_metadata.transform_to_viewport_if_feeds(self.layer, network_interface);
 
 		// Split the Bezier at the parameter `t`
-		let [first, second] = self.bezier.split(TValue::Parametric(self.t));
+		let first = self.bezier.subsegment(0f64..self.t);
+		let second = self.bezier.subsegment(self.t..1.);
 
 		// Transform the handle positions to viewport space
-		let first_handle = first.handle_end().map(|handle| transform.transform_point2(handle));
-		let second_handle = second.handle_start().map(|handle| transform.transform_point2(handle));
+		let first_handle = pathseg_points(first).p2.map(|handle| transform.transform_point2(handle));
+		let second_handle = pathseg_points(second).p1.map(|handle| transform.transform_point2(handle));
 
 		(first_handle, second_handle)
 	}
 
 	pub fn adjusted_insert(&self, responses: &mut VecDeque<Message>) -> (PointId, [SegmentId; 2]) {
 		let layer = self.layer;
-		let [first, second] = self.bezier.split(TValue::Parametric(self.t));
+		let first = pathseg_points(self.bezier.subsegment(0f64..self.t));
+		let second = pathseg_points(self.bezier.subsegment(self.t..1.));
 
 		// Point
 		let midpoint = PointId::generate();
-		let modification_type = VectorModificationType::InsertPoint { id: midpoint, position: first.end };
+		let modification_type = VectorModificationType::InsertPoint { id: midpoint, position: first.p3 };
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 		// First segment
@@ -272,7 +277,7 @@ impl ClosestSegment {
 		let modification_type = VectorModificationType::InsertSegment {
 			id: segment_ids[0],
 			points: [self.points[0], midpoint],
-			handles: [first.handle_start().map(|handle| handle - first.start), first.handle_end().map(|handle| handle - first.end)],
+			handles: [first.p1.map(|handle| handle - first.p0), first.p2.map(|handle| handle - first.p3)],
 		};
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
@@ -280,12 +285,12 @@ impl ClosestSegment {
 		let modification_type = VectorModificationType::InsertSegment {
 			id: segment_ids[1],
 			points: [midpoint, self.points[1]],
-			handles: [second.handle_start().map(|handle| handle - second.start), second.handle_end().map(|handle| handle - second.end)],
+			handles: [second.p1.map(|handle| handle - second.p0), second.p2.map(|handle| handle - second.p3)],
 		};
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 		// G1 continuous on new handles
-		if self.bezier.handle_end().is_some() {
+		if pathseg_points(self.bezier).p2.is_some() {
 			let handles = [HandleId::end(segment_ids[0]), HandleId::primary(segment_ids[1])];
 			let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: true };
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
@@ -353,8 +358,8 @@ impl ClosestSegment {
 	) -> Option<[Option<HandleId>; 2]> {
 		let transform = document.metadata().transform_to_viewport_if_feeds(self.layer, &document.network_interface);
 
-		let start = self.bezier.start;
-		let end = self.bezier.end;
+		let start = point_to_dvec2(self.bezier.start());
+		let end = point_to_dvec2(self.bezier.end());
 
 		// Apply the drag delta to the segment's handles
 		let b = self.bezier_point_to_viewport;
@@ -1686,9 +1691,9 @@ impl ShapeState {
 
 		let vector = network_interface.compute_modified_vector(layer)?;
 
-		for (segment, mut bezier, start, end) in vector.segment_bezier_iter() {
-			let t = bezier.project(layer_pos);
-			let layerspace = bezier.evaluate(TValue::Parametric(t));
+		for (segment_id, mut segment, start, end) in vector.segment_iter() {
+			let t = segment.nearest(dvec2_to_point(layer_pos), DEFAULT_ACCURACY).t;
+			let layerspace = point_to_dvec2(segment.eval(t));
 
 			let screenspace = transform.transform_point2(layerspace);
 			let distance_squared = screenspace.distance_squared(position);
@@ -1697,20 +1702,22 @@ impl ShapeState {
 				closest_distance_squared = distance_squared;
 
 				// Convert to linear if handes are on top of control points
-				if let bezier_rs::BezierHandles::Cubic { handle_start, handle_end } = bezier.handles {
-					if handle_start.abs_diff_eq(bezier.start(), f64::EPSILON * 100.) && handle_end.abs_diff_eq(bezier.end(), f64::EPSILON * 100.) {
-						bezier = Bezier::from_linear_dvec2(bezier.start, bezier.end);
+				let PathSegPoints { p0: _, p1, p2, p3: _ } = pathseg_points(segment);
+				if let (Some(p1), Some(p2)) = (p1, p2) {
+					let segment_points = pathseg_points(segment);
+					if p1.abs_diff_eq(segment_points.p0, f64::EPSILON * 100.) && p2.abs_diff_eq(segment_points.p3, f64::EPSILON * 100.) {
+						segment = PathSeg::Line(Line::new(segment.start(), segment.end()));
 					}
 				}
 
-				let primary_handle = vector.colinear_manipulators.iter().find(|handles| handles.contains(&HandleId::primary(segment)));
-				let end_handle = vector.colinear_manipulators.iter().find(|handles| handles.contains(&HandleId::end(segment)));
-				let primary_handle = primary_handle.and_then(|&handles| handles.into_iter().find(|handle| handle.segment != segment));
-				let end_handle = end_handle.and_then(|&handles| handles.into_iter().find(|handle| handle.segment != segment));
+				let primary_handle = vector.colinear_manipulators.iter().find(|handles| handles.contains(&HandleId::primary(segment_id)));
+				let end_handle = vector.colinear_manipulators.iter().find(|handles| handles.contains(&HandleId::end(segment_id)));
+				let primary_handle = primary_handle.and_then(|&handles| handles.into_iter().find(|handle| handle.segment != segment_id));
+				let end_handle = end_handle.and_then(|&handles| handles.into_iter().find(|handle| handle.segment != segment_id));
 
 				closest = Some(ClosestSegment {
-					segment,
-					bezier,
+					segment: segment_id,
+					bezier: segment,
 					points: [start, end],
 					colinear: [primary_handle, end_handle],
 					t,
@@ -2076,21 +2083,24 @@ impl ShapeState {
 			};
 
 			// Selection segments
-			for (id, bezier, _, _) in vector.segment_bezier_iter() {
+			for (id, segment, _, _) in vector.segment_iter() {
 				if select_segments {
 					// Select segments if they lie inside the bounding box or lasso polygon
-					let segment_bbox = calculate_bezier_bbox(bezier);
-					let bottom_left = transform.transform_point2(segment_bbox[0]);
-					let top_right = transform.transform_point2(segment_bbox[1]);
+					let transformed_segment = Affine::new(transform.to_cols_array()) * segment;
+					let segment_bbox = transformed_segment.bounding_box();
 
 					let select = match selection_shape {
-						SelectionShape::Box(quad) => {
-							let enclosed = quad[0].min(quad[1]).cmple(bottom_left).all() && quad[0].max(quad[1]).cmpge(top_right).all();
+						SelectionShape::Box(rect) => {
+							let enclosed = segment_bbox.contains_rect(rect);
 							match selection_mode {
 								SelectionMode::Enclosed => enclosed,
 								_ => {
 									// Check for intersection with the segment
-									enclosed || is_intersecting(bezier, quad, transform)
+									enclosed
+										|| rect
+											.path_segments(DEFAULT_ACCURACY)
+											.map(|seg| seg.as_line().unwrap())
+											.any(|line| !transformed_segment.intersect_line(line).is_empty())
 								}
 							}
 						}
@@ -2098,7 +2108,7 @@ impl ShapeState {
 							let polygon = polygon_subpath.as_ref().expect("If `selection_shape` is a polygon then subpath is constructed beforehand.");
 
 							// Sample 10 points on the bezier and check if all or some lie inside the polygon
-							let points = bezier.compute_lookup_table(Some(10), None);
+							let points = pathseg_compute_lookup_table(segment, Some(10), false);
 							match selection_mode {
 								SelectionMode::Enclosed => points.map(|p| transform.transform_point2(p)).all(|p| polygon.contains_point(p)),
 								_ => points.map(|p| transform.transform_point2(p)).any(|p| polygon.contains_point(p)),
@@ -2111,13 +2121,15 @@ impl ShapeState {
 					}
 				}
 
+				let segment_points = pathseg_points(segment);
+
 				// Selecting handles
-				for (position, id) in [(bezier.handle_start(), ManipulatorPointId::PrimaryHandle(id)), (bezier.handle_end(), ManipulatorPointId::EndHandle(id))] {
+				for (position, id) in [(segment_points.p1, ManipulatorPointId::PrimaryHandle(id)), (segment_points.p2, ManipulatorPointId::EndHandle(id))] {
 					let Some(position) = position else { continue };
 					let transformed_position = transform.transform_point2(position);
 
 					let select = match selection_shape {
-						SelectionShape::Box(quad) => quad[0].min(quad[1]).cmple(transformed_position).all() && quad[0].max(quad[1]).cmpge(transformed_position).all(),
+						SelectionShape::Box(rect) => rect.contains(dvec2_to_point(transformed_position)),
 						SelectionShape::Lasso(_) => polygon_subpath
 							.as_ref()
 							.expect("If `selection_shape` is a polygon then subpath is constructed beforehand.")
@@ -2139,7 +2151,7 @@ impl ShapeState {
 				let transformed_position = transform.transform_point2(position);
 
 				let select = match selection_shape {
-					SelectionShape::Box(quad) => quad[0].min(quad[1]).cmple(transformed_position).all() && quad[0].max(quad[1]).cmpge(transformed_position).all(),
+					SelectionShape::Box(rect) => rect.contains(dvec2_to_point(transformed_position)),
 					SelectionShape::Lasso(_) => polygon_subpath
 						.as_ref()
 						.expect("If `selection_shape` is a polygon then subpath is constructed beforehand.")
