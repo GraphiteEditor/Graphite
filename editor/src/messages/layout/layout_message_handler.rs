@@ -308,6 +308,7 @@ impl LayoutMessageHandler {
 
 				responses.add(callback_message);
 			}
+			Widget::ImageLabel(_) => {}
 			Widget::IconLabel(_) => {}
 			Widget::InvisibleStandinInput(invisible) => {
 				let callback_message = match action {

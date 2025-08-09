@@ -2,9 +2,9 @@ use crate::messages::prelude::*;
 use crate::node_graph_executor::InspectResult;
 
 /// The spreadsheet UI allows for graph data to be previewed.
-#[impl_message(Message, PortfolioMessage, Spreadsheet)]
+#[impl_message(Message, DocumentMessage, DataPanel)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub enum SpreadsheetMessage {
+pub enum DataPanelMessage {
 	ToggleOpen,
 
 	UpdateLayout {
@@ -19,14 +19,15 @@ pub enum SpreadsheetMessage {
 		len: usize,
 	},
 
-	ViewVectorDomain {
-		domain: VectorDomain,
+	ViewVectorTableTab {
+		tab: VectorTableTab,
 	},
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
-pub enum VectorDomain {
+pub enum VectorTableTab {
 	#[default]
+	Properties,
 	Points,
 	Segments,
 	Regions,

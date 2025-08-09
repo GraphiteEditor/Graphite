@@ -9,6 +9,7 @@ use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
@@ -63,9 +64,11 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	pub node_graph_handler: NodeGraphMessageHandler,
 	#[serde(skip)]
-	overlays_message_handler: OverlaysMessageHandler,
+	pub overlays_message_handler: OverlaysMessageHandler,
 	#[serde(skip)]
-	properties_panel_message_handler: PropertiesPanelMessageHandler,
+	pub properties_panel_message_handler: PropertiesPanelMessageHandler,
+	#[serde(skip)]
+	pub data_panel_message_handler: DataPanelMessageHandler,
 
 	// ============================================
 	// Fields that are saved in the document format
@@ -144,6 +147,7 @@ impl Default for DocumentMessageHandler {
 			node_graph_handler: NodeGraphMessageHandler::default(),
 			overlays_message_handler: OverlaysMessageHandler::default(),
 			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
+			data_panel_message_handler: DataPanelMessageHandler::default(),
 			// ============================================
 			// Fields that are saved in the document format
 			// ============================================
@@ -225,6 +229,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					persistent_data,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
+			}
+			DocumentMessage::DataPanel(message) => {
+				self.data_panel_message_handler.process_message(
+					message,
+					responses,
+					DataPanelMessageContext {
+						network_interface: &mut self.network_interface,
+					},
+				);
 			}
 			DocumentMessage::NodeGraph(message) => {
 				self.node_graph_handler.process_message(
