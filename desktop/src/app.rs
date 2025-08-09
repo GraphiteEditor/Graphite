@@ -7,8 +7,12 @@ use crate::dialogs::dialog_save_graphite_file;
 use crate::render::GraphicsState;
 use crate::render::WgpuContext;
 use graph_craft::wasm_application_io::WasmApplicationIo;
+use graphene_std::Color;
+use graphene_std::raster::Image;
 use graphite_editor::application::Editor;
+use graphite_editor::consts::DEFAULT_DOCUMENT_NAME;
 use graphite_editor::messages::prelude::*;
+use std::fs;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::thread;
@@ -75,7 +79,7 @@ impl WinitApp {
 						String::new()
 					});
 					let message = PortfolioMessage::OpenDocumentFile {
-						document_name: path.file_name().and_then(|s| s.to_str()).unwrap_or("unknown").to_string(),
+						document_name: path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string(),
 						document_serialized_content: content,
 					};
 					let _ = event_loop_proxy.send_event(CustomEvent::DispatchMessage(message.into()));
@@ -264,6 +268,73 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 		let Some(event) = self.cef_context.handle_window_event(event) else { return };
 
 		match event {
+			// Currently not supported on wayland see https://github.com/rust-windowing/winit/issues/1881
+			WindowEvent::DroppedFile(path) => {
+				let name = path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string());
+				match path.extension().and_then(|s| s.to_str()) {
+					Some("graphite") => {
+						let content = fs::read_to_string(&path).unwrap_or_else(|_| {
+							tracing::error!("Failed to read file: {}", path.display());
+							String::new()
+						});
+
+						if !content.is_empty() {
+							let message = PortfolioMessage::OpenDocumentFile {
+								document_name: name.unwrap_or(DEFAULT_DOCUMENT_NAME.to_string()),
+								document_serialized_content: content,
+							};
+							self.dispatch_message(message.into());
+						} else {
+							tracing::warn!("Dropped file is empty: {}", path.display());
+						}
+					}
+					Some("svg") => {
+						let content = fs::read_to_string(&path).unwrap_or_else(|_| {
+							tracing::error!("Failed to read file: {}", path.display());
+							String::new()
+						});
+
+						if !content.is_empty() {
+							let message = PortfolioMessage::PasteSvg {
+								name: path.file_stem().map(|s| s.to_string_lossy().to_string()),
+								svg: content,
+								mouse: None,
+								parent_and_insert_index: None,
+							};
+							self.dispatch_message(message.into());
+						} else {
+							tracing::warn!("Dropped file is empty: {}", path.display());
+						}
+					}
+					Some(_) => match image::ImageReader::open(&path) {
+						Ok(reader) => match reader.decode() {
+							Ok(image) => {
+								let width = image.width();
+								let height = image.height();
+								let image_data = image.to_rgba8();
+								let image = Image::<Color>::from_image_data(image_data.as_raw(), width, height);
+
+								let message = PortfolioMessage::PasteImage {
+									name,
+									image,
+									mouse: None,
+									parent_and_insert_index: None,
+								};
+								self.dispatch_message(message.into());
+							}
+							Err(e) => {
+								tracing::error!("Failed to decode image: {}: {}", path.display(), e);
+							}
+						},
+						Err(e) => {
+							tracing::error!("Failed to open image file: {}: {}", path.display(), e);
+						}
+					},
+					_ => {
+						tracing::warn!("Unsupported file dropped: {}", path.display());
+					}
+				}
+			}
 			WindowEvent::CloseRequested => {
 				tracing::info!("The close button was pressed; stopping");
 				event_loop.exit();

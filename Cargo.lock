@@ -2113,6 +2113,7 @@ dependencies = [
  "graph-craft",
  "graphene-std",
  "graphite-editor",
+ "image",
  "include_dir",
  "open",
  "rfd",
