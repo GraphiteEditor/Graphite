@@ -5,11 +5,24 @@ use super::*;
 use glam::DVec2;
 use kurbo::PathSeg;
 
-pub fn pathseg_points(segment: PathSeg) -> (DVec2, Option<DVec2>, Option<DVec2>, DVec2) {
+pub struct PathSegPoints {
+	p0: DVec2,
+	p1: Option<DVec2>,
+	p2: Option<DVec2>,
+	p3: DVec2,
+}
+
+impl PathSegPoints {
+	pub fn new(p0: DVec2, p1: Option<DVec2>, p2: Option<DVec2>, p3: DVec2) -> Self {
+		Self { p0, p1, p2, p3 }
+	}
+}
+
+pub fn pathseg_points(segment: PathSeg) -> PathSegPoints {
 	match segment {
-		PathSeg::Line(line) => (point_to_dvec2(line.p0), None, None, point_to_dvec2(line.p1)),
-		PathSeg::Quad(quad) => (point_to_dvec2(quad.p0), None, Some(point_to_dvec2(quad.p1)), point_to_dvec2(quad.p1)),
-		PathSeg::Cubic(cube) => (point_to_dvec2(cube.p0), Some(point_to_dvec2(cube.p1)), Some(point_to_dvec2(cube.p2)), point_to_dvec2(cube.p1)),
+		PathSeg::Line(line) => PathSegPoints::new(point_to_dvec2(line.p0), None, None, point_to_dvec2(line.p1)),
+		PathSeg::Quad(quad) => PathSegPoints::new(point_to_dvec2(quad.p0), None, Some(point_to_dvec2(quad.p1)), point_to_dvec2(quad.p1)),
+		PathSeg::Cubic(cube) => PathSegPoints::new(point_to_dvec2(cube.p0), Some(point_to_dvec2(cube.p1)), Some(point_to_dvec2(cube.p2)), point_to_dvec2(cube.p1)),
 	}
 }
 
@@ -25,8 +38,8 @@ impl<PointId: Identifier> Subpath<PointId> {
 
 	/// Create a `Subpath` consisting of 2 manipulator groups from a `Bezier`.
 	pub fn from_bezier(segment: PathSeg) -> Self {
-		let (p1, h1, h2, p2) = pathseg_points(segment);
-		Subpath::new(vec![ManipulatorGroup::new(p1, None, h1), ManipulatorGroup::new(p2, h2, None)], false)
+		let PathSegPoints { p0, p1, p2, p3 } = pathseg_points(segment);
+		Subpath::new(vec![ManipulatorGroup::new(p0, None, p1), ManipulatorGroup::new(p3, p2, None)], false)
 	}
 
 	/// Creates a subpath from a slice of [Bezier]. When two consecutive Beziers do not share an end and start point, this function
@@ -41,17 +54,17 @@ impl<PointId: Identifier> Subpath<PointId> {
 
 		let first = beziers.first().unwrap();
 		let mut manipulator_groups = vec![ManipulatorGroup {
-			anchor: first.0,
+			anchor: first.p0,
 			in_handle: None,
-			out_handle: first.1,
+			out_handle: first.p1,
 			id: PointId::new(),
 		}];
 		let mut inner_groups: Vec<ManipulatorGroup<PointId>> = beziers
 			.windows(2)
 			.map(|bezier_pair| ManipulatorGroup {
-				anchor: bezier_pair[1].0,
-				in_handle: bezier_pair[0].2,
-				out_handle: bezier_pair[1].1,
+				anchor: bezier_pair[1].p0,
+				in_handle: bezier_pair[0].p2,
+				out_handle: bezier_pair[1].p1,
 				id: PointId::new(),
 			})
 			.collect::<Vec<ManipulatorGroup<PointId>>>();
@@ -60,15 +73,15 @@ impl<PointId: Identifier> Subpath<PointId> {
 		let last = beziers.last().unwrap();
 		if !closed {
 			manipulator_groups.push(ManipulatorGroup {
-				anchor: last.3,
-				in_handle: last.2,
+				anchor: last.p3,
+				in_handle: last.p2,
 				out_handle: None,
 				id: PointId::new(),
 			});
 			return Subpath::new(manipulator_groups, false);
 		}
 
-		manipulator_groups[0].in_handle = last.2;
+		manipulator_groups[0].in_handle = last.p2;
 		Subpath::new(manipulator_groups, true)
 	}
 
