@@ -6,6 +6,7 @@ use crate::messages::prelude::*;
 use graphene_std::Color;
 use graphene_std::raster::Image;
 use graphene_std::text::Font;
+use std::path::PathBuf;
 
 #[impl_message(Message, Portfolio)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -68,18 +69,20 @@ pub enum PortfolioMessage {
 	NextDocument,
 	OpenDocument,
 	OpenDocumentFile {
-		document_name: String,
+		document_name: Option<String>,
+		document_path: Option<PathBuf>,
 		document_serialized_content: String,
 	},
-	ToggleResetNodesToDefinitionsOnOpen,
 	OpenDocumentFileWithId {
 		document_id: DocumentId,
-		document_name: String,
+		document_name: Option<String>,
+		document_path: Option<PathBuf>,
 		document_is_auto_saved: bool,
 		document_is_saved: bool,
 		document_serialized_content: String,
 		to_front: bool,
 	},
+	ToggleResetNodesToDefinitionsOnOpen,
 	PasteIntoFolder {
 		clipboard: Clipboard,
 		parent: LayerNodeIdentifier,
