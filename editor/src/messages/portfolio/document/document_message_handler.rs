@@ -1005,7 +1005,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					multiplier: scrollbar_multiplier.into(),
 				});
 			}
-			DocumentMessage::SaveDocument => {
+			DocumentMessage::SaveDocument | DocumentMessage::SaveDocumentAs => {
+				if let DocumentMessage::SaveDocumentAs = message {
+					self.path = None;
+				}
+
 				self.set_save_state(true);
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 				// Update the save status of the just saved document
@@ -1020,6 +1024,21 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::SavedDocument { path } => {
 				self.path = path;
+
+				// Update the name to match the file stem
+				let document_name_from_path = self.path.as_ref().and_then(|path| {
+					if path.extension().is_some_and(|e| e == FILE_EXTENSION) {
+						path.file_stem().map(|n| n.to_string_lossy().to_string())
+					} else {
+						None
+					}
+				});
+				if let Some(name) = document_name_from_path {
+					self.name = name;
+
+					responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+					responses.add(NodeGraphMessage::UpdateNewNodeGraph);
+				}
 			}
 			DocumentMessage::SelectParentLayer => {
 				let selected_nodes = self.network_interface.selected_nodes();
