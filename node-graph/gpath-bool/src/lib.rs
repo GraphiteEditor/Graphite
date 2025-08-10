@@ -3,14 +3,13 @@ use glam::{DAffine2, DVec2};
 use graphene_core::subpath::{ManipulatorGroup, Subpath};
 use graphene_core::table::{Table, TableRow, TableRowRef};
 use graphene_core::vector::algorithms::merge_by_distance::MergeByDistanceExt;
-use graphene_core::vector::misc::{point_to_dvec2, transform_pathseg};
+use graphene_core::vector::misc::point_to_dvec2;
 use graphene_core::vector::style::Fill;
 use graphene_core::vector::{PointId, Vector};
 use graphene_core::{Color, Ctx, Graphic};
-use kurbo::{ParamCurve, Point};
+use kurbo::{Affine, ParamCurve, Point};
 pub use path_bool as path_bool_lib;
 use path_bool::{FillRule, PathBooleanOperation};
-use std::ops::Mul;
 
 // TODO: Fix boolean ops to work by removing .transform() and .one_instnace_*() calls,
 // TODO: since before we used a Vec of single-row tables and now we use a single table
@@ -300,8 +299,7 @@ fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &Subpath<Po
 	let mut global_start = None;
 	let mut global_end = Point::ZERO;
 	for bezier in subpath.iter() {
-		const EPS: f64 = 1e-8;
-		let transformed = transform_pathseg(bezier, |pos| transform.transform_point2(pos).mul(EPS.recip()).round().mul(EPS));
+		let transformed = Affine::new(transform.to_cols_array()) * bezier;
 		let start = transformed.start();
 		let end = transformed.end();
 		if global_start.is_none() {

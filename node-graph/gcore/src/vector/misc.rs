@@ -220,15 +220,6 @@ pub fn pathseg_points_vec(segment: PathSeg) -> Vec<Point> {
 	}
 }
 
-pub fn transform_pathseg(segment: PathSeg, transform: impl Fn(DVec2) -> DVec2) -> PathSeg {
-	let transform = |point: Point| dvec2_to_point(transform(point_to_dvec2(point)));
-	match segment {
-		PathSeg::Line(line) => PathSeg::Line(Line::new(transform(line.p0), transform(line.p1))),
-		PathSeg::Quad(quad_bez) => PathSeg::Quad(QuadBez::new(transform(quad_bez.p0), transform(quad_bez.p1), transform(quad_bez.p2))),
-		PathSeg::Cubic(cubic_bez) => PathSeg::Cubic(CubicBez::new(transform(cubic_bez.p0), transform(cubic_bez.p0), transform(cubic_bez.p0), transform(cubic_bez.p0))),
-	}
-}
-
 /// Returns true if the corresponding points of the two [`PathSeg`]s are within the provided absolute value difference from each other.
 pub fn pathseg_abs_diff_eq(seg1: PathSeg, seg2: PathSeg, max_abs_diff: f64) -> bool {
 	let seg1 = if is_linear(seg1) { PathSeg::Line(Line::new(seg1.start(), seg1.end())) } else { seg1 };
