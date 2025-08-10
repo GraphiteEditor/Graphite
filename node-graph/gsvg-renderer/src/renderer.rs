@@ -4,8 +4,10 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_core::blending::BlendMode;
 use graphene_core::bounds::BoundingBox;
+use graphene_core::bounds::RenderBoundingBox;
 use graphene_core::color::Color;
 use graphene_core::math::quad::Quad;
+use graphene_core::raster::BitmapMut;
 use graphene_core::raster::Image;
 use graphene_core::raster_types::{CPU, GPU, Raster};
 use graphene_core::render_complexity::RenderComplexity;
@@ -156,7 +158,7 @@ pub struct RenderContext {
 #[derive(Default)]
 pub struct RenderParams {
 	pub view_mode: ViewMode,
-	pub culling_bounds: Option<[DVec2; 2]>,
+	pub footprint: Footprint,
 	pub thumbnail: bool,
 	/// Don't render the rectangle for an artboard to allow exporting with a transparent background.
 	pub hide_artboards: bool,
@@ -302,13 +304,13 @@ impl Render for Table<Graphic> {
 				ViewMode::Outline => peniko::Mix::Normal,
 				_ => alpha_blending.blend_mode.to_peniko(),
 			};
-			let mut bounds = None;
+			let mut bounds = RenderBoundingBox::None;
 
 			let opacity = row.alpha_blending.opacity(render_params.for_mask);
 			if opacity < 1. || (render_params.view_mode != ViewMode::Outline && alpha_blending.blend_mode != BlendMode::default()) {
 				bounds = row.element.bounding_box(transform, true);
 
-				if let Some(bounds) = bounds {
+				if let RenderBoundingBox::Rectangle(bounds) = bounds {
 					scene.push_layer(
 						peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
 						opacity,
@@ -332,7 +334,7 @@ impl Render for Table<Graphic> {
 					bounds = row.element.bounding_box(transform, true);
 				}
 
-				if let Some(bounds) = bounds {
+				if let RenderBoundingBox::Rectangle(bounds) = bounds {
 					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
 					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
@@ -342,7 +344,7 @@ impl Render for Table<Graphic> {
 
 				row.element.render_to_vello(scene, transform, context, render_params);
 
-				if bounds.is_some() {
+				if matches!(bounds, RenderBoundingBox::Rectangle(_)) {
 					scene.pop_layer();
 					scene.pop_layer();
 				}
@@ -961,7 +963,9 @@ impl Render for Table<Raster<CPU>> {
 					state.finish()
 				});
 				if !render.image_data.iter().any(|(old_id, _)| *old_id == id) {
-					render.image_data.push((id, image.data().clone()));
+					let mut image = image.data().clone();
+					image.map_pixels(|p| p.to_unassociated_alpha());
+					render.image_data.push((id, image));
 				}
 				render.parent_tag(
 					"foreignObject",
@@ -1048,7 +1052,7 @@ impl Render for Table<Raster<CPU>> {
 			let mut layer = false;
 
 			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
-				if let Some(bounds) = self.bounding_box(transform, false) {
+				if let RenderBoundingBox::Rectangle(bounds) = self.bounding_box(transform, false) {
 					let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
 					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 					scene.push_layer(blending, opacity, kurbo::Affine::IDENTITY, &rect);
@@ -1100,7 +1104,7 @@ impl Render for Table<Raster<GPU>> {
 			let blend_mode = *row.alpha_blending;
 			let mut layer = false;
 			if blend_mode != Default::default() {
-				if let Some(bounds) = self.bounding_box(transform, true) {
+				if let RenderBoundingBox::Rectangle(bounds) = self.bounding_box(transform, true) {
 					let blending = peniko::BlendMode::new(blend_mode.blend_mode.to_peniko(), peniko::Compose::SrcOver);
 					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 					scene.push_layer(blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
@@ -1150,6 +1154,7 @@ impl Render for Graphic {
 			Graphic::Vector(vector) => vector.render_svg(render, render_params),
 			Graphic::RasterCPU(raster) => raster.render_svg(render, render_params),
 			Graphic::RasterGPU(_) => (),
+			Graphic::Color(color) => color.render_svg(render, render_params),
 		}
 	}
 
@@ -1160,6 +1165,7 @@ impl Render for Graphic {
 			Graphic::Vector(vector) => vector.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterCPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterGPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
+			Graphic::Color(color) => color.render_to_vello(scene, transform, context, render_params),
 		}
 	}
 
@@ -1177,20 +1183,28 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, *vector.transform);
 					}
 				}
-				Graphic::RasterCPU(raster_frame) => {
+				Graphic::RasterCPU(raster) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than one row of images
-					if let Some(image) = raster_frame.iter().next() {
-						metadata.local_transforms.insert(element_id, *image.transform);
+					if let Some(raster) = raster.iter().next() {
+						metadata.local_transforms.insert(element_id, *raster.transform);
 					}
 				}
-				Graphic::RasterGPU(raster_frame) => {
+				Graphic::RasterGPU(raster) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than one row of images
-					if let Some(image) = raster_frame.iter().next() {
-						metadata.local_transforms.insert(element_id, *image.transform);
+					if let Some(raster) = raster.iter().next() {
+						metadata.local_transforms.insert(element_id, *raster.transform);
+					}
+				}
+				Graphic::Color(color) => {
+					metadata.upstream_footprints.insert(element_id, footprint);
+
+					// TODO: Find a way to handle more than one row of images
+					if let Some(color) = color.iter().next() {
+						metadata.local_transforms.insert(element_id, *color.transform);
 					}
 				}
 			}
@@ -1201,6 +1215,7 @@ impl Render for Graphic {
 			Graphic::Vector(vector) => vector.collect_metadata(metadata, footprint, element_id),
 			Graphic::RasterCPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
 			Graphic::RasterGPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
+			Graphic::Color(color) => color.collect_metadata(metadata, footprint, element_id),
 		}
 	}
 
@@ -1210,6 +1225,7 @@ impl Render for Graphic {
 			Graphic::Vector(vector) => vector.add_upstream_click_targets(click_targets),
 			Graphic::RasterCPU(raster) => raster.add_upstream_click_targets(click_targets),
 			Graphic::RasterGPU(raster) => raster.add_upstream_click_targets(click_targets),
+			Graphic::Color(color) => color.add_upstream_click_targets(click_targets),
 		}
 	}
 
@@ -1219,6 +1235,7 @@ impl Render for Graphic {
 			Graphic::Vector(vector) => vector.contains_artboard(),
 			Graphic::RasterCPU(raster) => raster.contains_artboard(),
 			Graphic::RasterGPU(raster) => raster.contains_artboard(),
+			Graphic::Color(color) => color.contains_artboard(),
 		}
 	}
 
@@ -1228,6 +1245,71 @@ impl Render for Graphic {
 			Graphic::Vector(vector) => vector.new_ids_from_hash(reference),
 			Graphic::RasterCPU(_) => (),
 			Graphic::RasterGPU(_) => (),
+			Graphic::Color(_) => (),
+		}
+	}
+}
+
+impl Render for Table<Color> {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		for row in self.iter() {
+			render.leaf_tag("rect", |attributes| {
+				attributes.push("width", render_params.footprint.resolution.x.to_string());
+				attributes.push("height", render_params.footprint.resolution.y.to_string());
+
+				let matrix = format_transform_matrix(render_params.footprint.transform.inverse());
+				if !matrix.is_empty() {
+					attributes.push("transform", matrix);
+				}
+
+				let color = row.element;
+				attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
+				if color.a() < 1. {
+					attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
+				}
+
+				let opacity = row.alpha_blending.opacity(render_params.for_mask);
+				if opacity < 1. {
+					attributes.push("opacity", opacity.to_string());
+				}
+
+				if row.alpha_blending.blend_mode != BlendMode::default() {
+					attributes.push("style", row.alpha_blending.blend_mode.render());
+				}
+			});
+		}
+	}
+
+	#[cfg(feature = "vello")]
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+		use vello::peniko;
+
+		for row in self.iter() {
+			let alpha_blending = *row.alpha_blending;
+			let blend_mode = alpha_blending.blend_mode.to_peniko();
+			let opacity = alpha_blending.opacity(render_params.for_mask);
+
+			let transform = parent_transform * render_params.footprint.transform.inverse();
+			let color = row.element;
+			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
+
+			let rect = kurbo::Rect::from_origin_size(
+				kurbo::Point::ZERO,
+				kurbo::Size::new(render_params.footprint.resolution.x as f64, render_params.footprint.resolution.y as f64),
+			);
+
+			let mut layer = false;
+			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
+				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
+				scene.push_layer(blending, opacity, kurbo::Affine::IDENTITY, &rect);
+				layer = true;
+			}
+
+			scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), vello_color, None, &rect);
+
+			if layer {
+				scene.pop_layer();
+			}
 		}
 	}
 }
@@ -1256,27 +1338,50 @@ impl<P: Primitive> Render for P {
 }
 
 impl Render for Option<Color> {
-	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
-		let Some(color) = self else {
-			render.parent_tag("text", |_| {}, |render| render.leaf_node("Empty color"));
-			return;
-		};
-		let color_info = format!("{:?} #{} {:?}", color, color.to_rgba_hex_srgb(), color.to_rgba8_srgb());
-
-		render.leaf_tag("rect", |attributes| {
-			attributes.push("width", "100");
-			attributes.push("height", "100");
-			attributes.push("y", "40");
-			attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
-			if color.a() < 1. {
-				attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
-			}
-		});
-		render.parent_tag("text", text_attributes, |render| render.leaf_node(color_info))
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		if let Some(color) = self {
+			color.render_svg(render, render_params);
+		}
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+		if let Some(color) = self {
+			color.render_to_vello(scene, parent_transform, _context, render_params);
+		}
+	}
+}
+
+impl Render for Color {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		render.leaf_tag("rect", |attributes| {
+			attributes.push("width", render_params.footprint.resolution.x.to_string());
+			attributes.push("height", render_params.footprint.resolution.y.to_string());
+
+			let matrix = format_transform_matrix(render_params.footprint.transform.inverse());
+			if !matrix.is_empty() {
+				attributes.push("transform", matrix);
+			}
+
+			attributes.push("fill", format!("#{}", self.to_rgb_hex_srgb_from_gamma()));
+			if self.a() < 1. {
+				attributes.push("fill-opacity", ((self.a() * 1000.).round() / 1000.).to_string());
+			}
+		});
+	}
+
+	#[cfg(feature = "vello")]
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+		let transform = parent_transform * render_params.footprint.transform.inverse();
+		let vello_color = peniko::Color::new([self.r(), self.g(), self.b(), self.a()]);
+
+		let rect = kurbo::Rect::from_origin_size(
+			kurbo::Point::ZERO,
+			kurbo::Size::new(render_params.footprint.resolution.x as f64, render_params.footprint.resolution.y as f64),
+		);
+
+		scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), vello_color, None, &rect);
+	}
 }
 
 impl Render for Vec<Color> {

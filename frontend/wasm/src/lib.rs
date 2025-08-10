@@ -20,6 +20,7 @@ pub static NODE_GRAPH_ERROR_DISPLAYED: AtomicBool = AtomicBool::new(false);
 pub static LOGGER: WasmLog = WasmLog;
 
 thread_local! {
+	#[cfg(not(feature = "native"))]
 	pub static EDITOR: Mutex<Option<editor::application::Editor>> = const { Mutex::new(None) };
 	pub static MESSAGE_BUFFER: std::cell::RefCell<Vec<Message>> = const { std::cell::RefCell::new(Vec::new()) };
 	pub static EDITOR_HANDLE: Mutex<Option<editor_api::EditorHandle>> = const { Mutex::new(None) };
@@ -50,7 +51,7 @@ pub fn panic_hook(info: &panic::PanicHookInfo) {
 
 		if !NODE_GRAPH_ERROR_DISPLAYED.load(Ordering::SeqCst) {
 			NODE_GRAPH_ERROR_DISPLAYED.store(true, Ordering::SeqCst);
-			editor_api::editor_and_handle(|_, handle| {
+			editor_api::handle(|handle| {
 				let error = r#"
 				<rect x="50%" y="50%" width="600" height="100" transform="translate(-300 -50)" rx="4" fill="var(--color-error-red)" />
 				<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="18" fill="var(--color-2-mildblack)">

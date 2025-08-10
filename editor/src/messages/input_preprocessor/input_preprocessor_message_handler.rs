@@ -36,6 +36,14 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext> f
 					responses.add(NavigationMessage::CanvasPan { delta: DVec2::ZERO });
 					responses.add(NodeGraphMessage::SetGridAlignedEdges);
 				}
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: vec![
+						DeferMessage::AfterGraphRun {
+							messages: vec![DeferMessage::TriggerNavigationReady.into()],
+						}
+						.into(),
+					],
+				});
 			}
 			InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);

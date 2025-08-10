@@ -533,16 +533,24 @@
 							y={cursorTop}
 						/>
 					{/if}
-					{#if !$appWindow.viewportHolePunch}
-						<div class="viewport" on:pointerdown={(e) => canvasPointerDown(e)} bind:this={viewport} data-viewport>
+					<div
+						class:viewport={!$appWindow.viewportHolePunch}
+						class:viewport-transparent={$appWindow.viewportHolePunch}
+						on:pointerdown={(e) => canvasPointerDown(e)}
+						bind:this={viewport}
+						data-viewport
+					>
+						{#if !$appWindow.viewportHolePunch}
 							<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 								{@html artworkSvg}
 							</svg>
-							<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={showTextInput ? "auto" : ""}>
-								{#if showTextInput}
-									<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll} />
-								{/if}
-							</div>
+						{/if}
+						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={showTextInput ? "auto" : ""}>
+							{#if showTextInput}
+								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll} />
+							{/if}
+						</div>
+						{#if !$appWindow.viewportHolePunch}
 							<canvas
 								class="overlays"
 								width={canvasWidthScaledRoundedToEven}
@@ -552,8 +560,9 @@
 								data-overlays-canvas
 							>
 							</canvas>
-						</div>
-					{/if}
+						{/if}
+					</div>
+
 					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork={`${$document.fadeArtwork}%`} data-graph>
 						<Graph />
 					</div>
@@ -666,7 +675,7 @@
 
 							&[title^="Coming Soon"] {
 								opacity: 0.25;
-								transition: opacity 0.2s;
+								transition: opacity 0.1s;
 
 								&:hover {
 									opacity: 1;
@@ -757,6 +766,10 @@
 
 					.viewport {
 						background: var(--color-2-mildblack);
+					}
+
+					.viewport,
+					.viewport-transparent {
 						width: 100%;
 						height: 100%;
 						// Allows the SVG to be placed at explicit integer values of width and height to prevent non-pixel-perfect SVG scaling
@@ -812,7 +825,7 @@
 
 					.graph-view {
 						pointer-events: none;
-						transition: opacity 0.2s ease-in-out;
+						transition: opacity 0.2s;
 						opacity: 0;
 
 						&.open {

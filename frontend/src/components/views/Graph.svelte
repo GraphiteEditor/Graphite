@@ -1008,7 +1008,7 @@
 				border-radius: 4px;
 				bottom: calc(100% + 12px);
 				z-index: -1;
-				transition: opacity 0.2s ease-in-out;
+				transition: opacity 0.2s;
 				opacity: 0.5;
 
 				// Tail
@@ -1040,7 +1040,7 @@
 					-webkit-user-select: text;
 					user-select: text;
 					transition:
-						opacity 0.2s ease-in-out,
+						opacity 0.2s,
 						z-index 0s 0.2s;
 
 					&::selection {

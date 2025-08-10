@@ -19,6 +19,7 @@ impl MessageHandler<DeferMessage, DeferMessageContext<'_>> for DeferMessageHandl
 			DeferMessage::AfterGraphRun { mut messages } => {
 				let after_graph_run = self.after_graph_run.entry(context.portfolio.active_document_id.unwrap_or(DocumentId(0))).or_default();
 				after_graph_run.extend(messages.drain(..).map(|m| (self.current_graph_submission_id, m)));
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			DeferMessage::AfterNavigationReady { messages } => {
 				self.after_viewport_resize.extend_from_slice(&messages);
@@ -37,8 +38,10 @@ impl MessageHandler<DeferMessage, DeferMessageContext<'_>> for DeferMessageHandl
 				for (_, message) in elements.rev() {
 					responses.add_front(message);
 				}
-				if !after_graph_run.is_empty() {
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+				for (&document_id, messages) in self.after_graph_run.iter() {
+					if !messages.is_empty() {
+						responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
+					}
 				}
 			}
 			DeferMessage::TriggerNavigationReady => {

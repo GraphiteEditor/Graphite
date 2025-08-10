@@ -26,7 +26,6 @@ pub struct DispatcherMessageHandlers {
 	pub portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
-	workspace_message_handler: WorkspaceMessageHandler,
 }
 
 impl DispatcherMessageHandlers {
@@ -143,6 +142,7 @@ impl Dispatcher {
 					let context = DialogMessageContext {
 						portfolio: &self.message_handlers.portfolio_message_handler,
 						preferences: &self.message_handlers.preferences_message_handler,
+						viewport_bounds: &self.message_handlers.input_preprocessor_message_handler.viewport_bounds,
 					};
 					self.message_handlers.dialog_message_handler.process_message(message, &mut queue, context);
 				}
@@ -229,9 +229,6 @@ impl Dispatcher {
 					};
 
 					self.message_handlers.tool_message_handler.process_message(message, &mut queue, context);
-				}
-				Message::Workspace(message) => {
-					self.message_handlers.workspace_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::NoOp => {}
 				Message::Batched { messages } => {
