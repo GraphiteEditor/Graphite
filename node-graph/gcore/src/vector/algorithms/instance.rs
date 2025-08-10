@@ -3,6 +3,7 @@ use crate::table::{Table, TableRowRef};
 use crate::vector::Vector;
 use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, Graphic, OwnedContextImpl};
 use glam::DVec2;
+use graphene_core_shaders::color::Color;
 
 #[node_macro::node(name("Instance on Points"), category("Instancing"), path(graphene_core::vector))]
 async fn instance_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
@@ -11,7 +12,8 @@ async fn instance_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>
 	#[implementations(
 		Context -> Table<Graphic>,
 		Context -> Table<Vector>,
-		Context -> Table<Raster<CPU>>
+		Context -> Table<Raster<CPU>>,
+		Context -> Table<Color>,
 	)]
 	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
 	reverse: bool,
@@ -52,7 +54,8 @@ async fn instance_repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 	#[implementations(
 		Context -> Table<Graphic>,
 		Context -> Table<Vector>,
-		Context -> Table<Raster<CPU>>
+		Context -> Table<Raster<CPU>>,
+		Context -> Table<Color>,
 	)]
 	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
 	#[default(1)] count: u64,

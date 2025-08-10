@@ -8,18 +8,17 @@ use std::borrow::Cow;
 pub enum FrontendGraphDataType {
 	#[default]
 	General,
+	Number,
+	Artboard,
+	Graphic,
 	Raster,
 	Vector,
-	Number,
-	Graphic,
-	Artboard,
+	Color,
 }
 
 impl FrontendGraphDataType {
 	pub fn from_type(input: &Type) -> Self {
 		match TaggedValue::from_type_or_none(input) {
-			TaggedValue::Raster(_) => Self::Raster,
-			TaggedValue::Vector(_) => Self::Vector,
 			TaggedValue::U32(_)
 			| TaggedValue::U64(_)
 			| TaggedValue::F64(_)
@@ -28,8 +27,11 @@ impl FrontendGraphDataType {
 			| TaggedValue::VecF64(_)
 			| TaggedValue::VecDVec2(_)
 			| TaggedValue::DAffine2(_) => Self::Number,
-			TaggedValue::Graphic(_) => Self::Graphic,
 			TaggedValue::Artboard(_) => Self::Artboard,
+			TaggedValue::Graphic(_) => Self::Graphic,
+			TaggedValue::Raster(_) => Self::Raster,
+			TaggedValue::Vector(_) => Self::Vector,
+			TaggedValue::ColorTable(_) | TaggedValue::Color(_) | TaggedValue::OptionalColor(_) => Self::Color,
 			_ => Self::General,
 		}
 	}
