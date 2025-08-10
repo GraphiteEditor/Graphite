@@ -338,34 +338,3 @@ impl<PointId: Identifier> Subpath<PointId> {
 		}
 	}
 }
-
-// #[cfg(test)]
-// mod tests {
-// 	use super::*;
-
-// 	#[test]
-// 	fn closed_spline() {
-// 		// These points are just chosen arbitrary
-// 		let points = [DVec2::new(0., 0.), DVec2::new(0., 0.), DVec2::new(6., 5.), DVec2::new(7., 9.), DVec2::new(2., 3.)];
-
-// 		let out_handles = solve_spline_first_handle_closed(&points);
-
-// 		// Construct the Subpath
-// 		let mut manipulator_groups = Vec::new();
-// 		for i in 0..out_handles.len() {
-// 			manipulator_groups.push(ManipulatorGroup::<EmptyId>::new(points[i], Some(2. * points[i] - out_handles[i]), Some(out_handles[i])));
-// 		}
-// 		let subpath = Subpath::new(manipulator_groups, true);
-
-// 		// For each pair of bézier curves, ensure that the second derivative is continuous
-// 		for (bézier_a, bézier_b) in subpath.iter().zip(subpath.iter().skip(1).chain(subpath.iter().take(1))) {
-// 			let derivative2_end_a = bézier_a.derivative().unwrap().derivative().unwrap().evaluate(super::utils::TValue::Parametric(1.));
-// 			let derivative2_start_b = bézier_b.derivative().unwrap().derivative().unwrap().evaluate(super::utils::TValue::Parametric(0.));
-
-// 			assert!(
-// 				derivative2_end_a.abs_diff_eq(derivative2_start_b, 1e-10),
-// 				"second derivative at the end of a {derivative2_end_a} is equal to the second derivative at the start of b {derivative2_start_b}"
-// 			);
-// 		}
-// 	}
-// }

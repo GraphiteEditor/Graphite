@@ -5,7 +5,6 @@ mod manipulators;
 mod solvers;
 mod structs;
 mod transform;
-mod utils;
 
 pub use core::*;
 use kurbo::PathSeg;
