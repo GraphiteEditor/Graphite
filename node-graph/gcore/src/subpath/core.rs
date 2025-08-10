@@ -21,8 +21,8 @@ impl PathSegPoints {
 pub fn pathseg_points(segment: PathSeg) -> PathSegPoints {
 	match segment {
 		PathSeg::Line(line) => PathSegPoints::new(point_to_dvec2(line.p0), None, None, point_to_dvec2(line.p1)),
-		PathSeg::Quad(quad) => PathSegPoints::new(point_to_dvec2(quad.p0), None, Some(point_to_dvec2(quad.p1)), point_to_dvec2(quad.p1)),
-		PathSeg::Cubic(cube) => PathSegPoints::new(point_to_dvec2(cube.p0), Some(point_to_dvec2(cube.p1)), Some(point_to_dvec2(cube.p2)), point_to_dvec2(cube.p1)),
+		PathSeg::Quad(quad) => PathSegPoints::new(point_to_dvec2(quad.p0), None, Some(point_to_dvec2(quad.p1)), point_to_dvec2(quad.p2)),
+		PathSeg::Cubic(cube) => PathSegPoints::new(point_to_dvec2(cube.p0), Some(point_to_dvec2(cube.p1)), Some(point_to_dvec2(cube.p2)), point_to_dvec2(cube.p3)),
 	}
 }
 
