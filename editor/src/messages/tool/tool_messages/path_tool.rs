@@ -3165,30 +3165,31 @@ impl Fsm for PathToolFsmState {
 						responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
 					}
 
+					let handles = |bezier: Bezier| -> [Option<DVec2>; 2] {
+						match bezier.handles {
+							BezierHandles::Linear => [None, None],
+							BezierHandles::Quadratic { handle } => [Some(handle - bezier.start), None],
+							BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start), Some(handle_end - bezier.end)],
+						}
+					};
+
 					// Find those segments which were connected to just one of the selected points
 					for (_, bezier, start, end) in vector.segment_bezier_iter() {
 						let id = SegmentId::generate();
-						let handles = |handles: BezierHandles| -> [Option<DVec2>; 2] {
-							match handles {
-								BezierHandles::Linear => [None, None],
-								BezierHandles::Quadratic { handle } => [Some(handle - bezier.start), None],
-								BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start), Some(handle_end - bezier.end)],
-							}
-						};
 
 						if state.is_point_selected(ManipulatorPointId::Anchor(start)) {
 							let points = [new_id, end];
-							let handles = handles(bezier.handles);
+							let handles = handles(bezier);
 							let modification_type = VectorModificationType::InsertSegment { id, points, handles };
 							responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
 						} else if state.is_point_selected(ManipulatorPointId::Anchor(end)) {
 							let points = [start, new_id];
-							let handles = handles(bezier.handles);
+							let handles = handles(bezier);
 							let modification_type = VectorModificationType::InsertSegment { id, points, handles };
 							responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
 						}
-						responses.add(DocumentMessage::EndTransaction);
 					}
+					responses.add(DocumentMessage::EndTransaction);
 				}
 
 				PathToolFsmState::Ready
