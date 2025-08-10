@@ -316,25 +316,4 @@ impl<PointId: Identifier> Subpath<PointId> {
 	pub fn new_line(p1: DVec2, p2: DVec2) -> Self {
 		Self::from_anchors([p1, p2], false)
 	}
-
-	#[cfg(feature = "kurbo")]
-	pub fn to_vello_path(&self, transform: glam::DAffine2, path: &mut kurbo::BezPath) {
-		use crate::BezierHandles;
-
-		let to_point = |p: DVec2| {
-			let p = transform.transform_point2(p);
-			kurbo::Point::new(p.x, p.y)
-		};
-		path.move_to(to_point(self.iter().next().unwrap().start));
-		for segment in self.iter() {
-			match segment.handles {
-				BezierHandles::Linear => path.line_to(to_point(segment.end)),
-				BezierHandles::Quadratic { handle } => path.quad_to(to_point(handle), to_point(segment.end)),
-				BezierHandles::Cubic { handle_start, handle_end } => path.curve_to(to_point(handle_start), to_point(handle_end), to_point(segment.end)),
-			}
-		}
-		if self.closed {
-			path.close_path();
-		}
-	}
 }

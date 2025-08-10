@@ -49,11 +49,6 @@ impl<PointId: Identifier> Hash for ManipulatorGroup<PointId> {
 	}
 }
 
-#[cfg(feature = "dyn-any")]
-unsafe impl<PointId: Identifier> dyn_any::StaticType for ManipulatorGroup<PointId> {
-	type Static = ManipulatorGroup<PointId>;
-}
-
 impl<PointId: Identifier> Debug for ManipulatorGroup<PointId> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 		f.debug_struct("ManipulatorGroup")
@@ -248,11 +243,6 @@ impl BezierHandles {
 	}
 }
 
-#[cfg(feature = "dyn-any")]
-unsafe impl dyn_any::StaticType for BezierHandles {
-	type Static = BezierHandles;
-}
-
 /// Representation of a bezier curve with 2D points.
 #[derive(Copy, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -276,11 +266,6 @@ impl Debug for Bezier {
 		};
 		debug_struct_ref.field("end", &self.end).finish()
 	}
-}
-
-#[cfg(feature = "dyn-any")]
-unsafe impl dyn_any::StaticType for Bezier {
-	type Static = Bezier;
 }
 
 /// Functionality for the getters and setters of the various points in a Bezier
