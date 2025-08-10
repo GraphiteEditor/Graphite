@@ -19,6 +19,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::{Doc
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
+use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
@@ -50,6 +51,9 @@ pub struct DocumentMessageContext<'a> {
 	pub current_tool: &'a ToolType,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub device_pixel_ratio: f64,
+	pub data_panel_open: bool,
+	pub layers_panel_open: bool,
+	pub properties_panel_open: bool,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
@@ -190,6 +194,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			current_tool,
 			preferences,
 			device_pixel_ratio,
+			data_panel_open,
+			layers_panel_open,
+			properties_panel_open,
 		} = context;
 
 		match message {
@@ -227,6 +234,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					document_name: self.name.as_str(),
 					executor,
 					persistent_data,
+					properties_panel_open,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
 			}
@@ -236,6 +244,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses,
 					DataPanelMessageContext {
 						network_interface: &mut self.network_interface,
+						data_panel_open,
 					},
 				);
 			}
@@ -254,6 +263,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						graph_fade_artwork_percentage: self.graph_fade_artwork_percentage,
 						navigation_handler: &self.navigation_handler,
 						preferences,
+						layers_panel_open,
 					},
 				);
 			}
@@ -369,12 +379,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(ipp, responses),
 			DocumentMessage::DocumentHistoryForward => self.redo_with_history(ipp, responses),
 			DocumentMessage::DocumentStructureChanged => {
-				self.update_layers_panel_control_bar_widgets(responses);
-				self.update_layers_panel_bottom_bar_widgets(responses);
+				if layers_panel_open {
+					self.network_interface.load_structure();
+					let data_buffer: RawBuffer = self.serialize_root();
 
-				self.network_interface.load_structure();
-				let data_buffer: RawBuffer = self.serialize_root();
-				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
+					self.update_layers_panel_control_bar_widgets(layers_panel_open, responses);
+					self.update_layers_panel_bottom_bar_widgets(layers_panel_open, responses);
+
+					responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
+				}
 			}
 			DocumentMessage::DrawArtboardOverlays(overlay_context) => {
 				if !overlay_context.visibility_settings.artboard_name() {
@@ -1141,7 +1154,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 			}
 			DocumentMessage::SetActivePanel { active_panel: panel } => {
-				use crate::messages::portfolio::utility_types::PanelType;
 				match panel {
 					PanelType::Document => {
 						if self.graph_view_overlay_open {
@@ -2562,7 +2574,11 @@ impl DocumentMessageHandler {
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
 	}
 
-	pub fn update_layers_panel_control_bar_widgets(&self, responses: &mut VecDeque<Message>) {
+	pub fn update_layers_panel_control_bar_widgets(&self, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
+		if !layers_panel_open {
+			return;
+		}
+
 		// Get an iterator over the selected layers (excluding artboards which don't have an opacity or blend mode).
 		let selected_nodes = self.network_interface.selected_nodes();
 		let selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&self.network_interface);
@@ -2720,7 +2736,11 @@ impl DocumentMessageHandler {
 		});
 	}
 
-	pub fn update_layers_panel_bottom_bar_widgets(&self, responses: &mut VecDeque<Message>) {
+	pub fn update_layers_panel_bottom_bar_widgets(&self, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
+		if !layers_panel_open {
+			return;
+		}
+
 		let selected_nodes = self.network_interface.selected_nodes();
 		let mut selected_layers = selected_nodes.selected_layers(self.metadata());
 		let selected_layer = selected_layers.next();

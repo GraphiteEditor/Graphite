@@ -16,7 +16,7 @@
 		/**/ root: 100,
 		/*   ├─ */ content: 80,
 		/*   │     ├─ */ document: 70,
-		/*   │     └─ */ spreadsheet: 30,
+		/*   │     └─ */ data: 30,
 		/*   └─ */ details: 20,
 		/*         ├─ */ properties: 45,
 		/*         └─ */ layers: 55,
@@ -148,23 +148,31 @@
 					bind:this={documentPanel}
 				/>
 			</LayoutRow>
-			{#if $portfolio.spreadsheetOpen}
+			{#if $portfolio.dataPanelOpen}
 				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} />
-				<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["spreadsheet"] }} data-subdivision-name="spreadsheet">
-					<Panel panelType="Spreadsheet" tabLabels={[{ name: "Spreadsheet" }]} tabActiveIndex={0} />
+				<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["data"] }} data-subdivision-name="data">
+					<Panel panelType="Data" tabLabels={[{ name: "Data" }]} tabActiveIndex={0} />
 				</LayoutRow>
 			{/if}
 		</LayoutCol>
-		<LayoutCol class="workspace-grid-resize-gutter" data-gutter-horizontal on:pointerdown={(e) => resizePanel(e)} />
-		<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["details"] }} data-subdivision-name="details">
-			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["properties"] }} data-subdivision-name="properties">
-				<Panel panelType="Properties" tabLabels={[{ name: "Properties" }]} tabActiveIndex={0} />
-			</LayoutRow>
-			<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} />
-			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["layers"] }} data-subdivision-name="layers">
-				<Panel panelType="Layers" tabLabels={[{ name: "Layers" }]} tabActiveIndex={0} />
-			</LayoutRow>
-		</LayoutCol>
+		{#if $portfolio.propertiesPanelOpen || $portfolio.layersPanelOpen}
+			<LayoutCol class="workspace-grid-resize-gutter" data-gutter-horizontal on:pointerdown={(e) => resizePanel(e)} />
+			<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["details"] }} data-subdivision-name="details">
+				{#if $portfolio.propertiesPanelOpen}
+					<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["properties"] }} data-subdivision-name="properties">
+						<Panel panelType="Properties" tabLabels={[{ name: "Properties" }]} tabActiveIndex={0} />
+					</LayoutRow>
+				{/if}
+				{#if $portfolio.propertiesPanelOpen && $portfolio.layersPanelOpen}
+					<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} />
+				{/if}
+				{#if $portfolio.layersPanelOpen}
+					<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["layers"] }} data-subdivision-name="layers">
+						<Panel panelType="Layers" tabLabels={[{ name: "Layers" }]} tabActiveIndex={0} />
+					</LayoutRow>
+				{/if}
+			</LayoutCol>
+		{/if}
 	</LayoutRow>
 	{#if $dialog.visible}
 		<Dialog />

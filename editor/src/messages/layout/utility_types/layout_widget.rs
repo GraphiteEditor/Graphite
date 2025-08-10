@@ -42,9 +42,9 @@ pub enum LayoutTarget {
 	/// Bar at the top of the node graph containing the location and the "Preview" and "Hide" buttons.
 	NodeGraphControlBar,
 	/// The body of the Properties panel containing many collapsable sections.
-	PropertiesSections,
+	PropertiesPanel,
 	/// The spredsheet panel allows for the visualisation of data in the graph.
-	Spreadsheet,
+	DataPanel,
 	/// The bar directly above the canvas, left-aligned and to the right of the document mode dropdown.
 	ToolOptions,
 	/// The vertical buttons for all of the tools on the left of the canvas.

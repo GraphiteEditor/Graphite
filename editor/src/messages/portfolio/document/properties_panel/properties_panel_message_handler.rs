@@ -14,6 +14,7 @@ pub struct PropertiesPanelMessageContext<'a> {
 	pub document_name: &'a str,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub persistent_data: &'a PersistentData,
+	pub properties_panel_open: bool,
 }
 
 #[derive(Debug, Clone, Default, ExtractField)]
@@ -28,16 +29,22 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 			document_name,
 			executor,
 			persistent_data,
+			properties_panel_open,
 		} = context;
 
 		match message {
 			PropertiesPanelMessage::Clear => {
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
-					layout_target: LayoutTarget::PropertiesSections,
+					layout_target: LayoutTarget::PropertiesPanel,
 				});
 			}
 			PropertiesPanelMessage::Refresh => {
+				if !properties_panel_open {
+					responses.add(PropertiesPanelMessage::Clear);
+					return;
+				}
+
 				let mut node_properties_context = NodePropertiesContext {
 					persistent_data,
 					responses,
@@ -50,7 +57,7 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 
 				node_properties_context.responses.add(LayoutMessage::SendLayout {
 					layout: Layout::WidgetLayout(WidgetLayout::new(properties_sections)),
-					layout_target: LayoutTarget::PropertiesSections,
+					layout_target: LayoutTarget::PropertiesPanel,
 				});
 			}
 		}

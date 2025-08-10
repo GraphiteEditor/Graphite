@@ -19,14 +19,13 @@ use std::sync::Arc;
 #[derive(ExtractField)]
 pub struct DataPanelMessageContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
+	pub data_panel_open: bool,
 }
 
 /// The data panel allows for graph data to be previewed.
 #[derive(Default, Debug, Clone, ExtractField)]
 pub struct DataPanelMessageHandler {
-	/// Sets whether or not the spreadsheet is drawn.
-	pub open: bool,
-	inspect_node: Option<NodeId>,
+	introspected_node: Option<NodeId>,
 	introspected_data: Option<Arc<dyn Any + Send + Sync>>,
 	element_path: Vec<usize>,
 	active_vector_table_tab: VectorTableTab,
@@ -36,21 +35,17 @@ pub struct DataPanelMessageHandler {
 impl MessageHandler<DataPanelMessage, DataPanelMessageContext<'_>> for DataPanelMessageHandler {
 	fn process_message(&mut self, message: DataPanelMessage, responses: &mut VecDeque<Message>, context: DataPanelMessageContext) {
 		match message {
-			DataPanelMessage::ToggleOpen => {
-				self.open = !self.open;
-				// Run the graph to grab the data
-				if self.open {
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				}
-				// Update checked UI state for open
-				responses.add(MenuBarMessage::SendLayout);
+			DataPanelMessage::UpdateLayout { mut inspect_result } => {
+				self.introspected_node = Some(inspect_result.inspect_node);
+				self.introspected_data = inspect_result.take_data();
 				self.update_layout(responses, context);
 			}
-
-			DataPanelMessage::UpdateLayout { mut inspect_result } => {
-				self.inspect_node = Some(inspect_result.inspect_node);
-				self.introspected_data = inspect_result.take_data();
-				self.update_layout(responses, context)
+			DataPanelMessage::ClearLayout => {
+				self.introspected_node = None;
+				self.introspected_data = None;
+				self.element_path.clear();
+				self.active_vector_table_tab = VectorTableTab::default();
+				self.update_layout(responses, context);
 			}
 
 			DataPanelMessage::PushToElementPath { index } => {
@@ -76,13 +71,8 @@ impl MessageHandler<DataPanelMessage, DataPanelMessageContext<'_>> for DataPanel
 
 impl DataPanelMessageHandler {
 	fn update_layout(&mut self, responses: &mut VecDeque<Message>, context: DataPanelMessageContext<'_>) {
-		responses.add(FrontendMessage::UpdateSpreadsheetState { open: self.open });
+		let DataPanelMessageContext { network_interface, .. } = context;
 
-		if !self.open {
-			return;
-		}
-
-		let DataPanelMessageContext { network_interface } = context;
 		let mut layout_data = LayoutData {
 			current_depth: 0,
 			desired_path: &mut self.element_path,
@@ -94,18 +84,16 @@ impl DataPanelMessageHandler {
 		let mut layout = self
 			.introspected_data
 			.as_ref()
-			.map(|instrospected_data| generate_layout(instrospected_data, &mut layout_data))
-			.unwrap_or_else(|| Some(label("No data")))
-			.unwrap_or_else(|| label("Visualization of this data type is not yet supported"));
+			.map(|instrospected_data| generate_layout(instrospected_data, &mut layout_data).unwrap_or_else(|| label("Visualization of this data type is not yet supported")))
+			.unwrap_or_default();
 
 		let mut widgets = Vec::new();
 
 		// Selected layer/node name
-		if let Some(node_id) = self.inspect_node {
+		if let Some(node_id) = self.introspected_node {
 			let is_layer = network_interface.is_layer(&node_id, &[]);
 
 			widgets.extend([
-				Separator::new(SeparatorType::Related).widget_holder(),
 				if is_layer {
 					IconLabel::new("Layer").tooltip("Name of the selected layer").widget_holder()
 				} else {
@@ -124,7 +112,7 @@ impl DataPanelMessageHandler {
 					})
 					.max_width(200)
 					.widget_holder(),
-				Separator::new(SeparatorType::Related).widget_holder(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
 			]);
 		}
 
@@ -142,7 +130,7 @@ impl DataPanelMessageHandler {
 
 		responses.add(LayoutMessage::SendLayout {
 			layout: Layout::WidgetLayout(WidgetLayout { layout }),
-			layout_target: LayoutTarget::Spreadsheet,
+			layout_target: LayoutTarget::DataPanel,
 		});
 	}
 }
@@ -154,77 +142,38 @@ struct LayoutData<'a> {
 	vector_table_tab: VectorTableTab,
 }
 
+macro_rules! generate_layout_downcast {
+	($introspected_data:expr, $data:expr, [ $($ty:ty),* $(,)? ]) => {
+		if false { None }
+		$(
+			else if let Some(io) = $introspected_data.downcast_ref::<IORecord<Context, $ty>>() {
+				Some(io.output.layout_with_breadcrumb($data))
+			}
+		)*
+		else { None }
+	}
+}
+
+// TODO: We simply try all these types sequentially. Find a better strategy.
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
-	// We simply try random types. TODO: better strategy.
-	#[allow(clippy::manual_map)]
-	// Table<Artboard>
-	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Artboard>>>() {
-		Some(io.output.layout_with_breadcrumb(data))
-	}
-	// Table<Graphic>
-	else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Graphic>>>() {
-		Some(io.output.layout_with_breadcrumb(data))
-	}
-	// Table<Vector>
-	else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Vector>>>() {
-		Some(io.output.layout_with_breadcrumb(data))
-	}
-	// Table<Raster<CPU>>
-	else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Raster<CPU>>>>() {
-		Some(io.output.layout_with_breadcrumb(data))
-	}
-	// Table<Raster<GPU>>
-	else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Raster<GPU>>>>() {
-		Some(io.output.layout_with_breadcrumb(data))
-	}
-	// Table<Color>
-	else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Color>>>() {
-		Some(io.output.layout_with_breadcrumb(data))
-	}
-	// Color
-	else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Color>>() {
-		Some(io.output.layout_with_breadcrumb(data))
-	}
-	// Option<Color>
-	else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Option<Color>>>() {
-		Some(io.output.layout_with_breadcrumb(data))
-	}
-	// f64
-	else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, f64>>() {
-		Some(io.output.layout_with_breadcrumb(data))
-	}
-	// u32
-	else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, u32>>() {
-		Some(io.output.layout_with_breadcrumb(data))
-	}
-	// u64
-	else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, u64>>() {
-		Some(io.output.layout_with_breadcrumb(data))
-	}
-	// bool
-	else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, bool>>() {
-		Some(io.output.layout_with_breadcrumb(data))
-	}
-	// String
-	else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, String>>() {
-		Some(io.output.layout_with_breadcrumb(data))
-	}
-	// Option<f64>
-	else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Option<f64>>>() {
-		Some(io.output.layout_with_breadcrumb(data))
-	}
-	// DVec2
-	else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, DVec2>>() {
-		Some(io.output.layout_with_breadcrumb(data))
-	}
-	// DAffine2
-	else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, DAffine2>>() {
-		Some(io.output.layout_with_breadcrumb(data))
-	}
-	// Unimplemented type
-	else {
-		None
-	}
+	generate_layout_downcast!(introspected_data, data, [
+		Table<Artboard>,
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Raster<GPU>>,
+		Table<Color>,
+		Color,
+		Option<Color>,
+		f64,
+		u32,
+		u64,
+		bool,
+		String,
+		Option<f64>,
+		DVec2,
+		DAffine2,
+	])
 }
 
 fn column_headings(value: &[&str]) -> Vec<WidgetHolder> {
@@ -250,6 +199,46 @@ trait TableRowLayout {
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![]
+	}
+}
+
+impl<T: TableRowLayout> TableRowLayout for Table<T> {
+	fn type_name() -> &'static str {
+		"Table"
+	}
+	fn identifier(&self) -> String {
+		format!("Table<{}> ({} row{})", T::type_name(), self.len(), if self.len() == 1 { "" } else { "s" })
+	}
+	fn element_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		if let Some(index) = data.desired_path.get(data.current_depth).copied() {
+			if let Some(row) = self.get(index) {
+				data.current_depth += 1;
+				let result = row.element.layout_with_breadcrumb(data);
+				data.current_depth -= 1;
+				return result;
+			} else {
+				warn!("Desired path truncated");
+				data.desired_path.truncate(data.current_depth);
+			}
+		}
+
+		let mut rows = self
+			.iter()
+			.enumerate()
+			.map(|(index, row)| {
+				vec![
+					TextLabel::new(format!("{index}")).widget_holder(),
+					row.element.element_widget(index),
+					TextLabel::new(format_transform_matrix(row.transform)).widget_holder(),
+					TextLabel::new(format!("{}", row.alpha_blending)).widget_holder(),
+					TextLabel::new(row.source_node_id.map_or_else(|| "-".to_string(), |id| format!("{}", id.0))).widget_holder(),
+				]
+			})
+			.collect::<Vec<_>>();
+
+		rows.insert(0, column_headings(&["", "element", "transform", "alpha_blending", "source_node_id"]));
+
+		vec![LayoutGroup::Table { rows }]
 	}
 }
 
@@ -323,19 +312,31 @@ impl TableRowLayout for Vector {
 				table_rows.push(column_headings(&["property", "value"]));
 
 				match self.style.fill.clone() {
-					Fill::None => table_rows.push(vec![TextLabel::new("Fill").widget_holder(), ColorInput::new(FillChoice::None).read_only(true).widget_holder()]),
-					Fill::Solid(color) => table_rows.push(vec![TextLabel::new("Fill").widget_holder(), ColorInput::new(FillChoice::Solid(color)).read_only(true).widget_holder()]),
+					Fill::None => table_rows.push(vec![
+						TextLabel::new("Fill").widget_holder(),
+						ColorInput::new(FillChoice::None).disabled(true).menu_direction(Some(MenuDirection::Top)).widget_holder(),
+					]),
+					Fill::Solid(color) => table_rows.push(vec![
+						TextLabel::new("Fill").widget_holder(),
+						ColorInput::new(FillChoice::Solid(color)).disabled(true).menu_direction(Some(MenuDirection::Top)).widget_holder(),
+					]),
 					Fill::Gradient(gradient) => {
 						table_rows.push(vec![
 							TextLabel::new("Fill").widget_holder(),
-							ColorInput::new(FillChoice::Gradient(gradient.stops)).read_only(true).widget_holder(),
+							ColorInput::new(FillChoice::Gradient(gradient.stops))
+								.disabled(true)
+								.menu_direction(Some(MenuDirection::Top))
+								.widget_holder(),
 						]);
 						table_rows.push(vec![
 							TextLabel::new("Fill Gradient Type").widget_holder(),
 							TextLabel::new(gradient.gradient_type.to_string()).widget_holder(),
 						]);
-						table_rows.push(vec![TextLabel::new("Fill Gradient Start").widget_holder(), TextLabel::new(gradient.start.to_string()).widget_holder()]);
-						table_rows.push(vec![TextLabel::new("Fill Gradient End").widget_holder(), TextLabel::new(gradient.end.to_string()).widget_holder()]);
+						table_rows.push(vec![
+							TextLabel::new("Fill Gradient Start").widget_holder(),
+							TextLabel::new(format_dvec2(gradient.start)).widget_holder(),
+						]);
+						table_rows.push(vec![TextLabel::new("Fill Gradient End").widget_holder(), TextLabel::new(format_dvec2(gradient.end)).widget_holder()]);
 						table_rows.push(vec![
 							TextLabel::new("Fill Gradient Transform").widget_holder(),
 							TextLabel::new(format_transform_matrix(&gradient.transform)).widget_holder(),
@@ -345,59 +346,55 @@ impl TableRowLayout for Vector {
 
 				if let Some(stroke) = self.style.stroke.clone() {
 					let color = if let Some(color) = stroke.color { FillChoice::Solid(color) } else { FillChoice::None };
-					table_rows.push(vec![TextLabel::new("Stroke").widget_holder(), ColorInput::new(color).read_only(true).widget_holder()]);
+					table_rows.push(vec![
+						TextLabel::new("Stroke").widget_holder(),
+						ColorInput::new(color).disabled(true).menu_direction(Some(MenuDirection::Top)).widget_holder(),
+					]);
 					table_rows.push(vec![TextLabel::new("Stroke Weight").widget_holder(), TextLabel::new(format!("{} px", stroke.weight)).widget_holder()]);
 					table_rows.push(vec![
 						TextLabel::new("Stroke Dash Lengths").widget_holder(),
-						TextLabel::new(format!("{:?}", stroke.dash_lengths)).widget_holder(),
+						TextLabel::new(if stroke.dash_lengths.is_empty() {
+							"-".to_string()
+						} else {
+							format!("[{}]", stroke.dash_lengths.iter().map(|x| format!("{x} px")).collect::<Vec<_>>().join(", "))
+						})
+						.widget_holder(),
 					]);
 					table_rows.push(vec![
 						TextLabel::new("Stroke Dash Offset").widget_holder(),
 						TextLabel::new(format!("{}", stroke.dash_offset)).widget_holder(),
 					]);
-					table_rows.push(vec![TextLabel::new("Stroke Cap").widget_holder(), TextLabel::new(format!("{:?}", stroke.cap)).widget_holder()]);
-					table_rows.push(vec![TextLabel::new("Stroke Join").widget_holder(), TextLabel::new(format!("{:?}", stroke.join)).widget_holder()]);
+					table_rows.push(vec![TextLabel::new("Stroke Cap").widget_holder(), TextLabel::new(stroke.cap.to_string()).widget_holder()]);
+					table_rows.push(vec![TextLabel::new("Stroke Join").widget_holder(), TextLabel::new(stroke.join.to_string()).widget_holder()]);
 					table_rows.push(vec![
 						TextLabel::new("Stroke Join Miter Limit").widget_holder(),
 						TextLabel::new(format!("{}", stroke.join_miter_limit)).widget_holder(),
 					]);
-					table_rows.push(vec![TextLabel::new("Stroke Align").widget_holder(), TextLabel::new(format!("{:?}", stroke.align)).widget_holder()]);
+					table_rows.push(vec![TextLabel::new("Stroke Align").widget_holder(), TextLabel::new(stroke.align.to_string()).widget_holder()]);
 					table_rows.push(vec![
 						TextLabel::new("Stroke Transform").widget_holder(),
 						TextLabel::new(format_transform_matrix(&stroke.transform)).widget_holder(),
 					]);
 					table_rows.push(vec![
 						TextLabel::new("Stroke Non-Scaling").widget_holder(),
-						TextLabel::new(format!("{}", stroke.non_scaling)).widget_holder(),
+						TextLabel::new((if stroke.non_scaling { "Yes" } else { "No" }).to_string()).widget_holder(),
 					]);
 					table_rows.push(vec![
 						TextLabel::new("Stroke Paint Order").widget_holder(),
-						TextLabel::new(format!("{:?}", stroke.paint_order)).widget_holder(),
+						TextLabel::new(stroke.paint_order.to_string()).widget_holder(),
 					]);
-
-					// stroke.color: Option<Color>,
-					// stroke.weight: f64,
-					// stroke.dash_lengths: Vec<f64>,
-					// stroke.dash_offset: f64,
-					// stroke.cap: StrokeCap,
-					// stroke.join: StrokeJoin,
-					// stroke.join_miter_limit: f64,
-					// stroke.align: StrokeAlign,
-					// stroke.transform: DAffine2,
-					// stroke.non_scaling: bool,
-					// stroke.paint_order: PaintOrder,
 				}
 
 				let colinear = self.colinear_manipulators.iter().map(|[a, b]| format!("[{a} / {b}]")).collect::<Vec<_>>().join(", ");
-				let colinear = if colinear.is_empty() { "None".to_string() } else { colinear };
+				let colinear = if colinear.is_empty() { "-".to_string() } else { colinear };
 				table_rows.push(vec![TextLabel::new("Colinear Handle IDs").widget_holder(), TextLabel::new(colinear).widget_holder()]);
 
 				table_rows.push(vec![
 					TextLabel::new("Upstream Nested Layers").widget_holder(),
 					TextLabel::new(if self.upstream_nested_layers.is_some() {
-						"Yes (preserves reference to upstream nested layers for editing by tools)"
+						"Yes (this preserves references to its upstream nested layers for editing by tools)"
 					} else {
-						"No (doesn't preserve any reference to upstream nested layers for editing by tools)"
+						"No (this doesn't preserve references to its upstream nested layers for editing by tools)"
 					})
 					.widget_holder(),
 				]);
@@ -479,10 +476,10 @@ impl TableRowLayout for Color {
 		"Color"
 	}
 	fn identifier(&self) -> String {
-		format!("Color (#{})", self.to_rgba_hex_srgb())
+		format!("Color (#{})", self.to_gamma_srgb().to_rgba_hex_srgb())
 	}
 	fn element_widget(&self, _index: usize) -> WidgetHolder {
-		ColorInput::new(FillChoice::Solid(*self)).read_only(true).widget_holder()
+		ColorInput::new(FillChoice::Solid(*self)).disabled(true).menu_direction(Some(MenuDirection::Top)).widget_holder()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![self.element_widget(0)];
@@ -495,11 +492,15 @@ impl TableRowLayout for Option<Color> {
 		"Option<Color>"
 	}
 	fn identifier(&self) -> String {
-		format!("Option<Color> (#{})", if let Some(color) = self { color.to_rgba_hex_srgb() } else { "None".to_string() })
+		format!(
+			"Option<Color> (#{})",
+			if let Some(color) = self { color.to_linear_srgb().to_rgba_hex_srgb() } else { "None".to_string() }
+		)
 	}
 	fn element_widget(&self, _index: usize) -> WidgetHolder {
 		ColorInput::new(if let Some(color) = self { FillChoice::Solid(*color) } else { FillChoice::None })
-			.read_only(true)
+			.disabled(true)
+			.menu_direction(Some(MenuDirection::Top))
 			.widget_holder()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
@@ -508,52 +509,12 @@ impl TableRowLayout for Option<Color> {
 	}
 }
 
-impl<T: TableRowLayout> TableRowLayout for Table<T> {
-	fn type_name() -> &'static str {
-		"Table"
-	}
-	fn identifier(&self) -> String {
-		format!("Table<{}> ({} row{})", T::type_name(), self.len(), if self.len() == 1 { "" } else { "s" })
-	}
-	fn element_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		if let Some(index) = data.desired_path.get(data.current_depth).copied() {
-			if let Some(row) = self.get(index) {
-				data.current_depth += 1;
-				let result = row.element.layout_with_breadcrumb(data);
-				data.current_depth -= 1;
-				return result;
-			} else {
-				warn!("Desired path truncated");
-				data.desired_path.truncate(data.current_depth);
-			}
-		}
-
-		let mut rows = self
-			.iter()
-			.enumerate()
-			.map(|(index, row)| {
-				vec![
-					TextLabel::new(format!("{index}")).widget_holder(),
-					row.element.element_widget(index),
-					TextLabel::new(format_transform_matrix(row.transform)).widget_holder(),
-					TextLabel::new(format!("{}", row.alpha_blending)).widget_holder(),
-					TextLabel::new(row.source_node_id.map_or_else(|| "-".to_string(), |id| format!("{}", id.0))).widget_holder(),
-				]
-			})
-			.collect::<Vec<_>>();
-
-		rows.insert(0, column_headings(&["", "element", "transform", "alpha_blending", "source_node_id"]));
-
-		vec![LayoutGroup::Table { rows }]
-	}
-}
-
 impl TableRowLayout for f64 {
 	fn type_name() -> &'static str {
-		"f64"
+		"Number (f64)"
 	}
 	fn identifier(&self) -> String {
-		"f64".to_string()
+		"Number (f64)".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextLabel::new(self.to_string()).widget_holder()];
@@ -563,10 +524,10 @@ impl TableRowLayout for f64 {
 
 impl TableRowLayout for u32 {
 	fn type_name() -> &'static str {
-		"u32"
+		"Number (u32)"
 	}
 	fn identifier(&self) -> String {
-		"u32".to_string()
+		"Number (u32)".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextLabel::new(self.to_string()).widget_holder()];
@@ -576,10 +537,10 @@ impl TableRowLayout for u32 {
 
 impl TableRowLayout for u64 {
 	fn type_name() -> &'static str {
-		"u64"
+		"Number (u64)"
 	}
 	fn identifier(&self) -> String {
-		"u64".to_string()
+		"Number (u64)".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextLabel::new(self.to_string()).widget_holder()];
@@ -589,10 +550,10 @@ impl TableRowLayout for u64 {
 
 impl TableRowLayout for bool {
 	fn type_name() -> &'static str {
-		"bool"
+		"Bool"
 	}
 	fn identifier(&self) -> String {
-		"bool".to_string()
+		"Bool".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextLabel::new(self.to_string()).widget_holder()];
@@ -634,7 +595,7 @@ impl TableRowLayout for DVec2 {
 		"Vec2".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new(self.to_string()).widget_holder()];
+		let widgets = vec![TextLabel::new(format!("({}, {})", self.x, self.y)).widget_holder()];
 		vec![LayoutGroup::Row { widgets }]
 	}
 }
@@ -664,4 +625,9 @@ fn format_transform_matrix(transform: &DAffine2) -> String {
 		round(scale.x),
 		round(scale.y)
 	)
+}
+
+fn format_dvec2(value: DVec2) -> String {
+	let round = |x: f64| (x * 1e3).round() / 1e3;
+	format!("({} px, {} px)", round(value.x), round(value.y))
 }

@@ -149,10 +149,16 @@ pub enum FrontendMessage {
 	UpdateGraphViewOverlay {
 		open: bool,
 	},
-	UpdateSpreadsheetState {
+	UpdateDataPanelState {
 		open: bool,
 	},
-	UpdateSpreadsheetLayout {
+	UpdatePropertiesPanelState {
+		open: bool,
+	},
+	UpdateLayersPanelState {
+		open: bool,
+	},
+	UpdateDataPanelLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
@@ -295,7 +301,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "openDocuments")]
 		open_documents: Vec<FrontendDocumentDetails>,
 	},
-	UpdatePropertyPanelSectionsLayout {
+	UpdatePropertiesPanelLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,

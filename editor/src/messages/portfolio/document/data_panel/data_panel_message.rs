@@ -1,16 +1,15 @@
 use crate::messages::prelude::*;
 use crate::node_graph_executor::InspectResult;
 
-/// The spreadsheet UI allows for graph data to be previewed.
+/// The Data panel UI allows the user to visualize the output data of the selected node.
 #[impl_message(Message, DocumentMessage, DataPanel)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum DataPanelMessage {
-	ToggleOpen,
-
 	UpdateLayout {
 		#[serde(skip)]
 		inspect_result: InspectResult,
 	},
+	ClearLayout,
 
 	PushToElementPath {
 		index: usize,

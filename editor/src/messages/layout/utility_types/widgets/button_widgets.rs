@@ -168,11 +168,6 @@ pub struct ColorInput {
 	#[widget_builder(constructor)]
 	pub value: FillChoice,
 
-	pub disabled: bool,
-
-	#[serde(rename = "readOnly")]
-	pub read_only: bool,
-
 	// TODO: Implement
 	// #[serde(rename = "allowTransparency")]
 	// #[derivative(Default(value = "false"))]
@@ -182,9 +177,11 @@ pub struct ColorInput {
 	#[derivative(Default(value = "true"))]
 	pub allow_none: bool,
 
-	// TODO: Implement
-	// pub disabled: bool,
-	//
+	pub disabled: bool,
+
+	#[serde(rename = "menuDirection")]
+	pub menu_direction: Option<MenuDirection>,
+
 	pub tooltip: String,
 
 	#[serde(skip)]

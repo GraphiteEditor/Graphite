@@ -43,7 +43,7 @@ pub enum PanelType {
 	Document,
 	Layers,
 	Properties,
-	Spreadsheet,
+	DataPanel,
 }
 
 impl From<String> for PanelType {
@@ -52,7 +52,7 @@ impl From<String> for PanelType {
 			"Document" => PanelType::Document,
 			"Layers" => PanelType::Layers,
 			"Properties" => PanelType::Properties,
-			"Spreadsheet" => PanelType::Spreadsheet,
+			"Data" => PanelType::DataPanel,
 			_ => panic!("Unknown panel type: {value}"),
 		}
 	}

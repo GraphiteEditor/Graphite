@@ -16,4 +16,3 @@ pub mod portfolio;
 pub mod preferences;
 pub mod prelude;
 pub mod tool;
-pub mod workspace;

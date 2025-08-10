@@ -33,8 +33,6 @@ pub enum Message {
 	Preferences(PreferencesMessage),
 	#[child]
 	Tool(ToolMessage),
-	#[child]
-	Workspace(WorkspaceMessage),
 
 	// Messages
 	NoOp,

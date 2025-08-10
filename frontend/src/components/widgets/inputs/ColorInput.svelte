@@ -1,12 +1,11 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { FillChoice } from "@graphite/messages";
+	import type { FillChoice, MenuDirection } from "@graphite/messages";
 	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
 	const dispatch = createEventDispatcher<{ value: FillChoice; startHistoryTransaction: undefined }>();
 
@@ -14,8 +13,8 @@
 
 	export let value: FillChoice;
 	export let disabled = false;
-	export let readOnly = false;
 	export let allowNone = false;
+	export let menuDirection: MenuDirection = "Bottom";
 	// export let allowTransparency = false; // TODO: Implement
 	export let tooltip: string | undefined = undefined;
 
@@ -26,17 +25,18 @@
 	$: transparency = value instanceof Gradient ? value.stops.some((stop) => stop.color.alpha < 1) : value.alpha < 1;
 </script>
 
-<LayoutCol class="color-button" classes={{ open, disabled, none, transparency, outlined }} {tooltip}>
-	<button {disabled} style:--chosen-gradient={chosenGradient} style:--outline-amount={outlineFactor} on:click={() => (open = true)} tabindex="0" data-floating-menu-spawner>
-		{#if disabled && value instanceof Color && !value.none}
+<LayoutCol class="color-button" classes={{ open, disabled, none, transparency, outlined, "direction-top": menuDirection === "Top" }} {tooltip}>
+	<button style:--chosen-gradient={chosenGradient} style:--outline-amount={outlineFactor} on:click={() => (open = true)} tabindex="0" data-floating-menu-spawner>
+		<!-- {#if disabled && value instanceof Color && !value.none}
 			<TextLabel>sRGB</TextLabel>
-		{/if}
+		{/if} -->
 	</button>
 	<ColorPicker
 		{open}
-		{readOnly}
-		on:open={({ detail }) => (open = detail)}
+		{disabled}
 		colorOrGradient={value}
+		direction={menuDirection || "Bottom"}
+		on:open={({ detail }) => (open = detail)}
 		on:colorOrGradient={({ detail }) => {
 			value = detail;
 			dispatch("value", detail);
@@ -138,6 +138,10 @@
 		> .floating-menu {
 			left: 50%;
 			bottom: 0;
+		}
+
+		&.direction-top > .floating-menu {
+			bottom: 100%;
 		}
 	}
 </style>

@@ -231,11 +231,7 @@ impl EditorHandle {
 		let js_return_value = self.frontend_message_handler_callback.call2(&JsValue::null(), &JsValue::from(message_type), &message_data);
 
 		if let Err(error) = js_return_value {
-			error!(
-				"While handling FrontendMessage \"{:?}\", JavaScript threw an error: {:?}",
-				message.to_discriminant().local_name(),
-				error,
-			)
+			error!("While handling FrontendMessage {:?}, JavaScript threw an error:\n{:?}", message.to_discriminant().local_name(), error,)
 		}
 	}
 
