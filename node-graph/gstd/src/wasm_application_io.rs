@@ -8,6 +8,7 @@ use graphene_core::math::bbox::Bbox;
 use graphene_core::raster::image::Image;
 use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::table::Table;
+#[cfg(target_family = "wasm")]
 use graphene_core::transform::Footprint;
 use graphene_core::vector::Vector;
 use graphene_core::{Color, Context, Ctx, ExtractFootprint, Graphic, OwnedContextImpl, WasmNotSend};
@@ -219,6 +220,7 @@ async fn rasterize<T: WasmNotSend + 'n>(
 		Table<Vector>,
 		Table<Raster<CPU>>,
 		Table<Graphic>,
+		Table<Color>,
 	)]
 	mut data: Table<T>,
 	footprint: Footprint,
@@ -289,7 +291,6 @@ async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
 		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Color>,
-		Context -> Artboard,
 		Context -> Option<Color>,
 		Context -> Vec<Color>,
 		Context -> bool,

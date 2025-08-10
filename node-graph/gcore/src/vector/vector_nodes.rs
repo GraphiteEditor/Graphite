@@ -106,7 +106,7 @@ where
 }
 
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-async fn fill<F: Into<Fill> + 'n + Send, V>(
+async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Vector>,
@@ -116,7 +116,7 @@ async fn fill<F: Into<Fill> + 'n + Send, V>(
 		Table<Graphic>,
 		Table<Graphic>,
 		Table<Graphic>,
-		Table<Graphic>
+		Table<Graphic>,
 	)]
 	/// The content with vector paths to apply the fill style to.
 	mut content: V,
@@ -135,10 +135,7 @@ async fn fill<F: Into<Fill> + 'n + Send, V>(
 	fill: F,
 	_backup_color: Option<Color>,
 	_backup_gradient: Gradient,
-) -> V
-where
-	V: VectorTableIterMut + 'n + Send,
-{
+) -> V {
 	let fill: Fill = fill.into();
 	for vector in content.vector_iter_mut() {
 		let mut fill = fill.clone();
@@ -219,7 +216,7 @@ where
 async fn repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	// TODO: Implement other graphical types.
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>)] instance: Table<I>,
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>)] instance: Table<I>,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: PixelSize,
@@ -255,7 +252,7 @@ async fn repeat<I: 'n + Send + Clone>(
 async fn circular_repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	// TODO: Implement other graphical types.
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>)] instance: Table<I>,
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>)] instance: Table<I>,
 	angle_offset: Angle,
 	#[unit(" px")]
 	#[default(5)]
@@ -291,7 +288,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	points: Table<Vector>,
 	#[expose]
 	/// Artwork to be copied and placed at each point.
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>)]
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>)]
 	instance: Table<I>,
 	/// Minimum range of randomized sizes given to each instance.
 	#[default(1)]
@@ -366,7 +363,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn mirror<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>)] content: Table<I>,
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>)] content: Table<I>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
 	#[unit(" px")] offset: f64,
 	#[range((-90., 90.))] angle: Angle,
@@ -1901,7 +1898,7 @@ fn point_inside(_: impl Ctx, source: Table<Vector>, point: DVec2) -> bool {
 }
 
 #[node_macro::node(category("General"), path(graphene_core::vector))]
-async fn count_elements<I>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)] source: Table<I>) -> u64 {
+async fn count_elements<I>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>)] source: Table<I>) -> u64 {
 	source.len() as u64
 }
 

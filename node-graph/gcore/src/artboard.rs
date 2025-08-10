@@ -97,6 +97,7 @@ async fn create_artboard<T: Into<Table<Graphic>> + 'n>(
 		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
+		Context -> Table<Color>,
 		Context -> DAffine2,
 	)]
 	content: impl Node<Context<'static>, Output = T>,

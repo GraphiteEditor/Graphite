@@ -8,6 +8,7 @@ use graphene_core::bounds::BoundingBox;
 use graphene_core::bounds::RenderBoundingBox;
 use graphene_core::color::Color;
 use graphene_core::math::quad::Quad;
+use graphene_core::raster::BitmapMut;
 use graphene_core::raster::Image;
 use graphene_core::raster_types::{CPU, GPU, Raster};
 use graphene_core::render_complexity::RenderComplexity;
@@ -957,7 +958,9 @@ impl Render for Table<Raster<CPU>> {
 					state.finish()
 				});
 				if !render.image_data.iter().any(|(old_id, _)| *old_id == id) {
-					render.image_data.push((id, image.data().clone()));
+					let mut image = image.data().clone();
+					image.map_pixels(|p| p.to_unassociated_alpha());
+					render.image_data.push((id, image));
 				}
 				render.parent_tag(
 					"foreignObject",
@@ -1274,294 +1277,35 @@ impl Render for Table<Color> {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		// use graphene_core::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
-		// use graphene_core::vector::style::{GradientType, StrokeCap, StrokeJoin};
-		// use vello::kurbo::{Cap, Join};
-		// use vello::peniko;
+		use vello::peniko;
 
-		// for row in self.iter() {
-		// 	let multiplied_transform = parent_transform * *row.transform;
-		// 	let has_real_stroke = row.element.style.stroke().filter(|stroke| stroke.weight() > 0.);
-		// 	let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
-		// 	let applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
-		// 	let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
-		// 	let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
-		// 	let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
-		// 	let layer_bounds = row.element.bounding_box().unwrap_or_default();
+		for row in self.iter() {
+			let alpha_blending = *row.alpha_blending;
+			let blend_mode = alpha_blending.blend_mode.to_peniko();
+			let opacity = alpha_blending.opacity(render_params.for_mask);
 
-		// 	let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
-		// 	let mut path = kurbo::BezPath::new();
-		// 	for subpath in row.element.stroke_bezier_paths() {
-		// 		subpath.to_vello_path(applied_stroke_transform, &mut path);
-		// 	}
+			let transform = parent_transform * render_params.footprint.transform.inverse();
+			let color = row.element;
+			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
 
-		// 	// If we're using opacity or a blend mode, we need to push a layer
-		// 	let blend_mode = match render_params.view_mode {
-		// 		ViewMode::Outline => peniko::Mix::Normal,
-		// 		_ => row.alpha_blending.blend_mode.to_peniko(),
-		// 	};
-		// 	let mut layer = false;
+			let rect = kurbo::Rect::from_origin_size(
+				kurbo::Point::ZERO,
+				kurbo::Size::new(render_params.footprint.resolution.x as f64, render_params.footprint.resolution.y as f64),
+			);
 
-		// 	let opacity = row.alpha_blending.opacity(render_params.for_mask);
-		// 	if opacity < 1. || row.alpha_blending.blend_mode != BlendMode::default() {
-		// 		layer = true;
-		// 		let weight = row.element.style.stroke().unwrap().weight;
-		// 		let quad = Quad::from_box(layer_bounds).inflate(weight * element_transform.matrix2.determinant());
-		// 		let layer_bounds = quad.bounding_box();
-		// 		scene.push_layer(
-		// 			peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
-		// 			opacity,
-		// 			kurbo::Affine::new(multiplied_transform.to_cols_array()),
-		// 			&kurbo::Rect::new(layer_bounds[0].x, layer_bounds[0].y, layer_bounds[1].x, layer_bounds[1].y),
-		// 		);
-		// 	}
+			let mut layer = false;
+			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
+				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
+				scene.push_layer(blending, opacity, kurbo::Affine::IDENTITY, &rect);
+				layer = true;
+			}
 
-		// 	let can_draw_aligned_stroke =
-		// 		row.element.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered()) && row.element.stroke_bezier_paths().all(|path| path.closed());
+			scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), vello_color, None, &rect);
 
-		// 	let reorder_for_outside = row.element.style.stroke().is_some_and(|stroke| stroke.align == StrokeAlign::Outside) && !row.element.style.fill().is_none();
-		// 	let use_layer = can_draw_aligned_stroke && !reorder_for_outside;
-		// 	if use_layer {
-		// 		let mut element = row.element.clone();
-		// 		element.style.clear_stroke();
-		// 		element.style.set_fill(Fill::solid(Color::BLACK));
-
-		// 		let vector_table = Table::new_from_row(TableRow {
-		// 			element,
-		// 			alpha_blending: *row.alpha_blending,
-		// 			transform: *row.transform,
-		// 			source_node_id: None,
-		// 		});
-
-		// 		let bounds = row.element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
-		// 		let weight = row.element.style.stroke().unwrap().weight;
-		// 		let quad = Quad::from_box(bounds).inflate(weight * element_transform.matrix2.determinant());
-		// 		let bounds = quad.bounding_box();
-		// 		let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
-
-		// 		scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-		// 		vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
-		// 		scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
-		// 	}
-
-		// 	// Render the path
-		// 	match render_params.view_mode {
-		// 		ViewMode::Outline => {
-		// 			let outline_stroke = kurbo::Stroke {
-		// 				width: LAYER_OUTLINE_STROKE_WEIGHT,
-		// 				miter_limit: 4.,
-		// 				join: Join::Miter,
-		// 				start_cap: Cap::Butt,
-		// 				end_cap: Cap::Butt,
-		// 				dash_pattern: Default::default(),
-		// 				dash_offset: 0.,
-		// 			};
-		// 			let outline_color = peniko::Color::new([
-		// 				LAYER_OUTLINE_STROKE_COLOR.r(),
-		// 				LAYER_OUTLINE_STROKE_COLOR.g(),
-		// 				LAYER_OUTLINE_STROKE_COLOR.b(),
-		// 				LAYER_OUTLINE_STROKE_COLOR.a(),
-		// 			]);
-
-		// 			scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color, None, &path);
-		// 		}
-		// 		_ => {
-		// 			enum Op {
-		// 				Fill,
-		// 				Stroke,
-		// 			}
-
-		// 			let order = match row.element.style.stroke().is_some_and(|stroke| !stroke.paint_order.is_default()) || reorder_for_outside {
-		// 				true => [Op::Stroke, Op::Fill],
-		// 				false => [Op::Fill, Op::Stroke], // Default
-		// 			};
-
-		// 			for operation in order {
-		// 				match operation {
-		// 					Op::Fill => {
-		// 						match row.element.style.fill() {
-		// 							Fill::Solid(color) => {
-		// 								let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
-		// 								scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, &path);
-		// 							}
-		// 							Fill::Gradient(gradient) => {
-		// 								let mut stops = peniko::ColorStops::new();
-		// 								for &(offset, color) in &gradient.stops {
-		// 									stops.push(peniko::ColorStop {
-		// 										offset: offset as f32,
-		// 										color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
-		// 									});
-		// 								}
-		// 								// Compute bounding box of the shape to determine the gradient start and end points
-		// 								let bounds = row.element.nonzero_bounding_box();
-		// 								let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-
-		// 								let inverse_parent_transform = if parent_transform.matrix2.determinant() != 0. {
-		// 									parent_transform.inverse()
-		// 								} else {
-		// 									Default::default()
-		// 								};
-		// 								let mod_points = inverse_parent_transform * multiplied_transform * bound_transform;
-
-		// 								let start = mod_points.transform_point2(gradient.start);
-		// 								let end = mod_points.transform_point2(gradient.end);
-
-		// 								let fill = peniko::Brush::Gradient(peniko::Gradient {
-		// 									kind: match gradient.gradient_type {
-		// 										GradientType::Linear => peniko::GradientKind::Linear {
-		// 											start: to_point(start),
-		// 											end: to_point(end),
-		// 										},
-		// 										GradientType::Radial => {
-		// 											let radius = start.distance(end);
-		// 											peniko::GradientKind::Radial {
-		// 												start_center: to_point(start),
-		// 												start_radius: 0.,
-		// 												end_center: to_point(start),
-		// 												end_radius: radius as f32,
-		// 											}
-		// 										}
-		// 									},
-		// 									stops,
-		// 									..Default::default()
-		// 								});
-		// 								// Vello does `element_transform * brush_transform` internally. We don't want element_transform to have any impact so we need to left multiply by the inverse.
-		// 								// This makes the final internal brush transform equal to `parent_transform`, allowing you to stretch a gradient by transforming the parent folder.
-		// 								let inverse_element_transform = if element_transform.matrix2.determinant() != 0. {
-		// 									element_transform.inverse()
-		// 								} else {
-		// 									Default::default()
-		// 								};
-		// 								let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
-		// 								scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), &path);
-		// 							}
-		// 							Fill::None => {}
-		// 						};
-		// 					}
-		// 					Op::Stroke => {
-		// 						if let Some(stroke) = row.element.style.stroke() {
-		// 							let color = match stroke.color {
-		// 								Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
-		// 								None => peniko::Color::TRANSPARENT,
-		// 							};
-		// 							let cap = match stroke.cap {
-		// 								StrokeCap::Butt => Cap::Butt,
-		// 								StrokeCap::Round => Cap::Round,
-		// 								StrokeCap::Square => Cap::Square,
-		// 							};
-		// 							let join = match stroke.join {
-		// 								StrokeJoin::Miter => Join::Miter,
-		// 								StrokeJoin::Bevel => Join::Bevel,
-		// 								StrokeJoin::Round => Join::Round,
-		// 							};
-		// 							let stroke = kurbo::Stroke {
-		// 								width: stroke.weight * if can_draw_aligned_stroke { 2. } else { 1. },
-		// 								miter_limit: stroke.join_miter_limit,
-		// 								join,
-		// 								start_cap: cap,
-		// 								end_cap: cap,
-		// 								dash_pattern: stroke.dash_lengths.into(),
-		// 								dash_offset: stroke.dash_offset,
-		// 							};
-
-		// 							// Draw the stroke if it's visible
-		// 							if stroke.width > 0. {
-		// 								scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), color, None, &path);
-		// 							}
-		// 						}
-		// 					}
-		// 				}
-		// 			}
-		// 		}
-		// 	}
-
-		// 	if use_layer {
-		// 		scene.pop_layer();
-		// 		scene.pop_layer();
-		// 	}
-
-		// 	// If we pushed a layer for opacity or a blend mode, we need to pop it
-		// 	if layer {
-		// 		scene.pop_layer();
-		// 	}
-		// }
-	}
-
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
-		// for row in self.iter() {
-		// 	let transform = *row.transform;
-		// 	let vector = row.element;
-
-		// 	if let Some(element_id) = element_id {
-		// 		let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::weight);
-		// 		let filled = vector.style.fill() != &Fill::None;
-		// 		let fill = |mut subpath: Subpath<_>| {
-		// 			if filled {
-		// 				subpath.set_closed(true);
-		// 			}
-		// 			subpath
-		// 		};
-
-		// 		// For free-floating anchors, we need to add a click target for each
-		// 		let single_anchors_targets = vector.point_domain.ids().iter().filter_map(|&point_id| {
-		// 			if vector.connected_count(point_id) == 0 {
-		// 				let anchor = vector.point_domain.position_from_id(point_id).unwrap_or_default();
-		// 				let point = FreePoint::new(point_id, anchor);
-
-		// 				Some(ClickTarget::new_with_free_point(point))
-		// 			} else {
-		// 				None
-		// 			}
-		// 		});
-
-		// 		let click_targets = vector
-		// 			.stroke_bezier_paths()
-		// 			.map(fill)
-		// 			.map(|subpath| ClickTarget::new_with_subpath(subpath, stroke_width))
-		// 			.chain(single_anchors_targets.into_iter())
-		// 			.collect::<Vec<ClickTarget>>();
-
-		// 		metadata.click_targets.entry(element_id).or_insert(click_targets);
-		// 	}
-
-		// 	if let Some(upstream_nested_layers) = &vector.upstream_nested_layers {
-		// 		footprint.transform *= transform;
-		// 		upstream_nested_layers.collect_metadata(metadata, footprint, None);
-		// 	}
-		// }
-	}
-
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		// for row in self.iter() {
-		// 	let stroke_width = row.element.style.stroke().as_ref().map_or(0., Stroke::weight);
-		// 	let filled = row.element.style.fill() != &Fill::None;
-		// 	let fill = |mut subpath: Subpath<_>| {
-		// 		if filled {
-		// 			subpath.set_closed(true);
-		// 		}
-		// 		subpath
-		// 	};
-		// 	click_targets.extend(row.element.stroke_bezier_paths().map(fill).map(|subpath| {
-		// 		let mut click_target = ClickTarget::new_with_subpath(subpath, stroke_width);
-		// 		click_target.apply_transform(*row.transform);
-		// 		click_target
-		// 	}));
-
-		// 	// For free-floating anchors, we need to add a click target for each
-		// 	let single_anchors_targets = row.element.point_domain.ids().iter().filter_map(|&point_id| {
-		// 		if row.element.connected_count(point_id) > 0 {
-		// 			return None;
-		// 		}
-
-		// 		let anchor = row.element.point_domain.position_from_id(point_id).unwrap_or_default();
-		// 		let point = FreePoint::new(point_id, anchor);
-
-		// 		let mut click_target = ClickTarget::new_with_free_point(point);
-		// 		click_target.apply_transform(*row.transform);
-		// 		Some(click_target)
-		// 	});
-		// 	click_targets.extend(single_anchors_targets);
-		// }
+			if layer {
+				scene.pop_layer();
+			}
+		}
 	}
 }
 
@@ -1589,27 +1333,50 @@ impl<P: Primitive> Render for P {
 }
 
 impl Render for Option<Color> {
-	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
-		let Some(color) = self else {
-			render.parent_tag("text", |_| {}, |render| render.leaf_node("Empty color"));
-			return;
-		};
-		let color_info = format!("{:?} #{} {:?}", color, color.to_rgba_hex_srgb(), color.to_rgba8_srgb());
-
-		render.leaf_tag("rect", |attributes| {
-			attributes.push("width", "100");
-			attributes.push("height", "100");
-			attributes.push("y", "40");
-			attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
-			if color.a() < 1. {
-				attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
-			}
-		});
-		render.parent_tag("text", text_attributes, |render| render.leaf_node(color_info))
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		if let Some(color) = self {
+			color.render_svg(render, render_params);
+		}
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+		if let Some(color) = self {
+			color.render_to_vello(scene, parent_transform, _context, render_params);
+		}
+	}
+}
+
+impl Render for Color {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		render.leaf_tag("rect", |attributes| {
+			attributes.push("width", render_params.footprint.resolution.x.to_string());
+			attributes.push("height", render_params.footprint.resolution.y.to_string());
+
+			let matrix = format_transform_matrix(render_params.footprint.transform.inverse());
+			if !matrix.is_empty() {
+				attributes.push("transform", matrix);
+			}
+
+			attributes.push("fill", format!("#{}", self.to_rgb_hex_srgb_from_gamma()));
+			if self.a() < 1. {
+				attributes.push("fill-opacity", ((self.a() * 1000.).round() / 1000.).to_string());
+			}
+		});
+	}
+
+	#[cfg(feature = "vello")]
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+		let transform = parent_transform * render_params.footprint.transform.inverse();
+		let vello_color = peniko::Color::new([self.r(), self.g(), self.b(), self.a()]);
+
+		let rect = kurbo::Rect::from_origin_size(
+			kurbo::Point::ZERO,
+			kurbo::Size::new(render_params.footprint.resolution.x as f64, render_params.footprint.resolution.y as f64),
+		);
+
+		scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), vello_color, None, &rect);
+	}
 }
 
 impl Render for Vec<Color> {

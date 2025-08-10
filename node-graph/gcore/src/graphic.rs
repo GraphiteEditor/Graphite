@@ -21,7 +21,7 @@ pub enum Graphic {
 
 impl Default for Graphic {
 	fn default() -> Self {
-		Self::Graphic(Default::default())
+		Self::Graphic(Table::new())
 	}
 }
 
@@ -120,6 +120,26 @@ impl From<Table<Color>> for Table<Graphic> {
 	}
 }
 
+// Option<Color>
+impl From<Option<Color>> for Graphic {
+	fn from(color: Option<Color>) -> Self {
+		if let Some(color) = color {
+			Graphic::Color(Table::new_from_element(color))
+		} else {
+			Graphic::default()
+		}
+	}
+}
+impl From<Option<Color>> for Table<Graphic> {
+	fn from(color: Option<Color>) -> Self {
+		if let Some(color) = color {
+			Table::new_from_element(Graphic::Color(Table::new_from_element(color)))
+		} else {
+			Table::new()
+		}
+	}
+}
+
 // DAffine2
 impl From<DAffine2> for Graphic {
 	fn from(_: DAffine2) -> Self {
@@ -212,7 +232,7 @@ impl BoundingBox for Graphic {
 #[node_macro::node(category(""))]
 async fn source_node_id<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)] content: Table<I>,
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>)] content: Table<I>,
 	node_path: Vec<NodeId>,
 ) -> Table<I> {
 	// Get the penultimate element of the node path, or None if the path is too short
@@ -232,11 +252,11 @@ async fn source_node_id<I: 'n + Send + Clone>(
 async fn extend<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The table whose rows will appear at the start of the extended table.
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)]
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>)]
 	base: Table<I>,
 	/// The table whose rows will appear at the end of the extended table.
 	#[expose]
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)]
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>)]
 	new: Table<I>,
 ) -> Table<I> {
 	let mut base = base;
@@ -249,9 +269,9 @@ async fn extend<I: 'n + Send + Clone>(
 #[node_macro::node(category(""))]
 async fn legacy_layer_extend<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)] base: Table<I>,
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>)] base: Table<I>,
 	#[expose]
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)]
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>)]
 	new: Table<I>,
 	nested_node_path: Vec<NodeId>,
 ) -> Table<I> {
@@ -274,9 +294,11 @@ async fn wrap_graphic<T: Into<Graphic> + 'n>(
 	#[implementations(
 		Table<Graphic>,
 	 	Table<Vector>,
-		 Table<Raster<CPU>>,
+		Table<Raster<CPU>>,
 	 	Table<Raster<GPU>>,
 	 	Table<Color>,
+		Color,
+		Option<Color>,
 		DAffine2,
 	)]
 	content: T,
@@ -295,6 +317,8 @@ async fn to_graphic<T: Into<Table<Graphic>> + 'n>(
 		Table<Raster<CPU>>,
 		Table<Raster<GPU>>,
 		Table<Color>,
+		Color,
+		Option<Color>,
 	)]
 	content: T,
 ) -> Table<Graphic> {
