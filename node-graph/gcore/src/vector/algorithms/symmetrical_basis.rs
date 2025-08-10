@@ -282,7 +282,7 @@ impl SymmetricalBasisPair {
 		(&self.x * &other.x) + (&self.y * &other.y)
 	}
 
-	#[must_use]
+	#[allow(unused)]
 	pub fn cross(&self, rhs: &Self) -> SymmetricalBasis {
 		(&self.x * &rhs.y) - (&self.y * &rhs.x)
 	}
@@ -539,9 +539,9 @@ fn binomial_decrement_n(b: f64, n: usize, k: usize) -> f64 {
 #[must_use]
 pub(crate) fn to_symmetrical_basis_pair(bezier: PathSeg) -> SymmetricalBasisPair {
 	let n = match bezier {
-		PathSeg::Line(line) => 1,
-		PathSeg::Quad(quad_bez) => 2,
-		PathSeg::Cubic(cubic_bez) => 3,
+		PathSeg::Line(_) => 1,
+		PathSeg::Quad(_) => 2,
+		PathSeg::Cubic(_) => 3,
 	};
 	let q = (n + 1) / 2;
 	let even = n % 2 == 0;

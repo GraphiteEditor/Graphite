@@ -224,15 +224,6 @@ pub fn pathseg_tangents_to_point(segment: PathSeg, point: Point) -> Vec<f64> {
 	segment.to_cubic().tangents_to_point(point).to_vec()
 }
 
-fn parameters(cubic_bez: CubicBez) -> (Vec2, Vec2, Vec2, Vec2) {
-	let c = (cubic_bez.p1 - cubic_bez.p0) * 3.0;
-	let b = (cubic_bez.p2 - cubic_bez.p1) * 3.0 - c;
-	let d = cubic_bez.p0.to_vec2();
-	let a = cubic_bez.p3.to_vec2() - d - c - b;
-
-	(a, b, c, d)
-}
-
 /// Return the subsegment for the given [TValue] range. Returns None if parametric value of `t1` is greater than `t2`.
 pub fn trim_pathseg(segment: PathSeg, t1: TValue, t2: TValue) -> Option<PathSeg> {
 	let t1 = eval_pathseg(segment, t1);
