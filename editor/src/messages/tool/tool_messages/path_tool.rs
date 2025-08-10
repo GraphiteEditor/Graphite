@@ -644,8 +644,47 @@ impl PathToolData {
 		self.selection_status = selection_status;
 	}
 
-	fn update_merge_segments_toggle(&mut self, _shape_editor: &mut ShapeState, _document: &DocumentMessageHandler) {
-		//TODO: Implement this
+	fn update_merge_segments_toggle(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, vector_meshes: bool) {
+		if !vector_meshes {
+			self.merging_segments_enabled = false;
+			return;
+		}
+
+		let mut non_empty_layers = shape_editor.selected_shape_state.iter().filter(|(_, state)| !state.is_empty());
+		let Some((layer, _)) = non_empty_layers.next() else {
+			self.merging_segments_enabled = false;
+			return;
+		};
+
+		if non_empty_layers.next().is_some() {
+			self.merging_segments_enabled = false;
+			return;
+		}
+
+		let segments = shape_editor.selected_segments().collect::<Vec<_>>();
+		if segments.len() != 2 {
+			self.merging_segments_enabled = false;
+			return;
+		}
+		let segment1 = segments[0];
+		let segment2 = segments[1];
+		// Both of the segments should be close to each other
+		let Some(vector) = document.network_interface.compute_modified_vector(*layer) else { return };
+		let Some((_, bezier1, _, _)) = vector.segment_bezier_iter().find(|(id, _, _, _)| id == segment1) else {
+			return;
+		};
+		let Some((_, bezier2, _, _)) = vector.segment_bezier_iter().find(|(id, _, _, _)| id == segment2) else {
+			return;
+		};
+		let segments_in_same_direction = bezier1.start.distance(bezier2.start) < SEGMENT_INSERTION_DISTANCE && bezier1.end.distance(bezier2.end) < SEGMENT_INSERTION_DISTANCE;
+		let segments_in_opposite_direction = bezier1.start.distance(bezier2.end) < SEGMENT_INSERTION_DISTANCE && bezier1.end.distance(bezier2.start) < SEGMENT_INSERTION_DISTANCE;
+		let near_segments = segments_in_same_direction || segments_in_opposite_direction;
+
+		if !near_segments {
+			self.merging_segments_enabled = false;
+			return;
+		}
+
 		self.merging_segments_enabled = true;
 	}
 
@@ -3018,27 +3057,20 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::MergeSelectedSegments) => {
-				// TODO: If two segments are selected and they are close within certain threshold then we need to merge both of them together
-
-				// Assuming that all these points are on the same layer
+				// Assuming that two segments selected are on the same layer
 				let mut non_empty_layers = shape_editor.selected_shape_state.iter().filter(|(_, state)| !state.is_empty());
-
-				// If all layers are empty, or no layer selected
 				let Some((layer, _)) = non_empty_layers.next() else {
 					return PathToolFsmState::Ready;
 				};
-
-				// If selected segments are of more than one layer
 				if non_empty_layers.next().is_some() {
 					return PathToolFsmState::Ready;
 				}
 
-				// Given two segments and they are close we will create new points at the midpoint of their endpoints
 				let segments = shape_editor.selected_segments().collect::<Vec<_>>();
-
 				if segments.len() != 2 {
 					return PathToolFsmState::Ready;
 				}
+
 				let segment1 = segments[0];
 				let segment2 = segments[1];
 
@@ -3164,7 +3196,7 @@ impl Fsm for PathToolFsmState {
 
 				tool_data.make_path_editable_is_allowed = make_path_editable_is_allowed(&document.network_interface, document.metadata()).is_some();
 				tool_data.update_selection_status(shape_editor, document);
-				tool_data.update_merge_segments_toggle(shape_editor, document);
+				tool_data.update_merge_segments_toggle(shape_editor, document, tool_action_data.preferences.vector_meshes);
 				self
 			}
 			(_, PathToolMessage::ManipulatorMakeHandlesColinear) => {
