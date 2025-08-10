@@ -29,6 +29,7 @@ impl RenderComplexity for Graphic {
 			Self::Vector(table) => table.render_complexity(),
 			Self::RasterCPU(table) => table.render_complexity(),
 			Self::RasterGPU(table) => table.render_complexity(),
+			Self::Color(table) => table.render_complexity(),
 		}
 	}
 }
@@ -49,6 +50,12 @@ impl RenderComplexity for Raster<GPU> {
 	fn render_complexity(&self) -> usize {
 		// GPU textures currently can't have a thumbnail
 		usize::MAX
+	}
+}
+
+impl RenderComplexity for Color {
+	fn render_complexity(&self) -> usize {
+		1
 	}
 }
 
