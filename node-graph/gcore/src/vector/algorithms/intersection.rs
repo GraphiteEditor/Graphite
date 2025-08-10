@@ -63,8 +63,8 @@ pub fn subsegment_intersections(segment1: PathSeg, min_t1: f64, max_t1: f64, seg
 /// by splitting the segment recursively until the size of the subsegment's bounding box is smaller than the accuracy.
 #[allow(clippy::too_many_arguments)]
 fn segment_intersections_inner(segment1: PathSeg, min_t1: f64, max_t1: f64, segment2: PathSeg, min_t2: f64, max_t2: f64, accuracy: f64, intersections: &mut Vec<(f64, f64)>) {
-	let bbox1 = segment1.bounding_box();
-	let bbox2 = segment2.bounding_box();
+	let bbox1 = segment1.subsegment(min_t1..max_t1).bounding_box();
+	let bbox2 = segment2.subsegment(min_t2..max_t2).bounding_box();
 
 	let mid_t1 = (min_t1 + max_t1) / 2.;
 	let mid_t2 = (min_t2 + max_t2) / 2.;
@@ -72,7 +72,7 @@ fn segment_intersections_inner(segment1: PathSeg, min_t1: f64, max_t1: f64, segm
 	// Check if the bounding boxes overlap
 	if bbox1.overlaps(bbox2) {
 		// If bounding boxes overlap and they are small enough, we have found an intersection
-		if bbox1.width() < accuracy && bbox1.height() < accuracy && bbox2.width() < accuracy && bbox2.height() < accuracy {
+		if bbox1.width().abs() < accuracy && bbox1.height().abs() < accuracy && bbox2.width().abs() < accuracy && bbox2.height().abs() < accuracy {
 			// Use the middle `t` value, append the corresponding `t` value
 			intersections.push((mid_t1, mid_t2));
 			return;
