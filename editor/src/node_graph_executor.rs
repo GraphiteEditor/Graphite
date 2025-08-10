@@ -58,7 +58,7 @@ pub struct NodeGraphExecutor {
 	current_execution_id: u64,
 	futures: HashMap<u64, ExecutionContext>,
 	node_graph_hash: u64,
-	old_inspect_node: Option<NodeId>,
+	previous_node_to_inspect: Option<NodeId>,
 }
 
 #[derive(Debug, Clone)]
@@ -80,7 +80,7 @@ impl NodeGraphExecutor {
 			runtime_io: NodeRuntimeIO::with_channels(request_sender, response_receiver),
 			node_graph_hash: 0,
 			current_execution_id: 0,
-			old_inspect_node: None,
+			previous_node_to_inspect: None,
 		};
 		(node_runtime, node_executor)
 	}
@@ -113,22 +113,22 @@ impl NodeGraphExecutor {
 		let instrumented = Instrumented::new(&mut network);
 
 		self.runtime_io
-			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, inspect_node: None }))
+			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: None }))
 			.map_err(|e| e.to_string())?;
 		Ok(instrumented)
 	}
 
 	/// Update the cached network if necessary.
-	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, inspect_node: Option<NodeId>, ignore_hash: bool) -> Result<(), String> {
+	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, node_to_inspect: Option<NodeId>, ignore_hash: bool) -> Result<(), String> {
 		let network_hash = document.network_interface.document_network().current_hash();
 		// Refresh the graph when it changes or the inspect node changes
-		if network_hash != self.node_graph_hash || self.old_inspect_node != inspect_node || ignore_hash {
+		if network_hash != self.node_graph_hash || self.previous_node_to_inspect != node_to_inspect || ignore_hash {
 			let network = document.network_interface.document_network().clone();
-			self.old_inspect_node = inspect_node;
+			self.previous_node_to_inspect = node_to_inspect;
 			self.node_graph_hash = network_hash;
 
 			self.runtime_io
-				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, inspect_node }))
+				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect }))
 				.map_err(|e| e.to_string())?;
 		}
 		Ok(())
@@ -173,10 +173,10 @@ impl NodeGraphExecutor {
 		document_id: DocumentId,
 		viewport_resolution: UVec2,
 		time: TimingInformation,
-		inspect_node: Option<NodeId>,
+		node_to_inspect: Option<NodeId>,
 		ignore_hash: bool,
 	) -> Result<Message, String> {
-		self.update_node_graph(document, inspect_node, ignore_hash)?;
+		self.update_node_graph(document, node_to_inspect, ignore_hash)?;
 		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, time)
 	}
 
@@ -210,7 +210,7 @@ impl NodeGraphExecutor {
 
 		// Execute the node graph
 		self.runtime_io
-			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, inspect_node: None }))
+			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: None }))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
 		let execution_context = ExecutionContext {
@@ -293,11 +293,11 @@ impl NodeGraphExecutor {
 					}
 					responses.add_front(DeferMessage::TriggerGraphRun(execution_id, execution_context.document_id));
 
-					// Update the spreadsheet on the frontend using the value of the inspect result.
-					if self.old_inspect_node.is_some() {
-						if let Some(inspect_result) = inspect_result {
-							responses.add(SpreadsheetMessage::UpdateLayout { inspect_result });
-						}
+					// Update the Data panel on the frontend using the value of the inspect result.
+					if let Some(inspect_result) = (self.previous_node_to_inspect.is_some()).then_some(inspect_result).flatten() {
+						responses.add(DataPanelMessage::UpdateLayout { inspect_result });
+					} else {
+						responses.add(DataPanelMessage::ClearLayout);
 					}
 				}
 				NodeGraphUpdate::CompilationResponse(execution_response) => {

@@ -98,6 +98,12 @@
 	});
 
 	onDestroy(() => {
+		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelControlBarLeftLayout);
+		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelControlBarRightLayout);
+		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelBottomBarLayout);
+		editor.subscriptions.unsubscribeJsMessage(UpdateDocumentLayerStructureJs);
+		editor.subscriptions.unsubscribeJsMessage(UpdateDocumentLayerDetails);
+
 		removeEventListener("pointermove", clippingHover);
 		removeEventListener("keydown", clippingKeyPress);
 		removeEventListener("keyup", clippingKeyPress);
@@ -489,7 +495,9 @@
 <LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
 	<LayoutRow class="control-bar" scrollableX={true}>
 		<WidgetLayout layout={layersPanelControlBarLeftLayout} />
-		<Separator />
+		{#if layersPanelControlBarLeftLayout?.layout?.length > 0 && layersPanelControlBarRightLayout?.layout?.length > 0}
+			<Separator />
+		{/if}
 		<WidgetLayout layout={layersPanelControlBarRightLayout} />
 	</LayoutRow>
 	<LayoutRow class="list-area" scrollableY={true}>
@@ -605,6 +613,10 @@
 			.widget-span:first-child {
 				flex: 1 1 auto;
 			}
+
+			&:not(:has(*)) {
+				display: none;
+			}
 		}
 
 		// Bottom bar
@@ -618,6 +630,10 @@
 
 			.widget-span > * {
 				margin: 0;
+			}
+
+			&:not(:has(*)) {
+				display: none;
 			}
 		}
 

@@ -44,7 +44,7 @@ pub struct NodeRuntime {
 	node_graph_errors: GraphErrors,
 	monitor_nodes: Vec<Vec<NodeId>>,
 
-	/// Which node is inspected and which monitor node is used (if any) for the current execution
+	/// Which node is inspected and which monitor node is used (if any) for the current execution.
 	inspect_state: Option<InspectState>,
 
 	/// Mapping of the fully-qualified node paths to their preprocessor substitutions.
@@ -69,7 +69,7 @@ pub enum GraphRuntimeRequest {
 pub struct GraphUpdate {
 	pub(super) network: NodeNetwork,
 	/// The node that should be temporary inspected during execution
-	pub(super) inspect_node: Option<NodeId>,
+	pub(super) node_to_inspect: Option<NodeId>,
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -190,18 +190,19 @@ impl NodeRuntime {
 						let _ = self.update_network(graph).await;
 					}
 				}
-				GraphRuntimeRequest::GraphUpdate(GraphUpdate { mut network, inspect_node }) => {
+				GraphRuntimeRequest::GraphUpdate(GraphUpdate { mut network, node_to_inspect }) => {
 					// Insert the monitor node to manage the inspection
-					self.inspect_state = inspect_node.map(|inspect| InspectState::monitor_inspect_node(&mut network, inspect));
+					self.inspect_state = node_to_inspect.map(|inspect| InspectState::monitor_inspect_node(&mut network, inspect));
 
 					self.old_graph = Some(network.clone());
+
 					self.node_graph_errors.clear();
 					let result = self.update_network(network).await;
+					let node_graph_errors = self.node_graph_errors.clone();
+
 					self.update_thumbnails = true;
-					self.sender.send_generation_response(CompilationResponse {
-						result,
-						node_graph_errors: self.node_graph_errors.clone(),
-					});
+
+					self.sender.send_generation_response(CompilationResponse { result, node_graph_errors });
 				}
 				GraphRuntimeRequest::ExecutionRequest(ExecutionRequest { execution_id, render_config, .. }) => {
 					let result = self.execute_network(render_config).await;
