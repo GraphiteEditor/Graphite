@@ -1556,6 +1556,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			Noop,
 			Redo,
 			SaveDocument,
+			SaveDocumentAs,
 			SelectAllLayers,
 			SetSnapping,
 			ToggleGridVisibility,
