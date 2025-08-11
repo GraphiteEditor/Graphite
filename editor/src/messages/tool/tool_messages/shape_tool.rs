@@ -27,8 +27,8 @@ use graphene_std::renderer::Quad;
 use graphene_std::vector::misc::ArcType;
 use std::vec;
 
-#[derive(Default)]
-pub struct ShapeTool {
+#[derive(Default, ExtractField)]
+pub struct ShapeToolMessageHandler {
 	fsm_state: ShapeToolFsmState,
 	tool_data: ShapeToolData,
 	options: ShapeToolOptions,
@@ -146,7 +146,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.widget_holder()
 }
 
-impl LayoutHolder for ShapeTool {
+impl LayoutHolder for ShapeToolMessageHandler {
 	fn layout(&self) -> Layout {
 		let mut widgets = vec![];
 
@@ -191,7 +191,8 @@ impl LayoutHolder for ShapeTool {
 	}
 }
 
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for ShapeTool {
+#[message_handler_data]
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for ShapeToolMessageHandler {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Shape(ShapeToolMessage::UpdateOptions(action)) = message else {
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
@@ -270,7 +271,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 	}
 }
 
-impl ToolMetadata for ShapeTool {
+impl ToolMetadata for ShapeToolMessageHandler {
 	fn icon_name(&self) -> String {
 		"VectorPolygonTool".into()
 	}
@@ -282,7 +283,7 @@ impl ToolMetadata for ShapeTool {
 	}
 }
 
-impl ToolTransition for ShapeTool {
+impl ToolTransition for ShapeToolMessageHandler {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			overlay_provider: Some(|overlay_context| ShapeToolMessage::Overlays(overlay_context).into()),
