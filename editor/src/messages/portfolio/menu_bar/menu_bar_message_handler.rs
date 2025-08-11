@@ -111,7 +111,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {
-							label: "Save as".into(),
+							label: "Save As…".into(),
 							icon: Some("Save".into()),
 							shortcut: action_keys!(DocumentMessageDiscriminant::SaveDocumentAs),
 							action: MenuBarEntry::create_action(|_| DocumentMessage::SaveDocumentAs.into()),

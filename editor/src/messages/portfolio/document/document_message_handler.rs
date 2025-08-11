@@ -947,17 +947,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::RenameDocument { new_name } => {
 				self.name = new_name.clone();
 
-				// If the new document name does not match the current path, clear the path.
-				if let Some(path) = self.path.as_ref() {
-					let document_name_from_path = if path.extension().is_some_and(|e| e == FILE_EXTENSION) {
-						path.file_stem().map(|n| n.to_string_lossy().to_string())
-					} else {
-						None
-					};
-					if Some(new_name) != document_name_from_path {
-						self.path = None;
-					}
-				}
+				self.path = None;
+				self.set_save_state(false);
 
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
