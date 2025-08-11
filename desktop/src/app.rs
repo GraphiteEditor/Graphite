@@ -295,7 +295,8 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 						let Some(content) = load_string(&path) else { return };
 
 						let message = PortfolioMessage::OpenDocumentFile {
-							document_name: name.unwrap_or(DEFAULT_DOCUMENT_NAME.to_string()),
+							document_name: None,
+							document_path: Some(path),
 							document_serialized_content: content,
 						};
 						self.dispatch_message(message.into());
