@@ -1,6 +1,5 @@
 use crate::blending::AlphaBlending;
-use crate::bounds::BoundingBox;
-use crate::math::quad::Quad;
+use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::{Table, TableRow};
 use crate::uuid::NodeId;
@@ -17,11 +16,12 @@ pub enum Graphic {
 	Vector(Table<Vector>),
 	RasterCPU(Table<Raster<CPU>>),
 	RasterGPU(Table<Raster<GPU>>),
+	Color(Table<Color>),
 }
 
 impl Default for Graphic {
 	fn default() -> Self {
-		Self::Graphic(Default::default())
+		Self::Graphic(Table::new())
 	}
 }
 
@@ -98,6 +98,48 @@ impl From<Table<Raster<GPU>>> for Table<Graphic> {
 	}
 }
 
+// Color
+impl From<Color> for Graphic {
+	fn from(color: Color) -> Self {
+		Graphic::Color(Table::new_from_element(color))
+	}
+}
+impl From<Table<Color>> for Graphic {
+	fn from(color: Table<Color>) -> Self {
+		Graphic::Color(color)
+	}
+}
+impl From<Color> for Table<Graphic> {
+	fn from(color: Color) -> Self {
+		Table::new_from_element(Graphic::Color(Table::new_from_element(color)))
+	}
+}
+impl From<Table<Color>> for Table<Graphic> {
+	fn from(color: Table<Color>) -> Self {
+		Table::new_from_element(Graphic::Color(color))
+	}
+}
+
+// Option<Color>
+impl From<Option<Color>> for Graphic {
+	fn from(color: Option<Color>) -> Self {
+		if let Some(color) = color {
+			Graphic::Color(Table::new_from_element(color))
+		} else {
+			Graphic::default()
+		}
+	}
+}
+impl From<Option<Color>> for Table<Graphic> {
+	fn from(color: Option<Color>) -> Self {
+		if let Some(color) = color {
+			Table::new_from_element(Graphic::Color(Table::new_from_element(color)))
+		} else {
+			Table::new()
+		}
+	}
+}
+
 // DAffine2
 impl From<DAffine2> for Graphic {
 	fn from(_: DAffine2) -> Self {
@@ -159,6 +201,7 @@ impl Graphic {
 			Graphic::Graphic(graphic) => graphic.iter().all(|row| row.alpha_blending.clip),
 			Graphic::RasterCPU(raster) => raster.iter().all(|row| row.alpha_blending.clip),
 			Graphic::RasterGPU(raster) => raster.iter().all(|row| row.alpha_blending.clip),
+			Graphic::Color(color) => color.iter().all(|row| row.alpha_blending.clip),
 		}
 	}
 
@@ -175,28 +218,21 @@ impl Graphic {
 }
 
 impl BoundingBox for Graphic {
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		match self {
 			Graphic::Vector(vector) => vector.bounding_box(transform, include_stroke),
 			Graphic::RasterCPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::Graphic(graphic) => graphic.bounding_box(transform, include_stroke),
+			Graphic::Color(color) => color.bounding_box(transform, include_stroke),
 		}
-	}
-}
-
-impl BoundingBox for Table<Graphic> {
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.iter()
-			.filter_map(|element| element.element.bounding_box(transform * *element.transform, include_stroke))
-			.reduce(Quad::combine_bounds)
 	}
 }
 
 #[node_macro::node(category(""))]
 async fn source_node_id<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)] content: Table<I>,
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>)] content: Table<I>,
 	node_path: Vec<NodeId>,
 ) -> Table<I> {
 	// Get the penultimate element of the node path, or None if the path is too short
@@ -216,11 +252,11 @@ async fn source_node_id<I: 'n + Send + Clone>(
 async fn extend<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The table whose rows will appear at the start of the extended table.
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)]
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>)]
 	base: Table<I>,
 	/// The table whose rows will appear at the end of the extended table.
 	#[expose]
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)]
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>)]
 	new: Table<I>,
 ) -> Table<I> {
 	let mut base = base;
@@ -233,9 +269,9 @@ async fn extend<I: 'n + Send + Clone>(
 #[node_macro::node(category(""))]
 async fn legacy_layer_extend<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)] base: Table<I>,
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>)] base: Table<I>,
 	#[expose]
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)]
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>)]
 	new: Table<I>,
 	nested_node_path: Vec<NodeId>,
 ) -> Table<I> {
@@ -260,6 +296,9 @@ async fn wrap_graphic<T: Into<Graphic> + 'n>(
 	 	Table<Vector>,
 		Table<Raster<CPU>>,
 	 	Table<Raster<GPU>>,
+	 	Table<Color>,
+		Color,
+		Option<Color>,
 		DAffine2,
 	)]
 	content: T,
@@ -277,6 +316,9 @@ async fn to_graphic<T: Into<Table<Graphic>> + 'n>(
 		Table<Vector>,
 		Table<Raster<CPU>>,
 		Table<Raster<GPU>>,
+		Table<Color>,
+		Color,
+		Option<Color>,
 	)]
 	content: T,
 ) -> Table<Graphic> {
