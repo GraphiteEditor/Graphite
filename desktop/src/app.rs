@@ -271,46 +271,51 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 			// Currently not supported on wayland see https://github.com/rust-windowing/winit/issues/1881
 			WindowEvent::DroppedFile(path) => {
 				let name = path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string());
-				match path.extension().and_then(|s| s.to_str()) {
-					Some("graphite") => {
-						let content = fs::read_to_string(&path).unwrap_or_else(|_| {
-							tracing::error!("Failed to read file: {}", path.display());
-							String::new()
-						});
+				let Some(extension) = path.extension().and_then(|s| s.to_str()) else {
+					tracing::warn!("Unsupported file dropped: {}", path.display());
+					// Fine to early return since we don't need to do cef work in this case
+					return;
+				};
+				let load_string = |path: &std::path::PathBuf| {
+					let Ok(content) = fs::read_to_string(path) else {
+						tracing::error!("Failed to read file: {}", path.display());
+						return None;
+					};
 
-						if !content.is_empty() {
-							let message = PortfolioMessage::OpenDocumentFile {
-								document_name: name.unwrap_or(DEFAULT_DOCUMENT_NAME.to_string()),
-								document_serialized_content: content,
-							};
-							self.dispatch_message(message.into());
-						} else {
-							tracing::warn!("Dropped file is empty: {}", path.display());
-						}
+					if content.is_empty() {
+						tracing::warn!("Dropped file is empty: {}", path.display());
+						return None;
 					}
-					Some("svg") => {
-						let content = fs::read_to_string(&path).unwrap_or_else(|_| {
-							tracing::error!("Failed to read file: {}", path.display());
-							String::new()
-						});
+					Some(content)
+				};
+				// TODO: Consider moving this logic to the editor so we have one message to load data which is then demultiplexed in the portfolio message handler
+				match extension {
+					"graphite" => {
+						let Some(content) = load_string(&path) else { return };
 
-						if !content.is_empty() {
-							let message = PortfolioMessage::PasteSvg {
-								name: path.file_stem().map(|s| s.to_string_lossy().to_string()),
-								svg: content,
-								mouse: None,
-								parent_and_insert_index: None,
-							};
-							self.dispatch_message(message.into());
-						} else {
-							tracing::warn!("Dropped file is empty: {}", path.display());
-						}
+						let message = PortfolioMessage::OpenDocumentFile {
+							document_name: name.unwrap_or(DEFAULT_DOCUMENT_NAME.to_string()),
+							document_serialized_content: content,
+						};
+						self.dispatch_message(message.into());
 					}
-					Some(_) => match image::ImageReader::open(&path) {
+					"svg" => {
+						let Some(content) = load_string(&path) else { return };
+
+						let message = PortfolioMessage::PasteSvg {
+							name: path.file_stem().map(|s| s.to_string_lossy().to_string()),
+							svg: content,
+							mouse: None,
+							parent_and_insert_index: None,
+						};
+						self.dispatch_message(message.into());
+					}
+					_ => match image::ImageReader::open(&path) {
 						Ok(reader) => match reader.decode() {
 							Ok(image) => {
 								let width = image.width();
 								let height = image.height();
+								// TODO: support loading images with more than 8 bits per channel
 								let image_data = image.to_rgba8();
 								let image = Image::<Color>::from_image_data(image_data.as_raw(), width, height);
 
@@ -330,9 +335,6 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 							tracing::error!("Failed to open image file: {}: {}", path.display(), e);
 						}
 					},
-					_ => {
-						tracing::warn!("Unsupported file dropped: {}", path.display());
-					}
 				}
 			}
 			WindowEvent::CloseRequested => {
