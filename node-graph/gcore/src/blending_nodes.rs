@@ -34,6 +34,13 @@ impl MultiplyAlpha for Table<Raster<CPU>> {
 		}
 	}
 }
+impl MultiplyAlpha for Table<Color> {
+	fn multiply_alpha(&mut self, factor: f64) {
+		for row in self.iter_mut() {
+			row.alpha_blending.opacity *= factor as f32;
+		}
+	}
+}
 
 pub(super) trait MultiplyFill {
 	fn multiply_fill(&mut self, factor: f64);
@@ -58,6 +65,13 @@ impl MultiplyFill for Table<Graphic> {
 	}
 }
 impl MultiplyFill for Table<Raster<CPU>> {
+	fn multiply_fill(&mut self, factor: f64) {
+		for row in self.iter_mut() {
+			row.alpha_blending.fill *= factor as f32;
+		}
+	}
+}
+impl MultiplyFill for Table<Color> {
 	fn multiply_fill(&mut self, factor: f64) {
 		for row in self.iter_mut() {
 			row.alpha_blending.fill *= factor as f32;
@@ -90,6 +104,13 @@ impl SetBlendMode for Table<Raster<CPU>> {
 		}
 	}
 }
+impl SetBlendMode for Table<Color> {
+	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
+		for row in self.iter_mut() {
+			row.alpha_blending.blend_mode = blend_mode;
+		}
+	}
+}
 
 trait SetClip {
 	fn set_clip(&mut self, clip: bool);
@@ -116,6 +137,13 @@ impl SetClip for Table<Raster<CPU>> {
 		}
 	}
 }
+impl SetClip for Table<Color> {
+	fn set_clip(&mut self, clip: bool) {
+		for row in self.iter_mut() {
+			row.alpha_blending.clip = clip;
+		}
+	}
+}
 
 #[node_macro::node(category("Style"))]
 fn blend_mode<T: SetBlendMode>(
@@ -124,6 +152,7 @@ fn blend_mode<T: SetBlendMode>(
 		Table<Graphic>,
 		Table<Vector>,
 		Table<Raster<CPU>>,
+		Table<Color>,
 	)]
 	mut value: T,
 	blend_mode: BlendMode,
@@ -140,6 +169,7 @@ fn opacity<T: MultiplyAlpha>(
 		Table<Graphic>,
 		Table<Vector>,
 		Table<Raster<CPU>>,
+		Table<Color>,
 	)]
 	mut value: T,
 	#[default(100.)] opacity: Percentage,
@@ -156,6 +186,7 @@ fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill + SetClip>(
 		Table<Graphic>,
 		Table<Vector>,
 		Table<Raster<CPU>>,
+		Table<Color>,
 	)]
 	mut value: T,
 	blend_mode: BlendMode,

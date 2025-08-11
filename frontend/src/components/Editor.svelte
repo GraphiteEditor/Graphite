@@ -113,16 +113,18 @@
 
 		--color-data-general: #cfcfcf;
 		--color-data-general-dim: #8a8a8a;
+		--color-data-number: #c9a699;
+		--color-data-number-dim: #886b60;
+		--color-data-artboard: #fbf9eb;
+		--color-data-artboard-dim: #b9b9a9;
+		--color-data-graphic: #66b195;
+		--color-data-graphic-dim: #3d725e;
 		--color-data-raster: #e4bb72;
 		--color-data-raster-dim: #8b7752;
 		--color-data-vector: #65bbe5;
-		--color-data-vector-dim: #4b778c;
-		--color-data-graphic: #66b195;
-		--color-data-graphic-dim: #3d725e;
-		--color-data-artboard: #fbf9eb;
-		--color-data-artboard-dim: #b9b9a9;
-		--color-data-number: #c9a699;
-		--color-data-number-dim: #886b60;
+		--color-data-vector-dim: #417892;
+		--color-data-color: #af81eb;
+		--color-data-color-dim: #6c489b;
 
 		--color-none: white;
 		--color-none-repeat: no-repeat;

@@ -2635,7 +2635,7 @@ impl NodeNetworkInterface {
 				InputConnector::Node { node_id, input_index } => (*node_id, *input_index),
 				InputConnector::Export(export_index) => (NodeId(u64::MAX), *export_index),
 			})
-			.chain(std::iter::once((NodeId(u64::MAX), usize::MAX)))
+			.chain(std::iter::once((NodeId(u64::MAX), u32::MAX as usize)))
 			.collect()
 	}
 
@@ -2725,7 +2725,7 @@ impl NodeNetworkInterface {
 
 		Some(WirePathUpdate {
 			id: NodeId(u64::MAX),
-			input_index: usize::MAX,
+			input_index: u32::MAX as usize,
 			wire_path_update,
 		})
 	}
@@ -6047,7 +6047,7 @@ impl Iterator for FlowIter<'_> {
 				} else {
 					0
 				};
-				let take = if self.flow_type == FlowType::UpstreamFlow { usize::MAX } else { 1 };
+				let take = if self.flow_type == FlowType::UpstreamFlow { u32::MAX as usize } else { 1 };
 				let inputs = document_node.inputs.iter().skip(skip).take(take);
 
 				let node_ids = inputs.filter_map(|input| match input {

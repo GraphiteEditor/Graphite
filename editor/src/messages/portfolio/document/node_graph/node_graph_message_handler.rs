@@ -42,6 +42,7 @@ pub struct NodeGraphMessageContext<'a> {
 	pub graph_fade_artwork_percentage: f64,
 	pub navigation_handler: &'a NavigationMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
+	pub layers_panel_open: bool,
 }
 
 #[derive(Debug, Clone, ExtractField)]
@@ -111,6 +112,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			graph_fade_artwork_percentage,
 			navigation_handler,
 			preferences,
+			layers_panel_open,
 		} = context;
 
 		match message {
@@ -155,11 +157,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
+				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::SendSelectedNodes);
 				responses.add(ArtboardToolMessage::UpdateSelectedArtboard);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(PortfolioMessage::SubmitActiveGraphRender);
 			}
 			NodeGraphMessage::CreateWire { output_connector, input_connector } => {
 				// TODO: Add support for flattening NodeInput::Network exports in flatten_with_fns https://github.com/GraphiteEditor/Graphite/issues/1762
@@ -1215,7 +1219,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 										{
 											return None;
 										}
-										log::debug!("preferences.graph_wire_style: {:?}", preferences.graph_wire_style);
+
 										let (wire, is_stack) = network_interface.vector_wire_from_input(&input, preferences.graph_wire_style, selection_network_path)?;
 
 										let node_bbox = kurbo::Rect::new(node_bbox[0].x, node_bbox[0].y, node_bbox[1].x, node_bbox[1].y).to_path(DEFAULT_ACCURACY);
@@ -1485,7 +1489,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				};
 				selected_nodes.set_selected_nodes(nodes);
 				responses.add(BroadcastEvent::SelectionChanged);
-				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			NodeGraphMessage::SendClickTargets => responses.add(FrontendMessage::UpdateClickTargets {
 				click_targets: Some(network_interface.collect_frontend_click_targets(breadcrumb_network_path)),
@@ -1873,7 +1876,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 
 			NodeGraphMessage::UpdateLayerPanel => {
-				Self::update_layer_panel(network_interface, selection_network_path, collapsed, responses);
+				Self::update_layer_panel(network_interface, selection_network_path, collapsed, layers_panel_open, responses);
 			}
 			NodeGraphMessage::UpdateEdges => {
 				// Update the import/export UI edges whenever the PTZ changes or the bounding box of all nodes changes
@@ -2329,9 +2332,9 @@ impl NodeGraphMessageHandler {
 							.icon(Some("Node".to_string()))
 							.tooltip("Add an operation to the end of this layer's chain of nodes")
 							.popover_layout({
-								let layer_identifier = LayerNodeIdentifier::new(layer, &context.network_interface);
+								let layer_identifier = LayerNodeIdentifier::new(layer, context.network_interface);
 								let compatible_type = {
-									let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer_identifier, &context.network_interface);
+									let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer_identifier, context.network_interface);
 									let node_type = graph_layer.horizontal_layer_flow().nth(1);
 									if let Some(node_id) = node_type {
 										let (output_type, _) = context.network_interface.output_type(&node_id, 0, &[]);
@@ -2413,7 +2416,7 @@ impl NodeGraphMessageHandler {
 		} else {
 			added_wires.push(WirePathUpdate {
 				id: NodeId(u64::MAX),
-				input_index: usize::MAX,
+				input_index: u32::MAX as usize,
 				wire_path_update: None,
 			})
 		}
@@ -2585,7 +2588,11 @@ impl NodeGraphMessageHandler {
 		Some(subgraph_names)
 	}
 
-	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
+	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], collapsed: &CollapsedLayers, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
+		if !layers_panel_open {
+			return;
+		}
+
 		let selected_layers = network_interface
 			.selected_nodes()
 			.selected_layers(network_interface.document_metadata())
@@ -2668,7 +2675,7 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	pub fn update_node_graph_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_node_graph_hints(&self, responses: &mut VecDeque<Message>) {
 		// A wire is in progress and its start and end connectors are set
 		let wiring = self.wire_in_progress_from_connector.is_some();
 

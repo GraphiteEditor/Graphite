@@ -1,14 +1,14 @@
 <script lang="ts" context="module">
+	import Data from "@graphite/components/panels/Data.svelte";
 	import Document from "@graphite/components/panels/Document.svelte";
 	import Layers from "@graphite/components/panels/Layers.svelte";
 	import Properties from "@graphite/components/panels/Properties.svelte";
-	import Spreadsheet from "@graphite/components/panels/Spreadsheet.svelte";
 
 	const PANEL_COMPONENTS = {
 		Document,
 		Layers,
 		Properties,
-		Spreadsheet,
+		Data,
 	};
 	type PanelType = keyof typeof PANEL_COMPONENTS;
 </script>

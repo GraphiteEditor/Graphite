@@ -13,10 +13,9 @@ import {
 	TriggerOpenDocument,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
-	UpdateSpreadsheetState,
-	defaultWidgetLayout,
-	patchWidgetLayout,
-	UpdateSpreadsheetLayout,
+	UpdateDataPanelState,
+	UpdatePropertiesPanelState,
+	UpdateLayersPanelState,
 } from "@graphite/messages";
 import { downloadFile, downloadFileBlob, upload } from "@graphite/utility-functions/files";
 import { extractPixelData, rasterizeSVG } from "@graphite/utility-functions/rasterization";
@@ -27,9 +26,9 @@ export function createPortfolioState(editor: Editor) {
 		unsaved: false,
 		documents: [] as FrontendDocumentDetails[],
 		activeDocumentIndex: 0,
-		spreadsheetOpen: false,
-		spreadsheetNode: BigInt(0) as bigint | undefined,
-		spreadsheetWidgets: defaultWidgetLayout(),
+		dataPanelOpen: false,
+		propertiesPanelOpen: true,
+		layersPanelOpen: true,
 	});
 
 	// Set up message subscriptions on creation
@@ -107,16 +106,21 @@ export function createPortfolioState(editor: Editor) {
 			// Fail silently if there's an error rasterizing the SVG, such as a zero-sized image
 		}
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateSpreadsheetState, async (updateSpreadsheetState) => {
+	editor.subscriptions.subscribeJsMessage(UpdateDataPanelState, async (updateDataPanelState) => {
 		update((state) => {
-			state.spreadsheetOpen = updateSpreadsheetState.open;
-			state.spreadsheetNode = updateSpreadsheetState.node;
+			state.dataPanelOpen = updateDataPanelState.open;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateSpreadsheetLayout, (updateSpreadsheetLayout) => {
+	editor.subscriptions.subscribeJsMessage(UpdatePropertiesPanelState, async (updatePropertiesPanelState) => {
 		update((state) => {
-			patchWidgetLayout(state.spreadsheetWidgets, updateSpreadsheetLayout);
+			state.propertiesPanelOpen = updatePropertiesPanelState.open;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateLayersPanelState, async (updateLayersPanelState) => {
+		update((state) => {
+			state.layersPanelOpen = updateLayersPanelState.open;
 			return state;
 		});
 	});

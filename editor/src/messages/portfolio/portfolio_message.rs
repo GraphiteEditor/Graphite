@@ -16,8 +16,6 @@ pub enum PortfolioMessage {
 	MenuBar(MenuBarMessage),
 	#[child]
 	Document(DocumentMessage),
-	#[child]
-	Spreadsheet(SpreadsheetMessage),
 
 	// Messages
 	Init,
@@ -131,6 +129,9 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 		ignore_hash: bool,
 	},
+	ToggleDataPanelOpen,
+	TogglePropertiesPanelOpen,
+	ToggleLayersPanelOpen,
 	ToggleRulers,
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,

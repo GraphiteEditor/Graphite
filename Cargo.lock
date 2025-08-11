@@ -2113,6 +2113,7 @@ dependencies = [
  "graph-craft",
  "graphene-std",
  "graphite-editor",
+ "image",
  "include_dir",
  "open",
  "rfd",
@@ -2130,6 +2131,7 @@ dependencies = [
 name = "graphite-editor"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "bezier-rs",
  "bitflags 2.9.1",
  "bytemuck",

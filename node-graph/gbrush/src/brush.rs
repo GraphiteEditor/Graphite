@@ -2,7 +2,7 @@ use crate::brush_cache::BrushCache;
 use crate::brush_stroke::{BrushStroke, BrushStyle};
 use glam::{DAffine2, DVec2};
 use graphene_core::blending::BlendMode;
-use graphene_core::bounds::BoundingBox;
+use graphene_core::bounds::{BoundingBox, RenderBoundingBox};
 use graphene_core::color::{Alpha, Color, Pixel, Sample};
 use graphene_core::generic::FnNode;
 use graphene_core::math::bbox::{AxisAlignedBbox, Bbox};
@@ -186,7 +186,8 @@ async fn brush(_: impl Ctx, mut image_frame_table: Table<Raster<CPU>>, strokes: 
 	// TODO: Find a way to handle more than one row
 	let table_row = image_frame_table.iter().next().expect("Expected the one row we just pushed").into_cloned();
 
-	let [start, end] = Table::new_from_row(table_row.clone()).bounding_box(DAffine2::IDENTITY, false).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
+	let bounds = Table::new_from_row(table_row.clone()).bounding_box(DAffine2::IDENTITY, false);
+	let [start, end] = if let RenderBoundingBox::Rectangle(rect) = bounds { rect } else { [DVec2::ZERO, DVec2::ZERO] };
 	let image_bbox = AxisAlignedBbox { start, end };
 	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
 	let bbox = if image_bbox.size().length() < 0.1 { stroke_bbox } else { stroke_bbox.union(&image_bbox) };
