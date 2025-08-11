@@ -6,7 +6,7 @@
 //
 use crate::helpers::translate_key;
 use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
-use editor::consts::FILE_SAVE_SUFFIX;
+use editor::consts::FILE_EXTENSION;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -344,10 +344,10 @@ impl EditorHandle {
 		cfg!(debug_assertions)
 	}
 
-	/// Get the constant `FILE_SAVE_SUFFIX`
-	#[wasm_bindgen(js_name = fileSaveSuffix)]
-	pub fn file_save_suffix(&self) -> String {
-		FILE_SAVE_SUFFIX.into()
+	/// Get the constant `FILE_EXTENSION`
+	#[wasm_bindgen(js_name = fileExtension)]
+	pub fn file_extension(&self) -> String {
+		FILE_EXTENSION.into()
 	}
 
 	/// Update the value of a given UI widget, but don't commit it to the history (unless `commit_layout()` is called, which handles that)

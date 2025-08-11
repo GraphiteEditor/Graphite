@@ -923,7 +923,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::SubmitDocumentExport {
-				file_name,
+				name,
 				file_type,
 				scale_factor,
 				bounds,
@@ -931,7 +931,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			} => {
 				let document = self.active_document_id.and_then(|id| self.documents.get_mut(&id)).expect("Tried to render non-existent document");
 				let export_config = ExportConfig {
-					file_name,
+					name,
 					file_type,
 					scale_factor,
 					bounds,

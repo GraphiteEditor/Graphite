@@ -118,7 +118,7 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 	},
 	SubmitDocumentExport {
-		file_name: String,
+		name: String,
 		file_type: FileType,
 		scale_factor: f64,
 		bounds: ExportBounds,

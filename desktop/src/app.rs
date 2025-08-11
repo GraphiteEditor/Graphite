@@ -10,7 +10,6 @@ use graph_craft::wasm_application_io::WasmApplicationIo;
 use graphene_std::Color;
 use graphene_std::raster::Image;
 use graphite_editor::application::Editor;
-use graphite_editor::consts::DEFAULT_DOCUMENT_NAME;
 use graphite_editor::messages::prelude::*;
 use std::fs;
 use std::sync::Arc;

@@ -1,4 +1,3 @@
-use crate::consts::FILE_SAVE_SUFFIX;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
@@ -232,18 +231,11 @@ impl NodeGraphExecutor {
 		};
 
 		let ExportConfig {
-			file_type,
-			file_name,
-			size,
-			scale_factor,
-			..
+			file_type, name, size, scale_factor, ..
 		} = export_config;
 
 		let file_suffix = &format!(".{file_type:?}").to_lowercase();
-		let name = match file_name.ends_with(FILE_SAVE_SUFFIX) {
-			true => file_name.replace(FILE_SAVE_SUFFIX, file_suffix),
-			false => file_name + file_suffix,
-		};
+		let name = name + file_suffix;
 
 		if file_type == FileType::Svg {
 			responses.add(FrontendMessage::TriggerSaveFile { name, content: svg.into_bytes() });
