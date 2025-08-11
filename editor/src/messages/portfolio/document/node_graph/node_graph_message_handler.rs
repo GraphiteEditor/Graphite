@@ -2416,7 +2416,7 @@ impl NodeGraphMessageHandler {
 		} else {
 			added_wires.push(WirePathUpdate {
 				id: NodeId(u64::MAX),
-				input_index: usize::MAX,
+				input_index: u32::MAX as usize,
 				wire_path_update: None,
 			})
 		}
