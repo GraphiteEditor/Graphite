@@ -57,31 +57,37 @@ function buildHtmlList(nodes, currentIndex, currentLevel) {
 			continue;
 		}
 
-		const hasChildren = (i + 1 < nodes.length) && (nodes[i + 1].level > node.level);
+		const hasDirectChildren = i + 1 < nodes.length && nodes[i + 1].level > node.level;
+		const hasDeeperChildren = hasDirectChildren && i + 2 < nodes.length && nodes[i + 2].level > nodes[i + 1].level;
+
 		const linkHtml = node.link ? `<a href="${node.link}" target="_blank">${path.basename(node.link)}</a>` : "";
 		const fieldPieces = node.text.match(/([^:]*):(.*)/);
-		const partOfMessageFromNamingConvention = ["Message", "MessageHandler", "MessageContext"].some((suffix) => node.text.replace(/(.*)<.*>/g, "$1").endsWith(suffix));
-		const partOfMessageViolatesNamingConvention = node.link && !partOfMessageFromNamingConvention;
-		const partOfMessage = node.link ? "subsystem" : "";
-		const messageParent = (hasChildren && !node.link) ? " submessage": "";
-		const violatesNamingConvention = partOfMessageViolatesNamingConvention ? "<span class=\"warn\">(violates naming convention — should end with 'Message', 'MessageHandler', or 'MessageContext')</span>" : "";
 		let escapedText;
 		if (fieldPieces && fieldPieces.length === 3) {
 			escapedText = [escapeHtml(fieldPieces[1].trim()), escapeHtml(fieldPieces[2].trim())];
 		} else {
 			escapedText = [escapeHtml(node.text)];
 		}
+		
+		let role = "message";
+		if (node.link) role = "subsystem";
+		else if (hasDeeperChildren) role = "submessage";
+		else if (escapedText.length === 2) role = "field";
 
-		if (hasChildren) {
-			html += `<li><span class="tree-node"><span class="${partOfMessage}${messageParent}">${escapedText}</span>${linkHtml}${violatesNamingConvention}</span>`;
+		const partOfMessageFromNamingConvention = ["Message", "MessageHandler", "MessageContext"].some((suffix) => node.text.replace(/(.*)<.*>/g, "$1").endsWith(suffix));
+		const partOfMessageViolatesNamingConvention = node.link && !partOfMessageFromNamingConvention;
+		const violatesNamingConvention = partOfMessageViolatesNamingConvention ? "<span class=\"warn\">(violates naming convention — should end with 'Message', 'MessageHandler', or 'MessageContext')</span>" : "";
+		
+		if (hasDirectChildren) {
+			html += `<li><span class="tree-node"><span class="${role}">${escapedText}</span>${linkHtml}${violatesNamingConvention}</span>`;
 			const childResult = buildHtmlList(nodes, i + 1, node.level + 1);
 			html += `<div class="nested">${childResult.html}</div></li>\n`;
 			i = childResult.nextIndex;
-		} else if (escapedText.length === 2) {
-			html += `<li><span class="tree-leaf field">${escapedText[0]}</span><span>: ${escapedText[1]}</span>${linkHtml}</li>\n`;
+		} else if (role === "field") {
+			html += `<li><span class="tree-leaf field">${escapedText[0]}</span>: <span>${escapedText[1]}</span>${linkHtml}</li>\n`;
 			i++;
 		} else {
-			html += `<li><span class="tree-leaf${partOfMessage}">${escapedText[0]}</span>${linkHtml}${violatesNamingConvention}</li>\n`;
+			html += `<li><span class="tree-leaf ${role}">${escapedText[0]}</span>${linkHtml}${violatesNamingConvention}</li>\n`;
 			i++;
 		}
 	}
