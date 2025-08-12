@@ -1309,13 +1309,12 @@ impl Render for Table<Color> {
 	}
 }
 
-/// Used to stop rust complaining about upstream traits adding display implementations to `Option<Color>`. This would not be an issue as we control that crate.
 trait Primitive: std::fmt::Display + BoundingBox + RenderComplexity {}
-impl Primitive for String {}
 impl Primitive for bool {}
 impl Primitive for f32 {}
 impl Primitive for f64 {}
 impl Primitive for DVec2 {}
+impl Primitive for String {}
 
 fn text_attributes(attributes: &mut SvgRenderAttrs) {
 	attributes.push("fill", "white");
@@ -1326,73 +1325,6 @@ fn text_attributes(attributes: &mut SvgRenderAttrs) {
 impl<P: Primitive> Render for P {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
 		render.parent_tag("text", text_attributes, |render| render.leaf_node(format!("{self}")));
-	}
-
-	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
-}
-
-impl Render for Option<Color> {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		if let Some(color) = self {
-			color.render_svg(render, render_params);
-		}
-	}
-
-	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		if let Some(color) = self {
-			color.render_to_vello(scene, parent_transform, _context, render_params);
-		}
-	}
-}
-
-impl Render for Color {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		render.leaf_tag("rect", |attributes| {
-			attributes.push("width", render_params.footprint.resolution.x.to_string());
-			attributes.push("height", render_params.footprint.resolution.y.to_string());
-
-			let matrix = format_transform_matrix(render_params.footprint.transform.inverse());
-			if !matrix.is_empty() {
-				attributes.push("transform", matrix);
-			}
-
-			attributes.push("fill", format!("#{}", self.to_rgb_hex_srgb_from_gamma()));
-			if self.a() < 1. {
-				attributes.push("fill-opacity", ((self.a() * 1000.).round() / 1000.).to_string());
-			}
-		});
-	}
-
-	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		let transform = parent_transform * render_params.footprint.transform.inverse();
-		let vello_color = peniko::Color::new([self.r(), self.g(), self.b(), self.a()]);
-
-		let rect = kurbo::Rect::from_origin_size(
-			kurbo::Point::ZERO,
-			kurbo::Size::new(render_params.footprint.resolution.x as f64, render_params.footprint.resolution.y as f64),
-		);
-
-		scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), vello_color, None, &rect);
-	}
-}
-
-impl Render for Vec<Color> {
-	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
-		for (index, &color) in self.iter().enumerate() {
-			render.leaf_tag("rect", |attributes| {
-				attributes.push("width", "100");
-				attributes.push("height", "100");
-				attributes.push("x", (index * 120).to_string());
-				attributes.push("y", "40");
-				attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
-				if color.a() < 1. {
-					attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
-				}
-			});
-		}
 	}
 
 	#[cfg(feature = "vello")]

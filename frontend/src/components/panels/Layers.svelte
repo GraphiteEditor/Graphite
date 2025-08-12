@@ -730,6 +730,7 @@
 					width: 36px;
 					height: 24px;
 					border-radius: 2px;
+					overflow: hidden;
 					flex: 0 0 auto;
 					background-image: var(--color-transparent-checkered-background);
 					background-size: var(--color-transparent-checkered-background-size-mini);
@@ -737,9 +738,8 @@
 					background-repeat: var(--color-transparent-checkered-background-repeat);
 
 					svg {
-						width: calc(100% - 4px);
-						height: calc(100% - 4px);
-						margin: 2px;
+						width: 100%;
+						height: 100%;
 					}
 				}
 
