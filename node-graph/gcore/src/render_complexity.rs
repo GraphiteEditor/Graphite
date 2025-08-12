@@ -64,5 +64,3 @@ impl RenderComplexity for bool {}
 impl RenderComplexity for f32 {}
 impl RenderComplexity for f64 {}
 impl RenderComplexity for DVec2 {}
-impl RenderComplexity for Option<Color> {}
-impl RenderComplexity for Vec<Color> {}

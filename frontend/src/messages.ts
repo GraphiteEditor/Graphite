@@ -180,7 +180,7 @@ export class Box {
 export type FrontendClickTargets = {
 	readonly nodeClickTargets: string[];
 	readonly layerClickTargets: string[];
-	readonly portClickTargets: string[];
+	readonly connectorClickTargets: string[];
 	readonly iconClickTargets: string[];
 	readonly allNodesBoundingBox: string;
 	readonly importExportsBoundingBox: string;

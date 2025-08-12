@@ -44,8 +44,8 @@ pub enum LuminanceCalculation {
 fn luminance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -68,8 +68,8 @@ fn luminance<T: Adjust<Color>>(
 fn gamma_correction<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -88,8 +88,8 @@ fn gamma_correction<T: Adjust<Color>>(
 fn extract_channel<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -111,8 +111,8 @@ fn extract_channel<T: Adjust<Color>>(
 fn make_opaque<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -136,8 +136,8 @@ fn make_opaque<T: Adjust<Color>>(
 fn brightness_contrast<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -225,8 +225,8 @@ fn brightness_contrast<T: Adjust<Color>>(
 fn levels<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -292,12 +292,12 @@ fn levels<T: Adjust<Color>>(
 async fn black_and_white<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	mut image: T,
-	#[default(Color::BLACK)] tint: Color,
+	#[default(Color::BLACK)] tint: Table<Color>,
 	#[default(40.)]
 	#[range((-200., 300.))]
 	reds: Percentage,
@@ -317,6 +317,9 @@ async fn black_and_white<T: Adjust<Color>>(
 	#[range((-200., 300.))]
 	magentas: Percentage,
 ) -> T {
+	let tint: Option<Color> = tint.into();
+	let tint = tint.unwrap_or(Color::BLACK);
+
 	image.adjust(|color| {
 		let color = color.to_gamma_srgb();
 
@@ -364,8 +367,8 @@ async fn black_and_white<T: Adjust<Color>>(
 async fn hue_saturation<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -398,8 +401,8 @@ async fn hue_saturation<T: Adjust<Color>>(
 async fn invert<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -420,8 +423,8 @@ async fn invert<T: Adjust<Color>>(
 async fn threshold<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -465,8 +468,8 @@ async fn threshold<T: Adjust<Color>>(
 async fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -630,8 +633,8 @@ pub enum DomainWarpType {
 async fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -758,8 +761,8 @@ pub enum SelectiveColorChoice {
 async fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -900,8 +903,8 @@ async fn selective_color<T: Adjust<Color>>(
 async fn posterize<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -933,8 +936,8 @@ async fn posterize<T: Adjust<Color>>(
 async fn exposure<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	mut input: T,

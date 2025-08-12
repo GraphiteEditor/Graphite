@@ -379,8 +379,6 @@ impl NodeGraphExecutor {
 			TaggedValue::F64(render_object) => Self::debug_render(render_object, footprint, responses),
 			TaggedValue::DVec2(render_object) => Self::debug_render(render_object, footprint, responses),
 			TaggedValue::String(render_object) => Self::debug_render(render_object, footprint, responses),
-			TaggedValue::OptionalColor(render_object) => Self::debug_render(render_object, footprint, responses),
-			TaggedValue::Palette(render_object) => Self::debug_render(render_object, footprint, responses),
 			_ => return Err(format!("Invalid node graph output type: {node_graph_output:#?}")),
 		};
 
