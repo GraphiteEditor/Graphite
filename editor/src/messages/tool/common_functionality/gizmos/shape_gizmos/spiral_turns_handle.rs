@@ -173,7 +173,7 @@ impl SpiralTurns {
 
 		match self.gizmo_type {
 			GizmoType::Start => {
-				let sign = total_delta.signum() * -1.;
+				let sign = -1.;
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, SPIRAL_START_ANGLE),
 					input: NodeInput::value(TaggedValue::F64(self.initial_start_angle + total_delta), false),

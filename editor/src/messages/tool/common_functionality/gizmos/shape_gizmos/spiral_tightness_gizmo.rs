@@ -9,6 +9,7 @@ use crate::messages::prelude::{DocumentMessageHandler, FrontendMessage, InputPre
 use crate::messages::tool::common_functionality::graph_modification_utils::{self};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{calculate_b, extract_arc_or_log_spiral_parameters, get_arc_spiral_end_point, get_spiral_type, spiral_point};
+use crate::messages::tool::common_functionality::shapes::spiral_shape::calculate_circle_point;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
@@ -236,7 +237,6 @@ impl TightnessGizmo {
 		} {
 			let theta_start = base_theta;
 			let theta_end = if is_reversed { base_theta - TAU } else { base_theta + TAU };
-			log::info!("segment index {:?}, theta_start {:?} ,theta_end {:?}", segment_index, theta_start.to_degrees(), theta_end.to_degrees());
 
 			if (!is_reversed && theta_end > max_theta + start_angle_rad) || (is_reversed && theta_end < 0.0) {
 				break;
@@ -245,6 +245,10 @@ impl TightnessGizmo {
 				base_theta -= TAU;
 				segment_index -= 1;
 				continue;
+			}
+
+			if is_reversed && theta_end < start_angle_rad {
+				break;
 			}
 
 			let spiral_start = spiral_point(theta_start, inner_radius, b, spiral_type);
@@ -294,14 +298,14 @@ impl TightnessGizmo {
 
 		let (start_point, end_point) = if self.spiral_slot == 0 && !reversed {
 			let endpoint = spiral_point(0. + start_angle_rad, inner_radius, b, spiral_type);
+			let circle_point = calculate_circle_point(self.angle, inner_radius.max(5.));
 			let radius = endpoint.distance(DVec2::ZERO);
 
 			(
-				viewport.transform_point2(radius * DVec2::new(self.angle.cos(), -self.angle.sin())),
+				viewport.transform_point2(circle_point),
 				viewport.transform_point2(spiral_point(base_angle, inner_radius, b, spiral_type)),
 			)
 		} else if self.spiral_slot == self.turns.floor() as i32 && reversed {
-			log::info!("am i plzz reaching here");
 			let radius = spiral_point(max_theta, inner_radius, b, spiral_type).distance(DVec2::ZERO);
 			let endpoint = if self.angle >= (max_theta + start_angle_rad).rem_euclid(TAU) {
 				viewport.transform_point2(spiral_point(base_angle - TAU, inner_radius, b, spiral_type))
@@ -310,8 +314,12 @@ impl TightnessGizmo {
 			};
 			(viewport.transform_point2(radius * DVec2::new(self.angle.cos(), -self.angle.sin())), endpoint)
 		} else {
-			let ref_angle = (self.spiral_slot as f64 - 1.) * TAU + base_angle;
-			let end_point_angle = if reversed { ref_angle - TAU } else { ref_angle + TAU };
+			let ref_angle = if reversed {
+				base_angle - (turns - self.spiral_slot as f64) * TAU
+			} else {
+				(self.spiral_slot as f64 - 1.) * TAU + base_angle
+			};
+			let end_point_angle = ref_angle + TAU;
 			(
 				viewport.transform_point2(spiral_point(ref_angle, inner_radius, b, spiral_type)),
 				viewport.transform_point2(spiral_point(end_point_angle, inner_radius, b, spiral_type)),

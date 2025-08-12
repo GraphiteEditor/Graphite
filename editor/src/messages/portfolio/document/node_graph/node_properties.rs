@@ -1253,7 +1253,7 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 	let turns = number_widget(ParameterWidgetsInfo::new(node_id, TurnsInput::INDEX, true, context), NumberInput::default().min(0.1));
 	let angle_offset = number_widget(
 		ParameterWidgetsInfo::new(node_id, AngleOffsetInput::INDEX, true, context),
-		NumberInput::default().min(0.1).max(180.).unit("°"),
+		NumberInput::default().min(1.).max(180.).unit("°"),
 	);
 	let start_angle = number_widget(ParameterWidgetsInfo::new(node_id, StartAngleInput::INDEX, true, context), NumberInput::default().unit("°"));
 

@@ -281,32 +281,45 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 
 		let mut theta = start_angle;
 		while theta < theta_end {
-			let theta_next = f64::min(theta + delta_theta, theta_end);
-
-			let p0 = spiral_point(theta, a, b, spiral_type);
-			let p3 = spiral_point(theta_next, a, b, spiral_type);
-			let t0 = spiral_tangent(theta, a, b, spiral_type);
-			let t1 = spiral_tangent(theta_next, a, b, spiral_type);
-
-			let arc_len = spiral_arc_length(theta, theta_next, a, b, spiral_type);
-			let d = arc_len / 3.0;
-
-			let p1 = p0 + d * t0;
-			let p2 = p3 - d * t1;
-
-			manipulator_groups.push(ManipulatorGroup::new(p0, prev_in_handle, Some(p1)));
-			prev_in_handle = Some(p2);
-
-			// If final segment, end with anchor at theta_end
-			if (theta_next - theta_end).abs() < f64::EPSILON {
-				manipulator_groups.push(ManipulatorGroup::new(p3, prev_in_handle, None));
-				break;
-			}
-
-			theta = theta_next;
+			let next_theta = f64::min(theta + delta_theta, theta_end);
+			Self::fit_spiral_segment(theta, next_theta, a, b, spiral_type, &mut manipulator_groups, &mut prev_in_handle);
+			theta = next_theta;
 		}
 
+		// Add final anchor point
+		let p_last = spiral_point(theta_end, a, b, spiral_type);
+		manipulator_groups.push(ManipulatorGroup::new(p_last, prev_in_handle, None));
+
 		Self::new(manipulator_groups, false)
+	}
+
+	fn fit_spiral_segment(theta_start: f64, theta_end: f64, a: f64, b: f64, spiral_type: SpiralType, manipulator_groups: &mut Vec<ManipulatorGroup<PointId>>, prev_in_handle: &mut Option<DVec2>) {
+		let delta = (theta_end - theta_start).abs();
+
+		// Split large arcs into two halves
+		if delta > std::f64::consts::FRAC_PI_2 {
+			let mid = (theta_start + theta_end) / 2.0;
+			Self::fit_spiral_segment(theta_start, mid, a, b, spiral_type, manipulator_groups, prev_in_handle);
+			Self::fit_spiral_segment(mid, theta_end, a, b, spiral_type, manipulator_groups, prev_in_handle);
+			return;
+		}
+
+		// Compute endpoints and tangents
+		let p0 = spiral_point(theta_start, a, b, spiral_type);
+		let p3 = spiral_point(theta_end, a, b, spiral_type);
+		let t0 = spiral_tangent(theta_start, a, b, spiral_type);
+		let t1 = spiral_tangent(theta_end, a, b, spiral_type);
+
+		// Use fixed handle length: 1/3 of the arc length
+		let arc_len = spiral_arc_length(theta_start, theta_end, a, b, spiral_type);
+		let h_in = arc_len / 3.0;
+		let h_out = arc_len / 3.0;
+
+		let p1 = p0 + h_in * t0;
+		let p2 = p3 - h_out * t1;
+
+		manipulator_groups.push(ManipulatorGroup::new(p0, *prev_in_handle, Some(p1)));
+		*prev_in_handle = Some(p2);
 	}
 
 	/// Constructs an ellipse with `corner1` and `corner2` as the two corners of the bounding box.
