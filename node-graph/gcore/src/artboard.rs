@@ -104,7 +104,7 @@ async fn create_artboard<T: Into<Table<Graphic>> + 'n>(
 	label: String,
 	location: DVec2,
 	dimensions: DVec2,
-	background: Color,
+	background: Table<Color>,
 	clip: bool,
 ) -> Table<Artboard> {
 	let location = location.as_ivec2();
@@ -122,6 +122,9 @@ async fn create_artboard<T: Into<Table<Graphic>> + 'n>(
 	let location = location.min(location + dimensions);
 
 	let dimensions = dimensions.abs();
+
+	let background: Option<Color> = background.into();
+	let background = background.unwrap_or(Color::WHITE);
 
 	Table::new_from_element(Artboard {
 		content,

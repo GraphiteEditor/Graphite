@@ -163,8 +163,6 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Table<Raster<CPU>>,
 		Table<Raster<GPU>>,
 		Table<Color>,
-		Color,
-		Option<Color>,
 		f64,
 		u32,
 		u64,
@@ -480,28 +478,6 @@ impl TableRowLayout for Color {
 	}
 	fn element_widget(&self, _index: usize) -> WidgetHolder {
 		ColorInput::new(FillChoice::Solid(*self)).disabled(true).menu_direction(Some(MenuDirection::Top)).widget_holder()
-	}
-	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![self.element_widget(0)];
-		vec![LayoutGroup::Row { widgets }]
-	}
-}
-
-impl TableRowLayout for Option<Color> {
-	fn type_name() -> &'static str {
-		"Option<Color>"
-	}
-	fn identifier(&self) -> String {
-		format!(
-			"Option<Color> (#{})",
-			if let Some(color) = self { color.to_linear_srgb().to_rgba_hex_srgb() } else { "None".to_string() }
-		)
-	}
-	fn element_widget(&self, _index: usize) -> WidgetHolder {
-		ColorInput::new(if let Some(color) = self { FillChoice::Solid(*color) } else { FillChoice::None })
-			.disabled(true)
-			.menu_direction(Some(MenuDirection::Top))
-			.widget_holder()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![self.element_widget(0)];

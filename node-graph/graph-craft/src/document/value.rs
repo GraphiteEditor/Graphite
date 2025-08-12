@@ -193,16 +193,15 @@ tagged_value! {
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::artboard::migrate_artboard"))] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ArtboardGroup")]
 	Artboard(Table<Artboard>),
-	ColorTable(Table<Color>), // TODO: Rename to Color
+	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::misc::migrate_color"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(alias = "ColorTable", alias = "OptionalColor")]
+	Color(Table<Color>),
 	// ============
 	// STRUCT TYPES
 	// ============
 	#[serde(alias = "IVec2", alias = "UVec2")]
 	DVec2(DVec2),
 	DAffine2(DAffine2),
-	Color(Color),
-	OptionalColor(Option<Color>),
-	Palette(Vec<Color>),
 	Stroke(graphene_core::vector::style::Stroke),
 	Gradient(graphene_core::vector::style::Gradient),
 	#[serde(alias = "GradientPositions")] // TODO: Eventually remove this alias document upgrade code
@@ -259,7 +258,6 @@ impl TaggedValue {
 			TaggedValue::F64(x) => x.to_string() + "_f64",
 			TaggedValue::Bool(x) => x.to_string(),
 			TaggedValue::BlendMode(x) => "BlendMode::".to_string() + &x.to_string(),
-			TaggedValue::Color(x) => format!("Color {x:?}"),
 			_ => panic!("Cannot convert to primitive string"),
 		}
 	}
@@ -280,7 +278,7 @@ impl TaggedValue {
 					6 => return Color::from_rgb_str(color),
 					8 => return Color::from_rgba_str(color),
 					_ => {
-						log::error!("Invalid default value color string: {}", input);
+						log::error!("Invalid default value color string: {input}");
 						return None;
 					}
 				}
@@ -352,8 +350,7 @@ impl TaggedValue {
 					x if x == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
 					x if x == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					x if x == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
-					x if x == TypeId::of::<Color>() => to_color(string).map(TaggedValue::Color)?,
-					x if x == TypeId::of::<Option<Color>>() => to_color(string).map(|color| TaggedValue::OptionalColor(Some(color)))?,
+					x if x == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
 					x if x == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
 					x if x == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					_ => return None,

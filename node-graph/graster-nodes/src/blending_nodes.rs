@@ -17,15 +17,6 @@ impl Blend<Color> for Color {
 		blend_fn(*self, *under)
 	}
 }
-impl Blend<Color> for Option<Color> {
-	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-		match (self, under) {
-			(Some(a), Some(b)) => Some(blend_fn(*a, *b)),
-			(a, None) => *a,
-			(None, b) => *b,
-		}
-	}
-}
 
 #[cfg(feature = "std")]
 mod blend_std {
@@ -47,6 +38,15 @@ mod blend_std {
 					height: over.element.height,
 					base64_string: None,
 				});
+			}
+			result_table
+		}
+	}
+	impl Blend<Color> for Table<Color> {
+		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
+			let mut result_table = self.clone();
+			for (over, under) in result_table.iter_mut().zip(under.iter()) {
+				*over.element = blend_fn(*over.element, *under.element);
 			}
 			result_table
 		}
@@ -126,15 +126,15 @@ pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendM
 async fn blend<T: Blend<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	over: T,
 	#[expose]
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	under: T,
@@ -148,16 +148,19 @@ async fn blend<T: Blend<Color> + Send>(
 fn color_overlay<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
 		GradientStops,
 	)]
 	mut image: T,
-	#[default(Color::BLACK)] color: Color,
+	#[default(Color::BLACK)] color: Table<Color>,
 	blend_mode: BlendMode,
 	#[default(100.)] opacity: Percentage,
 ) -> T {
 	let opacity = (opacity as f32 / 100.).clamp(0., 1.);
+
+	let color: Option<Color> = color.into();
+	let color = color.unwrap_or(Color::BLACK);
 
 	image.adjust(|pixel| {
 		let image = pixel.map_rgb(|channel| channel * (1. - opacity));
@@ -169,18 +172,6 @@ fn color_overlay<T: Adjust<Color>>(
 		Color::from_rgbaf32_unchecked(image.r() + overlay.r(), image.g() + overlay.g(), image.b() + overlay.b(), pixel.a())
 	});
 	image
-}
-
-#[cfg(feature = "std")]
-#[node_macro::node(category(""), skip_impl)]
-fn blend_color_pair<BlendModeNode, OpacityNode>(input: (Color, Color), blend_mode: &'n BlendModeNode, opacity: &'n OpacityNode) -> Color
-where
-	BlendModeNode: graphene_core::Node<'n, (), Output = BlendMode> + 'n,
-	OpacityNode: graphene_core::Node<'n, (), Output = Percentage> + 'n,
-{
-	let blend_mode = blend_mode.eval(());
-	let opacity = opacity.eval(());
-	blend_colors(input.0, input.1, blend_mode, opacity / 100.)
 }
 
 #[cfg(all(feature = "std", test))]
@@ -202,7 +193,13 @@ mod test {
 		// 100% of the output should come from the multiplied value
 		let opacity = 100_f64;
 
-		let result = super::color_overlay((), Table::new_from_element(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
+		let result = super::color_overlay(
+			(),
+			Table::new_from_element(Raster::new_cpu(image.clone())),
+			Table::new_from_element(overlay_color),
+			BlendMode::Multiply,
+			opacity,
+		);
 		let result = result.iter().next().unwrap().element;
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
