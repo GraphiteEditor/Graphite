@@ -16,7 +16,6 @@ use graphene_std::table::{Table, TableRow};
 use graphene_std::text::FontCache;
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
-use graphene_std::vector::style::ViewMode;
 use graphene_std::wasm_application_io::{RenderOutputType, WasmApplicationIo, WasmEditorApi};
 use graphene_std::{Artboard, Context, Graphic};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
@@ -228,7 +227,6 @@ impl NodeRuntime {
 						execution_id,
 						result,
 						responses,
-						footprint: render_config.viewport,
 						vector_modify: self.vector_modify.clone(),
 						inspect_result,
 					});
@@ -361,13 +359,9 @@ impl NodeRuntime {
 
 		// Render the thumbnail from a `Graphic` into an SVG string
 		let render_params = RenderParams {
-			view_mode: ViewMode::Normal,
 			footprint,
 			thumbnail: true,
-			hide_artboards: false,
-			for_export: false,
-			for_mask: false,
-			alignment_parent_transform: None,
+			..Default::default()
 		};
 		let mut render = SvgRender::new();
 		graphic.render_svg(&mut render, &render_params);

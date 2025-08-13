@@ -14,6 +14,7 @@ use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
 use graphene_core::vector::Vector;
 use graphene_core::vector::style::Fill;
+use graphene_core::vector::style::GradientStops;
 use graphene_core::{Artboard, Color, Graphic, MemoHash, Node, Type};
 use graphene_svg_renderer::RenderMetadata;
 use std::fmt::Display;
@@ -196,6 +197,7 @@ tagged_value! {
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::misc::migrate_color"))] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ColorTable", alias = "OptionalColor")]
 	Color(Table<Color>),
+	GradientTable(Table<GradientStops>),
 	// ============
 	// STRUCT TYPES
 	// ============
@@ -205,7 +207,7 @@ tagged_value! {
 	Stroke(graphene_core::vector::style::Stroke),
 	Gradient(graphene_core::vector::style::Gradient),
 	#[serde(alias = "GradientPositions")] // TODO: Eventually remove this alias document upgrade code
-	GradientStops(graphene_core::vector::style::GradientStops),
+	GradientStops(GradientStops),
 	Font(graphene_core::text::Font),
 	BrushStrokes(Vec<BrushStroke>),
 	BrushCache(BrushCache),

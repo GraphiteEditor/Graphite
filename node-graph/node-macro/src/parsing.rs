@@ -1276,9 +1276,11 @@ mod tests {
 				#[implementations(
 					() -> Table<Raster<CPU>>,
 					() -> Table<Color>,
+					() -> Table<GradientStops>,
 					() -> GradientStops,
 					Footprint -> Table<Raster<CPU>>,
 					Footprint -> Table<Color>,
+					Footprint -> Table<GradientStops>,
 					Footprint -> GradientStops,
 				)]
 				image: impl Node<F, Output = T>,

@@ -1,5 +1,5 @@
 use crate::renderer::{RenderParams, format_transform_matrix};
-use glam::{DAffine2, DVec2};
+use glam::DAffine2;
 use graphene_core::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 use graphene_core::gradient::{Gradient, GradientType};
 use graphene_core::uuid::generate_uuid;
@@ -8,39 +8,14 @@ use std::fmt::Write;
 
 pub trait RenderExt {
 	type Output;
-	fn render(
-		&self,
-		svg_defs: &mut String,
-		element_transform: DAffine2,
-		stroke_transform: DAffine2,
-		bounds: [DVec2; 2],
-		transformed_bounds: [DVec2; 2],
-		aligned_strokes: bool,
-		override_paint_order: bool,
-		render_params: &RenderParams,
-	) -> Self::Output;
+	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, render_params: &RenderParams) -> Self::Output;
 }
 
 impl RenderExt for Gradient {
 	type Output = u64;
 
 	// /// Adds the gradient def through mutating the first argument, returning the gradient ID.
-	fn render(
-		&self,
-		svg_defs: &mut String,
-		element_transform: DAffine2,
-		stroke_transform: DAffine2,
-		bounds: [DVec2; 2],
-		transformed_bounds: [DVec2; 2],
-		_aligned_strokes: bool,
-		_override_paint_order: bool,
-		_render_params: &RenderParams,
-	) -> Self::Output {
-		// TODO: Figure out how to use `self.transform` as part of the gradient transform, since that field (`Gradient::transform`) is currently never read from, it's only written to.
-
-		let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-		let transformed_bound_transform = element_transform * DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
-
+	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, _render_params: &RenderParams) -> Self::Output {
 		let mut stop = String::new();
 		for (position, color) in self.stops.0.iter() {
 			stop.push_str("<stop");
@@ -54,27 +29,30 @@ impl RenderExt for Gradient {
 			stop.push_str(" />")
 		}
 
-		let mod_gradient = if transformed_bound_transform.matrix2.determinant() != 0. {
-			transformed_bound_transform.inverse()
+		let transform_points = element_transform * stroke_transform * bounds;
+		let start = transform_points.transform_point2(self.start);
+		let end = transform_points.transform_point2(self.end);
+
+		let gradient_transform = if transformed_bounds.matrix2.determinant() != 0. {
+			transformed_bounds.inverse()
 		} else {
 			DAffine2::IDENTITY // Ignore if the transform cannot be inverted (the bounds are zero). See issue #1944.
 		};
-		let mod_points = element_transform * stroke_transform * bound_transform;
-
-		let start = mod_points.transform_point2(self.start);
-		let end = mod_points.transform_point2(self.end);
+		let gradient_transform = format_transform_matrix(gradient_transform);
+		let gradient_transform = if gradient_transform.is_empty() {
+			String::new()
+		} else {
+			format!(r#" gradientTransform="{gradient_transform}""#)
+		};
 
 		let gradient_id = generate_uuid();
-
-		let matrix = format_transform_matrix(mod_gradient);
-		let gradient_transform = if matrix.is_empty() { String::new() } else { format!(r#" gradientTransform="{}""#, matrix) };
 
 		match self.gradient_type {
 			GradientType::Linear => {
 				let _ = write!(
 					svg_defs,
-					r#"<linearGradient id="{}" x1="{}" x2="{}" y1="{}" y2="{}"{gradient_transform}>{}</linearGradient>"#,
-					gradient_id, start.x, end.x, start.y, end.y, stop
+					r#"<linearGradient id="{}" x1="{}" y1="{}" x2="{}" y2="{}"{gradient_transform}>{}</linearGradient>"#,
+					gradient_id, start.x, start.y, end.x, end.y, stop
 				);
 			}
 			GradientType::Radial => {
@@ -95,17 +73,7 @@ impl RenderExt for Fill {
 	type Output = String;
 
 	/// Renders the fill, adding necessary defs through mutating the first argument.
-	fn render(
-		&self,
-		svg_defs: &mut String,
-		element_transform: DAffine2,
-		stroke_transform: DAffine2,
-		bounds: [DVec2; 2],
-		transformed_bounds: [DVec2; 2],
-		aligned_strokes: bool,
-		override_paint_order: bool,
-		render_params: &RenderParams,
-	) -> Self::Output {
+	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, render_params: &RenderParams) -> Self::Output {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
 			Self::Solid(color) => {
@@ -116,16 +84,7 @@ impl RenderExt for Fill {
 				result
 			}
 			Self::Gradient(gradient) => {
-				let gradient_id = gradient.render(
-					svg_defs,
-					element_transform,
-					stroke_transform,
-					bounds,
-					transformed_bounds,
-					aligned_strokes,
-					override_paint_order,
-					render_params,
-				);
+				let gradient_id = gradient.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
 				format!(r##" fill="url('#{gradient_id}')""##)
 			}
 		}
@@ -141,11 +100,9 @@ impl RenderExt for Stroke {
 		_svg_defs: &mut String,
 		_element_transform: DAffine2,
 		_stroke_transform: DAffine2,
-		_bounds: [DVec2; 2],
-		_transformed_bounds: [DVec2; 2],
-		aligned_strokes: bool,
-		override_paint_order: bool,
-		_render_params: &RenderParams,
+		_bounds: DAffine2,
+		_transformed_bounds: DAffine2,
+		render_params: &RenderParams,
 	) -> Self::Output {
 		// Don't render a stroke at all if it would be invisible
 		let Some(color) = self.color else { return String::new() };
@@ -161,7 +118,7 @@ impl RenderExt for Stroke {
 		let stroke_join = (self.join != StrokeJoin::Miter).then_some(self.join);
 		let stroke_join_miter_limit = (self.join_miter_limit != 4.).then_some(self.join_miter_limit);
 		let stroke_align = (self.align != StrokeAlign::Center).then_some(self.align);
-		let paint_order = (self.paint_order != PaintOrder::StrokeAbove || override_paint_order).then_some(PaintOrder::StrokeBelow);
+		let paint_order = (self.paint_order != PaintOrder::StrokeAbove || render_params.override_paint_order).then_some(PaintOrder::StrokeBelow);
 
 		// Render the needed stroke attributes
 		let mut attributes = format!(r##" stroke="#{}""##, color.to_rgb_hex_srgb_from_gamma());
@@ -169,16 +126,16 @@ impl RenderExt for Stroke {
 			let _ = write!(&mut attributes, r#" stroke-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 		}
 		if let Some(mut weight) = weight {
-			if stroke_align.is_some() && aligned_strokes {
+			if stroke_align.is_some() && render_params.aligned_strokes {
 				weight *= 2.;
 			}
-			let _ = write!(&mut attributes, r#" stroke-width="{}""#, weight);
+			let _ = write!(&mut attributes, r#" stroke-width="{weight}""#);
 		}
 		if let Some(dash_array) = dash_array {
-			let _ = write!(&mut attributes, r#" stroke-dasharray="{}""#, dash_array);
+			let _ = write!(&mut attributes, r#" stroke-dasharray="{dash_array}""#);
 		}
 		if let Some(dash_offset) = dash_offset {
-			let _ = write!(&mut attributes, r#" stroke-dashoffset="{}""#, dash_offset);
+			let _ = write!(&mut attributes, r#" stroke-dashoffset="{dash_offset}""#);
 		}
 		if let Some(stroke_cap) = stroke_cap {
 			let _ = write!(&mut attributes, r#" stroke-linecap="{}""#, stroke_cap.svg_name());
@@ -187,7 +144,7 @@ impl RenderExt for Stroke {
 			let _ = write!(&mut attributes, r#" stroke-linejoin="{}""#, stroke_join.svg_name());
 		}
 		if let Some(stroke_join_miter_limit) = stroke_join_miter_limit {
-			let _ = write!(&mut attributes, r#" stroke-miterlimit="{}""#, stroke_join_miter_limit);
+			let _ = write!(&mut attributes, r#" stroke-miterlimit="{stroke_join_miter_limit}""#);
 		}
 		// Add vector-effect attribute to make strokes non-scaling
 		if self.non_scaling {
@@ -205,71 +162,23 @@ impl RenderExt for PathStyle {
 
 	/// Renders the shape's fill and stroke attributes as a string with them concatenated together.
 	#[allow(clippy::too_many_arguments)]
-	fn render(
-		&self,
-		svg_defs: &mut String,
-		element_transform: DAffine2,
-		stroke_transform: DAffine2,
-		bounds: [DVec2; 2],
-		transformed_bounds: [DVec2; 2],
-		aligned_strokes: bool,
-		override_paint_order: bool,
-		render_params: &RenderParams,
-	) -> String {
+	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, render_params: &RenderParams) -> String {
 		let view_mode = render_params.view_mode;
 		match view_mode {
 			ViewMode::Outline => {
-				let fill_attribute = Fill::None.render(
-					svg_defs,
-					element_transform,
-					stroke_transform,
-					bounds,
-					transformed_bounds,
-					aligned_strokes,
-					override_paint_order,
-					render_params,
-				);
+				let fill_attribute = Fill::None.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
 				let mut outline_stroke = Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT);
 				// Outline strokes should be non-scaling by default
 				outline_stroke.non_scaling = true;
-				let stroke_attribute = outline_stroke.render(
-					svg_defs,
-					element_transform,
-					stroke_transform,
-					bounds,
-					transformed_bounds,
-					aligned_strokes,
-					override_paint_order,
-					render_params,
-				);
+				let stroke_attribute = outline_stroke.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
 				format!("{fill_attribute}{stroke_attribute}")
 			}
 			_ => {
-				let fill_attribute = self.fill.render(
-					svg_defs,
-					element_transform,
-					stroke_transform,
-					bounds,
-					transformed_bounds,
-					aligned_strokes,
-					override_paint_order,
-					render_params,
-				);
+				let fill_attribute = self.fill.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
 				let stroke_attribute = self
 					.stroke
 					.as_ref()
-					.map(|stroke| {
-						stroke.render(
-							svg_defs,
-							element_transform,
-							stroke_transform,
-							bounds,
-							transformed_bounds,
-							aligned_strokes,
-							override_paint_order,
-							render_params,
-						)
-					})
+					.map(|stroke| stroke.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params))
 					.unwrap_or_default();
 				format!("{fill_attribute}{stroke_attribute}")
 			}

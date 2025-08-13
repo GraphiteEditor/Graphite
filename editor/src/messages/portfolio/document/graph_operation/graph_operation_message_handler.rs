@@ -426,7 +426,6 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 			Fill::Gradient(Gradient {
 				start,
 				end,
-				transform: DAffine2::IDENTITY,
 				gradient_type: GradientType::Linear,
 				stops,
 			})
@@ -453,7 +452,6 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 			Fill::Gradient(Gradient {
 				start,
 				end,
-				transform: DAffine2::IDENTITY,
 				gradient_type: GradientType::Radial,
 				stops,
 			})

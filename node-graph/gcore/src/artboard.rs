@@ -1,5 +1,6 @@
 use crate::blending::AlphaBlending;
 use crate::bounds::{BoundingBox, RenderBoundingBox};
+use crate::gradient::GradientStops;
 use crate::math::quad::Quad;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::{Table, TableRow};
@@ -98,6 +99,7 @@ async fn create_artboard<T: Into<Table<Graphic>> + 'n>(
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
 		Context -> Table<Color>,
+		Context -> Table<GradientStops>,
 		Context -> DAffine2,
 	)]
 	content: impl Node<Context<'static>, Output = T>,

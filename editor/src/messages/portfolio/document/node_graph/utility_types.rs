@@ -14,6 +14,8 @@ pub enum FrontendGraphDataType {
 	Raster,
 	Vector,
 	Color,
+	Gradient,
+	Typography,
 }
 
 impl FrontendGraphDataType {
@@ -32,6 +34,8 @@ impl FrontendGraphDataType {
 			TaggedValue::Raster(_) => Self::Raster,
 			TaggedValue::Vector(_) => Self::Vector,
 			TaggedValue::Color(_) => Self::Color,
+			TaggedValue::Gradient(_) | TaggedValue::GradientStops(_) | TaggedValue::GradientTable(_) => Self::Gradient,
+			TaggedValue::String(_) => Self::Typography,
 			_ => Self::General,
 		}
 	}

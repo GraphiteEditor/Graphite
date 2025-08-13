@@ -7,13 +7,10 @@ use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_std::application_io::TimingInformation;
 use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig};
-use graphene_std::renderer::RenderSvgSegmentList;
-use graphene_std::renderer::{Render, RenderParams, SvgRender};
 use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
 use graphene_std::text::FontCache;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
-use graphene_std::vector::style::ViewMode;
 use graphene_std::wasm_application_io::RenderOutputType;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 
@@ -33,7 +30,6 @@ pub struct ExecutionResponse {
 	execution_id: u64,
 	result: Result<TaggedValue, String>,
 	responses: VecDeque<FrontendMessage>,
-	footprint: Footprint,
 	vector_modify: HashMap<NodeId, Vector>,
 	/// The resulting value from the temporary inspected during execution
 	inspect_result: Option<InspectResult>,
@@ -130,6 +126,7 @@ impl NodeGraphExecutor {
 				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect }))
 				.map_err(|e| e.to_string())?;
 		}
+
 		Ok(())
 	}
 
@@ -244,6 +241,7 @@ impl NodeGraphExecutor {
 			let size = (size * scale_factor).into();
 			responses.add(FrontendMessage::TriggerExportImage { svg, name, mime, size });
 		}
+
 		Ok(())
 	}
 
@@ -256,7 +254,6 @@ impl NodeGraphExecutor {
 						execution_id,
 						result,
 						responses: existing_responses,
-						footprint,
 						vector_modify,
 						inspect_result,
 					} = execution_response;
@@ -281,7 +278,7 @@ impl NodeGraphExecutor {
 						// Special handling for exporting the artwork
 						self.export(node_graph_output, export_config, responses)?;
 					} else {
-						self.process_node_graph_output(node_graph_output, footprint, responses)?;
+						self.process_node_graph_output(node_graph_output, responses)?;
 					}
 					responses.add_front(DeferMessage::TriggerGraphRun(execution_id, execution_context.document_id));
 
@@ -322,73 +319,41 @@ impl NodeGraphExecutor {
 				}
 			}
 		}
+
 		Ok(())
 	}
 
-	fn debug_render(render_object: impl Render, footprint: Footprint, responses: &mut VecDeque<Message>) {
-		// Setup rendering
-		let mut render = SvgRender::new();
-		let render_params = RenderParams {
-			view_mode: ViewMode::Normal,
-			footprint,
-			thumbnail: false,
-			hide_artboards: false,
-			for_export: false,
-			for_mask: false,
-			alignment_parent_transform: None,
+	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		let TaggedValue::RenderOutput(render_output) = node_graph_output else {
+			return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
 		};
 
-		// Render SVG
-		render_object.render_svg(&mut render, &render_params);
-
-		// Concatenate the defs and the SVG into one string
-		render.wrap_with_transform(footprint.transform, None);
-		let svg = render.svg.to_svg_string();
-
-		// Send to frontend
-		responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
-	}
-
-	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, footprint: Footprint, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		let mut render_output_metadata = RenderMetadata::default();
-
-		match node_graph_output {
-			TaggedValue::RenderOutput(render_output) => {
-				match render_output.data {
-					RenderOutputType::Svg { svg, image_data } => {
-						// Send to frontend
-						responses.add(FrontendMessage::UpdateImageData { image_data });
-						responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
-					}
-					RenderOutputType::CanvasFrame(frame) => {
-						let matrix = format_transform_matrix(frame.transform);
-						let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{matrix}\"") };
-						let svg = format!(
-							r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}"></div></foreignObject></svg>"#,
-							frame.resolution.x, frame.resolution.y, frame.surface_id.0
-						);
-						responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
-					}
-					RenderOutputType::Texture { .. } => {}
-					_ => return Err(format!("Invalid node graph output type: {:#?}", render_output.data)),
-				}
-
-				render_output_metadata = render_output.metadata;
+		match render_output.data {
+			RenderOutputType::Svg { svg, image_data } => {
+				// Send to frontend
+				responses.add(FrontendMessage::UpdateImageData { image_data });
+				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
-			TaggedValue::Bool(render_object) => Self::debug_render(render_object, footprint, responses),
-			TaggedValue::F64(render_object) => Self::debug_render(render_object, footprint, responses),
-			TaggedValue::DVec2(render_object) => Self::debug_render(render_object, footprint, responses),
-			TaggedValue::String(render_object) => Self::debug_render(render_object, footprint, responses),
-			_ => return Err(format!("Invalid node graph output type: {node_graph_output:#?}")),
-		};
+			RenderOutputType::CanvasFrame(frame) => {
+				let matrix = format_transform_matrix(frame.transform);
+				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{matrix}\"") };
+				let svg = format!(
+					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}"></div></foreignObject></svg>"#,
+					frame.resolution.x, frame.resolution.y, frame.surface_id.0
+				);
+				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
+			}
+			RenderOutputType::Texture { .. } => {}
+			_ => return Err(format!("Invalid node graph output type: {:#?}", render_output.data)),
+		}
 
-		let graphene_std::renderer::RenderMetadata {
+		let RenderMetadata {
 			upstream_footprints,
 			local_transforms,
 			first_element_source_id,
 			click_targets,
 			clip_targets,
-		} = render_output_metadata;
+		} = render_output.metadata;
 
 		// Run these update state messages immediately
 		responses.add(DocumentMessage::UpdateUpstreamTransforms {
@@ -401,6 +366,7 @@ impl NodeGraphExecutor {
 		responses.add(DocumentMessage::RenderScrollbars);
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);
+
 		Ok(())
 	}
 }

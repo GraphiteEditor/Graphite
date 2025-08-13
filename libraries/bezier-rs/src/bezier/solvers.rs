@@ -1,7 +1,6 @@
 use super::*;
 use crate::polynomial::Polynomial;
 use crate::utils::{TValue, solve_cubic, solve_quadratic};
-use crate::{SymmetricalBasis, to_symmetrical_basis_pair};
 use glam::DMat2;
 use std::ops::Range;
 
@@ -10,8 +9,10 @@ impl Bezier {
 	/// Get roots as [[x], [y]]
 	#[must_use]
 	pub fn roots(self) -> [Vec<f64>; 2] {
-		let s_basis = to_symmetrical_basis_pair(self);
-		[s_basis.x.roots(), s_basis.y.roots()]
+		let (x, y) = self.parametric_polynomial();
+		let x = poly_cool::Poly::new(x.coefficients().iter().copied());
+		let y = poly_cool::Poly::new(y.coefficients().iter().copied());
+		[x.roots_between(0., 1., 1e-8), y.roots_between(0., 1., 1e-8)]
 	}
 
 	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point `t` along the curve using De Casteljau's algorithm.
@@ -105,10 +106,21 @@ impl Bezier {
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/tangents-to-point/solo" title="Tangents to Point Demo"></iframe>
 	#[must_use]
 	pub fn tangents_to_point(self, point: DVec2) -> Vec<f64> {
-		let sbasis: crate::SymmetricalBasisPair = to_symmetrical_basis_pair(self);
-		let derivative = sbasis.derivative();
-		let cross = (sbasis - point).cross(&derivative);
-		SymmetricalBasis::roots(&cross)
+		// We solve deriv(t) * (self(t) - point) = 0. In principle, this is a quintic.
+		// In fact, the highest-order term cancels out so it's at most a quartic.
+		let (mut x, mut y) = self.parametric_polynomial();
+		let x = x.coefficients_mut();
+		let y = y.coefficients_mut();
+		x[0] -= point.x;
+		y[0] -= point.y;
+		let poly = poly_cool::Poly::new([
+			x[0] * y[1] - y[0] * x[1],
+			2.0 * (x[0] * y[2] - y[0] * x[2]),
+			x[2] * y[1] - y[2] * x[1] + 2.0 * (x[1] * y[2] - y[1] * x[2]) + 3.0 * (x[0] * y[3] - y[0] * x[3]),
+			x[3] * y[1] - y[3] * x[1] + 3.0 * (x[1] * y[3] - y[1] * x[3]),
+			2.0 * (x[3] * y[2] - y[3] * x[2]) + 3.0 * (x[2] * y[3] - y[2] * x[3]),
+		]);
+		poly.roots_between(0.0, 1.0, 1e-8)
 	}
 
 	/// Returns a normalized unit vector representing the direction of the normal at the point `t` along the curve.
@@ -121,10 +133,21 @@ impl Bezier {
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/normals-to-point/solo" title="Normals to Point Demo"></iframe>
 	#[must_use]
 	pub fn normals_to_point(self, point: DVec2) -> Vec<f64> {
-		let sbasis = to_symmetrical_basis_pair(self);
-		let derivative = sbasis.derivative();
-		let cross = (sbasis - point).dot(&derivative);
-		SymmetricalBasis::roots(&cross)
+		// We solve deriv(t) dot (self(t) - point) = 0.
+		let (mut x, mut y) = self.parametric_polynomial();
+		let x = x.coefficients_mut();
+		let y = y.coefficients_mut();
+		x[0] -= point.x;
+		y[0] -= point.y;
+		let poly = poly_cool::Poly::new([
+			x[0] * x[1] + y[0] * y[1],
+			x[1] * x[1] + y[1] * y[1] + 2. * (x[0] * x[2] + y[0] * y[2]),
+			3. * (x[2] * x[1] + y[2] * y[1]) + 3. * (x[0] * x[3] + y[0] * y[3]),
+			4. * (x[3] * x[1] + y[3] * y[1]) + 2. * (x[2] * x[2] + y[2] * y[2]),
+			5. * (x[3] * x[2] + y[3] * y[2]),
+			3. * (x[3] * x[3] + y[3] * y[3]),
+		]);
+		poly.roots_between(0., 1., 1e-8)
 	}
 
 	/// Returns the curvature, a scalar value for the derivative at the point `t` along the curve.

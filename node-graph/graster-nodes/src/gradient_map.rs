@@ -15,6 +15,7 @@ async fn gradient_map<T: Adjust<Color>>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut image: T,
