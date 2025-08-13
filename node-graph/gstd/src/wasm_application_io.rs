@@ -291,8 +291,6 @@ async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
 		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Color>,
-		Context -> Option<Color>,
-		Context -> Vec<Color>,
 		Context -> bool,
 		Context -> f32,
 		Context -> f64,
