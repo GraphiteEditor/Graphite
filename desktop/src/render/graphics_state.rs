@@ -285,12 +285,7 @@ impl GraphicsState {
 	fn update_bindgroup(&mut self) {
 		let viewport_texture_view = self.viewport_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
 		let overlays_texture_view = self.overlays_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
-
-		// Tell the GPU that the UI texture is in sRGB format so that it is converted to linear before sampling
-		let ui_texture_view = self.ui_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor {
-			format: Some(wgpu::TextureFormat::Bgra8UnormSrgb),
-			..Default::default()
-		});
+		let ui_texture_view = self.ui_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
 
 		let bind_group = self.context.device.create_bind_group(&wgpu::BindGroupDescriptor {
 			layout: &self.render_pipeline.get_bind_group_layout(0),
