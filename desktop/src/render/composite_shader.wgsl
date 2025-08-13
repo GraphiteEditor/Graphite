@@ -44,38 +44,62 @@ var s_diffuse: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-	let ui = textureSample(t_ui, s_diffuse, in.tex_coords);
-	if (ui.a >= 0.999) {
-		return ui;
+	let ui_raw = textureSample(t_ui, s_diffuse, in.tex_coords);
+	if (ui_raw.a >= 0.999) {
+		return ui_raw;
 	}
 
 	let viewport_coordinate = (in.tex_coords - constants.viewport_offset) * constants.viewport_scale;
 
 	// Vello renders its values to an `RgbaUnorm` texture, but if we try to use this in the main rendering pipeline
 	// which renders to an `Srgb` surface, gamma mapping is applied twice. This converts back to linear to compensate.
-	let overlay_raw = textureSample(t_overlays, s_diffuse, viewport_coordinate);
-	let overlay = vec4<f32>(srgb_to_linear(overlay_raw.rgb), overlay_raw.a);
-	let viewport_raw = textureSample(t_viewport, s_diffuse, viewport_coordinate);
-	let viewport = vec4<f32>(srgb_to_linear(viewport_raw.rgb), viewport_raw.a);
+	let overlay = srgb_to_linear(textureSample(t_overlays, s_diffuse, viewport_coordinate));
+	let viewport = srgb_to_linear(textureSample(t_viewport, s_diffuse, viewport_coordinate));
+
+	// UI texture is premultiplied, we need to unpremultiply before blending
+	let ui = unpremultiply(ui_raw);
 
 	if (overlay.a < 0.001) {
-		return blend(ui, viewport);
+		return blend_in_srgb(ui, viewport);
 	}
 
-	let composite = blend(overlay, viewport);
-	return blend(ui, composite);
+	let composite = blend_in_srgb(overlay, viewport);
+	return blend_in_srgb(ui, composite);
 }
 
-fn srgb_to_linear(srgb: vec3<f32>) -> vec3<f32> {
-	return select(
-		pow((srgb + 0.055) / 1.055, vec3<f32>(2.4)),
-		srgb / 12.92,
-		srgb <= vec3<f32>(0.04045)
-	);
+fn blend_in_srgb(
+  fg: vec4<f32>, bg: vec4<f32>,
+) -> vec4<f32> {
+	let bg_srgb = linear_to_srgb(bg);
+	let fg_srgb = linear_to_srgb(fg);
+	let out_srgb = blend(fg_srgb, bg_srgb);
+	return srgb_to_linear(out_srgb);
 }
 
 fn blend(fg: vec4<f32>, bg: vec4<f32>) -> vec4<f32> {
 	let a = fg.a + bg.a * (1.0 - fg.a);
 	let rgb = fg.rgb * fg.a + bg.rgb * bg.a * (1.0 - fg.a);
 	return vec4<f32>(rgb, a);
+}
+
+fn unpremultiply(in: vec4<f32>) -> vec4<f32> {
+	if (in.a > 0.0) {
+		return vec4<f32>((in.rgb / in.a), in.a);
+	} else {
+		return vec4<f32>(0.0);
+	}
+}
+
+fn linear_to_srgb(in: vec4<f32>) -> vec4<f32> {
+	let cutoff = vec3<f32>(0.0031308);
+	let lo = in.rgb * 12.92;
+	let hi = 1.055 * pow(max(in.rgb, vec3<f32>(0.0)), vec3<f32>(1.0/2.4)) - 0.055;
+	return vec4<f32>(select(lo, hi, in.rgb > cutoff), in.a);
+}
+
+fn srgb_to_linear(in: vec4<f32>) -> vec4<f32> {
+	let cutoff = vec3<f32>(0.04045);
+	let lo = in.rgb / 12.92;
+	let hi = pow((in.rgb + 0.055) / 1.055, vec3<f32>(2.4));
+	return vec4<f32>(select(lo, hi, in.rgb > cutoff), in.a);
 }
