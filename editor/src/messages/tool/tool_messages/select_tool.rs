@@ -92,6 +92,7 @@ pub enum SelectToolMessage {
 		remove_from_selection: Key,
 	},
 	EditLayer,
+	EditLayerExec,
 	Enter,
 	PointerMove(SelectToolPointerKeys),
 	PointerOutsideViewport(SelectToolPointerKeys),
@@ -985,12 +986,17 @@ impl Fsm for SelectToolFsmState {
 				self
 			}
 			(_, SelectToolMessage::EditLayer) => {
-				// Edit the clicked layer
+				// Edit the clicked layer - defer the message to ensure document graph has run and click targets are available
 				if let Some(intersect) = document.click(input) {
 					match tool_data.nested_selection_behavior {
 						NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect, responses),
 						NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, &document.network_interface, responses),
 					}
+				} else {
+					// If click detection fails, defer the message until after graph runs
+					responses.add(DeferMessage::AfterGraphRun {
+						messages: vec![SelectToolMessage::EditLayer.into()],
+					});
 				}
 
 				self
