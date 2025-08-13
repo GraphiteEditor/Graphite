@@ -1287,7 +1287,7 @@ impl NodeNetworkInterface {
 						let artboard = self.document_node(&artboard_node_identifier.to_node(), &[]);
 						let clip_input = artboard.unwrap().inputs.get(5).unwrap();
 						if let NodeInput::Value { tagged_value, .. } = clip_input {
-							if tagged_value.to_primitive_string() == "true" {
+							if tagged_value.clone().into_inner() == TaggedValue::Bool(true) {
 								return Some(Quad::clip(
 									self.document_metadata.bounding_box_document(layer).unwrap_or_default(),
 									self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
@@ -3048,7 +3048,7 @@ impl NodeNetworkInterface {
 
 	pub fn collect_frontend_click_targets(&mut self, network_path: &[NodeId]) -> FrontendClickTargets {
 		let mut all_node_click_targets = Vec::new();
-		let mut port_click_targets = Vec::new();
+		let mut connector_click_targets = Vec::new();
 		let mut icon_click_targets = Vec::new();
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in collect_frontend_click_targets");
@@ -3066,7 +3066,7 @@ impl NodeNetworkInterface {
 					if let ClickTargetType::Subpath(subpath) = port.target_type() {
 						let mut port_path = String::new();
 						let _ = subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
-						port_click_targets.push(port_path);
+						connector_click_targets.push(port_path);
 					}
 				}
 				if let NodeTypeClickTargets::Layer(layer_metadata) = &node_click_targets.node_type_metadata {
@@ -3145,7 +3145,7 @@ impl NodeNetworkInterface {
 		FrontendClickTargets {
 			node_click_targets,
 			layer_click_targets,
-			port_click_targets,
+			connector_click_targets,
 			icon_click_targets,
 			all_nodes_bounding_box,
 			import_exports_bounding_box,

@@ -250,15 +250,14 @@ impl Bezier {
 	/// Returns the parametric `t`-value that corresponds to the closest point on the curve to the provided point.
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/project/solo" title="Project Demo"></iframe>
 	pub fn project(&self, point: DVec2) -> f64 {
-		let sbasis = crate::symmetrical_basis::to_symmetrical_basis_pair(*self);
-		let derivative = sbasis.derivative();
-		let dd = (sbasis - point).dot(&derivative);
-		let roots = dd.roots();
+		// The points at which the line from us to `point` is perpendicular
+		// to our curve are the critical points of the distance function.
+		let critical = self.normals_to_point(point);
 
 		let mut closest = 0.;
 		let mut min_dist_squared = self.evaluate(TValue::Parametric(0.)).distance_squared(point);
 
-		for time in roots {
+		for time in critical {
 			let distance = self.evaluate(TValue::Parametric(time)).distance_squared(point);
 			if distance < min_dist_squared {
 				closest = time;
@@ -354,7 +353,8 @@ mod tests {
 		assert_eq!(bezier1.project(DVec2::new(100., 100.)), 1.);
 
 		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
-		assert_eq!(bezier2.project(DVec2::new(100., 0.)), 0.);
+		assert_eq!(bezier2.project(DVec2::new(99.99, 0.)), 0.);
+		assert!((bezier2.project(DVec2::new(-50., 150.)) - 0.5).abs() <= 1e-8);
 
 		let bezier3 = Bezier::from_cubic_coordinates(-50., -50., -50., -50., 50., -50., 50., -50.);
 		assert_eq!(DVec2::new(0., -50.), bezier3.evaluate(TValue::Parametric(bezier3.project(DVec2::new(0., -50.)))));
