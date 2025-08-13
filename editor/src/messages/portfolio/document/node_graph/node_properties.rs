@@ -182,6 +182,7 @@ pub(crate) fn property_from_type(
 						// STRUCT TYPES
 						// ============
 						Some(x) if x == TypeId::of::<Table<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
+						Some(x) if x == TypeId::of::<Table<GradientStops>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						Some(x) if x == TypeId::of::<Font>() => font_widget(default_info),
 						Some(x) if x == TypeId::of::<Curve>() => curve_widget(default_info),
@@ -916,6 +917,20 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 				})
 				.on_update(update_value(
 					|input: &ColorInput| TaggedValue::Color(input.value.as_solid().iter().map(|&color| TableRow::new_from_element(color)).collect()),
+					node_id,
+					index,
+				))
+				.on_commit(commit_value)
+				.widget_holder(),
+		),
+		TaggedValue::GradientTable(gradient_table) => widgets.push(
+			color_button
+				.value(match gradient_table.iter().next() {
+					Some(row) => FillChoice::Gradient(row.element.clone()),
+					None => FillChoice::None,
+				})
+				.on_update(update_value(
+					|input: &ColorInput| TaggedValue::GradientTable(input.value.as_gradient().iter().map(|&gradient| TableRow::new_from_element(gradient.clone())).collect()),
 					node_id,
 					index,
 				))

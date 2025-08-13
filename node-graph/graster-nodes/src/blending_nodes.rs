@@ -51,6 +51,15 @@ mod blend_std {
 			result_table
 		}
 	}
+	impl Blend<Color> for Table<GradientStops> {
+		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
+			let mut result_table = self.clone();
+			for (over, under) in result_table.iter_mut().zip(under.iter()) {
+				*over.element = over.element.blend(under.element, &blend_fn);
+			}
+			result_table
+		}
+	}
 	impl Blend<Color> for GradientStops {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut combined_stops = self.iter().map(|(position, _)| position).chain(under.iter().map(|(position, _)| position)).collect::<Vec<_>>();
@@ -128,6 +137,7 @@ async fn blend<T: Blend<Color> + Send>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	over: T,
@@ -135,6 +145,7 @@ async fn blend<T: Blend<Color> + Send>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	under: T,
@@ -150,6 +161,7 @@ fn color_overlay<T: Adjust<Color>>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut image: T,

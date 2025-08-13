@@ -46,6 +46,7 @@ fn luminance<T: Adjust<Color>>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -70,6 +71,7 @@ fn gamma_correction<T: Adjust<Color>>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -90,6 +92,7 @@ fn extract_channel<T: Adjust<Color>>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -113,6 +116,7 @@ fn make_opaque<T: Adjust<Color>>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -138,6 +142,7 @@ fn brightness_contrast<T: Adjust<Color>>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -227,6 +232,7 @@ fn levels<T: Adjust<Color>>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -294,6 +300,7 @@ async fn black_and_white<T: Adjust<Color>>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -369,6 +376,7 @@ async fn hue_saturation<T: Adjust<Color>>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -403,6 +411,7 @@ async fn invert<T: Adjust<Color>>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -425,6 +434,7 @@ async fn threshold<T: Adjust<Color>>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -470,6 +480,7 @@ async fn vibrance<T: Adjust<Color>>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -635,6 +646,7 @@ async fn channel_mixer<T: Adjust<Color>>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -763,6 +775,7 @@ async fn selective_color<T: Adjust<Color>>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -905,6 +918,7 @@ async fn posterize<T: Adjust<Color>>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -938,6 +952,7 @@ async fn exposure<T: Adjust<Color>>(
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut input: T,
