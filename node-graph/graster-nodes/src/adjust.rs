@@ -27,8 +27,15 @@ mod adjust_std {
 	}
 	impl Adjust<Color> for Table<Color> {
 		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-			for color in self.iter_mut() {
-				*color.element = map_fn(color.element);
+			for row in self.iter_mut() {
+				*row.element = map_fn(row.element);
+			}
+		}
+	}
+	impl Adjust<Color> for Table<GradientStops> {
+		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
+			for row in self.iter_mut() {
+				row.element.adjust(&map_fn);
 			}
 		}
 	}

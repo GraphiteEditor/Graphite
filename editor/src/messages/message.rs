@@ -69,7 +69,7 @@ mod test {
 
 	fn print_tree_node(tree: &DebugMessageTree, prefix: &str, is_last: bool, file: &mut std::fs::File) {
 		// Print the current node
-		let (branch, child_prefix) = if tree.has_message_handler_data_fields() || tree.has_message_handler_fields() {
+		let (branch, child_prefix) = if tree.message_handler_data_fields().is_some() || tree.message_handler_fields().is_some() {
 			("├── ", format!("{}│   ", prefix))
 		} else {
 			if is_last {
@@ -97,7 +97,7 @@ mod test {
 		// Print handler field if any
 		if let Some(data) = tree.message_handler_fields() {
 			let len = data.fields().len();
-			let (branch, child_prefix) = if tree.has_message_handler_data_fields() {
+			let (branch, child_prefix) = if tree.message_handler_data_fields().is_some() {
 				("├── ", format!("{}│   ", prefix))
 			} else {
 				("└── ", format!("{}    ", prefix))
