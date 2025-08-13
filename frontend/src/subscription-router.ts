@@ -17,6 +17,10 @@ export function createSubscriptionRouter() {
 		subscriptions[messageType.name] = callback;
 	};
 
+	const unsubscribeJsMessage = <T extends JsMessage>(messageType: new () => T) => {
+		delete subscriptions[messageType.name];
+	};
+
 	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WebAssembly.Memory, handle: EditorHandle) => {
 		// Find the message maker for the message type, which can either be a JS class constructor or a function that returns an instance of the JS class
 		const messageMaker = messageMakers[messageType];
@@ -68,6 +72,7 @@ export function createSubscriptionRouter() {
 
 	return {
 		subscribeJsMessage,
+		unsubscribeJsMessage,
 		handleJsMessage,
 	};
 }
