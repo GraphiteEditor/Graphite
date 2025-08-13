@@ -259,14 +259,13 @@ impl Bezier {
 
 		for time in critical {
 			let distance = self.evaluate(TValue::Parametric(time)).distance_squared(point);
-			dbg!(distance, time);
 			if distance < min_dist_squared {
 				closest = time;
 				min_dist_squared = distance;
 			}
 		}
 
-		if dbg!(self.evaluate(TValue::Parametric(1.)).distance_squared(point)) < min_dist_squared {
+		if self.evaluate(TValue::Parametric(1.)).distance_squared(point) < min_dist_squared {
 			closest = 1.;
 		}
 		closest
