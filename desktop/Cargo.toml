@@ -9,7 +9,7 @@ edition = "2024"
 rust-version = "1.87"
 
 [features]
-default = ["gpu", "accelerated_paint"]
+default = ["gpu",]
 gpu = ["graphite-editor/gpu"]
 accelerated_paint = ["ash", "libc"]
 

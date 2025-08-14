@@ -39,6 +39,8 @@ pub(crate) struct WinitApp {
 	wgpu_context: WgpuContext,
 	event_loop_proxy: EventLoopProxy<CustomEvent>,
 	editor: Editor,
+	last_ui_update: Instant,
+	avg_frame_time: f32,
 }
 
 impl WinitApp {
@@ -52,6 +54,8 @@ impl WinitApp {
 			wgpu_context,
 			event_loop_proxy,
 			editor: Editor::new(),
+			last_ui_update: Instant::now(),
+			avg_frame_time: 0.,
 		}
 	}
 
@@ -205,6 +209,10 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 				if let Some(graphics_state) = self.graphics_state.as_mut() {
 					graphics_state.resize(texture.width(), texture.height());
 					graphics_state.bind_ui_texture(texture);
+					let elapsed = self.last_ui_update.elapsed().as_secs_f32();
+					self.last_ui_update = Instant::now();
+					self.avg_frame_time = (self.avg_frame_time * 3. + elapsed) / 4.;
+					println!("ui fps: {:.2}", 1. / self.avg_frame_time);
 				}
 				if let Some(window) = &self.window {
 					window.request_redraw();
