@@ -101,14 +101,24 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 					],
-					vec![MenuBarEntry {
-						label: "Save".into(),
-						icon: Some("Save".into()),
-						shortcut: action_keys!(DocumentMessageDiscriminant::SaveDocument),
-						action: MenuBarEntry::create_action(|_| DocumentMessage::SaveDocument.into()),
-						disabled: no_active_document,
-						..MenuBarEntry::default()
-					}],
+					vec![
+						MenuBarEntry {
+							label: "Save".into(),
+							icon: Some("Save".into()),
+							shortcut: action_keys!(DocumentMessageDiscriminant::SaveDocument),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::SaveDocument.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Save As…".into(),
+							icon: Some("Save".into()),
+							shortcut: action_keys!(DocumentMessageDiscriminant::SaveDocumentAs),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::SaveDocumentAs.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+					],
 					vec![
 						MenuBarEntry {
 							label: "Import…".into(),
