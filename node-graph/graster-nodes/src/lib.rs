@@ -4,6 +4,7 @@ pub mod adjust;
 pub mod adjustments;
 pub mod blending_nodes;
 pub mod cubic_spline;
+pub mod fullscreen_vertex;
 
 #[cfg(feature = "std")]
 pub mod curve;

@@ -1,4 +1,5 @@
 mod context;
+pub mod shader_runtime;
 pub mod texture_upload;
 
 use anyhow::Result;
