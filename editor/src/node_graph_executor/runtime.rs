@@ -73,7 +73,7 @@ pub struct GraphUpdate {
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ExportConfig {
-	pub file_name: String,
+	pub name: String,
 	pub file_type: FileType,
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
