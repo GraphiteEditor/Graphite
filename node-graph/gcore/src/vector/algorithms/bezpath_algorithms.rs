@@ -5,6 +5,7 @@ use super::util::pathseg_tangent;
 use crate::vector::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
 use crate::vector::misc::{PointSpacingType, dvec2_to_point, point_to_dvec2};
 use glam::{DMat2, DVec2};
+use kurbo::common::{solve_cubic, solve_quadratic};
 use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
 use std::f64::consts::{FRAC_PI_2, PI};
 
@@ -206,6 +207,39 @@ pub fn pathseg_compute_lookup_table(segment: PathSeg, steps: Option<usize>, eucl
 		let t = eval_pathseg(segment, tvalue);
 		point_to_dvec2(segment.eval(t))
 	})
+}
+
+/// Returns an `Iterator` containing all possible parametric `t`-values at the given `x`-coordinate.
+pub fn pathseg_find_tvalues_for_x(segment: PathSeg, x: f64) -> impl Iterator<Item = f64> + use<> {
+	match segment {
+		PathSeg::Line(Line { p0, p1 }) => {
+			// If the transformed linear bezier is on the x-axis, `a` and `b` will both be zero and `solve_linear` will return no roots
+			let a = p1.x - p0.x;
+			let b = p0.x - x;
+
+			// Find the roots of the linear equation `ax + b`.
+			// There exist roots when `a` is not 0
+			if a.abs() > MAX_ABSOLUTE_DIFFERENCE { [Some(-b / a), None, None] } else { [None; 3] }
+		}
+		PathSeg::Quad(QuadBez { p0, p1, p2 }) => {
+			let a = p2.x - 2.0 * p1.x + p0.x;
+			let b = 2.0 * (p1.x - p0.x);
+			let c = p0.x - x;
+			let r = solve_quadratic(c, b, a);
+			[r.get(0).map(|t| *t), r.get(1).map(|t| *t), None]
+		}
+		PathSeg::Cubic(CubicBez { p0, p1, p2, p3 }) => {
+			let a = p3.x - 3.0 * p2.x + 3.0 * p1.x - p0.x;
+			let b = 3.0 * (p2.x - 2.0 * p1.x + p0.x);
+			let c = 3.0 * (p1.x - p0.x);
+			let d = p0.x - x;
+			let r = solve_cubic(d, c, b, a);
+			[r.get(0).map(|t| *t), r.get(1).map(|t| *t), r.get(2).map(|t| *t)]
+		}
+	}
+	.into_iter()
+	.flatten()
+	.filter(|&t| (0.0..1.).contains(&t))
 }
 
 /// Find the `t`-value(s) such that the normal(s) at `t` pass through the specified point.
