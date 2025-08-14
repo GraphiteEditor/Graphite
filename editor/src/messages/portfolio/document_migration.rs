@@ -301,10 +301,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::blending_nodes::blend_color_pair::IDENTIFIER,
-		aliases: &["graphene_raster_nodes::adjustments::BlendColorPairNode", "graphene_core::raster::BlendColorPairNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::raster_nodes::blending_nodes::color_overlay::IDENTIFIER,
 		aliases: &[
 			"graphene_raster_nodes::adjustments::ColorOverlayNode",
@@ -637,9 +633,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		};
 		let vector = Vector::from_subpath(Subpath::from_anchors_linear(points.to_vec(), false));
 
-		// Retrieve the output connectors linked to the "Spline" node's output port
+		// Retrieve the output connectors linked to the "Spline" node's output connector
 		let Some(spline_outputs) = document.network_interface.outward_wires(network_path)?.get(&OutputConnector::node(*node_id, 0)).cloned() else {
-			log::error!("Vec of InputConnector Spline node is connected to its output port 0.");
+			log::error!("Vec of InputConnector Spline node is connected to its output connector 0.");
 			return None;
 		};
 
@@ -684,7 +680,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// Reposition the new "Path" node with an offset relative to the original "Spline" node's position
 		document.network_interface.shift_node(&new_path_id, node_position + IVec2::new(-7, 0), network_path);
 
-		// Redirect each output connection from the old node to the new "Spline" node's output port
+		// Redirect each output connection from the old node to the new "Spline" node's output connector
 		for input_connector in spline_outputs {
 			document.network_interface.set_input(&input_connector, NodeInput::node(new_spline_id, 0), network_path);
 		}

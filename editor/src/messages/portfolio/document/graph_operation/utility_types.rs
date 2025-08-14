@@ -135,7 +135,7 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
 			Some(NodeInput::value(TaggedValue::DVec2(artboard.location.into()), false)),
 			Some(NodeInput::value(TaggedValue::DVec2(artboard.dimensions.into()), false)),
-			Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
+			Some(NodeInput::value(TaggedValue::Color(Table::new_from_element(artboard.background)), false)),
 			Some(NodeInput::value(TaggedValue::Bool(artboard.clip), false)),
 		]);
 		self.network_interface.insert_node(new_id, artboard_node_template, &[]);
@@ -329,11 +329,11 @@ impl<'a> ModifyInputsContext<'a> {
 		match &fill {
 			Fill::None => {
 				let input_connector = InputConnector::node(fill_node_id, backup_color_index);
-				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::OptionalColor(None), false), true);
+				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(Table::new()), false), true);
 			}
 			Fill::Solid(color) => {
 				let input_connector = InputConnector::node(fill_node_id, backup_color_index);
-				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::OptionalColor(Some(*color)), false), true);
+				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(Table::new_from_element(*color)), false), true);
 			}
 			Fill::Gradient(gradient) => {
 				let input_connector = InputConnector::node(fill_node_id, backup_gradient_index);
@@ -372,8 +372,10 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn stroke_set(&mut self, stroke: Stroke) {
 		let Some(stroke_node_id) = self.existing_node_id("Stroke", true) else { return };
 
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::ColorInput::<Option<graphene_std::Color>>::INDEX);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::OptionalColor(stroke.color), false), true);
+		let stroke_color = if let Some(color) = stroke.color { Table::new_from_element(color) } else { Table::new() };
+
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::ColorInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(stroke_color), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::WeightInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.weight), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::AlignInput::INDEX);

@@ -15,7 +15,7 @@ use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
-use graphene_std::vector::style::Gradient;
+use graphene_std::vector::style::{Fill, Gradient};
 use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 
@@ -273,7 +273,7 @@ pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 	let fill_index = 1;
 
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Fill")?;
-	let TaggedValue::Fill(graphene_std::vector::style::Fill::Gradient(gradient)) = inputs.get(fill_index)?.as_value()? else {
+	let TaggedValue::Fill(Fill::Gradient(gradient)) = inputs.get(fill_index)?.as_value()? else {
 		return None;
 	};
 	Some(gradient.clone())
@@ -284,7 +284,7 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 	let fill_index = 1;
 
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Fill")?;
-	let TaggedValue::Fill(graphene_std::vector::style::Fill::Solid(color)) = inputs.get(fill_index)?.as_value()? else {
+	let TaggedValue::Fill(Fill::Solid(color)) = inputs.get(fill_index)?.as_value()? else {
 		return None;
 	};
 	Some(color.to_linear_srgb())

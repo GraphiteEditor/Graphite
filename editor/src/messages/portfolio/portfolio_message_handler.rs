@@ -781,7 +781,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				if create_document {
 					responses.add(PortfolioMessage::NewDocumentWithName {
-						name: name.clone().unwrap_or("Untitled Document".into()),
+						name: name.clone().unwrap_or(DEFAULT_DOCUMENT_NAME.into()),
 					});
 				}
 
@@ -812,7 +812,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				if create_document {
 					responses.add(PortfolioMessage::NewDocumentWithName {
-						name: name.clone().unwrap_or("Untitled Document".into()),
+						name: name.clone().unwrap_or(DEFAULT_DOCUMENT_NAME.into()),
 					});
 				}
 

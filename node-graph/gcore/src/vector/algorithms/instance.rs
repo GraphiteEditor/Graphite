@@ -1,3 +1,4 @@
+use crate::gradient::GradientStops;
 use crate::raster_types::{CPU, Raster};
 use crate::table::{Table, TableRowRef};
 use crate::vector::Vector;
@@ -14,6 +15,7 @@ async fn instance_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>
 		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Color>,
+		Context -> Table<GradientStops>,
 	)]
 	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
 	reverse: bool,
@@ -56,6 +58,7 @@ async fn instance_repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Color>,
+		Context -> Table<GradientStops>,
 	)]
 	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
 	#[default(1)] count: u64,

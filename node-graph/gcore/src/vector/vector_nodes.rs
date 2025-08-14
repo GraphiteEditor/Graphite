@@ -48,28 +48,28 @@ impl VectorTableIterMut for Table<Vector> {
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
 async fn assign_colors<T>(
 	_: impl Ctx,
+	/// The content with vector paths to apply the fill and/or stroke style to.
 	#[implementations(Table<Graphic>, Table<Vector>)]
 	#[widget(ParsedWidgetOverride::Hidden)]
-	/// The content with vector paths to apply the fill and/or stroke style to.
 	mut content: T,
-	#[default(true)]
 	/// Whether to style the fill.
+	#[default(true)]
 	fill: bool,
 	/// Whether to style the stroke.
 	stroke: bool,
-	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
 	/// The range of colors to select from.
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
 	gradient: GradientStops,
 	/// Whether to reverse the gradient.
 	reverse: bool,
 	/// Whether to randomize the color selection for each element from throughout the gradient.
 	randomize: bool,
-	#[widget(ParsedWidgetOverride::Custom = "assign_colors_seed")]
 	/// The seed used for randomization.
 	/// Seed to determine unique variations on the randomized color selection.
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_seed")]
 	seed: SeedValue,
-	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every")]
 	/// The number of elements to span across the gradient before repeating. A 0 value will span the entire gradient once.
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every")]
 	repeat_every: u32,
 ) -> T
 where
@@ -108,6 +108,7 @@ where
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
 async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 	_: impl Ctx,
+	/// The content with vector paths to apply the fill style to.
 	#[implementations(
 		Table<Vector>,
 		Table<Vector>,
@@ -118,31 +119,26 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 		Table<Graphic>,
 		Table<Graphic>,
 	)]
-	/// The content with vector paths to apply the fill style to.
 	mut content: V,
+	/// The fill to paint the path with.
 	#[implementations(
 		Fill,
-		Option<Color>,
-		Color,
+		Table<Color>,
+		Table<GradientStops>,
 		Gradient,
 		Fill,
-		Option<Color>,
-		Color,
+		Table<Color>,
+		Table<GradientStops>,
 		Gradient,
 	)]
 	#[default(Color::BLACK)]
-	/// The fill to paint the path with.
 	fill: F,
-	_backup_color: Option<Color>,
+	_backup_color: Table<Color>,
 	_backup_gradient: Gradient,
 ) -> V {
 	let fill: Fill = fill.into();
 	for vector in content.vector_iter_mut() {
-		let mut fill = fill.clone();
-		if let Fill::Gradient(gradient) = &mut fill {
-			gradient.transform *= *vector.transform;
-		}
-		vector.element.style.set_fill(fill);
+		vector.element.style.set_fill(fill.clone());
 	}
 
 	content
@@ -150,23 +146,17 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 
 /// Applies a stroke style to the vector contained in the input.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
+async fn stroke<V>(
 	_: impl Ctx,
-	#[implementations(Table<Vector>, Table<Vector>, Table<Graphic>, Table<Graphic>)]
 	/// The content with vector paths to apply the stroke style to.
+	#[implementations(Table<Vector>, Table<Graphic>)]
 	mut content: Table<V>,
-	#[implementations(
-		Option<Color>,
-		Color,
-		Option<Color>,
-		Color,
-	)]
-	#[default(Color::BLACK)]
 	/// The stroke color.
-	color: C,
+	#[default(Color::BLACK)]
+	color: Table<Color>,
+	/// The stroke weight.
 	#[unit(" px")]
 	#[default(2.)]
-	/// The stroke weight.
 	weight: f64,
 	/// The alignment of stroke to the path's centerline or (for closed shapes) the inside or outside of the shape.
 	align: StrokeAlign,
@@ -174,8 +164,8 @@ async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	cap: StrokeCap,
 	/// The curvature of the bent stroke at sharp corners.
 	join: StrokeJoin,
-	#[default(4.)]
 	/// The threshold for when a miter-joined stroke is converted to a bevel-joined stroke when a sharp angle becomes pointier than this ratio.
+	#[default(4.)]
 	miter_limit: f64,
 	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
 	/// <https://svgwg.org/svg2-draft/painting.html#PaintOrderProperty>
@@ -216,7 +206,7 @@ where
 async fn repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	// TODO: Implement other graphical types.
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>)] instance: Table<I>,
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] instance: Table<I>,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: PixelSize,
@@ -252,7 +242,7 @@ async fn repeat<I: 'n + Send + Clone>(
 async fn circular_repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	// TODO: Implement other graphical types.
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>)] instance: Table<I>,
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] instance: Table<I>,
 	angle_offset: Angle,
 	#[unit(" px")]
 	#[default(5)]
@@ -286,9 +276,9 @@ async fn circular_repeat<I: 'n + Send + Clone>(
 async fn copy_to_points<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	points: Table<Vector>,
-	#[expose]
 	/// Artwork to be copied and placed at each point.
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>)]
+	#[expose]
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)]
 	instance: Table<I>,
 	/// Minimum range of randomized sizes given to each instance.
 	#[default(1)]
@@ -363,7 +353,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn mirror<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>)] content: Table<I>,
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] content: Table<I>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
 	#[unit(" px")] offset: f64,
 	#[range((-90., 90.))] angle: Angle,
@@ -1898,7 +1888,7 @@ fn point_inside(_: impl Ctx, source: Table<Vector>, point: DVec2) -> bool {
 }
 
 #[node_macro::node(category("General"), path(graphene_core::vector))]
-async fn count_elements<I>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>)] source: Table<I>) -> u64 {
+async fn count_elements<I>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)] source: Table<I>) -> u64 {
 	source.len() as u64
 }
 
