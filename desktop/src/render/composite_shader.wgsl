@@ -58,11 +58,20 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	let ui_srgb = linear_to_srgb(unpremultiply(ui_linear));
 
 	if (overlay_srgb.a < 0.001) {
-		return srgb_to_linear(blend(ui_srgb, viewport_srgb));
+		if (ui_srgb.a < 0.001) {
+			return srgb_to_linear(viewport_srgb);
+		} else {
+			return srgb_to_linear(blend(ui_srgb, viewport_srgb));
+		}
 	}
 
-	let composite_srgb = blend(overlay_srgb, viewport_srgb);
-	return srgb_to_linear(blend(ui_srgb, composite_srgb));
+	let composite_linear = blend(srgb_to_linear(overlay_srgb), srgb_to_linear(viewport_srgb));
+
+	if (ui_srgb.a < 0.001) {
+		return composite_linear;
+	}
+
+	return srgb_to_linear(blend(ui_srgb, linear_to_srgb(composite_linear)));
 }
 
 fn blend(fg: vec4<f32>, bg: vec4<f32>) -> vec4<f32> {
