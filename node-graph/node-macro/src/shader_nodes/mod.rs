@@ -1,10 +1,11 @@
-use crate::parsing::{NodeFnAttributes, ParsedNodeFn};
+use crate::parsing::{Input, NodeFnAttributes, ParsedNodeFn};
 use crate::shader_nodes::per_pixel_adjust::PerPixelAdjust;
 use proc_macro2::{Ident, TokenStream};
-use quote::quote;
+use quote::{format_ident, quote};
+use std::{todo, vec};
 use strum::VariantNames;
-use syn::Error;
 use syn::parse::{Parse, ParseStream};
+use syn::{Error, Path, Type, TypePath};
 
 pub mod per_pixel_adjust;
 
@@ -19,7 +20,7 @@ pub fn modify_cfg(attributes: &NodeFnAttributes) -> TokenStream {
 	}
 }
 
-#[derive(Debug, VariantNames)]
+#[derive(Debug, Clone, VariantNames)]
 pub(crate) enum ShaderNodeType {
 	PerPixelAdjust(PerPixelAdjust),
 }
@@ -36,6 +37,7 @@ impl Parse for ShaderNodeType {
 
 pub trait CodegenShaderEntryPoint {
 	fn codegen_shader_entry_point(&self, parsed: &ParsedNodeFn) -> syn::Result<TokenStream>;
+	fn codegen_gpu_node(&self, parsed: &ParsedNodeFn) -> syn::Result<TokenStream>;
 }
 
 impl CodegenShaderEntryPoint for ShaderNodeType {
