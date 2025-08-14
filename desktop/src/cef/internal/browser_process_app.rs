@@ -34,9 +34,20 @@ impl<H: CefEventHandler + Clone> ImplApp for BrowserProcessAppImpl<H> {
 
 	fn on_before_command_line_processing(&self, _process_type: Option<&cef::CefString>, command_line: Option<&mut cef::CommandLine>) {
 		if let Some(cmd) = command_line {
-			// Disable GPU acceleration, because it is not supported for Offscreen Rendering and can cause crashes.
-			cmd.append_switch(Some(&CefString::from("disable-gpu")));
-			cmd.append_switch(Some(&CefString::from("disable-gpu-compositing")));
+			#[cfg(not(feature = "accelerated_paint"))]
+			{
+				// Disable GPU acceleration when accelerated_paint feature is not enabled
+				cmd.append_switch(Some(&CefString::from("disable-gpu")));
+				cmd.append_switch(Some(&CefString::from("disable-gpu-compositing")));
+			}
+			
+			#[cfg(feature = "accelerated_paint")]
+			{
+				// Enable GPU acceleration switches for better performance
+				cmd.append_switch(Some(&CefString::from("enable-gpu-rasterization")));
+				cmd.append_switch(Some(&CefString::from("enable-accelerated-2d-canvas")));
+				// Don't disable GPU - let CEF use hardware acceleration
+			}
 
 			// Tell CEF to use Wayland if available
 			#[cfg(not(any(target_os = "macos", target_os = "windows")))]
