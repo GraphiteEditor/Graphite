@@ -1,5 +1,6 @@
 use crate::blending::AlphaBlending;
 use crate::bounds::{BoundingBox, RenderBoundingBox};
+use crate::gradient::GradientStops;
 use crate::math::quad::Quad;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::{Table, TableRow};
@@ -98,13 +99,14 @@ async fn create_artboard<T: Into<Table<Graphic>> + 'n>(
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
 		Context -> Table<Color>,
+		Context -> Table<GradientStops>,
 		Context -> DAffine2,
 	)]
 	content: impl Node<Context<'static>, Output = T>,
 	label: String,
 	location: DVec2,
 	dimensions: DVec2,
-	background: Color,
+	background: Table<Color>,
 	clip: bool,
 ) -> Table<Artboard> {
 	let location = location.as_ivec2();
@@ -122,6 +124,9 @@ async fn create_artboard<T: Into<Table<Graphic>> + 'n>(
 	let location = location.min(location + dimensions);
 
 	let dimensions = dimensions.abs();
+
+	let background: Option<Color> = background.into();
+	let background = background.unwrap_or(Color::WHITE);
 
 	Table::new_from_element(Artboard {
 		content,

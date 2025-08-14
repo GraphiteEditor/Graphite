@@ -14,6 +14,8 @@ pub enum FrontendGraphDataType {
 	Raster,
 	Vector,
 	Color,
+	Gradient,
+	Typography,
 }
 
 impl FrontendGraphDataType {
@@ -31,7 +33,9 @@ impl FrontendGraphDataType {
 			TaggedValue::Graphic(_) => Self::Graphic,
 			TaggedValue::Raster(_) => Self::Raster,
 			TaggedValue::Vector(_) => Self::Vector,
-			TaggedValue::ColorTable(_) | TaggedValue::Color(_) | TaggedValue::OptionalColor(_) => Self::Color,
+			TaggedValue::Color(_) => Self::Color,
+			TaggedValue::Gradient(_) | TaggedValue::GradientStops(_) | TaggedValue::GradientTable(_) => Self::Gradient,
+			TaggedValue::String(_) => Self::Typography,
 			_ => Self::General,
 		}
 	}
@@ -179,8 +183,8 @@ pub struct FrontendClickTargets {
 	pub node_click_targets: Vec<String>,
 	#[serde(rename = "layerClickTargets")]
 	pub layer_click_targets: Vec<String>,
-	#[serde(rename = "portClickTargets")]
-	pub port_click_targets: Vec<String>,
+	#[serde(rename = "connectorClickTargets")]
+	pub connector_click_targets: Vec<String>,
 	#[serde(rename = "iconClickTargets")]
 	pub icon_click_targets: Vec<String>,
 	#[serde(rename = "allNodesBoundingBox")]

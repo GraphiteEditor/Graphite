@@ -119,7 +119,6 @@ impl Hash for ConstructionArgs {
 }
 
 impl ConstructionArgs {
-	// TODO: what? Used in the gpu_compiler crate for something.
 	pub fn new_function_args(&self) -> Vec<String> {
 		match self {
 			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|(n, _)| format!("n{:0x}", n.0)).collect(),

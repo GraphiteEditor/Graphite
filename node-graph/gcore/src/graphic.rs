@@ -1,5 +1,6 @@
 use crate::blending::AlphaBlending;
 use crate::bounds::{BoundingBox, RenderBoundingBox};
+use crate::gradient::GradientStops;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::{Table, TableRow};
 use crate::uuid::NodeId;
@@ -17,6 +18,7 @@ pub enum Graphic {
 	RasterCPU(Table<Raster<CPU>>),
 	RasterGPU(Table<Raster<GPU>>),
 	Color(Table<Color>),
+	Gradient(Table<GradientStops>),
 }
 
 impl Default for Graphic {
@@ -139,6 +141,33 @@ impl From<Option<Color>> for Table<Graphic> {
 		}
 	}
 }
+impl From<Table<Color>> for Option<Color> {
+	fn from(color: Table<Color>) -> Self {
+		color.into_iter().next().map(|row| row.element)
+	}
+}
+
+// GradientStops
+impl From<GradientStops> for Graphic {
+	fn from(gradient: GradientStops) -> Self {
+		Graphic::Gradient(Table::new_from_element(gradient))
+	}
+}
+impl From<Table<GradientStops>> for Graphic {
+	fn from(gradient: Table<GradientStops>) -> Self {
+		Graphic::Gradient(gradient)
+	}
+}
+impl From<GradientStops> for Table<Graphic> {
+	fn from(gradient: GradientStops) -> Self {
+		Table::new_from_element(Graphic::Gradient(Table::new_from_element(gradient)))
+	}
+}
+impl From<Table<GradientStops>> for Table<Graphic> {
+	fn from(gradient: Table<GradientStops>) -> Self {
+		Table::new_from_element(Graphic::Gradient(gradient))
+	}
+}
 
 // DAffine2
 impl From<DAffine2> for Graphic {
@@ -202,6 +231,7 @@ impl Graphic {
 			Graphic::RasterCPU(raster) => raster.iter().all(|row| row.alpha_blending.clip),
 			Graphic::RasterGPU(raster) => raster.iter().all(|row| row.alpha_blending.clip),
 			Graphic::Color(color) => color.iter().all(|row| row.alpha_blending.clip),
+			Graphic::Gradient(gradient) => gradient.iter().all(|row| row.alpha_blending.clip),
 		}
 	}
 
@@ -225,6 +255,7 @@ impl BoundingBox for Graphic {
 			Graphic::RasterGPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::Graphic(graphic) => graphic.bounding_box(transform, include_stroke),
 			Graphic::Color(color) => color.bounding_box(transform, include_stroke),
+			Graphic::Gradient(gradient) => gradient.bounding_box(transform, include_stroke),
 		}
 	}
 }
@@ -232,7 +263,7 @@ impl BoundingBox for Graphic {
 #[node_macro::node(category(""))]
 async fn source_node_id<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>)] content: Table<I>,
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)] content: Table<I>,
 	node_path: Vec<NodeId>,
 ) -> Table<I> {
 	// Get the penultimate element of the node path, or None if the path is too short
@@ -252,11 +283,11 @@ async fn source_node_id<I: 'n + Send + Clone>(
 async fn extend<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The table whose rows will appear at the start of the extended table.
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>)]
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
 	base: Table<I>,
 	/// The table whose rows will appear at the end of the extended table.
 	#[expose]
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>)]
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
 	new: Table<I>,
 ) -> Table<I> {
 	let mut base = base;
@@ -269,9 +300,9 @@ async fn extend<I: 'n + Send + Clone>(
 #[node_macro::node(category(""))]
 async fn legacy_layer_extend<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>)] base: Table<I>,
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)] base: Table<I>,
 	#[expose]
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>)]
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
 	new: Table<I>,
 	nested_node_path: Vec<NodeId>,
 ) -> Table<I> {
@@ -297,8 +328,7 @@ async fn wrap_graphic<T: Into<Graphic> + 'n>(
 		Table<Raster<CPU>>,
 	 	Table<Raster<GPU>>,
 	 	Table<Color>,
-		Color,
-		Option<Color>,
+		Table<GradientStops>,
 		DAffine2,
 	)]
 	content: T,
@@ -317,8 +347,7 @@ async fn to_graphic<T: Into<Table<Graphic>> + 'n>(
 		Table<Raster<CPU>>,
 		Table<Raster<GPU>>,
 		Table<Color>,
-		Color,
-		Option<Color>,
+		Table<GradientStops>,
 	)]
 	content: T,
 ) -> Table<Graphic> {
@@ -416,13 +445,17 @@ fn index<T: AtIndex + Clone + Default>(
 	_: impl Ctx,
 	/// The collection of data, such as a list or table.
 	#[implementations(
-		Vec<Color>,
-		Vec<Option<Color>>,
-		Vec<f64>, Vec<u64>,
+		Vec<f64>,
+		Vec<u32>,
+		Vec<u64>,
 		Vec<DVec2>,
+		Table<Artboard>,
+		Table<Graphic>,
 		Table<Vector>,
 		Table<Raster<CPU>>,
-		Table<Graphic>,
+		Table<Raster<GPU>>,
+		Table<Color>,
+		Table<GradientStops>,
 	)]
 	collection: T,
 	/// The index of the item to retrieve, starting from 0 for the first item.

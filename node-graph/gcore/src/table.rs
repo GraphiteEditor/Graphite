@@ -252,6 +252,15 @@ pub struct TableRow<T> {
 }
 
 impl<T> TableRow<T> {
+	pub fn new_from_element(element: T) -> Self {
+		Self {
+			element,
+			transform: DAffine2::IDENTITY,
+			alpha_blending: AlphaBlending::default(),
+			source_node_id: None,
+		}
+	}
+
 	pub fn as_ref(&self) -> TableRowRef<'_, T> {
 		TableRowRef {
 			element: &self.element,

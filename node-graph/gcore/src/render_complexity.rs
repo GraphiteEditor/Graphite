@@ -1,8 +1,8 @@
+use crate::gradient::GradientStops;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::Table;
 use crate::vector::Vector;
 use crate::{Artboard, Color, Graphic};
-use glam::DVec2;
 
 pub trait RenderComplexity {
 	fn render_complexity(&self) -> usize {
@@ -30,6 +30,7 @@ impl RenderComplexity for Graphic {
 			Self::RasterCPU(table) => table.render_complexity(),
 			Self::RasterGPU(table) => table.render_complexity(),
 			Self::Color(table) => table.render_complexity(),
+			Self::Gradient(table) => table.render_complexity(),
 		}
 	}
 }
@@ -59,10 +60,8 @@ impl RenderComplexity for Color {
 	}
 }
 
-impl RenderComplexity for String {}
-impl RenderComplexity for bool {}
-impl RenderComplexity for f32 {}
-impl RenderComplexity for f64 {}
-impl RenderComplexity for DVec2 {}
-impl RenderComplexity for Option<Color> {}
-impl RenderComplexity for Vec<Color> {}
+impl RenderComplexity for GradientStops {
+	fn render_complexity(&self) -> usize {
+		1
+	}
+}

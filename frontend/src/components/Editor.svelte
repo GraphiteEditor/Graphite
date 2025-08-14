@@ -117,14 +117,18 @@
 		--color-data-number-dim: #886b60;
 		--color-data-artboard: #fbf9eb;
 		--color-data-artboard-dim: #b9b9a9;
-		--color-data-graphic: #66b195;
-		--color-data-graphic-dim: #3d725e;
+		--color-data-graphic: #68c587;
+		--color-data-graphic-dim: #37754c;
 		--color-data-raster: #e4bb72;
-		--color-data-raster-dim: #8b7752;
+		--color-data-raster-dim: #9a7b43;
 		--color-data-vector: #65bbe5;
 		--color-data-vector-dim: #417892;
-		--color-data-color: #af81eb;
-		--color-data-color-dim: #6c489b;
+		--color-data-color: #ce6ea7;
+		--color-data-color-dim: #924071;
+		--color-data-gradient: #af81eb;
+		--color-data-gradient-dim: #6c489b;
+		--color-data-typography: #eea7a7;
+		--color-data-typography-dim: #955252;
 
 		--color-none: white;
 		--color-none-repeat: no-repeat;

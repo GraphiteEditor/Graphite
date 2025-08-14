@@ -7,6 +7,7 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::Context;
+use graphene_std::gradient::GradientStops;
 use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::table::Table;
@@ -153,7 +154,6 @@ macro_rules! generate_layout_downcast {
 		else { None }
 	}
 }
-
 // TODO: We simply try all these types sequentially. Find a better strategy.
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
 	generate_layout_downcast!(introspected_data, data, [
@@ -163,8 +163,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Table<Raster<CPU>>,
 		Table<Raster<GPU>>,
 		Table<Color>,
-		Color,
-		Option<Color>,
+		Table<GradientStops>,
 		f64,
 		u32,
 		u64,
@@ -265,6 +264,7 @@ impl TableRowLayout for Graphic {
 			Self::RasterCPU(table) => table.identifier(),
 			Self::RasterGPU(table) => table.identifier(),
 			Self::Color(table) => table.identifier(),
+			Self::Gradient(table) => table.identifier(),
 		}
 	}
 	// Don't put a breadcrumb for Graphic
@@ -278,6 +278,7 @@ impl TableRowLayout for Graphic {
 			Self::RasterCPU(table) => table.layout_with_breadcrumb(data),
 			Self::RasterGPU(table) => table.layout_with_breadcrumb(data),
 			Self::Color(table) => table.layout_with_breadcrumb(data),
+			Self::Gradient(table) => table.layout_with_breadcrumb(data),
 		}
 	}
 }
@@ -337,10 +338,6 @@ impl TableRowLayout for Vector {
 							TextLabel::new(format_dvec2(gradient.start)).widget_holder(),
 						]);
 						table_rows.push(vec![TextLabel::new("Fill Gradient End").widget_holder(), TextLabel::new(format_dvec2(gradient.end)).widget_holder()]);
-						table_rows.push(vec![
-							TextLabel::new("Fill Gradient Transform").widget_holder(),
-							TextLabel::new(format_transform_matrix(&gradient.transform)).widget_holder(),
-						]);
 					}
 				}
 
@@ -487,18 +484,15 @@ impl TableRowLayout for Color {
 	}
 }
 
-impl TableRowLayout for Option<Color> {
+impl TableRowLayout for GradientStops {
 	fn type_name() -> &'static str {
-		"Option<Color>"
+		"Gradient"
 	}
 	fn identifier(&self) -> String {
-		format!(
-			"Option<Color> (#{})",
-			if let Some(color) = self { color.to_linear_srgb().to_rgba_hex_srgb() } else { "None".to_string() }
-		)
+		format!("Gradient ({} stops)", self.0.len())
 	}
 	fn element_widget(&self, _index: usize) -> WidgetHolder {
-		ColorInput::new(if let Some(color) = self { FillChoice::Solid(*color) } else { FillChoice::None })
+		ColorInput::new(FillChoice::Gradient(self.clone()))
 			.disabled(true)
 			.menu_direction(Some(MenuDirection::Top))
 			.widget_holder()
@@ -569,7 +563,7 @@ impl TableRowLayout for String {
 		"String".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new(self.to_string()).widget_holder()];
+		let widgets = vec![TextAreaInput::new(self.to_string()).disabled(true).widget_holder()];
 		vec![LayoutGroup::Row { widgets }]
 	}
 }
