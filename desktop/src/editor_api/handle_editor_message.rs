@@ -2,7 +2,9 @@ use graphite_editor::messages::prelude::{DocumentMessage, Message, PortfolioMess
 
 use crate::editor_api::messages::{EditorMessage, OpenFileDialogContext, SaveFileDialogContext};
 
-pub(super) fn handle_editor_message(message: EditorMessage, responses: &mut Vec<Message>) {
+use super::EditorWrapper;
+
+pub(super) fn handle_editor_message(editor_wrapper: &mut EditorWrapper, message: EditorMessage, responses: &mut Vec<Message>) {
 	match message {
 		EditorMessage::FromFrontend(data) => {
 			let string = std::str::from_utf8(&data).unwrap();
@@ -93,5 +95,6 @@ pub(super) fn handle_editor_message(message: EditorMessage, responses: &mut Vec<
 			}
 			SaveFileDialogContext::Export => {}
 		},
+		EditorMessage::PoolNodeGraphEvaluation => editor_wrapper.poll_node_graph_evaluation(responses),
 	}
 }

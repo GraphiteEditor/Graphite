@@ -40,6 +40,10 @@ pub(super) fn intercept_frontend_message(message: FrontendMessage, responses: &m
 				title: "Save Document".to_string(),
 				default_filename: name,
 				default_folder: path.and_then(|p| p.parent().map(PathBuf::from)),
+				filters: vec![FileFilter {
+					name: "Graphite".to_string(),
+					extensions: vec!["graphite".to_string()],
+				}],
 				content,
 				context: SaveFileDialogContext::Document { document_id },
 			});
@@ -49,6 +53,7 @@ pub(super) fn intercept_frontend_message(message: FrontendMessage, responses: &m
 				title: "Save File".to_string(),
 				default_filename: name,
 				default_folder: None,
+				filters: Vec::new(),
 				content,
 				context: SaveFileDialogContext::Export,
 			});

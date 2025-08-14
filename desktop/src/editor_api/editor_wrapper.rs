@@ -1,7 +1,9 @@
+use graph_craft::wasm_application_io::WasmApplicationIo;
 use graphite_editor::{application::Editor, messages::prelude::Message};
+use std::collections::VecDeque;
 
-use crate::editor_api::EditorApi;
 use crate::editor_api::messages::{EditorMessage, NativeMessage};
+use crate::editor_api::{EditorApi, WgpuContext};
 
 #[path = "handle_editor_message.rs"]
 mod handle_editor_message;
@@ -18,7 +20,7 @@ pub struct EditorWrapper {
 impl EditorApi for EditorWrapper {
 	fn dispatch(&mut self, message: EditorMessage) -> Vec<NativeMessage> {
 		let mut responses = Vec::new();
-		handle_editor_message::handle_editor_message(message, &mut responses);
+		handle_editor_message::handle_editor_message(self, message, &mut responses);
 		let mut native_responses = Vec::new();
 		for message in responses.drain(..) {
 			self.handle_message(message, &mut native_responses);
@@ -27,15 +29,26 @@ impl EditorApi for EditorWrapper {
 	}
 
 	fn poll() -> Vec<NativeMessage> {
-		match futures::executor::block_on(graphite_editor::node_graph_executor::run_node_graph()) {
-			(has_run, Some(texture)) if has_run => vec![NativeMessage::UpdateViewport((*texture.texture).clone())],
-			_ => vec![],
+		let mut responses = Vec::new();
+
+		let (has_run, texture) = futures::executor::block_on(graphite_editor::node_graph_executor::run_node_graph());
+		if has_run {
+			responses.push(NativeMessage::Loopback(EditorMessage::PoolNodeGraphEvaluation));
 		}
+		if let Some(texture) = texture {
+			responses.push(NativeMessage::UpdateViewport((*texture.texture).clone()));
+			responses.push(NativeMessage::RequestRedraw);
+		}
+
+		responses
 	}
 }
 
 impl EditorWrapper {
-	pub fn new() -> Self {
+	pub fn new(wgpu_context: WgpuContext) -> Self {
+		let application_io = WasmApplicationIo::new_with_context(wgpu_context);
+		futures::executor::block_on(graphite_editor::node_graph_executor::replace_application_io(application_io));
+
 		Self { editor: Editor::new() }
 	}
 
@@ -48,5 +61,16 @@ impl EditorWrapper {
 				.collect::<Vec<_>>();
 			responses.push(NativeMessage::ToFrontend(ron::to_string(&frontend_messages).unwrap().into_bytes()));
 		}
+	}
+
+	pub(super) fn poll_node_graph_evaluation(&mut self, responses: &mut Vec<Message>) {
+		let mut node_graph_responses = VecDeque::new();
+		let err = self.editor.poll_node_graph_evaluation(&mut node_graph_responses);
+		if let Err(e) = err {
+			if e != "No active document" {
+				tracing::error!("Error poling node graph: {}", e);
+			}
+		}
+		responses.extend(node_graph_responses.drain(..));
 	}
 }

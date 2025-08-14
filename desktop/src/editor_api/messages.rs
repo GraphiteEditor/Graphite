@@ -13,10 +13,12 @@ pub enum NativeMessage {
 		title: String,
 		default_filename: String,
 		default_folder: Option<PathBuf>,
+		filters: Vec<FileFilter>,
 		content: Vec<u8>,
 		context: SaveFileDialogContext,
 	},
 	OpenUrl(String),
+	RequestRedraw,
 	UpdateViewport(wgpu::Texture),
 	UpdateViewportBounds {
 		x: f32,
@@ -25,6 +27,7 @@ pub enum NativeMessage {
 		height: f32,
 	},
 	UpdateOverlays(vello::Scene),
+	Loopback(EditorMessage),
 }
 
 pub struct FileFilter {
@@ -36,6 +39,7 @@ pub enum EditorMessage {
 	FromFrontend(Vec<u8>),
 	OpenFileDialogResult { path: PathBuf, content: Vec<u8>, context: OpenFileDialogContext },
 	SaveFileDialogResult { path: PathBuf, context: SaveFileDialogContext },
+	PoolNodeGraphEvaluation,
 }
 
 pub enum OpenFileDialogContext {
