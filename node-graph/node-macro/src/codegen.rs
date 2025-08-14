@@ -295,7 +295,12 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let cfg = crate::shader_nodes::modify_cfg(attributes);
 	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, &graphene_core, &identifier, &cfg);
-	let shader_entry_point = attributes.shader_node.as_ref().map(|n| n.codegen_shader_entry_point(parsed)).unwrap_or(Ok(TokenStream::new()))?;
+	let (shader_entry_point, shader_gpu_node) = attributes
+		.shader_node
+		.as_ref()
+		.map::<syn::Result<_>, _>(|n| Ok((n.codegen_shader_entry_point(parsed)?, n.codegen_gpu_node(parsed)?)))
+		.unwrap_or(Ok((TokenStream::new(), TokenStream::new())))?;
+
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
 		#[inline]
@@ -387,6 +392,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		}
 
 		#shader_entry_point
+
+		#shader_gpu_node
 	})
 }
 

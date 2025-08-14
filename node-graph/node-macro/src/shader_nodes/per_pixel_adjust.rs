@@ -1,11 +1,13 @@
-use crate::parsing::{ParsedFieldType, ParsedNodeFn, RegularParsedField};
+use crate::parsing::{Input, NodeFnAttributes, ParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField};
 use crate::shader_nodes::CodegenShaderEntryPoint;
+use convert_case::{Case, Casing};
 use proc_macro2::{Ident, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use std::borrow::Cow;
 use syn::parse::{Parse, ParseStream};
+use syn::{Path, Type, TypePath};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PerPixelAdjust {}
 
 impl Parse for PerPixelAdjust {
@@ -17,7 +19,7 @@ impl Parse for PerPixelAdjust {
 impl CodegenShaderEntryPoint for PerPixelAdjust {
 	fn codegen_shader_entry_point(&self, parsed: &ParsedNodeFn) -> syn::Result<TokenStream> {
 		let fn_name = &parsed.fn_name;
-		let gpu_mod = format_ident!("{}_gpu", parsed.fn_name);
+		let gpu_mod = format_ident!("{}_gpu_entry_point", parsed.fn_name);
 		let spirv_image_ty = quote!(Image2d);
 
 		// bindings for images start at 1
@@ -94,6 +96,52 @@ impl CodegenShaderEntryPoint for PerPixelAdjust {
 					*color_out = color.to_vec4();
 				}
 			}
+		})
+	}
+
+	fn codegen_gpu_node(&self, parsed: &ParsedNodeFn) -> syn::Result<TokenStream> {
+		let fn_name = format_ident!("{}_gpu", parsed.fn_name);
+		let struct_name = format_ident!("{}", fn_name.to_string().to_case(Case::Pascal));
+		let mod_name = fn_name.clone();
+
+		let fields = parsed
+			.fields
+			.iter()
+			.map(|f| match &f.ty {
+				ParsedFieldType::Regular(reg) => Ok(ParsedField {
+					ty: ParsedFieldType::Regular(RegularParsedField { gpu_image: false, ..reg.clone() }),
+					..f.clone()
+				}),
+				ParsedFieldType::Node { .. } => Err(syn::Error::new_spanned(&f.pat_ident, "PerPixelAdjust shader nodes cannot accept other nodes as generics")),
+			})
+			.collect::<syn::Result<_>>()?;
+		let body = quote! {};
+
+		crate::codegen::generate_node_code(&ParsedNodeFn {
+			vis: parsed.vis.clone(),
+			attributes: NodeFnAttributes {
+				shader_node: None,
+				..parsed.attributes.clone()
+			},
+			fn_name,
+			struct_name,
+			mod_name,
+			fn_generics: vec![],
+			where_clause: None,
+			input: Input {
+				pat_ident: parsed.input.pat_ident.clone(),
+				ty: Type::Path(TypePath {
+					path: Path::from(format_ident!("Ctx")),
+					qself: None,
+				}),
+				implementations: Default::default(),
+			},
+			output_type: parsed.output_type.clone(),
+			is_async: true,
+			fields,
+			body,
+			crate_name: parsed.crate_name.clone(),
+			description: "".to_string(),
 		})
 	}
 }

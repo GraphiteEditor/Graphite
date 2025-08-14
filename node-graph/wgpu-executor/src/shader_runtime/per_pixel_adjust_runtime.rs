@@ -1,0 +1,155 @@
+use crate::Context;
+use crate::shader_runtime::{FULLSCREEN_VERTEX_SHADER_NAME, ShaderRuntime};
+use futures::lock::Mutex;
+use graphene_core::raster_types::{GPU, Raster};
+use graphene_core::table::{Table, TableRow};
+use std::borrow::Cow;
+use std::collections::HashMap;
+use wgpu::{
+	BindGroupDescriptor, BindGroupEntry, BindingResource, ColorTargetState, Face, FragmentState, FrontFace, LoadOp, Operations, PolygonMode, PrimitiveState, PrimitiveTopology,
+	RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor, ShaderModuleDescriptor, ShaderSource, StoreOp, TextureDescriptor, TextureDimension, TextureFormat,
+	TextureViewDescriptor, VertexState,
+};
+
+pub struct PerPixelAdjustShaderRuntime {
+	// TODO: PerPixelAdjustGraphicsPipeline already contains the key as `name`
+	pipeline_cache: Mutex<HashMap<String, PerPixelAdjustGraphicsPipeline>>,
+}
+
+impl PerPixelAdjustShaderRuntime {
+	pub fn new() -> Self {
+		Self {
+			pipeline_cache: Mutex::new(HashMap::new()),
+		}
+	}
+}
+
+impl ShaderRuntime {
+	pub async fn run_per_pixel_adjust(&self, input: Table<Raster<GPU>>, info: &PerPixelAdjustInfo<'_>) -> Table<Raster<GPU>> {
+		let mut cache = self.per_pixel_adjust.pipeline_cache.lock().await;
+		let pipeline = cache
+			.entry(info.fragment_shader_name.to_owned())
+			.or_insert_with(|| PerPixelAdjustGraphicsPipeline::new(&self.context, &info));
+		pipeline.run(&self.context, input)
+	}
+}
+
+pub struct PerPixelAdjustInfo<'a> {
+	shader_wgsl: &'a str,
+	fragment_shader_name: &'a str,
+}
+
+pub struct PerPixelAdjustGraphicsPipeline {
+	name: String,
+	pipeline: wgpu::RenderPipeline,
+}
+
+impl PerPixelAdjustGraphicsPipeline {
+	pub fn new(context: &Context, info: &PerPixelAdjustInfo) -> Self {
+		let device = &context.device;
+		let name = info.fragment_shader_name.to_owned();
+		let shader_module = device.create_shader_module(ShaderModuleDescriptor {
+			label: Some(&format!("PerPixelAdjust {} wgsl shader", name)),
+			source: ShaderSource::Wgsl(Cow::Borrowed(info.shader_wgsl)),
+		});
+		let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+			label: Some(&format!("PerPixelAdjust {} Pipeline", name)),
+			layout: None,
+			vertex: VertexState {
+				module: &shader_module,
+				entry_point: Some(FULLSCREEN_VERTEX_SHADER_NAME),
+				compilation_options: Default::default(),
+				buffers: &[],
+			},
+			primitive: PrimitiveState {
+				topology: PrimitiveTopology::TriangleList,
+				strip_index_format: None,
+				front_face: FrontFace::Ccw,
+				cull_mode: Some(Face::Back),
+				unclipped_depth: false,
+				polygon_mode: PolygonMode::Fill,
+				conservative: false,
+			},
+			depth_stencil: None,
+			multisample: Default::default(),
+			fragment: Some(FragmentState {
+				module: &shader_module,
+				entry_point: Some(&name),
+				compilation_options: Default::default(),
+				targets: &[Some(ColorTargetState {
+					format: TextureFormat::Rgba32Float,
+					blend: None,
+					write_mask: Default::default(),
+				})],
+			}),
+			multiview: None,
+			cache: None,
+		});
+		Self { pipeline, name }
+	}
+
+	pub fn run(&self, context: &Context, input: Table<Raster<GPU>>) -> Table<Raster<GPU>> {
+		let device = &context.device;
+		let name = self.name.as_str();
+
+		let mut cmd = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("gpu_invert") });
+		let out = input
+			.iter()
+			.map(|instance| {
+				let tex_in = &instance.element.texture;
+				let view_in = tex_in.create_view(&TextureViewDescriptor::default());
+				let format = tex_in.format();
+
+				let bind_group = device.create_bind_group(&BindGroupDescriptor {
+					label: Some(&format!("{name} bind group")),
+					// `get_bind_group_layout` allocates unnecessary memory, we could create it manually to not do that
+					layout: &self.pipeline.get_bind_group_layout(0),
+					entries: &[BindGroupEntry {
+						binding: 0,
+						resource: BindingResource::TextureView(&view_in),
+					}],
+				});
+
+				let tex_out = device.create_texture(&TextureDescriptor {
+					label: Some(&format!("{name} texture out")),
+					size: tex_in.size(),
+					mip_level_count: 1,
+					sample_count: 1,
+					dimension: TextureDimension::D2,
+					format,
+					usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::RENDER_ATTACHMENT,
+					view_formats: &[format],
+				});
+
+				let view_out = tex_out.create_view(&TextureViewDescriptor::default());
+				let mut rp = cmd.begin_render_pass(&RenderPassDescriptor {
+					label: Some(&format!("{name} render pipeline")),
+					color_attachments: &[Some(RenderPassColorAttachment {
+						view: &view_out,
+						resolve_target: None,
+						ops: Operations {
+							// should be dont_care but wgpu doesn't expose that
+							load: LoadOp::Clear(wgpu::Color::BLACK),
+							store: StoreOp::Store,
+						},
+					})],
+					depth_stencil_attachment: None,
+					timestamp_writes: None,
+					occlusion_query_set: None,
+				});
+				rp.set_pipeline(&self.pipeline);
+				rp.set_bind_group(0, Some(&bind_group), &[]);
+				rp.draw(0..3, 0..1);
+
+				TableRow {
+					element: Raster::new(GPU { texture: tex_out }),
+					transform: *instance.transform,
+					alpha_blending: *instance.alpha_blending,
+					source_node_id: *instance.source_node_id,
+				}
+			})
+			.collect::<Table<_>>();
+		context.queue.submit([cmd.finish()]);
+		out
+	}
+}
