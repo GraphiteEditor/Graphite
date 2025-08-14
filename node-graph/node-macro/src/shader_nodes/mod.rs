@@ -19,7 +19,7 @@ pub fn modify_cfg(attributes: &NodeFnAttributes) -> TokenStream {
 	}
 }
 
-#[derive(Debug, VariantNames)]
+#[derive(Debug, Clone, VariantNames)]
 pub(crate) enum ShaderNodeType {
 	PerPixelAdjust(PerPixelAdjust),
 }
@@ -36,6 +36,7 @@ impl Parse for ShaderNodeType {
 
 pub trait CodegenShaderEntryPoint {
 	fn codegen_shader_entry_point(&self, parsed: &ParsedNodeFn) -> syn::Result<TokenStream>;
+	fn codegen_gpu_node(&self, parsed: &ParsedNodeFn) -> syn::Result<TokenStream>;
 }
 
 impl CodegenShaderEntryPoint for ShaderNodeType {
@@ -46,6 +47,12 @@ impl CodegenShaderEntryPoint for ShaderNodeType {
 
 		match self {
 			ShaderNodeType::PerPixelAdjust(x) => x.codegen_shader_entry_point(parsed),
+		}
+	}
+
+	fn codegen_gpu_node(&self, parsed: &ParsedNodeFn) -> syn::Result<TokenStream> {
+		match self {
+			ShaderNodeType::PerPixelAdjust(x) => x.codegen_gpu_node(parsed),
 		}
 	}
 }

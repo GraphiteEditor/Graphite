@@ -39,7 +39,7 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) description: String,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct NodeFnAttributes {
 	pub(crate) category: Option<LitStr>,
 	pub(crate) display_name: Option<LitStr>,
