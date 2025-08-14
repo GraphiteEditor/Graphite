@@ -2128,6 +2128,7 @@ dependencies = [
  "vello",
  "wgpu",
  "wgpu-executor",
+ "windows",
  "winit",
 ]
 
