@@ -21,6 +21,8 @@ mod dirs;
 
 mod dialogs;
 
+mod editor_api;
+
 #[derive(Debug)]
 pub(crate) enum CustomEvent {
 	UiUpdate(wgpu::Texture),
