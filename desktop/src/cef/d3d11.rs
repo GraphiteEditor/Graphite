@@ -19,12 +19,7 @@ pub struct D3D11SharedTexture {
 #[cfg(target_os = "windows")]
 impl D3D11SharedTexture {
 	pub fn import_to_wgpu(&self, device: &wgpu::Device) -> Result<wgpu::Texture, String> {
-		tracing::debug!(
-			"D3D11 shared texture import requested: {}x{} handle={:p}",
-			self.width,
-			self.height,
-			self.handle
-		);
+		tracing::debug!("D3D11 shared texture import requested: {}x{} handle={:p}", self.width, self.height, self.handle);
 
 		// Try to import via Vulkan, fallback to CPU texture on failure
 		#[cfg(feature = "accelerated_paint")]
@@ -60,7 +55,9 @@ impl D3D11SharedTexture {
 				};
 
 				// Import D3D11 shared handle into Vulkan
-				let vk_image = self.import_d3d11_handle_to_vulkan(device).map_err(|e| format!("Failed to create Vulkan image from D3D11 handle: {}", e))?;
+				let vk_image = self
+					.import_d3d11_handle_to_vulkan(device)
+					.map_err(|e| format!("Failed to create Vulkan image from D3D11 handle: {}", e))?;
 
 				// Wrap VkImage in wgpu-hal texture
 				let hal_texture = <api::Vulkan as wgpu::hal::Api>::Device::texture_from_raw(
@@ -123,8 +120,7 @@ impl D3D11SharedTexture {
 		}
 
 		// Create external memory image info
-		let mut external_memory_info = vk::ExternalMemoryImageCreateInfo::default()
-			.handle_types(vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE);
+		let mut external_memory_info = vk::ExternalMemoryImageCreateInfo::default().handle_types(vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE);
 
 		// Create image create info
 		let image_create_info = vk::ImageCreateInfo::default()
@@ -144,10 +140,7 @@ impl D3D11SharedTexture {
 			.push_next(&mut external_memory_info);
 
 		// Create the image
-		let image = unsafe {
-			device.create_image(&image_create_info, None)
-				.map_err(|e| format!("Failed to create Vulkan image: {:?}", e))?
-		};
+		let image = unsafe { device.create_image(&image_create_info, None).map_err(|e| format!("Failed to create Vulkan image: {:?}", e))? };
 
 		// Get memory requirements
 		let memory_requirements = unsafe { device.get_image_memory_requirements(image) };
@@ -155,18 +148,13 @@ impl D3D11SharedTexture {
 		// Import D3D11 handle
 		let mut import_memory_win32 = vk::ImportMemoryWin32HandleInfoKHR::default()
 			.handle_type(vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE)
-			.handle(self.handle);
+			.handle(self.handle as isize);
 
 		// Find a suitable memory type
-		let memory_properties = unsafe {
-			hal_device.shared_instance().raw_instance().get_physical_device_memory_properties(hal_device.raw_physical_device())
-		};
+		let memory_properties = unsafe { hal_device.shared_instance().raw_instance().get_physical_device_memory_properties(hal_device.raw_physical_device()) };
 
-		let memory_type_index = find_memory_type_index(
-			memory_requirements.memory_type_bits,
-			vk::MemoryPropertyFlags::empty(),
-			&memory_properties,
-		).ok_or("Failed to find suitable memory type for D3D11 texture")?;
+		let memory_type_index =
+			find_memory_type_index(memory_requirements.memory_type_bits, vk::MemoryPropertyFlags::empty(), &memory_properties).ok_or("Failed to find suitable memory type for D3D11 texture")?;
 
 		let allocate_info = vk::MemoryAllocateInfo::default()
 			.allocation_size(memory_requirements.size)
@@ -174,14 +162,14 @@ impl D3D11SharedTexture {
 			.push_next(&mut import_memory_win32);
 
 		let device_memory = unsafe {
-			device.allocate_memory(&allocate_info, None)
+			device
+				.allocate_memory(&allocate_info, None)
 				.map_err(|e| format!("Failed to allocate memory for D3D11 texture: {:?}", e))?
 		};
 
 		// Bind memory to image
 		unsafe {
-			device.bind_image_memory(image, device_memory, 0)
-				.map_err(|e| format!("Failed to bind memory to image: {:?}", e))?;
+			device.bind_image_memory(image, device_memory, 0).map_err(|e| format!("Failed to bind memory to image: {:?}", e))?;
 		}
 
 		Ok(image)
@@ -232,15 +220,9 @@ impl D3D11SharedTexture {
 }
 
 #[cfg(all(feature = "accelerated_paint", target_os = "windows"))]
-fn find_memory_type_index(
-	type_filter: u32,
-	properties: vk::MemoryPropertyFlags,
-	mem_properties: &vk::PhysicalDeviceMemoryProperties,
-) -> Option<u32> {
+fn find_memory_type_index(type_filter: u32, properties: vk::MemoryPropertyFlags, mem_properties: &vk::PhysicalDeviceMemoryProperties) -> Option<u32> {
 	for i in 0..mem_properties.memory_type_count {
-		if (type_filter & (1 << i)) != 0 
-			&& mem_properties.memory_types[i as usize].property_flags.contains(properties)
-		{
+		if (type_filter & (1 << i)) != 0 && mem_properties.memory_types[i as usize].property_flags.contains(properties) {
 			return Some(i);
 		}
 	}
