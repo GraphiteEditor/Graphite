@@ -1,4 +1,7 @@
-use crate::{CustomEvent, WgpuContext, render::FrameBufferRef};
+use crate::CustomEvent;
+use crate::editor_api::WgpuContext;
+use crate::editor_api::messages::EditorMessage;
+use crate::render::FrameBufferRef;
 use std::{
 	sync::{Arc, Mutex, mpsc::Receiver},
 	time::Instant,
@@ -121,14 +124,7 @@ impl CefEventHandler for CefHandler {
 	}
 
 	fn receive_web_message(&self, message: &[u8]) {
-		let str = std::str::from_utf8(message).unwrap();
-		match ron::from_str(str) {
-			Ok(message) => {
-				let _ = self.event_loop_proxy.send_event(CustomEvent::MessageReceived(message));
-			}
-			Err(e) => {
-				tracing::error!("Failed to deserialize message {:?}", e)
-			}
-		}
+		let editor_message = EditorMessage::FromFrontend(message.to_vec());
+		let _ = self.event_loop_proxy.send_event(CustomEvent::EditorMessage(editor_message));
 	}
 }

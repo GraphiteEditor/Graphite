@@ -3,7 +3,7 @@ use std::sync::Arc;
 use wgpu_executor::WgpuExecutor;
 use winit::window::Window;
 
-pub(crate) use wgpu_executor::Context as WgpuContext;
+use crate::editor_api::WgpuContext;
 
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]
@@ -195,17 +195,14 @@ impl GraphicsState {
 
 	pub(crate) fn bind_viewport_texture(&mut self, viewport_texture: wgpu::Texture) {
 		self.viewport_texture = Some(viewport_texture);
-		self.update_bindgroup();
 	}
 
 	pub(crate) fn bind_overlays_texture(&mut self, overlays_texture: wgpu::Texture) {
 		self.overlays_texture = Some(overlays_texture);
-		self.update_bindgroup();
 	}
 
 	pub(crate) fn bind_ui_texture(&mut self, bind_ui_texture: wgpu::Texture) {
 		self.ui_texture = Some(bind_ui_texture);
-		self.update_bindgroup();
 	}
 
 	pub(crate) fn set_viewport_scale(&mut self, scale: [f32; 2]) {
@@ -238,6 +235,8 @@ impl GraphicsState {
 		if let Some(scene) = self.overlays_scene.take() {
 			self.render_overlays(scene);
 		}
+
+		self.update_bindgroup();
 
 		let output = self.surface.get_current_texture()?;
 		let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
