@@ -62,8 +62,8 @@ export function createPortfolioState(editor: Editor) {
 		}
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerOpenDocument, async () => {
-		const extension = editor.handle.fileSaveSuffix();
-		const data = await upload(extension, "text");
+		const extension = editor.handle.fileExtension();
+		const data = await upload("." + extension, "text");
 		editor.handle.openDocumentFile(data.filename, data.content);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImport, async () => {
@@ -76,7 +76,7 @@ export function createPortfolioState(editor: Editor) {
 		}
 
 		// In case the user accidentally uploads a Graphite file, open it instead of failing to import it
-		if (data.filename.endsWith(".graphite")) {
+		if (data.filename.endsWith("." + editor.handle.fileExtension())) {
 			editor.handle.openDocumentFile(data.filename, data.content.text);
 			return;
 		}

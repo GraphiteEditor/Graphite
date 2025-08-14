@@ -110,6 +110,7 @@ pub enum DocumentMessage {
 	RenderRulers,
 	RenderScrollbars,
 	SaveDocument,
+	SaveDocumentAs,
 	SavedDocument {
 		path: Option<PathBuf>,
 	},
