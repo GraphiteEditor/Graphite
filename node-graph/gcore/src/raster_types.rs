@@ -137,7 +137,7 @@ mod gpu {
 
 	#[derive(Clone, Debug, PartialEq, Hash)]
 	pub struct GPU {
-		texture: wgpu::Texture,
+		pub texture: wgpu::Texture,
 	}
 
 	impl Sealed for Raster<GPU> {}
