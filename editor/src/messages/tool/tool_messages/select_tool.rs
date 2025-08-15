@@ -324,6 +324,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 			PointerMove,
 			Abort,
 			EditLayer,
+			EditLayerExec,
 			Enter,
 		);
 
@@ -986,19 +987,19 @@ impl Fsm for SelectToolFsmState {
 				self
 			}
 			(_, SelectToolMessage::EditLayer) => {
-				// Edit the clicked layer - defer the message to ensure document graph has run and click targets are available
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: vec![SelectToolMessage::EditLayerExec.into()],
+				});
+
+				self
+			}
+			(_, SelectToolMessage::EditLayerExec) => {
 				if let Some(intersect) = document.click(input) {
 					match tool_data.nested_selection_behavior {
 						NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect, responses),
 						NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, &document.network_interface, responses),
 					}
-				} else {
-					// If click detection fails, defer the message until after graph runs
-					responses.add(DeferMessage::AfterGraphRun {
-						messages: vec![SelectToolMessage::EditLayer.into()],
-					});
 				}
-
 				self
 			}
 			(
