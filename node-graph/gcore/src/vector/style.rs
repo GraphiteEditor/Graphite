@@ -127,6 +127,15 @@ impl From<Table<Color>> for Fill {
 	}
 }
 
+impl From<Table<GradientStops>> for Fill {
+	fn from(gradient: Table<GradientStops>) -> Fill {
+		Fill::Gradient(Gradient {
+			stops: gradient.iter().nth(0).map(|row| row.element.clone()).unwrap_or_default(),
+			..Default::default()
+		})
+	}
+}
+
 impl From<Gradient> for Fill {
 	fn from(gradient: Gradient) -> Fill {
 		Fill::Gradient(gradient)

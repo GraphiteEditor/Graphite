@@ -17,7 +17,7 @@ fn to_string<T: std::fmt::Debug>(_: impl Ctx, #[implementations(bool, f64, u32, 
 #[node_macro::node(category("Text"))]
 fn serialize<T: serde::Serialize>(
 	_: impl Ctx,
-	#[implementations(String, bool, f64, u32, u64, DVec2, DAffine2, Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>)] value: T,
+	#[implementations(String, bool, f64, u32, u64, DVec2, DAffine2, Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] value: T,
 ) -> String {
 	serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string())
 }

@@ -126,7 +126,6 @@ pub struct Gradient {
 	pub gradient_type: GradientType,
 	pub start: DVec2,
 	pub end: DVec2,
-	pub transform: DAffine2,
 }
 
 impl Default for Gradient {
@@ -136,7 +135,6 @@ impl Default for Gradient {
 			gradient_type: GradientType::Linear,
 			start: DVec2::new(0., 0.5),
 			end: DVec2::new(1., 0.5),
-			transform: DAffine2::IDENTITY,
 		}
 	}
 }
@@ -147,7 +145,6 @@ impl std::hash::Hash for Gradient {
 		[].iter()
 			.chain(self.start.to_array().iter())
 			.chain(self.end.to_array().iter())
-			.chain(self.transform.to_cols_array().iter())
 			.chain(self.stops.0.iter().map(|(position, _)| position))
 			.for_each(|x| x.to_bits().hash(state));
 		self.stops.0.iter().for_each(|(_, color)| color.hash(state));
@@ -171,20 +168,15 @@ impl std::fmt::Display for Gradient {
 
 impl Gradient {
 	/// Constructs a new gradient with the colors at 0 and 1 specified.
-	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, transform: DAffine2, gradient_type: GradientType) -> Self {
-		Gradient {
-			start,
-			end,
-			stops: GradientStops::new(vec![(0., start_color.to_gamma_srgb()), (1., end_color.to_gamma_srgb())]),
-			transform,
-			gradient_type,
-		}
+	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, gradient_type: GradientType) -> Self {
+		let stops = GradientStops::new(vec![(0., start_color.to_gamma_srgb()), (1., end_color.to_gamma_srgb())]);
+
+		Self { start, end, stops, gradient_type }
 	}
 
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
 		let start = self.start + (other.start - self.start) * time;
 		let end = self.end + (other.end - self.end) * time;
-		let transform = self.transform;
 		let stops = self
 			.stops
 			.0
@@ -199,13 +191,7 @@ impl Gradient {
 		let stops = GradientStops::new(stops);
 		let gradient_type = if time < 0.5 { self.gradient_type } else { other.gradient_type };
 
-		Self {
-			start,
-			end,
-			transform,
-			stops,
-			gradient_type,
-		}
+		Self { start, end, stops, gradient_type }
 	}
 
 	/// Insert a stop into the gradient, the index if successful

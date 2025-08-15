@@ -1,4 +1,4 @@
-use crate::Color;
+use crate::{Color, gradient::GradientStops};
 use glam::{DAffine2, DVec2};
 
 #[derive(Clone, Copy, Default, Debug, PartialEq)]
@@ -29,6 +29,11 @@ none_impl!(DVec2);
 none_impl!(String);
 
 impl BoundingBox for Color {
+	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> RenderBoundingBox {
+		RenderBoundingBox::Infinite
+	}
+}
+impl BoundingBox for GradientStops {
 	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> RenderBoundingBox {
 		RenderBoundingBox::Infinite
 	}

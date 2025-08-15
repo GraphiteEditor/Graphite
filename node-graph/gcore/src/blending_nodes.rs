@@ -1,3 +1,4 @@
+use crate::gradient::GradientStops;
 use crate::raster_types::{CPU, Raster};
 use crate::registry::types::Percentage;
 use crate::table::Table;
@@ -41,6 +42,13 @@ impl MultiplyAlpha for Table<Color> {
 		}
 	}
 }
+impl MultiplyAlpha for Table<GradientStops> {
+	fn multiply_alpha(&mut self, factor: f64) {
+		for row in self.iter_mut() {
+			row.alpha_blending.opacity *= factor as f32;
+		}
+	}
+}
 
 pub(super) trait MultiplyFill {
 	fn multiply_fill(&mut self, factor: f64);
@@ -72,6 +80,13 @@ impl MultiplyFill for Table<Raster<CPU>> {
 	}
 }
 impl MultiplyFill for Table<Color> {
+	fn multiply_fill(&mut self, factor: f64) {
+		for row in self.iter_mut() {
+			row.alpha_blending.fill *= factor as f32;
+		}
+	}
+}
+impl MultiplyFill for Table<GradientStops> {
 	fn multiply_fill(&mut self, factor: f64) {
 		for row in self.iter_mut() {
 			row.alpha_blending.fill *= factor as f32;
@@ -111,6 +126,13 @@ impl SetBlendMode for Table<Color> {
 		}
 	}
 }
+impl SetBlendMode for Table<GradientStops> {
+	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
+		for row in self.iter_mut() {
+			row.alpha_blending.blend_mode = blend_mode;
+		}
+	}
+}
 
 trait SetClip {
 	fn set_clip(&mut self, clip: bool);
@@ -144,6 +166,13 @@ impl SetClip for Table<Color> {
 		}
 	}
 }
+impl SetClip for Table<GradientStops> {
+	fn set_clip(&mut self, clip: bool) {
+		for row in self.iter_mut() {
+			row.alpha_blending.clip = clip;
+		}
+	}
+}
 
 #[node_macro::node(category("Style"))]
 fn blend_mode<T: SetBlendMode>(
@@ -153,6 +182,7 @@ fn blend_mode<T: SetBlendMode>(
 		Table<Vector>,
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 	)]
 	mut value: T,
 	blend_mode: BlendMode,
@@ -170,6 +200,7 @@ fn opacity<T: MultiplyAlpha>(
 		Table<Vector>,
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 	)]
 	mut value: T,
 	#[default(100.)] opacity: Percentage,
@@ -187,6 +218,7 @@ fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill + SetClip>(
 		Table<Vector>,
 		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<GradientStops>,
 	)]
 	mut value: T,
 	blend_mode: BlendMode,

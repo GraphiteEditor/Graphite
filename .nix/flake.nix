@@ -40,10 +40,10 @@
         };
 
         libcef = pkgs.libcef.overrideAttrs (finalAttrs: previousAttrs: {
-          version = "138.0.26";
-          gitRevision = "84f2d27";
-          chromiumVersion = "138.0.7204.158";
-          srcHash = "sha256-d9jQJX7rgdoHfROD3zmOdMSesRdKE3slB5ZV+U2wlbQ=";
+          version = "139.0.17";
+          gitRevision = "6c347eb";
+          chromiumVersion = "139.0.7258.31";
+          srcHash = "sha256-kRMO8DP4El1qytDsAZBdHvR9AAHXce90nPdyfJailBg=";
 
           __intentionallyOverridingVersion = true;
 

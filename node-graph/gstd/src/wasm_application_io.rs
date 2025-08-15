@@ -3,6 +3,7 @@ pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
 use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphene_core::Artboard;
+use graphene_core::gradient::GradientStops;
 #[cfg(target_family = "wasm")]
 use graphene_core::math::bbox::Bbox;
 use graphene_core::raster::image::Image;
@@ -221,6 +222,7 @@ async fn rasterize<T: WasmNotSend + 'n>(
 		Table<Raster<CPU>>,
 		Table<Graphic>,
 		Table<Color>,
+		Table<GradientStops>,
 	)]
 	mut data: Table<T>,
 	footprint: Footprint,
@@ -291,10 +293,7 @@ async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
 		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Color>,
-		Context -> bool,
-		Context -> f32,
-		Context -> f64,
-		Context -> String,
+		Context -> Table<GradientStops>,
 	)]
 	data: impl Node<Context<'static>, Output = T>,
 	_surface_handle: impl Node<Context<'static>, Output = Option<wgpu_executor::WgpuSurface>>,
@@ -307,15 +306,12 @@ async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
 		.into_context();
 	ctx.footprint();
 
-	let RenderConfig { hide_artboards, for_export, .. } = render_config;
 	let render_params = RenderParams {
 		view_mode: render_config.view_mode,
+		hide_artboards: render_config.hide_artboards,
+		for_export: render_config.for_export,
 		footprint,
-		thumbnail: false,
-		hide_artboards,
-		for_export,
-		for_mask: false,
-		alignment_parent_transform: None,
+		..Default::default()
 	};
 
 	let data = data.eval(ctx.clone()).await;

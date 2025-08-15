@@ -204,7 +204,6 @@ impl SelectedGradient {
 
 	/// Update the layer fill to the current gradient
 	pub fn render_gradient(&mut self, responses: &mut VecDeque<Message>) {
-		self.gradient.transform = self.transform;
 		if let Some(layer) = self.layer {
 			responses.add(GraphOperationMessage::FillSet {
 				layer,
@@ -436,14 +435,7 @@ impl Fsm for GradientToolFsmState {
 							gradient.clone()
 						} else {
 							// Generate a new gradient
-							Gradient::new(
-								DVec2::ZERO,
-								global_tool_data.secondary_color,
-								DVec2::ONE,
-								global_tool_data.primary_color,
-								DAffine2::IDENTITY,
-								tool_options.gradient_type,
-							)
+							Gradient::new(DVec2::ZERO, global_tool_data.secondary_color, DVec2::ONE, global_tool_data.primary_color, tool_options.gradient_type)
 						};
 						let selected_gradient = SelectedGradient::new(gradient, layer, document).with_gradient_start(input.mouse.position);
 

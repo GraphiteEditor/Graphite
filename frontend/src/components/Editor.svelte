@@ -123,8 +123,12 @@
 		--color-data-raster-dim: #9a7b43;
 		--color-data-vector: #65bbe5;
 		--color-data-vector-dim: #417892;
-		--color-data-color: #af81eb;
-		--color-data-color-dim: #6c489b;
+		--color-data-color: #ce6ea7;
+		--color-data-color-dim: #924071;
+		--color-data-gradient: #af81eb;
+		--color-data-gradient-dim: #6c489b;
+		--color-data-typography: #eea7a7;
+		--color-data-typography-dim: #955252;
 
 		--color-none: white;
 		--color-none-repeat: no-repeat;
