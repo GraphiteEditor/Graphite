@@ -132,8 +132,8 @@ impl WinitApp {
 					let viewport_offset_y = y / window_size.height as f32;
 					graphics_state.set_viewport_offset([viewport_offset_x, viewport_offset_y]);
 
-					let viewport_scale_x = width / window_size.width as f32;
-					let viewport_scale_y = height / window_size.height as f32;
+					let viewport_scale_x = if width != 0.0 { window_size.width as f32 / width } else { 1.0 };
+					let viewport_scale_y = if height != 0.0 { window_size.height as f32 / height } else { 1.0 };
 					graphics_state.set_viewport_scale([viewport_scale_x, viewport_scale_y]);
 				}
 			}
