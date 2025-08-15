@@ -36,17 +36,20 @@ pub(super) fn intercept_frontend_message(message: FrontendMessage, responses: &m
 			});
 		}
 		FrontendMessage::TriggerSaveDocument { document_id, name, path, content } => {
-			responses.push(NativeMessage::SaveFileDialog {
-				title: "Save Document".to_string(),
-				default_filename: name,
-				default_folder: path.and_then(|p| p.parent().map(PathBuf::from)),
-				filters: vec![FileFilter {
-					name: "Graphite".to_string(),
-					extensions: vec!["graphite".to_string()],
-				}],
-				content,
-				context: SaveFileDialogContext::Document { document_id },
-			});
+			if let Some(path) = path {
+				responses.push(NativeMessage::WriteFile { path, content });
+			} else {
+				responses.push(NativeMessage::SaveFileDialog {
+					title: "Save Document".to_string(),
+					default_filename: name,
+					default_folder: path.and_then(|p| p.parent().map(PathBuf::from)),
+					filters: vec![FileFilter {
+						name: "Graphite".to_string(),
+						extensions: vec!["graphite".to_string()],
+					}],
+					context: SaveFileDialogContext::Document { document_id, content },
+				});
+			}
 		}
 		FrontendMessage::TriggerSaveFile { name, content } => {
 			responses.push(NativeMessage::SaveFileDialog {
@@ -54,8 +57,7 @@ pub(super) fn intercept_frontend_message(message: FrontendMessage, responses: &m
 				default_filename: name,
 				default_folder: None,
 				filters: Vec::new(),
-				content,
-				context: SaveFileDialogContext::Export,
+				context: SaveFileDialogContext::Export { content },
 			});
 		}
 		FrontendMessage::TriggerVisitLink { url } => {

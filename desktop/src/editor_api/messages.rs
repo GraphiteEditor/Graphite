@@ -2,6 +2,10 @@ use std::path::PathBuf;
 
 use graphite_editor::messages::prelude::DocumentId;
 
+pub enum WrappedMessage {
+	x,
+}
+
 pub enum NativeMessage {
 	ToFrontend(Vec<u8>),
 	OpenFileDialog {
@@ -14,8 +18,11 @@ pub enum NativeMessage {
 		default_filename: String,
 		default_folder: Option<PathBuf>,
 		filters: Vec<FileFilter>,
-		content: Vec<u8>,
 		context: SaveFileDialogContext,
+	},
+	WriteFile {
+		path: PathBuf,
+		content: Vec<u8>,
 	},
 	OpenUrl(String),
 	RequestRedraw,
@@ -48,6 +55,6 @@ pub enum OpenFileDialogContext {
 }
 
 pub enum SaveFileDialogContext {
-	Document { document_id: DocumentId },
-	Export,
+	Document { document_id: DocumentId, content: Vec<u8> },
+	Export { content: Vec<u8> },
 }

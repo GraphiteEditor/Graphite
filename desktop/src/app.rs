@@ -79,7 +79,6 @@ impl WinitApp {
 				default_filename,
 				default_folder,
 				filters,
-				content,
 				context,
 			} => {
 				let event_loop_proxy = self.event_loop_proxy.clone();
@@ -95,15 +94,15 @@ impl WinitApp {
 					let show_dialog = async move { dialog.save_file().await.map(|f| f.path().to_path_buf()) };
 
 					if let Some(path) = futures::executor::block_on(show_dialog) {
-						if let Err(e) = std::fs::write(&path, content) {
-							tracing::error!("Failed to write file: {}: {}", path.display(), e);
-							return;
-						}
-
 						let message = EditorMessage::SaveFileDialogResult { path, context };
 						let _ = event_loop_proxy.send_event(CustomEvent::EditorMessage(message));
 					}
 				});
+			}
+			NativeMessage::WriteFile { path, content } => {
+				if let Err(e) = std::fs::write(&path, content) {
+					tracing::error!("Failed to write file {}: {}", path.display(), e);
+				}
 			}
 			NativeMessage::OpenUrl(url) => {
 				let _ = thread::spawn(move || {

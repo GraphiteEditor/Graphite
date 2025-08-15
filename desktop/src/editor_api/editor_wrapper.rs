@@ -15,17 +15,29 @@ mod intercept_message;
 
 pub struct EditorWrapper {
 	editor: Editor,
+	queue: VecDeque<QueuedMessage>,
+}
+
+#[allow(clippy::large_enum_variant)]
+enum QueuedMessage {
+	Message(Message),
+	EditorMessage(EditorMessage),
 }
 
 impl EditorApi for EditorWrapper {
 	fn dispatch(&mut self, message: EditorMessage) -> Vec<NativeMessage> {
+		self.queue_editor_message(message);
+
 		let mut responses = Vec::new();
-		handle_editor_message::handle_editor_message(self, message, &mut responses);
-		let mut native_responses = Vec::new();
-		for message in responses.drain(..) {
-			self.handle_message(message, &mut native_responses);
+
+		while let Some(queued_message) = self.queue.pop_front() {
+			match queued_message {
+				QueuedMessage::Message(message) => self.handle_message(message, &mut responses),
+				QueuedMessage::EditorMessage(editor_message) => self.handle_editor_message(editor_message, &mut responses),
+			}
 		}
-		native_responses
+
+		responses
 	}
 
 	fn poll() -> Vec<NativeMessage> {
@@ -46,7 +58,10 @@ impl EditorApi for EditorWrapper {
 
 impl EditorWrapper {
 	pub fn new() -> Self {
-		Self { editor: Editor::new() }
+		Self {
+			editor: Editor::new(),
+			queue: VecDeque::new(),
+		}
 	}
 
 	pub fn resume(&self, wgpu_context: WgpuContext) {
@@ -65,14 +80,27 @@ impl EditorWrapper {
 		}
 	}
 
-	pub(super) fn poll_node_graph_evaluation(&mut self, responses: &mut Vec<Message>) {
-		let mut node_graph_responses = VecDeque::new();
-		let err = self.editor.poll_node_graph_evaluation(&mut node_graph_responses);
-		if let Err(e) = err {
+	fn handle_editor_message(&mut self, message: EditorMessage, responses: &mut Vec<NativeMessage>) {
+		handle_editor_message::handle_editor_message(self, message, responses);
+	}
+
+	pub(super) fn queue_editor_message(&mut self, message: EditorMessage) {
+		self.queue.push_back(QueuedMessage::EditorMessage(message));
+	}
+
+	pub(super) fn queue_message(&mut self, message: Message) {
+		self.queue.push_back(QueuedMessage::Message(message));
+	}
+
+	pub(super) fn poll_node_graph_evaluation(&mut self) {
+		let mut responses = VecDeque::new();
+		if let Err(e) = self.editor.poll_node_graph_evaluation(&mut responses) {
 			if e != "No active document" {
 				tracing::error!("Error poling node graph: {}", e);
 			}
 		}
-		responses.extend(node_graph_responses.drain(..));
+		while let Some(message) = responses.pop_front() {
+			self.queue_message(message);
+		}
 	}
 }
