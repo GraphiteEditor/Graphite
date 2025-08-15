@@ -1268,13 +1268,8 @@ impl PenToolData {
 
 					let points = pathseg_points(bezier);
 					let handle = match (points.p1, points.p2) {
-						(Some(p1), Some(p2)) => {
-							if is_start {
-								p1
-							} else {
-								p2
-							}
-						}
+						(Some(p1), Some(_)) if is_start => p1,
+						(Some(_), Some(p2)) if !is_start => p2,
 						(Some(p1), None) | (None, Some(p1)) => p1,
 						_ => return None,
 					};

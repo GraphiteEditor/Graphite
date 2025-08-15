@@ -12,8 +12,8 @@ use crate::messages::tool::utility_types::ToolType;
 use glam::{DAffine2, DVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
-use graphene_core::subpath::{Bezier, BezierHandles};
 use graphene_std::renderer::Quad;
+use graphene_std::subpath::{Bezier, BezierHandles};
 use graphene_std::table::Table;
 use graphene_std::text::{FontCache, load_font};
 use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
@@ -490,7 +490,7 @@ pub fn log_optimization(a: f64, b: f64, p1: DVec2, p3: DVec2, d1: DVec2, d2: DVe
 
 /// Calculates optimal handle lengths with adam optimization.
 #[allow(clippy::too_many_arguments)]
-pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, min_len1: f64, min_len2: f64, farther_segment: PathSeg, other_segment: PathSeg) -> (DVec2, DVec2) {
+pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, min_len1: f64, min_len2: f64, further_segment: PathSeg, other_segment: PathSeg) -> (DVec2, DVec2) {
 	let h = 1e-6;
 	let tol = 1e-6;
 	let max_iter = 200;
@@ -512,10 +512,10 @@ pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec
 
 	let n = 20;
 
-	let farther_segment = if farther_segment.start().distance(dvec2_to_point(p1)) >= f64::EPSILON {
-		farther_segment.reverse()
+	let further_segment = if further_segment.start().distance(dvec2_to_point(p1)) >= f64::EPSILON {
+		further_segment.reverse()
 	} else {
-		farther_segment
+		further_segment
 	};
 
 	let other_segment = if other_segment.end().distance(dvec2_to_point(p3)) >= f64::EPSILON {
@@ -525,11 +525,11 @@ pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec
 	};
 
 	// Now we sample points proportional to the lengths of the beziers
-	let l1 = farther_segment.perimeter(DEFAULT_ACCURACY);
+	let l1 = further_segment.perimeter(DEFAULT_ACCURACY);
 	let l2 = other_segment.perimeter(DEFAULT_ACCURACY);
 	let ratio = l1 / (l1 + l2);
 	let n_points1 = ((2 * n) as f64 * ratio).floor() as usize;
-	let mut points1 = pathseg_compute_lookup_table(farther_segment, Some(n_points1), false).collect::<Vec<_>>();
+	let mut points1 = pathseg_compute_lookup_table(further_segment, Some(n_points1), false).collect::<Vec<_>>();
 	let mut points2 = pathseg_compute_lookup_table(other_segment, Some(n), false).collect::<Vec<_>>();
 	points1.append(&mut points2);
 

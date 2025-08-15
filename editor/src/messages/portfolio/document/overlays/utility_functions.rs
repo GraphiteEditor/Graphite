@@ -4,7 +4,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
 use crate::messages::tool::tool_messages::tool_prelude::{DocumentMessageHandler, PreferencesMessageHandler};
 use glam::{DAffine2, DVec2};
-use graphene_core::subpath::{Bezier, BezierHandles};
+use graphene_std::subpath::{Bezier, BezierHandles};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::{PointId, SegmentId};
 use wasm_bindgen::JsCast;

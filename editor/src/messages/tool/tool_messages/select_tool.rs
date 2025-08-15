@@ -22,10 +22,10 @@ use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::{resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_transform_cage};
 use glam::DMat2;
 use graph_craft::document::NodeId;
-use graphene_core::subpath::Subpath;
 use graphene_std::path_bool::BooleanOperation;
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
+use graphene_std::subpath::Subpath;
 use graphene_std::transform::ReferencePoint;
 use std::fmt;
 

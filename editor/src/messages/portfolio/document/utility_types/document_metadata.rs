@@ -5,8 +5,8 @@ use crate::messages::portfolio::document::utility_types::network_interface::Flow
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
-use graphene_core::subpath;
 use graphene_std::math::quad::Quad;
+use graphene_std::subpath;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::{PointId, Vector};
