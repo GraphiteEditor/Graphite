@@ -40,7 +40,7 @@ impl<H: CefEventHandler + Clone> ImplApp for BrowserProcessAppImpl<H> {
 				cmd.append_switch(Some(&CefString::from("disable-gpu")));
 				cmd.append_switch(Some(&CefString::from("disable-gpu-compositing")));
 			}
-			
+
 			#[cfg(feature = "accelerated_paint")]
 			{
 				// Enable GPU acceleration switches for better performance

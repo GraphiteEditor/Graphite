@@ -9,9 +9,19 @@ edition = "2024"
 rust-version = "1.87"
 
 [features]
-default = ["gpu",]
+default = ["gpu"]
 gpu = ["graphite-editor/gpu"]
-accelerated_paint = ["ash", "libc", "windows", "objc2-io-surface", "objc2-metal", "core-foundation"]
+
+# Hardware acceleration features
+accelerated_paint = ["ash"]
+accelerated_paint_dmabuf = ["accelerated_paint", "libc"]
+accelerated_paint_d3d11 = ["accelerated_paint", "windows"]
+accelerated_paint_iosurface = ["accelerated_paint", "objc2-io-surface", "objc2-metal", "core-foundation"]
+
+# Platform-specific feature bundles
+accelerated_paint_linux = ["accelerated_paint_dmabuf"]
+accelerated_paint_windows = ["accelerated_paint_d3d11"]
+accelerated_paint_macos = ["accelerated_paint_iosurface"]
 
 [dependencies]
 # # Local dependencies
@@ -44,7 +54,6 @@ image = { workspace = true }
 
 # Hardware acceleration dependencies
 ash = { version = "0.38", optional = true }
-libc = { version = "0.2", optional = true }
 
 # Windows-specific dependencies
 [target.'cfg(windows)'.dependencies]
@@ -60,3 +69,7 @@ windows = { version = "0.58", features = [
 objc2-io-surface = { version = "0.3", optional = true }
 objc2-metal = { version = "0.3", optional = true }
 core-foundation = { version = "0.9", optional = true }
+
+# Linux-specific dependencies
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = { version = "0.2", optional = true }
