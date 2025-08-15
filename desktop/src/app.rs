@@ -38,7 +38,7 @@ pub(crate) struct WinitApp {
 
 impl WinitApp {
 	pub(crate) fn new(cef_context: cef::Context<cef::Initialized>, window_size_sender: Sender<WindowSize>, wgpu_context: WgpuContext, event_loop_proxy: EventLoopProxy<CustomEvent>) -> Self {
-		let editor_wrapper = EditorWrapper::new(wgpu_context.clone());
+		let editor_wrapper = EditorWrapper::new();
 		Self {
 			cef_context,
 			window: None,
@@ -200,6 +200,8 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 		self.graphics_state = Some(graphics_state);
 
 		tracing::info!("Winit window created and ready");
+
+		self.editor_wrapper.resume(self.wgpu_context.clone());
 	}
 
 	fn user_event(&mut self, _: &ActiveEventLoop, event: CustomEvent) {

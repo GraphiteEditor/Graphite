@@ -36,7 +36,7 @@ impl EditorApi for EditorWrapper {
 			responses.push(NativeMessage::Loopback(EditorMessage::PoolNodeGraphEvaluation));
 		}
 		if let Some(texture) = texture {
-			responses.push(NativeMessage::UpdateViewport((*texture.texture).clone()));
+			responses.push(NativeMessage::UpdateViewport(texture.texture));
 			responses.push(NativeMessage::RequestRedraw);
 		}
 
@@ -45,11 +45,13 @@ impl EditorApi for EditorWrapper {
 }
 
 impl EditorWrapper {
-	pub fn new(wgpu_context: WgpuContext) -> Self {
+	pub fn new() -> Self {
+		Self { editor: Editor::new() }
+	}
+
+	pub fn resume(&self, wgpu_context: WgpuContext) {
 		let application_io = WasmApplicationIo::new_with_context(wgpu_context);
 		futures::executor::block_on(graphite_editor::node_graph_executor::replace_application_io(application_io));
-
-		Self { editor: Editor::new() }
 	}
 
 	fn handle_message(&mut self, message: Message, responses: &mut Vec<NativeMessage>) {
