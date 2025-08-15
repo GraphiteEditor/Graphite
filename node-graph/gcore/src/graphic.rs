@@ -139,6 +139,11 @@ impl From<Option<Color>> for Table<Graphic> {
 		}
 	}
 }
+impl From<Table<Color>> for Option<Color> {
+	fn from(color: Table<Color>) -> Self {
+		color.into_iter().next().map(|row| row.element)
+	}
+}
 
 // DAffine2
 impl From<DAffine2> for Graphic {
@@ -297,8 +302,6 @@ async fn wrap_graphic<T: Into<Graphic> + 'n>(
 		Table<Raster<CPU>>,
 	 	Table<Raster<GPU>>,
 	 	Table<Color>,
-		Color,
-		Option<Color>,
 		DAffine2,
 	)]
 	content: T,
@@ -317,8 +320,6 @@ async fn to_graphic<T: Into<Table<Graphic>> + 'n>(
 		Table<Raster<CPU>>,
 		Table<Raster<GPU>>,
 		Table<Color>,
-		Color,
-		Option<Color>,
 	)]
 	content: T,
 ) -> Table<Graphic> {
@@ -416,13 +417,16 @@ fn index<T: AtIndex + Clone + Default>(
 	_: impl Ctx,
 	/// The collection of data, such as a list or table.
 	#[implementations(
-		Vec<Color>,
-		Vec<Option<Color>>,
-		Vec<f64>, Vec<u64>,
+		Vec<f64>,
+		Vec<u32>,
+		Vec<u64>,
 		Vec<DVec2>,
+		Table<Artboard>,
+		Table<Graphic>,
 		Table<Vector>,
 		Table<Raster<CPU>>,
-		Table<Graphic>,
+		Table<Raster<GPU>>,
+		Table<Color>,
 	)]
 	collection: T,
 	/// The index of the item to retrieve, starting from 0 for the first item.

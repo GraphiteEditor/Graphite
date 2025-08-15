@@ -33,7 +33,7 @@
         pkgs = import nixpkgs {
           inherit system overlays;
         };
- 
+
         rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
           targets = [ "wasm32-unknown-unknown" ];
           extensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
@@ -75,6 +75,12 @@
           vulkan-loader
           libraw
           libGL
+
+          # X11 libraries, not needed on wayland! Remove when x11 is finally dead
+          libxkbcommon
+          xorg.libXcursor
+          xorg.libxcb
+          xorg.libX11
         ];
 
         # Development tools that don't need to be in LD_LIBRARY_PATH

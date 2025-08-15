@@ -89,7 +89,7 @@ pub struct NodeGraphMessageHandler {
 	reordering_import: Option<usize>,
 	/// The index of the export that is being moved
 	reordering_export: Option<usize>,
-	/// The end index of the moved port
+	/// The end index of the moved connector
 	end_index: Option<usize>,
 	/// Used to keep track of what nodes are sent to the front end so that only visible ones are sent to the frontend
 	frontend_nodes: Vec<NodeId>,
@@ -2416,7 +2416,7 @@ impl NodeGraphMessageHandler {
 		} else {
 			added_wires.push(WirePathUpdate {
 				id: NodeId(u64::MAX),
-				input_index: usize::MAX,
+				input_index: u32::MAX as usize,
 				wire_path_update: None,
 			})
 		}
