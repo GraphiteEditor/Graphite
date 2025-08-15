@@ -25,7 +25,12 @@ pub enum SharedTextureHandle {
 		height: u32,
 	},
 	#[cfg(target_os = "macos")]
-	IOSurface(*mut c_void),
+	IOSurface {
+		handle: *mut c_void,
+		format: cef::sys::cef_color_type_t,
+		width: u32,
+		height: u32,
+	},
 	#[cfg(target_os = "linux")]
 	DmaBuf {
 		fds: Vec<RawFd>,
@@ -113,8 +118,13 @@ impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 
 		#[cfg(target_os = "macos")]
 		{
-			// Extract IOSurface handle
-			let shared_handle = SharedTextureHandle::IOSurface(info.shared_texture_handle);
+			// Extract IOSurface handle with texture metadata
+			let shared_handle = SharedTextureHandle::IOSurface {
+				handle: info.shared_texture_handle,
+				format: *info.format.as_ref(),
+				width: info.extra.coded_size.width as u32,
+				height: info.extra.coded_size.height as u32,
+			};
 			self.event_handler.on_accelerated_paint(shared_handle);
 		}
 	}
