@@ -194,7 +194,6 @@ pub const DEFAULT_LUT_STEP_SIZE: usize = 10;
 
 /// Return a selection of equidistant points on the bezier curve.
 /// If no value is provided for `steps`, then the function will default `steps` to be 10.
-/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#bezier/lookup-table/solo" title="Lookup-Table Demo"></iframe>
 pub fn pathseg_compute_lookup_table(segment: PathSeg, steps: Option<usize>, eucliean: bool) -> impl Iterator<Item = DVec2> {
 	let steps = steps.unwrap_or(DEFAULT_LUT_STEP_SIZE);
 

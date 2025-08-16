@@ -1,9 +1,8 @@
-use kurbo::{Line, PathSeg};
-
 use crate::math::quad::Quad;
 use crate::math::rect::Rect;
 use crate::subpath::Bezier;
 use crate::vector::misc::dvec2_to_point;
+use kurbo::{Line, PathSeg};
 
 pub trait QuadExt {
 	/// Get all the edges in the rect as linear bezier curves

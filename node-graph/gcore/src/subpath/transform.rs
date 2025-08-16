@@ -39,7 +39,6 @@ impl<PointId: Identifier> Subpath<PointId> {
 	}
 
 	/// Returns a subpath that results from rotating this subpath around the origin by the given angle (in radians).
-	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/libraries/bezier-rs#subpath/rotate/solo" title="Rotate Demo"></iframe>
 	pub fn rotate(&self, angle: f64) -> Subpath<PointId> {
 		let mut rotated_subpath = self.clone();
 

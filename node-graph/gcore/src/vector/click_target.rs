@@ -1,13 +1,12 @@
+use super::algorithms::intersection::filtered_segment_intersections;
+use super::misc::dvec2_to_point;
 use crate::math::math_ext::QuadExt;
 use crate::math::quad::Quad;
 use crate::subpath::Subpath;
 use crate::vector::PointId;
+use crate::vector::misc::point_to_dvec2;
 use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{Affine, ParamCurve, PathSeg, Point, Shape};
-
-use super::algorithms::intersection::filtered_segment_intersections;
-use super::misc::dvec2_to_point;
-use crate::vector::misc::point_to_dvec2;
 
 #[derive(Copy, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FreePoint {

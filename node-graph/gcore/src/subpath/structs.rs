@@ -1,6 +1,5 @@
 use crate::vector::algorithms::intersection::filtered_segment_intersections;
 use crate::vector::misc::{dvec2_to_point, handles_to_segment};
-
 use glam::{DAffine2, DVec2};
 use kurbo::{CubicBez, Line, PathSeg, QuadBez, Shape};
 use std::fmt::{Debug, Formatter, Result};
@@ -356,7 +355,6 @@ impl Bezier {
 	}
 
 	/// Create a linear bezier using the provided DVec2s as the start and end points.
-	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/constructor/solo" title="Constructor Demo"></iframe>
 	pub fn from_linear_dvec2(p1: DVec2, p2: DVec2) -> Self {
 		Bezier {
 			start: p1,

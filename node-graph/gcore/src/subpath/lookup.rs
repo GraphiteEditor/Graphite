@@ -1,10 +1,8 @@
-use crate::{
-	math::polynomial::pathseg_to_parametric_polynomial,
-	vector::algorithms::bezpath_algorithms::pathseg_length_centroid_and_length,
-	vector::algorithms::intersection::{filtered_all_segment_intersections, pathseg_self_intersections},
-};
-
-use super::{consts::MAX_ABSOLUTE_DIFFERENCE, *};
+use super::consts::MAX_ABSOLUTE_DIFFERENCE;
+use super::*;
+use crate::math::polynomial::pathseg_to_parametric_polynomial;
+use crate::vector::algorithms::bezpath_algorithms::pathseg_length_centroid_and_length;
+use crate::vector::algorithms::intersection::{filtered_all_segment_intersections, pathseg_self_intersections};
 use glam::DVec2;
 
 impl<PointId: Identifier> Subpath<PointId> {

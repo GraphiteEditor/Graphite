@@ -1,7 +1,6 @@
+use kurbo::PathSeg;
 use std::fmt::{self, Display, Formatter};
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
-
-use kurbo::PathSeg;
 
 /// A struct that represents a polynomial with a maximum degree of `N-1`.
 ///

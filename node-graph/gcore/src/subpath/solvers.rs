@@ -1,6 +1,6 @@
 use crate::subpath::{Identifier, Subpath};
-use crate::vector::{algorithms::bezpath_algorithms::bezpath_is_inside_bezpath, misc::dvec2_to_point};
-
+use crate::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
+use crate::vector::misc::dvec2_to_point;
 use glam::DVec2;
 use kurbo::{Affine, BezPath, Shape};
 
@@ -40,13 +40,11 @@ impl<PointId: Identifier> Subpath<PointId> {
 	}
 
 	/// Returns `true` if this subpath is completely inside the `other` subpath.
-	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#subpath/inside-other/solo" title="Inside Other Subpath Demo"></iframe>
 	pub fn is_inside_subpath(&self, other: &Subpath<PointId>, accuracy: Option<f64>, minimum_separation: Option<f64>) -> bool {
 		bezpath_is_inside_bezpath(&self.to_bezpath(), &other.to_bezpath(), accuracy, minimum_separation)
 	}
 
 	/// Return the min and max corners that represent the bounding box of the subpath. Return `None` if the subpath is empty.
-	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#subpath/bounding-box/solo" title="Bounding Box Demo"></iframe>
 	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
 		self.iter()
 			.map(|bezier| bezier.bounding_box())

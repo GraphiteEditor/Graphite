@@ -1,7 +1,6 @@
-use crate::vector::misc::point_to_dvec2;
-
 use super::consts::*;
 use super::*;
+use crate::vector::misc::point_to_dvec2;
 use glam::DVec2;
 use kurbo::PathSeg;
 
