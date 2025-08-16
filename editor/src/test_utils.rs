@@ -41,7 +41,8 @@ impl EditorTestUtils {
 		async fn run<'a>(editor: &'a mut Editor, runtime: &'a mut NodeRuntime) -> Result<Instrumented, String> {
 			let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
 			let exector = &mut portfolio.executor;
-			let document = portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap();
+			let document_id = portfolio.active_document_id.unwrap();
+			let document = portfolio.documents.get_mut(&document_id).unwrap();
 
 			let instrumented = match exector.update_node_graph_instrumented(document) {
 				Ok(instrumented) => instrumented,
@@ -49,19 +50,29 @@ impl EditorTestUtils {
 			};
 
 			let viewport_resolution = glam::UVec2::ONE;
-			if let Err(e) = exector.submit_current_node_graph_evaluation(document, DocumentId(0), viewport_resolution, Default::default()) {
+			if let Err(e) = exector.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, Default::default()) {
 				return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
 			}
-			runtime.run().await;
 
-			let mut messages = VecDeque::new();
-			if let Err(e) = editor.poll_node_graph_evaluation(&mut messages) {
-				return Err(format!("Graph should render\n\n{e}"));
-			}
-			let frontend_messages = messages.into_iter().flat_map(|message| editor.handle_message(message));
+			// Run until no more executions are queued.
+			loop {
+				println!("Running graph");
+				let execution_id = editor.dispatcher.message_handlers.portfolio_message_handler.executor.current_execution_id();
+				runtime.run().await;
 
-			for message in frontend_messages {
-				message.check_node_graph_error();
+				let mut messages = VecDeque::new();
+				if let Err(e) = editor.poll_node_graph_evaluation(&mut messages) {
+					return Err(format!("Graph should render\n\n{e}"));
+				}
+				let frontend_messages = messages.into_iter().flat_map(|message| editor.handle_message(message));
+
+				for message in frontend_messages {
+					message.check_node_graph_error();
+				}
+				let next_execution_id = editor.dispatcher.message_handlers.portfolio_message_handler.executor.current_execution_id();
+				if next_execution_id == execution_id {
+					break;
+				}
 			}
 
 			Ok(instrumented)
@@ -258,12 +269,24 @@ impl EditorTestUtils {
 		self.active_document().network_interface.selected_nodes().selected_layers(self.active_document().metadata()).next()
 	}
 
-	pub async fn double_click(&mut self, position: DVec2) {
+	/// Simulate a pointer up then a double click without seperation of a graph render.
+	///
+	/// This seems to be what WASM does to the test.
+	pub async fn pointer_up_double_click(&mut self, editor_position: DVec2) {
+		self.left_mousedown(editor_position.x, editor_position.y, ModifierKeys::empty()).await;
+		// Simulate a mouse up then double click event without a rerender then double click
+		self.editor.handle_message(InputPreprocessorMessage::PointerUp {
+			editor_mouse_state: EditorMouseState {
+				editor_position,
+				..Default::default()
+			},
+			modifier_keys: ModifierKeys::empty(),
+		});
 		self.handle_message(InputPreprocessorMessage::DoubleClick {
 			editor_mouse_state: EditorMouseState {
-				editor_position: position,
+				editor_position,
 				mouse_keys: MouseKeys::LEFT,
-				scroll_delta: ScrollDelta::default(),
+				..Default::default()
 			},
 			modifier_keys: ModifierKeys::empty(),
 		})

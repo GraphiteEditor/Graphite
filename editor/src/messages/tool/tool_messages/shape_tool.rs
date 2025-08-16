@@ -233,7 +233,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 			}
 		}
 
-		update_dynamic_hints(&self.fsm_state, responses, &self.tool_data);
+		self.fsm_state.update_hints(&self.tool_data, context, &self.options, responses);
 		self.send_layout(responses, LayoutTarget::ToolOptions);
 	}
 
@@ -914,100 +914,96 @@ impl Fsm for ShapeToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, _responses: &mut VecDeque<Message>) {
-		// Moved logic to update_dynamic_hints
-	}
-
-	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
-	}
-}
-
-fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Message>, tool_data: &ShapeToolData) {
-	let hint_data = match state {
-		ShapeToolFsmState::Ready(_) => {
-			let hint_groups = match tool_data.current_shape {
-				ShapeType::Polygon | ShapeType::Star => vec![
-					HintGroup(vec![
-						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polygon"),
-						HintInfo::keys([Key::Shift], "Constrain Regular").prepend_plus(),
+	fn update_hints(&self, tool_data: &Self::ToolData, _: &ToolActionMessageContext, _: &Self::ToolOptions, responses: &mut VecDeque<Message>) {
+		let hint_data = match self {
+			ShapeToolFsmState::Ready(_) => {
+				let hint_groups = match tool_data.current_shape {
+					ShapeType::Polygon | ShapeType::Star => vec![
+						HintGroup(vec![
+							HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polygon"),
+							HintInfo::keys([Key::Shift], "Constrain Regular").prepend_plus(),
+							HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+						]),
+						HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Decrease/Increase Sides")]),
+					],
+					ShapeType::Ellipse => vec![HintGroup(vec![
+						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Ellipse"),
+						HintInfo::keys([Key::Shift], "Constrain Circular").prepend_plus(),
 						HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+					])],
+					ShapeType::Line => vec![HintGroup(vec![
+						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Line"),
+						HintInfo::keys([Key::Shift], "15° Increments").prepend_plus(),
+						HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+						HintInfo::keys([Key::Control], "Lock Angle").prepend_plus(),
+					])],
+					ShapeType::Rectangle => vec![HintGroup(vec![
+						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Rectangle"),
+						HintInfo::keys([Key::Shift], "Constrain Square").prepend_plus(),
+						HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+					])],
+					ShapeType::Circle => vec![HintGroup(vec![
+						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Circle"),
+						HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+					])],
+					ShapeType::Arc => vec![HintGroup(vec![
+						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Arc"),
+						HintInfo::keys([Key::Shift], "Constrain Arc").prepend_plus(),
+						HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+					])],
+				};
+				HintData(hint_groups)
+			}
+			ShapeToolFsmState::Drawing(shape) => {
+				let mut common_hint_group = vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])];
+				let tool_hint_group = match shape {
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Arc => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
+					ShapeType::Rectangle => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
+					ShapeType::Ellipse => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Circular"), HintInfo::keys([Key::Alt], "From Center")]),
+					ShapeType::Line => HintGroup(vec![
+						HintInfo::keys([Key::Shift], "15° Increments"),
+						HintInfo::keys([Key::Alt], "From Center"),
+						HintInfo::keys([Key::Control], "Lock Angle"),
 					]),
-					HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Decrease/Increase Sides")]),
-				],
-				ShapeType::Ellipse => vec![HintGroup(vec![
-					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Ellipse"),
-					HintInfo::keys([Key::Shift], "Constrain Circular").prepend_plus(),
-					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
-				])],
-				ShapeType::Line => vec![HintGroup(vec![
-					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Line"),
-					HintInfo::keys([Key::Shift], "15° Increments").prepend_plus(),
-					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
-					HintInfo::keys([Key::Control], "Lock Angle").prepend_plus(),
-				])],
-				ShapeType::Rectangle => vec![HintGroup(vec![
-					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Rectangle"),
-					HintInfo::keys([Key::Shift], "Constrain Square").prepend_plus(),
-					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
-				])],
-				ShapeType::Circle => vec![HintGroup(vec![
-					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Circle"),
-					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
-				])],
-				ShapeType::Arc => vec![HintGroup(vec![
-					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Arc"),
-					HintInfo::keys([Key::Shift], "Constrain Arc").prepend_plus(),
-					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
-				])],
-			};
-			HintData(hint_groups)
-		}
-		ShapeToolFsmState::Drawing(shape) => {
-			let mut common_hint_group = vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])];
-			let tool_hint_group = match shape {
-				ShapeType::Polygon | ShapeType::Star | ShapeType::Arc => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
-				ShapeType::Rectangle => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
-				ShapeType::Ellipse => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Circular"), HintInfo::keys([Key::Alt], "From Center")]),
-				ShapeType::Line => HintGroup(vec![
+					ShapeType::Circle => HintGroup(vec![HintInfo::keys([Key::Alt], "From Center")]),
+				};
+
+				if !tool_hint_group.0.is_empty() {
+					common_hint_group.push(tool_hint_group);
+				}
+
+				if matches!(shape, ShapeType::Polygon | ShapeType::Star) {
+					common_hint_group.push(HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Decrease/Increase Sides")]));
+				}
+
+				HintData(common_hint_group)
+			}
+			ShapeToolFsmState::DraggingLineEndpoints => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![
 					HintInfo::keys([Key::Shift], "15° Increments"),
 					HintInfo::keys([Key::Alt], "From Center"),
 					HintInfo::keys([Key::Control], "Lock Angle"),
 				]),
-				ShapeType::Circle => HintGroup(vec![HintInfo::keys([Key::Alt], "From Center")]),
-			};
-
-			if !tool_hint_group.0.is_empty() {
-				common_hint_group.push(tool_hint_group);
-			}
-
-			if matches!(shape, ShapeType::Polygon | ShapeType::Star) {
-				common_hint_group.push(HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Decrease/Increase Sides")]));
-			}
-
-			HintData(common_hint_group)
-		}
-		ShapeToolFsmState::DraggingLineEndpoints => HintData(vec![
-			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-			HintGroup(vec![
-				HintInfo::keys([Key::Shift], "15° Increments"),
-				HintInfo::keys([Key::Alt], "From Center"),
-				HintInfo::keys([Key::Control], "Lock Angle"),
 			]),
-		]),
-		ShapeToolFsmState::ResizingBounds => HintData(vec![
-			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-			HintGroup(vec![HintInfo::keys([Key::Alt], "From Pivot"), HintInfo::keys([Key::Shift], "Preserve Aspect Ratio")]),
-		]),
-		ShapeToolFsmState::RotatingBounds => HintData(vec![
-			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-			HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
-		]),
-		ShapeToolFsmState::SkewingBounds { .. } => HintData(vec![
-			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-			HintGroup(vec![HintInfo::keys([Key::Control], "Unlock Slide")]),
-		]),
-		ShapeToolFsmState::ModifyingGizmo => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
-	};
-	responses.add(FrontendMessage::UpdateInputHints { hint_data });
+			ShapeToolFsmState::ResizingBounds => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![HintInfo::keys([Key::Alt], "From Pivot"), HintInfo::keys([Key::Shift], "Preserve Aspect Ratio")]),
+			]),
+			ShapeToolFsmState::RotatingBounds => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
+			]),
+			ShapeToolFsmState::SkewingBounds { .. } => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![HintInfo::keys([Key::Control], "Unlock Slide")]),
+			]),
+			ShapeToolFsmState::ModifyingGizmo => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
+		};
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+	}
+
+	fn update_cursor(&self, _: &Self::ToolData, _: &ToolActionMessageContext, _: &Self::ToolOptions, responses: &mut VecDeque<Message>) {
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
+	}
 }

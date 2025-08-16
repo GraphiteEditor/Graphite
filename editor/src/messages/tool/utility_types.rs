@@ -56,20 +56,27 @@ pub trait Fsm {
 	fn transition(self, message: ToolMessage, tool_data: &mut Self::ToolData, transition_data: &mut ToolActionMessageContext, options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self;
 
 	/// Implementing this trait function lets a specific tool provide a list of hints (user input actions presently available) to draw in the footer bar.
-	fn update_hints(&self, responses: &mut VecDeque<Message>);
+	fn update_hints(&self, tool_data: &Self::ToolData, transition_data: &ToolActionMessageContext, options: &Self::ToolOptions, responses: &mut VecDeque<Message>);
 	/// Implementing this trait function lets a specific tool set the current mouse cursor icon.
-	fn update_cursor(&self, responses: &mut VecDeque<Message>);
+	fn update_cursor(&self, tool_data: &Self::ToolData, transition_data: &ToolActionMessageContext, options: &Self::ToolOptions, responses: &mut VecDeque<Message>);
 
 	/// If this message is a standard tool message, process it and return true. Standard tool messages are those which are common across every tool.
-	fn standard_tool_messages(&self, message: &ToolMessage, responses: &mut VecDeque<Message>) -> bool {
+	fn standard_tool_messages(
+		&self,
+		message: &ToolMessage,
+		tool_data: &Self::ToolData,
+		transition_data: &ToolActionMessageContext,
+		options: &Self::ToolOptions,
+		responses: &mut VecDeque<Message>,
+	) -> bool {
 		// Check for standard hits or cursor events
 		match message {
 			ToolMessage::UpdateHints => {
-				self.update_hints(responses);
+				self.update_hints(tool_data, transition_data, options, responses);
 				true
 			}
 			ToolMessage::UpdateCursor => {
-				self.update_cursor(responses);
+				self.update_cursor(tool_data, transition_data, options, responses);
 				true
 			}
 			_ => false,
@@ -90,7 +97,7 @@ pub trait Fsm {
 		Self: PartialEq + Sized + Copy,
 	{
 		// If this message is one of the standard tool messages, process it and exit early
-		if self.standard_tool_messages(&message, responses) {
+		if self.standard_tool_messages(&message, tool_data, transition_data, options, responses) {
 			return;
 		}
 
@@ -100,9 +107,9 @@ pub trait Fsm {
 		// Update state
 		if *self != new_state {
 			*self = new_state;
-			self.update_hints(responses);
+			self.update_hints(tool_data, transition_data, options, responses);
 			if update_cursor_on_transition {
-				self.update_cursor(responses);
+				self.update_cursor(tool_data, transition_data, options, responses);
 			}
 		}
 	}

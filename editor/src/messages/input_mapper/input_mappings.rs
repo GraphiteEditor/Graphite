@@ -165,7 +165,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(MouseLeft); action_dispatch=GradientToolMessage::PointerDown),
 		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=GradientToolMessage::PointerMove { constrain_axis: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=GradientToolMessage::PointerUp),
-		entry!(DoubleClick(MouseButton::Left); action_dispatch=GradientToolMessage::InsertStop),
+		entry!(DoubleClick(MouseButton::Left); action_dispatch=GradientToolMessage::InsertStopProxy),
 		entry!(KeyDown(Delete); action_dispatch=GradientToolMessage::DeleteStop),
 		entry!(KeyDown(Backspace); action_dispatch=GradientToolMessage::DeleteStop),
 		entry!(KeyDown(MouseRight); action_dispatch=GradientToolMessage::Abort),

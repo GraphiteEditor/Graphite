@@ -1,5 +1,5 @@
 use super::new_document_dialog::NewDocumentDialogMessageContext;
-use super::simple_dialogs::{self, AboutGraphiteDialog, ComingSoonDialog, DemoArtworkDialog, LicensesDialog};
+use super::simple_dialogs::{self, *};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportBounds;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
@@ -16,7 +16,6 @@ pub struct DialogMessageContext<'a> {
 pub struct DialogMessageHandler {
 	export_dialog: ExportDialogMessageHandler,
 	new_document_dialog: NewDocumentDialogMessageHandler,
-	preferences_dialog: PreferencesDialogMessageHandler,
 }
 
 #[message_handler_data]
@@ -31,7 +30,6 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 		match message {
 			DialogMessage::ExportDialog(message) => self.export_dialog.process_message(message, responses, ExportDialogMessageContext { portfolio }),
 			DialogMessage::NewDocumentDialog(message) => self.new_document_dialog.process_message(message, responses, NewDocumentDialogMessageContext { viewport_bounds }),
-			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, responses, PreferencesDialogMessageContext { preferences }),
 
 			DialogMessage::CloseAllDocumentsWithConfirmation => {
 				let dialog = simple_dialogs::CloseAllDocumentsDialog {
@@ -40,13 +38,13 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 				dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::CloseDialogAndThen { followups } => {
+				// Since this message is "close dialog and then", the closing of the dialogue must happen first.
+				// This is because processing may spawn another dialogue (e.g. the export dialogue may produce an error dialogue).
+				responses.add(FrontendMessage::DisplayDialogDismiss);
+
 				for message in followups.into_iter() {
 					responses.add(message);
 				}
-
-				// This come after followups, so that the followups (which can cause the dialog to open) happen first, then we close it afterwards.
-				// If it comes before, the dialog reopens (and appears to not close at all).
-				responses.add(FrontendMessage::DisplayDialogDismiss);
 			}
 			DialogMessage::DisplayDialogError { title, description } => {
 				let dialog = simple_dialogs::ErrorDialog { title, description };
@@ -112,8 +110,8 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 				self.new_document_dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::RequestPreferencesDialog => {
-				self.preferences_dialog = PreferencesDialogMessageHandler {};
-				self.preferences_dialog.send_dialog_to_frontend(responses, preferences);
+				let dialog = PreferencesDialog { preferences };
+				dialog.send_dialog_to_frontend(responses);
 			}
 		}
 	}
