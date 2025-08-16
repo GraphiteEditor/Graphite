@@ -1,7 +1,7 @@
 use super::intersection::bezpath_intersections;
 use super::poisson_disk::poisson_disk_sample;
-use super::symmetrical_basis::{SymmetricalBasis, to_symmetrical_basis_pair};
 use super::util::pathseg_tangent;
+use crate::math::polynomial::pathseg_to_parametric_polynomial;
 use crate::vector::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
 use crate::vector::misc::{PointSpacingType, dvec2_to_point, point_to_dvec2};
 use glam::{DMat2, DVec2};
@@ -244,13 +244,21 @@ pub fn pathseg_find_tvalues_for_x(segment: PathSeg, x: f64) -> impl Iterator<Ite
 
 /// Find the `t`-value(s) such that the normal(s) at `t` pass through the specified point.
 pub fn pathseg_normals_to_point(segment: PathSeg, point: Point) -> Vec<f64> {
-	let point = DVec2::new(point.x, point.y);
-
-	let sbasis = to_symmetrical_basis_pair(segment);
-	let derivative = sbasis.derivative();
-	let cross = (sbasis - point).dot(&derivative);
-
-	SymmetricalBasis::roots(&cross)
+	// We solve deriv(t) dot (self(t) - point) = 0.
+	let (mut x, mut y) = pathseg_to_parametric_polynomial(segment);
+	let x = x.coefficients_mut();
+	let y = y.coefficients_mut();
+	x[0] -= point.x;
+	y[0] -= point.y;
+	let poly = poly_cool::Poly::new([
+		x[0] * x[1] + y[0] * y[1],
+		x[1] * x[1] + y[1] * y[1] + 2. * (x[0] * x[2] + y[0] * y[2]),
+		3. * (x[2] * x[1] + y[2] * y[1]) + 3. * (x[0] * x[3] + y[0] * y[3]),
+		4. * (x[3] * x[1] + y[3] * y[1]) + 2. * (x[2] * x[2] + y[2] * y[2]),
+		5. * (x[3] * x[2] + y[3] * y[2]),
+		3. * (x[3] * x[3] + y[3] * y[3]),
+	]);
+	poly.roots_between(0., 1., 1e-8)
 }
 
 /// Find the `t`-value(s) such that the tangent(s) at `t` pass through the given point.
