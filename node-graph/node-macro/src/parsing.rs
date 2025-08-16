@@ -39,7 +39,7 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) description: String,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct NodeFnAttributes {
 	pub(crate) category: Option<LitStr>,
 	pub(crate) display_name: Option<LitStr>,
@@ -104,6 +104,8 @@ impl Parse for ParsedWidgetOverride {
 
 #[derive(Debug)]
 pub(crate) enum ParsedField {
+	/// a param of any kind, either a concrete type or a generic type with a set of possible types specified via
+	/// `#[implementation(type)]`
 	Regular {
 		pat_ident: PatIdent,
 		name: Option<LitStr>,
@@ -121,7 +123,9 @@ pub(crate) enum ParsedField {
 		number_step: Option<LitFloat>,
 		implementations: Punctuated<Type, Comma>,
 		unit: Option<LitStr>,
+		gpu_image: bool,
 	},
+	/// a param of `impl Node` with `#[implementation(in -> out)]`
 	Node {
 		pat_ident: PatIdent,
 		name: Option<LitStr>,
@@ -533,6 +537,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				.map_err(|e| Error::new_spanned(attr, format!("Invalid `step` for argument '{}': {}\nUSAGE EXAMPLE: #[step(2.)]", ident, e)))
 		})
 		.transpose()?;
+	let gpu_image = extract_attribute(attrs, "gpu_image").is_some();
 
 	let (is_node, node_input_type, node_output_type) = parse_node_type(&ty);
 	let description = attrs
@@ -597,6 +602,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			value_source,
 			implementations,
 			unit,
+			gpu_image,
 		})
 	}
 }

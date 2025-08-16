@@ -6,6 +6,12 @@ description = "graphene raster data format"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "MIT OR Apache-2.0"
 
+[lib]
+crate-type = ["rlib", "dylib"]
+
+[lints]
+workspace = true
+
 [features]
 default = ["std"]
 std = [
@@ -19,7 +25,8 @@ std = [
 	"dep:fastnoise-lite",
 	"dep:serde",
 	"dep:specta",
-	"dep:glam"
+	"dep:glam",
+	"dep:graphene-raster-nodes-shaders",
 ]
 
 [dependencies]
@@ -30,9 +37,12 @@ node-macro = { workspace = true }
 # Local std dependencies
 dyn-any = { workspace = true, optional = true }
 graphene-core = { workspace = true, optional = true }
+graphene-raster-nodes-shaders = { path = "./shaders", optional = true }
 
 # Workspace dependencies
 bytemuck = { workspace = true }
+spirv-std = { workspace = true }
+num-traits = { workspace = true }
 # glam is reexported from gcore-shaders in no_std mode
 glam = { workspace = true, optional = true }
 

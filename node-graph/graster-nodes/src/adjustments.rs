@@ -7,10 +7,13 @@ use core::fmt::Debug;
 use graphene_core::gradient::GradientStops;
 #[cfg(feature = "std")]
 use graphene_core::raster_types::{CPU, Raster};
+#[cfg(feature = "std")]
 use graphene_core::table::Table;
 use graphene_core_shaders::color::Color;
 use graphene_core_shaders::context::Ctx;
-use graphene_core_shaders::registry::types::{Angle, Percentage, SignedPercentage};
+use graphene_core_shaders::registry::types::{AngleF32, PercentageF32, SignedPercentageF32};
+#[cfg(not(feature = "std"))]
+use num_traits::float::Float;
 
 // TODO: Implement the following:
 // Color Balance
@@ -30,6 +33,7 @@ use graphene_core_shaders::registry::types::{Angle, Percentage, SignedPercentage
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, node_macro::ChoiceType)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
+#[repr(u32)]
 pub enum LuminanceCalculation {
 	#[default]
 	#[label("sRGB")]
@@ -49,6 +53,7 @@ fn luminance<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	luminance_calc: LuminanceCalculation,
 ) -> T {
@@ -65,7 +70,7 @@ fn luminance<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::node(category("Raster"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster"), cfg(feature = "std"))]
 fn gamma_correction<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -74,6 +79,7 @@ fn gamma_correction<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	#[default(2.2)]
 	#[range((0.01, 10.))]
@@ -95,6 +101,7 @@ fn extract_channel<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	channel: RedGreenBlueAlpha,
 ) -> T {
@@ -119,13 +126,14 @@ fn make_opaque<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 ) -> T {
 	input.adjust(|color| {
 		if color.a() == 0. {
 			return color.with_alpha(1.);
 		}
-		Color::from_rgbaf32(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.).unwrap()
+		Color::from_rgbaf32_unchecked(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.)
 	});
 	input
 }
@@ -136,7 +144,7 @@ fn make_opaque<T: Adjust<Color>>(
 //
 // Some further analysis available at:
 // https://geraldbakker.nl/psnumbers/brightness-contrast.html
-#[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), properties("brightness_contrast_properties"), shader_node(PerPixelAdjust))]
+#[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), properties("brightness_contrast_properties"), cfg(feature = "std"))]
 fn brightness_contrast<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -145,9 +153,10 @@ fn brightness_contrast<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
-	brightness: SignedPercentage,
-	contrast: SignedPercentage,
+	brightness: SignedPercentageF32,
+	contrast: SignedPercentageF32,
 	use_classic: bool,
 ) -> T {
 	if use_classic {
@@ -235,12 +244,13 @@ fn levels<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
-	#[default(0.)] shadows: Percentage,
-	#[default(50.)] midtones: Percentage,
-	#[default(100.)] highlights: Percentage,
-	#[default(0.)] output_minimums: Percentage,
-	#[default(100.)] output_maximums: Percentage,
+	#[default(0.)] shadows: PercentageF32,
+	#[default(50.)] midtones: PercentageF32,
+	#[default(100.)] highlights: PercentageF32,
+	#[default(0.)] output_minimums: PercentageF32,
+	#[default(100.)] output_maximums: PercentageF32,
 ) -> T {
 	image.adjust(|color| {
 		let color = color.to_gamma_srgb();
@@ -295,7 +305,7 @@ fn levels<T: Adjust<Color>>(
 // https://stackoverflow.com/a/55233732/775283
 // Works the same for gamma and linear color
 #[node_macro::node(name("Black & White"), category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
-async fn black_and_white<T: Adjust<Color>>(
+fn black_and_white<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Raster<CPU>>,
@@ -303,26 +313,27 @@ async fn black_and_white<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 	#[default(Color::BLACK)] tint: Table<Color>,
 	#[default(40.)]
 	#[range((-200., 300.))]
-	reds: Percentage,
+	reds: PercentageF32,
 	#[default(60.)]
 	#[range((-200., 300.))]
-	yellows: Percentage,
+	yellows: PercentageF32,
 	#[default(40.)]
 	#[range((-200., 300.))]
-	greens: Percentage,
+	greens: PercentageF32,
 	#[default(60.)]
 	#[range((-200., 300.))]
-	cyans: Percentage,
+	cyans: PercentageF32,
 	#[default(20.)]
 	#[range((-200., 300.))]
-	blues: Percentage,
+	blues: PercentageF32,
 	#[default(80.)]
 	#[range((-200., 300.))]
-	magentas: Percentage,
+	magentas: PercentageF32,
 ) -> T {
 	let tint: Option<Color> = tint.into();
 	let tint = tint.unwrap_or(Color::BLACK);
@@ -360,7 +371,7 @@ async fn black_and_white<T: Adjust<Color>>(
 		// TODO: Fix "Color" blend mode implementation so it matches the expected behavior perfectly (it's currently close)
 		let color = tint.with_luminance(luminance);
 
-		let color = Color::from_rgbaf32(color.r(), color.g(), color.b(), alpha_part).unwrap();
+		let color = Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), alpha_part);
 
 		color.to_linear_srgb()
 	});
@@ -371,7 +382,7 @@ async fn black_and_white<T: Adjust<Color>>(
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27hue%20%27%20%3D%20Old,saturation%2C%20Photoshop%205.0
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=0%20%3D%20Use%20other.-,Hue/Saturation,-Hue/Saturation%20settings
 #[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
-async fn hue_saturation<T: Adjust<Color>>(
+fn hue_saturation<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Raster<CPU>>,
@@ -379,10 +390,11 @@ async fn hue_saturation<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
-	hue_shift: Angle,
-	saturation_shift: SignedPercentage,
-	lightness_shift: SignedPercentage,
+	hue_shift: AngleF32,
+	saturation_shift: SignedPercentageF32,
+	lightness_shift: SignedPercentageF32,
 ) -> T {
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
@@ -406,7 +418,7 @@ async fn hue_saturation<T: Adjust<Color>>(
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27%20%3D%20Color%20Lookup-,%27nvrt%27%20%3D%20Invert,-%27post%27%20%3D%20Posterize
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
-async fn invert<T: Adjust<Color>>(
+fn invert<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Raster<CPU>>,
@@ -414,6 +426,7 @@ async fn invert<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 ) -> T {
 	input.adjust(|color| {
@@ -429,7 +442,7 @@ async fn invert<T: Adjust<Color>>(
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=post%27%20%3D%20Posterize-,%27thrs%27%20%3D%20Threshold,-%27grdm%27%20%3D%20Gradient
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
-async fn threshold<T: Adjust<Color>>(
+fn threshold<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Raster<CPU>>,
@@ -437,9 +450,10 @@ async fn threshold<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
-	#[default(50.)] min_luminance: Percentage,
-	#[default(100.)] max_luminance: Percentage,
+	#[default(50.)] min_luminance: PercentageF32,
+	#[default(100.)] max_luminance: PercentageF32,
 	luminance_calc: LuminanceCalculation,
 ) -> T {
 	image.adjust(|color| {
@@ -475,7 +489,7 @@ async fn threshold<T: Adjust<Color>>(
 // When both parameters are set, it is equivalent to running this adjustment twice, with only vibrance set and then only saturation set.
 // (Except for some noise probably due to rounding error.)
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
-async fn vibrance<T: Adjust<Color>>(
+fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Raster<CPU>>,
@@ -483,8 +497,9 @@ async fn vibrance<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
-	vibrance: SignedPercentage,
+	vibrance: SignedPercentageF32,
 ) -> T {
 	image.adjust(|color| {
 		let vibrance = vibrance as f32 / 100.;
@@ -551,6 +566,7 @@ pub enum RedGreenBlue {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
+#[repr(u32)]
 pub enum RedGreenBlueAlpha {
 	#[default]
 	Red,
@@ -640,8 +656,8 @@ pub enum DomainWarpType {
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27mixr%27%20%3D%20Channel%20Mixer
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Lab%20color%20only-,Channel%20Mixer,-Key%20is%20%27mixr
-#[node_macro::node(category("Raster: Adjustment"), properties("channel_mixer_properties"), shader_node(PerPixelAdjust))]
-async fn channel_mixer<T: Adjust<Color>>(
+#[node_macro::node(category("Raster: Adjustment"), properties("channel_mixer_properties"), cfg(feature = "std"))]
+fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Raster<CPU>>,
@@ -649,6 +665,7 @@ async fn channel_mixer<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 
 	monochrome: bool,
@@ -769,8 +786,8 @@ pub enum SelectiveColorChoice {
 //
 // Algorithm based on:
 // https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
-#[node_macro::node(category("Raster: Adjustment"), properties("selective_color_properties"), shader_node(PerPixelAdjust))]
-async fn selective_color<T: Adjust<Color>>(
+#[node_macro::node(category("Raster: Adjustment"), properties("selective_color_properties"), cfg(feature = "std"))]
+fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Raster<CPU>>,
@@ -778,6 +795,7 @@ async fn selective_color<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 
 	mode: RelativeAbsolute,
@@ -913,7 +931,7 @@ async fn selective_color<T: Adjust<Color>>(
 // https://www.axiomx.com/posterize.htm
 // This algorithm produces fully accurate output in relation to the industry standard.
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
-async fn posterize<T: Adjust<Color>>(
+fn posterize<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Raster<CPU>>,
@@ -921,6 +939,7 @@ async fn posterize<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	#[default(4)]
 	#[hard_min(2.)]
@@ -947,7 +966,7 @@ async fn posterize<T: Adjust<Color>>(
 // Algorithm based on:
 // https://geraldbakker.nl/psnumbers/exposure.html
 #[node_macro::node(category("Raster: Adjustment"), properties("exposure_properties"), shader_node(PerPixelAdjust))]
-async fn exposure<T: Adjust<Color>>(
+fn exposure<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Raster<CPU>>,
@@ -955,22 +974,23 @@ async fn exposure<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
-	exposure: f64,
-	offset: f64,
+	exposure: f32,
+	offset: f32,
 	#[default(1.)]
 	#[range((0.01, 10.))]
 	#[hard_min(0.0001)]
-	gamma_correction: f64,
+	gamma_correction: f32,
 ) -> T {
 	input.adjust(|color| {
 		let adjusted = color
 		// Exposure
-		.map_rgb(|c: f32| c * 2_f32.powf(exposure as f32))
+		.map_rgb(|c: f32| c * 2_f32.powf(exposure))
 		// Offset
-		.map_rgb(|c: f32| c + offset as f32)
+		.map_rgb(|c: f32| c + offset)
 		// Gamma correction
-		.gamma(gamma_correction as f32);
+		.gamma(gamma_correction);
 
 		adjusted.map_rgb(|c: f32| c.clamp(0., 1.))
 	});

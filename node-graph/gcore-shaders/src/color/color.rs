@@ -3,6 +3,7 @@ use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
 use core::hash::Hash;
+use glam::Vec4;
 use half::f16;
 #[cfg(target_arch = "spirv")]
 use num_traits::Euclid;
@@ -700,7 +701,7 @@ impl Color {
 		if c_s <= 0.5 {
 			c_b - (1. - 2. * c_s) * c_b * (1. - c_b)
 		} else {
-			let d: fn(f32) -> f32 = |x| if x <= 0.25 { ((16. * x - 12.) * x + 4.) * x } else { x.sqrt() };
+			let d = |x: f32| if x <= 0.25 { ((16. * x - 12.) * x + 4.) * x } else { x.sqrt() };
 			c_b + (2. * c_s - 1.) * (d(c_b) - c_b)
 		}
 	}
@@ -1074,6 +1075,21 @@ impl Color {
 			alpha: (self.alpha * other.alpha).clamp(0., 1.),
 			..*self
 		}
+	}
+
+	#[inline(always)]
+	pub const fn from_vec4(vec: Vec4) -> Self {
+		Self {
+			red: vec.x,
+			green: vec.y,
+			blue: vec.z,
+			alpha: vec.w,
+		}
+	}
+
+	#[inline(always)]
+	pub fn to_vec4(&self) -> Vec4 {
+		Vec4::new(self.red, self.green, self.blue, self.alpha)
 	}
 }
 
