@@ -2141,7 +2141,6 @@ dependencies = [
  "futures",
  "glam",
  "graph-craft",
- "graphene-core",
  "graphene-std",
  "graphite-proc-macros",
  "interpreted-executor",

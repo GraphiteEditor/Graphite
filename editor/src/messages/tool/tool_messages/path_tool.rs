@@ -1262,7 +1262,7 @@ impl PathToolData {
 		let t2 = segments[1].bezier.nearest(dvec2_to_point(layer_pos), DEFAULT_ACCURACY).t;
 		let position2 = point_to_dvec2(segments[1].bezier.eval(t2));
 
-		let (closer_segment, farther_segment, t_value, new_position) = if position2.distance(layer_pos) < position1.distance(layer_pos) {
+		let (closer_segment, further_segment, t_value, new_position) = if position2.distance(layer_pos) < position1.distance(layer_pos) {
 			(segments[1], segments[0], t2, position2)
 		} else {
 			(segments[0], segments[1], t1, position1)
@@ -1277,7 +1277,7 @@ impl PathToolData {
 		shape_editor.move_anchor(anchor, &vector, delta, layer, None, responses);
 
 		// Make a split at the t_value
-		let first = closer_segment.bezier.subsegment(0f64..t_value);
+		let first = closer_segment.bezier.subsegment(0_f64..t_value);
 		let second = closer_segment.bezier.subsegment(t_value..1.);
 
 		let closer_segment_other_point = if anchor == closer_segment.start {
@@ -1304,32 +1304,32 @@ impl PathToolData {
 
 		let end_handle_direction = if anchor == closer_segment.start { -relative_position1 } else { -relative_position2 };
 
-		let farther_segment_points = pathseg_points(farther_segment.bezier);
+		let further_segment_points = pathseg_points(further_segment.bezier);
 
-		let (farther_other_point, start_handle, end_handle, start_handle_pos) = if anchor == farther_segment.start {
+		let (further_other_point, start_handle, end_handle, start_handle_pos) = if anchor == further_segment.start {
 			(
-				farther_segment_points.p3,
-				HandleId::end(farther_segment.segment_id),
-				HandleId::primary(farther_segment.segment_id),
-				farther_segment_points.p2,
+				further_segment_points.p3,
+				HandleId::end(further_segment.segment_id),
+				HandleId::primary(further_segment.segment_id),
+				further_segment_points.p2,
 			)
 		} else {
 			(
-				farther_segment_points.p0,
-				HandleId::primary(farther_segment.segment_id),
-				HandleId::end(farther_segment.segment_id),
-				farther_segment_points.p1,
+				further_segment_points.p0,
+				HandleId::primary(further_segment.segment_id),
+				HandleId::end(further_segment.segment_id),
+				further_segment_points.p1,
 			)
 		};
 		let Some(start_handle_position) = start_handle_pos else { return };
-		let start_handle_direction = start_handle_position - farther_other_point;
+		let start_handle_direction = start_handle_position - further_other_point;
 
 		// Get normalized direction vectors, if cubic handle is zero then we consider corresponding tangent
 		let d1 = start_handle_direction.try_normalize().unwrap_or({
-			if anchor == farther_segment.start {
-				-pathseg_tangent(farther_segment.bezier, 1.)
+			if anchor == further_segment.start {
+				-pathseg_tangent(further_segment.bezier, 1.)
 			} else {
-				pathseg_tangent(farther_segment.bezier, 0.)
+				pathseg_tangent(further_segment.bezier, 0.)
 			}
 		});
 
@@ -1338,7 +1338,7 @@ impl PathToolData {
 		let min_len1 = start_handle_direction.length() * 0.4;
 		let min_len2 = end_handle_direction.length() * 0.4;
 
-		let (relative_pos1, relative_pos2) = find_two_param_best_approximate(farther_other_point, new_position, d1, d2, min_len1, min_len2, farther_segment.bezier, other_segment);
+		let (relative_pos1, relative_pos2) = find_two_param_best_approximate(further_other_point, new_position, d1, d2, min_len1, min_len2, further_segment.bezier, other_segment);
 
 		// Now set those handles to these handle lengths keeping the directions d1, d2
 		let modification_type = start_handle.set_relative_position(relative_pos1);

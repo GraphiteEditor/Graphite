@@ -4,14 +4,15 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::misc::*;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
-use graphene_core::subpath::{Identifier, ManipulatorGroup, Subpath};
+use graphene_std::math::math_ext::QuadExt;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::pathseg_points;
+use graphene_std::subpath::{Identifier, ManipulatorGroup, Subpath};
 use graphene_std::vector::PointId;
 use graphene_std::vector::algorithms::bezpath_algorithms::{pathseg_normals_to_point, pathseg_tangents_to_point};
 use graphene_std::vector::algorithms::intersection::filtered_segment_intersections;
+use graphene_std::vector::misc::dvec2_to_point;
 use graphene_std::vector::misc::point_to_dvec2;
-use graphene_std::{math::math_ext::QuadExt, vector::misc::dvec2_to_point};
 use kurbo::{Affine, DEFAULT_ACCURACY, Nearest, ParamCurve, ParamCurveNearest, PathSeg};
 
 #[derive(Clone, Debug, Default)]

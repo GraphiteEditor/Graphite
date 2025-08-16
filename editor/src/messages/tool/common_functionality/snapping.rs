@@ -83,6 +83,7 @@ impl SnapConstraint {
 		}
 	}
 }
+
 pub fn snap_tolerance(document: &DocumentMessageHandler) -> f64 {
 	document.snapping_state.tolerance / document.document_ptz.zoom()
 }
@@ -129,13 +130,16 @@ fn get_closest_point(points: Vec<SnappedPoint>) -> Option<SnappedPoint> {
 		}
 	}
 }
+
 fn get_closest_curve(curves: &[SnappedCurve], exclude_paths: bool) -> Option<&SnappedPoint> {
 	let keep_curve = |curve: &&SnappedCurve| !exclude_paths || curve.point.target != SnapTarget::Path(PathSnapTarget::AlongPath);
 	curves.iter().filter(keep_curve).map(|curve| &curve.point).min_by(compare_points)
 }
+
 fn get_closest_line(lines: &[SnappedLine]) -> Option<&SnappedPoint> {
 	lines.iter().map(|curve| &curve.point).min_by(compare_points)
 }
+
 fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<SnappedPoint> {
 	let mut best = None;
 	for curve_i in curves {
@@ -240,6 +244,7 @@ impl<'a> SnapData<'a> {
 		self.node_snap_cache.is_some_and(|cache| !cache.manipulators.is_empty())
 	}
 }
+
 impl SnapManager {
 	pub fn update_indicator(&mut self, snapped_point: SnappedPoint) {
 		self.indicator = snapped_point.is_snapped().then_some(snapped_point);

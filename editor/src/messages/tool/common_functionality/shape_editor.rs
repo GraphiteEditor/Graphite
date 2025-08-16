@@ -12,7 +12,7 @@ use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration
 use crate::messages::tool::common_functionality::utility_functions::is_visible_point;
 use crate::messages::tool::tool_messages::path_tool::{PathOverlayMode, PointSelectState};
 use glam::{DAffine2, DVec2};
-use graphene_core::subpath::{BezierHandles, Subpath};
+use graphene_std::subpath::{BezierHandles, Subpath};
 use graphene_std::subpath::{PathSegPoints, pathseg_points};
 use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point, point_to_dvec2};
@@ -252,7 +252,7 @@ impl ClosestSegment {
 		let transform = document_metadata.transform_to_viewport_if_feeds(self.layer, network_interface);
 
 		// Split the Bezier at the parameter `t`
-		let first = self.bezier.subsegment(0f64..self.t);
+		let first = self.bezier.subsegment(0_f64..self.t);
 		let second = self.bezier.subsegment(self.t..1.);
 
 		// Transform the handle positions to viewport space
@@ -264,7 +264,7 @@ impl ClosestSegment {
 
 	pub fn adjusted_insert(&self, responses: &mut VecDeque<Message>) -> (PointId, [SegmentId; 2]) {
 		let layer = self.layer;
-		let first = pathseg_points(self.bezier.subsegment(0f64..self.t));
+		let first = pathseg_points(self.bezier.subsegment(0_f64..self.t));
 		let second = pathseg_points(self.bezier.subsegment(self.t..1.));
 
 		// Point
