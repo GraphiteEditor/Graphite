@@ -211,7 +211,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 			CustomEvent::EditorMessage(message) => {
 				let responses = self.editor_wrapper.dispatch(message);
 				for response in responses {
-					let _ = self.event_loop_proxy.send_event(CustomEvent::NativeMessage(response));
+					self.handle_native_message(response);
 				}
 			}
 			CustomEvent::UiUpdate(texture) => {
