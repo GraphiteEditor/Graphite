@@ -1,3 +1,33 @@
+//! CEF (Chromium Embedded Framework) integration for Graphite Desktop
+//!
+//! This module provides CEF browser integration with hardware-accelerated texture sharing.
+//!
+//! # Hardware Acceleration
+//!
+//! The texture import system supports platform-specific hardware acceleration:
+//!
+//! - **Linux**: DMA-BUF via Vulkan external memory (`accelerated_paint_dmabuf` feature)
+//! - **Windows**: D3D11 shared textures via Vulkan interop (`accelerated_paint_d3d11` feature)
+//! - **macOS**: IOSurface via Metal/Vulkan interop (`accelerated_paint_iosurface` feature)
+//!
+//! ## Feature Configuration
+//!
+//! Enable hardware acceleration with:
+//! ```toml
+//! [dependencies]
+//! graphite-desktop = { features = ["accelerated_paint"] }
+//! ```
+//!
+//! Or enable platform-specific support:
+//! ```toml
+//! [dependencies]
+//! graphite-desktop = { features = ["accelerated_paint_linux"] }    # Linux only
+//! graphite-desktop = { features = ["accelerated_paint_windows"] }  # Windows only
+//! graphite-desktop = { features = ["accelerated_paint_macos"] }    # macOS only
+//! ```
+//!
+//! The system gracefully falls back to CPU textures when hardware acceleration is unavailable.
+
 use crate::{CustomEvent, WgpuContext, render::FrameBufferRef};
 use std::{
 	sync::{Arc, Mutex, mpsc::Receiver},
@@ -9,7 +39,10 @@ mod dirs;
 mod input;
 mod internal;
 mod ipc;
+mod platform;
 mod scheme_handler;
+#[cfg(feature = "accelerated_paint")]
+mod texture_import;
 mod utility;
 
 pub(crate) use context::{Context, InitError, Initialized, Setup, SetupError};
@@ -18,6 +51,8 @@ use winit::event_loop::EventLoopProxy;
 pub(crate) trait CefEventHandler: Clone {
 	fn window_size(&self) -> WindowSize;
 	fn draw<'a>(&self, frame_buffer: FrameBufferRef<'a>);
+	#[cfg(feature = "accelerated_paint")]
+	fn on_accelerated_paint(&self, shared_handle: internal::render_handler::SharedTextureHandle);
 	/// Scheudule the main event loop to run the cef event loop after the timeout
 	///  [`_cef_browser_process_handler_t::on_schedule_message_pump_work`] for more documentation.
 	fn schedule_cef_message_loop_work(&self, scheduled_time: Instant);
@@ -128,6 +163,18 @@ impl CefEventHandler for CefHandler {
 			}
 			Err(e) => {
 				tracing::error!("Failed to deserialize message {:?}", e)
+			}
+		}
+	}
+
+	#[cfg(feature = "accelerated_paint")]
+	fn on_accelerated_paint(&self, shared_handle: internal::render_handler::SharedTextureHandle) {
+		match self::texture_import::import_texture(shared_handle, &self.wgpu_context.device) {
+			Ok(texture) => {
+				let _ = self.event_loop_proxy.send_event(CustomEvent::UiUpdate(texture));
+			}
+			Err(e) => {
+				tracing::error!("Failed to import shared texture: {}", e);
 			}
 		}
 	}
