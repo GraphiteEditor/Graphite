@@ -15,29 +15,31 @@ mod intercept_message;
 
 pub struct EditorWrapper {
 	editor: Editor,
-	queue: VecDeque<QueuedMessage>,
-}
-
-#[allow(clippy::large_enum_variant)]
-enum QueuedMessage {
-	Message(Message),
-	EditorMessage(EditorMessage),
+	queue: VecDeque<EditorMessage>,
+	messages: Vec<Message>,
+	responses: Vec<NativeMessage>,
 }
 
 impl EditorApi for EditorWrapper {
 	fn dispatch(&mut self, message: EditorMessage) -> Vec<NativeMessage> {
 		self.queue_editor_message(message);
 
-		let mut responses = Vec::new();
-
-		while let Some(queued_message) = self.queue.pop_front() {
-			match queued_message {
-				QueuedMessage::Message(message) => self.handle_message(message, &mut responses),
-				QueuedMessage::EditorMessage(editor_message) => self.handle_editor_message(editor_message, &mut responses),
+		while !self.queue.is_empty() {
+			while let Some(message) = self.queue.pop_front() {
+				self.handle_editor_message(message);
 			}
+			let frontend_messages = self
+				.editor
+				.handle_message(Message::Batched {
+					messages: std::mem::take(&mut self.messages).into_boxed_slice(),
+				})
+				.into_iter()
+				.filter_map(|m| intercept_frontend_message::intercept_frontend_message(m, &mut self.responses))
+				.collect::<Vec<_>>();
+			self.respond(NativeMessage::ToFrontend(ron::to_string(&frontend_messages).unwrap().into_bytes()));
 		}
 
-		responses
+		std::mem::take(&mut self.responses)
 	}
 
 	fn poll() -> Vec<NativeMessage> {
@@ -61,6 +63,8 @@ impl EditorWrapper {
 		Self {
 			editor: Editor::new(),
 			queue: VecDeque::new(),
+			messages: Vec::new(),
+			responses: Vec::new(),
 		}
 	}
 
@@ -69,27 +73,22 @@ impl EditorWrapper {
 		futures::executor::block_on(graphite_editor::node_graph_executor::replace_application_io(application_io));
 	}
 
-	fn handle_message(&mut self, message: Message, responses: &mut Vec<NativeMessage>) {
-		if let Some(message) = intercept_message::intercept_message(message, responses) {
-			let messages = self.editor.handle_message(message);
-			let frontend_messages = messages
-				.into_iter()
-				.filter_map(|m| intercept_frontend_message::intercept_frontend_message(m, responses))
-				.collect::<Vec<_>>();
-			responses.push(NativeMessage::ToFrontend(ron::to_string(&frontend_messages).unwrap().into_bytes()));
-		}
+	fn handle_editor_message(&mut self, message: EditorMessage) {
+		handle_editor_message::handle_editor_message(self, message);
 	}
 
-	fn handle_editor_message(&mut self, message: EditorMessage, responses: &mut Vec<NativeMessage>) {
-		handle_editor_message::handle_editor_message(self, message, responses);
+	pub fn respond(&mut self, response: NativeMessage) {
+		self.responses.push(response);
 	}
 
 	pub(super) fn queue_editor_message(&mut self, message: EditorMessage) {
-		self.queue.push_back(QueuedMessage::EditorMessage(message));
+		self.queue.push_back(message);
 	}
 
 	pub(super) fn queue_message(&mut self, message: Message) {
-		self.queue.push_back(QueuedMessage::Message(message));
+		if let Some(message) = intercept_message::intercept_message(message, &mut self.responses) {
+			self.messages.push(message);
+		}
 	}
 
 	pub(super) fn poll_node_graph_evaluation(&mut self) {

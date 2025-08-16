@@ -2,10 +2,6 @@ use std::path::PathBuf;
 
 use graphite_editor::messages::prelude::DocumentId;
 
-pub enum WrappedMessage {
-	x,
-}
-
 pub enum NativeMessage {
 	ToFrontend(Vec<u8>),
 	OpenFileDialog {

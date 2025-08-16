@@ -4,7 +4,7 @@ use crate::editor_api::messages::{EditorMessage, NativeMessage, OpenFileDialogCo
 
 use super::EditorWrapper;
 
-pub(super) fn handle_editor_message(editor_wrapper: &mut EditorWrapper, message: EditorMessage, responses: &mut Vec<NativeMessage>) {
+pub(super) fn handle_editor_message(editor_wrapper: &mut EditorWrapper, message: EditorMessage) {
 	match message {
 		EditorMessage::FromFrontend(data) => {
 			let string = std::str::from_utf8(&data).unwrap();
@@ -88,14 +88,14 @@ pub(super) fn handle_editor_message(editor_wrapper: &mut EditorWrapper, message:
 		},
 		EditorMessage::SaveFileDialogResult { path, context } => match context {
 			SaveFileDialogContext::Document { document_id, content } => {
-				responses.push(NativeMessage::WriteFile { path: path.clone(), content });
+				editor_wrapper.respond(NativeMessage::WriteFile { path: path.clone(), content });
 				editor_wrapper.queue_message(Message::Portfolio(PortfolioMessage::DocumentPassMessage {
 					document_id,
 					message: DocumentMessage::SavedDocument { path: Some(path) },
 				}));
 			}
 			SaveFileDialogContext::Export { content } => {
-				responses.push(NativeMessage::WriteFile { path, content });
+				editor_wrapper.respond(NativeMessage::WriteFile { path, content });
 			}
 		},
 		EditorMessage::PoolNodeGraphEvaluation => editor_wrapper.poll_node_graph_evaluation(),
