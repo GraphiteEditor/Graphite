@@ -8,13 +8,13 @@ use crate::messages::portfolio::document::node_graph::utility_types::{Direction,
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
-use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graph_craft::{Type, concrete};
 use graphene_std::Artboard;
 use graphene_std::math::quad::Quad;
+use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
@@ -2832,7 +2832,7 @@ impl NodeNetworkInterface {
 			let node_click_target_bottom_right = node_click_target_top_left + DVec2::new(width as f64, height as f64);
 
 			let radius = 3.;
-			let subpath = bezier_rs::Subpath::new_rounded_rect(node_click_target_top_left, node_click_target_bottom_right, [radius; 4]);
+			let subpath = Subpath::new_rounded_rect(node_click_target_top_left, node_click_target_bottom_right, [radius; 4]);
 			let node_click_target = ClickTarget::new_with_subpath(subpath, 0.);
 
 			DocumentNodeClickTargets {
@@ -2871,7 +2871,7 @@ impl NodeNetworkInterface {
 			let node_bottom_right = node_top_left + DVec2::new(width as f64, height as f64);
 			let chain_top_left = node_top_left - DVec2::new((chain_width_grid_spaces * crate::consts::GRID_SIZE) as f64, 0.);
 			let radius = 10.;
-			let subpath = bezier_rs::Subpath::new_rounded_rect(chain_top_left, node_bottom_right, [radius; 4]);
+			let subpath = Subpath::new_rounded_rect(chain_top_left, node_bottom_right, [radius; 4]);
 			let node_click_target = ClickTarget::new_with_subpath(subpath, 0.);
 
 			DocumentNodeClickTargets {
@@ -3059,27 +3059,21 @@ impl NodeNetworkInterface {
 				let mut node_path = String::new();
 
 				if let ClickTargetType::Subpath(subpath) = node_click_targets.node_click_target.target_type() {
-					let _ = subpath.subpath_to_svg(&mut node_path, DAffine2::IDENTITY);
+					node_path.push_str(subpath.to_bezpath().to_svg().as_str())
 				}
 				all_node_click_targets.push((node_id, node_path));
 				for port in node_click_targets.port_click_targets.click_targets().chain(import_export_click_targets.click_targets()) {
 					if let ClickTargetType::Subpath(subpath) = port.target_type() {
-						let mut port_path = String::new();
-						let _ = subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
-						connector_click_targets.push(port_path);
+						connector_click_targets.push(subpath.to_bezpath().to_svg());
 					}
 				}
 				if let NodeTypeClickTargets::Layer(layer_metadata) = &node_click_targets.node_type_metadata {
 					if let ClickTargetType::Subpath(subpath) = layer_metadata.visibility_click_target.target_type() {
-						let mut port_path = String::new();
-						let _ = subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
-						icon_click_targets.push(port_path);
+						icon_click_targets.push(subpath.to_bezpath().to_svg());
 					}
 
 					if let ClickTargetType::Subpath(subpath) = layer_metadata.grip_click_target.target_type() {
-						let mut port_path = String::new();
-						let _ = subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
-						icon_click_targets.push(port_path);
+						icon_click_targets.push(subpath.to_bezpath().to_svg());
 					}
 				}
 			}
@@ -3095,9 +3089,8 @@ impl NodeNetworkInterface {
 		});
 
 		let bounds = self.all_nodes_bounding_box(network_path).cloned().unwrap_or([DVec2::ZERO, DVec2::ZERO]);
-		let rect = bezier_rs::Subpath::<PointId>::new_rect(bounds[0], bounds[1]);
-		let mut all_nodes_bounding_box = String::new();
-		let _ = rect.subpath_to_svg(&mut all_nodes_bounding_box, DAffine2::IDENTITY);
+		let rect = Subpath::<PointId>::new_rect(bounds[0], bounds[1]);
+		let all_nodes_bounding_box = rect.to_bezpath().to_svg();
 
 		let Some(rounded_network_edge_distance) = self.rounded_network_edge_distance(network_path).cloned() else {
 			log::error!("Could not get rounded_network_edge_distance in collect_frontend_click_targets");
@@ -3123,9 +3116,8 @@ impl NodeNetworkInterface {
 			.inverse()
 			.transform_point2(import_exports_viewport_bottom_right);
 
-		let import_exports_target = bezier_rs::Subpath::<PointId>::new_rect(node_graph_top_left, node_graph_bottom_right);
-		let mut import_exports_bounding_box = String::new();
-		let _ = import_exports_target.subpath_to_svg(&mut import_exports_bounding_box, DAffine2::IDENTITY);
+		let import_exports_target = Subpath::<PointId>::new_rect(node_graph_top_left, node_graph_bottom_right);
+		let import_exports_bounding_box = import_exports_target.to_bezpath().to_svg();
 
 		let mut modify_import_export = Vec::new();
 		if let Some(modify_import_export_click_targets) = self.modify_import_export(network_path) {
@@ -3136,9 +3128,7 @@ impl NodeNetworkInterface {
 				.chain(modify_import_export_click_targets.reorder_imports_exports.click_targets())
 			{
 				if let ClickTargetType::Subpath(subpath) = click_target.target_type() {
-					let mut remove_string = String::new();
-					let _ = subpath.subpath_to_svg(&mut remove_string, DAffine2::IDENTITY);
-					modify_import_export.push(remove_string);
+					modify_import_export.push(subpath.to_bezpath().to_svg());
 				}
 			}
 		}
@@ -3407,7 +3397,7 @@ impl NodeNetworkInterface {
 			return None;
 		};
 
-		let bounding_box_subpath = bezier_rs::Subpath::<PointId>::new_rect(bounds[0], bounds[1]);
+		let bounding_box_subpath = Subpath::<PointId>::new_rect(bounds[0], bounds[1]);
 		bounding_box_subpath.bounding_box_with_transform(network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport)
 	}
 

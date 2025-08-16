@@ -1885,7 +1885,6 @@ dependencies = [
 name = "graph-craft"
 version = "0.1.0"
 dependencies = [
- "bezier-rs",
  "criterion",
  "dyn-any",
  "glam",
@@ -1963,7 +1962,6 @@ name = "graphene-core"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "bezier-rs",
  "bytemuck",
  "ctor",
  "dyn-any",
@@ -1976,6 +1974,7 @@ dependencies = [
  "num-traits",
  "parley",
  "petgraph 0.7.1",
+ "poly-cool",
  "rand 0.9.1",
  "rand_chacha 0.9.0",
  "rustc-hash 2.1.1",
@@ -2020,10 +2019,10 @@ dependencies = [
 name = "graphene-path-bool"
 version = "0.1.0"
 dependencies = [
- "bezier-rs",
  "dyn-any",
  "glam",
  "graphene-core",
+ "kurbo",
  "log",
  "node-macro",
  "path-bool",
@@ -2035,7 +2034,6 @@ dependencies = [
 name = "graphene-raster-nodes"
 version = "0.1.0"
 dependencies = [
- "bezier-rs",
  "bytemuck",
  "dyn-any",
  "fastnoise-lite",
@@ -2044,6 +2042,7 @@ dependencies = [
  "graphene-core",
  "graphene-core-shaders",
  "image",
+ "kurbo",
  "ndarray",
  "node-macro",
  "rand 0.9.1",
@@ -2091,10 +2090,10 @@ name = "graphene-svg-renderer"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "bezier-rs",
  "dyn-any",
  "glam",
  "graphene-core",
+ "kurbo",
  "log",
  "num-traits",
  "serde",
@@ -2134,7 +2133,6 @@ name = "graphite-editor"
 version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
- "bezier-rs",
  "bitflags 2.9.1",
  "bytemuck",
  "derivative",

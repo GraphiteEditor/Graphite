@@ -13,13 +13,12 @@ std = [
 	"dep:dyn-any",
 	"dep:image",
 	"dep:ndarray",
-	"dep:bezier-rs",
 	"dep:rand",
 	"dep:rand_chacha",
 	"dep:fastnoise-lite",
 	"dep:serde",
 	"dep:specta",
-	"dep:glam"
+	"dep:glam",
 ]
 
 [dependencies]
@@ -40,11 +39,11 @@ glam = { workspace = true, optional = true }
 specta = { workspace = true, optional = true }
 image = { workspace = true, optional = true }
 ndarray = { workspace = true, optional = true }
-bezier-rs = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 rand_chacha = { workspace = true, optional = true }
 fastnoise-lite = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
+kurbo = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

@@ -1,7 +1,7 @@
 use super::TextAlign;
+use crate::subpath::{ManipulatorGroup, Subpath};
 use crate::table::{Table, TableRow};
 use crate::vector::{PointId, Vector};
-use bezier_rs::{ManipulatorGroup, Subpath};
 use core::cell::RefCell;
 use glam::{DAffine2, DVec2};
 use parley::fontique::Blob;
