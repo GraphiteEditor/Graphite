@@ -864,7 +864,7 @@ async fn offset_path(_: impl Ctx, content: Table<Vector>, distance: f64, join: S
 			for mut bezpath in bezpaths {
 				bezpath.apply_affine(transform);
 
-				// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
+				// Taking the existing stroke data and passing it to Kurbo to generate new paths.
 				let mut bezpath_out = offset_bezpath(
 					&bezpath,
 					-distance,

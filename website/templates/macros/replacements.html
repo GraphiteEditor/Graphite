@@ -40,16 +40,12 @@
 {% endmacro text_balancer %}
 
 {% macro hierarchical_message_system_tree() %}
-{%- set content = load_data(path = "other/editor-structure/replacement.html", format = "plain", required = false) -%}
+{%- set content = load_data(path = "../../hierarchical_message_system_tree.html", format = "plain", required = false) -%}
 {%- set fallback = "<pre>THIS CONTENT IS FILLED IN WHEN CI BUILDS THE WEBSITE.
 
-TO TEST IT LOCALLY, RUN:
-
-cd website/other/editor-structure
-
-AND THEN:
+TO TEST IT LOCALLY, FROM THE `website` DIRECTORY, RUN:
 
 cargo test --package graphite-editor --lib -- messages::message::test::generate_message_tree
-node generate.js ../../../hierarchical_message_system_tree.txt replacement.html</pre>" -%}
+npm run generate-editor-structure</pre>" -%}
 {{ content | default(value = fallback) | safe }}
 {% endmacro hierarchical_message_system_tree %}

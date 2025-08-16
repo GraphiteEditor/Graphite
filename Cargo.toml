@@ -20,9 +20,7 @@ members = [
 	"node-graph/preprocessor",
 	"libraries/dyn-any",
 	"libraries/path-bool",
-	"libraries/bezier-rs",
 	"libraries/math-parser",
-	"website/other/bezier-rs-demos/wasm",
 ]
 default-members = [
 	"editor",
@@ -44,7 +42,6 @@ resolver = "2"
 
 [workspace.dependencies]
 # Local dependencies
-bezier-rs = { path = "libraries/bezier-rs", features = ["dyn-any", "serde"] }
 dyn-any = { path = "libraries/dyn-any", features = [
 	"derive",
 	"glam",

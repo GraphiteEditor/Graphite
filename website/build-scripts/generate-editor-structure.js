@@ -95,7 +95,7 @@ const outputFile = process.argv[3];
 
 if (!inputFile || !outputFile) {
 	console.error("Error: Please provide the input text and output HTML file paths as arguments.");
-	console.log("Usage: node generate.js <input> <output>");
+	console.log("Usage: node generate-editor-structure.js <input txt> <output html>");
 	process.exit(1);
 }
 
