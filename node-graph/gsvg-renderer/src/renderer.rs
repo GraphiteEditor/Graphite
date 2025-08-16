@@ -201,6 +201,13 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 	}) + ")"
 }
 
+fn max_scale(transform: DAffine2) -> f64 {
+	let m = transform.to_cols_array();
+	let sx = (m[0] * m[0] + m[1] * m[1]).sqrt();
+	let sy = (m[2] * m[2] + m[3] * m[3]).sqrt();
+	sx.max(sy)
+}
+
 pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 	let cols = transform.to_cols_array();
 	usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
@@ -689,9 +696,32 @@ impl Render for Table<Vector> {
 			};
 			let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
 			let can_draw_aligned_stroke = path_is_closed && vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered());
-			let can_use_paint_order = !(row.element.style.fill().is_none() || mask_type == MaskType::Clip);
+			let can_use_paint_order = !(row.element.style.fill().is_none() || !row.element.style.fill().is_opaque() || mask_type == MaskType::Clip);
 
-			let push_id = if can_draw_aligned_stroke && !can_use_paint_order {
+			let needs_separate_fill = can_draw_aligned_stroke && !can_use_paint_order;
+
+			if needs_separate_fill {
+				render.leaf_tag("path", |attributes| {
+					attributes.push("d", path.clone());
+					let matrix = format_transform_matrix(element_transform);
+					if !matrix.is_empty() {
+						attributes.push("transform", matrix);
+					}
+					let mut style = row.element.style.clone();
+					style.clear_stroke();
+					let fill_and_stroke = style.render(
+						&mut attributes.0.svg_defs,
+						element_transform,
+						applied_stroke_transform,
+						bounds_matrix,
+						transformed_bounds_matrix,
+						&render_params,
+					);
+					attributes.push_val(fill_and_stroke);
+				});
+			}
+
+			let push_id = needs_separate_fill.then_some({
 				let id = format!("alignment-{}", generate_uuid());
 
 				let mut element = row.element.clone();
@@ -705,10 +735,8 @@ impl Render for Table<Vector> {
 					source_node_id: None,
 				});
 
-				Some((id, mask_type, vector_row))
-			} else {
-				None
-			};
+				(id, mask_type, vector_row)
+			});
 
 			render.leaf_tag("path", |attributes| {
 				attributes.push("d", path);
@@ -721,16 +749,24 @@ impl Render for Table<Vector> {
 				if let Some((ref id, mask_type, ref vector_row)) = push_id {
 					let mut svg = SvgRender::new();
 					vector_row.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
-
-					let weight = row.element.style.stroke().unwrap().weight * row.transform.matrix2.determinant();
-					let quad = Quad::from_box(transformed_bounds).inflate(weight);
+					let stroke = row.element.style.stroke().unwrap();
+					let stroke_px = stroke.weight * max_scale(applied_stroke_transform);
+					let quad = Quad::from_box(transformed_bounds).inflate(stroke_px);
 					let (x, y) = quad.top_left().into();
 					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
+
 					write!(defs, r##"{}"##, svg.svg_defs).unwrap();
 					let rect = format!(r##"<rect x="{x}" y="{y}" width="{width}" height="{height}" fill="white" />"##);
+
 					match mask_type {
 						MaskType::Clip => write!(defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg.svg.to_svg_string()).unwrap(),
-						MaskType::Mask => write!(defs, r##"<mask id="{id}">{}{}</mask>"##, rect, svg.svg.to_svg_string()).unwrap(),
+						MaskType::Mask => write!(
+							defs,
+							r##"<mask id="{id}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="{x}" y="{y}" width="{width}" height="{height}" mask-type="luminance">{}{}</mask>"##,
+							rect,
+							svg.svg.to_svg_string()
+						)
+						.unwrap(),
 					}
 				}
 
@@ -738,10 +774,12 @@ impl Render for Table<Vector> {
 				render_params.aligned_strokes = can_draw_aligned_stroke;
 				render_params.override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
 
-				let fill_and_stroke = row
-					.element
-					.style
-					.render(defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, &render_params);
+				let mut style = row.element.style.clone();
+				if needs_separate_fill {
+					style.clear_fill();
+				}
+
+				let fill_and_stroke = style.render(defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, &render_params);
 
 				if let Some((id, mask_type, _)) = push_id {
 					let selector = format!("url(#{id})");
