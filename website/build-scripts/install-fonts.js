@@ -8,15 +8,15 @@ const basePath = path.resolve(__dirname);
 // Define files to copy as [source, destination] pairs
 // Files with the same destination will be concatenated
 const FILES_TO_COPY = [
-	["node_modules/@fontsource-variable/inter/opsz.css", "static/fonts/common.css"],
-	["node_modules/@fontsource-variable/inter/opsz-italic.css", "static/fonts/common.css"],
-	["node_modules/@fontsource/bona-nova/700.css", "static/fonts/common.css"],
+	["../node_modules/@fontsource-variable/inter/opsz.css", "../static/fonts/common.css"],
+	["../node_modules/@fontsource-variable/inter/opsz-italic.css", "../static/fonts/common.css"],
+	["../node_modules/@fontsource/bona-nova/700.css", "../static/fonts/common.css"],
 ];
 
 // Define directories to copy recursively as [source, destination] pairs
 const DIRECTORIES_TO_COPY = [
-	["node_modules/@fontsource-variable/inter/files", "static/fonts/files"],
-	["node_modules/@fontsource/bona-nova/files", "static/fonts/files"],
+	["../node_modules/@fontsource-variable/inter/files", "../static/fonts/files"],
+	["../node_modules/@fontsource/bona-nova/files", "../static/fonts/files"],
 ];
 
 // Track processed destination files and CSS content
@@ -159,7 +159,7 @@ console.log("\nFont installation complete!");
 
 // Fetch and save text-balancer.js, which we don't commit to the repo so we're not version controlling dependency code
 const textBalancerUrl = "https://static.graphite.rs/text-balancer/text-balancer.js";
-const textBalancerDest = path.join(basePath, "static", "text-balancer.js");
+const textBalancerDest = path.join(basePath, "../static", "text-balancer.js");
 console.log("\nDownloading text-balancer.js...");
 https
 	.get(textBalancerUrl, (res) => {

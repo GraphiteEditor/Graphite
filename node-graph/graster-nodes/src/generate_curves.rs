@@ -1,5 +1,3 @@
-//! requires bezier-rs
-
 use crate::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
 use graphene_core::color::{Channel, Linear};
 use graphene_core::context::Ctx;
@@ -34,7 +32,7 @@ fn generate_curves<C: Channel + Linear>(_: impl Ctx, curve: Curve, #[implementat
 				pathseg_find_tvalues_for_x(segment, x)
 					.next()
 					.map(|t| segment.eval(t.clamp(0., 1.)).y)
-					// Fall back to a very bad approximation if Bezier-rs fails
+					// Fall back to a very bad approximation if the above fails
 					.unwrap_or_else(|| (x - x0) / (x3 - x0) * (y3 - y0) + y0)
 			};
 			lut[index] = C::from_f64(y);

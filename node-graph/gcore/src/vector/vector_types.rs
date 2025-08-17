@@ -59,7 +59,7 @@ impl std::hash::Hash for Vector {
 }
 
 impl Vector {
-	/// Add a Bezier-rs subpath to this path.
+	/// Add a subpath to this vector path.
 	pub fn append_subpath(&mut self, subpath: impl Borrow<Subpath<PointId>>, preserve_id: bool) {
 		let subpath: &Subpath<PointId> = subpath.borrow();
 		let stroke_id = StrokeId::ZERO;
@@ -131,7 +131,7 @@ impl Vector {
 		self.point_domain.push(id, point.position);
 	}
 
-	/// Construct some new vector path from a single Bezier-rs subpath with an identity transform and black fill.
+	/// Construct some new vector path from a single subpath with an identity transform and black fill.
 	pub fn from_subpath(subpath: impl Borrow<Subpath<PointId>>) -> Self {
 		Self::from_subpaths([subpath], false)
 	}
@@ -143,7 +143,7 @@ impl Vector {
 		vector
 	}
 
-	/// Construct some new vector path from Bezier-rs subpaths with an identity transform and black fill.
+	/// Construct some new vector path from subpaths with an identity transform and black fill.
 	pub fn from_subpaths(subpaths: impl IntoIterator<Item = impl Borrow<Subpath<PointId>>>, preserve_id: bool) -> Self {
 		let mut vector = Self::default();
 

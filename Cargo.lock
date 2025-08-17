@@ -462,28 +462,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
-name = "bezier-rs"
-version = "0.4.0"
-dependencies = [
- "dyn-any",
- "glam",
- "kurbo",
- "poly-cool",
- "serde",
-]
-
-[[package]]
-name = "bezier-rs-wasm"
-version = "0.0.0"
-dependencies = [
- "bezier-rs",
- "glam",
- "js-sys",
- "log",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "bincode"
 version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
