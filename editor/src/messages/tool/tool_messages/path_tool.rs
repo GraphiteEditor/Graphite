@@ -127,6 +127,7 @@ pub enum PathToolMessage {
 	UpdateSelectedPointsStatus {
 		overlay_context: OverlayContext,
 	},
+	StartSlidingPoint,
 	Copy {
 		clipboard: Clipboard,
 	},
@@ -420,6 +421,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				DeleteAndBreakPath,
 				ClosePath,
 				PointerMove,
+				StartSlidingPoint,
 				Copy,
 				Cut,
 				DeleteSelected,
@@ -438,6 +440,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				BreakPath,
 				DeleteAndBreakPath,
 				SwapSelectedHandles,
+				StartSlidingPoint,
 				Copy,
 				Cut,
 				DeleteSelected,
@@ -456,6 +459,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				DeleteAndBreakPath,
 				Escape,
 				RightClick,
+				StartSlidingPoint,
 				TogglePointEditing,
 				ToggleSegmentEditing
 			),
@@ -1207,11 +1211,6 @@ impl PathToolData {
 				return false;
 			};
 			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return false };
-
-			// Check that the handles of anchor point are also colinear
-			if !vector.colinear(*anchor) {
-				return false;
-			};
 
 			let Some(point_id) = anchor.as_anchor() else { return false };
 
@@ -2083,10 +2082,6 @@ impl Fsm for PathToolFsmState {
 				}
 
 				if !tool_data.update_colinear(equidistant_state, toggle_colinear_state, tool_action_data.shape_editor, tool_action_data.document, responses) {
-					if snap_angle_state && lock_angle_state && tool_data.start_sliding_point(tool_action_data.shape_editor, tool_action_data.document) {
-						return PathToolFsmState::SlidingPoint;
-					}
-
 					tool_data.drag(
 						equidistant_state,
 						lock_angle_state,
@@ -2382,6 +2377,8 @@ impl Fsm for PathToolFsmState {
 				tool_data.ghost_outline.clear();
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let drag_occurred = tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD;
+				let mut segment_dissolved = false;
+				let mut point_inserted = false;
 
 				let nearest_point = shape_editor.find_nearest_visible_point_indices(
 					&document.network_interface,
@@ -2402,6 +2399,7 @@ impl Fsm for PathToolFsmState {
 						if tool_data.delete_segment_pressed {
 							if let Some(vector) = document.network_interface.compute_modified_vector(segment.layer()) {
 								shape_editor.dissolve_segment(responses, segment.layer(), &vector, segment.segment(), segment.points());
+								segment_dissolved = true;
 							}
 						} else {
 							let is_segment_selected = shape_editor
@@ -2410,11 +2408,7 @@ impl Fsm for PathToolFsmState {
 								.is_some_and(|state| state.is_segment_selected(segment.segment()));
 
 							segment.adjusted_insert_and_select(shape_editor, responses, extend_selection, point_mode, is_segment_selected);
-							tool_data.segment = None;
-							tool_data.molding_info = None;
-							tool_data.molding_segment = false;
-							tool_data.temporary_adjacent_handles_while_molding = None;
-							return PathToolFsmState::Ready;
+							point_inserted = true;
 						}
 					}
 
@@ -2422,6 +2416,11 @@ impl Fsm for PathToolFsmState {
 					tool_data.molding_info = None;
 					tool_data.molding_segment = false;
 					tool_data.temporary_adjacent_handles_while_molding = None;
+
+					if segment_dissolved || point_inserted {
+						responses.add(DocumentMessage::EndTransaction);
+						return PathToolFsmState::Ready;
+					}
 				}
 
 				let segment_mode = tool_options.path_editing_mode.segment_editing_mode;
@@ -2577,6 +2576,14 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::DeleteAndBreakPath) => {
 				shape_editor.delete_point_and_break_path(document, responses);
 				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::StartSlidingPoint) => {
+				responses.add(DocumentMessage::StartTransaction);
+				if tool_data.start_sliding_point(shape_editor, document) {
+					PathToolFsmState::SlidingPoint
+				} else {
+					PathToolFsmState::Ready
+				}
 			}
 			(_, PathToolMessage::Copy { clipboard }) => {
 				// TODO: Add support for selected segments
@@ -3297,16 +3304,12 @@ fn update_dynamic_hints(
 				}
 			}
 
-			let mut drag_selected_hints = vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")];
+			let drag_selected_hints = vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")];
 			let mut delete_selected_hints = vec![HintInfo::keys([Key::Delete], "Delete Selected")];
 
 			if at_least_one_anchor_selected {
 				delete_selected_hints.push(HintInfo::keys([Key::Accel], "No Dissolve").prepend_plus());
 				delete_selected_hints.push(HintInfo::keys([Key::Shift], "Cut Anchor").prepend_plus());
-			}
-
-			if single_colinear_anchor_selected {
-				drag_selected_hints.push(HintInfo::multi_keys([[Key::Control], [Key::Shift]], "Slide").prepend_plus());
 			}
 
 			let segment_edit = tool_options.path_editing_mode.segment_editing_mode;
@@ -3373,9 +3376,15 @@ fn update_dynamic_hints(
 				let mut groups = vec![
 					HintGroup(drag_selected_hints),
 					HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR], [Key::KeyS]], "Grab/Rotate/Scale Selected")]),
-					HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
-					HintGroup(delete_selected_hints),
 				];
+
+				if single_colinear_anchor_selected {
+					groups.push(HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyG]], "Slide")]));
+				}
+
+				groups.push(HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]));
+				groups.push(HintGroup(delete_selected_hints));
+
 				hint_data.append(&mut groups);
 			}
 
