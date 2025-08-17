@@ -20,9 +20,7 @@ members = [
 	"node-graph/preprocessor",
 	"libraries/dyn-any",
 	"libraries/path-bool",
-	"libraries/bezier-rs",
 	"libraries/math-parser",
-	"website/other/bezier-rs-demos/wasm",
 ]
 default-members = [
 	"editor",
@@ -44,9 +42,14 @@ resolver = "2"
 
 [workspace.dependencies]
 # Local dependencies
-bezier-rs = { path = "libraries/bezier-rs", features = ["dyn-any", "serde"] }
-dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam", "reqwest", "log-bad-types", "rc"] }
-preprocessor = { path = "node-graph/preprocessor"}
+dyn-any = { path = "libraries/dyn-any", features = [
+	"derive",
+	"glam",
+	"reqwest",
+	"log-bad-types",
+	"rc",
+] }
+preprocessor = { path = "node-graph/preprocessor" }
 math-parser = { path = "libraries/math-parser" }
 path-bool = { path = "libraries/path-bool" }
 graphene-application-io = { path = "node-graph/gapplication-io" }
@@ -80,7 +83,7 @@ convert_case = "0.7"
 derivative = "2.2"
 thiserror = "2"
 anyhow = "1.0"
-proc-macro2 = { version = "1", features = [ "span-locations" ] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1.0"
 axum = "0.8"
 chrono = "0.4"
@@ -122,9 +125,17 @@ resvg = "0.44"
 usvg = "0.44"
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }
 rand_chacha = "0.9"
-glam = { version = "0.29", default-features = false, features = ["serde", "scalar-math", "debug-glam-assert"] }
+glam = { version = "0.29", default-features = false, features = [
+	"serde",
+	"scalar-math",
+	"debug-glam-assert",
+] }
 base64 = "0.22"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp"] }
+image = { version = "0.25", default-features = false, features = [
+	"png",
+	"jpeg",
+	"bmp",
+] }
 parley = "0.5.0"
 skrifa = "0.32.0"
 pretty_assertions = "1.4.1"
@@ -159,12 +170,13 @@ iai-callgrind = { version = "0.12.3" }
 ndarray = "0.16.1"
 strum = { version = "0.26.3", features = ["derive"] }
 dirs = "6.0"
-cef = "138.5.0"
+cef = "139.0.1"
 include_dir = "0.7.4"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing = "0.1.41"
 rfd = "0.15.4"
 open = "5.3.2"
+poly-cool = "0.2.0"
 
 [profile.dev]
 opt-level = 1

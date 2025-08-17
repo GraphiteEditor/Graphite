@@ -462,27 +462,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
-name = "bezier-rs"
-version = "0.4.0"
-dependencies = [
- "dyn-any",
- "glam",
- "kurbo",
- "serde",
-]
-
-[[package]]
-name = "bezier-rs-wasm"
-version = "0.0.0"
-dependencies = [
- "bezier-rs",
- "glam",
- "js-sys",
- "log",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "bincode"
 version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -683,19 +662,20 @@ dependencies = [
 
 [[package]]
 name = "cef"
-version = "138.5.0+138.0.26"
+version = "139.0.1+139.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7bfa138b538b29584b02e990a631ef44261d9a70d35a77ce4ef624410046fe91"
+checksum = "39b749cfc4124f9505b3fbe32279c0e93f30831f1ecf3c2cf85863179319cd7b"
 dependencies = [
  "cef-dll-sys",
+ "libloading",
  "windows-sys 0.60.2",
 ]
 
 [[package]]
 name = "cef-dll-sys"
-version = "138.5.0+138.0.26"
+version = "139.0.1+139.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "658450855d0ef25af50420b95fbdfacb5df17c7eb20a1615ec995470c26ed643"
+checksum = "fc42adb0adc477860b705e967d9f899be05ba3775fe4d6dc4d844a1391ffa3dd"
 dependencies = [
  "anyhow",
  "cmake",
@@ -1883,7 +1863,6 @@ dependencies = [
 name = "graph-craft"
 version = "0.1.0"
 dependencies = [
- "bezier-rs",
  "criterion",
  "dyn-any",
  "glam",
@@ -1961,7 +1940,6 @@ name = "graphene-core"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "bezier-rs",
  "bytemuck",
  "ctor",
  "dyn-any",
@@ -1974,6 +1952,7 @@ dependencies = [
  "num-traits",
  "parley",
  "petgraph 0.7.1",
+ "poly-cool",
  "rand 0.9.1",
  "rand_chacha 0.9.0",
  "rustc-hash 2.1.1",
@@ -2018,10 +1997,10 @@ dependencies = [
 name = "graphene-path-bool"
 version = "0.1.0"
 dependencies = [
- "bezier-rs",
  "dyn-any",
  "glam",
  "graphene-core",
+ "kurbo",
  "log",
  "node-macro",
  "path-bool",
@@ -2033,7 +2012,6 @@ dependencies = [
 name = "graphene-raster-nodes"
 version = "0.1.0"
 dependencies = [
- "bezier-rs",
  "bytemuck",
  "dyn-any",
  "fastnoise-lite",
@@ -2042,6 +2020,7 @@ dependencies = [
  "graphene-core",
  "graphene-core-shaders",
  "image",
+ "kurbo",
  "ndarray",
  "node-macro",
  "rand 0.9.1",
@@ -2089,10 +2068,10 @@ name = "graphene-svg-renderer"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "bezier-rs",
  "dyn-any",
  "glam",
  "graphene-core",
+ "kurbo",
  "log",
  "num-traits",
  "serde",
@@ -2113,6 +2092,7 @@ dependencies = [
  "graph-craft",
  "graphene-std",
  "graphite-editor",
+ "image",
  "include_dir",
  "open",
  "rfd",
@@ -2130,7 +2110,7 @@ dependencies = [
 name = "graphite-editor"
 version = "0.0.0"
 dependencies = [
- "bezier-rs",
+ "base64 0.22.1",
  "bitflags 2.9.1",
  "bytemuck",
  "derivative",
@@ -4039,6 +4019,15 @@ name = "pollster"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
+
+[[package]]
+name = "poly-cool"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6113ca52ade3ae52044cf0519e2c78ffa82120f6fa82f5099c8a4fd3ec8de43"
+dependencies = [
+ "arrayvec",
+]
 
 [[package]]
 name = "portable-atomic"

@@ -1271,15 +1271,18 @@ mod tests {
 		let tuples = quote_spanned!(problem_span=> () ());
 		let input = quote! {
 			fn test_node(
-				#[implementations((), #tuples, Footprint)] footprint: F,
+				#[implementations((), #tuples, Footprint)]
+				footprint: F,
 				#[implementations(
-				() -> Color,
-				() -> Table<Raster<CPU>>,
-				() -> GradientStops,
-				Footprint -> Color,
-				Footprint -> Table<Raster<CPU>>,
-				Footprint -> GradientStops,
-			)]
+					() -> Table<Raster<CPU>>,
+					() -> Table<Color>,
+					() -> Table<GradientStops>,
+					() -> GradientStops,
+					Footprint -> Table<Raster<CPU>>,
+					Footprint -> Table<Color>,
+					Footprint -> Table<GradientStops>,
+					Footprint -> GradientStops,
+				)]
 				image: impl Node<F, Output = T>,
 			) -> T {
 				// Implementation details...

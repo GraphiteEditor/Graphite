@@ -2,7 +2,7 @@ use crate::brush_cache::BrushCache;
 use crate::brush_stroke::{BrushStroke, BrushStyle};
 use glam::{DAffine2, DVec2};
 use graphene_core::blending::BlendMode;
-use graphene_core::bounds::BoundingBox;
+use graphene_core::bounds::{BoundingBox, RenderBoundingBox};
 use graphene_core::color::{Alpha, Color, Pixel, Sample};
 use graphene_core::generic::FnNode;
 use graphene_core::math::bbox::{AxisAlignedBbox, Bbox};
@@ -130,7 +130,7 @@ where
 pub async fn create_brush_texture(brush_style: &BrushStyle) -> Raster<CPU> {
 	let stamp = brush_stamp_generator(brush_style.diameter, brush_style.color, brush_style.hardness, brush_style.flow);
 	let transform = DAffine2::from_scale_angle_translation(DVec2::splat(brush_style.diameter), 0., -DVec2::splat(brush_style.diameter / 2.));
-	let blank_texture = empty_image((), transform, Color::TRANSPARENT).into_iter().next().unwrap_or_default();
+	let blank_texture = empty_image((), transform, Table::new_from_element(Color::TRANSPARENT)).into_iter().next().unwrap_or_default();
 	let image = blend_stamp_closure(stamp, blank_texture, |a, b| blend_colors(a, b, BlendMode::Normal, 1.));
 
 	image.element
@@ -186,7 +186,8 @@ async fn brush(_: impl Ctx, mut image_frame_table: Table<Raster<CPU>>, strokes: 
 	// TODO: Find a way to handle more than one row
 	let table_row = image_frame_table.iter().next().expect("Expected the one row we just pushed").into_cloned();
 
-	let [start, end] = Table::new_from_row(table_row.clone()).bounding_box(DAffine2::IDENTITY, false).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
+	let bounds = Table::new_from_row(table_row.clone()).bounding_box(DAffine2::IDENTITY, false);
+	let [start, end] = if let RenderBoundingBox::Rectangle(rect) = bounds { rect } else { [DVec2::ZERO, DVec2::ZERO] };
 	let image_bbox = AxisAlignedBbox { start, end };
 	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
 	let bbox = if image_bbox.size().length() < 0.1 { stroke_bbox } else { stroke_bbox.union(&image_bbox) };
@@ -229,7 +230,6 @@ async fn brush(_: impl Ctx, mut image_frame_table: Table<Raster<CPU>>, strokes: 
 			let stroke_origin_in_layer = bbox.start - snap_offset - DVec2::splat(stroke.style.diameter / 2.);
 			let stroke_to_layer = DAffine2::from_translation(stroke_origin_in_layer) * DAffine2::from_scale(stroke_size);
 
-			// let normal_blend = BlendColorPairNode::new(ValueNode::new(CopiedNode::new(BlendMode::Normal)), ValueNode::new(CopiedNode::new(100.)));
 			let normal_blend = FnNode::new(|(a, b)| blend_colors(a, b, BlendMode::Normal, 1.));
 			let blit_node = BlitNode::new(
 				FutureWrapperNode::new(ClonedNode::new(brush_texture)),
@@ -240,7 +240,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: Table<Raster<CPU>>, strokes: 
 				let target = core::mem::take(&mut brush_plan.first_stroke_texture);
 				extend_image_to_bounds((), Table::new_from_row(target), stroke_to_layer)
 			} else {
-				empty_image((), stroke_to_layer, Color::TRANSPARENT)
+				empty_image((), stroke_to_layer, Table::new_from_element(Color::TRANSPARENT))
 				// EmptyImageNode::new(CopiedNode::new(stroke_to_layer), CopiedNode::new(Color::TRANSPARENT)).eval(())
 			};
 

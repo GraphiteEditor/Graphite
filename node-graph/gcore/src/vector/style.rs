@@ -2,6 +2,7 @@
 
 use crate::Color;
 pub use crate::gradient::*;
+use crate::table::Table;
 use dyn_any::DynAny;
 use glam::DAffine2;
 
@@ -117,6 +118,21 @@ impl From<Color> for Fill {
 impl From<Option<Color>> for Fill {
 	fn from(color: Option<Color>) -> Fill {
 		Fill::solid_or_none(color)
+	}
+}
+
+impl From<Table<Color>> for Fill {
+	fn from(color: Table<Color>) -> Fill {
+		Fill::solid_or_none(color.into())
+	}
+}
+
+impl From<Table<GradientStops>> for Fill {
+	fn from(gradient: Table<GradientStops>) -> Fill {
+		Fill::Gradient(Gradient {
+			stops: gradient.iter().nth(0).map(|row| row.element.clone()).unwrap_or_default(),
+			..Default::default()
+		})
 	}
 }
 
@@ -306,17 +322,6 @@ impl std::hash::Hash for Stroke {
 		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
 		self.non_scaling.hash(state);
 		self.paint_order.hash(state);
-	}
-}
-
-impl From<Color> for Stroke {
-	fn from(color: Color) -> Self {
-		Self::new(Some(color), 1.)
-	}
-}
-impl From<Option<Color>> for Stroke {
-	fn from(color: Option<Color>) -> Self {
-		Self::new(color, 1.)
 	}
 }
 

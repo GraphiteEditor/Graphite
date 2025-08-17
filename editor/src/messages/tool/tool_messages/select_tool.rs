@@ -20,12 +20,12 @@ use crate::messages::tool::common_functionality::shape_editor::SelectionShapeTyp
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::{resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_transform_cage};
-use bezier_rs::Subpath;
 use glam::DMat2;
 use graph_craft::document::NodeId;
 use graphene_std::path_bool::BooleanOperation;
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
+use graphene_std::subpath::Subpath;
 use graphene_std::transform::ReferencePoint;
 use std::fmt;
 
@@ -92,6 +92,7 @@ pub enum SelectToolMessage {
 		remove_from_selection: Key,
 	},
 	EditLayer,
+	EditLayerExec,
 	Enter,
 	PointerMove(SelectToolPointerKeys),
 	PointerOutsideViewport(SelectToolPointerKeys),
@@ -323,6 +324,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 			PointerMove,
 			Abort,
 			EditLayer,
+			EditLayerExec,
 			Enter,
 		);
 
@@ -985,14 +987,19 @@ impl Fsm for SelectToolFsmState {
 				self
 			}
 			(_, SelectToolMessage::EditLayer) => {
-				// Edit the clicked layer
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: vec![SelectToolMessage::EditLayerExec.into()],
+				});
+
+				self
+			}
+			(_, SelectToolMessage::EditLayerExec) => {
 				if let Some(intersect) = document.click(input) {
 					match tool_data.nested_selection_behavior {
 						NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect, responses),
 						NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, &document.network_interface, responses),
 					}
 				}
-
 				self
 			}
 			(

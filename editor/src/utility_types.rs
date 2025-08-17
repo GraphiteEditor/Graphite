@@ -82,18 +82,4 @@ impl DebugMessageTree {
 	pub fn message_handler_fields(&self) -> Option<&MessageData> {
 		self.message_handler.as_ref()
 	}
-
-	pub fn has_message_handler_data_fields(&self) -> bool {
-		match self.message_handler_data_fields() {
-			Some(_) => true,
-			None => false,
-		}
-	}
-
-	pub fn has_message_handler_fields(&self) -> bool {
-		match self.message_handler_fields() {
-			Some(_) => true,
-			None => false,
-		}
-	}
 }
