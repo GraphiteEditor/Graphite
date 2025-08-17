@@ -145,8 +145,17 @@ impl WinitApp {
 		}
 	}
 
-	fn dispatch_editor_message(&self, message: EditorMessage) {
-		let _ = self.event_loop_proxy.send_event(CustomEvent::EditorMessage(message));
+	fn handle_native_messages(&mut self, messages: Vec<NativeMessage>) {
+		for message in messages {
+			self.handle_native_message(message);
+		}
+	}
+
+	fn dispatch_editor_message(&mut self, message: EditorMessage) {
+		let responses = self.editor_wrapper.dispatch(message);
+		for response in responses {
+			self.handle_native_message(response);
+		}
 	}
 }
 
@@ -205,15 +214,8 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 
 	fn user_event(&mut self, _: &ActiveEventLoop, event: CustomEvent) {
 		match event {
-			CustomEvent::NativeMessage(message) => {
-				self.handle_native_message(message);
-			}
-			CustomEvent::EditorMessage(message) => {
-				let responses = self.editor_wrapper.dispatch(message);
-				for response in responses {
-					self.handle_native_message(response);
-				}
-			}
+			CustomEvent::NativeMessages(messages) => self.handle_native_messages(messages),
+			CustomEvent::EditorMessage(message) => self.dispatch_editor_message(message),
 			CustomEvent::UiUpdate(texture) => {
 				if let Some(graphics_state) = self.graphics_state.as_mut() {
 					graphics_state.resize(texture.width(), texture.height());
