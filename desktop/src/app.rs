@@ -12,6 +12,7 @@ use graphene_std::raster::Image;
 use graphite_editor::application::Editor;
 use graphite_editor::consts::DEFAULT_DOCUMENT_NAME;
 use graphite_editor::messages::prelude::*;
+use std::env;
 use std::fs;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
@@ -221,6 +222,32 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 				self.dispatch_message(message);
 			}
 			CustomEvent::MessageReceived(message) => {
+				if let Message::Portfolio(PortfolioMessage::Init) = &message {
+					let args: Vec<String> = env::args().collect();
+
+					// Try to open a file passed as the first command line argument
+					if args.len() > 1 {
+						let event_loop_proxy = self.event_loop_proxy.clone();
+						let path = std::path::PathBuf::from(&args[1]);
+
+						if !path.exists() {
+							tracing::warn!("The first argument is not a valid path or doesn't exist: {}", path.display());
+							return;
+						}
+
+						let name = path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string());
+
+						// Load the file in a separate thread to avoid blocking the main thread
+						let _ = thread::spawn(move || {
+							let Some(content) = load_string(&path) else { return };
+							let message = PortfolioMessage::OpenDocumentFile {
+								document_name: name.unwrap_or(DEFAULT_DOCUMENT_NAME.to_string()),
+								document_serialized_content: content,
+							};
+							let _ = event_loop_proxy.send_event(CustomEvent::DispatchMessage(message.into()));
+						});
+					}
+				}
 				if let Message::InputPreprocessor(_) = &message {
 					if let Some(window) = &self.window {
 						window.request_redraw();
@@ -275,18 +302,6 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 					tracing::warn!("Unsupported file dropped: {}", path.display());
 					// Fine to early return since we don't need to do cef work in this case
 					return;
-				};
-				let load_string = |path: &std::path::PathBuf| {
-					let Ok(content) = fs::read_to_string(path) else {
-						tracing::error!("Failed to read file: {}", path.display());
-						return None;
-					};
-
-					if content.is_empty() {
-						tracing::warn!("Dropped file is empty: {}", path.display());
-						return None;
-					}
-					Some(content)
 				};
 				// TODO: Consider moving this logic to the editor so we have one message to load data which is then demultiplexed in the portfolio message handler
 				match extension {
@@ -367,4 +382,17 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 		// Notify cef of possible input events
 		self.cef_context.work();
 	}
+}
+
+fn load_string(path: &std::path::PathBuf) -> Option<String> {
+	let Ok(content) = fs::read_to_string(path) else {
+		tracing::error!("Failed to read file: {}", path.display());
+		return None;
+	};
+
+	if content.is_empty() {
+		tracing::warn!("Dropped file is empty: {}", path.display());
+		return None;
+	}
+	Some(content)
 }

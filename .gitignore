@@ -1,4 +1,5 @@
 target/
+node_modules/
 *.spv
 *.exrc
 perf.data*
