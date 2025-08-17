@@ -364,9 +364,9 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						return;
 					}
 
-					if using_path_tool && (transform_type == TransformType::Grab) {
+					if using_path_tool && transform_type == TransformType::Grab {
 						// Check if a single point is selected and it's a colinear point
-						let single_anchor_selected = shape_editor.selected_points().count() == 1 && shape_editor.selected_points().any(|point| matches!(point, ManipulatorPointId::Anchor(_)));
+						let single_anchor_selected = shape_editor.selected_points().count() == 1 && shape_editor.selected_points().any(|point| point.as_anchor().is_some());
 
 						if single_anchor_selected && transform_type.equivalent_to(self.transform_operation) && self.was_grabbing {
 							let selected_nodes = &document.network_interface.selected_nodes();
@@ -385,7 +385,9 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 							}
 
 							return;
-						} else if transform_type.equivalent_to(self.transform_operation) {
+						}
+
+						if transform_type.equivalent_to(self.transform_operation) {
 							return;
 						}
 
@@ -393,28 +395,28 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					}
 				}
 
-				if let Some(vector) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
-					if let [point] = selected_points.as_slice() {
-						if matches!(point, ManipulatorPointId::Anchor(_)) {
-							if let Some([handle1, handle2]) = point.get_handle_pair(&vector) {
-								let handle1_length = handle1.length(&vector);
-								let handle2_length = handle2.length(&vector);
+				if let Some(vector) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer))
+					&& let [point] = selected_points.as_slice()
+				{
+					if matches!(point, ManipulatorPointId::Anchor(_)) {
+						if let Some([handle1, handle2]) = point.get_handle_pair(&vector) {
+							let handle1_length = handle1.length(&vector);
+							let handle2_length = handle2.length(&vector);
 
-								if (handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool) {
-									// G should work for this point but not R and S
-									if matches!(transform_type, TransformType::Rotate | TransformType::Scale) {
-										selected.original_transforms.clear();
-										return;
-									}
+							if (handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool) {
+								// G should work for this point but not R and S
+								if matches!(transform_type, TransformType::Rotate | TransformType::Scale) {
+									selected.original_transforms.clear();
+									return;
 								}
 							}
-						} else {
-							let handle_length = point.as_handle().map(|handle| handle.length(&vector));
+						}
+					} else {
+						let handle_length = point.as_handle().map(|handle| handle.length(&vector));
 
-							if handle_length == Some(0.) {
-								selected.original_transforms.clear();
-								return;
-							}
+						if handle_length == Some(0.) {
+							selected.original_transforms.clear();
+							return;
 						}
 					}
 				}
