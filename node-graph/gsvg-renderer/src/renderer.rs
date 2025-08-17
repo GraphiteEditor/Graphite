@@ -846,8 +846,9 @@ impl Render for Table<Vector> {
 			let can_draw_aligned_stroke =
 				row.element.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered()) && row.element.stroke_bezier_paths().all(|path| path.closed());
 
-			let reorder_for_outside = row.element.style.stroke().is_some_and(|stroke| stroke.align == StrokeAlign::Outside) && !row.element.style.fill().is_none();
-			let use_layer = can_draw_aligned_stroke && !reorder_for_outside;
+			let reorder_part = row.element.style.stroke().is_some_and(|stroke| stroke.align == StrokeAlign::Outside) && !row.element.style.fill().is_none();
+			let reorder_for_outside = reorder_part && row.element.style.fill().is_opaque();
+			let use_layer = can_draw_aligned_stroke && !reorder_part;
 			if use_layer {
 				let mut element = row.element.clone();
 				element.style.clear_stroke();
@@ -865,10 +866,15 @@ impl Render for Table<Vector> {
 				let quad = Quad::from_box(bounds).inflate(weight * element_transform.matrix2.determinant());
 				let bounds = quad.bounding_box();
 				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+				let compose = if row.element.style.stroke().is_some_and(|x| x.align == StrokeAlign::Outside) {
+					peniko::Compose::SrcOut
+				} else {
+					peniko::Compose::SrcIn
+				};
 
 				scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 				vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
-				scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
+				scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, compose), 1., kurbo::Affine::IDENTITY, &rect);
 			}
 
 			// Render the path
