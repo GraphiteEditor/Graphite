@@ -2,5 +2,3 @@ node_modules/
 wasm/pkg/
 public/build/
 dist/
-CMakeFiles/
-CMakeCache.txt
