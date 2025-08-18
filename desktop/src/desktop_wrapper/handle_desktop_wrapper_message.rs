@@ -1,10 +1,9 @@
 use graphite_editor::messages::prelude::{DocumentMessage, Message, PortfolioMessage};
 
-use crate::desktop_wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, OpenFileDialogContext, SaveFileDialogContext};
+use super::DesktopWrapperMessageExecutor;
+use super::messages::{DesktopFrontendMessage, DesktopWrapperMessage, OpenFileDialogContext, SaveFileDialogContext};
 
-use super::EditorMessageExecutor;
-
-pub(super) fn handle_editor_message(executor: &mut EditorMessageExecutor, message: DesktopWrapperMessage) {
+pub(super) fn handle_desktop_wrapper_message(executor: &mut DesktopWrapperMessageExecutor, message: DesktopWrapperMessage) {
 	match message {
 		DesktopWrapperMessage::FromWeb(data) => {
 			let string = std::str::from_utf8(&data).unwrap();

@@ -1,10 +1,9 @@
 use graphite_editor::messages::prelude::{InputPreprocessorMessage, Message};
 
-use crate::desktop_wrapper::messages::DesktopFrontendMessage;
+use super::DesktopWrapperMessageExecutor;
+use super::messages::DesktopFrontendMessage;
 
-use super::EditorMessageExecutor;
-
-pub(super) fn intercept_message(executor: &mut EditorMessageExecutor, message: Message) -> Option<Message> {
+pub(super) fn intercept_message(executor: &mut DesktopWrapperMessageExecutor, message: Message) -> Option<Message> {
 	match message {
 		Message::InputPreprocessor(message) => {
 			if let InputPreprocessorMessage::BoundsOfViewports { bounds_of_viewports } = &message {

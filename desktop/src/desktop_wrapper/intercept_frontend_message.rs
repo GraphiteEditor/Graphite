@@ -2,11 +2,10 @@ use std::path::PathBuf;
 
 use graphite_editor::messages::prelude::FrontendMessage;
 
-use crate::desktop_wrapper::messages::{DesktopFrontendMessage, FileFilter, OpenFileDialogContext, SaveFileDialogContext};
+use super::DesktopWrapperMessageExecutor;
+use super::messages::{DesktopFrontendMessage, FileFilter, OpenFileDialogContext, SaveFileDialogContext};
 
-use super::EditorMessageExecutor;
-
-pub(super) fn intercept_frontend_message(executor: &mut EditorMessageExecutor, message: FrontendMessage) -> Option<FrontendMessage> {
+pub(super) fn intercept_frontend_message(executor: &mut DesktopWrapperMessageExecutor, message: FrontendMessage) -> Option<FrontendMessage> {
 	match message {
 		FrontendMessage::RenderOverlays(overlay_context) => {
 			executor.respond(DesktopFrontendMessage::UpdateOverlays(overlay_context.take_scene()));
