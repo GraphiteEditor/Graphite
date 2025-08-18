@@ -2,15 +2,15 @@ use graphite_editor::messages::prelude::{DocumentMessage, Message, PortfolioMess
 
 use crate::editor_api::messages::{EditorMessage, NativeMessage, OpenFileDialogContext, SaveFileDialogContext};
 
-use super::EditorWrapper;
+use super::EditorMessageExecutor;
 
-pub(super) fn handle_editor_message(editor_wrapper: &mut EditorWrapper, message: EditorMessage) {
+pub(super) fn handle_editor_message(executor: &mut EditorMessageExecutor, message: EditorMessage) {
 	match message {
 		EditorMessage::FromFrontend(data) => {
 			let string = std::str::from_utf8(&data).unwrap();
 			match ron::from_str::<Message>(string) {
 				Ok(message) => {
-					editor_wrapper.queue_message(message);
+					executor.queue_message(message);
 				}
 				Err(e) => {
 					tracing::error!("Failed to deserialize message {:?}", e)
@@ -20,7 +20,7 @@ pub(super) fn handle_editor_message(editor_wrapper: &mut EditorWrapper, message:
 		EditorMessage::OpenFileDialogResult { path, content, context } => match context {
 			OpenFileDialogContext::Document => match String::from_utf8(content) {
 				Ok(content) => {
-					editor_wrapper.queue_message(
+					executor.queue_message(
 						PortfolioMessage::OpenDocumentFile {
 							document_name: None,
 							document_path: Some(path),
@@ -39,7 +39,7 @@ pub(super) fn handle_editor_message(editor_wrapper: &mut EditorWrapper, message:
 				match extension {
 					Some("svg") => match String::from_utf8(content) {
 						Ok(content) if !content.is_empty() => {
-							editor_wrapper.queue_message(
+							executor.queue_message(
 								PortfolioMessage::PasteSvg {
 									name,
 									svg: content,
@@ -65,7 +65,7 @@ pub(super) fn handle_editor_message(editor_wrapper: &mut EditorWrapper, message:
 								let image_data = image.to_rgba8();
 								let image = graphene_std::raster::Image::<graphene_std::Color>::from_image_data(image_data.as_raw(), width, height);
 
-								editor_wrapper.queue_message(
+								executor.queue_message(
 									PortfolioMessage::PasteImage {
 										name,
 										image,
@@ -88,16 +88,16 @@ pub(super) fn handle_editor_message(editor_wrapper: &mut EditorWrapper, message:
 		},
 		EditorMessage::SaveFileDialogResult { path, context } => match context {
 			SaveFileDialogContext::Document { document_id, content } => {
-				editor_wrapper.respond(NativeMessage::WriteFile { path: path.clone(), content });
-				editor_wrapper.queue_message(Message::Portfolio(PortfolioMessage::DocumentPassMessage {
+				executor.respond(NativeMessage::WriteFile { path: path.clone(), content });
+				executor.queue_message(Message::Portfolio(PortfolioMessage::DocumentPassMessage {
 					document_id,
 					message: DocumentMessage::SavedDocument { path: Some(path) },
 				}));
 			}
 			SaveFileDialogContext::Export { content } => {
-				editor_wrapper.respond(NativeMessage::WriteFile { path, content });
+				executor.respond(NativeMessage::WriteFile { path, content });
 			}
 		},
-		EditorMessage::PoolNodeGraphEvaluation => editor_wrapper.poll_node_graph_evaluation(),
+		EditorMessage::PoolNodeGraphEvaluation => executor.poll_node_graph_evaluation(),
 	}
 }

@@ -16,8 +16,8 @@ use app::WinitApp;
 mod dirs;
 
 mod editor_api;
+use editor_api::EditorWrapper;
 use editor_api::messages::{EditorMessage, NativeMessage};
-use editor_api::{EditorApi, EditorWrapper};
 
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum CustomEvent {

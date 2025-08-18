@@ -1,7 +1,6 @@
 use crate::CustomEvent;
 use crate::WindowSize;
 use crate::consts::APP_NAME;
-use crate::editor_api::EditorApi;
 use crate::editor_api::EditorWrapper;
 use crate::editor_api::WgpuContext;
 use crate::editor_api::messages::EditorMessage;
@@ -209,7 +208,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 
 		tracing::info!("Winit window created and ready");
 
-		self.editor_wrapper.resume(self.wgpu_context.clone());
+		self.editor_wrapper.init(self.wgpu_context.clone());
 	}
 
 	fn user_event(&mut self, _: &ActiveEventLoop, event: CustomEvent) {

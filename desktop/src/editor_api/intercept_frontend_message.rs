@@ -4,13 +4,15 @@ use graphite_editor::messages::prelude::FrontendMessage;
 
 use crate::editor_api::messages::{FileFilter, NativeMessage, OpenFileDialogContext, SaveFileDialogContext};
 
-pub(super) fn intercept_frontend_message(message: FrontendMessage, responses: &mut Vec<NativeMessage>) -> Option<FrontendMessage> {
+use super::EditorMessageExecutor;
+
+pub(super) fn intercept_frontend_message(executor: &mut EditorMessageExecutor, message: FrontendMessage) -> Option<FrontendMessage> {
 	match message {
 		FrontendMessage::RenderOverlays(overlay_context) => {
-			responses.push(NativeMessage::UpdateOverlays(overlay_context.take_scene()));
+			executor.respond(NativeMessage::UpdateOverlays(overlay_context.take_scene()));
 		}
 		FrontendMessage::TriggerOpenDocument => {
-			responses.push(NativeMessage::OpenFileDialog {
+			executor.respond(NativeMessage::OpenFileDialog {
 				title: "Open Document".to_string(),
 				filters: vec![FileFilter {
 					name: "Graphite".to_string(),
@@ -20,7 +22,7 @@ pub(super) fn intercept_frontend_message(message: FrontendMessage, responses: &m
 			});
 		}
 		FrontendMessage::TriggerImport => {
-			responses.push(NativeMessage::OpenFileDialog {
+			executor.respond(NativeMessage::OpenFileDialog {
 				title: "Import File".to_string(),
 				filters: vec![
 					FileFilter {
@@ -37,9 +39,9 @@ pub(super) fn intercept_frontend_message(message: FrontendMessage, responses: &m
 		}
 		FrontendMessage::TriggerSaveDocument { document_id, name, path, content } => {
 			if let Some(path) = path {
-				responses.push(NativeMessage::WriteFile { path, content });
+				executor.respond(NativeMessage::WriteFile { path, content });
 			} else {
-				responses.push(NativeMessage::SaveFileDialog {
+				executor.respond(NativeMessage::SaveFileDialog {
 					title: "Save Document".to_string(),
 					default_filename: name,
 					default_folder: path.and_then(|p| p.parent().map(PathBuf::from)),
@@ -52,7 +54,7 @@ pub(super) fn intercept_frontend_message(message: FrontendMessage, responses: &m
 			}
 		}
 		FrontendMessage::TriggerSaveFile { name, content } => {
-			responses.push(NativeMessage::SaveFileDialog {
+			executor.respond(NativeMessage::SaveFileDialog {
 				title: "Save File".to_string(),
 				default_filename: name,
 				default_folder: None,
@@ -61,7 +63,7 @@ pub(super) fn intercept_frontend_message(message: FrontendMessage, responses: &m
 			});
 		}
 		FrontendMessage::TriggerVisitLink { url } => {
-			responses.push(NativeMessage::OpenUrl(url));
+			executor.respond(NativeMessage::OpenUrl(url));
 		}
 		m => return Some(m),
 	}
