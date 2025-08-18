@@ -2,10 +2,10 @@ use super::misc::{ArcType, AsU64, GridType};
 use super::{PointId, SegmentId, StrokeId};
 use crate::Ctx;
 use crate::registry::types::{Angle, PixelSize};
+use crate::subpath;
 use crate::table::Table;
 use crate::vector::Vector;
 use crate::vector::misc::HandleId;
-use bezier_rs::Subpath;
 use glam::DVec2;
 
 trait CornerRadius {
@@ -14,7 +14,7 @@ trait CornerRadius {
 impl CornerRadius for f64 {
 	fn generate(self, size: DVec2, clamped: bool) -> Table<Vector> {
 		let clamped_radius = if clamped { self.clamp(0., size.x.min(size.y).max(0.) / 2.) } else { self };
-		Table::new_from_element(Vector::from_subpath(Subpath::new_rounded_rect(size / -2., size / 2., [clamped_radius; 4])))
+		Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rect(size / -2., size / 2., [clamped_radius; 4])))
 	}
 }
 impl CornerRadius for [f64; 4] {
@@ -34,7 +34,7 @@ impl CornerRadius for [f64; 4] {
 		} else {
 			self
 		};
-		Table::new_from_element(Vector::from_subpath(Subpath::new_rounded_rect(size / -2., size / 2., clamped_radius)))
+		Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rect(size / -2., size / 2., clamped_radius)))
 	}
 }
 
@@ -47,7 +47,7 @@ fn circle(
 	radius: f64,
 ) -> Table<Vector> {
 	let radius = radius.abs();
-	Table::new_from_element(Vector::from_subpath(Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
@@ -63,14 +63,14 @@ fn arc(
 	sweep_angle: Angle,
 	arc_type: ArcType,
 ) -> Table<Vector> {
-	Table::new_from_element(Vector::from_subpath(Subpath::new_arc(
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_arc(
 		radius,
 		start_angle / 360. * std::f64::consts::TAU,
 		sweep_angle / 360. * std::f64::consts::TAU,
 		match arc_type {
-			ArcType::Open => bezier_rs::ArcType::Open,
-			ArcType::Closed => bezier_rs::ArcType::Closed,
-			ArcType::PieSlice => bezier_rs::ArcType::PieSlice,
+			ArcType::Open => subpath::ArcType::Open,
+			ArcType::Closed => subpath::ArcType::Closed,
+			ArcType::PieSlice => subpath::ArcType::PieSlice,
 		},
 	)))
 }
@@ -90,7 +90,7 @@ fn ellipse(
 	let corner1 = -radius;
 	let corner2 = radius;
 
-	let mut ellipse = Vector::from_subpath(Subpath::new_ellipse(corner1, corner2));
+	let mut ellipse = Vector::from_subpath(subpath::Subpath::new_ellipse(corner1, corner2));
 
 	let len = ellipse.segment_domain.ids().len();
 	for i in 0..len {
@@ -133,7 +133,7 @@ fn regular_polygon<T: AsU64>(
 ) -> Table<Vector> {
 	let points = sides.as_u64();
 	let radius: f64 = radius * 2.;
-	Table::new_from_element(Vector::from_subpath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
@@ -155,12 +155,12 @@ fn star<T: AsU64>(
 	let diameter: f64 = radius_1 * 2.;
 	let inner_diameter = radius_2 * 2.;
 
-	Table::new_from_element(Vector::from_subpath(Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
 fn line(_: impl Ctx, _primary: (), #[default(0., 0.)] start: PixelSize, #[default(100., 100.)] end: PixelSize) -> Table<Vector> {
-	Table::new_from_element(Vector::from_subpath(Subpath::new_line(start, end)))
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(start, end)))
 }
 
 trait GridSpacing {
@@ -212,7 +212,7 @@ fn grid<T: GridSpacing>(
 						if let Some(other_index) = to_index {
 							vector
 								.segment_domain
-								.push(segment_id.next_id(), other_index, current_index, bezier_rs::BezierHandles::Linear, StrokeId::ZERO);
+								.push(segment_id.next_id(), other_index, current_index, subpath::BezierHandles::Linear, StrokeId::ZERO);
 						}
 					};
 
@@ -249,7 +249,7 @@ fn grid<T: GridSpacing>(
 						if let Some(other_index) = to_index {
 							vector
 								.segment_domain
-								.push(segment_id.next_id(), other_index, current_index, bezier_rs::BezierHandles::Linear, StrokeId::ZERO);
+								.push(segment_id.next_id(), other_index, current_index, subpath::BezierHandles::Linear, StrokeId::ZERO);
 						}
 					};
 
@@ -289,7 +289,7 @@ mod tests {
 		assert_eq!(grid.iter().next().unwrap().element.point_domain.ids().len(), 5 * 5);
 		assert_eq!(grid.iter().next().unwrap().element.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
 		for (_, bezier, _, _) in grid.iter().next().unwrap().element.segment_bezier_iter() {
-			assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
+			assert_eq!(bezier.handles, subpath::BezierHandles::Linear);
 			assert!(
 				((bezier.start - bezier.end).length() - 10.).abs() < 1e-5,
 				"Length of {} should be 10",
@@ -304,7 +304,7 @@ mod tests {
 		assert_eq!(grid.iter().next().unwrap().element.point_domain.ids().len(), 5 * 5);
 		assert_eq!(grid.iter().next().unwrap().element.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
 		for (_, bezier, _, _) in grid.iter().next().unwrap().element.segment_bezier_iter() {
-			assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
+			assert_eq!(bezier.handles, subpath::BezierHandles::Linear);
 			let vector = bezier.start - bezier.end;
 			let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
 			assert!([90., 150., 40.].into_iter().any(|target| (target - angle).abs() < 1e-10), "unexpected angle of {}", angle)

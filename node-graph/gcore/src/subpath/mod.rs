@@ -1,3 +1,4 @@
+mod consts;
 mod core;
 mod lookup;
 mod manipulators;
@@ -5,8 +6,8 @@ mod solvers;
 mod structs;
 mod transform;
 
-use crate::Bezier;
 pub use core::*;
+use kurbo::PathSeg;
 use std::fmt::{Debug, Formatter, Result};
 use std::ops::{Index, IndexMut};
 pub use structs::*;
@@ -14,24 +15,19 @@ pub use structs::*;
 /// Structure used to represent a path composed of [Bezier] curves.
 #[derive(Clone, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Subpath<PointId: crate::Identifier> {
+pub struct Subpath<PointId: Identifier> {
 	manipulator_groups: Vec<ManipulatorGroup<PointId>>,
 	pub closed: bool,
 }
 
-#[cfg(feature = "dyn-any")]
-unsafe impl<PointId: crate::Identifier> dyn_any::StaticType for Subpath<PointId> {
-	type Static = Subpath<PointId>;
-}
-
 /// Iteration structure for iterating across each curve of a `Subpath`, using an intermediate `Bezier` representation.
-pub struct SubpathIter<'a, PointId: crate::Identifier> {
+pub struct SubpathIter<'a, PointId: Identifier> {
 	index: usize,
 	subpath: &'a Subpath<PointId>,
 	is_always_closed: bool,
 }
 
-impl<PointId: crate::Identifier> Index<usize> for Subpath<PointId> {
+impl<PointId: Identifier> Index<usize> for Subpath<PointId> {
 	type Output = ManipulatorGroup<PointId>;
 
 	fn index(&self, index: usize) -> &Self::Output {
@@ -40,15 +36,15 @@ impl<PointId: crate::Identifier> Index<usize> for Subpath<PointId> {
 	}
 }
 
-impl<PointId: crate::Identifier> IndexMut<usize> for Subpath<PointId> {
+impl<PointId: Identifier> IndexMut<usize> for Subpath<PointId> {
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
 		assert!(index < self.len(), "Index out of bounds in trait IndexMut of SubPath.");
 		&mut self.manipulator_groups[index]
 	}
 }
 
-impl<PointId: crate::Identifier> Iterator for SubpathIter<'_, PointId> {
-	type Item = Bezier;
+impl<PointId: Identifier> Iterator for SubpathIter<'_, PointId> {
+	type Item = PathSeg;
 
 	// Returns the Bezier representation of each `Subpath` segment, defined between a pair of adjacent manipulator points.
 	fn next(&mut self) -> Option<Self::Item> {
@@ -68,7 +64,7 @@ impl<PointId: crate::Identifier> Iterator for SubpathIter<'_, PointId> {
 	}
 }
 
-impl<PointId: crate::Identifier> Debug for Subpath<PointId> {
+impl<PointId: Identifier> Debug for Subpath<PointId> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 		f.debug_struct("Subpath").field("closed", &self.closed).field("manipulator_groups", &self.manipulator_groups).finish()
 	}
