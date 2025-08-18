@@ -138,6 +138,8 @@ pub enum PathToolMessage {
 	Duplicate,
 	TogglePointEditing,
 	ToggleSegmentEditing,
+	SeparateSegment,
+	PeelSegment,
 }
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -293,6 +295,18 @@ impl LayoutHolder for PathTool {
 			.disabled(!self.tool_data.make_path_editable_is_allowed)
 			.widget_holder();
 
+		let separate_segment_button = IconButton::new("Folder", 24)
+			.tooltip("Separate selected segment")
+			.on_update(|_| PathToolMessage::SeparateSegment.into())
+			.disabled(!self.tool_data.segment_separation_enabled)
+			.widget_holder();
+
+		let peel_segment_button = IconButton::new("Folder", 24)
+			.tooltip("Peel selected segment")
+			.on_update(|_| PathToolMessage::PeelSegment.into())
+			.disabled(!self.tool_data.segment_separation_enabled)
+			.widget_holder();
+
 		let [_checkbox, _dropdown] = {
 			let pivot_gizmo_type_widget = pivot_gizmo_type_widget(self.tool_data.pivot_gizmo.state, PivotToolSource::Path);
 			[pivot_gizmo_type_widget[0].clone(), pivot_gizmo_type_widget[2].clone()]
@@ -324,6 +338,10 @@ impl LayoutHolder for PathTool {
 				path_overlay_mode_widget,
 				unrelated_seperator.clone(),
 				path_node_button,
+				separate_segment_button,
+				unrelated_seperator.clone(),
+				peel_segment_button,
+				unrelated_seperator.clone(),
 				// checkbox.clone(),
 				// related_seperator.clone(),
 				// dropdown.clone(),
@@ -424,7 +442,9 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				Paste,
 				Duplicate,
 				TogglePointEditing,
-				ToggleSegmentEditing
+				ToggleSegmentEditing,
+				SeparateSegment,
+				PeelSegment
 			),
 			PathToolFsmState::Dragging(_) => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -571,6 +591,7 @@ struct PathToolData {
 	hovered_layers: Vec<LayerNodeIdentifier>,
 	ghost_outline: Vec<(Vec<ClickTargetType>, LayerNodeIdentifier)>,
 	make_path_editable_is_allowed: bool,
+	segment_separation_enabled: bool,
 }
 
 impl PathToolData {
@@ -630,6 +651,10 @@ impl PathToolData {
 			SelectionStatus::Multiple(_) => true,
 		};
 		self.selection_status = selection_status;
+	}
+
+	fn update_separate_segment_toggle(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler) {
+		//TODO: Implement this
 	}
 
 	fn remove_saved_points(&mut self) {
@@ -3033,6 +3058,20 @@ impl Fsm for PathToolFsmState {
 				let pivot_gizmo = tool_data.pivot_gizmo();
 				responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+
+				self
+			}
+			(_, PathToolMessage::SeparateSegment) => {
+				// TODO: Implement this
+
+				// It only makes sense to use this if we have more than two segments connected
+				// Basically we will have a segment selected and we need to first remove the segment, add two segments with same bezier on both of them
+				// Collect the segments that will be connected to start from
+
+				self
+			}
+			(_, PathToolMessage::PeelSegment) => {
+				//TODO: Implement this
 
 				self
 			}
