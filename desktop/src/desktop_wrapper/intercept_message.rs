@@ -17,7 +17,6 @@ pub(super) fn intercept_message(executor: &mut EditorMessageExecutor, message: M
 					height: (bottom_right.y - top_left.y) as f32,
 				});
 			}
-			executor.respond(DesktopFrontendMessage::RequestRedraw);
 			Some(Message::InputPreprocessor(message))
 		}
 		m => Some(m),

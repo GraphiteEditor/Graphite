@@ -16,15 +16,15 @@ use app::WinitApp;
 mod dirs;
 
 mod desktop_wrapper;
-use desktop_wrapper::EditorWrapper;
 use desktop_wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage};
+use desktop_wrapper::{DesktopWrapper, NodeGraphExecutionResult};
 
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum CustomEvent {
 	UiUpdate(wgpu::Texture),
 	ScheduleBrowserWork(Instant),
 	DesktopWrapperMessage(DesktopWrapperMessage),
-	DesktopFrontendMessages(Vec<DesktopFrontendMessage>),
+	DesktopFrontendMessage(DesktopFrontendMessage),
 }
 
 fn main() {
@@ -64,8 +64,16 @@ fn main() {
 		loop {
 			let last_render = Instant::now();
 
-			let responses = EditorWrapper::poll();
-			let _ = rendering_loop_proxy.send_event(CustomEvent::DesktopFrontendMessages(responses));
+			let result = futures::executor::block_on(DesktopWrapper::run_node_graph());
+			match result {
+				NodeGraphExecutionResult::HasRun(texture) => {
+					let _ = rendering_loop_proxy.send_event(CustomEvent::DesktopWrapperMessage(DesktopWrapperMessage::PollNodeGraphEvaluation));
+					if let Some(texture) = texture {
+						let _ = rendering_loop_proxy.send_event(CustomEvent::DesktopFrontendMessage(DesktopFrontendMessage::UpdateViewport(texture)));
+					}
+				}
+				NodeGraphExecutionResult::NotRun => {}
+			}
 
 			let frame_time = Duration::from_secs_f32((target_fps as f32).recip());
 			let sleep = last_render + frame_time - Instant::now();

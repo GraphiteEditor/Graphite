@@ -21,7 +21,6 @@ pub enum DesktopFrontendMessage {
 		content: Vec<u8>,
 	},
 	OpenUrl(String),
-	RequestRedraw,
 	UpdateViewport(wgpu::Texture),
 	UpdateViewportBounds {
 		x: f32,
@@ -30,7 +29,6 @@ pub enum DesktopFrontendMessage {
 		height: f32,
 	},
 	UpdateOverlays(vello::Scene),
-	Loopback(DesktopWrapperMessage),
 }
 
 pub struct FileFilter {

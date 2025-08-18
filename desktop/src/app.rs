@@ -1,7 +1,7 @@
 use crate::CustomEvent;
 use crate::WindowSize;
 use crate::consts::APP_NAME;
-use crate::desktop_wrapper::EditorWrapper;
+use crate::desktop_wrapper::DesktopWrapper;
 use crate::desktop_wrapper::WgpuContext;
 use crate::desktop_wrapper::messages::DesktopFrontendMessage;
 use crate::desktop_wrapper::messages::DesktopWrapperMessage;
@@ -32,12 +32,12 @@ pub(crate) struct WinitApp {
 	graphics_state: Option<GraphicsState>,
 	wgpu_context: WgpuContext,
 	event_loop_proxy: EventLoopProxy<CustomEvent>,
-	editor_wrapper: EditorWrapper,
+	desktop_wrapper: DesktopWrapper,
 }
 
 impl WinitApp {
 	pub(crate) fn new(cef_context: cef::Context<cef::Initialized>, window_size_sender: Sender<WindowSize>, wgpu_context: WgpuContext, event_loop_proxy: EventLoopProxy<CustomEvent>) -> Self {
-		let editor_wrapper = EditorWrapper::new();
+		let desktop_wrapper = DesktopWrapper::new();
 		Self {
 			cef_context,
 			window: None,
@@ -46,7 +46,7 @@ impl WinitApp {
 			window_size_sender,
 			wgpu_context,
 			event_loop_proxy,
-			editor_wrapper,
+			desktop_wrapper,
 		}
 	}
 
@@ -110,11 +110,6 @@ impl WinitApp {
 					}
 				});
 			}
-			DesktopFrontendMessage::RequestRedraw => {
-				if let Some(window) = &self.window {
-					window.request_redraw();
-				}
-			}
 			DesktopFrontendMessage::UpdateViewport(texture) => {
 				if let Some(graphics_state) = &mut self.graphics_state {
 					graphics_state.bind_viewport_texture(texture);
@@ -140,7 +135,6 @@ impl WinitApp {
 					graphics_state.set_overlays_scene(scene);
 				}
 			}
-			DesktopFrontendMessage::Loopback(editor_message) => self.dispatch_desktop_wrapper_message(editor_message),
 		}
 	}
 
@@ -151,7 +145,7 @@ impl WinitApp {
 	}
 
 	fn dispatch_desktop_wrapper_message(&mut self, message: DesktopWrapperMessage) {
-		let responses = self.editor_wrapper.dispatch(message);
+		let responses = self.desktop_wrapper.dispatch(message);
 		self.handle_desktop_frontend_messages(responses);
 	}
 }
@@ -206,13 +200,13 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 
 		tracing::info!("Winit window created and ready");
 
-		self.editor_wrapper.init(self.wgpu_context.clone());
+		self.desktop_wrapper.init(self.wgpu_context.clone());
 	}
 
 	fn user_event(&mut self, _: &ActiveEventLoop, event: CustomEvent) {
 		match event {
 			CustomEvent::DesktopWrapperMessage(message) => self.dispatch_desktop_wrapper_message(message),
-			CustomEvent::DesktopFrontendMessages(messages) => self.handle_desktop_frontend_messages(messages),
+			CustomEvent::DesktopFrontendMessage(message) => self.handle_desktop_frontend_message(message),
 			CustomEvent::UiUpdate(texture) => {
 				if let Some(graphics_state) = self.graphics_state.as_mut() {
 					graphics_state.resize(texture.width(), texture.height());

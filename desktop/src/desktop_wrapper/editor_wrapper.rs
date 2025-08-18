@@ -13,11 +13,11 @@ mod intercept_frontend_message;
 #[path = "intercept_message.rs"]
 mod intercept_message;
 
-pub struct EditorWrapper {
+pub struct DesktopWrapper {
 	editor: Editor,
 }
 
-impl EditorWrapper {
+impl DesktopWrapper {
 	pub fn new() -> Self {
 		Self { editor: Editor::new() }
 	}
@@ -33,20 +33,18 @@ impl EditorWrapper {
 		executor.execute()
 	}
 
-	pub fn poll() -> Vec<DesktopFrontendMessage> {
-		let mut responses = Vec::new();
-
-		let (has_run, texture) = futures::executor::block_on(graphite_editor::node_graph_executor::run_node_graph());
-		if has_run {
-			responses.push(DesktopFrontendMessage::Loopback(DesktopWrapperMessage::PollNodeGraphEvaluation));
+	pub async fn run_node_graph() -> NodeGraphExecutionResult {
+		let result = graphite_editor::node_graph_executor::run_node_graph().await;
+		match result {
+			(true, texture) => NodeGraphExecutionResult::HasRun(texture.map(|t| t.texture)),
+			(false, _) => NodeGraphExecutionResult::NotRun,
 		}
-		if let Some(texture) = texture {
-			responses.push(DesktopFrontendMessage::UpdateViewport(texture.texture));
-			responses.push(DesktopFrontendMessage::RequestRedraw);
-		}
-
-		responses
 	}
+}
+
+pub enum NodeGraphExecutionResult {
+	HasRun(Option<wgpu::Texture>),
+	NotRun,
 }
 
 struct EditorMessageExecutor<'a> {
