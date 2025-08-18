@@ -724,18 +724,24 @@ mod tests {
 		for (parsed_field, expected_field) in parsed.fields.iter().zip(expected.fields.iter()) {
 			match (parsed_field, expected_field) {
 				(
-					ParsedField::Regular {
+					ParsedField {
 						pat_ident: p_name,
-						ty: p_ty,
-						exposed: p_exp,
-						value_source: p_default,
+						ty: ParsedFieldType::Regular(RegularParsedField {
+							ty: p_ty,
+							exposed: p_exp,
+							value_source: p_default,
+							..
+						}),
 						..
 					},
-					ParsedField::Regular {
+					ParsedField {
 						pat_ident: e_name,
-						ty: e_ty,
-						exposed: e_exp,
-						value_source: e_default,
+						ty: ParsedFieldType::Regular(RegularParsedField {
+							ty: e_ty,
+							exposed: e_exp,
+							value_source: e_default,
+							..
+						}),
 						..
 					},
 				) => {
@@ -754,16 +760,22 @@ mod tests {
 					assert_eq!(format!("{:?}", p_ty), format!("{:?}", e_ty));
 				}
 				(
-					ParsedField::Node {
+					ParsedField {
 						pat_ident: p_name,
-						input_type: p_input,
-						output_type: p_output,
+						ty: ParsedFieldType::Node(NodeParsedField {
+							input_type: p_input,
+							output_type: p_output,
+							..
+						}),
 						..
 					},
-					ParsedField::Node {
+					ParsedField {
 						pat_ident: e_name,
-						input_type: e_input,
-						output_type: e_output,
+						ty: ParsedFieldType::Node(NodeParsedField {
+							input_type: e_input,
+							output_type: e_output,
+							..
+						}),
 						..
 					},
 				) => {
@@ -811,22 +823,24 @@ mod tests {
 			},
 			output_type: parse_quote!(f64),
 			is_async: false,
-			fields: vec![ParsedField::Regular {
+			fields: vec![ParsedField {
 				pat_ident: pat_ident("b"),
 				name: None,
 				description: String::new(),
 				widget_override: ParsedWidgetOverride::None,
-				ty: parse_quote!(f64),
-				exposed: false,
-				value_source: ParsedValueSource::None,
-				number_soft_min: None,
-				number_soft_max: None,
-				number_hard_min: None,
-				number_hard_max: None,
-				number_mode_range: None,
+				ty: ParsedFieldType::Regular(RegularParsedField {
+					ty: parse_quote!(f64),
+					exposed: false,
+					value_source: ParsedValueSource::None,
+					number_soft_min: None,
+					number_soft_max: None,
+					number_hard_min: None,
+					number_hard_max: None,
+					number_mode_range: None,
+					implementations: Punctuated::new(),
+				}),
 				number_display_decimal_places: None,
 				number_step: None,
-				implementations: Punctuated::new(),
 				unit: None,
 			}],
 			body: TokenStream2::new(),
@@ -875,34 +889,38 @@ mod tests {
 			output_type: parse_quote!(T),
 			is_async: false,
 			fields: vec![
-				ParsedField::Node {
+				ParsedField {
 					pat_ident: pat_ident("transform_target"),
 					name: None,
 					description: String::new(),
 					widget_override: ParsedWidgetOverride::None,
-					input_type: parse_quote!(Footprint),
-					output_type: parse_quote!(T),
+					ty: ParsedFieldType::Node(NodeParsedField {
+						input_type: parse_quote!(Footprint),
+						output_type: parse_quote!(T),
+						implementations: Punctuated::new(),
+					}),
 					number_display_decimal_places: None,
 					number_step: None,
-					implementations: Punctuated::new(),
 					unit: None,
 				},
-				ParsedField::Regular {
+				ParsedField {
 					pat_ident: pat_ident("translate"),
 					name: None,
 					description: String::new(),
 					widget_override: ParsedWidgetOverride::None,
-					ty: parse_quote!(DVec2),
-					exposed: false,
-					value_source: ParsedValueSource::None,
-					number_soft_min: None,
-					number_soft_max: None,
-					number_hard_min: None,
-					number_hard_max: None,
-					number_mode_range: None,
+					ty: ParsedFieldType::Regular(RegularParsedField {
+						ty: parse_quote!(DVec2),
+						exposed: false,
+						value_source: ParsedValueSource::None,
+						number_soft_min: None,
+						number_soft_max: None,
+						number_hard_min: None,
+						number_hard_max: None,
+						number_mode_range: None,
+						implementations: Punctuated::new(),
+					}),
 					number_display_decimal_places: None,
 					number_step: None,
-					implementations: Punctuated::new(),
 					unit: None,
 				},
 			],
@@ -948,22 +966,24 @@ mod tests {
 			},
 			output_type: parse_quote!(Vector),
 			is_async: false,
-			fields: vec![ParsedField::Regular {
+			fields: vec![ParsedField {
 				pat_ident: pat_ident("radius"),
 				name: None,
 				description: String::new(),
 				widget_override: ParsedWidgetOverride::None,
-				ty: parse_quote!(f64),
-				exposed: false,
-				value_source: ParsedValueSource::Default(quote!(50.)),
-				number_soft_min: None,
-				number_soft_max: None,
-				number_hard_min: None,
-				number_hard_max: None,
-				number_mode_range: None,
+				ty: ParsedFieldType::Regular(RegularParsedField {
+					ty: parse_quote!(f64),
+					exposed: false,
+					value_source: ParsedValueSource::Default(quote!(50.)),
+					number_soft_min: None,
+					number_soft_max: None,
+					number_hard_min: None,
+					number_hard_max: None,
+					number_mode_range: None,
+					implementations: Punctuated::new(),
+				}),
 				number_display_decimal_places: None,
 				number_step: None,
-				implementations: Punctuated::new(),
 				unit: None,
 			}],
 			body: TokenStream2::new(),
@@ -1007,27 +1027,29 @@ mod tests {
 			},
 			output_type: parse_quote!(Table<Raster<P>>),
 			is_async: false,
-			fields: vec![ParsedField::Regular {
+			fields: vec![ParsedField {
 				pat_ident: pat_ident("shadows"),
 				name: None,
 				description: String::new(),
 				widget_override: ParsedWidgetOverride::None,
-				ty: parse_quote!(f64),
-				exposed: false,
-				value_source: ParsedValueSource::None,
-				number_soft_min: None,
-				number_soft_max: None,
-				number_hard_min: None,
-				number_hard_max: None,
-				number_mode_range: None,
+				ty: ParsedFieldType::Regular(RegularParsedField {
+					ty: parse_quote!(f64),
+					exposed: false,
+					value_source: ParsedValueSource::None,
+					number_soft_min: None,
+					number_soft_max: None,
+					number_hard_min: None,
+					number_hard_max: None,
+					number_mode_range: None,
+					implementations: {
+						let mut p = Punctuated::new();
+						p.push(parse_quote!(f32));
+						p.push(parse_quote!(f64));
+						p
+					},
+				}),
 				number_display_decimal_places: None,
 				number_step: None,
-				implementations: {
-					let mut p = Punctuated::new();
-					p.push(parse_quote!(f32));
-					p.push(parse_quote!(f64));
-					p
-				},
 				unit: None,
 			}],
 			body: TokenStream2::new(),
@@ -1078,22 +1100,24 @@ mod tests {
 			},
 			output_type: parse_quote!(f64),
 			is_async: false,
-			fields: vec![ParsedField::Regular {
+			fields: vec![ParsedField {
 				pat_ident: pat_ident("b"),
 				name: None,
 				description: String::from("b"),
 				widget_override: ParsedWidgetOverride::None,
-				ty: parse_quote!(f64),
-				exposed: false,
-				value_source: ParsedValueSource::None,
-				number_soft_min: Some(parse_quote!(-500.)),
-				number_soft_max: Some(parse_quote!(500.)),
-				number_hard_min: None,
-				number_hard_max: None,
-				number_mode_range: Some(parse_quote!((0., 100.))),
+				ty: ParsedFieldType::Regular(RegularParsedField {
+					ty: parse_quote!(f64),
+					exposed: false,
+					value_source: ParsedValueSource::None,
+					number_soft_min: Some(parse_quote!(-500.)),
+					number_soft_max: Some(parse_quote!(500.)),
+					number_hard_min: None,
+					number_hard_max: None,
+					number_mode_range: Some(parse_quote!((0., 100.))),
+					implementations: Punctuated::new(),
+				}),
 				number_display_decimal_places: None,
 				number_step: None,
-				implementations: Punctuated::new(),
 				unit: None,
 			}],
 			body: TokenStream2::new(),
@@ -1137,22 +1161,24 @@ mod tests {
 			},
 			output_type: parse_quote!(Table<Raster<CPU>>),
 			is_async: true,
-			fields: vec![ParsedField::Regular {
+			fields: vec![ParsedField {
 				pat_ident: pat_ident("path"),
 				name: None,
-				ty: parse_quote!(String),
 				description: String::new(),
 				widget_override: ParsedWidgetOverride::None,
-				exposed: true,
-				value_source: ParsedValueSource::None,
-				number_soft_min: None,
-				number_soft_max: None,
-				number_hard_min: None,
-				number_hard_max: None,
-				number_mode_range: None,
+				ty: ParsedFieldType::Regular(RegularParsedField {
+					ty: parse_quote!(String),
+					exposed: true,
+					value_source: ParsedValueSource::None,
+					number_soft_min: None,
+					number_soft_max: None,
+					number_hard_min: None,
+					number_hard_max: None,
+					number_mode_range: None,
+					implementations: Punctuated::new(),
+				}),
 				number_display_decimal_places: None,
 				number_step: None,
-				implementations: Punctuated::new(),
 				unit: None,
 			}],
 			body: TokenStream2::new(),
