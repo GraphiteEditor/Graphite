@@ -32,15 +32,10 @@ impl Context {
 		let (device, queue) = adapter
 			.request_device(&wgpu::DeviceDescriptor {
 				label: None,
-				// #[cfg(not(feature = "passthrough"))]
 				#[cfg(target_family = "wasm")]
 				required_features: wgpu::Features::empty(),
 				#[cfg(not(target_family = "wasm"))]
 				required_features: wgpu::Features::PUSH_CONSTANTS,
-				// Currently disabled because not all backend support passthrough.
-				// TODO: reenable only when vulkan adapter is available
-				// #[cfg(feature = "passthrough")]
-				// required_features: wgpu::Features::SPIRV_SHADER_PASSTHROUGH,
 				required_limits,
 				memory_hints: Default::default(),
 				trace: wgpu::Trace::Off,

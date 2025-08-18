@@ -35,16 +35,15 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext> f
 
 					responses.add(NavigationMessage::CanvasPan { delta: DVec2::ZERO });
 					responses.add(NodeGraphMessage::SetGridAlignedEdges);
-					// We have to wait until a node node graph has run and all messages from that execution have been processed.
-					responses.add(DeferMessage::AfterGraphRun {
-						messages: vec![
-							DeferMessage::AfterGraphRun {
-								messages: vec![DeferMessage::TriggerNavigationReady.into()],
-							}
-							.into(),
-						],
-					});
 				}
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: vec![
+						DeferMessage::AfterGraphRun {
+							messages: vec![DeferMessage::TriggerNavigationReady.into()],
+						}
+						.into(),
+					],
+				});
 			}
 			InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);

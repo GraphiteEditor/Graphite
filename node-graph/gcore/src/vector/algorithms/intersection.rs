@@ -45,12 +45,26 @@ pub fn segment_intersections(segment1: PathSeg, segment2: PathSeg, accuracy: Opt
 	}
 }
 
+pub fn subsegment_intersections(segment1: PathSeg, min_t1: f64, max_t1: f64, segment2: PathSeg, min_t2: f64, max_t2: f64, accuracy: Option<f64>) -> Vec<(f64, f64)> {
+	let accuracy = accuracy.unwrap_or(DEFAULT_ACCURACY);
+
+	match (segment1, segment2) {
+		(PathSeg::Line(line), segment2) => segment2.intersect_line(line).iter().map(|i| (i.line_t, i.segment_t)).collect(),
+		(segment1, PathSeg::Line(line)) => segment1.intersect_line(line).iter().map(|i| (i.segment_t, i.line_t)).collect(),
+		(segment1, segment2) => {
+			let mut intersections = Vec::new();
+			segment_intersections_inner(segment1, min_t1, max_t1, segment2, min_t2, max_t2, accuracy, &mut intersections);
+			intersections
+		}
+	}
+}
+
 /// Implements [https://pomax.github.io/bezierinfo/#curveintersection] to find intersection between two Bezier segments
 /// by splitting the segment recursively until the size of the subsegment's bounding box is smaller than the accuracy.
 #[allow(clippy::too_many_arguments)]
 fn segment_intersections_inner(segment1: PathSeg, min_t1: f64, max_t1: f64, segment2: PathSeg, min_t2: f64, max_t2: f64, accuracy: f64, intersections: &mut Vec<(f64, f64)>) {
-	let bbox1 = segment1.bounding_box();
-	let bbox2 = segment2.bounding_box();
+	let bbox1 = segment1.subsegment(min_t1..max_t1).bounding_box();
+	let bbox2 = segment2.subsegment(min_t2..max_t2).bounding_box();
 
 	let mid_t1 = (min_t1 + max_t1) / 2.;
 	let mid_t2 = (min_t2 + max_t2) / 2.;
@@ -58,7 +72,7 @@ fn segment_intersections_inner(segment1: PathSeg, min_t1: f64, max_t1: f64, segm
 	// Check if the bounding boxes overlap
 	if bbox1.overlaps(bbox2) {
 		// If bounding boxes overlap and they are small enough, we have found an intersection
-		if bbox1.width() < accuracy && bbox1.height() < accuracy && bbox2.width() < accuracy && bbox2.height() < accuracy {
+		if bbox1.width().abs() < accuracy && bbox1.height().abs() < accuracy && bbox2.width().abs() < accuracy && bbox2.height().abs() < accuracy {
 			// Use the middle `t` value, append the corresponding `t` value
 			intersections.push((mid_t1, mid_t2));
 			return;
@@ -111,6 +125,66 @@ pub fn filtered_segment_intersections(segment1: PathSeg, segment2: PathSeg, accu
 /// `minimum_separation` is the minimum difference between adjacent `t` values in sorted order
 pub fn filtered_all_segment_intersections(segment1: PathSeg, segment2: PathSeg, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(f64, f64)> {
 	let mut intersection_t_values = segment_intersections(segment1, segment2, accuracy);
+	intersection_t_values.sort_by(|a, b| (a.0 + a.1).partial_cmp(&(b.0 + b.1)).unwrap());
+
+	intersection_t_values.iter().fold(Vec::new(), |mut accumulator, t| {
+		if !accumulator.is_empty()
+			&& (accumulator.last().unwrap().0 - t.0).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE)
+			&& (accumulator.last().unwrap().1 - t.1).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE)
+		{
+			accumulator.pop();
+		}
+		accumulator.push(*t);
+		accumulator
+	})
+}
+
+/// Helper function to compute intersections between lists of subcurves.
+/// This function uses the algorithm implemented in `intersections_between_subcurves`.
+fn intersections_between_vectors_of_path_segments(subcurves1: &[(f64, f64, PathSeg)], subcurves2: &[(f64, f64, PathSeg)], accuracy: Option<f64>) -> Vec<(f64, f64)> {
+	let segment_pairs = subcurves1.iter().flat_map(move |(t11, t12, curve1)| {
+		subcurves2
+			.iter()
+			.filter_map(move |(t21, t22, curve2)| curve1.bounding_box().overlaps(curve2.bounding_box()).then_some((t11, t12, curve1, t21, t22, curve2)))
+	});
+
+	segment_pairs
+		.flat_map(|(&t11, &t12, &curve1, &t21, &t22, &curve2)| subsegment_intersections(curve1, t11, t12, curve2, t21, t22, accuracy))
+		.collect::<Vec<(f64, f64)>>()
+}
+
+fn pathseg_self_intersection(segment: PathSeg, accuracy: Option<f64>) -> Vec<(f64, f64)> {
+	let cubic_bez = match segment {
+		PathSeg::Line(_) | PathSeg::Quad(_) => return vec![],
+		PathSeg::Cubic(cubic_bez) => cubic_bez,
+	};
+
+	// Get 2 copies of the reduced curves
+	let quads1 = cubic_bez.to_quads(DEFAULT_ACCURACY).map(|(t1, t2, quad_bez)| (t1, t2, PathSeg::Quad(quad_bez))).collect::<Vec<_>>();
+	let quads2 = quads1.clone();
+
+	let num_curves = quads1.len();
+
+	// Adjacent reduced curves cannot intersect
+	if num_curves <= 2 {
+		return vec![];
+	}
+
+	// For each curve, look for intersections with every curve that is at least 2 indices away
+	quads1
+		.iter()
+		.take(num_curves - 2)
+		.enumerate()
+		.flat_map(|(index, &subsegment)| intersections_between_vectors_of_path_segments(&[subsegment], &quads2[index + 2..], accuracy))
+		.collect()
+}
+
+/// Returns a list of parametric `t` values that correspond to the self intersection points of the current bezier curve. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
+/// If the difference between 2 adjacent `t` values is less than the minimum difference, the filtering takes the larger `t` value and discards the smaller `t` value.
+/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+/// - `minimum_separation` - The minimum difference between adjacent `t` values in sorted order
+pub fn pathseg_self_intersections(segment: PathSeg, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(f64, f64)> {
+	let mut intersection_t_values = pathseg_self_intersection(segment, accuracy);
 	intersection_t_values.sort_by(|a, b| (a.0 + a.1).partial_cmp(&(b.0 + b.1)).unwrap());
 
 	intersection_t_values.iter().fold(Vec::new(), |mut accumulator, t| {

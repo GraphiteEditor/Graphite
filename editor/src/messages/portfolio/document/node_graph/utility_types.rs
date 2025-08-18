@@ -8,18 +8,19 @@ use std::borrow::Cow;
 pub enum FrontendGraphDataType {
 	#[default]
 	General,
+	Number,
+	Artboard,
+	Graphic,
 	Raster,
 	Vector,
-	Number,
-	Graphic,
-	Artboard,
+	Color,
+	Gradient,
+	Typography,
 }
 
 impl FrontendGraphDataType {
 	pub fn from_type(input: &Type) -> Self {
 		match TaggedValue::from_type_or_none(input) {
-			TaggedValue::Raster(_) => Self::Raster,
-			TaggedValue::Vector(_) => Self::Vector,
 			TaggedValue::U32(_)
 			| TaggedValue::U64(_)
 			| TaggedValue::F64(_)
@@ -28,8 +29,13 @@ impl FrontendGraphDataType {
 			| TaggedValue::VecF64(_)
 			| TaggedValue::VecDVec2(_)
 			| TaggedValue::DAffine2(_) => Self::Number,
-			TaggedValue::Graphic(_) => Self::Graphic,
 			TaggedValue::Artboard(_) => Self::Artboard,
+			TaggedValue::Graphic(_) => Self::Graphic,
+			TaggedValue::Raster(_) => Self::Raster,
+			TaggedValue::Vector(_) => Self::Vector,
+			TaggedValue::Color(_) => Self::Color,
+			TaggedValue::Gradient(_) | TaggedValue::GradientStops(_) | TaggedValue::GradientTable(_) => Self::Gradient,
+			TaggedValue::String(_) => Self::Typography,
 			_ => Self::General,
 		}
 	}
@@ -177,8 +183,8 @@ pub struct FrontendClickTargets {
 	pub node_click_targets: Vec<String>,
 	#[serde(rename = "layerClickTargets")]
 	pub layer_click_targets: Vec<String>,
-	#[serde(rename = "portClickTargets")]
-	pub port_click_targets: Vec<String>,
+	#[serde(rename = "connectorClickTargets")]
+	pub connector_click_targets: Vec<String>,
 	#[serde(rename = "iconClickTargets")]
 	pub icon_click_targets: Vec<String>,
 	#[serde(rename = "allNodesBoundingBox")]

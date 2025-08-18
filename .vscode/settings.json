@@ -35,7 +35,7 @@
 	"rust-analyzer.cargo.allTargets": false,
 	// ESLint config
 	"eslint.format.enable": true,
-	"eslint.workingDirectories": ["./frontend", "./website/other/bezier-rs-demos", "./website"],
+	"eslint.workingDirectories": ["./frontend", "./website"],
 	"eslint.validate": ["javascript", "typescript", "svelte"],
 	// Svelte config
 	"svelte.plugin.svelte.compilerWarnings": {

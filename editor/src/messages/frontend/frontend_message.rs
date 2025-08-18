@@ -68,17 +68,17 @@ pub enum FrontendMessage {
 		document_id: DocumentId,
 		name: String,
 		path: Option<PathBuf>,
-		document: String,
+		content: Vec<u8>,
 	},
-	TriggerDownloadImage {
+	TriggerSaveFile {
+		name: String,
+		content: Vec<u8>,
+	},
+	TriggerExportImage {
 		svg: String,
 		name: String,
 		mime: String,
 		size: (f64, f64),
-	},
-	TriggerDownloadTextFile {
-		document: String,
-		name: String,
 	},
 	TriggerFetchAndOpenDocument {
 		name: String,
@@ -149,11 +149,16 @@ pub enum FrontendMessage {
 	UpdateGraphViewOverlay {
 		open: bool,
 	},
-	UpdateSpreadsheetState {
+	UpdateDataPanelState {
 		open: bool,
-		node: Option<NodeId>,
 	},
-	UpdateSpreadsheetLayout {
+	UpdatePropertiesPanelState {
+		open: bool,
+	},
+	UpdateLayersPanelState {
+		open: bool,
+	},
+	UpdateDataPanelLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
@@ -296,7 +301,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "openDocuments")]
 		open_documents: Vec<FrontendDocumentDetails>,
 	},
-	UpdatePropertyPanelSectionsLayout {
+	UpdatePropertiesPanelLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,

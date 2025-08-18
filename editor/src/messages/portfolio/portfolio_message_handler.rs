@@ -1,6 +1,5 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document::utility_types::network_interface;
-use super::spreadsheet::SpreadsheetMessageHandler;
 use super::utility_types::{PanelType, PersistentData};
 use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH};
@@ -23,11 +22,12 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
-use bezier_rs::BezierHandles;
+use derivative::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
+use graphene_std::subpath::BezierHandles;
 use graphene_std::text::Font;
 use graphene_std::vector::misc::HandleId;
 use graphene_std::vector::{PointId, SegmentId, Vector, VectorModificationType};
@@ -37,14 +37,15 @@ use std::vec;
 pub struct PortfolioMessageContext<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
+	pub animation: &'a AnimationMessageHandler,
 	pub current_tool: &'a ToolType,
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 	pub reset_node_definitions_on_open: bool,
 	pub timing_information: TimingInformation,
-	pub animation: &'a AnimationMessageHandler,
 }
 
-#[derive(Debug, Default, ExtractField)]
+#[derive(Debug, Derivative, ExtractField)]
+#[derivative(Default)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
@@ -55,10 +56,13 @@ pub struct PortfolioMessageHandler {
 	pub persistent_data: PersistentData,
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
-	/// The spreadsheet UI allows for graph data to be previewed.
-	pub spreadsheet: SpreadsheetMessageHandler,
 	device_pixel_ratio: Option<f64>,
 	pub reset_node_definitions_on_open: bool,
+	pub data_panel_open: bool,
+	#[derivative(Default(value = "true"))]
+	pub layers_panel_open: bool,
+	#[derivative(Default(value = "true"))]
+	pub properties_panel_open: bool,
 }
 
 #[message_handler_data]
@@ -67,11 +71,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 		let PortfolioMessageContext {
 			ipp,
 			preferences,
+			animation,
 			current_tool,
 			message_logging_verbosity,
 			reset_node_definitions_on_open,
 			timing_information,
-			animation,
 		} = context;
 
 		match message {
@@ -86,7 +90,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.menu_bar_message_handler.has_selected_layers = false;
 				self.menu_bar_message_handler.has_selection_history = (false, false);
 				self.menu_bar_message_handler.make_path_editable_is_allowed = false;
-				self.menu_bar_message_handler.spreadsheet_view_open = self.spreadsheet.spreadsheet_view_open;
+				self.menu_bar_message_handler.data_panel_open = self.data_panel_open;
+				self.menu_bar_message_handler.layers_panel_open = self.layers_panel_open;
+				self.menu_bar_message_handler.properties_panel_open = self.properties_panel_open;
 				self.menu_bar_message_handler.message_logging_verbosity = message_logging_verbosity;
 				self.menu_bar_message_handler.reset_node_definitions_on_open = reset_node_definitions_on_open;
 
@@ -108,9 +114,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				self.menu_bar_message_handler.process_message(message, responses, ());
 			}
-			PortfolioMessage::Spreadsheet(message) => {
-				self.spreadsheet.process_message(message, responses, ());
-			}
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
 					if let Some(document) = self.documents.get_mut(&document_id) {
@@ -122,6 +125,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							current_tool,
 							preferences,
 							device_pixel_ratio: self.device_pixel_ratio.unwrap_or(1.),
+							data_panel_open: self.data_panel_open,
+							layers_panel_open: self.layers_panel_open,
+							properties_panel_open: self.properties_panel_open,
 						};
 						document.process_message(message, responses, document_inputs)
 					}
@@ -156,6 +162,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						current_tool,
 						preferences,
 						device_pixel_ratio: self.device_pixel_ratio.unwrap_or(1.),
+						data_panel_open: self.data_panel_open,
+						layers_panel_open: self.layers_panel_open,
+						properties_panel_open: self.properties_panel_open,
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -201,6 +210,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					// Clear relevant UI layouts if there are no documents
 					responses.add(PropertiesPanelMessage::Clear);
 					responses.add(DocumentMessage::ClearLayersPanel);
+					responses.add(DataPanelMessage::ClearLayout);
 					let hint_data = HintData(vec![HintGroup(vec![])]);
 					responses.add(FrontendMessage::UpdateInputHints { hint_data });
 				}
@@ -225,6 +235,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					// Clear UI layouts that assume the existence of a document
 					responses.add(PropertiesPanelMessage::Clear);
 					responses.add(DocumentMessage::ClearLayersPanel);
+					responses.add(DataPanelMessage::ClearLayout);
 					let hint_data = HintData(vec![HintGroup(vec![])]);
 					responses.add(FrontendMessage::UpdateInputHints { hint_data });
 				}
@@ -344,15 +355,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.persistent_data.font_cache.insert(font, preview_url, data);
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
 				for document_id in self.document_ids.iter() {
-					let inspect_node = self.inspect_node_id();
+					let node_to_inspect = self.node_to_inspect();
 					if let Ok(message) = self.executor.submit_node_graph_evaluation(
 						self.documents.get_mut(document_id).expect("Tried to render non-existent document"),
+						*document_id,
 						ipp.viewport_bounds.size().as_uvec2(),
 						timing_information,
-						inspect_node,
+						node_to_inspect,
 						true,
 					) {
-						responses.add(message);
+						responses.add_front(message);
 					}
 				}
 
@@ -378,16 +390,19 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::NewDocumentWithName { name } => {
 				let mut new_document = DocumentMessageHandler::default();
 				new_document.name = name;
-				responses.add(DocumentMessage::PTZUpdate);
+				let mut new_responses = VecDeque::new();
+				new_responses.add(DocumentMessage::PTZUpdate);
 
 				let document_id = DocumentId(generate_uuid());
 				if self.active_document().is_some() {
-					responses.add(BroadcastEvent::ToolAbort);
-					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
+					new_responses.add(BroadcastEvent::ToolAbort);
+					new_responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
-				self.load_document(new_document, document_id, responses, false);
-				responses.add(PortfolioMessage::SelectDocument { document_id });
+				self.load_document(new_document, document_id, self.layers_panel_open, &mut new_responses, false);
+				new_responses.add(PortfolioMessage::SelectDocument { document_id });
+				new_responses.extend(responses.drain(..));
+				*responses = new_responses;
 			}
 			PortfolioMessage::NextDocument => {
 				if let Some(active_document_id) = self.active_document_id {
@@ -500,7 +515,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document.set_save_state(document_is_saved);
 
 				// Load the document into the portfolio so it opens in the editor
-				self.load_document(document, document_id, responses, to_front);
+				self.load_document(document, document_id, self.layers_panel_open, responses, to_front);
 			}
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
 				let mut all_new_ids = Vec::new();
@@ -766,7 +781,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				if create_document {
 					responses.add(PortfolioMessage::NewDocumentWithName {
-						name: name.clone().unwrap_or("Untitled Document".into()),
+						name: name.clone().unwrap_or(DEFAULT_DOCUMENT_NAME.into()),
 					});
 				}
 
@@ -797,7 +812,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				if create_document {
 					responses.add(PortfolioMessage::NewDocumentWithName {
-						name: name.clone().unwrap_or("Untitled Document".into()),
+						name: name.clone().unwrap_or(DEFAULT_DOCUMENT_NAME.into()),
 					});
 				}
 
@@ -899,7 +914,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					transparent_background,
 					..Default::default()
 				};
-				let result = self.executor.submit_document_export(document, export_config);
+				let result = self.executor.submit_document_export(document, self.active_document_id.unwrap(), export_config);
 
 				if let Err(description) = result {
 					responses.add(DialogMessage::DisplayDialogError {
@@ -914,12 +929,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::SubmitGraphRender { document_id, ignore_hash } => {
-				let inspect_node = self.inspect_node_id();
+				let node_to_inspect = self.node_to_inspect();
 				let result = self.executor.submit_node_graph_evaluation(
 					self.documents.get_mut(&document_id).expect("Tried to render non-existent document"),
+					document_id,
 					ipp.viewport_bounds.size().as_uvec2(),
 					timing_information,
-					inspect_node,
+					node_to_inspect,
 					ignore_hash,
 				);
 
@@ -930,7 +946,59 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							description,
 						});
 					}
-					Ok(message) => responses.add(message),
+					Ok(message) => responses.add_front(message),
+				}
+			}
+			PortfolioMessage::ToggleDataPanelOpen => {
+				self.data_panel_open = !self.data_panel_open;
+				responses.add(MenuBarMessage::SendLayout);
+
+				// Run the graph to grab the data
+				if self.data_panel_open {
+					// When opening, we make the frontend show the panel first so it can start receiving its message subscriptions for the data it will display
+					responses.add(FrontendMessage::UpdateDataPanelState { open: self.data_panel_open });
+
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				} else {
+					// If we don't clear the panel, the layout diffing system will assume widgets still exist when it attempts to update the data panel next time it is opened
+					responses.add(DataPanelMessage::ClearLayout);
+
+					// When closing, we make the frontend hide the panel last so it can finish receiving its message subscriptions before it is destroyed
+					responses.add(FrontendMessage::UpdateDataPanelState { open: self.data_panel_open });
+				}
+			}
+			PortfolioMessage::TogglePropertiesPanelOpen => {
+				self.properties_panel_open = !self.properties_panel_open;
+				responses.add(MenuBarMessage::SendLayout);
+
+				responses.add(FrontendMessage::UpdatePropertiesPanelState { open: self.properties_panel_open });
+
+				// Run the graph to grab the data
+				if self.properties_panel_open {
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+
+				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			PortfolioMessage::ToggleLayersPanelOpen => {
+				self.layers_panel_open = !self.layers_panel_open;
+				responses.add(MenuBarMessage::SendLayout);
+
+				// Run the graph to grab the data
+				if self.layers_panel_open {
+					// When opening, we make the frontend show the panel first so it can start receiving its message subscriptions for the data it will display
+					responses.add(FrontendMessage::UpdateLayersPanelState { open: self.layers_panel_open });
+
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(DeferMessage::AfterGraphRun {
+						messages: vec![NodeGraphMessage::UpdateLayerPanel.into(), DocumentMessage::DocumentStructureChanged.into()],
+					});
+				} else {
+					// If we don't clear the panel, the layout diffing system will assume widgets still exist when it attempts to update the layers panel next time it is opened
+					responses.add(DocumentMessage::ClearLayersPanel);
+
+					// When closing, we make the frontend hide the panel last so it can finish receiving its message subscriptions before it is destroyed
+					responses.add(FrontendMessage::UpdateLayersPanelState { open: self.layers_panel_open });
 				}
 			}
 			PortfolioMessage::ToggleRulers => {
@@ -982,6 +1050,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PasteIntoFolder,
 			PrevDocument,
 			ToggleRulers,
+			ToggleDataPanelOpen,
 		);
 
 		// Extend with actions that require an active document
@@ -1051,14 +1120,14 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>, to_front: bool) {
+	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, layers_panel_open: bool, responses: &mut VecDeque<Message>, to_front: bool) {
 		if to_front {
 			self.document_ids.push_front(document_id);
 		} else {
 			self.document_ids.push_back(document_id);
 		}
-		new_document.update_layers_panel_control_bar_widgets(responses);
-		new_document.update_layers_panel_bottom_bar_widgets(responses);
+		new_document.update_layers_panel_control_bar_widgets(layers_panel_open, responses);
+		new_document.update_layers_panel_bottom_bar_widgets(layers_panel_open, responses);
 
 		self.documents.insert(document_id, new_document);
 
@@ -1106,17 +1175,17 @@ impl PortfolioMessageHandler {
 		result
 	}
 
-	/// Get the id of the node that should be used as the target for the spreadsheet
-	pub fn inspect_node_id(&self) -> Option<NodeId> {
-		// Spreadsheet not open, skipping
-		if !self.spreadsheet.spreadsheet_view_open {
+	/// Get the ID of the selected node that should be used as the current source for the Data panel.
+	pub fn node_to_inspect(&self) -> Option<NodeId> {
+		// Skip if the Data panel is not open
+		if !self.data_panel_open {
 			return None;
 		}
 
 		let document = self.documents.get(&self.active_document_id?)?;
 		let selected_nodes = document.network_interface.selected_nodes().0;
 
-		// Selected nodes != 1, skipping
+		// Skip if there is not exactly one selected node
 		if selected_nodes.len() != 1 {
 			return None;
 		}

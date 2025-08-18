@@ -6,6 +6,8 @@ use graphite_editor::messages::prelude::Message;
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
 
+pub(crate) mod consts;
+
 mod cef;
 use cef::{Setup, WindowSize};
 

@@ -33,17 +33,17 @@
         pkgs = import nixpkgs {
           inherit system overlays;
         };
- 
+
         rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
           targets = [ "wasm32-unknown-unknown" ];
           extensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
         };
 
         libcef = pkgs.libcef.overrideAttrs (finalAttrs: previousAttrs: {
-          version = "138.0.26";
-          gitRevision = "84f2d27";
-          chromiumVersion = "138.0.7204.158";
-          srcHash = "sha256-d9jQJX7rgdoHfROD3zmOdMSesRdKE3slB5ZV+U2wlbQ=";
+          version = "139.0.17";
+          gitRevision = "6c347eb";
+          chromiumVersion = "139.0.7258.31";
+          srcHash = "sha256-kRMO8DP4El1qytDsAZBdHvR9AAHXce90nPdyfJailBg=";
 
           __intentionallyOverridingVersion = true;
 
@@ -75,6 +75,12 @@
           vulkan-loader
           libraw
           libGL
+
+          # X11 libraries, not needed on wayland! Remove when x11 is finally dead
+          libxkbcommon
+          xorg.libXcursor
+          xorg.libxcb
+          xorg.libX11
         ];
 
         # Development tools that don't need to be in LD_LIBRARY_PATH

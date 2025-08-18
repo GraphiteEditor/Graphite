@@ -1,9 +1,9 @@
 use super::*;
 use crate::Ctx;
+use crate::subpath::BezierHandles;
 use crate::table::{Table, TableRow};
 use crate::uuid::{NodeId, generate_uuid};
 use crate::vector::misc::{HandleId, HandleType, point_to_dvec2};
-use bezier_rs::BezierHandles;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, PathEl, Point};
@@ -684,14 +684,15 @@ impl HandleExt for HandleId {
 
 #[cfg(test)]
 mod tests {
+	use kurbo::{PathSeg, QuadBez};
+
 	use super::*;
+
+	use crate::subpath::{Bezier, Subpath};
 
 	#[test]
 	fn modify_new() {
-		let vector = Vector::from_subpaths(
-			[bezier_rs::Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE), bezier_rs::Subpath::new_rect(DVec2::NEG_ONE, DVec2::ZERO)],
-			false,
-		);
+		let vector = Vector::from_subpaths([Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE), Subpath::new_rect(DVec2::NEG_ONE, DVec2::ZERO)], false);
 
 		let modify = VectorModification::create_from_vector(&vector);
 
@@ -702,14 +703,13 @@ mod tests {
 
 	#[test]
 	fn modify_existing() {
-		use bezier_rs::{Bezier, Subpath};
 		let subpaths = [
 			Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE),
 			Subpath::new_rect(DVec2::NEG_ONE, DVec2::ZERO),
 			Subpath::from_beziers(
 				&[
-					Bezier::from_quadratic_dvec2(DVec2::new(0., 0.), DVec2::new(5., 10.), DVec2::new(10., 0.)),
-					Bezier::from_quadratic_dvec2(DVec2::new(10., 0.), DVec2::new(15., 10.), DVec2::new(20., 0.)),
+					PathSeg::Quad(QuadBez::new(Point::new(0., 0.), Point::new(5., 10.), Point::new(10., 0.))),
+					PathSeg::Quad(QuadBez::new(Point::new(10., 0.), Point::new(15., 10.), Point::new(20., 0.))),
 				],
 				false,
 			),

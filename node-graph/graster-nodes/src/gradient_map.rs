@@ -13,8 +13,9 @@ use graphene_core::{Color, Ctx};
 async fn gradient_map<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
 		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
 	mut image: T,
