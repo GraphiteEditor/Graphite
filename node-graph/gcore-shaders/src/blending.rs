@@ -1,5 +1,7 @@
 use core::fmt::Display;
 use core::hash::{Hash, Hasher};
+#[cfg(target_arch = "spirv")]
+use num_traits::float::Float;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
@@ -24,7 +26,7 @@ impl Hash for AlphaBlending {
 	}
 }
 impl Display for AlphaBlending {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		let round = |x: f32| (x * 1e3).round() / 1e3;
 		write!(
 			f,
@@ -203,7 +205,7 @@ impl BlendMode {
 }
 
 impl Display for BlendMode {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
 			// Normal group
 			BlendMode::Normal => write!(f, "Normal"),

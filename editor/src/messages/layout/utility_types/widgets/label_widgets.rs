@@ -65,4 +65,17 @@ pub struct TextLabel {
 	pub value: String,
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
+#[derivative(Debug, PartialEq)]
+pub struct ImageLabel {
+	#[widget_builder(constructor)]
+	pub url: String,
+
+	pub width: Option<String>,
+
+	pub height: Option<String>,
+
+	pub tooltip: String,
+}
+
 // TODO: Add UserInputLabel

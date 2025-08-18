@@ -1,12 +1,18 @@
 use crate::CustomEvent;
 use crate::WindowSize;
+use crate::consts::APP_NAME;
 use crate::dialogs::dialog_open_graphite_file;
+use crate::dialogs::dialog_save_file;
 use crate::dialogs::dialog_save_graphite_file;
 use crate::render::GraphicsState;
 use crate::render::WgpuContext;
 use graph_craft::wasm_application_io::WasmApplicationIo;
+use graphene_std::Color;
+use graphene_std::raster::Image;
 use graphite_editor::application::Editor;
+use graphite_editor::consts::DEFAULT_DOCUMENT_NAME;
 use graphite_editor::messages::prelude::*;
+use std::fs;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::thread;
@@ -73,7 +79,7 @@ impl WinitApp {
 						String::new()
 					});
 					let message = PortfolioMessage::OpenDocumentFile {
-						document_name: path.file_name().and_then(|s| s.to_str()).unwrap_or("unknown").to_string(),
+						document_name: path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string(),
 						document_serialized_content: content,
 					};
 					let _ = event_loop_proxy.send_event(CustomEvent::DispatchMessage(message.into()));
@@ -82,17 +88,17 @@ impl WinitApp {
 		}
 
 		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerSaveDocument { .. })) {
-			let FrontendMessage::TriggerSaveDocument { document_id, name, path, document } = message else {
+			let FrontendMessage::TriggerSaveDocument { document_id, name, path, content } = message else {
 				unreachable!()
 			};
 			if let Some(path) = path {
-				let _ = std::fs::write(&path, document);
+				let _ = std::fs::write(&path, content);
 			} else {
 				let event_loop_proxy = self.event_loop_proxy.clone();
 				let _ = thread::spawn(move || {
 					let path = futures::executor::block_on(dialog_save_graphite_file(name));
 					if let Some(path) = path {
-						if let Err(e) = std::fs::write(&path, document) {
+						if let Err(e) = std::fs::write(&path, content) {
 							tracing::error!("Failed to save file: {}: {}", path.display(), e);
 						} else {
 							let message = Message::Portfolio(PortfolioMessage::DocumentPassMessage {
@@ -104,6 +110,27 @@ impl WinitApp {
 					}
 				});
 			}
+		}
+
+		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerSaveFile { .. })) {
+			let FrontendMessage::TriggerSaveFile { name, content } = message else { unreachable!() };
+			let _ = thread::spawn(move || {
+				let path = futures::executor::block_on(dialog_save_file(name));
+				if let Some(path) = path {
+					if let Err(e) = std::fs::write(&path, content) {
+						tracing::error!("Failed to save file: {}: {}", path.display(), e);
+					}
+				}
+			});
+		}
+
+		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerVisitLink { .. })) {
+			let _ = thread::spawn(move || {
+				let FrontendMessage::TriggerVisitLink { url } = message else { unreachable!() };
+				if let Err(e) = open::that(&url) {
+					tracing::error!("Failed to open URL: {}: {}", url, e);
+				}
+			});
 		}
 
 		if responses.is_empty() {
@@ -142,15 +169,24 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 	}
 
 	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-		let window = Arc::new(
-			event_loop
-				.create_window(
-					Window::default_attributes()
-						.with_title("CEF Offscreen Rendering")
-						.with_inner_size(winit::dpi::LogicalSize::new(1200, 800)),
-				)
-				.unwrap(),
-		);
+		let mut window = Window::default_attributes()
+			.with_title(APP_NAME)
+			.with_min_inner_size(winit::dpi::LogicalSize::new(400, 300))
+			.with_inner_size(winit::dpi::LogicalSize::new(1200, 800));
+
+		#[cfg(target_family = "unix")]
+		{
+			use crate::consts::APP_ID;
+			use winit::platform::wayland::ActiveEventLoopExtWayland;
+
+			window = if event_loop.is_wayland() {
+				winit::platform::wayland::WindowAttributesExtWayland::with_name(window, APP_ID, "")
+			} else {
+				winit::platform::x11::WindowAttributesExtX11::with_name(window, APP_ID, APP_NAME)
+			}
+		}
+
+		let window = Arc::new(event_loop.create_window(window).unwrap());
 		let graphics_state = GraphicsState::new(window.clone(), self.wgpu_context.clone());
 
 		self.window = Some(window);
@@ -232,6 +268,75 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 		let Some(event) = self.cef_context.handle_window_event(event) else { return };
 
 		match event {
+			// Currently not supported on wayland see https://github.com/rust-windowing/winit/issues/1881
+			WindowEvent::DroppedFile(path) => {
+				let name = path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string());
+				let Some(extension) = path.extension().and_then(|s| s.to_str()) else {
+					tracing::warn!("Unsupported file dropped: {}", path.display());
+					// Fine to early return since we don't need to do cef work in this case
+					return;
+				};
+				let load_string = |path: &std::path::PathBuf| {
+					let Ok(content) = fs::read_to_string(path) else {
+						tracing::error!("Failed to read file: {}", path.display());
+						return None;
+					};
+
+					if content.is_empty() {
+						tracing::warn!("Dropped file is empty: {}", path.display());
+						return None;
+					}
+					Some(content)
+				};
+				// TODO: Consider moving this logic to the editor so we have one message to load data which is then demultiplexed in the portfolio message handler
+				match extension {
+					"graphite" => {
+						let Some(content) = load_string(&path) else { return };
+
+						let message = PortfolioMessage::OpenDocumentFile {
+							document_name: name.unwrap_or(DEFAULT_DOCUMENT_NAME.to_string()),
+							document_serialized_content: content,
+						};
+						self.dispatch_message(message.into());
+					}
+					"svg" => {
+						let Some(content) = load_string(&path) else { return };
+
+						let message = PortfolioMessage::PasteSvg {
+							name: path.file_stem().map(|s| s.to_string_lossy().to_string()),
+							svg: content,
+							mouse: None,
+							parent_and_insert_index: None,
+						};
+						self.dispatch_message(message.into());
+					}
+					_ => match image::ImageReader::open(&path) {
+						Ok(reader) => match reader.decode() {
+							Ok(image) => {
+								let width = image.width();
+								let height = image.height();
+								// TODO: support loading images with more than 8 bits per channel
+								let image_data = image.to_rgba8();
+								let image = Image::<Color>::from_image_data(image_data.as_raw(), width, height);
+
+								let message = PortfolioMessage::PasteImage {
+									name,
+									image,
+									mouse: None,
+									parent_and_insert_index: None,
+								};
+								self.dispatch_message(message.into());
+							}
+							Err(e) => {
+								tracing::error!("Failed to decode image: {}: {}", path.display(), e);
+							}
+						},
+						Err(e) => {
+							tracing::error!("Failed to open image file: {}: {}", path.display(), e);
+						}
+					},
+				}
+			}
 			WindowEvent::CloseRequested => {
 				tracing::info!("The close button was pressed; stopping");
 				event_loop.exit();

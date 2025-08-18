@@ -399,7 +399,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::Graphic(Default::default()), true),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::new(1920., 1080.)), false),
-						NodeInput::value(TaggedValue::Color(Color::WHITE), false),
+						NodeInput::value(TaggedValue::Color(Table::new_from_element(Color::WHITE)), false),
 						NodeInput::value(TaggedValue::Bool(false), false),
 					],
 					..Default::default()

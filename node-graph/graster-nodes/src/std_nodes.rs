@@ -246,7 +246,7 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DA
 			let image_data = &row.element.data;
 			let (image_width, image_height) = (row.element.width, row.element.height);
 			if image_width == 0 || image_height == 0 {
-				return empty_image((), bounds, Color::TRANSPARENT).into_iter().next().unwrap();
+				return empty_image((), bounds, Table::new_from_element(Color::TRANSPARENT)).into_iter().next().unwrap();
 			}
 
 			let orig_image_scale = DVec2::new(image_width as f64, image_height as f64);
@@ -280,11 +280,12 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DA
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> Table<Raster<CPU>> {
+pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Table<Color>) -> Table<Raster<CPU>> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
-	let image = Image::new(width, height, color);
+	let color: Option<Color> = color.into();
+	let image = Image::new(width, height, color.unwrap_or(Color::WHITE));
 
 	let mut result_table = Table::new_from_element(Raster::new_cpu(image));
 	let row = result_table.get_mut(0).unwrap();

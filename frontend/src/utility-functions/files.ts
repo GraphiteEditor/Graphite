@@ -15,10 +15,10 @@ export function downloadFileBlob(filename: string, blob: Blob) {
 	URL.revokeObjectURL(url);
 }
 
-export function downloadFileText(filename: string, text: string) {
-	const type = filename.endsWith(".svg") ? "image/svg+xml;charset=utf-8" : "text/plain;charset=utf-8";
+export function downloadFile(filename: string, content: ArrayBuffer) {
+	const type = filename.endsWith(".svg") ? "image/svg+xml;charset=utf-8" : "application/octet-stream";
 
-	const blob = new Blob([text], { type });
+	const blob = new Blob([new Uint8Array(content)], { type });
 	downloadFileBlob(filename, blob);
 }
 

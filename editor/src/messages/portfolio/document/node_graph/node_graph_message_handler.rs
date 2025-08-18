@@ -20,14 +20,13 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{self
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
-use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_std::math::math_ext::QuadExt;
-use graphene_std::vector::misc::subpath_to_kurbo_bezpath;
+use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
 use graphene_std::*;
-use kurbo::{Line, Point};
+use kurbo::{DEFAULT_ACCURACY, Shape};
 use renderer::Quad;
 use std::cmp::Ordering;
 
@@ -43,6 +42,7 @@ pub struct NodeGraphMessageContext<'a> {
 	pub graph_fade_artwork_percentage: f64,
 	pub navigation_handler: &'a NavigationMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
+	pub layers_panel_open: bool,
 }
 
 #[derive(Debug, Clone, ExtractField)]
@@ -89,7 +89,7 @@ pub struct NodeGraphMessageHandler {
 	reordering_import: Option<usize>,
 	/// The index of the export that is being moved
 	reordering_export: Option<usize>,
-	/// The end index of the moved port
+	/// The end index of the moved connector
 	end_index: Option<usize>,
 	/// Used to keep track of what nodes are sent to the front end so that only visible ones are sent to the frontend
 	frontend_nodes: Vec<NodeId>,
@@ -112,6 +112,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			graph_fade_artwork_percentage,
 			navigation_handler,
 			preferences,
+			layers_panel_open,
 		} = context;
 
 		match message {
@@ -156,11 +157,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
+				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::SendSelectedNodes);
 				responses.add(ArtboardToolMessage::UpdateSelectedArtboard);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(PortfolioMessage::SubmitActiveGraphRender);
 			}
 			NodeGraphMessage::CreateWire { output_connector, input_connector } => {
 				// TODO: Add support for flattening NodeInput::Network exports in flatten_with_fns https://github.com/GraphiteEditor/Graphite/issues/1762
@@ -958,8 +961,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							to_connector_is_layer,
 							GraphWireStyle::Direct,
 						);
-						let mut path_string = String::new();
-						let _ = vector_wire.subpath_to_svg(&mut path_string, DAffine2::IDENTITY);
+						let path_string = vector_wire.to_svg();
 						let wire_path = WirePath {
 							path_string,
 							data_type: self.wire_in_progress_type,
@@ -1196,7 +1198,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 								.filter(|input| input.1.as_value().is_some())
 								.map(|input| input.0);
 							if let Some(selected_node_input_connect_index) = selected_node_input_connect_index {
-								let Some(bounding_box) = network_interface.node_bounding_box(&selected_node_id, selection_network_path) else {
+								let Some(node_bbox) = network_interface.node_bounding_box(&selected_node_id, selection_network_path) else {
 									log::error!("Could not get bounding box for node: {selected_node_id}");
 									return;
 								};
@@ -1217,34 +1219,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 										{
 											return None;
 										}
-										log::debug!("preferences.graph_wire_style: {:?}", preferences.graph_wire_style);
+
 										let (wire, is_stack) = network_interface.vector_wire_from_input(&input, preferences.graph_wire_style, selection_network_path)?;
 
-										let bbox_rect = kurbo::Rect::new(bounding_box[0].x, bounding_box[0].y, bounding_box[1].x, bounding_box[1].y);
+										let node_bbox = kurbo::Rect::new(node_bbox[0].x, node_bbox[0].y, node_bbox[1].x, node_bbox[1].y).to_path(DEFAULT_ACCURACY);
+										let inside = bezpath_is_inside_bezpath(&wire, &node_bbox, None, None);
 
-										let p1 = DVec2::new(bbox_rect.x0, bbox_rect.y0);
-										let p2 = DVec2::new(bbox_rect.x1, bbox_rect.y0);
-										let p3 = DVec2::new(bbox_rect.x1, bbox_rect.y1);
-										let p4 = DVec2::new(bbox_rect.x0, bbox_rect.y1);
-										let ps = [p1, p2, p3, p4];
-
-										let inside = wire.is_inside_subpath(&Subpath::from_anchors_linear(ps, true), None, None);
-
-										let wire = subpath_to_kurbo_bezpath(wire);
-
-										let intersect = wire.segments().any(|segment| {
-											let rect = kurbo::Rect::new(bounding_box[0].x, bounding_box[0].y, bounding_box[1].x, bounding_box[1].y);
-
-											let top_line = Line::new(Point::new(rect.x0, rect.y0), Point::new(rect.x1, rect.y0));
-											let bottom_line = Line::new(Point::new(rect.x0, rect.y1), Point::new(rect.x1, rect.y1));
-											let left_line = Line::new(Point::new(rect.x0, rect.y0), Point::new(rect.x0, rect.y1));
-											let right_line = Line::new(Point::new(rect.x1, rect.y0), Point::new(rect.x1, rect.y1));
-
-											!segment.intersect_line(top_line).is_empty()
-												|| !segment.intersect_line(bottom_line).is_empty()
-												|| !segment.intersect_line(left_line).is_empty()
-												|| !segment.intersect_line(right_line).is_empty()
-										});
+										let intersect = wire
+											.segments()
+											.any(|segment| node_bbox.segments().filter_map(|segment| segment.as_line()).any(|line| !segment.intersect_line(line).is_empty()));
 
 										(intersect || inside).then_some((input, is_stack))
 									})
@@ -1506,7 +1489,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				};
 				selected_nodes.set_selected_nodes(nodes);
 				responses.add(BroadcastEvent::SelectionChanged);
-				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			NodeGraphMessage::SendClickTargets => responses.add(FrontendMessage::UpdateClickTargets {
 				click_targets: Some(network_interface.collect_frontend_click_targets(breadcrumb_network_path)),
@@ -1698,6 +1680,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(OverlaysMessage::Draw); // Redraw overlays to update artboard names
 			}
 			NodeGraphMessage::SetDisplayNameImpl { node_id, alias } => {
 				network_interface.set_display_name(&node_id, alias, selection_network_path);
@@ -1854,7 +1837,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							continue;
 						};
 						let quad = Quad::from_box([box_selection_start, box_selection_end_graph]);
-						if click_targets.node_click_target.intersect_path(|| quad.bezier_lines(), DAffine2::IDENTITY) {
+						if click_targets.node_click_target.intersect_path(|| quad.to_lines(), DAffine2::IDENTITY) {
 							nodes.insert(node_id);
 						}
 					}
@@ -1894,7 +1877,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 
 			NodeGraphMessage::UpdateLayerPanel => {
-				Self::update_layer_panel(network_interface, selection_network_path, collapsed, responses);
+				Self::update_layer_panel(network_interface, selection_network_path, collapsed, layers_panel_open, responses);
 			}
 			NodeGraphMessage::UpdateEdges => {
 				// Update the import/export UI edges whenever the PTZ changes or the bounding box of all nodes changes
@@ -2350,9 +2333,9 @@ impl NodeGraphMessageHandler {
 							.icon(Some("Node".to_string()))
 							.tooltip("Add an operation to the end of this layer's chain of nodes")
 							.popover_layout({
-								let layer_identifier = LayerNodeIdentifier::new(layer, &context.network_interface);
+								let layer_identifier = LayerNodeIdentifier::new(layer, context.network_interface);
 								let compatible_type = {
-									let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer_identifier, &context.network_interface);
+									let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer_identifier, context.network_interface);
 									let node_type = graph_layer.horizontal_layer_flow().nth(1);
 									if let Some(node_id) = node_type {
 										let (output_type, _) = context.network_interface.output_type(&node_id, 0, &[]);
@@ -2434,7 +2417,7 @@ impl NodeGraphMessageHandler {
 		} else {
 			added_wires.push(WirePathUpdate {
 				id: NodeId(u64::MAX),
-				input_index: usize::MAX,
+				input_index: u32::MAX as usize,
 				wire_path_update: None,
 			})
 		}
@@ -2606,7 +2589,11 @@ impl NodeGraphMessageHandler {
 		Some(subgraph_names)
 	}
 
-	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
+	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], collapsed: &CollapsedLayers, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
+		if !layers_panel_open {
+			return;
+		}
+
 		let selected_layers = network_interface
 			.selected_nodes()
 			.selected_layers(network_interface.document_metadata())
@@ -2689,7 +2676,7 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	pub fn update_node_graph_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_node_graph_hints(&self, responses: &mut VecDeque<Message>) {
 		// A wire is in progress and its start and end connectors are set
 		let wiring = self.wire_in_progress_from_connector.is_some();
 
