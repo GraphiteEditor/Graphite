@@ -387,11 +387,6 @@ impl RowColumnGizmoType {
 		convert_to_gizmo_line(viewport.transform_point2(p0) + gap, viewport.transform_point2(p1) + gap)
 	}
 
-	fn opposite(&self, grid_type: GridType, columns: u32, rows: u32, spacing: DVec2, angles: DVec2, viewport: DAffine2) -> Line {
-		let opposite_gizmo_type = self.opposite_gizmo_type();
-		opposite_gizmo_type.line(grid_type, columns, rows, spacing, angles, viewport)
-	}
-
 	fn opposite_gizmo_type(&self) -> Self {
 		return match self {
 			Self::Top => Self::Down,

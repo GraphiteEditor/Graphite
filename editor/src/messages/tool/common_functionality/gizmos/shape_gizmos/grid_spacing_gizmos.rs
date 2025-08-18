@@ -1,4 +1,4 @@
-use crate::consts::{GRID_COLUMNS_INDEX, GRID_ROW_COLUMN_GIZMO_OFFSET, GRID_ROW_INDEX, GRID_SPACING_INDEX};
+use crate::consts::{GRID_ANGLE_INDEX, GRID_SPACING_INDEX};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -7,16 +7,14 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::{DocumentMessageHandler, FrontendMessage, InputPreprocessorMessageHandler, NodeGraphMessage};
 use crate::messages::prelude::{GraphOperationMessage, Responses};
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::grid_row_columns_gizmo::{
-	calculate_rectangle_side_direction, calculate_rectangle_top_direction, convert_to_gizmo_line, get_viewport_grid_spacing,
-};
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::grid_row_columns_gizmo::convert_to_gizmo_line;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::extract_grid_parameters;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::renderer::Quad;
+use graphene_std::uuid::NodeId;
 use graphene_std::vector::misc::{GridType, dvec2_to_point, get_line_endpoints};
 use kurbo::{Line, ParamCurveNearest, Rect, Shape, Triangle};
 use std::collections::VecDeque;
@@ -36,6 +34,7 @@ pub struct GridSpacingGizmo {
 	column_index: u32,
 	row_index: u32,
 	initial_spacing: DVec2,
+	angles: DVec2,
 	gizmo_type: Option<GridSpacingGizmoType>,
 }
 
@@ -64,14 +63,13 @@ impl GridSpacingGizmo {
 		let stroke_width = graph_modification_utils::get_stroke_width(layer, &document.network_interface);
 		let viewport = document.metadata().transform_to_viewport(layer);
 		if let Some((col, row)) = check_if_over_gizmo(grid_type, columns, rows, spacing, angles, mouse_position, viewport) {
-			log::info!("col {:?} , row {:?}", col, row);
 			self.layer = Some(layer);
 			self.column_index = col;
 			self.row_index = row;
 			self.initial_spacing = spacing;
+			self.angles = angles;
 			self.update_state(GridSpacingGizmoState::Hover);
 			let closest_gizmo = GridSpacingGizmoType::get_closest_line(grid_type, mouse_position, col, row, spacing, angles, viewport, stroke_width);
-			log::info!("gizmo type {:?}", closest_gizmo);
 			responses.add(FrontendMessage::UpdateMouseCursor { cursor: closest_gizmo.mouse_icon() });
 			self.gizmo_type = Some(closest_gizmo);
 		}
@@ -79,7 +77,7 @@ impl GridSpacingGizmo {
 
 	pub fn overlays(&self, document: &DocumentMessageHandler, layer: Option<LayerNodeIdentifier>, _shape_editor: &mut &mut ShapeState, _mouse_position: DVec2, overlay_context: &mut OverlayContext) {
 		let Some(layer) = layer.or(self.layer) else { return };
-		let Some((grid_type, spacing, columns, rows, angles)) = extract_grid_parameters(layer, document) else {
+		let Some((_grid_type, spacing, _columns, _rows, angles)) = extract_grid_parameters(layer, document) else {
 			return;
 		};
 		let viewport = document.metadata().transform_to_viewport(layer);
@@ -87,34 +85,54 @@ impl GridSpacingGizmo {
 
 		match self.gizmo_state {
 			GridSpacingGizmoState::Inactive => {}
-			GridSpacingGizmoState::Hover | GridSpacingGizmoState::Dragging => match grid_type {
-				GridType::Rectangular => {
-					if let Some(gizmo_type) = &self.gizmo_type {
-						let line = gizmo_type.line(grid_type, self.column_index, self.row_index, angles, spacing, viewport, stroke_width);
-						let (p0, p1) = get_line_endpoints(line);
-						overlay_context.dashed_line(p0, p1, None, None, Some(5.), Some(5.), Some(0.5));
-					}
+			GridSpacingGizmoState::Hover | GridSpacingGizmoState::Dragging => {
+				if let Some(gizmo_type) = &self.gizmo_type {
+					let line = gizmo_type.line(self.column_index, self.row_index, angles, spacing, viewport, stroke_width);
+					let (p0, p1) = get_line_endpoints(line);
+					overlay_context.dashed_line(p0, p1, None, None, Some(5.), Some(5.), Some(0.5));
 				}
-				GridType::Isometric => {
-					if let Some(gizmo_type) = &self.gizmo_type {
-						let line = gizmo_type.line(grid_type, self.column_index, self.row_index, angles, spacing, viewport, stroke_width);
-						let (p0, p1) = get_line_endpoints(line);
-						overlay_context.dashed_line(p0, p1, None, None, Some(5.), Some(5.), Some(0.5));
-					}
-				}
-			},
+			}
 		}
+	}
+
+	pub fn update_rectangle_grid(
+		&self,
+		node_id: NodeId,
+		layer: LayerNodeIdentifier,
+		gizmo_type: &GridSpacingGizmoType,
+		current_spacing: DVec2,
+		angles: DVec2,
+		delta: f64,
+		viewport: DAffine2,
+		responses: &mut VecDeque<Message>,
+	) {
+		let direction = gizmo_type.direction(self.column_index, self.row_index, angles, self.initial_spacing, viewport);
+		let new_spacing = gizmo_type.new_spacing(delta, self.initial_spacing);
+		let spacing_delta = new_spacing - current_spacing;
+
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(node_id, GRID_SPACING_INDEX),
+			input: NodeInput::value(TaggedValue::DVec2(new_spacing), false),
+		});
+
+		let transform = gizmo_type.transform_grid(spacing_delta, direction, self.column_index, self.row_index);
+
+		responses.add(GraphOperationMessage::TransformChange {
+			layer,
+			transform,
+			transform_in: TransformIn::Viewport,
+			skip_rerender: false,
+		});
 	}
 
 	pub fn update(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>, drag_start: DVec2) {
 		let Some(layer) = self.layer else { return };
 		let viewport = document.metadata().transform_to_viewport(layer);
 
-		let Some((grid_type, spacing, columns, rows, angles)) = extract_grid_parameters(layer, document) else {
+		let Some((grid_type, spacing, _columns, _rows, angles)) = extract_grid_parameters(layer, document) else {
 			return;
 		};
 
-		let stroke_width = graph_modification_utils::get_stroke_width(layer, &document.network_interface);
 		let Some(gizmo_type) = &self.gizmo_type else { return };
 		let direction = gizmo_type.direction(self.column_index, self.row_index, angles, self.initial_spacing, viewport);
 		let delta_vector = input.mouse.position - drag_start;
@@ -125,15 +143,169 @@ impl GridSpacingGizmo {
 			return;
 		};
 
-		let new_spacing = gizmo_type.new_spacing(delta, self.initial_spacing);
-		let spacing_delta = new_spacing - spacing;
+		if grid_type == GridType::Rectangular {
+			self.update_rectangle_grid(node_id, layer, gizmo_type, spacing, angles, delta, viewport, responses);
+		} else {
+			match gizmo_type {
+				GridSpacingGizmoType::Rect(_) => unreachable!(),
+				GridSpacingGizmoType::Iso(h) => {
+					if *h == IsometricGizmoType::Right || *h == IsometricGizmoType::Left {
+						self.update_isometric_x_spacing(layer, delta_vector, node_id, spacing, angles, gizmo_type, h, viewport, responses);
+					} else {
+						self.update_isometric_y_spacing(layer, delta_vector, node_id, spacing, angles, gizmo_type, viewport, responses);
+					}
+				}
+			};
+		}
+		responses.add(NodeGraphMessage::RunDocumentGraph);
+	}
+
+	fn update_isometric_y_spacing(
+		&self,
+		layer: LayerNodeIdentifier,
+		delta: DVec2,
+		node_id: NodeId,
+		spacing: DVec2,
+		angles: DVec2,
+		gizmo_type: &GridSpacingGizmoType,
+		viewport: DAffine2,
+		responses: &mut VecDeque<Message>,
+	) {
+		let (a, b) = self.angles.into();
+		let (tan_a_old, tan_b_old) = (a.to_radians().tan(), b.to_radians().tan());
+		let direction = gizmo_type.direction(self.column_index, self.row_index, self.angles, spacing, viewport);
+
+		let ((old_prev_row, old_prev_col), _sign) = match gizmo_type {
+			GridSpacingGizmoType::Rect(_) => unreachable!(),
+			GridSpacingGizmoType::Iso(h) => (h.old_row_col_index(self.row_index, self.column_index), h.delta_sign()),
+		};
+		let projection = viewport.inverse().transform_vector2(delta.project_onto(direction));
+		let a = (self.column_index + 1).div_ceil(2) as f64;
+		let b = ((self.column_index + 1) / 2) as f64;
+
+		let p = self.initial_spacing.y / (tan_a_old + tan_b_old); // spacing_x, must stay constant
+
+		let y = self.row_index as f64;
+		let delta = projection.y;
+
+		// 1) Put the whole vertical move into y-spacing (for y>0):
+		let new_y_spacing = if y > 0.0 {
+			self.initial_spacing.y + delta / y
+		} else {
+			self.initial_spacing.y // y==0 handled below in edge cases
+		};
+
+		// 2) S' = sum of new tans required to keep spacing_x (=p) constant:
+		let s_prime = new_y_spacing / p;
+
+		// 3) R = b*tb - a*ta (OLD values)
+		let r = b * tan_b_old - a * tan_a_old;
+
+		// 4) Solve for new tangents:
+		let denom = a + b; // safe when col > 0
+		let tan_a_new = (b * s_prime - r) / denom;
+		let tan_b_new = (r + a * s_prime) / denom;
+
+		// 5) Convert to degrees and set:
+		let angle_a_new_deg = tan_a_new.atan().to_degrees();
+		let angle_b_new_deg = tan_b_new.atan().to_degrees();
+
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(node_id, GRID_ANGLE_INDEX),
+			input: NodeInput::value(TaggedValue::DVec2((angle_a_new_deg, angle_b_new_deg).into()), false),
+		});
+
+		let old_position = isometric_point_position(old_prev_row, old_prev_col, spacing, angles);
+		let new_position = isometric_point_position(old_prev_row, old_prev_col, (new_y_spacing, new_y_spacing).into(), (angle_a_new_deg, angle_b_new_deg).into());
+
+		responses.add(GraphOperationMessage::TransformChange {
+			layer,
+			transform: DAffine2::from_translation(-DVec2::new(0., viewport.transform_vector2(new_position - old_position).y)),
+			transform_in: TransformIn::Viewport,
+			skip_rerender: false,
+		});
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, GRID_SPACING_INDEX),
-			input: NodeInput::value(TaggedValue::DVec2(new_spacing), false),
+			input: NodeInput::value(TaggedValue::DVec2((new_y_spacing, new_y_spacing).into()), false),
+		});
+	}
+
+	fn update_isometric_x_spacing(
+		&self,
+		layer: LayerNodeIdentifier,
+		delta: DVec2,
+		node_id: NodeId,
+		spacing: DVec2,
+		angles: DVec2,
+		gizmo_type: &GridSpacingGizmoType,
+		iso_gizmo_type: &IsometricGizmoType,
+		viewport: DAffine2,
+		responses: &mut VecDeque<Message>,
+	) {
+		let (row, column) = if *iso_gizmo_type == IsometricGizmoType::Right {
+			(self.row_index + 1, self.column_index + 1)
+		} else {
+			(self.row_index, self.column_index)
+		};
+
+		let (a, b) = self.angles.into();
+		let (tan_a_old, tan_b_old) = (a.to_radians().tan(), b.to_radians().tan());
+		let direction = gizmo_type.direction(column, row, self.angles, spacing, viewport);
+
+		let ((old_prev_row, old_prev_col), sign) = (iso_gizmo_type.old_row_col_index(self.row_index, self.column_index), iso_gizmo_type.delta_sign());
+
+		let projection = viewport.inverse().transform_vector2(sign * delta.project_onto(direction));
+		let old_spacing_x = spacing.y / (tan_a_old + tan_b_old);
+
+		let a_steps = ((column) as f64 / 2.0).ceil();
+		let b_steps = ((column) / 2) as f64;
+
+		let old_offset_y_fraction = b_steps * tan_b_old - a_steps * tan_a_old;
+
+		let old_x_pos = old_spacing_x * (column) as f64;
+		let old_y_pos = spacing.y * (row) as f64 + old_offset_y_fraction * old_spacing_x;
+
+		// --- Step 1: Apply delta to get new position ---
+		let new_x_pos = old_x_pos + projection.x;
+		let new_y_pos = old_y_pos + projection.y;
+
+		// --- Step 2: New spacing.x from horizontal position ---
+		let spacing_x_new = if (column) != 0 {
+			new_x_pos / (column) as f64
+		} else {
+			old_spacing_x // Can't deduce from vertical column
+		};
+
+		// --- Step 3: Sum of tangents ---
+		let sum_tan = spacing.y / spacing_x_new;
+
+		// --- Step 4: RHS from vertical position ---
+		let rhs = (new_y_pos - spacing.y * row as f64) / spacing_x_new;
+
+		// --- Step 5: Difference of tangents ---
+		let denom = b_steps + a_steps;
+		let diff_tan = if denom.abs() > f64::EPSILON { (2.0 * rhs - (b_steps - a_steps) * sum_tan) / denom } else { 0.0 };
+
+		// --- Step 6: Compute tangents and angles ---
+		let tan_a_new = (sum_tan - diff_tan) / 2.0;
+		let tan_b_new = (sum_tan + diff_tan) / 2.0;
+
+		let new_angles = DVec2::new(tan_a_new.atan().to_degrees(), tan_b_new.atan().to_degrees());
+
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(node_id, GRID_ANGLE_INDEX),
+			input: NodeInput::value(TaggedValue::DVec2(new_angles), false),
 		});
 
-		let transform = self.gizmo_type.as_ref().unwrap().transform_grid(spacing_delta, direction, self.column_index, self.row_index);
+		let new_point = isometric_point_position(old_prev_row, old_prev_col, spacing, new_angles);
+		let old_point = isometric_point_position(old_prev_row, old_prev_col, spacing, angles);
+
+		let transform = self
+			.gizmo_type
+			.as_ref()
+			.unwrap()
+			.transform_grid(viewport.transform_vector2(new_point - old_point), direction, self.column_index, self.row_index);
 
 		responses.add(GraphOperationMessage::TransformChange {
 			layer,
@@ -141,16 +313,6 @@ impl GridSpacingGizmo {
 			transform_in: TransformIn::Viewport,
 			skip_rerender: false,
 		});
-
-		log::info!("{:?}", (self.row_index, self.column_index));
-		responses.add(NodeGraphMessage::RunDocumentGraph);
-
-		// if self.initial_dimension() as i32 + dimensions_to_add < 1 {
-		// 	self.initial_mouse_start = Some(input.mouse.position);
-		// 	self.gizmo_type = self.gizmo_type.opposite_gizmo_type();
-		// 	self.initial_rows = 1;
-		// 	self.initial_columns = 1;
-		// }
 	}
 }
 
@@ -195,116 +357,6 @@ fn check_if_over_gizmo(grid_type: GridType, columns: u32, rows: u32, spacing: DV
 
 	None
 }
-
-// #[derive(Clone, Debug, Default, PartialEq)]
-// pub enum GridSpacingGizmoType {
-// 	#[default]
-// 	None,
-// 	Top,
-// 	Down,
-// 	Left,
-// 	Right,
-// 	IsometricMiddleUp,
-// 	IsometricMiddleDown,
-// }
-
-// impl GridSpacingGizmoType {
-// 	pub fn get_line_points(&self, grid_type: GridType, column_index: u32, row_index: u32, angles: DVec2, spacing: DVec2, stroke: Option<f64>) -> (DVec2, DVec2) {
-// 		match grid_type {
-// 			GridType::Rectangular => match self {
-// 				Self::Top => get_rectangular_top_points(column_index, row_index, spacing, stroke),
-// 				Self::Right => get_rectangular_right_points(column_index, row_index, spacing, stroke),
-// 				Self::Down => get_rectangular_down_points(column_index, row_index, spacing, stroke),
-// 				Self::Left => get_rectangular_left_points(column_index, row_index, spacing, stroke),
-// 				Self::None => panic!("RowColumnGizmoType::None does not have line points"),
-// 			},
-// 			GridType::Isometric => match self {
-// 				Self::Top => get_isometric_top_points(column_index, row_index, angles, spacing, stroke),
-// 				Self::Right => get_isometric_right_points(column_index, row_index, angles, spacing, stroke),
-// 				Self::Down => get_isometric_down_points(column_index, row_index, angles, spacing, stroke),
-// 				Self::Left => get_isometric_left_points(column_index, row_index, angles, spacing, stroke),
-// 				Self::None => panic!("RowColumnGizmoType::None does not have line points"),
-// 			},
-// 		}
-// 	}
-
-// 	pub fn get_closest_line(mouse_position: DVec2, grid_type: GridType, column_index: u32, row_index: u32, angles: DVec2, spacing: DVec2, viewport: DAffine2, stroke_width: Option<f64>) -> Self {
-// 		let mut gizmo_type = GridSpacingGizmoType::Top;
-// 		let mut closest_distance = gizmo_type
-// 			.line(grid_type, column_index, row_index, angles, spacing, viewport, stroke_width)
-// 			.nearest(dvec2_to_point(mouse_position), 1e-6)
-// 			.distance_sq;
-
-// 		for t in Self::all() {
-// 			if matches!(t, GridSpacingGizmoType::Top) {
-// 				continue;
-// 			}
-// 			let line = t.line(grid_type, column_index, row_index, angles, spacing, viewport, stroke_width);
-// 			let nearest = line.nearest(dvec2_to_point(mouse_position), 1e-6);
-// 			if nearest.distance_sq < closest_distance {
-// 				gizmo_type = t;
-// 				closest_distance = nearest.distance_sq;
-// 			}
-// 		}
-// 		gizmo_type
-// 	}
-
-// 	pub fn line(&self, grid_type: GridType, column_index: u32, row_index: u32, angles: DVec2, spacing: DVec2, viewport: DAffine2, stroke_width: Option<f64>) -> Line {
-// 		let (p0, p1) = self.get_line_points(grid_type, column_index, row_index, angles, spacing, stroke_width);
-// 		// let gap = 2. * stroke_width.unwrap_or(3.) * (p1 - p0).perp().normalize();
-
-// 		convert_to_gizmo_line(viewport.transform_point2(p0), viewport.transform_point2(p1))
-// 	}
-
-// 	fn opposite_gizmo_type(&self) -> Self {
-// 		return match self {
-// 			Self::Top => Self::Down,
-// 			Self::Right => Self::Left,
-// 			Self::Down => Self::Top,
-// 			Self::Left => Self::Right,
-// 			Self::None => panic!("RowColumnGizmoType::None does not have opposite"),
-// 		};
-// 	}
-
-// 	fn new_spacing(&self, delta: f64, spacing: DVec2) -> DVec2 {
-// 		match self {
-// 			GridSpacingGizmoType::Top | GridSpacingGizmoType::Down => DVec2::new(spacing.x, spacing.y + delta),
-// 			GridSpacingGizmoType::Right | GridSpacingGizmoType::Left => DVec2::new(spacing.x + delta, spacing.y),
-// 			GridSpacingGizmoType::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
-// 		}
-// 	}
-
-// 	fn direction(&self, grid_type: GridType, column_index: u32, row_index: u32, angles: DVec2, spacing: DVec2, viewport: DAffine2) -> DVec2 {
-// 		match grid_type {
-// 			GridType::Rectangular => match self {
-// 				GridSpacingGizmoType::Top => viewport.transform_vector2(DVec2::Y),
-// 				GridSpacingGizmoType::Down => -viewport.transform_vector2(DVec2::Y),
-// 				GridSpacingGizmoType::Right => calculate_rectangle_side_direction(spacing, viewport),
-// 				GridSpacingGizmoType::Left => -calculate_rectangle_side_direction(spacing, viewport),
-// 				GridSpacingGizmoType::None => panic!("RowColumnGizmoType::None does not have a line"),
-// 			},
-// 			GridType::Isometric => match &self {
-// 				GridSpacingGizmoType::Top | GridSpacingGizmoType::Down | GridSpacingGizmoType::Left | GridSpacingGizmoType::Right => {
-// 					let (p1, p2) = self.get_line_points(grid_type, column_index, row_index, angles, spacing, None);
-// 					(p1 - p2).perp().normalize()
-// 				}
-// 				GridSpacingGizmoType::None => panic!("RowColumnGizmoType::None does not have a line"),
-// 			},
-// 		}
-// 	}
-
-// 	fn mouse_icon(&self) -> MouseCursorIcon {
-// 		match self {
-// 			GridSpacingGizmoType::Top | GridSpacingGizmoType::Down => MouseCursorIcon::NSResize,
-// 			GridSpacingGizmoType::Right | GridSpacingGizmoType::Left => MouseCursorIcon::EWResize,
-// 			GridSpacingGizmoType::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
-// 		}
-// 	}
-
-// 	pub fn all() -> [Self; 4] {
-// 		[Self::Top, Self::Right, Self::Down, Self::Left]
-// 	}
-// }
 
 fn get_rectangular_top_points(column_index: u32, row_index: u32, spacing: DVec2, stroke_width: Option<f64>) -> (DVec2, DVec2) {
 	let stroke_width = stroke_width.unwrap_or_default();
@@ -354,19 +406,26 @@ fn isometric_point_position(row: u32, col: u32, spacing: DVec2, angles: DVec2) -
 	DVec2::new(spacing.x * col as f64, spacing.y * row as f64 + offset_y_fraction * spacing.x)
 }
 
+fn apply_gizmo_padding_and_offset(x0: DVec2, x1: DVec2, stroke_width: f64, inward: bool) -> (DVec2, DVec2) {
+	let Some(direction) = (x1 - x0).try_normalize() else {
+		// No valid direction, return original points unchanged
+		return (x0, x1);
+	};
+
+	// Apply normal padding and offset logic
+	let padding = (x1 - x0).length() * 0.1 * direction;
+	let push_out = calculate_gap_vector(direction, stroke_width);
+	let push_out_vector = if inward { -push_out } else { push_out };
+
+	(x0 + push_out_vector + padding, x1 + push_out_vector - padding)
+}
+
 fn get_isometric_top_points(column_index: u32, row_index: u32, angles: DVec2, spacing: DVec2, stroke_width: Option<f64>) -> (DVec2, DVec2) {
 	let stroke_width = stroke_width.unwrap_or_default();
 
 	let x0 = isometric_point_position(row_index, column_index, spacing, angles);
 	let x1 = isometric_point_position(row_index, column_index + 1, spacing, angles);
-	let direction = (x1 - x0).normalize();
-
-	// in the direction of edge
-	let padding = (x1 - x0).length() * 0.1 * direction;
-	// perpendicular to the edge
-	let push_out = calculate_gap_vector(direction, stroke_width);
-
-	(x0 + push_out + padding, x1 + push_out - padding)
+	apply_gizmo_padding_and_offset(x0, x1, stroke_width, false) // push_out outward
 }
 
 fn get_isometric_right_points(column_index: u32, row_index: u32, angles: DVec2, spacing: DVec2, stroke_width: Option<f64>) -> (DVec2, DVec2) {
@@ -374,14 +433,7 @@ fn get_isometric_right_points(column_index: u32, row_index: u32, angles: DVec2, 
 
 	let x0 = isometric_point_position(row_index, column_index + 1, spacing, angles);
 	let x1 = isometric_point_position(row_index + 1, column_index + 1, spacing, angles);
-	let direction = (x1 - x0).normalize();
-
-	// in the direction of edge
-	let padding = (x1 - x0).length() * 0.1 * direction;
-	// perpendicular to the edge
-	let push_out = calculate_gap_vector(direction, stroke_width);
-
-	(x0 + push_out + padding, x1 + push_out - padding)
+	apply_gizmo_padding_and_offset(x0, x1, stroke_width, false) // push_out outward
 }
 
 fn get_isometric_down_points(column_index: u32, row_index: u32, angles: DVec2, spacing: DVec2, stroke_width: Option<f64>) -> (DVec2, DVec2) {
@@ -389,14 +441,7 @@ fn get_isometric_down_points(column_index: u32, row_index: u32, angles: DVec2, s
 
 	let x0 = isometric_point_position(row_index + 1, column_index, spacing, angles);
 	let x1 = isometric_point_position(row_index + 1, column_index + 1, spacing, angles);
-	let direction = (x1 - x0).normalize();
-
-	// in the direction of edge
-	let padding = (x1 - x0).length() * 0.1 * direction;
-	// perpendicular to the edge
-	let push_out = calculate_gap_vector(direction, stroke_width);
-
-	(x0 - push_out + padding, x1 - push_out - padding)
+	apply_gizmo_padding_and_offset(x0, x1, stroke_width, true) // push_out inward
 }
 
 fn get_isometric_left_points(column_index: u32, row_index: u32, angles: DVec2, spacing: DVec2, stroke_width: Option<f64>) -> (DVec2, DVec2) {
@@ -404,14 +449,7 @@ fn get_isometric_left_points(column_index: u32, row_index: u32, angles: DVec2, s
 
 	let x0 = isometric_point_position(row_index, column_index, spacing, angles);
 	let x1 = isometric_point_position(row_index + 1, column_index, spacing, angles);
-	let direction = (x1 - x0).normalize();
-
-	// in the direction of edge
-	let padding = (x1 - x0).length() * 0.1 * direction;
-	// perpendicular to the edge
-	let push_out = calculate_gap_vector(direction, stroke_width);
-
-	(x0 - push_out + padding, x1 - push_out - padding)
+	apply_gizmo_padding_and_offset(x0, x1, stroke_width, true) // push_out inward
 }
 
 fn get_isometric_middle_up_points(column_index: u32, row_index: u32, angles: DVec2, spacing: DVec2, stroke_width: Option<f64>) -> (DVec2, DVec2) {
@@ -429,14 +467,7 @@ fn get_isometric_middle_up_points(column_index: u32, row_index: u32, angles: DVe
 			isometric_point_position(row_index, column_index + 1, spacing, angles),
 		)
 	};
-	let direction = (x1 - x0).normalize();
-
-	// in the direction of edge
-	let padding = (x1 - x0).length() * 0.1 * direction;
-	// perpendicular to the edge
-	let push_out = calculate_gap_vector(direction, stroke_width);
-
-	(x0 - push_out + padding, x1 - push_out - padding)
+	apply_gizmo_padding_and_offset(x0, x1, stroke_width, true) // push_out inward
 }
 
 fn get_isometric_middle_down_points(column_index: u32, row_index: u32, angles: DVec2, spacing: DVec2, stroke_width: Option<f64>) -> (DVec2, DVec2) {
@@ -454,18 +485,12 @@ fn get_isometric_middle_down_points(column_index: u32, row_index: u32, angles: D
 			isometric_point_position(row_index, column_index + 1, spacing, angles),
 		)
 	};
-	let direction = (x1 - x0).normalize();
-	// in the direction of edge
-	let padding = (x1 - x0).length() * 0.1 * direction;
-	// perpendicular to the edge
-	let push_out = calculate_gap_vector(direction, stroke_width);
-
-	(x0 + push_out + padding, x1 + push_out - padding)
+	apply_gizmo_padding_and_offset(x0, x1, stroke_width, false) // push_out inward
 }
 
 fn calculate_gap_vector(direction: DVec2, stroke_width: f64) -> DVec2 {
 	let perp = direction.perp().normalize();
-	(stroke_width + 0.5) * perp
+	(stroke_width + 1.) * perp
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -519,26 +544,6 @@ pub fn gizmo_line_from_points(p0: DVec2, p1: DVec2, viewport: DAffine2) -> Line 
 	convert_to_gizmo_line(viewport.transform_point2(p0), viewport.transform_point2(p1))
 }
 
-// pub fn gizmo_opposite_rect(g: RectangularGizmoType) -> RectangularGizmoType {
-// 	match g {
-// 		RectangularGizmoType::Top => RectangularGizmoType::Down,
-// 		RectangularGizmoType::Down => RectangularGizmoType::Top,
-// 		RectangularGizmoType::Right => RectangularGizmoType::Left,
-// 		RectangularGizmoType::Left => RectangularGizmoType::Right,
-// 	}
-// }
-
-// pub fn gizmo_opposite_iso(g: IsometricGizmoType) -> IsometricGizmoType {
-// 	match g {
-// 		IsometricGizmoType::Top => IsometricGizmoType::Down,
-// 		IsometricGizmoType::Down => IsometricGizmoType::Top,
-// 		IsometricGizmoType::Right => IsometricGizmoType::Left,
-// 		IsometricGizmoType::Left => IsometricGizmoType::Right,
-// 		IsometricGizmoType::IsometricMiddleUp => IsometricGizmoType::IsometricMiddleDown,
-// 		IsometricGizmoType::IsometricMiddleDown => IsometricGizmoType::IsometricMiddleUp,
-// 	}
-// }
-
 pub fn gizmo_new_spacing_rect(g: RectangularGizmoType, delta: f64, spacing: DVec2) -> DVec2 {
 	match g {
 		RectangularGizmoType::Top | RectangularGizmoType::Down => DVec2::new(spacing.x, spacing.y + delta),
@@ -550,10 +555,7 @@ pub fn gizmo_new_spacing_iso(g: IsometricGizmoType, delta: f64, spacing: DVec2) 
 	match g {
 		IsometricGizmoType::Top | IsometricGizmoType::Down => DVec2::new(spacing.x, spacing.y + delta),
 		IsometricGizmoType::Right | IsometricGizmoType::Left => DVec2::new(spacing.x + delta, spacing.y),
-		IsometricGizmoType::IsometricMiddleUp | IsometricGizmoType::IsometricMiddleDown => {
-			// Adjust both? depends on your desired behavior
-			DVec2::new(spacing.x + delta, spacing.y + delta)
-		}
+		IsometricGizmoType::IsometricMiddleUp | IsometricGizmoType::IsometricMiddleDown => DVec2::new(spacing.x + delta, spacing.y + delta),
 	}
 }
 
@@ -568,7 +570,7 @@ pub fn gizmo_direction_rect(g: RectangularGizmoType, spacing: DVec2, viewport: D
 
 pub fn gizmo_direction_iso(g: IsometricGizmoType, column_index: u32, row_index: u32, angles: DVec2, spacing: DVec2) -> DVec2 {
 	let (p1, p2) = get_line_points_for_iso(g, column_index, row_index, angles, spacing, None);
-	(p1 - p2).perp().normalize()
+	(p1 - p2).perp().try_normalize().unwrap_or(DVec2::X)
 }
 
 pub fn gizmo_mouse_icon_rect(g: RectangularGizmoType) -> MouseCursorIcon {
@@ -595,10 +597,40 @@ impl IsometricGizmoType {
 	pub fn all() -> [Self; 6] {
 		[Self::Top, Self::Right, Self::Down, Self::Left, Self::IsometricMiddleUp, Self::IsometricMiddleDown]
 	}
+
+	pub fn old_row_col_index(&self, row_index: u32, column_index: u32) -> (u32, u32) {
+		match self {
+			IsometricGizmoType::Right => (row_index, column_index),
+			IsometricGizmoType::Left => (row_index, column_index + 1),
+			IsometricGizmoType::Down => {
+				if column_index % 2 == 0 {
+					(row_index, column_index)
+				} else {
+					(row_index, column_index + 1)
+				}
+			}
+			IsometricGizmoType::Top => (row_index, column_index),
+			IsometricGizmoType::IsometricMiddleUp | IsometricGizmoType::IsometricMiddleDown => {
+				if column_index % 2 == 0 {
+					(row_index - 1, column_index)
+				} else {
+					(row_index, column_index)
+				}
+			}
+		}
+	}
+
+	pub fn delta_sign(&self) -> f64 {
+		match self {
+			IsometricGizmoType::Right => 1.,
+			IsometricGizmoType::Left => -1.,
+			_ => 1.,
+		}
+	}
 }
 
 impl GridSpacingGizmoType {
-	pub fn line(&self, grid_type: GridType, column_index: u32, row_index: u32, angles: DVec2, spacing: DVec2, viewport: DAffine2, stroke_width: Option<f64>) -> Line {
+	pub fn line(&self, column_index: u32, row_index: u32, angles: DVec2, spacing: DVec2, viewport: DAffine2, stroke_width: Option<f64>) -> Line {
 		match self {
 			GridSpacingGizmoType::Rect(g) => {
 				let (p0, p1) = get_line_points_for_rect(*g, column_index, row_index, spacing, stroke_width);
@@ -672,10 +704,10 @@ impl GridSpacingGizmoType {
 				}
 			},
 
-			GridSpacingGizmoType::Iso(_) => {
-				// Placeholder: no transformation for now
-				DAffine2::IDENTITY
-			}
+			GridSpacingGizmoType::Iso(gizmo_type) => match gizmo_type {
+				IsometricGizmoType::Right | IsometricGizmoType::Left => DAffine2::from_translation(-spacing_delta),
+				_ => DAffine2::IDENTITY,
+			}, // Placeholder: no transformation for now
 		}
 	}
 }
