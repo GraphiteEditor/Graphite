@@ -14,7 +14,7 @@ use syn::{
 use crate::codegen::generate_node_code;
 use crate::shader_nodes::ShaderNodeType;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct Implementation {
 	pub(crate) input: Type,
 	pub(crate) _arrow: RArrow,
@@ -53,7 +53,7 @@ pub(crate) struct NodeFnAttributes {
 	// Add more attributes as needed
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub enum ParsedValueSource {
 	#[default]
 	None,
@@ -64,7 +64,7 @@ pub enum ParsedValueSource {
 // #[widget(ParsedWidgetOverride::Hidden)]
 // #[widget(ParsedWidgetOverride::String = "Some string")]
 // #[widget(ParsedWidgetOverride::Custom = "Custom string")]
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub enum ParsedWidgetOverride {
 	#[default]
 	None,
@@ -102,39 +102,44 @@ impl Parse for ParsedWidgetOverride {
 	}
 }
 
-#[derive(Debug)]
-pub(crate) enum ParsedField {
-	Regular {
-		pat_ident: PatIdent,
-		name: Option<LitStr>,
-		description: String,
-		widget_override: ParsedWidgetOverride,
-		ty: Type,
-		exposed: bool,
-		value_source: ParsedValueSource,
-		number_soft_min: Option<LitFloat>,
-		number_soft_max: Option<LitFloat>,
-		number_hard_min: Option<LitFloat>,
-		number_hard_max: Option<LitFloat>,
-		number_mode_range: Option<ExprTuple>,
-		number_display_decimal_places: Option<LitInt>,
-		number_step: Option<LitFloat>,
-		implementations: Punctuated<Type, Comma>,
-		unit: Option<LitStr>,
-	},
-	Node {
-		pat_ident: PatIdent,
-		name: Option<LitStr>,
-		description: String,
-		widget_override: ParsedWidgetOverride,
-		input_type: Type,
-		output_type: Type,
-		number_display_decimal_places: Option<LitInt>,
-		number_step: Option<LitFloat>,
-		implementations: Punctuated<Implementation, Comma>,
-		unit: Option<LitStr>,
-	},
+#[derive(Clone, Debug)]
+pub struct ParsedField {
+	pub pat_ident: PatIdent,
+	pub name: Option<LitStr>,
+	pub description: String,
+	pub widget_override: ParsedWidgetOverride,
+	pub ty: ParsedFieldType,
+	pub number_display_decimal_places: Option<LitInt>,
+	pub number_step: Option<LitFloat>,
+	pub unit: Option<LitStr>,
 }
+
+#[derive(Clone, Debug)]
+pub enum ParsedFieldType {
+	Regular(RegularParsedField),
+	Node(NodeParsedField),
+}
+
+#[derive(Clone, Debug)]
+pub struct RegularParsedField {
+	pub ty: Type,
+	pub exposed: bool,
+	pub value_source: ParsedValueSource,
+	pub number_soft_min: Option<LitFloat>,
+	pub number_soft_max: Option<LitFloat>,
+	pub number_hard_min: Option<LitFloat>,
+	pub number_hard_max: Option<LitFloat>,
+	pub number_mode_range: Option<ExprTuple>,
+	pub implementations: Punctuated<Type, Comma>,
+}
+
+#[derive(Clone, Debug)]
+pub struct NodeParsedField {
+	pub input_type: Type,
+	pub output_type: Type,
+	pub implementations: Punctuated<Implementation, Comma>,
+}
+
 #[derive(Debug)]
 pub(crate) struct Input {
 	pub(crate) pat_ident: PatIdent,
@@ -563,16 +568,18 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			.transpose()?
 			.unwrap_or_default();
 
-		Ok(ParsedField::Node {
+		Ok(ParsedField {
 			pat_ident,
+			ty: ParsedFieldType::Node(NodeParsedField {
+				input_type,
+				output_type,
+				implementations,
+			}),
 			name,
 			description,
 			widget_override,
-			input_type,
-			output_type,
 			number_display_decimal_places,
 			number_step,
-			implementations,
 			unit,
 		})
 	} else {
@@ -580,22 +587,24 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			.map(|attr| parse_implementations(attr, ident))
 			.transpose()?
 			.unwrap_or_default();
-		Ok(ParsedField::Regular {
+		Ok(ParsedField {
 			pat_ident,
+			ty: ParsedFieldType::Regular(RegularParsedField {
+				exposed,
+				number_soft_min,
+				number_soft_max,
+				number_hard_min,
+				number_hard_max,
+				number_mode_range,
+				ty,
+				value_source,
+				implementations,
+			}),
 			name,
 			description,
 			widget_override,
-			exposed,
-			number_soft_min,
-			number_soft_max,
-			number_hard_min,
-			number_hard_max,
-			number_mode_range,
 			number_display_decimal_places,
 			number_step,
-			ty,
-			value_source,
-			implementations,
 			unit,
 		})
 	}
