@@ -1972,6 +1972,7 @@ dependencies = [
  "bytemuck",
  "dyn-any",
  "glam",
+ "graphene-core",
  "half",
  "log",
  "num-derive",
