@@ -2,6 +2,7 @@ use crate::CustomEvent;
 use crate::WindowSize;
 use crate::consts::APP_NAME;
 use crate::desktop_wrapper::DesktopWrapper;
+use crate::desktop_wrapper::NodeGraphExecutionResult;
 use crate::desktop_wrapper::WgpuContext;
 use crate::desktop_wrapper::messages::DesktopFrontendMessage;
 use crate::desktop_wrapper::messages::DesktopWrapperMessage;
@@ -110,11 +111,6 @@ impl WinitApp {
 					}
 				});
 			}
-			DesktopFrontendMessage::UpdateViewport(texture) => {
-				if let Some(graphics_state) = &mut self.graphics_state {
-					graphics_state.bind_viewport_texture(texture);
-				}
-			}
 			DesktopFrontendMessage::UpdateViewportBounds { x, y, width, height } => {
 				if let Some(graphics_state) = &mut self.graphics_state
 					&& let Some(window) = &self.window
@@ -206,7 +202,19 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 	fn user_event(&mut self, _: &ActiveEventLoop, event: CustomEvent) {
 		match event {
 			CustomEvent::DesktopWrapperMessage(message) => self.dispatch_desktop_wrapper_message(message),
-			CustomEvent::DesktopFrontendMessage(message) => self.handle_desktop_frontend_message(message),
+			CustomEvent::NodeGraphExecutionResult(result) => match result {
+				NodeGraphExecutionResult::HasRun(texture) => {
+					self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::PollNodeGraphEvaluation);
+					if let Some(texture) = texture
+						&& let Some(graphics_state) = self.graphics_state.as_mut()
+						&& let Some(window) = self.window.as_ref()
+					{
+						graphics_state.bind_viewport_texture(texture);
+						window.request_redraw();
+					}
+				}
+				NodeGraphExecutionResult::NotRun => {}
+			},
 			CustomEvent::UiUpdate(texture) => {
 				if let Some(graphics_state) = self.graphics_state.as_mut() {
 					graphics_state.resize(texture.width(), texture.height());

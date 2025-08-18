@@ -33,7 +33,7 @@ impl DesktopWrapper {
 		executor.execute()
 	}
 
-	pub async fn run_node_graph() -> NodeGraphExecutionResult {
+	pub async fn execute_node_graph() -> NodeGraphExecutionResult {
 		let result = graphite_editor::node_graph_executor::run_node_graph().await;
 		match result {
 			(true, texture) => NodeGraphExecutionResult::HasRun(texture.map(|t| t.texture)),

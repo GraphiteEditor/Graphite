@@ -21,7 +21,6 @@ pub enum DesktopFrontendMessage {
 		content: Vec<u8>,
 	},
 	OpenUrl(String),
-	UpdateViewport(wgpu::Texture),
 	UpdateViewportBounds {
 		x: f32,
 		y: f32,
