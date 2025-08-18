@@ -280,7 +280,7 @@ impl NodeGraphExecutor {
 					} else {
 						self.process_node_graph_output(node_graph_output, responses)?;
 					}
-					responses.add_front(DeferMessage::TriggerGraphRun(execution_id, execution_context.document_id));
+					responses.add(DeferMessage::TriggerGraphRun(execution_id, execution_context.document_id));
 
 					// Update the Data panel on the frontend using the value of the inspect result.
 					if let Some(inspect_result) = (self.previous_node_to_inspect.is_some()).then_some(inspect_result).flatten() {

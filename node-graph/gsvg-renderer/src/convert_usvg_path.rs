@@ -1,5 +1,5 @@
-use bezier_rs::{ManipulatorGroup, Subpath};
 use glam::DVec2;
+use graphene_core::subpath::{ManipulatorGroup, Subpath};
 use graphene_core::vector::PointId;
 
 pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {

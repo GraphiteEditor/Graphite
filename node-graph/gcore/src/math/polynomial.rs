@@ -1,3 +1,4 @@
+use kurbo::PathSeg;
 use std::fmt::{self, Display, Formatter};
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
@@ -194,6 +195,33 @@ impl<const N: usize> Mul for &Polynomial<N> {
 		let mut output = *self;
 		output *= other;
 		output
+	}
+}
+
+/// Returns two [`Polynomial`]s representing the parametric equations for x and y coordinates of the bezier curve respectively.
+/// The domain of both the equations are from t=0.0 representing the start and t=1.0 representing the end of the bezier curve.
+pub fn pathseg_to_parametric_polynomial(segment: PathSeg) -> (Polynomial<4>, Polynomial<4>) {
+	match segment {
+		PathSeg::Line(line) => {
+			let term1 = line.p0 - line.p1;
+			(Polynomial::new([line.p0.x, term1.x, 0., 0.]), Polynomial::new([line.p0.y, term1.y, 0., 0.]))
+		}
+		PathSeg::Quad(quad_bez) => {
+			let term1 = 2. * (quad_bez.p1 - quad_bez.p0);
+			let term2 = quad_bez.p0 - 2. * quad_bez.p1.to_vec2() + quad_bez.p2.to_vec2();
+
+			(Polynomial::new([quad_bez.p0.x, term1.x, term2.x, 0.]), Polynomial::new([quad_bez.p0.y, term1.y, term2.y, 0.]))
+		}
+		PathSeg::Cubic(cubic_bez) => {
+			let term1 = 3. * (cubic_bez.p1 - cubic_bez.p0);
+			let term2 = 3. * (cubic_bez.p2 - cubic_bez.p1) - term1;
+			let term3 = cubic_bez.p3 - cubic_bez.p0 - term2 - term1;
+
+			(
+				Polynomial::new([cubic_bez.p0.x, term1.x, term2.x, term3.x]),
+				Polynomial::new([cubic_bez.p0.y, term1.y, term2.y, term3.y]),
+			)
+		}
 	}
 }
 
