@@ -582,6 +582,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::UpdateHints);
 				} else {
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
+					responses.add(OverlaysMessage::Draw); // Redraw overlays when graph is closed
 				}
 			}
 			DocumentMessage::GraphViewOverlayToggle => {
