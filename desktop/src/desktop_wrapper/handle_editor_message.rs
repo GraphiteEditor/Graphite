@@ -1,12 +1,12 @@
 use graphite_editor::messages::prelude::{DocumentMessage, Message, PortfolioMessage};
 
-use crate::editor_api::messages::{EditorMessage, NativeMessage, OpenFileDialogContext, SaveFileDialogContext};
+use crate::desktop_wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, OpenFileDialogContext, SaveFileDialogContext};
 
 use super::EditorMessageExecutor;
 
-pub(super) fn handle_editor_message(executor: &mut EditorMessageExecutor, message: EditorMessage) {
+pub(super) fn handle_editor_message(executor: &mut EditorMessageExecutor, message: DesktopWrapperMessage) {
 	match message {
-		EditorMessage::FromFrontend(data) => {
+		DesktopWrapperMessage::FromWeb(data) => {
 			let string = std::str::from_utf8(&data).unwrap();
 			match ron::from_str::<Message>(string) {
 				Ok(message) => {
@@ -17,7 +17,7 @@ pub(super) fn handle_editor_message(executor: &mut EditorMessageExecutor, messag
 				}
 			}
 		}
-		EditorMessage::OpenFileDialogResult { path, content, context } => match context {
+		DesktopWrapperMessage::OpenFileDialogResult { path, content, context } => match context {
 			OpenFileDialogContext::Document => match String::from_utf8(content) {
 				Ok(content) => {
 					executor.queue_message(
@@ -86,18 +86,18 @@ pub(super) fn handle_editor_message(executor: &mut EditorMessageExecutor, messag
 				}
 			}
 		},
-		EditorMessage::SaveFileDialogResult { path, context } => match context {
+		DesktopWrapperMessage::SaveFileDialogResult { path, context } => match context {
 			SaveFileDialogContext::Document { document_id, content } => {
-				executor.respond(NativeMessage::WriteFile { path: path.clone(), content });
+				executor.respond(DesktopFrontendMessage::WriteFile { path: path.clone(), content });
 				executor.queue_message(Message::Portfolio(PortfolioMessage::DocumentPassMessage {
 					document_id,
 					message: DocumentMessage::SavedDocument { path: Some(path) },
 				}));
 			}
 			SaveFileDialogContext::Export { content } => {
-				executor.respond(NativeMessage::WriteFile { path, content });
+				executor.respond(DesktopFrontendMessage::WriteFile { path, content });
 			}
 		},
-		EditorMessage::PoolNodeGraphEvaluation => executor.poll_node_graph_evaluation(),
+		DesktopWrapperMessage::PollNodeGraphEvaluation => executor.poll_node_graph_evaluation(),
 	}
 }

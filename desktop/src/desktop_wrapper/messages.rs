@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use graphite_editor::messages::prelude::DocumentId;
 
-pub enum NativeMessage {
-	ToFrontend(Vec<u8>),
+pub enum DesktopFrontendMessage {
+	ToWeb(Vec<u8>),
 	OpenFileDialog {
 		title: String,
 		filters: Vec<FileFilter>,
@@ -30,7 +30,7 @@ pub enum NativeMessage {
 		height: f32,
 	},
 	UpdateOverlays(vello::Scene),
-	Loopback(EditorMessage),
+	Loopback(DesktopWrapperMessage),
 }
 
 pub struct FileFilter {
@@ -38,11 +38,11 @@ pub struct FileFilter {
 	pub extensions: Vec<String>,
 }
 
-pub enum EditorMessage {
-	FromFrontend(Vec<u8>),
+pub enum DesktopWrapperMessage {
+	FromWeb(Vec<u8>),
 	OpenFileDialogResult { path: PathBuf, content: Vec<u8>, context: OpenFileDialogContext },
 	SaveFileDialogResult { path: PathBuf, context: SaveFileDialogContext },
-	PoolNodeGraphEvaluation,
+	PollNodeGraphEvaluation,
 }
 
 pub enum OpenFileDialogContext {

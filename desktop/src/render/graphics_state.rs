@@ -3,7 +3,7 @@ use std::sync::Arc;
 use wgpu_executor::WgpuExecutor;
 use winit::window::Window;
 
-use crate::editor_api::WgpuContext;
+use crate::desktop_wrapper::WgpuContext;
 
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]

@@ -1,6 +1,6 @@
 use crate::CustomEvent;
-use crate::editor_api::WgpuContext;
-use crate::editor_api::messages::EditorMessage;
+use crate::desktop_wrapper::WgpuContext;
+use crate::desktop_wrapper::messages::DesktopWrapperMessage;
 use crate::render::FrameBufferRef;
 use std::{
 	sync::{Arc, Mutex, mpsc::Receiver},
@@ -124,7 +124,7 @@ impl CefEventHandler for CefHandler {
 	}
 
 	fn receive_web_message(&self, message: &[u8]) {
-		let editor_message = EditorMessage::FromFrontend(message.to_vec());
-		let _ = self.event_loop_proxy.send_event(CustomEvent::EditorMessage(editor_message));
+		let editor_message = DesktopWrapperMessage::FromWeb(message.to_vec());
+		let _ = self.event_loop_proxy.send_event(CustomEvent::DesktopWrapperMessage(editor_message));
 	}
 }

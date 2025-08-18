@@ -2,8 +2,8 @@ use graph_craft::wasm_application_io::WasmApplicationIo;
 use graphite_editor::{application::Editor, messages::prelude::Message};
 use std::collections::VecDeque;
 
-use crate::editor_api::WgpuContext;
-use crate::editor_api::messages::{EditorMessage, NativeMessage};
+use crate::desktop_wrapper::WgpuContext;
+use crate::desktop_wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage};
 
 #[path = "handle_editor_message.rs"]
 mod handle_editor_message;
@@ -27,22 +27,22 @@ impl EditorWrapper {
 		futures::executor::block_on(graphite_editor::node_graph_executor::replace_application_io(application_io));
 	}
 
-	pub fn dispatch(&mut self, message: EditorMessage) -> Vec<NativeMessage> {
+	pub fn dispatch(&mut self, message: DesktopWrapperMessage) -> Vec<DesktopFrontendMessage> {
 		let mut executor = EditorMessageExecutor::new(&mut self.editor);
 		executor.queue(message);
 		executor.execute()
 	}
 
-	pub fn poll() -> Vec<NativeMessage> {
+	pub fn poll() -> Vec<DesktopFrontendMessage> {
 		let mut responses = Vec::new();
 
 		let (has_run, texture) = futures::executor::block_on(graphite_editor::node_graph_executor::run_node_graph());
 		if has_run {
-			responses.push(NativeMessage::Loopback(EditorMessage::PoolNodeGraphEvaluation));
+			responses.push(DesktopFrontendMessage::Loopback(DesktopWrapperMessage::PollNodeGraphEvaluation));
 		}
 		if let Some(texture) = texture {
-			responses.push(NativeMessage::UpdateViewport(texture.texture));
-			responses.push(NativeMessage::RequestRedraw);
+			responses.push(DesktopFrontendMessage::UpdateViewport(texture.texture));
+			responses.push(DesktopFrontendMessage::RequestRedraw);
 		}
 
 		responses
@@ -51,9 +51,9 @@ impl EditorWrapper {
 
 struct EditorMessageExecutor<'a> {
 	editor: &'a mut Editor,
-	queue: VecDeque<EditorMessage>,
+	queue: VecDeque<DesktopWrapperMessage>,
 	messages: Vec<Message>,
-	responses: Vec<NativeMessage>,
+	responses: Vec<DesktopFrontendMessage>,
 }
 
 impl<'a> EditorMessageExecutor<'a> {
@@ -66,12 +66,12 @@ impl<'a> EditorMessageExecutor<'a> {
 		}
 	}
 
-	pub(crate) fn execute(mut self) -> Vec<NativeMessage> {
+	pub(crate) fn execute(mut self) -> Vec<DesktopFrontendMessage> {
 		self.process_queue();
 		self.responses
 	}
 
-	pub(crate) fn queue(&mut self, message: EditorMessage) {
+	pub(crate) fn queue(&mut self, message: DesktopWrapperMessage) {
 		self.queue.push_back(message);
 	}
 
@@ -81,7 +81,7 @@ impl<'a> EditorMessageExecutor<'a> {
 		}
 	}
 
-	pub(super) fn respond(&mut self, response: NativeMessage) {
+	pub(super) fn respond(&mut self, response: DesktopFrontendMessage) {
 		self.responses.push(response);
 	}
 
@@ -110,7 +110,7 @@ impl<'a> EditorMessageExecutor<'a> {
 				.into_iter()
 				.filter_map(|m| intercept_frontend_message::intercept_frontend_message(self, m))
 				.collect::<Vec<_>>();
-			self.respond(NativeMessage::ToFrontend(ron::to_string(&frontend_messages).unwrap().into_bytes()));
+			self.respond(DesktopFrontendMessage::ToWeb(ron::to_string(&frontend_messages).unwrap().into_bytes()));
 		}
 	}
 }

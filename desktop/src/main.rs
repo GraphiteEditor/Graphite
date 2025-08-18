@@ -15,16 +15,16 @@ use app::WinitApp;
 
 mod dirs;
 
-mod editor_api;
-use editor_api::EditorWrapper;
-use editor_api::messages::{EditorMessage, NativeMessage};
+mod desktop_wrapper;
+use desktop_wrapper::EditorWrapper;
+use desktop_wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage};
 
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum CustomEvent {
 	UiUpdate(wgpu::Texture),
 	ScheduleBrowserWork(Instant),
-	NativeMessages(Vec<NativeMessage>),
-	EditorMessage(EditorMessage),
+	DesktopWrapperMessage(DesktopWrapperMessage),
+	DesktopFrontendMessages(Vec<DesktopFrontendMessage>),
 }
 
 fn main() {
@@ -43,7 +43,7 @@ fn main() {
 
 	let (window_size_sender, window_size_receiver) = std::sync::mpsc::channel();
 
-	let wgpu_context = futures::executor::block_on(editor_api::WgpuContext::new()).unwrap();
+	let wgpu_context = futures::executor::block_on(desktop_wrapper::WgpuContext::new()).unwrap();
 	let cef_context = match cef_context.init(cef::CefHandler::new(window_size_receiver, event_loop.create_proxy(), wgpu_context.clone())) {
 		Ok(c) => c,
 		Err(cef::InitError::AlreadyRunning) => {
@@ -65,7 +65,7 @@ fn main() {
 			let last_render = Instant::now();
 
 			let responses = EditorWrapper::poll();
-			let _ = rendering_loop_proxy.send_event(CustomEvent::NativeMessages(responses));
+			let _ = rendering_loop_proxy.send_event(CustomEvent::DesktopFrontendMessages(responses));
 
 			let frame_time = Duration::from_secs_f32((target_fps as f32).recip());
 			let sleep = last_render + frame_time - Instant::now();

@@ -1,10 +1,10 @@
 use crate::CustomEvent;
 use crate::WindowSize;
 use crate::consts::APP_NAME;
-use crate::editor_api::EditorWrapper;
-use crate::editor_api::WgpuContext;
-use crate::editor_api::messages::EditorMessage;
-use crate::editor_api::messages::NativeMessage;
+use crate::desktop_wrapper::EditorWrapper;
+use crate::desktop_wrapper::WgpuContext;
+use crate::desktop_wrapper::messages::DesktopFrontendMessage;
+use crate::desktop_wrapper::messages::DesktopWrapperMessage;
 use crate::render::GraphicsState;
 use rfd::AsyncFileDialog;
 use std::sync::Arc;
@@ -50,12 +50,12 @@ impl WinitApp {
 		}
 	}
 
-	fn handle_native_message(&mut self, message: NativeMessage) {
+	fn handle_desktop_frontend_message(&mut self, message: DesktopFrontendMessage) {
 		match message {
-			NativeMessage::ToFrontend(bytes) => {
+			DesktopFrontendMessage::ToWeb(bytes) => {
 				self.cef_context.send_web_message(bytes.as_slice());
 			}
-			NativeMessage::OpenFileDialog { title, filters, context } => {
+			DesktopFrontendMessage::OpenFileDialog { title, filters, context } => {
 				let event_loop_proxy = self.event_loop_proxy.clone();
 				let _ = thread::spawn(move || {
 					let mut dialog = AsyncFileDialog::new().set_title(title);
@@ -68,12 +68,12 @@ impl WinitApp {
 					if let Some(path) = futures::executor::block_on(show_dialog)
 						&& let Ok(content) = std::fs::read(&path)
 					{
-						let message = EditorMessage::OpenFileDialogResult { path, content, context };
-						let _ = event_loop_proxy.send_event(CustomEvent::EditorMessage(message));
+						let message = DesktopWrapperMessage::OpenFileDialogResult { path, content, context };
+						let _ = event_loop_proxy.send_event(CustomEvent::DesktopWrapperMessage(message));
 					}
 				});
 			}
-			NativeMessage::SaveFileDialog {
+			DesktopFrontendMessage::SaveFileDialog {
 				title,
 				default_filename,
 				default_folder,
@@ -93,34 +93,34 @@ impl WinitApp {
 					let show_dialog = async move { dialog.save_file().await.map(|f| f.path().to_path_buf()) };
 
 					if let Some(path) = futures::executor::block_on(show_dialog) {
-						let message = EditorMessage::SaveFileDialogResult { path, context };
-						let _ = event_loop_proxy.send_event(CustomEvent::EditorMessage(message));
+						let message = DesktopWrapperMessage::SaveFileDialogResult { path, context };
+						let _ = event_loop_proxy.send_event(CustomEvent::DesktopWrapperMessage(message));
 					}
 				});
 			}
-			NativeMessage::WriteFile { path, content } => {
+			DesktopFrontendMessage::WriteFile { path, content } => {
 				if let Err(e) = std::fs::write(&path, content) {
 					tracing::error!("Failed to write file {}: {}", path.display(), e);
 				}
 			}
-			NativeMessage::OpenUrl(url) => {
+			DesktopFrontendMessage::OpenUrl(url) => {
 				let _ = thread::spawn(move || {
 					if let Err(e) = open::that(&url) {
 						tracing::error!("Failed to open URL: {}: {}", url, e);
 					}
 				});
 			}
-			NativeMessage::RequestRedraw => {
+			DesktopFrontendMessage::RequestRedraw => {
 				if let Some(window) = &self.window {
 					window.request_redraw();
 				}
 			}
-			NativeMessage::UpdateViewport(texture) => {
+			DesktopFrontendMessage::UpdateViewport(texture) => {
 				if let Some(graphics_state) = &mut self.graphics_state {
 					graphics_state.bind_viewport_texture(texture);
 				}
 			}
-			NativeMessage::UpdateViewportBounds { x, y, width, height } => {
+			DesktopFrontendMessage::UpdateViewportBounds { x, y, width, height } => {
 				if let Some(graphics_state) = &mut self.graphics_state
 					&& let Some(window) = &self.window
 				{
@@ -135,24 +135,24 @@ impl WinitApp {
 					graphics_state.set_viewport_scale([viewport_scale_x, viewport_scale_y]);
 				}
 			}
-			NativeMessage::UpdateOverlays(scene) => {
+			DesktopFrontendMessage::UpdateOverlays(scene) => {
 				if let Some(graphics_state) = &mut self.graphics_state {
 					graphics_state.set_overlays_scene(scene);
 				}
 			}
-			NativeMessage::Loopback(editor_message) => self.dispatch_editor_message(editor_message),
+			DesktopFrontendMessage::Loopback(editor_message) => self.dispatch_desktop_wrapper_message(editor_message),
 		}
 	}
 
-	fn handle_native_messages(&mut self, messages: Vec<NativeMessage>) {
+	fn handle_desktop_frontend_messages(&mut self, messages: Vec<DesktopFrontendMessage>) {
 		for message in messages {
-			self.handle_native_message(message);
+			self.handle_desktop_frontend_message(message);
 		}
 	}
 
-	fn dispatch_editor_message(&mut self, message: EditorMessage) {
+	fn dispatch_desktop_wrapper_message(&mut self, message: DesktopWrapperMessage) {
 		let responses = self.editor_wrapper.dispatch(message);
-		self.handle_native_messages(responses);
+		self.handle_desktop_frontend_messages(responses);
 	}
 }
 
@@ -211,8 +211,8 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 
 	fn user_event(&mut self, _: &ActiveEventLoop, event: CustomEvent) {
 		match event {
-			CustomEvent::NativeMessages(messages) => self.handle_native_messages(messages),
-			CustomEvent::EditorMessage(message) => self.dispatch_editor_message(message),
+			CustomEvent::DesktopWrapperMessage(message) => self.dispatch_desktop_wrapper_message(message),
+			CustomEvent::DesktopFrontendMessages(messages) => self.handle_desktop_frontend_messages(messages),
 			CustomEvent::UiUpdate(texture) => {
 				if let Some(graphics_state) = self.graphics_state.as_mut() {
 					graphics_state.resize(texture.width(), texture.height());
