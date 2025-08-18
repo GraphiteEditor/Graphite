@@ -9,7 +9,6 @@ mod vector_modification;
 mod vector_nodes;
 mod vector_types;
 
-pub use bezier_rs;
 pub use reference_point::*;
 pub use style::PathStyle;
 pub use vector_nodes::*;

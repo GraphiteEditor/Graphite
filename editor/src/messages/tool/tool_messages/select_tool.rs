@@ -20,12 +20,12 @@ use crate::messages::tool::common_functionality::shape_editor::SelectionShapeTyp
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::{resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_transform_cage};
-use bezier_rs::Subpath;
 use glam::DMat2;
 use graph_craft::document::NodeId;
 use graphene_std::path_bool::BooleanOperation;
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
+use graphene_std::subpath::Subpath;
 use graphene_std::transform::ReferencePoint;
 use std::fmt;
 
@@ -92,6 +92,7 @@ pub enum SelectToolMessage {
 		remove_from_selection: Key,
 	},
 	EditLayer,
+	EditLayerExec,
 	Enter,
 	PointerMove(SelectToolPointerKeys),
 	PointerOutsideViewport(SelectToolPointerKeys),
@@ -323,6 +324,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 			PointerMove,
 			Abort,
 			EditLayer,
+			EditLayerExec,
 			Enter,
 		);
 
@@ -689,32 +691,28 @@ impl Fsm for SelectToolFsmState {
 						// Measure with Alt held down
 						// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
 						if overlay_context.visibility_settings.quick_measurement() && !matches!(self, Self::ResizingBounds { .. }) && input.keyboard.get(Key::Alt as usize) {
-							// Get all selected layers and compute their viewport-aligned AABB
-							let selected_bounds_viewport = document
+							// Compute document-space bounding box (AABB) of all selected visible & unlocked layers
+							let selected_bounds_doc_space = document
 								.network_interface
 								.selected_nodes()
 								.selected_visible_and_unlocked_layers(&document.network_interface)
+								// Exclude layers that are artboards
 								.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-								.filter_map(|layer| {
-									// Get the layer's bounding box in its local space
-									let local_bounds = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY)?;
-									// Transform the bounds directly to viewport space
-									let viewport_quad = document.metadata().transform_to_viewport(layer) * Quad::from_box(local_bounds);
-									// Convert the quad to an AABB in viewport space
-									Some(Rect::from_box(viewport_quad.bounding_box()))
-								})
+								// For each remaining layer, try to get its document-space bounding box and convert it to a Rect
+								.filter_map(|layer| document.metadata().bounding_box_document(layer).map(Rect::from_box))
+								// Combine all individual bounding boxes into one overall bounding box that contains all selected layers
 								.reduce(Rect::combine_bounds);
 
-							// Get the hovered layer's viewport-aligned AABB
-							let hovered_bounds_viewport = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY).map(|bounds| {
-								let viewport_quad = document.metadata().transform_to_viewport(layer) * Quad::from_box(bounds);
-								Rect::from_box(viewport_quad.bounding_box())
-							});
+							// Compute document-space bounding box (AABB) of the currently hovered layer
+							let hovered_bounds_doc_space = document.metadata().bounding_box_document(layer);
 
-							// Use the viewport-aligned AABBs for measurement
-							if let (Some(selected_bounds), Some(hovered_bounds)) = (selected_bounds_viewport, hovered_bounds_viewport) {
-								// Since we're already in viewport space, use identity transform
-								measure::overlay(selected_bounds, hovered_bounds, DAffine2::IDENTITY, DAffine2::IDENTITY, &mut overlay_context);
+							// If both selected and hovered bounds exist, overlay measurement lines
+							if let (Some(selected_bounds), Some(hovered_bounds)) = (selected_bounds_doc_space, hovered_bounds_doc_space.map(Rect::from_box)) {
+								// Both `selected_bounds` and `hovered_bounds` are in document space.
+								// To correctly render overlay lines in the UI (which is in viewport space), we need to transform both rectangles from document to viewport space.
+								// Therefore, we pass `document_to_viewport` as both the `transform` and `document_to_viewport` parameters.
+								let document_to_viewport = document.metadata().document_to_viewport;
+								measure::overlay(selected_bounds, hovered_bounds, document_to_viewport, document_to_viewport, &mut overlay_context);
 							}
 						}
 					}
@@ -985,14 +983,19 @@ impl Fsm for SelectToolFsmState {
 				self
 			}
 			(_, SelectToolMessage::EditLayer) => {
-				// Edit the clicked layer
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: vec![SelectToolMessage::EditLayerExec.into()],
+				});
+
+				self
+			}
+			(_, SelectToolMessage::EditLayerExec) => {
 				if let Some(intersect) = document.click(input) {
 					match tool_data.nested_selection_behavior {
 						NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect, responses),
 						NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, &document.network_interface, responses),
 					}
 				}
-
 				self
 			}
 			(

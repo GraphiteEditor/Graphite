@@ -105,8 +105,8 @@ mod test {
 	use super::*;
 	use crate::Node;
 	use crate::extract_xy::{ExtractXyNode, XY};
+	use crate::subpath::Subpath;
 	use crate::vector::Vector;
-	use bezier_rs::Subpath;
 	use glam::DVec2;
 	use std::pin::Pin;
 
