@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use graphite_editor::messages::prelude::FrontendMessage;
 
-use crate::desktop_wrapper::messages::{FileFilter, DesktopFrontendMessage, OpenFileDialogContext, SaveFileDialogContext};
+use crate::desktop_wrapper::messages::{DesktopFrontendMessage, FileFilter, OpenFileDialogContext, SaveFileDialogContext};
 
 use super::EditorMessageExecutor;
 
