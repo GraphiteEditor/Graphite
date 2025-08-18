@@ -152,9 +152,7 @@ impl WinitApp {
 
 	fn dispatch_editor_message(&mut self, message: EditorMessage) {
 		let responses = self.editor_wrapper.dispatch(message);
-		for response in responses {
-			self.handle_native_message(response);
-		}
+		self.handle_native_messages(responses);
 	}
 }
 
