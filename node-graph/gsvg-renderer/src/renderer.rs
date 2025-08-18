@@ -19,7 +19,7 @@ use graphene_core::transform::{Footprint, Transform};
 use graphene_core::uuid::{NodeId, generate_uuid};
 use graphene_core::vector::Vector;
 use graphene_core::vector::click_target::{ClickTarget, FreePoint};
-use graphene_core::vector::style::{Fill, Stroke, StrokeAlign, ViewMode, PaintOrder};
+use graphene_core::vector::style::{Fill, PaintOrder, Stroke, StrokeAlign, ViewMode};
 use graphene_core::{Artboard, Graphic};
 use kurbo::Affine;
 use num_traits::Zero;
@@ -880,63 +880,61 @@ impl Render for Table<Vector> {
 			let wants_stroke_below = row.element.style.stroke().is_some_and(|s| s.paint_order == graphene_core::vector::style::PaintOrder::StrokeBelow);
 
 			// Closures to avoid duplicated fill/stroke drawing logic
-			let do_fill = |scene: &mut Scene| {
-				match row.element.style.fill() {
-					Fill::Solid(color) => {
-						let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
-						scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, &path);
-					}
-					Fill::Gradient(gradient) => {
-						let mut stops = peniko::ColorStops::new();
-						for &(offset, color) in &gradient.stops {
-							stops.push(peniko::ColorStop {
-								offset: offset as f32,
-								color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
-							});
-						}
-
-						let bounds = row.element.nonzero_bounding_box();
-						let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-
-						let inverse_parent_transform = if parent_transform.matrix2.determinant() != 0. {
-							parent_transform.inverse()
-						} else {
-							Default::default()
-						};
-						let mod_points = inverse_parent_transform * multiplied_transform * bound_transform;
-
-						let start = mod_points.transform_point2(gradient.start);
-						let end = mod_points.transform_point2(gradient.end);
-
-						let fill = peniko::Brush::Gradient(peniko::Gradient {
-							kind: match gradient.gradient_type {
-								GradientType::Linear => peniko::GradientKind::Linear {
-									start: to_point(start),
-									end: to_point(end),
-								},
-								GradientType::Radial => {
-									let radius = start.distance(end);
-									peniko::GradientKind::Radial {
-										start_center: to_point(start),
-										start_radius: 0.,
-										end_center: to_point(start),
-										end_radius: radius as f32,
-									}
-								}
-							},
-							stops,
-							..Default::default()
-						});
-						let inverse_element_transform = if element_transform.matrix2.determinant() != 0. {
-							element_transform.inverse()
-						} else {
-							Default::default()
-						};
-						let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
-						scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), &path);
-					}
-					Fill::None => {}
+			let do_fill = |scene: &mut Scene| match row.element.style.fill() {
+				Fill::Solid(color) => {
+					let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
+					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, &path);
 				}
+				Fill::Gradient(gradient) => {
+					let mut stops = peniko::ColorStops::new();
+					for &(offset, color) in &gradient.stops {
+						stops.push(peniko::ColorStop {
+							offset: offset as f32,
+							color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
+						});
+					}
+
+					let bounds = row.element.nonzero_bounding_box();
+					let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+
+					let inverse_parent_transform = if parent_transform.matrix2.determinant() != 0. {
+						parent_transform.inverse()
+					} else {
+						Default::default()
+					};
+					let mod_points = inverse_parent_transform * multiplied_transform * bound_transform;
+
+					let start = mod_points.transform_point2(gradient.start);
+					let end = mod_points.transform_point2(gradient.end);
+
+					let fill = peniko::Brush::Gradient(peniko::Gradient {
+						kind: match gradient.gradient_type {
+							GradientType::Linear => peniko::GradientKind::Linear {
+								start: to_point(start),
+								end: to_point(end),
+							},
+							GradientType::Radial => {
+								let radius = start.distance(end);
+								peniko::GradientKind::Radial {
+									start_center: to_point(start),
+									start_radius: 0.,
+									end_center: to_point(start),
+									end_radius: radius as f32,
+								}
+							}
+						},
+						stops,
+						..Default::default()
+					});
+					let inverse_element_transform = if element_transform.matrix2.determinant() != 0. {
+						element_transform.inverse()
+					} else {
+						Default::default()
+					};
+					let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
+					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), &path);
+				}
+				Fill::None => {}
 			};
 
 			let do_stroke = |scene: &mut Scene, width_scale: f64| {
