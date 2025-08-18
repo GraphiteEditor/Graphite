@@ -156,6 +156,9 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				// Subscribe new tool
 				tool_data.tools.get(&tool_type).unwrap().activate(responses);
 
+				// Re-add the artboard overlay provider when tools are reactivated
+				responses.add(OverlaysMessage::AddProvider(ARTBOARD_OVERLAY_PROVIDER));
+
 				// Send the SelectionChanged message to the active tool, this will ensure the selection is updated
 				responses.add(BroadcastEvent::SelectionChanged);
 
