@@ -180,7 +180,7 @@ export class Box {
 export type FrontendClickTargets = {
 	readonly nodeClickTargets: string[];
 	readonly layerClickTargets: string[];
-	readonly portClickTargets: string[];
+	readonly connectorClickTargets: string[];
 	readonly iconClickTargets: string[];
 	readonly allNodesBoundingBox: string;
 	readonly importExportsBoundingBox: string;
@@ -192,7 +192,7 @@ export type ContextMenuInformation = {
 	contextMenuData: "CreateNode" | { type: "CreateNode"; compatibleType: string } | { nodeId: bigint; currentlyIsNode: boolean };
 };
 
-export type FrontendGraphDataType = "General" | "Raster" | "Vector" | "Number" | "Graphic" | "Artboard";
+export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic" | "Raster" | "Vector" | "Color";
 
 export class Node {
 	readonly index!: bigint;
@@ -763,10 +763,16 @@ export class UpdateGraphFadeArtwork extends JsMessage {
 	readonly percentage!: number;
 }
 
-export class UpdateSpreadsheetState extends JsMessage {
+export class UpdateDataPanelState extends JsMessage {
 	readonly open!: boolean;
+}
 
-	readonly node!: bigint | undefined;
+export class UpdatePropertiesPanelState extends JsMessage {
+	readonly open!: boolean;
+}
+
+export class UpdateLayersPanelState extends JsMessage {
+	readonly open!: boolean;
 }
 
 export class UpdateMouseCursor extends JsMessage {
@@ -981,9 +987,11 @@ export class ColorInput extends WidgetProps {
 	})
 	value!: FillChoice;
 
+	allowNone!: boolean;
+
 	disabled!: boolean;
 
-	allowNone!: boolean;
+	menuDirection!: MenuDirection | undefined;
 
 	// allowTransparency!: boolean; // TODO: Implement
 
@@ -1129,6 +1137,19 @@ export class IconLabel extends WidgetProps {
 
 export class ImageButton extends WidgetProps {
 	image!: IconName;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	width!: string | undefined;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	height!: string | undefined;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltip!: string | undefined;
+}
+
+export class ImageLabel extends WidgetProps {
+	url!: string;
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	width!: string | undefined;
@@ -1332,6 +1353,8 @@ export class TextInput extends WidgetProps {
 
 	minWidth!: number;
 
+	maxWidth!: number;
+
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 }
@@ -1383,6 +1406,7 @@ const widgetSubTypes = [
 	{ value: FontInput, name: "FontInput" },
 	{ value: IconButton, name: "IconButton" },
 	{ value: ImageButton, name: "ImageButton" },
+	{ value: ImageLabel, name: "ImageLabel" },
 	{ value: IconLabel, name: "IconLabel" },
 	{ value: NodeCatalog, name: "NodeCatalog" },
 	{ value: NumberInput, name: "NumberInput" },
@@ -1472,11 +1496,11 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 
 	updates.diff.forEach((update) => {
 		// Find the object where the diff applies to
-		const diffObject = update.widgetPath.reduce((targetLayout, index) => {
-			if ("columnWidgets" in targetLayout) return targetLayout.columnWidgets[index];
-			if ("rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
-			if ("tableWidgets" in targetLayout) return targetLayout.tableWidgets[index];
-			if ("layout" in targetLayout) return targetLayout.layout[index];
+		const diffObject = update.widgetPath.reduce((targetLayout: UIItem | undefined, index: number): UIItem | undefined => {
+			if (targetLayout && "columnWidgets" in targetLayout) return targetLayout.columnWidgets[index];
+			if (targetLayout && "rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
+			if (targetLayout && "tableWidgets" in targetLayout) return targetLayout.tableWidgets[index];
+			if (targetLayout && "layout" in targetLayout) return targetLayout.layout[index];
 			if (targetLayout instanceof Widget) {
 				if (targetLayout.props.kind === "PopoverButton" && targetLayout.props instanceof PopoverButton && targetLayout.props.popoverLayout) {
 					return targetLayout.props.popoverLayout[index];
@@ -1487,9 +1511,20 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 			}
 			// This is a path traversal so we can assume from the backend that it exists
 			// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-			if ("action" in targetLayout) return targetLayout.children![index];
-			return targetLayout[index];
+			if (targetLayout && "action" in targetLayout) return targetLayout.children![index];
+
+			return targetLayout?.[index];
 		}, layout.layout as UIItem);
+
+		// Exit if we failed to produce a valid patch for the existing layout.
+		// This means that the backend assumed an existing layout that doesn't exist in the frontend. This can happen, for
+		// example, if a panel is destroyed in the frontend but was never cleared in the backend, so the next time the backend
+		// tries to update the layout, it attempts to insert only the changes against the old layout that no longer exists.
+		if (diffObject === undefined) {
+			// eslint-disable-next-line no-console
+			console.error("In `patchWidgetLayout`, the `diffObject` is undefined. The layout has not been updated. See the source code comment above this error for hints.");
+			return;
+		}
 
 		// If this is a list with a length, then set the length to 0 to clear the list
 		if ("length" in diffObject) {
@@ -1613,9 +1648,9 @@ export class UpdateMenuBarLayout extends JsMessage {
 
 export class UpdateNodeGraphControlBarLayout extends WidgetDiffUpdate {}
 
-export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate {}
+export class UpdatePropertiesPanelLayout extends WidgetDiffUpdate {}
 
-export class UpdateSpreadsheetLayout extends WidgetDiffUpdate {}
+export class UpdateDataPanelLayout extends WidgetDiffUpdate {}
 
 export class UpdateToolOptionsLayout extends WidgetDiffUpdate {}
 
@@ -1712,9 +1747,11 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeThumbnail,
 	UpdateOpenDocumentsList,
 	UpdatePlatform,
-	UpdatePropertyPanelSectionsLayout,
-	UpdateSpreadsheetLayout,
-	UpdateSpreadsheetState,
+	UpdatePropertiesPanelLayout,
+	UpdateDataPanelLayout,
+	UpdateDataPanelState,
+	UpdatePropertiesPanelState,
+	UpdateLayersPanelState,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateViewportHolePunch,

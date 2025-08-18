@@ -335,7 +335,7 @@ Duration: 9 months
 Students: Hannah Li, Rob Nadal, Thomas Cheng, Linda Zheng, Jackie Chen
 
 - [Bezier-rs library](https://crates.io/crates/bezier-rs)
-- [Interactive web demo](/libraries/bezier-rs/)
+- [Interactive web demo](https://keavon.github.io/Bezier-rs/)
 
 **Outcomes:** The student group designed an API for representing and manipulating Bezier curves and paths as a standalone Rust library which was published to crates.io. It now serves as the underlying vector data format used in Graphite, and acts as a testbed for new computational geometry algorithms. The team also built an interactive web demo catalog to showcase many of the algorithms, which are also handily embedded in the library's [documentation](https://docs.rs/bezier-rs/latest/bezier_rs/).
 

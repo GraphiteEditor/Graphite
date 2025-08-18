@@ -1,6 +1,7 @@
 use glam::{DAffine2, DVec2};
 use graphene_core::gradient::GradientStops;
 use graphene_core::registry::types::{Fraction, Percentage, PixelSize, TextArea};
+use graphene_core::table::Table;
 use graphene_core::transform::Footprint;
 use graphene_core::{Color, Ctx, num_traits};
 use log::warn;
@@ -659,21 +660,28 @@ fn vec2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
 
 /// Constructs a color value which may be set to any color, or no color.
 #[node_macro::node(category("Value"))]
-fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Option<Color>) -> Option<Color> {
+fn color_value(_: impl Ctx, _primary: (), #[default(Color::RED)] color: Table<Color>) -> Table<Color> {
 	color
-}
-
-/// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
-#[node_macro::node(category("Color"))]
-fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position: Fraction) -> Color {
-	let position = position.clamp(0., 1.);
-	gradient.evaluate(position)
 }
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
 fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> GradientStops {
 	gradient
+}
+
+/// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
+#[node_macro::node(category("Value"))]
+fn gradient_table_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> Table<GradientStops> {
+	Table::new_from_element(gradient)
+}
+
+/// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
+#[node_macro::node(category("Color"))]
+fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position: Fraction) -> Table<Color> {
+	let position = position.clamp(0., 1.);
+	let color = gradient.evaluate(position);
+	Table::new_from_element(color)
 }
 
 /// Constructs a string value which may be set to any plain text.

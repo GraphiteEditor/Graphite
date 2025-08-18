@@ -32,7 +32,7 @@
 	// Imports/Export are stored at a key value of 0
 
 	$: gridSpacing = calculateGridSpacing($nodeGraph.transform.scale);
-	$: dotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
+	$: gridDotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
 
 	let inputElement: HTMLInputElement;
 	let hoveringImportIndex: number | undefined = undefined;
@@ -192,7 +192,7 @@
 		return output.connectedTo
 			.map((inputConnector) => {
 				if ((inputConnector as Node).nodeId === undefined) return `Connected to export index ${inputConnector.index}`;
-				return `Connected to ${(inputConnector as Node).nodeId}, port index ${inputConnector.index}`;
+				return `Connected to ${(inputConnector as Node).nodeId}, connector index ${inputConnector.index}`;
 			})
 			.join("\n");
 	}
@@ -200,7 +200,7 @@
 	function inputConnectedToText(input: FrontendGraphInput): string {
 		if (input.connectedTo === undefined) return "Connected to nothing";
 		if ((input.connectedTo as Node).nodeId === undefined) return `Connected to import index ${input.connectedTo.index}`;
-		return `Connected to ${(input.connectedTo as Node).nodeId}, port index ${input.connectedTo.index}`;
+		return `Connected to ${(input.connectedTo as Node).nodeId}, connector index ${input.connectedTo.index}`;
 	}
 
 	function primaryOutputConnectedToLayer(node: FrontendNode): boolean {
@@ -238,7 +238,7 @@
 	style:--grid-spacing={`${gridSpacing}px`}
 	style:--grid-offset-x={`${$nodeGraph.transform.x}px`}
 	style:--grid-offset-y={`${$nodeGraph.transform.y}px`}
-	style:--dot-radius={`${dotRadius}px`}
+	style:--grid-dot-radius={`${gridDotRadius}px`}
 	data-node-graph
 >
 	<!-- Right click menu for adding nodes -->
@@ -298,8 +298,8 @@
 				{#each $nodeGraph.clickTargets.layerClickTargets as pathString}
 					<path class="layer" d={pathString} />
 				{/each}
-				{#each $nodeGraph.clickTargets.portClickTargets as pathString}
-					<path class="port" d={pathString} />
+				{#each $nodeGraph.clickTargets.connectorClickTargets as pathString}
+					<path class="connector" d={pathString} />
 				{/each}
 				{#each $nodeGraph.clickTargets.iconClickTargets as pathString}
 					<path class="visibility" d={pathString} />
@@ -332,14 +332,14 @@
 		</svg>
 	</div>
 
-	<!-- Import and Export ports -->
+	<!-- Import and Export connectors -->
 	<div class="imports-and-exports" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		{#each $nodeGraph.imports as { outputMetadata, position }, index}
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
 				viewBox="0 0 8 8"
-				class="port"
-				data-port="output"
+				class="connector"
+				data-connector="output"
 				data-datatype={outputMetadata.dataType}
 				style:--data-color={`var(--color-data-${outputMetadata.dataType.toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${outputMetadata.dataType.toLowerCase()}-dim)`}
@@ -411,8 +411,8 @@
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
 				viewBox="0 0 8 8"
-				class="port"
-				data-port="input"
+				class="connector"
+				data-connector="input"
 				data-datatype={inputMetadata.dataType}
 				style:--data-color={`var(--color-data-${inputMetadata.dataType.toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${inputMetadata.dataType.toLowerCase()}-dim)`}
@@ -521,8 +521,8 @@
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 12"
-							class="port top"
-							data-port="output"
+							class="connector top"
+							data-connector="output"
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
@@ -542,8 +542,8 @@
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
 						viewBox="0 0 8 12"
-						class="port bottom"
-						data-port="input"
+						class="connector bottom"
+						data-connector="input"
 						data-datatype={node.primaryInput?.dataType}
 						style:--data-color={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()}-dim)`}
@@ -561,14 +561,14 @@
 						{/if}
 					</svg>
 				</div>
-				<!-- Layer input port (from left) -->
+				<!-- Layer input connector (from left) -->
 				{#if node.exposedInputs.length > 0}
-					<div class="input ports">
+					<div class="input connectors">
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
-							class="port"
-							data-port="input"
+							class="connector"
+							data-connector="input"
 							data-datatype={stackDataInput.dataType}
 							style:--data-color={`var(--color-data-${stackDataInput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
@@ -679,14 +679,14 @@
 						{/each}
 					</div>
 				{/if}
-				<!-- Input ports -->
-				<div class="input ports">
+				<!-- Input connectors -->
+				<div class="input connectors">
 					{#if node.primaryInput?.dataType}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
-							class="port primary-port"
-							data-port="input"
+							class="connector primary-connector"
+							data-connector="input"
 							data-datatype={node.primaryInput?.dataType}
 							style:--data-color={`var(--color-data-${node.primaryInput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
@@ -704,8 +704,8 @@
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 8 8"
-								class="port"
-								data-port="input"
+								class="connector"
+								data-connector="input"
 								data-datatype={secondary.dataType}
 								style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
 								style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
@@ -720,14 +720,14 @@
 						{/if}
 					{/each}
 				</div>
-				<!-- Output ports -->
-				<div class="output ports">
+				<!-- Output connectors -->
+				<div class="output connectors">
 					{#if node.primaryOutput}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
-							class="port primary-port"
-							data-port="output"
+							class="connector primary-connector"
+							data-connector="output"
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
@@ -744,8 +744,8 @@
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
-							class="port"
-							data-port="output"
+							class="connector"
+							data-connector="output"
 							data-datatype={secondary.dataType}
 							style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
@@ -801,8 +801,8 @@
 			width: 100%;
 			height: 100%;
 			background-size: var(--grid-spacing) var(--grid-spacing);
-			background-position: calc(var(--grid-offset-x) - var(--dot-radius)) calc(var(--grid-offset-y) - var(--dot-radius));
-			background-image: radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-3-darkgray) var(--dot-radius), transparent 0);
+			background-position: calc(var(--grid-offset-x) - var(--grid-dot-radius)) calc(var(--grid-offset-y) - var(--grid-dot-radius));
+			background-image: radial-gradient(circle at var(--grid-dot-radius) var(--grid-dot-radius), var(--color-3-darkgray) var(--grid-dot-radius), transparent 0);
 			background-repeat: repeat;
 			image-rendering: pixelated;
 			mix-blend-mode: screen;
@@ -859,7 +859,7 @@
 					stroke: blue;
 				}
 
-				.port {
+				.connector {
 					stroke: green;
 				}
 
@@ -898,11 +898,13 @@
 		}
 
 		.imports-and-exports {
-			position: absolute;
 			width: 100%;
 			height: 100%;
+			position: absolute;
+			// Keeps the connectors above the wires
+			z-index: 1;
 
-			.port {
+			.connector {
 				position: absolute;
 				width: 8px;
 				height: 8px;
@@ -1008,7 +1010,7 @@
 				border-radius: 4px;
 				bottom: calc(100% + 12px);
 				z-index: -1;
-				transition: opacity 0.2s ease-in-out;
+				transition: opacity 0.2s;
 				opacity: 0.5;
 
 				// Tail
@@ -1040,7 +1042,7 @@
 					-webkit-user-select: text;
 					user-select: text;
 					transition:
-						opacity 0.2s ease-in-out,
+						opacity 0.2s,
 						z-index 0s 0.2s;
 
 					&::selection {
@@ -1088,8 +1090,10 @@
 				border: 1px dashed var(--data-color);
 			}
 
-			.ports {
+			.connectors {
 				position: absolute;
+				// Keeps the connectors above the wires
+				z-index: 1;
 
 				&.input {
 					left: -3px;
@@ -1100,7 +1104,7 @@
 				}
 			}
 
-			.port {
+			.connector {
 				// Double the intended value because of margin collapsing, but for the first and last we divide it by two as intended
 				margin: calc(24px - 8px) 0;
 				width: 8px;
@@ -1117,7 +1121,7 @@
 			border-radius: 8px;
 			--extra-width-to-reach-grid-multiple: 8px;
 			--node-chain-area-left-extension: 0;
-			// Keep this equation in sync with the equivalent one in the Svelte template `<clipPath><path d="layerBorderMask(...)" /></clipPath>` above, as well as the `left` port offset CSS rule above in `.ports.input` above.
+			// Keep this equation in sync with the equivalent one in the Svelte template `<clipPath><path d="layerBorderMask(...)" /></clipPath>` above, as well as the `left` connector offset CSS rule above in `.connectors.input` above.
 			width: calc((var(--layer-area-width) - 0.5) * 24px);
 			padding-left: calc(var(--node-chain-area-left-extension) * 24px);
 			margin-left: calc((0.5 - var(--node-chain-area-left-extension)) * 24px);
@@ -1141,8 +1145,10 @@
 				border-radius: 2px;
 				position: relative;
 				box-sizing: border-box;
-				width: 72px;
 				height: 48px;
+				// We shorten the width by 1px on the left and right so the inner thumbnail graphic maintains a perfect 3:2 aspect ratio
+				width: calc(72px - 2px);
+				margin: 0 1px;
 
 				&::before {
 					content: "";
@@ -1153,7 +1159,7 @@
 				}
 
 				&::before,
-				svg:not(.port) {
+				svg:not(.connector) {
 					pointer-events: none;
 					position: absolute;
 					margin: auto;
@@ -1163,7 +1169,7 @@
 					height: calc(100% - 2px);
 				}
 
-				.port {
+				.connector {
 					position: absolute;
 					margin: 0 auto;
 					left: 0;
@@ -1211,21 +1217,21 @@
 				right: -12px;
 			}
 
-			.input.ports {
+			.input.connectors {
 				left: calc(-3px + var(--node-chain-area-left-extension) * 24px - 36px);
 			}
 
 			.solo-drag-grip,
 			.visibility,
-			.input.ports,
-			.input.ports .port {
+			.input.connectors,
+			.input.connectors .connector {
 				position: absolute;
 				margin: auto 0;
 				top: 0;
 				bottom: 0;
 			}
 
-			.input.ports .port {
+			.input.connectors .connector {
 				left: 24px;
 			}
 		}
@@ -1259,11 +1265,11 @@
 				}
 			}
 
-			.port {
+			.connector {
 				&:first-of-type {
 					margin-top: calc((24px - 8px) / 2);
 
-					&:not(.primary-port) {
+					&:not(.primary-connector) {
 						margin-top: calc((24px - 8px) / 2 + 24px);
 					}
 				}

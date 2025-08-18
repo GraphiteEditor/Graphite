@@ -38,9 +38,9 @@ impl MessageHandler<DeferMessage, DeferMessageContext<'_>> for DeferMessageHandl
 				for (_, message) in elements.rev() {
 					responses.add_front(message);
 				}
-				for (id, messages) in self.after_graph_run.iter() {
+				for (&document_id, messages) in self.after_graph_run.iter() {
 					if !messages.is_empty() {
-						responses.add(PortfolioMessage::SubmitGraphRender { document_id: *id, ignore_hash: false });
+						responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
 					}
 				}
 			}
