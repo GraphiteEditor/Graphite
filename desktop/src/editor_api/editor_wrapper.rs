@@ -29,8 +29,8 @@ impl EditorWrapper {
 
 	pub fn dispatch(&mut self, message: EditorMessage) -> Vec<NativeMessage> {
 		let mut executor = EditorMessageExecutor::new(&mut self.editor);
-		executor.execute(message);
-		executor.responses()
+		executor.queue(message);
+		executor.execute()
 	}
 
 	pub fn poll() -> Vec<NativeMessage> {
@@ -66,13 +66,35 @@ impl<'a> EditorMessageExecutor<'a> {
 		}
 	}
 
-	pub(crate) fn execute(&mut self, message: EditorMessage) {
-		self.queue.push_back(message);
+	pub(crate) fn execute(mut self) -> Vec<NativeMessage> {
 		self.process_queue();
+		self.responses
 	}
 
-	pub(crate) fn responses(self) -> Vec<NativeMessage> {
-		self.responses
+	pub(crate) fn queue(&mut self, message: EditorMessage) {
+		self.queue.push_back(message);
+	}
+
+	pub(super) fn queue_message(&mut self, message: Message) {
+		if let Some(message) = intercept_message::intercept_message(self, message) {
+			self.messages.push(message);
+		}
+	}
+
+	pub(super) fn respond(&mut self, response: NativeMessage) {
+		self.responses.push(response);
+	}
+
+	pub(super) fn poll_node_graph_evaluation(&mut self) {
+		let mut responses = VecDeque::new();
+		if let Err(e) = self.editor.poll_node_graph_evaluation(&mut responses) {
+			if e != "No active document" {
+				tracing::error!("Error poling node graph: {}", e);
+			}
+		}
+		while let Some(message) = responses.pop_front() {
+			self.queue_message(message);
+		}
 	}
 
 	fn process_queue(&mut self) {
@@ -89,33 +111,6 @@ impl<'a> EditorMessageExecutor<'a> {
 				.filter_map(|m| intercept_frontend_message::intercept_frontend_message(self, m))
 				.collect::<Vec<_>>();
 			self.respond(NativeMessage::ToFrontend(ron::to_string(&frontend_messages).unwrap().into_bytes()));
-		}
-	}
-
-	pub(super) fn respond(&mut self, response: NativeMessage) {
-		self.responses.push(response);
-	}
-
-	#[allow(dead_code)] // will be used for features in the future
-	pub(super) fn queue_editor_message(&mut self, message: EditorMessage) {
-		self.queue.push_back(message);
-	}
-
-	pub(super) fn queue_message(&mut self, message: Message) {
-		if let Some(message) = intercept_message::intercept_message(self, message) {
-			self.messages.push(message);
-		}
-	}
-
-	pub(super) fn poll_node_graph_evaluation(&mut self) {
-		let mut responses = VecDeque::new();
-		if let Err(e) = self.editor.poll_node_graph_evaluation(&mut responses) {
-			if e != "No active document" {
-				tracing::error!("Error poling node graph: {}", e);
-			}
-		}
-		while let Some(message) = responses.pop_front() {
-			self.queue_message(message);
 		}
 	}
 }
