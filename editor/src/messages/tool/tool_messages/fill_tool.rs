@@ -4,7 +4,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::NodeG
 use graphene_std::vector::style::Fill;
 
 #[derive(Default, ExtractField)]
-pub struct FillTool {
+pub struct FillToolMessageHandler {
 	fsm_state: FillToolFsmState,
 }
 
@@ -23,7 +23,7 @@ pub enum FillToolMessage {
 	FillSecondaryColor,
 }
 
-impl ToolMetadata for FillTool {
+impl ToolMetadata for FillToolMessageHandler {
 	fn icon_name(&self) -> String {
 		"GeneralFillTool".into()
 	}
@@ -35,14 +35,14 @@ impl ToolMetadata for FillTool {
 	}
 }
 
-impl LayoutHolder for FillTool {
+impl LayoutHolder for FillToolMessageHandler {
 	fn layout(&self) -> Layout {
 		Layout::WidgetLayout(WidgetLayout::default())
 	}
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for FillTool {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for FillToolMessageHandler {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		self.fsm_state.process_event(message, &mut (), context, &(), responses, true);
 	}
@@ -62,7 +62,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Fill
 	}
 }
 
-impl ToolTransition for FillTool {
+impl ToolTransition for FillToolMessageHandler {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(FillToolMessage::Abort.into()),

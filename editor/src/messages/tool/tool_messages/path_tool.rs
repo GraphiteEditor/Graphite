@@ -34,7 +34,7 @@ use kurbo::{DEFAULT_ACCURACY, ParamCurve, ParamCurveNearest, PathSeg, Rect};
 use std::vec;
 
 #[derive(Default, ExtractField)]
-pub struct PathTool {
+pub struct PathToolMessageHandler {
 	fsm_state: PathToolFsmState,
 	tool_data: PathToolData,
 	options: PathToolOptions,
@@ -176,7 +176,7 @@ pub enum PathOptionsUpdate {
 	TogglePivotPinned,
 }
 
-impl ToolMetadata for PathTool {
+impl ToolMetadata for PathToolMessageHandler {
 	fn icon_name(&self) -> String {
 		"VectorPathTool".into()
 	}
@@ -188,7 +188,7 @@ impl ToolMetadata for PathTool {
 	}
 }
 
-impl LayoutHolder for PathTool {
+impl LayoutHolder for PathToolMessageHandler {
 	fn layout(&self) -> Layout {
 		let coordinates = self.tool_data.selection_status.as_one().as_ref().map(|point| point.coordinates);
 		let (x, y) = coordinates.map(|point| (Some(point.x), Some(point.y))).unwrap_or((None, None));
@@ -340,7 +340,7 @@ impl LayoutHolder for PathTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PathTool {
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PathToolMessageHandler {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);
 
@@ -473,7 +473,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 	}
 }
 
-impl ToolTransition for PathTool {
+impl ToolTransition for PathToolMessageHandler {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(PathToolMessage::Abort.into()),
