@@ -26,7 +26,6 @@ specta = { workspace = true, optional = true }
 log = { workspace = true, optional = true }
 
 [dev-dependencies]
-graphene-core = { workspace = true }
 
 [lints.rust]
 # the spirv target is not in the list of common cfgs so must be added manually

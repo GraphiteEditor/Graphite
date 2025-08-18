@@ -85,7 +85,6 @@ thiserror = "2"
 anyhow = "1.0"
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1.0"
-axum = "0.8"
 chrono = "0.4"
 ron = "0.8"
 fastnoise-lite = "1.1"
