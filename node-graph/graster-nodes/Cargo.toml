@@ -19,6 +19,7 @@ std = [
 	"dep:serde",
 	"dep:specta",
 	"dep:glam",
+	"dep:kurbo",
 ]
 
 [dependencies]
@@ -44,7 +45,7 @@ rand = { workspace = true, optional = true }
 rand_chacha = { workspace = true, optional = true }
 fastnoise-lite = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
-kurbo = { workspace = true }
+kurbo = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
