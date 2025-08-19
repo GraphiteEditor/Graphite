@@ -39,6 +39,11 @@ pub enum DesktopWrapperMessage {
 	FromWeb(Vec<u8>),
 	OpenFileDialogResult { path: PathBuf, content: Vec<u8>, context: OpenFileDialogContext },
 	SaveFileDialogResult { path: PathBuf, context: SaveFileDialogContext },
+	OpenDocument { path: PathBuf, content: Vec<u8> },
+	OpenFile { path: PathBuf, content: Vec<u8> },
+	ImportFile { path: PathBuf, content: Vec<u8> },
+	ImportSvg { path: PathBuf, content: Vec<u8> },
+	ImportImage { path: PathBuf, content: Vec<u8> },
 	PollNodeGraphEvaluation,
 }
 

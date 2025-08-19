@@ -238,76 +238,6 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 		let Some(event) = self.cef_context.handle_window_event(event) else { return };
 
 		match event {
-			// Currently not supported on wayland see https://github.com/rust-windowing/winit/issues/1881
-			// WindowEvent::DroppedFile(path) => {
-			// 	let name = path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string());
-			// 	let Some(extension) = path.extension().and_then(|s| s.to_str()) else {
-			// 		tracing::warn!("Unsupported file dropped: {}", path.display());
-			// 		// Fine to early return since we don't need to do cef work in this case
-			// 		return;
-			// 	};
-			// 	let load_string = |path: &std::path::PathBuf| {
-			// 		let Ok(content) = fs::read_to_string(path) else {
-			// 			tracing::error!("Failed to read file: {}", path.display());
-			// 			return None;
-			// 		};
-
-			// 		if content.is_empty() {
-			// 			tracing::warn!("Dropped file is empty: {}", path.display());
-			// 			return None;
-			// 		}
-			// 		Some(content)
-			// 	};
-			// 	// TODO: Consider moving this logic to the editor so we have one message to load data which is then demultiplexed in the portfolio message handler
-			// 	match extension {
-			// 		"graphite" => {
-			// 			let Some(content) = load_string(&path) else { return };
-
-			// 			let message = PortfolioMessage::OpenDocumentFile {
-			// 				document_name: None,
-			// 				document_path: Some(path),
-			// 				document_serialized_content: content,
-			// 			};
-			// 			self.dispatch_message(message.into());
-			// 		}
-			// 		"svg" => {
-			// 			let Some(content) = load_string(&path) else { return };
-
-			// 			let message = PortfolioMessage::PasteSvg {
-			// 				name: path.file_stem().map(|s| s.to_string_lossy().to_string()),
-			// 				svg: content,
-			// 				mouse: None,
-			// 				parent_and_insert_index: None,
-			// 			};
-			// 			self.dispatch_message(message.into());
-			// 		}
-			// 		_ => match image::ImageReader::open(&path) {
-			// 			Ok(reader) => match reader.decode() {
-			// 				Ok(image) => {
-			// 					let width = image.width();
-			// 					let height = image.height();
-			// 					// TODO: support loading images with more than 8 bits per channel
-			// 					let image_data = image.to_rgba8();
-			// 					let image = Image::<Color>::from_image_data(image_data.as_raw(), width, height);
-
-			// 					let message = PortfolioMessage::PasteImage {
-			// 						name,
-			// 						image,
-			// 						mouse: None,
-			// 						parent_and_insert_index: None,
-			// 					};
-			// 					self.dispatch_message(message.into());
-			// 				}
-			// 				Err(e) => {
-			// 					tracing::error!("Failed to decode image: {}: {}", path.display(), e);
-			// 				}
-			// 			},
-			// 			Err(e) => {
-			// 				tracing::error!("Failed to open image file: {}: {}", path.display(), e);
-			// 			}
-			// 		},
-			// 	}
-			// }
 			WindowEvent::CloseRequested => {
 				tracing::info!("The close button was pressed; stopping");
 				event_loop.exit();
@@ -331,6 +261,19 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 					}
 					Err(e) => tracing::error!("{:?}", e),
 				}
+			}
+			// Currently not supported on wayland see https://github.com/rust-windowing/winit/issues/1881
+			WindowEvent::DroppedFile(path) => {
+				match std::fs::read(&path) {
+					Ok(content) => {
+						let message = DesktopWrapperMessage::OpenFile { path, content };
+						let _ = self.event_loop_proxy.send_event(CustomEvent::DesktopWrapperMessage(message));
+					}
+					Err(e) => {
+						tracing::error!("Failed to read dropped file {}: {}", path.display(), e);
+						return;
+					}
+				};
 			}
 			_ => {}
 		}

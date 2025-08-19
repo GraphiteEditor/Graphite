@@ -1,3 +1,5 @@
+use graphene_std::Color;
+use graphene_std::raster::Image;
 use graphite_editor::messages::prelude::{DocumentMessage, Message, PortfolioMessage};
 
 use super::DesktopWrapperMessageExecutor;
@@ -17,72 +19,11 @@ pub(super) fn handle_desktop_wrapper_message(executor: &mut DesktopWrapperMessag
 			}
 		}
 		DesktopWrapperMessage::OpenFileDialogResult { path, content, context } => match context {
-			OpenFileDialogContext::Document => match String::from_utf8(content) {
-				Ok(content) => {
-					executor.queue_message(
-						PortfolioMessage::OpenDocumentFile {
-							document_name: None,
-							document_path: Some(path),
-							document_serialized_content: content,
-						}
-						.into(),
-					);
-				}
-				Err(e) => {
-					tracing::error!("Failed to deserialize document content: {:?}", e);
-				}
-			},
+			OpenFileDialogContext::Document => {
+				executor.queue(DesktopWrapperMessage::OpenDocument { path, content });
+			}
 			OpenFileDialogContext::Import => {
-				let extension = path.extension().and_then(|s| s.to_str());
-				let name = path.file_stem().map(|s| s.to_string_lossy().to_string());
-				match extension {
-					Some("svg") => match String::from_utf8(content) {
-						Ok(content) if !content.is_empty() => {
-							executor.queue_message(
-								PortfolioMessage::PasteSvg {
-									name,
-									svg: content,
-									mouse: None,
-									parent_and_insert_index: None,
-								}
-								.into(),
-							);
-						}
-						Ok(_) => {
-							tracing::warn!("Svg file is empty: {}", path.display());
-						}
-						Err(e) => {
-							tracing::error!("Failed to deserialize document content: {:?}", e);
-						}
-					},
-					Some(_) => {
-						let reader = image::ImageReader::new(std::io::Cursor::new(content));
-						match reader.decode() {
-							Ok(image) => {
-								let width = image.width();
-								let height = image.height();
-								let image_data = image.to_rgba8();
-								let image = graphene_std::raster::Image::<graphene_std::Color>::from_image_data(image_data.as_raw(), width, height);
-
-								executor.queue_message(
-									PortfolioMessage::PasteImage {
-										name,
-										image,
-										mouse: None,
-										parent_and_insert_index: None,
-									}
-									.into(),
-								);
-							}
-							Err(e) => {
-								tracing::error!("Failed to decode image: {}: {}", path.display(), e);
-							}
-						}
-					}
-					_ => {
-						tracing::warn!("Unsupported file type: {}", path.display());
-					}
-				}
+				executor.queue(DesktopWrapperMessage::ImportFile { path, content });
 			}
 		},
 		DesktopWrapperMessage::SaveFileDialogResult { path, context } => match context {
@@ -97,6 +38,79 @@ pub(super) fn handle_desktop_wrapper_message(executor: &mut DesktopWrapperMessag
 				executor.respond(DesktopFrontendMessage::WriteFile { path, content });
 			}
 		},
+		DesktopWrapperMessage::OpenFile { path, content } => {
+			let extension = path.extension().and_then(|s| s.to_str()).unwrap_or_default().to_lowercase();
+			match extension.as_str() {
+				"graphite" => {
+					executor.queue(DesktopWrapperMessage::OpenDocument { path, content });
+				}
+				_ => {
+					executor.queue(DesktopWrapperMessage::ImportFile { path, content });
+				}
+			}
+		}
+		DesktopWrapperMessage::OpenDocument { path, content } => {
+			let Ok(content) = String::from_utf8(content) else {
+				tracing::warn!("Document file is invalid: {}", path.display());
+				return;
+			};
+
+			let message = PortfolioMessage::OpenDocumentFile {
+				document_name: None,
+				document_path: Some(path),
+				document_serialized_content: content,
+			};
+			executor.queue_message(message.into());
+		}
+		DesktopWrapperMessage::ImportFile { path, content } => {
+			let extension = path.extension().and_then(|s| s.to_str()).unwrap_or_default().to_lowercase();
+			match extension.as_str() {
+				"svg" => {
+					executor.queue(DesktopWrapperMessage::ImportSvg { path, content });
+				}
+				_ => {
+					executor.queue(DesktopWrapperMessage::ImportImage { path, content });
+				}
+			}
+		}
+		DesktopWrapperMessage::ImportSvg { path, content } => {
+			let Ok(content) = String::from_utf8(content) else {
+				tracing::warn!("Svg file is invalid: {}", path.display());
+				return;
+			};
+
+			let message = PortfolioMessage::PasteSvg {
+				name: path.file_stem().map(|s| s.to_string_lossy().to_string()),
+				svg: content,
+				mouse: None,
+				parent_and_insert_index: None,
+			};
+			executor.queue_message(message.into());
+		}
+		DesktopWrapperMessage::ImportImage { path, content } => {
+			let name = path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string());
+			let extension = path.extension().and_then(|s| s.to_str()).unwrap_or_default().to_lowercase();
+			let Some(image_format) = image::ImageFormat::from_extension(&extension) else {
+				tracing::warn!("Unsupported file type: {}", path.display());
+				return;
+			};
+			let reader = image::ImageReader::with_format(std::io::Cursor::new(content), image_format);
+			let Ok(image) = reader.decode() else {
+				tracing::error!("Failed to decode image: {}", path.display());
+				return;
+			};
+			let width = image.width();
+			let height = image.height();
+			let image_data = image.to_rgba8();
+			let image = Image::<Color>::from_image_data(image_data.as_raw(), width, height);
+			let message = PortfolioMessage::PasteImage {
+				name,
+				image,
+				mouse: None,
+				parent_and_insert_index: None,
+			};
+			executor.queue_message(message.into());
+		}
 		DesktopWrapperMessage::PollNodeGraphEvaluation => executor.poll_node_graph_evaluation(),
 	}
 }
