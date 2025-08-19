@@ -277,7 +277,7 @@ impl EditorHandle {
 
 						// Used by auto-panning, but this could possibly be refactored in the future, see:
 						// <https://github.com/GraphiteEditor/Graphite/pull/2562#discussion_r2041102786>
-						handle.dispatch(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame));
+						handle.dispatch(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame));
 					});
 				}
 

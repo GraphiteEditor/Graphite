@@ -365,6 +365,11 @@
 			cumulativeDragDelta = 0;
 
 			document.exitPointerLock();
+
+			// Fallback for Safari in case pointerlockchange never fires
+			setTimeout(() => {
+				if (!document.pointerLockElement) pointerLockChange();
+			}, 0);
 		};
 		const pointerMove = (e: PointerEvent) => {
 			// Abort the drag if right click is down. This works here because a "pointermove" event is fired when right clicking even if the cursor didn't move.

@@ -59,7 +59,7 @@ pub enum TextToolMessage {
 	// Standard messages
 	Abort,
 	WorkingColorChanged,
-	Overlays(OverlayContext),
+	Overlays { context: OverlayContext },
 
 	// Tool-specific messages
 	DragStart,
@@ -70,7 +70,7 @@ pub enum TextToolMessage {
 	PointerOutsideViewport { center: Key, lock_ratio: Key },
 	TextChange { new_text: String, is_left_or_right_click: bool },
 	UpdateBounds { new_text: String },
-	UpdateOptions(TextOptionsUpdate),
+	UpdateOptions { options: TextOptionsUpdate },
 }
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -100,20 +100,24 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 	let font = FontInput::new(&tool.options.font_name, &tool.options.font_style)
 		.is_style_picker(false)
 		.on_update(|font_input: &FontInput| {
-			TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
-				family: font_input.font_family.clone(),
-				style: font_input.font_style.clone(),
-			})
+			TextToolMessage::UpdateOptions {
+				options: TextOptionsUpdate::Font {
+					family: font_input.font_family.clone(),
+					style: font_input.font_style.clone(),
+				},
+			}
 			.into()
 		})
 		.widget_holder();
 	let style = FontInput::new(&tool.options.font_name, &tool.options.font_style)
 		.is_style_picker(true)
 		.on_update(|font_input: &FontInput| {
-			TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
-				family: font_input.font_family.clone(),
-				style: font_input.font_style.clone(),
-			})
+			TextToolMessage::UpdateOptions {
+				options: TextOptionsUpdate::Font {
+					family: font_input.font_family.clone(),
+					style: font_input.font_style.clone(),
+				},
+			}
 			.into()
 		})
 		.widget_holder();
@@ -123,7 +127,12 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		.int()
 		.min(1.)
 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap())).into())
+		.on_update(|number_input: &NumberInput| {
+			TextToolMessage::UpdateOptions {
+				options: TextOptionsUpdate::FontSize(number_input.value.unwrap()),
+			}
+			.into()
+		})
 		.widget_holder();
 	let line_height_ratio = NumberInput::new(Some(tool.options.line_height_ratio))
 		.label("Line Height")
@@ -131,14 +140,22 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		.min(0.)
 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 		.step(0.1)
-		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::LineHeightRatio(number_input.value.unwrap())).into())
+		.on_update(|number_input: &NumberInput| {
+			TextToolMessage::UpdateOptions {
+				options: TextOptionsUpdate::LineHeightRatio(number_input.value.unwrap()),
+			}
+			.into()
+		})
 		.widget_holder();
 	let align_entries: Vec<_> = [TextAlign::Left, TextAlign::Center, TextAlign::Right, TextAlign::JustifyLeft]
 		.into_iter()
 		.map(|align| {
-			RadioEntryData::new(format!("{align:?}"))
-				.label(align.to_string())
-				.on_update(move |_| TextToolMessage::UpdateOptions(TextOptionsUpdate::Align(align)).into())
+			RadioEntryData::new(format!("{align:?}")).label(align.to_string()).on_update(move |_| {
+				TextToolMessage::UpdateOptions {
+					options: TextOptionsUpdate::Align(align),
+				}
+				.into()
+			})
 		})
 		.collect();
 	let align = RadioInput::new(align_entries).selected_index(Some(tool.options.align as u32)).widget_holder();
@@ -164,9 +181,26 @@ impl LayoutHolder for TextTool {
 		widgets.append(&mut self.options.fill.create_widgets(
 			"Fill",
 			true,
-			|_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(None)).into(),
-			|color_type: ToolColorType| WidgetCallback::new(move |_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
+			|_| {
+				TextToolMessage::UpdateOptions {
+					options: TextOptionsUpdate::FillColor(None),
+				}
+				.into()
+			},
+			|color_type: ToolColorType| {
+				WidgetCallback::new(move |_| {
+					TextToolMessage::UpdateOptions {
+						options: TextOptionsUpdate::FillColorType(color_type.clone()),
+					}
+					.into()
+				})
+			},
+			|color: &ColorInput| {
+				TextToolMessage::UpdateOptions {
+					options: TextOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+				}
+				.into()
+			},
 		));
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
@@ -176,11 +210,11 @@ impl LayoutHolder for TextTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for TextTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		let ToolMessage::Text(TextToolMessage::UpdateOptions(action)) = message else {
+		let ToolMessage::Text(TextToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			return;
 		};
-		match action {
+		match options {
 			TextOptionsUpdate::Font { family, style } => {
 				self.options.font_name = family;
 				self.options.font_style = style;
@@ -237,7 +271,7 @@ impl ToolTransition for TextTool {
 			canvas_transformed: None,
 			tool_abort: Some(TextToolMessage::Abort.into()),
 			working_color_changed: Some(TextToolMessage::WorkingColorChanged.into()),
-			overlay_provider: Some(|overlay_context| TextToolMessage::Overlays(overlay_context).into()),
+			overlay_provider: Some(|context| TextToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
 	}
@@ -474,7 +508,7 @@ impl Fsm for TextToolFsmState {
 
 		let ToolMessage::Text(event) = event else { return self };
 		match (self, event) {
-			(TextToolFsmState::Editing, TextToolMessage::Overlays(mut overlay_context)) => {
+			(TextToolFsmState::Editing, TextToolMessage::Overlays { context: mut overlay_context }) => {
 				responses.add(FrontendMessage::DisplayEditableTextboxTransform {
 					transform: document.metadata().transform_to_viewport(tool_data.layer).to_cols_array(),
 				});
@@ -490,7 +524,7 @@ impl Fsm for TextToolFsmState {
 
 				TextToolFsmState::Editing
 			}
-			(_, TextToolMessage::Overlays(mut overlay_context)) => {
+			(_, TextToolMessage::Overlays { context: mut overlay_context }) => {
 				if matches!(self, Self::Placing) {
 					// Get the updated selection box bounds
 					let quad = Quad::from_box(tool_data.cached_resize_bounds);
@@ -852,10 +886,9 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(_, TextToolMessage::WorkingColorChanged) => {
-				responses.add(TextToolMessage::UpdateOptions(TextOptionsUpdate::WorkingColors(
-					Some(global_tool_data.primary_color),
-					Some(global_tool_data.secondary_color),
-				)));
+				responses.add(TextToolMessage::UpdateOptions {
+					options: TextOptionsUpdate::WorkingColors(Some(global_tool_data.primary_color), Some(global_tool_data.secondary_color)),
+				});
 				self
 			}
 			(TextToolFsmState::Editing, TextToolMessage::Abort) => {

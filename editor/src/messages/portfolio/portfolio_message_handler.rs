@@ -204,7 +204,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::CloseAllDocuments => {
 				if self.active_document_id.is_some() {
-					responses.add(BroadcastEvent::ToolAbort);
+					responses.add(EventMessage::ToolAbort);
 					responses.add(ToolMessage::DeactivateTools);
 
 					// Clear relevant UI layouts if there are no documents
@@ -250,7 +250,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::CloseDocumentWithConfirmation { document_id } => {
 				let target_document = self.documents.get(&document_id).unwrap();
 				if target_document.is_saved() {
-					responses.add(BroadcastEvent::ToolAbort);
+					responses.add(EventMessage::ToolAbort);
 					responses.add(PortfolioMessage::CloseDocument { document_id });
 				} else {
 					let dialog = simple_dialogs::CloseDocumentDialog {
@@ -395,7 +395,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				let document_id = DocumentId(generate_uuid());
 				if self.active_document().is_some() {
-					new_responses.add(BroadcastEvent::ToolAbort);
+					new_responses.add(EventMessage::ToolAbort);
 					new_responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
@@ -898,8 +898,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(ToolMessage::InitTools);
 				responses.add(NodeGraphMessage::Init);
 				responses.add(OverlaysMessage::Draw);
-				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::ToolAbort);
+				responses.add(EventMessage::SelectionChanged);
 				responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(DocumentMessage::GraphViewOverlay { open: node_graph_open });
@@ -1156,7 +1156,7 @@ impl PortfolioMessageHandler {
 		self.documents.insert(document_id, new_document);
 
 		if self.active_document().is_some() {
-			responses.add(BroadcastEvent::ToolAbort);
+			responses.add(EventMessage::ToolAbort);
 			responses.add(ToolMessage::DeactivateTools);
 		} else {
 			// Load the default font upon creating the first document

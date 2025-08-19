@@ -335,9 +335,9 @@ pub enum FrontendMessage {
 		active: bool,
 	},
 	#[cfg(not(target_family = "wasm"))]
-	RenderOverlays(
+	RenderOverlays {
 		#[serde(skip, default = "OverlayContext::default")]
 		#[derivative(Debug = "ignore", PartialEq = "ignore")]
-		OverlayContext,
-	),
+		context: OverlayContext,
+	},
 }
