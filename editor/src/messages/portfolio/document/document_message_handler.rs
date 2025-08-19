@@ -1575,7 +1575,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			Noop,
 			Redo,
 			SaveDocument,
-			SaveDocumentAs,
 			SelectAllLayers,
 			SetSnapping,
 			ToggleGridVisibility,
@@ -1589,6 +1588,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			ZoomCanvasTo200Percent,
 			ZoomCanvasToFitAll,
 		);
+
+		// Additional actions available on desktop
+		#[cfg(not(target_family = "wasm"))]
+		common.extend(actions!(DocumentMessageDiscriminant::SaveDocumentAs));
 
 		// Additional actions if there are any selected layers
 		if self.network_interface.selected_nodes().selected_layers(self.metadata()).next().is_some() {
