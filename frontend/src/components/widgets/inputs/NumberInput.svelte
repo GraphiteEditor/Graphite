@@ -405,9 +405,8 @@
 		const pointerLockChange = () => {
 			// Workaround for a Safari bug where it fails to hide the cursor during pointer lock.
 			if (browserVersion().toLowerCase().includes("safari")) {
-				document.body.classList.add("hide-cursor");
-			} else {
-				document.body.classList.remove("hide-cursor");
+				if (document.pointerLockElement) document.body.classList.add("hide-cursor");
+				else document.body.classList.remove("hide-cursor");
 			}
 
 			// Do nothing if we just entered, rather than exited, pointer lock.
