@@ -38,13 +38,12 @@ impl Parse for ShaderNodeType {
 	}
 }
 
-pub trait CodegenShaderEntryPoint {
-	fn codegen_shader_entry_point(&self, parsed: &ParsedNodeFn) -> syn::Result<TokenStream>;
-	fn codegen_gpu_node(&self, parsed: &ParsedNodeFn) -> syn::Result<TokenStream>;
+pub trait ShaderCodegen {
+	fn codegen(&self, parsed: &ParsedNodeFn, node_cfg: &TokenStream) -> syn::Result<ShaderTokens>;
 }
 
-impl CodegenShaderEntryPoint for ShaderNodeType {
-	fn codegen_shader_entry_point(&self, parsed: &ParsedNodeFn) -> syn::Result<TokenStream> {
+impl ShaderCodegen for ShaderNodeType {
+	fn codegen(&self, parsed: &ParsedNodeFn, node_cfg: &TokenStream) -> syn::Result<ShaderTokens> {
 		match self {
 			ShaderNodeType::GpuNode => (),
 			_ => {
@@ -55,15 +54,14 @@ impl CodegenShaderEntryPoint for ShaderNodeType {
 		}
 
 		match self {
-			ShaderNodeType::GpuNode => Ok(TokenStream::new()),
-			ShaderNodeType::PerPixelAdjust(x) => x.codegen_shader_entry_point(parsed),
+			ShaderNodeType::GpuNode => Ok(ShaderTokens::default()),
+			ShaderNodeType::PerPixelAdjust(x) => x.codegen(parsed, node_cfg),
 		}
 	}
+}
 
-	fn codegen_gpu_node(&self, parsed: &ParsedNodeFn) -> syn::Result<TokenStream> {
-		match self {
-			ShaderNodeType::GpuNode => Ok(TokenStream::new()),
-			ShaderNodeType::PerPixelAdjust(x) => x.codegen_gpu_node(parsed),
-		}
-	}
+#[derive(Clone, Default)]
+pub struct ShaderTokens {
+	pub shader_entry_point: TokenStream,
+	pub gpu_node: TokenStream,
 }
