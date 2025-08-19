@@ -1074,7 +1074,7 @@ impl Render for Table<Vector> {
 			let vector = row.element;
 
 			if let Some(element_id) = element_id {
-				let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::weight);
+				let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::effective_width);
 				let filled = vector.style.fill() != &Fill::None;
 				let fill = |mut subpath: Subpath<_>| {
 					if filled {

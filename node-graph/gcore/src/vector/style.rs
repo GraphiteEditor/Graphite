@@ -371,6 +371,16 @@ impl Stroke {
 		self.weight
 	}
 
+	/// Get the effective stroke weight.
+	pub fn effective_width(&self) -> f64 {
+		self.weight
+			* match self.align {
+				StrokeAlign::Center => 1.,
+				StrokeAlign::Inside => 0.,
+				StrokeAlign::Outside => 2.,
+			}
+	}
+
 	pub fn dash_lengths(&self) -> String {
 		if self.dash_lengths.is_empty() {
 			"none".to_string()
