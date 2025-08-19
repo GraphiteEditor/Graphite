@@ -1,6 +1,7 @@
 use crate::parsing::{Input, NodeFnAttributes, ParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField};
 use crate::shader_nodes::{CodegenShaderEntryPoint, ShaderNodeType};
 use convert_case::{Case, Casing};
+use proc_macro_crate::FoundCrate;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use std::borrow::Cow;
@@ -105,14 +106,24 @@ impl CodegenShaderEntryPoint for PerPixelAdjust {
 		let struct_name = format_ident!("{}", fn_name.to_string().to_case(Case::Pascal));
 		let mod_name = fn_name.clone();
 
+		let gcore = match &parsed.crate_name {
+			FoundCrate::Itself => format_ident!("crate"),
+			FoundCrate::Name(name) => format_ident!("{name}"),
+		};
+		let raster_gpu = syn::parse2::<Type>(quote!(#gcore::table::Table<#gcore::raster_types::Raster<#gcore::raster_types::GPU>>))?;
+
 		let fields = parsed
 			.fields
 			.iter()
 			.map(|f| match &f.ty {
-				ParsedFieldType::Regular(reg) => Ok(ParsedField {
-					ty: ParsedFieldType::Regular(RegularParsedField { gpu_image: false, ..reg.clone() }),
+				ParsedFieldType::Regular(reg @ RegularParsedField { gpu_image: true, .. }) => Ok(ParsedField {
+					ty: ParsedFieldType::Regular(RegularParsedField {
+						ty: raster_gpu.clone(),
+						..reg.clone()
+					}),
 					..f.clone()
 				}),
+				ParsedFieldType::Regular(RegularParsedField { gpu_image: false, .. }) => Ok(f.clone()),
 				ParsedFieldType::Node { .. } => Err(syn::Error::new_spanned(&f.pat_ident, "PerPixelAdjust shader nodes cannot accept other nodes as generics")),
 			})
 			.collect::<syn::Result<_>>()?;
@@ -146,7 +157,7 @@ impl CodegenShaderEntryPoint for PerPixelAdjust {
 				}),
 				implementations: Default::default(),
 			},
-			output_type: parsed.output_type.clone(),
+			output_type: raster_gpu,
 			is_async: true,
 			fields,
 			body,
