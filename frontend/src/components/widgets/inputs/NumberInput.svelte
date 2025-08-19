@@ -347,7 +347,7 @@
 		if (!(target instanceof HTMLElement)) return;
 
 		// Enter dragging state
-		target.requestPointerLock();
+		// target.requestPointerLock();
 		initialValueBeforeDragging = value;
 		cumulativeDragDelta = 0;
 
