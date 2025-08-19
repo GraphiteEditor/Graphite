@@ -1,5 +1,5 @@
 use crate::parsing::{Input, NodeFnAttributes, ParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField};
-use crate::shader_nodes::{CodegenShaderEntryPoint, ShaderNodeType};
+use crate::shader_nodes::{ShaderCodegen, ShaderNodeType, ShaderTokens};
 use convert_case::{Case, Casing};
 use proc_macro_crate::FoundCrate;
 use proc_macro2::{Ident, Span, TokenStream};
@@ -7,7 +7,7 @@ use quote::{ToTokens, format_ident, quote};
 use std::borrow::Cow;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{Path, Token, TraitBound, TraitBoundModifier, Type, TypeImplTrait, TypeParamBound};
+use syn::{Token, TraitBound, TraitBoundModifier, Type, TypeImplTrait, TypeParamBound};
 
 #[derive(Debug, Clone)]
 pub struct PerPixelAdjust {}
@@ -18,10 +18,19 @@ impl Parse for PerPixelAdjust {
 	}
 }
 
-impl CodegenShaderEntryPoint for PerPixelAdjust {
+impl ShaderCodegen for PerPixelAdjust {
+	fn codegen(&self, parsed: &ParsedNodeFn, node_cfg: &TokenStream) -> syn::Result<ShaderTokens> {
+		Ok(ShaderTokens {
+			shader_entry_point: self.codegen_shader_entry_point(parsed)?,
+			gpu_node: self.codegen_gpu_node(parsed, node_cfg)?,
+		})
+	}
+}
+
+impl PerPixelAdjust {
 	fn codegen_shader_entry_point(&self, parsed: &ParsedNodeFn) -> syn::Result<TokenStream> {
 		let fn_name = &parsed.fn_name;
-		let gpu_mod = format_ident!("{}_gpu_entry_point", parsed.fn_name);
+		let gpu_mod = format_ident!("{}_gpu_entry_point", fn_name);
 		let spirv_image_ty = quote!(Image2d);
 
 		// bindings for images start at 1
@@ -101,7 +110,7 @@ impl CodegenShaderEntryPoint for PerPixelAdjust {
 		})
 	}
 
-	fn codegen_gpu_node(&self, parsed: &ParsedNodeFn) -> syn::Result<TokenStream> {
+	fn codegen_gpu_node(&self, parsed: &ParsedNodeFn, node_cfg: &TokenStream) -> syn::Result<TokenStream> {
 		let fn_name = format_ident!("{}_gpu", parsed.fn_name);
 		let struct_name = format_ident!("{}", fn_name.to_string().to_case(Case::Pascal));
 		let mod_name = fn_name.clone();
@@ -127,13 +136,14 @@ impl CodegenShaderEntryPoint for PerPixelAdjust {
 				ParsedFieldType::Node { .. } => Err(syn::Error::new_spanned(&f.pat_ident, "PerPixelAdjust shader nodes cannot accept other nodes as generics")),
 			})
 			.collect::<syn::Result<_>>()?;
+
 		let body = quote! {
 			{
 
 			}
 		};
 
-		crate::codegen::generate_node_code(&ParsedNodeFn {
+		let gpu_node = crate::codegen::generate_node_code(&ParsedNodeFn {
 			vis: parsed.vis.clone(),
 			attributes: NodeFnAttributes {
 				shader_node: Some(ShaderNodeType::GpuNode),
@@ -141,7 +151,7 @@ impl CodegenShaderEntryPoint for PerPixelAdjust {
 			},
 			fn_name,
 			struct_name,
-			mod_name,
+			mod_name: mod_name.clone(),
 			fn_generics: vec![],
 			where_clause: None,
 			input: Input {
@@ -152,7 +162,7 @@ impl CodegenShaderEntryPoint for PerPixelAdjust {
 						paren_token: None,
 						modifier: TraitBoundModifier::None,
 						lifetimes: None,
-						path: Path::from(format_ident!("Ctx")),
+						path: syn::parse2(quote!(#gcore::context::Ctx))?,
 					})]),
 				}),
 				implementations: Default::default(),
@@ -163,6 +173,15 @@ impl CodegenShaderEntryPoint for PerPixelAdjust {
 			body,
 			crate_name: parsed.crate_name.clone(),
 			description: "".to_string(),
+		})?;
+
+		Ok(quote! {
+			#node_cfg
+			mod #mod_name {
+				use super::*;
+
+				#gpu_node
+			}
 		})
 	}
 }
