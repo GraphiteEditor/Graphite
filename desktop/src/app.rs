@@ -61,8 +61,8 @@ impl WinitApp {
 	}
 
 	fn send_messages_to_editor(&mut self, mut responses: Vec<FrontendMessage>) {
-		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::RenderOverlays(_))) {
-			let FrontendMessage::RenderOverlays(overlay_context) = message else { unreachable!() };
+		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::RenderOverlays { .. })) {
+			let FrontendMessage::RenderOverlays { context: overlay_context } = message else { unreachable!() };
 			if let Some(graphics_state) = &mut self.graphics_state {
 				let scene = overlay_context.take_scene();
 				graphics_state.set_overlays_scene(scene);

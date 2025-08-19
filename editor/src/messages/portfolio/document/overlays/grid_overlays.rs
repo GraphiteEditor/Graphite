@@ -200,7 +200,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		move |input: &I| {
 			let mut grid = grid.clone();
 			update(&mut grid, input);
-			DocumentMessage::GridOptions(grid).into()
+			DocumentMessage::GridOptions { options: grid }.into()
 		}
 	}
 	let update_origin = |grid, update: fn(&mut GridSnapping) -> Option<&mut f64>| {

@@ -139,7 +139,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				let transformed_delta = document_to_viewport.inverse().transform_vector2(delta);
 
 				ptz.pan += transformed_delta;
-				responses.add(BroadcastEvent::CanvasTransformed);
+				responses.add(EventMessage::CanvasTransformed);
 				responses.add(DocumentMessage::PTZUpdate);
 			}
 			NavigationMessage::CanvasPanAbortPrepare { x_not_y_axis } => {
@@ -286,7 +286,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				ptz.flip = !ptz.flip;
 
 				responses.add(DocumentMessage::PTZUpdate);
-				responses.add(BroadcastEvent::CanvasTransformed);
+				responses.add(EventMessage::CanvasTransformed);
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
@@ -325,7 +325,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				self.navigation_operation = NavigationOperation::None;
 
 				// Send the final messages to close out the operation
-				responses.add(BroadcastEvent::CanvasTransformed);
+				responses.add(EventMessage::CanvasTransformed);
 				responses.add(ToolMessage::UpdateCursor);
 				responses.add(ToolMessage::UpdateHints);
 				responses.add(NavigateToolMessage::End);

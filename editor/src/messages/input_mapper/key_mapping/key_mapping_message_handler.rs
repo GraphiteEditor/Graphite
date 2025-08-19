@@ -19,8 +19,11 @@ impl MessageHandler<KeyMappingMessage, KeyMappingMessageContext<'_>> for KeyMapp
 		let KeyMappingMessageContext { input, actions } = context;
 
 		match message {
+			// Sub-messages
 			KeyMappingMessage::Lookup(input_message) => self.mapping_handler.process_message(input_message, responses, InputMapperMessageContext { input, actions }),
-			KeyMappingMessage::ModifyMapping(new_layout) => self.mapping_handler.set_mapping(new_layout.into()),
+
+			// Messages
+			KeyMappingMessage::ModifyMapping { mapping } => self.mapping_handler.set_mapping(mapping.into()),
 		}
 	}
 	advertise_actions!();

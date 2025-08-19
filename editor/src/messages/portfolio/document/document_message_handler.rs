@@ -391,7 +391,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 				}
 			}
-			DocumentMessage::DrawArtboardOverlays(overlay_context) => {
+			DocumentMessage::DrawArtboardOverlays { context: overlay_context } => {
 				if !overlay_context.visibility_settings.artboard_name() {
 					return;
 				}
@@ -588,19 +588,19 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::GraphViewOverlayToggle => {
 				responses.add(DocumentMessage::GraphViewOverlay { open: !self.graph_view_overlay_open });
 			}
-			DocumentMessage::GridOptions(grid) => {
-				self.snapping_state.grid = grid;
+			DocumentMessage::GridOptions { options } => {
+				self.snapping_state.grid = options;
 				self.snapping_state.grid_snapping = true;
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			DocumentMessage::GridOverlays(mut overlay_context) => {
+			DocumentMessage::GridOverlays { context: mut overlay_context } => {
 				if self.snapping_state.grid_snapping {
 					grid_overlay(self, &mut overlay_context)
 				}
 			}
-			DocumentMessage::GridVisibility(enabled) => {
-				self.snapping_state.grid_snapping = enabled;
+			DocumentMessage::GridVisibility { visible } => {
+				self.snapping_state.grid_snapping = visible;
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
@@ -1062,7 +1062,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if !parent_layers.is_empty() {
 					let nodes = parent_layers.into_iter().collect();
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
-					responses.add(BroadcastEvent::SelectionChanged);
+					responses.add(EventMessage::SelectionChanged);
 				}
 			}
 			DocumentMessage::SelectAllLayers => {
@@ -1137,7 +1137,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						} else {
 							responses.add_front(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
 						}
-						responses.add(BroadcastEvent::SelectionChanged);
+						responses.add(EventMessage::SelectionChanged);
 					} else {
 						nodes.push(id);
 					}
@@ -1206,7 +1206,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					Some(overlays_type) => overlays_type,
 					None => {
 						visibility_settings.all = visible;
-						responses.add(BroadcastEvent::ToolAbort);
+						responses.add(EventMessage::ToolAbort);
 						responses.add(OverlaysMessage::Draw);
 						return;
 					}
@@ -1229,7 +1229,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					OverlaysType::Handles => visibility_settings.handles = visible,
 				}
 
-				responses.add(BroadcastEvent::ToolAbort);
+				responses.add(EventMessage::ToolAbort);
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::SetRangeSelectionLayer { new_layer } => {
@@ -1443,12 +1443,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					let transform = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 					self.network_interface.set_document_to_viewport_transform(transform);
 					// Ensure selection box is kept in sync with the pointer when the PTZ changes
-					responses.add(SelectToolMessage::PointerMove(SelectToolPointerKeys {
-						axis_align: Key::Shift,
-						snap_angle: Key::Shift,
-						center: Key::Alt,
-						duplicate: Key::Alt,
-					}));
+					responses.add(SelectToolMessage::PointerMove {
+						modifier_keys: SelectToolPointerKeys {
+							axis_align: Key::Shift,
+							snap_angle: Key::Shift,
+							center: Key::Alt,
+							duplicate: Key::Alt,
+						},
+					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
 					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
@@ -1477,11 +1479,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::SelectionStepBack => {
 				self.network_interface.selection_step_back(&self.selection_network_path);
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::SelectionStepForward => {
 				self.network_interface.selection_step_forward(&self.selection_network_path);
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::WrapContentInArtboard { place_artboard_at_origin } => {
 				// Get bounding box of all layers
@@ -2484,7 +2486,7 @@ impl DocumentMessageHandler {
 				.icon("Grid")
 				.tooltip("Grid")
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleGridVisibility))
-				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisibility(optional_input.checked).into())
+				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisibility { visible: optional_input.checked }.into())
 				.widget_holder(),
 			PopoverButton::new()
 				.popover_layout(overlay_options(&self.snapping_state.grid))

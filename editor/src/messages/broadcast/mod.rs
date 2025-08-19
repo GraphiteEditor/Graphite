@@ -1,7 +1,7 @@
 mod broadcast_message;
 mod broadcast_message_handler;
 
-pub mod broadcast_event;
+pub mod event;
 
 #[doc(inline)]
 pub use broadcast_message::{BroadcastMessage, BroadcastMessageDiscriminant};
