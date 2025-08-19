@@ -7,14 +7,14 @@ use crate::messages::prelude::*;
 pub enum OverlaysMessage {
 	Draw,
 	// Serde functionality isn't used but is required by the message system macros
-	AddProvider(
+	AddProvider {
 		#[serde(skip, default = "empty_provider")]
 		#[derivative(Debug = "ignore", PartialEq = "ignore")]
-		OverlayProvider,
-	),
-	RemoveProvider(
+		provider: OverlayProvider,
+	},
+	RemoveProvider {
 		#[serde(skip, default = "empty_provider")]
 		#[derivative(Debug = "ignore", PartialEq = "ignore")]
-		OverlayProvider,
-	),
+		provider: OverlayProvider,
+	},
 }

@@ -33,3 +33,6 @@ graphene-core = { workspace = true }
 unexpected_cfgs = { level = "warn", check-cfg = [
 	'cfg(target_arch, values("spirv"))',
 ] }
+
+[package.metadata.cargo-shear]
+ignored = ["graphene-core"]

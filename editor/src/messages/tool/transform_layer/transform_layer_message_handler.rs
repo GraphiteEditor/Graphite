@@ -16,7 +16,7 @@ use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::{Vector, VectorModificationType};
 use std::f64::consts::{PI, TAU};
 
-const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays(context).into();
+const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays { context }.into();
 
 // TODO: Get these from the input mapper
 const SLOW_KEY: Key = Key::Shift;
@@ -69,6 +69,7 @@ pub struct TransformLayerMessageHandler {
 	was_grabbing: bool,
 }
 
+#[message_handler_data]
 impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for TransformLayerMessageHandler {
 	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, context: TransformLayerMessageContext) {
 		let TransformLayerMessageContext {
@@ -172,7 +173,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 		match message {
 			// Overlays
-			TransformLayerMessage::Overlays(mut overlay_context) => {
+			TransformLayerMessage::Overlays { context: mut overlay_context } => {
 				if !overlay_context.visibility_settings.transform_measurement() {
 					return;
 				}
@@ -304,7 +305,9 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 				if final_transform {
 					self.was_grabbing = false;
-					responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+					responses.add(OverlaysMessage::RemoveProvider {
+						provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
+					});
 				}
 			}
 			TransformLayerMessage::BeginTransformOperation { operation } => {
@@ -343,7 +346,9 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					_ => unreachable!(), // Safe because the match arms are exhaustive
 				};
 
-				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+				responses.add(OverlaysMessage::AddProvider {
+					provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
+				});
 				// Find a way better than this hack
 				responses.add(TransformLayerMessage::PointerMove {
 					slow_key: SLOW_KEY,
@@ -428,7 +433,9 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				if chain_operation {
 					responses.add(TransformLayerMessage::ApplyTransformOperation { final_transform: false });
 				} else {
-					responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+					responses.add(OverlaysMessage::AddProvider {
+						provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
+					});
 				}
 				responses.add(TransformLayerMessage::BeginTransformOperation { operation: transform_type });
 				responses.add(TransformLayerMessage::PointerMove {
@@ -465,7 +472,9 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				}
 
 				responses.add(SelectToolMessage::PivotShift { offset: None, flush: false });
-				responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+				responses.add(OverlaysMessage::RemoveProvider {
+					provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
+				});
 			}
 			TransformLayerMessage::ConstrainX => {
 				let pivot = document_to_viewport.transform_point2(self.local_pivot);

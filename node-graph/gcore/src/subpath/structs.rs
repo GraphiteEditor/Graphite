@@ -10,18 +10,6 @@ pub trait Identifier: Sized + Clone + PartialEq + Hash + 'static {
 	fn new() -> Self;
 }
 
-/// An empty id type for use in tests
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-#[cfg(test)]
-pub(crate) struct EmptyId;
-
-#[cfg(test)]
-impl Identifier for EmptyId {
-	fn new() -> Self {
-		Self
-	}
-}
-
 /// Structure used to represent a single anchor with up to two optional associated handles along a `Subpath`
 #[derive(Copy, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

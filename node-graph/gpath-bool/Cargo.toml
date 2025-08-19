@@ -16,4 +16,3 @@ specta = { workspace = true }
 log = { workspace = true }
 path-bool = { workspace = true }
 serde = { workspace = true }
-kurbo = { workspace = true }

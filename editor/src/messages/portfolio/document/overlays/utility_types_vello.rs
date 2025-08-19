@@ -202,6 +202,7 @@ impl core::hash::Hash for OverlayContext {
 }
 
 impl OverlayContext {
+	#[allow(dead_code)]
 	pub(super) fn new(size: DVec2, device_pixel_ratio: f64, visibility_settings: OverlaysVisibilitySettings) -> Self {
 		Self {
 			internal: Arc::new(Mutex::new(OverlayContextInternal::new(size, device_pixel_ratio, visibility_settings))),
