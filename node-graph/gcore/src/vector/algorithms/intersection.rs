@@ -1,5 +1,24 @@
 use super::contants::MIN_SEPARATION_VALUE;
 use kurbo::{BezPath, DEFAULT_ACCURACY, ParamCurve, PathSeg, Shape};
+use lyon_geom::{CubicBezierSegment, Point};
+
+/// Converts a kurbo cubic bezier to a lyon_geom CubicBezierSegment
+fn kurbo_cubic_to_lyon(cubic: kurbo::CubicBez) -> CubicBezierSegment<f64> {
+	CubicBezierSegment {
+		from: Point::new(cubic.p0.x, cubic.p0.y),
+		ctrl1: Point::new(cubic.p1.x, cubic.p1.y),
+		ctrl2: Point::new(cubic.p2.x, cubic.p2.y),
+		to: Point::new(cubic.p3.x, cubic.p3.y),
+	}
+}
+
+/// Fast cubic-cubic intersection using lyon_geom's analytical approach
+fn cubic_cubic_intersections_lyon(cubic1: kurbo::CubicBez, cubic2: kurbo::CubicBez) -> Vec<(f64, f64)> {
+	let lyon_cubic1 = kurbo_cubic_to_lyon(cubic1);
+	let lyon_cubic2 = kurbo_cubic_to_lyon(cubic2);
+
+	lyon_cubic1.cubic_intersections_t(&lyon_cubic2).to_vec()
+}
 
 /// Calculates the intersection points the bezpath has with a given segment and returns a list of `(usize, f64)` tuples,
 /// where the `usize` represents the index of the segment in the bezpath, and the `f64` represents the `t`-value local to
@@ -37,6 +56,8 @@ pub fn segment_intersections(segment1: PathSeg, segment2: PathSeg, accuracy: Opt
 	match (segment1, segment2) {
 		(PathSeg::Line(line), segment2) => segment2.intersect_line(line).iter().map(|i| (i.line_t, i.segment_t)).collect(),
 		(segment1, PathSeg::Line(line)) => segment1.intersect_line(line).iter().map(|i| (i.segment_t, i.line_t)).collect(),
+		// Fast path for cubic-cubic intersections using lyon_geom
+		(PathSeg::Cubic(cubic1), PathSeg::Cubic(cubic2)) => cubic_cubic_intersections_lyon(cubic1, cubic2),
 		(segment1, segment2) => {
 			let mut intersections = Vec::new();
 			segment_intersections_inner(segment1, 0., 1., segment2, 0., 1., accuracy, &mut intersections);
@@ -51,6 +72,21 @@ pub fn subsegment_intersections(segment1: PathSeg, min_t1: f64, max_t1: f64, seg
 	match (segment1, segment2) {
 		(PathSeg::Line(line), segment2) => segment2.intersect_line(line).iter().map(|i| (i.line_t, i.segment_t)).collect(),
 		(segment1, PathSeg::Line(line)) => segment1.intersect_line(line).iter().map(|i| (i.segment_t, i.line_t)).collect(),
+		// Fast path for cubic-cubic intersections using lyon_geom with subsegment parameters
+		(PathSeg::Cubic(cubic1), PathSeg::Cubic(cubic2)) => {
+			let sub_cubic1 = cubic1.subsegment(min_t1..max_t1);
+			let sub_cubic2 = cubic2.subsegment(min_t2..max_t2);
+
+			cubic_cubic_intersections_lyon(sub_cubic1, sub_cubic2)
+				.into_iter()
+				// Convert subsegment t-values back to original segment t-values
+				.map(|(t1, t2)| {
+					let original_t1 = min_t1 + t1 * (max_t1 - min_t1);
+					let original_t2 = min_t2 + t2 * (max_t2 - min_t2);
+					(original_t1, original_t2)
+				})
+				.collect()
+		}
 		(segment1, segment2) => {
 			let mut intersections = Vec::new();
 			segment_intersections_inner(segment1, min_t1, max_t1, segment2, min_t2, max_t2, accuracy, &mut intersections);
