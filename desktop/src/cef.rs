@@ -18,7 +18,7 @@ use winit::event_loop::EventLoopProxy;
 pub(crate) trait CefEventHandler: Clone {
 	fn window_size(&self) -> WindowSize;
 	fn draw<'a>(&self, frame_buffer: FrameBufferRef<'a>);
-	/// Scheudule the main event loop to run the cef event loop after the timeout
+	/// Schedule the main event loop to run the cef event loop after the timeout
 	///  [`_cef_browser_process_handler_t::on_schedule_message_pump_work`] for more documentation.
 	fn schedule_cef_message_loop_work(&self, scheduled_time: Instant);
 	fn receive_web_message(&self, message: &[u8]);
