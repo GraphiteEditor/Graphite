@@ -203,10 +203,9 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 }
 
 fn max_scale(transform: DAffine2) -> f64 {
-	let m = transform.to_cols_array();
-	let sx = (m[0] * m[0] + m[1] * m[1]).sqrt();
-	let sy = (m[2] * m[2] + m[3] * m[3]).sqrt();
-	sx.max(sy)
+	let sx = transform.x_axis.length_squared();
+	let sy = transform.y_axis.length_squared();
+	(sx + sy).sqrt()
 }
 
 pub fn to_transform(transform: DAffine2) -> usvg::Transform {
@@ -755,7 +754,7 @@ impl Render for Table<Vector> {
 					let mut svg = SvgRender::new();
 					vector_row.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
 					let stroke = row.element.style.stroke().unwrap();
-					let weight = stroke.weight * max_scale(applied_stroke_transform);
+					let weight = stroke.effective_width() * max_scale(applied_stroke_transform);
 					let quad = Quad::from_box(transformed_bounds).inflate(weight);
 					let (x, y) = quad.top_left().into();
 					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
@@ -862,7 +861,7 @@ impl Render for Table<Vector> {
 			let opacity = row.alpha_blending.opacity(render_params.for_mask);
 			if opacity < 1. || row.alpha_blending.blend_mode != BlendMode::default() {
 				layer = true;
-				let weight = row.element.style.stroke().unwrap().weight;
+				let weight = row.element.style.stroke().unwrap().effective_width();
 				let quad = Quad::from_box(layer_bounds).inflate(weight * max_scale(applied_stroke_transform));
 				let layer_bounds = quad.bounding_box();
 				scene.push_layer(
@@ -1004,7 +1003,7 @@ impl Render for Table<Vector> {
 						});
 
 						let bounds = row.element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
-						let weight = row.element.style.stroke().unwrap().weight;
+						let weight = row.element.style.stroke().unwrap().effective_width();
 						let quad = Quad::from_box(bounds).inflate(weight * max_scale(applied_stroke_transform));
 						let bounds = quad.bounding_box();
 						let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
@@ -1114,7 +1113,7 @@ impl Render for Table<Vector> {
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for row in self.iter() {
-			let stroke_width = row.element.style.stroke().as_ref().map_or(0., Stroke::weight);
+			let stroke_width = row.element.style.stroke().as_ref().map_or(0., Stroke::effective_width);
 			let filled = row.element.style.fill() != &Fill::None;
 			let fill = |mut subpath: Subpath<_>| {
 				if filled {
