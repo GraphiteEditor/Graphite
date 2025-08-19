@@ -21,6 +21,10 @@ pub fn modify_cfg(attributes: &NodeFnAttributes) -> TokenStream {
 
 #[derive(Debug, Clone, VariantNames)]
 pub(crate) enum ShaderNodeType {
+	/// Marker for this node being a generated gpu node implementation, that should not emit anything to prevent
+	/// recursively generating more gpu nodes. But it still counts as a gpu node and will get the
+	/// `#[cfg(feature = "std")]` feature gate around it's impl.
+	GpuNode,
 	PerPixelAdjust(PerPixelAdjust),
 }
 
@@ -41,17 +45,24 @@ pub trait CodegenShaderEntryPoint {
 
 impl CodegenShaderEntryPoint for ShaderNodeType {
 	fn codegen_shader_entry_point(&self, parsed: &ParsedNodeFn) -> syn::Result<TokenStream> {
-		if parsed.is_async {
-			return Err(Error::new_spanned(&parsed.fn_name, "Shader nodes must not be async"));
+		match self {
+			ShaderNodeType::GpuNode => (),
+			_ => {
+				if parsed.is_async {
+					return Err(Error::new_spanned(&parsed.fn_name, "Shader nodes must not be async"));
+				}
+			}
 		}
 
 		match self {
+			ShaderNodeType::GpuNode => Ok(TokenStream::new()),
 			ShaderNodeType::PerPixelAdjust(x) => x.codegen_shader_entry_point(parsed),
 		}
 	}
 
 	fn codegen_gpu_node(&self, parsed: &ParsedNodeFn) -> syn::Result<TokenStream> {
 		match self {
+			ShaderNodeType::GpuNode => Ok(TokenStream::new()),
 			ShaderNodeType::PerPixelAdjust(x) => x.codegen_gpu_node(parsed),
 		}
 	}
