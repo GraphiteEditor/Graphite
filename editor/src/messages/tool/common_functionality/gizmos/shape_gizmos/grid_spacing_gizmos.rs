@@ -175,11 +175,11 @@ impl GridSpacingGizmo {
 		let (tan_a_old, tan_b_old) = (a.to_radians().tan(), b.to_radians().tan());
 		let direction = gizmo_type.direction(self.column_index, self.row_index, self.angles, spacing, viewport);
 
-		let ((old_prev_row, old_prev_col), _sign) = match gizmo_type {
+		let ((old_prev_row, old_prev_col), sign) = match gizmo_type {
 			GridSpacingGizmoType::Rect(_) => unreachable!(),
 			GridSpacingGizmoType::Iso(h) => (h.old_row_col_index(self.row_index, self.column_index), h.delta_sign()),
 		};
-		let projection = viewport.inverse().transform_vector2(delta.project_onto(direction));
+		let projection = viewport.inverse().transform_vector2(sign * delta.project_onto(direction));
 		let a = (self.column_index + 1).div_ceil(2) as f64;
 		let b = ((self.column_index + 1) / 2) as f64;
 
@@ -190,9 +190,9 @@ impl GridSpacingGizmo {
 
 		// 1) Put the whole vertical move into y-spacing (for y>0):
 		let new_y_spacing = if y > 0.0 {
-			self.initial_spacing.y + delta / y
+			(self.initial_spacing.y + delta / y).abs()
 		} else {
-			self.initial_spacing.y // y==0 handled below in edge cases
+			(self.initial_spacing.y + delta).abs()
 		};
 
 		// 2) S' = sum of new tans required to keep spacing_x (=p) constant:
@@ -253,8 +253,8 @@ impl GridSpacingGizmo {
 		let (tan_a_old, tan_b_old) = (a.to_radians().tan(), b.to_radians().tan());
 		let direction = gizmo_type.direction(column, row, self.angles, spacing, viewport);
 
-		let ((old_prev_row, old_prev_col), sign) = (iso_gizmo_type.old_row_col_index(self.row_index, self.column_index), iso_gizmo_type.delta_sign());
-
+		let (old_prev_row, old_prev_col) = iso_gizmo_type.old_row_col_index(self.row_index, self.column_index);
+		let sign = if *iso_gizmo_type == IsometricGizmoType::Left && column == 0 { -1. } else { 1. };
 		let projection = viewport.inverse().transform_vector2(sign * delta.project_onto(direction));
 		let old_spacing_x = spacing.y / (tan_a_old + tan_b_old);
 
@@ -274,7 +274,7 @@ impl GridSpacingGizmo {
 		let spacing_x_new = if (column) != 0 {
 			new_x_pos / (column) as f64
 		} else {
-			old_spacing_x // Can't deduce from vertical column
+			old_spacing_x + projection.x // Can't deduce from vertical column
 		};
 
 		// --- Step 3: Sum of tangents ---
@@ -301,18 +301,20 @@ impl GridSpacingGizmo {
 		let new_point = isometric_point_position(old_prev_row, old_prev_col, spacing, new_angles);
 		let old_point = isometric_point_position(old_prev_row, old_prev_col, spacing, angles);
 
-		let transform = self
-			.gizmo_type
-			.as_ref()
-			.unwrap()
-			.transform_grid(viewport.transform_vector2(new_point - old_point), direction, self.column_index, self.row_index);
+		if column == 0 {
+			let transform = self
+				.gizmo_type
+				.as_ref()
+				.unwrap()
+				.transform_grid(viewport.transform_vector2(new_point - old_point), direction, self.column_index, self.row_index);
 
-		responses.add(GraphOperationMessage::TransformChange {
-			layer,
-			transform,
-			transform_in: TransformIn::Viewport,
-			skip_rerender: false,
-		});
+			responses.add(GraphOperationMessage::TransformChange {
+				layer,
+				transform,
+				transform_in: TransformIn::Viewport,
+				skip_rerender: false,
+			});
+		}
 	}
 }
 
@@ -609,10 +611,10 @@ impl IsometricGizmoType {
 					(row_index, column_index + 1)
 				}
 			}
-			IsometricGizmoType::Top => (row_index, column_index),
+			IsometricGizmoType::Top => (row_index + 1, column_index),
 			IsometricGizmoType::IsometricMiddleUp | IsometricGizmoType::IsometricMiddleDown => {
 				if column_index % 2 == 0 {
-					(row_index - 1, column_index)
+					(row_index, column_index + 1)
 				} else {
 					(row_index, column_index)
 				}
@@ -624,6 +626,7 @@ impl IsometricGizmoType {
 		match self {
 			IsometricGizmoType::Right => 1.,
 			IsometricGizmoType::Left => -1.,
+			IsometricGizmoType::Top => -1.,
 			_ => 1.,
 		}
 	}
