@@ -347,7 +347,11 @@
 		if (!(target instanceof HTMLElement)) return;
 
 		// Enter dragging state
-		// target.requestPointerLock();
+		target.requestPointerLock();
+
+		// Workaround for a Safari bug where it fails to hide the cursor during pointer lock.
+		if (browserVersion().toLowerCase().includes("safari")) document.body.classList.add("hide-cursor");
+
 		initialValueBeforeDragging = value;
 		cumulativeDragDelta = 0;
 
@@ -403,14 +407,11 @@
 			ignoredFirstMovement = true;
 		};
 		const pointerLockChange = () => {
-			// Workaround for a Safari bug where it fails to hide the cursor during pointer lock.
-			if (browserVersion().toLowerCase().includes("safari")) {
-				if (document.pointerLockElement) document.body.classList.add("hide-cursor");
-				else document.body.classList.remove("hide-cursor");
-			}
-
 			// Do nothing if we just entered, rather than exited, pointer lock.
 			if (document.pointerLockElement) return;
+
+			// Workaround for a Safari bug where it fails to hide the cursor during pointer lock.
+			if (browserVersion().toLowerCase().includes("safari")) document.body.classList.remove("hide-cursor");
 
 			// Reset the value to the initial value if the drag was aborted, or to the current value if it was just confirmed by changing the initial value to the current value.
 			updateValue(initialValueBeforeDragging);
