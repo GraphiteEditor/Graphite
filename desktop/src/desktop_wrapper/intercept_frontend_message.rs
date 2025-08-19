@@ -7,8 +7,8 @@ use super::messages::{DesktopFrontendMessage, FileFilter, OpenFileDialogContext,
 
 pub(super) fn intercept_frontend_message(executor: &mut DesktopWrapperMessageExecutor, message: FrontendMessage) -> Option<FrontendMessage> {
 	match message {
-		FrontendMessage::RenderOverlays(overlay_context) => {
-			executor.respond(DesktopFrontendMessage::UpdateOverlays(overlay_context.take_scene()));
+		FrontendMessage::RenderOverlays { context } => {
+			executor.respond(DesktopFrontendMessage::UpdateOverlays(context.take_scene()));
 		}
 		FrontendMessage::TriggerOpenDocument => {
 			executor.respond(DesktopFrontendMessage::OpenFileDialog {
