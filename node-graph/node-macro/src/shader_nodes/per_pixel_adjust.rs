@@ -2,12 +2,12 @@ use crate::parsing::{Input, NodeFnAttributes, ParsedField, ParsedFieldType, Pars
 use crate::shader_nodes::{ShaderCodegen, ShaderNodeType, ShaderTokens};
 use convert_case::{Case, Casing};
 use proc_macro_crate::FoundCrate;
-use proc_macro2::{Ident, Span, TokenStream};
+use proc_macro2::{Ident, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use std::borrow::Cow;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{Token, TraitBound, TraitBoundModifier, Type, TypeImplTrait, TypeParamBound};
+use syn::{Type, parse_quote};
 
 #[derive(Debug, Clone)]
 pub struct PerPixelAdjust {}
@@ -119,7 +119,7 @@ impl PerPixelAdjust {
 			FoundCrate::Itself => format_ident!("crate"),
 			FoundCrate::Name(name) => format_ident!("{name}"),
 		};
-		let raster_gpu = syn::parse2::<Type>(quote!(#gcore::table::Table<#gcore::raster_types::Raster<#gcore::raster_types::GPU>>))?;
+		let raster_gpu: Type = parse_quote!(#gcore::table::Table<#gcore::raster_types::Raster<#gcore::raster_types::GPU>>);
 
 		let fields = parsed
 			.fields
@@ -128,6 +128,7 @@ impl PerPixelAdjust {
 				ParsedFieldType::Regular(reg @ RegularParsedField { gpu_image: true, .. }) => Ok(ParsedField {
 					ty: ParsedFieldType::Regular(RegularParsedField {
 						ty: raster_gpu.clone(),
+						implementations: Punctuated::default(),
 						..reg.clone()
 					}),
 					..f.clone()
@@ -143,7 +144,7 @@ impl PerPixelAdjust {
 			}
 		};
 
-		let gpu_node = crate::codegen::generate_node_code(&ParsedNodeFn {
+		let mut parsed_node_fn = ParsedNodeFn {
 			vis: parsed.vis.clone(),
 			attributes: NodeFnAttributes {
 				shader_node: Some(ShaderNodeType::GpuNode),
@@ -156,15 +157,7 @@ impl PerPixelAdjust {
 			where_clause: None,
 			input: Input {
 				pat_ident: parsed.input.pat_ident.clone(),
-				ty: Type::ImplTrait(TypeImplTrait {
-					impl_token: Token![impl](Span::call_site()),
-					bounds: Punctuated::from_iter([TypeParamBound::Trait(TraitBound {
-						paren_token: None,
-						modifier: TraitBoundModifier::None,
-						lifetimes: None,
-						path: syn::parse2(quote!(#gcore::context::Ctx))?,
-					})]),
-				}),
+				ty: parse_quote!(impl #gcore::context::Ctx),
 				implementations: Default::default(),
 			},
 			output_type: raster_gpu,
@@ -173,7 +166,9 @@ impl PerPixelAdjust {
 			body,
 			crate_name: parsed.crate_name.clone(),
 			description: "".to_string(),
-		})?;
+		};
+		parsed_node_fn.replace_impl_trait_in_input();
+		let gpu_node = crate::codegen::generate_node_code(&parsed_node_fn)?;
 
 		Ok(quote! {
 			#node_cfg
