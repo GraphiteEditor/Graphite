@@ -295,11 +295,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let cfg = crate::shader_nodes::modify_cfg(attributes);
 	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, &graphene_core, &identifier, &cfg);
-	let (shader_entry_point, shader_gpu_node) = attributes
-		.shader_node
-		.as_ref()
-		.map::<syn::Result<_>, _>(|n| Ok((n.codegen_shader_entry_point(parsed)?, n.codegen_gpu_node(parsed)?)))
-		.unwrap_or(Ok((TokenStream2::new(), TokenStream2::new())))?;
+	let ShaderTokens { shader_entry_point, gpu_node } = attributes.shader_node.as_ref().map(|n| n.codegen(parsed, &cfg)).unwrap_or(Ok(ShaderTokens::default()))?;
 
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
@@ -393,7 +389,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 		#shader_entry_point
 
-		#shader_gpu_node
+		#gpu_node
 	})
 }
 
@@ -596,7 +592,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 	})
 }
 
-use crate::shader_nodes::CodegenShaderEntryPoint;
+use crate::shader_nodes::{ShaderCodegen, ShaderTokens};
 use syn::visit_mut::VisitMut;
 use syn::{GenericArgument, Lifetime, Type};
 
