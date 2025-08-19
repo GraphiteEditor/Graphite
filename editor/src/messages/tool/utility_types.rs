@@ -173,7 +173,7 @@ pub trait ToolTransition {
 		subscribe_message(event_to_tool_map.selection_changed, BroadcastEvent::SelectionChanged);
 		subscribe_message(event_to_tool_map.working_color_changed, BroadcastEvent::WorkingColorChanged);
 		if let Some(overlay_provider) = event_to_tool_map.overlay_provider {
-			responses.add(OverlaysMessage::AddProvider(overlay_provider));
+			responses.add(OverlaysMessage::AddProvider { provider: overlay_provider });
 		}
 	}
 
@@ -193,7 +193,7 @@ pub trait ToolTransition {
 		unsubscribe_message(event_to_tool_map.selection_changed, BroadcastEvent::SelectionChanged);
 		unsubscribe_message(event_to_tool_map.working_color_changed, BroadcastEvent::WorkingColorChanged);
 		if let Some(overlay_provider) = event_to_tool_map.overlay_provider {
-			responses.add(OverlaysMessage::RemoveProvider(overlay_provider));
+			responses.add(OverlaysMessage::RemoveProvider { provider: overlay_provider });
 		}
 	}
 }

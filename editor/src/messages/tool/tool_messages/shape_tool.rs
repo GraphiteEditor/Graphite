@@ -73,18 +73,18 @@ pub enum ShapeOptionsUpdate {
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum ShapeToolMessage {
 	// Standard messages
-	Overlays(OverlayContext),
+	Overlays { context: OverlayContext },
 	Abort,
 	WorkingColorChanged,
 
 	// Tool-specific messages
 	DragStart,
 	DragStop,
-	HideShapeTypeWidget(bool),
-	PointerMove(ShapeToolModifierKey),
-	PointerOutsideViewport(ShapeToolModifierKey),
-	UpdateOptions(ShapeOptionsUpdate),
-	SetShape(ShapeType),
+	HideShapeTypeWidget { hide: bool },
+	PointerMove { modifier: ShapeToolModifierKey },
+	PointerOutsideViewport { modifier: ShapeToolModifierKey },
+	UpdateOptions { options: ShapeOptionsUpdate },
+	SetShape { shape: ShapeType },
 
 	IncreaseSides,
 	DecreaseSides,
@@ -99,39 +99,65 @@ fn create_sides_widget(vertices: u32) -> WidgetHolder {
 		.min(3.)
 		.max(1000.)
 		.mode(NumberInputMode::Increment)
-		.on_update(|number_input: &NumberInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(number_input.value.unwrap() as u32)).into())
+		.on_update(|number_input: &NumberInput| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::Vertices(number_input.value.unwrap() as u32),
+			}
+			.into()
+		})
 		.widget_holder()
 }
 
 fn create_shape_option_widget(shape_type: ShapeType) -> WidgetHolder {
 	let entries = vec![vec![
-		MenuListEntry::new("Polygon")
-			.label("Polygon")
-			.on_commit(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ShapeType(ShapeType::Polygon)).into()),
-		MenuListEntry::new("Star")
-			.label("Star")
-			.on_commit(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ShapeType(ShapeType::Star)).into()),
-		MenuListEntry::new("Circle")
-			.label("Circle")
-			.on_commit(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ShapeType(ShapeType::Circle)).into()),
-		MenuListEntry::new("Arc")
-			.label("Arc")
-			.on_commit(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ShapeType(ShapeType::Arc)).into()),
+		MenuListEntry::new("Polygon").label("Polygon").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Polygon),
+			}
+			.into()
+		}),
+		MenuListEntry::new("Star").label("Star").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Star),
+			}
+			.into()
+		}),
+		MenuListEntry::new("Circle").label("Circle").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Circle),
+			}
+			.into()
+		}),
+		MenuListEntry::new("Arc").label("Arc").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Arc),
+			}
+			.into()
+		}),
 	]];
 	DropdownInput::new(entries).selected_index(Some(shape_type as u32)).widget_holder()
 }
 
 fn create_arc_type_widget(arc_type: ArcType) -> WidgetHolder {
 	let entries = vec![
-		RadioEntryData::new("Open")
-			.label("Open")
-			.on_update(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ArcType(ArcType::Open)).into()),
-		RadioEntryData::new("Closed")
-			.label("Closed")
-			.on_update(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ArcType(ArcType::Closed)).into()),
-		RadioEntryData::new("Pie")
-			.label("Pie")
-			.on_update(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ArcType(ArcType::PieSlice)).into()),
+		RadioEntryData::new("Open").label("Open").on_update(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ArcType(ArcType::Open),
+			}
+			.into()
+		}),
+		RadioEntryData::new("Closed").label("Closed").on_update(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ArcType(ArcType::Closed),
+			}
+			.into()
+		}),
+		RadioEntryData::new("Pie").label("Pie").on_update(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ArcType(ArcType::PieSlice),
+			}
+			.into()
+		}),
 	];
 	RadioInput::new(entries).selected_index(Some(arc_type as u32)).widget_holder()
 }
@@ -142,7 +168,12 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.label("Weight")
 		.min(0.)
 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		.on_update(|number_input: &NumberInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
+		.on_update(|number_input: &NumberInput| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::LineWeight(number_input.value.unwrap()),
+			}
+			.into()
+		})
 		.widget_holder()
 }
 
@@ -169,9 +200,26 @@ impl LayoutHolder for ShapeTool {
 			widgets.append(&mut self.options.fill.create_widgets(
 				"Fill",
 				true,
-				|_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::FillColor(None)).into(),
-				|color_type: ToolColorType| WidgetCallback::new(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::FillColorType(color_type.clone())).into()),
-				|color: &ColorInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
+				|_| {
+					ShapeToolMessage::UpdateOptions {
+						options: ShapeOptionsUpdate::FillColor(None),
+					}
+					.into()
+				},
+				|color_type: ToolColorType| {
+					WidgetCallback::new(move |_| {
+						ShapeToolMessage::UpdateOptions {
+							options: ShapeOptionsUpdate::FillColorType(color_type.clone()),
+						}
+						.into()
+					})
+				},
+				|color: &ColorInput| {
+					ShapeToolMessage::UpdateOptions {
+						options: ShapeOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+					}
+					.into()
+				},
 			));
 
 			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -180,9 +228,26 @@ impl LayoutHolder for ShapeTool {
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
 			true,
-			|_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::StrokeColor(None)).into(),
-			|color_type: ToolColorType| WidgetCallback::new(move |_| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
+			|_| {
+				ShapeToolMessage::UpdateOptions {
+					options: ShapeOptionsUpdate::StrokeColor(None),
+				}
+				.into()
+			},
+			|color_type: ToolColorType| {
+				WidgetCallback::new(move |_| {
+					ShapeToolMessage::UpdateOptions {
+						options: ShapeOptionsUpdate::StrokeColorType(color_type.clone()),
+					}
+					.into()
+				})
+			},
+			|color: &ColorInput| {
+				ShapeToolMessage::UpdateOptions {
+					options: ShapeOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+				}
+				.into()
+			},
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -194,11 +259,11 @@ impl LayoutHolder for ShapeTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for ShapeTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		let ToolMessage::Shape(ShapeToolMessage::UpdateOptions(action)) = message else {
+		let ToolMessage::Shape(ShapeToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			return;
 		};
-		match action {
+		match options {
 			ShapeOptionsUpdate::FillColor(color) => {
 				self.options.fill.custom_color = color;
 				self.options.fill.color_type = ToolColorType::Custom;
@@ -286,7 +351,7 @@ impl ToolMetadata for ShapeTool {
 impl ToolTransition for ShapeTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			overlay_provider: Some(|overlay_context| ShapeToolMessage::Overlays(overlay_context).into()),
+			overlay_provider: Some(|context| ShapeToolMessage::Overlays { context }.into()),
 			tool_abort: Some(ShapeToolMessage::Abort.into()),
 			working_color_changed: Some(ShapeToolMessage::WorkingColorChanged.into()),
 			..Default::default()
@@ -403,7 +468,7 @@ impl Fsm for ShapeToolFsmState {
 		let ToolMessage::Shape(event) = event else { return self };
 
 		match (self, event) {
-			(_, ShapeToolMessage::Overlays(mut overlay_context)) => {
+			(_, ShapeToolMessage::Overlays { context: mut overlay_context }) => {
 				let mouse_position = tool_data
 					.data
 					.snap_manager
@@ -485,11 +550,15 @@ impl Fsm for ShapeToolFsmState {
 				self
 			}
 			(ShapeToolFsmState::Ready(_), ShapeToolMessage::IncreaseSides) => {
-				responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(tool_options.vertices + 1)));
+				responses.add(ShapeToolMessage::UpdateOptions {
+					options: ShapeOptionsUpdate::Vertices(tool_options.vertices + 1),
+				});
 				self
 			}
 			(ShapeToolFsmState::Ready(_), ShapeToolMessage::DecreaseSides) => {
-				responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices((tool_options.vertices - 1).max(3))));
+				responses.add(ShapeToolMessage::UpdateOptions {
+					options: ShapeOptionsUpdate::Vertices((tool_options.vertices - 1).max(3)),
+				});
 				self
 			}
 			(
@@ -543,7 +612,9 @@ impl Fsm for ShapeToolFsmState {
 						return self;
 					};
 
-					responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(n + 1)));
+					responses.add(ShapeToolMessage::UpdateOptions {
+						options: ShapeOptionsUpdate::Vertices(n + 1),
+					});
 
 					responses.add(NodeGraphMessage::SetInput {
 						input_connector: InputConnector::node(node_id, 1),
@@ -572,7 +643,9 @@ impl Fsm for ShapeToolFsmState {
 						return self;
 					};
 
-					responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices((n - 1).max(3))));
+					responses.add(ShapeToolMessage::UpdateOptions {
+						options: ShapeOptionsUpdate::Vertices((n - 1).max(3)),
+					});
 
 					responses.add(NodeGraphMessage::SetInput {
 						input_connector: InputConnector::node(node_id, 1),
@@ -604,7 +677,9 @@ impl Fsm for ShapeToolFsmState {
 					tool_data.cursor = cursor;
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 					// Send a PointerMove message to refresh the cursor icon
-					responses.add(ShapeToolMessage::PointerMove(ShapeToolData::shape_tool_modifier_keys()));
+					responses.add(ShapeToolMessage::PointerMove {
+						modifier: ShapeToolData::shape_tool_modifier_keys(),
+					});
 
 					return ShapeToolFsmState::ModifyingGizmo;
 				}
@@ -631,7 +706,9 @@ impl Fsm for ShapeToolFsmState {
 						let cursor = tool_data.transform_cage_mouse_icon(input);
 						tool_data.cursor = cursor;
 						responses.add(FrontendMessage::UpdateMouseCursor { cursor });
-						responses.add(ShapeToolMessage::PointerMove(ShapeToolData::shape_tool_modifier_keys()));
+						responses.add(ShapeToolMessage::PointerMove {
+							modifier: ShapeToolData::shape_tool_modifier_keys(),
+						});
 					};
 
 					match (resize, rotate, skew) {
@@ -711,7 +788,7 @@ impl Fsm for ShapeToolFsmState {
 
 				ShapeToolFsmState::Drawing(tool_data.current_shape)
 			}
-			(ShapeToolFsmState::Drawing(shape), ShapeToolMessage::PointerMove(modifier)) => {
+			(ShapeToolFsmState::Drawing(shape), ShapeToolMessage::PointerMove { modifier }) => {
 				let Some(layer) = tool_data.data.layer else {
 					return ShapeToolFsmState::Ready(shape);
 				};
@@ -727,33 +804,33 @@ impl Fsm for ShapeToolFsmState {
 				}
 
 				// Auto-panning
-				let messages = [ShapeToolMessage::PointerOutsideViewport(modifier).into(), ShapeToolMessage::PointerMove(modifier).into()];
+				let messages = [ShapeToolMessage::PointerOutsideViewport { modifier }.into(), ShapeToolMessage::PointerMove { modifier }.into()];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				self
 			}
-			(ShapeToolFsmState::DraggingLineEndpoints, ShapeToolMessage::PointerMove(modifier)) => {
+			(ShapeToolFsmState::DraggingLineEndpoints, ShapeToolMessage::PointerMove { modifier }) => {
 				let Some(layer) = tool_data.line_data.editing_layer else {
 					return ShapeToolFsmState::Ready(tool_data.current_shape);
 				};
 
 				Line::update_shape(document, input, layer, tool_data, modifier, responses);
 				// Auto-panning
-				let messages = [ShapeToolMessage::PointerOutsideViewport(modifier).into(), ShapeToolMessage::PointerMove(modifier).into()];
+				let messages = [ShapeToolMessage::PointerOutsideViewport { modifier }.into(), ShapeToolMessage::PointerMove { modifier }.into()];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				self
 			}
-			(ShapeToolFsmState::ModifyingGizmo, ShapeToolMessage::PointerMove(..)) => {
+			(ShapeToolFsmState::ModifyingGizmo, ShapeToolMessage::PointerMove { .. }) => {
 				tool_data.gizmo_manager.handle_update(tool_data.data.viewport_drag_start(document), document, input, responses);
 
 				responses.add(OverlaysMessage::Draw);
 
 				ShapeToolFsmState::ModifyingGizmo
 			}
-			(ShapeToolFsmState::ResizingBounds, ShapeToolMessage::PointerMove(modifier)) => {
+			(ShapeToolFsmState::ResizingBounds, ShapeToolMessage::PointerMove { modifier }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
-					let messages = [ShapeToolMessage::PointerOutsideViewport(modifier).into(), ShapeToolMessage::PointerMove(modifier).into()];
+					let messages = [ShapeToolMessage::PointerOutsideViewport { modifier }.into(), ShapeToolMessage::PointerMove { modifier }.into()];
 					resize_bounds(
 						document,
 						responses,
@@ -772,7 +849,7 @@ impl Fsm for ShapeToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 				ShapeToolFsmState::ResizingBounds
 			}
-			(ShapeToolFsmState::RotatingBounds, ShapeToolMessage::PointerMove(modifier)) => {
+			(ShapeToolFsmState::RotatingBounds, ShapeToolMessage::PointerMove { modifier }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					rotate_bounds(
 						document,
@@ -788,7 +865,7 @@ impl Fsm for ShapeToolFsmState {
 
 				ShapeToolFsmState::RotatingBounds
 			}
-			(ShapeToolFsmState::SkewingBounds { skew }, ShapeToolMessage::PointerMove(_)) => {
+			(ShapeToolFsmState::SkewingBounds { skew }, ShapeToolMessage::PointerMove { .. }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					skew_bounds(
 						document,
@@ -804,7 +881,7 @@ impl Fsm for ShapeToolFsmState {
 				ShapeToolFsmState::SkewingBounds { skew }
 			}
 
-			(_, ShapeToolMessage::PointerMove(_)) => {
+			(_, ShapeToolMessage::PointerMove { .. }) => {
 				let dragging_bounds = tool_data
 					.bounding_box_manager
 					.as_mut()
@@ -826,7 +903,7 @@ impl Fsm for ShapeToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
-			(ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::SkewingBounds { .. }, ShapeToolMessage::PointerOutsideViewport(_)) => {
+			(ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::SkewingBounds { .. }, ShapeToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
@@ -837,7 +914,7 @@ impl Fsm for ShapeToolFsmState {
 
 				self
 			}
-			(ShapeToolFsmState::Ready(_), ShapeToolMessage::PointerOutsideViewport(..)) => self,
+			(ShapeToolFsmState::Ready(_), ShapeToolMessage::PointerOutsideViewport { .. }) => self,
 			(_, ShapeToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
@@ -892,21 +969,22 @@ impl Fsm for ShapeToolFsmState {
 				ShapeToolFsmState::Ready(tool_data.current_shape)
 			}
 			(_, ShapeToolMessage::WorkingColorChanged) => {
-				responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::WorkingColors(
-					Some(global_tool_data.primary_color),
-					Some(global_tool_data.secondary_color),
-				)));
+				responses.add(ShapeToolMessage::UpdateOptions {
+					options: ShapeOptionsUpdate::WorkingColors(Some(global_tool_data.primary_color), Some(global_tool_data.secondary_color)),
+				});
 				self
 			}
-			(_, ShapeToolMessage::SetShape(shape)) => {
+			(_, ShapeToolMessage::SetShape { shape }) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.data.cleanup(responses);
 				tool_data.current_shape = shape;
 
-				responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ShapeType(shape)));
+				responses.add(ShapeToolMessage::UpdateOptions {
+					options: ShapeOptionsUpdate::ShapeType(shape),
+				});
 				ShapeToolFsmState::Ready(shape)
 			}
-			(_, ShapeToolMessage::HideShapeTypeWidget(hide)) => {
+			(_, ShapeToolMessage::HideShapeTypeWidget { hide }) => {
 				tool_data.hide_shape_option_widget = hide;
 				responses.add(ToolMessage::RefreshToolOptions);
 				self

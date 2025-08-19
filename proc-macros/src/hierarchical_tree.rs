@@ -66,7 +66,7 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 								)
 							}
 						};
-						return Err(syn::Error::new(Span::call_site(), error_msg));
+						Err(syn::Error::new(Span::call_site(), error_msg))
 					}
 				}
 				Fields::Named(fields) => {

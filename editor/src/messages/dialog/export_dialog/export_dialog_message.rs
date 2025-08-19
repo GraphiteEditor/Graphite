@@ -4,12 +4,10 @@ use crate::messages::prelude::*;
 #[impl_message(Message, DialogMessage, ExportDialog)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ExportDialogMessage {
-	#[child]
-	FileType(FileType),
-	#[child]
-	ExportBounds(ExportBounds),
-	ScaleFactor(f64),
-	TransparentBackground(bool),
+	FileType { file_type: FileType },
+	ScaleFactor { factor: f64 },
+	TransparentBackground { transparent: bool },
+	ExportBounds { bounds: ExportBounds },
 
 	Submit,
 }

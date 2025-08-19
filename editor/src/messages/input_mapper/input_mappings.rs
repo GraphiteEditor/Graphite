@@ -96,7 +96,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(PointerMove; refresh_keys=[Control, Shift], action_dispatch=TransformLayerMessage::PointerMove { slow_key: Shift, increments_key: Control }),
 		//
 		// SelectToolMessage
-		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=SelectToolMessage::PointerMove(SelectToolPointerKeys { axis_align: Shift, snap_angle: Shift, center: Alt, duplicate: Alt })),
+		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=SelectToolMessage::PointerMove { modifier_keys: SelectToolPointerKeys { axis_align: Shift, snap_angle: Shift, center: Alt, duplicate: Alt } }),
 		entry!(KeyDown(MouseLeft); action_dispatch=SelectToolMessage::DragStart { extend_selection: Shift, remove_from_selection: Alt, select_deepest: Accel, lasso_select: Control, skew: Control }),
 		entry!(KeyUp(MouseLeft); action_dispatch=SelectToolMessage::DragStop { remove_from_selection: Alt }),
 		entry!(KeyDown(Enter); action_dispatch=SelectToolMessage::Enter),
@@ -178,7 +178,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Escape); action_dispatch=ShapeToolMessage::Abort),
 		entry!(KeyDown(BracketLeft); action_dispatch=ShapeToolMessage::DecreaseSides),
 		entry!(KeyDown(BracketRight); action_dispatch=ShapeToolMessage::IncreaseSides),
-		entry!(PointerMove; refresh_keys=[Alt, Shift, Control], action_dispatch=ShapeToolMessage::PointerMove([Alt, Shift, Control])),
+		entry!(PointerMove; refresh_keys=[Alt, Shift, Control], action_dispatch=ShapeToolMessage::PointerMove { modifier: [Alt, Shift, Control] }),
 		entry!(KeyDown(ArrowUp); modifiers=[Shift, ArrowLeft], action_dispatch=ShapeToolMessage::NudgeSelectedLayers { delta_x: -BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT, resize: Alt, resize_opposite_corner: Control }),
 		entry!(KeyDown(ArrowUp); modifiers=[Shift, ArrowRight], action_dispatch=ShapeToolMessage::NudgeSelectedLayers { delta_x: BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT, resize: Alt, resize_opposite_corner: Control }),
 		entry!(KeyDown(ArrowUp); modifiers=[Shift], action_dispatch=ShapeToolMessage::NudgeSelectedLayers { delta_x: 0., delta_y: -BIG_NUDGE_AMOUNT, resize: Alt, resize_opposite_corner: Control }),
@@ -297,8 +297,8 @@ pub fn input_mappings() -> Mapping {
 		entry!(PointerMove; action_dispatch=BrushToolMessage::PointerMove),
 		entry!(KeyDown(MouseLeft); action_dispatch=BrushToolMessage::DragStart),
 		entry!(KeyUp(MouseLeft); action_dispatch=BrushToolMessage::DragStop),
-		entry!(KeyDown(BracketLeft); action_dispatch=BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ChangeDiameter(-BRUSH_SIZE_CHANGE_KEYBOARD))),
-		entry!(KeyDown(BracketRight); action_dispatch=BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ChangeDiameter(BRUSH_SIZE_CHANGE_KEYBOARD))),
+		entry!(KeyDown(BracketLeft); action_dispatch=BrushToolMessage::UpdateOptions { options: BrushToolMessageOptionsUpdate::ChangeDiameter(-BRUSH_SIZE_CHANGE_KEYBOARD) }),
+		entry!(KeyDown(BracketRight); action_dispatch=BrushToolMessage::UpdateOptions { options: BrushToolMessageOptionsUpdate::ChangeDiameter(BRUSH_SIZE_CHANGE_KEYBOARD) }),
 		entry!(KeyDown(MouseRight); action_dispatch=BrushToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=BrushToolMessage::Abort),
 		//

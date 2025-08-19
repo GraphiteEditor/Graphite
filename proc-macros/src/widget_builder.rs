@@ -110,7 +110,7 @@ pub fn derive_widget_builder_impl(input_item: TokenStream2) -> syn::Result<Token
 		// Construct the `widget_holder` function
 		quote::quote! {
 			#[doc = #widget_holder_doc_comment]
-			pub fn widget_holder(self) -> crate::messages::layout::utility_types::layout_widget::WidgetHolder{
+			pub fn widget_holder(self) -> crate::messages::layout::utility_types::layout_widget::WidgetHolder {
 				crate::messages::layout::utility_types::layout_widget::WidgetHolder::new( crate::messages::layout::utility_types::layout_widget::Widget::#struct_name_ident(self))
 			}
 		}
