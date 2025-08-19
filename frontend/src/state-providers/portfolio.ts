@@ -66,7 +66,7 @@ export function createPortfolioState(editor: Editor) {
 		const data = await upload(suffix, "text");
 
 		// Use filename as document name, removing the extension if it exists
-		var documentName = data.filename;
+		let documentName = data.filename;
 		if (documentName.endsWith(suffix)) {
 			documentName = documentName.slice(0, -suffix.length);
 		}
