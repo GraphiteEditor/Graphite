@@ -1026,8 +1026,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				});
 			}
 			DocumentMessage::SaveDocument | DocumentMessage::SaveDocumentAs => {
-				dbg!(&self.path);
-
 				if let DocumentMessage::SaveDocumentAs = message {
 					self.path = None;
 				}
@@ -1046,8 +1044,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::SavedDocument { path } => {
 				self.path = path;
-
-				dbg!(&self.path);
 
 				// Update the name to match the file stem
 				let document_name_from_path = self.path.as_ref().and_then(|path| {
