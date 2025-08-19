@@ -220,6 +220,11 @@
 		user-select: none;
 	}
 
+	body.hide-cursor {
+		// Workaround to hide the cursor when dragging a number input in Safari, which doesn't work on its own during pointer lock
+		cursor: none;
+	}
+
 	// Needed for the viewport hole punch on desktop
 	html:has(body > .viewport-hole-punch),
 	body:has(> .viewport-hole-punch) {
