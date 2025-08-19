@@ -160,10 +160,10 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				responses.add(OverlaysMessage::AddProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
 
 				// Send the SelectionChanged message to the active tool, this will ensure the selection is updated
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 
 				// Update the working colors for the active tool
-				responses.add(BroadcastEvent::WorkingColorChanged);
+				responses.add(EventMessage::WorkingColorChanged);
 
 				// Send tool options to the frontend
 				responses.add(ToolMessage::RefreshToolOptions);
@@ -176,9 +176,10 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				tool_data.tools.get(&tool_data.active_tool_type).unwrap().deactivate(responses);
 
 				// Unsubscribe the transform layer to selection change events
-				let message = Box::new(TransformLayerMessage::SelectionChanged.into());
-				let on = BroadcastEvent::SelectionChanged;
-				responses.add(BroadcastMessage::UnsubscribeEvent { message, on });
+				responses.add(BroadcastMessage::UnsubscribeEvent {
+					on: EventMessage::SelectionChanged,
+					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
+				});
 
 				responses.add(OverlaysMessage::RemoveProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
 
@@ -190,12 +191,12 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			ToolMessage::InitTools => {
 				// Subscribe the transform layer to selection change events
 				responses.add(BroadcastMessage::SubscribeEvent {
-					on: BroadcastEvent::SelectionChanged,
+					on: EventMessage::SelectionChanged,
 					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
 				});
 
 				responses.add(BroadcastMessage::SubscribeEvent {
-					on: BroadcastEvent::SelectionChanged,
+					on: EventMessage::SelectionChanged,
 					send: Box::new(SelectToolMessage::SyncHistory.into()),
 				});
 
@@ -237,7 +238,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			ToolMessage::PreUndo => {
 				let tool_data = &mut self.tool_state.tool_data;
 				if tool_data.active_tool_type != ToolType::Pen {
-					responses.add(BroadcastEvent::ToolAbort);
+					responses.add(EventMessage::ToolAbort);
 				}
 			}
 			ToolMessage::Redo => {

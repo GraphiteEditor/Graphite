@@ -1062,7 +1062,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if !parent_layers.is_empty() {
 					let nodes = parent_layers.into_iter().collect();
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
-					responses.add(BroadcastEvent::SelectionChanged);
+					responses.add(EventMessage::SelectionChanged);
 				}
 			}
 			DocumentMessage::SelectAllLayers => {
@@ -1137,7 +1137,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						} else {
 							responses.add_front(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
 						}
-						responses.add(BroadcastEvent::SelectionChanged);
+						responses.add(EventMessage::SelectionChanged);
 					} else {
 						nodes.push(id);
 					}
@@ -1206,7 +1206,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					Some(overlays_type) => overlays_type,
 					None => {
 						visibility_settings.all = visible;
-						responses.add(BroadcastEvent::ToolAbort);
+						responses.add(EventMessage::ToolAbort);
 						responses.add(OverlaysMessage::Draw);
 						return;
 					}
@@ -1229,7 +1229,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					OverlaysType::Handles => visibility_settings.handles = visible,
 				}
 
-				responses.add(BroadcastEvent::ToolAbort);
+				responses.add(EventMessage::ToolAbort);
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::SetRangeSelectionLayer { new_layer } => {
@@ -1479,11 +1479,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::SelectionStepBack => {
 				self.network_interface.selection_step_back(&self.selection_network_path);
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::SelectionStepForward => {
 				self.network_interface.selection_step_forward(&self.selection_network_path);
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::WrapContentInArtboard { place_artboard_at_origin } => {
 				// Get bounding box of all layers
