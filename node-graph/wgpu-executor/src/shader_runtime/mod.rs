@@ -18,3 +18,8 @@ impl ShaderRuntime {
 		}
 	}
 }
+
+pub struct Shaders<'a> {
+	pub wgsl_shader: &'a str,
+	pub fragment_shader_name: &'a str,
+}
