@@ -1,18 +1,10 @@
 use crate::CustomEvent;
-use crate::WindowSize;
+use crate::cef::WindowSize;
 use crate::consts::APP_NAME;
-use crate::dialogs::dialog_open_graphite_file;
-use crate::dialogs::dialog_save_file;
-use crate::dialogs::dialog_save_graphite_file;
 use crate::render::GraphicsState;
-use crate::render::WgpuContext;
-use graph_craft::wasm_application_io::WasmApplicationIo;
-use graphene_std::Color;
-use graphene_std::raster::Image;
-use graphite_editor::application::Editor;
-use graphite_editor::consts::DEFAULT_DOCUMENT_NAME;
-use graphite_editor::messages::prelude::*;
-use std::fs;
+use graphite_desktop_wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage};
+use graphite_desktop_wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
+use rfd::AsyncFileDialog;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::thread;
@@ -38,11 +30,12 @@ pub(crate) struct WinitApp {
 	graphics_state: Option<GraphicsState>,
 	wgpu_context: WgpuContext,
 	event_loop_proxy: EventLoopProxy<CustomEvent>,
-	editor: Editor,
+	desktop_wrapper: DesktopWrapper,
 }
 
 impl WinitApp {
 	pub(crate) fn new(cef_context: cef::Context<cef::Initialized>, window_size_sender: Sender<WindowSize>, wgpu_context: WgpuContext, event_loop_proxy: EventLoopProxy<CustomEvent>) -> Self {
+		let desktop_wrapper = DesktopWrapper::new();
 		Self {
 			cef_context,
 			window: None,
@@ -51,96 +44,106 @@ impl WinitApp {
 			window_size_sender,
 			wgpu_context,
 			event_loop_proxy,
-			editor: Editor::new(),
+			desktop_wrapper,
 		}
 	}
 
-	fn dispatch_message(&mut self, message: Message) {
-		let responses = self.editor.handle_message(message);
-		self.send_messages_to_editor(responses);
-	}
-
-	fn send_messages_to_editor(&mut self, mut responses: Vec<FrontendMessage>) {
-		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::RenderOverlays { .. })) {
-			let FrontendMessage::RenderOverlays { context: overlay_context } = message else { unreachable!() };
-			if let Some(graphics_state) = &mut self.graphics_state {
-				let scene = overlay_context.take_scene();
-				graphics_state.set_overlays_scene(scene);
+	fn handle_desktop_frontend_message(&mut self, message: DesktopFrontendMessage) {
+		match message {
+			DesktopFrontendMessage::ToWeb(messages) => {
+				let Some(bytes) = serialize_frontend_messages(messages) else {
+					tracing::error!("Failed to serialize frontend messages");
+					return;
+				};
+				self.cef_context.send_web_message(bytes.as_slice());
 			}
-		}
-
-		for _ in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerOpenDocument)) {
-			let event_loop_proxy = self.event_loop_proxy.clone();
-			let _ = thread::spawn(move || {
-				let path = futures::executor::block_on(dialog_open_graphite_file());
-				if let Some(path) = path {
-					let content = std::fs::read_to_string(&path).unwrap_or_else(|_| {
-						tracing::error!("Failed to read file: {}", path.display());
-						String::new()
-					});
-					let message = PortfolioMessage::OpenDocumentFile {
-						document_name: path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string(),
-						document_serialized_content: content,
-					};
-					let _ = event_loop_proxy.send_event(CustomEvent::DispatchMessage(message.into()));
-				}
-			});
-		}
-
-		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerSaveDocument { .. })) {
-			let FrontendMessage::TriggerSaveDocument { document_id, name, path, content } = message else {
-				unreachable!()
-			};
-			if let Some(path) = path {
-				let _ = std::fs::write(&path, content);
-			} else {
+			DesktopFrontendMessage::OpenFileDialog { title, filters, context } => {
 				let event_loop_proxy = self.event_loop_proxy.clone();
 				let _ = thread::spawn(move || {
-					let path = futures::executor::block_on(dialog_save_graphite_file(name));
-					if let Some(path) = path {
-						if let Err(e) = std::fs::write(&path, content) {
-							tracing::error!("Failed to save file: {}: {}", path.display(), e);
-						} else {
-							let message = Message::Portfolio(PortfolioMessage::DocumentPassMessage {
-								document_id,
-								message: DocumentMessage::SavedDocument { path: Some(path) },
-							});
-							let _ = event_loop_proxy.send_event(CustomEvent::DispatchMessage(message));
-						}
+					let mut dialog = AsyncFileDialog::new().set_title(title);
+					for filter in filters {
+						dialog = dialog.add_filter(filter.name, &filter.extensions);
+					}
+
+					let show_dialog = async move { dialog.pick_file().await.map(|f| f.path().to_path_buf()) };
+
+					if let Some(path) = futures::executor::block_on(show_dialog)
+						&& let Ok(content) = std::fs::read(&path)
+					{
+						let message = DesktopWrapperMessage::OpenFileDialogResult { path, content, context };
+						let _ = event_loop_proxy.send_event(CustomEvent::DesktopWrapperMessage(message));
 					}
 				});
 			}
-		}
-
-		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerSaveFile { .. })) {
-			let FrontendMessage::TriggerSaveFile { name, content } = message else { unreachable!() };
-			let _ = thread::spawn(move || {
-				let path = futures::executor::block_on(dialog_save_file(name));
-				if let Some(path) = path {
-					if let Err(e) = std::fs::write(&path, content) {
-						tracing::error!("Failed to save file: {}: {}", path.display(), e);
+			DesktopFrontendMessage::SaveFileDialog {
+				title,
+				default_filename,
+				default_folder,
+				filters,
+				context,
+			} => {
+				let event_loop_proxy = self.event_loop_proxy.clone();
+				let _ = thread::spawn(move || {
+					let mut dialog = AsyncFileDialog::new().set_title(title).set_file_name(default_filename);
+					if let Some(folder) = default_folder {
+						dialog = dialog.set_directory(folder);
 					}
-				}
-			});
-		}
+					for filter in filters {
+						dialog = dialog.add_filter(filter.name, &filter.extensions);
+					}
 
-		for message in responses.extract_if(.., |m| matches!(m, FrontendMessage::TriggerVisitLink { .. })) {
-			let _ = thread::spawn(move || {
-				let FrontendMessage::TriggerVisitLink { url } = message else { unreachable!() };
-				if let Err(e) = open::that(&url) {
-					tracing::error!("Failed to open URL: {}: {}", url, e);
-				}
-			});
-		}
+					let show_dialog = async move { dialog.save_file().await.map(|f| f.path().to_path_buf()) };
 
-		if responses.is_empty() {
-			return;
+					if let Some(path) = futures::executor::block_on(show_dialog) {
+						let message = DesktopWrapperMessage::SaveFileDialogResult { path, context };
+						let _ = event_loop_proxy.send_event(CustomEvent::DesktopWrapperMessage(message));
+					}
+				});
+			}
+			DesktopFrontendMessage::WriteFile { path, content } => {
+				if let Err(e) = std::fs::write(&path, content) {
+					tracing::error!("Failed to write file {}: {}", path.display(), e);
+				}
+			}
+			DesktopFrontendMessage::OpenUrl(url) => {
+				let _ = thread::spawn(move || {
+					if let Err(e) = open::that(&url) {
+						tracing::error!("Failed to open URL: {}: {}", url, e);
+					}
+				});
+			}
+			DesktopFrontendMessage::UpdateViewportBounds { x, y, width, height } => {
+				if let Some(graphics_state) = &mut self.graphics_state
+					&& let Some(window) = &self.window
+				{
+					let window_size = window.inner_size();
+
+					let viewport_offset_x = x / window_size.width as f32;
+					let viewport_offset_y = y / window_size.height as f32;
+					graphics_state.set_viewport_offset([viewport_offset_x, viewport_offset_y]);
+
+					let viewport_scale_x = if width != 0.0 { window_size.width as f32 / width } else { 1.0 };
+					let viewport_scale_y = if height != 0.0 { window_size.height as f32 / height } else { 1.0 };
+					graphics_state.set_viewport_scale([viewport_scale_x, viewport_scale_y]);
+				}
+			}
+			DesktopFrontendMessage::UpdateOverlays(scene) => {
+				if let Some(graphics_state) = &mut self.graphics_state {
+					graphics_state.set_overlays_scene(scene);
+				}
+			}
 		}
-		let Ok(message) = ron::to_string(&responses) else {
-			tracing::error!("Failed to serialize Messages");
-			return;
-		};
-		self.cef_context.send_web_message(message.as_bytes());
+	}
+
+	fn handle_desktop_frontend_messages(&mut self, messages: Vec<DesktopFrontendMessage>) {
+		for message in messages {
+			self.handle_desktop_frontend_message(message);
+		}
+	}
+
+	fn dispatch_desktop_wrapper_message(&mut self, message: DesktopWrapperMessage) {
+		let responses = self.desktop_wrapper.dispatch(message);
+		self.handle_desktop_frontend_messages(responses);
 	}
 }
 
@@ -194,13 +197,25 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 
 		tracing::info!("Winit window created and ready");
 
-		let application_io = WasmApplicationIo::new_with_context(self.wgpu_context.clone());
-
-		futures::executor::block_on(graphite_editor::node_graph_executor::replace_application_io(application_io));
+		self.desktop_wrapper.init(self.wgpu_context.clone());
 	}
 
 	fn user_event(&mut self, _: &ActiveEventLoop, event: CustomEvent) {
 		match event {
+			CustomEvent::DesktopWrapperMessage(message) => self.dispatch_desktop_wrapper_message(message),
+			CustomEvent::NodeGraphExecutionResult(result) => match result {
+				NodeGraphExecutionResult::HasRun(texture) => {
+					self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::PollNodeGraphEvaluation);
+					if let Some(texture) = texture
+						&& let Some(graphics_state) = self.graphics_state.as_mut()
+						&& let Some(window) = self.window.as_ref()
+					{
+						graphics_state.bind_viewport_texture(texture);
+						window.request_redraw();
+					}
+				}
+				NodeGraphExecutionResult::NotRun => {}
+			},
 			CustomEvent::UiUpdate(texture) => {
 				if let Some(graphics_state) = self.graphics_state.as_mut() {
 					graphics_state.resize(texture.width(), texture.height());
@@ -217,50 +232,6 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 					self.cef_schedule = Some(instant);
 				}
 			}
-			CustomEvent::DispatchMessage(message) => {
-				self.dispatch_message(message);
-			}
-			CustomEvent::MessageReceived(message) => {
-				if let Message::InputPreprocessor(_) = &message {
-					if let Some(window) = &self.window {
-						window.request_redraw();
-					}
-				}
-				if let Message::InputPreprocessor(InputPreprocessorMessage::BoundsOfViewports { bounds_of_viewports }) = &message {
-					if let Some(graphic_state) = &mut self.graphics_state {
-						let window_size = self.window.as_ref().unwrap().inner_size();
-						let window_size = glam::Vec2::new(window_size.width as f32, window_size.height as f32);
-						let top_left = bounds_of_viewports[0].top_left.as_vec2() / window_size;
-						let bottom_right = bounds_of_viewports[0].bottom_right.as_vec2() / window_size;
-						let offset = top_left.to_array();
-						let scale = (bottom_right - top_left).recip();
-						graphic_state.set_viewport_offset(offset);
-						graphic_state.set_viewport_scale(scale.to_array());
-					} else {
-						panic!("graphics state not intialized, viewport offset might be lost");
-					}
-				}
-
-				self.dispatch_message(message);
-			}
-			CustomEvent::NodeGraphRan(texture) => {
-				if let Some(texture) = texture
-					&& let Some(graphics_state) = &mut self.graphics_state
-				{
-					graphics_state.bind_viewport_texture(texture);
-				}
-				let mut responses = VecDeque::new();
-				let err = self.editor.poll_node_graph_evaluation(&mut responses);
-				if let Err(e) = err {
-					if e != "No active document" {
-						tracing::error!("Error poling node graph: {}", e);
-					}
-				}
-
-				for message in responses {
-					self.dispatch_message(message);
-				}
-			}
 		}
 	}
 
@@ -268,75 +239,6 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 		let Some(event) = self.cef_context.handle_window_event(event) else { return };
 
 		match event {
-			// Currently not supported on wayland see https://github.com/rust-windowing/winit/issues/1881
-			WindowEvent::DroppedFile(path) => {
-				let name = path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string());
-				let Some(extension) = path.extension().and_then(|s| s.to_str()) else {
-					tracing::warn!("Unsupported file dropped: {}", path.display());
-					// Fine to early return since we don't need to do cef work in this case
-					return;
-				};
-				let load_string = |path: &std::path::PathBuf| {
-					let Ok(content) = fs::read_to_string(path) else {
-						tracing::error!("Failed to read file: {}", path.display());
-						return None;
-					};
-
-					if content.is_empty() {
-						tracing::warn!("Dropped file is empty: {}", path.display());
-						return None;
-					}
-					Some(content)
-				};
-				// TODO: Consider moving this logic to the editor so we have one message to load data which is then demultiplexed in the portfolio message handler
-				match extension {
-					"graphite" => {
-						let Some(content) = load_string(&path) else { return };
-
-						let message = PortfolioMessage::OpenDocumentFile {
-							document_name: name.unwrap_or(DEFAULT_DOCUMENT_NAME.to_string()),
-							document_serialized_content: content,
-						};
-						self.dispatch_message(message.into());
-					}
-					"svg" => {
-						let Some(content) = load_string(&path) else { return };
-
-						let message = PortfolioMessage::PasteSvg {
-							name: path.file_stem().map(|s| s.to_string_lossy().to_string()),
-							svg: content,
-							mouse: None,
-							parent_and_insert_index: None,
-						};
-						self.dispatch_message(message.into());
-					}
-					_ => match image::ImageReader::open(&path) {
-						Ok(reader) => match reader.decode() {
-							Ok(image) => {
-								let width = image.width();
-								let height = image.height();
-								// TODO: support loading images with more than 8 bits per channel
-								let image_data = image.to_rgba8();
-								let image = Image::<Color>::from_image_data(image_data.as_raw(), width, height);
-
-								let message = PortfolioMessage::PasteImage {
-									name,
-									image,
-									mouse: None,
-									parent_and_insert_index: None,
-								};
-								self.dispatch_message(message.into());
-							}
-							Err(e) => {
-								tracing::error!("Failed to decode image: {}: {}", path.display(), e);
-							}
-						},
-						Err(e) => {
-							tracing::error!("Failed to open image file: {}: {}", path.display(), e);
-						}
-					},
-				}
-			}
 			WindowEvent::CloseRequested => {
 				tracing::info!("The close button was pressed; stopping");
 				event_loop.exit();
@@ -360,6 +262,19 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 					}
 					Err(e) => tracing::error!("{:?}", e),
 				}
+			}
+			// Currently not supported on wayland see https://github.com/rust-windowing/winit/issues/1881
+			WindowEvent::DroppedFile(path) => {
+				match std::fs::read(&path) {
+					Ok(content) => {
+						let message = DesktopWrapperMessage::OpenFile { path, content };
+						let _ = self.event_loop_proxy.send_event(CustomEvent::DesktopWrapperMessage(message));
+					}
+					Err(e) => {
+						tracing::error!("Failed to read dropped file {}: {}", path.display(), e);
+						return;
+					}
+				};
 			}
 			_ => {}
 		}

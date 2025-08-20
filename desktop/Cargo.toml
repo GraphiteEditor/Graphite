@@ -10,18 +10,11 @@ rust-version = "1.87"
 
 [features]
 default = ["gpu"]
-gpu = ["graphite-editor/gpu"]
+gpu = ["graphite-desktop-wrapper/gpu"]
 
 [dependencies]
 # # Local dependencies
-graphite-editor = { path = "../editor", features = [
-	"gpu",
-	"ron",
-	"vello",
-] }
-graphene-std = { workspace = true }
-graph-craft = { workspace = true }
-wgpu-executor = { workspace = true }
+graphite-desktop-wrapper = { path = "wrapper" }
 
 wgpu = { workspace = true }
 winit = { workspace = true, features = ["serde"] }
@@ -39,4 +32,3 @@ vello = { workspace = true }
 derivative = { workspace = true }
 rfd = { workspace = true }
 open = { workspace = true }
-image = { workspace = true }
