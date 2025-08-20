@@ -117,7 +117,7 @@ impl PerPixelAdjustGraphicsPipeline {
 				entry_point: Some(&fragment_name),
 				compilation_options: Default::default(),
 				targets: &[Some(ColorTargetState {
-					format: TextureFormat::Rgba32Float,
+					format: TextureFormat::Rgba8UnormSrgb,
 					blend: None,
 					write_mask: Default::default(),
 				})],
