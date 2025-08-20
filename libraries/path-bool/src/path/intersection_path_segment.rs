@@ -5,6 +5,17 @@ use crate::line_segment_aabb::line_segment_aabb_intersect;
 use crate::math::lerp;
 use crate::path_segment::PathSegment;
 use glam::DVec2;
+use lyon_geom::{CubicBezierSegment, Point};
+
+/// Convert PathSegment::Cubic to lyon_geom::CubicBezierSegment
+fn path_segment_cubic_to_lyon(start: DVec2, ctrl1: DVec2, ctrl2: DVec2, end: DVec2) -> CubicBezierSegment<f64> {
+	CubicBezierSegment {
+		from: Point::new(start.x, start.y),
+		ctrl1: Point::new(ctrl1.x, ctrl1.y),
+		ctrl2: Point::new(ctrl2.x, ctrl2.y),
+		to: Point::new(end.x, end.y),
+	}
+}
 
 #[derive(Clone)]
 struct IntersectionSegment {
@@ -87,13 +98,24 @@ pub fn segments_equal(seg0: &PathSegment, seg1: &PathSegment, point_epsilon: f64
 }
 
 pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoints: bool, eps: &Epsilons) -> Vec<[f64; 2]> {
-	if let (PathSegment::Line(start0, end0), PathSegment::Line(start1, end1)) = (seg0, seg1) {
-		if let Some(st) = line_segment_intersection([*start0, *end0], [*start1, *end1], eps.param) {
-			if !endpoints && (st.0 < eps.param || st.0 > 1. - eps.param) && (st.1 < eps.param || st.1 > 1. - eps.param) {
-				return vec![];
+	match (seg0, seg1) {
+		(PathSegment::Line(start0, end0), PathSegment::Line(start1, end1)) => {
+			if let Some(st) = line_segment_intersection([*start0, *end0], [*start1, *end1], eps.param) {
+				if !endpoints && (st.0 < eps.param || st.0 > 1. - eps.param) && (st.1 < eps.param || st.1 > 1. - eps.param) {
+					return vec![];
+				}
+				return vec![st.into()];
 			}
-			return vec![st.into()];
 		}
+		(PathSegment::Cubic(s1, c11, c21, e1), PathSegment::Cubic(s2, c12, c22, e2)) => {
+			let path1 = path_segment_cubic_to_lyon(*s1, *c11, *c21, *e1);
+			let path2 = path_segment_cubic_to_lyon(*s2, *c12, *c22, *e2);
+
+			let intersections = path1.cubic_intersections_t(&path2);
+			let intersections: Vec<_> = intersections.into_iter().map(|(s, t)| [s, t]).collect();
+			return intersections;
+		}
+		_ => (),
 	}
 
 	// https://math.stackexchange.com/questions/20321/how-can-i-tell-when-two-cubic-b%C3%A9zier-curves-intersect

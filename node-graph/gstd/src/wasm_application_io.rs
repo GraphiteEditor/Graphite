@@ -209,7 +209,7 @@ async fn render_canvas(render_config: RenderConfig, data: impl Render, editor: &
 			.await
 			.expect("Failed to render Vello scene");
 
-		RenderOutputType::Texture(ImageTexture { texture: Arc::new(texture) })
+		RenderOutputType::Texture(ImageTexture { texture })
 	}
 }
 
