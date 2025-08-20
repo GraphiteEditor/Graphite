@@ -17,8 +17,8 @@ impl Grid {
 	}
 
 	pub(crate) fn insert(&mut self, bbox: &Aabb, index: usize) {
-		let min_cell = self.point_to_cell(bbox.min());
-		let max_cell = self.point_to_cell(bbox.max());
+		let min_cell = self.point_to_cell_floor(bbox.min());
+		let max_cell = self.point_to_cell_ceil(bbox.max());
 
 		for i in min_cell.x..=max_cell.x {
 			for j in min_cell.y..=max_cell.y {
@@ -28,8 +28,8 @@ impl Grid {
 	}
 
 	pub(crate) fn query(&self, bbox: &Aabb, result: &mut BitVec) {
-		let min_cell = self.point_to_cell(bbox.min());
-		let max_cell = self.point_to_cell(bbox.max());
+		let min_cell = self.point_to_cell_floor(bbox.min());
+		let max_cell = self.point_to_cell_ceil(bbox.max());
 
 		for i in min_cell.x..=max_cell.x {
 			for j in min_cell.y..=max_cell.y {
@@ -44,8 +44,11 @@ impl Grid {
 		// result.dedup();
 	}
 
-	fn point_to_cell(&self, point: DVec2) -> IVec2 {
-		(point * self.cell_factor).as_ivec2()
+	fn point_to_cell_ceil(&self, point: DVec2) -> IVec2 {
+		(point * self.cell_factor).ceil().as_ivec2()
+	}
+	fn point_to_cell_floor(&self, point: DVec2) -> IVec2 {
+		(point * self.cell_factor).floor().as_ivec2()
 	}
 }
 
@@ -55,7 +58,7 @@ pub struct BitVec {
 
 impl BitVec {
 	pub fn new(capacity: usize) -> Self {
-		let num_words = (capacity + 63) / 64;
+		let num_words = capacity.div_ceil(64);
 		BitVec { data: vec![0; num_words] }
 	}
 
