@@ -435,7 +435,7 @@ pub fn input_mappings() -> Mapping {
 		//
 		// DialogMessage
 		entry!(KeyDown(KeyE); modifiers=[Accel], action_dispatch=DialogMessage::RequestExportDialog),
-		entry!(KeyDown(KeyN); modifiers=[Accel], action_dispatch=DialogMessage::RequestNewDocumentDialog),
+		entry!(KeyDown(KeyN); modifiers=[Accel,Alt], action_dispatch=DialogMessage::RequestNewDocumentDialog),
 		entry!(KeyDown(Comma); modifiers=[Accel], action_dispatch=DialogMessage::RequestPreferencesDialog),
 		//
 		// DebugMessage
