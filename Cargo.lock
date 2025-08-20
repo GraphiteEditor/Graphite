@@ -2083,10 +2083,7 @@ dependencies = [
  "dirs",
  "futures",
  "glam",
- "graph-craft",
- "graphene-std",
- "graphite-editor",
- "image",
+ "graphite-desktop-wrapper",
  "include_dir",
  "open",
  "rfd",
@@ -2096,8 +2093,25 @@ dependencies = [
  "tracing-subscriber",
  "vello",
  "wgpu",
- "wgpu-executor",
  "winit",
+]
+
+[[package]]
+name = "graphite-desktop-wrapper"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "futures",
+ "graph-craft",
+ "graphene-std",
+ "graphite-editor",
+ "image",
+ "ron",
+ "thiserror 2.0.12",
+ "tracing",
+ "vello",
+ "wgpu",
+ "wgpu-executor",
 ]
 
 [[package]]

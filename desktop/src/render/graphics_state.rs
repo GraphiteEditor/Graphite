@@ -1,9 +1,7 @@
-use graphene_std::Color;
 use std::sync::Arc;
-use wgpu_executor::WgpuExecutor;
 use winit::window::Window;
 
-use crate::desktop_wrapper::WgpuContext;
+use graphite_desktop_wrapper::{Color, WgpuContext, WgpuExecutor};
 
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]

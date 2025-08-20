@@ -2,6 +2,7 @@
 members = [
 	"editor",
 	"desktop",
+	"desktop/wrapper",
 	"proc-macros",
 	"frontend/wasm",
 	"node-graph/gapplication-io",
