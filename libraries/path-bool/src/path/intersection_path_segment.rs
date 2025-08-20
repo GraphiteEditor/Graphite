@@ -6,7 +6,6 @@ use crate::math::lerp;
 use crate::path_segment::PathSegment;
 use glam::DVec2;
 use lyon_geom::{CubicBezierSegment, Point};
-use roots::{Roots, find_roots_cubic};
 
 /// Convert PathSegment::Cubic to lyon_geom::CubicBezierSegment
 fn path_segment_cubic_to_lyon(start: DVec2, ctrl1: DVec2, ctrl2: DVec2, end: DVec2) -> CubicBezierSegment<f64> {

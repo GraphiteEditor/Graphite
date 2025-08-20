@@ -63,7 +63,7 @@ new_key_type! {
 //
 // SPDX-License-Identifier: MIT
 
-use crate::aabb::{Aabb, bounding_box_around_point, bounding_box_max_extent, expand_bounding_box, extend_bounding_box, merge_bounding_boxes};
+use crate::aabb::{Aabb, bounding_box_max_extent, extend_bounding_box, merge_bounding_boxes};
 use crate::epsilons::Epsilons;
 use crate::grid::{BitVec, Grid};
 use crate::intersection_path_segment::{path_segment_intersection, segments_equal};
@@ -72,9 +72,8 @@ use crate::path_cubic_segment_self_intersection::path_cubic_segment_self_interse
 use crate::path_segment::PathSegment;
 #[cfg(feature = "logging")]
 use crate::path_to_path_data;
-use crate::quad_tree::QuadTree;
 
-use glam::{BVec2, DVec2, I64Vec2, IVec2};
+use glam::{BVec2, DVec2, I64Vec2};
 use roots::{Roots, find_roots_cubic};
 use rustc_hash::FxHashMap as HashMap;
 use rustc_hash::FxHashSet as HashSet;
@@ -137,8 +136,6 @@ pub enum FillRule {
 	/// A point is inside if a ray from the point to infinity crosses an even number of path segments.
 	EvenOdd,
 }
-
-const INTERSECTION_TREE_DEPTH: usize = 8;
 
 pub const EPS: Epsilons = Epsilons {
 	point: 1e-5,
@@ -551,10 +548,9 @@ impl Direction {
 const ROUNDING_FACTOR: f64 = 1.0 / (2. * EPS.point);
 
 fn round_point(point: DVec2) -> I64Vec2 {
-	(point * ROUNDING_FACTOR).as_i64vec2()
+	(point * ROUNDING_FACTOR).round().as_i64vec2()
 }
 
-// TODO: Using 32bit values here might lead to incorrect results when the values collide. Even though this is very unlikely we should think about this case
 fn find_vertices(edges: &[MajorGraphEdgeStage1]) -> MajorGraph {
 	let mut graph = MajorGraph {
 		edges: SlotMap::with_capacity_and_key(edges.len() * 2),
@@ -564,58 +560,23 @@ fn find_vertices(edges: &[MajorGraphEdgeStage1]) -> MajorGraph {
 	let mut vertex_pair_id_to_edges: HashMap<_, SmallVec<[(PathSegment, u8, MajorEdgeKey, MajorEdgeKey); 2]>> = new_hash_map(edges.len());
 	let mut vertex_hashmap: HashMap<I64Vec2, MajorVertexKey> = new_hash_map(edges.len() * 2);
 
-	// let mut vertex_tree = QuadTree::new(bounding_box, POINT_TREE_DEPTH, 8);
-	// let mut graph = MajorGraph {
-	// 	edges: SlotMap::with_key(),
-	// 	vertices: SlotMap::with_key(),
-	// };
-
-	// let mut parents: HashMap<MajorEdgeKey, u8> = new_hash_map(edges.len());
-
-	// let mut vertex_pair_id_to_edges: HashMap<_, Vec<(MajorGraphEdgeStage2, MajorEdgeKey, MajorEdgeKey)>> = new_hash_map(edges.len());
-	// let offsets = [IVec2::new(0, -1), IVec2::new(-1, 0), IVec2::new(0, 0), IVec2::new(0, 1), IVec2::new(1, 0)];
-
 	for (seg, parent) in edges {
-		// let mut get_vertex = |point: DVec2| -> MajorVertexKey {
-		// 	let box_around_point = bounding_box_around_point(point, EPS.point);
-		// 	if let Some(&existing_vertex) = vertex_tree.find(&box_around_point).iter().next() {
-		// 		existing_vertex
-		// 	} else {
-		// 		let vertex_key = graph.vertices.insert(MajorGraphVertex { point, outgoing_edges: Vec::new() });
-		// 		vertex_tree.insert(box_around_point, vertex_key);
-		// 		vertex_key
-		// 	}
-		// };
 		let mut get_vertex = |point: DVec2| -> MajorVertexKey {
 			let rounded = round_point(point);
-			if let Some(&vertex) = vertex_hashmap.get(&rounded) {
-				return vertex;
-			}
-			if let Some(&vertex) = vertex_hashmap.get(&(rounded - I64Vec2::X)) {
-				return vertex;
-			}
-			if let Some(&vertex) = vertex_hashmap.get(&(rounded - I64Vec2::Y)) {
-				return vertex;
-			}
-			if let Some(&vertex) = vertex_hashmap.get(&(rounded + I64Vec2::X)) {
-				return vertex;
-			}
-			if let Some(&vertex) = vertex_hashmap.get(&(rounded + I64Vec2::Y)) {
-				return vertex;
+			for dx in -1..=1 {
+				for dy in -1..=1 {
+					let offset = I64Vec2::new(dx, dy);
+					if let Some(&vertex) = vertex_hashmap.get(&(rounded + offset)) {
+						return vertex;
+					}
+				}
 			}
 
 			let vertex_key = graph.vertices.insert(MajorGraphVertex {
 				point,
 				outgoing_edges: SmallVec::new(),
 			});
-			// for offset in offsets.iter() {
-			// for dx in -1..=1 {
-			// 	for dy in -1..=1 {
-			let offset = I64Vec2::ZERO;
-			// let offset = IVec2::new(dx, dy);
-			vertex_hashmap.insert(rounded + offset, vertex_key);
-			// 	}
-			// }
+			vertex_hashmap.insert(rounded, vertex_key);
 			vertex_key
 		};
 		// we should subtract the center instead here
@@ -717,12 +678,10 @@ fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
 	// merge with to_minor_vertex
 	let mut visited = HashSet::with_capacity_and_hasher(vertex_count, Default::default());
 
-	let mut skipped = 0;
 	// Handle components that are not cycles
 	for (major_vertex_key, vertex) in &major_graph.vertices {
 		// Edges are contracted
 		if get_order(vertex) == 2 {
-			skipped += 1;
 			continue;
 		}
 		let start_vertex = *to_minor_vertex
@@ -877,7 +836,7 @@ fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 		if vertex.outgoing_edges.len() > 2 {
 			vertex.outgoing_edges.sort_by(|&a, &b| graph.edges[a].partial_cmp(&graph.edges[b]).unwrap());
 			if cfg!(feature = "logging") {
-				eprintln!("Outgoing edges for {:?}:", vertex_key);
+				eprintln!("Outgoing edges for {vertex_key:?}:");
 				for &edge_key in &vertex.outgoing_edges {
 					let edge = &graph.edges[edge_key];
 					let angle = edge.start_segment().start_angle();
@@ -1168,7 +1127,7 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			.map(|face_key| compute_winding(&dual_vertices[*face_key], &dual_edges).map(|w| (face_key, w)))
 			.collect();
 		#[cfg(feature = "logging")]
-		let Some(windings) = windings else {
+		let Some(_) = windings else {
 			return Err(BooleanError::NoEarInPolygon);
 		};
 
@@ -1197,14 +1156,6 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			);
 		}
 
-		// let mut count = windings.iter().filter(|(_, winding)| winding < &0).count();
-		// let mut reverse_winding = false;
-		// // If the paths are reversed use positive winding as outer face
-		// if windings.len() > 2 && count == windings.len() - 1 {
-		// 	count = 1;
-		// 	reverse_winding = true;
-		// }
-		// let outer_face_key = if count != 1 || true {
 		let areas: Vec<_> = component_vertices
 			.iter()
 			.map(|face_key| (face_key, (compute_signed_area(&dual_vertices[*face_key], &dual_edges) * 1000.) as i64))
@@ -1229,9 +1180,6 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			.map(|edge_key| dual_edges[*edge_key].outer_boundnig_box())
 			.reduce(|acc, new| merge_bounding_boxes(&acc, &new))
 			.unwrap_or_default();
-		// } else {
-		// 	*windings.iter().find(|(&_, winding)| (winding < &0) ^ reverse_winding).expect("No outer face of a component found.").0
-		// };
 		#[cfg(feature = "logging")]
 		dbg!(outer_face_key);
 
@@ -1793,11 +1741,11 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 	}
 
 	for (edge_key, edge) in &minor_graph.edges {
-		assert!(minor_graph.vertices.contains_key(edge.incident_vertices[0]), "Edge {:?} has invalid start vertex", edge_key);
-		assert!(minor_graph.vertices.contains_key(edge.incident_vertices[1]), "Edge {:?} has invalid end vertex", edge_key);
-		assert!(edge.twin.is_some(), "Edge {:?} should have a twin", edge_key);
+		assert!(minor_graph.vertices.contains_key(edge.incident_vertices[0]), "Edge {edge_key:?} has invalid start vertex");
+		assert!(minor_graph.vertices.contains_key(edge.incident_vertices[1]), "Edge {edge_key:?} has invalid end vertex");
+		assert!(edge.twin.is_some(), "Edge {edge_key:?} should have a twin");
 		let twin = &minor_graph.edges[edge.twin.unwrap()];
-		assert_eq!(twin.twin.unwrap(), edge_key, "Twin relationship should be symmetrical for edge {:?}", edge_key);
+		assert_eq!(twin.twin.unwrap(), edge_key, "Twin relationship should be symmetrical for edge {edge_key:?}");
 	}
 
 	let mut dual_graph = compute_dual(&minor_graph)?;

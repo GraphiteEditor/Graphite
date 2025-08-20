@@ -11,7 +11,6 @@ mod util {
 	pub(crate) mod epsilons;
 	pub(crate) mod grid;
 	pub(crate) mod math;
-	pub(crate) mod quad_tree;
 }
 mod path;
 #[cfg(test)]
