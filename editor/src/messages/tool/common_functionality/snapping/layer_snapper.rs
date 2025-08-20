@@ -350,7 +350,7 @@ impl SnapCandidatePath {
 	///    Refine left region using binary search:
 	///
 	///            ●------●------●
-	///           0.25  0.357   0.5
+	///           0.25  0.375   0.5
 	///
 	///    Result:           |     (=0.4)
 	///    And the right region:
