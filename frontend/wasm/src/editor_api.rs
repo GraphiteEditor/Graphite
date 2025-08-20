@@ -231,11 +231,7 @@ impl EditorHandle {
 		let js_return_value = self.frontend_message_handler_callback.call2(&JsValue::null(), &JsValue::from(message_type), &message_data);
 
 		if let Err(error) = js_return_value {
-			error!(
-				"While handling FrontendMessage \"{:?}\", JavaScript threw an error: {:?}",
-				message.to_discriminant().local_name(),
-				error,
-			)
+			error!("While handling FrontendMessage {:?}, JavaScript threw an error:\n{:?}", message.to_discriminant().local_name(), error,)
 		}
 	}
 
@@ -281,7 +277,7 @@ impl EditorHandle {
 
 						// Used by auto-panning, but this could possibly be refactored in the future, see:
 						// <https://github.com/GraphiteEditor/Graphite/pull/2562#discussion_r2041102786>
-						handle.dispatch(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame));
+						handle.dispatch(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame));
 					});
 				}
 

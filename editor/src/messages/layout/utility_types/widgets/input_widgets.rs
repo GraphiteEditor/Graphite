@@ -416,6 +416,9 @@ pub struct TextInput {
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
 
+	#[serde(rename = "maxWidth")]
+	pub max_width: u32,
+
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]

@@ -1,7 +1,7 @@
 use glam::DVec2;
 use kurbo::{ParamCurve, ParamCurveDeriv, PathSeg};
 
-pub fn segment_tangent(segment: PathSeg, t: f64) -> DVec2 {
+pub fn pathseg_tangent(segment: PathSeg, t: f64) -> DVec2 {
 	// NOTE: .deriv() method gives inaccurate result when it is 1.
 	let t = if t == 1. { 1. - f64::EPSILON } else { t };
 

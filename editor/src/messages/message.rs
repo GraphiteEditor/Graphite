@@ -33,14 +33,12 @@ pub enum Message {
 	Preferences(PreferencesMessage),
 	#[child]
 	Tool(ToolMessage),
-	#[child]
-	Workspace(WorkspaceMessage),
 
 	// Messages
-	NoOp,
 	Batched {
 		messages: Box<[Message]>,
 	},
+	NoOp,
 }
 
 /// Provides an impl of `specta::Type` for `MessageDiscriminant`, the struct created by `impl_message`.
@@ -71,7 +69,7 @@ mod test {
 
 	fn print_tree_node(tree: &DebugMessageTree, prefix: &str, is_last: bool, file: &mut std::fs::File) {
 		// Print the current node
-		let (branch, child_prefix) = if tree.has_message_handler_data_fields() || tree.has_message_handler_fields() {
+		let (branch, child_prefix) = if tree.message_handler_data_fields().is_some() || tree.message_handler_fields().is_some() {
 			("├── ", format!("{}│   ", prefix))
 		} else {
 			if is_last {
@@ -96,24 +94,38 @@ mod test {
 			}
 		}
 
+		// Print message field if any
+		if let Some(fields) = tree.fields() {
+			let len = fields.len();
+			for (i, field) in fields.iter().enumerate() {
+				let is_last_field = i == len - 1;
+				let branch = if is_last_field { "└── " } else { "├── " };
+
+				file.write_all(format!("{}{}{}\n", child_prefix, branch, field).as_bytes()).unwrap();
+			}
+		}
+
 		// Print handler field if any
 		if let Some(data) = tree.message_handler_fields() {
 			let len = data.fields().len();
-			let (branch, child_prefix) = if tree.has_message_handler_data_fields() {
+			let (branch, child_prefix) = if tree.message_handler_data_fields().is_some() {
 				("├── ", format!("{}│   ", prefix))
 			} else {
 				("└── ", format!("{}    ", prefix))
 			};
-			if data.path().is_empty() {
-				file.write_all(format!("{}{}{}\n", prefix, branch, data.name()).as_bytes()).unwrap();
-			} else {
-				file.write_all(format!("{}{}{} `{}`\n", prefix, branch, data.name(), data.path()).as_bytes()).unwrap();
-			}
-			for (i, field) in data.fields().iter().enumerate() {
-				let is_last_field = i == len - 1;
-				let branch = if is_last_field { "└── " } else { "├── " };
 
-				file.write_all(format!("{}{}{}\n", child_prefix, branch, field.0).as_bytes()).unwrap();
+			const FRONTEND_MESSAGE_STR: &str = "FrontendMessage";
+			if data.name().is_empty() && tree.name() != FRONTEND_MESSAGE_STR {
+				panic!("{}'s MessageHandler is missing #[message_handler_data]", tree.name());
+			} else if tree.name() != FRONTEND_MESSAGE_STR {
+				file.write_all(format!("{}{}{} `{}`\n", prefix, branch, data.name(), data.path()).as_bytes()).unwrap();
+
+				for (i, field) in data.fields().iter().enumerate() {
+					let is_last_field = i == len - 1;
+					let branch = if is_last_field { "└── " } else { "├── " };
+
+					file.write_all(format!("{}{}{}\n", child_prefix, branch, field.0).as_bytes()).unwrap();
+				}
 			}
 		}
 

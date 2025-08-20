@@ -14,7 +14,7 @@ pub enum FillToolMessage {
 	// Standard messages
 	Abort,
 	WorkingColorChanged,
-	Overlays(OverlayContext),
+	Overlays { context: OverlayContext },
 
 	// Tool-specific messages
 	PointerMove,
@@ -67,7 +67,7 @@ impl ToolTransition for FillTool {
 		EventToMessageMap {
 			tool_abort: Some(FillToolMessage::Abort.into()),
 			working_color_changed: Some(FillToolMessage::WorkingColorChanged.into()),
-			overlay_provider: Some(|overlay_context| FillToolMessage::Overlays(overlay_context).into()),
+			overlay_provider: Some(|context| FillToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
 	}
@@ -99,7 +99,7 @@ impl Fsm for FillToolFsmState {
 
 		let ToolMessage::Fill(event) = event else { return self };
 		match (self, event) {
-			(_, FillToolMessage::Overlays(mut overlay_context)) => {
+			(_, FillToolMessage::Overlays { context: mut overlay_context }) => {
 				// Choose the working color to preview
 				let use_secondary = input.keyboard.get(Key::Shift as usize);
 				let preview_color = if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color };

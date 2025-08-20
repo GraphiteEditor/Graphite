@@ -149,11 +149,16 @@ pub enum FrontendMessage {
 	UpdateGraphViewOverlay {
 		open: bool,
 	},
-	UpdateSpreadsheetState {
+	UpdateDataPanelState {
 		open: bool,
-		node: Option<NodeId>,
 	},
-	UpdateSpreadsheetLayout {
+	UpdatePropertiesPanelState {
+		open: bool,
+	},
+	UpdateLayersPanelState {
+		open: bool,
+	},
+	UpdateDataPanelLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
@@ -296,7 +301,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "openDocuments")]
 		open_documents: Vec<FrontendDocumentDetails>,
 	},
-	UpdatePropertyPanelSectionsLayout {
+	UpdatePropertiesPanelLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
@@ -330,9 +335,9 @@ pub enum FrontendMessage {
 		active: bool,
 	},
 	#[cfg(not(target_family = "wasm"))]
-	RenderOverlays(
+	RenderOverlays {
 		#[serde(skip, default = "OverlayContext::default")]
 		#[derivative(Debug = "ignore", PartialEq = "ignore")]
-		OverlayContext,
-	),
+		context: OverlayContext,
+	},
 }

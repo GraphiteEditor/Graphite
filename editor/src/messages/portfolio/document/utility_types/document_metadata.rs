@@ -6,6 +6,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 use graphene_std::math::quad::Quad;
+use graphene_std::subpath;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::{PointId, Vector};
@@ -196,7 +197,7 @@ impl DocumentMetadata {
 		self.all_layers().filter_map(|layer| self.bounding_box_viewport(layer)).reduce(Quad::combine_bounds)
 	}
 
-	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &bezier_rs::Subpath<PointId>> {
+	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &subpath::Subpath<PointId>> {
 		static EMPTY: Vec<ClickTarget> = Vec::new();
 		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
 		click_targets.iter().filter_map(|target| match target.target_type() {

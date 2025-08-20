@@ -4,9 +4,10 @@ use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_f
 use super::misc::{CentroidType, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, Vector, VectorExt};
-use crate::bounds::BoundingBox;
+use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
+use crate::subpath::{BezierHandles, ManipulatorGroup};
 use crate::table::{Table, TableRow, TableRowMut};
 use crate::transform::{Footprint, ReferencePoint, Transform};
 use crate::vector::PointDomain;
@@ -17,7 +18,6 @@ use crate::vector::misc::{handles_to_segment, segment_to_handles};
 use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, Graphic, OwnedContextImpl};
-use bezier_rs::ManipulatorGroup;
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
@@ -48,28 +48,28 @@ impl VectorTableIterMut for Table<Vector> {
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
 async fn assign_colors<T>(
 	_: impl Ctx,
+	/// The content with vector paths to apply the fill and/or stroke style to.
 	#[implementations(Table<Graphic>, Table<Vector>)]
 	#[widget(ParsedWidgetOverride::Hidden)]
-	/// The content with vector paths to apply the fill and/or stroke style to.
 	mut content: T,
-	#[default(true)]
 	/// Whether to style the fill.
+	#[default(true)]
 	fill: bool,
 	/// Whether to style the stroke.
 	stroke: bool,
-	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
 	/// The range of colors to select from.
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
 	gradient: GradientStops,
 	/// Whether to reverse the gradient.
 	reverse: bool,
 	/// Whether to randomize the color selection for each element from throughout the gradient.
 	randomize: bool,
-	#[widget(ParsedWidgetOverride::Custom = "assign_colors_seed")]
 	/// The seed used for randomization.
 	/// Seed to determine unique variations on the randomized color selection.
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_seed")]
 	seed: SeedValue,
-	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every")]
 	/// The number of elements to span across the gradient before repeating. A 0 value will span the entire gradient once.
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every")]
 	repeat_every: u32,
 ) -> T
 where
@@ -106,8 +106,9 @@ where
 }
 
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-async fn fill<F: Into<Fill> + 'n + Send, V>(
+async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 	_: impl Ctx,
+	/// The content with vector paths to apply the fill style to.
 	#[implementations(
 		Table<Vector>,
 		Table<Vector>,
@@ -116,36 +117,28 @@ async fn fill<F: Into<Fill> + 'n + Send, V>(
 		Table<Graphic>,
 		Table<Graphic>,
 		Table<Graphic>,
-		Table<Graphic>
+		Table<Graphic>,
 	)]
-	/// The content with vector paths to apply the fill style to.
 	mut content: V,
+	/// The fill to paint the path with.
 	#[implementations(
 		Fill,
-		Option<Color>,
-		Color,
+		Table<Color>,
+		Table<GradientStops>,
 		Gradient,
 		Fill,
-		Option<Color>,
-		Color,
+		Table<Color>,
+		Table<GradientStops>,
 		Gradient,
 	)]
 	#[default(Color::BLACK)]
-	/// The fill to paint the path with.
 	fill: F,
-	_backup_color: Option<Color>,
+	_backup_color: Table<Color>,
 	_backup_gradient: Gradient,
-) -> V
-where
-	V: VectorTableIterMut + 'n + Send,
-{
+) -> V {
 	let fill: Fill = fill.into();
 	for vector in content.vector_iter_mut() {
-		let mut fill = fill.clone();
-		if let Fill::Gradient(gradient) = &mut fill {
-			gradient.transform *= *vector.transform;
-		}
-		vector.element.style.set_fill(fill);
+		vector.element.style.set_fill(fill.clone());
 	}
 
 	content
@@ -153,23 +146,17 @@ where
 
 /// Applies a stroke style to the vector contained in the input.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
+async fn stroke<V>(
 	_: impl Ctx,
-	#[implementations(Table<Vector>, Table<Vector>, Table<Graphic>, Table<Graphic>)]
 	/// The content with vector paths to apply the stroke style to.
+	#[implementations(Table<Vector>, Table<Graphic>)]
 	mut content: Table<V>,
-	#[implementations(
-		Option<Color>,
-		Color,
-		Option<Color>,
-		Color,
-	)]
-	#[default(Color::BLACK)]
 	/// The stroke color.
-	color: C,
+	#[default(Color::BLACK)]
+	color: Table<Color>,
+	/// The stroke weight.
 	#[unit(" px")]
 	#[default(2.)]
-	/// The stroke weight.
 	weight: f64,
 	/// The alignment of stroke to the path's centerline or (for closed shapes) the inside or outside of the shape.
 	align: StrokeAlign,
@@ -177,8 +164,8 @@ async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	cap: StrokeCap,
 	/// The curvature of the bent stroke at sharp corners.
 	join: StrokeJoin,
-	#[default(4.)]
 	/// The threshold for when a miter-joined stroke is converted to a bevel-joined stroke when a sharp angle becomes pointier than this ratio.
+	#[default(4.)]
 	miter_limit: f64,
 	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
 	/// <https://svgwg.org/svg2-draft/painting.html#PaintOrderProperty>
@@ -219,7 +206,7 @@ where
 async fn repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	// TODO: Implement other graphical types.
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>)] instance: Table<I>,
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] instance: Table<I>,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: PixelSize,
@@ -255,7 +242,7 @@ async fn repeat<I: 'n + Send + Clone>(
 async fn circular_repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	// TODO: Implement other graphical types.
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>)] instance: Table<I>,
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] instance: Table<I>,
 	angle_offset: Angle,
 	#[unit(" px")]
 	#[default(5)]
@@ -289,9 +276,9 @@ async fn circular_repeat<I: 'n + Send + Clone>(
 async fn copy_to_points<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	points: Table<Vector>,
-	#[expose]
 	/// Artwork to be copied and placed at each point.
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>)]
+	#[expose]
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)]
 	instance: Table<I>,
 	/// Minimum range of randomized sizes given to each instance.
 	#[default(1)]
@@ -366,7 +353,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn mirror<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>)] instance: Table<I>,
+	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] content: Table<I>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
 	#[unit(" px")] offset: f64,
 	#[range((-90., 90.))] angle: Angle,
@@ -375,14 +362,12 @@ async fn mirror<I: 'n + Send + Clone>(
 where
 	Table<I>: BoundingBox,
 {
-	let mut result_table = Table::new();
-
 	// Normalize the direction vector
 	let normal = DVec2::from_angle(angle.to_radians());
 
-	// The mirror reference is based on the bounding box (at least for now, until we have proper local layer origins)
-	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY, false) else {
-		return result_table;
+	// The mirror reference may be based on the bounding box if an explicit reference point is chosen
+	let RenderBoundingBox::Rectangle(bounding_box) = content.bounding_box(DAffine2::IDENTITY, false) else {
+		return content;
 	};
 
 	let reference_point_location = relative_to_bounds.point_in_bounding_box((bounding_box[0], bounding_box[1]).into());
@@ -404,15 +389,17 @@ where
 		reflection * DAffine2::from_translation(DVec2::from_angle(angle.to_radians()) * DVec2::splat(-offset))
 	};
 
+	let mut result_table = Table::new();
+
 	// Add original instance depending on the keep_original flag
 	if keep_original {
-		for instance in instance.clone().into_iter() {
+		for instance in content.clone().into_iter() {
 			result_table.push(instance);
 		}
 	}
 
 	// Create and add mirrored instance
-	for mut row in instance.into_iter() {
+	for mut row in content.into_iter() {
 		row.transform = reflected_transform * row.transform;
 		result_table.push(row);
 	}
@@ -840,11 +827,11 @@ async fn points_to_polyline(_: impl Ctx, mut points: Table<Vector>, #[default(tr
 
 		if points_count > 2 {
 			(0..points_count - 1).for_each(|i| {
-				segment_domain.push(SegmentId::generate(), i, i + 1, bezier_rs::BezierHandles::Linear, StrokeId::generate());
+				segment_domain.push(SegmentId::generate(), i, i + 1, BezierHandles::Linear, StrokeId::generate());
 			});
 
 			if closed {
-				segment_domain.push(SegmentId::generate(), points_count - 1, 0, bezier_rs::BezierHandles::Linear, StrokeId::generate());
+				segment_domain.push(SegmentId::generate(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
 
 				row.element
 					.region_domain
@@ -877,7 +864,7 @@ async fn offset_path(_: impl Ctx, content: Table<Vector>, distance: f64, join: S
 			for mut bezpath in bezpaths {
 				bezpath.apply_affine(transform);
 
-				// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
+				// Taking the existing stroke data and passing it to Kurbo to generate new paths.
 				let mut bezpath_out = offset_bezpath(
 					&bezpath,
 					-distance,
@@ -1364,7 +1351,7 @@ async fn spline(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 
 					let handle_start = first_handles[i];
 					let handle_end = positions[next_index] * 2. - first_handles[next_index];
-					let handles = bezier_rs::BezierHandles::Cubic { handle_start, handle_end };
+					let handles = BezierHandles::Cubic { handle_start, handle_end };
 
 					segment_domain.push(SegmentId::generate(), start_index, end_index, handles, stroke_id);
 				}
@@ -1418,14 +1405,14 @@ async fn jitter_points(
 				}
 
 				match handles {
-					bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
+					BezierHandles::Cubic { handle_start, handle_end } => {
 						*handle_start += start_delta;
 						*handle_end += end_delta;
 					}
-					bezier_rs::BezierHandles::Quadratic { handle } => {
+					BezierHandles::Quadratic { handle } => {
 						*handle = row.transform.transform_point2(*handle) + (start_delta + end_delta) / 2.;
 					}
-					bezier_rs::BezierHandles::Linear => {}
+					BezierHandles::Linear => {}
 				}
 			}
 
@@ -1859,7 +1846,7 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 		let mut next_id = vector.segment_domain.next_id();
 
 		for &[start, end] in new_segments {
-			let handles = bezier_rs::BezierHandles::Linear;
+			let handles = BezierHandles::Linear;
 			vector.segment_domain.push(next_id.next_id(), start, end, handles, StrokeId::ZERO);
 		}
 	}
@@ -1901,7 +1888,7 @@ fn point_inside(_: impl Ctx, source: Table<Vector>, point: DVec2) -> bool {
 }
 
 #[node_macro::node(category("General"), path(graphene_core::vector))]
-async fn count_elements<I>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>)] source: Table<I>) -> u64 {
+async fn count_elements<I>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)] source: Table<I>) -> u64 {
 	source.len() as u64
 }
 

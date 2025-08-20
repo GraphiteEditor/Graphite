@@ -26,7 +26,7 @@ pub struct ArtboardTool {
 pub enum ArtboardToolMessage {
 	// Standard messages
 	Abort,
-	Overlays(OverlayContext),
+	Overlays { context: OverlayContext },
 
 	// Tool-specific messages
 	UpdateSelectedArtboard,
@@ -83,7 +83,7 @@ impl ToolTransition for ArtboardTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(ArtboardToolMessage::Abort.into()),
-			overlay_provider: Some(|overlay_context| ArtboardToolMessage::Overlays(overlay_context).into()),
+			overlay_provider: Some(|context| ArtboardToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
 	}
@@ -227,7 +227,7 @@ impl Fsm for ArtboardToolFsmState {
 
 		let ToolMessage::Artboard(event) = event else { return self };
 		match (self, event) {
-			(state, ArtboardToolMessage::Overlays(mut overlay_context)) => {
+			(state, ArtboardToolMessage::Overlays { context: mut overlay_context }) => {
 				let display_transform_cage = overlay_context.visibility_settings.transform_cage();
 				if display_transform_cage && state != ArtboardToolFsmState::Drawing {
 					if let Some(bounds) = tool_data.selected_artboard.and_then(|layer| document.metadata().bounding_box_document(layer)) {

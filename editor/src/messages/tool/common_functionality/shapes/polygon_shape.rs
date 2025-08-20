@@ -182,7 +182,9 @@ impl Polygon {
 
 			let new_dimension = if increase { n + 1 } else { (n - 1).max(3) };
 
-			responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(new_dimension)));
+			responses.add(ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::Vertices(new_dimension),
+			});
 
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, 1),

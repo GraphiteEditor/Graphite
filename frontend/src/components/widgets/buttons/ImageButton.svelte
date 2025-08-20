@@ -17,14 +17,15 @@
 		.join(" ");
 </script>
 
-<img src={IMAGE_BASE64_STRINGS[image]} style:width style:height class={`image-label ${className} ${extraClasses}`.trim()} title={tooltip} alt="" on:click={action} />
+<img src={IMAGE_BASE64_STRINGS[image]} style:width style:height class={`image-button ${className} ${extraClasses}`.trim()} title={tooltip} alt="" on:click={action} />
 
 <style lang="scss" global>
-	.image-label {
+	.image-button {
 		width: auto;
 		height: auto;
+		border-radius: 2px;
 
-		+ .image-label.image-label {
+		+ .image-button.image-button {
 			margin-left: 8px;
 		}
 	}

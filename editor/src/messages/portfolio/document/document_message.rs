@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use super::utility_types::misc::{GroupFolderType, SnappingState};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+use crate::messages::portfolio::document::data_panel::DataPanelMessage;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::overlays::utility_types::OverlaysType;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -33,6 +34,8 @@ pub enum DocumentMessage {
 	Overlays(OverlaysMessage),
 	#[child]
 	PropertiesPanel(PropertiesPanelMessage),
+	#[child]
+	DataPanel(DataPanelMessage),
 
 	// Messages
 	AlignSelectedLayers {
@@ -50,7 +53,9 @@ pub enum DocumentMessage {
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	DocumentStructureChanged,
-	DrawArtboardOverlays(OverlayContext),
+	DrawArtboardOverlays {
+		context: OverlayContext,
+	},
 	DuplicateSelectedLayers,
 	EnterNestedNetwork {
 		node_id: NodeId,
@@ -69,9 +74,15 @@ pub enum DocumentMessage {
 		open: bool,
 	},
 	GraphViewOverlayToggle,
-	GridOptions(GridSnapping),
-	GridOverlays(OverlayContext),
-	GridVisibility(bool),
+	GridOptions {
+		options: GridSnapping,
+	},
+	GridOverlays {
+		context: OverlayContext,
+	},
+	GridVisibility {
+		visible: bool,
+	},
 	GroupSelectedLayers {
 		group_folder_type: GroupFolderType,
 	},

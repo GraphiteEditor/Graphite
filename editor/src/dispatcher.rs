@@ -26,7 +26,6 @@ pub struct DispatcherMessageHandlers {
 	pub portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
-	workspace_message_handler: WorkspaceMessageHandler,
 }
 
 impl DispatcherMessageHandlers {
@@ -53,7 +52,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 ];
 const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
-	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(BroadcastEventDiscriminant::AnimationFrame)),
+	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(EventMessageDiscriminant::AnimationFrame)),
 	MessageDiscriminant::Animation(AnimationMessageDiscriminant::IncrementFrameCounter),
 ];
 // TODO: Find a way to combine these with the list above. We use strings for now since these are the standard variant names used by multiple messages. But having these also type-checked would be best.
@@ -230,9 +229,6 @@ impl Dispatcher {
 					};
 
 					self.message_handlers.tool_message_handler.process_message(message, &mut queue, context);
-				}
-				Message::Workspace(message) => {
-					self.message_handlers.workspace_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::NoOp => {}
 				Message::Batched { messages } => {

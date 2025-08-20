@@ -41,7 +41,7 @@ impl Default for SplineOptions {
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum SplineToolMessage {
 	// Standard messages
-	Overlays(OverlayContext),
+	Overlays { context: OverlayContext },
 	CanvasTransformed,
 	Abort,
 	WorkingColorChanged,
@@ -54,7 +54,7 @@ pub enum SplineToolMessage {
 	PointerMove,
 	PointerOutsideViewport,
 	Undo,
-	UpdateOptions(SplineOptionsUpdate),
+	UpdateOptions { options: SplineOptionsUpdate },
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -93,7 +93,12 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.label("Weight")
 		.min(0.)
 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		.on_update(|number_input: &NumberInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
+		.on_update(|number_input: &NumberInput| {
+			SplineToolMessage::UpdateOptions {
+				options: SplineOptionsUpdate::LineWeight(number_input.value.unwrap()),
+			}
+			.into()
+		})
 		.widget_holder()
 }
 
@@ -102,9 +107,26 @@ impl LayoutHolder for SplineTool {
 		let mut widgets = self.options.fill.create_widgets(
 			"Fill",
 			true,
-			|_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(None)).into(),
-			|color_type: ToolColorType| WidgetCallback::new(move |_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
+			|_| {
+				SplineToolMessage::UpdateOptions {
+					options: SplineOptionsUpdate::FillColor(None),
+				}
+				.into()
+			},
+			|color_type: ToolColorType| {
+				WidgetCallback::new(move |_| {
+					SplineToolMessage::UpdateOptions {
+						options: SplineOptionsUpdate::FillColorType(color_type.clone()),
+					}
+					.into()
+				})
+			},
+			|color: &ColorInput| {
+				SplineToolMessage::UpdateOptions {
+					options: SplineOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+				}
+				.into()
+			},
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -112,9 +134,26 @@ impl LayoutHolder for SplineTool {
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
 			true,
-			|_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(None)).into(),
-			|color_type: ToolColorType| WidgetCallback::new(move |_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
+			|_| {
+				SplineToolMessage::UpdateOptions {
+					options: SplineOptionsUpdate::StrokeColor(None),
+				}
+				.into()
+			},
+			|color_type: ToolColorType| {
+				WidgetCallback::new(move |_| {
+					SplineToolMessage::UpdateOptions {
+						options: SplineOptionsUpdate::StrokeColorType(color_type.clone()),
+					}
+					.into()
+				})
+			},
+			|color: &ColorInput| {
+				SplineToolMessage::UpdateOptions {
+					options: SplineOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+				}
+				.into()
+			},
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -126,11 +165,11 @@ impl LayoutHolder for SplineTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for SplineTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		let ToolMessage::Spline(SplineToolMessage::UpdateOptions(action)) = message else {
+		let ToolMessage::Spline(SplineToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			return;
 		};
-		match action {
+		match options {
 			SplineOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
 			SplineOptionsUpdate::FillColor(color) => {
 				self.options.fill.custom_color = color;
@@ -179,7 +218,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Spli
 impl ToolTransition for SplineTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			overlay_provider: Some(|overlay_context: OverlayContext| SplineToolMessage::Overlays(overlay_context).into()),
+			overlay_provider: Some(|context: OverlayContext| SplineToolMessage::Overlays { context }.into()),
 			canvas_transformed: Some(SplineToolMessage::CanvasTransformed.into()),
 			tool_abort: Some(SplineToolMessage::Abort.into()),
 			working_color_changed: Some(SplineToolMessage::WorkingColorChanged.into()),
@@ -262,7 +301,7 @@ impl Fsm for SplineToolFsmState {
 		let ToolMessage::Spline(event) = event else { return self };
 		match (self, event) {
 			(_, SplineToolMessage::CanvasTransformed) => self,
-			(_, SplineToolMessage::Overlays(mut overlay_context)) => {
+			(_, SplineToolMessage::Overlays { context: mut overlay_context }) => {
 				path_endpoint_overlays(document, shape_editor, &mut overlay_context, preferences);
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				self
@@ -440,10 +479,9 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::Ready
 			}
 			(_, SplineToolMessage::WorkingColorChanged) => {
-				responses.add(SplineToolMessage::UpdateOptions(SplineOptionsUpdate::WorkingColors(
-					Some(global_tool_data.primary_color),
-					Some(global_tool_data.secondary_color),
-				)));
+				responses.add(SplineToolMessage::UpdateOptions {
+					options: SplineOptionsUpdate::WorkingColors(Some(global_tool_data.primary_color), Some(global_tool_data.secondary_color)),
+				});
 				self
 			}
 			_ => self,
