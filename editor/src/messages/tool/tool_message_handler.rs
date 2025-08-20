@@ -11,7 +11,7 @@ use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use graphene_std::raster::color::Color;
 
-const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |overlay_context| DocumentMessage::DrawArtboardOverlays(overlay_context).into();
+const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |context| DocumentMessage::DrawArtboardOverlays { context }.into();
 
 #[derive(ExtractField)]
 pub struct ToolMessageContext<'a> {
@@ -75,8 +75,8 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 					self.tool_state.tool_data.active_tool_type = ToolType::Shape;
 				}
 				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
-				responses.add(ShapeToolMessage::SetShape(ShapeType::Polygon));
-				responses.add(ShapeToolMessage::HideShapeTypeWidget(false))
+				responses.add(ShapeToolMessage::SetShape { shape: ShapeType::Polygon });
+				responses.add(ShapeToolMessage::HideShapeTypeWidget { hide: false })
 			}
 			ToolMessage::ActivateToolBrush => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Brush }),
 			ToolMessage::ActivateToolShapeLine | ToolMessage::ActivateToolShapeRectangle | ToolMessage::ActivateToolShapeEllipse => {
@@ -89,8 +89,8 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 
 				self.tool_state.tool_data.active_shape_type = Some(shape.tool_type());
 				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
-				responses.add(ShapeToolMessage::HideShapeTypeWidget(true));
-				responses.add(ShapeToolMessage::SetShape(shape));
+				responses.add(ShapeToolMessage::HideShapeTypeWidget { hide: true });
+				responses.add(ShapeToolMessage::SetShape { shape });
 			}
 			ToolMessage::ActivateTool { tool_type } => {
 				let tool_data = &mut self.tool_state.tool_data;
@@ -157,13 +157,13 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				tool_data.tools.get(&tool_type).unwrap().activate(responses);
 
 				// Re-add the artboard overlay provider when tools are reactivated
-				responses.add(OverlaysMessage::AddProvider(ARTBOARD_OVERLAY_PROVIDER));
+				responses.add(OverlaysMessage::AddProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
 
 				// Send the SelectionChanged message to the active tool, this will ensure the selection is updated
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 
 				// Update the working colors for the active tool
-				responses.add(BroadcastEvent::WorkingColorChanged);
+				responses.add(EventMessage::WorkingColorChanged);
 
 				// Send tool options to the frontend
 				responses.add(ToolMessage::RefreshToolOptions);
@@ -176,11 +176,12 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				tool_data.tools.get(&tool_data.active_tool_type).unwrap().deactivate(responses);
 
 				// Unsubscribe the transform layer to selection change events
-				let message = Box::new(TransformLayerMessage::SelectionChanged.into());
-				let on = BroadcastEvent::SelectionChanged;
-				responses.add(BroadcastMessage::UnsubscribeEvent { message, on });
+				responses.add(BroadcastMessage::UnsubscribeEvent {
+					on: EventMessage::SelectionChanged,
+					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
+				});
 
-				responses.add(OverlaysMessage::RemoveProvider(ARTBOARD_OVERLAY_PROVIDER));
+				responses.add(OverlaysMessage::RemoveProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
 
 				responses.add(FrontendMessage::UpdateInputHints { hint_data: Default::default() });
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: Default::default() });
@@ -190,12 +191,12 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			ToolMessage::InitTools => {
 				// Subscribe the transform layer to selection change events
 				responses.add(BroadcastMessage::SubscribeEvent {
-					on: BroadcastEvent::SelectionChanged,
+					on: EventMessage::SelectionChanged,
 					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
 				});
 
 				responses.add(BroadcastMessage::SubscribeEvent {
-					on: BroadcastEvent::SelectionChanged,
+					on: EventMessage::SelectionChanged,
 					send: Box::new(SelectToolMessage::SyncHistory.into()),
 				});
 
@@ -232,12 +233,12 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				tool_data.active_tool_mut().process_message(ToolMessage::UpdateHints, responses, &mut data);
 				tool_data.active_tool_mut().process_message(ToolMessage::UpdateCursor, responses, &mut data);
 
-				responses.add(OverlaysMessage::AddProvider(ARTBOARD_OVERLAY_PROVIDER));
+				responses.add(OverlaysMessage::AddProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
 			}
 			ToolMessage::PreUndo => {
 				let tool_data = &mut self.tool_state.tool_data;
 				if tool_data.active_tool_type != ToolType::Pen {
-					responses.add(BroadcastEvent::ToolAbort);
+					responses.add(EventMessage::ToolAbort);
 				}
 			}
 			ToolMessage::Redo => {

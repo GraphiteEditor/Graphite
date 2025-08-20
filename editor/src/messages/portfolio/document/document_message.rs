@@ -53,7 +53,9 @@ pub enum DocumentMessage {
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	DocumentStructureChanged,
-	DrawArtboardOverlays(OverlayContext),
+	DrawArtboardOverlays {
+		context: OverlayContext,
+	},
 	DuplicateSelectedLayers,
 	EnterNestedNetwork {
 		node_id: NodeId,
@@ -72,9 +74,15 @@ pub enum DocumentMessage {
 		open: bool,
 	},
 	GraphViewOverlayToggle,
-	GridOptions(GridSnapping),
-	GridOverlays(OverlayContext),
-	GridVisibility(bool),
+	GridOptions {
+		options: GridSnapping,
+	},
+	GridOverlays {
+		context: OverlayContext,
+	},
+	GridVisibility {
+		visible: bool,
+	},
 	GroupSelectedLayers {
 		group_folder_type: GroupFolderType,
 	},

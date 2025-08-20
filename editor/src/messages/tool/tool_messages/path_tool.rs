@@ -51,8 +51,10 @@ pub struct PathToolOptions {
 pub enum PathToolMessage {
 	// Standard messages
 	Abort,
-	Overlays(OverlayContext),
 	SelectionChanged,
+	Overlays {
+		context: OverlayContext,
+	},
 
 	// Tool-specific messages
 	BreakPath,
@@ -123,7 +125,9 @@ pub enum PathToolMessage {
 		position: ReferencePoint,
 	},
 	SwapSelectedHandles,
-	UpdateOptions(PathOptionsUpdate),
+	UpdateOptions {
+		options: PathOptionsUpdate,
+	},
 	UpdateSelectedPointsStatus {
 		overlay_context: OverlayContext,
 	},
@@ -275,15 +279,30 @@ impl LayoutHolder for PathTool {
 			RadioEntryData::new("all")
 				.icon("HandleVisibilityAll")
 				.tooltip("Show all handles regardless of selection")
-				.on_update(move |_| PathToolMessage::UpdateOptions(PathOptionsUpdate::OverlayModeType(PathOverlayMode::AllHandles)).into()),
+				.on_update(move |_| {
+					PathToolMessage::UpdateOptions {
+						options: PathOptionsUpdate::OverlayModeType(PathOverlayMode::AllHandles),
+					}
+					.into()
+				}),
 			RadioEntryData::new("selected")
 				.icon("HandleVisibilitySelected")
 				.tooltip("Show only handles of the segments connected to selected points")
-				.on_update(move |_| PathToolMessage::UpdateOptions(PathOptionsUpdate::OverlayModeType(PathOverlayMode::SelectedPointHandles)).into()),
+				.on_update(move |_| {
+					PathToolMessage::UpdateOptions {
+						options: PathOptionsUpdate::OverlayModeType(PathOverlayMode::SelectedPointHandles),
+					}
+					.into()
+				}),
 			RadioEntryData::new("frontier")
 				.icon("HandleVisibilityFrontier")
 				.tooltip("Show only handles at the frontiers of the segments connected to selected points")
-				.on_update(move |_| PathToolMessage::UpdateOptions(PathOptionsUpdate::OverlayModeType(PathOverlayMode::FrontierHandles)).into()),
+				.on_update(move |_| {
+					PathToolMessage::UpdateOptions {
+						options: PathOptionsUpdate::OverlayModeType(PathOverlayMode::FrontierHandles),
+					}
+					.into()
+				}),
 		])
 		.selected_index(Some(self.options.path_overlay_mode as u32))
 		.widget_holder();
@@ -345,7 +364,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);
 
 		match message {
-			ToolMessage::Path(PathToolMessage::UpdateOptions(action)) => match action {
+			ToolMessage::Path(PathToolMessage::UpdateOptions { options }) => match options {
 				PathOptionsUpdate::OverlayModeType(overlay_mode_type) => {
 					self.options.path_overlay_mode = overlay_mode_type;
 					responses.add(OverlaysMessage::Draw);
@@ -478,7 +497,7 @@ impl ToolTransition for PathTool {
 		EventToMessageMap {
 			tool_abort: Some(PathToolMessage::Abort.into()),
 			selection_changed: Some(PathToolMessage::SelectionChanged.into()),
-			overlay_provider: Some(|overlay_context| PathToolMessage::Overlays(overlay_context).into()),
+			overlay_provider: Some(|context| PathToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
 	}
@@ -1557,14 +1576,22 @@ impl Fsm for PathToolFsmState {
 
 				match (multiple_toggle, point_edit) {
 					(true, true) => {
-						responses.add(PathToolMessage::UpdateOptions(PathOptionsUpdate::PointEditingMode { enabled: false }));
+						responses.add(PathToolMessage::UpdateOptions {
+							options: PathOptionsUpdate::PointEditingMode { enabled: false },
+						});
 					}
 					(true, false) => {
-						responses.add(PathToolMessage::UpdateOptions(PathOptionsUpdate::PointEditingMode { enabled: true }));
+						responses.add(PathToolMessage::UpdateOptions {
+							options: PathOptionsUpdate::PointEditingMode { enabled: true },
+						});
 					}
 					(_, _) => {
-						responses.add(PathToolMessage::UpdateOptions(PathOptionsUpdate::PointEditingMode { enabled: true }));
-						responses.add(PathToolMessage::UpdateOptions(PathOptionsUpdate::SegmentEditingMode { enabled: false }));
+						responses.add(PathToolMessage::UpdateOptions {
+							options: PathOptionsUpdate::PointEditingMode { enabled: true },
+						});
+						responses.add(PathToolMessage::UpdateOptions {
+							options: PathOptionsUpdate::SegmentEditingMode { enabled: false },
+						});
 
 						// Select all of the end points of selected segments
 						let selected_layers = shape_editor.selected_layers().cloned().collect::<Vec<_>>();
@@ -1602,14 +1629,22 @@ impl Fsm for PathToolFsmState {
 
 				match (multiple_toggle, segment_edit) {
 					(true, true) => {
-						responses.add(PathToolMessage::UpdateOptions(PathOptionsUpdate::SegmentEditingMode { enabled: false }));
+						responses.add(PathToolMessage::UpdateOptions {
+							options: PathOptionsUpdate::SegmentEditingMode { enabled: false },
+						});
 					}
 					(true, false) => {
-						responses.add(PathToolMessage::UpdateOptions(PathOptionsUpdate::SegmentEditingMode { enabled: true }));
+						responses.add(PathToolMessage::UpdateOptions {
+							options: PathOptionsUpdate::SegmentEditingMode { enabled: true },
+						});
 					}
 					(_, _) => {
-						responses.add(PathToolMessage::UpdateOptions(PathOptionsUpdate::PointEditingMode { enabled: false }));
-						responses.add(PathToolMessage::UpdateOptions(PathOptionsUpdate::SegmentEditingMode { enabled: true }));
+						responses.add(PathToolMessage::UpdateOptions {
+							options: PathOptionsUpdate::PointEditingMode { enabled: false },
+						});
+						responses.add(PathToolMessage::UpdateOptions {
+							options: PathOptionsUpdate::SegmentEditingMode { enabled: true },
+						});
 
 						// Select all the segments which have both of the ends selected
 						let selected_layers = shape_editor.selected_layers().cloned().collect::<Vec<_>>();
@@ -1632,7 +1667,7 @@ impl Fsm for PathToolFsmState {
 
 				self
 			}
-			(_, PathToolMessage::Overlays(mut overlay_context)) => {
+			(_, PathToolMessage::Overlays { context: mut overlay_context }) => {
 				// Set this to show ghost line only if drag actually happened
 				if matches!(self, Self::Dragging(_)) && tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 					for (outline, layer) in &tool_data.ghost_outline {
@@ -1829,7 +1864,7 @@ impl Fsm for PathToolFsmState {
 						let (points_inside, segments_inside) = match selection_shape {
 							SelectionShapeType::Box => {
 								let previous_mouse = document.metadata().document_to_viewport.transform_point2(tool_data.previous_mouse_position);
-								let bbox = Rect::new(tool_data.drag_start_pos.x, tool_data.drag_start_pos.y, previous_mouse.x, previous_mouse.y);
+								let bbox = Rect::new(tool_data.drag_start_pos.x, tool_data.drag_start_pos.y, previous_mouse.x, previous_mouse.y).abs();
 								shape_editor.get_inside_points_and_segments(
 									&document.network_interface,
 									SelectionShape::Box(bbox),
@@ -2246,7 +2281,7 @@ impl Fsm for PathToolFsmState {
 
 					match selection_shape {
 						SelectionShapeType::Box => {
-							let bbox = Rect::new(tool_data.drag_start_pos.x, tool_data.drag_start_pos.y, previous_mouse.x, previous_mouse.y);
+							let bbox = Rect::new(tool_data.drag_start_pos.x, tool_data.drag_start_pos.y, previous_mouse.x, previous_mouse.y).abs();
 
 							shape_editor.select_all_in_shape(
 								&document.network_interface,
@@ -2343,7 +2378,7 @@ impl Fsm for PathToolFsmState {
 				} else {
 					match selection_shape {
 						SelectionShapeType::Box => {
-							let bbox = Rect::new(tool_data.drag_start_pos.x, tool_data.drag_start_pos.y, previous_mouse.x, previous_mouse.y);
+							let bbox = Rect::new(tool_data.drag_start_pos.x, tool_data.drag_start_pos.y, previous_mouse.x, previous_mouse.y).abs();
 
 							shape_editor.select_all_in_shape(
 								&document.network_interface,

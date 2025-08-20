@@ -38,10 +38,10 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 		let ExportDialogMessageContext { portfolio } = context;
 
 		match message {
-			ExportDialogMessage::FileType(export_type) => self.file_type = export_type,
-			ExportDialogMessage::ScaleFactor(factor) => self.scale_factor = factor,
-			ExportDialogMessage::TransparentBackground(transparent_background) => self.transparent_background = transparent_background,
-			ExportDialogMessage::ExportBounds(export_area) => self.bounds = export_area,
+			ExportDialogMessage::FileType { file_type } => self.file_type = file_type,
+			ExportDialogMessage::ScaleFactor { factor } => self.scale_factor = factor,
+			ExportDialogMessage::TransparentBackground { transparent } => self.transparent_background = transparent,
+			ExportDialogMessage::ExportBounds { bounds } => self.bounds = bounds,
 
 			ExportDialogMessage::Submit => responses.add_front(PortfolioMessage::SubmitDocumentExport {
 				name: portfolio.active_document().map(|document| document.name.clone()).unwrap_or_default(),
@@ -84,7 +84,11 @@ impl LayoutHolder for ExportDialogMessageHandler {
 	fn layout(&self) -> Layout {
 		let entries = [(FileType::Png, "PNG"), (FileType::Jpg, "JPG"), (FileType::Svg, "SVG")]
 			.into_iter()
-			.map(|(val, name)| RadioEntryData::new(format!("{val:?}")).label(name).on_update(move |_| ExportDialogMessage::FileType(val).into()))
+			.map(|(file_type, name)| {
+				RadioEntryData::new(format!("{file_type:?}"))
+					.label(name)
+					.on_update(move |_| ExportDialogMessage::FileType { file_type }.into())
+			})
 			.collect();
 
 		let export_type = vec![
@@ -101,7 +105,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 				.min(0.)
 				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.disabled(self.file_type == FileType::Svg)
-				.on_update(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor(number_input.value.unwrap()).into())
+				.on_update(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor { factor: number_input.value.unwrap() }.into())
 				.min_width(200)
 				.widget_holder(),
 		];
@@ -125,10 +129,10 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			.map(|choice| {
 				choice
 					.into_iter()
-					.map(|(val, name, disabled)| {
-						MenuListEntry::new(format!("{val:?}"))
+					.map(|(bounds, name, disabled)| {
+						MenuListEntry::new(format!("{bounds:?}"))
 							.label(name)
-							.on_commit(move |_| ExportDialogMessage::ExportBounds(val).into())
+							.on_commit(move |_| ExportDialogMessage::ExportBounds { bounds }.into())
 							.disabled(disabled)
 					})
 					.collect::<Vec<_>>()
@@ -151,7 +155,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(self.transparent_background)
 				.disabled(self.file_type == FileType::Jpg)
-				.on_update(move |value: &CheckboxInput| ExportDialogMessage::TransparentBackground(value.checked).into())
+				.on_update(move |value: &CheckboxInput| ExportDialogMessage::TransparentBackground { transparent: value.checked }.into())
 				.for_label(checkbox_id)
 				.widget_holder(),
 		];

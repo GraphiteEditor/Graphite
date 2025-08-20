@@ -159,6 +159,7 @@ syn = { version = "2.0", default-features = false, features = [
 	"proc-macro",
 ] }
 kurbo = { version = "0.11.0", features = ["serde"] }
+lyon_geom = "1.0"
 petgraph = { version = "0.7.1", default-features = false, features = [
 	"graphmap",
 ] }

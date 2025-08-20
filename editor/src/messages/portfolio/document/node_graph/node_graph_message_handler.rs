@@ -129,7 +129,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::AddPathNode => {
 				if let Some(layer) = make_path_editable_is_allowed(network_interface, network_interface.document_metadata()) {
 					responses.add(NodeGraphMessage::CreateNodeInLayerWithTransaction { node_type: "Path".to_string(), layer });
-					responses.add(BroadcastEvent::SelectionChanged);
+					responses.add(EventMessage::SelectionChanged);
 				}
 			}
 			NodeGraphMessage::AddImport => {
@@ -142,7 +142,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::Init => {
 				responses.add(BroadcastMessage::SubscribeEvent {
-					on: BroadcastEvent::SelectionChanged,
+					on: EventMessage::SelectionChanged,
 					send: Box::new(NodeGraphMessage::SelectedNodesUpdated.into()),
 				});
 				network_interface.load_structure();
@@ -1472,7 +1472,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 				selected_nodes.add_selected_nodes(nodes);
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			NodeGraphMessage::SelectedNodesRemove { nodes } => {
 				let Some(selected_nodes) = network_interface.selected_nodes_mut(selection_network_path) else {
@@ -1480,7 +1480,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 				selected_nodes.retain_selected_nodes(|node| !nodes.contains(node));
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			NodeGraphMessage::SelectedNodesSet { nodes } => {
 				let Some(selected_nodes) = network_interface.selected_nodes_mut(selection_network_path) else {
@@ -1488,7 +1488,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 				selected_nodes.set_selected_nodes(nodes);
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			NodeGraphMessage::SendClickTargets => responses.add(FrontendMessage::UpdateClickTargets {
 				click_targets: Some(network_interface.collect_frontend_click_targets(breadcrumb_network_path)),
@@ -1888,7 +1888,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 				selected_nodes.clear_selected_nodes();
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 
 				responses.add(NodeGraphMessage::SendGraph);
 			}
