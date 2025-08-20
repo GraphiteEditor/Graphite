@@ -17,16 +17,39 @@
 		.join(" ");
 </script>
 
-<img src={IMAGE_BASE64_STRINGS[image]} style:width style:height class={`image-button ${className} ${extraClasses}`.trim()} title={tooltip} alt="" on:click={action} />
+<!-- ✅ Wrap image inside a button for accessibility -->
+<button
+	type="button"
+	class={`image-button ${className} ${extraClasses}`.trim()}
+	on:click={action}
+	title={tooltip}
+>
+	<img
+		src={IMAGE_BASE64_STRINGS[image]}
+		{width}
+		{height}
+		alt={tooltip || "icon button"}
+	/>
+</button>
 
 <style lang="scss" global>
 	.image-button {
-		width: auto;
-		height: auto;
+		background: none;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		border-radius: 2px;
 
-		+ .image-button.image-button {
+		+ .image-button {
 			margin-left: 8px;
+		}
+
+		img {
+			display: block;
+			border-radius: 2px;
 		}
 	}
 </style>
