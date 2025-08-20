@@ -6,7 +6,7 @@ use winit::event_loop::EventLoop;
 pub(crate) mod consts;
 
 mod cef;
-use cef::{Setup, WindowSize};
+use cef::Setup;
 
 mod render;
 
@@ -15,9 +15,8 @@ use app::WinitApp;
 
 mod dirs;
 
-mod desktop_wrapper;
-use desktop_wrapper::messages::DesktopWrapperMessage;
-use desktop_wrapper::{DesktopWrapper, NodeGraphExecutionResult};
+use graphite_desktop_wrapper::messages::DesktopWrapperMessage;
+use graphite_desktop_wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext};
 
 pub(crate) enum CustomEvent {
 	UiUpdate(wgpu::Texture),
@@ -42,7 +41,7 @@ fn main() {
 
 	let (window_size_sender, window_size_receiver) = std::sync::mpsc::channel();
 
-	let wgpu_context = futures::executor::block_on(desktop_wrapper::WgpuContext::new()).unwrap();
+	let wgpu_context = futures::executor::block_on(WgpuContext::new()).unwrap();
 	let cef_context = match cef_context.init(cef::CefHandler::new(window_size_receiver, event_loop.create_proxy(), wgpu_context.clone())) {
 		Ok(c) => c,
 		Err(cef::InitError::AlreadyRunning) => {
