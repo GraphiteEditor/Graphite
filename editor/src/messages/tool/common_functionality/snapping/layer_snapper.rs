@@ -325,6 +325,43 @@ struct SnapCandidatePath {
 }
 
 impl SnapCandidatePath {
+	/// Calculates the point on the curve which lies closest to `point`.
+	///
+	/// ## Algorithm:
+	/// 1. We first perform a coarse scan of the path segment to find the most promising starting point.
+	/// 2. Afterwards we refine this point by performing a binary search to either side assuming that the segment contains at most one extremal point.
+	/// 3. The smaller of the two resulting distances is returned.
+	///
+	/// ## Visualization:
+	/// ```text
+	///        Query Point (×)
+	///             ×
+	///            /|\
+	///           / | \  distance checks
+	///          /  |  \
+	///         v   v   v
+	///     ●---●---●---●---●  <- Curve with coarse scan points
+	///     0  0.25 0.5 0.75 1  (parameter t values)
+	///         ^       ^
+	///         |   |   |
+	///        min mid max
+	///    Find closest scan point
+	///
+	///    Refine left region using binary search:
+	///
+	///            ●------●------●
+	///           0.25  0.357   0.5
+	///
+	///    Result:           |     (=0.4)
+	///    And the right region:
+	///
+	///            ●------●------●
+	///           0.5   0.625   0.75
+	///    Result: |               (=0.5)
+	///
+	///    The t value with minimal dist is thus 0.4
+	///    Return: (dist_closest, point_on_curve)
+	/// ```
 	pub fn approx_nearest_point(&self, point: DVec2, lut_steps: usize) -> Option<(f64, kurbo::Point)> {
 		let point = dvec2_to_point(point);
 
@@ -341,6 +378,15 @@ impl SnapCandidatePath {
 		if left.0 < right.0 { Some(left) } else { Some(right) }
 	}
 
+	/// Refines the nearest point search within a given parameter range using binary search.
+	///
+	/// This method performs iterative refinement by:
+	/// 1. Evaluating the midpoint of the current parameter range
+	/// 2. Comparing distances at the endpoints and midpoint
+	/// 3. Narrowing the search range to the side with the shorter distance
+	/// 4. Continuing until convergence (when the range becomes very small)
+	///
+	/// Returns a tuple of (parameter_t, closest_point) where parameter_t is in the range [min_t, max_t].
 	fn refine_nearest_point(&self, point: kurbo::Point, mut min_t: f64, mut max_t: f64) -> (f64, kurbo::Point) {
 		let mut min_dist = self.document_curve.eval(min_t).distance_squared(point);
 		let mut max_dist = self.document_curve.eval(max_t).distance_squared(point);
