@@ -942,6 +942,28 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 		.collect()
 }
 
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
+async fn separate_paths(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
+	let mut element = Vec::new();
+	let mut transform = Vec::new();
+	let mut alpha_blending = Vec::new();
+	let mut source_node_id = Vec::new();
+
+	for row in content.into_iter() {
+		for bezpath in row.element.stroke_bezpath_iter() {
+			let mut new_vector = Vector::default();
+			new_vector.append_bezpath(bezpath);
+			new_vector.style = row.element.style.clone();
+
+			element.push(new_vector);
+			transform.push(row.transform);
+			alpha_blending.push(row.alpha_blending);
+			source_node_id.push(row.source_node_id)
+		}
+	}
+	Table::new_from_rows_data(element, transform, alpha_blending, source_node_id)
+}
+
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn flatten_path<I: 'n + Send>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: Table<I>) -> Table<Vector>
 where
