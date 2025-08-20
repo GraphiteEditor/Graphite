@@ -27,6 +27,7 @@ default = ["parsing"]
 glam = "0.29.0"
 regex = "1.10.6"
 slotmap = "1.0.7"
+lyon_geom = "1.0"
 
 [dev-dependencies]
 glob = "0.3"
