@@ -10,7 +10,6 @@ use graph_craft::wasm_application_io::WasmApplicationIo;
 use graphene_std::Color;
 use graphene_std::raster::Image;
 use graphite_editor::application::Editor;
-use graphite_editor::consts::DEFAULT_DOCUMENT_NAME;
 use graphite_editor::messages::prelude::*;
 use std::fs;
 use std::sync::Arc;
@@ -79,7 +78,8 @@ impl WinitApp {
 						String::new()
 					});
 					let message = PortfolioMessage::OpenDocumentFile {
-						document_name: path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string(),
+						document_name: None,
+						document_path: Some(path),
 						document_serialized_content: content,
 					};
 					let _ = event_loop_proxy.send_event(CustomEvent::DispatchMessage(message.into()));
@@ -294,7 +294,8 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 						let Some(content) = load_string(&path) else { return };
 
 						let message = PortfolioMessage::OpenDocumentFile {
-							document_name: name.unwrap_or(DEFAULT_DOCUMENT_NAME.to_string()),
+							document_name: None,
+							document_path: Some(path),
 							document_serialized_content: content,
 						};
 						self.dispatch_message(message.into());
