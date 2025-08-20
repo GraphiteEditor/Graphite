@@ -62,9 +62,16 @@ export function createPortfolioState(editor: Editor) {
 		}
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerOpenDocument, async () => {
-		const extension = editor.handle.fileExtension();
-		const data = await upload("." + extension, "text");
-		editor.handle.openDocumentFile(data.filename, data.content);
+		const suffix = "." + editor.handle.fileExtension();
+		const data = await upload(suffix, "text");
+
+		// Use filename as document name, removing the extension if it exists
+		let documentName = data.filename;
+		if (documentName.endsWith(suffix)) {
+			documentName = documentName.slice(0, -suffix.length);
+		}
+
+		editor.handle.openDocumentFile(documentName, data.content);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImport, async () => {
 		const data = await upload("image/*", "both");
@@ -76,8 +83,10 @@ export function createPortfolioState(editor: Editor) {
 		}
 
 		// In case the user accidentally uploads a Graphite file, open it instead of failing to import it
-		if (data.filename.endsWith("." + editor.handle.fileExtension())) {
-			editor.handle.openDocumentFile(data.filename, data.content.text);
+		const graphiteFileSuffix = "." + editor.handle.fileExtension();
+		if (data.filename.endsWith(graphiteFileSuffix)) {
+			const documentName = data.filename.slice(0, -graphiteFileSuffix.length);
+			editor.handle.openDocumentFile(documentName, data.content.text);
 			return;
 		}
 

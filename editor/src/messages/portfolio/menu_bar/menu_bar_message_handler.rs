@@ -110,6 +110,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							disabled: no_active_document,
 							..MenuBarEntry::default()
 						},
+						#[cfg(not(target_family = "wasm"))]
 						MenuBarEntry {
 							label: "Save As…".into(),
 							icon: Some("Save".into()),

@@ -161,6 +161,17 @@ impl DocumentMetadata {
 			.reduce(Quad::combine_bounds)
 	}
 
+	/// Get the loose bounding box of the click target of the specified layer in the specified transform space
+	pub fn loose_bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
+		self.click_targets(layer)?
+			.iter()
+			.filter_map(|click_target| match click_target.target_type() {
+				ClickTargetType::Subpath(subpath) => subpath.loose_bounding_box_with_transform(transform),
+				ClickTargetType::FreePoint(_) => click_target.bounding_box_with_transform(transform),
+			})
+			.reduce(Quad::combine_bounds)
+	}
+
 	/// Calculate the corners of the bounding box but with a nonzero size.
 	///
 	/// If the layer bounds are `0` in either axis then they are changed to be `1`.
