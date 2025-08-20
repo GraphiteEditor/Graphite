@@ -72,7 +72,7 @@ impl BitVec {
 		self.data.fill(0);
 	}
 
-	pub fn iter_set_bits(&self) -> BitVecIterator {
+	pub fn iter_set_bits(&self) -> BitVecIterator<'_> {
 		BitVecIterator {
 			bit_vec: self,
 			current_word: self.data[0],
