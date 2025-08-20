@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use crate::aabb::{Aabb, bounding_box_max_extent, bounding_boxes_overlap};
 use crate::epsilons::Epsilons;
 use crate::line_segment::{line_segment_intersection, line_segments_intersect};
@@ -115,22 +113,8 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 			let path2 = path_segment_cubic_to_lyon(*s2, *c12, *c22, *e2);
 
 			let intersections = path1.cubic_intersections_t(&path2);
-			// let mut file = std::fs::File::options().append(true).create(true).open("/tmp/intersections").unwrap();
-			// let format_curve = |seg0: &PathSegment| seg0.to_cubic().map(|point| format!("{} {}", point.x, point.y)).join(" ");
 			let intersections: Vec<_> = intersections.into_iter().map(|(s, t)| [s, t]).collect();
-			// let intersections_fmt: Vec<_> = intersections.iter().map(|[s, t]| format!("{},{}", s, t)).collect();
-			// if !intersections.is_empty() {
-			// 	writeln!(&mut file, "{}\n{}\n{}\n", format_curve(seg0), format_curve(seg1), intersections_fmt.join(" "),).unwrap();
-			// 	file.flush().unwrap();
-			// }
-			// let intersections: Vec<_> = intersections.into_iter().map(|(s, t)| [s, t]).collect();
 			return intersections;
-		}
-		(PathSegment::Cubic(_, _, _, _), PathSegment::Line(_, _)) => {
-			return cubic_line_intersection(seg0, seg1, eps);
-		}
-		(PathSegment::Line(_, _), PathSegment::Cubic(_, _, _, _)) => {
-			return cubic_line_intersection(seg1, seg0, eps).into_iter().map(|[t1, t0]| [t0, t1]).collect();
 		}
 		_ => (),
 	};
@@ -254,79 +238,6 @@ fn calculate_overlap_intersections(seg0: &PathSegment, seg1: &PathSegment, eps: 
 		// Keep only the first and last intersection points
 		intersections = vec![intersections[0], intersections[intersections.len() - 1]];
 	}
-
-	intersections
-}
-
-fn cubic_line_intersection(cubic: &PathSegment, line: &PathSegment, eps: &Epsilons) -> Vec<[f64; 2]> {
-	let (p0, p1, p2, p3) = match cubic {
-		PathSegment::Cubic(p0, p1, p2, p3) => (p0, p1, p2, p3),
-		_ => unreachable!("Expected a cubic Bézier curve"),
-	};
-	let (line_start, line_end) = match line {
-		PathSegment::Line(start, end) => (start, end),
-		_ => unreachable!("Expected a line segment"),
-	};
-
-	// Transform the cubic curve to the line's coordinate system
-	let line_dir = *line_end - *line_start;
-	let line_len = line_dir.length();
-	let line_norm = line_dir / line_len;
-	let perp = DVec2::new(-line_norm.y, line_norm.x);
-
-	let transform = |p: &DVec2| -> DVec2 {
-		let v = *p - *line_start;
-		DVec2::new(v.dot(line_norm), v.dot(perp))
-	};
-
-	let q0 = transform(p0);
-	let q1 = transform(p1);
-	let q2 = transform(p2);
-	let q3 = transform(p3);
-
-	// Now we're looking for roots of the cubic equation in y
-	let a = -q0.y + 3.0 * q1.y - 3.0 * q2.y + q3.y;
-	let b = 3.0 * q0.y - 6.0 * q1.y + 3.0 * q2.y;
-	let c = -3.0 * q0.y + 3.0 * q1.y;
-	let d = q0.y;
-
-	let roots = find_roots_cubic(a, b, c, d);
-
-	let mut intersections = Vec::new();
-
-	let mut process_root = |t: f64| {
-		if (0.0..=1.0).contains(&t) {
-			let x = ((1.0 - t).powi(3) * q0.x + 3.0 * t * (1.0 - t).powi(2) * q1.x + 3.0 * t.powi(2) * (1.0 - t) * q2.x + t.powi(3) * q3.x) / line_len;
-			if (0.0..=1.0).contains(&x) {
-				intersections.push([t, x]);
-			}
-		}
-	};
-
-	match roots {
-		Roots::Three(roots) => {
-			for &t in roots.iter() {
-				process_root(t);
-			}
-		}
-		Roots::Two(roots) => {
-			for &t in roots.iter() {
-				process_root(t);
-			}
-		}
-		Roots::One(roots) => {
-			for &t in roots.iter() {
-				process_root(t);
-			}
-		}
-		_ => {}
-	}
-
-	// Sort intersections by the cubic's t parameter
-	intersections.sort_by(|a, b| a[0].partial_cmp(&b[0]).unwrap());
-
-	// Remove duplicates within epsilon
-	intersections.dedup_by(|a, b| (a[0] - b[0]).abs() < eps.param);
 
 	intersections
 }
