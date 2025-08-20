@@ -3809,6 +3809,7 @@ dependencies = [
  "glam",
  "glob",
  "image",
+ "lyon_geom",
  "regex",
  "resvg",
  "slotmap",
