@@ -1,51 +1,43 @@
 use graphene_std::Color;
 use graphene_std::raster::Image;
-use graphite_editor::messages::prelude::{DocumentMessage, Message, PortfolioMessage};
+use graphite_editor::messages::prelude::{DocumentMessage, PortfolioMessage};
 
-use super::DesktopWrapperMessageExecutor;
-use super::messages::{DesktopFrontendMessage, DesktopWrapperMessage, OpenFileDialogContext, SaveFileDialogContext};
+use super::DesktopWrapperMessageDispatcher;
+use super::messages::{DesktopFrontendMessage, DesktopWrapperMessage, EditorMessage, OpenFileDialogContext, SaveFileDialogContext};
 
-pub(super) fn handle_desktop_wrapper_message(executor: &mut DesktopWrapperMessageExecutor, message: DesktopWrapperMessage) {
+pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMessageDispatcher, message: DesktopWrapperMessage) {
 	match message {
-		DesktopWrapperMessage::FromWeb(data) => {
-			let string = std::str::from_utf8(&data).unwrap();
-			match ron::from_str::<Message>(string) {
-				Ok(message) => {
-					executor.queue_message(message);
-				}
-				Err(e) => {
-					tracing::error!("Failed to deserialize message {:?}", e)
-				}
-			}
+		DesktopWrapperMessage::FromWeb(message) => {
+			dispatcher.queue_editor_message(*message);
 		}
 		DesktopWrapperMessage::OpenFileDialogResult { path, content, context } => match context {
 			OpenFileDialogContext::Document => {
-				executor.queue(DesktopWrapperMessage::OpenDocument { path, content });
+				dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::OpenDocument { path, content });
 			}
 			OpenFileDialogContext::Import => {
-				executor.queue(DesktopWrapperMessage::ImportFile { path, content });
+				dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::ImportFile { path, content });
 			}
 		},
 		DesktopWrapperMessage::SaveFileDialogResult { path, context } => match context {
 			SaveFileDialogContext::Document { document_id, content } => {
-				executor.respond(DesktopFrontendMessage::WriteFile { path: path.clone(), content });
-				executor.queue_message(Message::Portfolio(PortfolioMessage::DocumentPassMessage {
+				dispatcher.respond(DesktopFrontendMessage::WriteFile { path: path.clone(), content });
+				dispatcher.queue_editor_message(EditorMessage::Portfolio(PortfolioMessage::DocumentPassMessage {
 					document_id,
 					message: DocumentMessage::SavedDocument { path: Some(path) },
 				}));
 			}
-			SaveFileDialogContext::Export { content } => {
-				executor.respond(DesktopFrontendMessage::WriteFile { path, content });
+			SaveFileDialogContext::File { content } => {
+				dispatcher.respond(DesktopFrontendMessage::WriteFile { path, content });
 			}
 		},
 		DesktopWrapperMessage::OpenFile { path, content } => {
 			let extension = path.extension().and_then(|s| s.to_str()).unwrap_or_default().to_lowercase();
 			match extension.as_str() {
 				"graphite" => {
-					executor.queue(DesktopWrapperMessage::OpenDocument { path, content });
+					dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::OpenDocument { path, content });
 				}
 				_ => {
-					executor.queue(DesktopWrapperMessage::ImportFile { path, content });
+					dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::ImportFile { path, content });
 				}
 			}
 		}
@@ -60,16 +52,16 @@ pub(super) fn handle_desktop_wrapper_message(executor: &mut DesktopWrapperMessag
 				document_path: Some(path),
 				document_serialized_content: content,
 			};
-			executor.queue_message(message.into());
+			dispatcher.queue_editor_message(message.into());
 		}
 		DesktopWrapperMessage::ImportFile { path, content } => {
 			let extension = path.extension().and_then(|s| s.to_str()).unwrap_or_default().to_lowercase();
 			match extension.as_str() {
 				"svg" => {
-					executor.queue(DesktopWrapperMessage::ImportSvg { path, content });
+					dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::ImportSvg { path, content });
 				}
 				_ => {
-					executor.queue(DesktopWrapperMessage::ImportImage { path, content });
+					dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::ImportImage { path, content });
 				}
 			}
 		}
@@ -85,7 +77,7 @@ pub(super) fn handle_desktop_wrapper_message(executor: &mut DesktopWrapperMessag
 				mouse: None,
 				parent_and_insert_index: None,
 			};
-			executor.queue_message(message.into());
+			dispatcher.queue_editor_message(message.into());
 		}
 		DesktopWrapperMessage::ImportImage { path, content } => {
 			let name = path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string());
@@ -101,6 +93,8 @@ pub(super) fn handle_desktop_wrapper_message(executor: &mut DesktopWrapperMessag
 			};
 			let width = image.width();
 			let height = image.height();
+
+			// TODO: Handle Image formats with more than 8 bits per channel
 			let image_data = image.to_rgba8();
 			let image = Image::<Color>::from_image_data(image_data.as_raw(), width, height);
 			let message = PortfolioMessage::PasteImage {
@@ -109,8 +103,8 @@ pub(super) fn handle_desktop_wrapper_message(executor: &mut DesktopWrapperMessag
 				mouse: None,
 				parent_and_insert_index: None,
 			};
-			executor.queue_message(message.into());
+			dispatcher.queue_editor_message(message.into());
 		}
-		DesktopWrapperMessage::PollNodeGraphEvaluation => executor.poll_node_graph_evaluation(),
+		DesktopWrapperMessage::PollNodeGraphEvaluation => dispatcher.poll_node_graph_evaluation(),
 	}
 }

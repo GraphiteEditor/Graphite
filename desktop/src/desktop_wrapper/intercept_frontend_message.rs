@@ -2,16 +2,16 @@ use std::path::PathBuf;
 
 use graphite_editor::messages::prelude::FrontendMessage;
 
-use super::DesktopWrapperMessageExecutor;
+use super::DesktopWrapperMessageDispatcher;
 use super::messages::{DesktopFrontendMessage, FileFilter, OpenFileDialogContext, SaveFileDialogContext};
 
-pub(super) fn intercept_frontend_message(executor: &mut DesktopWrapperMessageExecutor, message: FrontendMessage) -> Option<FrontendMessage> {
+pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageDispatcher, message: FrontendMessage) -> Option<FrontendMessage> {
 	match message {
 		FrontendMessage::RenderOverlays { context } => {
-			executor.respond(DesktopFrontendMessage::UpdateOverlays(context.take_scene()));
+			dispatcher.respond(DesktopFrontendMessage::UpdateOverlays(context.take_scene()));
 		}
 		FrontendMessage::TriggerOpenDocument => {
-			executor.respond(DesktopFrontendMessage::OpenFileDialog {
+			dispatcher.respond(DesktopFrontendMessage::OpenFileDialog {
 				title: "Open Document".to_string(),
 				filters: vec![FileFilter {
 					name: "Graphite".to_string(),
@@ -21,7 +21,7 @@ pub(super) fn intercept_frontend_message(executor: &mut DesktopWrapperMessageExe
 			});
 		}
 		FrontendMessage::TriggerImport => {
-			executor.respond(DesktopFrontendMessage::OpenFileDialog {
+			dispatcher.respond(DesktopFrontendMessage::OpenFileDialog {
 				title: "Import File".to_string(),
 				filters: vec![
 					FileFilter {
@@ -38,9 +38,9 @@ pub(super) fn intercept_frontend_message(executor: &mut DesktopWrapperMessageExe
 		}
 		FrontendMessage::TriggerSaveDocument { document_id, name, path, content } => {
 			if let Some(path) = path {
-				executor.respond(DesktopFrontendMessage::WriteFile { path, content });
+				dispatcher.respond(DesktopFrontendMessage::WriteFile { path, content });
 			} else {
-				executor.respond(DesktopFrontendMessage::SaveFileDialog {
+				dispatcher.respond(DesktopFrontendMessage::SaveFileDialog {
 					title: "Save Document".to_string(),
 					default_filename: name,
 					default_folder: path.and_then(|p| p.parent().map(PathBuf::from)),
@@ -53,16 +53,16 @@ pub(super) fn intercept_frontend_message(executor: &mut DesktopWrapperMessageExe
 			}
 		}
 		FrontendMessage::TriggerSaveFile { name, content } => {
-			executor.respond(DesktopFrontendMessage::SaveFileDialog {
+			dispatcher.respond(DesktopFrontendMessage::SaveFileDialog {
 				title: "Save File".to_string(),
 				default_filename: name,
 				default_folder: None,
 				filters: Vec::new(),
-				context: SaveFileDialogContext::Export { content },
+				context: SaveFileDialogContext::File { content },
 			});
 		}
 		FrontendMessage::TriggerVisitLink { url } => {
-			executor.respond(DesktopFrontendMessage::OpenUrl(url));
+			dispatcher.respond(DesktopFrontendMessage::OpenUrl(url));
 		}
 		m => return Some(m),
 	}

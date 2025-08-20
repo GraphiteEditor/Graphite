@@ -6,6 +6,7 @@ use crate::desktop_wrapper::NodeGraphExecutionResult;
 use crate::desktop_wrapper::WgpuContext;
 use crate::desktop_wrapper::messages::DesktopFrontendMessage;
 use crate::desktop_wrapper::messages::DesktopWrapperMessage;
+use crate::desktop_wrapper::serialize_frontend_messages;
 use crate::render::GraphicsState;
 use rfd::AsyncFileDialog;
 use std::sync::Arc;
@@ -53,7 +54,11 @@ impl WinitApp {
 
 	fn handle_desktop_frontend_message(&mut self, message: DesktopFrontendMessage) {
 		match message {
-			DesktopFrontendMessage::ToWeb(bytes) => {
+			DesktopFrontendMessage::ToWeb(messages) => {
+				let Some(bytes) = serialize_frontend_messages(messages) else {
+					tracing::error!("Failed to serialize frontend messages");
+					return;
+				};
 				self.cef_context.send_web_message(bytes.as_slice());
 			}
 			DesktopFrontendMessage::OpenFileDialog { title, filters, context } => {

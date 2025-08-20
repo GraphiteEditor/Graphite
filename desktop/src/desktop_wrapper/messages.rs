@@ -1,9 +1,11 @@
 use std::path::PathBuf;
 
-use graphite_editor::messages::prelude::DocumentId;
+use graphite_editor::messages::prelude::{DocumentId, FrontendMessage};
+
+pub(crate) use graphite_editor::messages::prelude::Message as EditorMessage;
 
 pub enum DesktopFrontendMessage {
-	ToWeb(Vec<u8>),
+	ToWeb(Vec<FrontendMessage>),
 	OpenFileDialog {
 		title: String,
 		filters: Vec<FileFilter>,
@@ -36,7 +38,7 @@ pub struct FileFilter {
 }
 
 pub enum DesktopWrapperMessage {
-	FromWeb(Vec<u8>),
+	FromWeb(Box<EditorMessage>),
 	OpenFileDialogResult { path: PathBuf, content: Vec<u8>, context: OpenFileDialogContext },
 	SaveFileDialogResult { path: PathBuf, context: SaveFileDialogContext },
 	OpenDocument { path: PathBuf, content: Vec<u8> },
@@ -54,5 +56,5 @@ pub enum OpenFileDialogContext {
 
 pub enum SaveFileDialogContext {
 	Document { document_id: DocumentId, content: Vec<u8> },
-	Export { content: Vec<u8> },
+	File { content: Vec<u8> },
 }

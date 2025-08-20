@@ -19,7 +19,6 @@ mod desktop_wrapper;
 use desktop_wrapper::messages::DesktopWrapperMessage;
 use desktop_wrapper::{DesktopWrapper, NodeGraphExecutionResult};
 
-#[allow(clippy::large_enum_variant)]
 pub(crate) enum CustomEvent {
 	UiUpdate(wgpu::Texture),
 	ScheduleBrowserWork(Instant),

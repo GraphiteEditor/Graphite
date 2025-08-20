@@ -1,17 +1,18 @@
 use graph_craft::wasm_application_io::WasmApplicationIo;
 use graphite_editor::application::Editor;
+use graphite_editor::messages::prelude::{FrontendMessage, Message};
 
 pub use wgpu_executor::Context as WgpuContext;
 
 pub mod messages;
 use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
 
-mod message_executor;
-use message_executor::DesktopWrapperMessageExecutor;
+mod message_dispatcher;
+use message_dispatcher::DesktopWrapperMessageDispatcher;
 
 mod handle_desktop_wrapper_message;
+mod intercept_editor_message;
 mod intercept_frontend_message;
-mod intercept_message;
 
 pub struct DesktopWrapper {
 	editor: Editor,
@@ -28,8 +29,8 @@ impl DesktopWrapper {
 	}
 
 	pub fn dispatch(&mut self, message: DesktopWrapperMessage) -> Vec<DesktopFrontendMessage> {
-		let mut executor = DesktopWrapperMessageExecutor::new(&mut self.editor);
-		executor.queue(message);
+		let mut executor = DesktopWrapperMessageDispatcher::new(&mut self.editor);
+		executor.queue_desktop_wrapper_message(message);
 		executor.execute()
 	}
 
@@ -45,4 +46,24 @@ impl DesktopWrapper {
 pub enum NodeGraphExecutionResult {
 	HasRun(Option<wgpu::Texture>),
 	NotRun,
+}
+
+pub fn deserialize_editor_message(data: &[u8]) -> Option<DesktopWrapperMessage> {
+	if let Ok(string) = std::str::from_utf8(data) {
+		if let Ok(message) = ron::de::from_str::<Message>(string) {
+			Some(DesktopWrapperMessage::FromWeb(message.into()))
+		} else {
+			None
+		}
+	} else {
+		None
+	}
+}
+
+pub fn serialize_frontend_messages(messages: Vec<FrontendMessage>) -> Option<Vec<u8>> {
+	if let Ok(serialized) = ron::ser::to_string(&messages) {
+		Some(serialized.into_bytes())
+	} else {
+		None
+	}
 }

@@ -1,11 +1,9 @@
-use crate::CustomEvent;
 use crate::desktop_wrapper::WgpuContext;
-use crate::desktop_wrapper::messages::DesktopWrapperMessage;
 use crate::render::FrameBufferRef;
-use std::{
-	sync::{Arc, Mutex, mpsc::Receiver},
-	time::Instant,
-};
+use crate::{CustomEvent, desktop_wrapper::deserialize_editor_message};
+use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 mod context;
 mod dirs;
@@ -124,7 +122,10 @@ impl CefEventHandler for CefHandler {
 	}
 
 	fn receive_web_message(&self, message: &[u8]) {
-		let editor_message = DesktopWrapperMessage::FromWeb(message.to_vec());
-		let _ = self.event_loop_proxy.send_event(CustomEvent::DesktopWrapperMessage(editor_message));
+		let Some(desktop_wrapper_message) = deserialize_editor_message(message) else {
+			tracing::error!("Failed to deserialize web message");
+			return;
+		};
+		let _ = self.event_loop_proxy.send_event(CustomEvent::DesktopWrapperMessage(desktop_wrapper_message));
 	}
 }
