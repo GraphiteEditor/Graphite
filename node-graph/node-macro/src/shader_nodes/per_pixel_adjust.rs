@@ -190,7 +190,7 @@ impl PerPixelAdjust {
 				#wgpu_executor.shader_runtime.run_per_pixel_adjust(&::wgpu_executor::shader_runtime::Shaders {
 					wgsl_shader: crate::WGSL_SHADER,
 					fragment_shader_name: super::#entry_point_name,
-				}, #gpu_image, &()).await
+				}, #gpu_image, &1u32).await
 			}
 		};
 
