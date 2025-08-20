@@ -1728,16 +1728,16 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 
 	#[cfg(feature = "logging")]
 	for (key, edge) in minor_graph.edges.iter() {
-		eprintln!("{key:?}:\n{}", path_to_path_data(&edge.segments, 0.001));
+		eprintln!("{key:?}:\n{}", path_to_path_data(&edge.segments.to_vec(), 0.001));
 	}
 	#[cfg(feature = "logging")]
 	for vertex in minor_graph.vertices.values() {
-		eprintln!("{:?}", vertex);
+		eprintln!("{vertex:?}");
 	}
 	sort_outgoing_edges_by_angle(&mut minor_graph);
 	#[cfg(feature = "logging")]
 	for vertex in minor_graph.vertices.values() {
-		eprintln!("{:?}", vertex);
+		eprintln!("{vertex:?}");
 	}
 
 	for (edge_key, edge) in &minor_graph.edges {
@@ -1754,7 +1754,7 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 
 	#[cfg(feature = "logging")]
 	for tree in &nesting_trees {
-		eprintln!("nesting_trees: {:?}", tree);
+		eprintln!("nesting_trees: {tree:?}");
 	}
 
 	let DualGraph { edges, vertices, .. } = &dual_graph;
