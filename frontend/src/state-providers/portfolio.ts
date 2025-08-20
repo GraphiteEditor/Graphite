@@ -83,8 +83,10 @@ export function createPortfolioState(editor: Editor) {
 		}
 
 		// In case the user accidentally uploads a Graphite file, open it instead of failing to import it
-		if (data.filename.endsWith("." + editor.handle.fileExtension())) {
-			editor.handle.openDocumentFile(data.filename, data.content.text);
+		const graphiteFileSuffix = "." + editor.handle.fileExtension();
+		if (data.filename.endsWith(graphiteFileSuffix)) {
+			const documentName = data.filename.slice(0, -graphiteFileSuffix.length);
+			editor.handle.openDocumentFile(documentName, data.content.text);
 			return;
 		}
 
