@@ -943,7 +943,7 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn separate_paths(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
+async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 	let mut element = Vec::new();
 	let mut transform = Vec::new();
 	let mut alpha_blending = Vec::new();
