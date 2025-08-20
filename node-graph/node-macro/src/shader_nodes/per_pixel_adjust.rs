@@ -158,7 +158,7 @@ impl PerPixelAdjust {
 			description: "".to_string(),
 			widget_override: Default::default(),
 			ty: ParsedFieldType::Regular(RegularParsedField {
-				ty: parse_quote!(WgpuExecutor),
+				ty: parse_quote!(&'a WgpuExecutor),
 				exposed: false,
 				value_source: Default::default(),
 				number_soft_min: None,
@@ -203,7 +203,7 @@ impl PerPixelAdjust {
 			fn_name,
 			struct_name,
 			mod_name: mod_name.clone(),
-			fn_generics: vec![],
+			fn_generics: vec![parse_quote!('a: 'n)],
 			where_clause: None,
 			input: Input {
 				pat_ident: parsed.input.pat_ident.clone(),
