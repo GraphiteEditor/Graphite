@@ -8,9 +8,9 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
-	BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferBinding, BufferUsages, ColorTargetState, Face, FragmentState, FrontFace, LoadOp, Operations, PolygonMode, PrimitiveState,
-	PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor, ShaderModuleDescriptor, ShaderSource, StoreOp, TextureDescriptor, TextureDimension, TextureFormat,
-	TextureViewDescriptor, VertexState,
+	BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferBinding, BufferBindingType, BufferUsages, ColorTargetState, Face,
+	FragmentState, FrontFace, LoadOp, Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor,
+	ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType, TextureViewDescriptor, TextureViewDimension, VertexState,
 };
 
 pub struct PerPixelAdjustShaderRuntime {
@@ -53,18 +53,48 @@ impl PerPixelAdjustGraphicsPipeline {
 		let device = &context.device;
 		let name = info.fragment_shader_name.to_owned();
 
-		// TODO workaround to naga removing `:`
 		let fragment_name = &name;
 		let fragment_name = &fragment_name[(fragment_name.find("::").unwrap() + 2)..];
+		// TODO workaround to naga removing `:`
 		let fragment_name = fragment_name.replace(":", "");
-
 		let shader_module = device.create_shader_module(ShaderModuleDescriptor {
 			label: Some(&format!("PerPixelAdjust {} wgsl shader", name)),
 			source: ShaderSource::Wgsl(Cow::Borrowed(info.wgsl_shader)),
 		});
+
+		let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+			label: Some(&format!("PerPixelAdjust {} PipelineLayout", name)),
+			bind_group_layouts: &[&device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+				label: Some(&format!("PerPixelAdjust {} BindGroupLayout 0", name)),
+				entries: &[
+					BindGroupLayoutEntry {
+						binding: 0,
+						visibility: ShaderStages::FRAGMENT,
+						ty: BindingType::Buffer {
+							ty: BufferBindingType::Storage { read_only: true },
+							has_dynamic_offset: false,
+							min_binding_size: None,
+						},
+						count: None,
+					},
+					BindGroupLayoutEntry {
+						binding: 1,
+						visibility: ShaderStages::FRAGMENT,
+						ty: BindingType::Texture {
+							sample_type: TextureSampleType::Float { filterable: false },
+							view_dimension: TextureViewDimension::D2,
+							multisampled: false,
+						},
+						count: None,
+					},
+				],
+			})],
+			push_constant_ranges: &[],
+		});
+
 		let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
 			label: Some(&format!("PerPixelAdjust {} Pipeline", name)),
-			layout: None,
+			layout: Some(&pipeline_layout),
 			vertex: VertexState {
 				module: &shader_module,
 				entry_point: Some(FULLSCREEN_VERTEX_SHADER_NAME),
