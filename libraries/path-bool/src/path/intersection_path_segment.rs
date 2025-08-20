@@ -17,51 +17,6 @@ fn path_segment_cubic_to_lyon(start: DVec2, ctrl1: DVec2, ctrl2: DVec2, end: DVe
 	}
 }
 
-/// Fast cubic-line intersection using lyon_geom
-fn cubic_line_intersection(seg0: &PathSegment, seg1: &PathSegment, eps: &Epsilons) -> Vec<[f64; 2]> {
-	// This function handles both cubic-line and line-cubic cases
-	let (cubic_seg, line_seg, swap_params) = match (seg0, seg1) {
-		(PathSegment::Cubic(start, ctrl1, ctrl2, end), PathSegment::Line(line_start, line_end)) => {
-			((*start, *ctrl1, *ctrl2, *end), (*line_start, *line_end), false)
-		}
-		(PathSegment::Line(line_start, line_end), PathSegment::Cubic(start, ctrl1, ctrl2, end)) => {
-			((*start, *ctrl1, *ctrl2, *end), (*line_start, *line_end), true)
-		}
-		_ => return vec![], // Not a cubic-line intersection
-	};
-
-	let lyon_cubic = path_segment_cubic_to_lyon(cubic_seg.0, cubic_seg.1, cubic_seg.2, cubic_seg.3);
-	let line_start = Point::new(line_seg.0.x, line_seg.0.y);
-	let line_end = Point::new(line_seg.1.x, line_seg.1.y);
-	let line_vec = line_end - line_start;
-
-	// Find intersections with the infinite line
-	let intersections = lyon_cubic.line_intersections_t(&lyon_geom::Line { point: line_start, vector: line_vec });
-	
-	// Filter to only intersections within the line segment [0, 1]
-	let mut result = Vec::new();
-	for &t_cubic in &intersections {
-		let point_on_cubic = lyon_cubic.sample(t_cubic);
-		// Calculate t parameter on line segment
-		let line_param = if line_vec.x.abs() > line_vec.y.abs() {
-			(point_on_cubic.x - line_start.x) / line_vec.x
-		} else {
-			(point_on_cubic.y - line_start.y) / line_vec.y
-		};
-		
-		// Check if intersection is within line segment bounds
-		if line_param >= -eps.param && line_param <= 1.0 + eps.param {
-			if swap_params {
-				result.push([line_param, t_cubic]);
-			} else {
-				result.push([t_cubic, line_param]);
-			}
-		}
-	}
-	
-	result
-}
-
 #[derive(Clone)]
 struct IntersectionSegment {
 	seg: PathSegment,
@@ -159,12 +114,6 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 			let intersections = path1.cubic_intersections_t(&path2);
 			let intersections: Vec<_> = intersections.into_iter().map(|(s, t)| [s, t]).collect();
 			return intersections;
-		}
-		(PathSegment::Cubic(_, _, _, _), PathSegment::Line(_, _)) => {
-			return cubic_line_intersection(seg0, seg1, eps);
-		}
-		(PathSegment::Line(_, _), PathSegment::Cubic(_, _, _, _)) => {
-			return cubic_line_intersection(seg1, seg0, eps).into_iter().map(|[t1, t0]| [t0, t1]).collect();
 		}
 		_ => (),
 	}
