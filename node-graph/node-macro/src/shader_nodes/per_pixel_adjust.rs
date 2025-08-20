@@ -187,10 +187,10 @@ impl PerPixelAdjust {
 
 		let body = quote! {
 			{
-				#wgpu_executor.shader_runtime.run_per_pixel_adjust(#gpu_image, &::wgpu_executor::shader_runtime::per_pixel_adjust_runtime::PerPixelAdjustInfo {
+				#wgpu_executor.shader_runtime.run_per_pixel_adjust(&::wgpu_executor::shader_runtime::Shaders {
 					wgsl_shader: crate::WGSL_SHADER,
 					fragment_shader_name: super::#entry_point_name,
-				}).await
+				}, #gpu_image, &()).await
 			}
 		};
 
