@@ -1,4 +1,4 @@
-use super::contants::MIN_SEPARATION_VALUE;
+use super::{contants::MIN_SEPARATION_VALUE, util::pathseg_loose_bbox};
 use kurbo::{BezPath, DEFAULT_ACCURACY, ParamCurve, PathSeg, Shape};
 
 /// Calculates the intersection points the bezpath has with a given segment and returns a list of `(usize, f64)` tuples,
@@ -63,8 +63,8 @@ pub fn subsegment_intersections(segment1: PathSeg, min_t1: f64, max_t1: f64, seg
 /// by splitting the segment recursively until the size of the subsegment's bounding box is smaller than the accuracy.
 #[allow(clippy::too_many_arguments)]
 fn segment_intersections_inner(segment1: PathSeg, min_t1: f64, max_t1: f64, segment2: PathSeg, min_t2: f64, max_t2: f64, accuracy: f64, intersections: &mut Vec<(f64, f64)>) {
-	let bbox1 = segment1.subsegment(min_t1..max_t1).bounding_box();
-	let bbox2 = segment2.subsegment(min_t2..max_t2).bounding_box();
+	let bbox1 = pathseg_loose_bbox(segment1.subsegment(min_t1..max_t1));
+	let bbox2 = pathseg_loose_bbox(segment2.subsegment(min_t2..max_t2));
 
 	let mid_t1 = (min_t1 + max_t1) / 2.;
 	let mid_t2 = (min_t2 + max_t2) / 2.;

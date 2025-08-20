@@ -1,5 +1,20 @@
 use glam::DVec2;
-use kurbo::{ParamCurve, ParamCurveDeriv, PathSeg};
+use kurbo::{ParamCurve, ParamCurveDeriv, PathSeg, Rect};
+
+use crate::vector::misc::pathseg_points_vec;
+
+pub fn pathseg_loose_bbox(segment: PathSeg) -> Rect {
+	pathseg_points_vec(segment)
+		.iter()
+		.fold(None, |bbox: Option<Rect>, point| {
+			if let Some(bbox) = bbox {
+				Some(Rect::new(bbox.x0.min(point.x), bbox.y0.min(point.y), bbox.x1.max(point.x), bbox.y1.max(point.y)))
+			} else {
+				Some(Rect::new(point.x, point.y, point.x, point.y))
+			}
+		})
+		.unwrap()
+}
 
 pub fn pathseg_tangent(segment: PathSeg, t: f64) -> DVec2 {
 	// NOTE: .deriv() method gives inaccurate result when it is 1.
