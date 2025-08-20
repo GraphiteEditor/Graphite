@@ -944,24 +944,31 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
 async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
-	let mut element = Vec::new();
-	let mut transform = Vec::new();
-	let mut alpha_blending = Vec::new();
-	let mut source_node_id = Vec::new();
+	content
+		.into_iter()
+		.flat_map(|row| {
+			let style = row.element.style.clone();
+			let transform = row.transform;
+			let alpha_blending = row.alpha_blending;
+			let source_node_id = row.source_node_id;
 
-	for row in content.into_iter() {
-		for bezpath in row.element.stroke_bezpath_iter() {
-			let mut new_vector = Vector::default();
-			new_vector.append_bezpath(bezpath);
-			new_vector.style = row.element.style.clone();
+			row.element
+				.stroke_bezpath_iter()
+				.map(move |bezpath| {
+					let mut vector = Vector::default();
+					vector.append_bezpath(bezpath);
+					vector.style = style.clone();
 
-			element.push(new_vector);
-			transform.push(row.transform);
-			alpha_blending.push(row.alpha_blending);
-			source_node_id.push(row.source_node_id)
-		}
-	}
-	Table::new_from_rows_data(element, transform, alpha_blending, source_node_id)
+					TableRow {
+						element: vector,
+						transform,
+						alpha_blending,
+						source_node_id,
+					}
+				})
+				.collect::<Vec<TableRow<Vector>>>()
+		})
+		.collect()
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]

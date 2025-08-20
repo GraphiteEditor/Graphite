@@ -38,15 +38,6 @@ impl<T> Table<T> {
 		}
 	}
 
-	pub fn new_from_rows_data(element: Vec<T>, transform: Vec<DAffine2>, alpha_blending: Vec<AlphaBlending>, source_node_id: Vec<Option<NodeId>>) -> Self {
-		Self {
-			element,
-			transform,
-			alpha_blending,
-			source_node_id,
-		}
-	}
-
 	pub fn new_from_row(row: TableRow<T>) -> Self {
 		Self {
 			element: vec![row.element],
