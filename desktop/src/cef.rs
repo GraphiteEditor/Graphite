@@ -1,6 +1,6 @@
-use crate::desktop_wrapper::WgpuContext;
+use crate::CustomEvent;
 use crate::render::FrameBufferRef;
-use crate::{CustomEvent, desktop_wrapper::deserialize_editor_message};
+use graphite_desktop_wrapper::{WgpuContext, deserialize_editor_message};
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;

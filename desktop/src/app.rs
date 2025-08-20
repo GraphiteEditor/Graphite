@@ -1,13 +1,9 @@
 use crate::CustomEvent;
-use crate::WindowSize;
+use crate::cef::WindowSize;
 use crate::consts::APP_NAME;
-use crate::desktop_wrapper::DesktopWrapper;
-use crate::desktop_wrapper::NodeGraphExecutionResult;
-use crate::desktop_wrapper::WgpuContext;
-use crate::desktop_wrapper::messages::DesktopFrontendMessage;
-use crate::desktop_wrapper::messages::DesktopWrapperMessage;
-use crate::desktop_wrapper::serialize_frontend_messages;
 use crate::render::GraphicsState;
+use graphite_desktop_wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage};
+use graphite_desktop_wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 use rfd::AsyncFileDialog;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
