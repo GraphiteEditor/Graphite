@@ -1,4 +1,4 @@
-use crate::parsing::{Implementation, ParsedField, ParsedNodeFn};
+use crate::parsing::{Implementation, NodeParsedField, ParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField};
 use proc_macro_error2::emit_error;
 use quote::quote;
 use syn::spanned::Spanned;
@@ -21,11 +21,14 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 
 fn validate_min_max(parsed: &ParsedNodeFn) {
 	for field in &parsed.fields {
-		if let ParsedField::Regular {
-			number_hard_max,
-			number_hard_min,
-			number_soft_max,
-			number_soft_min,
+		if let ParsedField {
+			ty: ParsedFieldType::Regular(RegularParsedField {
+				number_hard_max,
+				number_hard_min,
+				number_soft_max,
+				number_soft_min,
+				..
+			}),
 			pat_ident,
 			..
 		} = field
@@ -78,7 +81,12 @@ fn validate_min_max(parsed: &ParsedNodeFn) {
 }
 
 fn validate_primary_input_expose(parsed: &ParsedNodeFn) {
-	if let Some(ParsedField::Regular { exposed: true, pat_ident, .. }) = parsed.fields.first() {
+	if let Some(ParsedField {
+		ty: ParsedFieldType::Regular(RegularParsedField { exposed: true, .. }),
+		pat_ident,
+		..
+	}) = parsed.fields.first()
+	{
 		emit_error!(
 			pat_ident.span(),
 			"Unnecessary #[expose] attribute on primary input `{}`. Primary inputs are always exposed.",
@@ -94,8 +102,9 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 
 	if !has_skip_impl && !parsed.fn_generics.is_empty() {
 		for field in &parsed.fields {
-			match field {
-				ParsedField::Regular { ty, implementations, pat_ident, .. } => {
+			let pat_ident = &field.pat_ident;
+			match &field.ty {
+				ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. }) => {
 					if contains_generic_param(ty, &parsed.fn_generics) && implementations.is_empty() {
 						emit_error!(
 							ty.span(),
@@ -107,13 +116,12 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 						);
 					}
 				}
-				ParsedField::Node {
+				ParsedFieldType::Node(NodeParsedField {
 					input_type,
 					output_type,
 					implementations,
-					pat_ident,
 					..
-				} => {
+				}) => {
 					if (contains_generic_param(input_type, &parsed.fn_generics) || contains_generic_param(output_type, &parsed.fn_generics)) && implementations.is_empty() {
 						emit_error!(
 							pat_ident.span(),

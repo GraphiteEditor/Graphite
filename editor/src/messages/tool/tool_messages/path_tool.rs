@@ -1875,7 +1875,7 @@ impl Fsm for PathToolFsmState {
 						let (points_inside, segments_inside) = match selection_shape {
 							SelectionShapeType::Box => {
 								let previous_mouse = document.metadata().document_to_viewport.transform_point2(tool_data.previous_mouse_position);
-								let bbox = Rect::new(tool_data.drag_start_pos.x, tool_data.drag_start_pos.y, previous_mouse.x, previous_mouse.y);
+								let bbox = Rect::new(tool_data.drag_start_pos.x, tool_data.drag_start_pos.y, previous_mouse.x, previous_mouse.y).abs();
 								shape_editor.get_inside_points_and_segments(
 									&document.network_interface,
 									SelectionShape::Box(bbox),
@@ -2297,7 +2297,7 @@ impl Fsm for PathToolFsmState {
 
 					match selection_shape {
 						SelectionShapeType::Box => {
-							let bbox = Rect::new(tool_data.drag_start_pos.x, tool_data.drag_start_pos.y, previous_mouse.x, previous_mouse.y);
+							let bbox = Rect::new(tool_data.drag_start_pos.x, tool_data.drag_start_pos.y, previous_mouse.x, previous_mouse.y).abs();
 
 							shape_editor.select_all_in_shape(
 								&document.network_interface,
@@ -2394,7 +2394,7 @@ impl Fsm for PathToolFsmState {
 				} else {
 					match selection_shape {
 						SelectionShapeType::Box => {
-							let bbox = Rect::new(tool_data.drag_start_pos.x, tool_data.drag_start_pos.y, previous_mouse.x, previous_mouse.y);
+							let bbox = Rect::new(tool_data.drag_start_pos.x, tool_data.drag_start_pos.y, previous_mouse.x, previous_mouse.y).abs();
 
 							shape_editor.select_all_in_shape(
 								&document.network_interface,
