@@ -797,6 +797,7 @@ fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 	}
 }
 
+#[cfg(feature = "logging")]
 fn face_to_polygon(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>) -> Vec<DVec2> {
 	const CNT: usize = 3;
 
@@ -829,6 +830,7 @@ fn line_segment_intersects_horizontal_ray(a: DVec2, b: DVec2, point: DVec2) -> b
 	x >= point.x
 }
 
+#[cfg(feature = "logging")]
 fn compute_point_winding(polygon: &[DVec2], tested_point: DVec2) -> i32 {
 	if polygon.len() <= 2 {
 		return 0;
@@ -844,6 +846,7 @@ fn compute_point_winding(polygon: &[DVec2], tested_point: DVec2) -> i32 {
 	winding
 }
 
+#[cfg(feature = "logging")]
 fn compute_winding(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>) -> Option<i32> {
 	let polygon = face_to_polygon(face, edges);
 
@@ -862,28 +865,49 @@ fn compute_winding(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGrap
 }
 
 fn compute_signed_area(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>) -> f64 {
-	let polygon = face_to_polygon(face, edges);
-	if polygon.len() <= 4 {
-		return -1.;
+	const CNT: usize = 3;
+	let mut area = 0.0;
+	let mut prev_point: Option<DVec2> = None;
+	let mut start_point = None;
+	let mut point_count = 0;
+
+	for &edge_key in &face.incident_edges {
+		let edge = &edges[edge_key];
+		for seg in &edge.segments {
+			for i in 0..CNT {
+				let t0 = i as f64 / CNT as f64;
+				let t = if edge.direction_flag.forward() { t0 } else { 1. - t0 };
+				let current_point = seg.sample_at(t);
+
+				if let Some(prev) = prev_point {
+					area += prev.x * current_point.y;
+					area -= current_point.x * prev.y;
+				} else {
+					start_point = Some(current_point);
+				}
+
+				prev_point = Some(current_point);
+				point_count += 1;
+			}
+		}
+	}
+
+	if point_count <= 4 {
+		return -f64::EPSILON;
+	}
+
+	// Close the polygon
+	if let (Some(start), Some(end)) = (start_point, prev_point) {
+		area += end.x * start.y;
+		area -= start.x * end.y;
 	}
 
 	#[cfg(feature = "logging")]
-	eprintln!("vertex: {:?}", face);
-	#[cfg(feature = "logging")]
-	for point in &polygon {
-		eprintln!("{}, {}", point.x, point.y);
-	}
-	let mut area = 0.;
-
-	for i in 0..polygon.len() {
-		let a = polygon[i];
-		let b = polygon[(i + 1) % polygon.len()];
-		area += a.x * b.y;
-		area -= b.x * a.y;
+	{
+		eprintln!("vertex: {:?}", face);
+		eprintln!("winding: {}", area);
 	}
 
-	#[cfg(feature = "logging")]
-	eprintln!("winding: {}", area);
 	area
 }
 
@@ -1046,14 +1070,17 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 		#[cfg(feature = "logging")]
 		eprintln!("component_vertices: {}", component_vertices.len());
 
+		#[cfg(feature = "logging")]
 		let windings: Option<Vec<_>> = component_vertices
 			.iter()
 			.map(|face_key| compute_winding(&dual_vertices[*face_key], &dual_edges).map(|w| (face_key, w)))
 			.collect();
+		#[cfg(feature = "logging")]
 		let Some(windings) = windings else {
 			return Err(BooleanError::NoEarInPolygon);
 		};
 
+		#[cfg(feature = "logging")]
 		let areas: Vec<_> = component_vertices
 			.iter()
 			.map(|face_key| (face_key, compute_signed_area(&dual_vertices[*face_key], &dual_edges)))
@@ -1076,25 +1103,30 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			);
 		}
 
-		let mut count = windings.iter().filter(|(_, winding)| winding < &0).count();
-		let mut reverse_winding = false;
-		// If the paths are reversed use positive winding as outer face
-		if windings.len() > 2 && count == windings.len() - 1 {
-			count = 1;
-			reverse_winding = true;
-		}
-		let outer_face_key = if count != 1 {
-			#[cfg(feature = "logging")]
-			eprintln!("Found multiple outer faces: {areas:?}, falling back to area calculation");
-			let (key, _) = *areas.iter().max_by_key(|(_, area)| (area.abs() * 1000.) as u64).unwrap();
-			*key
-		} else {
-			*windings
-				.iter()
-				.find(|&&(&_, ref winding)| (winding < &0) ^ reverse_winding)
-				.expect("No outer face of a component found.")
-				.0
-		};
+		// let mut count = windings.iter().filter(|(_, winding)| winding < &0).count();
+		// let mut reverse_winding = false;
+		// // If the paths are reversed use positive winding as outer face
+		// if windings.len() > 2 && count == windings.len() - 1 {
+		// 	count = 1;
+		// 	reverse_winding = true;
+		// }
+		// let outer_face_key = if count != 1 || true {
+		let areas: Vec<_> = component_vertices
+			.iter()
+			.map(|face_key| (face_key, (compute_signed_area(&dual_vertices[*face_key], &dual_edges) * 1000.) as i64))
+			.collect();
+		#[cfg(feature = "logging")]
+		eprintln!("Found multiple outer faces: {areas:?}, falling back to area calculation");
+		let (&outer_face_key, _) = *areas
+			.iter()
+			.max_by(|(_, a1), (_, a2)| match a1.abs().cmp(&a2.abs()) {
+				Ordering::Equal => a1.cmp(a2),
+				ord => ord,
+			})
+			.unwrap();
+		// } else {
+		// 	*windings.iter().find(|(&_, winding)| (winding < &0) ^ reverse_winding).expect("No outer face of a component found.").0
+		// };
 		#[cfg(feature = "logging")]
 		dbg!(outer_face_key);
 
@@ -1150,7 +1182,7 @@ struct IntersectionSegment {
 }
 
 pub fn path_segment_horizontal_ray_intersection_count(orig_seg: &PathSegment, point: DVec2) -> usize {
-	let total_bounding_box = orig_seg.bounding_box();
+	let total_bounding_box = orig_seg.approx_bounding_box();
 
 	if !bounding_box_intersects_horizontal_ray(&total_bounding_box, point) {
 		return 0;
@@ -1544,6 +1576,7 @@ impl Display for BooleanError {
 /// - Input paths are invalid or cannot be processed.
 /// - The operation encounters an unsolvable geometric configuration.
 /// - Issues arise in determining the nesting structure of the paths.
+#[inline(never)]
 pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: FillRule, op: PathBooleanOperation) -> Result<Vec<Path>, BooleanError> {
 	let mut unsplit_edges: Vec<MajorGraphEdgeStage1> = a.iter().map(segment_to_edge(1)).chain(b.iter().map(segment_to_edge(2))).flatten().collect();
 

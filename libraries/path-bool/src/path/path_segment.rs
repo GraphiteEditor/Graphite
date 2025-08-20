@@ -639,6 +639,27 @@ impl PathSegment {
 			}
 		}
 	}
+	pub(crate) fn approx_bounding_box(&self) -> Aabb {
+		match *self {
+			PathSegment::Cubic(p1, p2, p3, p4) => {
+				// Use the control points to create a bounding box
+				let left = p1.x.min(p2.x).min(p3.x).min(p4.x);
+				let right = p1.x.max(p2.x).max(p3.x).max(p4.x);
+				let top = p1.y.min(p2.y).min(p3.y).min(p4.y);
+				let bottom = p1.y.max(p2.y).max(p3.y).max(p4.y);
+				Aabb { top, right, bottom, left }
+			}
+			PathSegment::Quadratic(p1, p2, p3) => {
+				// Use the control points to create a bounding box
+				let left = p1.x.min(p2.x).min(p3.x);
+				let right = p1.x.max(p2.x).max(p3.x);
+				let top = p1.y.min(p2.y).min(p3.y);
+				let bottom = p1.y.max(p2.y).max(p3.y);
+				Aabb { top, right, bottom, left }
+			}
+			seg => seg.bounding_box(),
+		}
+	}
 
 	/// Splits the path segment at a given parameter value.
 	///
