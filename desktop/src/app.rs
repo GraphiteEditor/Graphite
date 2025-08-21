@@ -24,7 +24,7 @@ use winit::window::WindowId;
 use crate::cef;
 
 pub(crate) struct WinitApp {
-	cef_context: cef::Context<cef::Initialized>,
+	cef_context: Box<dyn cef::CefContext>,
 	window: Option<Arc<Window>>,
 	cef_schedule: Option<Instant>,
 	window_size_sender: Sender<WindowSize>,
@@ -38,7 +38,7 @@ pub(crate) struct WinitApp {
 }
 
 impl WinitApp {
-	pub(crate) fn new(cef_context: cef::Context<cef::Initialized>, window_size_sender: Sender<WindowSize>, wgpu_context: WgpuContext, event_loop_proxy: EventLoopProxy<CustomEvent>) -> Self {
+	pub(crate) fn new(cef_context: Box<dyn cef::CefContext>, window_size_sender: Sender<WindowSize>, wgpu_context: WgpuContext, event_loop_proxy: EventLoopProxy<CustomEvent>) -> Self {
 		let rendering_loop_proxy = event_loop_proxy.clone();
 		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
 		std::thread::spawn(move || {
@@ -71,7 +71,7 @@ impl WinitApp {
 					tracing::error!("Failed to serialize frontend messages");
 					return;
 				};
-				self.cef_context.send_web_message(bytes.as_slice());
+				self.cef_context.send_web_message(bytes);
 			}
 			DesktopFrontendMessage::OpenFileDialog { title, filters, context } => {
 				let event_loop_proxy = self.event_loop_proxy.clone();
@@ -254,7 +254,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 	}
 
 	fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
-		let Some(event) = self.cef_context.handle_window_event(event) else { return };
+		self.cef_context.handle_window_event(&event);
 
 		match event {
 			WindowEvent::CloseRequested => {
