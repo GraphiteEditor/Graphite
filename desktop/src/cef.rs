@@ -1,3 +1,33 @@
+//! CEF (Chromium Embedded Framework) integration for Graphite Desktop
+//!
+//! This module provides CEF browser integration with hardware-accelerated texture sharing.
+//!
+//! # Hardware Acceleration
+//!
+//! The texture import system supports platform-specific hardware acceleration:
+//!
+//! - **Linux**: DMA-BUF via Vulkan external memory (`accelerated_paint_dmabuf` feature)
+//! - **Windows**: D3D11 shared textures via Vulkan interop (`accelerated_paint_d3d11` feature)
+//! - **macOS**: IOSurface via Metal/Vulkan interop (`accelerated_paint_iosurface` feature)
+//!
+//! ## Feature Configuration
+//!
+//! Enable hardware acceleration with:
+//! ```toml
+//! [dependencies]
+//! graphite-desktop = { features = ["accelerated_paint"] }
+//! ```
+//!
+//! Or enable platform-specific support:
+//! ```toml
+//! [dependencies]
+//! graphite-desktop = { features = ["accelerated_paint_linux"] }    # Linux only
+//! graphite-desktop = { features = ["accelerated_paint_windows"] }  # Windows only
+//! graphite-desktop = { features = ["accelerated_paint_macos"] }    # macOS only
+//! ```
+//!
+//! The system gracefully falls back to CPU textures when hardware acceleration is unavailable.
+
 use crate::CustomEvent;
 use crate::render::FrameBufferRef;
 use graphite_desktop_wrapper::{WgpuContext, deserialize_editor_message};
@@ -7,25 +37,17 @@ use std::time::Instant;
 
 mod context;
 mod dirs;
-mod dmabuf;
-#[cfg(target_os = "windows")]
-mod d3d11;
-#[cfg(target_os = "macos")]
-mod iosurface;
 mod input;
 mod internal;
 mod ipc;
 mod platform;
 mod scheme_handler;
+#[cfg(feature = "accelerated_paint")]
+mod texture_import;
 mod utility;
 
 pub(crate) use context::{Context, InitError, Initialized, Setup, SetupError};
 use winit::event_loop::EventLoopProxy;
-
-#[cfg(target_os = "windows")]
-use crate::cef::d3d11::D3D11SharedTexture;
-#[cfg(target_os = "macos")]
-use crate::cef::iosurface::IOSurfaceTexture;
 
 pub(crate) trait CefEventHandler: Clone {
 	fn window_size(&self) -> WindowSize;
@@ -144,71 +166,12 @@ impl CefEventHandler for CefHandler {
 
 	#[cfg(feature = "accelerated_paint")]
 	fn on_accelerated_paint(&self, shared_handle: internal::render_handler::SharedTextureHandle) {
-		#[cfg(target_os = "linux")]
-		use crate::cef::dmabuf::DmaBufTexture;
-
-		match shared_handle {
-			#[cfg(target_os = "linux")]
-			internal::render_handler::SharedTextureHandle::DmaBuf {
-				fds,
-				format,
-				modifier,
-				width,
-				height,
-				strides,
-				offsets,
-			} => {
-				let dmabuf_texture = DmaBufTexture {
-					fds,
-					format,
-					modifier,
-					width,
-					height,
-					strides,
-					offsets,
-				};
-				match dmabuf_texture.import_to_wgpu(&self.wgpu_context.device) {
-					Ok(texture) => {
-						let _ = self.event_loop_proxy.send_event(CustomEvent::UiUpdate(texture));
-					}
-					Err(e) => {
-						tracing::error!("Failed to import DMA-BUF texture: {}", e);
-					}
-				}
+		match self::texture_import::import_texture(shared_handle, &self.wgpu_context.device) {
+			Ok(texture) => {
+				let _ = self.event_loop_proxy.send_event(CustomEvent::UiUpdate(texture));
 			}
-			#[cfg(target_os = "windows")]
-			internal::render_handler::SharedTextureHandle::D3D11 { handle, format, width, height } => {
-				let d3d11_texture = D3D11SharedTexture {
-					handle,
-					width,
-					height,
-					format,
-				};
-				match d3d11_texture.import_to_wgpu(&self.wgpu_context.device) {
-					Ok(texture) => {
-						let _ = self.event_loop_proxy.send_event(CustomEvent::UiUpdate(texture));
-					}
-					Err(e) => {
-						tracing::error!("Failed to import D3D11 shared texture: {}", e);
-					}
-				}
-			}
-			#[cfg(target_os = "macos")]
-			internal::render_handler::SharedTextureHandle::IOSurface { handle, format, width, height } => {
-				let iosurface_texture = IOSurfaceTexture {
-					handle,
-					width,
-					height,
-					format,
-				};
-				match iosurface_texture.import_to_wgpu(&self.wgpu_context.device) {
-					Ok(texture) => {
-						let _ = self.event_loop_proxy.send_event(CustomEvent::UiUpdate(texture));
-					}
-					Err(e) => {
-						tracing::error!("Failed to import IOSurface texture: {}", e);
-					}
-				}
+			Err(e) => {
+				tracing::error!("Failed to import shared texture: {}", e);
 			}
 		}
 	}

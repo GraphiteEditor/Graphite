@@ -37,7 +37,6 @@ open = { workspace = true }
 
 # Hardware acceleration dependencies
 ash = { version = "0.38", optional = true }
-libc = { version = "0.2", optional = true }
 
 # Windows-specific dependencies
 [target.'cfg(windows)'.dependencies]
@@ -53,3 +52,7 @@ windows = { version = "0.58", features = [
 objc2-io-surface = { version = "0.3", optional = true }
 objc2-metal = { version = "0.3", optional = true }
 core-foundation = { version = "0.9", optional = true }
+
+# Linux-specific dependencies
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = { version = "0.2", optional = true }

@@ -5,7 +5,7 @@ use cef::{Browser, ImplRenderHandler, PaintElementType, Rect, WrapRenderHandler}
 use crate::cef::CefEventHandler;
 use crate::render::FrameBufferRef;
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "accelerated_paint"))]
 use std::os::fd::RawFd;
 #[cfg(all(feature = "accelerated_paint", any(target_os = "windows", target_os = "macos")))]
 use std::os::raw::c_void;
