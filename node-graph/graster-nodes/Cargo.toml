@@ -34,6 +34,7 @@ graphene-core = { workspace = true, optional = true }
 bytemuck = { workspace = true }
 # glam is reexported from gcore-shaders in no_std mode
 glam = { workspace = true, optional = true }
+num-traits = { workspace = true }
 
 # Workspace std dependencies
 specta = { workspace = true, optional = true }

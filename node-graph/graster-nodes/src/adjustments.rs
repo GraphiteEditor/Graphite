@@ -11,6 +11,8 @@ use graphene_core::table::Table;
 use graphene_core_shaders::color::Color;
 use graphene_core_shaders::context::Ctx;
 use graphene_core_shaders::registry::types::{Angle, Percentage, SignedPercentage};
+#[cfg(not(feature = "std"))]
+use num_traits::float::Float;
 
 // TODO: Implement the following:
 // Color Balance
