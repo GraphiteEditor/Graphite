@@ -7,6 +7,7 @@ use core::fmt::Debug;
 use graphene_core::gradient::GradientStops;
 #[cfg(feature = "std")]
 use graphene_core::raster_types::{CPU, Raster};
+#[cfg(feature = "std")]
 use graphene_core::table::Table;
 use graphene_core_shaders::color::Color;
 use graphene_core_shaders::context::Ctx;
