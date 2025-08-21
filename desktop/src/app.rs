@@ -1,9 +1,10 @@
 use crate::CustomEvent;
 use crate::cef::WindowSize;
-use crate::consts::APP_NAME;
+use crate::consts::{APP_NAME, CEF_MESSAGE_LOOP_MAX_ITERATIONS};
 use crate::render::GraphicsState;
 use graphite_desktop_wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage};
 use graphite_desktop_wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
+
 use rfd::AsyncFileDialog;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
@@ -174,7 +175,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 		{
 			self.cef_schedule = None;
 			// Poll cef message loop multiple times to avoid message loop starvation
-			for _ in 0..10 {
+			for _ in 0..CEF_MESSAGE_LOOP_MAX_ITERATIONS {
 				self.cef_context.work();
 			}
 		}

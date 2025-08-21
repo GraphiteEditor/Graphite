@@ -4,15 +4,15 @@
 use std::os::raw::c_void;
 
 #[cfg(all(feature = "accelerated_paint", target_os = "macos"))]
-use ash::vk;
-#[cfg(all(feature = "accelerated_paint", target_os = "macos"))]
 use core_foundation::base::{CFType, TCFType};
 #[cfg(all(feature = "accelerated_paint", target_os = "macos"))]
 use objc2_io_surface::{IOSurface, IOSurfaceRef};
 #[cfg(all(feature = "accelerated_paint", target_os = "macos"))]
+use objc2_metal::{MTLDevice, MTLPixelFormat, MTLTexture, MTLTextureDescriptor, MTLTextureType, MTLTextureUsage};
+#[cfg(all(feature = "accelerated_paint", target_os = "macos"))]
 use wgpu::hal::api;
 
-use super::common::{TextureImportError, TextureImportResult, TextureImporter, format, texture, vulkan};
+use super::common::{TextureImportError, TextureImportResult, TextureImporter, format, texture};
 use cef::sys::cef_color_type_t;
 
 #[cfg(target_os = "macos")]
@@ -30,13 +30,13 @@ impl TextureImporter for IOSurfaceImporter {
 		#[cfg(feature = "accelerated_paint")]
 		{
 			if self.supports_hardware_acceleration(device) {
-				match self.import_via_vulkan(device) {
+				match self.import_via_metal(device) {
 					Ok(texture) => {
-						tracing::trace!("Successfully imported IOSurface texture via Vulkan");
+						tracing::trace!("Successfully imported IOSurface texture via Metal");
 						return Ok(texture);
 					}
 					Err(e) => {
-						tracing::warn!("Failed to import IOSurface via Vulkan: {}, falling back to CPU texture", e);
+						tracing::warn!("Failed to import IOSurface via Metal: {}, falling back to CPU texture", e);
 					}
 				}
 			}
@@ -54,8 +54,8 @@ impl TextureImporter for IOSurfaceImporter {
 				return false;
 			}
 
-			// Check if wgpu is using Vulkan backend
-			vulkan::is_vulkan_backend(device)
+			// Check if wgpu is using Metal backend
+			self.is_metal_backend(device)
 		}
 		#[cfg(not(feature = "accelerated_paint"))]
 		{
@@ -68,23 +68,23 @@ impl TextureImporter for IOSurfaceImporter {
 #[cfg(target_os = "macos")]
 impl IOSurfaceImporter {
 	#[cfg(feature = "accelerated_paint")]
-	fn import_via_vulkan(&self, device: &wgpu::Device) -> TextureImportResult {
-		// Get wgpu's Vulkan instance and device
-		use wgpu::{TextureUses, wgc::api::Vulkan};
+	fn import_via_metal(&self, device: &wgpu::Device) -> TextureImportResult {
+		// Get wgpu's Metal device
+		use wgpu::{hal::Api, wgc::api::Metal};
 		let hal_texture = unsafe {
-			device.as_hal::<api::Vulkan, _, _>(|device| {
+			device.as_hal::<api::Metal, _, _>(|device| {
 				let Some(device) = device else {
 					return Err(TextureImportError::HardwareUnavailable {
-						reason: "Device is not using Vulkan backend".to_string(),
+						reason: "Device is not using Metal backend".to_string(),
 					});
 				};
 
-				// Import IOSurface handle into Vulkan via Metal
-				let vk_image = self.import_iosurface_to_vulkan(device)?;
+				// Import IOSurface handle into Metal texture
+				let metal_texture = self.import_iosurface_to_metal(device)?;
 
-				// Wrap VkImage in wgpu-hal texture
-				let hal_texture = <api::Vulkan as wgpu::hal::Api>::Device::texture_from_raw(
-					vk_image,
+				// Wrap Metal texture in wgpu-hal texture
+				let hal_texture = <api::Metal as wgpu::hal::Api>::Device::texture_from_raw(
+					metal_texture,
 					&wgpu::hal::TextureDescriptor {
 						label: Some("CEF IOSurface Texture"),
 						size: wgpu::Extent3d {
@@ -96,7 +96,7 @@ impl IOSurfaceImporter {
 						sample_count: 1,
 						dimension: wgpu::TextureDimension::D2,
 						format: format::cef_to_wgpu(self.format)?,
-						usage: TextureUses::COPY_DST | TextureUses::RESOURCE,
+						usage: wgpu::hal::TextureUses::RESOURCE,
 						memory_flags: wgpu::hal::MemoryFlags::empty(),
 						view_formats: vec![],
 					},
@@ -109,7 +109,7 @@ impl IOSurfaceImporter {
 
 		// Import hal texture into wgpu
 		let texture = unsafe {
-			device.create_texture_from_hal::<Vulkan>(
+			device.create_texture_from_hal::<Metal>(
 				hal_texture,
 				&wgpu::TextureDescriptor {
 					label: Some("CEF IOSurface Texture"),
@@ -132,64 +132,66 @@ impl IOSurfaceImporter {
 	}
 
 	#[cfg(feature = "accelerated_paint")]
-	fn import_iosurface_to_vulkan(&self, hal_device: &<api::Vulkan as wgpu::hal::Api>::Device) -> Result<vk::Image, TextureImportError> {
-		// Get raw Vulkan handles
-		let device = hal_device.raw_device();
-		let _instance = hal_device.shared_instance().raw_instance();
-
+	fn import_iosurface_to_metal(&self, hal_device: &<api::Metal as wgpu::hal::Api>::Device) -> Result<<api::Metal as wgpu::hal::Api>::Texture, TextureImportError> {
 		// Validate dimensions
 		if self.width == 0 || self.height == 0 {
 			return Err(TextureImportError::InvalidHandle("Invalid IOSurface texture dimensions".to_string()));
 		}
 
 		// Convert handle to IOSurface
-		let _iosurface = unsafe {
+		let iosurface = unsafe {
 			let cf_type = CFType::wrap_under_get_rule(self.handle as IOSurfaceRef);
 			IOSurface::from(cf_type)
 		};
 
-		// Note: Full Metal-to-Vulkan import would require:
-		// 1. Creating Metal texture from IOSurface
-		// 2. Using VK_EXT_metal_objects to import Metal texture into Vulkan
-		// 3. Proper synchronization between Metal and Vulkan
-		//
-		// This is complex and not fully supported by current objc2 bindings.
-		// For now, we create a minimal Vulkan image and rely on fallback.
+		// Get the Metal device from wgpu-hal
+		let metal_device = hal_device.raw_device();
 
-		// Create external memory image info for Metal objects
-		let mut external_memory_info = vk::ExternalMemoryImageCreateInfo::default().handle_types(vk::ExternalMemoryHandleTypeFlags::MTLTEXTURE_EXT);
+		// Convert CEF format to Metal pixel format
+		let metal_format = self.cef_to_metal_format(self.format)?;
 
-		// Create image create info
-		let image_create_info = vk::ImageCreateInfo::default()
-			.image_type(vk::ImageType::TYPE_2D)
-			.format(format::cef_to_vulkan(self.format)?)
-			.extent(vk::Extent3D {
-				width: self.width,
-				height: self.height,
-				depth: 1,
-			})
-			.mip_levels(1)
-			.array_layers(1)
-			.samples(vk::SampleCountFlags::TYPE_1)
-			.tiling(vk::ImageTiling::OPTIMAL)
-			.usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::COLOR_ATTACHMENT)
-			.sharing_mode(vk::SharingMode::EXCLUSIVE)
-			.push_next(&mut external_memory_info);
+		// Create Metal texture descriptor
+		let texture_descriptor = MTLTextureDescriptor::new();
+		texture_descriptor.setTextureType(MTLTextureType::Type2D);
+		texture_descriptor.setPixelFormat(metal_format);
+		texture_descriptor.setWidth(self.width as usize);
+		texture_descriptor.setHeight(self.height as usize);
+		texture_descriptor.setDepth(1);
+		texture_descriptor.setMipmapLevelCount(1);
+		texture_descriptor.setSampleCount(1);
+		texture_descriptor.setUsage(MTLTextureUsage::ShaderRead);
 
-		// Create the image
-		let image = unsafe {
-			device.create_image(&image_create_info, None).map_err(|e| TextureImportError::VulkanError {
-				operation: format!("Failed to create Vulkan image: {:?}", e),
-			})?
+		// Create Metal texture from IOSurface
+		let metal_texture = unsafe { metal_device.newTextureWithDescriptor_iosurface_plane(&texture_descriptor, &iosurface, 0) };
+
+		let Some(metal_texture) = metal_texture else {
+			return Err(TextureImportError::PlatformError {
+				message: "Failed to create Metal texture from IOSurface".to_string(),
+			});
 		};
 
-		// Note: The actual Metal-to-Vulkan import would require VK_EXT_metal_objects
-		// and proper Metal texture handle extraction, which is complex and not
-		// fully supported in the current objc2 bindings. For now, we return the
-		// image and rely on fallback behavior.
+		tracing::trace!("Successfully created Metal texture from IOSurface");
+		Ok(metal_texture)
+	}
 
-		tracing::warn!("Metal-to-Vulkan texture import not fully implemented");
+	#[cfg(feature = "accelerated_paint")]
+	fn cef_to_metal_format(&self, format: cef_color_type_t) -> Result<MTLPixelFormat, TextureImportError> {
+		match format {
+			cef_color_type_t::CEF_COLOR_TYPE_BGRA_8888 => Ok(MTLPixelFormat::BGRA8Unorm_sRGB),
+			cef_color_type_t::CEF_COLOR_TYPE_RGBA_8888 => Ok(MTLPixelFormat::RGBA8Unorm_sRGB),
+			_ => Err(TextureImportError::UnsupportedFormat { format }),
+		}
+	}
 
-		Ok(image)
+	#[cfg(feature = "accelerated_paint")]
+	fn is_metal_backend(&self, device: &wgpu::Device) -> bool {
+		use wgpu::hal::api;
+		let mut is_metal = false;
+		unsafe {
+			device.as_hal::<api::Metal, _, _>(|device| {
+				is_metal = device.is_some();
+			});
+		}
+		is_metal
 	}
 }

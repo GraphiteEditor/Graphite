@@ -17,7 +17,7 @@ use app::WinitApp;
 mod dirs;
 
 use graphite_desktop_wrapper::messages::DesktopWrapperMessage;
-use graphite_desktop_wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext};
+use graphite_desktop_wrapper::{NodeGraphExecutionResult, WgpuContext};
 
 pub(crate) enum CustomEvent {
 	UiUpdate(wgpu::Texture),

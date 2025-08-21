@@ -8,7 +8,7 @@
 //!
 //! - **Linux**: DMA-BUF via Vulkan external memory
 //! - **Windows**: D3D11 shared textures via Vulkan interop
-//! - **macOS**: IOSurface via Metal/Vulkan interop
+//! - **macOS**: IOSurface via Metal native API
 //!
 //! # Usage
 //!

@@ -38,7 +38,7 @@ impl TextureImporter for D3D11Importer {
 						}
 					}
 				}
-				
+
 				// Try Vulkan as fallback
 				if vulkan::is_vulkan_backend(device) {
 					match self.import_via_vulkan(device) {
@@ -298,13 +298,11 @@ impl D3D11Importer {
 		// Open D3D11 shared handle on D3D12 device
 		unsafe {
 			let mut shared_resource: Option<ID3D12Resource> = None;
-			d3d12_device.OpenSharedHandle(
-				windows::Win32::Foundation::HANDLE(self.handle as isize),
-				&ID3D12Resource::IID,
-				&mut shared_resource as *mut _ as *mut _,
-			).map_err(|e| TextureImportError::PlatformError {
-				message: format!("Failed to open D3D11 shared handle on D3D12: {:?}", e),
-			})?;
+			d3d12_device
+				.OpenSharedHandle(windows::Win32::Foundation::HANDLE(self.handle as isize), &ID3D12Resource::IID, &mut shared_resource as *mut _ as *mut _)
+				.map_err(|e| TextureImportError::PlatformError {
+					message: format!("Failed to open D3D11 shared handle on D3D12: {:?}", e),
+				})?;
 
 			shared_resource.ok_or_else(|| TextureImportError::InvalidHandle("Failed to get D3D12 resource from shared handle".to_string()))
 		}

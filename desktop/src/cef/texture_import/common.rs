@@ -50,7 +50,7 @@ pub mod format {
 		}
 	}
 
-	#[cfg(feature = "accelerated_paint")]
+	#[cfg(all(feature = "accelerated_paint", not(target_os = "macos")))]
 	/// Convert CEF color type to Vulkan format
 	pub fn cef_to_vulkan(format: cef_color_type_t) -> Result<vk::Format, TextureImportError> {
 		match format {
@@ -84,7 +84,12 @@ pub mod texture {
 			view_formats: &[],
 		});
 
-		tracing::warn!("Using fallback CPU texture - hardware acceleration not available");
+		tracing::warn!(
+			"Using fallback CPU texture for CEF rendering ({}x{}, {:?}) - hardware acceleration failed or unavailable. Consider checking GPU driver support.",
+			width,
+			height,
+			format
+		);
 		Ok(texture)
 	}
 }
@@ -105,6 +110,7 @@ pub mod vulkan {
 	}
 
 	/// Check if the wgpu device is using Vulkan backend
+	#[cfg(not(target_os = "macos"))]
 	pub fn is_vulkan_backend(device: &Device) -> bool {
 		use wgpu::hal::api;
 		let mut is_vulkan = false;
