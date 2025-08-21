@@ -3,6 +3,7 @@ use crate::adjust::Adjust;
 use graphene_core::gradient::GradientStops;
 #[cfg(feature = "std")]
 use graphene_core::raster_types::{CPU, Raster};
+#[cfg(feature = "std")]
 use graphene_core::table::Table;
 use graphene_core_shaders::Ctx;
 use graphene_core_shaders::blending::BlendMode;
