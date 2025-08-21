@@ -7,7 +7,7 @@ authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "MIT OR Apache-2.0"
 
 [features]
-std = ["dep:dyn-any", "dep:serde", "dep:specta", "dep:log", "half/std", "half/serde"]
+std = ["dep:dyn-any", "dep:serde", "dep:specta", "dep:log", "half/std", "half/serde", "num-traits/std"]
 
 [dependencies]
 # Local std dependencies
