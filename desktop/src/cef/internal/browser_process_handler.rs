@@ -5,7 +5,8 @@ use cef::sys::{_cef_browser_process_handler_t, cef_base_ref_counted_t, cef_brows
 use cef::{CefString, ImplBrowserProcessHandler, SchemeHandlerFactory, WrapBrowserProcessHandler};
 
 use crate::cef::CefEventHandler;
-use crate::cef::scheme_handler::{GRAPHITE_SCHEME, GraphiteSchemeHandlerFactory};
+use crate::cef::consts::GRAPHITE_SCHEME;
+use crate::cef::scheme_handler::GraphiteSchemeHandlerFactory;
 
 pub(crate) struct BrowserProcessHandlerImpl<H: CefEventHandler> {
 	object: *mut RcImpl<cef_browser_process_handler_t, Self>,

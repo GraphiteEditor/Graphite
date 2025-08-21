@@ -1,3 +1,4 @@
+#[cfg(target_os = "linux")]
 use std::env;
 
 use cef::rc::{Rc, RcImpl};
@@ -34,12 +35,28 @@ impl<H: CefEventHandler + Clone> ImplApp for BrowserProcessAppImpl<H> {
 
 	fn on_before_command_line_processing(&self, _process_type: Option<&cef::CefString>, command_line: Option<&mut cef::CommandLine>) {
 		if let Some(cmd) = command_line {
-			// Disable GPU acceleration, because it is not supported for Offscreen Rendering and can cause crashes.
-			cmd.append_switch(Some(&CefString::from("disable-gpu")));
-			cmd.append_switch(Some(&CefString::from("disable-gpu-compositing")));
+			#[cfg(not(feature = "accelerated_paint"))]
+			{
+				// Disable GPU acceleration when accelerated_paint feature is not enabled
+				cmd.append_switch(Some(&CefString::from("disable-gpu")));
+				cmd.append_switch(Some(&CefString::from("disable-gpu-compositing")));
+			}
+
+			#[cfg(feature = "accelerated_paint")]
+			{
+				// Enable GPU acceleration switches for better performance
+				cmd.append_switch(Some(&CefString::from("enable-gpu-rasterization")));
+				cmd.append_switch(Some(&CefString::from("enable-accelerated-2d-canvas")));
+			}
+
+			#[cfg(all(feature = "accelerated_paint", target_os = "linux"))]
+			{
+				// Use Vulkan for accelerated painting
+				cmd.append_switch_with_value(Some(&CefString::from("use-angle")), Some(&CefString::from("vulkan")));
+			}
 
 			// Tell CEF to use Wayland if available
-			#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+			#[cfg(target_os = "linux")]
 			{
 				let use_wayland = env::var("WAYLAND_DISPLAY")
 					.ok()

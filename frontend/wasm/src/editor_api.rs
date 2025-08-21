@@ -466,6 +466,12 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	#[wasm_bindgen(js_name = requestLicensesThirdPartyDialogWithLicenseText)]
+	pub fn request_licenses_third_party_dialog_with_license_text(&self, license_text: String) {
+		let message = DialogMessage::RequestLicensesThirdPartyDialogWithLicenseText { license_text };
+		self.dispatch(message);
+	}
+
 	/// Send new bounds when document panel viewports get resized or moved within the editor
 	/// [left, top, right, bottom]...
 	#[wasm_bindgen(js_name = boundsOfViewports)]
