@@ -43,7 +43,9 @@ fn main() {
 	let (window_size_sender, window_size_receiver) = std::sync::mpsc::channel();
 
 	let wgpu_context = futures::executor::block_on(WgpuContext::new()).unwrap();
-	let cef_context = match cef_context.init(cef::CefHandler::new(window_size_receiver, event_loop.create_proxy(), wgpu_context.clone())) {
+	let cef_handler = cef::CefHandler::new(window_size_receiver, event_loop.create_proxy(), wgpu_context.clone());
+	let cef_context_result = Ok(cef::cef_context(cef_context, cef_handler));
+	let cef_context = match cef_context_result {
 		Ok(c) => c,
 		Err(cef::InitError::AlreadyRunning) => {
 			tracing::error!("Another instance is already running, Exiting.");

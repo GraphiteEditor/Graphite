@@ -34,7 +34,7 @@ mod texture_import;
 #[cfg(feature = "accelerated_paint")]
 use texture_import::SharedTextureHandle;
 
-pub(crate) use context::{Context, InitError, Initialized, Setup, SetupError};
+pub(crate) use context::{CefContext, Context, InitError, Initialized, Setup, SetupError, cef_context};
 use winit::event_loop::EventLoopProxy;
 
 pub(crate) trait CefEventHandler: Clone {
