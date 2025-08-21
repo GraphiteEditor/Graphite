@@ -26,8 +26,6 @@ pub struct IOSurfaceImporter {
 #[cfg(target_os = "macos")]
 impl TextureImporter for IOSurfaceImporter {
 	fn import_to_wgpu(&self, device: &wgpu::Device) -> TextureImportResult {
-		tracing::debug!("IOSurface texture import requested: {}x{} handle={:p}", self.width, self.height, self.handle);
-
 		// Try hardware acceleration first
 		#[cfg(feature = "accelerated_paint")]
 		{
@@ -48,14 +46,6 @@ impl TextureImporter for IOSurfaceImporter {
 		texture::create_fallback(device, self.width, self.height, self.format, "CEF IOSurface Texture (fallback)")
 	}
 
-	fn dimensions(&self) -> (u32, u32) {
-		(self.width, self.height)
-	}
-
-	fn format(&self) -> cef_color_type_t {
-		self.format
-	}
-
 	fn supports_hardware_acceleration(&self, device: &wgpu::Device) -> bool {
 		#[cfg(feature = "accelerated_paint")]
 		{
@@ -72,10 +62,6 @@ impl TextureImporter for IOSurfaceImporter {
 			let _ = device;
 			false
 		}
-	}
-
-	fn platform_name(&self) -> &'static str {
-		"macOS IOSurface"
 	}
 }
 

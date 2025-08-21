@@ -27,15 +27,6 @@ pub struct DmaBufImporter {
 #[cfg(target_os = "linux")]
 impl TextureImporter for DmaBufImporter {
 	fn import_to_wgpu(&self, device: &wgpu::Device) -> TextureImportResult {
-		tracing::debug!(
-			"DMA-BUF import requested: {}x{} format={:?} modifier={:#x} planes={}",
-			self.width,
-			self.height,
-			self.format,
-			self.modifier,
-			self.fds.len()
-		);
-
 		// Try hardware acceleration first
 		#[cfg(feature = "accelerated_paint")]
 		{
@@ -54,14 +45,6 @@ impl TextureImporter for DmaBufImporter {
 
 		// Fallback to CPU texture
 		texture::create_fallback(device, self.width, self.height, self.format, "CEF DMA-BUF Texture (fallback)")
-	}
-
-	fn dimensions(&self) -> (u32, u32) {
-		(self.width, self.height)
-	}
-
-	fn format(&self) -> cef_color_type_t {
-		self.format
 	}
 
 	fn supports_hardware_acceleration(&self, device: &wgpu::Device) -> bool {
@@ -91,10 +74,6 @@ impl TextureImporter for DmaBufImporter {
 			let _ = device;
 			false
 		}
-	}
-
-	fn platform_name(&self) -> &'static str {
-		"Linux DMA-BUF"
 	}
 }
 

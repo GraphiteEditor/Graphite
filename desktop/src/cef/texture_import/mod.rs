@@ -7,7 +7,7 @@
 //! # Supported Platforms
 //!
 //! - **Linux**: DMA-BUF via Vulkan external memory
-//! - **Windows**: D3D11 shared textures via Vulkan interop  
+//! - **Windows**: D3D11 shared textures via Vulkan interop
 //! - **macOS**: IOSurface via Metal/Vulkan interop
 //!
 //! # Usage
@@ -22,7 +22,7 @@
 //! # Features
 //!
 //! - `accelerated_paint` - Base feature for texture import
-//! - `accelerated_paint_dmabuf` - Linux DMA-BUF support  
+//! - `accelerated_paint_dmabuf` - Linux DMA-BUF support
 //! - `accelerated_paint_d3d11` - Windows D3D11 support
 //! - `accelerated_paint_iosurface` - macOS IOSurface support
 
@@ -38,4 +38,4 @@ pub mod d3d11;
 pub mod iosurface;
 
 // Re-export commonly used types
-pub use common::{TextureImportError, import_texture};
+pub use common::import_texture;

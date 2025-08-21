@@ -26,9 +26,6 @@ pub enum TextureImportError {
 
 	#[error("Platform-specific error: {message}")]
 	PlatformError { message: String },
-
-	#[error("Texture creation failed: {reason}")]
-	TextureCreationFailed { reason: String },
 }
 
 /// Trait for platform-specific texture importers
@@ -36,17 +33,8 @@ pub trait TextureImporter {
 	/// Import the texture into wgpu, with automatic fallback to CPU texture
 	fn import_to_wgpu(&self, device: &Device) -> TextureImportResult;
 
-	/// Get texture dimensions
-	fn dimensions(&self) -> (u32, u32);
-
-	/// Get texture format
-	fn format(&self) -> cef_color_type_t;
-
 	/// Check if hardware acceleration is available for this texture
 	fn supports_hardware_acceleration(&self, device: &Device) -> bool;
-
-	/// Platform name for logging purposes
-	fn platform_name(&self) -> &'static str;
 }
 
 /// Common format conversion utilities
@@ -126,6 +114,19 @@ pub mod vulkan {
 			});
 		}
 		is_vulkan
+	}
+
+	/// Check if the wgpu device is using D3D12 backend
+	#[cfg(target_os = "windows")]
+	pub fn is_d3d12_backend(device: &Device) -> bool {
+		use wgpu::hal::api;
+		let mut is_d3d12 = false;
+		unsafe {
+			device.as_hal::<api::Dx12, _, _>(|device| {
+				is_d3d12 = device.is_some();
+			});
+		}
+		is_d3d12
 	}
 }
 
