@@ -35,8 +35,8 @@ impl ShaderRuntime {
 }
 
 pub struct PerPixelAdjustInfo<'a> {
-	shader_wgsl: &'a str,
-	fragment_shader_name: &'a str,
+	pub wgsl_shader: &'a str,
+	pub fragment_shader_name: &'a str,
 }
 
 pub struct PerPixelAdjustGraphicsPipeline {
@@ -48,9 +48,12 @@ impl PerPixelAdjustGraphicsPipeline {
 	pub fn new(context: &Context, info: &PerPixelAdjustInfo) -> Self {
 		let device = &context.device;
 		let name = info.fragment_shader_name.to_owned();
+		// TODO workaround to naga removing `:`
+		let fragment_name = name.replace(":", "");
+
 		let shader_module = device.create_shader_module(ShaderModuleDescriptor {
 			label: Some(&format!("PerPixelAdjust {} wgsl shader", name)),
-			source: ShaderSource::Wgsl(Cow::Borrowed(info.shader_wgsl)),
+			source: ShaderSource::Wgsl(Cow::Borrowed(info.wgsl_shader)),
 		});
 		let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
 			label: Some(&format!("PerPixelAdjust {} Pipeline", name)),
@@ -74,7 +77,7 @@ impl PerPixelAdjustGraphicsPipeline {
 			multisample: Default::default(),
 			fragment: Some(FragmentState {
 				module: &shader_module,
-				entry_point: Some(&name),
+				entry_point: Some(&fragment_name),
 				compilation_options: Default::default(),
 				targets: &[Some(ColorTargetState {
 					format: TextureFormat::Rgba32Float,
