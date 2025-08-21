@@ -2077,6 +2077,7 @@ dependencies = [
 name = "graphite-desktop"
 version = "0.1.0"
 dependencies = [
+ "ash",
  "bytemuck",
  "cef",
  "derivative",
@@ -2085,6 +2086,7 @@ dependencies = [
  "glam",
  "graphite-desktop-wrapper",
  "include_dir",
+ "libc",
  "open",
  "rfd",
  "ron",

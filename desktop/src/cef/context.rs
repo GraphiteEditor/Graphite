@@ -95,7 +95,7 @@ impl Context<Setup> {
 		};
 
 		let settings = BrowserSettings {
-			windowless_frame_rate: 60,
+			windowless_frame_rate: 120,
 			background_color: 0x0,
 			..Default::default()
 		};

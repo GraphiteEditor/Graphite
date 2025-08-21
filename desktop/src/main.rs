@@ -57,7 +57,7 @@ fn main() {
 	tracing::info!("Cef initialized successfully");
 
 	let rendering_loop_proxy = event_loop.create_proxy();
-	let target_fps = 60;
+	let target_fps = 120;
 	std::thread::spawn(move || {
 		loop {
 			let last_render = Instant::now();
@@ -67,6 +67,8 @@ fn main() {
 
 			let frame_time = Duration::from_secs_f32((target_fps as f32).recip());
 			let sleep = last_render + frame_time - Instant::now();
+
+			let _ = rendering_loop_proxy.send_event(CustomEvent::ScheduleBrowserWork(Instant::now()));
 			std::thread::sleep(sleep);
 		}
 	});

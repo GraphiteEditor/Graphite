@@ -13,8 +13,6 @@ use std::os::raw::c_void;
 pub(crate) struct RenderHandlerImpl<H: CefEventHandler> {
 	object: *mut RcImpl<_cef_render_handler_t, Self>,
 	event_handler: H,
-	#[cfg(feature = "accelerated_paint")]
-	last_shared_handle: Option<SharedTextureHandle>,
 }
 
 #[cfg(feature = "accelerated_paint")]
@@ -26,7 +24,7 @@ pub enum SharedTextureHandle {
 	#[cfg(target_os = "linux")]
 	DmaBuf {
 		fds: Vec<RawFd>,
-		format: u32,
+		format: cef::sys::cef_color_type_t,
 		modifier: u64,
 		width: u32,
 		height: u32,
@@ -40,8 +38,6 @@ impl<H: CefEventHandler> RenderHandlerImpl<H> {
 		Self {
 			object: std::ptr::null_mut(),
 			event_handler,
-			#[cfg(feature = "accelerated_paint")]
-			last_shared_handle: None,
 		}
 	}
 }
@@ -87,7 +83,7 @@ impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 			// Extract DMA-BUF information
 			let shared_handle = SharedTextureHandle::DmaBuf {
 				fds: extract_fds_from_info(info),
-				format: (*info.format.as_ref()) as u32,
+				format: *info.format.as_ref(),
 				modifier: info.modifier,
 				width: info.extra.coded_size.width as u32,
 				height: info.extra.coded_size.height as u32,
@@ -127,8 +123,6 @@ impl<H: CefEventHandler> Clone for RenderHandlerImpl<H> {
 		Self {
 			object: self.object,
 			event_handler: self.event_handler.clone(),
-			#[cfg(feature = "accelerated_paint")]
-			last_shared_handle: None,
 		}
 	}
 }
@@ -150,13 +144,13 @@ impl<H: CefEventHandler> WrapRenderHandler for RenderHandlerImpl<H> {
 fn extract_fds_from_info(info: &cef::AcceleratedPaintInfo) -> Vec<RawFd> {
 	let plane_count = info.plane_count as usize;
 	let mut fds = Vec::with_capacity(plane_count);
-	
+
 	for i in 0..plane_count {
 		if let Some(plane) = info.planes.get(i) {
 			fds.push(plane.fd);
 		}
 	}
-	
+
 	fds
 }
 
@@ -164,13 +158,13 @@ fn extract_fds_from_info(info: &cef::AcceleratedPaintInfo) -> Vec<RawFd> {
 fn extract_strides_from_info(info: &cef::AcceleratedPaintInfo) -> Vec<u32> {
 	let plane_count = info.plane_count as usize;
 	let mut strides = Vec::with_capacity(plane_count);
-	
+
 	for i in 0..plane_count {
 		if let Some(plane) = info.planes.get(i) {
 			strides.push(plane.stride);
 		}
 	}
-	
+
 	strides
 }
 
@@ -178,12 +172,12 @@ fn extract_strides_from_info(info: &cef::AcceleratedPaintInfo) -> Vec<u32> {
 fn extract_offsets_from_info(info: &cef::AcceleratedPaintInfo) -> Vec<u32> {
 	let plane_count = info.plane_count as usize;
 	let mut offsets = Vec::with_capacity(plane_count);
-	
+
 	for i in 0..plane_count {
 		if let Some(plane) = info.planes.get(i) {
 			offsets.push(plane.offset as u32);
 		}
 	}
-	
+
 	offsets
 }

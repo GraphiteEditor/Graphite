@@ -11,7 +11,7 @@ rust-version = "1.87"
 [features]
 default = ["gpu", "accelerated_paint"]
 gpu = ["graphite-desktop-wrapper/gpu"]
-accelerated_paint = []
+accelerated_paint = ["ash", "libc"]
 
 [dependencies]
 # # Local dependencies
@@ -33,3 +33,7 @@ vello = { workspace = true }
 derivative = { workspace = true }
 rfd = { workspace = true }
 open = { workspace = true }
+
+# Hardware acceleration dependencies
+ash = { version = "0.38", optional = true }
+libc = { version = "0.2", optional = true }
