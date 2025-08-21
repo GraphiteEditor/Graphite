@@ -1,5 +1,5 @@
 use crate::Context;
-use crate::shader_runtime::{FULLSCREEN_VERTEX_SHADER_NAME, ShaderRuntime, Shaders};
+use crate::shader_runtime::{FULLSCREEN_VERTEX_SHADER_NAME, ShaderRuntime};
 use bytemuck::NoUninit;
 use futures::lock::Mutex;
 use graphene_core::raster_types::{GPU, Raster};
@@ -27,24 +27,33 @@ impl PerPixelAdjustShaderRuntime {
 }
 
 impl ShaderRuntime {
-	pub async fn run_per_pixel_adjust<T: NoUninit>(&self, shaders: &Shaders<'_>, textures: Table<Raster<GPU>>, args: &T) -> Table<Raster<GPU>> {
+	pub async fn run_per_pixel_adjust<T: NoUninit>(&self, shaders: &Shaders<'_>, textures: Table<Raster<GPU>>, args: Option<&T>) -> Table<Raster<GPU>> {
 		let mut cache = self.per_pixel_adjust.pipeline_cache.lock().await;
 		let pipeline = cache
 			.entry(shaders.fragment_shader_name.to_owned())
 			.or_insert_with(|| PerPixelAdjustGraphicsPipeline::new(&self.context, &shaders));
 
-		let device = &self.context.device;
-		let arg_buffer = device.create_buffer_init(&BufferInitDescriptor {
-			label: Some(&format!("{} arg buffer", pipeline.name.as_str())),
-			usage: BufferUsages::STORAGE,
-			contents: bytemuck::bytes_of(args),
+		let arg_buffer = args.map(|args| {
+			let device = &self.context.device;
+			device.create_buffer_init(&BufferInitDescriptor {
+				label: Some(&format!("{} arg buffer", pipeline.name.as_str())),
+				usage: BufferUsages::STORAGE,
+				contents: bytemuck::bytes_of(args),
+			})
 		});
-		pipeline.dispatch(&self.context, textures, &arg_buffer)
+		pipeline.dispatch(&self.context, textures, arg_buffer)
 	}
+}
+
+pub struct Shaders<'a> {
+	pub wgsl_shader: &'a str,
+	pub fragment_shader_name: &'a str,
+	pub has_uniform: bool,
 }
 
 pub struct PerPixelAdjustGraphicsPipeline {
 	name: String,
+	has_uniform: bool,
 	pipeline: wgpu::RenderPipeline,
 }
 
@@ -62,32 +71,46 @@ impl PerPixelAdjustGraphicsPipeline {
 			source: ShaderSource::Wgsl(Cow::Borrowed(info.wgsl_shader)),
 		});
 
+		let entries: &[_] = if info.has_uniform {
+			&[
+				BindGroupLayoutEntry {
+					binding: 0,
+					visibility: ShaderStages::FRAGMENT,
+					ty: BindingType::Buffer {
+						ty: BufferBindingType::Storage { read_only: true },
+						has_dynamic_offset: false,
+						min_binding_size: None,
+					},
+					count: None,
+				},
+				BindGroupLayoutEntry {
+					binding: 1,
+					visibility: ShaderStages::FRAGMENT,
+					ty: BindingType::Texture {
+						sample_type: TextureSampleType::Float { filterable: false },
+						view_dimension: TextureViewDimension::D2,
+						multisampled: false,
+					},
+					count: None,
+				},
+			]
+		} else {
+			&[BindGroupLayoutEntry {
+				binding: 0,
+				visibility: ShaderStages::FRAGMENT,
+				ty: BindingType::Texture {
+					sample_type: TextureSampleType::Float { filterable: false },
+					view_dimension: TextureViewDimension::D2,
+					multisampled: false,
+				},
+				count: None,
+			}]
+		};
 		let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
 			label: Some(&format!("PerPixelAdjust {} PipelineLayout", name)),
 			bind_group_layouts: &[&device.create_bind_group_layout(&BindGroupLayoutDescriptor {
 				label: Some(&format!("PerPixelAdjust {} BindGroupLayout 0", name)),
-				entries: &[
-					BindGroupLayoutEntry {
-						binding: 0,
-						visibility: ShaderStages::FRAGMENT,
-						ty: BindingType::Buffer {
-							ty: BufferBindingType::Storage { read_only: true },
-							has_dynamic_offset: false,
-							min_binding_size: None,
-						},
-						count: None,
-					},
-					BindGroupLayoutEntry {
-						binding: 1,
-						visibility: ShaderStages::FRAGMENT,
-						ty: BindingType::Texture {
-							sample_type: TextureSampleType::Float { filterable: false },
-							view_dimension: TextureViewDimension::D2,
-							multisampled: false,
-						},
-						count: None,
-					},
-				],
+				entries,
 			})],
 			push_constant_ranges: &[],
 		});
@@ -125,10 +148,15 @@ impl PerPixelAdjustGraphicsPipeline {
 			multiview: None,
 			cache: None,
 		});
-		Self { pipeline, name }
+		Self {
+			pipeline,
+			name,
+			has_uniform: info.has_uniform,
+		}
 	}
 
-	pub fn dispatch(&self, context: &Context, textures: Table<Raster<GPU>>, arg_buffer: &Buffer) -> Table<Raster<GPU>> {
+	pub fn dispatch(&self, context: &Context, textures: Table<Raster<GPU>>, arg_buffer: Option<Buffer>) -> Table<Raster<GPU>> {
+		assert_eq!(self.has_uniform, arg_buffer.is_some());
 		let device = &context.device;
 		let name = self.name.as_str();
 
@@ -140,11 +168,8 @@ impl PerPixelAdjustGraphicsPipeline {
 				let view_in = tex_in.create_view(&TextureViewDescriptor::default());
 				let format = tex_in.format();
 
-				let bind_group = device.create_bind_group(&BindGroupDescriptor {
-					label: Some(&format!("{name} bind group")),
-					// `get_bind_group_layout` allocates unnecessary memory, we could create it manually to not do that
-					layout: &self.pipeline.get_bind_group_layout(0),
-					entries: &[
+				let entries: &[_] = if let Some(arg_buffer) = arg_buffer.as_ref() {
+					&[
 						BindGroupEntry {
 							binding: 0,
 							resource: BindingResource::Buffer(BufferBinding {
@@ -157,7 +182,18 @@ impl PerPixelAdjustGraphicsPipeline {
 							binding: 1,
 							resource: BindingResource::TextureView(&view_in),
 						},
-					],
+					]
+				} else {
+					&[BindGroupEntry {
+						binding: 0,
+						resource: BindingResource::TextureView(&view_in),
+					}]
+				};
+				let bind_group = device.create_bind_group(&BindGroupDescriptor {
+					label: Some(&format!("{name} bind group")),
+					// `get_bind_group_layout` allocates unnecessary memory, we could create it manually to not do that
+					layout: &self.pipeline.get_bind_group_layout(0),
+					entries,
 				});
 
 				let tex_out = device.create_texture(&TextureDescriptor {
