@@ -283,37 +283,6 @@ pub(crate) fn cef_context(context: Context<Setup>, event_handler: impl CefEventH
 	}
 }
 
-// Keep the old channel-based implementation for reference/fallback
-pub(crate) fn cef_context_channel_based(context: Context<Setup>, event_handler: impl CefEventHandler + Send + 'static) -> impl CefContext {
-	let (tx, rx) = std::sync::mpsc::channel();
-	let manually_drop_context = ManuallyDrop::new(context);
-	let args = manually_drop_context.args.clone();
-
-	let arg_bytes: [u8; 64] = unsafe { std::mem::transmute(args) };
-	std::thread::spawn(move || {
-		let args = unsafe { std::mem::transmute(arg_bytes) };
-		let context = Context {
-			args,
-			browser: None,
-			input_state: Default::default(),
-			marker: Default::default(),
-		};
-		let mut context = context.init(event_handler).unwrap();
-		loop {
-			let msg = rx.recv().unwrap();
-			match msg {
-				ContextMessage::Work => context.work(),
-				ContextMessage::WindowEvent(window_event) => {
-					context.handle_window_event(window_event);
-				}
-				ContextMessage::Resize => context.notify_of_resize(),
-				ContextMessage::WebMessage(message) => context.send_web_message(message),
-			};
-		}
-	});
-	tx
-}
-
 pub(crate) trait CefContext {
 	fn work(&mut self);
 
