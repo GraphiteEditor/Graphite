@@ -1,21 +1,14 @@
 //! macOS IOSurface texture import implementation
 
-#[cfg(target_os = "macos")]
-use std::os::raw::c_void;
-
-#[cfg(all(feature = "accelerated_paint", target_os = "macos"))]
+use super::common::{format, texture};
+use super::{TextureImportError, TextureImportResult, TextureImporter};
+use cef::{AcceleratedPaintInfo, sys::cef_color_type_t};
 use core_foundation::base::{CFType, TCFType};
-#[cfg(all(feature = "accelerated_paint", target_os = "macos"))]
 use objc2_io_surface::{IOSurface, IOSurfaceRef};
-#[cfg(all(feature = "accelerated_paint", target_os = "macos"))]
 use objc2_metal::{MTLDevice, MTLPixelFormat, MTLTexture, MTLTextureDescriptor, MTLTextureType, MTLTextureUsage};
-#[cfg(all(feature = "accelerated_paint", target_os = "macos"))]
+use std::os::raw::c_void;
 use wgpu::hal::api;
 
-use super::common::{TextureImportError, TextureImportResult, TextureImporter, format, texture};
-use cef::sys::cef_color_type_t;
-
-#[cfg(target_os = "macos")]
 pub struct IOSurfaceImporter {
 	pub handle: *mut c_void,
 	pub format: cef_color_type_t,
@@ -23,21 +16,26 @@ pub struct IOSurfaceImporter {
 	pub height: u32,
 }
 
-#[cfg(target_os = "macos")]
 impl TextureImporter for IOSurfaceImporter {
+	fn new(info: &AcceleratedPaintInfo) -> Self {
+		Self {
+			handle: info.shared_texture_handle,
+			format: *info.format.as_ref(),
+			width: info.extra.coded_size.width as u32,
+			height: info.extra.coded_size.height as u32,
+		}
+	}
+
 	fn import_to_wgpu(&self, device: &wgpu::Device) -> TextureImportResult {
 		// Try hardware acceleration first
-		#[cfg(feature = "accelerated_paint")]
-		{
-			if self.supports_hardware_acceleration(device) {
-				match self.import_via_metal(device) {
-					Ok(texture) => {
-						tracing::trace!("Successfully imported IOSurface texture via Metal");
-						return Ok(texture);
-					}
-					Err(e) => {
-						tracing::warn!("Failed to import IOSurface via Metal: {}, falling back to CPU texture", e);
-					}
+		if self.supports_hardware_acceleration(device) {
+			match self.import_via_metal(device) {
+				Ok(texture) => {
+					tracing::trace!("Successfully imported IOSurface texture via Metal");
+					return Ok(texture);
+				}
+				Err(e) => {
+					tracing::warn!("Failed to import IOSurface via Metal: {}, falling back to CPU texture", e);
 				}
 			}
 		}
@@ -47,27 +45,17 @@ impl TextureImporter for IOSurfaceImporter {
 	}
 
 	fn supports_hardware_acceleration(&self, device: &wgpu::Device) -> bool {
-		#[cfg(feature = "accelerated_paint")]
-		{
-			// Check if handle is valid
-			if self.handle.is_null() {
-				return false;
-			}
+		// Check if handle is valid
+		if self.handle.is_null() {
+			return false;
+		}
 
-			// Check if wgpu is using Metal backend
-			self.is_metal_backend(device)
-		}
-		#[cfg(not(feature = "accelerated_paint"))]
-		{
-			let _ = device;
-			false
-		}
+		// Check if wgpu is using Metal backend
+		self.is_metal_backend(device)
 	}
 }
 
-#[cfg(target_os = "macos")]
 impl IOSurfaceImporter {
-	#[cfg(feature = "accelerated_paint")]
 	fn import_via_metal(&self, device: &wgpu::Device) -> TextureImportResult {
 		// Get wgpu's Metal device
 		use wgpu::{hal::Api, wgc::api::Metal};
@@ -131,7 +119,6 @@ impl IOSurfaceImporter {
 		Ok(texture)
 	}
 
-	#[cfg(feature = "accelerated_paint")]
 	fn import_iosurface_to_metal(&self, hal_device: &<api::Metal as wgpu::hal::Api>::Device) -> Result<<api::Metal as wgpu::hal::Api>::Texture, TextureImportError> {
 		// Validate dimensions
 		if self.width == 0 || self.height == 0 {
@@ -174,7 +161,6 @@ impl IOSurfaceImporter {
 		Ok(metal_texture)
 	}
 
-	#[cfg(feature = "accelerated_paint")]
 	fn cef_to_metal_format(&self, format: cef_color_type_t) -> Result<MTLPixelFormat, TextureImportError> {
 		match format {
 			cef_color_type_t::CEF_COLOR_TYPE_BGRA_8888 => Ok(MTLPixelFormat::BGRA8Unorm_sRGB),
@@ -183,7 +169,6 @@ impl IOSurfaceImporter {
 		}
 	}
 
-	#[cfg(feature = "accelerated_paint")]
 	fn is_metal_backend(&self, device: &wgpu::Device) -> bool {
 		use wgpu::hal::api;
 		let mut is_metal = false;

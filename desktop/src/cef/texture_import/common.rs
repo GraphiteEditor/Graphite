@@ -1,41 +1,9 @@
 //! Common utilities and traits for texture import across platforms
 
+use crate::cef::texture_import::*;
+use ash::vk;
 use cef::sys::cef_color_type_t;
 use wgpu::Device;
-
-#[cfg(feature = "accelerated_paint")]
-use ash::vk;
-
-/// Result type for texture import operations
-pub type TextureImportResult = Result<wgpu::Texture, TextureImportError>;
-
-/// Errors that can occur during texture import
-#[derive(Debug, thiserror::Error)]
-pub enum TextureImportError {
-	#[error("Invalid texture handle: {0}")]
-	InvalidHandle(String),
-
-	#[error("Unsupported texture format: {format:?}")]
-	UnsupportedFormat { format: cef_color_type_t },
-
-	#[error("Hardware acceleration not available: {reason}")]
-	HardwareUnavailable { reason: String },
-
-	#[error("Vulkan operation failed: {operation}")]
-	VulkanError { operation: String },
-
-	#[error("Platform-specific error: {message}")]
-	PlatformError { message: String },
-}
-
-/// Trait for platform-specific texture importers
-pub trait TextureImporter {
-	/// Import the texture into wgpu, with automatic fallback to CPU texture
-	fn import_to_wgpu(&self, device: &Device) -> TextureImportResult;
-
-	/// Check if hardware acceleration is available for this texture
-	fn supports_hardware_acceleration(&self, device: &Device) -> bool;
-}
 
 /// Common format conversion utilities
 pub mod format {
@@ -50,7 +18,7 @@ pub mod format {
 		}
 	}
 
-	#[cfg(all(feature = "accelerated_paint", not(target_os = "macos")))]
+	#[cfg(not(target_os = "macos"))]
 	/// Convert CEF color type to Vulkan format
 	pub fn cef_to_vulkan(format: cef_color_type_t) -> Result<vk::Format, TextureImportError> {
 		match format {
@@ -94,19 +62,13 @@ pub mod texture {
 	}
 }
 
-#[cfg(feature = "accelerated_paint")]
 /// Common Vulkan utilities
 pub mod vulkan {
 	use super::*;
 
 	/// Find a suitable memory type index for Vulkan allocation
 	pub fn find_memory_type_index(type_filter: u32, properties: vk::MemoryPropertyFlags, mem_properties: &vk::PhysicalDeviceMemoryProperties) -> Option<u32> {
-		for i in 0..mem_properties.memory_type_count {
-			if (type_filter & (1 << i)) != 0 && mem_properties.memory_types[i as usize].property_flags.contains(properties) {
-				return Some(i);
-			}
-		}
-		None
+		(0..mem_properties.memory_type_count).find(|&i| (type_filter & (1 << i)) != 0 && mem_properties.memory_types[i as usize].property_flags.contains(properties))
 	}
 
 	/// Check if the wgpu device is using Vulkan backend
@@ -133,44 +95,5 @@ pub mod vulkan {
 			});
 		}
 		is_d3d12
-	}
-}
-
-/// Import a texture using the appropriate platform-specific importer
-pub fn import_texture(shared_handle: crate::cef::internal::render_handler::SharedTextureHandle, device: &Device) -> TextureImportResult {
-	match shared_handle {
-		#[cfg(target_os = "linux")]
-		crate::cef::internal::render_handler::SharedTextureHandle::DmaBuf {
-			fds,
-			format,
-			modifier,
-			width,
-			height,
-			strides,
-			offsets,
-		} => {
-			let importer = super::dmabuf::DmaBufImporter {
-				fds,
-				format,
-				modifier,
-				width,
-				height,
-				strides,
-				offsets,
-			};
-			importer.import_to_wgpu(device)
-		}
-
-		#[cfg(target_os = "windows")]
-		crate::cef::internal::render_handler::SharedTextureHandle::D3D11 { handle, format, width, height } => {
-			let importer = super::d3d11::D3D11Importer { handle, format, width, height };
-			importer.import_to_wgpu(device)
-		}
-
-		#[cfg(target_os = "macos")]
-		crate::cef::internal::render_handler::SharedTextureHandle::IOSurface { handle, format, width, height } => {
-			let importer = super::iosurface::IOSurfaceImporter { handle, format, width, height };
-			importer.import_to_wgpu(device)
-		}
 	}
 }

@@ -46,11 +46,16 @@ impl<H: CefEventHandler + Clone> ImplApp for BrowserProcessAppImpl<H> {
 				// Enable GPU acceleration switches for better performance
 				cmd.append_switch(Some(&CefString::from("enable-gpu-rasterization")));
 				cmd.append_switch(Some(&CefString::from("enable-accelerated-2d-canvas")));
-				// Don't disable GPU - let CEF use hardware acceleration
+			}
+
+			#[cfg(all(feature = "accelerated_paint", target_os = "linux"))]
+			{
+				// Use Vulkan for accelerated painting
+				cmd.append_switch_with_value(Some(&CefString::from("use-angle")), Some(&CefString::from("vulkan")));
 			}
 
 			// Tell CEF to use Wayland if available
-			#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+			#[cfg(target_os = "linux")]
 			{
 				let use_wayland = env::var("WAYLAND_DISPLAY")
 					.ok()

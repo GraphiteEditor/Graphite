@@ -5,42 +5,9 @@ use cef::{Browser, ImplRenderHandler, PaintElementType, Rect, WrapRenderHandler}
 use crate::cef::CefEventHandler;
 use crate::render::FrameBufferRef;
 
-#[cfg(all(target_os = "linux", feature = "accelerated_paint"))]
-use std::os::fd::RawFd;
-#[cfg(all(feature = "accelerated_paint", any(target_os = "windows", target_os = "macos")))]
-use std::os::raw::c_void;
-
 pub(crate) struct RenderHandlerImpl<H: CefEventHandler> {
 	object: *mut RcImpl<_cef_render_handler_t, Self>,
 	event_handler: H,
-}
-
-#[cfg(feature = "accelerated_paint")]
-pub enum SharedTextureHandle {
-	#[cfg(target_os = "windows")]
-	D3D11 {
-		handle: *mut c_void,
-		format: cef::sys::cef_color_type_t,
-		width: u32,
-		height: u32,
-	},
-	#[cfg(target_os = "macos")]
-	IOSurface {
-		handle: *mut c_void,
-		format: cef::sys::cef_color_type_t,
-		width: u32,
-		height: u32,
-	},
-	#[cfg(target_os = "linux")]
-	DmaBuf {
-		fds: Vec<RawFd>,
-		format: cef::sys::cef_color_type_t,
-		modifier: u64,
-		width: u32,
-		height: u32,
-		strides: Vec<u32>,
-		offsets: Vec<u32>,
-	},
 }
 
 impl<H: CefEventHandler> RenderHandlerImpl<H> {
@@ -83,50 +50,19 @@ impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 
 	#[cfg(feature = "accelerated_paint")]
 	fn on_accelerated_paint(&self, _browser: Option<&mut Browser>, type_: PaintElementType, _dirty_rect_count: usize, _dirty_rects: Option<&Rect>, info: Option<&cef::AcceleratedPaintInfo>) {
+		use crate::cef::texture_import::shared_texture_handle::SharedTextureHandle;
+
 		if type_ != PaintElementType::default() {
 			return;
 		}
-		let info = info.unwrap();
 
-		#[cfg(target_os = "linux")]
-		{
-			// Extract DMA-BUF information
-			let shared_handle = SharedTextureHandle::DmaBuf {
-				fds: extract_fds_from_info(info),
-				format: *info.format.as_ref(),
-				modifier: info.modifier,
-				width: info.extra.coded_size.width as u32,
-				height: info.extra.coded_size.height as u32,
-				strides: extract_strides_from_info(info),
-				offsets: extract_offsets_from_info(info),
-			};
-
-			self.event_handler.on_accelerated_paint(shared_handle);
+		let shared_handle = SharedTextureHandle::new(info.unwrap());
+		if let SharedTextureHandle::Unsupported = shared_handle {
+			tracing::error!("Platform does not support accelerated painting");
+			return;
 		}
 
-		#[cfg(target_os = "windows")]
-		{
-			// Extract D3D11 shared handle with texture metadata
-			let shared_handle = SharedTextureHandle::D3D11 {
-				handle: info.shared_texture_handle,
-				format: *info.format.as_ref(),
-				width: info.extra.coded_size.width as u32,
-				height: info.extra.coded_size.height as u32,
-			};
-			self.event_handler.on_accelerated_paint(shared_handle);
-		}
-
-		#[cfg(target_os = "macos")]
-		{
-			// Extract IOSurface handle with texture metadata
-			let shared_handle = SharedTextureHandle::IOSurface {
-				handle: info.shared_texture_handle,
-				format: *info.format.as_ref(),
-				width: info.extra.coded_size.width as u32,
-				height: info.extra.coded_size.height as u32,
-			};
-			self.event_handler.on_accelerated_paint(shared_handle);
-		}
+		self.event_handler.draw_gpu(shared_handle);
 	}
 
 	fn get_raw(&self) -> *mut _cef_render_handler_t {
@@ -158,46 +94,4 @@ impl<H: CefEventHandler> WrapRenderHandler for RenderHandlerImpl<H> {
 	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_render_handler_t, Self>) {
 		self.object = object;
 	}
-}
-
-#[cfg(all(feature = "accelerated_paint", target_os = "linux"))]
-fn extract_fds_from_info(info: &cef::AcceleratedPaintInfo) -> Vec<RawFd> {
-	let plane_count = info.plane_count as usize;
-	let mut fds = Vec::with_capacity(plane_count);
-
-	for i in 0..plane_count {
-		if let Some(plane) = info.planes.get(i) {
-			fds.push(plane.fd);
-		}
-	}
-
-	fds
-}
-
-#[cfg(all(feature = "accelerated_paint", target_os = "linux"))]
-fn extract_strides_from_info(info: &cef::AcceleratedPaintInfo) -> Vec<u32> {
-	let plane_count = info.plane_count as usize;
-	let mut strides = Vec::with_capacity(plane_count);
-
-	for i in 0..plane_count {
-		if let Some(plane) = info.planes.get(i) {
-			strides.push(plane.stride);
-		}
-	}
-
-	strides
-}
-
-#[cfg(all(feature = "accelerated_paint", target_os = "linux"))]
-fn extract_offsets_from_info(info: &cef::AcceleratedPaintInfo) -> Vec<u32> {
-	let plane_count = info.plane_count as usize;
-	let mut offsets = Vec::with_capacity(plane_count);
-
-	for i in 0..plane_count {
-		if let Some(plane) = info.planes.get(i) {
-			offsets.push(plane.offset as u32);
-		}
-	}
-
-	offsets
 }

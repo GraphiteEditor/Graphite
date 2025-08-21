@@ -1,44 +1,44 @@
 //! Linux DMA-BUF texture import implementation
 
-#[cfg(target_os = "linux")]
-use std::os::fd::RawFd;
-
-#[cfg(all(feature = "accelerated_paint", target_os = "linux"))]
+use super::common::{format, texture, vulkan};
+use super::{TextureImportError, TextureImportResult, TextureImporter};
 use ash::vk;
-#[cfg(all(feature = "accelerated_paint", target_os = "linux"))]
+use cef::{AcceleratedPaintInfo, sys::cef_color_type_t};
 use wgpu::hal::api;
-#[cfg(all(feature = "accelerated_paint", target_os = "linux"))]
-extern crate libc;
 
-use super::common::{TextureImportError, TextureImportResult, TextureImporter, format, texture, vulkan};
-use cef::sys::cef_color_type_t;
-
-#[cfg(target_os = "linux")]
-pub struct DmaBufImporter {
-	pub fds: Vec<RawFd>,
-	pub format: cef_color_type_t,
-	pub modifier: u64,
-	pub width: u32,
-	pub height: u32,
-	pub strides: Vec<u32>,
-	pub offsets: Vec<u32>,
+pub(crate) struct DmaBufImporter {
+	fds: Vec<std::os::fd::RawFd>,
+	format: cef_color_type_t,
+	modifier: u64,
+	width: u32,
+	height: u32,
+	strides: Vec<u32>,
+	offsets: Vec<u32>,
 }
 
-#[cfg(target_os = "linux")]
 impl TextureImporter for DmaBufImporter {
+	fn new(info: &AcceleratedPaintInfo) -> Self {
+		Self {
+			fds: extract_fds_from_info(info),
+			format: *info.format.as_ref(),
+			modifier: info.modifier,
+			width: info.extra.coded_size.width as u32,
+			height: info.extra.coded_size.height as u32,
+			strides: extract_strides_from_info(info),
+			offsets: extract_offsets_from_info(info),
+		}
+	}
+
 	fn import_to_wgpu(&self, device: &wgpu::Device) -> TextureImportResult {
 		// Try hardware acceleration first
-		#[cfg(feature = "accelerated_paint")]
-		{
-			if self.supports_hardware_acceleration(device) {
-				match self.import_via_vulkan(device) {
-					Ok(texture) => {
-						tracing::info!("Successfully imported DMA-BUF texture via Vulkan");
-						return Ok(texture);
-					}
-					Err(e) => {
-						tracing::warn!("Failed to import DMA-BUF via Vulkan: {}, falling back to CPU texture", e);
-					}
+		if self.supports_hardware_acceleration(device) {
+			match self.import_via_vulkan(device) {
+				Ok(texture) => {
+					tracing::info!("Successfully imported DMA-BUF texture via Vulkan");
+					return Ok(texture);
+				}
+				Err(e) => {
+					tracing::warn!("Failed to import DMA-BUF via Vulkan: {}, falling back to CPU texture", e);
 				}
 			}
 		}
@@ -48,38 +48,28 @@ impl TextureImporter for DmaBufImporter {
 	}
 
 	fn supports_hardware_acceleration(&self, device: &wgpu::Device) -> bool {
-		#[cfg(feature = "accelerated_paint")]
-		{
-			// Check if we have valid file descriptors
-			if self.fds.is_empty() {
+		// Check if we have valid file descriptors
+		if self.fds.is_empty() {
+			return false;
+		}
+
+		for &fd in &self.fds {
+			if fd < 0 {
 				return false;
 			}
-
-			for &fd in &self.fds {
-				if fd < 0 {
-					return false;
-				}
-				// Check if file descriptor is valid
-				let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
-				if flags == -1 {
-					return false;
-				}
+			// Check if file descriptor is valid
+			let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+			if flags == -1 {
+				return false;
 			}
+		}
 
-			// Check if wgpu is using Vulkan backend
-			vulkan::is_vulkan_backend(device)
-		}
-		#[cfg(not(feature = "accelerated_paint"))]
-		{
-			let _ = device;
-			false
-		}
+		// Check if wgpu is using Vulkan backend
+		vulkan::is_vulkan_backend(device)
 	}
 }
 
-#[cfg(target_os = "linux")]
 impl DmaBufImporter {
-	#[cfg(feature = "accelerated_paint")]
 	fn import_via_vulkan(&self, device: &wgpu::Device) -> TextureImportResult {
 		// Get wgpu's Vulkan instance and device
 		use wgpu::{TextureUses, wgc::api::Vulkan};
@@ -143,7 +133,6 @@ impl DmaBufImporter {
 		Ok(texture)
 	}
 
-	#[cfg(feature = "accelerated_paint")]
 	fn create_vulkan_image_from_dmabuf(&self, hal_device: &<api::Vulkan as wgpu::hal::Api>::Device) -> Result<vk::Image, TextureImportError> {
 		// Get raw Vulkan handles
 		let device = hal_device.raw_device();
@@ -181,7 +170,7 @@ impl DmaBufImporter {
 		// Create the image
 		let image = unsafe {
 			device.create_image(&image_create_info, None).map_err(|e| TextureImportError::VulkanError {
-				operation: format!("Failed to create Vulkan image: {:?}", e),
+				operation: format!("Failed to create Vulkan image: {e:?}"),
 			})?
 		};
 
@@ -213,21 +202,20 @@ impl DmaBufImporter {
 
 		let device_memory = unsafe {
 			device.allocate_memory(&allocate_info, None).map_err(|e| TextureImportError::VulkanError {
-				operation: format!("Failed to allocate memory for DMA-BUF: {:?}", e),
+				operation: format!("Failed to allocate memory for DMA-BUF: {e:?}"),
 			})?
 		};
 
 		// Bind memory to image
 		unsafe {
 			device.bind_image_memory(image, device_memory, 0).map_err(|e| TextureImportError::VulkanError {
-				operation: format!("Failed to bind memory to image: {:?}", e),
+				operation: format!("Failed to bind memory to image: {e:?}"),
 			})?;
 		}
 
 		Ok(image)
 	}
 
-	#[cfg(feature = "accelerated_paint")]
 	fn create_subresource_layouts(&self) -> Result<Vec<vk::SubresourceLayout>, TextureImportError> {
 		let mut layouts = Vec::new();
 
@@ -243,4 +231,43 @@ impl DmaBufImporter {
 
 		Ok(layouts)
 	}
+}
+
+fn extract_fds_from_info(info: &cef::AcceleratedPaintInfo) -> Vec<std::os::fd::RawFd> {
+	let plane_count = info.plane_count as usize;
+	let mut fds = Vec::with_capacity(plane_count);
+
+	for i in 0..plane_count {
+		if let Some(plane) = info.planes.get(i) {
+			fds.push(plane.fd);
+		}
+	}
+
+	fds
+}
+
+fn extract_strides_from_info(info: &cef::AcceleratedPaintInfo) -> Vec<u32> {
+	let plane_count = info.plane_count as usize;
+	let mut strides = Vec::with_capacity(plane_count);
+
+	for i in 0..plane_count {
+		if let Some(plane) = info.planes.get(i) {
+			strides.push(plane.stride);
+		}
+	}
+
+	strides
+}
+
+fn extract_offsets_from_info(info: &cef::AcceleratedPaintInfo) -> Vec<u32> {
+	let plane_count = info.plane_count as usize;
+	let mut offsets = Vec::with_capacity(plane_count);
+
+	for i in 0..plane_count {
+		if let Some(plane) = info.planes.get(i) {
+			offsets.push(plane.offset as u32);
+		}
+	}
+
+	offsets
 }

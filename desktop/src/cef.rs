@@ -27,9 +27,12 @@ mod internal;
 mod ipc;
 mod platform;
 mod scheme_handler;
+mod utility;
+
 #[cfg(feature = "accelerated_paint")]
 mod texture_import;
-mod utility;
+#[cfg(feature = "accelerated_paint")]
+use texture_import::SharedTextureHandle;
 
 pub(crate) use context::{Context, InitError, Initialized, Setup, SetupError};
 use winit::event_loop::EventLoopProxy;
@@ -38,7 +41,7 @@ pub(crate) trait CefEventHandler: Clone {
 	fn window_size(&self) -> WindowSize;
 	fn draw<'a>(&self, frame_buffer: FrameBufferRef<'a>);
 	#[cfg(feature = "accelerated_paint")]
-	fn on_accelerated_paint(&self, shared_handle: internal::render_handler::SharedTextureHandle);
+	fn draw_gpu(&self, shared_texture: SharedTextureHandle);
 	/// Scheudule the main event loop to run the cef event loop after the timeout
 	///  [`_cef_browser_process_handler_t::on_schedule_message_pump_work`] for more documentation.
 	fn schedule_cef_message_loop_work(&self, scheduled_time: Instant);
@@ -150,8 +153,8 @@ impl CefEventHandler for CefHandler {
 	}
 
 	#[cfg(feature = "accelerated_paint")]
-	fn on_accelerated_paint(&self, shared_handle: internal::render_handler::SharedTextureHandle) {
-		match self::texture_import::import_texture(shared_handle, &self.wgpu_context.device) {
+	fn draw_gpu(&self, shared_texture: SharedTextureHandle) {
+		match shared_texture.import_texture(&self.wgpu_context.device) {
 			Ok(texture) => {
 				let _ = self.event_loop_proxy.send_event(CustomEvent::UiUpdate(texture));
 			}

@@ -39,8 +39,6 @@ pub(crate) struct WinitApp {
 
 impl WinitApp {
 	pub(crate) fn new(cef_context: cef::Context<cef::Initialized>, window_size_sender: Sender<WindowSize>, wgpu_context: WgpuContext, event_loop_proxy: EventLoopProxy<CustomEvent>) -> Self {
-		let desktop_wrapper = DesktopWrapper::new();
-
 		let rendering_loop_proxy = event_loop_proxy.clone();
 		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
 		std::thread::spawn(move || {
@@ -59,7 +57,7 @@ impl WinitApp {
 			window_size_sender,
 			wgpu_context,
 			event_loop_proxy,
-			desktop_wrapper,
+			desktop_wrapper: DesktopWrapper::new(),
 			last_ui_update: Instant::now(),
 			avg_frame_time: 0.,
 			start_render_sender,

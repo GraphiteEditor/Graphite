@@ -1,17 +1,12 @@
 //! Windows D3D11 shared texture import implementation
 
-#[cfg(target_os = "windows")]
-use std::os::raw::c_void;
-
-#[cfg(all(feature = "accelerated_paint", target_os = "windows"))]
+use super::common::{format, texture, vulkan};
+use super::{TextureImportError, TextureImportResult, TextureImporter};
 use ash::vk;
-#[cfg(all(feature = "accelerated_paint", target_os = "windows"))]
+use cef::{AcceleratedPaintInfo, sys::cef_color_type_t};
+use std::os::raw::c_void;
 use wgpu::hal::api;
 
-use super::common::{TextureImportError, TextureImportResult, TextureImporter, format, texture, vulkan};
-use cef::sys::cef_color_type_t;
-
-#[cfg(target_os = "windows")]
 pub struct D3D11Importer {
 	pub handle: *mut c_void,
 	pub format: cef_color_type_t,
@@ -19,36 +14,41 @@ pub struct D3D11Importer {
 	pub height: u32,
 }
 
-#[cfg(target_os = "windows")]
 impl TextureImporter for D3D11Importer {
+	fn new(info: &AcceleratedPaintInfo) -> Self {
+		Self {
+			handle: info.shared_texture_handle,
+			format: *info.format.as_ref(),
+			width: info.extra.coded_size.width as u32,
+			height: info.extra.coded_size.height as u32,
+		}
+	}
+
 	fn import_to_wgpu(&self, device: &wgpu::Device) -> TextureImportResult {
 		// Try hardware acceleration first
-		#[cfg(feature = "accelerated_paint")]
-		{
-			if self.supports_hardware_acceleration(device) {
-				// Try D3D12 first (most efficient on Windows)
-				if vulkan::is_d3d12_backend(device) {
-					match self.import_via_d3d12(device) {
-						Ok(texture) => {
-							tracing::info!("Successfully imported D3D11 shared texture via D3D12");
-							return Ok(texture);
-						}
-						Err(e) => {
-							tracing::warn!("Failed to import D3D11 via D3D12: {}, trying Vulkan fallback", e);
-						}
+		if self.supports_hardware_acceleration(device) {
+			// Try D3D12 first (most efficient on Windows)
+			if vulkan::is_d3d12_backend(device) {
+				match self.import_via_d3d12(device) {
+					Ok(texture) => {
+						tracing::info!("Successfully imported D3D11 shared texture via D3D12");
+						return Ok(texture);
+					}
+					Err(e) => {
+						tracing::warn!("Failed to import D3D11 via D3D12: {}, trying Vulkan fallback", e);
 					}
 				}
+			}
 
-				// Try Vulkan as fallback
-				if vulkan::is_vulkan_backend(device) {
-					match self.import_via_vulkan(device) {
-						Ok(texture) => {
-							tracing::info!("Successfully imported D3D11 shared texture via Vulkan");
-							return Ok(texture);
-						}
-						Err(e) => {
-							tracing::warn!("Failed to import D3D11 via Vulkan: {}, falling back to CPU texture", e);
-						}
+			// Try Vulkan as fallback
+			if vulkan::is_vulkan_backend(device) {
+				match self.import_via_vulkan(device) {
+					Ok(texture) => {
+						tracing::info!("Successfully imported D3D11 shared texture via Vulkan");
+						return Ok(texture);
+					}
+					Err(e) => {
+						tracing::warn!("Failed to import D3D11 via Vulkan: {}, falling back to CPU texture", e);
 					}
 				}
 			}
@@ -59,27 +59,17 @@ impl TextureImporter for D3D11Importer {
 	}
 
 	fn supports_hardware_acceleration(&self, device: &wgpu::Device) -> bool {
-		#[cfg(feature = "accelerated_paint")]
-		{
-			// Check if handle is valid
-			if self.handle.is_null() {
-				return false;
-			}
+		// Check if handle is valid
+		if self.handle.is_null() {
+			return false;
+		}
 
-			// Check if wgpu is using D3D12 or Vulkan backend
-			vulkan::is_d3d12_backend(device) || vulkan::is_vulkan_backend(device)
-		}
-		#[cfg(not(feature = "accelerated_paint"))]
-		{
-			let _ = device;
-			false
-		}
+		// Check if wgpu is using D3D12 or Vulkan backend
+		vulkan::is_d3d12_backend(device) || vulkan::is_vulkan_backend(device)
 	}
 }
 
-#[cfg(target_os = "windows")]
 impl D3D11Importer {
-	#[cfg(feature = "accelerated_paint")]
 	fn import_via_d3d12(&self, device: &wgpu::Device) -> TextureImportResult {
 		// Get wgpu's D3D12 device
 		use wgpu::hal::api;
@@ -143,7 +133,6 @@ impl D3D11Importer {
 		Ok(texture)
 	}
 
-	#[cfg(feature = "accelerated_paint")]
 	fn import_via_vulkan(&self, device: &wgpu::Device) -> TextureImportResult {
 		// Get wgpu's Vulkan instance and device
 		use wgpu::{TextureUses, wgc::api::Vulkan};
@@ -207,7 +196,6 @@ impl D3D11Importer {
 		Ok(texture)
 	}
 
-	#[cfg(feature = "accelerated_paint")]
 	fn import_d3d11_handle_to_vulkan(&self, hal_device: &<api::Vulkan as wgpu::hal::Api>::Device) -> Result<vk::Image, TextureImportError> {
 		// Get raw Vulkan handles
 		let device = hal_device.raw_device();
@@ -282,7 +270,6 @@ impl D3D11Importer {
 		Ok(image)
 	}
 
-	#[cfg(feature = "accelerated_paint")]
 	fn import_d3d11_handle_to_d3d12(&self, hal_device: &<wgpu::hal::api::Dx12 as wgpu::hal::Api>::Device) -> Result<windows::Win32::Graphics::Direct3D12::ID3D12Resource, TextureImportError> {
 		use windows::Win32::Graphics::Direct3D12::*;
 		use windows::core::*;
