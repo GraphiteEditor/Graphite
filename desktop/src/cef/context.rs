@@ -1,19 +1,14 @@
-use std::cell::RefCell;
-use std::mem::ManuallyDrop;
-
-use cef::rc::{Rc, RcImpl};
-use cef::sys::{_cef_task_t, CEF_API_VERSION_LAST, cef_base_ref_counted_t, cef_resultcode_t, cef_thread_id_t};
-use cef::{App, BrowserSettings, Client, DictionaryValue, ImplBrowser, ImplBrowserHost, ImplCommandLine, RenderHandler, RequestContext, WindowInfo, browser_host_create_browser_sync, initialize};
-use cef::{Browser, CefString, ImplTask, Settings, Task, ThreadId, WrapTask, api_hash, args::Args, execute_process, post_task};
-use thiserror::Error;
+use cef::sys::{CEF_API_VERSION_LAST, cef_resultcode_t, cef_thread_id_t};
+use cef::{App, BrowserSettings, Client, DictionaryValue, ImplCommandLine, RenderHandler, RequestContext, WindowInfo, browser_host_create_browser_sync, initialize};
+use cef::{Browser, CefString, Settings, ThreadId, api_hash, args::Args, execute_process};
+use context_impl::BROWSER;
 use winit::event::WindowEvent;
 
 use crate::cef::dirs::{cef_cache_dir, cef_data_dir};
 
+use super::CefEventHandler;
 use super::input::InputState;
-use super::ipc::{MessageType, SendMessage};
 use super::scheme_handler::{FRONTEND_DOMAIN, GRAPHITE_SCHEME};
-use super::{CefEventHandler, input};
 
 use super::internal::{BrowserProcessAppImpl, BrowserProcessClientImpl, RenderHandlerImpl, RenderProcessAppImpl};
 
@@ -22,6 +17,9 @@ pub(crate) struct Initialized {}
 pub(crate) trait ContextState {}
 impl ContextState for Setup {}
 impl ContextState for Initialized {}
+
+mod cef_task;
+pub(super) mod context_impl;
 
 pub(crate) struct Context<S: ContextState> {
 	args: Args,
@@ -127,106 +125,14 @@ impl Context<Setup> {
 	}
 }
 
-impl CefContext for Context<Initialized> {
-	fn work(&mut self) {
-		cef::do_message_loop_work();
-	}
+pub(crate) trait CefContext {
+	fn work(&mut self);
 
-	fn handle_window_event(&mut self, event: WindowEvent) -> Option<WindowEvent> {
-		if let Some(browser) = &self.browser {
-			input::handle_window_event(browser, &mut self.input_state, event)
-		} else {
-			Some(event)
-		}
-	}
+	fn handle_window_event(&mut self, event: WindowEvent) -> Option<WindowEvent>;
 
-	fn notify_of_resize(&self) {
-		if let Some(browser) = &self.browser {
-			browser.host().unwrap().was_resized();
-		}
-	}
+	fn notify_of_resize(&self);
 
-	fn send_web_message(&self, message: Vec<u8>) {
-		self.send_message(MessageType::SendToJS, &message);
-	}
-}
-
-enum ContextMessage {
-	Work,
-	WindowEvent(WindowEvent),
-	Resize,
-	WebMessage(Vec<u8>),
-}
-
-// New proxy that uses closure tasks instead of channels
-pub struct CefContextSendProxy;
-
-impl CefContext for CefContextSendProxy {
-	fn work(&mut self) {
-		// CEF handles its own message loop in multi-threaded mode
-	}
-
-	fn handle_window_event(&mut self, event: WindowEvent) -> Option<WindowEvent> {
-		let event_clone = event.clone();
-		post_closure_task(ThreadId::from(cef_thread_id_t::TID_UI), move || {
-			BROWSER.with(|b| {
-				if let Some((browser, input_state)) = b.borrow_mut().as_mut() {
-					// Forward window event to CEF input handling on UI thread
-					// TODO: Implement input handling directly here
-					// dbg!(_event_clone);
-					input::handle_window_event(browser, input_state, event_clone);
-				}
-			});
-		});
-		Some(event)
-	}
-
-	fn notify_of_resize(&self) {
-		post_closure_task(ThreadId::from(cef_thread_id_t::TID_UI), || {
-			BROWSER.with(|b| {
-				if let Some((browser, _)) = b.borrow().as_ref() {
-					if let Some(host) = browser.host() {
-						host.was_resized();
-					}
-				}
-			});
-		});
-	}
-
-	fn send_web_message(&self, message: Vec<u8>) {
-		post_closure_task(ThreadId::from(cef_thread_id_t::TID_UI), move || {
-			BROWSER.with(|b| {
-				if let Some((browser, _)) = b.borrow().as_ref() {
-					// Inline the send_message functionality
-					use super::ipc::{MessageType, SendMessage};
-					if let Some(frame) = browser.main_frame() {
-						let message_bytes = &message;
-						frame.send_message(MessageType::SendToJS, message_bytes);
-					}
-				}
-			});
-		});
-	}
-}
-
-impl CefContext for std::sync::mpsc::Sender<ContextMessage> {
-	fn work(&mut self) {
-		let _ = self.send(ContextMessage::Work);
-	}
-
-	fn handle_window_event(&mut self, event: WindowEvent) -> Option<WindowEvent> {
-		dbg!(&event);
-		let _ = self.send(ContextMessage::WindowEvent(event.clone()));
-		Some(event)
-	}
-
-	fn notify_of_resize(&self) {
-		let _ = self.send(ContextMessage::Resize);
-	}
-
-	fn send_web_message(&self, message: Vec<u8>) {
-		let _ = self.send(ContextMessage::WebMessage(message));
-	}
+	fn send_web_message(&self, message: Vec<u8>);
 }
 
 pub(crate) fn cef_context(context: Context<Setup>, event_handler: impl CefEventHandler + Send + 'static) -> Box<dyn CefContext> {
@@ -244,7 +150,7 @@ pub(crate) fn cef_context(context: Context<Setup>, event_handler: impl CefEventH
 		let _context = context.init(event_handler.clone()).unwrap();
 
 		// Post browser creation task to CEF's UI thread
-		post_closure_task(ThreadId::from(cef_thread_id_t::TID_UI), move || {
+		cef_task::post_closure_task(ThreadId::from(cef_thread_id_t::TID_UI), move || {
 			// Create browser on CEF's UI thread
 			let render_handler = RenderHandler::new(super::internal::RenderHandlerImpl::new(event_handler.clone()));
 			let mut client = Client::new(super::internal::BrowserProcessClientImpl::new(render_handler, event_handler));
@@ -279,101 +185,11 @@ pub(crate) fn cef_context(context: Context<Setup>, event_handler: impl CefEventH
 			});
 		});
 
-		Box::new(CefContextSendProxy)
+		Box::new(context_impl::CefContextSendProxy)
 	}
 }
 
-pub(crate) trait CefContext {
-	fn work(&mut self);
-
-	fn handle_window_event(&mut self, event: WindowEvent) -> Option<WindowEvent>;
-
-	fn notify_of_resize(&self);
-
-	fn send_web_message(&self, message: Vec<u8>);
-}
-
-// Thread-local browser storage for UI thread
-thread_local! {
-	static BROWSER: RefCell<Option<(Browser, InputState)>> = RefCell::new(None);
-}
-
-// Closure-based task wrapper following CEF patterns
-pub struct ClosureTask<F> {
-	object: *mut RcImpl<_cef_task_t, Self>,
-	closure: RefCell<Option<F>>,
-}
-
-impl<F: FnOnce() + Send + 'static> ClosureTask<F> {
-	pub fn new(closure: F) -> Self {
-		Self {
-			object: std::ptr::null_mut(),
-			closure: RefCell::new(Some(closure)),
-		}
-	}
-}
-
-impl<F: FnOnce() + Send + 'static> ImplTask for ClosureTask<F> {
-	fn execute(&self) {
-		if let Some(closure) = self.closure.borrow_mut().take() {
-			closure();
-		}
-	}
-
-	fn get_raw(&self) -> *mut _cef_task_t {
-		self.object.cast()
-	}
-}
-
-impl<F: FnOnce() + Send + 'static> Clone for ClosureTask<F> {
-	fn clone(&self) -> Self {
-		unsafe {
-			if !self.object.is_null() {
-				let rc_impl = &mut *self.object;
-				rc_impl.interface.add_ref();
-			}
-		}
-		Self {
-			object: self.object,
-			closure: RefCell::new(None), // Closure can only be executed once
-		}
-	}
-}
-
-impl<F: FnOnce() + Send + 'static> Rc for ClosureTask<F> {
-	fn as_base(&self) -> &cef_base_ref_counted_t {
-		unsafe {
-			let base = &*self.object;
-			std::mem::transmute(&base.cef_object)
-		}
-	}
-}
-
-impl<F: FnOnce() + Send + 'static> WrapTask for ClosureTask<F> {
-	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_task_t, Self>) {
-		self.object = object;
-	}
-}
-
-// Convenience function for posting closure tasks
-pub fn post_closure_task<F>(thread_id: ThreadId, closure: F)
-where
-	F: FnOnce() + Send + 'static,
-{
-	let closure_task = ClosureTask::new(closure);
-	let mut task = Task::new(closure_task);
-	post_task(thread_id, Some(&mut task));
-}
-
-impl<S: ContextState> Drop for Context<S> {
-	fn drop(&mut self) {
-		if self.browser.is_some() {
-			cef::shutdown();
-		}
-	}
-}
-
-#[derive(Error, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub(crate) enum SetupError {
 	#[error("this is the sub process should exit immediately")]
 	Subprocess,
@@ -381,7 +197,7 @@ pub(crate) enum SetupError {
 	SubprocessFailed(String),
 }
 
-#[derive(Error, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub(crate) enum InitError {
 	#[error("initialization failed")]
 	InitializationFailed(u32),

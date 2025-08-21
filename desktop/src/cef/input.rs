@@ -3,8 +3,6 @@ use cef::{Browser, ImplBrowser, ImplBrowserHost, KeyEvent, KeyEventType, MouseEv
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 
-use super::context::{Context, Initialized};
-
 mod keymap;
 use keymap::{ToDomBits, ToVKBits};
 
