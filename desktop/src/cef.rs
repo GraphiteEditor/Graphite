@@ -10,6 +10,8 @@ mod dirs;
 mod dmabuf;
 #[cfg(target_os = "windows")]
 mod d3d11;
+#[cfg(target_os = "macos")]
+mod iosurface;
 mod input;
 mod internal;
 mod ipc;
@@ -22,6 +24,8 @@ use winit::event_loop::EventLoopProxy;
 
 #[cfg(target_os = "windows")]
 use crate::cef::d3d11::D3D11SharedTexture;
+#[cfg(target_os = "macos")]
+use crate::cef::iosurface::IOSurfaceTexture;
 
 pub(crate) trait CefEventHandler: Clone {
 	fn window_size(&self) -> WindowSize;
@@ -190,8 +194,21 @@ impl CefEventHandler for CefHandler {
 				}
 			}
 			#[cfg(target_os = "macos")]
-			internal::render_handler::SharedTextureHandle::IOSurface(_handle) => {
-				tracing::warn!("IOSurface shared texture import not implemented yet");
+			internal::render_handler::SharedTextureHandle::IOSurface { handle, format, width, height } => {
+				let iosurface_texture = IOSurfaceTexture {
+					handle,
+					width,
+					height,
+					format,
+				};
+				match iosurface_texture.import_to_wgpu(&self.wgpu_context.device) {
+					Ok(texture) => {
+						let _ = self.event_loop_proxy.send_event(CustomEvent::UiUpdate(texture));
+					}
+					Err(e) => {
+						tracing::error!("Failed to import IOSurface texture: {}", e);
+					}
+				}
 			}
 		}
 	}

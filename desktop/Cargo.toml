@@ -12,6 +12,7 @@ rust-version = "1.87"
 default = ["gpu", "accelerated_paint"]
 gpu = ["graphite-desktop-wrapper/gpu"]
 accelerated_paint = ["ash", "libc", "windows"]
+accelerated_paint = ["ash", "libc", "windows", "objc2-io-surface", "objc2-metal", "core-foundation"]
 
 [dependencies]
 # # Local dependencies
@@ -46,3 +47,9 @@ windows = { version = "0.58", features = [
 	"Win32_Graphics_Dxgi_Common",
 	"Win32_Foundation"
 ], optional = true }
+
+# macOS-specific dependencies
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-io-surface = { version = "0.3", optional = true }
+objc2-metal = { version = "0.3", optional = true }
+core-foundation = { version = "0.9", optional = true }
