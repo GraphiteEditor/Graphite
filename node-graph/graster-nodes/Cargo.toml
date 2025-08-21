@@ -17,6 +17,7 @@ default = ["std"]
 std = [
 	"dep:graphene-core",
 	"dep:graphene-raster-nodes-shaders",
+	"dep:wgpu-executor",
 	"dep:dyn-any",
 	"dep:image",
 	"dep:ndarray",
@@ -38,6 +39,7 @@ node-macro = { workspace = true }
 # Local std dependencies
 dyn-any = { workspace = true, optional = true }
 graphene-core = { workspace = true, optional = true }
+wgpu-executor = { workspace = true, optional = true }
 graphene-raster-nodes-shaders = { path = "./shaders", optional = true }
 
 # Workspace dependencies

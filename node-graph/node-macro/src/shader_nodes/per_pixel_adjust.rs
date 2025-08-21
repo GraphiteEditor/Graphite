@@ -7,7 +7,7 @@ use quote::{ToTokens, format_ident, quote};
 use std::borrow::Cow;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{Type, parse_quote};
+use syn::{PatIdent, Type, parse_quote};
 
 #[derive(Debug, Clone)]
 pub struct PerPixelAdjust {}
@@ -20,15 +20,14 @@ impl Parse for PerPixelAdjust {
 
 impl ShaderCodegen for PerPixelAdjust {
 	fn codegen(&self, parsed: &ParsedNodeFn, node_cfg: &TokenStream) -> syn::Result<ShaderTokens> {
-		Ok(ShaderTokens {
-			shader_entry_point: self.codegen_shader_entry_point(parsed)?,
-			gpu_node: self.codegen_gpu_node(parsed, node_cfg)?,
-		})
+		let (shader_entry_point, entry_point_name) = self.codegen_shader_entry_point(parsed)?;
+		let gpu_node = self.codegen_gpu_node(parsed, node_cfg, &entry_point_name)?;
+		Ok(ShaderTokens { shader_entry_point, gpu_node })
 	}
 }
 
 impl PerPixelAdjust {
-	fn codegen_shader_entry_point(&self, parsed: &ParsedNodeFn) -> syn::Result<TokenStream> {
+	fn codegen_shader_entry_point(&self, parsed: &ParsedNodeFn) -> syn::Result<(TokenStream, TokenStream)> {
 		let fn_name = &parsed.fn_name;
 		let gpu_mod = format_ident!("{}_gpu_entry_point", fn_name);
 		let spirv_image_ty = quote!(Image2d);
@@ -82,7 +81,10 @@ impl PerPixelAdjust {
 			.collect::<Vec<_>>();
 		let context = quote!(());
 
-		Ok(quote! {
+		let entry_point_name = format_ident!("ENTRY_POINT_NAME");
+		let entry_point_sym = quote!(#gpu_mod::#entry_point_name);
+
+		let shader_entry_point = quote! {
 			pub mod #gpu_mod {
 				use super::*;
 				use graphene_core_shaders::color::Color;
@@ -90,6 +92,8 @@ impl PerPixelAdjust {
 				use spirv_std::glam::{Vec4, Vec4Swizzles};
 				use spirv_std::image::{Image2d, ImageWithMethods};
 				use spirv_std::image::sample_with::lod;
+
+				pub const #entry_point_name: &str = core::concat!(core::module_path!(), "::entry_point");
 
 				pub struct Uniform {
 					#(#uniform_members),*
@@ -107,10 +111,11 @@ impl PerPixelAdjust {
 					*color_out = color.to_vec4();
 				}
 			}
-		})
+		};
+		Ok((shader_entry_point, entry_point_sym))
 	}
 
-	fn codegen_gpu_node(&self, parsed: &ParsedNodeFn, node_cfg: &TokenStream) -> syn::Result<TokenStream> {
+	fn codegen_gpu_node(&self, parsed: &ParsedNodeFn, node_cfg: &TokenStream, entry_point_name: &TokenStream) -> syn::Result<TokenStream> {
 		let fn_name = format_ident!("{}_gpu", parsed.fn_name);
 		let struct_name = format_ident!("{}", fn_name.to_string().to_case(Case::Pascal));
 		let mod_name = fn_name.clone();
@@ -121,7 +126,8 @@ impl PerPixelAdjust {
 		};
 		let raster_gpu: Type = parse_quote!(#gcore::table::Table<#gcore::raster_types::Raster<#gcore::raster_types::GPU>>);
 
-		let fields = parsed
+		// adapt fields for gpu node
+		let mut fields = parsed
 			.fields
 			.iter()
 			.map(|f| match &f.ty {
@@ -136,11 +142,55 @@ impl PerPixelAdjust {
 				ParsedFieldType::Regular(RegularParsedField { gpu_image: false, .. }) => Ok(f.clone()),
 				ParsedFieldType::Node { .. } => Err(syn::Error::new_spanned(&f.pat_ident, "PerPixelAdjust shader nodes cannot accept other nodes as generics")),
 			})
-			.collect::<syn::Result<_>>()?;
+			.collect::<syn::Result<Vec<_>>>()?;
+
+		// wgpu_executor field
+		let wgpu_executor = format_ident!("__wgpu_executor");
+		fields.push(ParsedField {
+			pat_ident: PatIdent {
+				attrs: vec![],
+				by_ref: None,
+				mutability: None,
+				ident: parse_quote!(#wgpu_executor),
+				subpat: None,
+			},
+			name: None,
+			description: "".to_string(),
+			widget_override: Default::default(),
+			ty: ParsedFieldType::Regular(RegularParsedField {
+				ty: parse_quote!(WgpuExecutor),
+				exposed: false,
+				value_source: Default::default(),
+				number_soft_min: None,
+				number_soft_max: None,
+				number_hard_min: None,
+				number_hard_max: None,
+				number_mode_range: None,
+				implementations: Default::default(),
+				gpu_image: false,
+			}),
+			number_display_decimal_places: None,
+			number_step: None,
+			unit: None,
+		});
+
+		// exactly one gpu_image field, may be expanded later
+		let gpu_image_field = {
+			let mut iter = fields.iter().filter(|f| matches!(f.ty, ParsedFieldType::Regular(RegularParsedField { gpu_image: true, .. })));
+			match (iter.next(), iter.next()) {
+				(Some(v), None) => Ok(v),
+				(Some(_), Some(more)) => Err(syn::Error::new_spanned(&more.pat_ident, "No more than one parameter must be annotated with `#[gpu_image]`")),
+				(None, _) => Err(syn::Error::new_spanned(&parsed.fn_name, "At least one parameter must be annotated with `#[gpu_image]`")),
+			}?
+		};
+		let gpu_image = &gpu_image_field.pat_ident.ident;
 
 		let body = quote! {
 			{
-
+				#wgpu_executor.shader_runtime.run_per_pixel_adjust(#gpu_image, &::wgpu_executor::shader_runtime::per_pixel_adjust_runtime::PerPixelAdjustInfo {
+					wgsl_shader: crate::WGSL_SHADER,
+					fragment_shader_name: super::#entry_point_name,
+				}).await
 			}
 		};
 
@@ -174,6 +224,7 @@ impl PerPixelAdjust {
 			#node_cfg
 			mod #mod_name {
 				use super::*;
+				use wgpu_executor::WgpuExecutor;
 
 				#gpu_node
 			}

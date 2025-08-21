@@ -6,6 +6,10 @@ pub mod blending_nodes;
 pub mod cubic_spline;
 pub mod fullscreen_vertex;
 
+/// required by shader macro
+#[cfg(feature = "std")]
+pub use graphene_raster_nodes_shaders::WGSL_SHADER;
+
 #[cfg(feature = "std")]
 pub mod curve;
 #[cfg(feature = "std")]
