@@ -66,7 +66,7 @@ impl AlphaBlending {
 }
 
 #[repr(i32)]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, bytemuck::NoUninit)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub enum BlendMode {
 	// Basic group
