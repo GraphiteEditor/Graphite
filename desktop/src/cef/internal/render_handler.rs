@@ -18,7 +18,12 @@ pub(crate) struct RenderHandlerImpl<H: CefEventHandler> {
 #[cfg(feature = "accelerated_paint")]
 pub enum SharedTextureHandle {
 	#[cfg(target_os = "windows")]
-	D3D11(*mut c_void),
+	D3D11 {
+		handle: *mut c_void,
+		format: cef::sys::cef_color_type_t,
+		width: u32,
+		height: u32,
+	},
 	#[cfg(target_os = "macos")]
 	IOSurface(*mut c_void),
 	#[cfg(target_os = "linux")]
@@ -96,8 +101,13 @@ impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 
 		#[cfg(target_os = "windows")]
 		{
-			// Extract D3D11 shared handle
-			let shared_handle = SharedTextureHandle::D3D11(info.shared_texture_handle);
+			// Extract D3D11 shared handle with texture metadata
+			let shared_handle = SharedTextureHandle::D3D11 {
+				handle: info.shared_texture_handle,
+				format: *info.format.as_ref(),
+				width: info.extra.coded_size.width as u32,
+				height: info.extra.coded_size.height as u32,
+			};
 			self.event_handler.on_accelerated_paint(shared_handle);
 		}
 

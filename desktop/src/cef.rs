@@ -8,6 +8,8 @@ use std::time::Instant;
 mod context;
 mod dirs;
 mod dmabuf;
+#[cfg(target_os = "windows")]
+mod d3d11;
 mod input;
 mod internal;
 mod ipc;
@@ -17,6 +19,9 @@ mod utility;
 
 pub(crate) use context::{Context, InitError, Initialized, Setup, SetupError};
 use winit::event_loop::EventLoopProxy;
+
+#[cfg(target_os = "windows")]
+use crate::cef::d3d11::D3D11SharedTexture;
 
 pub(crate) trait CefEventHandler: Clone {
 	fn window_size(&self) -> WindowSize;
@@ -168,8 +173,21 @@ impl CefEventHandler for CefHandler {
 				}
 			}
 			#[cfg(target_os = "windows")]
-			internal::render_handler::SharedTextureHandle::D3D11(_handle) => {
-				tracing::warn!("D3D11 shared texture import not implemented yet");
+			internal::render_handler::SharedTextureHandle::D3D11 { handle, format, width, height } => {
+				let d3d11_texture = D3D11SharedTexture {
+					handle,
+					width,
+					height,
+					format,
+				};
+				match d3d11_texture.import_to_wgpu(&self.wgpu_context.device) {
+					Ok(texture) => {
+						let _ = self.event_loop_proxy.send_event(CustomEvent::UiUpdate(texture));
+					}
+					Err(e) => {
+						tracing::error!("Failed to import D3D11 shared texture: {}", e);
+					}
+				}
 			}
 			#[cfg(target_os = "macos")]
 			internal::render_handler::SharedTextureHandle::IOSurface(_handle) => {
