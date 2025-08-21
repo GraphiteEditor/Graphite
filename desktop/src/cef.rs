@@ -7,24 +7,9 @@
 //! The texture import system supports platform-specific hardware acceleration:
 //!
 //! - **Linux**: DMA-BUF via Vulkan external memory (`accelerated_paint_dmabuf` feature)
-//! - **Windows**: D3D11 shared textures via Vulkan interop (`accelerated_paint_d3d11` feature)
+//! - **Windows**: D3D11 shared textures via either Vulkan or D3D12 interop (`accelerated_paint_d3d11` feature)
 //! - **macOS**: IOSurface via Metal/Vulkan interop (`accelerated_paint_iosurface` feature)
 //!
-//! ## Feature Configuration
-//!
-//! Enable hardware acceleration with:
-//! ```toml
-//! [dependencies]
-//! graphite-desktop = { features = ["accelerated_paint"] }
-//! ```
-//!
-//! Or enable platform-specific support:
-//! ```toml
-//! [dependencies]
-//! graphite-desktop = { features = ["accelerated_paint_linux"] }    # Linux only
-//! graphite-desktop = { features = ["accelerated_paint_windows"] }  # Windows only
-//! graphite-desktop = { features = ["accelerated_paint_macos"] }    # macOS only
-//! ```
 //!
 //! The system gracefully falls back to CPU textures when hardware acceleration is unavailable.
 
