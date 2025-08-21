@@ -1,33 +1,29 @@
 use std::process::exit;
 use std::time::Instant;
-use std::{fmt::Debug, time::Duration};
 
-use graphite_editor::messages::prelude::Message;
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
 
 pub(crate) mod consts;
 
 mod cef;
-use cef::{Setup, WindowSize};
+use cef::Setup;
 
 mod render;
-use render::WgpuContext;
 
 mod app;
 use app::WinitApp;
 
 mod dirs;
 
-mod dialogs;
+use graphite_desktop_wrapper::messages::DesktopWrapperMessage;
+use graphite_desktop_wrapper::{NodeGraphExecutionResult, WgpuContext};
 
-#[derive(Debug)]
 pub(crate) enum CustomEvent {
 	UiUpdate(wgpu::Texture),
 	ScheduleBrowserWork(Instant),
-	DispatchMessage(Message),
-	MessageReceived(Message),
-	NodeGraphRan(Option<wgpu::Texture>),
+	DesktopWrapperMessage(DesktopWrapperMessage),
+	NodeGraphExecutionResult(NodeGraphExecutionResult),
 }
 
 fn main() {
@@ -60,21 +56,6 @@ fn main() {
 	};
 
 	tracing::info!("Cef initialized successfully");
-
-	let rendering_loop_proxy = event_loop.create_proxy();
-	let target_fps = 60;
-	std::thread::spawn(move || {
-		loop {
-			let last_render = Instant::now();
-			let (has_run, texture) = futures::executor::block_on(graphite_editor::node_graph_executor::run_node_graph());
-			if has_run {
-				let _ = rendering_loop_proxy.send_event(CustomEvent::NodeGraphRan(texture.map(|t| (*t.texture).clone())));
-			}
-			let frame_time = Duration::from_secs_f32((target_fps as f32).recip());
-			let sleep = last_render + frame_time - Instant::now();
-			std::thread::sleep(sleep);
-		}
-	});
 
 	let mut winit_app = WinitApp::new(cef_context, window_size_sender, wgpu_context, event_loop.create_proxy());
 

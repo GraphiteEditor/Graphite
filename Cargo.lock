@@ -1948,6 +1948,7 @@ dependencies = [
  "image",
  "kurbo",
  "log",
+ "lyon_geom",
  "node-macro",
  "num-traits",
  "parley",
@@ -2076,17 +2077,19 @@ dependencies = [
 name = "graphite-desktop"
 version = "0.1.0"
 dependencies = [
+ "ash",
  "bytemuck",
  "cef",
+ "core-foundation",
  "derivative",
  "dirs",
  "futures",
  "glam",
- "graph-craft",
- "graphene-std",
- "graphite-editor",
- "image",
+ "graphite-desktop-wrapper",
  "include_dir",
+ "libc",
+ "objc2-io-surface",
+ "objc2-metal 0.3.1",
  "open",
  "rfd",
  "ron",
@@ -2095,8 +2098,26 @@ dependencies = [
  "tracing-subscriber",
  "vello",
  "wgpu",
- "wgpu-executor",
+ "windows",
  "winit",
+]
+
+[[package]]
+name = "graphite-desktop-wrapper"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "futures",
+ "graph-craft",
+ "graphene-std",
+ "graphite-editor",
+ "image",
+ "ron",
+ "thiserror 2.0.12",
+ "tracing",
+ "vello",
+ "wgpu",
+ "wgpu-executor",
 ]
 
 [[package]]
@@ -2979,6 +3000,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
+name = "lyon_geom"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8af69edc087272df438b3ee436c4bb6d7c04aa8af665cfd398feae627dbd8570"
+dependencies = [
+ "arrayvec",
+ "euclid",
+ "num-traits",
+]
+
+[[package]]
 name = "malloc_buf"
 version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3463,7 +3495,7 @@ dependencies = [
  "block2 0.5.1",
  "objc2 0.5.2",
  "objc2-foundation 0.2.2",
- "objc2-metal",
+ "objc2-metal 0.2.2",
 ]
 
 [[package]]
@@ -3519,6 +3551,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-io-surface"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7282e9ac92529fa3457ce90ebb15f4ecbc383e8338060960760fa2cf75420c3c"
+dependencies = [
+ "bitflags 2.9.1",
+ "libc",
+ "objc2 0.6.1",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.1",
+]
+
+[[package]]
 name = "objc2-link-presentation"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3543,6 +3588,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-metal"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f246c183239540aab1782457b35ab2040d4259175bd1d0c58e46ada7b47a874"
+dependencies = [
+ "bitflags 2.9.1",
+ "block2 0.6.1",
+ "dispatch2",
+ "objc2 0.6.1",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.1",
+]
+
+[[package]]
 name = "objc2-quartz-core"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3552,7 +3611,7 @@ dependencies = [
  "block2 0.5.1",
  "objc2 0.5.2",
  "objc2-foundation 0.2.2",
- "objc2-metal",
+ "objc2-metal 0.2.2",
 ]
 
 [[package]]
@@ -3797,6 +3856,7 @@ dependencies = [
  "glam",
  "glob",
  "image",
+ "lyon_geom",
  "regex",
  "resvg",
  "slotmap",

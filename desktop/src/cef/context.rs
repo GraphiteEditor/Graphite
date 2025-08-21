@@ -86,14 +86,17 @@ impl Context<Setup> {
 		let mut client = Client::new(BrowserProcessClientImpl::new(render_handler, event_handler.clone()));
 
 		let url = CefString::from(format!("{GRAPHITE_SCHEME}://{FRONTEND_DOMAIN}/").as_str());
+		// let url = CefString::from("chrome://gpu");
 
 		let window_info = WindowInfo {
 			windowless_rendering_enabled: 1,
+			#[cfg(feature = "accelerated_paint")]
+			shared_texture_enabled: if crate::cef::platform::should_enable_hardware_acceleration() { 1 } else { 0 },
 			..Default::default()
 		};
 
 		let settings = BrowserSettings {
-			windowless_frame_rate: 60,
+			windowless_frame_rate: crate::consts::CEF_WINDOWLESS_FRAME_RATE,
 			background_color: 0x0,
 			..Default::default()
 		};

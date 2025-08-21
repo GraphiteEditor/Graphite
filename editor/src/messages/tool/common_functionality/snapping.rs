@@ -332,7 +332,8 @@ impl SnapManager {
 			}
 			return;
 		}
-		let Some(bounds) = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
+		// We use a loose bounding box here since these are potential candidates which will be filtered later anyway
+		let Some(bounds) = document.metadata().loose_bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
 			return;
 		};
 		let layer_bounds = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
