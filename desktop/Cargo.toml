@@ -9,8 +9,9 @@ edition = "2024"
 rust-version = "1.87"
 
 [features]
-default = ["gpu"]
+default = ["gpu", "accelerated_paint"]
 gpu = ["graphite-desktop-wrapper/gpu"]
+accelerated_paint = []
 
 [dependencies]
 # # Local dependencies

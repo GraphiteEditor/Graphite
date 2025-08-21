@@ -89,6 +89,8 @@ impl Context<Setup> {
 
 		let window_info = WindowInfo {
 			windowless_rendering_enabled: 1,
+			#[cfg(feature = "accelerated_paint")]
+			shared_texture_enabled: if crate::cef::platform::should_enable_hardware_acceleration() { 1 } else { 0 },
 			..Default::default()
 		};
 
