@@ -634,6 +634,9 @@ impl PathSegment {
 			}
 		}
 	}
+
+	/// Computes a loose bounding box that surrounds all anchors, but also the handles of cubic and quadratic segments.
+	/// This will usually be larger than the actual bounding box, but is faster to compute because it does not have to find where each curve reaches its maximum and minimum.
 	pub(crate) fn approx_bounding_box(&self) -> Aabb {
 		match *self {
 			PathSegment::Cubic(p1, p2, p3, p4) => {
