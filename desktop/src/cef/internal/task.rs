@@ -1,8 +1,6 @@
-use super::{Context, ContextState};
-use cef::post_task;
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_task_t, cef_base_ref_counted_t};
-use cef::{ImplTask, Task, ThreadId, WrapTask};
+use cef::{ImplTask, WrapTask};
 use std::cell::RefCell;
 
 // Closure-based task wrapper following CEF patterns
@@ -59,23 +57,5 @@ impl<F: FnOnce() + Send + 'static> Rc for ClosureTask<F> {
 impl<F: FnOnce() + Send + 'static> WrapTask for ClosureTask<F> {
 	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_task_t, Self>) {
 		self.object = object;
-	}
-}
-
-// Convenience function for posting closure tasks
-pub fn post_closure_task<F>(thread_id: ThreadId, closure: F)
-where
-	F: FnOnce() + Send + 'static,
-{
-	let closure_task = ClosureTask::new(closure);
-	let mut task = Task::new(closure_task);
-	post_task(thread_id, Some(&mut task));
-}
-
-impl<S: ContextState> Drop for Context<S> {
-	fn drop(&mut self) {
-		if self.browser.is_some() {
-			cef::shutdown();
-		}
 	}
 }

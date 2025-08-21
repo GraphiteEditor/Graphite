@@ -6,14 +6,14 @@ use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 mod keymap;
 use keymap::{ToDomBits, ToVKBits};
 
-pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputState, event: WindowEvent) -> Option<WindowEvent> {
+pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputState, event: &WindowEvent) {
 	match event {
 		WindowEvent::CursorMoved { position, .. } => {
 			if let Some(host) = browser.host() {
 				host.set_focus(1);
 			}
 
-			input_state.update_mouse_position(&position);
+			input_state.update_mouse_position(position);
 			let mouse_event: MouseEvent = (input_state).into();
 			browser.host().unwrap().send_mouse_move_event(Some(&mouse_event), 0);
 		}
@@ -103,7 +103,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 						let char = str.chars().next().unwrap_or('\0');
 						(None, Some(char))
 					}
-					_ => return None,
+					_ => return,
 				};
 
 				let mut key_event = KeyEvent {
@@ -146,9 +146,8 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 				};
 			}
 		}
-		e => return Some(e),
+		_ => {}
 	}
-	None
 }
 
 #[derive(Default, Clone)]

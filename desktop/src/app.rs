@@ -1,5 +1,4 @@
 use crate::CustomEvent;
-use crate::cef::CefContext;
 use crate::cef::WindowSize;
 use crate::consts::{APP_NAME, CEF_MESSAGE_LOOP_MAX_ITERATIONS};
 use crate::render::GraphicsState;
@@ -22,8 +21,10 @@ use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 use winit::window::WindowId;
 
+use crate::cef;
+
 pub(crate) struct WinitApp {
-	cef_context: Box<dyn CefContext>,
+	cef_context: Box<dyn cef::CefContext>,
 	window: Option<Arc<Window>>,
 	cef_schedule: Option<Instant>,
 	window_size_sender: Sender<WindowSize>,
@@ -37,7 +38,7 @@ pub(crate) struct WinitApp {
 }
 
 impl WinitApp {
-	pub(crate) fn new(cef_context: cef::Context<cef::Initialized>, window_size_sender: Sender<WindowSize>, wgpu_context: WgpuContext, event_loop_proxy: EventLoopProxy<CustomEvent>) -> Self {
+	pub(crate) fn new(cef_context: Box<dyn cef::CefContext>, window_size_sender: Sender<WindowSize>, wgpu_context: WgpuContext, event_loop_proxy: EventLoopProxy<CustomEvent>) -> Self {
 		let rendering_loop_proxy = event_loop_proxy.clone();
 		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
 		std::thread::spawn(move || {
@@ -160,15 +161,6 @@ impl WinitApp {
 		let responses = self.desktop_wrapper.dispatch(message);
 		self.handle_desktop_frontend_messages(responses);
 	}
-
-	#[inline(never)]
-	fn schedule_browser_work(&mut self, instant: Instant) {
-		if instant <= Instant::now() {
-			self.cef_context.work();
-		} else {
-			self.cef_schedule = Some(instant);
-		}
-	}
 }
 
 impl ApplicationHandler<CustomEvent> for WinitApp {
@@ -252,17 +244,17 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 				}
 			}
 			CustomEvent::ScheduleBrowserWork(instant) => {
-				self.schedule_browser_work(instant);
+				if instant <= Instant::now() {
+					self.cef_context.work();
+				} else {
+					self.cef_schedule = Some(instant);
+				}
 			}
 		}
 	}
 
 	fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
-		let Some(event) = self.cef_context.handle_window_event(event) else {
-			// Notify cef of possible input events
-			self.cef_context.work();
-			return;
-		};
+		self.cef_context.handle_window_event(&event);
 
 		match event {
 			WindowEvent::CloseRequested => {
@@ -306,5 +298,8 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 			}
 			_ => {}
 		}
+
+		// Notify cef of possible input events
+		self.cef_context.work();
 	}
 }
