@@ -44,16 +44,18 @@ pub struct TextLabel {
 
 	pub italic: bool,
 
+	pub monospace: bool,
+
+	pub multiline: bool,
+
 	#[serde(rename = "centerAlign")]
 	pub center_align: bool,
 
 	#[serde(rename = "tableAlign")]
 	pub table_align: bool,
 
-	pub multiline: bool,
-
 	#[serde(rename = "minWidth")]
-	pub min_width: u32,
+	pub min_width: String,
 
 	pub tooltip: String,
 

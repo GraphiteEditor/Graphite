@@ -11,8 +11,7 @@ use cef::{
 };
 use include_dir::{Dir, include_dir};
 
-pub(crate) const GRAPHITE_SCHEME: &str = "graphite-static";
-pub(crate) const FRONTEND_DOMAIN: &str = "frontend";
+use super::consts::{FRONTEND_DOMAIN, GRAPHITE_SCHEME};
 
 pub(crate) struct GraphiteSchemeHandlerFactory {
 	object: *mut RcImpl<_cef_scheme_handler_factory_t, Self>,

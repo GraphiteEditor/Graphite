@@ -2,7 +2,11 @@ use graph_craft::wasm_application_io::WasmApplicationIo;
 use graphite_editor::application::Editor;
 use graphite_editor::messages::prelude::{FrontendMessage, Message};
 
+// TODO: Remove usage of this reexport in desktop create and remove this line
+pub use graphene_std::Color;
+
 pub use wgpu_executor::Context as WgpuContext;
+pub use wgpu_executor::WgpuExecutor;
 
 pub mod messages;
 use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
@@ -40,6 +44,12 @@ impl DesktopWrapper {
 			(true, texture) => NodeGraphExecutionResult::HasRun(texture.map(|t| t.texture)),
 			(false, _) => NodeGraphExecutionResult::NotRun,
 		}
+	}
+}
+
+impl Default for DesktopWrapper {
+	fn default() -> Self {
+		Self::new()
 	}
 }
 
