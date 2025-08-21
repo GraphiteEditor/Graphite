@@ -87,22 +87,15 @@ impl D3D11Importer {
 				// Wrap D3D12 resource in wgpu-hal texture
 				let hal_texture = <api::Dx12 as wgpu::hal::Api>::Device::texture_from_raw(
 					d3d12_resource,
-					&wgpu::hal::TextureDescriptor {
-						label: Some("CEF D3D11→D3D12 Shared Texture"),
-						size: wgpu::Extent3d {
-							width: self.width,
-							height: self.height,
-							depth_or_array_layers: 1,
-						},
-						mip_level_count: 1,
-						sample_count: 1,
-						dimension: wgpu::TextureDimension::D2,
-						format: format::cef_to_wgpu(self.format)?,
-						usage: wgpu::TextureUses::COPY_DST | wgpu::TextureUses::RESOURCE,
-						memory_flags: wgpu::hal::MemoryFlags::empty(),
-						view_formats: vec![],
+					format::cef_to_wgpu(self.format)?,
+					wgpu::TextureDimension::D2,
+					wgpu::Extent3d {
+						width: self.width,
+						height: self.height,
+						depth_or_array_layers: 1,
 					},
-					None, // drop_callback
+					1, // mip_level_count
+					1, // sample_count
 				);
 
 				Ok(hal_texture)
@@ -286,7 +279,7 @@ impl D3D11Importer {
 		unsafe {
 			let mut shared_resource: Option<ID3D12Resource> = None;
 			d3d12_device
-				.OpenSharedHandle(windows::Win32::Foundation::HANDLE(self.handle as isize), &ID3D12Resource::IID, &mut shared_resource as *mut _ as *mut _)
+				.OpenSharedHandle(windows::Win32::Foundation::HANDLE(self.handle), &mut shared_resource)
 				.map_err(|e| TextureImportError::PlatformError {
 					message: format!("Failed to open D3D11 shared handle on D3D12: {:?}", e),
 				})?;
