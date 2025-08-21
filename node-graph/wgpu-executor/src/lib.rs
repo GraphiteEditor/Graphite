@@ -2,6 +2,7 @@ mod context;
 pub mod shader_runtime;
 pub mod texture_upload;
 
+use crate::shader_runtime::ShaderRuntime;
 use anyhow::Result;
 pub use context::Context;
 use dyn_any::StaticType;
@@ -19,6 +20,7 @@ use wgpu::{Origin3d, SurfaceConfiguration, TextureAspect};
 pub struct WgpuExecutor {
 	pub context: Context,
 	vello_renderer: Mutex<Renderer>,
+	pub shader_runtime: ShaderRuntime,
 }
 
 impl std::fmt::Debug for WgpuExecutor {
@@ -196,6 +198,7 @@ impl WgpuExecutor {
 		.ok()?;
 
 		Some(Self {
+			shader_runtime: ShaderRuntime::new(&context),
 			context,
 			vello_renderer: vello_renderer.into(),
 		})
