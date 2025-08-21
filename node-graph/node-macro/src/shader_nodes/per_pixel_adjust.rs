@@ -22,11 +22,11 @@ impl ShaderCodegen for PerPixelAdjust {
 	fn codegen(&self, parsed: &ParsedNodeFn, node_cfg: &TokenStream) -> syn::Result<ShaderTokens> {
 		let fn_name = &parsed.fn_name;
 
-		// categorize params and assign image bindings
-		// bindings for images start at 1
-		let params = {
-			let mut binding_cnt = 0;
-			parsed
+		let mut params;
+		let has_uniform;
+		{
+			// categorize params
+			params = parsed
 				.fields
 				.iter()
 				.map(|f| {
@@ -39,30 +39,50 @@ impl ShaderCodegen for PerPixelAdjust {
 							param_type: ParamType::Uniform,
 						}),
 						ParsedFieldType::Regular(RegularParsedField { gpu_image: true, .. }) => {
-							binding_cnt += 1;
-							Ok(Param {
+							let param = Param {
 								ident: Cow::Owned(format_ident!("image_{}", &ident.ident)),
 								ty: quote!(Image2d),
-								param_type: ParamType::Image { binding: binding_cnt },
-							})
+								param_type: ParamType::Image { binding: 0 },
+							};
+							Ok(param)
 						}
 					}
 				})
-				.collect::<syn::Result<Vec<_>>>()?
-		};
+				.collect::<syn::Result<Vec<_>>>()?;
+
+			has_uniform = params.iter().any(|p| matches!(p.param_type, ParamType::Uniform));
+
+			// assign image bindings
+			// if an arg_buffer exists, bindings for images start at 1 to leave 0 for arg buffer
+			let mut binding_cnt = if has_uniform { 1 } else { 0 };
+			for p in params.iter_mut() {
+				match &mut p.param_type {
+					ParamType::Image { binding } => {
+						*binding = binding_cnt;
+						binding_cnt += 1;
+					}
+					ParamType::Uniform => {}
+				}
+			}
+		}
 
 		let entry_point_mod = format_ident!("{}_gpu_entry_point", fn_name);
 		let entry_point_name_ident = format_ident!("ENTRY_POINT_NAME");
 		let entry_point_name = quote!(#entry_point_mod::#entry_point_name_ident);
+		let uniform_struct_ident = format_ident!("Uniform");
+		let uniform_struct = quote!(#entry_point_mod::#uniform_struct_ident);
 		let gpu_node_mod = format_ident!("{}_gpu", fn_name);
 
 		let codegen = PerPixelAdjustCodegen {
 			parsed,
 			node_cfg,
 			params,
+			has_uniform,
 			entry_point_mod,
 			entry_point_name_ident,
 			entry_point_name,
+			uniform_struct_ident,
+			uniform_struct,
 			gpu_node_mod,
 		};
 
@@ -77,9 +97,12 @@ pub struct PerPixelAdjustCodegen<'a> {
 	parsed: &'a ParsedNodeFn,
 	node_cfg: &'a TokenStream,
 	params: Vec<Param<'a>>,
+	has_uniform: bool,
 	entry_point_mod: Ident,
 	entry_point_name_ident: Ident,
 	entry_point_name: TokenStream,
+	uniform_struct_ident: Ident,
+	uniform_struct: TokenStream,
 	gpu_node_mod: Ident,
 }
 
@@ -114,6 +137,7 @@ impl PerPixelAdjustCodegen<'_> {
 
 		let entry_point_mod = &self.entry_point_mod;
 		let entry_point_name = &self.entry_point_name_ident;
+		let uniform_struct_ident = &self.uniform_struct_ident;
 		Ok(quote! {
 			pub mod #entry_point_mod {
 				use super::*;
@@ -125,8 +149,10 @@ impl PerPixelAdjustCodegen<'_> {
 
 				pub const #entry_point_name: &str = core::concat!(core::module_path!(), "::entry_point");
 
-				pub struct Uniform {
-					#(#uniform_members),*
+				#[repr(C)]
+				#[derive(Copy, Clone, bytemuck::NoUninit)]
+				pub struct #uniform_struct_ident {
+					#(pub #uniform_members),*
 				}
 
 				#[spirv(fragment)]
@@ -158,6 +184,11 @@ impl PerPixelAdjustCodegen<'_> {
 			.iter()
 			.map(|f| match &f.ty {
 				ParsedFieldType::Regular(reg @ RegularParsedField { gpu_image: true, .. }) => Ok(ParsedField {
+					pat_ident: PatIdent {
+						mutability: None,
+						by_ref: None,
+						..f.pat_ident.clone()
+					},
 					ty: ParsedFieldType::Regular(RegularParsedField {
 						ty: raster_gpu.clone(),
 						implementations: Punctuated::default(),
@@ -165,7 +196,14 @@ impl PerPixelAdjustCodegen<'_> {
 					}),
 					..f.clone()
 				}),
-				ParsedFieldType::Regular(RegularParsedField { gpu_image: false, .. }) => Ok(f.clone()),
+				ParsedFieldType::Regular(RegularParsedField { gpu_image: false, .. }) => Ok(ParsedField {
+					pat_ident: PatIdent {
+						mutability: None,
+						by_ref: None,
+						..f.pat_ident.clone()
+					},
+					..f.clone()
+				}),
 				ParsedFieldType::Node { .. } => Err(syn::Error::new_spanned(&f.pat_ident, "PerPixelAdjust shader nodes cannot accept other nodes as generics")),
 			})
 			.collect::<syn::Result<Vec<_>>>()?;
@@ -211,14 +249,35 @@ impl PerPixelAdjustCodegen<'_> {
 		};
 		let gpu_image = &gpu_image_field.pat_ident.ident;
 
+		// uniform buffer struct construction
+		let has_uniform = self.has_uniform;
+		let uniform_buffer = if has_uniform {
+			let uniform_struct = &self.uniform_struct;
+			let uniform_members = self
+				.params
+				.iter()
+				.filter_map(|p| match p.param_type {
+					ParamType::Image { .. } => None,
+					ParamType::Uniform => Some(p.ident.as_ref()),
+				})
+				.collect::<Vec<_>>();
+			quote!(Some(&super::#uniform_struct {
+				#(#uniform_members),*
+			}))
+		} else {
+			// explicit generics placed here cause it's easier than explicitly writing `run_per_pixel_adjust::<()>`
+			quote!(Option::<&()>::None)
+		};
+
 		// node function body
 		let entry_point_name = &self.entry_point_name;
 		let body = quote! {
 			{
-				#wgpu_executor.shader_runtime.run_per_pixel_adjust(&::wgpu_executor::shader_runtime::Shaders {
+				#wgpu_executor.shader_runtime.run_per_pixel_adjust(&::wgpu_executor::shader_runtime::per_pixel_adjust_runtime::Shaders {
 					wgsl_shader: crate::WGSL_SHADER,
 					fragment_shader_name: super::#entry_point_name,
-				}, #gpu_image, &1u32).await
+					has_uniform: #has_uniform,
+				}, #gpu_image, #uniform_buffer).await
 			}
 		};
 
