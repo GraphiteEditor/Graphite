@@ -1,3 +1,4 @@
+#[cfg(target_os = "linux")]
 use std::os::fd::RawFd;
 
 #[cfg(all(feature = "accelerated_paint", target_os = "linux"))]
@@ -71,7 +72,7 @@ impl DmaBufTexture {
 		if self.fds.is_empty() {
 			return Err("No DMA-BUF file descriptors provided".to_string());
 		}
-		
+
 		for &fd in &self.fds {
 			if fd < 0 {
 				return Err(format!("Invalid file descriptor: {}", fd));
@@ -82,7 +83,7 @@ impl DmaBufTexture {
 				return Err(format!("File descriptor {} is not valid", fd));
 			}
 		}
-		
+
 		// Get wgpu's Vulkan instance and device
 		use wgpu::{TextureUses, wgc::api::Vulkan};
 		let hal_texture = unsafe {
@@ -96,24 +97,24 @@ impl DmaBufTexture {
 
 				// Wrap VkImage in wgpu-hal texture
 				let hal_texture = <api::Vulkan as wgpu::hal::Api>::Device::texture_from_raw(
-						vk_image,
-						&wgpu::hal::TextureDescriptor {
-							label: Some("CEF DMA-BUF Texture"),
-							size: wgpu::Extent3d {
-								width: self.width,
-								height: self.height,
-								depth_or_array_layers: 1,
-							},
-							mip_level_count: 1,
-							sample_count: 1,
-							dimension: wgpu::TextureDimension::D2,
-							format: cef_to_hal_format(self.format)?,
-							usage: TextureUses::COPY_DST | TextureUses::RESOURCE,
-							memory_flags: wgpu::hal::MemoryFlags::empty(),
-							view_formats: vec![],
+					vk_image,
+					&wgpu::hal::TextureDescriptor {
+						label: Some("CEF DMA-BUF Texture"),
+						size: wgpu::Extent3d {
+							width: self.width,
+							height: self.height,
+							depth_or_array_layers: 1,
 						},
-						None, // drop_callback
-					);
+						mip_level_count: 1,
+						sample_count: 1,
+						dimension: wgpu::TextureDimension::D2,
+						format: cef_to_hal_format(self.format)?,
+						usage: TextureUses::COPY_DST | TextureUses::RESOURCE,
+						memory_flags: wgpu::hal::MemoryFlags::empty(),
+						view_formats: vec![],
+					},
+					None, // drop_callback
+				);
 
 				Ok(hal_texture)
 			})
@@ -153,7 +154,7 @@ impl DmaBufTexture {
 		if self.width == 0 || self.height == 0 {
 			return Err("Invalid DMA-BUF dimensions".to_string());
 		}
-		
+
 		// Create external memory image
 		let image_create_info = vk::ImageCreateInfo::default()
 			.image_type(vk::ImageType::TYPE_2D)
@@ -190,13 +191,13 @@ impl DmaBufTexture {
 		if dup_fd == -1 {
 			return Err("Failed to duplicate DMA-BUF file descriptor".to_string());
 		}
-		
+
 		let mut import_memory_fd = vk::ImportMemoryFdInfoKHR::default().handle_type(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT).fd(dup_fd);
 
 		// Find a suitable memory type
 		let memory_properties = unsafe { hal_device.shared_instance().raw_instance().get_physical_device_memory_properties(hal_device.raw_physical_device()) };
-		let memory_type_index = find_memory_type_index(memory_requirements.memory_type_bits, vk::MemoryPropertyFlags::empty(), &memory_properties)
-			.ok_or("Failed to find suitable memory type for DMA-BUF")?;
+		let memory_type_index =
+			find_memory_type_index(memory_requirements.memory_type_bits, vk::MemoryPropertyFlags::empty(), &memory_properties).ok_or("Failed to find suitable memory type for DMA-BUF")?;
 
 		let allocate_info = vk::MemoryAllocateInfo::default()
 			.allocation_size(memory_requirements.size)
@@ -264,11 +265,7 @@ fn cef_to_hal_format(cef_format: cef::sys::cef_color_type_t) -> Result<wgpu::Tex
 }
 
 #[cfg(all(feature = "accelerated_paint", target_os = "linux"))]
-fn find_memory_type_index(
-	type_filter: u32,
-	properties: vk::MemoryPropertyFlags,
-	mem_properties: &vk::PhysicalDeviceMemoryProperties,
-) -> Option<u32> {
+fn find_memory_type_index(type_filter: u32, properties: vk::MemoryPropertyFlags, mem_properties: &vk::PhysicalDeviceMemoryProperties) -> Option<u32> {
 	for i in 0..mem_properties.memory_type_count {
 		if (type_filter & (1 << i)) != 0 && mem_properties.memory_types[i as usize].property_flags.contains(properties) {
 			return Some(i);
