@@ -86,6 +86,7 @@ impl Context<Setup> {
 		let mut client = Client::new(BrowserProcessClientImpl::new(render_handler, event_handler.clone()));
 
 		let url = CefString::from(format!("{GRAPHITE_SCHEME}://{FRONTEND_DOMAIN}/").as_str());
+		let url = CefString::from(format!("chrome://gpu").as_str());
 
 		let window_info = WindowInfo {
 			windowless_rendering_enabled: 1,

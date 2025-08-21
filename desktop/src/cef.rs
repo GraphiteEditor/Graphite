@@ -135,12 +135,29 @@ impl CefEventHandler for CefHandler {
 
 	#[cfg(feature = "accelerated_paint")]
 	fn on_accelerated_paint(&self, shared_handle: internal::render_handler::SharedTextureHandle) {
+		#[cfg(target_os = "linux")]
 		use crate::cef::dmabuf::DmaBufTexture;
-		
+
 		match shared_handle {
 			#[cfg(target_os = "linux")]
-			internal::render_handler::SharedTextureHandle::DmaBuf { fds, format, modifier, width, height, strides, offsets } => {
-				let dmabuf_texture = DmaBufTexture { fds, format, modifier, width, height, strides, offsets };
+			internal::render_handler::SharedTextureHandle::DmaBuf {
+				fds,
+				format,
+				modifier,
+				width,
+				height,
+				strides,
+				offsets,
+			} => {
+				let dmabuf_texture = DmaBufTexture {
+					fds,
+					format,
+					modifier,
+					width,
+					height,
+					strides,
+					offsets,
+				};
 				match dmabuf_texture.import_to_wgpu(&self.wgpu_context.device) {
 					Ok(texture) => {
 						let _ = self.event_loop_proxy.send_event(CustomEvent::UiUpdate(texture));
