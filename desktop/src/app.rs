@@ -177,7 +177,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 			.with_min_inner_size(winit::dpi::LogicalSize::new(400, 300))
 			.with_inner_size(winit::dpi::LogicalSize::new(1200, 800));
 
-		#[cfg(target_family = "unix")]
+		#[cfg(target_os = "linux")]
 		{
 			use crate::consts::APP_ID;
 			use winit::platform::wayland::ActiveEventLoopExtWayland;
