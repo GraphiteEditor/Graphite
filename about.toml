@@ -1,22 +1,22 @@
-# Keep this list in sync with those in `/deny.toml` and `/frontend/vite.config.ts`.
 accepted = [
-	"Apache-2.0 WITH LLVM-exception",
-	"Apache-2.0",
-	"BSD-2-Clause",
-	"BSD-3-Clause",
-	"BSL-1.0",
-	"CC0-1.0",
-	"CDLA-Permissive-2.0",
-	"ISC",
-	"MIT-0",
-	"MIT",
-	"MPL-2.0",
-	"OpenSSL",
-	"Unicode-3.0",
-	"Unicode-DFS-2016",
-	"Zlib",
-	"NCSA",
-	"bzip2-1.0.6",
+	"Apache-2.0 WITH LLVM-exception", # Keep this list in sync with those in `/deny.toml`
+	"Apache-2.0", # Keep this list in sync with those in `/deny.toml`
+	"BSD-2-Clause", # Keep this list in sync with those in `/deny.toml`
+	"BSD-3-Clause", # Keep this list in sync with those in `/deny.toml`
+	"BSL-1.0", # Keep this list in sync with those in `/deny.toml`
+	"CC0-1.0", # Keep this list in sync with those in `/deny.toml`
+	"CDLA-Permissive-2.0", # Keep this list in sync with those in `/deny.toml`
+	"ISC", # Keep this list in sync with those in `/deny.toml`
+	"MIT-0", # Keep this list in sync with those in `/deny.toml`
+	"MIT", # Keep this list in sync with those in `/deny.toml`
+	"MPL-2.0", # Keep this list in sync with those in `/deny.toml`
+	"OpenSSL", # Keep this list in sync with those in `/deny.toml`
+	"Unicode-3.0", # Keep this list in sync with those in `/deny.toml`
+	"Unicode-DFS-2016", # Keep this list in sync with those in `/deny.toml`
+	"Zlib", # Keep this list in sync with those in `/deny.toml`
+	"NCSA", # Keep this list in sync with those in `/deny.toml`
+	"bzip2-1.0.6", # Keep this list in sync with those in `/deny.toml`
+	"OFL-1.1", # Keep this list in sync with those in `/deny.toml`
 ]
 workarounds = ["ring"]
 ignore-build-dependencies = true

@@ -89,6 +89,7 @@
 		.header-area,
 		.footer-area {
 			background: var(--color-1-nearblack);
+			flex: 0 0 auto;
 		}
 
 		.header-area,
@@ -113,6 +114,8 @@
 
 		.content {
 			margin: -4px 0;
+			padding-right: calc(24px + 1px * var(--even-integer-subpixel-expansion-x));
+			padding-bottom: calc(16px + 1px * var(--even-integer-subpixel-expansion-y));
 
 			&.center .row {
 				justify-content: center;
@@ -126,16 +129,20 @@
 				}
 			}
 
-			.details.text-label {
-				-webkit-user-select: text; // Required as of Safari 15.0 (Graphite's minimum version) through the latest release
-				user-select: text;
-				white-space: pre-wrap;
-				max-width: 400px;
-				height: auto;
-			}
-
 			.radio-input button {
 				flex-grow: 1;
+			}
+
+			.text-label.multiline {
+				-webkit-user-select: text; // Still required by Safari as of 2025
+				user-select: text;
+			}
+
+			// Used by the "Third-Party Software License Notices" dialog
+			.details:has(.text-label.multiline.monospace) {
+				max-height: 60vh;
+				max-width: 80vw;
+				overflow: auto;
 			}
 
 			// Used by the "Open Demo Artwork" dialog

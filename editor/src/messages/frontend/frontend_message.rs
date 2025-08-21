@@ -64,6 +64,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "commitDate")]
 		commit_date: String,
 	},
+	TriggerDisplayThirdPartyLicensesDialog,
 	TriggerSaveDocument {
 		document_id: DocumentId,
 		name: String,
