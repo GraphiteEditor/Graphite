@@ -7,6 +7,7 @@ use crate::messages::tool::common_functionality::gizmos::shape_gizmos::circle_ar
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, ShapeToolModifierKey};
+use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::tool_messages::shape_tool::ShapeToolData;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
@@ -23,8 +24,8 @@ impl ShapeGizmoHandler for CircleGizmoHandler {
 		self.circle_radius_handle.hovered()
 	}
 
-	fn handle_state(&mut self, selected_circle_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		self.circle_radius_handle.handle_actions(selected_circle_layer, document, mouse_position, responses);
+	fn handle_state(&mut self, selected_circle_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler) {
+		self.circle_radius_handle.handle_actions(selected_circle_layer, document, mouse_position);
 	}
 
 	fn handle_click(&mut self) {
@@ -33,7 +34,7 @@ impl ShapeGizmoHandler for CircleGizmoHandler {
 		}
 	}
 
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, drag_start: DVec2, _snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		if self.circle_radius_handle.is_dragging() {
 			self.circle_radius_handle.update_inner_radius(document, input, responses, drag_start);
 		}

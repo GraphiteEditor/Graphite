@@ -7,9 +7,11 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::arc_shape::ArcGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::circle_shape::CircleGizmoHandler;
+use crate::messages::tool::common_functionality::shapes::line_shape::LineGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::polygon_shape::PolygonGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::star_shape::StarGizmoHandler;
+use crate::messages::tool::common_functionality::snapping::SnapManager;
 use glam::DVec2;
 use std::collections::VecDeque;
 
@@ -24,6 +26,7 @@ use std::collections::VecDeque;
 pub enum ShapeGizmoHandlers {
 	#[default]
 	None,
+	Line(LineGizmoHandler),
 	Star(StarGizmoHandler),
 	Polygon(PolygonGizmoHandler),
 	Arc(ArcGizmoHandler),
@@ -35,6 +38,7 @@ impl ShapeGizmoHandlers {
 	/// Used for grouping logic and distinguishing between handler types at runtime.
 	pub fn kind(&self) -> &'static str {
 		match self {
+			Self::Line(_) => "Line",
 			Self::Star(_) => "star",
 			Self::Polygon(_) => "polygon",
 			Self::Arc(_) => "arc",
@@ -44,12 +48,13 @@ impl ShapeGizmoHandlers {
 	}
 
 	/// Dispatches interaction state updates to the corresponding shape-specific handler.
-	pub fn handle_state(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn handle_state(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler) {
 		match self {
-			Self::Star(h) => h.handle_state(layer, mouse_position, document, responses),
-			Self::Polygon(h) => h.handle_state(layer, mouse_position, document, responses),
-			Self::Arc(h) => h.handle_state(layer, mouse_position, document, responses),
-			Self::Circle(h) => h.handle_state(layer, mouse_position, document, responses),
+			Self::Line(h) => h.handle_state(layer, mouse_position, document),
+			Self::Star(h) => h.handle_state(layer, mouse_position, document),
+			Self::Polygon(h) => h.handle_state(layer, mouse_position, document),
+			Self::Arc(h) => h.handle_state(layer, mouse_position, document),
+			Self::Circle(h) => h.handle_state(layer, mouse_position, document),
 			Self::None => {}
 		}
 	}
@@ -57,6 +62,7 @@ impl ShapeGizmoHandlers {
 	/// Checks if any interactive part of the gizmo is currently hovered.
 	pub fn is_any_gizmo_hovered(&self) -> bool {
 		match self {
+			Self::Line(h) => h.is_any_gizmo_hovered(),
 			Self::Star(h) => h.is_any_gizmo_hovered(),
 			Self::Polygon(h) => h.is_any_gizmo_hovered(),
 			Self::Arc(h) => h.is_any_gizmo_hovered(),
@@ -68,6 +74,7 @@ impl ShapeGizmoHandlers {
 	/// Passes the click interaction to the appropriate gizmo handler if one is hovered.
 	pub fn handle_click(&mut self) {
 		match self {
+			Self::Line(h) => h.handle_click(),
 			Self::Star(h) => h.handle_click(),
 			Self::Polygon(h) => h.handle_click(),
 			Self::Arc(h) => h.handle_click(),
@@ -77,12 +84,13 @@ impl ShapeGizmoHandlers {
 	}
 
 	/// Updates the gizmo state while the user is dragging a handle (e.g., adjusting radius).
-	pub fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn handle_update(&mut self, drag_start: DVec2, snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		match self {
-			Self::Star(h) => h.handle_update(drag_start, document, input, responses),
-			Self::Polygon(h) => h.handle_update(drag_start, document, input, responses),
-			Self::Arc(h) => h.handle_update(drag_start, document, input, responses),
-			Self::Circle(h) => h.handle_update(drag_start, document, input, responses),
+			Self::Line(h) => h.handle_update(drag_start, snap_manager, document, input, responses),
+			Self::Star(h) => h.handle_update(drag_start, snap_manager, document, input, responses),
+			Self::Polygon(h) => h.handle_update(drag_start, snap_manager, document, input, responses),
+			Self::Arc(h) => h.handle_update(drag_start, snap_manager, document, input, responses),
+			Self::Circle(h) => h.handle_update(drag_start, snap_manager, document, input, responses),
 			Self::None => {}
 		}
 	}
@@ -90,6 +98,7 @@ impl ShapeGizmoHandlers {
 	/// Cleans up any state used by the gizmo handler.
 	pub fn cleanup(&mut self) {
 		match self {
+			Self::Line(h) => h.cleanup(),
 			Self::Star(h) => h.cleanup(),
 			Self::Polygon(h) => h.cleanup(),
 			Self::Arc(h) => h.cleanup(),
@@ -109,6 +118,7 @@ impl ShapeGizmoHandlers {
 		overlay_context: &mut OverlayContext,
 	) {
 		match self {
+			Self::Line(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Star(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Polygon(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Arc(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
@@ -127,6 +137,7 @@ impl ShapeGizmoHandlers {
 		overlay_context: &mut OverlayContext,
 	) {
 		match self {
+			Self::Line(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Star(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Polygon(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Arc(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
@@ -137,6 +148,7 @@ impl ShapeGizmoHandlers {
 
 	pub fn gizmo_cursor_icon(&self) -> Option<MouseCursorIcon> {
 		match self {
+			Self::Line(h) => h.mouse_cursor_icon(),
 			Self::Star(h) => h.mouse_cursor_icon(),
 			Self::Polygon(h) => h.mouse_cursor_icon(),
 			Self::Arc(h) => h.mouse_cursor_icon(),
@@ -168,6 +180,10 @@ impl GizmoManager {
 	///
 	/// Returns `None` if the given layer does not represent a shape with a registered gizmo.
 	pub fn detect_shape_handler(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<ShapeGizmoHandlers> {
+		// Line
+		if graph_modification_utils::get_line_id(layer, &document.network_interface).is_some() {
+			return Some(ShapeGizmoHandlers::Line(LineGizmoHandler::default()));
+		}
 		// Star
 		if graph_modification_utils::get_star_id(layer, &document.network_interface).is_some() {
 			return Some(ShapeGizmoHandlers::Star(StarGizmoHandler::default()));
@@ -196,12 +212,12 @@ impl GizmoManager {
 	/// Called every frame to check selected layers and update the active shape gizmo, if hovered.
 	///
 	/// Also groups all shape layers with the same kind of gizmo to support overlays for multi-shape editing.
-	pub fn handle_actions(&mut self, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn handle_actions(&mut self, mouse_position: DVec2, document: &DocumentMessageHandler) {
 		let mut handlers_layer: Vec<(ShapeGizmoHandlers, Vec<LayerNodeIdentifier>)> = Vec::new();
 
 		for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 			if let Some(mut handler) = Self::detect_shape_handler(layer, document) {
-				handler.handle_state(layer, mouse_position, document, responses);
+				handler.handle_state(layer, mouse_position, document);
 				let is_hovered = handler.is_any_gizmo_hovered();
 
 				if is_hovered {
@@ -239,9 +255,9 @@ impl GizmoManager {
 	}
 
 	/// Passes drag update data to the active gizmo to update shape parameters live.
-	pub fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn handle_update(&mut self, drag_start: DVec2, snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		if let Some(handle) = &mut self.active_shape_handler {
-			handle.handle_update(drag_start, document, input, responses);
+			handle.handle_update(drag_start, snap_manager, document, input, responses);
 		}
 	}
 

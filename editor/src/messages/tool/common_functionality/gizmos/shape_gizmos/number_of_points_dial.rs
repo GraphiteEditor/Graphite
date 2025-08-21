@@ -1,11 +1,10 @@
 use crate::consts::{GIZMO_HIDE_THRESHOLD, NUMBER_OF_POINTS_DIAL_SPOKE_EXTENSION, NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD};
-use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::Responses;
-use crate::messages::prelude::{DocumentMessageHandler, FrontendMessage, InputPreprocessorMessageHandler, NodeGraphMessage};
+use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{extract_polygon_parameters, inside_polygon, inside_star, polygon_outline, polygon_vertex_position, star_outline};
@@ -49,7 +48,7 @@ impl NumberOfPointsDial {
 		self.handle_state == NumberOfPointsDialState::Dragging
 	}
 
-	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler) {
 		match &self.handle_state {
 			NumberOfPointsDialState::Inactive => {
 				// Star
@@ -63,7 +62,6 @@ impl NumberOfPointsDial {
 						self.layer = Some(layer);
 						self.initial_points = sides;
 						self.update_state(NumberOfPointsDialState::Hover);
-						responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::EWResize });
 					}
 				}
 
@@ -78,7 +76,6 @@ impl NumberOfPointsDial {
 						self.layer = Some(layer);
 						self.initial_points = sides;
 						self.update_state(NumberOfPointsDialState::Hover);
-						responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::EWResize });
 					}
 				}
 			}
@@ -91,7 +88,6 @@ impl NumberOfPointsDial {
 				if mouse_position.distance(center) > NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH && matches!(&self.handle_state, NumberOfPointsDialState::Hover) {
 					self.update_state(NumberOfPointsDialState::Inactive);
 					self.layer = None;
-					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 				}
 			}
 		}
