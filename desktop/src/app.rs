@@ -1,18 +1,19 @@
 use crate::CustomEvent;
 use crate::cef::WindowSize;
-use crate::consts::APP_NAME;
+use crate::consts::{APP_NAME, CEF_MESSAGE_LOOP_MAX_ITERATIONS};
 use crate::render::GraphicsState;
 use graphite_desktop_wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage};
 use graphite_desktop_wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
+
 use rfd::AsyncFileDialog;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
+use std::sync::mpsc::SyncSender;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
-use winit::event::StartCause;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::event_loop::ControlFlow;
@@ -31,11 +32,23 @@ pub(crate) struct WinitApp {
 	wgpu_context: WgpuContext,
 	event_loop_proxy: EventLoopProxy<CustomEvent>,
 	desktop_wrapper: DesktopWrapper,
+	last_ui_update: Instant,
+	avg_frame_time: f32,
+	start_render_sender: SyncSender<()>,
 }
 
 impl WinitApp {
 	pub(crate) fn new(cef_context: cef::Context<cef::Initialized>, window_size_sender: Sender<WindowSize>, wgpu_context: WgpuContext, event_loop_proxy: EventLoopProxy<CustomEvent>) -> Self {
-		let desktop_wrapper = DesktopWrapper::new();
+		let rendering_loop_proxy = event_loop_proxy.clone();
+		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
+		std::thread::spawn(move || {
+			loop {
+				let result = futures::executor::block_on(DesktopWrapper::execute_node_graph());
+				let _ = rendering_loop_proxy.send_event(CustomEvent::NodeGraphExecutionResult(result));
+				let _ = start_render_receiver.recv();
+			}
+		});
+
 		Self {
 			cef_context,
 			window: None,
@@ -44,7 +57,10 @@ impl WinitApp {
 			window_size_sender,
 			wgpu_context,
 			event_loop_proxy,
-			desktop_wrapper,
+			desktop_wrapper: DesktopWrapper::new(),
+			last_ui_update: Instant::now(),
+			avg_frame_time: 0.,
+			start_render_sender,
 		}
 	}
 
@@ -152,23 +168,20 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 		// Set a timeout in case we miss any cef schedule requests
 		let timeout = Instant::now() + Duration::from_millis(10);
 		let wait_until = timeout.min(self.cef_schedule.unwrap_or(timeout));
-		self.cef_context.work();
-
-		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
-	}
-
-	fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
 		if let Some(schedule) = self.cef_schedule
 			&& schedule < Instant::now()
 		{
 			self.cef_schedule = None;
-			self.cef_context.work();
-		}
-		if let StartCause::ResumeTimeReached { .. } = cause {
-			if let Some(window) = &self.window {
-				window.request_redraw();
+			// Poll cef message loop multiple times to avoid message loop starvation
+			for _ in 0..CEF_MESSAGE_LOOP_MAX_ITERATIONS {
+				self.cef_context.work();
 			}
 		}
+		if let Some(window) = &self.window.as_ref() {
+			window.request_redraw();
+		}
+
+		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
 	}
 
 	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
@@ -220,6 +233,11 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 				if let Some(graphics_state) = self.graphics_state.as_mut() {
 					graphics_state.resize(texture.width(), texture.height());
 					graphics_state.bind_ui_texture(texture);
+					let elapsed = self.last_ui_update.elapsed().as_secs_f32();
+					self.last_ui_update = Instant::now();
+					if elapsed < 0.5 {
+						self.avg_frame_time = (self.avg_frame_time * 3. + elapsed) / 4.;
+					}
 				}
 				if let Some(window) = &self.window {
 					window.request_redraw();
@@ -251,16 +269,18 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 			WindowEvent::RedrawRequested => {
 				let Some(ref mut graphics_state) = self.graphics_state else { return };
 				// Only rerender once we have a new ui texture to display
-
-				match graphics_state.render() {
-					Ok(_) => {}
-					Err(wgpu::SurfaceError::Lost) => {
-						tracing::warn!("lost surface");
+				if let Some(window) = &self.window {
+					match graphics_state.render(window.as_ref()) {
+						Ok(_) => {}
+						Err(wgpu::SurfaceError::Lost) => {
+							tracing::warn!("lost surface");
+						}
+						Err(wgpu::SurfaceError::OutOfMemory) => {
+							event_loop.exit();
+						}
+						Err(e) => tracing::error!("{:?}", e),
 					}
-					Err(wgpu::SurfaceError::OutOfMemory) => {
-						event_loop.exit();
-					}
-					Err(e) => tracing::error!("{:?}", e),
+					let _ = self.start_render_sender.try_send(());
 				}
 			}
 			// Currently not supported on wayland see https://github.com/rust-windowing/winit/issues/1881
