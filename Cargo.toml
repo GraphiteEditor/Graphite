@@ -142,7 +142,7 @@ pretty_assertions = "1.4.1"
 fern = { version = "0.7", features = ["colored"] }
 num_enum = "0.7"
 num-derive = "0.4"
-num-traits = { version = "0.2", default-features = false, features = ["i128"] }
+num-traits = { version = "0.2", default-features = false, features = ["libm"] }
 specta = { version = "2.0.0-rc.22", features = [
 	"glam",
 	"derive",
