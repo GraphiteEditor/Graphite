@@ -57,7 +57,6 @@ impl Drop for MultiThreadedCefContextProxy {
 	}
 }
 
-// Convenience function for posting closure tasks
 pub(super) fn run_on_ui_thread<F>(closure: F)
 where
 	F: FnOnce() + Send + 'static,
