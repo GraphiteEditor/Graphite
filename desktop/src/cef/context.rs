@@ -133,7 +133,11 @@ impl CefContext for Context<Initialized> {
 	}
 
 	fn handle_window_event(&mut self, event: WindowEvent) -> Option<WindowEvent> {
-		input::handle_window_event(self, event)
+		if let Some(browser) = &self.browser {
+			input::handle_window_event(browser, &mut self.input_state, event)
+		} else {
+			Some(event)
+		}
 	}
 
 	fn notify_of_resize(&self) {
@@ -163,12 +167,14 @@ impl CefContext for CefContextSendProxy {
 	}
 
 	fn handle_window_event(&mut self, event: WindowEvent) -> Option<WindowEvent> {
-		let _event_clone = event.clone();
+		let event_clone = event.clone();
 		post_closure_task(ThreadId::from(cef_thread_id_t::TID_UI), move || {
 			BROWSER.with(|b| {
-				if let Some(_browser) = b.borrow().as_ref() {
+				if let Some((browser, input_state)) = b.borrow_mut().as_mut() {
 					// Forward window event to CEF input handling on UI thread
 					// TODO: Implement input handling directly here
+					// dbg!(_event_clone);
+					input::handle_window_event(browser, input_state, event_clone);
 				}
 			});
 		});
@@ -178,7 +184,7 @@ impl CefContext for CefContextSendProxy {
 	fn notify_of_resize(&self) {
 		post_closure_task(ThreadId::from(cef_thread_id_t::TID_UI), || {
 			BROWSER.with(|b| {
-				if let Some(browser) = b.borrow().as_ref() {
+				if let Some((browser, _)) = b.borrow().as_ref() {
 					if let Some(host) = browser.host() {
 						host.was_resized();
 					}
@@ -190,7 +196,7 @@ impl CefContext for CefContextSendProxy {
 	fn send_web_message(&self, message: Vec<u8>) {
 		post_closure_task(ThreadId::from(cef_thread_id_t::TID_UI), move || {
 			BROWSER.with(|b| {
-				if let Some(browser) = b.borrow().as_ref() {
+				if let Some((browser, _)) = b.borrow().as_ref() {
 					// Inline the send_message functionality
 					use super::ipc::{MessageType, SendMessage};
 					if let Some(frame) = browser.main_frame() {
@@ -209,6 +215,7 @@ impl CefContext for std::sync::mpsc::Sender<ContextMessage> {
 	}
 
 	fn handle_window_event(&mut self, event: WindowEvent) -> Option<WindowEvent> {
+		dbg!(&event);
 		let _ = self.send(ContextMessage::WindowEvent(event.clone()));
 		Some(event)
 	}
@@ -268,7 +275,7 @@ pub(crate) fn cef_context(context: Context<Setup>, event_handler: impl CefEventH
 
 			// Store browser in thread-local storage
 			BROWSER.with(|b| {
-				*b.borrow_mut() = browser;
+				*b.borrow_mut() = Some((browser.expect("failed to initialize browser"), InputState::default()));
 			});
 		});
 
@@ -319,7 +326,7 @@ pub(crate) trait CefContext {
 
 // Thread-local browser storage for UI thread
 thread_local! {
-	static BROWSER: RefCell<Option<Browser>> = RefCell::new(None);
+	static BROWSER: RefCell<Option<(Browser, InputState)>> = RefCell::new(None);
 }
 
 // Closure-based task wrapper following CEF patterns
