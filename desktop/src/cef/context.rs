@@ -129,7 +129,7 @@ impl Context<Setup> {
 
 impl CefContext for Context<Initialized> {
 	fn work(&mut self) {
-		// cef::do_message_loop_work();
+		cef::do_message_loop_work();
 	}
 
 	fn handle_window_event(&mut self, event: WindowEvent) -> Option<WindowEvent> {
