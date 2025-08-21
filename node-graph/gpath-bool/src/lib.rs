@@ -114,11 +114,16 @@ fn subtract<'a>(vector: impl Iterator<Item = TableRowRef<'a, Vector>>) -> Table<
 
 	let mut result_vector_table = Table::new_from_row(vector.next().map(|x| x.into_cloned()).unwrap_or_default());
 	let mut first_row = result_vector_table.iter_mut().next().expect("Expected the one row we just pushed");
+	let first_row_transform = if first_row.transform.matrix2.determinant() != 0. {
+		first_row.transform.inverse()
+	} else {
+		DAffine2::IDENTITY
+	};
 
 	let mut next_vector = vector.next();
 
 	while let Some(lower_vector) = next_vector {
-		let transform_of_lower_into_space_of_upper = first_row.transform.inverse() * *lower_vector.transform;
+		let transform_of_lower_into_space_of_upper = first_row_transform * *lower_vector.transform;
 
 		let result = &mut first_row.element;
 
