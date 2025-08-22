@@ -54,13 +54,81 @@ The `ExtractAll` trait can be used to create a new Context based on the previous
 async fn transform(ctx: impl Ctx + ExtractAll, ...)  {...}
  ```
 
+## Context Feature Injection
+
+Some nodes need to provide context features for their downstream dependencies (in the function call stack building phase). This is accomplished through `Inject*` traits that complement the `Extract*` traits:
+
+```rust
+// A node that injects index information for downstream map operations
+#[node_macro::node(category("Iteration"))]
+fn map_with_index<T>(
+    ctx: impl Ctx + InjectIndex, 
+    collection: Vec<T>, 
+    mapper: impl Node<T, Output = U>
+) -> Vec<U> {
+    collection.iter().enumerate().map(|(index, item)| {
+        // This node injects the current index into the context
+        // for the mapper node to extract via ExtractIndex
+        let ctx_with_index = ctx.with_injected_index(index);
+        mapper.eval_with_context(ctx_with_index, item)
+    }).collect()
+}
+
+// Downstream nodes can extract the injected index
+#[node_macro::node(category("Utility"))]
+fn use_index(ctx: impl Ctx + ExtractIndex, value: f64) -> f64 {
+    let index = ctx.index().unwrap_or(0);
+    value * (index as f64)
+}
+```
+
+### Injection Hierarchy and Precedence
+When a node both extracts and injects the same feature:
+- **Extract-then-Inject**: Node extracts from upstream, processes, then injects modified version downstream
+- **Inject-Override**: Injected features take precedence over upstream extracted features
+- **Injection Scope**: Injected features are only available to immediate downstream nodes in the evaluation chain
+
 # Reference-level explanation
 [reference-level-explanation]: #reference-level-explanation
 
-The different `Extract*` traits are exported by the node macro and could thus be included as part of the document node definition to inform the compiler about features extracted in every node. Note that the `ExtractAll` will be ignored in this analysis. Any usages of partial context data are propagated downstream and all nodes are identified in which the number of extracted features changes between the upstream and downstream. At these locations a context modification needs to be inserted which "zeros" the data no longer used in the upstream part of the graph.
-Note that the number of features extracted can usually only increase except for cases where a node decides to inject data into the call chain.
-This will be the case when building lambda expressions, the node driving the lambda evaluation (e.g. a map or a fold node) would insert data such as the index into the call chain.
-We might consider adding a special `Inject*` annotation in the future to indicate that the downstream of this node does not need to provide the feature even though the upstream does need it.
+The different `Extract*` and `Inject*` traits are exported by the node macro and are included as part of the document node definition to inform the compiler about features extracted and injected by every node. Note that the `ExtractAll` will be ignored in this analysis.
+
+## Context Nullification Analysis
+
+The compiler determines where to insert context nullification nodes through branch analysis:
+
+1. **Extract Requirement Tracking**: For each branch in the graph, track the extract requirements all the way back to their corresponding inject nodes. Every extracted feature must have a corresponding inject node somewhere upstream, otherwise this is a compile error.
+
+2. **Branch Convergence Analysis**: When two branches with different extract requirements meet (at a node that takes multiple inputs), one or both branches can have their context nullified to remove features only needed in the other branch.
+
+3. **Post-Injection Nullification**: After an inject node, the extract needs of downstream nodes are satisfied for that inject type. At this point we can check if all the features that the inject node provides are actually used downstream, and if not, nullify them immediately.
+
+4. **Injection Scope Optimization**: After every inject node, analyze whether all injected features are actually consumed by downstream nodes. Unused injected features can be nullified right at the injection point.
+
+## Inject* Trait System
+
+The injection system provides these complementary traits to Extract*:
+
+```rust
+pub trait InjectFootprint {
+    fn with_injected_footprint(&self, footprint: Footprint) -> Context;
+}
+
+pub trait InjectTime {
+    fn with_injected_time(&self, time: f64) -> Context;
+}
+
+pub trait InjectIndex {
+    fn with_injected_index(&self, index: usize) -> Context;
+}
+
+pub trait InjectVarArgs {
+    fn with_injected_varargs(&self, args: &[DynBox]) -> Context;
+}
+```
+
+Note that "downstream" in this context refers to nodes that are called later in the function call stack building phase, which is inverted compared to the usual data flow direction.
+
 This can be implemented as a compiler pass similar to the compose node insertion.
 
 # Drawbacks
@@ -84,4 +152,4 @@ This is expected to have the biggest impact on real time applications such as an
 # Future possibilities
 [future-possibilities]: #future-possibilities
 
-Adding `Inject*` annotation to complement the `Extract*` ones to provide even more fine grained control over caching.
+~Adding `Inject*` annotation to complement the `Extract*` ones to provide even more fine grained control over caching.~
