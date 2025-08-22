@@ -22,6 +22,9 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		fill: Fill,
 	},
+	RepeatSet {
+		layer: LayerNodeIdentifier,
+	},
 	BlendingFillSet {
 		layer: LayerNodeIdentifier,
 		fill: f64,
