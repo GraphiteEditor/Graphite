@@ -107,24 +107,13 @@ The compiler determines where to insert context nullification nodes through bran
 
 ## Inject* Trait System
 
-The injection system provides these complementary traits to Extract*:
+The injection system provides these complementary marker traits to Extract*:
 
 ```rust
-pub trait InjectFootprint {
-    fn with_injected_footprint(&self, footprint: Footprint) -> Context;
-}
-
-pub trait InjectTime {
-    fn with_injected_time(&self, time: f64) -> Context;
-}
-
-pub trait InjectIndex {
-    fn with_injected_index(&self, index: usize) -> Context;
-}
-
-pub trait InjectVarArgs {
-    fn with_injected_varargs(&self, args: &[DynBox]) -> Context;
-}
+pub trait InjectFootprint {}
+pub trait InjectTime {}
+pub trait InjectIndex {}
+pub trait InjectVarArgs {}
 ```
 
 ## Context Feature Modification Traits
@@ -172,11 +161,14 @@ Example optimization:
         Footprint needed     Footprint needed     Footprint needed
 ```
 
-This allows transform chains to be highly optimized when their modifications aren't actually consumed downstream.
+This allows transform chains to be optimized when their modifications aren't actually consumed downstream.
 
 Note that "downstream" in this context refers to nodes that are called later in the function call stack building phase, which is inverted compared to the usual data flow direction.
 
 This can be implemented as a compiler pass similar to the compose node insertion.
+
+### Error Handling
+- Compile-time validation: Every Extract* must have corresponding Inject* upstream
 
 # Drawbacks
 [drawbacks]: #drawbacks

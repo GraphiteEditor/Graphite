@@ -7,6 +7,7 @@ pub mod blending_nodes;
 pub mod bounds;
 pub mod consts;
 pub mod context;
+pub mod context_modification;
 pub mod debug;
 pub mod extract_xy;
 pub mod generic;
