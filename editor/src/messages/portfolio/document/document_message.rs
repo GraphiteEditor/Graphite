@@ -89,6 +89,7 @@ pub enum DocumentMessage {
 	MoveSelectedLayersTo {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
+		as_duplicate: bool,
 	},
 	MoveSelectedLayersToGroup {
 		parent: LayerNodeIdentifier,
