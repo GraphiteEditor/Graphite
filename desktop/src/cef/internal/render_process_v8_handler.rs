@@ -21,8 +21,11 @@ impl ImplV8Handler for BrowserProcessV8HandlerImpl {
 		_retval: Option<&mut Option<V8Value>>,
 		_exception: Option<&mut cef::CefString>,
 	) -> ::std::os::raw::c_int {
-		if let Some(name) = name {
-			if name.to_string() == "sendNativeMessage" {
+		match name.map(|s| s.to_string()).unwrap_or_default().as_str() {
+			"initializeNativeCommunication" => {
+				v8_context_get_current_context().send_message(MessageType::Initialized, vec![0u8].as_slice());
+			}
+			"sendNativeMessage" => {
 				let Some(args) = arguments else {
 					tracing::error!("No arguments provided to sendNativeMessage");
 					return 0;
@@ -47,6 +50,9 @@ impl ImplV8Handler for BrowserProcessV8HandlerImpl {
 				v8_context_get_current_context().send_message(MessageType::SendToNative, data);
 
 				return 1;
+			}
+			name => {
+				tracing::error!("Unknown V8 function called: {}", name);
 			}
 		}
 		1

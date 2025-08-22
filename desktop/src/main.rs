@@ -21,6 +21,7 @@ use graphite_desktop_wrapper::{NodeGraphExecutionResult, WgpuContext};
 pub(crate) enum CustomEvent {
 	UiUpdate(wgpu::Texture),
 	ScheduleBrowserWork(Instant),
+	WebCommunicationInitialized,
 	DesktopWrapperMessage(DesktopWrapperMessage),
 	NodeGraphExecutionResult(NodeGraphExecutionResult),
 }

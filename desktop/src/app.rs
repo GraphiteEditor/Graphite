@@ -35,6 +35,8 @@ pub(crate) struct WinitApp {
 	last_ui_update: Instant,
 	avg_frame_time: f32,
 	start_render_sender: SyncSender<()>,
+	web_communication_initialized: bool,
+	web_communication_startup_buffer: Vec<Vec<u8>>,
 }
 
 impl WinitApp {
@@ -61,6 +63,8 @@ impl WinitApp {
 			last_ui_update: Instant::now(),
 			avg_frame_time: 0.,
 			start_render_sender,
+			web_communication_initialized: false,
+			web_communication_startup_buffer: Vec::new(),
 		}
 	}
 
@@ -71,7 +75,7 @@ impl WinitApp {
 					tracing::error!("Failed to serialize frontend messages");
 					return;
 				};
-				self.cef_context.send_web_message(bytes);
+				self.send_or_queue_web_message(bytes);
 			}
 			DesktopFrontendMessage::OpenFileDialog { title, filters, context } => {
 				let event_loop_proxy = self.event_loop_proxy.clone();
@@ -161,6 +165,14 @@ impl WinitApp {
 		let responses = self.desktop_wrapper.dispatch(message);
 		self.handle_desktop_frontend_messages(responses);
 	}
+
+	fn send_or_queue_web_message(&mut self, message: Vec<u8>) {
+		if self.web_communication_initialized {
+			self.cef_context.send_web_message(message);
+		} else {
+			self.web_communication_startup_buffer.push(message);
+		}
+	}
 }
 
 impl ApplicationHandler<CustomEvent> for WinitApp {
@@ -215,6 +227,12 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 
 	fn user_event(&mut self, _: &ActiveEventLoop, event: CustomEvent) {
 		match event {
+			CustomEvent::WebCommunicationInitialized => {
+				self.web_communication_initialized = true;
+				for message in self.web_communication_startup_buffer.drain(..) {
+					self.cef_context.send_web_message(message);
+				}
+			}
 			CustomEvent::DesktopWrapperMessage(message) => self.dispatch_desktop_wrapper_message(message),
 			CustomEvent::NodeGraphExecutionResult(result) => match result {
 				NodeGraphExecutionResult::HasRun(texture) => {
