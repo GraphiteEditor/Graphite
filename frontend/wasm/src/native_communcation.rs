@@ -20,6 +20,17 @@ pub fn receive_native_message(buffer: ArrayBuffer) {
 	}
 }
 
+pub fn initialize_native_communication() {
+	let global = js_sys::global();
+
+	// Get the function by name
+	let func = js_sys::Reflect::get(&global, &JsValue::from_str("initializeNativeCommunication")).expect("Function not found");
+	let func = func.dyn_into::<js_sys::Function>().expect("Not a function");
+
+	// Call it
+	func.call0(&JsValue::NULL).expect("Function call failed");
+}
+
 pub fn send_message_to_cef(message: String) {
 	let global = js_sys::global();
 
