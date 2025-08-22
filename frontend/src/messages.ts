@@ -356,9 +356,12 @@ export class UpdatePlatform extends JsMessage {
 	readonly platform!: AppWindowPlatform;
 }
 
-export class UpdateMaximized extends JsMessage {
+export class UpdateWindowState extends JsMessage {
 	readonly maximized!: boolean;
+	readonly minimized!: boolean;
 }
+
+export class CloseWindow extends JsMessage {}
 
 export class UpdateViewportHolePunch extends JsMessage {
 	readonly active!: boolean;
@@ -1741,7 +1744,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateLayersPanelControlBarLeftLayout,
 	UpdateLayersPanelControlBarRightLayout,
 	UpdateLayerWidths,
-	UpdateMaximized,
+	UpdateWindowState,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,

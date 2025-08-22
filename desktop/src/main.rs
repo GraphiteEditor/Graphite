@@ -24,6 +24,7 @@ pub(crate) enum CustomEvent {
 	WebCommunicationInitialized,
 	DesktopWrapperMessage(DesktopWrapperMessage),
 	NodeGraphExecutionResult(NodeGraphExecutionResult),
+	CloseWindow,
 }
 
 fn main() {
