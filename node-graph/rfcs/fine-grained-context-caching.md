@@ -127,6 +127,53 @@ pub trait InjectVarArgs {
 }
 ```
 
+## Context Feature Modification Traits
+
+The modification system provides marker traits for nodes that transform context features without necessarily depending on them:
+
+```rust
+pub trait ModifyFootprint: ExtractFootprint + InjectFootprint {}
+pub trait ModifyTime: ExtractTime + InjectTime {}
+pub trait ModifyIndex: ExtractIndex + InjectIndex {}
+pub trait ModifyVarArgs: ExtractVarArgs + InjectVarArgs {}
+```
+
+### Conditional Context Dependencies
+Modify* traits represent a special case in context analysis:
+
+```rust
+// Transform node example - modifies footprint but doesn't need it unless downstream requires it
+#[node_macro::node(category("Transform"))]
+fn transform(
+    ctx: impl Ctx + ModifyFootprint, 
+    input: Vector,
+    transform: Transform2D
+) -> Vector {
+    // This node can extract the footprint, modify it, and inject the result
+    // But if no downstream node needs the footprint, this node doesn't need it either
+    let modified_footprint = ctx.footprint().transform(transform);
+    // ... transform logic ...
+}
+```
+
+### Optimization Implications for Modify* Traits
+1. **Conditional Requirements**: Modify* nodes only require their features if downstream nodes extract them
+2. **Pass-through Optimization**: If no downstream extraction occurs, the Modify* node can be treated as if it has no context requirements
+3. **Transform Chains**: Multiple Modify* nodes can be chained together, with requirements only propagating if there's a final Extract* consumer
+
+Example optimization:
+```
+[Node A] -> [ModifyFootprint] -> [ModifyFootprint] -> [ExtractTime]
+              ↑                    ↑                    ↑
+        No footprint needed   No footprint needed   Only time needed
+        
+[Node A] -> [ModifyFootprint] -> [ModifyFootprint] -> [ExtractFootprint] 
+              ↑                    ↑                    ↑
+        Footprint needed     Footprint needed     Footprint needed
+```
+
+This allows transform chains to be highly optimized when their modifications aren't actually consumed downstream.
+
 Note that "downstream" in this context refers to nodes that are called later in the function call stack building phase, which is inverted compared to the usual data flow direction.
 
 This can be implemented as a compiler pass similar to the compose node insertion.
