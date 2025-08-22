@@ -7,12 +7,13 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::{Comma, RArrow};
 use syn::{
-	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam, Visibility,
-	WhereClause, parse_quote,
+	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, TraitBound, Type, TypeImplTrait,
+	TypeParam, TypeParamBound, Visibility, WhereClause, parse_quote,
 };
 
 use crate::codegen::generate_node_code;
 use crate::shader_nodes::ShaderNodeType;
+
 
 #[derive(Clone, Debug)]
 pub(crate) struct Implementation {
@@ -149,6 +150,7 @@ pub(crate) struct Input {
 	pub(crate) pat_ident: PatIdent,
 	pub(crate) ty: Type,
 	pub(crate) implementations: Punctuated<Type, Comma>,
+	pub(crate) context_features: Vec<Ident>,
 }
 
 impl Parse for Implementation {
@@ -384,10 +386,12 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 					.map(|attr| parse_implementations(attr, &pat_ident.ident))
 					.transpose()?
 					.unwrap_or_default();
+				let context_features = parse_context_feature_idents(&**ty);
 				input = Some(Input {
 					pat_ident,
 					ty: (**ty).clone(),
 					implementations,
+					context_features,
 				});
 			} else if let Pat::Ident(pat_ident) = &**pat {
 				let field = parse_field(pat_ident.clone(), (**ty).clone(), attrs).map_err(|e| Error::new_spanned(pat_ident, format!("Failed to parse argument '{}': {}", pat_ident.ident, e)))?;
@@ -402,6 +406,41 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 
 	let input = input.ok_or_else(|| Error::new_spanned(inputs, "Expected at least one input argument. The first argument should be the node input type."))?;
 	Ok((input, fields))
+}
+
+/// Parse context feature identifiers from the trait bounds of a context parameter
+fn parse_context_feature_idents(ty: &Type) -> Vec<Ident> {
+	let mut features = Vec::new();
+
+	// Check if this is an impl trait (impl Ctx + ...)
+	if let Type::ImplTrait(TypeImplTrait { bounds, .. }) = ty {
+		for bound in bounds {
+			if let TypeParamBound::Trait(TraitBound { path, .. }) = bound {
+				// Extract the last segment of the trait path
+				if let Some(segment) = path.segments.last() {
+					match segment.ident.to_string().as_str() {
+						"ExtractFootprint"
+						| "ExtractTime"
+						| "ExtractAnimationTime"
+						| "ExtractIndex"
+						| "ExtractVarArgs"
+						| "InjectFootprint"
+						| "InjectTime"
+						| "InjectAnimationTime"
+						| "InjectIndex"
+						| "InjectVarArgs" => {
+							features.push(segment.ident.clone());
+						}
+						// Skip Modify* traits as they don't affect usage tracking
+						// Also ignore other traits like Ctx, ExtractAll, etc.
+						_ => {}
+					}
+				}
+			}
+		}
+	}
+
+	features
 }
 
 fn parse_implementations(attr: &Attribute, name: &Ident) -> syn::Result<Punctuated<Type, Comma>> {

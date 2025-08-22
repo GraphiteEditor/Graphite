@@ -132,6 +132,7 @@ pub struct ProtoNode {
 	pub identifier: ProtoNodeIdentifier,
 	pub original_location: OriginalLocation,
 	pub skip_deduplication: bool,
+	pub(crate) context_features: ContextDependencies,
 }
 
 impl Default for ProtoNode {
@@ -142,6 +143,7 @@ impl Default for ProtoNode {
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
+			context_features: Default::default(),
 		}
 	}
 }
@@ -181,6 +183,7 @@ impl ProtoNode {
 				..Default::default()
 			},
 			skip_deduplication: false,
+			context_features: Default::default(),
 		}
 	}
 
@@ -290,11 +293,63 @@ impl ProtoNetwork {
 		(inwards_edges, id_map)
 	}
 
+	/// Inserts context nullification nodes to optimize caching
+	/// This analysis is performed after topological sorting to ensure proper dependency tracking
+	pub fn insert_context_nullification_nodes(&mut self) -> Result<(), String> {
+		// TODO: Implement full context flow analysis with:
+		// 1. DFS traversal to track context feature requirements
+		// 2. Branch convergence analysis
+		// 3. Post-injection nullification
+		// 4. Insert ContextModificationNode instances where beneficial
+
+		Ok(())
+	}
+
 	/// Performs topological sort and reorders ids.
 	pub fn resolve_inputs(&mut self) -> Result<(), String> {
 		// Perform topological sort once
 		self.reorder_ids()?;
+		// Insert context nullification nodes after topological sort
+		self.insert_context_nullification_nodes()?;
 
+		// Collect outward edges once
+		let outwards_edges = self.collect_outwards_edges();
+
+		// // Iterate over nodes in topological order
+		// for node_id in 0..=max_id {
+		// 	let node_id = NodeId(node_id);
+
+		// 	let (_, node) = &mut self.nodes[node_id.0 as usize];
+
+		// 	if let ProtoNodeInput::Node(input_node_id) = node.input {
+		// 		// Create a new node that composes the current node and its input node
+		// 		let compose_node_id = NodeId(self.nodes.len() as u64);
+
+		// 		let (_, input_node_id_proto) = &self.nodes[input_node_id.0 as usize];
+
+		// 		let input = input_node_id_proto.input.clone();
+
+		// 		let mut path = input_node_id_proto.original_location.path.clone();
+		// 		if let Some(path) = &mut path {
+		// 			path.push(node_id);
+		// 		}
+
+		// 		self.nodes.push((
+		// 			compose_node_id,
+		// 			ProtoNode {
+		// 				identifier: ProtoNodeIdentifier::new("graphene_core::structural::ComposeNode"),
+		// 				construction_args: ConstructionArgs::Nodes(vec![(input_node_id, false), (node_id, true)]),
+		// 				call_argument,
+		// 				original_location: OriginalLocation { path, ..Default::default() },
+		// 				skip_deduplication: false,
+		// 				context_features: Default::default(),
+		// 			},
+		// 		));
+
+		// 		self.replace_node_id(&outwards_edges, node_id, compose_node_id);
+		// 	}
+		// }
+		self.reorder_ids()?;
 		Ok(())
 	}
 
