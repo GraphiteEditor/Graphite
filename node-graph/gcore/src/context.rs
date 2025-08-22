@@ -31,19 +31,98 @@ pub trait ExtractIndex {
 
 // Consider returning a slice or something like that
 pub trait ExtractVarArgs {
-	// Call this lifetime 'b so it is less likely to coflict when auto generating the function signature for implementation
 	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult>;
 	fn varargs_len(&self) -> Result<usize, VarArgsResult>;
 }
+
 // Consider returning a slice or something like that
 pub trait CloneVarArgs: ExtractVarArgs {
 	// fn box_clone(&self) -> Vec<DynBox>;
 	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>>;
 }
 
+// Inject* traits for providing context features to downstream nodes
+pub trait InjectFootprint {}
+pub trait InjectTime {}
+pub trait InjectAnimationTime {}
+pub trait InjectIndex {}
+pub trait InjectVarArgs {}
+
+// Modify* marker traits for context-transparent nodes
+pub trait ModifyFootprint: ExtractFootprint + InjectFootprint {}
+pub trait ModifyTime: ExtractTime + InjectTime {}
+pub trait ModifyAnimationTime: ExtractAnimationTime + InjectAnimationTime {}
+pub trait ModifyIndex: ExtractIndex + InjectIndex {}
+pub trait ModifyVarArgs: ExtractVarArgs + InjectVarArgs {}
+
 pub trait ExtractAll: ExtractFootprint + ExtractIndex + ExtractTime + ExtractAnimationTime + ExtractVarArgs {}
 
 impl<T: ?Sized + ExtractFootprint + ExtractIndex + ExtractTime + ExtractAnimationTime + ExtractVarArgs> ExtractAll for T {}
+
+impl<T: Ctx> InjectFootprint for T {}
+impl<T: Ctx> InjectTime for T {}
+impl<T: Ctx> InjectAnimationTime for T {}
+impl<T: Ctx> InjectVarArgs for T {}
+
+// Public enum for flexible node macro codegen
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum ContextFeature {
+	ExtractFootprint,
+	ExtractTime,
+	ExtractAnimationTime,
+	ExtractIndex,
+	ExtractVarArgs,
+	InjectFootprint,
+	InjectTime,
+	InjectAnimationTime,
+	InjectIndex,
+	InjectVarArgs,
+}
+
+// Internal bitflags for fast compiler analysis (only extract features)
+use bitflags::bitflags;
+bitflags! {
+	#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, Default)]
+	pub struct ContextFeatures: u32 {
+		const FOOTPRINT = 1 << 0;
+		const TIME = 1 << 1;
+		const ANIMATION_TIME = 1 << 2;
+		const INDEX = 1 << 3;
+		const VAR_ARGS = 1 << 4;
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, Default)]
+pub struct ContextDependencies {
+	extract: ContextFeatures,
+	inject: ContextFeatures,
+}
+
+impl From<&[ContextFeature]> for ContextDependencies {
+	fn from(features: &[ContextFeature]) -> Self {
+		let mut extract = ContextFeatures::empty();
+		let mut inject = ContextFeatures::empty();
+		for feature in features {
+			extract |= match feature {
+				ContextFeature::ExtractFootprint => ContextFeatures::FOOTPRINT,
+				ContextFeature::ExtractTime => ContextFeatures::TIME,
+				ContextFeature::ExtractAnimationTime => ContextFeatures::ANIMATION_TIME,
+				ContextFeature::ExtractIndex => ContextFeatures::INDEX,
+				ContextFeature::ExtractVarArgs => ContextFeatures::VAR_ARGS,
+				_ => ContextFeatures::empty(),
+			};
+			inject |= match feature {
+				ContextFeature::InjectFootprint => ContextFeatures::FOOTPRINT,
+				ContextFeature::InjectTime => ContextFeatures::TIME,
+				ContextFeature::InjectAnimationTime => ContextFeatures::ANIMATION_TIME,
+				ContextFeature::InjectIndex => ContextFeatures::INDEX,
+				ContextFeature::InjectVarArgs => ContextFeatures::VAR_ARGS,
+				_ => ContextFeatures::empty(),
+			};
+		}
+		Self { extract, inject }
+	}
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VarArgsResult {
@@ -279,21 +358,29 @@ impl std::hash::Hash for OwnedContextImpl {
 impl OwnedContextImpl {
 	#[track_caller]
 	pub fn from<T: ExtractAll + CloneVarArgs>(value: T) -> Self {
-		let footprint = value.try_footprint().copied();
-		let index = value.try_index();
-		let time = value.try_time();
-		let frame_time = value.try_animation_time();
-		let parent = match value.varargs_len() {
-			Ok(x) if x > 0 => value.arc_clone(),
-			_ => None,
-		};
+		OwnedContextImpl::from_flags(value, ContextFeatures::all())
+	}
+	#[track_caller]
+	pub fn from_flags<T: ExtractAll + CloneVarArgs>(value: T, bitflags: ContextFeatures) -> Self {
+		let footprint = bitflags.contains(ContextFeatures::FOOTPRINT).then(|| value.try_footprint().copied()).flatten();
+		let index = bitflags.contains(ContextFeatures::INDEX).then(|| value.try_index()).flatten();
+		let time = bitflags.contains(ContextFeatures::TIME).then(|| value.try_time()).flatten();
+		let animation_time = bitflags.contains(ContextFeatures::ANIMATION_TIME).then(|| value.try_animation_time()).flatten();
+		let parent = bitflags
+			.contains(ContextFeatures::VAR_ARGS)
+			.then(|| match value.varargs_len() {
+				Ok(x) if x > 0 => value.arc_clone(),
+				_ => None,
+			})
+			.flatten();
+
 		OwnedContextImpl {
 			footprint,
 			varargs: None,
 			parent,
 			index,
 			real_time: time,
-			animation_time: frame_time,
+			animation_time,
 		}
 	}
 	pub const fn empty() -> Self {
