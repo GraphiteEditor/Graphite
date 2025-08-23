@@ -25,6 +25,9 @@ use kurbo::BezPath;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
+
+mod deserialization;
+use deserialization::deserialize_node_persistent_metadata;
 use std::ops::Deref;
 
 mod deserialization;
@@ -567,6 +570,7 @@ impl NodeNetworkInterface {
 				let skip_footprint = 1;
 
 				let Some(input_type) = std::iter::once(node_types.call_argument.clone()).chain(node_types.inputs.clone()).nth(input_index + skip_footprint) else {
+					log::error!("Could not get type for {node_id_path:?}, input: {input_index}");
 					log::error!("Could not get type for {node_id_path:?}, input: {input_index}");
 					return (concrete!(()), TypeSource::Error("could not get the protonode's input"));
 				};
@@ -2772,7 +2776,7 @@ impl NodeNetworkInterface {
 			return Some((BezPath::new(), false));
 		};
 		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
-			log::error!("Could not get output port for wire start: {upstream_output:?}");
+			log::error!("Could not get output port for wire start: {:?}", upstream_output);
 			return None;
 		};
 		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
