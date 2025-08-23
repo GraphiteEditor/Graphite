@@ -221,9 +221,8 @@ impl ProtoNode {
 	/// Converts all references to other node IDs into new IDs by running the specified function on them.
 	/// This can be used when changing the IDs of the nodes, for example in the case of generating stable IDs.
 	pub fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId) {
-		match self.input {
-			ProtoNodeInput::Node(id) => self.input = ProtoNodeInput::Node(f(id)),
-			_ => (),
+		if let ProtoNodeInput::Node(id) = self.input {
+			self.input = ProtoNodeInput::Node(f(id))
 		}
 
 		if let ConstructionArgs::Nodes(ids) = &mut self.construction_args {
