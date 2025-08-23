@@ -1365,7 +1365,7 @@ mod test {
 		let reference = ProtoNode {
 			identifier: "graphene_core::structural::ConsNode".into(),
 			input: ProtoNodeInput::ManualComposition(concrete!(u32)),
-			construction_args: ConstructionArgs::Nodes(vec![(NodeId(0), false)]),
+			construction_args: ConstructionArgs::Nodes(vec![NodeId(0)]),
 			..Default::default()
 		};
 		assert_eq!(proto_node, reference);
@@ -1382,7 +1382,7 @@ mod test {
 					ProtoNode {
 						identifier: "graphene_core::structural::ConsNode".into(),
 						input: ProtoNodeInput::ManualComposition(concrete!(u32)),
-						construction_args: ConstructionArgs::Nodes(vec![(NodeId(14), false)]),
+						construction_args: ConstructionArgs::Nodes(vec![NodeId(14)]),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(0)]),
 							inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),

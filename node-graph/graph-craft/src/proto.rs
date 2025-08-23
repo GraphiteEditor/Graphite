@@ -912,7 +912,7 @@ mod test {
 		println!("{construction_network:#?}");
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
 		assert_eq!(construction_network.nodes.len(), 6);
-		assert_eq!(construction_network.nodes[5].1.construction_args, ConstructionArgs::Nodes(vec![(NodeId(3), false), (NodeId(4), true)]));
+		assert_eq!(construction_network.nodes[5].1.construction_args, ConstructionArgs::Nodes(vec![(NodeId(3)), (NodeId(4))]));
 	}
 
 	#[test]
@@ -926,11 +926,11 @@ mod test {
 			ids,
 			vec![
 				NodeId(16997244687192517417),
-				NodeId(12226224850522777131),
-				NodeId(9162113827627229771),
-				NodeId(12793582657066318419),
-				NodeId(16945623684036608820),
-				NodeId(2640415155091892458)
+				NodeId(7064939117677356327),
+				NodeId(10605314923684175783),
+				NodeId(6550828352538976747),
+				NodeId(277515424782779520),
+				NodeId(8855802688584342558)
 			]
 		);
 	}
@@ -963,7 +963,7 @@ mod test {
 					ProtoNode {
 						identifier: "cons".into(),
 						input: ProtoNodeInput::ManualComposition(concrete!(u32)),
-						construction_args: ConstructionArgs::Nodes(vec![(NodeId(14), false)]),
+						construction_args: ConstructionArgs::Nodes(vec![NodeId(14)]),
 						..Default::default()
 					},
 				),
