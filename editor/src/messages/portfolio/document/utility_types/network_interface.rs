@@ -25,6 +25,7 @@ use kurbo::BezPath;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::ops::Deref;
 
 /// All network modifications should be done through this API, so the fields cannot be public. However, all fields within this struct can be public since it it not possible to have a public mutable reference.
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -1281,7 +1282,7 @@ impl NodeNetworkInterface {
 						let artboard = self.document_node(&artboard_node_identifier.to_node(), &[]);
 						let clip_input = artboard.unwrap().inputs.get(5).unwrap();
 						if let NodeInput::Value { tagged_value, .. } = clip_input {
-							if tagged_value.clone().into_inner() == TaggedValue::Bool(true) {
+							if tagged_value.clone().deref() == &TaggedValue::Bool(true) {
 								return Some(Quad::clip(
 									self.document_metadata.bounding_box_document(layer).unwrap_or_default(),
 									self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
