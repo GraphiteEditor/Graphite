@@ -61,7 +61,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 				(
 					NodeId(i as u64),
 					match inputs.len() {
-						1 if false => {
+						1 => {
 							let input = inputs.iter().next().unwrap();
 							let input_ty = input.nested_type();
 
@@ -87,6 +87,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 								// manual_composition: Some(fn_input.clone()),
 								implementation: DocumentNodeImplementation::ProtoNode(proto_node),
 								visible: true,
+								manual_composition: Some(concrete!(Context)),
 								..Default::default()
 							}
 						}
