@@ -138,7 +138,7 @@ pub struct DocumentNode {
 	///
 	/// Now, the call from `F` directly reaches the `CacheNode` and the `CacheNode` can decide whether to call `G.eval(input_from_f)`
 	/// in the event of a cache miss or just return the cached data in the event of a cache hit.
-	pub manual_composition: Option<Type>,
+	pub call_argument: Type,
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
@@ -181,7 +181,7 @@ impl Default for DocumentNode {
 	fn default() -> Self {
 		Self {
 			inputs: Default::default(),
-			manual_composition: Default::default(),
+			call_argument: Default::default(),
 			implementation: Default::default(),
 			visible: true,
 			skip_deduplication: Default::default(),
@@ -226,32 +226,12 @@ impl DocumentNode {
 		}
 	}
 
-	fn resolve_proto_node(mut self) -> ProtoNode {
-		assert!(!self.inputs.is_empty() || self.manual_composition.is_some(), "Resolving document node {self:#?} with no inputs");
+	fn resolve_proto_node(self) -> ProtoNode {
 		let DocumentNodeImplementation::ProtoNode(identifier) = self.implementation else {
 			unreachable!("tried to resolve not flattened node on resolved node {self:?}");
 		};
 
-		let (input, mut args) = if let Some(ty) = self.manual_composition {
-			(ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![]))
-		} else {
-			let first = self.inputs.remove(0);
-			match first {
-				NodeInput::Value { tagged_value, .. } => {
-					assert_eq!(self.inputs.len(), 0, "A value node cannot have any inputs. Current inputs: {:?}", self.inputs);
-					(ProtoNodeInput::ManualComposition(concrete!(graphene_core::Context<'static>)), ConstructionArgs::Value(tagged_value))
-				}
-				NodeInput::Node { node_id, output_index } => {
-					assert_eq!(output_index, 0, "Outputs should be flattened before converting to proto node");
-					let node = ProtoNodeInput::Node(node_id);
-					(node, ConstructionArgs::Nodes(vec![]))
-				}
-				NodeInput::Network { import_type, .. } => (ProtoNodeInput::ManualComposition(import_type), ConstructionArgs::Nodes(vec![])),
-				NodeInput::Inline(inline) => (ProtoNodeInput::None, ConstructionArgs::Inline(inline)),
-				NodeInput::Scope(_) => unreachable!("Scope input was not resolved"),
-				NodeInput::Reflection(_) => unreachable!("Reflection input was not resolved"),
-			}
-		};
+		let (input, mut args) = (ProtoNodeInput::ManualComposition(self.call_argument), ConstructionArgs::Nodes(vec![]));
 		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network { .. })), "received non-resolved input");
 		assert!(
 			!self.inputs.iter().any(|input| matches!(input, NodeInput::Value { .. })),
@@ -764,7 +744,7 @@ impl NodeNetwork {
 				node.original_location = OriginalLocation {
 					path: Some(new_path),
 					inputs_exposed: node.inputs.iter().map(|input| input.is_exposed()).collect(),
-					skip_inputs: if node.manual_composition.is_some() { 1 } else { 0 },
+					skip_inputs: 1,
 					dependants: (0..node.implementation.output_count()).map(|_| Vec::new()).collect(),
 					..Default::default()
 				};
@@ -891,7 +871,7 @@ impl NodeNetwork {
 
 			// Connect layer node to the group below
 			node.inputs.drain(1..);
-			node.manual_composition = None;
+			node.call_argument = concrete!(());
 			self.nodes.insert(id, node);
 			return;
 		}

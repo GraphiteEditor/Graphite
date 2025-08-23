@@ -59,7 +59,7 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					inputs,
-					manual_composition: Some(input_type.clone()),
+					call_argument: (input_type.clone()),
 					implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 					visible: true,
 					skip_deduplication: false,

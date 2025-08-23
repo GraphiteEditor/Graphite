@@ -577,7 +577,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade old nodes to use `Context` instead of `()` or `Footprint` for manual composition
-	if node.manual_composition == Some(graph_craft::concrete!(())) || node.manual_composition == Some(graph_craft::concrete!(graphene_std::transform::Footprint)) {
+	if node.call_argument == graph_craft::concrete!(()) || node.call_argument == graph_craft::concrete!(graphene_std::transform::Footprint) {
 		document
 			.network_interface
 			.set_manual_compostion(node_id, network_path, graph_craft::concrete!(graphene_std::Context).into());

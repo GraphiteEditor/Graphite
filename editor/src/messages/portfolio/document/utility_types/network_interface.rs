@@ -543,7 +543,7 @@ impl NodeNetworkInterface {
 			}
 			DocumentNodeImplementation::ProtoNode(_) => {
 				// If a node has manual composition, then offset the input index by 1 since the proto node also includes the type of the input passed through manual composition.
-				let manual_composition_offset = if node.manual_composition.is_some() { 1 } else { 0 };
+				let manual_composition_offset = 1;
 				self.resolved_types
 					.types
 					.get(node_id_path.as_slice())
@@ -576,7 +576,7 @@ impl NodeNetworkInterface {
 					return (concrete!(()), TypeSource::Error("could not resolve protonode"));
 				};
 
-				let skip_footprint = if node.manual_composition.is_some() { 1 } else { 0 };
+				let skip_footprint = 1;
 
 				let Some(input_type) = std::iter::once(node_types.call_argument.clone()).chain(node_types.inputs.clone()).nth(input_index + skip_footprint) else {
 					log::error!("Could not get type");
@@ -1494,7 +1494,7 @@ impl NodeNetworkInterface {
 				let mut node_metadata = DocumentNodeMetadata::default();
 
 				node.inputs = old_node.inputs;
-				node.manual_composition = old_node.manual_composition;
+				node.call_argument = old_node.manual_composition.unwrap();
 				node.visible = old_node.visible;
 				node.skip_deduplication = old_node.skip_deduplication;
 				node.original_location = old_node.original_location;
@@ -4159,7 +4159,11 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node in set_implementation");
 			return;
 		};
-		node.manual_composition = manual_composition;
+		let Some(call_argument) = manual_composition else {
+			log::error!("Nodes with automatic composition are no longer supported");
+			return;
+		};
+		node.call_argument = call_argument;
 	}
 
 	pub fn set_input(&mut self, input_connector: &InputConnector, new_input: NodeInput, network_path: &[NodeId]) {
