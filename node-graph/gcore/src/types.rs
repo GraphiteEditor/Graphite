@@ -367,7 +367,7 @@ impl std::fmt::Debug for Type {
 			Self::Future(ty) => format!("{ty:?}"),
 		};
 		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
-		write!(f, "{}", result)
+		write!(f, "{result}")
 	}
 }
 
@@ -380,6 +380,6 @@ impl std::fmt::Display for Type {
 			Type::Future(ty) => ty.to_string(),
 		};
 		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
-		write!(f, "{}", result)
+		write!(f, "{result}")
 	}
 }

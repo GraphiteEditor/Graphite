@@ -234,7 +234,7 @@ where
 		};
 		match dyn_any::downcast(input) {
 			Ok(input) => Box::pin(output(*input)),
-			Err(e) => panic!("DynAnyNode Input, {0} in:\n{1}", e, node_name),
+			Err(e) => panic!("DynAnyNode Input, {e} in:\n{node_name}"),
 		}
 	}
 

@@ -225,7 +225,7 @@ pub fn pathseg_find_tvalues_for_x(segment: PathSeg, x: f64) -> impl Iterator<Ite
 			let b = 2.0 * (p1.x - p0.x);
 			let c = p0.x - x;
 			let r = solve_quadratic(c, b, a);
-			[r.get(0).map(|t| *t), r.get(1).map(|t| *t), None]
+			[r.first().copied(), r.get(1).copied(), None]
 		}
 		PathSeg::Cubic(CubicBez { p0, p1, p2, p3 }) => {
 			let a = p3.x - 3.0 * p2.x + 3.0 * p1.x - p0.x;
@@ -233,7 +233,7 @@ pub fn pathseg_find_tvalues_for_x(segment: PathSeg, x: f64) -> impl Iterator<Ite
 			let c = 3.0 * (p1.x - p0.x);
 			let d = p0.x - x;
 			let r = solve_cubic(d, c, b, a);
-			[r.get(0).map(|t| *t), r.get(1).map(|t| *t), r.get(2).map(|t| *t)]
+			[r.first().copied(), r.get(1).copied(), r.get(2).copied()]
 		}
 	}
 	.into_iter()

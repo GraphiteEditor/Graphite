@@ -108,7 +108,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 		let document_node = DocumentNode {
 			inputs: network_inputs,
 			manual_composition: Some(input_type.clone()),
-			implementation: DocumentNodeImplementation::ProtoNode(id.clone().into()),
+			implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 			visible: true,
 			skip_deduplication: false,
 			..Default::default()

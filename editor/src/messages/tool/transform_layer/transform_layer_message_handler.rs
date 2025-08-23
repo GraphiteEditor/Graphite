@@ -189,7 +189,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 				let format_rounded = |value: f64, precision: usize| {
 					if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
-						format!("{:.*}", precision, value).trim_end_matches('0').trim_end_matches('.').to_string()
+						format!("{value:.precision$}").trim_end_matches('0').trim_end_matches('.').to_string()
 					} else {
 						self.typing.string.clone()
 					}
@@ -892,7 +892,7 @@ mod test_transform_layer {
 		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
 
 		let translation_diff = (final_transform.translation - original_transform.translation).length();
-		assert!(translation_diff > 10., "Transform should have changed after applying transformation. Diff: {}", translation_diff);
+		assert!(translation_diff > 10., "Transform should have changed after applying transformation. Diff: {translation_diff}");
 	}
 
 	#[tokio::test]
@@ -927,9 +927,7 @@ mod test_transform_layer {
 		// Verify transform is either restored to original OR reset to identity
 		assert!(
 			(final_translation - original_translation).length() < 5. || final_translation.length() < 0.001,
-			"Transform neither restored to original nor reset to identity. Original: {:?}, Final: {:?}",
-			original_translation,
-			final_translation
+			"Transform neither restored to original nor reset to identity. Original: {original_translation:?}, Final: {final_translation:?}"
 		);
 	}
 
@@ -958,11 +956,11 @@ mod test_transform_layer {
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 
 		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
-		println!("Final transform: {:?}", final_transform);
+		println!("Final transform: {final_transform:?}");
 
 		// Check matrix components have changed (rotation affects matrix2)
 		let matrix_diff = (final_transform.matrix2.x_axis - original_transform.matrix2.x_axis).length();
-		assert!(matrix_diff > 0.1, "Rotation should have changed the transform matrix. Diff: {}", matrix_diff);
+		assert!(matrix_diff > 0.1, "Rotation should have changed the transform matrix. Diff: {matrix_diff}");
 	}
 
 	#[tokio::test]
@@ -984,7 +982,7 @@ mod test_transform_layer {
 		assert!(!after_cancel.translation.y.is_nan(), "Transform is NaN after cancel");
 
 		let translation_diff = (after_cancel.translation - original_transform.translation).length();
-		assert!(translation_diff < 1., "Translation component changed too much: {}", translation_diff);
+		assert!(translation_diff < 1., "Translation component changed too much: {translation_diff}");
 	}
 
 	#[tokio::test]
@@ -1019,9 +1017,7 @@ mod test_transform_layer {
 
 		assert!(
 			scale_diff_x > 0.1 || scale_diff_y > 0.1,
-			"Scaling should have changed the transform matrix. Diffs: x={}, y={}",
-			scale_diff_x,
-			scale_diff_y
+			"Scaling should have changed the transform matrix. Diffs: x={scale_diff_x}, y={scale_diff_y}"
 		);
 	}
 
@@ -1050,7 +1046,7 @@ mod test_transform_layer {
 
 		// Also check translation component is similar
 		let translation_diff = (after_cancel.translation - original_transform.translation).length();
-		assert!(translation_diff < 1., "Translation component changed too much: {}", translation_diff);
+		assert!(translation_diff < 1., "Translation component changed too much: {translation_diff}");
 	}
 
 	#[tokio::test]
@@ -1077,9 +1073,7 @@ mod test_transform_layer {
 		let actual_translation = after_grab_transform.translation - original_transform.translation;
 		assert!(
 			(actual_translation - expected_translation).length() < 1e-5,
-			"Expected translation of {:?}, got {:?}",
-			expected_translation,
-			actual_translation
+			"Expected translation of {expected_translation:?}, got {actual_translation:?}"
 		);
 
 		// 2. Chain to rotation - from current position to create ~45 degree rotation
@@ -1115,9 +1109,7 @@ mod test_transform_layer {
 		let after_scale_det = after_scale_transform.matrix2.determinant();
 		assert!(
 			after_scale_det >= 2. * before_scale_det,
-			"Scale should increase the determinant of the matrix (before: {}, after: {})",
-			before_scale_det,
-			after_scale_det
+			"Scale should increase the determinant of the matrix (before: {before_scale_det}, after: {after_scale_det})"
 		);
 
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
@@ -1149,8 +1141,8 @@ mod test_transform_layer {
 		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
 		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
 
-		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {}", scale_x);
-		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {}", scale_y);
+		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {scale_x}");
+		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {scale_y}");
 	}
 
 	#[tokio::test]
@@ -1175,8 +1167,8 @@ mod test_transform_layer {
 		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
 		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
 
-		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {}", scale_x);
-		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {}", scale_y);
+		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {scale_x}");
+		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {scale_y}");
 	}
 
 	#[tokio::test]
@@ -1191,11 +1183,7 @@ mod test_transform_layer {
 
 		// Rotate the document view (45 degrees)
 		editor.handle_message(NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }).await;
-		editor
-			.handle_message(NavigationMessage::CanvasTiltSet {
-				angle_radians: (45. as f64).to_radians(),
-			})
-			.await;
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 45_f64.to_radians() }).await;
 		editor.handle_message(TransformLayerMessage::BeginRotate).await;
 
 		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 9 }).await;
@@ -1210,7 +1198,7 @@ mod test_transform_layer {
 
 		// Normalize angle between 0 and 360
 		let angle_change = ((angle_change % 360.) + 360.) % 360.;
-		assert!((angle_change - 90.).abs() < 0.1, "Expected rotation of 90 degrees, got: {}", angle_change);
+		assert!((angle_change - 90.).abs() < 0.1, "Expected rotation of 90 degrees, got: {angle_change}");
 	}
 
 	#[tokio::test]
@@ -1265,8 +1253,8 @@ mod test_transform_layer {
 		// Verify scale is near zero.
 		let scale_x = near_zero_transform.matrix2.x_axis.length();
 		let scale_y = near_zero_transform.matrix2.y_axis.length();
-		assert!(scale_x < 0.001, "Scale factor X should be near zero, got: {}", scale_x);
-		assert!(scale_y < 0.001, "Scale factor Y should be near zero, got: {}", scale_y);
+		assert!(scale_x < 0.001, "Scale factor X should be near zero, got: {scale_x}");
+		assert!(scale_y < 0.001, "Scale factor Y should be near zero, got: {scale_y}");
 		assert!(scale_x > 0., "Scale factor X should not be exactly zero");
 		assert!(scale_y > 0., "Scale factor Y should not be exactly zero");
 

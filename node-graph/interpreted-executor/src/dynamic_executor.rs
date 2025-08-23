@@ -150,8 +150,8 @@ pub enum IntrospectError {
 impl std::fmt::Display for IntrospectError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			IntrospectError::PathNotFound(path) => write!(f, "Path not found: {:?}", path),
-			IntrospectError::ProtoNodeNotFound(id) => write!(f, "ProtoNode not found: {:?}", id),
+			IntrospectError::PathNotFound(path) => write!(f, "Path not found: {path:?}"),
+			IntrospectError::ProtoNodeNotFound(id) => write!(f, "ProtoNode not found: {id:?}"),
 			IntrospectError::NoData => write!(f, "No data found for this node"),
 			IntrospectError::RuntimeNotReady => write!(f, "Node runtime is not ready"),
 		}

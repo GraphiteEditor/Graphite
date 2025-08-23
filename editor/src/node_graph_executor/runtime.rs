@@ -432,7 +432,7 @@ pub struct InspectResult {
 
 impl InspectResult {
 	pub fn take_data(&mut self) -> Option<Arc<dyn std::any::Any + Send + Sync + 'static>> {
-		return self.introspected_data.clone();
+		self.introspected_data.clone()
 	}
 }
 

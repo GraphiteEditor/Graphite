@@ -1083,8 +1083,8 @@ mod tests {
 			*hashmap.entry(node.node.clone()).or_default() += 1;
 		});
 		let duplicates = hashmap.iter().filter(|(_, count)| **count > 1).map(|(node, _)| &node.name).collect::<Vec<_>>();
-		if duplicates.len() > 0 {
-			panic!("Duplicate entries in `NODE_REPLACEMENTS`: {:?}", duplicates);
+		if !duplicates.is_empty() {
+			panic!("Duplicate entries in `NODE_REPLACEMENTS`: {duplicates:?}");
 		}
 	}
 }
