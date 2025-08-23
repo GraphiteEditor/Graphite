@@ -8,6 +8,7 @@ use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, La
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
+use glam::IVec2;
 use graph_craft::document::NodeId;
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
@@ -124,12 +125,17 @@ pub enum FrontendMessage {
 		document_id: DocumentId,
 	},
 	UpdateImportsExports {
-		imports: Vec<(FrontendGraphOutput, i32, i32)>,
-		exports: Vec<(FrontendGraphInput, i32, i32)>,
-		#[serde(rename = "addImport")]
-		add_import: Option<(i32, i32)>,
-		#[serde(rename = "addExport")]
-		add_export: Option<(i32, i32)>,
+		// If the primary import/export is not visible, then it is None
+		imports: Vec<Option<FrontendGraphOutput>>,
+		exports: Vec<Option<FrontendGraphInput>>,
+		// The primary import/export location
+		#[serde(rename = "importPosition")]
+		import_position: IVec2,
+		#[serde(rename = "exportPosition")]
+		export_position: IVec2,
+		// The document network does not have an add import or export button
+		#[serde(rename = "addImportExport")]
+		add_import_export: bool,
 	},
 	UpdateInSelectedNetwork {
 		#[serde(rename = "inSelectedNetwork")]
