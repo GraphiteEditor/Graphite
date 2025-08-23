@@ -14,7 +14,6 @@ use syn::{
 use crate::codegen::generate_node_code;
 use crate::shader_nodes::ShaderNodeType;
 
-
 #[derive(Clone, Debug)]
 pub(crate) struct Implementation {
 	pub(crate) input: Type,
