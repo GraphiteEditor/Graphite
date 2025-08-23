@@ -431,17 +431,11 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	let ident = &pat_ident.ident;
 
 	let default_value = extract_attribute(attrs, "default")
-		.map(|attr| {
-			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid `default` value for argument '{ident}': {e}")))
-		})
+		.map(|attr| attr.parse_args().map_err(|e| Error::new_spanned(attr, format!("Invalid `default` value for argument '{ident}': {e}"))))
 		.transpose()?;
 
 	let scope = extract_attribute(attrs, "scope")
-		.map(|attr| {
-			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid `scope` value for argument '{ident}': {e}")))
-		})
+		.map(|attr| attr.parse_args().map_err(|e| Error::new_spanned(attr, format!("Invalid `scope` value for argument '{ident}': {e}"))))
 		.transpose()?;
 
 	let name = extract_attribute(attrs, "name")
@@ -496,9 +490,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			attr.parse_args::<ExprTuple>().map_err(|e| {
 				Error::new_spanned(
 					attr,
-					format!(
-						"Invalid `range` tuple of min and max range slider values for argument '{ident}': {e}\nUSAGE EXAMPLE: #[range((0., 100.))]"
-					),
+					format!("Invalid `range` tuple of min and max range slider values for argument '{ident}': {e}\nUSAGE EXAMPLE: #[range((0., 100.))]"),
 				)
 			})
 		})

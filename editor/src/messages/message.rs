@@ -72,10 +72,10 @@ mod test {
 		let (branch, child_prefix) = if tree.message_handler_data_fields().is_some() || tree.message_handler_fields().is_some() {
 			("├── ", format!("{prefix}│   "))
 		} else if is_last {
-  				("└── ", format!("{prefix}    "))
-  			} else {
-  				("├── ", format!("{prefix}│   "))
-  			};
+			("└── ", format!("{prefix}    "))
+		} else {
+			("├── ", format!("{prefix}│   "))
+		};
 
 		if tree.path().is_empty() {
 			file.write_all(format!("{}{}{}\n", prefix, branch, tree.name()).as_bytes()).unwrap();

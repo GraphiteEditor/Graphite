@@ -60,7 +60,6 @@ impl<'i, T: 'i> Node<'i, ()> for RefCellMutNode<T> {
 	type Output = RefMut<'i, T>;
 	#[inline(always)]
 	fn eval(&'i self, _input: ()) -> Self::Output {
-		
 		self.0.borrow_mut()
 	}
 }

@@ -88,9 +88,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	}
 	let device = application_io.gpu_executor().unwrap().context.device.clone();
 
-	let preferences = EditorPreferences {
-		use_vello: true,
-	};
+	let preferences = EditorPreferences { use_vello: true };
 	let editor_api = Arc::new(WasmEditorApi {
 		font_cache: FontCache::default(),
 		application_io: Some(application_io.into()),

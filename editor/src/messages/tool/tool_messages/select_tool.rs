@@ -852,7 +852,13 @@ impl Fsm for SelectToolFsmState {
 				if let Some(pivot) = pivot {
 					let offset = tool_data
 						.pivot_gizmo_start
-						.map(|offset| if tool_data.pivot_gizmo.pivot_disconnected() { tool_data.drag_current - offset } else { Default::default() })
+						.map(|offset| {
+							if tool_data.pivot_gizmo.pivot_disconnected() {
+								tool_data.drag_current - offset
+							} else {
+								Default::default()
+							}
+						})
 						.unwrap_or_default();
 					let shift = tool_data.pivot_gizmo_shift.unwrap_or_default();
 					overlay_context.pivot(pivot + offset + shift, angle);
@@ -1455,7 +1461,11 @@ impl Fsm for SelectToolFsmState {
 				tool_data.select_single_layer = None;
 
 				if let Some(start) = tool_data.pivot_gizmo_start {
-					let offset = if tool_data.pivot_gizmo.pivot_disconnected() { tool_data.drag_current - start } else { Default::default() };
+					let offset = if tool_data.pivot_gizmo.pivot_disconnected() {
+						tool_data.drag_current - start
+					} else {
+						Default::default()
+					};
 					if let Some(v) = tool_data.pivot_gizmo.pivot.pivot.as_mut() {
 						*v += offset;
 					}
@@ -1649,7 +1659,9 @@ impl Fsm for SelectToolFsmState {
 			}
 			(_, SelectToolMessage::PivotShift { offset, flush }) => {
 				if flush {
-					if let Some(v) = tool_data.pivot_gizmo.pivot.pivot.as_mut() { *v += tool_data.pivot_gizmo_shift.take().unwrap_or_default(); }
+					if let Some(v) = tool_data.pivot_gizmo.pivot.pivot.as_mut() {
+						*v += tool_data.pivot_gizmo_shift.take().unwrap_or_default();
+					}
 					let pivot_gizmo = tool_data.pivot_gizmo();
 					responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
 					return self;

@@ -210,7 +210,7 @@ mod test_line_tool {
 	async fn get_line_node_inputs(editor: &mut EditorTestUtils) -> Option<(DVec2, DVec2)> {
 		let document = editor.active_document();
 		let network_interface = &document.network_interface;
-		
+
 		network_interface
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(network_interface)
@@ -245,11 +245,7 @@ mod test_line_tool {
 		editor.new_document().await;
 		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2. }).await;
 		editor.handle_message(NavigationMessage::CanvasPan { delta: DVec2::new(100., 50.) }).await;
-		editor
-			.handle_message(NavigationMessage::CanvasTiltSet {
-				angle_radians: 30_f64.to_radians(),
-			})
-			.await;
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 30_f64.to_radians() }).await;
 		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::empty()).await;
 		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
 			let document = editor.active_document();

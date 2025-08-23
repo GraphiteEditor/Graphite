@@ -416,7 +416,10 @@ mod test_freehand {
 	fn verify_path_points(vector_and_transform_list: &[(Vector, DAffine2)], expected_captured_points: &[DVec2], tolerance: f64) -> Result<(), String> {
 		assert_eq!(vector_and_transform_list.len(), 1, "There should be one row of Vector geometry");
 
-		let (vector, transform) = vector_and_transform_list.iter().find(|(data, _)| !data.point_domain.ids().is_empty()).ok_or("Could not find path data")?;
+		let (vector, transform) = vector_and_transform_list
+			.iter()
+			.find(|(data, _)| !data.point_domain.ids().is_empty())
+			.ok_or("Could not find path data")?;
 
 		let point_count = vector.point_domain.ids().len();
 		let segment_count = vector.segment_domain.ids().len();
@@ -623,7 +626,7 @@ mod test_freehand {
 
 		let existing_layer_id = {
 			let document = editor.active_document();
-			
+
 			document.metadata().all_layers().next().unwrap()
 		};
 

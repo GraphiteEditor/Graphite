@@ -73,10 +73,9 @@ impl NodeNetworkInterface {
 					fix_network(network);
 				}
 				if let DocumentNodeImplementation::ProtoNode(protonode) = &node.implementation {
-					if protonode.name.contains("PathModifyNode")
-						&& node.inputs.len() < 3 {
-							node.inputs.push(NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath));
-						}
+					if protonode.name.contains("PathModifyNode") && node.inputs.len() < 3 {
+						node.inputs.push(NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath));
+					}
 				}
 			}
 		}
