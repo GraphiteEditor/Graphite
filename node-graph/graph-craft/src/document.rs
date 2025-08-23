@@ -949,7 +949,7 @@ impl NodeNetwork {
 		for (nested_node_id, mut nested_node) in inner_network.nodes.into_iter() {
 			for (nested_input_index, nested_input) in nested_node.clone().inputs.iter().enumerate() {
 				if let NodeInput::Network { import_index, .. } = nested_input {
-					let parent_input = node.inputs.get(*import_index).unwrap_or_else(|| panic!("Import index {} should always exist", import_index));
+					let parent_input = node.inputs.get(*import_index).unwrap_or_else(|| panic!("Import index {import_index} should always exist"));
 					match *parent_input {
 						// If the input to self is a node, connect the corresponding output of the inner network to it
 						NodeInput::Node { node_id, output_index, lambda } => {

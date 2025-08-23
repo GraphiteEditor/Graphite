@@ -343,8 +343,8 @@ fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &Subpath<Po
 		let PathSegPoints { p0, p1, p2, p3 } = pathseg_points(bezier);
 
 		let p0 = transform_point(p0);
-		let p1 = p1.map(|p1| transform_point(p1));
-		let p2 = p2.map(|p2| transform_point(p2));
+		let p1 = p1.map(transform_point);
+		let p2 = p2.map(transform_point);
 		let p3 = transform_point(p3);
 
 		if global_start.is_none() {

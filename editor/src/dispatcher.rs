@@ -442,7 +442,7 @@ mod test {
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 6);
 
-		println!("{:?} {:?}", layers_after_copy, layers_before_copy);
+		println!("{layers_after_copy:?} {layers_before_copy:?}");
 
 		assert_eq!(layers_after_copy[5], shape_id);
 	}

@@ -46,7 +46,7 @@ impl NodePropertiesContext<'_> {
 				return None;
 			};
 			widget_override_lambda(*node_id, index, self)
-				.map_err(|error| log::error!("Error in widget override lambda: {}", error))
+				.map_err(|error| log::error!("Error in widget override lambda: {error}"))
 				.ok()
 		} else {
 			None
@@ -1944,10 +1944,10 @@ fn static_input_properties() -> InputProperties {
 		"string".to_string(),
 		Box::new(|node_id, index, context| {
 			let Some(value) = context.network_interface.input_data(&node_id, index, "string_properties", context.selection_network_path) else {
-				return Err(format!("Could not get string properties for node {}", node_id));
+				return Err(format!("Could not get string properties for node {node_id}"));
 			};
 			let Some(string) = value.as_str() else {
-				return Err(format!("Could not downcast string properties for node {}", node_id));
+				return Err(format!("Could not downcast string properties for node {node_id}"));
 			};
 			Ok(node_properties::string_properties(string))
 		}),

@@ -202,11 +202,11 @@ impl SelectTool {
 		let list = <BooleanOperation as graphene_std::choice_type::ChoiceTypeStatic>::list();
 		list.iter().flat_map(|i| i.iter()).map(move |(operation, info)| {
 			let mut tooltip = info.label.to_string();
-			if let Some(doc) = info.docstring.as_deref() {
+			if let Some(doc) = info.docstring {
 				tooltip.push_str("\n\n");
 				tooltip.push_str(doc);
 			}
-			IconButton::new(info.icon.as_deref().unwrap(), 24)
+			IconButton::new(info.icon.unwrap(), 24)
 				.tooltip(tooltip)
 				.disabled(selected_count == 0)
 				.on_update(move |_| {
@@ -895,7 +895,7 @@ impl Fsm for SelectToolFsmState {
 									color
 								} else {
 									let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
-									&format!("#{}", color_string)
+									&format!("#{color_string}")
 								};
 								let line_center = tool_data.line_center;
 								overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color), None);

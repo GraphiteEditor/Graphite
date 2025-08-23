@@ -104,7 +104,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	match app.command {
 		Command::Compile { print_proto, .. } => {
 			if print_proto {
-				println!("{}", proto_graph);
+				println!("{proto_graph}");
 			}
 		}
 		Command::Run { run_loop, .. } => {
@@ -120,7 +120,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			loop {
 				let result = (&executor).execute(render_config).await?;
 				if !run_loop {
-					println!("{:?}", result);
+					println!("{result:?}");
 					break;
 				}
 				tokio::time::sleep(std::time::Duration::from_millis(16)).await;

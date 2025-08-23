@@ -301,13 +301,13 @@ impl TaggedValue {
 					"MAGENTA" => Color::MAGENTA,
 					"TRANSPARENT" => Color::TRANSPARENT,
 					_ => {
-						log::error!("Invalid default value color constant: {}", input);
+						log::error!("Invalid default value color constant: {input}");
 						return None;
 					}
 				});
 			}
 
-			log::error!("Invalid default value color: {}", input);
+			log::error!("Invalid default value color: {input}");
 			None
 		}
 
@@ -327,13 +327,13 @@ impl TaggedValue {
 					"BottomCenter" => ReferencePoint::BottomCenter,
 					"BottomRight" => ReferencePoint::BottomRight,
 					_ => {
-						log::error!("Invalid ReferencePoint default type variant: {}", input);
+						log::error!("Invalid ReferencePoint default type variant: {input}");
 						return None;
 					}
 				});
 			}
 
-			log::error!("Invalid ReferencePoint default type: {}", input);
+			log::error!("Invalid ReferencePoint default type: {input}");
 			None
 		}
 
