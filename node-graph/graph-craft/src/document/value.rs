@@ -16,7 +16,7 @@ use graphene_core::uuid::NodeId;
 use graphene_core::vector::Vector;
 use graphene_core::vector::style::Fill;
 use graphene_core::vector::style::GradientStops;
-use graphene_core::{Artboard, Color, Graphic, MemoHash, Node, Type};
+use graphene_core::{Artboard, Color, ContextFeatures, Graphic, MemoHash, Node, Type};
 use graphene_svg_renderer::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
@@ -217,6 +217,7 @@ tagged_value! {
 	BrushStrokes(Vec<BrushStroke>),
 	BrushCache(BrushCache),
 	DocumentNode(DocumentNode),
+	ContextFeatures(ContextFeatures),
 	Curve(graphene_raster_nodes::curve::Curve),
 	Footprint(graphene_core::transform::Footprint),
 	VectorModification(Box<graphene_core::vector::VectorModification>),
