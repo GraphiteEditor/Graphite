@@ -274,27 +274,19 @@ mod test_line_tool {
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::CONTROL).await;
 		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
-			match (start_input, end_input) {
-				(start_input, end_input) => {
-					let line_vec = end_input - start_input;
-					let original_angle = line_vec.angle_to(DVec2::X);
-					editor.drag_tool(ToolType::Line, 0., 0., 200., 50., ModifierKeys::CONTROL).await;
-					if let Some((updated_start, updated_end)) = get_line_node_inputs(&mut editor).await {
-						match (updated_start, updated_end) {
-							(updated_start, updated_end) => {
-								let updated_line_vec = updated_end - updated_start;
-								let updated_angle = updated_line_vec.angle_to(DVec2::X);
-								print!("{original_angle:?}");
-								print!("{updated_angle:?}");
-								assert!(
-									line_vec.normalize().dot(updated_line_vec.normalize()).abs() - 1. < 1e-6,
-									"Line angle should be locked when Ctrl is kept pressed"
-								);
-								assert!((updated_start - updated_end).length() > 1., "Line should be able to change length when Ctrl is kept pressed");
-							}
-						}
-					}
-				}
+			let line_vec = end_input - start_input;
+			let original_angle = line_vec.angle_to(DVec2::X);
+			editor.drag_tool(ToolType::Line, 0., 0., 200., 50., ModifierKeys::CONTROL).await;
+			if let Some((updated_start, updated_end)) = get_line_node_inputs(&mut editor).await {
+				let updated_line_vec = updated_end - updated_start;
+				let updated_angle = updated_line_vec.angle_to(DVec2::X);
+				print!("{original_angle:?}");
+				print!("{updated_angle:?}");
+				assert!(
+					line_vec.normalize().dot(updated_line_vec.normalize()).abs() - 1. < 1e-6,
+					"Line angle should be locked when Ctrl is kept pressed"
+				);
+				assert!((updated_start - updated_end).length() > 1., "Line should be able to change length when Ctrl is kept pressed");
 			}
 		}
 	}
@@ -305,14 +297,10 @@ mod test_line_tool {
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Line, 100., 100., 200., 100., ModifierKeys::ALT).await;
 		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
-			match (start_input, end_input) {
-				(start_input, end_input) => {
-					let expected_start = DVec2::new(0., 100.);
-					let expected_end = DVec2::new(200., 100.);
-					assert!((start_input - expected_start).length() < 1., "Start point should be near (0, 100)");
-					assert!((end_input - expected_end).length() < 1., "End point should be near (200, 100)");
-				}
-			}
+			let expected_start = DVec2::new(0., 100.);
+			let expected_end = DVec2::new(200., 100.);
+			assert!((start_input - expected_start).length() < 1., "Start point should be near (0, 100)");
+			assert!((end_input - expected_end).length() < 1., "End point should be near (200, 100)");
 		}
 	}
 
