@@ -392,7 +392,8 @@ impl<'input> Node<'input, DAny<'input>> for UpcastNode {
 	type Output = FutureAny<'input>;
 
 	fn eval(&'input self, _: DAny<'input>) -> Self::Output {
-		Box::pin(async move { self.value.clone().into_inner().to_dynany() })
+		let memo_clone = MemoHash::clone(&self.value);
+		Box::pin(async move { memo_clone.into_inner().as_ref().clone().to_dynany() })
 	}
 }
 impl UpcastNode {
