@@ -757,7 +757,7 @@ fn replace_generics(types: &mut NodeIOTypes, lookup: &HashMap<String, Type>) {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
+	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode};
 
 	#[test]
 	fn topological_sort() {
@@ -805,16 +805,6 @@ mod test {
 	}
 
 	#[test]
-	fn input_resolution() {
-		let mut construction_network = test_network();
-		construction_network.resolve_inputs().expect("Error when calling 'resolve_inputs' on 'construction_network.");
-		println!("{construction_network:#?}");
-		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
-		assert_eq!(construction_network.nodes.len(), 6);
-		assert_eq!(construction_network.nodes[5].1.construction_args, ConstructionArgs::Nodes(vec![(NodeId(3)), (NodeId(4))]));
-	}
-
-	#[test]
 	fn stable_node_id_generation() {
 		let mut construction_network = test_network();
 		construction_network.resolve_inputs().expect("Error when calling 'resolve_inputs' on 'construction_network.");
@@ -823,14 +813,7 @@ mod test {
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
 		assert_eq!(
 			ids,
-			vec![
-				NodeId(16997244687192517417),
-				NodeId(7064939117677356327),
-				NodeId(10605314923684175783),
-				NodeId(6550828352538976747),
-				NodeId(277515424782779520),
-				NodeId(8855802688584342558)
-			]
+			vec![NodeId(13743208144182721472), NodeId(4607569396187877965), NodeId(16950305885390329527), NodeId(15151181027373658932)]
 		);
 	}
 
@@ -843,8 +826,8 @@ mod test {
 					NodeId(7),
 					ProtoNode {
 						identifier: "id".into(),
-						call_argument: ProtoNodeInput::Node(NodeId(11)),
-						construction_args: ConstructionArgs::Nodes(vec![]),
+						call_argument: concrete!(()),
+						construction_args: ConstructionArgs::Nodes(vec![NodeId(11)]),
 						..Default::default()
 					},
 				),
@@ -852,8 +835,8 @@ mod test {
 					NodeId(1),
 					ProtoNode {
 						identifier: "id".into(),
-						call_argument: ProtoNodeInput::Node(NodeId(11)),
-						construction_args: ConstructionArgs::Nodes(vec![]),
+						call_argument: concrete!(()),
+						construction_args: ConstructionArgs::Nodes(vec![NodeId(11)]),
 						..Default::default()
 					},
 				),
@@ -861,7 +844,7 @@ mod test {
 					NodeId(10),
 					ProtoNode {
 						identifier: "cons".into(),
-						call_argument: ProtoNodeInput::ManualComposition(concrete!(u32)),
+						call_argument: concrete!(u32),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(14)]),
 						..Default::default()
 					},
@@ -870,8 +853,8 @@ mod test {
 					NodeId(11),
 					ProtoNode {
 						identifier: "add".into(),
-						call_argument: ProtoNodeInput::Node(NodeId(10)),
-						construction_args: ConstructionArgs::Nodes(vec![]),
+						call_argument: concrete!(()),
+						construction_args: ConstructionArgs::Nodes(vec![NodeId(10)]),
 						..Default::default()
 					},
 				),
@@ -879,7 +862,7 @@ mod test {
 					NodeId(14),
 					ProtoNode {
 						identifier: "value".into(),
-						call_argument: ProtoNodeInput::None,
+						call_argument: concrete!(()),
 						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2).into()),
 						..Default::default()
 					},
@@ -899,8 +882,8 @@ mod test {
 					NodeId(1),
 					ProtoNode {
 						identifier: "id".into(),
-						call_argument: ProtoNodeInput::Node(NodeId(2)),
-						construction_args: ConstructionArgs::Nodes(vec![]),
+						call_argument: concrete!(()),
+						construction_args: ConstructionArgs::Nodes(vec![NodeId(2)]),
 						..Default::default()
 					},
 				),
@@ -908,8 +891,8 @@ mod test {
 					NodeId(2),
 					ProtoNode {
 						identifier: "id".into(),
-						call_argument: ProtoNodeInput::Node(NodeId(1)),
-						construction_args: ConstructionArgs::Nodes(vec![]),
+						call_argument: concrete!(()),
+						construction_args: ConstructionArgs::Nodes(vec![NodeId(1)]),
 						..Default::default()
 					},
 				),

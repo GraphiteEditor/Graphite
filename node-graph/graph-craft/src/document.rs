@@ -1186,7 +1186,7 @@ impl<'a> Iterator for RecursiveNodeIter<'a> {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
+	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode};
 	use std::sync::atomic::AtomicU64;
 
 	fn gen_node_id() -> NodeId {
@@ -1311,7 +1311,8 @@ mod test {
 	#[test]
 	fn resolve_proto_node_add() {
 		let document_node = DocumentNode {
-			inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::node(NodeId(0), 0)],
+			inputs: vec![NodeInput::node(NodeId(0), 0)],
+			call_argument: concrete!(u32),
 			implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
 			..Default::default()
 		};
@@ -1319,7 +1320,7 @@ mod test {
 		let proto_node = document_node.resolve_proto_node();
 		let reference = ProtoNode {
 			identifier: "graphene_core::structural::ConsNode".into(),
-			call_argument: ProtoNodeInput::ManualComposition(concrete!(u32)),
+			call_argument: concrete!(u32),
 			construction_args: ConstructionArgs::Nodes(vec![NodeId(0)]),
 			..Default::default()
 		};
@@ -1336,7 +1337,7 @@ mod test {
 					NodeId(10),
 					ProtoNode {
 						identifier: "graphene_core::structural::ConsNode".into(),
-						call_argument: ProtoNodeInput::ManualComposition(concrete!(u32)),
+						call_argument: concrete!(u32),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(14)]),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(0)]),
@@ -1353,8 +1354,8 @@ mod test {
 					NodeId(11),
 					ProtoNode {
 						identifier: "graphene_core::ops::AddPairNode".into(),
-						call_argument: ProtoNodeInput::Node(NodeId(10)),
-						construction_args: ConstructionArgs::Nodes(vec![]),
+						call_argument: concrete!(Context),
+						construction_args: ConstructionArgs::Nodes(vec![NodeId(10)]),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(1)]),
 							inputs_source: HashMap::new(),
@@ -1369,7 +1370,7 @@ mod test {
 					NodeId(14),
 					ProtoNode {
 						identifier: "graphene_core::value::ClonedNode".into(),
-						call_argument: ProtoNodeInput::ManualComposition(concrete!(graphene_core::Context)),
+						call_argument: concrete!(graphene_core::Context),
 						construction_args: ConstructionArgs::Value(TaggedValue::U32(2).into()),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
@@ -1401,7 +1402,8 @@ mod test {
 				(
 					NodeId(10),
 					DocumentNode {
-						inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::node(NodeId(14), 0)],
+						inputs: vec![NodeInput::node(NodeId(14), 0)],
+						call_argument: concrete!(u32),
 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(0)]),
@@ -1522,49 +1524,4 @@ mod test {
 	}
 
 	// TODO: Write more tests
-	// #[test]
-	// fn out_of_order_duplicate() {
-	// 	let result = output_duplicate(vec![NodeInput::node(NodeId(10), 1), NodeInput::node(NodeId(10), 0)], NodeInput::node(NodeId(10), 0);
-	// 	assert_eq!(
-	// 		result.outputs[0],
-	// 		NodeInput::node(NodeId(101), 0),
-	// 		"The first network output should be from a duplicated nested network"
-	// 	);
-	// 	assert_eq!(
-	// 		result.outputs[1],
-	// 		NodeInput::node(NodeId(10), 0),
-	// 		"The second network output should be from the original nested network"
-	// 	);
-	// 	assert!(
-	// 		result.nodes.contains_key(&NodeId(10)) && result.nodes.contains_key(&NodeId(101)) && result.nodes.len() == 2,
-	// 		"Network should contain two duplicated nodes"
-	// 	);
-	// 	for (node_id, input_value, inner_id) in [(10, 1., 1), (101, 2., 2)] {
-	// 		let nested_network_node = result.nodes.get(&NodeId(node_id)).unwrap();
-	// 		assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-	// 		assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(input_value), false)], "Input should be stable");
-	// 		let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
-	// 		assert_eq!(inner_network.inputs, vec![inner_id], "The input should be sent to the second node");
-	// 		assert_eq!(inner_network.outputs, vec![NodeInput::node(NodeId(inner_id), 0)], "The output should be node id");
-	// 		assert_eq!(inner_network.nodes.get(&NodeId(inner_id)).unwrap().name, format!("Identity {inner_id}"), "The node should be identity");
-	// 	}
-	// }
-	// #[test]
-	// fn using_other_node_duplicate() {
-	// 	let result = output_duplicate(vec![NodeInput::node(NodeId(11), 0)], NodeInput::node(NodeId(10), 1);
-	// 	assert_eq!(result.outputs, vec![NodeInput::node(NodeId(11), 0)], "The network output should be the result node");
-	// 	assert!(
-	// 		result.nodes.contains_key(&NodeId(11)) && result.nodes.contains_key(&NodeId(101)) && result.nodes.len() == 2,
-	// 		"Network should contain a duplicated node and a result node"
-	// 	);
-	// 	let result_node = result.nodes.get(&NodeId(11)).unwrap();
-	// 	assert_eq!(result_node.inputs, vec![NodeInput::node(NodeId(101), 0)], "Result node should refer to duplicate node as input");
-	// 	let nested_network_node = result.nodes.get(&NodeId(101)).unwrap();
-	// 	assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-	// 	assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(2.), false)], "Input should be 2");
-	// 	let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
-	// 	assert_eq!(inner_network.inputs, vec![2], "The input should be sent to the second node");
-	// 	assert_eq!(inner_network.outputs, vec![NodeInput::node(NodeId(2), 0)], "The output should be node id 2");
-	// 	assert_eq!(inner_network.nodes.get(&NodeId(2)).unwrap().name, "Identity 2", "The node should be identity 2");
-	// }
 }
