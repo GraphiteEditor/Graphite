@@ -458,13 +458,9 @@ impl NodeNetworkInterface {
 	/// If the node is not in the hashmap then a default input is found based on the compiled network, using the node_id passed as a parameter
 	pub fn map_ids(&mut self, mut node_template: NodeTemplate, node_id: &NodeId, new_ids: &HashMap<NodeId, NodeId>, network_path: &[NodeId]) -> NodeTemplate {
 		for (input_index, input) in node_template.document_node.inputs.iter_mut().enumerate() {
-			if let &mut NodeInput::Node { node_id: id, output_index, lambda } = input {
+			if let &mut NodeInput::Node { node_id: id, output_index } = input {
 				if let Some(&new_id) = new_ids.get(&id) {
-					*input = NodeInput::Node {
-						node_id: new_id,
-						output_index,
-						lambda,
-					};
+					*input = NodeInput::Node { node_id: new_id, output_index };
 				} else {
 					// Disconnect node input if it is not connected to another node in new_ids
 					let tagged_value = TaggedValue::from_type_or_none(&self.input_type(&InputConnector::node(*node_id, input_index), network_path).0);
