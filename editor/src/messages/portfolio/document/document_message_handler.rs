@@ -2604,7 +2604,7 @@ impl DocumentMessageHandler {
 			layout: Layout::WidgetLayout(document_bar_layout),
 			layout_target: LayoutTarget::DocumentBar,
 		});
-		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
+		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	pub fn update_layers_panel_control_bar_widgets(&self, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
