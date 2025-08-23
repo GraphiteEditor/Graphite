@@ -47,22 +47,20 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 						})
 					} else {
 						let error_msg = match fields.unnamed.len() {
-							0 => format!("Remove the unnecessary `()` from the `{}` message enum variant.", variant_type),
+							0 => format!("Remove the unnecessary `()` from the `{variant_type}` message enum variant."),
 							1 => {
 								let field_type = &fields.unnamed.first().unwrap().ty;
 								format!(
-									"The `{}` message should be defined as a struct-style (not tuple-style) enum variant to maintain consistent formatting across all editor messages.\n\
+									"The `{variant_type}` message should be defined as a struct-style (not tuple-style) enum variant to maintain consistent formatting across all editor messages.\n\
 									Replace `{}` with a named field using {{curly braces}} instead of a positional field using (parentheses).",
-									variant_type,
 									field_type.to_token_stream()
 								)
 							}
 							_ => {
 								let field_types = fields.unnamed.iter().map(|f| f.ty.to_token_stream().to_string()).collect::<Vec<_>>().join(", ");
 								format!(
-									"The `{}` message should be defined as a struct-style (not tuple-style) enum variant to maintain consistent formatting across all editor messages.\n\
-									Replace `{}` with named fields using {{curly braces}} instead of positional fields using (parentheses).",
-									variant_type, field_types
+									"The `{variant_type}` message should be defined as a struct-style (not tuple-style) enum variant to maintain consistent formatting across all editor messages.\n\
+									Replace `{field_types}` with named fields using {{curly braces}} instead of positional fields using (parentheses)."
 								)
 							}
 						};

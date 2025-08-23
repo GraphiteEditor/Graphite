@@ -50,6 +50,7 @@ impl<T, CachedNode> MemoNode<T, CachedNode> {
 	}
 }
 
+#[allow(clippy::module_inception)]
 pub mod memo {
 	pub const IDENTIFIER: crate::ProtoNodeIdentifier = crate::ProtoNodeIdentifier::new("graphene_core::memo::MemoNode");
 }

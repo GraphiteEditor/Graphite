@@ -90,7 +90,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	let preferences = EditorPreferences {
 		use_vello: true,
-		..Default::default()
 	};
 	let editor_api = Arc::new(WasmEditorApi {
 		font_cache: FontCache::default(),

@@ -323,6 +323,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 		#cfg
 		#[doc(hidden)]
+		#[allow(clippy::module_inception)]
 		mod #mod_name {
 			use super::*;
 			use #graphene_core as gcore;
