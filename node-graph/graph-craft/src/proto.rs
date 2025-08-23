@@ -270,12 +270,9 @@ impl ProtoNetwork {
 	pub fn collect_outwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (id, node) in &self.nodes {
-			match &node.input {
-				ProtoNodeInput::Node(ref_id) => {
-					self.check_ref(ref_id, id);
-					edges.entry(*ref_id).or_default().push(*id)
-				}
-				_ => (),
+			if let ProtoNodeInput::Node(ref_id) = &node.input {
+				self.check_ref(ref_id, id);
+				edges.entry(*ref_id).or_default().push(*id)
 			}
 
 			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
@@ -308,12 +305,9 @@ impl ProtoNetwork {
 	pub fn collect_inwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (id, node) in &self.nodes {
-			match &node.input {
-				ProtoNodeInput::Node(ref_id) => {
-					self.check_ref(ref_id, id);
-					edges.entry(*id).or_default().push(*ref_id)
-				}
-				_ => (),
+			if let ProtoNodeInput::Node(ref_id) = &node.input {
+				self.check_ref(ref_id, id);
+				edges.entry(*id).or_default().push(*ref_id)
 			}
 
 			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
