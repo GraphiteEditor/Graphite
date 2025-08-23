@@ -545,7 +545,6 @@ impl TypingContext {
 		let inputs = match node.construction_args {
 			// If the node has a value input we can infer the return type from it
 			ConstructionArgs::Value(ref v) => {
-				assert!(node.call_argument == concrete!(Context));
 				// TODO: This should return a reference to the value
 				let types = NodeIOTypes::new(concrete!(Context), Type::Future(Box::new(v.ty())), vec![]);
 				self.inferred.insert(node_id, types.clone());
