@@ -301,8 +301,64 @@ impl ProtoNetwork {
 		// 2. Branch convergence analysis
 		// 3. Post-injection nullification
 		// 4. Insert ContextModificationNode instances where beneficial
+		let mut out_nodes = Vec::with_capacity(10);
+		self.find_context_dependencies(self.output, &mut out_nodes);
+		out_nodes.sort_by_key(|&(id, _)| id);
 
 		Ok(())
+	}
+
+	fn find_context_dependencies(&self, id: NodeId, out_nodes: &mut Vec<(NodeId, ContextFeatures)>) -> ContextFeatures {
+		let mut branch_dependencies = Vec::new();
+		let mut combined_deps = ContextFeatures::default();
+		let node = &self.nodes[id.0 as usize].1;
+
+		let inputs = match &node.construction_args {
+			// TODO: Consider if value nodes can use the context
+			ConstructionArgs::Value(_) => return ContextFeatures::default(),
+			ConstructionArgs::Nodes(items) => items,
+			ConstructionArgs::Inline(_) => return ContextFeatures::default(),
+		};
+
+		// Compute the dependencies for each branch and combine all of them
+		for &(node, _) in inputs {
+			let branch = self.find_context_dependencies(node, out_nodes);
+			branch_dependencies.push(branch);
+			combined_deps |= branch;
+		}
+
+		let mut new_deps = combined_deps;
+
+		// Remove requirements which this node provides
+		new_deps &= !node.context_features.inject;
+		// Add requirements we have
+		new_deps |= node.context_features.extract;
+
+		// If we either introduce new dependencies, we can cache all children which don't yet need that dependency
+		let we_introduce_new_deps = !combined_deps.contains(new_deps);
+
+		// For diverging branches, we can add a cache node for all branches which don't reqire all dependencies
+		for (&(node, _), deps) in inputs.iter().zip(branch_dependencies.into_iter()) {
+			if we_introduce_new_deps || deps != combined_deps {
+				out_nodes.push((node, deps));
+			}
+		}
+
+		// Which dependencies do we supply (and don't need ourselves)?
+		let net_injections = node.context_features.inject.difference(node.context_features.extract);
+
+		// Which dependences still need to be meet after this node?
+		let remaining_deps_from_children = combined_deps.difference(net_injections);
+
+		// Do we satisfy any existing dependencies?
+		let we_supply_existing_deps = !combined_deps.difference(remaining_deps_from_children).is_empty();
+
+		if we_supply_existing_deps {
+			// Our set of context dependencies has shrunk so we can add a cache node after the current node
+			out_nodes.push((id, new_deps));
+		}
+
+		new_deps
 	}
 
 	/// Performs topological sort and reorders ids.

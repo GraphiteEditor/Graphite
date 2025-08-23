@@ -79,7 +79,7 @@ pub enum ContextFeature {
 	InjectVarArgs,
 }
 
-// Internal bitflags for fast compiler analysis (only extract features)
+// Internal bitflags for fast compiler analysis
 use bitflags::bitflags;
 bitflags! {
 	#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, Default)]
@@ -94,8 +94,8 @@ bitflags! {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, Default)]
 pub struct ContextDependencies {
-	extract: ContextFeatures,
-	inject: ContextFeatures,
+	pub extract: ContextFeatures,
+	pub inject: ContextFeatures,
 }
 
 impl From<&[ContextFeature]> for ContextDependencies {
