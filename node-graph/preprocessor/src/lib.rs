@@ -123,7 +123,6 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 				exports: vec![NodeInput::Node {
 					node_id: NodeId(input_count as u64),
 					output_index: 0,
-					lambda: false,
 				}],
 				nodes,
 				scope_injections: Default::default(),
