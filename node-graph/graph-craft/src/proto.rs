@@ -1,3 +1,4 @@
+use crate::document::value::TaggedValue;
 use crate::document::{InlineRust, value};
 use crate::document::{NodeId, OriginalLocation};
 pub use graphene_core::registry::*;
@@ -296,14 +297,67 @@ impl ProtoNetwork {
 	/// Inserts context nullification nodes to optimize caching
 	/// This analysis is performed after topological sorting to ensure proper dependency tracking
 	pub fn insert_context_nullification_nodes(&mut self) -> Result<(), String> {
-		// TODO: Implement full context flow analysis with:
-		// 1. DFS traversal to track context feature requirements
-		// 2. Branch convergence analysis
-		// 3. Post-injection nullification
-		// 4. Insert ContextModificationNode instances where beneficial
+		// Perform topological sort once
+		self.reorder_ids()?;
+
 		let mut out_nodes = Vec::with_capacity(10);
 		self.find_context_dependencies(self.output, &mut out_nodes);
 		out_nodes.sort_by_key(|&(id, _)| id);
+
+		// TODO: use outwards edges tracked in original node location instead
+		// Collect outward edges once
+		let outwards_edges = self.collect_outwards_edges();
+
+		for (node_id, context_deps) in out_nodes {
+			let memo_node_id = NodeId(self.nodes.len() as u64);
+			let (_, node) = &self.nodes[node_id.0 as usize];
+			let path = node.original_location.path.clone();
+
+			self.nodes.push((
+				memo_node_id,
+				ProtoNode {
+					construction_args: ConstructionArgs::Nodes(vec![node_id]),
+					call_argument: concrete!(Context),
+					identifier: graphene_core::memo::memo::IDENTIFIER,
+					original_location: OriginalLocation {
+						path: path.clone(),
+						..Default::default()
+					},
+					..Default::default()
+				},
+			));
+
+			let nullification_value_node_id = NodeId(self.nodes.len() as u64);
+
+			self.nodes.push((
+				nullification_value_node_id,
+				ProtoNode {
+					construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextFeatures(context_deps))),
+					call_argument: concrete!(Context),
+					identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
+					original_location: OriginalLocation {
+						path: path.clone(),
+						..Default::default()
+					},
+					..Default::default()
+				},
+			));
+			let nullification_node_id = NodeId(self.nodes.len() as u64);
+			self.nodes.push((
+				nullification_node_id,
+				ProtoNode {
+					construction_args: ConstructionArgs::Nodes(vec![memo_node_id, nullification_node_id]),
+					call_argument: concrete!(Context),
+					identifier: graphene_core::context_modification::context_modification::IDENTIFIER,
+					original_location: OriginalLocation {
+						path: path.clone(),
+						..Default::default()
+					},
+					..Default::default()
+				},
+			));
+			self.replace_node_id(&outwards_edges, node_id, nullification_node_id);
+		}
 
 		Ok(())
 	}
@@ -321,7 +375,7 @@ impl ProtoNetwork {
 		};
 
 		// Compute the dependencies for each branch and combine all of them
-		for &(node, _) in inputs {
+		for &node in inputs {
 			let branch = self.find_context_dependencies(node, out_nodes);
 			branch_dependencies.push(branch);
 			combined_deps |= branch;
@@ -338,7 +392,7 @@ impl ProtoNetwork {
 		let we_introduce_new_deps = !combined_deps.contains(new_deps);
 
 		// For diverging branches, we can add a cache node for all branches which don't reqire all dependencies
-		for (&(node, _), deps) in inputs.iter().zip(branch_dependencies.into_iter()) {
+		for (&node, deps) in inputs.iter().zip(branch_dependencies.into_iter()) {
 			if we_introduce_new_deps || deps != combined_deps {
 				out_nodes.push((node, deps));
 			}
