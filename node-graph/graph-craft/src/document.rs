@@ -1,13 +1,13 @@
 pub mod value;
 
 use crate::document::value::TaggedValue;
-use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
+use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode};
 use dyn_any::DynAny;
 use glam::IVec2;
 use graphene_core::memo::MemoHashGuard;
 pub use graphene_core::uuid::NodeId;
 pub use graphene_core::uuid::generate_uuid;
-use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
+use graphene_core::{Context, Cow, MemoHash, ProtoNodeIdentifier, Type};
 use log::Metadata;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
@@ -44,33 +44,9 @@ pub struct DocumentNode {
 	/// by using network.update_click_target(node_id).
 	#[cfg_attr(target_family = "wasm", serde(alias = "outputs"))]
 	pub inputs: Vec<NodeInput>,
-	/// Manual composition is the methodology by which most nodes are implemented, involving a call argument and upstream inputs.
-	/// By contrast, automatic composition is an alternative way to handle the composition of nodes as they execute in the graph.
-	/// Normally, the program (the compiled graph) builds up its call stack, with each node calling its upstream predecessor to acquire its input data.
-	/// When the document graph becomes the proto graph, that conceptual model changes into a model that's unique to the proto graph.
-	/// Automatic composition allows a document node to be translated into its place in the proto graph differently, such that
-	/// the node doesn't participate in that process of being called with a call argument and calling its upstream predecessor.
-	/// Instead, it is called directly with its input data from the upstream node, skipping the call stack building process.
-	/// The abstraction is provided by the compiler for nodes which opt for automatic composition. It works by inserting a `ComposeNode`
-	/// into the proto graph, which does the job of calling the upstream node and feeding its output into the downstream node's first input.
-	/// That first input is typically used by manual composition nodes as the call argument, but for automatic composition nodes,
-	/// that first input becomes the input data from the upstream node passed in by the `ComposeNode`.
+	/// Manual composition is the methodology by which nodes are implemented, involving a call argument and upstream inputs.
 	///
-	/// Through automatic composition, the upstream node providing the first input for a proto node is evaluated before the proto node itself is run.
-	/// (That first input is usually the call argument when manual composition is used.)
-	/// - Abstract example: upstream node `G` is evaluated and its data feeds into the first input of downstream node `F`,
-	///   just like function composition where function `G` is evaluated and its result is fed into function `F`.
-	/// - Concrete example: a node that takes an image as its first input will get that image data from an upstream node that produces image output data and is evaluated first before being fed downstream.
-	///
-	/// This is achieved by automatically inserting `ComposeNode`s, which run the first node with the overall input and then feed the resulting output into the second node.
-	/// The `ComposeNode` is basically a function composition operator: the parentheses in `F(G(x))` or circle math operator in `(F ∘ G)(x)`.
-	/// For flexibility, instead of being a language construct, Graphene splits out composition itself as its own low-level node so that behavior can be overridden.
-	/// The `ComposeNode`s are then inserted during the graph rewriting step for nodes that don't opt out with `manual_composition`.
-	/// Instead of node `G` feeding into node `F` feeding as the result back to the caller,
-	/// the graph is rewritten so nodes `G` and `F` both feed as lambdas into the inputs of a `ComposeNode` which calls `F(G(input))` and returns the result to the caller.
-	///
-	/// A node's manual composition input represents an input that is not resolved through graph rewriting with a `ComposeNode`,
-	/// and is instead just passed in when evaluating this node within the borrow tree.
+	/// A node's manual composition input represents an input that is passed in when evaluating this node within the borrow tree.
 	/// This is similar to having the first input be a `NodeInput::Network` after the graph flattening.
 	///
 	/// ## Example Use Case: CacheNode
@@ -181,7 +157,7 @@ impl Default for DocumentNode {
 	fn default() -> Self {
 		Self {
 			inputs: Default::default(),
-			call_argument: Default::default(),
+			call_argument: concrete!(Context),
 			implementation: Default::default(),
 			visible: true,
 			skip_deduplication: Default::default(),
@@ -231,18 +207,16 @@ impl DocumentNode {
 			unreachable!("tried to resolve not flattened node on resolved node {self:?}");
 		};
 
-		let (input, mut args) = (ProtoNodeInput::ManualComposition(self.call_argument), ConstructionArgs::Nodes(vec![]));
+		let (input, mut args) = (self.call_argument, ConstructionArgs::Nodes(vec![]));
 		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network { .. })), "received non-resolved input");
-		assert!(
-			!self.inputs.iter().any(|input| matches!(input, NodeInput::Value { .. })),
-			"received value as input. inputs: {:#?}, construction_args: {:#?}",
-			self.inputs,
-			args
-		);
 
 		// If we have one input of the type inline, set it as the construction args
 		if let &[NodeInput::Inline(ref inline)] = self.inputs.as_slice() {
 			args = ConstructionArgs::Inline(inline.clone());
+		}
+		// If we have one input of the type inline, set it as the construction args
+		if let &[NodeInput::Value { ref tagged_value, .. }] = self.inputs.as_slice() {
+			args = ConstructionArgs::Value(tagged_value.clone());
 		}
 		if let ConstructionArgs::Nodes(nodes) = &mut args {
 			nodes.extend(self.inputs.iter().map(|input| match input {
@@ -252,7 +226,7 @@ impl DocumentNode {
 		}
 		ProtoNode {
 			identifier,
-			input,
+			call_argument: input,
 			construction_args: args,
 			original_location: self.original_location,
 			skip_deduplication: self.skip_deduplication,
@@ -1344,7 +1318,7 @@ mod test {
 		let proto_node = document_node.resolve_proto_node();
 		let reference = ProtoNode {
 			identifier: "graphene_core::structural::ConsNode".into(),
-			input: ProtoNodeInput::ManualComposition(concrete!(u32)),
+			call_argument: ProtoNodeInput::ManualComposition(concrete!(u32)),
 			construction_args: ConstructionArgs::Nodes(vec![NodeId(0)]),
 			..Default::default()
 		};
@@ -1361,7 +1335,7 @@ mod test {
 					NodeId(10),
 					ProtoNode {
 						identifier: "graphene_core::structural::ConsNode".into(),
-						input: ProtoNodeInput::ManualComposition(concrete!(u32)),
+						call_argument: ProtoNodeInput::ManualComposition(concrete!(u32)),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(14)]),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(0)]),
@@ -1378,7 +1352,7 @@ mod test {
 					NodeId(11),
 					ProtoNode {
 						identifier: "graphene_core::ops::AddPairNode".into(),
-						input: ProtoNodeInput::Node(NodeId(10)),
+						call_argument: ProtoNodeInput::Node(NodeId(10)),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(1)]),
@@ -1394,7 +1368,7 @@ mod test {
 					NodeId(14),
 					ProtoNode {
 						identifier: "graphene_core::value::ClonedNode".into(),
-						input: ProtoNodeInput::ManualComposition(concrete!(graphene_core::Context)),
+						call_argument: ProtoNodeInput::ManualComposition(concrete!(graphene_core::Context)),
 						construction_args: ConstructionArgs::Value(TaggedValue::U32(2).into()),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
