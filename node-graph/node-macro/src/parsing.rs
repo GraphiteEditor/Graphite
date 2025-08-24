@@ -855,6 +855,7 @@ mod tests {
 				pat_ident: pat_ident("a"),
 				ty: parse_quote!(f64),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(f64),
 			is_async: false,
@@ -921,6 +922,7 @@ mod tests {
 				pat_ident: pat_ident("footprint"),
 				ty: parse_quote!(Footprint),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(T),
 			is_async: false,
@@ -974,7 +976,7 @@ mod tests {
 		let attr = quote!(category("Vector: Shape"));
 		let input = quote!(
 			/// Test
-			fn circle(_: impl Ctx, #[default(50.)] radius: f64) -> Vector {
+			fn circle(_: impl Ctx + ExtractFootprint, #[default(50.)] radius: f64) -> Vector {
 				// Implementation details...
 			}
 		);
@@ -998,8 +1000,9 @@ mod tests {
 			where_clause: None,
 			input: Input {
 				pat_ident: pat_ident("_"),
-				ty: parse_quote!(impl Ctx),
+				ty: parse_quote!(impl Ctx + ExtractFootprint),
 				implementations: Punctuated::new(),
+				context_features: vec![format_ident!("ExtractFootprint")],
 			},
 			output_type: parse_quote!(Vector),
 			is_async: false,
@@ -1062,6 +1065,7 @@ mod tests {
 				pat_ident: pat_ident("image"),
 				ty: parse_quote!(Table<Raster<P>>),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(Table<Raster<P>>),
 			is_async: false,
@@ -1136,6 +1140,7 @@ mod tests {
 				pat_ident: pat_ident("a"),
 				ty: parse_quote!(f64),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(f64),
 			is_async: false,
@@ -1198,6 +1203,7 @@ mod tests {
 				pat_ident: pat_ident("api"),
 				ty: parse_quote!(&WasmEditorApi),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(Table<Raster<CPU>>),
 			is_async: true,
@@ -1260,6 +1266,7 @@ mod tests {
 				pat_ident: pat_ident("input"),
 				ty: parse_quote!(i32),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(i32),
 			is_async: false,

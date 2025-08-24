@@ -2,13 +2,13 @@ use crate::gradient::GradientStops;
 use crate::raster_types::{CPU, Raster};
 use crate::table::{Table, TableRowRef};
 use crate::vector::Vector;
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, Graphic, OwnedContextImpl};
+use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, Graphic, InjectIndex, InjectVarArgs, OwnedContextImpl};
 use glam::DVec2;
 use graphene_core_shaders::color::Color;
 
 #[node_macro::node(name("Instance on Points"), category("Instancing"), path(graphene_core::vector))]
 async fn instance_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
-	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx,
+	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx + InjectIndex + InjectVarArgs,
 	points: Table<Vector>,
 	#[implementations(
 		Context -> Table<Graphic>,
@@ -52,7 +52,7 @@ async fn instance_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>
 
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn instance_repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
-	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+	ctx: impl ExtractAll + CloneVarArgs + Ctx + InjectIndex,
 	#[implementations(
 		Context -> Table<Graphic>,
 		Context -> Table<Vector>,

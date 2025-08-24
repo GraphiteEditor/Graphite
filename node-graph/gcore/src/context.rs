@@ -61,8 +61,15 @@ impl<T: ?Sized + ExtractFootprint + ExtractIndex + ExtractTime + ExtractAnimatio
 
 impl<T: Ctx> InjectFootprint for T {}
 impl<T: Ctx> InjectTime for T {}
+impl<T: Ctx> InjectIndex for T {}
 impl<T: Ctx> InjectAnimationTime for T {}
 impl<T: Ctx> InjectVarArgs for T {}
+
+impl<T: Ctx + InjectFootprint + ExtractFootprint> ModifyFootprint for T {}
+impl<T: Ctx + InjectTime + ExtractTime> ModifyTime for T {}
+impl<T: Ctx + InjectIndex + ExtractIndex> ModifyIndex for T {}
+impl<T: Ctx + InjectAnimationTime + ExtractAnimationTime> ModifyAnimationTime for T {}
+impl<T: Ctx + InjectVarArgs + ExtractVarArgs> ModifyVarArgs for T {}
 
 // Public enum for flexible node macro codegen
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
