@@ -542,12 +542,11 @@ impl NodeNetworkInterface {
 				}
 			}
 			DocumentNodeImplementation::ProtoNode(_) => {
-				// If a node has manual composition, then offset the input index by 1 since the proto node also includes the type of the input passed through manual composition.
-				let manual_composition_offset = 1;
+				// Offset the input index by 1 since the proto node also includes the type of the input passed as a call argument.
 				self.resolved_types
 					.types
 					.get(node_id_path.as_slice())
-					.and_then(|node_types| node_types.inputs.get(input_index + manual_composition_offset).cloned())
+					.and_then(|node_types| node_types.inputs.get(input_index + 1).cloned())
 					.map(|node_types| (node_types, TypeSource::Compiled))
 			}
 			DocumentNodeImplementation::Extract => None,
@@ -4150,17 +4149,13 @@ impl NodeNetworkInterface {
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
-	pub fn set_manual_compostion(&mut self, node_id: &NodeId, network_path: &[NodeId], manual_composition: Option<Type>) {
+	pub fn set_call_argument(&mut self, node_id: &NodeId, network_path: &[NodeId], call_argument: Type) {
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in set_implementation");
 			return;
 		};
 		let Some(node) = network.nodes.get_mut(node_id) else {
 			log::error!("Could not get node in set_implementation");
-			return;
-		};
-		let Some(call_argument) = manual_composition else {
-			log::error!("Nodes with automatic composition are no longer supported");
 			return;
 		};
 		node.call_argument = call_argument;

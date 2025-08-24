@@ -44,76 +44,7 @@ pub struct DocumentNode {
 	/// by using network.update_click_target(node_id).
 	#[cfg_attr(target_family = "wasm", serde(alias = "outputs"))]
 	pub inputs: Vec<NodeInput>,
-	/// Manual composition is the methodology by which nodes are implemented, involving a call argument and upstream inputs.
-	///
-	/// A node's manual composition input represents an input that is passed in when evaluating this node within the borrow tree.
-	/// This is similar to having the first input be a `NodeInput::Network` after the graph flattening.
-	///
-	/// ## Example Use Case: CacheNode
-	///
-	/// The `CacheNode` is a pass-through node on cache miss, but on cache hit it needs to avoid evaluating the upstream node and instead just return the cached value.
-	///
-	/// First, let's consider what that would look like using the default composition flow if the `CacheNode` instead just always acted as a pass-through (akin to a cache that always misses):
-	///
-	/// ```text
-	/// ┌───────────────┐    ┌───────────────┐    ┌───────────────┐
-	/// │               │◄───┤               │◄───┤               │◄─── EVAL (START)
-	/// │       G       │    │PassThroughNode│    │       F       │
-	/// │               ├───►│               ├───►│               │───► RESULT (END)
-	/// └───────────────┘    └───────────────┘    └───────────────┘
-	/// ```
-	///
-	/// This acts like the function call `F(PassThroughNode(G(input)))` when evaluating `F` with some `input`: `F.eval(input)`.
-	/// - The diagram's upper track of arrows represents the flow of building up the call stack:
-	///   since `F` is the output it is encountered first but deferred to its upstream caller `PassThroughNode` and that is once again deferred to its upstream caller `G`.
-	/// - The diagram's lower track of arrows represents the flow of evaluating the call stack:
-	///   `G` is evaluated first, then `PassThroughNode` is evaluated with the result of `G`, and finally `F` is evaluated with the result of `PassThroughNode`.
-	///
-	/// With the default composition flow (no manual composition), `ComposeNode`s would be automatically inserted during the graph rewriting step like this:
-	///
-	/// ```text
-	///                                           ┌───────────────┐
-	///                                           │               │◄─── EVAL (START)
-	///                                           │  ComposeNode  │
-	///                      ┌───────────────┐    │               ├───► RESULT (END)
-	///                      │               │◄─┐ ├───────────────┤
-	///                      │       G       │  └─┤               │
-	///                      │               ├─┐  │     First     │
-	///                      └───────────────┘ └─►│               │
-	///                      ┌───────────────┐    ├───────────────┤
-	///                      │               │◄───┤               │
-	///                      │  ComposeNode  │    │     Second    │
-	/// ┌───────────────┐    │               ├───►│               │
-	/// │               │◄─┐ ├───────────────┤    └───────────────┘
-	/// │PassThroughNode│  └─┤               │
-	/// │               ├─┐  │     First     │
-	/// └───────────────┘ └─►│               │
-	/// ┌───────────────┐    ├───────────────┤
-	/// |               │◄───┤               │
-	/// │       F       │    │     Second    │
-	/// │               ├───►│               │
-	/// └───────────────┘    └───────────────┘
-	/// ```
-	///
-	/// Now let's swap back from the `PassThroughNode` to the `CacheNode` to make caching actually work.
-	/// It needs to override the default composition flow so that `G` is not automatically evaluated when the cache is hit.
-	/// We need to give the `CacheNode` more manual control over the order of execution.
-	/// So the `CacheNode` opts into manual composition and, instead of deferring to its upstream caller, it consumes the input directly:
-	///
-	/// ```text
-	///                      ┌───────────────┐    ┌───────────────┐
-	///                      │               │◄───┤               │◄─── EVAL (START)
-	///                      │   CacheNode   │    │       F       │
-	///                      │               ├───►│               │───► RESULT (END)
-	/// ┌───────────────┐    ├───────────────┤    └───────────────┘
-	/// │               │◄───┤               │
-	/// │       G       │    │  Cached Data  │
-	/// │               ├───►│               │
-	/// └───────────────┘    └───────────────┘
-	/// ```
-	///
-	/// Now, the call from `F` directly reaches the `CacheNode` and the `CacheNode` can decide whether to call `G.eval(input_from_f)`
-	/// in the event of a cache miss or just return the cached data in the event of a cache hit.
+	/// Type of the argument which this node can be evaluated with.
 	#[serde(alias = "manual_composition", default)]
 	pub call_argument: Type,
 	// A nested document network or a proto-node identifier.
@@ -150,8 +81,6 @@ pub struct OriginalLocation {
 	pub dependants: Vec<Vec<NodeId>>,
 	/// A list of flags indicating whether the input is exposed in the UI
 	pub inputs_exposed: Vec<bool>,
-	/// Skipping inputs is useful for the manual composition thing - whereby a hidden `Footprint` input is added as the first input.
-	pub skip_inputs: usize,
 }
 
 impl Default for DocumentNode {
@@ -172,14 +101,13 @@ impl Hash for OriginalLocation {
 		self.path.hash(state);
 		self.inputs_source.iter().for_each(|val| val.hash(state));
 		self.inputs_exposed.hash(state);
-		self.skip_inputs.hash(state);
 	}
 }
 impl OriginalLocation {
 	pub fn inputs(&self, index: usize) -> impl Iterator<Item = Source> + '_ {
-		[(index >= self.skip_inputs).then(|| Source {
+		[(index >= 1).then(|| Source {
 			node: self.path.clone().unwrap_or_default(),
-			index: self.inputs_exposed.iter().take(index - self.skip_inputs).filter(|&&exposed| exposed).count(),
+			index: self.inputs_exposed.iter().take(index - 1).filter(|&&exposed| exposed).count(),
 		})]
 		.into_iter()
 		.flatten()
@@ -199,7 +127,7 @@ impl DocumentNode {
 		self.inputs[index] = NodeInput::Node { node_id, output_index };
 		let input_source = &mut self.original_location.inputs_source;
 		for source in source {
-			input_source.insert(source, (index + self.original_location.skip_inputs).saturating_sub(skip));
+			input_source.insert(source, (index + 1).saturating_sub(skip));
 		}
 	}
 
@@ -719,7 +647,6 @@ impl NodeNetwork {
 				node.original_location = OriginalLocation {
 					path: Some(new_path),
 					inputs_exposed: node.inputs.iter().map(|input| input.is_exposed()).collect(),
-					skip_inputs: 1,
 					dependants: (0..node.implementation.output_count()).map(|_| Vec::new()).collect(),
 					..Default::default()
 				};
@@ -900,8 +827,7 @@ impl NodeNetwork {
 					match *parent_input {
 						// If the input to self is a node, connect the corresponding output of the inner network to it
 						NodeInput::Node { node_id, output_index } => {
-							let skip = node.original_location.skip_inputs;
-							nested_node.populate_first_network_input(node_id, output_index, nested_input_index, node.original_location.inputs(*import_index), skip);
+							nested_node.populate_first_network_input(node_id, output_index, nested_input_index, node.original_location.inputs(*import_index), 1);
 							let input_node = self.nodes.get_mut(&node_id).unwrap_or_else(|| panic!("unable find input node {node_id:?}"));
 							input_node.original_location.dependants[output_index].push(nested_node_id);
 						}
@@ -1003,15 +929,6 @@ impl NodeNetwork {
 		}
 	}
 
-	// /// Locate the export that is a [`NodeInput::Network`] at index `offset` and replace it with a [`NodeInput::Node`].
-	// fn populate_first_network_export(&mut self, node: &mut DocumentNode, node_id: NodeId, output_index: usize, lambda: bool, export_index: usize, source: impl Iterator<Item = Source>, skip: usize) {
-	// 	self.exports[export_index] = NodeInput::Node { node_id, output_index, lambda };
-	// 	let input_source = &mut node.original_location.inputs_source;
-	// 	for source in source {
-	// 		input_source.insert(source, output_index + node.original_location.skip_inputs - skip);
-	// 	}
-	// }
-
 	fn remove_id_node(&mut self, id: NodeId) -> Result<(), String> {
 		let node = self.nodes.get(&id).ok_or_else(|| format!("Node with id {id} does not exist"))?.clone();
 		if let DocumentNodeImplementation::ProtoNode(ident) = &node.implementation {
@@ -1041,7 +958,7 @@ impl NodeNetwork {
 
 									let input_source = &mut output.original_location.inputs_source;
 									for source in node.original_location.inputs(index) {
-										input_source.insert(source, index + output.original_location.skip_inputs - node.original_location.skip_inputs);
+										input_source.insert(source, index);
 									}
 								}
 							}
@@ -1343,7 +1260,6 @@ mod test {
 							path: Some(vec![NodeId(1), NodeId(0)]),
 							inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
 							inputs_exposed: vec![true, true],
-							skip_inputs: 0,
 							..Default::default()
 						},
 
@@ -1360,7 +1276,6 @@ mod test {
 							path: Some(vec![NodeId(1), NodeId(1)]),
 							inputs_source: HashMap::new(),
 							inputs_exposed: vec![true],
-							skip_inputs: 0,
 							..Default::default()
 						},
 						..Default::default()
@@ -1376,7 +1291,6 @@ mod test {
 							path: Some(vec![NodeId(1), NodeId(4)]),
 							inputs_source: HashMap::new(),
 							inputs_exposed: vec![true, false],
-							skip_inputs: 0,
 							..Default::default()
 						},
 						..Default::default()
@@ -1409,7 +1323,6 @@ mod test {
 							path: Some(vec![NodeId(1), NodeId(0)]),
 							inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
 							inputs_exposed: vec![true, true],
-							skip_inputs: 0,
 							..Default::default()
 						},
 						..Default::default()
@@ -1424,7 +1337,6 @@ mod test {
 							path: Some(vec![NodeId(1), NodeId(4)]),
 							inputs_source: HashMap::new(),
 							inputs_exposed: vec![true, false],
-							skip_inputs: 0,
 							..Default::default()
 						},
 						..Default::default()
@@ -1439,7 +1351,6 @@ mod test {
 							path: Some(vec![NodeId(1), NodeId(1)]),
 							inputs_source: HashMap::new(),
 							inputs_exposed: vec![true],
-							skip_inputs: 0,
 							..Default::default()
 						},
 						..Default::default()

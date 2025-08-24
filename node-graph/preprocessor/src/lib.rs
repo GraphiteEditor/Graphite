@@ -84,7 +84,6 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 
 							DocumentNode {
 								inputs: vec![NodeInput::network(input.clone(), i)],
-								// manual_composition: Some(fn_input.clone()),
 								implementation: DocumentNodeImplementation::ProtoNode(proto_node),
 								visible: true,
 								call_argument: concrete!(Context),

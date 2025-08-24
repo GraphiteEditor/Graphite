@@ -8,6 +8,21 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 /// Caches the output of a given Node and acts as a proxy
+///
+/// ```text
+///                      ┌───────────────┐    ┌───────────────┐
+///                      │               │◄───┤               │◄─── EVAL (START)
+///                      │   CacheNode   │    │       F       │
+///                      │               ├───►│               │───► RESULT (END)
+/// ┌───────────────┐    ├───────────────┤    └───────────────┘
+/// │               │◄───┤               │
+/// │       G       │    │  Cached Data  │
+/// │               ├───►│               │
+/// └───────────────┘    └───────────────┘
+/// ```
+///
+/// The call from `F` directly reaches the `CacheNode` and the `CacheNode` can decide whether to call `G.eval(input_from_f)`
+/// in the event of a cache miss or just return the cached data in the event of a cache hit.
 #[derive(Default)]
 pub struct MemoNode<T, CachedNode> {
 	cache: Arc<Mutex<Option<(u64, T)>>>,

@@ -290,7 +290,7 @@ impl ProtoNetwork {
 		(inwards_edges, id_map)
 	}
 
-	/// Inserts a [`structural::ComposeNode`] for each node that has a [`ProtoNodeInput::Node`]. The compose node evaluates the first node, and then sends the result into the second node.
+	/// Performs topological sort and reorders ids.
 	pub fn resolve_inputs(&mut self) -> Result<(), String> {
 		// Perform topological sort once
 		self.reorder_ids()?;
@@ -298,23 +298,23 @@ impl ProtoNetwork {
 		Ok(())
 	}
 
-	/// Update all of the references to a node ID in the graph with a new ID named `compose_node_id`.
-	fn replace_node_id(&mut self, outwards_edges: &HashMap<NodeId, Vec<NodeId>>, node_id: NodeId, compose_node_id: NodeId) {
+	/// Update all of the references to a node ID in the graph with a new ID named `replacement_node_id`.
+	fn replace_node_id(&mut self, outwards_edges: &HashMap<NodeId, Vec<NodeId>>, node_id: NodeId, replacement_node_id: NodeId) {
 		// Update references in other nodes to use the new compose node
 		if let Some(referring_nodes) = outwards_edges.get(&node_id) {
 			for &referring_node_id in referring_nodes {
 				let (_, referring_node) = &mut self.nodes[referring_node_id.0 as usize];
-				referring_node.map_ids(|id| if id == node_id { compose_node_id } else { id })
+				referring_node.map_ids(|id| if id == node_id { replacement_node_id } else { id })
 			}
 		}
 
 		if self.output == node_id {
-			self.output = compose_node_id;
+			self.output = replacement_node_id;
 		}
 
 		self.inputs.iter_mut().for_each(|id| {
 			if *id == node_id {
-				*id = compose_node_id;
+				*id = replacement_node_id;
 			}
 		});
 	}
@@ -565,7 +565,6 @@ impl TypingContext {
 
 		// Get the node input type from the proto node declaration
 		let call_argument = &node.call_argument;
-		let using_manual_composition = true;
 		let impls = self.lookup.get(&node.identifier).ok_or_else(|| vec![GraphError::new(node, GraphErrorType::NoImplementations)])?;
 
 		if let Some(index) = inputs.iter().position(|p| {
@@ -645,7 +644,6 @@ impl TypingContext {
 						.filter(|(_, (p1, p2))| !valid_type(p1, p2))
 						.map(|(index, ty)| {
 							let i = node.original_location.inputs(index).min_by_key(|s| s.node.len()).map(|s| s.index).unwrap_or(index);
-							let i = if using_manual_composition { i } else { i + 1 };
 							(i, ty)
 						})
 						.collect::<Vec<_>>();
@@ -661,11 +659,7 @@ impl TypingContext {
 					.into_iter()
 					.chain(&inputs)
 					.enumerate()
-					// TODO: Make the following line's if statement conditional on being a call argument or primary input
-					.filter_map(|(i, t)| {
-						let i = if using_manual_composition { i } else { i + 1 };
-						if i == 0 { None } else { Some(format!("• Input {i}: {t}")) }
-					})
+					.filter_map(|(i, t)| if i == 0 { None } else { Some(format!("• Input {i}: {t}")) })
 					.collect::<Vec<_>>()
 					.join("\n");
 				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { inputs, error_inputs })])

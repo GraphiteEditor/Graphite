@@ -552,7 +552,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				let mut default_template = NodeTemplate::default();
 				default_template.document_node.implementation = DocumentNodeImplementation::ProtoNode(new.clone());
 				document.network_interface.replace_implementation(node_id, &network_path, &mut default_template);
-				document.network_interface.set_manual_compostion(node_id, &network_path, Some(graph_craft::Type::Generic("T".into())));
+				document.network_interface.set_call_argument(node_id, &network_path, graph_craft::Type::Generic("T".into()));
 			}
 		}
 	}
@@ -581,7 +581,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	if node.call_argument == graph_craft::concrete!(()) || node.call_argument == graph_craft::concrete!(graphene_std::transform::Footprint) {
 		document
 			.network_interface
-			.set_manual_compostion(node_id, network_path, graph_craft::concrete!(graphene_std::Context).into());
+			.set_call_argument(node_id, network_path, graph_craft::concrete!(graphene_std::Context).into());
 	}
 
 	// Only nodes that have not been modified and still refer to a definition can be updated
