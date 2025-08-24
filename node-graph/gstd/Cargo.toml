@@ -18,7 +18,7 @@ wasm = [
 	"image/png",
 ]
 image-compare = []
-vello = ["dep:vello", "gpu"]
+vello = ["gpu"]
 resvg = []
 wayland = ["graph-craft/wayland"]
 shader-nodes = ["graphene-raster-nodes/shader-nodes"]
@@ -48,7 +48,7 @@ base64 = { workspace = true }
 wasm-bindgen = { workspace = true, optional = true }
 wasm-bindgen-futures = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
-vello = { workspace = true, optional = true }
+vello = { workspace = true }
 web-sys = { workspace = true, optional = true, features = [
 	"Window",
 	"CanvasRenderingContext2d",
