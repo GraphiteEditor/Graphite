@@ -394,6 +394,17 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.dash_offset), false), true);
 	}
 
+	pub fn circular_repeat_set(&mut self, angle: f64, radius: f64, count: u32) {
+		let Some(circular_repeat_node_id) = self.existing_node_id("Circular Repeat", true) else { return };
+
+		let input_connector = InputConnector::node(circular_repeat_node_id, graphene_std::vector::circular_repeat::AngleOffsetInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(angle), false), true);
+		let input_connector = InputConnector::node(circular_repeat_node_id, graphene_std::vector::circular_repeat::RadiusInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(radius), false), true);
+		let input_connector = InputConnector::node(circular_repeat_node_id, graphene_std::vector::circular_repeat::CountInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::U32(count), false), false);
+	}
+
 	/// Update the transform value of the upstream Transform node based a change to its existing value and the given parent transform.
 	/// A new Transform node is created if one does not exist, unless it would be given the identity transform.
 	pub fn transform_change_with_parent(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, skip_rerender: bool) {

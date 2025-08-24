@@ -22,8 +22,11 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		fill: Fill,
 	},
-	RepeatSet {
+	CircularRepeatSet {
 		layer: LayerNodeIdentifier,
+		angle: f64,
+		radius: f64,
+		count: u32,
 	},
 	BlendingFillSet {
 		layer: LayerNodeIdentifier,
