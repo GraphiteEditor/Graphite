@@ -431,7 +431,7 @@ mod test {
 				let monitor_node = DocumentNode {
 					inputs: vec![input],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER),
-					manual_composition: Some(graph_craft::generic!(T)),
+					call_argument: graph_craft::generic!(T),
 					skip_deduplication: true,
 					..Default::default()
 				};

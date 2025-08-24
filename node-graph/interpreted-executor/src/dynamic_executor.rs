@@ -393,7 +393,7 @@ impl BorrowTree {
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(ids) => {
-				let ids: Vec<_> = ids.iter().map(|id| *id).collect();
+				let ids = ids.to_vec();
 				let construction_nodes = self.node_deps(&ids);
 				let constructor = typing_context.constructor(id).ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
 				let node = constructor(construction_nodes).await;

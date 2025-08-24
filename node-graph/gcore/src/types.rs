@@ -230,7 +230,6 @@ pub enum Type {
 	/// A wrapper around the Rust type id for any concrete Rust type. Allows us to do equality comparisons, like checking if a String == a String.
 	Concrete(TypeDescriptor),
 	/// Runtime type information for a function. Given some input, gives some output.
-	/// See the example and explanation in the `ComposeNode` implementation within the node registry for more info.
 	Fn(Box<Type>, Box<Type>),
 	/// Represents a future which promises to return the inner type.
 	Future(Box<Type>),
