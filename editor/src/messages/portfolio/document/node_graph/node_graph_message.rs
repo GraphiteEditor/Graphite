@@ -16,6 +16,7 @@ pub enum NodeGraphMessage {
 		nodes: Vec<(NodeId, NodeTemplate)>,
 		new_ids: HashMap<NodeId, NodeId>,
 	},
+	AddPathNode,
 	AddImport,
 	AddExport,
 	Init,
@@ -81,6 +82,9 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		parent: LayerNodeIdentifier,
 	},
+	SetChainPosition {
+		node_id: NodeId,
+	},
 	PasteNodes {
 		serialized_nodes: String,
 	},
@@ -97,6 +101,7 @@ pub enum NodeGraphMessage {
 	PointerOutsideViewport {
 		shift: Key,
 	},
+	ShakeNode,
 	RemoveImport {
 		import_index: usize,
 	},

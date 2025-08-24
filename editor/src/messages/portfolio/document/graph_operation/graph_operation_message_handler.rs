@@ -14,15 +14,8 @@ use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, Gradient, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 
-#[derive(Debug, Clone)]
-struct ArtboardInfo {
-	input_node: NodeInput,
-	output_nodes: Vec<InputConnector>,
-	merge_node: NodeId,
-}
-
 #[derive(ExtractField)]
-pub struct GraphOperationMessageData<'a> {
+pub struct GraphOperationMessageContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub collapsed: &'a mut CollapsedLayers,
 	pub node_graph: &'a mut NodeGraphMessageHandler,
@@ -34,9 +27,9 @@ pub struct GraphOperationMessageHandler {}
 // GraphOperationMessageHandler always modified the document network. This is so changes to the layers panel will only affect the document network.
 // For changes to the selected network, use NodeGraphMessageHandler. No NodeGraphMessage's should be added here, since they will affect the selected nested network.
 #[message_handler_data]
-impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for GraphOperationMessageHandler {
-	fn process_message(&mut self, message: GraphOperationMessage, responses: &mut VecDeque<Message>, data: GraphOperationMessageData) {
-		let network_interface = data.network_interface;
+impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for GraphOperationMessageHandler {
+	fn process_message(&mut self, message: GraphOperationMessage, responses: &mut VecDeque<Message>, context: GraphOperationMessageContext) {
+		let network_interface = context.network_interface;
 
 		match message {
 			GraphOperationMessage::FillSet { layer, fill } => {
@@ -126,7 +119,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let primary_input = artboard.inputs.first().expect("Artboard should have a primary input").clone();
 				if let NodeInput::Node { node_id, .. } = &primary_input {
 					if network_interface.is_layer(node_id, &[]) && !network_interface.is_artboard(node_id, &[]) {
-						network_interface.move_layer_to_stack(LayerNodeIdentifier::new(*node_id, network_interface, &[]), artboard_layer, 0, &[]);
+						network_interface.move_layer_to_stack(LayerNodeIdentifier::new(*node_id, network_interface), artboard_layer, 0, &[]);
 					} else {
 						network_interface.disconnect_input(&InputConnector::node(artboard_layer.to_node(), 0), &[]);
 						network_interface.set_input(&InputConnector::node(id, 0), primary_input, &[]);
@@ -181,7 +174,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);
-				modify_inputs.insert_vector_data(subpaths, layer, true, true, true);
+				modify_inputs.insert_vector(subpaths, layer, true, true, true);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
@@ -323,6 +316,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 	}
 }
 
+#[derive(Debug, Clone)]
+struct ArtboardInfo {
+	input_node: NodeInput,
+	output_nodes: Vec<InputConnector>,
+	merge_node: NodeId,
+}
+
 fn usvg_color(c: usvg::Color, a: f32) -> Color {
 	Color::from_rgbaf32_unchecked(c.red as f32 / 255., c.green as f32 / 255., c.blue as f32 / 255., a)
 }
@@ -349,7 +349,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 			let subpaths = convert_usvg_path(path);
 			let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box()).reduce(Quad::combine_bounds).unwrap_or_default();
 
-			modify_inputs.insert_vector_data(subpaths, layer, true, path.fill().is_some(), path.stroke().is_some());
+			modify_inputs.insert_vector(subpaths, layer, true, path.fill().is_some(), path.stroke().is_some());
 
 			if let Some(transform_node_id) = modify_inputs.existing_node_id("Transform", true) {
 				transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, transform * usvg_transform(node.abs_transform()));
@@ -426,7 +426,6 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 			Fill::Gradient(Gradient {
 				start,
 				end,
-				transform: DAffine2::IDENTITY,
 				gradient_type: GradientType::Linear,
 				stops,
 			})
@@ -453,7 +452,6 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 			Fill::Gradient(Gradient {
 				start,
 				end,
-				transform: DAffine2::IDENTITY,
 				gradient_type: GradientType::Radial,
 				stops,
 			})

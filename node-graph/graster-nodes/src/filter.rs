@@ -2,15 +2,16 @@ use graphene_core::color::Color;
 use graphene_core::context::Ctx;
 use graphene_core::raster::image::Image;
 use graphene_core::raster::{Bitmap, BitmapMut};
-use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
+use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::registry::types::PixelLength;
+use graphene_core::table::Table;
 
 /// Blurs the image with a Gaussian or blur kernel filter.
 #[node_macro::node(category("Raster: Filter"))]
 async fn blur(
 	_: impl Ctx,
 	/// The image to be blurred.
-	image_frame: RasterDataTable<CPU>,
+	image_frame: Table<Raster<CPU>>,
 	/// The radius of the blur kernel.
 	#[range((0., 100.))]
 	#[hard_min(0.)]
@@ -19,28 +20,26 @@ async fn blur(
 	box_blur: bool,
 	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
 	gamma: bool,
-) -> RasterDataTable<CPU> {
-	let mut result_table = RasterDataTable::default();
+) -> Table<Raster<CPU>> {
+	image_frame
+		.into_iter()
+		.map(|mut row| {
+			let image = row.element.clone();
 
-	for mut image_instance in image_frame.instance_iter() {
-		let image = image_instance.instance.clone();
+			// Run blur algorithm
+			let blurred_image = if radius < 0.1 {
+				// Minimum blur radius
+				image.clone()
+			} else if box_blur {
+				Raster::new_cpu(box_blur_algorithm(image.into_data(), radius, gamma))
+			} else {
+				Raster::new_cpu(gaussian_blur_algorithm(image.into_data(), radius, gamma))
+			};
 
-		// Run blur algorithm
-		let blurred_image = if radius < 0.1 {
-			// Minimum blur radius
-			image.clone()
-		} else if box_blur {
-			Raster::new_cpu(box_blur_algorithm(image.into_data(), radius, gamma))
-		} else {
-			Raster::new_cpu(gaussian_blur_algorithm(image.into_data(), radius, gamma))
-		};
-
-		image_instance.instance = blurred_image;
-		image_instance.source_node_id = None;
-		result_table.push(image_instance);
-	}
-
-	result_table
+			row.element = blurred_image;
+			row
+		})
+		.collect()
 }
 
 // 1D gaussian kernel

@@ -14,7 +14,7 @@ pub enum FillToolMessage {
 	// Standard messages
 	Abort,
 	WorkingColorChanged,
-	Overlays(OverlayContext),
+	Overlays { context: OverlayContext },
 
 	// Tool-specific messages
 	PointerMove,
@@ -42,9 +42,9 @@ impl LayoutHolder for FillTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FillTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		self.fsm_state.process_event(message, &mut (), tool_data, &(), responses, true);
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for FillTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		self.fsm_state.process_event(message, &mut (), context, &(), responses, true);
 	}
 	fn actions(&self) -> ActionList {
 		match self.fsm_state {
@@ -67,7 +67,7 @@ impl ToolTransition for FillTool {
 		EventToMessageMap {
 			tool_abort: Some(FillToolMessage::Abort.into()),
 			working_color_changed: Some(FillToolMessage::WorkingColorChanged.into()),
-			overlay_provider: Some(|overlay_context| FillToolMessage::Overlays(overlay_context).into()),
+			overlay_provider: Some(|context| FillToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
 	}
@@ -85,14 +85,21 @@ impl Fsm for FillToolFsmState {
 	type ToolData = ();
 	type ToolOptions = ();
 
-	fn transition(self, event: ToolMessage, _tool_data: &mut Self::ToolData, handler_data: &mut ToolActionHandlerData, _tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData {
+	fn transition(
+		self,
+		event: ToolMessage,
+		_tool_data: &mut Self::ToolData,
+		handler_data: &mut ToolActionMessageContext,
+		_tool_options: &Self::ToolOptions,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
+		let ToolActionMessageContext {
 			document, global_tool_data, input, ..
 		} = handler_data;
 
 		let ToolMessage::Fill(event) = event else { return self };
 		match (self, event) {
-			(_, FillToolMessage::Overlays(mut overlay_context)) => {
+			(_, FillToolMessage::Overlays { context: mut overlay_context }) => {
 				// Choose the working color to preview
 				let use_secondary = input.keyboard.get(Key::Shift as usize);
 				let preview_color = if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color };

@@ -1,4 +1,5 @@
 use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
+use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
 	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, Transform,
@@ -8,11 +9,17 @@ use crate::messages::portfolio::document::utility_types::wires::{WirePath, WireP
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 use graph_craft::document::NodeId;
+use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
-use graphene_std::text::Font;
+use graphene_std::text::{Font, TextAlign};
+use std::path::PathBuf;
+
+#[cfg(not(target_family = "wasm"))]
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 
 #[impl_message(Message, Frontend)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(derivative::Derivative, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derivative(Debug, PartialEq)]
 pub enum FrontendMessage {
 	// Display prefix: make the frontend show something, like a dialog
 	DisplayDialog {
@@ -37,6 +44,7 @@ pub enum FrontendMessage {
 		max_width: Option<f64>,
 		#[serde(rename = "maxHeight")]
 		max_height: Option<f64>,
+		align: TextAlign,
 	},
 	DisplayEditableTextboxTransform {
 		transform: [f64; 6],
@@ -56,16 +64,22 @@ pub enum FrontendMessage {
 		#[serde(rename = "commitDate")]
 		commit_date: String,
 	},
-	TriggerDelayedZoomCanvasToFitAll,
-	TriggerDownloadImage {
+	TriggerDisplayThirdPartyLicensesDialog,
+	TriggerSaveDocument {
+		document_id: DocumentId,
+		name: String,
+		path: Option<PathBuf>,
+		content: Vec<u8>,
+	},
+	TriggerSaveFile {
+		name: String,
+		content: Vec<u8>,
+	},
+	TriggerExportImage {
 		svg: String,
 		name: String,
 		mime: String,
 		size: (f64, f64),
-	},
-	TriggerDownloadTextFile {
-		document: String,
-		name: String,
 	},
 	TriggerFetchAndOpenDocument {
 		name: String,
@@ -136,11 +150,16 @@ pub enum FrontendMessage {
 	UpdateGraphViewOverlay {
 		open: bool,
 	},
-	UpdateSpreadsheetState {
+	UpdateDataPanelState {
 		open: bool,
-		node: Option<NodeId>,
 	},
-	UpdateSpreadsheetLayout {
+	UpdatePropertiesPanelState {
+		open: bool,
+	},
+	UpdateLayersPanelState {
+		open: bool,
+	},
+	UpdateDataPanelLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
@@ -178,6 +197,9 @@ pub enum FrontendMessage {
 	},
 	UpdateDocumentArtwork {
 		svg: String,
+	},
+	UpdateImageData {
+		image_data: Vec<(u64, Image<Color>)>,
 	},
 	UpdateDocumentBarLayout {
 		#[serde(rename = "layoutTarget")]
@@ -280,7 +302,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "openDocuments")]
 		open_documents: Vec<FrontendDocumentDetails>,
 	},
-	UpdatePropertyPanelSectionsLayout {
+	UpdatePropertiesPanelLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
@@ -303,5 +325,20 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
+	},
+	UpdatePlatform {
+		platform: AppWindowPlatform,
+	},
+	UpdateMaximized {
+		maximized: bool,
+	},
+	UpdateViewportHolePunch {
+		active: bool,
+	},
+	#[cfg(not(target_family = "wasm"))]
+	RenderOverlays {
+		#[serde(skip, default = "OverlayContext::default")]
+		#[derivative(Debug = "ignore", PartialEq = "ignore")]
+		context: OverlayContext,
 	},
 }

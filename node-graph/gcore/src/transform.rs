@@ -2,18 +2,24 @@ use crate::Artboard;
 use crate::math::bbox::AxisAlignedBbox;
 pub use crate::vector::ReferencePoint;
 use core::f64;
-use glam::{DAffine2, DMat2, DVec2};
+use glam::{DAffine2, DMat2, DVec2, UVec2};
 
 pub trait Transform {
 	fn transform(&self) -> DAffine2;
+
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
 		pivot
 	}
+
 	fn decompose_scale(&self) -> DVec2 {
-		DVec2::new(
-			self.transform().transform_vector2((1., 0.).into()).length(),
-			self.transform().transform_vector2((0., 1.).into()).length(),
-		)
+		DVec2::new(self.transform().transform_vector2(DVec2::X).length(), self.transform().transform_vector2(DVec2::Y).length())
+	}
+
+	/// Requires that the transform does not contain any skew.
+	fn decompose_rotation(&self) -> f64 {
+		let rotation_matrix = (self.transform() * DAffine2::from_scale(self.decompose_scale().recip())).matrix2;
+		let rotation = -rotation_matrix.mul_vec2(DVec2::X).angle_to(DVec2::X);
+		if rotation == -0. { 0. } else { rotation }
 	}
 }
 
@@ -83,7 +89,7 @@ pub struct Footprint {
 	/// Inverse of the transform which will be applied to the node output during the rendering process
 	pub transform: DAffine2,
 	/// Resolution of the target output area in pixels
-	pub resolution: glam::UVec2,
+	pub resolution: UVec2,
 	/// Quality of the render, this may be used by caching nodes to decide if the cached render is sufficient
 	pub quality: RenderQuality,
 }
@@ -97,7 +103,7 @@ impl Default for Footprint {
 impl Footprint {
 	pub const DEFAULT: Self = Self {
 		transform: DAffine2::IDENTITY,
-		resolution: glam::UVec2::new(1920, 1080),
+		resolution: UVec2::new(1920, 1080),
 		quality: RenderQuality::Full,
 	};
 
@@ -106,7 +112,7 @@ impl Footprint {
 			matrix2: DMat2::from_diagonal(DVec2::splat(f64::INFINITY)),
 			translation: DVec2::ZERO,
 		},
-		resolution: glam::UVec2::new(0, 0),
+		resolution: UVec2::ZERO,
 		quality: RenderQuality::Full,
 	};
 
@@ -141,12 +147,21 @@ impl std::hash::Hash for Footprint {
 
 pub trait ApplyTransform {
 	fn apply_transform(&mut self, modification: &DAffine2);
+	fn left_apply_transform(&mut self, modification: &DAffine2);
 }
 impl<T: TransformMut> ApplyTransform for T {
 	fn apply_transform(&mut self, &modification: &DAffine2) {
 		*self.transform_mut() = self.transform() * modification
 	}
+	fn left_apply_transform(&mut self, &modification: &DAffine2) {
+		*self.transform_mut() = modification * self.transform()
+	}
 }
-impl ApplyTransform for () {
-	fn apply_transform(&mut self, &_modification: &DAffine2) {}
+impl ApplyTransform for DVec2 {
+	fn apply_transform(&mut self, modification: &DAffine2) {
+		*self = modification.transform_point2(*self);
+	}
+	fn left_apply_transform(&mut self, modification: &DAffine2) {
+		*self = modification.inverse().transform_point2(*self);
+	}
 }

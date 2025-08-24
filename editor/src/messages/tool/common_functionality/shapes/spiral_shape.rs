@@ -102,11 +102,15 @@ impl Spiral {
 		if decrease {
 			turns = (n - 1.).max(1.);
 			input = NodeInput::value(TaggedValue::F64(turns), false);
-			responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Turns(turns)));
+			responses.add(ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::Turns(turns),
+			});
 		} else {
 			turns = n + 1.;
 			input = NodeInput::value(TaggedValue::F64(turns), false);
-			responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Turns(turns)));
+			responses.add(ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::Turns(turns),
+			});
 		}
 
 		let drag_length = drag_start.distance(ipp.mouse.position);

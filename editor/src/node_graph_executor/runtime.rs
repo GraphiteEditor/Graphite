@@ -7,16 +7,17 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graph_craft::{ProtoNodeIdentifier, concrete};
-use graphene_std::Context;
-use graphene_std::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
-use graphene_std::instances::Instance;
+use graphene_std::application_io::{ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
+use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::memo::IORecord;
-use graphene_std::renderer::{GraphicElementRendered, RenderParams, SvgRender};
+use graphene_std::renderer::{Render, RenderParams, SvgRender};
 use graphene_std::renderer::{RenderSvgSegmentList, SvgSegment};
+use graphene_std::table::{Table, TableRow};
 use graphene_std::text::FontCache;
-use graphene_std::vector::style::ViewMode;
-use graphene_std::vector::{VectorData, VectorDataTable};
-use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
+use graphene_std::transform::RenderQuality;
+use graphene_std::vector::Vector;
+use graphene_std::wasm_application_io::{RenderOutputType, WasmApplicationIo, WasmEditorApi};
+use graphene_std::{Artboard, Context, Graphic};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use once_cell::sync::Lazy;
@@ -42,7 +43,7 @@ pub struct NodeRuntime {
 	node_graph_errors: GraphErrors,
 	monitor_nodes: Vec<Vec<NodeId>>,
 
-	/// Which node is inspected and which monitor node is used (if any) for the current execution
+	/// Which node is inspected and which monitor node is used (if any) for the current execution.
 	inspect_state: Option<InspectState>,
 
 	/// Mapping of the fully-qualified node paths to their preprocessor substitutions.
@@ -51,7 +52,7 @@ pub struct NodeRuntime {
 	// TODO: Remove, it doesn't need to be persisted anymore
 	/// The current renders of the thumbnails for layer nodes.
 	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
-	vector_modify: HashMap<NodeId, VectorData>,
+	vector_modify: HashMap<NodeId, Vector>,
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
@@ -67,12 +68,12 @@ pub enum GraphRuntimeRequest {
 pub struct GraphUpdate {
 	pub(super) network: NodeNetwork,
 	/// The node that should be temporary inspected during execution
-	pub(super) inspect_node: Option<NodeId>,
+	pub(super) node_to_inspect: Option<NodeId>,
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ExportConfig {
-	pub file_name: String,
+	pub name: String,
 	pub file_type: FileType,
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
@@ -131,12 +132,12 @@ impl NodeRuntime {
 		}
 	}
 
-	pub async fn run(&mut self) {
+	pub async fn run(&mut self) -> Option<ImageTexture> {
 		if self.editor_api.application_io.is_none() {
 			self.editor_api = WasmEditorApi {
-				#[cfg(not(test))]
+				#[cfg(all(not(test), target_family = "wasm"))]
 				application_io: Some(WasmApplicationIo::new().await.into()),
-				#[cfg(test)]
+				#[cfg(any(test, not(target_family = "wasm")))]
 				application_io: Some(WasmApplicationIo::new_offscreen().await.into()),
 				font_cache: self.editor_api.font_cache.clone(),
 				node_graph_message_sender: Box::new(self.sender.clone()),
@@ -188,22 +189,21 @@ impl NodeRuntime {
 						let _ = self.update_network(graph).await;
 					}
 				}
-				GraphRuntimeRequest::GraphUpdate(GraphUpdate { mut network, inspect_node }) => {
+				GraphRuntimeRequest::GraphUpdate(GraphUpdate { mut network, node_to_inspect }) => {
 					// Insert the monitor node to manage the inspection
-					self.inspect_state = inspect_node.map(|inspect| InspectState::monitor_inspect_node(&mut network, inspect));
+					self.inspect_state = node_to_inspect.map(|inspect| InspectState::monitor_inspect_node(&mut network, inspect));
 
 					self.old_graph = Some(network.clone());
+
 					self.node_graph_errors.clear();
 					let result = self.update_network(network).await;
+					let node_graph_errors = self.node_graph_errors.clone();
+
 					self.update_thumbnails = true;
-					self.sender.send_generation_response(CompilationResponse {
-						result,
-						node_graph_errors: self.node_graph_errors.clone(),
-					});
+
+					self.sender.send_generation_response(CompilationResponse { result, node_graph_errors });
 				}
 				GraphRuntimeRequest::ExecutionRequest(ExecutionRequest { execution_id, render_config, .. }) => {
-					let transform = render_config.viewport.transform;
-
 					let result = self.execute_network(render_config).await;
 					let mut responses = VecDeque::new();
 					// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
@@ -213,17 +213,28 @@ impl NodeRuntime {
 					// Resolve the result from the inspection by accessing the monitor node
 					let inspect_result = self.inspect_state.and_then(|state| state.access(&self.executor));
 
+					let texture = if let Ok(TaggedValue::RenderOutput(RenderOutput {
+						data: RenderOutputType::Texture(texture),
+						..
+					})) = &result
+					{
+						// We can early return becaus we know that there is at most one execution request and it will always be handled last
+						Some(texture.clone())
+					} else {
+						None
+					};
 					self.sender.send_execution_response(ExecutionResponse {
 						execution_id,
 						result,
 						responses,
-						transform,
 						vector_modify: self.vector_modify.clone(),
 						inspect_result,
 					});
+					return texture;
 				}
 			}
 		}
+		None
 	}
 
 	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, String> {
@@ -280,56 +291,51 @@ impl NodeRuntime {
 			if self.inspect_state.is_some_and(|inspect_state| monitor_node_path.last().copied() == Some(inspect_state.monitor_node)) {
 				continue;
 			}
+
 			// The monitor nodes are located within a document node, and are thus children in that network, so this gets the parent document node's ID
 			let Some(parent_network_node_id) = monitor_node_path.len().checked_sub(2).and_then(|index| monitor_node_path.get(index)).copied() else {
 				warn!("Monitor node has invalid node id");
-
 				continue;
 			};
 
-			// Extract the monitor node's stored `GraphicElement` data.
+			// Extract the monitor node's stored `Graphic` data
 			let Ok(introspected_data) = self.executor.introspect(monitor_node_path) else {
 				// TODO: Fix the root of the issue causing the spam of this warning (this at least temporarily disables it in release builds)
 				#[cfg(debug_assertions)]
 				warn!("Failed to introspect monitor node {}", self.executor.introspect(monitor_node_path).unwrap_err());
-
 				continue;
 			};
 
-			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_std::GraphicElement>>() {
-				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
-			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_std::Artboard>>() {
-				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
-			// Insert the vector modify if we are dealing with vector data
-			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, VectorDataTable>>() {
-				let default = Instance::default();
-				self.vector_modify.insert(
-					parent_network_node_id,
-					record.output.instance_ref_iter().next().unwrap_or_else(|| default.to_instance_ref()).instance.clone(),
-				);
-			} else {
+			// Graphic table: thumbnail
+			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Graphic>>>() {
+				if update_thumbnails {
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses)
+				}
+			}
+			// Artboard table: thumbnail
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Artboard>>>() {
+				if update_thumbnails {
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses)
+				}
+			}
+			// Vector table: vector modifications
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Vector>>>() {
+				// Insert the vector modify
+				let default = TableRow::default();
+				self.vector_modify
+					.insert(parent_network_node_id, io.output.iter().next().unwrap_or_else(|| default.as_ref()).element.clone());
+			}
+			// Other
+			else {
 				log::warn!("Failed to downcast monitor node output {parent_network_node_id:?}");
 			}
 		}
 	}
 
-	// If this is `GraphicElement` data:
-	// Regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
-	fn process_graphic_element(
-		thumbnail_renders: &mut HashMap<NodeId, Vec<SvgSegment>>,
-		parent_network_node_id: NodeId,
-		graphic_element: &impl GraphicElementRendered,
-		responses: &mut VecDeque<FrontendMessage>,
-		update_thumbnails: bool,
-	) {
-		// RENDER THUMBNAIL
-
-		if !update_thumbnails {
-			return;
-		}
-
+	/// If this is `Graphic` data, regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
+	fn render_thumbnail(thumbnail_renders: &mut HashMap<NodeId, Vec<SvgSegment>>, parent_network_node_id: NodeId, graphic: &impl Render, responses: &mut VecDeque<FrontendMessage>) {
 		// Skip thumbnails if the layer is too complex (for performance)
-		if graphic_element.render_complexity() > 1000 {
+		if graphic.render_complexity() > 1000 {
 			let old = thumbnail_renders.insert(parent_network_node_id, Vec::new());
 			if old.is_none_or(|v| !v.is_empty()) {
 				responses.push_back(FrontendMessage::UpdateNodeThumbnail {
@@ -340,24 +346,28 @@ impl NodeRuntime {
 			return;
 		}
 
-		let bounds = graphic_element.bounding_box(DAffine2::IDENTITY, true);
+		let bounds = match graphic.bounding_box(DAffine2::IDENTITY, true) {
+			RenderBoundingBox::None => return,
+			RenderBoundingBox::Infinite => [DVec2::ZERO, DVec2::new(300., 200.)],
+			RenderBoundingBox::Rectangle(bounds) => bounds,
+		};
+		let footprint = Footprint {
+			transform: DAffine2::from_translation(DVec2::new(bounds[0].x, bounds[0].y)),
+			resolution: UVec2::new((bounds[1].x - bounds[0].x).abs() as u32, (bounds[1].y - bounds[0].y).abs() as u32),
+			quality: RenderQuality::Full,
+		};
 
-		// Render the thumbnail from a `GraphicElement` into an SVG string
+		// Render the thumbnail from a `Graphic` into an SVG string
 		let render_params = RenderParams {
-			view_mode: ViewMode::Normal,
-			culling_bounds: bounds,
+			footprint,
 			thumbnail: true,
-			hide_artboards: false,
-			for_export: false,
-			for_mask: false,
-			alignment_parent_transform: None,
+			..Default::default()
 		};
 		let mut render = SvgRender::new();
-		graphic_element.render_svg(&mut render, &render_params);
+		graphic.render_svg(&mut render, &render_params);
 
 		// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag
-		let [min, max] = bounds.unwrap_or_default();
-		render.format_svg(min, max);
+		render.format_svg(bounds[0], bounds[1]);
 
 		// UPDATE FRONTEND THUMBNAIL
 
@@ -382,17 +392,29 @@ pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any + 
 	Err(IntrospectError::RuntimeNotReady)
 }
 
-pub async fn run_node_graph() -> bool {
-	let Some(mut runtime) = NODE_RUNTIME.try_lock() else { return false };
+pub async fn run_node_graph() -> (bool, Option<ImageTexture>) {
+	let Some(mut runtime) = NODE_RUNTIME.try_lock() else { return (false, None) };
 	if let Some(ref mut runtime) = runtime.as_mut() {
-		runtime.run().await;
+		return (true, runtime.run().await);
 	}
-	true
+	(false, None)
 }
 
 pub async fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	node_runtime.replace(runtime)
+}
+pub async fn replace_application_io(application_io: WasmApplicationIo) {
+	let mut node_runtime = NODE_RUNTIME.lock();
+	if let Some(node_runtime) = &mut *node_runtime {
+		node_runtime.editor_api = WasmEditorApi {
+			font_cache: node_runtime.editor_api.font_cache.clone(),
+			application_io: Some(application_io.into()),
+			node_graph_message_sender: Box::new(node_runtime.sender.clone()),
+			editor_preferences: Box::new(node_runtime.editor_preferences.clone()),
+		}
+		.into();
+	}
 }
 
 /// Which node is inspected and which monitor node is used (if any) for the current execution
@@ -403,22 +425,14 @@ struct InspectState {
 }
 /// The resulting value from the temporary inspected during execution
 #[derive(Clone, Debug, Default)]
-#[cfg_attr(feature = "decouple-execution", derive(serde::Serialize, serde::Deserialize))]
 pub struct InspectResult {
-	#[cfg(not(feature = "decouple-execution"))]
 	introspected_data: Option<Arc<dyn std::any::Any + Send + Sync + 'static>>,
-	#[cfg(feature = "decouple-execution")]
-	introspected_data: Option<TaggedValue>,
 	pub inspect_node: NodeId,
 }
 
 impl InspectResult {
 	pub fn take_data(&mut self) -> Option<Arc<dyn std::any::Any + Send + Sync + 'static>> {
-		#[cfg(not(feature = "decouple-execution"))]
-		return self.introspected_data.clone();
-
-		#[cfg(feature = "decouple-execution")]
-		return self.introspected_data.take().map(|value| value.to_any());
+		self.introspected_data.clone()
 	}
 }
 
@@ -448,7 +462,7 @@ impl InspectState {
 		let monitor_node = DocumentNode {
 			inputs: vec![NodeInput::node(inspect_node, 0)], // Connect to the primary output of the inspect node
 			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER),
-			manual_composition: Some(graph_craft::generic!(T)),
+			call_argument: graph_craft::generic!(T),
 			skip_deduplication: true,
 			..Default::default()
 		};
@@ -463,8 +477,6 @@ impl InspectState {
 	fn access(&self, executor: &DynamicExecutor) -> Option<InspectResult> {
 		let introspected_data = executor.introspect(&[self.monitor_node]).inspect_err(|e| warn!("Failed to introspect monitor node {e}")).ok();
 		// TODO: Consider displaying the error instead of ignoring it
-		#[cfg(feature = "decouple-execution")]
-		let introspected_data = introspected_data.as_ref().and_then(|data| TaggedValue::try_from_std_any_ref(data).ok());
 
 		Some(InspectResult {
 			inspect_node: self.inspect_node,

@@ -42,9 +42,9 @@ pub enum LayoutTarget {
 	/// Bar at the top of the node graph containing the location and the "Preview" and "Hide" buttons.
 	NodeGraphControlBar,
 	/// The body of the Properties panel containing many collapsable sections.
-	PropertiesSections,
+	PropertiesPanel,
 	/// The spredsheet panel allows for the visualisation of data in the graph.
-	Spreadsheet,
+	DataPanel,
 	/// The bar directly above the canvas, left-aligned and to the right of the document mode dropdown.
 	ToolOptions,
 	/// The vertical buttons for all of the tools on the left of the canvas.
@@ -109,14 +109,14 @@ pub enum Layout {
 }
 
 impl Layout {
-	pub fn unwrap_menu_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) -> MenuLayout {
+	pub fn as_menu_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) -> Option<MenuLayout> {
 		if let Self::MenuLayout(mut menu) = self {
 			menu.layout
 				.iter_mut()
 				.for_each(|menu_column| menu_column.children.fill_in_shortcut_actions_with_keys(action_input_mapping));
-			menu
+			Some(menu)
 		} else {
-			panic!("Called unwrap_menu_layout on a widget layout");
+			None
 		}
 	}
 
@@ -369,6 +369,7 @@ impl LayoutGroup {
 				Widget::IconButton(x) => &mut x.tooltip,
 				Widget::IconLabel(x) => &mut x.tooltip,
 				Widget::ImageButton(x) => &mut x.tooltip,
+				Widget::ImageLabel(x) => &mut x.tooltip,
 				Widget::NumberInput(x) => &mut x.tooltip,
 				Widget::ParameterExposeButton(x) => &mut x.tooltip,
 				Widget::PopoverButton(x) => &mut x.tooltip,
@@ -546,6 +547,7 @@ pub enum Widget {
 	IconButton(IconButton),
 	IconLabel(IconLabel),
 	ImageButton(ImageButton),
+	ImageLabel(ImageLabel),
 	InvisibleStandinInput(InvisibleStandinInput),
 	NodeCatalog(NodeCatalog),
 	NumberInput(NumberInput),
@@ -622,6 +624,7 @@ impl DiffUpdate {
 				Widget::TextButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::ImageButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::IconLabel(_)
+				| Widget::ImageLabel(_)
 				| Widget::CurveInput(_)
 				| Widget::InvisibleStandinInput(_)
 				| Widget::NodeCatalog(_)
@@ -653,7 +656,7 @@ impl DiffUpdate {
 		};
 
 		match self {
-			Self::SubLayout(sub_layout) => sub_layout.iter_mut().flat_map(|group| group.iter_mut()).for_each(convert_tooltip),
+			Self::SubLayout(sub_layout) => sub_layout.iter_mut().flat_map(|layout_group| layout_group.iter_mut()).for_each(convert_tooltip),
 			Self::LayoutGroup(layout_group) => layout_group.iter_mut().for_each(convert_tooltip),
 			Self::Widget(widget_holder) => convert_tooltip(widget_holder),
 		}

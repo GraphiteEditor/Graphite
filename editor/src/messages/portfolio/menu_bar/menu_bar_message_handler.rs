@@ -16,14 +16,17 @@ pub struct MenuBarMessageHandler {
 	pub has_selected_nodes: bool,
 	pub has_selected_layers: bool,
 	pub has_selection_history: (bool, bool),
-	pub spreadsheet_view_open: bool,
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 	pub reset_node_definitions_on_open: bool,
+	pub make_path_editable_is_allowed: bool,
+	pub data_panel_open: bool,
+	pub layers_panel_open: bool,
+	pub properties_panel_open: bool,
 }
 
 #[message_handler_data]
 impl MessageHandler<MenuBarMessage, ()> for MenuBarMessageHandler {
-	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, _data: ()) {
+	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, _: ()) {
 		match message {
 			MenuBarMessage::SendLayout => self.send_layout(responses, LayoutTarget::MenuBar),
 		}
@@ -45,6 +48,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 		let message_logging_verbosity_names = self.message_logging_verbosity == MessageLoggingVerbosity::Names;
 		let message_logging_verbosity_contents = self.message_logging_verbosity == MessageLoggingVerbosity::Contents;
 		let reset_node_definitions_on_open = self.reset_node_definitions_on_open;
+		let make_path_editable_is_allowed = self.make_path_editable_is_allowed;
 
 		let menu_bar_entries = vec![
 			MenuBarEntry {
@@ -97,14 +101,25 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 					],
-					vec![MenuBarEntry {
-						label: "Save".into(),
-						icon: Some("Save".into()),
-						shortcut: action_keys!(DocumentMessageDiscriminant::SaveDocument),
-						action: MenuBarEntry::create_action(|_| DocumentMessage::SaveDocument.into()),
-						disabled: no_active_document,
-						..MenuBarEntry::default()
-					}],
+					vec![
+						MenuBarEntry {
+							label: "Save".into(),
+							icon: Some("Save".into()),
+							shortcut: action_keys!(DocumentMessageDiscriminant::SaveDocument),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::SaveDocument.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+						#[cfg(not(target_family = "wasm"))]
+						MenuBarEntry {
+							label: "Save As…".into(),
+							icon: Some("Save".into()),
+							shortcut: action_keys!(DocumentMessageDiscriminant::SaveDocumentAs),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::SaveDocumentAs.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+					],
 					vec![
 						MenuBarEntry {
 							label: "Import…".into(),
@@ -357,8 +372,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 
 								choices
 									.into_iter()
-									.map(|group| {
-										group
+									.map(|section| {
+										section
 											.into_iter()
 											.map(|(axis, aggregate, icon, name)| MenuBarEntry {
 												label: name.into(),
@@ -417,10 +432,9 @@ impl LayoutHolder for MenuBarMessageHandler {
 							action: MenuBarEntry::no_action(),
 							disabled: no_active_document || !has_selected_layers,
 							children: MenuBarEntryChildren(vec![{
-								let list = <BooleanOperation as graphene_std::registry::ChoiceTypeStatic>::list();
-								list.into_iter()
-									.map(|i| i.into_iter())
-									.flatten()
+								let list = <BooleanOperation as graphene_std::choice_type::ChoiceTypeStatic>::list();
+								list.iter()
+									.flat_map(|i| i.iter())
 									.map(move |(operation, info)| MenuBarEntry {
 										label: info.label.to_string(),
 										icon: info.icon.as_ref().map(|i| i.to_string()),
@@ -436,6 +450,14 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 					],
+					vec![MenuBarEntry {
+						label: "Make Path Editable".into(),
+						icon: Some("NodeShape".into()),
+						shortcut: None,
+						action: MenuBarEntry::create_action(|_| NodeGraphMessage::AddPathNode.into()),
+						disabled: !make_path_editable_is_allowed,
+						..MenuBarEntry::default()
+					}],
 				]),
 			),
 			MenuBarEntry::new_root(
@@ -576,18 +598,40 @@ impl LayoutHolder for MenuBarMessageHandler {
 						disabled: no_active_document,
 						..MenuBarEntry::default()
 					}],
+				]),
+			),
+			MenuBarEntry::new_root(
+				"Window".into(),
+				false,
+				MenuBarEntryChildren(vec![
+					vec![
+						MenuBarEntry {
+							label: "Properties".into(),
+							icon: Some(if self.properties_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
+							shortcut: action_keys!(PortfolioMessageDiscriminant::TogglePropertiesPanelOpen),
+							action: MenuBarEntry::create_action(|_| PortfolioMessage::TogglePropertiesPanelOpen.into()),
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Layers".into(),
+							icon: Some(if self.layers_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
+							shortcut: action_keys!(PortfolioMessageDiscriminant::ToggleLayersPanelOpen),
+							action: MenuBarEntry::create_action(|_| PortfolioMessage::ToggleLayersPanelOpen.into()),
+							..MenuBarEntry::default()
+						},
+					],
 					vec![MenuBarEntry {
-						label: "Window: Spreadsheet".into(),
-						icon: Some(if self.spreadsheet_view_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
-						action: MenuBarEntry::create_action(|_| SpreadsheetMessage::ToggleOpen.into()),
-						disabled: no_active_document,
+						label: "Data".into(),
+						icon: Some(if self.data_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
+						shortcut: action_keys!(PortfolioMessageDiscriminant::ToggleDataPanelOpen),
+						action: MenuBarEntry::create_action(|_| PortfolioMessage::ToggleDataPanelOpen.into()),
 						..MenuBarEntry::default()
 					}],
 				]),
 			),
 			MenuBarEntry::new_root(
 				"Help".into(),
-				true,
+				false,
 				MenuBarEntryChildren(vec![
 					vec![MenuBarEntry {
 						label: "About Graphite…".into(),

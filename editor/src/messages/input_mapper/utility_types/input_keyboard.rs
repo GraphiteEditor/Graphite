@@ -479,7 +479,7 @@ impl<const LENGTH: usize> Iterator for BitVectorIter<'_, LENGTH> {
 impl<const LENGTH: usize> Display for BitVector<LENGTH> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		for storage in self.0.iter().rev() {
-			write!(f, "{:0width$b}", storage, width = STORAGE_SIZE_BITS)?;
+			write!(f, "{storage:0STORAGE_SIZE_BITS$b}")?;
 		}
 
 		Ok(())

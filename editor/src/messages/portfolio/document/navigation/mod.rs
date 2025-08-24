@@ -5,4 +5,4 @@ pub mod utility_types;
 #[doc(inline)]
 pub use navigation_message::{NavigationMessage, NavigationMessageDiscriminant};
 #[doc(inline)]
-pub use navigation_message_handler::{NavigationMessageData, NavigationMessageHandler};
+pub use navigation_message_handler::{NavigationMessageContext, NavigationMessageHandler};

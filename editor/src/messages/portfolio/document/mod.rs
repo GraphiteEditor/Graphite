@@ -1,6 +1,7 @@
 mod document_message;
 mod document_message_handler;
 
+pub mod data_panel;
 pub mod graph_operation;
 pub mod navigation;
 pub mod node_graph;
@@ -11,4 +12,4 @@ pub mod utility_types;
 #[doc(inline)]
 pub use document_message::{DocumentMessage, DocumentMessageDiscriminant};
 #[doc(inline)]
-pub use document_message_handler::{DocumentMessageData, DocumentMessageHandler};
+pub use document_message_handler::{DocumentMessageContext, DocumentMessageHandler};

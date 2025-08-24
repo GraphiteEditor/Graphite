@@ -36,9 +36,9 @@
 	{%- set global_linked_css = [] -%}
 	{%- set global_js = ["/js/text-justification.js", "/js/navbar.js"] -%}
 	{%- set global_css = ["/base.css", "/fonts/common.css"] -%}
-	{%- set fonts_loaded = load_data(path="static/fonts/common.css", format="plain", required=false) -%}
+	{%- set fonts_loaded = load_data(path = "static/fonts/common.css", format = "plain", required = false) -%}
 	{%- if not fonts_loaded -%}
-	{{ throw(message="------------------------------------------------------------> FONTS ARE NOT INSTALLED! Before running Zola, execute `npm run install-fonts` from the `/website` directory.") }}
+	{{ throw(message = "------------------------------------------------------------> FONTS ARE NOT INSTALLED! Before running Zola, execute `npm run install-fonts` from the `/website` directory.") }}
 	{%- endif -%}
 
 	{#- RETRIEVE FROM TEMPLATES AND PAGES: CSS AND JS TO LOAD EITHER AS A LINK OR INLINE -#}
@@ -125,7 +125,9 @@
 		<main>
 			{%- filter replace(from = "<!-- replacements::blog_posts(count = 2) -->", to = replacements::blog_posts(count = 2)) -%}
 			{%- filter replace(from = "<!-- replacements::text_balancer() -->", to = replacements::text_balancer()) -%}
+			{%- filter replace(from = "<!-- replacements::hierarchical_message_system_tree() -->", to = replacements::hierarchical_message_system_tree()) -%}
 			{%- block content -%}{%- endblock -%}
+			{%- endfilter -%}
 			{%- endfilter -%}
 			{%- endfilter -%}
 		</main>

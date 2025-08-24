@@ -17,7 +17,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
-use graphene_std::text::{Font, FontCache, TypesettingConfig, lines_clipping, load_font};
+use graphene_std::text::{Font, FontCache, TextAlign, TypesettingConfig, lines_clipping, load_font};
 use graphene_std::vector::style::Fill;
 
 #[derive(Default, ExtractField)]
@@ -35,6 +35,7 @@ pub struct TextOptions {
 	font_style: String,
 	fill: ToolColorOptions,
 	tilt: f64,
+	align: TextAlign,
 }
 
 impl Default for TextOptions {
@@ -47,6 +48,7 @@ impl Default for TextOptions {
 			font_style: graphene_std::consts::DEFAULT_FONT_STYLE.into(),
 			fill: ToolColorOptions::new_primary(),
 			tilt: 0.,
+			align: TextAlign::default(),
 		}
 	}
 }
@@ -57,7 +59,7 @@ pub enum TextToolMessage {
 	// Standard messages
 	Abort,
 	WorkingColorChanged,
-	Overlays(OverlayContext),
+	Overlays { context: OverlayContext },
 
 	// Tool-specific messages
 	DragStart,
@@ -68,7 +70,7 @@ pub enum TextToolMessage {
 	PointerOutsideViewport { center: Key, lock_ratio: Key },
 	TextChange { new_text: String, is_left_or_right_click: bool },
 	UpdateBounds { new_text: String },
-	UpdateOptions(TextOptionsUpdate),
+	UpdateOptions { options: TextOptionsUpdate },
 }
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -78,7 +80,7 @@ pub enum TextOptionsUpdate {
 	Font { family: String, style: String },
 	FontSize(f64),
 	LineHeightRatio(f64),
-	CharacterSpacing(f64),
+	Align(TextAlign),
 	WorkingColors(Option<Color>, Option<Color>),
 }
 
@@ -98,20 +100,24 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 	let font = FontInput::new(&tool.options.font_name, &tool.options.font_style)
 		.is_style_picker(false)
 		.on_update(|font_input: &FontInput| {
-			TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
-				family: font_input.font_family.clone(),
-				style: font_input.font_style.clone(),
-			})
+			TextToolMessage::UpdateOptions {
+				options: TextOptionsUpdate::Font {
+					family: font_input.font_family.clone(),
+					style: font_input.font_style.clone(),
+				},
+			}
 			.into()
 		})
 		.widget_holder();
 	let style = FontInput::new(&tool.options.font_name, &tool.options.font_style)
 		.is_style_picker(true)
 		.on_update(|font_input: &FontInput| {
-			TextToolMessage::UpdateOptions(TextOptionsUpdate::Font {
-				family: font_input.font_family.clone(),
-				style: font_input.font_style.clone(),
-			})
+			TextToolMessage::UpdateOptions {
+				options: TextOptionsUpdate::Font {
+					family: font_input.font_family.clone(),
+					style: font_input.font_style.clone(),
+				},
+			}
 			.into()
 		})
 		.widget_holder();
@@ -121,7 +127,12 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		.int()
 		.min(1.)
 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap())).into())
+		.on_update(|number_input: &NumberInput| {
+			TextToolMessage::UpdateOptions {
+				options: TextOptionsUpdate::FontSize(number_input.value.unwrap()),
+			}
+			.into()
+		})
 		.widget_holder();
 	let line_height_ratio = NumberInput::new(Some(tool.options.line_height_ratio))
 		.label("Line Height")
@@ -129,16 +140,25 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		.min(0.)
 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 		.step(0.1)
-		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::LineHeightRatio(number_input.value.unwrap())).into())
+		.on_update(|number_input: &NumberInput| {
+			TextToolMessage::UpdateOptions {
+				options: TextOptionsUpdate::LineHeightRatio(number_input.value.unwrap()),
+			}
+			.into()
+		})
 		.widget_holder();
-	let character_spacing = NumberInput::new(Some(tool.options.character_spacing))
-		.label("Char. Spacing")
-		.int()
-		.min(0.)
-		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		.step(0.1)
-		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::CharacterSpacing(number_input.value.unwrap())).into())
-		.widget_holder();
+	let align_entries: Vec<_> = [TextAlign::Left, TextAlign::Center, TextAlign::Right, TextAlign::JustifyLeft]
+		.into_iter()
+		.map(|align| {
+			RadioEntryData::new(format!("{align:?}")).label(align.to_string()).on_update(move |_| {
+				TextToolMessage::UpdateOptions {
+					options: TextOptionsUpdate::Align(align),
+				}
+				.into()
+			})
+		})
+		.collect();
+	let align = RadioInput::new(align_entries).selected_index(Some(tool.options.align as u32)).widget_holder();
 	vec![
 		font,
 		Separator::new(SeparatorType::Related).widget_holder(),
@@ -148,7 +168,7 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		Separator::new(SeparatorType::Related).widget_holder(),
 		line_height_ratio,
 		Separator::new(SeparatorType::Related).widget_holder(),
-		character_spacing,
+		align,
 	]
 }
 
@@ -161,9 +181,26 @@ impl LayoutHolder for TextTool {
 		widgets.append(&mut self.options.fill.create_widgets(
 			"Fill",
 			true,
-			|_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(None)).into(),
-			|color_type: ToolColorType| WidgetCallback::new(move |_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
+			|_| {
+				TextToolMessage::UpdateOptions {
+					options: TextOptionsUpdate::FillColor(None),
+				}
+				.into()
+			},
+			|color_type: ToolColorType| {
+				WidgetCallback::new(move |_| {
+					TextToolMessage::UpdateOptions {
+						options: TextOptionsUpdate::FillColorType(color_type.clone()),
+					}
+					.into()
+				})
+			},
+			|color: &ColorInput| {
+				TextToolMessage::UpdateOptions {
+					options: TextOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+				}
+				.into()
+			},
 		));
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
@@ -171,13 +208,13 @@ impl LayoutHolder for TextTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		let ToolMessage::Text(TextToolMessage::UpdateOptions(action)) = message else {
-			self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for TextTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		let ToolMessage::Text(TextToolMessage::UpdateOptions { options }) = message else {
+			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			return;
 		};
-		match action {
+		match options {
 			TextOptionsUpdate::Font { family, style } => {
 				self.options.font_name = family;
 				self.options.font_style = style;
@@ -186,7 +223,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 			}
 			TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
 			TextOptionsUpdate::LineHeightRatio(line_height_ratio) => self.options.line_height_ratio = line_height_ratio,
-			TextOptionsUpdate::CharacterSpacing(character_spacing) => self.options.character_spacing = character_spacing,
+			TextOptionsUpdate::Align(align) => self.options.align = align,
 			TextOptionsUpdate::FillColor(color) => {
 				self.options.fill.custom_color = color;
 				self.options.fill.color_type = ToolColorType::Custom;
@@ -234,7 +271,7 @@ impl ToolTransition for TextTool {
 			canvas_transformed: None,
 			tool_abort: Some(TextToolMessage::Abort.into()),
 			working_color_changed: Some(TextToolMessage::WorkingColorChanged.into()),
-			overlay_provider: Some(|overlay_context| TextToolMessage::Overlays(overlay_context).into()),
+			overlay_provider: Some(|context| TextToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
 	}
@@ -314,6 +351,7 @@ impl TextToolData {
 				transform: editing_text.transform.to_cols_array(),
 				max_width: editing_text.typesetting.max_width,
 				max_height: editing_text.typesetting.max_height,
+				align: editing_text.typesetting.align,
 			});
 		} else {
 			// Check if DisplayRemoveEditableTextbox is already in the responses queue
@@ -329,7 +367,7 @@ impl TextToolData {
 	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler) -> Option<()> {
 		let transform = document.metadata().transform_to_viewport(self.layer);
 		let color = graph_modification_utils::get_fill_color(self.layer, &document.network_interface).unwrap_or(Color::BLACK);
-		let (text, font, typesetting) = graph_modification_utils::get_text(self.layer, &document.network_interface)?;
+		let (text, font, typesetting, _) = graph_modification_utils::get_text(self.layer, &document.network_interface)?;
 		self.editing_text = Some(EditingText {
 			text: text.clone(),
 			font: font.clone(),
@@ -381,7 +419,6 @@ impl TextToolData {
 			parent: document.new_layer_parent(true),
 			insert_index: 0,
 		});
-		responses.add(Message::StartBuffer);
 		responses.add(GraphOperationMessage::FillSet {
 			layer: self.layer,
 			fill: if editing_text.color.is_some() {
@@ -449,8 +486,15 @@ impl Fsm for TextToolFsmState {
 	type ToolData = TextToolData;
 	type ToolOptions = TextOptions;
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, transition_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData {
+	fn transition(
+		self,
+		event: ToolMessage,
+		tool_data: &mut Self::ToolData,
+		transition_data: &mut ToolActionMessageContext,
+		tool_options: &Self::ToolOptions,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
+		let ToolActionMessageContext {
 			document,
 			global_tool_data,
 			input,
@@ -464,7 +508,7 @@ impl Fsm for TextToolFsmState {
 
 		let ToolMessage::Text(event) = event else { return self };
 		match (self, event) {
-			(TextToolFsmState::Editing, TextToolMessage::Overlays(mut overlay_context)) => {
+			(TextToolFsmState::Editing, TextToolMessage::Overlays { context: mut overlay_context }) => {
 				responses.add(FrontendMessage::DisplayEditableTextboxTransform {
 					transform: document.metadata().transform_to_viewport(tool_data.layer).to_cols_array(),
 				});
@@ -480,7 +524,7 @@ impl Fsm for TextToolFsmState {
 
 				TextToolFsmState::Editing
 			}
-			(_, TextToolMessage::Overlays(mut overlay_context)) => {
+			(_, TextToolMessage::Overlays { context: mut overlay_context }) => {
 				if matches!(self, Self::Placing) {
 					// Get the updated selection box bounds
 					let quad = Quad::from_box(tool_data.cached_resize_bounds);
@@ -517,7 +561,7 @@ impl Fsm for TextToolFsmState {
 						bounding_box_manager.render_quad(&mut overlay_context);
 						// Draw red overlay if text is clipped
 						let transformed_quad = layer_transform * bounds;
-						if let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
+						if let Some((text, font, typesetting, _)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
 							let font_data = font_cache.get(font).map(|data| load_font(data));
 							if lines_clipping(text.as_str(), font_data, typesetting) {
 								overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));
@@ -785,6 +829,7 @@ impl Fsm for TextToolFsmState {
 						character_spacing: tool_options.character_spacing,
 						max_height: constraint_size.map(|size| size.y),
 						tilt: tool_options.tilt,
+						align: tool_options.align,
 					},
 					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
 					color: tool_options.fill.active_color(),
@@ -841,10 +886,9 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(_, TextToolMessage::WorkingColorChanged) => {
-				responses.add(TextToolMessage::UpdateOptions(TextOptionsUpdate::WorkingColors(
-					Some(global_tool_data.primary_color),
-					Some(global_tool_data.secondary_color),
-				)));
+				responses.add(TextToolMessage::UpdateOptions {
+					options: TextOptionsUpdate::WorkingColors(Some(global_tool_data.primary_color), Some(global_tool_data.secondary_color)),
+				});
 				self
 			}
 			(TextToolFsmState::Editing, TextToolMessage::Abort) => {

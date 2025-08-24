@@ -8,7 +8,8 @@ use crate::messages::tool::tool_messages::path_tool::PathOptionsUpdate;
 use crate::messages::tool::tool_messages::select_tool::SelectOptionsUpdate;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{DAffine2, DVec2};
-use graphene_std::{transform::ReferencePoint, vector::ManipulatorPointId};
+use graphene_std::transform::ReferencePoint;
+use graphene_std::vector::misc::ManipulatorPointId;
 use std::fmt;
 
 pub fn pin_pivot_widget(active: bool, enabled: bool, source: PivotToolSource) -> WidgetHolder {
@@ -16,8 +17,14 @@ pub fn pin_pivot_widget(active: bool, enabled: bool, source: PivotToolSource) ->
 		.tooltip(String::from(if active { "Unpin Custom Pivot" } else { "Pin Custom Pivot" }) + "\n\nUnless pinned, the pivot will return to its prior reference point when a new selection is made.")
 		.disabled(!enabled)
 		.on_update(move |_| match source {
-			PivotToolSource::Select => SelectToolMessage::SelectOptions(SelectOptionsUpdate::TogglePivotPinned).into(),
-			PivotToolSource::Path => PathToolMessage::UpdateOptions(PathOptionsUpdate::TogglePivotPinned).into(),
+			PivotToolSource::Select => SelectToolMessage::SelectOptions {
+				options: SelectOptionsUpdate::TogglePivotPinned,
+			}
+			.into(),
+			PivotToolSource::Path => PathToolMessage::UpdateOptions {
+				options: PathOptionsUpdate::TogglePivotPinned,
+			}
+			.into(),
 		})
 		.widget_holder()
 }
@@ -40,8 +47,14 @@ pub fn pivot_gizmo_type_widget(state: PivotGizmoState, source: PivotToolSource) 
 			MenuListEntry::new(format!("{gizmo_type:?}")).label(gizmo_type.to_string()).on_commit({
 				let value = source.clone();
 				move |_| match value {
-					PivotToolSource::Select => SelectToolMessage::SelectOptions(SelectOptionsUpdate::PivotGizmoType(*gizmo_type)).into(),
-					PivotToolSource::Path => PathToolMessage::UpdateOptions(PathOptionsUpdate::PivotGizmoType(*gizmo_type)).into(),
+					PivotToolSource::Select => SelectToolMessage::SelectOptions {
+						options: SelectOptionsUpdate::PivotGizmoType(*gizmo_type),
+					}
+					.into(),
+					PivotToolSource::Path => PathToolMessage::UpdateOptions {
+						options: PathOptionsUpdate::PivotGizmoType(*gizmo_type),
+					}
+					.into(),
 				}
 			})
 		})
@@ -56,8 +69,14 @@ pub fn pivot_gizmo_type_widget(state: PivotGizmoState, source: PivotToolSource) 
 				Disabled: rotation and scaling occurs about the center of the selection bounds.",
 			)
 			.on_update(move |optional_input: &CheckboxInput| match source {
-				PivotToolSource::Select => SelectToolMessage::SelectOptions(SelectOptionsUpdate::TogglePivotGizmoType(optional_input.checked)).into(),
-				PivotToolSource::Path => PathToolMessage::UpdateOptions(PathOptionsUpdate::TogglePivotGizmoType(optional_input.checked)).into(),
+				PivotToolSource::Select => SelectToolMessage::SelectOptions {
+					options: SelectOptionsUpdate::TogglePivotGizmoType(optional_input.checked),
+				}
+				.into(),
+				PivotToolSource::Path => PathToolMessage::UpdateOptions {
+					options: PathOptionsUpdate::TogglePivotGizmoType(optional_input.checked),
+				}
+				.into(),
 			})
 			.widget_holder(),
 		Separator::new(SeparatorType::Related).widget_holder(),

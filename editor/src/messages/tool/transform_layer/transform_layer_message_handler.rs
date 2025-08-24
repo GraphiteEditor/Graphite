@@ -1,4 +1,4 @@
-use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, SLOWING_DIVISOR};
+use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, SLOWING_DIVISOR};
 use crate::messages::input_mapper::utility_types::input_mouse::{DocumentPosition, ViewportPosition};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -11,15 +11,24 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 use glam::{DAffine2, DVec2};
 use graphene_std::renderer::Quad;
-use graphene_std::vector::ManipulatorPointId;
-use graphene_std::vector::{VectorData, VectorModificationType};
+use graphene_std::vector::click_target::ClickTargetType;
+use graphene_std::vector::misc::ManipulatorPointId;
+use graphene_std::vector::{Vector, VectorModificationType};
 use std::f64::consts::{PI, TAU};
 
-const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays(context).into();
+const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays { context }.into();
 
 // TODO: Get these from the input mapper
 const SLOW_KEY: Key = Key::Shift;
 const INCREMENTS_KEY: Key = Key::Control;
+
+#[derive(ExtractField)]
+pub struct TransformLayerMessageContext<'a> {
+	pub document: &'a DocumentMessageHandler,
+	pub input: &'a InputPreprocessorMessageHandler,
+	pub tool_data: &'a ToolData,
+	pub shape_editor: &'a mut ShapeState,
+}
 
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct TransformLayerMessageHandler {
@@ -53,150 +62,23 @@ pub struct TransformLayerMessageHandler {
 	handle: DVec2,
 	last_point: DVec2,
 	grs_pen_handle: bool,
+
+	// Ghost outlines for Path Tool
+	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
+
+	was_grabbing: bool,
 }
 
-impl TransformLayerMessageHandler {
-	pub fn is_transforming(&self) -> bool {
-		self.transform_operation != TransformOperation::None
-	}
+#[message_handler_data]
+impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for TransformLayerMessageHandler {
+	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, context: TransformLayerMessageContext) {
+		let TransformLayerMessageContext {
+			document,
+			input,
+			tool_data,
+			shape_editor,
+		} = context;
 
-	pub fn hints(&self, responses: &mut VecDeque<Message>) {
-		self.transform_operation.hints(responses, self.local);
-	}
-}
-
-fn calculate_pivot(
-	document: &DocumentMessageHandler,
-	selected_points: &Vec<&ManipulatorPointId>,
-	vector_data: &VectorData,
-	viewspace: DAffine2,
-	get_location: impl Fn(&ManipulatorPointId) -> Option<DVec2>,
-	gizmo: &mut PivotGizmo,
-) -> (Option<(DVec2, DVec2)>, Option<[DVec2; 2]>) {
-	let average_position = || {
-		let mut point_count = 0_usize;
-		selected_points.iter().filter_map(|p| get_location(p)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64
-	};
-	let bounds = selected_points.iter().filter_map(|p| get_location(p)).fold(None, |acc: Option<[DVec2; 2]>, point| {
-		if let Some([mut min, mut max]) = acc {
-			min.x = min.x.min(point.x);
-			min.y = min.y.min(point.y);
-			max.x = max.x.max(point.x);
-			max.y = max.y.max(point.y);
-			Some([min, max])
-		} else {
-			Some([point, point])
-		}
-	});
-	gizmo.pivot.recalculate_pivot_for_layer(document, bounds);
-	let position = || {
-		(if !gizmo.state.disabled {
-			match gizmo.state.gizmo_type {
-				PivotGizmoType::Average => None,
-				PivotGizmoType::Active => gizmo.point.and_then(|p| get_location(&p)),
-				PivotGizmoType::Pivot => gizmo.pivot.pivot,
-			}
-		} else {
-			None
-		})
-		.unwrap_or_else(average_position)
-	};
-	let [point] = selected_points.as_slice() else {
-		// Handle the case where there are multiple points
-		let position = position();
-		return (Some((position, position)), bounds);
-	};
-
-	match point {
-		ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
-			// Get the anchor position and transform it to the pivot
-			let (Some(pivot_position), Some(position)) = (
-				point.get_anchor_position(vector_data).map(|anchor_position| viewspace.transform_point2(anchor_position)),
-				point.get_position(vector_data),
-			) else {
-				return (None, None);
-			};
-			let target = viewspace.transform_point2(position);
-			(Some((pivot_position, target)), None)
-		}
-		_ => {
-			// Calculate the average position of all selected points
-			let position = position();
-			(Some((position, position)), bounds)
-		}
-	}
-}
-
-fn project_edge_to_quad(edge: DVec2, quad: &Quad, local: bool, axis_constraint: Axis) -> DVec2 {
-	match axis_constraint {
-		Axis::X => {
-			if local {
-				edge.project_onto(quad.top_right() - quad.top_left())
-			} else {
-				edge.with_y(0.)
-			}
-		}
-		Axis::Y => {
-			if local {
-				edge.project_onto(quad.bottom_left() - quad.top_left())
-			} else {
-				edge.with_x(0.)
-			}
-		}
-		_ => edge,
-	}
-}
-
-fn update_colinear_handles(selected_layers: &[LayerNodeIdentifier], document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-	for &layer in selected_layers {
-		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
-
-		for [handle1, handle2] in &vector_data.colinear_manipulators {
-			let manipulator1 = handle1.to_manipulator_point();
-			let manipulator2 = handle2.to_manipulator_point();
-
-			let Some(anchor) = manipulator1.get_anchor_position(&vector_data) else { continue };
-			let Some(pos1) = manipulator1.get_position(&vector_data).map(|pos| pos - anchor) else { continue };
-			let Some(pos2) = manipulator2.get_position(&vector_data).map(|pos| pos - anchor) else { continue };
-
-			let angle = pos1.angle_to(pos2);
-
-			// Check if handles are not colinear (not approximately equal to +/- PI)
-			if (angle - PI).abs() > 1e-6 && (angle + PI).abs() > 1e-6 {
-				let modification_type = VectorModificationType::SetG1Continuous {
-					handles: [*handle1, *handle2],
-					enabled: false,
-				};
-
-				responses.add(GraphOperationMessage::Vector { layer, modification_type });
-			}
-		}
-	}
-}
-
-type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessageHandler, &'a ToolData, &'a mut ShapeState);
-
-pub fn custom_data() -> MessageData {
-	MessageData::new(
-		String::from("TransformData<'a>"),
-		// TODO: When <https://github.com/dtolnay/proc-macro2/issues/503> is resolved and released,
-		// TODO: use <https://doc.rust-lang.org/stable/proc_macro/struct.Span.html#method.line> to get
-		// TODO: the line number instead of hardcoding it to the magic number on the following lines
-		// TODO: which points to the line of the `type TransformData<'a> = ...` definition above.
-		// TODO: Also, utilize the line number in the actual output, since it is currently unused.
-		vec![
-			(String::from("&'a DocumentMessageHandler"), 177),
-			(String::from("&'a InputPreprocessorMessageHandler"), 177),
-			(String::from("&'a ToolData"), 177),
-			(String::from("&'a mut ShapeState"), 177),
-		],
-		file!(),
-	)
-}
-
-#[message_handler_data(CustomData)]
-impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayerMessageHandler {
-	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, input, tool_data, shape_editor): TransformData) {
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
 		let using_select_tool = tool_data.active_tool_type == ToolType::Select;
 		let using_pen_tool = tool_data.active_tool_type == ToolType::Pen;
@@ -243,15 +125,15 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				self.local_pivot = document.metadata().document_to_viewport.inverse().transform_point2(*selected.pivot);
 				self.grab_target = self.local_pivot;
 			}
-			// Here vector data from all layers is not considered which can be a problem in pivot calculation
-			else if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
+			// TODO: Here vector data from all layers is not considered which can be a problem in pivot calculation
+			else if let Some(vector) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
 				*selected.original_transforms = OriginalTransforms::default();
 
 				let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
 				let selected_segments = shape_editor.selected_segments().collect::<HashSet<_>>();
 				let mut affected_points = shape_editor.selected_points().copied().collect::<Vec<_>>();
 
-				for (segment_id, _, start, end) in vector_data.segment_bezier_iter() {
+				for (segment_id, _, start, end) in vector.segment_bezier_iter() {
 					if selected_segments.contains(&segment_id) {
 						affected_points.push(ManipulatorPointId::Anchor(start));
 						affected_points.push(ManipulatorPointId::Anchor(end));
@@ -260,11 +142,11 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 				let affected_point_refs = affected_points.iter().collect();
 
-				let get_location = |point: &&ManipulatorPointId| point.get_position(&vector_data).map(|position| viewspace.transform_point2(position));
+				let get_location = |point: &&ManipulatorPointId| point.get_position(&vector).map(|position| viewspace.transform_point2(position));
 				if let (Some((new_pivot, grab_target)), bounds) = calculate_pivot(
 					document,
 					&affected_point_refs,
-					&vector_data,
+					&vector,
 					viewspace,
 					|point: &ManipulatorPointId| get_location(&point),
 					&mut self.pivot_gizmo,
@@ -291,9 +173,15 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 		match message {
 			// Overlays
-			TransformLayerMessage::Overlays(mut overlay_context) => {
+			TransformLayerMessage::Overlays { context: mut overlay_context } => {
 				if !overlay_context.visibility_settings.transform_measurement() {
 					return;
+				}
+
+				if using_path_tool {
+					for (outline, transform) in &self.ghost_outline {
+						overlay_context.outline(outline.iter(), *transform, Some(COLOR_OVERLAY_GRAY));
+					}
 				}
 
 				let viewport_box = input.viewport_bounds.size();
@@ -301,7 +189,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 				let format_rounded = |value: f64, precision: usize| {
 					if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
-						format!("{:.*}", precision, value).trim_end_matches('0').trim_end_matches('.').to_string()
+						format!("{value:.precision$}").trim_end_matches('0').trim_end_matches('.').to_string()
 					} else {
 						self.typing.string.clone()
 					}
@@ -409,10 +297,17 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 
+				if using_path_tool {
+					self.ghost_outline.clear();
+				}
+
 				responses.add(SelectToolMessage::PivotShift { offset: None, flush: true });
 
 				if final_transform {
-					responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+					self.was_grabbing = false;
+					responses.add(OverlaysMessage::RemoveProvider {
+						provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
+					});
 				}
 			}
 			TransformLayerMessage::BeginTransformOperation { operation } => {
@@ -451,7 +346,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					_ => unreachable!(), // Safe because the match arms are exhaustive
 				};
 
-				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+				responses.add(OverlaysMessage::AddProvider {
+					provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
+				});
 				// Find a way better than this hack
 				responses.add(TransformLayerMessage::PointerMove {
 					slow_key: SLOW_KEY,
@@ -462,36 +359,69 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
 				let selected_segments = shape_editor.selected_segments().collect::<Vec<_>>();
 
-				if (using_path_tool && selected_points.is_empty() && selected_segments.is_empty())
-					|| (!using_path_tool && !using_select_tool && !using_pen_tool && !using_shape_tool)
-					|| selected_layers.is_empty()
-					|| transform_type.equivalent_to(self.transform_operation)
-				{
-					return;
+				if using_path_tool {
+					Self::set_ghost_outline(&mut self.ghost_outline, shape_editor, document);
+					if (selected_points.is_empty() && selected_segments.is_empty())
+						|| (!using_path_tool && !using_select_tool && !using_pen_tool && !using_shape_tool)
+						|| selected_layers.is_empty()
+						|| (transform_type.equivalent_to(self.transform_operation) && !self.was_grabbing)
+					{
+						return;
+					}
+
+					if using_path_tool && transform_type == TransformType::Grab {
+						// Check if a single point is selected and it's a colinear point
+						let single_anchor_selected = shape_editor.selected_points().count() == 1 && shape_editor.selected_points().any(|point| point.as_anchor().is_some());
+
+						if single_anchor_selected && transform_type.equivalent_to(self.transform_operation) && self.was_grabbing {
+							let selected_nodes = &document.network_interface.selected_nodes();
+
+							let Some(layer) = selected_nodes.selected_layers(document.metadata()).next() else { return };
+							let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { return };
+							let Some(anchor) = shape_editor.selected_points().next() else { return };
+
+							if vector_data.colinear(*anchor) {
+								responses.add(TransformLayerMessage::CancelTransformOperation);
+
+								// Start sliding point
+								responses.add(DeferMessage::AfterGraphRun {
+									messages: vec![PathToolMessage::StartSlidingPoint.into()],
+								});
+							}
+
+							return;
+						}
+
+						if transform_type.equivalent_to(self.transform_operation) {
+							return;
+						}
+
+						self.was_grabbing = true;
+					}
 				}
 
-				if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
-					if let [point] = selected_points.as_slice() {
-						if matches!(point, ManipulatorPointId::Anchor(_)) {
-							if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
-								let handle1_length = handle1.length(&vector_data);
-								let handle2_length = handle2.length(&vector_data);
+				if let Some(vector) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer))
+					&& let [point] = selected_points.as_slice()
+				{
+					if matches!(point, ManipulatorPointId::Anchor(_)) {
+						if let Some([handle1, handle2]) = point.get_handle_pair(&vector) {
+							let handle1_length = handle1.length(&vector);
+							let handle2_length = handle2.length(&vector);
 
-								if (handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool) {
-									// G should work for this point but not R and S
-									if matches!(transform_type, TransformType::Rotate | TransformType::Scale) {
-										selected.original_transforms.clear();
-										return;
-									}
+							if (handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool) {
+								// G should work for this point but not R and S
+								if matches!(transform_type, TransformType::Rotate | TransformType::Scale) {
+									selected.original_transforms.clear();
+									return;
 								}
 							}
-						} else {
-							let handle_length = point.as_handle().map(|handle| handle.length(&vector_data));
+						}
+					} else {
+						let handle_length = point.as_handle().map(|handle| handle.length(&vector));
 
-							if handle_length == Some(0.) {
-								selected.original_transforms.clear();
-								return;
-							}
+						if handle_length == Some(0.) {
+							selected.original_transforms.clear();
+							return;
 						}
 					}
 				}
@@ -503,7 +433,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				if chain_operation {
 					responses.add(TransformLayerMessage::ApplyTransformOperation { final_transform: false });
 				} else {
-					responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+					responses.add(OverlaysMessage::AddProvider {
+						provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
+					});
 				}
 				responses.add(TransformLayerMessage::BeginTransformOperation { operation: transform_type });
 				responses.add(TransformLayerMessage::PointerMove {
@@ -515,6 +447,11 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			TransformLayerMessage::BeginRotate => responses.add_front(TransformLayerMessage::BeginGRS { operation: TransformType::Rotate }),
 			TransformLayerMessage::BeginScale => responses.add_front(TransformLayerMessage::BeginGRS { operation: TransformType::Scale }),
 			TransformLayerMessage::CancelTransformOperation => {
+				if using_path_tool {
+					self.ghost_outline.clear();
+					self.was_grabbing = false;
+				}
+
 				if using_pen_tool {
 					self.typing.clear();
 
@@ -535,7 +472,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				}
 
 				responses.add(SelectToolMessage::PivotShift { offset: None, flush: false });
-				responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+				responses.add(OverlaysMessage::RemoveProvider {
+					provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
+				});
 			}
 			TransformLayerMessage::ConstrainX => {
 				let pivot = document_to_viewport.transform_point2(self.local_pivot);
@@ -603,7 +542,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 				if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
 					match self.transform_operation {
-						TransformOperation::None => unreachable!(),
+						TransformOperation::None => {}
 						TransformOperation::Grabbing(translation) => {
 							let delta_pos = input.mouse.position - self.mouse_position;
 							let delta_pos = (self.initial_transform * document_to_viewport.inverse()).transform_vector2(delta_pos);
@@ -774,6 +713,135 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 	}
 }
 
+impl TransformLayerMessageHandler {
+	pub fn is_transforming(&self) -> bool {
+		self.transform_operation != TransformOperation::None
+	}
+
+	pub fn hints(&self, responses: &mut VecDeque<Message>) {
+		self.transform_operation.hints(responses, self.local);
+	}
+
+	fn set_ghost_outline(ghost_outline: &mut Vec<(Vec<ClickTargetType>, DAffine2)>, shape_editor: &ShapeState, document: &DocumentMessageHandler) {
+		ghost_outline.clear();
+		for &layer in shape_editor.selected_shape_state.keys() {
+			// We probably need to collect here
+			let outline = document.metadata().layer_with_free_points_outline(layer).cloned().collect();
+			let transform = document.metadata().transform_to_viewport(layer);
+			ghost_outline.push((outline, transform));
+		}
+	}
+}
+
+fn calculate_pivot(
+	document: &DocumentMessageHandler,
+	selected_points: &Vec<&ManipulatorPointId>,
+	vector: &Vector,
+	viewspace: DAffine2,
+	get_location: impl Fn(&ManipulatorPointId) -> Option<DVec2>,
+	gizmo: &mut PivotGizmo,
+) -> (Option<(DVec2, DVec2)>, Option<[DVec2; 2]>) {
+	let average_position = || {
+		let mut point_count = 0_usize;
+		selected_points.iter().filter_map(|p| get_location(p)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64
+	};
+	let bounds = selected_points.iter().filter_map(|p| get_location(p)).fold(None, |acc: Option<[DVec2; 2]>, point| {
+		if let Some([mut min, mut max]) = acc {
+			min.x = min.x.min(point.x);
+			min.y = min.y.min(point.y);
+			max.x = max.x.max(point.x);
+			max.y = max.y.max(point.y);
+			Some([min, max])
+		} else {
+			Some([point, point])
+		}
+	});
+	gizmo.pivot.recalculate_pivot_for_layer(document, bounds);
+	let position = || {
+		(if !gizmo.state.disabled {
+			match gizmo.state.gizmo_type {
+				PivotGizmoType::Average => None,
+				PivotGizmoType::Active => gizmo.point.and_then(|p| get_location(&p)),
+				PivotGizmoType::Pivot => gizmo.pivot.pivot,
+			}
+		} else {
+			None
+		})
+		.unwrap_or_else(average_position)
+	};
+	let [point] = selected_points.as_slice() else {
+		// Handle the case where there are multiple points
+		let position = position();
+		return (Some((position, position)), bounds);
+	};
+
+	match point {
+		ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
+			// Get the anchor position and transform it to the pivot
+			let (Some(pivot_position), Some(position)) = (
+				point.get_anchor_position(vector).map(|anchor_position| viewspace.transform_point2(anchor_position)),
+				point.get_position(vector),
+			) else {
+				return (None, None);
+			};
+			let target = viewspace.transform_point2(position);
+			(Some((pivot_position, target)), None)
+		}
+		_ => {
+			// Calculate the average position of all selected points
+			let position = position();
+			(Some((position, position)), bounds)
+		}
+	}
+}
+
+fn project_edge_to_quad(edge: DVec2, quad: &Quad, local: bool, axis_constraint: Axis) -> DVec2 {
+	match axis_constraint {
+		Axis::X => {
+			if local {
+				edge.project_onto(quad.top_right() - quad.top_left())
+			} else {
+				edge.with_y(0.)
+			}
+		}
+		Axis::Y => {
+			if local {
+				edge.project_onto(quad.bottom_left() - quad.top_left())
+			} else {
+				edge.with_x(0.)
+			}
+		}
+		_ => edge,
+	}
+}
+
+fn update_colinear_handles(selected_layers: &[LayerNodeIdentifier], document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	for &layer in selected_layers {
+		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
+
+		for [handle1, handle2] in &vector.colinear_manipulators {
+			let manipulator1 = handle1.to_manipulator_point();
+			let manipulator2 = handle2.to_manipulator_point();
+
+			let Some(anchor) = manipulator1.get_anchor_position(&vector) else { continue };
+			let Some(pos1) = manipulator1.get_position(&vector).map(|pos| pos - anchor) else { continue };
+			let Some(pos2) = manipulator2.get_position(&vector).map(|pos| pos - anchor) else { continue };
+
+			let angle = pos1.angle_to(pos2);
+
+			// Check if handles are not colinear (not approximately equal to +/- PI)
+			if (angle - PI).abs() > 1e-6 && (angle + PI).abs() > 1e-6 {
+				let modification_type = VectorModificationType::SetG1Continuous {
+					handles: [*handle1, *handle2],
+					enabled: false,
+				};
+
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			}
+		}
+	}
+}
+
 #[cfg(test)]
 mod test_transform_layer {
 	use crate::messages::portfolio::document::graph_operation::transform_utils;
@@ -824,7 +892,7 @@ mod test_transform_layer {
 		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
 
 		let translation_diff = (final_transform.translation - original_transform.translation).length();
-		assert!(translation_diff > 10., "Transform should have changed after applying transformation. Diff: {}", translation_diff);
+		assert!(translation_diff > 10., "Transform should have changed after applying transformation. Diff: {translation_diff}");
 	}
 
 	#[tokio::test]
@@ -859,9 +927,7 @@ mod test_transform_layer {
 		// Verify transform is either restored to original OR reset to identity
 		assert!(
 			(final_translation - original_translation).length() < 5. || final_translation.length() < 0.001,
-			"Transform neither restored to original nor reset to identity. Original: {:?}, Final: {:?}",
-			original_translation,
-			final_translation
+			"Transform neither restored to original nor reset to identity. Original: {original_translation:?}, Final: {final_translation:?}"
 		);
 	}
 
@@ -890,11 +956,11 @@ mod test_transform_layer {
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 
 		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
-		println!("Final transform: {:?}", final_transform);
+		println!("Final transform: {final_transform:?}");
 
 		// Check matrix components have changed (rotation affects matrix2)
 		let matrix_diff = (final_transform.matrix2.x_axis - original_transform.matrix2.x_axis).length();
-		assert!(matrix_diff > 0.1, "Rotation should have changed the transform matrix. Diff: {}", matrix_diff);
+		assert!(matrix_diff > 0.1, "Rotation should have changed the transform matrix. Diff: {matrix_diff}");
 	}
 
 	#[tokio::test]
@@ -916,7 +982,7 @@ mod test_transform_layer {
 		assert!(!after_cancel.translation.y.is_nan(), "Transform is NaN after cancel");
 
 		let translation_diff = (after_cancel.translation - original_transform.translation).length();
-		assert!(translation_diff < 1., "Translation component changed too much: {}", translation_diff);
+		assert!(translation_diff < 1., "Translation component changed too much: {translation_diff}");
 	}
 
 	#[tokio::test]
@@ -951,9 +1017,7 @@ mod test_transform_layer {
 
 		assert!(
 			scale_diff_x > 0.1 || scale_diff_y > 0.1,
-			"Scaling should have changed the transform matrix. Diffs: x={}, y={}",
-			scale_diff_x,
-			scale_diff_y
+			"Scaling should have changed the transform matrix. Diffs: x={scale_diff_x}, y={scale_diff_y}"
 		);
 	}
 
@@ -982,7 +1046,7 @@ mod test_transform_layer {
 
 		// Also check translation component is similar
 		let translation_diff = (after_cancel.translation - original_transform.translation).length();
-		assert!(translation_diff < 1., "Translation component changed too much: {}", translation_diff);
+		assert!(translation_diff < 1., "Translation component changed too much: {translation_diff}");
 	}
 
 	#[tokio::test]
@@ -1009,9 +1073,7 @@ mod test_transform_layer {
 		let actual_translation = after_grab_transform.translation - original_transform.translation;
 		assert!(
 			(actual_translation - expected_translation).length() < 1e-5,
-			"Expected translation of {:?}, got {:?}",
-			expected_translation,
-			actual_translation
+			"Expected translation of {expected_translation:?}, got {actual_translation:?}"
 		);
 
 		// 2. Chain to rotation - from current position to create ~45 degree rotation
@@ -1047,9 +1109,7 @@ mod test_transform_layer {
 		let after_scale_det = after_scale_transform.matrix2.determinant();
 		assert!(
 			after_scale_det >= 2. * before_scale_det,
-			"Scale should increase the determinant of the matrix (before: {}, after: {})",
-			before_scale_det,
-			after_scale_det
+			"Scale should increase the determinant of the matrix (before: {before_scale_det}, after: {after_scale_det})"
 		);
 
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
@@ -1081,8 +1141,8 @@ mod test_transform_layer {
 		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
 		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
 
-		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {}", scale_x);
-		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {}", scale_y);
+		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {scale_x}");
+		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {scale_y}");
 	}
 
 	#[tokio::test]
@@ -1107,8 +1167,8 @@ mod test_transform_layer {
 		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
 		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
 
-		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {}", scale_x);
-		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {}", scale_y);
+		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {scale_x}");
+		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {scale_y}");
 	}
 
 	#[tokio::test]
@@ -1123,11 +1183,7 @@ mod test_transform_layer {
 
 		// Rotate the document view (45 degrees)
 		editor.handle_message(NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }).await;
-		editor
-			.handle_message(NavigationMessage::CanvasTiltSet {
-				angle_radians: (45. as f64).to_radians(),
-			})
-			.await;
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 45_f64.to_radians() }).await;
 		editor.handle_message(TransformLayerMessage::BeginRotate).await;
 
 		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 9 }).await;
@@ -1142,7 +1198,7 @@ mod test_transform_layer {
 
 		// Normalize angle between 0 and 360
 		let angle_change = ((angle_change % 360.) + 360.) % 360.;
-		assert!((angle_change - 90.).abs() < 0.1, "Expected rotation of 90 degrees, got: {}", angle_change);
+		assert!((angle_change - 90.).abs() < 0.1, "Expected rotation of 90 degrees, got: {angle_change}");
 	}
 
 	#[tokio::test]
@@ -1197,8 +1253,8 @@ mod test_transform_layer {
 		// Verify scale is near zero.
 		let scale_x = near_zero_transform.matrix2.x_axis.length();
 		let scale_y = near_zero_transform.matrix2.y_axis.length();
-		assert!(scale_x < 0.001, "Scale factor X should be near zero, got: {}", scale_x);
-		assert!(scale_y < 0.001, "Scale factor Y should be near zero, got: {}", scale_y);
+		assert!(scale_x < 0.001, "Scale factor X should be near zero, got: {scale_x}");
+		assert!(scale_y < 0.001, "Scale factor Y should be near zero, got: {scale_y}");
 		assert!(scale_x > 0., "Scale factor X should not be exactly zero");
 		assert!(scale_y > 0., "Scale factor Y should not be exactly zero");
 
@@ -1298,7 +1354,7 @@ mod test_transform_layer {
 			let document = editor.active_document_mut();
 			let group_children = document.network_interface.downstream_layers(&group_layer.to_node(), &[]);
 			if !group_children.is_empty() {
-				Some(LayerNodeIdentifier::new(group_children[0], &document.network_interface, &[]))
+				Some(LayerNodeIdentifier::new(group_children[0], &document.network_interface))
 			} else {
 				None
 			}

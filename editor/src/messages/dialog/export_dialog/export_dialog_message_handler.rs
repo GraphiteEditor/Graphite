@@ -4,7 +4,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::prelude::*;
 
 #[derive(ExtractField)]
-pub struct ExportDialogMessageData<'a> {
+pub struct ExportDialogMessageContext<'a> {
 	pub portfolio: &'a PortfolioMessageHandler,
 }
 
@@ -33,18 +33,18 @@ impl Default for ExportDialogMessageHandler {
 }
 
 #[message_handler_data]
-impl MessageHandler<ExportDialogMessage, ExportDialogMessageData<'_>> for ExportDialogMessageHandler {
-	fn process_message(&mut self, message: ExportDialogMessage, responses: &mut VecDeque<Message>, data: ExportDialogMessageData) {
-		let ExportDialogMessageData { portfolio } = data;
+impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for ExportDialogMessageHandler {
+	fn process_message(&mut self, message: ExportDialogMessage, responses: &mut VecDeque<Message>, context: ExportDialogMessageContext) {
+		let ExportDialogMessageContext { portfolio } = context;
 
 		match message {
-			ExportDialogMessage::FileType(export_type) => self.file_type = export_type,
-			ExportDialogMessage::ScaleFactor(factor) => self.scale_factor = factor,
-			ExportDialogMessage::TransparentBackground(transparent_background) => self.transparent_background = transparent_background,
-			ExportDialogMessage::ExportBounds(export_area) => self.bounds = export_area,
+			ExportDialogMessage::FileType { file_type } => self.file_type = file_type,
+			ExportDialogMessage::ScaleFactor { factor } => self.scale_factor = factor,
+			ExportDialogMessage::TransparentBackground { transparent } => self.transparent_background = transparent,
+			ExportDialogMessage::ExportBounds { bounds } => self.bounds = bounds,
 
 			ExportDialogMessage::Submit => responses.add_front(PortfolioMessage::SubmitDocumentExport {
-				file_name: portfolio.active_document().map(|document| document.name.clone()).unwrap_or_default(),
+				name: portfolio.active_document().map(|document| document.name.clone()).unwrap_or_default(),
 				file_type: self.file_type,
 				scale_factor: self.scale_factor,
 				bounds: self.bounds,
@@ -84,24 +84,28 @@ impl LayoutHolder for ExportDialogMessageHandler {
 	fn layout(&self) -> Layout {
 		let entries = [(FileType::Png, "PNG"), (FileType::Jpg, "JPG"), (FileType::Svg, "SVG")]
 			.into_iter()
-			.map(|(val, name)| RadioEntryData::new(format!("{val:?}")).label(name).on_update(move |_| ExportDialogMessage::FileType(val).into()))
+			.map(|(file_type, name)| {
+				RadioEntryData::new(format!("{file_type:?}"))
+					.label(name)
+					.on_update(move |_| ExportDialogMessage::FileType { file_type }.into())
+			})
 			.collect();
 
 		let export_type = vec![
-			TextLabel::new("File Type").table_align(true).min_width(100).widget_holder(),
+			TextLabel::new("File Type").table_align(true).min_width("100px").widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(entries).selected_index(Some(self.file_type as u32)).widget_holder(),
 		];
 
 		let resolution = vec![
-			TextLabel::new("Scale Factor").table_align(true).min_width(100).widget_holder(),
+			TextLabel::new("Scale Factor").table_align(true).min_width("100px").widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			NumberInput::new(Some(self.scale_factor))
 				.unit("")
 				.min(0.)
 				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.disabled(self.file_type == FileType::Svg)
-				.on_update(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor(number_input.value.unwrap()).into())
+				.on_update(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor { factor: number_input.value.unwrap() }.into())
 				.min_width(200)
 				.widget_holder(),
 		];
@@ -111,24 +115,24 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			(ExportBounds::Selection, "Selection".to_string(), !self.has_selection),
 		];
 		let artboards = self.artboards.iter().map(|(&layer, name)| (ExportBounds::Artboard(layer), name.to_string(), false)).collect();
-		let groups = [standard_bounds, artboards];
+		let choices = [standard_bounds, artboards];
 
 		let current_bounds = if !self.has_selection && self.bounds == ExportBounds::Selection {
 			ExportBounds::AllArtwork
 		} else {
 			self.bounds
 		};
-		let index = groups.iter().flatten().position(|(bounds, _, _)| *bounds == current_bounds).unwrap();
+		let index = choices.iter().flatten().position(|(bounds, _, _)| *bounds == current_bounds).unwrap();
 
-		let mut entries = groups
+		let mut entries = choices
 			.into_iter()
-			.map(|group| {
-				group
+			.map(|choice| {
+				choice
 					.into_iter()
-					.map(|(val, name, disabled)| {
-						MenuListEntry::new(format!("{val:?}"))
+					.map(|(bounds, name, disabled)| {
+						MenuListEntry::new(format!("{bounds:?}"))
 							.label(name)
-							.on_commit(move |_| ExportDialogMessage::ExportBounds(val).into())
+							.on_commit(move |_| ExportDialogMessage::ExportBounds { bounds }.into())
 							.disabled(disabled)
 					})
 					.collect::<Vec<_>>()
@@ -140,19 +144,19 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		}
 
 		let export_area = vec![
-			TextLabel::new("Bounds").table_align(true).min_width(100).widget_holder(),
+			TextLabel::new("Bounds").table_align(true).min_width("100px").widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			DropdownInput::new(entries).selected_index(Some(index as u32)).widget_holder(),
 		];
 
-		let mut checkbox_id = CheckboxId::default();
+		let checkbox_id = CheckboxId::new();
 		let transparent_background = vec![
-			TextLabel::new("Transparency").table_align(true).min_width(100).for_checkbox(&mut checkbox_id).widget_holder(),
+			TextLabel::new("Transparency").table_align(true).min_width("100px").for_checkbox(checkbox_id).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(self.transparent_background)
 				.disabled(self.file_type == FileType::Jpg)
-				.on_update(move |value: &CheckboxInput| ExportDialogMessage::TransparentBackground(value.checked).into())
-				.for_label(checkbox_id.clone())
+				.on_update(move |value: &CheckboxInput| ExportDialogMessage::TransparentBackground { transparent: value.checked }.into())
+				.for_label(checkbox_id)
 				.widget_holder(),
 		];
 

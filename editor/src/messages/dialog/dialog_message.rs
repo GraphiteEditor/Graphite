@@ -33,6 +33,9 @@ pub enum DialogMessage {
 	RequestLicensesDialogWithLocalizedCommitDate {
 		localized_commit_year: String,
 	},
+	RequestLicensesThirdPartyDialogWithLicenseText {
+		license_text: String,
+	},
 	RequestNewDocumentDialog,
 	RequestPreferencesDialog,
 }

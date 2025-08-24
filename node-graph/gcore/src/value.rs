@@ -60,8 +60,7 @@ impl<'i, T: 'i> Node<'i, ()> for RefCellMutNode<T> {
 	type Output = RefMut<'i, T>;
 	#[inline(always)]
 	fn eval(&'i self, _input: ()) -> Self::Output {
-		let a = self.0.borrow_mut();
-		a
+		self.0.borrow_mut()
 	}
 }
 
@@ -120,7 +119,6 @@ impl<'i, T: Clone + 'i> Node<'i, ()> for DebugClonedNode<T> {
 	type Output = T;
 	#[inline(always)]
 	fn eval(&'i self, _input: ()) -> Self::Output {
-		#[cfg(not(target_arch = "spirv"))]
 		// KEEP THIS `debug!()` - It acts as the output for the debug node itself
 		log::debug!("DebugClonedNode::eval");
 

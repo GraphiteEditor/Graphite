@@ -16,22 +16,31 @@ impl DialogLayoutHolder for LicensesDialog {
 	}
 
 	fn layout_column_2(&self) -> Layout {
-		let icons_license_link = "https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/frontend/assets/LICENSE.md";
-		let links = [
-			("GraphiteLogo", "Graphite Logo", "https://graphite.rs/logo/"),
-			("IconsGrid", "Graphite Icons", icons_license_link),
-			("License", "Graphite License", "https://graphite.rs/license/"),
-			("License", "Other Licenses", "/third-party-licenses.txt"),
+		#[allow(clippy::type_complexity)]
+		let button_definitions: &[(&str, &str, fn() -> Message)] = &[
+			("GraphiteLogo", "Graphite Logo", || {
+				FrontendMessage::TriggerVisitLink {
+					url: "https://graphite.rs/logo/".into(),
+				}
+				.into()
+			}),
+			("IconsGrid", "Graphite Icons", || {
+				FrontendMessage::TriggerVisitLink {
+					url: "https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/frontend/assets/LICENSE.md".into(),
+				}
+				.into()
+			}),
+			("License", "Graphite License", || {
+				FrontendMessage::TriggerVisitLink {
+					url: "https://graphite.rs/license/".into(),
+				}
+				.into()
+			}),
+			("License", "Other Licenses", || FrontendMessage::TriggerDisplayThirdPartyLicensesDialog.into()),
 		];
-		let widgets = links
-			.into_iter()
-			.map(|(icon, label, url)| {
-				TextButton::new(label)
-					.icon(Some(icon.into()))
-					.flush(true)
-					.on_update(|_| FrontendMessage::TriggerVisitLink { url: url.into() }.into())
-					.widget_holder()
-			})
+		let widgets = button_definitions
+			.iter()
+			.map(|&(icon, label, message_factory)| TextButton::new(label).icon(Some((icon).into())).flush(true).on_update(move |_| message_factory()).widget_holder())
 			.collect();
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Column { widgets }]))

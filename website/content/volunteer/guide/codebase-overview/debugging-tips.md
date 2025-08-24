@@ -2,7 +2,7 @@
 title = "Debugging tips"
 
 [extra]
-order = 4 # Page number after chapter intro
+order = 2 # Page number after chapter intro
 +++
 
 The Wasm-based editor has some unique limitations about how you are able to debug it. This page offers tips and best practices to get the most out of your problem-solving efforts.

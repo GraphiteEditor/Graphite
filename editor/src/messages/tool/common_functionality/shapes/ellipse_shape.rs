@@ -28,7 +28,7 @@ impl Ellipse {
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
-		let [center, lock_ratio, _, _] = modifier;
+		let [center, lock_ratio, _] = modifier;
 
 		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, center, lock_ratio) {
 			let Some(node_id) = graph_modification_utils::get_ellipse_id(layer, &document.network_interface) else {

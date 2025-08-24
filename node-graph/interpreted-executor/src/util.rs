@@ -8,7 +8,6 @@ use graphene_std::Context;
 use graphene_std::uuid::NodeId;
 use std::sync::Arc;
 
-// TODO: this is copy pasta from the editor (and does get out of sync)
 pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEditorApi>) -> NodeNetwork {
 	network.generate_node_paths(&[]);
 
@@ -31,20 +30,20 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 			nodes: [
 				DocumentNode {
 					inputs: vec![NodeInput::scope("editor-api")],
-					manual_composition: Some(concrete!(Context)),
+					call_argument: concrete!(Context),
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::CreateGpuSurfaceNode")),
 					skip_deduplication: true,
 					..Default::default()
 				},
 				DocumentNode {
-					manual_composition: Some(concrete!(Context)),
+					call_argument: concrete!(Context),
 					inputs: vec![NodeInput::node(NodeId(0), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::memo::memo::IDENTIFIER),
 					..Default::default()
 				},
 				// TODO: Add conversion step
 				DocumentNode {
-					manual_composition: Some(concrete!(graphene_std::application_io::RenderConfig)),
+					call_argument: concrete!(graphene_std::application_io::RenderConfig),
 					inputs: vec![
 						NodeInput::scope("editor-api"),
 						NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Context)), Box::new(generic!(T))), 0),

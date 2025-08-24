@@ -1,14 +1,14 @@
 <script lang="ts" context="module">
+	import Data from "@graphite/components/panels/Data.svelte";
 	import Document from "@graphite/components/panels/Document.svelte";
 	import Layers from "@graphite/components/panels/Layers.svelte";
 	import Properties from "@graphite/components/panels/Properties.svelte";
-	import Spreadsheet from "@graphite/components/panels/Spreadsheet.svelte";
 
 	const PANEL_COMPONENTS = {
 		Document,
 		Layers,
 		Properties,
-		Spreadsheet,
+		Data,
 	};
 	type PanelType = keyof typeof PANEL_COMPONENTS;
 </script>
@@ -41,6 +41,13 @@
 	export let panelType: PanelType | undefined = undefined;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
+
+	let className = "";
+	export { className as class };
+	export let classes: Record<string, boolean> = {};
+	let styleName = "";
+	export { styleName as style };
+	export let styles: Record<string, string | number | undefined> = {};
 
 	let tabElements: (LayoutRow | undefined)[] = [];
 
@@ -76,9 +83,11 @@
 				return;
 			}
 
-			if (file.name.endsWith(".graphite")) {
+			const graphiteFileSuffix = "." + editor.handle.fileExtension();
+			if (file.name.endsWith(graphiteFileSuffix)) {
 				const content = await file.text();
-				editor.handle.openDocumentFile(file.name, content);
+				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
+				editor.handle.openDocumentFile(documentName, content);
 				return;
 			}
 		});
@@ -90,7 +99,7 @@
 	}
 </script>
 
-<LayoutCol class="panel" on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)}>
+<LayoutCol on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
 		<LayoutRow class="tab-group" scrollableX={true}>
 			{#each tabLabels as tabLabel, tabIndex}
@@ -194,6 +203,7 @@
 		.tab-bar {
 			height: 28px;
 			min-height: auto;
+			background: var(--color-1-nearblack); // Needed for the viewport hole punch on desktop
 
 			&.min-widths .tab-group .tab {
 				min-width: 120px;
@@ -335,6 +345,12 @@
 					}
 				}
 			}
+		}
+
+		// Needed for the viewport hole punch on desktop
+		.viewport-hole-punch &.document-panel,
+		.viewport-hole-punch &.document-panel .panel-body:not(:has(.empty-panel)) {
+			background: none;
 		}
 	}
 </style>
