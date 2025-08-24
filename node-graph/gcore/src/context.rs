@@ -2,6 +2,7 @@ use crate::transform::Footprint;
 pub use graphene_core_shaders::context::{ArcCtx, Ctx};
 use std::any::Any;
 use std::borrow::Borrow;
+use std::hash::{Hash, Hasher};
 use std::panic::Location;
 use std::sync::Arc;
 
@@ -33,6 +34,7 @@ pub trait ExtractIndex {
 pub trait ExtractVarArgs {
 	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult>;
 	fn varargs_len(&self) -> Result<usize, VarArgsResult>;
+	fn hash_var_args(&self, hasher: &mut dyn Hasher);
 }
 
 // Consider returning a slice or something like that
@@ -187,6 +189,12 @@ impl<T: ExtractVarArgs + Sync> ExtractVarArgs for Option<T> {
 		let Some(inner) = self else { return Err(VarArgsResult::NoVarArgs) };
 		inner.varargs_len()
 	}
+
+	fn hash_var_args(&self, hasher: &mut dyn Hasher) {
+		if let Some(inner) = self {
+			inner.hash_var_args(hasher)
+		}
+	}
 }
 impl<T: ExtractFootprint + Sync> ExtractFootprint for Arc<T> {
 	fn try_footprint(&self) -> Option<&Footprint> {
@@ -216,6 +224,10 @@ impl<T: ExtractVarArgs + Sync> ExtractVarArgs for Arc<T> {
 	fn varargs_len(&self) -> Result<usize, VarArgsResult> {
 		(**self).varargs_len()
 	}
+
+	fn hash_var_args(&self, hasher: &mut dyn Hasher) {
+		(**self).hash_var_args(hasher)
+	}
 }
 impl<T: CloneVarArgs + Sync> CloneVarArgs for Option<T> {
 	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>> {
@@ -230,6 +242,10 @@ impl<T: ExtractVarArgs + Sync> ExtractVarArgs for &T {
 
 	fn varargs_len(&self) -> Result<usize, VarArgsResult> {
 		(*self).varargs_len()
+	}
+
+	fn hash_var_args(&self, hasher: &mut dyn Hasher) {
+		(*self).hash_var_args(hasher)
 	}
 }
 impl<T: CloneVarArgs + Sync> CloneVarArgs for Arc<T> {
@@ -266,6 +282,10 @@ impl ExtractVarArgs for ContextImpl<'_> {
 		let Some(inner) = self.varargs else { return Err(VarArgsResult::NoVarArgs) };
 		Ok(inner.len())
 	}
+
+	fn hash_var_args(&self, _hasher: &mut dyn Hasher) {
+		todo!()
+	}
 }
 
 impl ExtractFootprint for OwnedContextImpl {
@@ -296,7 +316,7 @@ impl ExtractVarArgs for OwnedContextImpl {
 			};
 			return parent.vararg(index);
 		};
-		inner.get(index).map(|x| x.as_ref()).ok_or(VarArgsResult::IndexOutOfBounds)
+		inner.get(index).map(|x| x.as_ref() as DynRef<'_>).ok_or(VarArgsResult::IndexOutOfBounds)
 	}
 
 	fn varargs_len(&self) -> Result<usize, VarArgsResult> {
@@ -308,6 +328,20 @@ impl ExtractVarArgs for OwnedContextImpl {
 		};
 		Ok(inner.len())
 	}
+
+	fn hash_var_args(&self, mut hasher: &mut dyn Hasher) {
+		match (&self.varargs, &self.parent) {
+			(Some(inner), _) => {
+				for arg in inner.iter() {
+					arg.hash(&mut hasher);
+				}
+			}
+			(None, Some(parent)) => {
+				parent.hash_var_args(hasher);
+			}
+			_ => (),
+		};
+	}
 }
 
 impl CloneVarArgs for Arc<OwnedContextImpl> {
@@ -318,7 +352,7 @@ impl CloneVarArgs for Arc<OwnedContextImpl> {
 
 pub type Context<'a> = Option<Arc<OwnedContextImpl>>;
 type DynRef<'a> = &'a (dyn Any + Send + Sync);
-type DynBox = Box<dyn Any + Send + Sync>;
+type DynBox = Box<dyn AnyHash + Send + Sync>;
 
 #[derive(dyn_any::DynAny)]
 pub struct OwnedContextImpl {
@@ -335,7 +369,7 @@ impl std::fmt::Debug for OwnedContextImpl {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("OwnedContextImpl")
 			.field("footprint", &self.footprint)
-			.field("varargs", &self.varargs)
+			.field("varargs_len", &self.varargs.as_ref().map(|x| x.len()))
 			.field("parent", &self.parent.as_ref().map(|_| "<Parent>"))
 			.field("index", &self.index)
 			.field("real_time", &self.real_time)
@@ -351,11 +385,10 @@ impl Default for OwnedContextImpl {
 	}
 }
 
-impl std::hash::Hash for OwnedContextImpl {
+impl Hash for OwnedContextImpl {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.footprint.hash(state);
-		self.varargs.as_ref().map(|x| Arc::as_ptr(x).addr()).hash(state);
-		self.parent.as_ref().map(|x| Arc::as_ptr(x).addr()).hash(state);
+		self.hash_var_args(state);
 		self.index.hash(state);
 		self.real_time.map(|x| x.to_bits()).hash(state);
 		self.animation_time.map(|x| x.to_bits()).hash(state);
@@ -402,6 +435,30 @@ impl OwnedContextImpl {
 	}
 }
 
+pub trait DynHash {
+	fn dyn_hash(&self, state: &mut dyn Hasher);
+}
+
+impl<H: Hash + ?Sized> DynHash for H {
+	fn dyn_hash(&self, mut state: &mut dyn Hasher) {
+		self.hash(&mut state);
+	}
+}
+
+impl Hash for dyn AnyHash {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.dyn_hash(state);
+	}
+}
+impl Hash for Box<dyn AnyHash + Send + Sync> {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.dyn_hash(state);
+	}
+}
+
+pub trait AnyHash: DynHash + Any {}
+impl<T: DynHash + Any> AnyHash for T {}
+
 impl OwnedContextImpl {
 	pub fn set_footprint(&mut self, footprint: Footprint) {
 		self.footprint = Some(footprint);
@@ -418,7 +475,7 @@ impl OwnedContextImpl {
 		self.animation_time = Some(animation_time);
 		self
 	}
-	pub fn with_vararg(mut self, value: Box<dyn Any + Send + Sync>) -> Self {
+	pub fn with_vararg(mut self, value: Box<dyn AnyHash + Send + Sync>) -> Self {
 		assert!(self.varargs.is_none_or(|value| value.is_empty()));
 		self.varargs = Some(Arc::new([value]));
 		self
