@@ -300,7 +300,7 @@ impl ProtoNetwork {
 
 	/// Update all of the references to a node ID in the graph with a new ID named `replacement_node_id`.
 	fn replace_node_id(&mut self, outwards_edges: &HashMap<NodeId, Vec<NodeId>>, node_id: NodeId, replacement_node_id: NodeId) {
-		// Update references in other nodes to use the new compose node
+		// Update references in other nodes to use the new node
 		if let Some(referring_nodes) = outwards_edges.get(&node_id) {
 			for &referring_node_id in referring_nodes {
 				let (_, referring_node) = &mut self.nodes[referring_node_id.0 as usize];
