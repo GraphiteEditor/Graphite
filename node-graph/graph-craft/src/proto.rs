@@ -309,57 +309,62 @@ impl ProtoNetwork {
 		let outwards_edges = self.collect_outwards_edges();
 
 		for (node_id, context_deps) in out_nodes {
-			let memo_node_id = NodeId(self.nodes.len() as u64);
-			let (_, node) = &self.nodes[node_id.0 as usize];
-			let path = node.original_location.path.clone();
-
-			self.nodes.push((
-				memo_node_id,
-				ProtoNode {
-					construction_args: ConstructionArgs::Nodes(vec![node_id]),
-					call_argument: concrete!(Context),
-					identifier: graphene_core::memo::memo::IDENTIFIER,
-					original_location: OriginalLocation {
-						path: path.clone(),
-						..Default::default()
-					},
-					..Default::default()
-				},
-			));
-
-			let nullification_value_node_id = NodeId(self.nodes.len() as u64);
-
-			self.nodes.push((
-				nullification_value_node_id,
-				ProtoNode {
-					construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextFeatures(context_deps))),
-					call_argument: concrete!(Context),
-					identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
-					original_location: OriginalLocation {
-						path: path.clone(),
-						..Default::default()
-					},
-					..Default::default()
-				},
-			));
-			let nullification_node_id = NodeId(self.nodes.len() as u64);
-			self.nodes.push((
-				nullification_node_id,
-				ProtoNode {
-					construction_args: ConstructionArgs::Nodes(vec![memo_node_id, nullification_node_id]),
-					call_argument: concrete!(Context),
-					identifier: graphene_core::context_modification::context_modification::IDENTIFIER,
-					original_location: OriginalLocation {
-						path: path.clone(),
-						..Default::default()
-					},
-					..Default::default()
-				},
-			));
-			self.replace_node_id(&outwards_edges, node_id, nullification_node_id);
+			self.insert_context_nullification_node(&outwards_edges, node_id, context_deps);
 		}
 
 		Ok(())
+	}
+
+	fn insert_context_nullification_node(&mut self, outwards_edges: &HashMap<NodeId, Vec<NodeId>>, node_id: NodeId, context_deps: ContextFeatures) {
+		let (_, node) = &self.nodes[node_id.0 as usize];
+		let path = node.original_location.path.clone();
+
+		let memo_node_id = NodeId(self.nodes.len() as u64);
+
+		self.nodes.push((
+			memo_node_id,
+			ProtoNode {
+				construction_args: ConstructionArgs::Nodes(vec![node_id]),
+				call_argument: concrete!(Context),
+				identifier: graphene_core::memo::memo::IDENTIFIER,
+				original_location: OriginalLocation {
+					path: path.clone(),
+					..Default::default()
+				},
+				..Default::default()
+			},
+		));
+
+		let nullification_value_node_id = NodeId(self.nodes.len() as u64);
+
+		self.nodes.push((
+			nullification_value_node_id,
+			ProtoNode {
+				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextFeatures(context_deps))),
+				call_argument: concrete!(Context),
+				identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
+				original_location: OriginalLocation {
+					path: path.clone(),
+					..Default::default()
+				},
+				..Default::default()
+			},
+		));
+		let nullification_node_id = NodeId(self.nodes.len() as u64);
+		self.nodes.push((
+			nullification_node_id,
+			ProtoNode {
+				construction_args: ConstructionArgs::Nodes(vec![memo_node_id, nullification_node_id]),
+				call_argument: concrete!(Context),
+				identifier: graphene_core::context_modification::context_modification::IDENTIFIER,
+				original_location: OriginalLocation {
+					path: path.clone(),
+					..Default::default()
+				},
+				..Default::default()
+			},
+		));
+		self.replace_node_id(outwards_edges, node_id, nullification_node_id);
 	}
 
 	fn find_context_dependencies(&self, id: NodeId, out_nodes: &mut Vec<(NodeId, ContextFeatures)>) -> ContextFeatures {
@@ -415,57 +420,9 @@ impl ProtoNetwork {
 		new_deps
 	}
 
-	/// Performs topological sort and reorders ids.
-	pub fn resolve_inputs(&mut self) -> Result<(), String> {
-		// Perform topological sort once
-		self.reorder_ids()?;
-		// Insert context nullification nodes after topological sort
-		self.insert_context_nullification_nodes()?;
-
-		// Collect outward edges once
-		let outwards_edges = self.collect_outwards_edges();
-
-		// // Iterate over nodes in topological order
-		// for node_id in 0..=max_id {
-		// 	let node_id = NodeId(node_id);
-
-		// 	let (_, node) = &mut self.nodes[node_id.0 as usize];
-
-		// 	if let ProtoNodeInput::Node(input_node_id) = node.input {
-		// 		// Create a new node that composes the current node and its input node
-		// 		let compose_node_id = NodeId(self.nodes.len() as u64);
-
-		// 		let (_, input_node_id_proto) = &self.nodes[input_node_id.0 as usize];
-
-		// 		let input = input_node_id_proto.input.clone();
-
-		// 		let mut path = input_node_id_proto.original_location.path.clone();
-		// 		if let Some(path) = &mut path {
-		// 			path.push(node_id);
-		// 		}
-
-		// 		self.nodes.push((
-		// 			compose_node_id,
-		// 			ProtoNode {
-		// 				identifier: ProtoNodeIdentifier::new("graphene_core::structural::ComposeNode"),
-		// 				construction_args: ConstructionArgs::Nodes(vec![(input_node_id, false), (node_id, true)]),
-		// 				call_argument,
-		// 				original_location: OriginalLocation { path, ..Default::default() },
-		// 				skip_deduplication: false,
-		// 				context_features: Default::default(),
-		// 			},
-		// 		));
-
-		// 		self.replace_node_id(&outwards_edges, node_id, compose_node_id);
-		// 	}
-		// }
-		self.reorder_ids()?;
-		Ok(())
-	}
-
-	/// Update all of the references to a node ID in the graph with a new ID named `replacement_node_id`.
-	fn replace_node_id(&mut self, outwards_edges: &HashMap<NodeId, Vec<NodeId>>, node_id: NodeId, replacement_node_id: NodeId) {
-		// Update references in other nodes to use the new node
+	/// Update all of the references to a node ID in the graph with a new ID named `compose_node_id`.
+	fn replace_node_id(&mut self, outwards_edges: &HashMap<NodeId, Vec<NodeId>>, node_id: NodeId, compose_node_id: NodeId) {
+		// Update references in other nodes to use the new  node
 		if let Some(referring_nodes) = outwards_edges.get(&node_id) {
 			for &referring_node_id in referring_nodes {
 				let (_, referring_node) = &mut self.nodes[referring_node_id.0 as usize];
@@ -966,7 +923,9 @@ mod test {
 	#[test]
 	fn stable_node_id_generation() {
 		let mut construction_network = test_network();
-		construction_network.resolve_inputs().expect("Error when calling 'resolve_inputs' on 'construction_network.");
+		construction_network
+			.insert_context_nullification_nodes()
+			.expect("Error when calling 'insert_context_nullification_nodes' on 'construction_network.");
 		construction_network.generate_stable_node_ids();
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();

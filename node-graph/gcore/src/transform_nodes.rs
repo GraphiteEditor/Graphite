@@ -3,14 +3,14 @@ use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::Table;
 use crate::transform::{ApplyTransform, Footprint, Transform};
 use crate::vector::Vector;
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, Graphic, OwnedContextImpl};
+use crate::{CloneVarArgs, Context, Ctx, ExtractAll, Graphic, InjectFootprint, ModifyFootprint, OwnedContextImpl};
 use core::f64;
 use glam::{DAffine2, DVec2};
 use graphene_core_shaders::color::Color;
 
 #[node_macro::node(category(""))]
 async fn transform<T: ApplyTransform + 'n + 'static>(
-	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	ctx: impl Ctx + CloneVarArgs + ExtractAll + ModifyFootprint,
 	#[implementations(
 		Context -> DAffine2,
 		Context -> DVec2,
@@ -46,7 +46,7 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 
 #[node_macro::node(category(""))]
 fn replace_transform<Data, TransformInput: Transform>(
-	_: impl Ctx,
+	_: impl Ctx + InjectFootprint,
 	#[implementations(Table<Vector>, Table<Raster<CPU>>, Table<Graphic>, Table<Color>, Table<GradientStops>)] mut data: Table<Data>,
 	#[implementations(DAffine2)] transform: TransformInput,
 ) -> Table<Data> {
