@@ -285,7 +285,7 @@ where
 
 #[node_macro::node(category(""))]
 async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
-	render_config: RenderConfig,
+	#[extra_injections(InjectFootprint, InjectRealTime, InjectAnimationTime)] render_config: RenderConfig,
 	editor_api: impl Node<Context<'static>, Output = &'a WasmEditorApi>,
 	#[implementations(
 		Context -> Table<Artboard>,
@@ -310,7 +310,6 @@ async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
 		render_mode: render_config.render_mode,
 		hide_artboards: render_config.hide_artboards,
 		for_export: render_config.for_export,
-		footprint,
 		..Default::default()
 	};
 

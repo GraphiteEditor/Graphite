@@ -156,11 +156,20 @@ pub struct RenderContext {
 	pub resource_overrides: Vec<(peniko::Image, wgpu::Texture)>,
 }
 
+#[derive(Default, Clone, Copy)]
+pub enum RenderOutputType {
+	#[default]
+	Svg,
+	Canvas,
+	Texture,
+}
+
 /// Static state used whilst rendering
 #[derive(Default, Clone)]
 pub struct RenderParams {
 	pub render_mode: RenderMode,
 	pub footprint: Footprint,
+	pub render_output_type: RenderOutputType,
 	pub thumbnail: bool,
 	/// Don't render the rectangle for an artboard to allow exporting with a transparent background.
 	pub hide_artboards: bool,
@@ -172,6 +181,22 @@ pub struct RenderParams {
 	pub alignment_parent_transform: Option<DAffine2>,
 	pub aligned_strokes: bool,
 	pub override_paint_order: bool,
+}
+
+impl Hash for RenderParams {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.view_mode.hash(state);
+		self.footprint.hash(state);
+		self.thumbnail.hash(state);
+		self.hide_artboards.hash(state);
+		self.for_export.hash(state);
+		self.for_mask.hash(state);
+		if let Some(x) = self.alignment_parent_transform {
+			x.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
+		}
+		self.aligned_strokes.hash(state);
+		self.override_paint_order.hash(state);
+	}
 }
 
 impl RenderParams {
@@ -224,6 +249,14 @@ pub struct RenderMetadata {
 	pub clip_targets: HashSet<NodeId>,
 }
 
+impl RenderMetadata {
+	pub fn apply_transform(&mut self, transform: DAffine2) {
+		for value in self.upstream_footprints.values_mut() {
+			value.transform = transform * value.transform;
+		}
+	}
+}
+
 // TODO: Rename to "Graphical"
 pub trait Render: BoundingBox + RenderComplexity {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
@@ -241,6 +274,9 @@ pub trait Render: BoundingBox + RenderComplexity {
 	fn collect_metadata(&self, _metadata: &mut RenderMetadata, _footprint: Footprint, _element_id: Option<NodeId>) {}
 
 	fn contains_artboard(&self) -> bool {
+		false
+	}
+	fn contains_color_or_gradient(&self) -> bool {
 		false
 	}
 
@@ -349,6 +385,16 @@ impl Render for Graphic {
 			Graphic::RasterGPU(table) => table.contains_artboard(),
 			Graphic::Color(table) => table.contains_artboard(),
 			Graphic::Gradient(table) => table.contains_artboard(),
+		}
+	}
+	fn contains_color_or_gradient(&self) -> bool {
+		match self {
+			Graphic::Graphic(table) => table.contains_color_or_gradient(),
+			Graphic::Vector(table) => table.contains_color_or_gradient(),
+			Graphic::RasterCPU(table) => table.contains_color_or_gradient(),
+			Graphic::RasterGPU(table) => table.contains_color_or_gradient(),
+			Graphic::Color(table) => table.contains_color_or_gradient(),
+			Graphic::Gradient(table) => table.contains_color_or_gradient(),
 		}
 	}
 
@@ -657,6 +703,9 @@ impl Render for Table<Graphic> {
 
 	fn contains_artboard(&self) -> bool {
 		self.iter().any(|row| row.element.contains_artboard())
+	}
+	fn contains_color_or_gradient(&self) -> bool {
+		self.iter().any(|row| row.element.contains_color_or_gradient())
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
@@ -1414,6 +1463,9 @@ impl Render for Table<Color> {
 			}
 		}
 	}
+	fn contains_color_or_gradient(&self) -> bool {
+		true
+	}
 }
 
 impl Render for Table<GradientStops> {
@@ -1513,6 +1565,9 @@ impl Render for Table<GradientStops> {
 				scene.pop_layer();
 			}
 		}
+	}
+	fn contains_color_or_gradient(&self) -> bool {
+		true
 	}
 }
 
