@@ -80,19 +80,20 @@ fn spiral(
 	_: impl Ctx,
 	_primary: (),
 	spiral_type: SpiralType,
-	#[default(0.5)] start_radius: f64,
 	#[default(0.)] inner_radius: f64,
-	#[default(0.2)] growth: f64,
-	#[default(1.)] tightness: f64,
-	#[default(6)] turns: f64,
-	#[default(45.)] angle_offset: f64,
+	#[default(25)] outer_radius: f64,
+	#[default(5.)] turns: f64,
+	#[default(90.)] angle_offset: f64,
+	#[default(0.)] start_angle: f64,
 ) -> Table<Vector> {
-	let (a, b) = match spiral_type {
-		SpiralType::Archimedean => (inner_radius, tightness),
-		SpiralType::Logarithmic => (start_radius, growth),
-	};
-
-	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_spiral(a, b, turns, angle_offset.to_radians(), spiral_type)))
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_spiral(
+		inner_radius,
+		outer_radius,
+		turns,
+		start_angle.to_radians(),
+		angle_offset.to_radians(),
+		spiral_type,
+	)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]

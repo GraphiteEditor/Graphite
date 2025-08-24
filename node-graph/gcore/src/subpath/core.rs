@@ -1,3 +1,5 @@
+use std::f64::consts::TAU;
+
 use super::consts::*;
 use super::*;
 use crate::vector::misc::{SpiralType, point_to_dvec2};
@@ -316,14 +318,16 @@ impl<PointId: Identifier> Subpath<PointId> {
 		Self::from_anchors([p1, p2], false)
 	}
 
-	pub fn new_spiral(a: f64, b: f64, turns: f64, delta_theta: f64, spiral_type: SpiralType) -> Self {
+	pub fn new_spiral(a: f64, outer_radius: f64, turns: f64, start_angle: f64, delta_theta: f64, spiral_type: SpiralType) -> Self {
 		let mut manipulator_groups = Vec::new();
 		let mut prev_in_handle = None;
-		let theta_end = turns * std::f64::consts::TAU;
+		let theta_end = turns * std::f64::consts::TAU + start_angle;
 
-		let mut theta = 0.0;
+		let b = calculate_b(a, turns, outer_radius, spiral_type);
+
+		let mut theta = start_angle;
 		while theta < theta_end {
-			let theta_next = theta + delta_theta;
+			let theta_next = f64::min(theta + delta_theta, theta_end);
 
 			let p0 = spiral_point(theta, a, b, spiral_type);
 			let p3 = spiral_point(theta_next, a, b, spiral_type);
@@ -336,18 +340,13 @@ impl<PointId: Identifier> Subpath<PointId> {
 			let p1 = p0 + d * t0;
 			let p2 = p3 - d * t1;
 
-			let is_last_segment = theta_next >= theta_end;
-			if is_last_segment {
-				let t = (theta_end - theta) / (theta_next - theta); // t in [0, 1]
-				let (trim_p0, trim_p1, trim_p2, trim_p3) = split_cubic_bezier(p0, p1, p2, p3, t);
+			manipulator_groups.push(ManipulatorGroup::new(p0, prev_in_handle, Some(p1)));
+			prev_in_handle = Some(p2);
 
-				manipulator_groups.push(ManipulatorGroup::new(trim_p0, prev_in_handle, Some(trim_p1)));
-				prev_in_handle = Some(trim_p2);
-				manipulator_groups.push(ManipulatorGroup::new(trim_p3, prev_in_handle, None));
+			// If final segment, end with anchor at theta_end
+			if (theta_next - theta_end).abs() < f64::EPSILON {
+				manipulator_groups.push(ManipulatorGroup::new(p3, prev_in_handle, None));
 				break;
-			} else {
-				manipulator_groups.push(ManipulatorGroup::new(p0, prev_in_handle, Some(p1)));
-				prev_in_handle = Some(p2);
 			}
 
 			theta = theta_next;
@@ -357,6 +356,20 @@ impl<PointId: Identifier> Subpath<PointId> {
 	}
 }
 
+pub fn calculate_b(a: f64, turns: f64, outer_radius: f64, spiral_type: SpiralType) -> f64 {
+	match spiral_type {
+		SpiralType::Archimedean => {
+			let total_theta = turns * TAU;
+			(outer_radius - a) / total_theta
+		}
+		SpiralType::Logarithmic => {
+			let total_theta = turns * TAU;
+			((outer_radius.abs() / a).ln()) / total_theta
+		}
+	}
+}
+
+/// Returns a point on the given spiral type at angle `theta`.
 pub fn spiral_point(theta: f64, a: f64, b: f64, spiral_type: SpiralType) -> DVec2 {
 	match spiral_type {
 		SpiralType::Archimedean => archimedean_spiral_point(theta, a, b),
@@ -380,22 +393,6 @@ pub fn spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64, spira
 	}
 }
 
-/// Splits a cubic Bézier curve at parameter `t`, returning the first half.
-pub fn split_cubic_bezier(p0: DVec2, p1: DVec2, p2: DVec2, p3: DVec2, t: f64) -> (DVec2, DVec2, DVec2, DVec2) {
-	let p01 = p0.lerp(p1, t);
-	let p12 = p1.lerp(p2, t);
-	let p23 = p2.lerp(p3, t);
-
-	let p012 = p01.lerp(p12, t);
-	let p123 = p12.lerp(p23, t);
-
-	// final split point
-	let p0123 = p012.lerp(p123, t);
-
-	// First half of the Bézier
-	(p0, p01, p012, p0123)
-}
-
 /// Returns a point on a logarithmic spiral at angle `theta`.
 pub fn log_spiral_point(theta: f64, a: f64, b: f64) -> DVec2 {
 	let r = a * (b * theta).exp(); // a * e^(bθ)
@@ -414,7 +411,7 @@ pub fn log_spiral_tangent(theta: f64, a: f64, b: f64) -> DVec2 {
 	let dx = r * (b * theta.cos() - theta.sin());
 	let dy = r * (b * theta.sin() + theta.cos());
 
-	DVec2::new(dx, -dy).normalize()
+	DVec2::new(dx, -dy).normalize_or(DVec2::X)
 }
 
 /// Returns a point on an Archimedean spiral at angle `theta`.
@@ -428,7 +425,7 @@ pub fn archimedean_spiral_tangent(theta: f64, a: f64, b: f64) -> DVec2 {
 	let r = a + b * theta;
 	let dx = b * theta.cos() - r * theta.sin();
 	let dy = b * theta.sin() + r * theta.cos();
-	DVec2::new(dx, -dy).normalize()
+	DVec2::new(dx, -dy).normalize_or(DVec2::X)
 }
 
 /// Computes arc length along an Archimedean spiral between two angles.
