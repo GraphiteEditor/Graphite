@@ -109,7 +109,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						let metadata = &document.network_interface.document_network_metadata().persistent_metadata;
 						(!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty())
 					};
-					self.menu_bar_message_handler.make_path_editable_is_allowed = make_path_editable_is_allowed(&document.network_interface, document.metadata()).is_some();
+					self.menu_bar_message_handler.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
 				}
 
 				self.menu_bar_message_handler.process_message(message, responses, ());
@@ -1144,7 +1144,7 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, layers_panel_open: bool, responses: &mut VecDeque<Message>, to_front: bool) {
+	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, layers_panel_open: bool, responses: &mut VecDeque<Message>, to_front: bool) {
 		if to_front {
 			self.document_ids.push_front(document_id);
 		} else {
