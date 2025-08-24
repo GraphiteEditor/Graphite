@@ -14,6 +14,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::shape_utility::polygon_outline;
+use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
@@ -31,9 +32,9 @@ impl ShapeGizmoHandler for PolygonGizmoHandler {
 		self.number_of_points_dial.is_hovering() || self.point_radius_handle.hovered()
 	}
 
-	fn handle_state(&mut self, selected_star_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		self.number_of_points_dial.handle_actions(selected_star_layer, mouse_position, document, responses);
-		self.point_radius_handle.handle_actions(selected_star_layer, document, mouse_position, responses);
+	fn handle_state(&mut self, selected_star_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler) {
+		self.number_of_points_dial.handle_actions(selected_star_layer, mouse_position, document);
+		self.point_radius_handle.handle_actions(selected_star_layer, document, mouse_position);
 	}
 
 	fn handle_click(&mut self) {
@@ -47,7 +48,7 @@ impl ShapeGizmoHandler for PolygonGizmoHandler {
 		}
 	}
 
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, drag_start: DVec2, _snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		if self.number_of_points_dial.is_dragging() {
 			self.number_of_points_dial.update_number_of_sides(document, input, responses, drag_start);
 		}

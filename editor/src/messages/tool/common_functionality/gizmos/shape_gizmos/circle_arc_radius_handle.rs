@@ -1,11 +1,10 @@
 use crate::consts::GIZMO_HIDE_THRESHOLD;
-use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+use crate::messages::prelude::Responses;
 use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage};
-use crate::messages::prelude::{FrontendMessage, Responses};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_arc_id, get_stroke_width};
 use crate::messages::tool::common_functionality::shapes::shape_utility::{extract_arc_parameters, extract_circle_radius};
 use glam::{DAffine2, DVec2};
@@ -77,7 +76,7 @@ impl RadiusHandle {
 		stroke_width + extra_spacing
 	}
 
-	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, mouse_position: DVec2, responses: &mut VecDeque<Message>) {
+	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, mouse_position: DVec2) {
 		match &self.handle_state {
 			RadiusHandleState::Inactive => {
 				let Some(radius) = extract_circle_radius(layer, document).or(extract_arc_parameters(Some(layer), document).map(|(r, _, _, _)| r)) else {
@@ -99,8 +98,6 @@ impl RadiusHandle {
 					self.angle = angle;
 
 					self.update_state(RadiusHandleState::Hover);
-
-					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::EWResize });
 				}
 			}
 			RadiusHandleState::Dragging | RadiusHandleState::Hover => {}

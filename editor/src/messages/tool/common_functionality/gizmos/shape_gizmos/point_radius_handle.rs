@@ -1,10 +1,8 @@
 use crate::consts::GIZMO_HIDE_THRESHOLD;
 use crate::consts::{COLOR_OVERLAY_RED, POINT_RADIUS_HANDLE_SNAP_THRESHOLD};
-use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::{overlays::utility_types::OverlayContext, utility_types::network_interface::InputConnector};
-use crate::messages::prelude::FrontendMessage;
 use crate::messages::prelude::Responses;
 use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
@@ -54,7 +52,7 @@ impl PointRadiusHandle {
 		self.handle_state = state;
 	}
 
-	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, mouse_position: DVec2, responses: &mut VecDeque<Message>) {
+	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, mouse_position: DVec2) {
 		match &self.handle_state {
 			PointRadiusHandleState::Inactive => {
 				// Draw the point handle gizmo for the star shape
@@ -77,7 +75,6 @@ impl PointRadiusHandle {
 							self.point = i;
 							self.snap_radii = Self::calculate_snap_radii(document, layer, radius_index);
 							self.initial_radius = radius;
-							responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 							self.update_state(PointRadiusHandleState::Hover);
 
 							return;
@@ -105,7 +102,6 @@ impl PointRadiusHandle {
 							self.snap_radii.clear();
 							self.initial_radius = radius;
 							self.update_state(PointRadiusHandleState::Hover);
-							responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 							return;
 						}
 					}

@@ -8,6 +8,7 @@ use crate::messages::tool::common_functionality::gizmos::shape_gizmos::circle_ar
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::sweep_angle_gizmo::{SweepAngleGizmo, SweepAngleGizmoState};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, arc_outline};
+use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
@@ -28,9 +29,9 @@ impl ArcGizmoHandler {
 }
 
 impl ShapeGizmoHandler for ArcGizmoHandler {
-	fn handle_state(&mut self, selected_shape_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_state(&mut self, selected_shape_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler) {
 		self.sweep_angle_gizmo.handle_actions(selected_shape_layer, document, mouse_position);
-		self.arc_radius_handle.handle_actions(selected_shape_layer, document, mouse_position, responses);
+		self.arc_radius_handle.handle_actions(selected_shape_layer, document, mouse_position);
 	}
 
 	fn is_any_gizmo_hovered(&self) -> bool {
@@ -54,7 +55,7 @@ impl ShapeGizmoHandler for ArcGizmoHandler {
 		}
 	}
 
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, drag_start: DVec2, _snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		if self.sweep_angle_gizmo.is_dragging_or_snapped() {
 			self.sweep_angle_gizmo.update_arc(document, input, responses);
 		}

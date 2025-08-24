@@ -1,5 +1,5 @@
 use super::ShapeToolData;
-use crate::consts::{ARC_SWEEP_GIZMO_RADIUS, ARC_SWEEP_GIZMO_TEXT_HEIGHT};
+use crate::consts::{ARC_SWEEP_GIZMO_RADIUS, ARC_SWEEP_GIZMO_TEXT_HEIGHT, LINE_ROTATE_SNAP_ANGLE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -8,6 +8,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Inpu
 use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage, Responses};
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use crate::messages::tool::common_functionality::transformation_cage::BoundingBoxManager;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::*;
@@ -85,7 +86,7 @@ pub trait ShapeGizmoHandler {
 	/// Called every frame to update the gizmo's interaction state based on the mouse position and selection.
 	///
 	/// This includes detecting hover states and preparing interaction flags or visual feedback (e.g., highlighting a hovered handle).
-	fn handle_state(&mut self, selected_shape_layers: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>);
+	fn handle_state(&mut self, selected_shape_layers: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler);
 
 	/// Called when a mouse click occurs over the canvas and a gizmo handle is hovered.
 	///
@@ -96,7 +97,7 @@ pub trait ShapeGizmoHandler {
 	/// Called during a drag interaction to update the shape's parameters in real time.
 	///
 	/// For example, a handle might calculate the distance from the drag start to determine a new radius or update the number of points.
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>);
+	fn handle_update(&mut self, drag_start: DVec2, snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>);
 
 	/// Draws the static or hover-dependent overlays associated with the gizmo.
 	///
@@ -257,6 +258,18 @@ pub fn extract_arc_parameters(layer: Option<LayerNodeIdentifier>, document: &Doc
 	};
 
 	Some((radius, start_angle, sweep_angle, arc_type))
+}
+
+// Extract the node input values of an Line.
+/// Returns an option of (start point, end point).
+pub fn extract_line_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(DVec2, DVec2)> {
+	let node_inputs = NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs("Line")?;
+
+	let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs.get(1)?.as_value(), node_inputs.get(2)?.as_value()) else {
+		return None;
+	};
+
+	Some((start, end))
 }
 
 /// Calculate the viewport positions of arc endpoints
@@ -474,4 +487,73 @@ pub fn calculate_arc_text_transform(angle: f64, offset_angle: f64, center: DVec2
 		(ARC_SWEEP_GIZMO_RADIUS + ARC_SWEEP_GIZMO_TEXT_HEIGHT) * text_angle_on_unit_circle.y,
 	);
 	DAffine2::from_translation(text_texture_position + center)
+}
+
+pub fn generate_line(
+	previous_angle: f64,
+	drag_start: DVec2,
+	current_position: DVec2,
+	snap: &mut SnapManager,
+	snap_data: SnapData,
+	lock_angle: bool,
+	snap_angle: bool,
+	center: bool,
+) -> ([DVec2; 2], f64) {
+	let document_to_viewport = snap_data.document.metadata().document_to_viewport;
+	let mut document_points = [drag_start, document_to_viewport.inverse().transform_point2(current_position)];
+
+	let mut angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
+	let mut line_length = (document_points[1] - document_points[0]).length();
+
+	if lock_angle {
+		angle = previous_angle;
+	} else if snap_angle {
+		let snap_resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
+		angle = (angle / snap_resolution).round() * snap_resolution;
+	}
+
+	if lock_angle {
+		let angle_vec = DVec2::new(angle.cos(), angle.sin());
+		line_length = (document_points[1] - document_points[0]).dot(angle_vec);
+	}
+
+	document_points[1] = document_points[0] + line_length * DVec2::new(angle.cos(), angle.sin());
+
+	let constrained = snap_angle || lock_angle;
+
+	let near_point = SnapCandidatePoint::handle_neighbors(document_points[1], [drag_start]);
+	let far_point = SnapCandidatePoint::handle_neighbors(2. * document_points[0] - document_points[1], [drag_start]);
+	let config = SnapTypeConfiguration::default();
+
+	if constrained {
+		let constraint = SnapConstraint::Line {
+			origin: document_points[0],
+			direction: document_points[1] - document_points[0],
+		};
+		if center {
+			let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, config);
+			let snapped_far = snap.constrained_snap(&snap_data, &far_point, constraint, config);
+			let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
+			document_points[1] = document_points[0] * 2. - best.snapped_point_document;
+			document_points[0] = best.snapped_point_document;
+			snap.update_indicator(best);
+		} else {
+			let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, config);
+			document_points[1] = snapped.snapped_point_document;
+			snap.update_indicator(snapped);
+		}
+	} else if center {
+		let snapped = snap.free_snap(&snap_data, &near_point, config);
+		let snapped_far = snap.free_snap(&snap_data, &far_point, config);
+		let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
+		document_points[1] = document_points[0] * 2. - best.snapped_point_document;
+		document_points[0] = best.snapped_point_document;
+		snap.update_indicator(best);
+	} else {
+		let snapped = snap.free_snap(&snap_data, &near_point, config);
+		document_points[1] = snapped.snapped_point_document;
+		snap.update_indicator(snapped);
+	}
+
+	([document_points[0], document_points[1]], angle)
 }
