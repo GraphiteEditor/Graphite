@@ -617,28 +617,19 @@ pub fn bezpath_is_inside_bezpath(bezpath1: &BezPath, bezpath2: &BezPath, accurac
 	let inner_bbox = bezpath1.bounding_box();
 	let outer_bbox = bezpath2.bounding_box();
 
-	// Eliminate bezpath1 if its bounding box is not completely inside the bezpath2's bounding box.
-	// Reasoning:
-	// If the inner bezpath bounding box is larger than the outer bezpath bounding box in any direction
-	// then the inner bezpath is intersecting with or outside the outer bezpath.
-	if !outer_bbox.contains_rect(inner_bbox) {
-		return false;
-	}
-
-	// Eliminate bezpath1 if any of its anchor points are outside the bezpath2.
-	if !bezpath1.elements().iter().filter_map(|el| el.end_point()).all(|point| bezpath2.contains(point)) {
+	// Eliminate 'bezpath1' if its bounding box is completely outside the bezpath2's bounding box
+	if !outer_bbox.contains_rect(inner_bbox) && outer_bbox.intersect(inner_bbox).is_zero_area() {
 		return false;
 	}
 
 	// Eliminate this subpath if it intersects with the other subpath.
-	if !bezpath_intersections(bezpath1, bezpath2, accuracy, minimum_separation).is_empty() {
+	if !bezpath_intersections(bezpath1, &bezpath2, accuracy, minimum_separation).is_empty() {
 		return false;
 	}
 
 	// At this point:
-	// (1) This subpath's bounding box is inside the other subpath's bounding box,
-	// (2) Its anchors are inside the other subpath, and
-	// (3) It is not intersecting with the other subpath.
+	// (1) The 'bezpath1' bounding box either intersect or is inside the 'bezpath2's bounding box,
+	// (2) The 'bezpath1' is not intersecting with the 'bezpath2'.
 	// Hence, this subpath is completely inside the given other subpath.
 	true
 }
