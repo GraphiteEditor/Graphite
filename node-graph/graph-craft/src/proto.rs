@@ -301,7 +301,10 @@ impl ProtoNetwork {
 		self.reorder_ids()?;
 
 		let mut out_nodes = Vec::with_capacity(10);
-		self.find_context_dependencies(self.output, &mut out_nodes);
+		let output_dependencies = self.find_context_dependencies(self.output, &mut out_nodes);
+		if !output_dependencies.is_empty() {
+			return Err(format!("Node Graph contains unresolved context dependencies: {output_dependencies:?}"));
+		}
 		out_nodes.sort_by_key(|&(id, _)| id);
 
 		// TODO: use outwards edges tracked in original node location instead
@@ -421,7 +424,7 @@ impl ProtoNetwork {
 	}
 
 	/// Update all of the references to a node ID in the graph with a new ID named `compose_node_id`.
-	fn replace_node_id(&mut self, outwards_edges: &HashMap<NodeId, Vec<NodeId>>, node_id: NodeId, compose_node_id: NodeId) {
+	fn replace_node_id(&mut self, outwards_edges: &HashMap<NodeId, Vec<NodeId>>, node_id: NodeId, replacement_node_id: NodeId) {
 		// Update references in other nodes to use the new  node
 		if let Some(referring_nodes) = outwards_edges.get(&node_id) {
 			for &referring_node_id in referring_nodes {
