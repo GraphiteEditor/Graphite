@@ -1,19 +1,10 @@
 use super::tool_prelude::*;
-use crate::consts::{DEFAULT_STROKE_WIDTH, DRAG_THRESHOLD, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
-use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
-use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
+use crate::consts::DEFAULT_STROKE_WIDTH;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, find_spline, merge_layers, merge_points};
-use crate::messages::tool::common_functionality::shapes::shape_utility::{extract_circular_repeat_parameters, extract_star_parameters};
-use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration, SnappedPoint};
-use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
-use graph_craft::document::{NodeId, NodeInput};
+use crate::messages::tool::common_functionality::shapes::shape_utility::extract_circular_repeat_parameters;
 use graphene_std::Color;
-use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
 
 #[derive(Default, ExtractField)]
 pub struct OperationTool {
@@ -224,7 +215,7 @@ impl ToolTransition for OperationTool {
 #[derive(Clone, Debug, Default)]
 struct OperationToolData {
 	drag_start: DVec2,
-	clicked_layer: LayerNodeIdentifier,
+	clicked_layer_radius: (LayerNodeIdentifier, f64),
 	layers_dragging: Vec<(LayerNodeIdentifier, f64)>,
 	initial_center: DVec2,
 }
@@ -233,8 +224,6 @@ impl OperationToolData {
 	fn cleanup(&mut self) {
 		self.layers_dragging.clear();
 	}
-
-	fn modify_circular_repeat(&mut self) {}
 }
 
 impl Fsm for OperationToolFsmState {
@@ -246,54 +235,95 @@ impl Fsm for OperationToolFsmState {
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
 		tool_action_data: &mut ToolActionMessageContext,
-		tool_options: &Self::ToolOptions,
+		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let ToolActionMessageContext {
-			document,
-			global_tool_data,
-			input,
-			shape_editor,
-			preferences,
-			..
-		} = tool_action_data;
+		let ToolActionMessageContext { document, input, .. } = tool_action_data;
 
 		let ToolMessage::Operation(event) = event else { return self };
 		match (self, event) {
-			(_, OperationToolMessage::Overlays { context: mut overlay_context }) => {}
+			(_, OperationToolMessage::Overlays { context: mut overlay_context }) => {
+				match self {
+					OperationToolFsmState::Ready => {
+						for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
+							let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
+							let viewport = document.metadata().transform_to_viewport(layer);
+							let center = viewport.transform_point2(DVec2::ZERO);
+							if center.distance(input.mouse.position) < 5. {
+								overlay_context.circle(center, 3., None, None);
+							}
+
+							overlay_context.outline_vector(&vector, viewport);
+						}
+						if let Some(layer) = document.click(&input) {
+							let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return self };
+							let viewport = document.metadata().transform_to_viewport(layer);
+							let center = viewport.transform_point2(DVec2::ZERO);
+							if center.distance(input.mouse.position) < 5. {
+								overlay_context.circle(center, 3., None, None);
+							}
+
+							overlay_context.outline_vector(&vector, viewport);
+						}
+					}
+					_ => {
+						for layer in tool_data.layers_dragging.iter().map(|(l, _)| l) {
+							let Some(vector) = document.network_interface.compute_modified_vector(*layer) else { continue };
+							let viewport = document.metadata().transform_to_viewport(*layer);
+
+							overlay_context.outline_vector(&vector, viewport);
+						}
+					}
+				}
+
+				self
+			}
 			(OperationToolFsmState::Ready, OperationToolMessage::DragStart) => {
 				let selected_layers = document
 					.network_interface
 					.selected_nodes()
 					.selected_layers(document.metadata())
 					.collect::<HashSet<LayerNodeIdentifier>>();
-				let Some(layer) = document.click(&input) else { return self };
-				let viewport = document.metadata().transform_to_viewport(layer);
+				let Some(clicked_layer) = document.click(&input) else { return self };
+				responses.add(DocumentMessage::StartTransaction);
+				let viewport = document.metadata().transform_to_viewport(clicked_layer);
+				let center = viewport.transform_point2(DVec2::ZERO);
 
-				if selected_layers.contains(&layer) {
+				if center.distance(input.mouse.position) > 5. {
+					return self;
+				};
+
+				if selected_layers.contains(&clicked_layer) {
 					// store all
 					tool_data.layers_dragging = selected_layers
 						.iter()
 						.map(|layer| {
 							let (_angle_offset, radius, _count) = extract_circular_repeat_parameters(Some(*layer), document).unwrap_or((0.0, 0.0, 6));
+							if *layer == clicked_layer {
+								tool_data.clicked_layer_radius = (*layer, radius)
+							}
 							(*layer, radius)
 						})
 						.collect::<Vec<(LayerNodeIdentifier, f64)>>();
 				} else {
 					// deselect all the layer and store the clicked layer for repeat and dragging
 
-					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
-					let (_angle_offset, radius, _count) = extract_circular_repeat_parameters(Some(layer), document).unwrap_or((0.0, 0.0, 6));
-					tool_data.layers_dragging = vec![(layer, radius)];
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![clicked_layer.to_node()] });
+					let (_angle_offset, radius, _count) = extract_circular_repeat_parameters(Some(clicked_layer), document).unwrap_or((0.0, 0.0, 6));
+					tool_data.clicked_layer_radius = (clicked_layer, radius);
+					tool_data.layers_dragging = vec![(clicked_layer, radius)];
 				}
 				tool_data.drag_start = input.mouse.position;
-				tool_data.clicked_layer = layer;
 				tool_data.initial_center = viewport.transform_point2(DVec2::ZERO);
 
 				OperationToolFsmState::Drawing
 			}
 			(OperationToolFsmState::Drawing, OperationToolMessage::DragStop) => {
+				if tool_data.drag_start.distance(input.mouse.position) < 5. {
+					responses.add(DocumentMessage::AbortTransaction);
+				};
 				tool_data.cleanup();
+				responses.add(DocumentMessage::EndTransaction);
 				OperationToolFsmState::Ready
 			}
 			(OperationToolFsmState::Drawing, OperationToolMessage::PointerMove) => {
@@ -302,16 +332,27 @@ impl Fsm for OperationToolFsmState {
 					return self;
 				};
 
-				let viewport = document.metadata().transform_to_viewport(tool_data.clicked_layer);
-				let center = viewport.transform_point2(DVec2::ZERO);
-				let sign = (input.mouse.position - tool_data.initial_center).dot(tool_data.drag_start - tool_data.initial_center).signum();
-				let delta = viewport.inverse().transform_vector2(input.mouse.position - tool_data.drag_start).length() * sign;
-				log::info!("{:?}", delta);
+				let (_clicked_layer, clicked_radius) = tool_data.clicked_layer_radius;
+				let viewport = document.metadata().transform_to_viewport(tool_data.clicked_layer_radius.0);
+				let sign = (input.mouse.position - tool_data.initial_center).dot(viewport.transform_vector2(DVec2::Y)).signum();
+				let delta = document
+					.metadata()
+					.downstream_transform_to_viewport(tool_data.clicked_layer_radius.0)
+					.inverse()
+					.transform_vector2(input.mouse.position - tool_data.initial_center)
+					.length() * sign;
+
 				for (layer, initial_radius) in &tool_data.layers_dragging {
+					let new_radius = if initial_radius.signum() == clicked_radius.signum() {
+						*initial_radius + delta
+					} else {
+						*initial_radius + delta.signum() * -1. * delta.abs()
+					};
+
 					responses.add(GraphOperationMessage::CircularRepeatSet {
 						layer: *layer,
 						angle: 0.,
-						radius: initial_radius + delta,
+						radius: new_radius,
 						count: 6,
 					});
 				}
@@ -319,11 +360,17 @@ impl Fsm for OperationToolFsmState {
 
 				OperationToolFsmState::Drawing
 			}
-			(_, OperationToolMessage::PointerMove) => self,
+			(_, OperationToolMessage::PointerMove) => {
+				responses.add(OverlaysMessage::Draw);
+				self
+			}
 
 			(OperationToolFsmState::Drawing, OperationToolMessage::PointerOutsideViewport) => OperationToolFsmState::Drawing,
 			(state, OperationToolMessage::PointerOutsideViewport) => state,
-			(OperationToolFsmState::Drawing, OperationToolMessage::Abort) => OperationToolFsmState::Ready,
+			(OperationToolFsmState::Drawing, OperationToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
+				OperationToolFsmState::Ready
+			}
 			(_, OperationToolMessage::WorkingColorChanged) => self,
 			_ => self,
 		}
