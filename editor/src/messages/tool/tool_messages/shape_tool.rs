@@ -3,28 +3,26 @@ use crate::consts::{DEFAULT_STROKE_WIDTH, SNAP_POINT_TOLERANCE};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::gizmos::gizmo_manager::GizmoManager;
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::shapes::arc_shape::Arc;
 use crate::messages::tool::common_functionality::shapes::circle_shape::Circle;
 use crate::messages::tool::common_functionality::shapes::line_shape::{LineToolData, clicked_on_line_endpoints};
 use crate::messages::tool::common_functionality::shapes::polygon_shape::Polygon;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeToolModifierKey, ShapeType, anchor_overlays, transform_cage_overlays};
+use crate::messages::tool::common_functionality::shapes::spiral_shape::Spiral;
 use crate::messages::tool::common_functionality::shapes::star_shape::Star;
 use crate::messages::tool::common_functionality::shapes::{Ellipse, Line, Rectangle};
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapTypeConfiguration};
 use crate::messages::tool::common_functionality::transformation_cage::{BoundingBoxManager, EdgeBool};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, resize_bounds, rotate_bounds, skew_bounds, transforming_transform_cage};
-use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput};
+use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
-use graphene_std::vector::misc::ArcType;
+use graphene_std::vector::misc::{ArcType, SpiralType};
 use std::vec;
 
 #[derive(Default, ExtractField)]
@@ -41,6 +39,8 @@ pub struct ShapeToolOptions {
 	vertices: u32,
 	shape_type: ShapeType,
 	arc_type: ArcType,
+	spiral_type: SpiralType,
+	turns: f64,
 }
 
 impl Default for ShapeToolOptions {
@@ -52,6 +52,8 @@ impl Default for ShapeToolOptions {
 			vertices: 5,
 			shape_type: ShapeType::Polygon,
 			arc_type: ArcType::Open,
+			spiral_type: SpiralType::Archimedean,
+			turns: 5.,
 		}
 	}
 }
@@ -67,6 +69,8 @@ pub enum ShapeOptionsUpdate {
 	Vertices(u32),
 	ShapeType(ShapeType),
 	ArcType(ArcType),
+	SpiralType(SpiralType),
+	Turns(f64),
 }
 
 #[impl_message(Message, ToolMessage, Shape)]
@@ -108,6 +112,21 @@ fn create_sides_widget(vertices: u32) -> WidgetHolder {
 		.widget_holder()
 }
 
+fn create_turns_widget(turns: f64) -> WidgetHolder {
+	NumberInput::new(Some(turns))
+		.label("Turns")
+		.min(0.5)
+		.max(1000.)
+		.mode(NumberInputMode::Increment)
+		.on_update(|number_input: &NumberInput| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::Turns(number_input.value.unwrap() as f64),
+			}
+			.into()
+		})
+		.widget_holder()
+}
+
 fn create_shape_option_widget(shape_type: ShapeType) -> WidgetHolder {
 	let entries = vec![vec![
 		MenuListEntry::new("Polygon").label("Polygon").on_commit(move |_| {
@@ -131,6 +150,12 @@ fn create_shape_option_widget(shape_type: ShapeType) -> WidgetHolder {
 		MenuListEntry::new("Arc").label("Arc").on_commit(move |_| {
 			ShapeToolMessage::UpdateOptions {
 				options: ShapeOptionsUpdate::ShapeType(ShapeType::Arc),
+			}
+			.into()
+		}),
+		MenuListEntry::new("Spiral").label("Spiral").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Spiral),
 			}
 			.into()
 		}),
@@ -177,6 +202,24 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.widget_holder()
 }
 
+fn create_spiral_type_widget(spiral_type: SpiralType) -> WidgetHolder {
+	let entries = vec![vec![
+		MenuListEntry::new("Archimedean").label("Archimedean").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::SpiralType(SpiralType::Archimedean),
+			}
+			.into()
+		}),
+		MenuListEntry::new("Logarithmic").label("Logarithmic").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::SpiralType(SpiralType::Logarithmic),
+			}
+			.into()
+		}),
+	]];
+	DropdownInput::new(entries).selected_index(Some(spiral_type as u32)).widget_holder()
+}
+
 impl LayoutHolder for ShapeTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = vec![];
@@ -194,6 +237,13 @@ impl LayoutHolder for ShapeTool {
 				widgets.push(create_arc_type_widget(self.options.arc_type));
 				widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 			}
+		}
+
+		if self.options.shape_type == ShapeType::Spiral {
+			widgets.push(create_spiral_type_widget(self.options.spiral_type));
+			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+			widgets.push(create_turns_widget(self.options.turns));
+			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		}
 
 		if self.options.shape_type != ShapeType::Line {
@@ -296,6 +346,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 			}
 			ShapeOptionsUpdate::ArcType(arc_type) => {
 				self.options.arc_type = arc_type;
+			}
+			ShapeOptionsUpdate::SpiralType(spiral_type) => {
+				self.options.spiral_type = spiral_type;
+			}
+			ShapeOptionsUpdate::Turns(turns) => {
+				self.options.turns = turns;
 			}
 		}
 
@@ -438,6 +494,22 @@ impl ShapeToolData {
 	fn shape_tool_modifier_keys() -> [Key; 3] {
 		[Key::Alt, Key::Shift, Key::Control]
 	}
+
+	fn increase_no_sides_turns(&self, document: &DocumentMessageHandler, shape_type: ShapeType, responses: &mut VecDeque<Message>, decrease: bool) {
+		if let Some(layer) = self.data.layer {
+			match shape_type {
+				ShapeType::Star | ShapeType::Polygon => {
+					Polygon::update_sides(decrease, layer, document, responses);
+				}
+				ShapeType::Spiral => {
+					Spiral::update_turns(decrease, layer, document, responses);
+				}
+				_ => {}
+			}
+		}
+
+		responses.add(NodeGraphMessage::RunDocumentGraph);
+	}
 }
 
 impl Fsm for ShapeToolFsmState {
@@ -550,15 +622,32 @@ impl Fsm for ShapeToolFsmState {
 				self
 			}
 			(ShapeToolFsmState::Ready(_), ShapeToolMessage::IncreaseSides) => {
-				responses.add(ShapeToolMessage::UpdateOptions {
-					options: ShapeOptionsUpdate::Vertices(tool_options.vertices + 1),
-				});
+				if matches!(tool_options.shape_type, ShapeType::Star | ShapeType::Polygon) {
+					responses.add(ShapeToolMessage::UpdateOptions {
+						options: ShapeOptionsUpdate::Vertices(tool_options.vertices + 1),
+					});
+				}
+
+				if matches!(tool_options.shape_type, ShapeType::Spiral) {
+					responses.add(ShapeToolMessage::UpdateOptions {
+						options: ShapeOptionsUpdate::Turns(tool_options.turns + 1.),
+					});
+				}
+
 				self
 			}
 			(ShapeToolFsmState::Ready(_), ShapeToolMessage::DecreaseSides) => {
-				responses.add(ShapeToolMessage::UpdateOptions {
-					options: ShapeOptionsUpdate::Vertices((tool_options.vertices - 1).max(3)),
-				});
+				if matches!(tool_options.shape_type, ShapeType::Star | ShapeType::Polygon) {
+					responses.add(ShapeToolMessage::UpdateOptions {
+						options: ShapeOptionsUpdate::Vertices((tool_options.vertices - 1).max(3)),
+					});
+				}
+
+				if matches!(tool_options.shape_type, ShapeType::Spiral) {
+					responses.add(ShapeToolMessage::UpdateOptions {
+						options: ShapeOptionsUpdate::Turns((tool_options.turns - 1.).max(1.)),
+					});
+				}
 				self
 			}
 			(
@@ -595,65 +684,11 @@ impl Fsm for ShapeToolFsmState {
 				self
 			}
 			(ShapeToolFsmState::Drawing(_), ShapeToolMessage::IncreaseSides) => {
-				if let Some(layer) = tool_data.data.layer {
-					let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface).or(graph_modification_utils::get_star_id(layer, &document.network_interface))
-					else {
-						return self;
-					};
-
-					let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface)
-						.find_node_inputs("Regular Polygon")
-						.or(NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star"))
-					else {
-						return self;
-					};
-
-					let Some(&TaggedValue::U32(n)) = node_inputs.get(1).unwrap().as_value() else {
-						return self;
-					};
-
-					responses.add(ShapeToolMessage::UpdateOptions {
-						options: ShapeOptionsUpdate::Vertices(n + 1),
-					});
-
-					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, 1),
-						input: NodeInput::value(TaggedValue::U32(n + 1), false),
-					});
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				}
-
+				tool_data.increase_no_sides_turns(document, tool_options.shape_type, responses, false);
 				self
 			}
 			(ShapeToolFsmState::Drawing(_), ShapeToolMessage::DecreaseSides) => {
-				if let Some(layer) = tool_data.data.layer {
-					let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface).or(graph_modification_utils::get_star_id(layer, &document.network_interface))
-					else {
-						return self;
-					};
-
-					let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface)
-						.find_node_inputs("Regular Polygon")
-						.or(NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star"))
-					else {
-						return self;
-					};
-
-					let Some(&TaggedValue::U32(n)) = node_inputs.get(1).unwrap().as_value() else {
-						return self;
-					};
-
-					responses.add(ShapeToolMessage::UpdateOptions {
-						options: ShapeOptionsUpdate::Vertices((n - 1).max(3)),
-					});
-
-					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, 1),
-						input: NodeInput::value(TaggedValue::U32((n - 1).max(3)), false),
-					});
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				}
-
+				tool_data.increase_no_sides_turns(document, tool_options.shape_type, responses, true);
 				self
 			}
 			(ShapeToolFsmState::Ready(_), ShapeToolMessage::DragStart) => {
@@ -735,7 +770,7 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Rectangle | ShapeType::Ellipse => tool_data.data.start(document, input),
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Rectangle | ShapeType::Spiral | ShapeType::Ellipse => tool_data.data.start(document, input),
 					ShapeType::Line => {
 						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 						let snapped = tool_data.data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
@@ -753,6 +788,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
 					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
+					ShapeType::Spiral => Spiral::create_node(tool_options.spiral_type, tool_options.turns),
 				};
 
 				let nodes = vec![(NodeId(0), node)];
@@ -761,7 +797,7 @@ impl Fsm for ShapeToolFsmState {
 				let defered_responses = &mut VecDeque::new();
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Rectangle | ShapeType::Ellipse => {
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Rectangle | ShapeType::Ellipse | ShapeType::Spiral => {
 						defered_responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
@@ -801,6 +837,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Rectangle => Rectangle::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Ellipse => Ellipse::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Line => Line::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Spiral => Spiral::update_shape(document, input, layer, tool_data, responses),
 				}
 
 				// Auto-panning
@@ -978,6 +1015,9 @@ impl Fsm for ShapeToolFsmState {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.data.cleanup(responses);
 				tool_data.current_shape = shape;
+				responses.add(ShapeToolMessage::UpdateOptions {
+					options: ShapeOptionsUpdate::ShapeType(shape),
+				});
 
 				responses.add(ShapeToolMessage::UpdateOptions {
 					options: ShapeOptionsUpdate::ShapeType(shape),
@@ -1013,6 +1053,10 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 						HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 					]),
 					HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Decrease/Increase Sides")]),
+				],
+				ShapeType::Spiral => vec![
+					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Spiral")]),
+					HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Decrease/Increase Turns")]),
 				],
 				ShapeType::Ellipse => vec![HintGroup(vec![
 					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Ellipse"),
@@ -1054,6 +1098,7 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 					HintInfo::keys([Key::Control], "Lock Angle"),
 				]),
 				ShapeType::Circle => HintGroup(vec![HintInfo::keys([Key::Alt], "From Center")]),
+				ShapeType::Spiral => HintGroup(vec![]),
 			};
 
 			if !tool_hint_group.0.is_empty() {
@@ -1062,6 +1107,10 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 
 			if matches!(shape, ShapeType::Polygon | ShapeType::Star) {
 				common_hint_group.push(HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Decrease/Increase Sides")]));
+			}
+
+			if matches!(shape, ShapeType::Spiral) {
+				common_hint_group.push(HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Decrease/Increase Turns")]));
 			}
 
 			HintData(common_hint_group)

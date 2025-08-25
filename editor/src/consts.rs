@@ -1,3 +1,5 @@
+use graphene_std::NodeInputDecleration;
+
 // GRAPH
 pub const GRID_SIZE: u32 = 24;
 pub const EXPORTS_TO_TOP_EDGE_PIXEL_GAP: u32 = 72;
@@ -157,3 +159,10 @@ pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;
 
 // INPUT
 pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
+
+/// SPIRAL NODE INPUT INDICES
+pub const SPIRAL_TYPE_INDEX: usize = graphene_std::vector::generator_nodes::spiral::SpiralTypeInput::INDEX;
+pub const SPIRAL_INNER_RADIUS_INDEX: usize = graphene_std::vector::generator_nodes::spiral::InnerRadiusInput::INDEX;
+pub const SPIRAL_OUTER_RADIUS_INDEX: usize = graphene_std::vector::generator_nodes::spiral::OuterRadiusInput::INDEX;
+pub const SPIRAL_TURNS_INDEX: usize = graphene_std::vector::generator_nodes::spiral::TurnsInput::INDEX;
+pub const SPIRAL_START_ANGLE: usize = graphene_std::vector::generator_nodes::spiral::StartAngleInput::INDEX;
