@@ -7,7 +7,7 @@ use glam::IVec2;
 use graphene_core::memo::MemoHashGuard;
 pub use graphene_core::uuid::NodeId;
 pub use graphene_core::uuid::generate_uuid;
-use graphene_core::{Context, Cow, MemoHash, ProtoNodeIdentifier, Type};
+use graphene_core::{Context, ContextDependencies, Cow, MemoHash, ProtoNodeIdentifier, Type};
 use log::Metadata;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
@@ -60,6 +60,9 @@ pub struct DocumentNode {
 	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
 	#[serde(skip)]
 	pub original_location: OriginalLocation,
+	// List of Extract and Inject annotations for the Context
+	#[serde(default)]
+	pub context_features: ContextDependencies,
 }
 
 /// Represents the original location of a node input/output when [`NodeNetwork::generate_node_paths`] was called, allowing the types and errors to be derived.
@@ -92,6 +95,7 @@ impl Default for DocumentNode {
 			visible: true,
 			skip_deduplication: Default::default(),
 			original_location: OriginalLocation::default(),
+			context_features: Default::default(),
 		}
 	}
 }
@@ -159,6 +163,7 @@ impl DocumentNode {
 			construction_args: args,
 			original_location: self.original_location,
 			skip_deduplication: self.skip_deduplication,
+			context_features: self.context_features,
 		}
 	}
 }

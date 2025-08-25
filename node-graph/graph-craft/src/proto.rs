@@ -1,3 +1,4 @@
+use crate::document::value::TaggedValue;
 use crate::document::{InlineRust, value};
 use crate::document::{NodeId, OriginalLocation};
 pub use graphene_core::registry::*;
@@ -132,6 +133,7 @@ pub struct ProtoNode {
 	pub identifier: ProtoNodeIdentifier,
 	pub original_location: OriginalLocation,
 	pub skip_deduplication: bool,
+	pub(crate) context_features: ContextDependencies,
 }
 
 impl Default for ProtoNode {
@@ -142,6 +144,7 @@ impl Default for ProtoNode {
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
+			context_features: Default::default(),
 		}
 	}
 }
@@ -181,6 +184,7 @@ impl ProtoNode {
 				..Default::default()
 			},
 			skip_deduplication: false,
+			context_features: Default::default(),
 		}
 	}
 
@@ -290,17 +294,135 @@ impl ProtoNetwork {
 		(inwards_edges, id_map)
 	}
 
-	/// Performs topological sort and reorders ids.
-	pub fn resolve_inputs(&mut self) -> Result<(), String> {
+	/// Inserts context nullification nodes to optimize caching
+	/// This analysis is performed after topological sorting to ensure proper dependency tracking
+	pub fn insert_context_nullification_nodes(&mut self) -> Result<(), String> {
 		// Perform topological sort once
 		self.reorder_ids()?;
+
+		let mut out_nodes = Vec::with_capacity(10);
+		self.find_context_dependencies(self.output, &mut out_nodes);
+		out_nodes.sort_by_key(|&(id, _)| id);
+
+		// TODO: use outwards edges tracked in original node location instead
+		// Collect outward edges once
+		let outwards_edges = self.collect_outwards_edges();
+
+		for (node_id, context_deps) in out_nodes {
+			self.insert_context_nullification_node(&outwards_edges, node_id, context_deps);
+		}
 
 		Ok(())
 	}
 
-	/// Update all of the references to a node ID in the graph with a new ID named `replacement_node_id`.
-	fn replace_node_id(&mut self, outwards_edges: &HashMap<NodeId, Vec<NodeId>>, node_id: NodeId, replacement_node_id: NodeId) {
-		// Update references in other nodes to use the new node
+	fn insert_context_nullification_node(&mut self, outwards_edges: &HashMap<NodeId, Vec<NodeId>>, node_id: NodeId, context_deps: ContextFeatures) {
+		let (_, node) = &self.nodes[node_id.0 as usize];
+		let path = node.original_location.path.clone();
+
+		let memo_node_id = NodeId(self.nodes.len() as u64);
+
+		self.nodes.push((
+			memo_node_id,
+			ProtoNode {
+				construction_args: ConstructionArgs::Nodes(vec![node_id]),
+				call_argument: concrete!(Context),
+				identifier: graphene_core::memo::memo::IDENTIFIER,
+				original_location: OriginalLocation {
+					path: path.clone(),
+					..Default::default()
+				},
+				..Default::default()
+			},
+		));
+
+		let nullification_value_node_id = NodeId(self.nodes.len() as u64);
+
+		self.nodes.push((
+			nullification_value_node_id,
+			ProtoNode {
+				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextFeatures(context_deps))),
+				call_argument: concrete!(Context),
+				identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
+				original_location: OriginalLocation {
+					path: path.clone(),
+					..Default::default()
+				},
+				..Default::default()
+			},
+		));
+		let nullification_node_id = NodeId(self.nodes.len() as u64);
+		self.nodes.push((
+			nullification_node_id,
+			ProtoNode {
+				construction_args: ConstructionArgs::Nodes(vec![memo_node_id, nullification_node_id]),
+				call_argument: concrete!(Context),
+				identifier: graphene_core::context_modification::context_modification::IDENTIFIER,
+				original_location: OriginalLocation {
+					path: path.clone(),
+					..Default::default()
+				},
+				..Default::default()
+			},
+		));
+		self.replace_node_id(outwards_edges, node_id, nullification_node_id);
+	}
+
+	fn find_context_dependencies(&self, id: NodeId, out_nodes: &mut Vec<(NodeId, ContextFeatures)>) -> ContextFeatures {
+		let mut branch_dependencies = Vec::new();
+		let mut combined_deps = ContextFeatures::default();
+		let node = &self.nodes[id.0 as usize].1;
+
+		let inputs = match &node.construction_args {
+			// TODO: Consider if value nodes can use the context
+			ConstructionArgs::Value(_) => return ContextFeatures::default(),
+			ConstructionArgs::Nodes(items) => items,
+			ConstructionArgs::Inline(_) => return ContextFeatures::default(),
+		};
+
+		// Compute the dependencies for each branch and combine all of them
+		for &node in inputs {
+			let branch = self.find_context_dependencies(node, out_nodes);
+			branch_dependencies.push(branch);
+			combined_deps |= branch;
+		}
+
+		let mut new_deps = combined_deps;
+
+		// Remove requirements which this node provides
+		new_deps &= !node.context_features.inject;
+		// Add requirements we have
+		new_deps |= node.context_features.extract;
+
+		// If we either introduce new dependencies, we can cache all children which don't yet need that dependency
+		let we_introduce_new_deps = !combined_deps.contains(new_deps);
+
+		// For diverging branches, we can add a cache node for all branches which don't reqire all dependencies
+		for (&node, deps) in inputs.iter().zip(branch_dependencies.into_iter()) {
+			if we_introduce_new_deps || deps != combined_deps {
+				out_nodes.push((node, deps));
+			}
+		}
+
+		// Which dependencies do we supply (and don't need ourselves)?
+		let net_injections = node.context_features.inject.difference(node.context_features.extract);
+
+		// Which dependences still need to be meet after this node?
+		let remaining_deps_from_children = combined_deps.difference(net_injections);
+
+		// Do we satisfy any existing dependencies?
+		let we_supply_existing_deps = !combined_deps.difference(remaining_deps_from_children).is_empty();
+
+		if we_supply_existing_deps {
+			// Our set of context dependencies has shrunk so we can add a cache node after the current node
+			out_nodes.push((id, new_deps));
+		}
+
+		new_deps
+	}
+
+	/// Update all of the references to a node ID in the graph with a new ID named `compose_node_id`.
+	fn replace_node_id(&mut self, outwards_edges: &HashMap<NodeId, Vec<NodeId>>, node_id: NodeId, compose_node_id: NodeId) {
+		// Update references in other nodes to use the new  node
 		if let Some(referring_nodes) = outwards_edges.get(&node_id) {
 			for &referring_node_id in referring_nodes {
 				let (_, referring_node) = &mut self.nodes[referring_node_id.0 as usize];
@@ -801,7 +923,9 @@ mod test {
 	#[test]
 	fn stable_node_id_generation() {
 		let mut construction_network = test_network();
-		construction_network.resolve_inputs().expect("Error when calling 'resolve_inputs' on 'construction_network.");
+		construction_network
+			.insert_context_nullification_nodes()
+			.expect("Error when calling 'insert_context_nullification_nodes' on 'construction_network.");
 		construction_network.generate_stable_node_ids();
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();

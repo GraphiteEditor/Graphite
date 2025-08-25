@@ -1940,6 +1940,7 @@ name = "graphene-core"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "bitflags 2.9.1",
  "bytemuck",
  "ctor",
  "dyn-any",
