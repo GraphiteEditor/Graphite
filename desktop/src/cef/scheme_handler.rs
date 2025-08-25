@@ -87,6 +87,7 @@ impl<'a> GraphiteFrontendResourceHandler<'a> {
 			match ext {
 				"html" => Some("text/html".to_string()),
 				"css" => Some("text/css".to_string()),
+				"txt" => Some("text/plain".to_string()),
 				"wasm" => Some("application/wasm".to_string()),
 				"js" => Some("application/javascript".to_string()),
 				"png" => Some("image/png".to_string()),
