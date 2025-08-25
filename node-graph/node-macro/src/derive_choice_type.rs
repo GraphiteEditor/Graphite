@@ -117,7 +117,7 @@ fn derive_enum(enum_attributes: &[Attribute], name: Ident, input: syn::DataEnum)
 			.map_err(|e| {
 				syn::Error::new(
 					Span::call_site(),
-					format!("Failed to find location of 'graphene_core' or 'graphene-core-shaders'. Make sure it is imported as a dependency: {}", e),
+					format!("Failed to find location of 'graphene_core' or 'graphene-core-shaders'. Make sure it is imported as a dependency: {e}"),
 				)
 			})?;
 		match crate_name {

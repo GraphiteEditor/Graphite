@@ -242,6 +242,9 @@ impl EditorHandle {
 
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
 	pub fn init_after_frontend_ready(&self, platform: String) {
+		#[cfg(feature = "native")]
+		crate::native_communcation::initialize_native_communication();
+
 		// Send initialization messages
 		let platform = match platform.as_str() {
 			"Windows" => Platform::Windows,

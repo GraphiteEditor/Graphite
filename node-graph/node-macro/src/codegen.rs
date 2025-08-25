@@ -293,7 +293,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 
-	let cfg = crate::shader_nodes::modify_cfg(&attributes);
+	let cfg = crate::shader_nodes::modify_cfg(attributes);
 	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, &graphene_core, &identifier, &cfg);
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
@@ -323,6 +323,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 		#cfg
 		#[doc(hidden)]
+		#[allow(clippy::module_inception)]
 		mod #mod_name {
 			use super::*;
 			use #graphene_core as gcore;

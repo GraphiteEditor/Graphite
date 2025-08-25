@@ -89,7 +89,6 @@ Since Graphene is fundamentally a programming language, throughout this document
 
 <!-- Our philosophy of building (bootstrapping) our own higher-level language features from the language itself -->
 <!-- Call arguments, construction arguments, `.eval()`, recompiling when construction argument values are updated but not when call argument data changes -->
-<!-- Compose nodes and automatic/manual composition -->
 <!-- Extract/inject nodes and metaprogramming -->
 <!-- Cache nodes and stable node IDs -->
 <!-- Graph rewriting step (currently used only to remove Identity nodes),

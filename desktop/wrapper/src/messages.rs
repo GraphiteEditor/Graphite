@@ -30,6 +30,11 @@ pub enum DesktopFrontendMessage {
 		height: f32,
 	},
 	UpdateOverlays(vello::Scene),
+	UpdateWindowState {
+		maximized: bool,
+		minimized: bool,
+	},
+	CloseWindow,
 }
 
 pub struct FileFilter {
@@ -47,6 +52,7 @@ pub enum DesktopWrapperMessage {
 	ImportSvg { path: PathBuf, content: Vec<u8> },
 	ImportImage { path: PathBuf, content: Vec<u8> },
 	PollNodeGraphEvaluation,
+	UpdatePlatform(Platform),
 }
 
 pub enum OpenFileDialogContext {
@@ -57,4 +63,10 @@ pub enum OpenFileDialogContext {
 pub enum SaveFileDialogContext {
 	Document { document_id: DocumentId, content: Vec<u8> },
 	File { content: Vec<u8> },
+}
+
+pub enum Platform {
+	Windows,
+	Mac,
+	Linux,
 }
