@@ -5,6 +5,7 @@ use core::fmt::Debug;
 use core::hash::Hash;
 use glam::Vec4;
 use half::f16;
+use node_macro::BufferStruct;
 #[cfg(not(feature = "std"))]
 use num_traits::Euclid;
 #[cfg(not(feature = "std"))]
@@ -215,7 +216,7 @@ impl Pixel for Luma {}
 /// The other components (RGB) are stored as `f32` that range from `0.0` up to `f32::MAX`,
 /// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.0` (black) to `1.0` (white) in SDR color.
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable, BufferStruct)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub struct Color {
 	red: f32,
