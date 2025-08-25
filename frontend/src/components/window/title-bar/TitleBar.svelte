@@ -8,6 +8,7 @@
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
+	import WindowButtonsLinux from "@graphite/components/window/title-bar/WindowButtonsLinux.svelte";
 	import WindowButtonsMac from "@graphite/components/window/title-bar/WindowButtonsMac.svelte";
 	import WindowButtonsWeb from "@graphite/components/window/title-bar/WindowButtonsWeb.svelte";
 	import WindowButtonsWindows from "@graphite/components/window/title-bar/WindowButtonsWindows.svelte";
@@ -82,8 +83,10 @@
 	</LayoutRow>
 	<!-- Window buttons (except on Mac) -->
 	<LayoutRow class="right">
-		{#if platform === "Windows" || platform === "Linux"}
+		{#if platform === "Windows"}
 			<WindowButtonsWindows {maximized} />
+		{:else if platform === "Linux"}
+			<WindowButtonsLinux {maximized} />
 		{:else if platform === "Web"}
 			<WindowButtonsWeb />
 		{/if}
