@@ -1,6 +1,6 @@
 use core::fmt::Display;
 use core::hash::{Hash, Hasher};
-#[cfg(target_arch = "spirv")]
+#[cfg(not(feature = "std"))]
 use num_traits::float::Float;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
