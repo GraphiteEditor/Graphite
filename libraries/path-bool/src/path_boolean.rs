@@ -551,13 +551,15 @@ fn round_point(point: DVec2) -> I64Vec2 {
 	(point * ROUNDING_FACTOR).round().as_i64vec2()
 }
 
+type Edges = SmallVec<[(PathSegment, u8, MajorEdgeKey, MajorEdgeKey); 2]>;
+
 fn find_vertices(edges: &[MajorGraphEdgeStage1]) -> MajorGraph {
 	let mut graph = MajorGraph {
 		edges: SlotMap::with_capacity_and_key(edges.len() * 2),
 		vertices: SlotMap::with_capacity_and_key(edges.len()),
 	};
 
-	let mut vertex_pair_id_to_edges: HashMap<_, SmallVec<[(PathSegment, u8, MajorEdgeKey, MajorEdgeKey); 2]>> = new_hash_map(edges.len());
+	let mut vertex_pair_id_to_edges: HashMap<_, Edges> = new_hash_map(edges.len());
 	let mut vertex_hashmap: HashMap<I64Vec2, MajorVertexKey> = new_hash_map(edges.len() * 2);
 
 	for (seg, parent) in edges {

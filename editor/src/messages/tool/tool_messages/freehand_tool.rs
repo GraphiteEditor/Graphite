@@ -416,7 +416,10 @@ mod test_freehand {
 	fn verify_path_points(vector_and_transform_list: &[(Vector, DAffine2)], expected_captured_points: &[DVec2], tolerance: f64) -> Result<(), String> {
 		assert_eq!(vector_and_transform_list.len(), 1, "There should be one row of Vector geometry");
 
-		let (vector, transform) = vector_and_transform_list.iter().find(|(data, _)| data.point_domain.ids().len() > 0).ok_or("Could not find path data")?;
+		let (vector, transform) = vector_and_transform_list
+			.iter()
+			.find(|(data, _)| !data.point_domain.ids().is_empty())
+			.ok_or("Could not find path data")?;
 
 		let point_count = vector.point_domain.ids().len();
 		let segment_count = vector.segment_domain.ids().len();
@@ -424,7 +427,7 @@ mod test_freehand {
 		let actual_positions: Vec<DVec2> = vector.point_domain.positions().iter().map(|&position| transform.transform_point2(position)).collect();
 
 		if segment_count != point_count - 1 {
-			return Err(format!("Expected segments to be one less than points, got {} segments for {} points", segment_count, point_count));
+			return Err(format!("Expected segments to be one less than points, got {segment_count} segments for {point_count} points"));
 		}
 
 		if point_count != expected_captured_points.len() {
@@ -434,7 +437,7 @@ mod test_freehand {
 		for (i, (&expected, &actual)) in expected_captured_points.iter().zip(actual_positions.iter()).enumerate() {
 			let distance = (expected - actual).length();
 			if distance >= tolerance {
-				return Err(format!("Point {} position mismatch: expected {:?}, got {:?} (distance: {})", i, expected, actual, distance));
+				return Err(format!("Point {i} position mismatch: expected {expected:?}, got {actual:?} (distance: {distance})"));
 			}
 		}
 
@@ -508,7 +511,7 @@ mod test_freehand {
 		let initial_point_count = initial_vector.point_domain.ids().len();
 		let initial_segment_count = initial_vector.segment_domain.ids().len();
 
-		assert!(initial_point_count >= 2, "Expected at least 2 points in initial path, found {}", initial_point_count);
+		assert!(initial_point_count >= 2, "Expected at least 2 points in initial path, found {initial_point_count}");
 		assert_eq!(
 			initial_segment_count,
 			initial_point_count - 1,
@@ -569,17 +572,13 @@ mod test_freehand {
 
 		assert!(
 			extended_point_count > initial_point_count,
-			"Expected more points after extension, initial: {}, after extension: {}",
-			initial_point_count,
-			extended_point_count
+			"Expected more points after extension, initial: {initial_point_count}, after extension: {extended_point_count}"
 		);
 
 		assert_eq!(
 			extended_segment_count,
 			extended_point_count - 1,
-			"Expected segments to be one less than points, points: {}, segments: {}",
-			extended_point_count,
-			extended_segment_count
+			"Expected segments to be one less than points, points: {extended_point_count}, segments: {extended_segment_count}"
 		);
 
 		let layer_count = {
@@ -627,8 +626,8 @@ mod test_freehand {
 
 		let existing_layer_id = {
 			let document = editor.active_document();
-			let layer = document.metadata().all_layers().next().unwrap();
-			layer
+
+			document.metadata().all_layers().next().unwrap()
 		};
 
 		editor
@@ -685,9 +684,7 @@ mod test_freehand {
 
 		assert!(
 			final_point_count > initial_point_count,
-			"Expected more points after appending to layer, initial: {}, after append: {}",
-			initial_point_count,
-			final_point_count
+			"Expected more points after appending to layer, initial: {initial_point_count}, after append: {final_point_count}"
 		);
 
 		let expected_new_points = second_path_points.len();

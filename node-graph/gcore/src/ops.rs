@@ -1,3 +1,5 @@
+use graphene_core_shaders::Ctx;
+
 use crate::Node;
 use std::marker::PhantomData;
 
@@ -41,28 +43,9 @@ impl<'i, N: for<'a> Node<'a, I> + Clone, I: 'i> Clone for TypeNode<N, I, <N as N
 }
 impl<'i, N: for<'a> Node<'a, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as Node<'i, I>>::Output> {}
 
-// Into
-pub struct IntoNode<O>(PhantomData<O>);
-impl<O> IntoNode<O> {
-	pub const fn new() -> Self {
-		Self(PhantomData)
-	}
-}
-impl<O> Default for IntoNode<O> {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-impl<'input, I: 'input, O: 'input> Node<'input, I> for IntoNode<O>
-where
-	I: Into<O> + Sync + Send,
-{
-	type Output = dyn_any::DynFuture<'input, O>;
-
-	#[inline]
-	fn eval(&'input self, input: I) -> Self::Output {
-		Box::pin(async move { input.into() })
-	}
+#[node_macro::node(skip_impl)]
+fn into<'i, T: 'i + Send + Into<O>, O: 'i + Send>(_: impl Ctx, value: T, _out_ty: PhantomData<O>) -> O {
+	value.into()
 }
 
 /// The [`Convert`] trait allows for conversion between Rust primitive numeric types.
@@ -122,25 +105,9 @@ impl_convert!(u128);
 impl_convert!(isize);
 impl_convert!(usize);
 
-// Convert
-pub struct ConvertNode<O>(PhantomData<O>);
-impl<_O> ConvertNode<_O> {
-	pub const fn new() -> Self {
-		Self(core::marker::PhantomData)
-	}
-}
-impl<_O> Default for ConvertNode<_O> {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-impl<'input, I: 'input + Convert<_O> + Sync + Send, _O: 'input> Node<'input, I> for ConvertNode<_O> {
-	type Output = ::dyn_any::DynFuture<'input, _O>;
-
-	#[inline]
-	fn eval(&'input self, input: I) -> Self::Output {
-		Box::pin(async move { input.convert() })
-	}
+#[node_macro::node(skip_impl)]
+fn convert<'i, T: 'i + Send + Convert<O>, O: 'i + Send>(_: impl Ctx, value: T, _out_ty: PhantomData<O>) -> O {
+	value.convert()
 }
 
 #[cfg(test)]

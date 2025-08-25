@@ -1782,7 +1782,8 @@ impl DocumentMessageHandler {
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
 		let document_message_handler = serde_json::from_str::<DocumentMessageHandler>(serialized_content)
-			.or_else(|_| {
+			.or_else(|e| {
+				log::warn!("failed to directly load document with the following error: {e}. Trying old DocumentMessageHandler");
 				// TODO: Eventually remove this document upgrade code
 				#[derive(Debug, serde::Serialize, serde::Deserialize)]
 				pub struct OldDocumentMessageHandler {

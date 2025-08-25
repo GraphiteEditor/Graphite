@@ -249,7 +249,7 @@ struct Logger;
 
 impl NodeGraphUpdateSender for Logger {
 	fn send(&self, message: NodeGraphUpdateMessage) {
-		log::warn!("dispatching message with fallback node graph update sender {:?}", message);
+		log::warn!("dispatching message with fallback node graph update sender {message:?}");
 	}
 }
 
