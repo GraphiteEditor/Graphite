@@ -329,9 +329,11 @@ pub enum FrontendMessage {
 	UpdatePlatform {
 		platform: AppWindowPlatform,
 	},
-	UpdateMaximized {
+	UpdateWindowState {
 		maximized: bool,
+		minimized: bool,
 	},
+	CloseWindow,
 	UpdateViewportHolePunch {
 		active: bool,
 	},
