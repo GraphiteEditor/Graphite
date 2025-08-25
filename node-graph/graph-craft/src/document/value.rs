@@ -3,6 +3,7 @@ use crate::proto::{Any as DAny, FutureAny};
 use crate::wasm_application_io::WasmEditorApi;
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
+use glam::{Affine2, Vec2};
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::{ImageTexture, SurfaceFrame};
 use graphene_brush::brush_cache::BrushCache;
@@ -163,7 +164,7 @@ tagged_value! {
 	// ===============
 	// PRIMITIVE TYPES
 	// ===============
-	#[serde(alias = "F32")] // TODO: Eventually remove this alias document upgrade code
+	F32(f32),
 	F64(f64),
 	U32(u32),
 	U64(u64),
@@ -201,6 +202,8 @@ tagged_value! {
 	// ============
 	// STRUCT TYPES
 	// ============
+	Vec2(Vec2),
+	Affine2(Affine2),
 	#[serde(alias = "IVec2", alias = "UVec2")]
 	DVec2(DVec2),
 	DAffine2(DAffine2),
@@ -459,6 +462,21 @@ mod fake_hash {
 		}
 	}
 	impl FakeHash for DAffine2 {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
+		}
+	}
+	impl FakeHash for f32 {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.to_bits().hash(state)
+		}
+	}
+	impl FakeHash for Vec2 {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.to_array().iter().for_each(|x| x.to_bits().hash(state))
+		}
+	}
+	impl FakeHash for Affine2 {
 		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 			self.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
 		}

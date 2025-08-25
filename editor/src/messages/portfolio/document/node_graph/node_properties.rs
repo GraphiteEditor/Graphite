@@ -805,6 +805,14 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 				.on_commit(commit_value)
 				.widget_holder(),
 		]),
+		Some(&TaggedValue::F32(x)) => widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			number_props
+				.value(Some(x as f64))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F32(x.value.unwrap() as f32), node_id, index))
+				.on_commit(commit_value)
+				.widget_holder(),
+		]),
 		Some(&TaggedValue::U32(x)) => widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			number_props
@@ -848,6 +856,15 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 			// We use an arbitrary `y` instead of an arbitrary `x` here because the "Grid" node's "Spacing" value's height should be used from rectangular mode when transferred to "Y Spacing" in isometric mode
 				.value(Some(dvec2.y))
 				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
+				.on_commit(commit_value)
+				.widget_holder(),
+		]),
+		Some(&TaggedValue::Vec2(vec2)) => widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			number_props
+				// We use an arbitrary `y` instead of an arbitrary `x` here because the "Grid" node's "Spacing" value's height should be used from rectangular mode when transferred to "Y Spacing" in isometric mode
+				.value(Some(vec2.y as f64))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F32(x.value.unwrap() as f32), node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
 		]),
