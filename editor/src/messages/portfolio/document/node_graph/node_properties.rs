@@ -147,9 +147,9 @@ pub(crate) fn property_from_type(
 		Type::Concrete(concrete_type) => {
 			match concrete_type.alias.as_ref().map(|x| x.as_ref()) {
 				// Aliased types (ambiguous values)
-				Some("Percentage") => number_widget(default_info, number_input.percentage().min(min(0.)).max(max(100.))).into(),
-				Some("SignedPercentage") => number_widget(default_info, number_input.percentage().min(min(-100.)).max(max(100.))).into(),
-				Some("Angle") => number_widget(default_info, number_input.mode_range().min(min(-180.)).max(max(180.)).unit(unit.unwrap_or("°"))).into(),
+				Some("Percentage") | Some("PercentageF32") => number_widget(default_info, number_input.percentage().min(min(0.)).max(max(100.))).into(),
+				Some("SignedPercentage") | Some("SignedPercentageF32") => number_widget(default_info, number_input.percentage().min(min(-100.)).max(max(100.))).into(),
+				Some("Angle") | Some("AngleF32") => number_widget(default_info, number_input.mode_range().min(min(-180.)).max(max(180.)).unit(unit.unwrap_or("°"))).into(),
 				Some("Multiplier") => number_widget(default_info, number_input.unit(unit.unwrap_or("x"))).into(),
 				Some("PixelLength") => number_widget(default_info, number_input.min(min(0.)).unit(unit.unwrap_or(" px"))).into(),
 				Some("Length") => number_widget(default_info, number_input.min(min(0.))).into(),
