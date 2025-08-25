@@ -84,7 +84,7 @@ graphite-proc-macros = { path = "proc-macros" }
 
 # Workspace dependencies
 rustc-hash = "2.0"
-bytemuck = { version = "1.13", features = ["derive"] }
+bytemuck = { version = "1.13", features = ["derive", "min_const_generics"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 serde-wasm-bindgen = "0.6"
@@ -154,7 +154,7 @@ parley = "0.5.0"
 skrifa = "0.32.0"
 pretty_assertions = "1.4.1"
 fern = { version = "0.7", features = ["colored"] }
-num_enum = "0.7"
+num_enum = { version = "0.7", default-features = false }
 num-derive = "0.4"
 num-traits = { version = "0.2", default-features = false, features = ["libm"] }
 specta = { version = "2.0.0-rc.22", features = [
@@ -192,7 +192,7 @@ tracing = "0.1.41"
 rfd = "0.15.4"
 open = "5.3.2"
 poly-cool = "0.2.0"
-spirv-std = { git = "https://github.com/rust-gpu/rust-gpu", rev = "3f05f5482824e3b1fbb44c9ef90a8795a0204c7c" }
+spirv-std = { git = "https://github.com/rust-gpu/rust-gpu", rev = "3f05f5482824e3b1fbb44c9ef90a8795a0204c7c", features = ["bytemuck"] }
 cargo-gpu = { git = "https://github.com/rust-gpu/cargo-gpu", rev = "e8ba9a0421c27a715277da116a6f2d59cdd3266d" }
 
 [workspace.lints.rust]

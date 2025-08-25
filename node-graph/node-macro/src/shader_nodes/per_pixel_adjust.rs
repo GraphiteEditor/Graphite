@@ -120,6 +120,16 @@ impl PerPixelAdjustCodegen<'_> {
 				ParamType::Uniform => Some(quote! {#ident: #ty}),
 			})
 			.collect::<Vec<_>>();
+		let uniform_struct_ident = &self.uniform_struct_ident;
+		let uniform_struct = parse_quote! {
+			#[repr(C)]
+			#[derive(Copy, Clone)]
+			pub struct #uniform_struct_ident {
+				#(pub #uniform_members),*
+			}
+		};
+		let uniform_struct_shader_struct_derive = crate::buffer_struct::derive_buffer_struct_struct(&self.crate_ident, &uniform_struct)?;
+
 		let image_params = self
 			.params
 			.iter()
@@ -140,7 +150,6 @@ impl PerPixelAdjustCodegen<'_> {
 
 		let entry_point_mod = &self.entry_point_mod;
 		let entry_point_name = &self.entry_point_name_ident;
-		let uniform_struct_ident = &self.uniform_struct_ident;
 		Ok(quote! {
 			pub mod #entry_point_mod {
 				use super::*;
@@ -152,19 +161,17 @@ impl PerPixelAdjustCodegen<'_> {
 
 				pub const #entry_point_name: &str = core::concat!(core::module_path!(), "::entry_point");
 
-				#[repr(C)]
-				#[derive(Copy, Clone, #reexport::bytemuck::NoUninit)]
-				pub struct #uniform_struct_ident {
-					#(pub #uniform_members),*
-				}
+				#uniform_struct
+				#uniform_struct_shader_struct_derive
 
 				#[spirv(fragment)]
 				pub fn entry_point(
 					#[spirv(frag_coord)] frag_coord: Vec4,
 					color_out: &mut Vec4,
-					#[spirv(descriptor_set = 0, binding = 0, storage_buffer)] uniform: &Uniform,
+					#[spirv(descriptor_set = 0, binding = 0, storage_buffer)] uniform: &UniformBuffer,
 					#(#image_params),*
 				) {
+					let uniform = <Uniform as #gcore_shaders::shaders::buffer_struct::BufferStruct>::read(*uniform);
 					let texel_coord = frag_coord.xy().as_uvec2();
 					let color: Color = #fn_name(#context, #(#call_args),*);
 					*color_out = color.to_vec4();

@@ -48,6 +48,7 @@ bytemuck = { workspace = true }
 glam = { workspace = true }
 spirv-std = { workspace = true }
 num-traits = { workspace = true }
+num_enum = { workspace = true }
 
 # Workspace std dependencies
 specta = { workspace = true, optional = true }
