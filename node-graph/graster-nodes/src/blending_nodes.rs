@@ -3,6 +3,7 @@ use crate::adjust::Adjust;
 use graphene_core::gradient::GradientStops;
 #[cfg(feature = "std")]
 use graphene_core::raster_types::{CPU, Raster};
+#[cfg(feature = "std")]
 use graphene_core::table::Table;
 use graphene_core_shaders::Ctx;
 use graphene_core_shaders::blending::BlendMode;
@@ -132,7 +133,7 @@ pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendM
 }
 
 #[node_macro::node(category("Raster"), shader_node(PerPixelAdjust))]
-async fn blend<T: Blend<Color> + Send>(
+fn blend<T: Blend<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Raster<CPU>>,
