@@ -166,7 +166,7 @@ pub(crate) fn property_from_type(
 						// ===============
 						// PRIMITIVE TYPES
 						// ===============
-						Some(x) if x == TypeId::of::<f64>() => number_widget(default_info, number_input.min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY))).into(),
+						Some(x) if x == TypeId::of::<f64>() || x == TypeId::of::<f32>() => number_widget(default_info, number_input.min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY))).into(),
 						Some(x) if x == TypeId::of::<u32>() => number_widget(default_info, number_input.int().min(min(0.)).max(max(f64::from(u32::MAX)))).into(),
 						Some(x) if x == TypeId::of::<u64>() => number_widget(default_info, number_input.int().min(min(0.))).into(),
 						Some(x) if x == TypeId::of::<bool>() => bool_widget(default_info, CheckboxInput::default()).into(),
