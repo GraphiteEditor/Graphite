@@ -1,24 +1,27 @@
-use std::cell::RefCell;
-use std::ffi::c_int;
-use std::ops::DerefMut;
-use std::slice::Iter;
-
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_resource_handler_t, _cef_scheme_handler_factory_t, cef_base_ref_counted_t, cef_scheme_options_t};
 use cef::{
 	Browser, Callback, CefString, Frame, ImplRequest, ImplResourceHandler, ImplResponse, ImplSchemeHandlerFactory, ImplSchemeRegistrar, Request, ResourceHandler, ResourceReadCallback, Response,
 	SchemeRegistrar, WrapResourceHandler, WrapSchemeHandlerFactory,
 };
-use include_dir::{Dir, include_dir};
+use std::cell::RefCell;
+use std::ffi::c_int;
+use std::ops::DerefMut;
+use std::vec::IntoIter;
 
 use super::consts::{FRONTEND_DOMAIN, GRAPHITE_SCHEME};
+use super::{CefEventHandler, Resource};
 
-pub(crate) struct GraphiteSchemeHandlerFactory {
+pub(crate) struct GraphiteSchemeHandlerFactory<H: CefEventHandler> {
 	object: *mut RcImpl<_cef_scheme_handler_factory_t, Self>,
+	event_handler: H,
 }
-impl GraphiteSchemeHandlerFactory {
-	pub(crate) fn new() -> Self {
-		Self { object: std::ptr::null_mut() }
+impl<H: CefEventHandler> GraphiteSchemeHandlerFactory<H> {
+	pub(crate) fn new(event_handler: H) -> Self {
+		Self {
+			object: std::ptr::null_mut(),
+			event_handler,
+		}
 	}
 
 	pub(crate) fn register_schemes(registrar: Option<&mut SchemeRegistrar>) {
@@ -32,7 +35,7 @@ impl GraphiteSchemeHandlerFactory {
 		}
 	}
 }
-impl ImplSchemeHandlerFactory for GraphiteSchemeHandlerFactory {
+impl<H: CefEventHandler> ImplSchemeHandlerFactory for GraphiteSchemeHandlerFactory<H> {
 	fn create(&self, _browser: Option<&mut Browser>, _frame: Option<&mut Frame>, scheme_name: Option<&CefString>, request: Option<&mut Request>) -> Option<ResourceHandler> {
 		if let Some(scheme_name) = scheme_name {
 			if scheme_name.to_string() != GRAPHITE_SCHEME {
@@ -46,11 +49,8 @@ impl ImplSchemeHandlerFactory for GraphiteSchemeHandlerFactory {
 				let path = path.trim_start_matches('/');
 				return match domain {
 					FRONTEND_DOMAIN => {
-						if path.is_empty() {
-							Some(ResourceHandler::new(GraphiteFrontendResourceHandler::new("index.html")))
-						} else {
-							Some(ResourceHandler::new(GraphiteFrontendResourceHandler::new(path)))
-						}
+						let resource = self.event_handler.load_resource(path.to_string().into());
+						Some(ResourceHandler::new(GraphiteFrontendResourceHandler::new(resource)))
 					}
 					_ => None,
 				};
@@ -64,57 +64,29 @@ impl ImplSchemeHandlerFactory for GraphiteSchemeHandlerFactory {
 	}
 }
 
-static FRONTEND: Dir = include_dir!("$CARGO_MANIFEST_DIR/../frontend/dist");
-
-struct GraphiteFrontendResourceHandler<'a> {
+struct GraphiteFrontendResourceHandler {
 	object: *mut RcImpl<_cef_resource_handler_t, Self>,
-	data: Option<RefCell<Iter<'a, u8>>>,
+	data: Option<RefCell<IntoIter<u8>>>,
 	mimetype: Option<String>,
 }
-impl<'a> GraphiteFrontendResourceHandler<'a> {
-	pub fn new(path: &str) -> Self {
-		let file = FRONTEND.get_file(path);
-		let data = if let Some(file) = file {
-			Some(RefCell::new(file.contents().iter()))
-		} else {
-			tracing::error!("Failed to find asset at path: {}", path);
-			None
-		};
-		let mimetype = if let Some(file) = file {
-			let ext = file.path().extension().and_then(|s| s.to_str()).unwrap_or("");
-
-			// We know what file types will be in the assets this should be fine
-			match ext {
-				"html" => Some("text/html".to_string()),
-				"css" => Some("text/css".to_string()),
-				"txt" => Some("text/plain".to_string()),
-				"wasm" => Some("application/wasm".to_string()),
-				"js" => Some("application/javascript".to_string()),
-				"png" => Some("image/png".to_string()),
-				"jpg" | "jpeg" => Some("image/jpeg".to_string()),
-				"svg" => Some("image/svg+xml".to_string()),
-				"xml" => Some("application/xml".to_string()),
-				"json" => Some("application/json".to_string()),
-				"ico" => Some("image/x-icon".to_string()),
-				"woff" => Some("font/woff".to_string()),
-				"woff2" => Some("font/woff2".to_string()),
-				"ttf" => Some("font/ttf".to_string()),
-				"otf" => Some("font/otf".to_string()),
-				"webmanifest" => Some("application/manifest+json".to_string()),
-				"graphite" => Some("application/graphite+json".to_string()),
-				_ => None,
+impl GraphiteFrontendResourceHandler {
+	pub fn new(resource: Option<Resource>) -> Self {
+		if let Some(resource) = resource {
+			Self {
+				object: std::ptr::null_mut(),
+				data: Some(resource.data.into_iter().into()),
+				mimetype: resource.mimetype,
 			}
 		} else {
-			None
-		};
-		Self {
-			object: std::ptr::null_mut(),
-			data,
-			mimetype,
+			Self {
+				object: std::ptr::null_mut(),
+				data: None,
+				mimetype: None,
+			}
 		}
 	}
 }
-impl<'a> ImplResourceHandler for GraphiteFrontendResourceHandler<'a> {
+impl ImplResourceHandler for GraphiteFrontendResourceHandler {
 	fn open(&self, _request: Option<&mut Request>, handle_request: Option<&mut c_int>, _callback: Option<&mut Callback>) -> c_int {
 		if let Some(handle_request) = handle_request {
 			*handle_request = 1;
@@ -149,7 +121,7 @@ impl<'a> ImplResourceHandler for GraphiteFrontendResourceHandler<'a> {
 		if let Some(data) = &self.data {
 			let mut data = data.borrow_mut();
 
-			for (out, &data) in out.iter_mut().zip(data.deref_mut()) {
+			for (out, data) in out.iter_mut().zip(data.deref_mut()) {
 				*out = data;
 				read += 1;
 			}
@@ -171,27 +143,30 @@ impl<'a> ImplResourceHandler for GraphiteFrontendResourceHandler<'a> {
 	}
 }
 
-impl WrapSchemeHandlerFactory for GraphiteSchemeHandlerFactory {
+impl<H: CefEventHandler> WrapSchemeHandlerFactory for GraphiteSchemeHandlerFactory<H> {
 	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_scheme_handler_factory_t, Self>) {
 		self.object = object;
 	}
 }
-impl<'a> WrapResourceHandler for GraphiteFrontendResourceHandler<'a> {
+impl WrapResourceHandler for GraphiteFrontendResourceHandler {
 	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_resource_handler_t, Self>) {
 		self.object = object;
 	}
 }
 
-impl Clone for GraphiteSchemeHandlerFactory {
+impl<H: CefEventHandler> Clone for GraphiteSchemeHandlerFactory<H> {
 	fn clone(&self) -> Self {
 		unsafe {
 			let rc_impl = &mut *self.object;
 			rc_impl.interface.add_ref();
 		}
-		Self { object: self.object }
+		Self {
+			object: self.object,
+			event_handler: self.event_handler.clone(),
+		}
 	}
 }
-impl<'a> Clone for GraphiteFrontendResourceHandler<'a> {
+impl Clone for GraphiteFrontendResourceHandler {
 	fn clone(&self) -> Self {
 		unsafe {
 			let rc_impl = &mut *self.object;
@@ -205,7 +180,7 @@ impl<'a> Clone for GraphiteFrontendResourceHandler<'a> {
 	}
 }
 
-impl Rc for GraphiteSchemeHandlerFactory {
+impl<H: CefEventHandler> Rc for GraphiteSchemeHandlerFactory<H> {
 	fn as_base(&self) -> &cef_base_ref_counted_t {
 		unsafe {
 			let base = &*self.object;
@@ -213,7 +188,7 @@ impl Rc for GraphiteSchemeHandlerFactory {
 		}
 	}
 }
-impl<'a> Rc for GraphiteFrontendResourceHandler<'a> {
+impl Rc for GraphiteFrontendResourceHandler {
 	fn as_base(&self) -> &cef_base_ref_counted_t {
 		unsafe {
 			let base = &*self.object;

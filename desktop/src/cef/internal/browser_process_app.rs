@@ -30,7 +30,7 @@ impl<H: CefEventHandler + Clone> ImplApp for BrowserProcessAppImpl<H> {
 	}
 
 	fn on_register_custom_schemes(&self, registrar: Option<&mut SchemeRegistrar>) {
-		GraphiteSchemeHandlerFactory::register_schemes(registrar);
+		GraphiteSchemeHandlerFactory::<H>::register_schemes(registrar);
 	}
 
 	fn on_before_command_line_processing(&self, _process_type: Option<&cef::CefString>, command_line: Option<&mut cef::CommandLine>) {

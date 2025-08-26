@@ -9,7 +9,8 @@ edition = "2024"
 rust-version = "1.87"
 
 [features]
-default = ["gpu", "accelerated_paint"]
+default = ["embedded_resources", "gpu", "accelerated_paint"]
+embedded_resources = ["dep:include_dir"]
 gpu = ["graphite-desktop-wrapper/gpu"]
 
 # Hardware acceleration features
@@ -27,7 +28,6 @@ winit = { workspace = true, features = ["serde"] }
 thiserror = { workspace = true }
 futures = { workspace = true }
 cef = { workspace = true }
-include_dir = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing = { workspace = true }
 dirs = { workspace = true }
@@ -38,6 +38,9 @@ vello = { workspace = true }
 derivative = { workspace = true }
 rfd = { workspace = true }
 open = { workspace = true }
+
+# Embedded resources dependencies
+include_dir = { workspace = true, optional = true }
 
 # Hardware acceleration dependencies
 ash = { version = "0.38", optional = true }
@@ -61,3 +64,6 @@ core-foundation = { version = "0.9", optional = true }
 # Linux-specific dependencies
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = { version = "0.2", optional = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(embedded_resources)'] }

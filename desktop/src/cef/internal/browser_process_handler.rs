@@ -23,7 +23,11 @@ impl<H: CefEventHandler> BrowserProcessHandlerImpl<H> {
 
 impl<H: CefEventHandler + Clone> ImplBrowserProcessHandler for BrowserProcessHandlerImpl<H> {
 	fn on_context_initialized(&self) {
-		cef::register_scheme_handler_factory(Some(&CefString::from(GRAPHITE_SCHEME)), None, Some(&mut SchemeHandlerFactory::new(GraphiteSchemeHandlerFactory::new())));
+		cef::register_scheme_handler_factory(
+			Some(&CefString::from(GRAPHITE_SCHEME)),
+			None,
+			Some(&mut SchemeHandlerFactory::new(GraphiteSchemeHandlerFactory::new(self.event_handler.clone()))),
+		);
 	}
 
 	fn on_schedule_message_pump_work(&self, delay_ms: i64) {
