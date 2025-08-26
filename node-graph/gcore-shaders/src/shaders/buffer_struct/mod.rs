@@ -6,6 +6,7 @@
 use bytemuck::Pod;
 
 mod glam;
+mod graphite;
 mod primitive;
 
 /// A BufferStruct is a "parallel representation" of the original struct with some fundamental types remapped. This

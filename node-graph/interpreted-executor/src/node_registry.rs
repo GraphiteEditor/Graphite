@@ -51,6 +51,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		#[cfg(feature = "gpu")]
 		into_node!(from: Table<Raster<GPU>>, to: Table<Graphic>),
 		// into_node!(from: Table<Raster<CPU>>, to: Table<Raster<SRGBA8>>),
+		into_node!(from: Table<Color>, to: Option<Color>),
 		#[cfg(feature = "gpu")]
 		into_node!(from: &WasmEditorApi, to: &WgpuExecutor),
 		// =============
