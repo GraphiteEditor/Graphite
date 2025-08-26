@@ -4129,6 +4129,7 @@ dependencies = [
  "graph-craft",
  "graphene-std",
  "interpreted-executor",
+ "log",
 ]
 
 [[package]]
