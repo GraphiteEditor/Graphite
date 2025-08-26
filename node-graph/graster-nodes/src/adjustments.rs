@@ -3,6 +3,7 @@
 use crate::adjust::Adjust;
 use crate::cubic_spline::CubicSplines;
 use core::fmt::Debug;
+use glam::{Vec3, Vec4};
 #[cfg(feature = "std")]
 use graphene_core::gradient::GradientStops;
 #[cfg(feature = "std")]
@@ -753,7 +754,8 @@ fn channel_mixer<T: Adjust<Color>>(
 	image
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum RelativeAbsolute {
@@ -762,8 +764,8 @@ pub enum RelativeAbsolute {
 	Absolute,
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub enum SelectiveColorChoice {
 	#[default]
@@ -786,7 +788,7 @@ pub enum SelectiveColorChoice {
 //
 // Algorithm based on:
 // https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
-#[node_macro::node(category("Raster: Adjustment"), properties("selective_color_properties"), cfg(feature = "std"))]
+#[node_macro::node(category("Raster: Adjustment"), properties("selective_color_properties"), shader_node(PerPixelAdjust))]
 fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -880,7 +882,7 @@ fn selective_color<T: Adjust<Color>>(
 			RelativeAbsolute::Absolute => (-1., -1., -1.),
 		};
 
-		let (sum_r, sum_g, sum_b) = [
+		let array = [
 			(SelectiveColorChoice::Reds, (r_c, r_m, r_y, r_k)),
 			(SelectiveColorChoice::Yellows, (y_c, y_m, y_y, y_k)),
 			(SelectiveColorChoice::Greens, (g_c, g_m, g_y, g_k)),
@@ -890,14 +892,16 @@ fn selective_color<T: Adjust<Color>>(
 			(SelectiveColorChoice::Whites, (w_c, w_m, w_y, w_k)),
 			(SelectiveColorChoice::Neutrals, (n_c, n_m, n_y, n_k)),
 			(SelectiveColorChoice::Blacks, (k_c, k_m, k_y, k_k)),
-		]
-		.into_iter()
-		.fold((0., 0., 0.), |acc, (color_parameter_group, (c, m, y, k))| {
+		];
+		let mut sum = Vec3::ZERO;
+		for i in 0..array.len() {
+			let (color_parameter_group, (c, m, y, k)) = array[i];
+
 			// Skip this color parameter group...
 			// ...if it's unchanged from the default of zero offset on all CMYK parameters, or...
 			// ...if this pixel's color isn't in the range affected by this color parameter group
 			if (c < f32::EPSILON && m < f32::EPSILON && y < f32::EPSILON && k < f32::EPSILON) || (!pixel_color_range(color_parameter_group)) {
-				return acc;
+				continue;
 			}
 
 			let (c, m, y, k) = (c / 100., m / 100., y / 100., k / 100.);
@@ -910,14 +914,15 @@ fn selective_color<T: Adjust<Color>>(
 				SelectiveColorChoice::Blacks => 1. - max(r, g, b) * 2.,
 			};
 
-			let offset_r = ((c + k * (c + 1.)) * slope_r).clamp(-r, -r + 1.) * color_parameter_group_scale_factor;
-			let offset_g = ((m + k * (m + 1.)) * slope_g).clamp(-g, -g + 1.) * color_parameter_group_scale_factor;
-			let offset_b = ((y + k * (y + 1.)) * slope_b).clamp(-b, -b + 1.) * color_parameter_group_scale_factor;
+			let offset_r = f32::clamp((c + k * (c + 1.)) * slope_r, -r, -r + 1.) * color_parameter_group_scale_factor;
+			let offset_g = f32::clamp((m + k * (m + 1.)) * slope_g, -g, -g + 1.) * color_parameter_group_scale_factor;
+			let offset_b = f32::clamp((y + k * (y + 1.)) * slope_b, -b, -b + 1.) * color_parameter_group_scale_factor;
 
-			(acc.0 + offset_r, acc.1 + offset_g, acc.2 + offset_b)
-		});
+			sum += Vec3::new(offset_r, offset_g, offset_b);
+		}
 
-		let color = Color::from_rgbaf32_unchecked((r + sum_r).clamp(0., 1.), (g + sum_g).clamp(0., 1.), (b + sum_b).clamp(0., 1.), a);
+		let rgb = Vec3::new(r, g, b);
+		let color = Color::from_vec4(Vec4::from(((sum + rgb).clamp(Vec3::ZERO, Vec3::ONE), a)));
 
 		color.to_linear_srgb()
 	});
