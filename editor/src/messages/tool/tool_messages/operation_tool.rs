@@ -1,10 +1,7 @@
 use super::tool_prelude::*;
-use crate::consts::DEFAULT_STROKE_WIDTH;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::shapes::shape_utility::extract_circular_repeat_parameters;
-use graphene_std::Color;
 
 #[derive(Default, ExtractField)]
 pub struct OperationTool {
@@ -14,17 +11,13 @@ pub struct OperationTool {
 }
 
 pub struct OperationOptions {
-	line_weight: f64,
-	fill: ToolColorOptions,
-	stroke: ToolColorOptions,
+	operation_type: OperationType,
 }
 
 impl Default for OperationOptions {
 	fn default() -> Self {
 		Self {
-			line_weight: DEFAULT_STROKE_WIDTH,
-			fill: ToolColorOptions::new_none(),
-			stroke: ToolColorOptions::new_primary(),
+			operation_type: OperationType::CircularRepeat,
 		}
 	}
 }
@@ -56,12 +49,7 @@ enum OperationToolFsmState {
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OperationOptionsUpdate {
-	FillColor(Option<Color>),
-	FillColorType(ToolColorType),
-	LineWeight(f64),
-	StrokeColor(Option<Color>),
-	StrokeColorType(ToolColorType),
-	WorkingColors(Option<Color>, Option<Color>),
+	OperationType(OperationType),
 }
 
 impl ToolMetadata for OperationTool {
@@ -76,76 +64,29 @@ impl ToolMetadata for OperationTool {
 	}
 }
 
-fn create_weight_widget(line_weight: f64) -> WidgetHolder {
-	NumberInput::new(Some(line_weight))
-		.unit(" px")
-		.label("Weight")
-		.min(0.)
-		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		.on_update(|number_input: &NumberInput| {
+fn create_operation_type_option_widget(operation_type: OperationType) -> WidgetHolder {
+	let entries = vec![vec![
+		MenuListEntry::new("Repeat").label("Repeat").on_commit(move |_| {
 			OperationToolMessage::UpdateOptions {
-				options: OperationOptionsUpdate::LineWeight(number_input.value.unwrap()),
+				options: OperationOptionsUpdate::OperationType(OperationType::Repeat),
 			}
 			.into()
-		})
-		.widget_holder()
+		}),
+		MenuListEntry::new("Repeat").label("Circular Repeat").on_commit(move |_| {
+			OperationToolMessage::UpdateOptions {
+				options: OperationOptionsUpdate::OperationType(OperationType::CircularRepeat),
+			}
+			.into()
+		}),
+	]];
+	DropdownInput::new(entries).selected_index(Some(operation_type as u32)).widget_holder()
 }
 
 impl LayoutHolder for OperationTool {
 	fn layout(&self) -> Layout {
-		let mut widgets = self.options.fill.create_widgets(
-			"Fill",
-			true,
-			|_| {
-				OperationToolMessage::UpdateOptions {
-					options: OperationOptionsUpdate::FillColor(None),
-				}
-				.into()
-			},
-			|color_type: ToolColorType| {
-				WidgetCallback::new(move |_| {
-					OperationToolMessage::UpdateOptions {
-						options: OperationOptionsUpdate::FillColorType(color_type.clone()),
-					}
-					.into()
-				})
-			},
-			|color: &ColorInput| {
-				OperationToolMessage::UpdateOptions {
-					options: OperationOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
-				}
-				.into()
-			},
-		);
+		let mut widgets = vec![];
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-
-		widgets.append(&mut self.options.stroke.create_widgets(
-			"Stroke",
-			true,
-			|_| {
-				OperationToolMessage::UpdateOptions {
-					options: OperationOptionsUpdate::StrokeColor(None),
-				}
-				.into()
-			},
-			|color_type: ToolColorType| {
-				WidgetCallback::new(move |_| {
-					OperationToolMessage::UpdateOptions {
-						options: OperationOptionsUpdate::StrokeColorType(color_type.clone()),
-					}
-					.into()
-				})
-			},
-			|color: &ColorInput| {
-				OperationToolMessage::UpdateOptions {
-					options: OperationOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
-				}
-				.into()
-			},
-		));
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.push(create_weight_widget(self.options.line_weight));
+		widgets.push(create_operation_type_option_widget(self.options.operation_type));
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
@@ -159,23 +100,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Oper
 			return;
 		};
 		match options {
-			OperationOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
-			OperationOptionsUpdate::FillColor(color) => {
-				self.options.fill.custom_color = color;
-				self.options.fill.color_type = ToolColorType::Custom;
-			}
-			OperationOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
-			OperationOptionsUpdate::StrokeColor(color) => {
-				self.options.stroke.custom_color = color;
-				self.options.stroke.color_type = ToolColorType::Custom;
-			}
-			OperationOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
-			OperationOptionsUpdate::WorkingColors(primary, secondary) => {
-				self.options.stroke.primary_working_color = primary;
-				self.options.stroke.secondary_working_color = secondary;
-				self.options.fill.primary_working_color = primary;
-				self.options.fill.secondary_working_color = secondary;
-			}
+			OperationOptionsUpdate::OperationType(operation_type) => self.options.operation_type = operation_type,
 		}
 
 		self.send_layout(responses, LayoutTarget::ToolOptions);
@@ -395,4 +320,11 @@ impl Fsm for OperationToolFsmState {
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum OperationType {
+	#[default]
+	CircularRepeat = 0,
+	Repeat = 1,
 }
