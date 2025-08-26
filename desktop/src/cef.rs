@@ -97,9 +97,6 @@ impl CefHandler {
 	}
 }
 
-#[cfg(embedded_resources)]
-static EMBEDDED_RESOURCES: include_dir::Dir = include_dir::include_dir!("$EMBEDDED_RESOURCES");
-
 impl CefEventHandler for CefHandler {
 	fn window_size(&self) -> WindowSize {
 		let Ok(mut guard) = self.window_size_receiver.lock() else {
@@ -188,9 +185,11 @@ impl CefEventHandler for CefHandler {
 			_ => None,
 		};
 
-		#[cfg(embedded_resources)]
+		#[cfg(feature = "embedded_resources")]
 		{
-			if let Some(file) = EMBEDDED_RESOURCES.get_file(&path) {
+			if let Some(resources) = &graphite_desktop_embedded_resources::EMBEDDED_RESOURCES
+				&& let Some(file) = resources.get_file(&path)
+			{
 				return Some(Resource {
 					data: file.contents().to_vec(),
 					mimetype,
@@ -198,7 +197,7 @@ impl CefEventHandler for CefHandler {
 			}
 		}
 
-		#[cfg(not(embedded_resources))]
+		#[cfg(not(feature = "embedded_resources"))]
 		{
 			use std::path::Path;
 			let asset_path_env = std::env::var("GRAPHITE_RESOURCES").ok()?;

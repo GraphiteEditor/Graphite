@@ -1,0 +1,15 @@
+[package]
+name = "graphite-desktop-embedded-resources"
+version = "0.1.0"
+description = "Graphite Desktop Embedded Resources"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "Apache-2.0"
+repository = ""
+edition = "2024"
+rust-version = "1.87"
+
+[dependencies]
+include_dir = { workspace = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(embedded_resources)'] }
