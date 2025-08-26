@@ -141,6 +141,38 @@ fn make_opaque<T: Adjust<Color>>(
 	input
 }
 
+/// See [`brightness_contrast`]
+#[node_macro::node(
+	name("Brightness/Contrast classic"),
+	category("Raster: Adjustment"),
+	properties("brightness_contrast_properties"),
+	shader_node(PerPixelAdjust)
+)]
+fn brightness_contrast_classic<T: Adjust<Color>>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+		GradientStops,
+	)]
+	#[gpu_image]
+	mut input: T,
+	brightness: SignedPercentageF32,
+	contrast: SignedPercentageF32,
+) -> T {
+	let brightness = brightness / 255.;
+
+	let contrast = contrast / 100.;
+	let contrast = if contrast > 0. { (contrast * core::f32::consts::FRAC_PI_2 - 0.01).tan() } else { contrast };
+
+	let offset = brightness * contrast + brightness - contrast / 2.;
+
+	input.adjust(|color| color.to_gamma_srgb().map_rgb(|c| (c + c * contrast + offset).clamp(0., 1.)).to_linear_srgb());
+
+	input
+}
+
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27brit%27%20%3D%20Brightness/Contrast
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Padding-,Brightness%20and%20Contrast,-Key%20is%20%27brit
@@ -149,7 +181,7 @@ fn make_opaque<T: Adjust<Color>>(
 // https://geraldbakker.nl/psnumbers/brightness-contrast.html
 #[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), properties("brightness_contrast_properties"), cfg(feature = "std"))]
 fn brightness_contrast<T: Adjust<Color>>(
-	_: impl Ctx,
+	_ctx: impl Ctx,
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
@@ -163,16 +195,7 @@ fn brightness_contrast<T: Adjust<Color>>(
 	use_classic: bool,
 ) -> T {
 	if use_classic {
-		let brightness = brightness / 255.;
-
-		let contrast = contrast / 100.;
-		let contrast = if contrast > 0. { (contrast * core::f32::consts::FRAC_PI_2 - 0.01).tan() } else { contrast };
-
-		let offset = brightness * contrast + brightness - contrast / 2.;
-
-		input.adjust(|color| color.to_gamma_srgb().map_rgb(|c| (c + c * contrast + offset).clamp(0., 1.)).to_linear_srgb());
-
-		return input;
+		return brightness_contrast_classic(_ctx, input, brightness, contrast);
 	}
 
 	const WINDOW_SIZE: usize = 1024;
