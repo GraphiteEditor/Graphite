@@ -2140,6 +2140,7 @@ dependencies = [
  "num-traits",
  "serde",
  "specta",
+ "spirv-std",
 ]
 
 [[package]]
