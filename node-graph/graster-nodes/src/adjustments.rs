@@ -341,7 +341,7 @@ fn black_and_white<T: Adjust<Color>>(
 	)]
 	#[gpu_image]
 	mut image: T,
-	#[default(Color::BLACK)] tint: Color,
+	#[default(Color::BLACK)] tint: Option<Color>,
 	#[default(40.)]
 	#[range((-200., 300.))]
 	reds: PercentageF32,
@@ -361,6 +361,8 @@ fn black_and_white<T: Adjust<Color>>(
 	#[range((-200., 300.))]
 	magentas: PercentageF32,
 ) -> T {
+	let tint = tint.unwrap_or(Color::BLACK);
+
 	image.adjust(|color| {
 		let color = color.to_gamma_srgb();
 
