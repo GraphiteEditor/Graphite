@@ -608,9 +608,9 @@ pub fn round_line_join(bezpath1: &BezPath, bezpath2: &BezPath, center: DVec2) ->
 }
 
 /// Returns `true` if the `bezpath1` is completely inside the `bezpath2`.
-/// NOTE: The `bezpath2` has to be a closed path to get correct result.
+/// NOTE: `bezpath2` must be a closed path to get correct results.
 pub fn bezpath_is_inside_bezpath(bezpath1: &BezPath, bezpath2: &BezPath, accuracy: Option<f64>, minimum_separation: Option<f64>) -> bool {
-	// Eliminate any possibility of one being inside the other, if either of them is empty
+	// Eliminate any possibility of one being inside the other, if either of them are empty
 	if bezpath1.is_empty() || bezpath2.is_empty() {
 		return false;
 	}
@@ -618,25 +618,28 @@ pub fn bezpath_is_inside_bezpath(bezpath1: &BezPath, bezpath2: &BezPath, accurac
 	let inner_bbox = bezpath1.bounding_box();
 	let outer_bbox = bezpath2.bounding_box();
 
-	// Eliminate if the 'bezpath1' bounding box is completely outside the bezpath2's bounding box
+	// Eliminate bezpath1 if its bounding box is not completely inside the bezpath2's bounding box.
+	// Reasoning:
+	// If the inner bezpath bounding box is larger than the outer bezpath bounding box in any direction
+	// then the inner bezpath is intersecting with or outside the outer bezpath.
 	if !outer_bbox.contains_rect(inner_bbox) && outer_bbox.intersect(inner_bbox).is_zero_area() {
 		return false;
 	}
 
-	// Eliminate if any anchors point of the 'bezpath1' is outside the 'bezpath2'.
+	// Eliminate bezpath1 if any of its anchor points are outside the bezpath2.
 	if !bezpath1.elements().iter().filter_map(|elm| elm.end_point()).all(|point| bezpath2.contains(point)) {
 		return false;
 	}
 
-	// Eliminate if 'bezpath1' intersects with 'bezpath2'.
-	if !bezpath_intersections(bezpath1, &bezpath2, accuracy, minimum_separation).is_empty() {
+	// Eliminate this subpath if it intersects with the other subpath.
+	if !bezpath_intersections(bezpath1, bezpath2, accuracy, minimum_separation).is_empty() {
 		return false;
 	}
 
 	// At this point:
-	// (1) The 'bezpath1' bounding box either intersect or is inside the 'bezpath2's bounding box,
-	// (2) All the anchor point of the 'bezpath1' is inside 'bezpath2'
-	// (3) The 'bezpath1' is not intersecting with the 'bezpath2'.
+	// (1) This subpath's bounding box is inside the other subpath's bounding box,
+	// (2) Its anchors are inside the other subpath, and
+	// (3) It is not intersecting with the other subpath.
 	// Hence, this subpath is completely inside the given other subpath.
 	true
 }
