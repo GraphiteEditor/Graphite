@@ -13,7 +13,7 @@ mod validation;
 #[proc_macro_attribute]
 pub fn node(attr: TokenStream, item: TokenStream) -> TokenStream {
 	// Performs the `node_impl` macro's functionality of attaching an `impl Node for TheGivenStruct` block to the node struct
-	parsing::new_node_fn(attr.into(), item.into()).into()
+	parsing::new_node_fn(attr.into(), item.into()).unwrap_or_else(|err| err.to_compile_error()).into()
 }
 
 /// Generate meta-information for an enum.
@@ -27,5 +27,5 @@ pub fn node(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// Doc comments on a variant become tooltip text.
 #[proc_macro_derive(ChoiceType, attributes(widget, menu_separator, label, icon))]
 pub fn derive_choice_type(input_item: TokenStream) -> TokenStream {
-	TokenStream::from(derive_choice_type::derive_choice_type_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
+	derive_choice_type::derive_choice_type_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()).into()
 }
