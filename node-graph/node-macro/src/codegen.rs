@@ -1,6 +1,5 @@
 use crate::parsing::*;
 use convert_case::{Case, Casing};
-use proc_macro_crate::FoundCrate;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{ToTokens, format_ident, quote, quote_spanned};
 use std::sync::atomic::AtomicU64;
@@ -10,7 +9,7 @@ use syn::token::Comma;
 use syn::{Error, Ident, PatIdent, Token, WhereClause, WherePredicate, parse_quote};
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
-pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
+pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
 	let ParsedNodeFn {
 		vis,
 		attributes,
@@ -24,10 +23,10 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		is_async,
 		fields,
 		body,
-		crate_name: graphene_core_crate,
 		description,
 		..
 	} = parsed;
+	let graphene_core = crate_ident.gcore()?;
 
 	let category = &attributes.category.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let mod_name = format_ident!("_{}_mod", mod_name);
@@ -59,14 +58,6 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let struct_fields = field_names.iter().zip(struct_generics.iter()).map(|(name, r#gen)| {
 		quote! { pub(super) #name: #r#gen }
 	});
-
-	let graphene_core = match graphene_core_crate {
-		FoundCrate::Itself => quote!(crate),
-		FoundCrate::Name(name) => {
-			let ident = Ident::new(name, proc_macro2::Span::call_site());
-			quote!( #ident )
-		}
-	};
 
 	let mut future_idents = Vec::new();
 
@@ -295,7 +286,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let cfg = crate::shader_nodes::modify_cfg(attributes);
 	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, &graphene_core, &identifier, &cfg);
-	let ShaderTokens { shader_entry_point, gpu_node } = attributes.shader_node.as_ref().map(|n| n.codegen(parsed)).unwrap_or(Ok(ShaderTokens::default()))?;
+	let ShaderTokens { shader_entry_point, gpu_node } = attributes.shader_node.as_ref().map(|n| n.codegen(crate_ident, parsed)).unwrap_or(Ok(ShaderTokens::default()))?;
 
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
@@ -592,6 +583,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 	})
 }
 
+use crate::crate_ident::CrateIdent;
 use crate::shader_nodes::{ShaderCodegen, ShaderTokens};
 use syn::visit_mut::VisitMut;
 use syn::{GenericArgument, Lifetime, Type};
