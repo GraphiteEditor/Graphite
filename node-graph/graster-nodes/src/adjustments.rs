@@ -72,7 +72,7 @@ fn luminance<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::node(category("Raster"), cfg(feature = "std"))]
+#[node_macro::node(category("Raster"), shader_node(PerPixelAdjust))]
 fn gamma_correction<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -656,7 +656,7 @@ pub enum DomainWarpType {
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27mixr%27%20%3D%20Channel%20Mixer
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Lab%20color%20only-,Channel%20Mixer,-Key%20is%20%27mixr
-#[node_macro::node(category("Raster: Adjustment"), properties("channel_mixer_properties"), cfg(feature = "std"))]
+#[node_macro::node(category("Raster: Adjustment"), properties("channel_mixer_properties"), shader_node(PerPixelAdjust))]
 fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
