@@ -7,7 +7,7 @@ use quote::{ToTokens, format_ident, quote};
 use std::borrow::Cow;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{PatIdent, Type, parse_quote};
+use syn::{LitStr, PatIdent, Type, parse_quote};
 
 #[derive(Debug, Clone)]
 pub struct PerPixelAdjust {}
@@ -293,6 +293,7 @@ impl PerPixelAdjustCodegen<'_> {
 		let mut parsed_node_fn = ParsedNodeFn {
 			vis: self.parsed.vis.clone(),
 			attributes: NodeFnAttributes {
+				display_name: self.parsed.attributes.display_name.as_ref().map(|name| LitStr::new(&format!("{} GPU", name.value()), name.span())),
 				shader_node: Some(ShaderNodeType::ShaderNode),
 				..self.parsed.attributes.clone()
 			},
@@ -311,7 +312,7 @@ impl PerPixelAdjustCodegen<'_> {
 			is_async: true,
 			fields,
 			body,
-			description: "".to_string(),
+			description: self.parsed.description.clone(),
 		};
 		parsed_node_fn.replace_impl_trait_in_input();
 		let gpu_node_impl = crate::codegen::generate_node_code(self.crate_ident, &parsed_node_fn)?;
