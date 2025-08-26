@@ -28,7 +28,6 @@ mod input;
 mod internal;
 mod ipc;
 mod platform;
-mod scheme_handler;
 mod utility;
 
 #[cfg(feature = "accelerated_paint")]

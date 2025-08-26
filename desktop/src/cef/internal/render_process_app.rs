@@ -3,8 +3,8 @@ use cef::sys::{_cef_app_t, cef_base_ref_counted_t};
 use cef::{App, ImplApp, RenderProcessHandler, SchemeRegistrar, WrapApp};
 
 use super::render_process_handler::RenderProcessHandlerImpl;
+use super::scheme_handler_factory::SchemeHandlerFactoryImpl;
 use crate::cef::CefEventHandler;
-use crate::cef::scheme_handler::GraphiteSchemeHandlerFactory;
 
 pub(crate) struct RenderProcessAppImpl<H: CefEventHandler> {
 	object: *mut RcImpl<_cef_app_t, Self>,
@@ -21,7 +21,7 @@ impl<H: CefEventHandler> RenderProcessAppImpl<H> {
 
 impl<H: CefEventHandler> ImplApp for RenderProcessAppImpl<H> {
 	fn on_register_custom_schemes(&self, registrar: Option<&mut SchemeRegistrar>) {
-		GraphiteSchemeHandlerFactory::<H>::register_schemes(registrar);
+		SchemeHandlerFactoryImpl::<H>::register_schemes(registrar);
 	}
 
 	fn render_process_handler(&self) -> Option<RenderProcessHandler> {

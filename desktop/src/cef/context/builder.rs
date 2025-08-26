@@ -7,7 +7,7 @@ use cef::{
 use super::CefContext;
 use super::singlethreaded::SingleThreadedCefContext;
 use crate::cef::CefEventHandler;
-use crate::cef::consts::{FRONTEND_DOMAIN, GRAPHITE_SCHEME};
+use crate::cef::consts::{RESOURCE_DOMAIN, RESOURCE_SCHEME};
 use crate::cef::dirs::{cef_cache_dir, cef_data_dir};
 use crate::cef::input::InputState;
 use crate::cef::internal::{BrowserProcessAppImpl, BrowserProcessClientImpl, RenderHandlerImpl, RenderProcessAppImpl};
@@ -122,7 +122,7 @@ fn create_browser<H: CefEventHandler>(event_handler: H) -> Result<SingleThreaded
 	let render_handler = RenderHandler::new(RenderHandlerImpl::new(event_handler.clone()));
 	let mut client = Client::new(BrowserProcessClientImpl::new(render_handler, event_handler.clone()));
 
-	let url = CefString::from(format!("{GRAPHITE_SCHEME}://{FRONTEND_DOMAIN}/").as_str());
+	let url = CefString::from(format!("{RESOURCE_SCHEME}://{RESOURCE_DOMAIN}/").as_str());
 
 	let window_info = WindowInfo {
 		windowless_rendering_enabled: 1,
