@@ -642,24 +642,11 @@ fn extract_attribute<'a>(attrs: &'a [Attribute], name: &str) -> Option<&'a Attri
 }
 
 // Modify the new_node_fn function to use the code generation
-pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
-	let parse_result = parse_node_fn(attr, item.clone());
-	let Ok(mut parsed_node) = parse_result else {
-		let e = parse_result.unwrap_err();
-		return Error::new(e.span(), format!("Failed to parse node function: {e}")).to_compile_error();
-	};
-
+pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenStream2> {
+	let mut parsed_node = parse_node_fn(attr, item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node function: {e}")))?;
 	parsed_node.replace_impl_trait_in_input();
-	if let Err(e) = crate::validation::validate_node_fn(&parsed_node) {
-		return Error::new(e.span(), format!("Validation Error:\n{e}")).to_compile_error();
-	}
-	match generate_node_code(&parsed_node) {
-		Ok(parsed) => parsed,
-		Err(e) => {
-			// Return the error as a compile error
-			Error::new(e.span(), format!("Failed to parse node function: {e}")).to_compile_error()
-		}
-	}
+	crate::validation::validate_node_fn(&parsed_node).map_err(|e| Error::new(e.span(), format!("Validation Error: {e}")))?;
+	generate_node_code(&parsed_node).map_err(|e| Error::new(e.span(), format!("Failed to generate node code: {e}")))
 }
 
 impl ParsedNodeFn {
