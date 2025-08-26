@@ -3,6 +3,7 @@ use proc_macro_error2::proc_macro_error;
 use syn::GenericParam;
 
 mod codegen;
+mod crate_ident;
 mod derive_choice_type;
 mod parsing;
 mod shader_nodes;

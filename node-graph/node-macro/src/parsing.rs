@@ -12,6 +12,7 @@ use syn::{
 };
 
 use crate::codegen::generate_node_code;
+use crate::crate_ident::CrateIdent;
 use crate::shader_nodes::ShaderNodeType;
 
 #[derive(Clone, Debug)]
@@ -35,7 +36,6 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) is_async: bool,
 	pub(crate) fields: Vec<ParsedField>,
 	pub(crate) body: TokenStream2,
-	pub(crate) crate_name: proc_macro_crate::FoundCrate,
 	pub(crate) description: String,
 }
 
@@ -314,12 +314,6 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 	let output_type = parse_output(&input_fn.sig.output)?;
 	let where_clause = input_fn.sig.generics.where_clause;
 	let body = input_fn.block.to_token_stream();
-	let crate_name = proc_macro_crate::crate_name("graphene-core").map_err(|e| {
-		Error::new(
-			proc_macro2::Span::call_site(),
-			format!("Failed to find location of graphene_core. Make sure it is imported as a dependency: {e}"),
-		)
-	})?;
 	let description = input_fn
 		.attrs
 		.iter()
@@ -350,7 +344,6 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 		fields,
 		where_clause,
 		body,
-		crate_name,
 		description,
 	})
 }
@@ -681,10 +674,11 @@ fn extract_attribute<'a>(attrs: &'a [Attribute], name: &str) -> Option<&'a Attri
 
 // Modify the new_node_fn function to use the code generation
 pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenStream2> {
+	let crate_ident = CrateIdent::default();
 	let mut parsed_node = parse_node_fn(attr, item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node function: {e}")))?;
 	parsed_node.replace_impl_trait_in_input();
 	crate::validation::validate_node_fn(&parsed_node).map_err(|e| Error::new(e.span(), format!("Validation Error: {e}")))?;
-	generate_node_code(&parsed_node).map_err(|e| Error::new(e.span(), format!("Failed to generate node code: {e}")))
+	generate_node_code(&crate_ident, &parsed_node).map_err(|e| Error::new(e.span(), format!("Failed to generate node code: {e}")))
 }
 
 impl ParsedNodeFn {
@@ -715,7 +709,6 @@ impl ParsedNodeFn {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use proc_macro_crate::FoundCrate;
 	use proc_macro2::Span;
 	use quote::{quote, quote_spanned};
 	use syn::parse_quote;
@@ -868,7 +861,6 @@ mod tests {
 				unit: None,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::from("Multi\nLine\n"),
 		};
 
@@ -951,7 +943,6 @@ mod tests {
 				},
 			],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::from("Hello\n\t\t\t\tWorld\n"),
 		};
 
@@ -1015,7 +1006,6 @@ mod tests {
 				unit: None,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: "Test\n".into(),
 		};
 
@@ -1083,7 +1073,6 @@ mod tests {
 				unit: None,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::new(),
 		};
 
@@ -1153,7 +1142,6 @@ mod tests {
 				unit: None,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::new(),
 		};
 
@@ -1216,7 +1204,6 @@ mod tests {
 				unit: None,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::new(),
 		};
 
@@ -1259,7 +1246,6 @@ mod tests {
 			is_async: false,
 			fields: vec![],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::new(),
 		};
 
