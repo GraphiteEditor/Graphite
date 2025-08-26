@@ -5,6 +5,7 @@ pub mod choice_type;
 pub mod color;
 pub mod context;
 pub mod registry;
+pub mod shaders;
 
 pub use context::Ctx;
 pub use glam;
