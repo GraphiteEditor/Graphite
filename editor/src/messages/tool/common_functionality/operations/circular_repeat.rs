@@ -76,6 +76,11 @@ impl CircularRepeatOperation {
 
 		for (layer, initial_radius) in &tool_data.circular_operation_data.layers_dragging {
 			// If the layer’s sign differs from the clicked layer, invert delta to preserve consistent in/out dragging behavior
+
+			let Some((angle, _, count)) = extract_circular_repeat_parameters(Some(*layer), document) else {
+				return;
+			};
+
 			let new_radius = if initial_radius.signum() == clicked_radius.signum() {
 				*initial_radius + delta
 			} else {
@@ -84,9 +89,9 @@ impl CircularRepeatOperation {
 
 			responses.add(GraphOperationMessage::CircularRepeatSet {
 				layer: *layer,
-				angle: 0.,
+				angle,
 				radius: new_radius,
-				count: 6,
+				count,
 			});
 		}
 
@@ -134,6 +139,24 @@ impl CircularRepeatOperation {
 			}
 			overlay_context.outline_vector(&vector, viewport);
 		}
+	}
+
+	pub fn increase_decrease_count(tool_data: &mut OperationToolData, increase: bool, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		for (layer, _) in &tool_data.circular_operation_data.layers_dragging {
+			let Some((angle, radius, mut count)) = extract_circular_repeat_parameters(Some(*layer), document) else {
+				return;
+			};
+
+			if increase {
+				count += 1
+			} else {
+				count = (count - 1).max(1)
+			}
+
+			responses.add(GraphOperationMessage::CircularRepeatSet { layer: *layer, angle, radius, count });
+		}
+
+		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	pub fn cleanup(tool_data: &mut OperationToolData) {

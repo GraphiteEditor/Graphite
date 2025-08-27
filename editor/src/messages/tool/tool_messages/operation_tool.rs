@@ -37,6 +37,8 @@ pub enum OperationToolMessage {
 	WorkingColorChanged,
 
 	// Tool-specific messages
+	IncreaseCount,
+	DecreaseCount,
 	Confirm,
 	DragStart,
 	DragStop,
@@ -127,6 +129,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Oper
 				PointerMove,
 				Confirm,
 				Abort,
+				IncreaseCount,
+				DecreaseCount,
 			),
 		}
 	}
@@ -211,6 +215,20 @@ impl Fsm for OperationToolFsmState {
 				}
 
 				OperationToolFsmState::Drawing
+			}
+			(OperationToolFsmState::Drawing, OperationToolMessage::IncreaseCount) => {
+				match tool_options.operation_type {
+					OperationType::CircularRepeat => CircularRepeatOperation::increase_decrease_count(tool_data, true, document, responses),
+					_ => {}
+				}
+				self
+			}
+			(OperationToolFsmState::Drawing, OperationToolMessage::DecreaseCount) => {
+				match tool_options.operation_type {
+					OperationType::CircularRepeat => CircularRepeatOperation::increase_decrease_count(tool_data, false, document, responses),
+					_ => {}
+				}
+				self
 			}
 			(_, OperationToolMessage::PointerMove) => {
 				responses.add(OverlaysMessage::Draw);

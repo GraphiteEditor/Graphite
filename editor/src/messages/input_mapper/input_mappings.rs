@@ -178,6 +178,10 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(MouseRight); action_dispatch=OperationToolMessage::Confirm),
 		entry!(KeyDown(Escape); action_dispatch=OperationToolMessage::Abort),
 		entry!(KeyDown(Enter); action_dispatch=OperationToolMessage::Confirm),
+		entry!(KeyDown(ArrowUp);action_dispatch=OperationToolMessage::IncreaseCount),
+		entry!(KeyDown(ArrowDown);action_dispatch=OperationToolMessage::DecreaseCount),
+		entry!(KeyDown(BracketRight);action_dispatch=OperationToolMessage::IncreaseCount),
+		entry!(KeyDown(BracketLeft);action_dispatch=OperationToolMessage::DecreaseCount),
 		//
 		// ShapeToolMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=ShapeToolMessage::DragStart),
