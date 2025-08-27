@@ -1929,8 +1929,8 @@ impl ShapeState {
 		}
 	}
 
-	/// Converts all selected anchor point's handles between sharp (zero-length handles) and smooth (pulled-apart handle(s)).
-	/// If both handles aren't zero-length, they are set that. If both are zero-length, they are stretched apart by a reasonable amount.
+	/// Converts all selected anchor points' handles between sharp (zero-length handles) and smooth (pulled-apart colinear handle(s)).
+	/// If both handles aren't zero-length, they are set to that. If both are zero-length, they are stretched apart by a reasonable amount.
 	/// This can can be activated by double clicking on an anchor with the Path tool.
 	pub fn flip_smooth_sharp(&self, network_interface: &NodeNetworkInterface, responses: &mut VecDeque<Message>) {
 		let mut process_layer = |layer: LayerNodeIdentifier, selected_points: &HashSet<ManipulatorPointId>| {
@@ -1942,7 +1942,7 @@ impl ShapeState {
 				let anchor = point.get_position(&vector)?;
 				let handles = vector.all_connected(point_id);
 
-				//TODO: Check if this method of finding non colinear is really required
+				// TODO: Check if this method of finding non-colinear is really required
 				let positions = handles
 					.filter_map(|handle| handle.to_manipulator_point().get_position(&vector))
 					.filter(|&handle| anchor.abs_diff_eq(handle, 1e-5))

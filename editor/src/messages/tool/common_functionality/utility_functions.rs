@@ -172,7 +172,7 @@ pub fn is_visible_point(
 	vector: &Vector,
 	path_overlay_mode: PathOverlayMode,
 	frontier_handles_for_layer: Option<&HashMap<SegmentId, Vec<PointId>>>,
-	selected_segments: &Vec<SegmentId>,
+	selected_segments: &[SegmentId],
 	selected_points: &HashSet<ManipulatorPointId>,
 ) -> bool {
 	match manipulator_point_id {

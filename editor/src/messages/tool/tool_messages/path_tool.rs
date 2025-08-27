@@ -1205,18 +1205,18 @@ impl PathToolData {
 		else if let Some(closest_segment) = &mut self.segment {
 			closest_segment.update_closest_point(document.metadata(), &document.network_interface, position);
 
-			let layer = closest_segment.layer().clone();
-			let segment_id = closest_segment.segment().clone();
+			let layer = closest_segment.layer();
+			let segment_id = closest_segment.segment();
 
 			if closest_segment.too_far(position, SEGMENT_INSERTION_DISTANCE) {
 				self.segment = None;
 			}
 
 			// Check if that segment exists or it has been removed
-			if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-				if !(vector_data.segment_domain.ids().iter().any(|segment| *segment == segment_id)) {
-					self.segment = None;
-				}
+			if let Some(vector_data) = document.network_interface.compute_modified_vector(layer)
+				&& !(vector_data.segment_domain.ids().iter().any(|segment| *segment == segment_id))
+			{
+				self.segment = None;
 			}
 		}
 		// If not, check that if there is some closest segment or not
@@ -1705,14 +1705,15 @@ impl Fsm for PathToolFsmState {
 
 							for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
 								let mut segment_endpoints: HashMap<SegmentId, Vec<PointId>> = HashMap::new();
+
 								let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
-								let Some(state) = shape_editor.selected_shape_state.get_mut(&layer) else {
-									continue;
-								};
+								let Some(state) = shape_editor.selected_shape_state.get_mut(&layer) else { continue };
+
 								let selected_points = state.selected_points();
 								let selected_anchors = selected_points
 									.filter_map(|point_id| if let ManipulatorPointId::Anchor(p) = point_id { Some(p) } else { None })
 									.collect::<Vec<_>>();
+
 								let Some(focused_segments) = selected_segments.get(&layer) else { continue };
 
 								// The points which are part of only one segment will be rendered
@@ -1735,6 +1736,7 @@ impl Fsm for PathToolFsmState {
 										segment_endpoints.entry(attached_segments[1]).or_default().push(point);
 									}
 								}
+
 								segment_endpoints_by_layer.insert(layer, segment_endpoints);
 							}
 
@@ -2107,6 +2109,7 @@ impl Fsm for PathToolFsmState {
 				if initial_press {
 					responses.add(PathToolMessage::SelectedPointUpdated);
 					tool_data.select_anchor_toggled = true;
+
 					let mut points_to_save = HashMap::new();
 					for (layer, state) in &shape_editor.selected_shape_state {
 						points_to_save.insert(*layer, state.selected_points().collect::<Vec<_>>());
@@ -2634,8 +2637,9 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::ClosePath) => {
 				responses.add(DocumentMessage::AddTransaction);
-				shape_editor.close_selected_path(&document, responses, tool_action_data.preferences.vector_meshes);
+				shape_editor.close_selected_path(document, responses, tool_action_data.preferences.vector_meshes);
 				responses.add(DocumentMessage::EndTransaction);
+
 				responses.add(OverlaysMessage::Draw);
 
 				self
@@ -3073,7 +3077,9 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::DeselectAllSelected) => {
 				shape_editor.deselect_all_points();
 				shape_editor.deselect_all_segments();
+
 				responses.add(OverlaysMessage::Draw);
+
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointXChanged { new_x }) => {

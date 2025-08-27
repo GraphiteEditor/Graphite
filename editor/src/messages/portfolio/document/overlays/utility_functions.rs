@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use super::utility_types::{DrawHandles, OverlayContext};
 use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -10,6 +8,7 @@ use glam::{DAffine2, DVec2};
 use graphene_std::subpath::{Bezier, BezierHandles};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::{PointId, SegmentId, Vector};
+use std::collections::HashMap;
 use wasm_bindgen::JsCast;
 
 pub fn overlay_canvas_element() -> Option<web_sys::HtmlCanvasElement> {
@@ -36,6 +35,7 @@ pub fn selected_segments(network_interface: &NodeNetworkInterface, shape_editor:
 
 		map.insert(*layer, selected_segments);
 	}
+
 	map
 }
 
@@ -156,9 +156,8 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 					});
 				}
 				DrawHandles::SelectedAnchors(ref selected_segments) => {
-					let Some(focused_segments) = selected_segments.get(&layer) else {
-						continue;
-					};
+					let Some(focused_segments) = selected_segments.get(&layer) else { continue };
+
 					vector
 						.segment_bezier_iter()
 						.filter(|(segment_id, ..)| focused_segments.contains(segment_id))
@@ -174,6 +173,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 				}
 				DrawHandles::FrontierHandles(ref segment_endpoints_by_layer) => {
 					let Some(segment_endpoints) = segment_endpoints_by_layer.get(&layer) else { continue };
+
 					vector
 						.segment_bezier_iter()
 						.filter(|(segment_id, ..)| segment_endpoints.contains_key(segment_id))
