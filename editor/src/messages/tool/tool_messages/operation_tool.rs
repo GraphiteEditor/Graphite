@@ -1,7 +1,13 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::tool::common_functionality::shapes::shape_utility::extract_circular_repeat_parameters;
+use crate::messages::tool::common_functionality::operations::circular_repeat::{CircularRepeatOperation, CircularRepeatOperationData};
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum OperationType {
+	#[default]
+	CircularRepeat = 0,
+	Repeat,
+}
 
 #[derive(Default, ExtractField)]
 pub struct OperationTool {
@@ -41,7 +47,7 @@ pub enum OperationToolMessage {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum OperationToolFsmState {
+pub enum OperationToolFsmState {
 	#[default]
 	Ready,
 	Drawing,
@@ -66,15 +72,15 @@ impl ToolMetadata for OperationTool {
 
 fn create_operation_type_option_widget(operation_type: OperationType) -> WidgetHolder {
 	let entries = vec![vec![
-		MenuListEntry::new("Repeat").label("Repeat").on_commit(move |_| {
+		MenuListEntry::new("Circular Repeat").label("Circular Repeat").on_commit(move |_| {
 			OperationToolMessage::UpdateOptions {
-				options: OperationOptionsUpdate::OperationType(OperationType::Repeat),
+				options: OperationOptionsUpdate::OperationType(OperationType::CircularRepeat),
 			}
 			.into()
 		}),
-		MenuListEntry::new("Repeat").label("Circular Repeat").on_commit(move |_| {
+		MenuListEntry::new("Repeat").label("Repeat").on_commit(move |_| {
 			OperationToolMessage::UpdateOptions {
-				options: OperationOptionsUpdate::OperationType(OperationType::CircularRepeat),
+				options: OperationOptionsUpdate::OperationType(OperationType::Repeat),
 			}
 			.into()
 		}),
@@ -138,16 +144,14 @@ impl ToolTransition for OperationTool {
 }
 
 #[derive(Clone, Debug, Default)]
-struct OperationToolData {
-	drag_start: DVec2,
-	clicked_layer_radius: (LayerNodeIdentifier, f64),
-	layers_dragging: Vec<(LayerNodeIdentifier, f64)>,
-	initial_center: DVec2,
+pub struct OperationToolData {
+	pub drag_start: DVec2,
+	pub circular_operation_data: CircularRepeatOperationData,
 }
 
 impl OperationToolData {
 	fn cleanup(&mut self) {
-		self.layers_dragging.clear();
+		CircularRepeatOperation::cleanup(self);
 	}
 }
 
@@ -160,7 +164,7 @@ impl Fsm for OperationToolFsmState {
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
 		tool_action_data: &mut ToolActionMessageContext,
-		_tool_options: &Self::ToolOptions,
+		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		let ToolActionMessageContext { document, input, .. } = tool_action_data;
@@ -168,78 +172,20 @@ impl Fsm for OperationToolFsmState {
 		let ToolMessage::Operation(event) = event else { return self };
 		match (self, event) {
 			(_, OperationToolMessage::Overlays { context: mut overlay_context }) => {
-				match self {
-					OperationToolFsmState::Ready => {
-						for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
-							let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
-							let viewport = document.metadata().transform_to_viewport(layer);
-							let center = viewport.transform_point2(DVec2::ZERO);
-							if center.distance(input.mouse.position) < 5. {
-								overlay_context.circle(center, 3., None, None);
-							}
-
-							overlay_context.outline_vector(&vector, viewport);
-						}
-						if let Some(layer) = document.click(&input) {
-							let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return self };
-							let viewport = document.metadata().transform_to_viewport(layer);
-							let center = viewport.transform_point2(DVec2::ZERO);
-							if center.distance(input.mouse.position) < 5. {
-								overlay_context.circle(center, 3., None, None);
-							}
-
-							overlay_context.outline_vector(&vector, viewport);
-						}
-					}
-					_ => {
-						for layer in tool_data.layers_dragging.iter().map(|(l, _)| l) {
-							let Some(vector) = document.network_interface.compute_modified_vector(*layer) else { continue };
-							let viewport = document.metadata().transform_to_viewport(*layer);
-
-							overlay_context.outline_vector(&vector, viewport);
-						}
-					}
+				match tool_options.operation_type {
+					OperationType::CircularRepeat => CircularRepeatOperation::overlays(&self, tool_data, document, input, &mut overlay_context),
+					_ => {}
 				}
 
 				self
 			}
 			(OperationToolFsmState::Ready, OperationToolMessage::DragStart) => {
-				let selected_layers = document
-					.network_interface
-					.selected_nodes()
-					.selected_layers(document.metadata())
-					.collect::<HashSet<LayerNodeIdentifier>>();
-				let Some(clicked_layer) = document.click(&input) else { return self };
-				responses.add(DocumentMessage::StartTransaction);
-				let viewport = document.metadata().transform_to_viewport(clicked_layer);
-				let center = viewport.transform_point2(DVec2::ZERO);
-
-				if center.distance(input.mouse.position) > 5. {
-					return self;
-				};
-
-				if selected_layers.contains(&clicked_layer) {
-					// store all
-					tool_data.layers_dragging = selected_layers
-						.iter()
-						.map(|layer| {
-							let (_angle_offset, radius, _count) = extract_circular_repeat_parameters(Some(*layer), document).unwrap_or((0.0, 0.0, 6));
-							if *layer == clicked_layer {
-								tool_data.clicked_layer_radius = (*layer, radius)
-							}
-							(*layer, radius)
-						})
-						.collect::<Vec<(LayerNodeIdentifier, f64)>>();
-				} else {
-					// deselect all the layer and store the clicked layer for repeat and dragging
-
-					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![clicked_layer.to_node()] });
-					let (_angle_offset, radius, _count) = extract_circular_repeat_parameters(Some(clicked_layer), document).unwrap_or((0.0, 0.0, 6));
-					tool_data.clicked_layer_radius = (clicked_layer, radius);
-					tool_data.layers_dragging = vec![(clicked_layer, radius)];
+				match tool_options.operation_type {
+					OperationType::CircularRepeat => {
+						CircularRepeatOperation::create_node(tool_data, document, responses, input);
+					}
+					OperationType::Repeat => {}
 				}
-				tool_data.drag_start = input.mouse.position;
-				tool_data.initial_center = viewport.transform_point2(DVec2::ZERO);
 
 				OperationToolFsmState::Drawing
 			}
@@ -257,31 +203,12 @@ impl Fsm for OperationToolFsmState {
 					return self;
 				};
 
-				let (_clicked_layer, clicked_radius) = tool_data.clicked_layer_radius;
-				let viewport = document.metadata().transform_to_viewport(tool_data.clicked_layer_radius.0);
-				let sign = (input.mouse.position - tool_data.initial_center).dot(viewport.transform_vector2(DVec2::Y)).signum();
-				let delta = document
-					.metadata()
-					.downstream_transform_to_viewport(tool_data.clicked_layer_radius.0)
-					.inverse()
-					.transform_vector2(input.mouse.position - tool_data.initial_center)
-					.length() * sign;
-
-				for (layer, initial_radius) in &tool_data.layers_dragging {
-					let new_radius = if initial_radius.signum() == clicked_radius.signum() {
-						*initial_radius + delta
-					} else {
-						*initial_radius + delta.signum() * -1. * delta.abs()
-					};
-
-					responses.add(GraphOperationMessage::CircularRepeatSet {
-						layer: *layer,
-						angle: 0.,
-						radius: new_radius,
-						count: 6,
-					});
+				match tool_options.operation_type {
+					OperationType::CircularRepeat => {
+						CircularRepeatOperation::update_shape(tool_data, document, responses, input);
+					}
+					OperationType::Repeat => {}
 				}
-				responses.add(NodeGraphMessage::RunDocumentGraph);
 
 				OperationToolFsmState::Drawing
 			}
@@ -320,11 +247,4 @@ impl Fsm for OperationToolFsmState {
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
-pub enum OperationType {
-	#[default]
-	CircularRepeat = 0,
-	Repeat = 1,
 }

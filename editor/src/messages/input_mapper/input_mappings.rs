@@ -176,7 +176,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(MouseLeft); action_dispatch=OperationToolMessage::DragStart),
 		entry!(KeyUp(MouseLeft); action_dispatch=OperationToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=OperationToolMessage::Confirm),
-		entry!(KeyDown(Escape); action_dispatch=OperationToolMessage::Confirm),
+		entry!(KeyDown(Escape); action_dispatch=OperationToolMessage::Abort),
 		entry!(KeyDown(Enter); action_dispatch=OperationToolMessage::Confirm),
 		//
 		// ShapeToolMessage
