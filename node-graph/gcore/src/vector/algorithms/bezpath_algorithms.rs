@@ -627,7 +627,7 @@ pub fn bezpath_is_inside_bezpath(bezpath1: &BezPath, bezpath2: &BezPath, accurac
 	}
 
 	// Eliminate bezpath1 if any of its anchor points are outside the bezpath2.
-	if !bezpath1.elements().iter().filter_map(|elm| elm.end_point()).all(|point| bezpath2.contains(point)) {
+	if !bezpath1.elements().iter().filter_map(|el| el.end_point()).all(|point| bezpath2.contains(point)) {
 		return false;
 	}
 
