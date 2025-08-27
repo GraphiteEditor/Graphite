@@ -14,6 +14,7 @@ license = "Apache-2.0"
 default = ["gpu"]
 gpu = ["editor/gpu"]
 native = []
+shader-node = ["graphene-std/shader-node"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
