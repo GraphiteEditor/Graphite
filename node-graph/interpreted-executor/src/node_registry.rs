@@ -8,15 +8,15 @@ use graphene_core::raster::*;
 #[cfg(feature = "gpu")]
 use graphene_core::raster_types::GPU;
 use graphene_core::raster_types::{CPU, Raster};
-use graphene_core::{Artboard, concrete, generic};
-use graphene_core::{Cow, ProtoNodeIdentifier, Type};
+use graphene_core::{Artboard, concrete};
+use graphene_core::{Cow, ProtoNodeIdentifier};
 use graphene_core::{NodeIO, NodeIOTypes};
 use graphene_core::{fn_type_fut, future};
 use graphene_std::Context;
 use graphene_std::Graphic;
 #[cfg(feature = "gpu")]
 use graphene_std::any::DowncastBothNode;
-use graphene_std::any::{ComposeTypeErased, DynAnyNode, IntoTypeErasedNode};
+use graphene_std::any::DynAnyNode;
 use graphene_std::application_io::{ImageTexture, SurfaceFrame};
 use graphene_std::brush::brush_cache::BrushCache;
 use graphene_std::brush::brush_stroke::BrushStroke;
@@ -161,25 +161,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Context, fn_params: [Context => WgpuSurface]),
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Context, fn_params: [Context => Option<WgpuSurface>]),
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Context, fn_params: [Context => ImageTexture]),
-		// ============
-		// COMPOSE NODE
-		// ============
-		(
-			ProtoNodeIdentifier::new("graphene_core::structural::ComposeNode"),
-			|args| {
-				Box::pin(async move {
-					let node = ComposeTypeErased::new(args[0].clone(), args[1].clone());
-					node.into_type_erased()
-				})
-			},
-			// This is how we can generically define composition of two nodes.
-			// See further details in the code definition for the `struct ComposeNode<First, Second, I> { ... }` struct.
-			NodeIOTypes::new(
-				generic!(T),
-				generic!(U),
-				vec![Type::Fn(Box::new(generic!(T)), Box::new(generic!(V))), Type::Fn(Box::new(generic!(V)), Box::new(generic!(U)))],
-			),
-		),
 		// =======================
 		// CREATE GPU SURFACE NODE
 		// =======================
@@ -294,17 +275,23 @@ mod node_registry_macros {
 		(from: $from:ty, to: $to:ty) => {
 			(
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::IntoNode<", stringify!($to), ">"]),
-				|_| {
+				|mut args| {
 					Box::pin(async move {
-						let node = graphene_core::ops::IntoNode::<$to>::new();
-						let any: DynAnyNode<$from, _, _> = graphene_std::any::DynAnyNode::new(node);
+						let node = graphene_core::ops::IntoNode::new(
+							graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
+							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
+						);
+						let any: DynAnyNode<Context, $to, _> = graphene_std::any::DynAnyNode::new(node);
 						Box::new(any) as TypeErasedBox
 					})
 				},
 				{
-					let node = graphene_core::ops::IntoNode::<$to>::new();
-					let mut node_io = NodeIO::<'_, $from>::to_async_node_io(&node, vec![]);
-					node_io.call_argument = future!(<$from as StaticType>::Static);
+					let node = graphene_core::ops::IntoNode::new(
+						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $from> + Send>>>::new(),
+						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
+					);
+					let params = vec![fn_type_fut!(Context, $from)];
+					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
 					node_io
 				},
 			)
@@ -333,17 +320,20 @@ mod node_registry_macros {
 		(from: $from:ty, to: $to:ty) => {
 			(
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::ConvertNode<", stringify!($to), ">"]),
-				|_| {
+				|mut args| {
 					Box::pin(async move {
-						let node = graphene_core::ops::ConvertNode::<$to>::new();
-						let any: DynAnyNode<$from, _, _> = graphene_std::any::DynAnyNode::new(node);
+						let node = graphene_core::ops::ConvertNode::new(graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
+graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>))						);
+						let any: DynAnyNode<Context, $to, _> = graphene_std::any::DynAnyNode::new(node);
 						Box::new(any) as TypeErasedBox
 					})
 				},
 				{
-					let node = graphene_core::ops::ConvertNode::<$to>::new();
-					let mut node_io = NodeIO::<'_, $from>::to_async_node_io(&node, vec![]);
-					node_io.call_argument = future!(<$from as StaticType>::Static);
+					let node = graphene_core::ops::ConvertNode::new(graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $from> + Send>>>::new(),
+
+graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>))					);
+					let params = vec![fn_type_fut!(Context, $from)];
+					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
 					node_io
 				},
 			)

@@ -8,6 +8,21 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 /// Caches the output of a given Node and acts as a proxy
+///
+/// ```text
+///                      ┌───────────────┐    ┌───────────────┐
+///                      │               │◄───┤               │◄─── EVAL (START)
+///                      │   CacheNode   │    │       F       │
+///                      │               ├───►│               │───► RESULT (END)
+/// ┌───────────────┐    ├───────────────┤    └───────────────┘
+/// │               │◄───┤               │
+/// │       G       │    │  Cached Data  │
+/// │               ├───►│               │
+/// └───────────────┘    └───────────────┘
+/// ```
+///
+/// The call from `F` directly reaches the `CacheNode` and the `CacheNode` can decide whether to call `G.eval(input_from_f)`
+/// in the event of a cache miss or just return the cached data in the event of a cache hit.
 #[derive(Default)]
 pub struct MemoNode<T, CachedNode> {
 	cache: Arc<Mutex<Option<(u64, T)>>>,
@@ -50,6 +65,7 @@ impl<T, CachedNode> MemoNode<T, CachedNode> {
 	}
 }
 
+#[allow(clippy::module_inception)]
 pub mod memo {
 	pub const IDENTIFIER: crate::ProtoNodeIdentifier = crate::ProtoNodeIdentifier::new("graphene_core::memo::MemoNode");
 }
@@ -155,10 +171,10 @@ pub mod monitor {
 	pub const IDENTIFIER: crate::ProtoNodeIdentifier = crate::ProtoNodeIdentifier::new("graphene_core::memo::MonitorNode");
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct MemoHash<T: Hash> {
 	hash: u64,
-	value: T,
+	value: Arc<T>,
 }
 
 impl<'de, T: serde::Deserialize<'de> + Hash> serde::Deserialize<'de> for MemoHash<T> {
@@ -182,10 +198,10 @@ impl<T: Hash + serde::Serialize> serde::Serialize for MemoHash<T> {
 impl<T: Hash> MemoHash<T> {
 	pub fn new(value: T) -> Self {
 		let hash = Self::calc_hash(&value);
-		Self { hash, value }
+		Self { hash, value: value.into() }
 	}
 	pub fn new_with_hash(value: T, hash: u64) -> Self {
-		Self { hash, value }
+		Self { hash, value: value.into() }
 	}
 
 	fn calc_hash(data: &T) -> u64 {
@@ -197,7 +213,7 @@ impl<T: Hash> MemoHash<T> {
 	pub fn inner_mut(&mut self) -> MemoHashGuard<'_, T> {
 		MemoHashGuard { inner: self }
 	}
-	pub fn into_inner(self) -> T {
+	pub fn into_inner(self) -> Arc<T> {
 		self.value
 	}
 	pub fn hash_code(&self) -> u64 {
@@ -243,8 +259,8 @@ impl<T: Hash> Deref for MemoHashGuard<'_, T> {
 	}
 }
 
-impl<T: Hash> std::ops::DerefMut for MemoHashGuard<'_, T> {
+impl<T: Hash + Clone> std::ops::DerefMut for MemoHashGuard<'_, T> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.inner.value
+		Arc::make_mut(&mut self.inner.value)
 	}
 }

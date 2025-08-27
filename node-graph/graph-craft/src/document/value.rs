@@ -301,13 +301,13 @@ impl TaggedValue {
 					"MAGENTA" => Color::MAGENTA,
 					"TRANSPARENT" => Color::TRANSPARENT,
 					_ => {
-						log::error!("Invalid default value color constant: {}", input);
+						log::error!("Invalid default value color constant: {input}");
 						return None;
 					}
 				});
 			}
 
-			log::error!("Invalid default value color: {}", input);
+			log::error!("Invalid default value color: {input}");
 			None
 		}
 
@@ -327,13 +327,13 @@ impl TaggedValue {
 					"BottomCenter" => ReferencePoint::BottomCenter,
 					"BottomRight" => ReferencePoint::BottomRight,
 					_ => {
-						log::error!("Invalid ReferencePoint default type variant: {}", input);
+						log::error!("Invalid ReferencePoint default type variant: {input}");
 						return None;
 					}
 				});
 			}
 
-			log::error!("Invalid ReferencePoint default type: {}", input);
+			log::error!("Invalid ReferencePoint default type: {input}");
 			None
 		}
 
@@ -392,7 +392,8 @@ impl<'input> Node<'input, DAny<'input>> for UpcastNode {
 	type Output = FutureAny<'input>;
 
 	fn eval(&'input self, _: DAny<'input>) -> Self::Output {
-		Box::pin(async move { self.value.clone().into_inner().to_dynany() })
+		let memo_clone = MemoHash::clone(&self.value);
+		Box::pin(async move { memo_clone.into_inner().as_ref().clone().to_dynany() })
 	}
 }
 impl UpcastNode {

@@ -73,7 +73,7 @@ pub struct GraphUpdate {
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ExportConfig {
-	pub file_name: String,
+	pub name: String,
 	pub file_type: FileType,
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
@@ -432,7 +432,7 @@ pub struct InspectResult {
 
 impl InspectResult {
 	pub fn take_data(&mut self) -> Option<Arc<dyn std::any::Any + Send + Sync + 'static>> {
-		return self.introspected_data.clone();
+		self.introspected_data.clone()
 	}
 }
 
@@ -462,7 +462,7 @@ impl InspectState {
 		let monitor_node = DocumentNode {
 			inputs: vec![NodeInput::node(inspect_node, 0)], // Connect to the primary output of the inspect node
 			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER),
-			manual_composition: Some(graph_craft::generic!(T)),
+			call_argument: graph_craft::generic!(T),
 			skip_deduplication: true,
 			..Default::default()
 		};

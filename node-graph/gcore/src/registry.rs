@@ -153,13 +153,14 @@ where
 {
 	type Output = DynFuture<'input, O>;
 	#[inline]
+	#[track_caller]
 	fn eval(&'input self, input: I) -> Self::Output {
 		{
 			let node_name = self.node.node_name();
 			let input = Box::new(input);
 			let future = self.node.eval(input);
 			Box::pin(async move {
-				let out = dyn_any::downcast(future.await).unwrap_or_else(|e| panic!("DowncastBothNode Input {e} in: \n{node_name}"));
+				let out = dyn_any::downcast(future.await).unwrap_or_else(|e| panic!("DowncastBothNode wrong output type: {e} in: \n{node_name}"));
 				*out
 			})
 		}
@@ -234,7 +235,7 @@ where
 		};
 		match dyn_any::downcast(input) {
 			Ok(input) => Box::pin(output(*input)),
-			Err(e) => panic!("DynAnyNode Input, {0} in:\n{1}", e, node_name),
+			Err(e) => panic!("DynAnyNode Input, {e} in:\n{node_name}"),
 		}
 	}
 

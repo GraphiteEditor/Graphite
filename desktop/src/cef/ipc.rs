@@ -1,14 +1,17 @@
-use cef::{CefString, Frame, ImplBinaryValue, ImplBrowser, ImplFrame, ImplListValue, ImplProcessMessage, ImplV8Context, ProcessId, V8Context, sys::cef_process_id_t};
-
-use super::{Context, Initialized};
+use cef::{CefString, Frame, ImplBinaryValue, ImplFrame, ImplListValue, ImplProcessMessage, ImplV8Context, ProcessId, V8Context, sys::cef_process_id_t};
 
 pub(crate) enum MessageType {
+	Initialized,
 	SendToJS,
 	SendToNative,
 }
 impl From<MessageType> for MessageInfo {
 	fn from(val: MessageType) -> Self {
 		match val {
+			MessageType::Initialized => MessageInfo {
+				name: "initialized".to_string(),
+				target: cef_process_id_t::PID_BROWSER.into(),
+			},
 			MessageType::SendToJS => MessageInfo {
 				name: "send_to_js".to_string(),
 				target: cef_process_id_t::PID_RENDERER.into(),
@@ -24,6 +27,7 @@ impl TryFrom<String> for MessageType {
 	type Error = ();
 	fn try_from(value: String) -> Result<Self, Self::Error> {
 		match value.as_str() {
+			"initialized" => Ok(MessageType::Initialized),
 			"send_to_js" => Ok(MessageType::SendToJS),
 			"send_to_native" => Ok(MessageType::SendToNative),
 			_ => Err(()),
@@ -38,21 +42,6 @@ pub(crate) struct MessageInfo {
 
 pub(crate) trait SendMessage {
 	fn send_message(&self, message_type: MessageType, message: &[u8]);
-}
-impl SendMessage for Context<Initialized> {
-	fn send_message(&self, message_type: MessageType, message: &[u8]) {
-		let Some(browser) = &self.browser else {
-			tracing::error!("Browser is not initialized, cannot send message");
-			return;
-		};
-
-		let Some(frame) = browser.main_frame() else {
-			tracing::error!("Main frame is not available, cannot send message");
-			return;
-		};
-
-		frame.send_message(message_type, message);
-	}
 }
 impl SendMessage for Option<V8Context> {
 	fn send_message(&self, message_type: MessageType, message: &[u8]) {

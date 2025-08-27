@@ -31,11 +31,11 @@
 		"wasm:watch-production": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"wasm-pack build . --release --target=web -- --color=always\""
 	},
 	"dependencies": {
-		"@fontsource/inconsolata": "^5.2.5",
-		"@fontsource/source-sans-pro": "^5.2.5",
 		"class-transformer": "^0.5.1",
 		"idb-keyval": "^6.2.1",
-		"reflect-metadata": "^0.2.2"
+		"reflect-metadata": "^0.2.2",
+		"source-code-pro": "github:adobe-fonts/source-code-pro#2.042R-u/1.062R-i/1.026R-vf",
+		"source-sans": "github:adobe-fonts/source-sans#2.045R-ro%2F1.095R-it"
 	},
 	"devDependencies": {
 		"@sveltejs/vite-plugin-svelte": "^3.1.2",
@@ -53,7 +53,7 @@
 		"prettier": "^3.3.3",
 		"prettier-plugin-svelte": "^3.2.6",
 		"process": "^0.11.10",
-		"rollup-plugin-license": "^3.5.3",
+		"rollup-plugin-license": "^3.6.0",
 		"sass": "1.78.0",
 		"svelte": "^4.2.19",
 		"svelte-preprocess": "^6.0.2",

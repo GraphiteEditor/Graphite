@@ -8,9 +8,10 @@
 	export let disabled = false;
 	export let bold = false;
 	export let italic = false;
+	export let monospace = false;
 	export let centerAlign = false;
 	export let tableAlign = false;
-	export let minWidth = 0;
+	export let minWidth = "";
 	export let multiline = false;
 	export let tooltip: string | undefined = undefined;
 	export let forCheckbox: bigint | undefined = undefined;
@@ -28,10 +29,11 @@
 	class:disabled
 	class:bold
 	class:italic
+	class:monospace
 	class:multiline
 	class:center-align={centerAlign}
 	class:table-align={tableAlign}
-	style:min-width={minWidth > 0 ? `${minWidth}px` : undefined}
+	style:min-width={minWidth || undefined}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	title={tooltip}
 	for={forCheckbox !== undefined ? `checkbox-input-${forCheckbox}` : undefined}
@@ -56,6 +58,11 @@
 
 		&.italic {
 			font-style: italic;
+		}
+
+		&.monospace {
+			font-family: "Source Code Pro", monospace;
+			font-size: 12px;
 		}
 
 		&.multiline {

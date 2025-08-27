@@ -442,7 +442,7 @@ mod test {
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 6);
 
-		println!("{:?} {:?}", layers_after_copy, layers_before_copy);
+		println!("{layers_after_copy:?} {layers_before_copy:?}");
 
 		assert_eq!(layers_after_copy[5], shape_id);
 	}
@@ -497,7 +497,8 @@ mod test {
 			);
 
 			let responses = editor.editor.handle_message(PortfolioMessage::OpenDocumentFile {
-				document_name: document_name.into(),
+				document_name: Some(document_name.to_string()),
+				document_path: None,
 				document_serialized_content,
 			});
 

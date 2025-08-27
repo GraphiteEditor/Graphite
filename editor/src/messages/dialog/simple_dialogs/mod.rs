@@ -5,6 +5,7 @@ mod coming_soon_dialog;
 mod demo_artwork_dialog;
 mod error_dialog;
 mod licenses_dialog;
+mod licenses_third_party_dialog;
 
 pub use about_graphite_dialog::AboutGraphiteDialog;
 pub use close_all_documents_dialog::CloseAllDocumentsDialog;
@@ -14,3 +15,4 @@ pub use demo_artwork_dialog::ARTWORK;
 pub use demo_artwork_dialog::DemoArtworkDialog;
 pub use error_dialog::ErrorDialog;
 pub use licenses_dialog::LicensesDialog;
+pub use licenses_third_party_dialog::LicensesThirdPartyDialog;

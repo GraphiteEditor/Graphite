@@ -356,9 +356,12 @@ export class UpdatePlatform extends JsMessage {
 	readonly platform!: AppWindowPlatform;
 }
 
-export class UpdateMaximized extends JsMessage {
+export class UpdateWindowState extends JsMessage {
 	readonly maximized!: boolean;
+	readonly minimized!: boolean;
 }
+
+export class CloseWindow extends JsMessage {}
 
 export class UpdateViewportHolePunch extends JsMessage {
 	readonly active!: boolean;
@@ -946,6 +949,8 @@ export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
 	readonly commitDate!: string;
 }
 
+export class TriggerDisplayThirdPartyLicensesDialog extends JsMessage {}
+
 // WIDGET PROPS
 
 export abstract class WidgetProps {
@@ -1370,13 +1375,15 @@ export class TextLabel extends WidgetProps {
 
 	italic!: boolean;
 
+	monospace!: boolean;
+
+	multiline!: boolean;
+
 	centerAlign!: boolean;
 
 	tableAlign!: boolean;
 
-	minWidth!: number;
-
-	multiline!: boolean;
+	minWidth!: string;
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
@@ -1692,6 +1699,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayRemoveEditableTextbox,
 	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
+	TriggerDisplayThirdPartyLicensesDialog,
 	TriggerSaveDocument,
 	TriggerSaveFile,
 	TriggerExportImage,
@@ -1736,7 +1744,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateLayersPanelControlBarLeftLayout,
 	UpdateLayersPanelControlBarRightLayout,
 	UpdateLayerWidths,
-	UpdateMaximized,
+	UpdateWindowState,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,

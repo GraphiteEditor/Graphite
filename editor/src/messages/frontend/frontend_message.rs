@@ -64,6 +64,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "commitDate")]
 		commit_date: String,
 	},
+	TriggerDisplayThirdPartyLicensesDialog,
 	TriggerSaveDocument {
 		document_id: DocumentId,
 		name: String,
@@ -328,9 +329,11 @@ pub enum FrontendMessage {
 	UpdatePlatform {
 		platform: AppWindowPlatform,
 	},
-	UpdateMaximized {
+	UpdateWindowState {
 		maximized: bool,
+		minimized: bool,
 	},
+	CloseWindow,
 	UpdateViewportHolePunch {
 		active: bool,
 	},

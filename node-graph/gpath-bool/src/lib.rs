@@ -114,11 +114,16 @@ fn subtract<'a>(vector: impl Iterator<Item = TableRowRef<'a, Vector>>) -> Table<
 
 	let mut result_vector_table = Table::new_from_row(vector.next().map(|x| x.into_cloned()).unwrap_or_default());
 	let mut first_row = result_vector_table.iter_mut().next().expect("Expected the one row we just pushed");
+	let first_row_transform = if first_row.transform.matrix2.determinant() != 0. {
+		first_row.transform.inverse()
+	} else {
+		DAffine2::IDENTITY
+	};
 
 	let mut next_vector = vector.next();
 
 	while let Some(lower_vector) = next_vector {
-		let transform_of_lower_into_space_of_upper = first_row.transform.inverse() * *lower_vector.transform;
+		let transform_of_lower_into_space_of_upper = first_row_transform * *lower_vector.transform;
 
 		let result = &mut first_row.element;
 
@@ -338,8 +343,8 @@ fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &Subpath<Po
 		let PathSegPoints { p0, p1, p2, p3 } = pathseg_points(bezier);
 
 		let p0 = transform_point(p0);
-		let p1 = p1.map(|p1| transform_point(p1));
-		let p2 = p2.map(|p2| transform_point(p2));
+		let p1 = p1.map(transform_point);
+		let p2 = p2.map(transform_point);
 		let p3 = transform_point(p3);
 
 		if global_start.is_none() {
