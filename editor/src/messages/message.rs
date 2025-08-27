@@ -70,13 +70,11 @@ mod test {
 	fn print_tree_node(tree: &DebugMessageTree, prefix: &str, is_last: bool, file: &mut std::fs::File) {
 		// Print the current node
 		let (branch, child_prefix) = if tree.message_handler_data_fields().is_some() || tree.message_handler_fields().is_some() {
-			("├── ", format!("{}│   ", prefix))
+			("├── ", format!("{prefix}│   "))
+		} else if is_last {
+			("└── ", format!("{prefix}    "))
 		} else {
-			if is_last {
-				("└── ", format!("{}    ", prefix))
-			} else {
-				("├── ", format!("{}│   ", prefix))
-			}
+			("├── ", format!("{prefix}│   "))
 		};
 
 		if tree.path().is_empty() {
@@ -101,7 +99,7 @@ mod test {
 				let is_last_field = i == len - 1;
 				let branch = if is_last_field { "└── " } else { "├── " };
 
-				file.write_all(format!("{}{}{}\n", child_prefix, branch, field).as_bytes()).unwrap();
+				file.write_all(format!("{child_prefix}{branch}{field}\n").as_bytes()).unwrap();
 			}
 		}
 
@@ -109,9 +107,9 @@ mod test {
 		if let Some(data) = tree.message_handler_fields() {
 			let len = data.fields().len();
 			let (branch, child_prefix) = if tree.message_handler_data_fields().is_some() {
-				("├── ", format!("{}│   ", prefix))
+				("├── ", format!("{prefix}│   "))
 			} else {
-				("└── ", format!("{}    ", prefix))
+				("└── ", format!("{prefix}    "))
 			};
 
 			const FRONTEND_MESSAGE_STR: &str = "FrontendMessage";

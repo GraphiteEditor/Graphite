@@ -606,11 +606,7 @@ mod test_spline_tool {
 
 			assert!(
 				distance < epsilon,
-				"Point {} position mismatch: expected {:?}, got {:?} (distance: {})",
-				i,
-				expected_point,
-				actual_point,
-				distance
+				"Point {i} position mismatch: expected {expected_point:?}, got {actual_point:?} (distance: {distance})"
 			);
 		}
 	}
@@ -644,8 +640,8 @@ mod test_spline_tool {
 		// Verify initial spline has correct number of points and segments
 		let initial_point_count = first_vector.point_domain.ids().len();
 		let initial_segment_count = first_vector.segment_domain.ids().len();
-		assert_eq!(initial_point_count, 3, "Expected 3 points in initial spline, found {}", initial_point_count);
-		assert_eq!(initial_segment_count, 2, "Expected 2 segments in initial spline, found {}", initial_segment_count);
+		assert_eq!(initial_point_count, 3, "Expected 3 points in initial spline, found {initial_point_count}");
+		assert_eq!(initial_segment_count, 2, "Expected 2 segments in initial spline, found {initial_segment_count}");
 
 		let layer_to_viewport = document.metadata().transform_to_viewport(spline_layer);
 
@@ -679,8 +675,8 @@ mod test_spline_tool {
 		let extended_point_count = extended_vector.point_domain.ids().len();
 		let extended_segment_count = extended_vector.segment_domain.ids().len();
 
-		assert_eq!(extended_point_count, 5, "Expected 5 points in extended spline, found {}", extended_point_count);
-		assert_eq!(extended_segment_count, 4, "Expected 4 segments in extended spline, found {}", extended_segment_count);
+		assert_eq!(extended_point_count, 5, "Expected 5 points in extended spline, found {extended_point_count}");
+		assert_eq!(extended_segment_count, 4, "Expected 4 segments in extended spline, found {extended_segment_count}");
 
 		// Verify the spline node is still the same
 		let extended_spline_node = find_spline(document, spline_layer).expect("Spline node not found after extension");
@@ -715,7 +711,7 @@ mod test_spline_tool {
 
 		// Evaluate the graph to ensure everything is processed
 		if let Err(e) = editor.eval_graph().await {
-			panic!("Graph evaluation failed: {}", e);
+			panic!("Graph evaluation failed: {e}");
 		}
 
 		// Get the layer and vector data
@@ -755,7 +751,7 @@ mod test_spline_tool {
 
 		// Evaluating the graph to ensure everything is processed
 		if let Err(e) = editor.eval_graph().await {
-			panic!("Graph evaluation failed: {}", e);
+			panic!("Graph evaluation failed: {e}");
 		}
 
 		// Get the layer and vector data
@@ -793,7 +789,7 @@ mod test_spline_tool {
 
 		// Evaluating the graph to ensure everything is processed
 		if let Err(e) = editor.eval_graph().await {
-			panic!("Graph evaluation failed: {}", e);
+			panic!("Graph evaluation failed: {e}");
 		}
 
 		// Get the layer and vector data
@@ -832,7 +828,7 @@ mod test_spline_tool {
 
 		editor.handle_message(SplineToolMessage::Confirm).await;
 		if let Err(e) = editor.eval_graph().await {
-			panic!("Graph evaluation failed: {}", e);
+			panic!("Graph evaluation failed: {e}");
 		}
 
 		// Get the layer and vector data
@@ -889,8 +885,8 @@ mod test_spline_tool {
 		let point_count = vector.point_domain.ids().len();
 		let segment_count = vector.segment_domain.ids().len();
 
-		assert_eq!(point_count, 3, "Expected 3 points in the spline, found {}", point_count);
-		assert_eq!(segment_count, 2, "Expected 2 segments in the spline, found {}", segment_count);
+		assert_eq!(point_count, 3, "Expected 3 points in the spline, found {point_count}");
+		assert_eq!(segment_count, 2, "Expected 2 segments in the spline, found {segment_count}");
 
 		let layer_to_viewport = document.metadata().transform_to_viewport(spline_layer);
 

@@ -33,6 +33,10 @@ impl<H: CefEventHandler> ImplClient for BrowserProcessClientImpl<H> {
 		let unpacked_message = unsafe { message.and_then(|m| m.unpack()) };
 		match unpacked_message {
 			Some(UnpackedMessage {
+				message_type: MessageType::Initialized,
+				data: _,
+			}) => self.event_handler.initialized_web_communication(),
+			Some(UnpackedMessage {
 				message_type: MessageType::SendToNative,
 				data,
 			}) => self.event_handler.receive_web_message(data),

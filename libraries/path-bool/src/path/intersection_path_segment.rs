@@ -34,13 +34,13 @@ fn subdivide_intersection_segment(int_seg: &IntersectionSegment) -> [Intersectio
 			seg: seg0,
 			start_param: int_seg.start_param,
 			end_param: mid_param,
-			bounding_box: seg0.bounding_box(),
+			bounding_box: seg0.approx_bounding_box(),
 		},
 		IntersectionSegment {
 			seg: seg1,
 			start_param: mid_param,
 			end_param: int_seg.end_param,
-			bounding_box: seg1.bounding_box(),
+			bounding_box: seg1.approx_bounding_box(),
 		},
 	]
 }
@@ -116,8 +116,9 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 			return intersections;
 		}
 		_ => (),
-	}
+	};
 
+	// Fallback for quadratics and arc segments
 	// https://math.stackexchange.com/questions/20321/how-can-i-tell-when-two-cubic-b%C3%A9zier-curves-intersect
 
 	let mut pairs = vec![(
@@ -125,13 +126,13 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 			seg: *seg0,
 			start_param: 0.,
 			end_param: 1.,
-			bounding_box: seg0.bounding_box(),
+			bounding_box: seg0.approx_bounding_box(),
 		},
 		IntersectionSegment {
 			seg: *seg1,
 			start_param: 0.,
 			end_param: 1.,
-			bounding_box: seg1.bounding_box(),
+			bounding_box: seg1.approx_bounding_box(),
 		},
 	)];
 	let mut next_pairs = Vec::new();
@@ -145,7 +146,7 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 	while !pairs.is_empty() {
 		next_pairs.clear();
 
-		if pairs.len() > 1000 {
+		if pairs.len() > 256 {
 			return calculate_overlap_intersections(seg0, seg1, eps);
 		}
 
@@ -189,10 +190,6 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 		}
 
 		std::mem::swap(&mut pairs, &mut next_pairs);
-	}
-
-	if !endpoints {
-		params.retain(|[s, t]| (s > &eps.param && s < &(1. - eps.param)) || (t > &eps.param && t < &(1. - eps.param)));
 	}
 
 	params

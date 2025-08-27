@@ -1,3 +1,4 @@
+#[cfg(target_os = "linux")]
 use std::env;
 
 use cef::rc::{Rc, RcImpl};

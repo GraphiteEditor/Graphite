@@ -2023,6 +2023,7 @@ dependencies = [
  "kurbo",
  "ndarray",
  "node-macro",
+ "num-traits",
  "rand 0.9.1",
  "rand_chacha 0.9.0",
  "serde",
@@ -3859,7 +3860,10 @@ dependencies = [
  "lyon_geom",
  "regex",
  "resvg",
+ "roots",
+ "rustc-hash 2.1.1",
  "slotmap",
+ "smallvec",
  "svg",
 ]
 
@@ -4686,6 +4690,12 @@ dependencies = [
  "serde",
  "serde_derive",
 ]
+
+[[package]]
+name = "roots"
+version = "0.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "082f11ffa03bbef6c2c6ea6bea1acafaade2fd9050ae0234ab44a2153742b058"
 
 [[package]]
 name = "roxmltree"

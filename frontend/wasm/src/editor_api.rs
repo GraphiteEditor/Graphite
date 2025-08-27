@@ -242,6 +242,9 @@ impl EditorHandle {
 
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
 	pub fn init_after_frontend_ready(&self, platform: String) {
+		#[cfg(feature = "native")]
+		crate::native_communcation::initialize_native_communication();
+
 		// Send initialization messages
 		let platform = match platform.as_str() {
 			"Windows" => Platform::Windows,
@@ -463,6 +466,12 @@ impl EditorHandle {
 			localized_commit_date,
 			localized_commit_year,
 		};
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = requestLicensesThirdPartyDialogWithLicenseText)]
+	pub fn request_licenses_third_party_dialog_with_license_text(&self, license_text: String) {
+		let message = DialogMessage::RequestLicensesThirdPartyDialogWithLicenseText { license_text };
 		self.dispatch(message);
 	}
 

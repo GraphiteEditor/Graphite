@@ -1,13 +1,13 @@
 pub mod value;
 
 use crate::document::value::TaggedValue;
-use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
+use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode};
 use dyn_any::DynAny;
 use glam::IVec2;
 use graphene_core::memo::MemoHashGuard;
 pub use graphene_core::uuid::NodeId;
 pub use graphene_core::uuid::generate_uuid;
-use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
+use graphene_core::{Context, Cow, MemoHash, ProtoNodeIdentifier, Type};
 use log::Metadata;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
@@ -44,101 +44,9 @@ pub struct DocumentNode {
 	/// by using network.update_click_target(node_id).
 	#[cfg_attr(target_family = "wasm", serde(alias = "outputs"))]
 	pub inputs: Vec<NodeInput>,
-	/// Manual composition is the methodology by which most nodes are implemented, involving a call argument and upstream inputs.
-	/// By contrast, automatic composition is an alternative way to handle the composition of nodes as they execute in the graph.
-	/// Normally, the program (the compiled graph) builds up its call stack, with each node calling its upstream predecessor to acquire its input data.
-	/// When the document graph becomes the proto graph, that conceptual model changes into a model that's unique to the proto graph.
-	/// Automatic composition allows a document node to be translated into its place in the proto graph differently, such that
-	/// the node doesn't participate in that process of being called with a call argument and calling its upstream predecessor.
-	/// Instead, it is called directly with its input data from the upstream node, skipping the call stack building process.
-	/// The abstraction is provided by the compiler for nodes which opt for automatic composition. It works by inserting a `ComposeNode`
-	/// into the proto graph, which does the job of calling the upstream node and feeding its output into the downstream node's first input.
-	/// That first input is typically used by manual composition nodes as the call argument, but for automatic composition nodes,
-	/// that first input becomes the input data from the upstream node passed in by the `ComposeNode`.
-	///
-	/// Through automatic composition, the upstream node providing the first input for a proto node is evaluated before the proto node itself is run.
-	/// (That first input is usually the call argument when manual composition is used.)
-	/// - Abstract example: upstream node `G` is evaluated and its data feeds into the first input of downstream node `F`,
-	///   just like function composition where function `G` is evaluated and its result is fed into function `F`.
-	/// - Concrete example: a node that takes an image as its first input will get that image data from an upstream node that produces image output data and is evaluated first before being fed downstream.
-	///
-	/// This is achieved by automatically inserting `ComposeNode`s, which run the first node with the overall input and then feed the resulting output into the second node.
-	/// The `ComposeNode` is basically a function composition operator: the parentheses in `F(G(x))` or circle math operator in `(F ∘ G)(x)`.
-	/// For flexibility, instead of being a language construct, Graphene splits out composition itself as its own low-level node so that behavior can be overridden.
-	/// The `ComposeNode`s are then inserted during the graph rewriting step for nodes that don't opt out with `manual_composition`.
-	/// Instead of node `G` feeding into node `F` feeding as the result back to the caller,
-	/// the graph is rewritten so nodes `G` and `F` both feed as lambdas into the inputs of a `ComposeNode` which calls `F(G(input))` and returns the result to the caller.
-	///
-	/// A node's manual composition input represents an input that is not resolved through graph rewriting with a `ComposeNode`,
-	/// and is instead just passed in when evaluating this node within the borrow tree.
-	/// This is similar to having the first input be a `NodeInput::Network` after the graph flattening.
-	///
-	/// ## Example Use Case: CacheNode
-	///
-	/// The `CacheNode` is a pass-through node on cache miss, but on cache hit it needs to avoid evaluating the upstream node and instead just return the cached value.
-	///
-	/// First, let's consider what that would look like using the default composition flow if the `CacheNode` instead just always acted as a pass-through (akin to a cache that always misses):
-	///
-	/// ```text
-	/// ┌───────────────┐    ┌───────────────┐    ┌───────────────┐
-	/// │               │◄───┤               │◄───┤               │◄─── EVAL (START)
-	/// │       G       │    │PassThroughNode│    │       F       │
-	/// │               ├───►│               ├───►│               │───► RESULT (END)
-	/// └───────────────┘    └───────────────┘    └───────────────┘
-	/// ```
-	///
-	/// This acts like the function call `F(PassThroughNode(G(input)))` when evaluating `F` with some `input`: `F.eval(input)`.
-	/// - The diagram's upper track of arrows represents the flow of building up the call stack:
-	///   since `F` is the output it is encountered first but deferred to its upstream caller `PassThroughNode` and that is once again deferred to its upstream caller `G`.
-	/// - The diagram's lower track of arrows represents the flow of evaluating the call stack:
-	///   `G` is evaluated first, then `PassThroughNode` is evaluated with the result of `G`, and finally `F` is evaluated with the result of `PassThroughNode`.
-	///
-	/// With the default composition flow (no manual composition), `ComposeNode`s would be automatically inserted during the graph rewriting step like this:
-	///
-	/// ```text
-	///                                           ┌───────────────┐
-	///                                           │               │◄─── EVAL (START)
-	///                                           │  ComposeNode  │
-	///                      ┌───────────────┐    │               ├───► RESULT (END)
-	///                      │               │◄─┐ ├───────────────┤
-	///                      │       G       │  └─┤               │
-	///                      │               ├─┐  │     First     │
-	///                      └───────────────┘ └─►│               │
-	///                      ┌───────────────┐    ├───────────────┤
-	///                      │               │◄───┤               │
-	///                      │  ComposeNode  │    │     Second    │
-	/// ┌───────────────┐    │               ├───►│               │
-	/// │               │◄─┐ ├───────────────┤    └───────────────┘
-	/// │PassThroughNode│  └─┤               │
-	/// │               ├─┐  │     First     │
-	/// └───────────────┘ └─►│               │
-	/// ┌───────────────┐    ├───────────────┤
-	/// |               │◄───┤               │
-	/// │       F       │    │     Second    │
-	/// │               ├───►│               │
-	/// └───────────────┘    └───────────────┘
-	/// ```
-	///
-	/// Now let's swap back from the `PassThroughNode` to the `CacheNode` to make caching actually work.
-	/// It needs to override the default composition flow so that `G` is not automatically evaluated when the cache is hit.
-	/// We need to give the `CacheNode` more manual control over the order of execution.
-	/// So the `CacheNode` opts into manual composition and, instead of deferring to its upstream caller, it consumes the input directly:
-	///
-	/// ```text
-	///                      ┌───────────────┐    ┌───────────────┐
-	///                      │               │◄───┤               │◄─── EVAL (START)
-	///                      │   CacheNode   │    │       F       │
-	///                      │               ├───►│               │───► RESULT (END)
-	/// ┌───────────────┐    ├───────────────┤    └───────────────┘
-	/// │               │◄───┤               │
-	/// │       G       │    │  Cached Data  │
-	/// │               ├───►│               │
-	/// └───────────────┘    └───────────────┘
-	/// ```
-	///
-	/// Now, the call from `F` directly reaches the `CacheNode` and the `CacheNode` can decide whether to call `G.eval(input_from_f)`
-	/// in the event of a cache miss or just return the cached data in the event of a cache hit.
-	pub manual_composition: Option<Type>,
+	/// Type of the argument which this node can be evaluated with.
+	#[serde(alias = "manual_composition", default)]
+	pub call_argument: Type,
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
@@ -173,15 +81,13 @@ pub struct OriginalLocation {
 	pub dependants: Vec<Vec<NodeId>>,
 	/// A list of flags indicating whether the input is exposed in the UI
 	pub inputs_exposed: Vec<bool>,
-	/// Skipping inputs is useful for the manual composition thing - whereby a hidden `Footprint` input is added as the first input.
-	pub skip_inputs: usize,
 }
 
 impl Default for DocumentNode {
 	fn default() -> Self {
 		Self {
 			inputs: Default::default(),
-			manual_composition: Default::default(),
+			call_argument: concrete!(Context),
 			implementation: Default::default(),
 			visible: true,
 			skip_deduplication: Default::default(),
@@ -195,14 +101,13 @@ impl Hash for OriginalLocation {
 		self.path.hash(state);
 		self.inputs_source.iter().for_each(|val| val.hash(state));
 		self.inputs_exposed.hash(state);
-		self.skip_inputs.hash(state);
 	}
 }
 impl OriginalLocation {
 	pub fn inputs(&self, index: usize) -> impl Iterator<Item = Source> + '_ {
-		[(index >= self.skip_inputs).then(|| Source {
+		[(index >= 1).then(|| Source {
 			node: self.path.clone().unwrap_or_default(),
-			index: self.inputs_exposed.iter().take(index - self.skip_inputs).filter(|&&exposed| exposed).count(),
+			index: self.inputs_exposed.iter().take(index - 1).filter(|&&exposed| exposed).count(),
 		})]
 		.into_iter()
 		.flatten()
@@ -211,7 +116,7 @@ impl OriginalLocation {
 }
 impl DocumentNode {
 	/// Locate the input that is a [`NodeInput::Network`] at index `offset` and replace it with a [`NodeInput::Node`].
-	pub fn populate_first_network_input(&mut self, node_id: NodeId, output_index: usize, offset: usize, lambda: bool, source: impl Iterator<Item = Source>, skip: usize) {
+	pub fn populate_first_network_input(&mut self, node_id: NodeId, output_index: usize, offset: usize, source: impl Iterator<Item = Source>, skip: usize) {
 		let (index, _) = self
 			.inputs
 			.iter()
@@ -219,60 +124,38 @@ impl DocumentNode {
 			.nth(offset)
 			.unwrap_or_else(|| panic!("no network input found for {self:#?} and offset: {offset}"));
 
-		self.inputs[index] = NodeInput::Node { node_id, output_index, lambda };
+		self.inputs[index] = NodeInput::Node { node_id, output_index };
 		let input_source = &mut self.original_location.inputs_source;
 		for source in source {
-			input_source.insert(source, (index + self.original_location.skip_inputs).saturating_sub(skip));
+			input_source.insert(source, (index + 1).saturating_sub(skip));
 		}
 	}
 
-	fn resolve_proto_node(mut self) -> ProtoNode {
-		assert!(!self.inputs.is_empty() || self.manual_composition.is_some(), "Resolving document node {self:#?} with no inputs");
+	fn resolve_proto_node(self) -> ProtoNode {
 		let DocumentNodeImplementation::ProtoNode(identifier) = self.implementation else {
 			unreachable!("tried to resolve not flattened node on resolved node {self:?}");
 		};
 
-		let (input, mut args) = if let Some(ty) = self.manual_composition {
-			(ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![]))
-		} else {
-			let first = self.inputs.remove(0);
-			match first {
-				NodeInput::Value { tagged_value, .. } => {
-					assert_eq!(self.inputs.len(), 0, "A value node cannot have any inputs. Current inputs: {:?}", self.inputs);
-					(ProtoNodeInput::ManualComposition(concrete!(graphene_core::Context<'static>)), ConstructionArgs::Value(tagged_value))
-				}
-				NodeInput::Node { node_id, output_index, lambda } => {
-					assert_eq!(output_index, 0, "Outputs should be flattened before converting to proto node");
-					let node = if lambda { ProtoNodeInput::NodeLambda(node_id) } else { ProtoNodeInput::Node(node_id) };
-					(node, ConstructionArgs::Nodes(vec![]))
-				}
-				NodeInput::Network { import_type, .. } => (ProtoNodeInput::ManualComposition(import_type), ConstructionArgs::Nodes(vec![])),
-				NodeInput::Inline(inline) => (ProtoNodeInput::None, ConstructionArgs::Inline(inline)),
-				NodeInput::Scope(_) => unreachable!("Scope input was not resolved"),
-				NodeInput::Reflection(_) => unreachable!("Reflection input was not resolved"),
-			}
-		};
+		let (input, mut args) = (self.call_argument, ConstructionArgs::Nodes(vec![]));
 		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network { .. })), "received non-resolved input");
-		assert!(
-			!self.inputs.iter().any(|input| matches!(input, NodeInput::Value { .. })),
-			"received value as input. inputs: {:#?}, construction_args: {:#?}",
-			self.inputs,
-			args
-		);
 
 		// If we have one input of the type inline, set it as the construction args
 		if let &[NodeInput::Inline(ref inline)] = self.inputs.as_slice() {
 			args = ConstructionArgs::Inline(inline.clone());
 		}
+		// If we have one input of the type inline, set it as the construction args
+		if let &[NodeInput::Value { ref tagged_value, .. }] = self.inputs.as_slice() {
+			args = ConstructionArgs::Value(tagged_value.clone());
+		}
 		if let ConstructionArgs::Nodes(nodes) = &mut args {
 			nodes.extend(self.inputs.iter().map(|input| match input {
-				NodeInput::Node { node_id, lambda, .. } => (*node_id, *lambda),
+				NodeInput::Node { node_id, .. } => *node_id,
 				_ => unreachable!(),
 			}));
 		}
 		ProtoNode {
 			identifier,
-			input,
+			call_argument: input,
 			construction_args: args,
 			original_location: self.original_location,
 			skip_deduplication: self.skip_deduplication,
@@ -284,7 +167,7 @@ impl DocumentNode {
 #[derive(Debug, Clone, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum NodeInput {
 	/// A reference to another node in the same network from which this node can receive its input.
-	Node { node_id: NodeId, output_index: usize, lambda: bool },
+	Node { node_id: NodeId, output_index: usize },
 
 	/// A hardcoded value that can't change after the graph is compiled. Gets converted into a value node during graph compilation.
 	Value { tagged_value: MemoHash<TaggedValue>, exposed: bool },
@@ -323,11 +206,7 @@ pub enum DocumentNodeMetadata {
 
 impl NodeInput {
 	pub const fn node(node_id: NodeId, output_index: usize) -> Self {
-		Self::Node { node_id, output_index, lambda: false }
-	}
-
-	pub const fn lambda(node_id: NodeId, output_index: usize) -> Self {
-		Self::Node { node_id, output_index, lambda: true }
+		Self::Node { node_id, output_index }
 	}
 
 	pub fn value(tagged_value: TaggedValue, exposed: bool) -> Self {
@@ -344,12 +223,8 @@ impl NodeInput {
 	}
 
 	fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId) {
-		if let &mut NodeInput::Node { node_id, output_index, lambda } = self {
-			*self = NodeInput::Node {
-				node_id: f(node_id),
-				output_index,
-				lambda,
-			}
+		if let &mut NodeInput::Node { node_id, output_index } = self {
+			*self = NodeInput::Node { node_id: f(node_id), output_index }
 		}
 	}
 
@@ -772,7 +647,6 @@ impl NodeNetwork {
 				node.original_location = OriginalLocation {
 					path: Some(new_path),
 					inputs_exposed: node.inputs.iter().map(|input| input.is_exposed()).collect(),
-					skip_inputs: if node.manual_composition.is_some() { 1 } else { 0 },
 					dependants: (0..node.implementation.output_count()).map(|_| Vec::new()).collect(),
 					..Default::default()
 				};
@@ -899,7 +773,7 @@ impl NodeNetwork {
 
 			// Connect layer node to the group below
 			node.inputs.drain(1..);
-			node.manual_composition = None;
+			node.call_argument = concrete!(());
 			self.nodes.insert(id, node);
 			return;
 		}
@@ -949,12 +823,11 @@ impl NodeNetwork {
 		for (nested_node_id, mut nested_node) in inner_network.nodes.into_iter() {
 			for (nested_input_index, nested_input) in nested_node.clone().inputs.iter().enumerate() {
 				if let NodeInput::Network { import_index, .. } = nested_input {
-					let parent_input = node.inputs.get(*import_index).unwrap_or_else(|| panic!("Import index {} should always exist", import_index));
+					let parent_input = node.inputs.get(*import_index).unwrap_or_else(|| panic!("Import index {import_index} should always exist"));
 					match *parent_input {
 						// If the input to self is a node, connect the corresponding output of the inner network to it
-						NodeInput::Node { node_id, output_index, lambda } => {
-							let skip = node.original_location.skip_inputs;
-							nested_node.populate_first_network_input(node_id, output_index, nested_input_index, lambda, node.original_location.inputs(*import_index), skip);
+						NodeInput::Node { node_id, output_index } => {
+							nested_node.populate_first_network_input(node_id, output_index, nested_input_index, node.original_location.inputs(*import_index), 1);
 							let input_node = self.nodes.get_mut(&node_id).unwrap_or_else(|| panic!("unable find input node {node_id:?}"));
 							input_node.original_location.dependants[output_index].push(nested_node_id);
 						}
@@ -1052,19 +925,9 @@ impl NodeNetwork {
 			*export = NodeInput::Node {
 				node_id: merged_node_id,
 				output_index: 0,
-				lambda: false,
 			};
 		}
 	}
-
-	// /// Locate the export that is a [`NodeInput::Network`] at index `offset` and replace it with a [`NodeInput::Node`].
-	// fn populate_first_network_export(&mut self, node: &mut DocumentNode, node_id: NodeId, output_index: usize, lambda: bool, export_index: usize, source: impl Iterator<Item = Source>, skip: usize) {
-	// 	self.exports[export_index] = NodeInput::Node { node_id, output_index, lambda };
-	// 	let input_source = &mut node.original_location.inputs_source;
-	// 	for source in source {
-	// 		input_source.insert(source, output_index + node.original_location.skip_inputs - skip);
-	// 	}
-	// }
 
 	fn remove_id_node(&mut self, id: NodeId) -> Result<(), String> {
 		let node = self.nodes.get(&id).ok_or_else(|| format!("Node with id {id} does not exist"))?.clone();
@@ -1095,7 +958,7 @@ impl NodeNetwork {
 
 									let input_source = &mut output.original_location.inputs_source;
 									for source in node.original_location.inputs(index) {
-										input_source.insert(source, index + output.original_location.skip_inputs - node.original_location.skip_inputs);
+										input_source.insert(source, index);
 									}
 								}
 							}
@@ -1240,7 +1103,7 @@ impl<'a> Iterator for RecursiveNodeIter<'a> {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
+	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode};
 	use std::sync::atomic::AtomicU64;
 
 	fn gen_node_id() -> NodeId {
@@ -1319,7 +1182,7 @@ mod test {
 			nodes: [
 				id_node.clone(),
 				DocumentNode {
-					inputs: vec![NodeInput::lambda(NodeId(0), 0)],
+					inputs: vec![NodeInput::node(NodeId(0), 0)],
 					implementation: DocumentNodeImplementation::Extract,
 					..Default::default()
 				},
@@ -1365,7 +1228,8 @@ mod test {
 	#[test]
 	fn resolve_proto_node_add() {
 		let document_node = DocumentNode {
-			inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::node(NodeId(0), 0)],
+			inputs: vec![NodeInput::node(NodeId(0), 0)],
+			call_argument: concrete!(u32),
 			implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
 			..Default::default()
 		};
@@ -1373,8 +1237,8 @@ mod test {
 		let proto_node = document_node.resolve_proto_node();
 		let reference = ProtoNode {
 			identifier: "graphene_core::structural::ConsNode".into(),
-			input: ProtoNodeInput::ManualComposition(concrete!(u32)),
-			construction_args: ConstructionArgs::Nodes(vec![(NodeId(0), false)]),
+			call_argument: concrete!(u32),
+			construction_args: ConstructionArgs::Nodes(vec![NodeId(0)]),
 			..Default::default()
 		};
 		assert_eq!(proto_node, reference);
@@ -1390,13 +1254,12 @@ mod test {
 					NodeId(10),
 					ProtoNode {
 						identifier: "graphene_core::structural::ConsNode".into(),
-						input: ProtoNodeInput::ManualComposition(concrete!(u32)),
-						construction_args: ConstructionArgs::Nodes(vec![(NodeId(14), false)]),
+						call_argument: concrete!(u32),
+						construction_args: ConstructionArgs::Nodes(vec![NodeId(14)]),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(0)]),
 							inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
 							inputs_exposed: vec![true, true],
-							skip_inputs: 0,
 							..Default::default()
 						},
 
@@ -1407,13 +1270,12 @@ mod test {
 					NodeId(11),
 					ProtoNode {
 						identifier: "graphene_core::ops::AddPairNode".into(),
-						input: ProtoNodeInput::Node(NodeId(10)),
-						construction_args: ConstructionArgs::Nodes(vec![]),
+						call_argument: concrete!(Context),
+						construction_args: ConstructionArgs::Nodes(vec![NodeId(10)]),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(1)]),
 							inputs_source: HashMap::new(),
 							inputs_exposed: vec![true],
-							skip_inputs: 0,
 							..Default::default()
 						},
 						..Default::default()
@@ -1423,13 +1285,12 @@ mod test {
 					NodeId(14),
 					ProtoNode {
 						identifier: "graphene_core::value::ClonedNode".into(),
-						input: ProtoNodeInput::ManualComposition(concrete!(graphene_core::Context)),
+						call_argument: concrete!(graphene_core::Context),
 						construction_args: ConstructionArgs::Value(TaggedValue::U32(2).into()),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
 							inputs_source: HashMap::new(),
 							inputs_exposed: vec![true, false],
-							skip_inputs: 0,
 							..Default::default()
 						},
 						..Default::default()
@@ -1455,13 +1316,13 @@ mod test {
 				(
 					NodeId(10),
 					DocumentNode {
-						inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::node(NodeId(14), 0)],
+						inputs: vec![NodeInput::node(NodeId(14), 0)],
+						call_argument: concrete!(u32),
 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(0)]),
 							inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
 							inputs_exposed: vec![true, true],
-							skip_inputs: 0,
 							..Default::default()
 						},
 						..Default::default()
@@ -1476,7 +1337,6 @@ mod test {
 							path: Some(vec![NodeId(1), NodeId(4)]),
 							inputs_source: HashMap::new(),
 							inputs_exposed: vec![true, false],
-							skip_inputs: 0,
 							..Default::default()
 						},
 						..Default::default()
@@ -1491,7 +1351,6 @@ mod test {
 							path: Some(vec![NodeId(1), NodeId(1)]),
 							inputs_source: HashMap::new(),
 							inputs_exposed: vec![true],
-							skip_inputs: 0,
 							..Default::default()
 						},
 						..Default::default()
@@ -1576,49 +1435,4 @@ mod test {
 	}
 
 	// TODO: Write more tests
-	// #[test]
-	// fn out_of_order_duplicate() {
-	// 	let result = output_duplicate(vec![NodeInput::node(NodeId(10), 1), NodeInput::node(NodeId(10), 0)], NodeInput::node(NodeId(10), 0);
-	// 	assert_eq!(
-	// 		result.outputs[0],
-	// 		NodeInput::node(NodeId(101), 0),
-	// 		"The first network output should be from a duplicated nested network"
-	// 	);
-	// 	assert_eq!(
-	// 		result.outputs[1],
-	// 		NodeInput::node(NodeId(10), 0),
-	// 		"The second network output should be from the original nested network"
-	// 	);
-	// 	assert!(
-	// 		result.nodes.contains_key(&NodeId(10)) && result.nodes.contains_key(&NodeId(101)) && result.nodes.len() == 2,
-	// 		"Network should contain two duplicated nodes"
-	// 	);
-	// 	for (node_id, input_value, inner_id) in [(10, 1., 1), (101, 2., 2)] {
-	// 		let nested_network_node = result.nodes.get(&NodeId(node_id)).unwrap();
-	// 		assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-	// 		assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(input_value), false)], "Input should be stable");
-	// 		let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
-	// 		assert_eq!(inner_network.inputs, vec![inner_id], "The input should be sent to the second node");
-	// 		assert_eq!(inner_network.outputs, vec![NodeInput::node(NodeId(inner_id), 0)], "The output should be node id");
-	// 		assert_eq!(inner_network.nodes.get(&NodeId(inner_id)).unwrap().name, format!("Identity {inner_id}"), "The node should be identity");
-	// 	}
-	// }
-	// #[test]
-	// fn using_other_node_duplicate() {
-	// 	let result = output_duplicate(vec![NodeInput::node(NodeId(11), 0)], NodeInput::node(NodeId(10), 1);
-	// 	assert_eq!(result.outputs, vec![NodeInput::node(NodeId(11), 0)], "The network output should be the result node");
-	// 	assert!(
-	// 		result.nodes.contains_key(&NodeId(11)) && result.nodes.contains_key(&NodeId(101)) && result.nodes.len() == 2,
-	// 		"Network should contain a duplicated node and a result node"
-	// 	);
-	// 	let result_node = result.nodes.get(&NodeId(11)).unwrap();
-	// 	assert_eq!(result_node.inputs, vec![NodeInput::node(NodeId(101), 0)], "Result node should refer to duplicate node as input");
-	// 	let nested_network_node = result.nodes.get(&NodeId(101)).unwrap();
-	// 	assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-	// 	assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(2.), false)], "Input should be 2");
-	// 	let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
-	// 	assert_eq!(inner_network.inputs, vec![2], "The input should be sent to the second node");
-	// 	assert_eq!(inner_network.outputs, vec![NodeInput::node(NodeId(2), 0)], "The output should be node id 2");
-	// 	assert_eq!(inner_network.nodes.get(&NodeId(2)).unwrap().name, "Identity 2", "The node should be identity 2");
-	// }
 }

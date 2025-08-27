@@ -11,7 +11,7 @@ The graph that is presented to users in the editor is known as the document grap
 ```rs
 pub struct DocumentNode {
 	pub inputs: Vec<NodeInput>,
-	pub manual_composition: Option<Type>,
+	pub call_argument: Type,
 	pub implementation: DocumentNodeImplementation,
 	pub skip_deduplication: bool,
 	pub visible: bool,

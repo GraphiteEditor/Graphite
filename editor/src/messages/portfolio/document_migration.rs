@@ -20,6 +20,7 @@ use std::collections::HashMap;
 const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::vector::vector_nodes::SamplePointsNode", "graphene_core::vector::SamplePolylineNode"),
 	("graphene_core::vector::vector_nodes::SubpathSegmentLengthsNode", "graphene_core::vector::SubpathSegmentLengthsNode"),
+	("\"manual_composition\":null", "\"manual_composition\":{\"Generic\":\"T\"}"),
 ];
 
 pub struct NodeReplacement<'a> {
@@ -551,7 +552,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				let mut default_template = NodeTemplate::default();
 				default_template.document_node.implementation = DocumentNodeImplementation::ProtoNode(new.clone());
 				document.network_interface.replace_implementation(node_id, &network_path, &mut default_template);
-				document.network_interface.set_manual_compostion(node_id, &network_path, Some(graph_craft::Type::Generic("T".into())));
+				document.network_interface.set_call_argument(node_id, &network_path, graph_craft::Type::Generic("T".into()));
 			}
 		}
 	}
@@ -576,11 +577,11 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	// Upgrade old nodes to use `Context` instead of `()` or `Footprint` for manual composition
-	if node.manual_composition == Some(graph_craft::concrete!(())) || node.manual_composition == Some(graph_craft::concrete!(graphene_std::transform::Footprint)) {
+	// Upgrade old nodes to use `Context` instead of `()` or `Footprint` as their call argument
+	if node.call_argument == graph_craft::concrete!(()) || node.call_argument == graph_craft::concrete!(graphene_std::transform::Footprint) {
 		document
 			.network_interface
-			.set_manual_compostion(node_id, network_path, graph_craft::concrete!(graphene_std::Context).into());
+			.set_call_argument(node_id, network_path, graph_craft::concrete!(graphene_std::Context).into());
 	}
 
 	// Only nodes that have not been modified and still refer to a definition can be updated
@@ -1083,8 +1084,8 @@ mod tests {
 			*hashmap.entry(node.node.clone()).or_default() += 1;
 		});
 		let duplicates = hashmap.iter().filter(|(_, count)| **count > 1).map(|(node, _)| &node.name).collect::<Vec<_>>();
-		if duplicates.len() > 0 {
-			panic!("Duplicate entries in `NODE_REPLACEMENTS`: {:?}", duplicates);
+		if !duplicates.is_empty() {
+			panic!("Duplicate entries in `NODE_REPLACEMENTS`: {duplicates:?}");
 		}
 	}
 }

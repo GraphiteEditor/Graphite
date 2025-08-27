@@ -76,24 +76,30 @@ impl ImplRenderProcessHandler for RenderProcessHandlerImpl {
 	}
 
 	fn on_context_created(&self, _browser: Option<&mut cef::Browser>, _frame: Option<&mut cef::Frame>, context: Option<&mut cef::V8Context>) {
-		let function_name = "sendNativeMessage";
+		let register_js_function = |context: &mut cef::V8Context, name: &'static str| {
+			let mut v8_handler = V8Handler::new(BrowserProcessV8HandlerImpl::new());
+			let Some(mut function) = v8_value_create_function(Some(&CefString::from(name)), Some(&mut v8_handler)) else {
+				tracing::error!("Failed to create V8 function {name}");
+				return;
+			};
+
+			let Some(global) = context.global() else {
+				tracing::error!("Global object is not available in V8 context");
+				return;
+			};
+			global.set_value_bykey(Some(&CefString::from(name)), Some(&mut function), V8Propertyattribute::default());
+		};
 
 		let Some(context) = context else {
 			tracing::error!("V8 context is not available");
 			return;
 		};
 
-		let mut v8_handler = V8Handler::new(BrowserProcessV8HandlerImpl::new());
-		let Some(mut function) = v8_value_create_function(Some(&CefString::from(function_name)), Some(&mut v8_handler)) else {
-			tracing::error!("Failed to create V8 function {function_name}");
-			return;
-		};
+		let initialized_function_name = "initializeNativeCommunication";
+		let send_function_name = "sendNativeMessage";
 
-		let Some(global) = context.global() else {
-			tracing::error!("Global object is not available in V8 context");
-			return;
-		};
-		global.set_value_bykey(Some(&CefString::from(function_name)), Some(&mut function), V8Propertyattribute::default());
+		register_js_function(context, initialized_function_name);
+		register_js_function(context, send_function_name);
 	}
 
 	fn get_raw(&self) -> *mut _cef_render_process_handler_t {

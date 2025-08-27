@@ -21,7 +21,6 @@ pub mod raster;
 pub mod raster_types;
 pub mod registry;
 pub mod render_complexity;
-pub mod structural;
 pub mod subpath;
 pub mod table;
 pub mod text;

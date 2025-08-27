@@ -135,7 +135,7 @@ fn parse_lit(mut pairs: Pairs<Rule>) -> Result<(Literal, Unit), ParseError> {
 		let unit_pairs = unit_pair.into_inner(); // Get the inner pairs for the unit
 		let (unit, scale) = parse_unit(unit_pairs)?;
 
-		println!("found unit: {:?}", unit);
+		println!("found unit: {unit:?}");
 
 		Ok((
 			match literal {

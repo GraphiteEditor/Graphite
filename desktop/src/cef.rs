@@ -20,6 +20,7 @@ use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+mod consts;
 mod context;
 mod dirs;
 mod input;
@@ -34,7 +35,7 @@ mod texture_import;
 #[cfg(feature = "accelerated_paint")]
 use texture_import::SharedTextureHandle;
 
-pub(crate) use context::{Context, InitError, Initialized, Setup, SetupError};
+pub(crate) use context::{CefContext, CefContextBuilder, InitError};
 use winit::event_loop::EventLoopProxy;
 
 pub(crate) trait CefEventHandler: Clone {
@@ -45,6 +46,7 @@ pub(crate) trait CefEventHandler: Clone {
 	/// Scheudule the main event loop to run the cef event loop after the timeout
 	///  [`_cef_browser_process_handler_t::on_schedule_message_pump_work`] for more documentation.
 	fn schedule_cef_message_loop_work(&self, scheduled_time: Instant);
+	fn initialized_web_communication(&self);
 	fn receive_web_message(&self, message: &[u8]);
 }
 
@@ -142,6 +144,10 @@ impl CefEventHandler for CefHandler {
 
 	fn schedule_cef_message_loop_work(&self, scheduled_time: std::time::Instant) {
 		let _ = self.event_loop_proxy.send_event(CustomEvent::ScheduleBrowserWork(scheduled_time));
+	}
+
+	fn initialized_web_communication(&self) {
+		let _ = self.event_loop_proxy.send_event(CustomEvent::WebCommunicationInitialized);
 	}
 
 	fn receive_web_message(&self, message: &[u8]) {

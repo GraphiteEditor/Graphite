@@ -1,6 +1,9 @@
 use graphene_std::Color;
 use graphene_std::raster::Image;
-use graphite_editor::messages::prelude::{DocumentMessage, PortfolioMessage};
+use graphite_editor::messages::app_window::app_window_message_handler::AppWindowPlatform;
+use graphite_editor::messages::prelude::{AppWindowMessage, DocumentMessage, PortfolioMessage};
+
+use crate::messages::Platform;
 
 use super::DesktopWrapperMessageDispatcher;
 use super::messages::{DesktopFrontendMessage, DesktopWrapperMessage, EditorMessage, OpenFileDialogContext, SaveFileDialogContext};
@@ -106,5 +109,14 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			dispatcher.queue_editor_message(message.into());
 		}
 		DesktopWrapperMessage::PollNodeGraphEvaluation => dispatcher.poll_node_graph_evaluation(),
+		DesktopWrapperMessage::UpdatePlatform(platform) => {
+			let platform = match platform {
+				Platform::Windows => AppWindowPlatform::Windows,
+				Platform::Mac => AppWindowPlatform::Mac,
+				Platform::Linux => AppWindowPlatform::Linux,
+			};
+			let message = AppWindowMessage::AppWindowUpdatePlatform { platform };
+			dispatcher.queue_editor_message(message.into());
+		}
 	}
 }
