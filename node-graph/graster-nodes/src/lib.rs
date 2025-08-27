@@ -7,7 +7,7 @@ pub mod cubic_spline;
 pub mod fullscreen_vertex;
 
 /// required by shader macro
-#[cfg(feature = "std")]
+#[cfg(feature = "shader-node")]
 pub use graphene_raster_nodes_shaders::WGSL_SHADER;
 
 #[cfg(feature = "std")]
