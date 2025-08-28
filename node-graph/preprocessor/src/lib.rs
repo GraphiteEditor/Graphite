@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate log;
+
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::proto::RegistryValueSource;
@@ -150,7 +153,14 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 
 			match field.value_source {
 				RegistryValueSource::None => {}
-				RegistryValueSource::Default(data) => return NodeInput::value(TaggedValue::from_primitive_string(data, ty).unwrap_or(TaggedValue::None), exposed),
+				RegistryValueSource::Default(data) => {
+					if let Some(custom_default) = TaggedValue::from_primitive_string(data, ty) {
+						return NodeInput::value(custom_default, exposed);
+					} else {
+						// It is incredibly useful to get a warning when the default type cannot be parsed rather than defaulting to `()`.
+						warn!("Failed to parse default value for type {ty:?} with data {data}");
+					}
+				}
 				RegistryValueSource::Scope(data) => return NodeInput::scope(Cow::Borrowed(data)),
 			};
 

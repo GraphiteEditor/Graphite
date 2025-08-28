@@ -805,9 +805,11 @@ mod test {
 		construction_network.generate_stable_node_ids();
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
+
+		// If this assert fails: These NodeIds seem to be changing when you modify TaggedValue, just update them.
 		assert_eq!(
 			ids,
-			vec![NodeId(13743208144182721472), NodeId(4607569396187877965), NodeId(16950305885390329527), NodeId(15151181027373658932)]
+			vec![NodeId(2791689253855410677), NodeId(11246167042277902310), NodeId(1014827049498980779), NodeId(4864562752646903491)]
 		);
 	}
 

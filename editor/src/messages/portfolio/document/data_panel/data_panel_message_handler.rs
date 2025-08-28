@@ -4,6 +4,7 @@ use crate::messages::portfolio::document::data_panel::DataPanelMessage;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::*;
+use glam::{Affine2, Vec2};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::Context;
@@ -594,6 +595,19 @@ impl TableRowLayout for DVec2 {
 	}
 }
 
+impl TableRowLayout for Vec2 {
+	fn type_name() -> &'static str {
+		"Vec2"
+	}
+	fn identifier(&self) -> String {
+		"Vec2".to_string()
+	}
+	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		let widgets = vec![TextLabel::new(format!("({}, {})", self.x, self.y)).widget_holder()];
+		vec![LayoutGroup::Row { widgets }]
+	}
+}
+
 impl TableRowLayout for DAffine2 {
 	fn type_name() -> &'static str {
 		"Transform"
@@ -603,6 +617,20 @@ impl TableRowLayout for DAffine2 {
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextLabel::new(format_transform_matrix(self)).widget_holder()];
+		vec![LayoutGroup::Row { widgets }]
+	}
+}
+
+impl TableRowLayout for Affine2 {
+	fn type_name() -> &'static str {
+		"Transform"
+	}
+	fn identifier(&self) -> String {
+		"Transform".to_string()
+	}
+	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		let matrix = DAffine2::from_cols_array(&self.to_cols_array().map(|x| x as f64));
+		let widgets = vec![TextLabel::new(format_transform_matrix(&matrix)).widget_holder()];
 		vec![LayoutGroup::Row { widgets }]
 	}
 }

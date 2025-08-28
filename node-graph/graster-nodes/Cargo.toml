@@ -18,7 +18,9 @@ std = [
 	"dep:fastnoise-lite",
 	"dep:serde",
 	"dep:specta",
-	"dep:glam",
+	"dep:kurbo",
+	"glam/debug-glam-assert",
+	"glam/serde",
 ]
 
 [dependencies]
@@ -32,8 +34,8 @@ graphene-core = { workspace = true, optional = true }
 
 # Workspace dependencies
 bytemuck = { workspace = true }
-# glam is reexported from gcore-shaders in no_std mode
-glam = { workspace = true, optional = true }
+glam = { workspace = true }
+num-traits = { workspace = true }
 
 # Workspace std dependencies
 specta = { workspace = true, optional = true }
@@ -43,7 +45,7 @@ rand = { workspace = true, optional = true }
 rand_chacha = { workspace = true, optional = true }
 fastnoise-lite = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
-kurbo = { workspace = true }
+kurbo = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
