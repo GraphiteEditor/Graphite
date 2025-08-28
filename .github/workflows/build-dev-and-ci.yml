@@ -104,7 +104,7 @@ jobs:
         env:
           RUSTFLAGS: -Dwarnings
         run: |
-          mold -run cargo build --all-features
+          mold -run cargo build --all-features --profile=test
 
       - name: 🧪 Run Rust tests
         run: |
