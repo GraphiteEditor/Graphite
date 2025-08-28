@@ -942,6 +942,35 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 		.collect()
 }
 
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
+async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
+	content
+		.into_iter()
+		.flat_map(|row| {
+			let style = row.element.style.clone();
+			let transform = row.transform;
+			let alpha_blending = row.alpha_blending;
+			let source_node_id = row.source_node_id;
+
+			row.element
+				.stroke_bezpath_iter()
+				.map(move |bezpath| {
+					let mut vector = Vector::default();
+					vector.append_bezpath(bezpath);
+					vector.style = style.clone();
+
+					TableRow {
+						element: vector,
+						transform,
+						alpha_blending,
+						source_node_id,
+					}
+				})
+				.collect::<Vec<TableRow<Vector>>>()
+		})
+		.collect()
+}
+
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn flatten_path<I: 'n + Send>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: Table<I>) -> Table<Vector>
 where
@@ -1065,11 +1094,11 @@ async fn sample_polyline(
 		.collect()
 }
 
-/// Splits a path at a given progress from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
+/// Cuts a path at a given progress from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
 ///
 /// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn split_path(_: impl Ctx, mut content: Table<Vector>, progress: Fraction, parameterized_distance: bool, reverse: bool) -> Table<Vector> {
+async fn cut_path(_: impl Ctx, mut content: Table<Vector>, progress: Fraction, parameterized_distance: bool, reverse: bool) -> Table<Vector> {
 	let euclidian = !parameterized_distance;
 
 	let bezpaths = content
@@ -1108,9 +1137,9 @@ async fn split_path(_: impl Ctx, mut content: Table<Vector>, progress: Fraction,
 	content
 }
 
-/// Splits path segments into separate disconnected pieces where each is a distinct subpath.
+/// Cuts path segments into separate disconnected pieces where each is a distinct subpath.
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn split_segments(_: impl Ctx, mut content: Table<Vector>) -> Table<Vector> {
+async fn cut_segments(_: impl Ctx, mut content: Table<Vector>) -> Table<Vector> {
 	// Iterate through every segment and make a copy of each of its endpoints, then reassign each segment's endpoints to its own unique point copy
 	for row in content.iter_mut() {
 		let points_count = row.element.point_domain.ids().len();

@@ -5,11 +5,9 @@ use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_app_t, cef_base_ref_counted_t};
 use cef::{BrowserProcessHandler, CefString, ImplApp, ImplCommandLine, SchemeRegistrar, WrapApp};
 
-use crate::cef::CefEventHandler;
-
-use crate::cef::scheme_handler::GraphiteSchemeHandlerFactory;
-
 use super::browser_process_handler::BrowserProcessHandlerImpl;
+use super::scheme_handler_factory::SchemeHandlerFactoryImpl;
+use crate::cef::CefEventHandler;
 
 pub(crate) struct BrowserProcessAppImpl<H: CefEventHandler> {
 	object: *mut RcImpl<_cef_app_t, Self>,
@@ -30,7 +28,7 @@ impl<H: CefEventHandler + Clone> ImplApp for BrowserProcessAppImpl<H> {
 	}
 
 	fn on_register_custom_schemes(&self, registrar: Option<&mut SchemeRegistrar>) {
-		GraphiteSchemeHandlerFactory::register_schemes(registrar);
+		SchemeHandlerFactoryImpl::<H>::register_schemes(registrar);
 	}
 
 	fn on_before_command_line_processing(&self, _process_type: Option<&cef::CefString>, command_line: Option<&mut cef::CommandLine>) {
