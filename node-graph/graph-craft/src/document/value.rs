@@ -171,6 +171,8 @@ tagged_value! {
 	Bool(bool),
 	String(String),
 	OptionalF64(Option<f64>),
+	ColorNotInTable(Color),
+	OptionalColorNotInTable(Option<Color>),
 	// ========================
 	// LISTS OF PRIMITIVE TYPES
 	// ========================
@@ -358,6 +360,8 @@ impl TaggedValue {
 					x if x == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					x if x == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
 					x if x == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
+					x if x == TypeId::of::<Color>() => to_color(string).map(|color| TaggedValue::ColorNotInTable(color))?,
+					x if x == TypeId::of::<Option<Color>>() => TaggedValue::ColorNotInTable(to_color(string)?),
 					x if x == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
 					x if x == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					_ => return None,
@@ -511,4 +515,9 @@ mod fake_hash {
 			self.1.hash(state)
 		}
 	}
+}
+
+#[test]
+fn can_construct_color() {
+	assert_eq!(TaggedValue::from_type(&concrete!(Color)).unwrap(), TaggedValue::ColorNotInTable(Color::default()));
 }
