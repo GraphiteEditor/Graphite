@@ -47,7 +47,8 @@ default-members = [
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
 	"node-graph/wgpu-executor",
-	"proc-macros",
+	# blocked by https://github.com/rust-lang/cargo/issues/15890
+#	"proc-macros",
 ]
 resolver = "2"
 
