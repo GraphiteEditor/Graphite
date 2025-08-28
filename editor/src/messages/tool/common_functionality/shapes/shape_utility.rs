@@ -230,6 +230,18 @@ pub fn extract_star_parameters(layer: Option<LayerNodeIdentifier>, document: &Do
 	Some((sides, radius_1, radius_2))
 }
 
+pub fn extract_circular_repeat_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(f64, f64, u32)> {
+	let node_inputs = NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs("Circular Repeat")?;
+
+	let (Some(&TaggedValue::F64(angle)), Some(&TaggedValue::F64(radius)), Some(&TaggedValue::U32(count))) =
+		(node_inputs.get(1)?.as_value(), node_inputs.get(2)?.as_value(), node_inputs.get(3)?.as_value())
+	else {
+		return None;
+	};
+
+	Some((angle, radius, count))
+}
+
 /// Extract the node input values of Polygon.
 /// Returns an option of (sides, radius).
 pub fn extract_polygon_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(u32, f64)> {
