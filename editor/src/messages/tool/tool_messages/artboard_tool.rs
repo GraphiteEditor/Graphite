@@ -179,7 +179,7 @@ impl ArtboardToolData {
 		let Some(movement) = &bounds.selected_edges else {
 			return;
 		};
-		if self.selected_artboard.unwrap() == LayerNodeIdentifier::ROOT_PARENT {
+		if self.selected_artboard == Some(LayerNodeIdentifier::ROOT_PARENT) {
 			log::error!("Selected artboard cannot be ROOT_PARENT");
 			return;
 		}
