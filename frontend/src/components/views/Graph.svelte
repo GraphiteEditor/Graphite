@@ -4,8 +4,7 @@
 	import { fade } from "svelte/transition";
 
 	import type { Editor } from "@graphite/editor";
-	import type { Node, UpdateImportsExports } from "@graphite/messages";
-	import type { FrontendNode, FrontendGraphInput, FrontendGraphOutput } from "@graphite/messages";
+	import type { FrontendGraphInput, FrontendGraphOutput } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 
@@ -355,7 +354,7 @@
 						{:else}
 							<p class="import-text" on:dblclick={() => setEditingImportNameIndex(index, frontendOutput.name)}>{frontendOutput.name}</p>
 						{/if}
-						{#if hoveringImportIndex === index || editingNameImportIndex === index}
+						{#if (hoveringImportIndex === index || editingNameImportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
 							<IconButton
 								size={16}
 								icon={"Remove"}
@@ -366,7 +365,9 @@
 									/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 								}}
 							/>
-							<div class="reorder-drag-grip" title="Reorder this import"></div>
+							{#if index !== 0}
+								<div class="reorder-drag-grip" title="Reorder this export" />
+							{/if}
 						{/if}
 					</div>
 				{:else}
@@ -413,8 +414,10 @@
 						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 8) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 8) / 24 + index}
 					>
-						{#if hoveringExportIndex === index || editingNameExportIndex === index}
-							<div class="reorder-drag-grip" title="Reorder this export"></div>
+						{#if (hoveringExportIndex === index || editingNameExportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
+							{#if index !== 0}
+								<div class="reorder-drag-grip" title="Reorder this export" />
+							{/if}
 							<IconButton
 								size={16}
 								icon={"Remove"}
@@ -494,10 +497,10 @@
 			{/if}
 
 			{#if $nodeGraph.updateImportsExports.addImportExport}
-				<hr
+				<div
 					class="primary-separator-bar"
 					style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 85) / 24}
-					style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y + 4) / 24}
+					style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y + 12) / 24}
 				/>
 			{/if}
 
@@ -510,10 +513,10 @@
 			{/if}
 
 			{#if $nodeGraph.updateImportsExports.addImportExport}
-				<hr
+				<div
 					class="primary-separator-bar"
 					style:--offset-left={$nodeGraph.updateImportsExports.exportPosition.x / 24}
-					style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y + 4) / 24}
+					style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y + 12) / 24}
 				/>
 			{/if}
 		{/if}
@@ -967,16 +970,11 @@
 				top: calc(var(--offset-top) * 24px);
 				left: calc(var(--offset-left) * 24px);
 				width: 85px;
-				height: 2px;
-				border: none;
-				border-top: 1px solid rgb(var(--color-7-middlegray-rgb));
+				height: 1px;
+				background: rgb(var(--color-7-middlegray-rgb));
 			}
 
 			.plus {
-				display: flex;
-				flex-direction: row;
-				align-items: center;
-				white-space: nowrap;
 				position: absolute;
 				top: calc(var(--offset-top) * 24px);
 				left: calc(var(--offset-left) * 24px);

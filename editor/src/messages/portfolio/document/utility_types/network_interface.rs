@@ -30,9 +30,6 @@ mod deserialization;
 use deserialization::deserialize_node_persistent_metadata;
 use std::ops::Deref;
 
-mod deserialization;
-use deserialization::deserialize_node_persistent_metadata;
-
 /// All network modifications should be done through this API, so the fields cannot be public. However, all fields within this struct can be public since it it not possible to have a public mutable reference.
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeNetworkInterface {
@@ -2195,13 +2192,18 @@ impl NodeNetworkInterface {
 					continue;
 				};
 				let reorder_import_center = (import_bounding_box[0] + import_bounding_box[1]) / 2. + DVec2::new(-12., 0.);
-				let remove_import_center = reorder_import_center + DVec2::new(-12., 0.);
 
-				let reorder_import = ClickTarget::new_with_subpath(Subpath::new_rect(reorder_import_center - DVec2::new(3., 4.), reorder_import_center + DVec2::new(3., 4.)), 0.);
-				let remove_import = ClickTarget::new_with_subpath(Subpath::new_rect(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
-
-				reorder_imports_exports.insert_custom_output_port(*import_index, reorder_import);
-				remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
+				if *import_index == 0 {
+					let remove_import_center = reorder_import_center + DVec2::new(-4., 0.);
+					let remove_import = ClickTarget::new_with_subpath(Subpath::new_rect(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
+					remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
+				} else {
+					let remove_import_center = reorder_import_center + DVec2::new(-12., 0.);
+					let reorder_import = ClickTarget::new_with_subpath(Subpath::new_rect(reorder_import_center - DVec2::new(3., 4.), reorder_import_center + DVec2::new(3., 4.)), 0.);
+					let remove_import = ClickTarget::new_with_subpath(Subpath::new_rect(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
+					reorder_imports_exports.insert_custom_output_port(*import_index, reorder_import);
+					remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
+				}
 			}
 
 			for (export_index, export_click_target) in import_exports.input_ports() {
@@ -2210,13 +2212,18 @@ impl NodeNetworkInterface {
 					continue;
 				};
 				let reorder_export_center = (export_bounding_box[0] + export_bounding_box[1]) / 2. + DVec2::new(12., 0.);
-				let remove_export_center = reorder_export_center + DVec2::new(12., 0.);
 
-				let reorder_export = ClickTarget::new_with_subpath(Subpath::new_rect(reorder_export_center - DVec2::new(3., 4.), reorder_export_center + DVec2::new(3., 4.)), 0.);
-				let remove_export = ClickTarget::new_with_subpath(Subpath::new_rect(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
-
-				reorder_imports_exports.insert_custom_input_port(*export_index, reorder_export);
-				remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
+				if *export_index == 0 {
+					let remove_export_center = reorder_export_center + DVec2::new(4., 0.);
+					let remove_export = ClickTarget::new_with_subpath(Subpath::new_rect(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
+					remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
+				} else {
+					let remove_export_center = reorder_export_center + DVec2::new(12., 0.);
+					let reorder_export = ClickTarget::new_with_subpath(Subpath::new_rect(reorder_export_center - DVec2::new(3., 4.), reorder_export_center + DVec2::new(3., 4.)), 0.);
+					let remove_export = ClickTarget::new_with_subpath(Subpath::new_rect(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
+					reorder_imports_exports.insert_custom_input_port(*export_index, reorder_export);
+					remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
+				}
 			}
 		}
 

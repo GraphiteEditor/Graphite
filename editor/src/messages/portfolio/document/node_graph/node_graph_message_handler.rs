@@ -1113,7 +1113,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 								};
 								(position > point.y).then_some(*index)
 							})
-							.unwrap_or(modify_import_export.reorder_imports_exports.output_ports().count()),
+							.filter(|end_index| *end_index > 0) // An import cannot be reordered to be the primary
+							.unwrap_or_else(||modify_import_export.reorder_imports_exports.output_ports().count()+1),
 					);
 					responses.add(FrontendMessage::UpdateImportReorderIndex { index: self.end_index });
 				} else if self.reordering_export.is_some() {
@@ -1133,7 +1134,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 								};
 								(position > point.y).then_some(*index)
 							})
-							.unwrap_or(modify_import_export.reorder_imports_exports.input_ports().count()),
+							.filter(|end_index| *end_index > 0) // An export cannot be reordered to be the primary
+							.unwrap_or_else(||modify_import_export.reorder_imports_exports.input_ports().count()+1),
 					);
 					responses.add(FrontendMessage::UpdateExportReorderIndex { index: self.end_index });
 				}
