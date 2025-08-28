@@ -6122,22 +6122,6 @@ pub enum TypeSource {
 	Error(&'static str),
 }
 
-// /// Represents the result of a type query for an input or output connector.
-// #[derive(Debug, Clone)]
-// pub enum TypeSource {
-// 	// A type that has been compiled based on all upstream types
-// 	Compiled(Type),
-// 	// A type that is guessed for all possible input types for this node.
-// 	// Necessary when disconnecting an uncompiled wire
-// 	RandomProtonodeImplementation(Type),
-// 	// An input type from the document node definition
-// 	DocumentNodeDefault(Type),
-// 	// An input type for value inputs
-// 	TaggedValue(Type),
-
-// 	Error(&'static str),
-// }
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum ImportOrExport {
 	Import(usize),

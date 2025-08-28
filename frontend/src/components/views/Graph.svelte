@@ -340,6 +340,8 @@
 						on:pointerleave={() => (hoveringImportIndex = undefined)}
 						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 8) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 8) / 24 + index}
+						style={(index === 0 && $nodeGraph.updateImportsExports.addImportExport ? "border-bottom: 1px solid rgb(var(--color-7-middlegray-rgb));" : "") +
+							(index === 1 && $nodeGraph.updateImportsExports.addImportExport ? "border-top: 1px solid rgb(var(--color-7-middlegray-rgb));" : "")}
 					>
 						{#if editingNameImportIndex == index}
 							<input
@@ -352,7 +354,9 @@
 								on:keydown={(e) => e.key === "Enter" && setEditingImportName(e)}
 							/>
 						{:else}
-							<p class="import-text" on:dblclick={() => setEditingImportNameIndex(index, frontendOutput.name)}>{frontendOutput.name}</p>
+							<p class="import-text" on:dblclick={() => setEditingImportNameIndex(index, frontendOutput.name)}>
+								{frontendOutput.name}
+							</p>
 						{/if}
 						{#if (hoveringImportIndex === index || editingNameImportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
 							<IconButton
@@ -413,6 +417,8 @@
 						on:pointerleave={() => (hoveringExportIndex = undefined)}
 						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 8) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 8) / 24 + index}
+						style={(index === 0 && $nodeGraph.updateImportsExports.addImportExport ? "border-bottom: 1px solid rgb(var(--color-7-middlegray-rgb));" : "") +
+							(index === 1 && $nodeGraph.updateImportsExports.addImportExport ? "border-top: 1px solid rgb(var(--color-7-middlegray-rgb));" : "")}
 					>
 						{#if (hoveringExportIndex === index || editingNameExportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
 							{#if index !== 0}
@@ -439,7 +445,9 @@
 								on:keydown={(e) => e.key === "Enter" && setEditingExportName(e)}
 							/>
 						{:else}
-							<p class="export-text" on:dblclick={() => setEditingExportNameIndex(index, frontendInput.name)}>{frontendInput.name}</p>
+							<p class="export-text" on:dblclick={() => setEditingExportNameIndex(index, frontendInput.name)}>
+								{frontendInput.name}
+							</p>
 						{/if}
 					</div>
 				{:else}
@@ -496,28 +504,12 @@
 				<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 12) / 24} />
 			{/if}
 
-			{#if $nodeGraph.updateImportsExports.addImportExport}
-				<div
-					class="primary-separator-bar"
-					style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 85) / 24}
-					style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y + 12) / 24}
-				/>
-			{/if}
-
 			{#if $nodeGraph.reorderExportIndex !== undefined}
 				{@const position = {
 					x: Number($nodeGraph.updateImportsExports.exportPosition.x),
 					y: Number($nodeGraph.updateImportsExports.exportPosition.y) + Number($nodeGraph.reorderExportIndex) * 24,
 				}}
 				<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 12) / 24} />
-			{/if}
-
-			{#if $nodeGraph.updateImportsExports.addImportExport}
-				<div
-					class="primary-separator-bar"
-					style:--offset-left={$nodeGraph.updateImportsExports.exportPosition.x / 24}
-					style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y + 12) / 24}
-				/>
 			{/if}
 		{/if}
 	</div>
@@ -965,15 +957,6 @@
 				background: white;
 			}
 
-			.primary-separator-bar {
-				position: absolute;
-				top: calc(var(--offset-top) * 24px);
-				left: calc(var(--offset-left) * 24px);
-				width: 85px;
-				height: 1px;
-				background: rgb(var(--color-7-middlegray-rgb));
-			}
-
 			.plus {
 				position: absolute;
 				top: calc(var(--offset-top) * 24px);
@@ -985,7 +968,7 @@
 				display: flex;
 				align-items: center;
 				top: calc(var(--offset-top) * 24px);
-				margin-top: -5px;
+				margin-top: -4px;
 				height: 24px;
 
 				&.import {
