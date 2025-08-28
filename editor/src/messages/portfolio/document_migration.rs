@@ -231,6 +231,14 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
+		node: graphene_std::vector::cut_segments::IDENTIFIER,
+		aliases: &["graphene_core::vector::SplitSegmentsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::cut_path::IDENTIFIER,
+		aliases: &["graphene_core::vector::SplitPathNode"],
+	},
+	NodeReplacement {
 		node: graphene_std::vector::vec_2_to_point::IDENTIFIER,
 		aliases: &["graphene_core::vector::PositionToPointNode"],
 	},

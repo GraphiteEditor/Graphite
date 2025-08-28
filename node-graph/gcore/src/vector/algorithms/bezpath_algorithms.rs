@@ -608,8 +608,9 @@ pub fn round_line_join(bezpath1: &BezPath, bezpath2: &BezPath, center: DVec2) ->
 }
 
 /// Returns `true` if the `bezpath1` is completely inside the `bezpath2`.
+/// NOTE: `bezpath2` must be a closed path to get correct results.
 pub fn bezpath_is_inside_bezpath(bezpath1: &BezPath, bezpath2: &BezPath, accuracy: Option<f64>, minimum_separation: Option<f64>) -> bool {
-	// Eliminate any possibility of one being inside the other, if either of them is empty
+	// Eliminate any possibility of one being inside the other, if either of them are empty
 	if bezpath1.is_empty() || bezpath2.is_empty() {
 		return false;
 	}
@@ -621,7 +622,7 @@ pub fn bezpath_is_inside_bezpath(bezpath1: &BezPath, bezpath2: &BezPath, accurac
 	// Reasoning:
 	// If the inner bezpath bounding box is larger than the outer bezpath bounding box in any direction
 	// then the inner bezpath is intersecting with or outside the outer bezpath.
-	if !outer_bbox.contains_rect(inner_bbox) {
+	if !outer_bbox.contains_rect(inner_bbox) && outer_bbox.intersect(inner_bbox).is_zero_area() {
 		return false;
 	}
 
