@@ -71,6 +71,7 @@ pub(crate) struct Resource {
 	pub(crate) mimetype: Option<String>,
 }
 
+#[expect(dead_code)]
 #[derive(Clone)]
 pub(crate) enum ResourceReader {
 	Embedded(Cursor<&'static [u8]>),

@@ -65,7 +65,9 @@ impl ImplResourceHandler for ResourceHandlerImpl {
 		if let Some(reader) = &self.reader {
 			if let Ok(read) = reader.borrow_mut().read(out) {
 				*bytes_read = read as i32;
-				return 1; // Indicating that data was read
+				if read > 0 {
+					return 1; // Indicating that data was read
+				}
 			}
 		}
 		0 // Indicating no data was read
