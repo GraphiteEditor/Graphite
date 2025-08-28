@@ -14,7 +14,7 @@
 <LayoutRow class="window-button linux" tooltip="Minimize" on:click={() => editor.handle.appWindowMinimize()}>
 	<IconLabel icon={"WindowButtonWinMinimize"} />
 </LayoutRow>
-<LayoutRow class="window-button linux" tooltip={maximized ? "Restore Down" : "Maximize"} on:click={() => editor.handle.appWindowMaximize()}>
+<LayoutRow class="window-button linux" tooltip={maximized ? "Unmaximize" : "Maximize"} on:click={() => editor.handle.appWindowMaximize()}>
 	<IconLabel icon={maximized ? "WindowButtonWinRestoreDown" : "WindowButtonWinMaximize"} />
 </LayoutRow>
 <LayoutRow class="window-button linux" tooltip="Close" on:click={() => editor.handle.appWindowClose()}>
@@ -25,15 +25,15 @@
 	.window-button.linux {
 		flex: 0 0 auto;
 		align-items: center;
-		padding: 0 10px;
+		padding: 0 12px;
 
 		svg {
 			fill: var(--color-e-nearwhite);
 		}
 
 		&:hover {
-			border-radius: 2px;
 			background: var(--color-6-lowergray);
+			border-radius: 2px;
 
 			svg {
 				fill: var(--color-f-white);
