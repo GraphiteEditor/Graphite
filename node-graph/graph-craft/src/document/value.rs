@@ -3,6 +3,7 @@ use crate::proto::{Any as DAny, FutureAny};
 use crate::wasm_application_io::WasmEditorApi;
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
+use glam::{Affine2, Vec2};
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::{ImageTexture, SurfaceFrame};
 use graphene_brush::brush_cache::BrushCache;
@@ -163,7 +164,7 @@ tagged_value! {
 	// ===============
 	// PRIMITIVE TYPES
 	// ===============
-	#[serde(alias = "F32")] // TODO: Eventually remove this alias document upgrade code
+	F32(f32),
 	F64(f64),
 	U32(u32),
 	U64(u64),
@@ -201,6 +202,8 @@ tagged_value! {
 	// ============
 	// STRUCT TYPES
 	// ============
+	FVec2(Vec2),
+	FAffine2(Affine2),
 	#[serde(alias = "IVec2", alias = "UVec2")]
 	DVec2(DVec2),
 	DAffine2(DAffine2),
@@ -257,6 +260,7 @@ impl TaggedValue {
 			TaggedValue::String(x) => format!("\"{x}\""),
 			TaggedValue::U32(x) => x.to_string() + "_u32",
 			TaggedValue::U64(x) => x.to_string() + "_u64",
+			TaggedValue::F32(x) => x.to_string() + "_f32",
 			TaggedValue::F64(x) => x.to_string() + "_f64",
 			TaggedValue::Bool(x) => x.to_string(),
 			TaggedValue::BlendMode(x) => "BlendMode::".to_string() + &x.to_string(),
@@ -348,6 +352,7 @@ impl TaggedValue {
 					x if x == TypeId::of::<()>() => TaggedValue::None,
 					x if x == TypeId::of::<String>() => TaggedValue::String(string.into()),
 					x if x == TypeId::of::<f64>() => FromStr::from_str(string).map(TaggedValue::F64).ok()?,
+					x if x == TypeId::of::<f32>() => FromStr::from_str(string).map(TaggedValue::F32).ok()?,
 					x if x == TypeId::of::<u64>() => FromStr::from_str(string).map(TaggedValue::U64).ok()?,
 					x if x == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
 					x if x == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
@@ -378,6 +383,7 @@ impl Display for TaggedValue {
 			TaggedValue::String(x) => f.write_str(x),
 			TaggedValue::U32(x) => f.write_fmt(format_args!("{x}")),
 			TaggedValue::U64(x) => f.write_fmt(format_args!("{x}")),
+			TaggedValue::F32(x) => f.write_fmt(format_args!("{x}")),
 			TaggedValue::F64(x) => f.write_fmt(format_args!("{x}")),
 			TaggedValue::Bool(x) => f.write_fmt(format_args!("{x}")),
 			_ => panic!("Cannot convert to string"),
@@ -453,7 +459,17 @@ mod fake_hash {
 			self.to_bits().hash(state)
 		}
 	}
+	impl FakeHash for f32 {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.to_bits().hash(state)
+		}
+	}
 	impl FakeHash for DVec2 {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.to_array().iter().for_each(|x| x.to_bits().hash(state))
+		}
+	}
+	impl FakeHash for Vec2 {
 		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 			self.to_array().iter().for_each(|x| x.to_bits().hash(state))
 		}
@@ -463,7 +479,12 @@ mod fake_hash {
 			self.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
 		}
 	}
-	impl<X: FakeHash> FakeHash for Option<X> {
+	impl FakeHash for Affine2 {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
+		}
+	}
+	impl<T: FakeHash> FakeHash for Option<T> {
 		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 			if let Some(x) = self {
 				1.hash(state);
@@ -473,7 +494,7 @@ mod fake_hash {
 			}
 		}
 	}
-	impl<X: FakeHash> FakeHash for Vec<X> {
+	impl<T: FakeHash> FakeHash for Vec<T> {
 		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 			self.len().hash(state);
 			self.iter().for_each(|x| x.hash(state))

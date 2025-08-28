@@ -4,6 +4,7 @@ use crate::consts::{
 	COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE,
 	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, SEGMENT_SELECTED_THICKNESS,
 };
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::Message;
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
@@ -1024,7 +1025,7 @@ pub enum Pivot {
 
 pub enum DrawHandles {
 	All,
-	SelectedAnchors(Vec<SegmentId>),
-	FrontierHandles(HashMap<SegmentId, Vec<PointId>>),
+	SelectedAnchors(HashMap<LayerNodeIdentifier, Vec<SegmentId>>),
+	FrontierHandles(HashMap<LayerNodeIdentifier, HashMap<SegmentId, Vec<PointId>>>),
 	None,
 }
