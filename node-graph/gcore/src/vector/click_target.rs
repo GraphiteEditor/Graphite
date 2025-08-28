@@ -1,4 +1,4 @@
-use super::algorithms::intersection::filtered_segment_intersections;
+use super::algorithms::{bezpath_algorithms::bezpath_is_inside_bezpath, intersection::filtered_segment_intersections};
 use super::misc::dvec2_to_point;
 use crate::math::math_ext::QuadExt;
 use crate::math::quad::Quad;
@@ -6,7 +6,7 @@ use crate::subpath::Subpath;
 use crate::vector::PointId;
 use crate::vector::misc::point_to_dvec2;
 use glam::{DAffine2, DMat2, DVec2};
-use kurbo::{Affine, ParamCurve, PathSeg, Point, Shape};
+use kurbo::{Affine, BezPath, ParamCurve, PathSeg, Shape};
 
 #[derive(Copy, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FreePoint {
@@ -125,9 +125,11 @@ impl ClickTarget {
 					return true;
 				}
 
+				let mut selection = BezPath::from_path_segments(bezier_iter());
+				selection.close_path();
+
 				// Check if shape is entirely within selection
-				let any_point_from_subpath = subpath.manipulator_groups().first().map(|manipulators| manipulators.anchor);
-				any_point_from_subpath.is_some_and(|shape_point| bezier_iter().map(|bezier| bezier.winding(Point::new(shape_point.x, shape_point.y))).sum::<i32>() != 0)
+				bezpath_is_inside_bezpath(&subpath.to_bezpath(), &selection, None, None)
 			}
 			ClickTargetType::FreePoint(point) => bezier_iter().map(|bezier: PathSeg| bezier.winding(dvec2_to_point(point.position))).sum::<i32>() != 0,
 		}
