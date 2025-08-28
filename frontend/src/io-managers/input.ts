@@ -334,8 +334,11 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
 			}
 
-			if (file.name.endsWith(".graphite")) {
-				editor.handle.openDocumentFile(file.name, await file.text());
+			const graphiteFileSuffix = "." + editor.handle.fileExtension();
+			if (file.name.endsWith(graphiteFileSuffix)) {
+				const content = await file.text();
+				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
+				editor.handle.openDocumentFile(documentName, content);
 			}
 		});
 	}

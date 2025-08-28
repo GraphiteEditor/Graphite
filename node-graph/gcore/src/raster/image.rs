@@ -258,7 +258,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 				GraphicElement::RasterFrame(RasterFrame::ImageFrame(image)) => Self {
 					image: image.iter().next().unwrap().element.clone(),
 				},
-				_ => panic!("Expected Image, found {:?}", element),
+				_ => panic!("Expected Image, found {element:?}"),
 			}
 		}
 	}
@@ -478,9 +478,9 @@ mod test {
 		};
 
 		let serialized = serde_json::to_string(&image).unwrap();
-		println!("{}", serialized);
+		println!("{serialized}");
 		let deserialized: Image<Color> = serde_json::from_str(&serialized).unwrap();
-		println!("{:?}", deserialized);
+		println!("{deserialized:?}");
 
 		assert_eq!(image, deserialized);
 	}

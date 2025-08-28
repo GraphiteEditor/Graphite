@@ -50,7 +50,9 @@ pub enum PenToolMessage {
 	Abort,
 	SelectionChanged,
 	WorkingColorChanged,
-	Overlays(OverlayContext),
+	Overlays {
+		context: OverlayContext,
+	},
 
 	// Tool-specific messages
 
@@ -80,7 +82,9 @@ pub enum PenToolMessage {
 	},
 	Redo,
 	Undo,
-	UpdateOptions(PenOptionsUpdate),
+	UpdateOptions {
+		options: PenOptionsUpdate,
+	},
 	RecalculateLatestPointsPosition,
 	RemovePreviousHandle,
 	GRS {
@@ -138,7 +142,12 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.label("Weight")
 		.min(0.)
 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		.on_update(|number_input: &NumberInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
+		.on_update(|number_input: &NumberInput| {
+			PenToolMessage::UpdateOptions {
+				options: PenOptionsUpdate::LineWeight(number_input.value.unwrap()),
+			}
+			.into()
+		})
 		.widget_holder()
 }
 
@@ -147,9 +156,26 @@ impl LayoutHolder for PenTool {
 		let mut widgets = self.options.fill.create_widgets(
 			"Fill",
 			true,
-			|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(None)).into(),
-			|color_type: ToolColorType| WidgetCallback::new(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
+			|_| {
+				PenToolMessage::UpdateOptions {
+					options: PenOptionsUpdate::FillColor(None),
+				}
+				.into()
+			},
+			|color_type: ToolColorType| {
+				WidgetCallback::new(move |_| {
+					PenToolMessage::UpdateOptions {
+						options: PenOptionsUpdate::FillColorType(color_type.clone()),
+					}
+					.into()
+				})
+			},
+			|color: &ColorInput| {
+				PenToolMessage::UpdateOptions {
+					options: PenOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+				}
+				.into()
+			},
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -157,9 +183,26 @@ impl LayoutHolder for PenTool {
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
 			true,
-			|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(None)).into(),
-			|color_type: ToolColorType| WidgetCallback::new(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
+			|_| {
+				PenToolMessage::UpdateOptions {
+					options: PenOptionsUpdate::StrokeColor(None),
+				}
+				.into()
+			},
+			|color_type: ToolColorType| {
+				WidgetCallback::new(move |_| {
+					PenToolMessage::UpdateOptions {
+						options: PenOptionsUpdate::StrokeColorType(color_type.clone()),
+					}
+					.into()
+				})
+			},
+			|color: &ColorInput| {
+				PenToolMessage::UpdateOptions {
+					options: PenOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+				}
+				.into()
+			},
 		));
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -173,11 +216,21 @@ impl LayoutHolder for PenTool {
 				RadioEntryData::new("all")
 					.icon("HandleVisibilityAll")
 					.tooltip("Show all handles regardless of selection")
-					.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::OverlayModeType(PenOverlayMode::AllHandles)).into()),
+					.on_update(move |_| {
+						PenToolMessage::UpdateOptions {
+							options: PenOptionsUpdate::OverlayModeType(PenOverlayMode::AllHandles),
+						}
+						.into()
+					}),
 				RadioEntryData::new("frontier")
 					.icon("HandleVisibilityFrontier")
 					.tooltip("Show only handles at the frontiers of the segments connected to selected points")
-					.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::OverlayModeType(PenOverlayMode::FrontierHandles)).into()),
+					.on_update(move |_| {
+						PenToolMessage::UpdateOptions {
+							options: PenOptionsUpdate::OverlayModeType(PenOverlayMode::FrontierHandles),
+						}
+						.into()
+					}),
 			])
 			.selected_index(Some(self.options.pen_overlay_mode as u32))
 			.widget_holder(),
@@ -190,12 +243,12 @@ impl LayoutHolder for PenTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		let ToolMessage::Pen(PenToolMessage::UpdateOptions(action)) = message else {
+		let ToolMessage::Pen(PenToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			return;
 		};
 
-		match action {
+		match options {
 			PenOptionsUpdate::OverlayModeType(overlay_mode_type) => {
 				self.options.pen_overlay_mode = overlay_mode_type;
 				responses.add(OverlaysMessage::Draw);
@@ -253,7 +306,7 @@ impl ToolTransition for PenTool {
 			tool_abort: Some(PenToolMessage::Abort.into()),
 			selection_changed: Some(PenToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(PenToolMessage::WorkingColorChanged.into()),
-			overlay_provider: Some(|overlay_context| PenToolMessage::Overlays(overlay_context).into()),
+			overlay_provider: Some(|context| PenToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
 	}
@@ -1547,7 +1600,7 @@ impl Fsm for PenToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
-			(PenToolFsmState::Ready, PenToolMessage::Overlays(mut overlay_context)) => {
+			(PenToolFsmState::Ready, PenToolMessage::Overlays { context: mut overlay_context }) => {
 				match tool_options.pen_overlay_mode {
 					PenOverlayMode::AllHandles => {
 						path_overlays(document, DrawHandles::All, shape_editor, &mut overlay_context);
@@ -1575,7 +1628,7 @@ impl Fsm for PenToolFsmState {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				self
 			}
-			(_, PenToolMessage::Overlays(mut overlay_context)) => {
+			(_, PenToolMessage::Overlays { context: mut overlay_context }) => {
 				let display_anchors = overlay_context.visibility_settings.anchors();
 				let display_handles = overlay_context.visibility_settings.handles();
 
@@ -1614,17 +1667,21 @@ impl Fsm for PenToolFsmState {
 						path_overlays(document, DrawHandles::All, shape_editor, &mut overlay_context);
 					}
 					PenOverlayMode::FrontierHandles => {
-						if let Some(latest_segment) = tool_data.prior_segment {
-							path_overlays(document, DrawHandles::SelectedAnchors(vec![latest_segment]), shape_editor, &mut overlay_context);
-						}
-						// If a vector mesh then there can be more than one prior segments
-						else if let Some(segments) = tool_data.prior_segments.clone() {
-							if preferences.vector_meshes {
-								path_overlays(document, DrawHandles::SelectedAnchors(segments), shape_editor, &mut overlay_context);
+						if let Some(layer) = tool_data.current_layer {
+							if let Some(latest_segment) = tool_data.prior_segment {
+								let selected_anchors_data = HashMap::from([(layer, vec![latest_segment])]);
+								path_overlays(document, DrawHandles::SelectedAnchors(selected_anchors_data), shape_editor, &mut overlay_context);
 							}
-						} else {
-							path_overlays(document, DrawHandles::None, shape_editor, &mut overlay_context);
-						};
+							// If a vector mesh then there can be more than one prior segments
+							else if let Some(segments) = tool_data.prior_segments.clone() {
+								if preferences.vector_meshes {
+									let selected_anchors_data = HashMap::from([(layer, segments)]);
+									path_overlays(document, DrawHandles::SelectedAnchors(selected_anchors_data), shape_editor, &mut overlay_context);
+								}
+							} else {
+								path_overlays(document, DrawHandles::None, shape_editor, &mut overlay_context);
+							};
+						}
 					}
 				}
 
@@ -1753,10 +1810,9 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(_, PenToolMessage::WorkingColorChanged) => {
-				responses.add(PenToolMessage::UpdateOptions(PenOptionsUpdate::WorkingColors(
-					Some(global_tool_data.primary_color),
-					Some(global_tool_data.secondary_color),
-				)));
+				responses.add(PenToolMessage::UpdateOptions {
+					options: PenOptionsUpdate::WorkingColors(Some(global_tool_data.primary_color), Some(global_tool_data.secondary_color)),
+				});
 				self
 			}
 			(PenToolFsmState::Ready, PenToolMessage::DragStart { append_to_selected }) => {

@@ -22,11 +22,12 @@ export function downloadFile(filename: string, content: ArrayBuffer) {
 	downloadFileBlob(filename, blob);
 }
 
-export async function upload<T extends "text" | "data" | "both">(acceptedExtensions: string, textOrData: T): Promise<UploadResult<T>> {
+// See https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/file#accept for the `accept` string format
+export async function upload<T extends "text" | "data" | "both">(accept: string, textOrData: T): Promise<UploadResult<T>> {
 	return new Promise<UploadResult<T>>((resolve, _) => {
 		const element = document.createElement("input");
 		element.type = "file";
-		element.accept = acceptedExtensions;
+		element.accept = accept;
 
 		element.addEventListener(
 			"change",

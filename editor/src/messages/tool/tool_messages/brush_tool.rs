@@ -62,7 +62,7 @@ pub enum BrushToolMessage {
 	DragStart,
 	DragStop,
 	PointerMove,
-	UpdateOptions(BrushToolMessageOptionsUpdate),
+	UpdateOptions { options: BrushToolMessageOptionsUpdate },
 }
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -106,7 +106,7 @@ impl LayoutHolder for BrushTool {
 				.min(1.)
 				.max(BRUSH_MAX_SIZE) /* Anything bigger would cause the application to be unresponsive and eventually die */
 				.unit(" px")
-				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Diameter(number_input.value.unwrap())).into())
+				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions { options: BrushToolMessageOptionsUpdate::Diameter(number_input.value.unwrap()) }.into())
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(self.options.hardness))
@@ -115,7 +115,12 @@ impl LayoutHolder for BrushTool {
 				.max(100.)
 				.mode_range()
 				.unit("%")
-				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Hardness(number_input.value.unwrap())).into())
+				.on_update(|number_input: &NumberInput| {
+					BrushToolMessage::UpdateOptions {
+						options: BrushToolMessageOptionsUpdate::Hardness(number_input.value.unwrap()),
+					}
+					.into()
+				})
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(self.options.flow))
@@ -124,7 +129,12 @@ impl LayoutHolder for BrushTool {
 				.max(100.)
 				.mode_range()
 				.unit("%")
-				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Flow(number_input.value.unwrap())).into())
+				.on_update(|number_input: &NumberInput| {
+					BrushToolMessage::UpdateOptions {
+						options: BrushToolMessageOptionsUpdate::Flow(number_input.value.unwrap()),
+					}
+					.into()
+				})
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(self.options.spacing))
@@ -133,7 +143,12 @@ impl LayoutHolder for BrushTool {
 				.max(100.)
 				.mode_range()
 				.unit("%")
-				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Spacing(number_input.value.unwrap())).into())
+				.on_update(|number_input: &NumberInput| {
+					BrushToolMessage::UpdateOptions {
+						options: BrushToolMessageOptionsUpdate::Spacing(number_input.value.unwrap()),
+					}
+					.into()
+				})
 				.widget_holder(),
 		];
 
@@ -142,9 +157,12 @@ impl LayoutHolder for BrushTool {
 		let draw_mode_entries: Vec<_> = [DrawMode::Draw, DrawMode::Erase, DrawMode::Restore]
 			.into_iter()
 			.map(|draw_mode| {
-				RadioEntryData::new(format!("{draw_mode:?}"))
-					.label(format!("{draw_mode:?}"))
-					.on_update(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::DrawMode(draw_mode)).into())
+				RadioEntryData::new(format!("{draw_mode:?}")).label(format!("{draw_mode:?}")).on_update(move |_| {
+					BrushToolMessage::UpdateOptions {
+						options: BrushToolMessageOptionsUpdate::DrawMode(draw_mode),
+					}
+					.into()
+				})
 			})
 			.collect();
 		widgets.push(RadioInput::new(draw_mode_entries).selected_index(Some(self.options.draw_mode as u32)).widget_holder());
@@ -154,9 +172,26 @@ impl LayoutHolder for BrushTool {
 		widgets.append(&mut self.options.color.create_widgets(
 			"Color",
 			false,
-			|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(None)).into(),
-			|color_type: ToolColorType| WidgetCallback::new(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ColorType(color_type.clone())).into()),
-			|color: &ColorInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
+			|_| {
+				BrushToolMessage::UpdateOptions {
+					options: BrushToolMessageOptionsUpdate::Color(None),
+				}
+				.into()
+			},
+			|color_type: ToolColorType| {
+				WidgetCallback::new(move |_| {
+					BrushToolMessage::UpdateOptions {
+						options: BrushToolMessageOptionsUpdate::ColorType(color_type.clone()),
+					}
+					.into()
+				})
+			},
+			|color: &ColorInput| {
+				BrushToolMessage::UpdateOptions {
+					options: BrushToolMessageOptionsUpdate::Color(color.value.as_solid().map(|color| color.to_linear_srgb())),
+				}
+				.into()
+			},
 		));
 
 		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
@@ -167,9 +202,12 @@ impl LayoutHolder for BrushTool {
 				section
 					.iter()
 					.map(|blend_mode| {
-						MenuListEntry::new(format!("{blend_mode:?}"))
-							.label(blend_mode.to_string())
-							.on_commit(|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::BlendMode(*blend_mode)).into())
+						MenuListEntry::new(format!("{blend_mode:?}")).label(blend_mode.to_string()).on_commit(|_| {
+							BrushToolMessage::UpdateOptions {
+								options: BrushToolMessageOptionsUpdate::BlendMode(*blend_mode),
+							}
+							.into()
+						})
 					})
 					.collect()
 			})
@@ -189,11 +227,11 @@ impl LayoutHolder for BrushTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for BrushTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		let ToolMessage::Brush(BrushToolMessage::UpdateOptions(action)) = message else {
+		let ToolMessage::Brush(BrushToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, true);
 			return;
 		};
-		match action {
+		match options {
 			BrushToolMessageOptionsUpdate::BlendMode(blend_mode) => self.options.blend_mode = blend_mode,
 			BrushToolMessageOptionsUpdate::ChangeDiameter(change) => {
 				let needs_rounding = ((self.options.diameter + change.abs() / 2.) % change.abs() - change.abs() / 2.).abs() > 0.5;
@@ -408,10 +446,9 @@ impl Fsm for BrushToolFsmState {
 				BrushToolFsmState::Ready
 			}
 			(_, BrushToolMessage::WorkingColorChanged) => {
-				responses.add(BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::WorkingColors(
-					Some(global_tool_data.primary_color),
-					Some(global_tool_data.secondary_color),
-				)));
+				responses.add(BrushToolMessage::UpdateOptions {
+					options: BrushToolMessageOptionsUpdate::WorkingColors(Some(global_tool_data.primary_color), Some(global_tool_data.secondary_color)),
+				});
 				self
 			}
 			_ => self,

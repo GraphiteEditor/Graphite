@@ -25,6 +25,7 @@ use kurbo::BezPath;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::ops::Deref;
 
 /// All network modifications should be done through this API, so the fields cannot be public. However, all fields within this struct can be public since it it not possible to have a public mutable reference.
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -73,10 +74,8 @@ impl NodeNetworkInterface {
 					fix_network(network);
 				}
 				if let DocumentNodeImplementation::ProtoNode(protonode) = &node.implementation {
-					if protonode.name.contains("PathModifyNode") {
-						if node.inputs.len() < 3 {
-							node.inputs.push(NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath));
-						}
+					if protonode.name.contains("PathModifyNode") && node.inputs.len() < 3 {
+						node.inputs.push(NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath));
 					}
 				}
 			}
@@ -460,13 +459,9 @@ impl NodeNetworkInterface {
 	/// If the node is not in the hashmap then a default input is found based on the compiled network, using the node_id passed as a parameter
 	pub fn map_ids(&mut self, mut node_template: NodeTemplate, node_id: &NodeId, new_ids: &HashMap<NodeId, NodeId>, network_path: &[NodeId]) -> NodeTemplate {
 		for (input_index, input) in node_template.document_node.inputs.iter_mut().enumerate() {
-			if let &mut NodeInput::Node { node_id: id, output_index, lambda } = input {
+			if let &mut NodeInput::Node { node_id: id, output_index } = input {
 				if let Some(&new_id) = new_ids.get(&id) {
-					*input = NodeInput::Node {
-						node_id: new_id,
-						output_index,
-						lambda,
-					};
+					*input = NodeInput::Node { node_id: new_id, output_index };
 				} else {
 					// Disconnect node input if it is not connected to another node in new_ids
 					let tagged_value = TaggedValue::from_type_or_none(&self.input_type(&InputConnector::node(*node_id, input_index), network_path).0);
@@ -547,12 +542,11 @@ impl NodeNetworkInterface {
 				}
 			}
 			DocumentNodeImplementation::ProtoNode(_) => {
-				// If a node has manual composition, then offset the input index by 1 since the proto node also includes the type of the input passed through manual composition.
-				let manual_composition_offset = if node.manual_composition.is_some() { 1 } else { 0 };
+				// Offset the input index by 1 since the proto node also includes the type of the input passed as a call argument.
 				self.resolved_types
 					.types
 					.get(node_id_path.as_slice())
-					.and_then(|node_types| node_types.inputs.get(input_index + manual_composition_offset).cloned())
+					.and_then(|node_types| node_types.inputs.get(input_index + 1).cloned())
 					.map(|node_types| (node_types, TypeSource::Compiled))
 			}
 			DocumentNodeImplementation::Extract => None,
@@ -581,7 +575,7 @@ impl NodeNetworkInterface {
 					return (concrete!(()), TypeSource::Error("could not resolve protonode"));
 				};
 
-				let skip_footprint = if node.manual_composition.is_some() { 1 } else { 0 };
+				let skip_footprint = 1;
 
 				let Some(input_type) = std::iter::once(node_types.call_argument.clone()).chain(node_types.inputs.clone()).nth(input_index + skip_footprint) else {
 					log::error!("Could not get type");
@@ -821,7 +815,7 @@ impl NodeNetworkInterface {
 								data_type,
 								name,
 								description,
-								resolved_type: format!("{:?}", input_type),
+								resolved_type: format!("{input_type:?}"),
 								connected_to,
 							},
 							click_target,
@@ -1069,7 +1063,7 @@ impl NodeNetworkInterface {
 
 	pub fn reference(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&Option<String>> {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
-			log::error!("Could not get reference for node: {:?}", node_id);
+			log::error!("Could not get reference for node: {node_id:?}");
 			return None;
 		};
 		Some(&node_metadata.persistent_metadata.reference)
@@ -1287,7 +1281,7 @@ impl NodeNetworkInterface {
 						let artboard = self.document_node(&artboard_node_identifier.to_node(), &[]);
 						let clip_input = artboard.unwrap().inputs.get(5).unwrap();
 						if let NodeInput::Value { tagged_value, .. } = clip_input {
-							if tagged_value.clone().into_inner() == TaggedValue::Bool(true) {
+							if tagged_value.clone().deref() == &TaggedValue::Bool(true) {
 								return Some(Quad::clip(
 									self.document_metadata.bounding_box_document(layer).unwrap_or_default(),
 									self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
@@ -1499,7 +1493,7 @@ impl NodeNetworkInterface {
 				let mut node_metadata = DocumentNodeMetadata::default();
 
 				node.inputs = old_node.inputs;
-				node.manual_composition = old_node.manual_composition;
+				node.call_argument = old_node.manual_composition.unwrap();
 				node.visible = old_node.visible;
 				node.skip_deduplication = old_node.skip_deduplication;
 				node.original_location = old_node.original_location;
@@ -2522,7 +2516,7 @@ impl NodeNetworkInterface {
 			InputConnector::Node { node_id, input_index } => {
 				let input_metadata = self.transient_input_metadata(node_id, *input_index, network_path)?;
 				let TransientMetadata::Loaded(wire) = &input_metadata.wire else {
-					log::error!("Could not load wire for input: {:?}", input);
+					log::error!("Could not load wire for input: {input:?}");
 					return None;
 				};
 				wire.clone()
@@ -2530,7 +2524,7 @@ impl NodeNetworkInterface {
 			InputConnector::Export(export_index) => {
 				let network_metadata = self.network_metadata(network_path)?;
 				let Some(TransientMetadata::Loaded(wire)) = network_metadata.transient_metadata.wires.get(*export_index) else {
-					log::error!("Could not load wire for input: {:?}", input);
+					log::error!("Could not load wire for input: {input:?}");
 					return None;
 				};
 				wire.clone()
@@ -2701,12 +2695,12 @@ impl NodeNetworkInterface {
 			return None;
 		}
 		let Some(input_position) = self.get_input_center(&input, network_path) else {
-			log::error!("Could not get dom rect for wire end in root node: {:?}", input);
+			log::error!("Could not get dom rect for wire end in root node: {input:?}");
 			return None;
 		};
 		let upstream_output = OutputConnector::node(root_node.node_id, root_node.output_index);
 		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
-			log::error!("Could not get dom rect for wire start in root node: {:?}", upstream_output);
+			log::error!("Could not get dom rect for wire start in root node: {upstream_output:?}");
 			return None;
 		};
 		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
@@ -2733,7 +2727,7 @@ impl NodeNetworkInterface {
 	/// Returns the vector subpath and a boolean of whether the wire should be thick.
 	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(BezPath, bool)> {
 		let Some(input_position) = self.get_input_center(input, network_path) else {
-			log::error!("Could not get dom rect for wire end: {:?}", input);
+			log::error!("Could not get dom rect for wire end: {input:?}");
 			return None;
 		};
 		// An upstream output could not be found, so the wire does not exist, but it should still be loaded as as empty vector
@@ -2741,7 +2735,7 @@ impl NodeNetworkInterface {
 			return Some((BezPath::new(), false));
 		};
 		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
-			log::error!("Could not get dom rect for wire start: {:?}", upstream_output);
+			log::error!("Could not get dom rect for wire start: {upstream_output:?}");
 			return None;
 		};
 		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
@@ -3357,7 +3351,7 @@ impl NodeNetworkInterface {
 		self.selected_nodes()
 			.0
 			.iter()
-			.filter(|node| self.is_layer(&node, &[]))
+			.filter(|node| self.is_layer(node, &[]))
 			.filter_map(|layer| self.document_metadata.bounding_box_viewport(LayerNodeIdentifier::new(*layer, self)))
 			.reduce(Quad::combine_bounds)
 	}
@@ -3366,7 +3360,7 @@ impl NodeNetworkInterface {
 		self.selected_nodes()
 			.0
 			.iter()
-			.filter(|node| self.is_layer(&node, &[]) && !self.is_locked(&node, &[]))
+			.filter(|node| self.is_layer(node, &[]) && !self.is_locked(node, &[]))
 			.filter_map(|layer| self.document_metadata.bounding_box_viewport(LayerNodeIdentifier::new(*layer, self)))
 			.reduce(Quad::combine_bounds)
 	}
@@ -4138,7 +4132,7 @@ impl NodeNetworkInterface {
 		if let DocumentNodeImplementation::Network(network) = &node.implementation {
 			let number_of_exports = network.exports.len();
 			let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
-				log::error!("Could not get metadata for node: {:?}", node_id);
+				log::error!("Could not get metadata for node: {node_id:?}");
 				return;
 			};
 			metadata.persistent_metadata.output_names.resize(number_of_exports, "".to_string());
@@ -4155,7 +4149,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
-	pub fn set_manual_compostion(&mut self, node_id: &NodeId, network_path: &[NodeId], manual_composition: Option<Type>) {
+	pub fn set_call_argument(&mut self, node_id: &NodeId, network_path: &[NodeId], call_argument: Type) {
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in set_implementation");
 			return;
@@ -4164,7 +4158,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node in set_implementation");
 			return;
 		};
-		node.manual_composition = manual_composition;
+		node.call_argument = call_argument;
 	}
 
 	pub fn set_input(&mut self, input_connector: &InputConnector, new_input: NodeInput, network_path: &[NodeId]) {

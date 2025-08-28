@@ -352,4 +352,44 @@
 	:not(.optional-input) > .checkbox-input input:focus-visible + label.checked {
 		outline: 1px dashed var(--color-2-mildblack);
 	}
+
+	@font-face {
+		font-family: "Source Sans Pro";
+		font-weight: 400;
+		font-style: normal;
+		font-stretch: normal;
+		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-Regular.ttf.woff2") format("woff2");
+	}
+
+	@font-face {
+		font-family: "Source Sans Pro";
+		font-weight: 400;
+		font-style: italic;
+		font-stretch: normal;
+		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-It.ttf.woff2") format("woff2");
+	}
+
+	@font-face {
+		font-family: "Source Sans Pro";
+		font-weight: 700;
+		font-style: normal;
+		font-stretch: normal;
+		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-Bold.ttf.woff2") format("woff2");
+	}
+
+	@font-face {
+		font-family: "Source Sans Pro";
+		font-weight: 700;
+		font-style: italic;
+		font-stretch: normal;
+		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-BoldIt.ttf.woff2") format("woff2");
+	}
+
+	@font-face {
+		font-family: "Source Code Pro";
+		font-weight: 400;
+		font-style: normal;
+		font-stretch: normal;
+		src: url("@graphite/../node_modules/source-code-pro/WOFF2/TTF/SourceCodePro-Regular.ttf.woff2") format("woff2");
+	}
 </style>

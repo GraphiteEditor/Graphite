@@ -56,12 +56,14 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 				let _ = canvas_context.reset_transform();
 
 				if visibility_settings.all() {
-					responses.add(DocumentMessage::GridOverlays(OverlayContext {
-						render_context: canvas_context.clone(),
-						size: size.as_dvec2(),
-						device_pixel_ratio,
-						visibility_settings: visibility_settings.clone(),
-					}));
+					responses.add(DocumentMessage::GridOverlays {
+						context: OverlayContext {
+							render_context: canvas_context.clone(),
+							size: size.as_dvec2(),
+							device_pixel_ratio,
+							visibility_settings: visibility_settings.clone(),
+						},
+					});
 					for provider in &self.overlay_providers {
 						responses.add(provider(OverlayContext {
 							render_context: canvas_context.clone(),
@@ -81,22 +83,22 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 				let overlay_context = OverlayContext::new(size, device_pixel_ratio, visibility_settings);
 
 				if visibility_settings.all() {
-					responses.add(DocumentMessage::GridOverlays(overlay_context.clone()));
+					responses.add(DocumentMessage::GridOverlays { context: overlay_context.clone() });
 
 					for provider in &self.overlay_providers {
 						responses.add(provider(overlay_context.clone()));
 					}
 				}
-				responses.add(FrontendMessage::RenderOverlays(overlay_context));
+				responses.add(FrontendMessage::RenderOverlays { context: overlay_context });
 			}
 			#[cfg(all(not(target_family = "wasm"), test))]
 			OverlaysMessage::Draw => {
 				let _ = (responses, visibility_settings, ipp, device_pixel_ratio);
 			}
-			OverlaysMessage::AddProvider(message) => {
+			OverlaysMessage::AddProvider { provider: message } => {
 				self.overlay_providers.insert(message);
 			}
-			OverlaysMessage::RemoveProvider(message) => {
+			OverlaysMessage::RemoveProvider { provider: message } => {
 				self.overlay_providers.remove(&message);
 			}
 		}

@@ -3,7 +3,7 @@ use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
 use glam::DVec2;
 use num_derive::*;
-#[cfg(target_arch = "spirv")]
+#[cfg(not(feature = "std"))]
 use num_traits::float::Float;
 
 pub trait Linear {

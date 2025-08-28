@@ -52,7 +52,7 @@ impl Size for web_sys::HtmlCanvasElement {
 #[derive(Debug, Clone)]
 pub struct ImageTexture {
 	#[cfg(feature = "wgpu")]
-	pub texture: Arc<wgpu::Texture>,
+	pub texture: wgpu::Texture,
 	#[cfg(not(feature = "wgpu"))]
 	pub texture: (),
 }
@@ -249,7 +249,7 @@ struct Logger;
 
 impl NodeGraphUpdateSender for Logger {
 	fn send(&self, message: NodeGraphUpdateMessage) {
-		log::warn!("dispatching message with fallback node graph update sender {:?}", message);
+		log::warn!("dispatching message with fallback node graph update sender {message:?}");
 	}
 }
 

@@ -52,7 +52,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 ];
 const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
-	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(BroadcastEventDiscriminant::AnimationFrame)),
+	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(EventMessageDiscriminant::AnimationFrame)),
 	MessageDiscriminant::Animation(AnimationMessageDiscriminant::IncrementFrameCounter),
 ];
 // TODO: Find a way to combine these with the list above. We use strings for now since these are the standard variant names used by multiple messages. But having these also type-checked would be best.
@@ -442,7 +442,7 @@ mod test {
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 6);
 
-		println!("{:?} {:?}", layers_after_copy, layers_before_copy);
+		println!("{layers_after_copy:?} {layers_before_copy:?}");
 
 		assert_eq!(layers_after_copy[5], shape_id);
 	}
@@ -497,7 +497,8 @@ mod test {
 			);
 
 			let responses = editor.editor.handle_message(PortfolioMessage::OpenDocumentFile {
-				document_name: document_name.into(),
+				document_name: Some(document_name.to_string()),
+				document_path: None,
 				document_serialized_content,
 			});
 

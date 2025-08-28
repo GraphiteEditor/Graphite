@@ -47,6 +47,11 @@ jobs:
           echo "Latest updated version:"
           rustc --version
 
+      - name: 🦀 Fetch Rust dependencies
+        run: |
+          echo "If it fails here, the committed Cargo.lock may be out of date"
+          cargo fetch --locked
+
       - name: ✂ Replace template in <head> of index.html
         run: |
           # Remove the INDEX_HTML_HEAD_REPLACEMENT environment variable for build links (not master deploys)
