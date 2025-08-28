@@ -166,14 +166,11 @@ fn color_overlay<T: Adjust<Color>>(
 		GradientStops,
 	)]
 	mut image: T,
-	#[default(Color::BLACK)] color: Table<Color>,
+	#[default(Color::BLACK)] color: Color,
 	blend_mode: BlendMode,
 	#[default(100.)] opacity: PercentageF32,
 ) -> T {
 	let opacity = (opacity as f32 / 100.).clamp(0., 1.);
-
-	let color: Option<Color> = color.into();
-	let color = color.unwrap_or(Color::BLACK);
 
 	image.adjust(|pixel| {
 		let image = pixel.map_rgb(|channel| channel * (1. - opacity));
@@ -206,13 +203,7 @@ mod test {
 		// 100% of the output should come from the multiplied value
 		let opacity = 100.;
 
-		let result = super::color_overlay(
-			(),
-			Table::new_from_element(Raster::new_cpu(image.clone())),
-			Table::new_from_element(overlay_color),
-			BlendMode::Multiply,
-			opacity,
-		);
+		let result = super::color_overlay((), Table::new_from_element(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
 		let result = result.iter().next().unwrap().element;
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
