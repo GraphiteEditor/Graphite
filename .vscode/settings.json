@@ -51,8 +51,5 @@
 	"files.insertFinalNewline": true,
 	"files.associations": {
 		"*.graphite": "json"
-	},
-	"[json]": {
-		"editor.defaultFormatter": "vscode.json-language-features"
 	}
 }

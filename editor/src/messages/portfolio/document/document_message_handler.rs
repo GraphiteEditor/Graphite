@@ -2776,7 +2776,8 @@ impl DocumentMessageHandler {
 		let selected_layer = selected_layers.next();
 		let has_selection = selected_layer.is_some();
 		let has_multiple_selection = selected_layers.next().is_some();
-		drop(selected_layers);
+		for _ in selected_layers {}
+
 		let widgets = vec![
 			PopoverButton::new()
 				.icon(Some("Node".to_string()))

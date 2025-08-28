@@ -576,7 +576,7 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 	if selected_layers.next().is_some() {
 		return None;
 	}
-	drop(selected_layers);
+	for _ in selected_layers {}
 
 	// Must be a layer of type Table<Vector>
 	let Some(node_id) = NodeGraphLayer::new(first_layer, network_interface).horizontal_layer_flow().nth(1) else {

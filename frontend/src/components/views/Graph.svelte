@@ -4,7 +4,7 @@
 	import { fade } from "svelte/transition";
 
 	import type { Editor } from "@graphite/editor";
-	import type { Node } from "@graphite/messages";
+	import type { Node, UpdateImportsExports } from "@graphite/messages";
 	import type { FrontendNode, FrontendGraphInput, FrontendGraphOutput } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
@@ -493,12 +493,28 @@
 				<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 12) / 24} />
 			{/if}
 
+			{#if $nodeGraph.updateImportsExports.addImportExport}
+				<hr
+					class="primary-separator-bar"
+					style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 85) / 24}
+					style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y + 4) / 24}
+				/>
+			{/if}
+
 			{#if $nodeGraph.reorderExportIndex !== undefined}
 				{@const position = {
 					x: Number($nodeGraph.updateImportsExports.exportPosition.x),
 					y: Number($nodeGraph.updateImportsExports.exportPosition.y) + Number($nodeGraph.reorderExportIndex) * 24,
 				}}
 				<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 12) / 24} />
+			{/if}
+
+			{#if $nodeGraph.updateImportsExports.addImportExport}
+				<hr
+					class="primary-separator-bar"
+					style:--offset-left={$nodeGraph.updateImportsExports.exportPosition.x / 24}
+					style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y + 4) / 24}
+				/>
 			{/if}
 		{/if}
 	</div>
@@ -946,7 +962,21 @@
 				background: white;
 			}
 
+			.primary-separator-bar {
+				position: absolute;
+				top: calc(var(--offset-top) * 24px);
+				left: calc(var(--offset-left) * 24px);
+				width: 85px;
+				height: 2px;
+				border: none;
+				border-top: 1px solid rgb(var(--color-7-middlegray-rgb));
+			}
+
 			.plus {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				white-space: nowrap;
 				position: absolute;
 				top: calc(var(--offset-top) * 24px);
 				left: calc(var(--offset-left) * 24px);

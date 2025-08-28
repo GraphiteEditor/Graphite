@@ -1528,11 +1528,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::RemoveImport { import_index: usize } => {
 				network_interface.remove_import(usize, selection_network_path);
+				responses.add(NodeGraphMessage::UpdateImportsExports);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::RemoveExport { export_index: usize } => {
 				network_interface.remove_export(usize, selection_network_path);
+				responses.add(NodeGraphMessage::UpdateImportsExports);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
@@ -1907,7 +1909,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					let shift = ipp.keyboard.get(Key::Shift as usize);
 					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
-						log::error!("Could not get selected nodes in PointerMove");
+						log::error!("Could not get selected nodes in UpdateBoxSelection");
 						return;
 					};
 					let previous_selection = selected_nodes.selected_nodes_ref().iter().cloned().collect::<HashSet<_>>();
@@ -2083,7 +2085,7 @@ impl NodeGraphMessageHandler {
 		let mut selected_layers = selected_nodes.selected_layers(network_interface.document_metadata());
 		let selected_layer = selected_layers.next();
 		let has_multiple_selection = selected_layers.next().is_some();
-		drop(selected_layers);
+		for _ in selected_layers {}
 
 		let mut widgets = vec![
 			PopoverButton::new()
