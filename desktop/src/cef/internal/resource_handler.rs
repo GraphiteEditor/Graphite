@@ -3,14 +3,13 @@ use cef::sys::{_cef_resource_handler_t, cef_base_ref_counted_t};
 use cef::{Callback, CefString, ImplResourceHandler, ImplResponse, Request, ResourceReadCallback, Response, WrapResourceHandler};
 use std::cell::RefCell;
 use std::ffi::c_int;
-use std::ops::DerefMut;
-use std::vec::IntoIter;
+use std::io::Read;
 
-use crate::cef::Resource;
+use crate::cef::{Resource, ResourceReader};
 
 pub(crate) struct ResourceHandlerImpl {
 	object: *mut RcImpl<_cef_resource_handler_t, Self>,
-	data: Option<RefCell<IntoIter<u8>>>,
+	reader: Option<RefCell<ResourceReader>>,
 	mimetype: Option<String>,
 }
 
@@ -19,13 +18,13 @@ impl ResourceHandlerImpl {
 		if let Some(resource) = resource {
 			Self {
 				object: std::ptr::null_mut(),
-				data: Some(resource.data.into_iter().into()),
+				reader: Some(resource.reader.into()),
 				mimetype: resource.mimetype,
 			}
 		} else {
 			Self {
 				object: std::ptr::null_mut(),
-				data: None,
+				reader: None,
 				mimetype: None,
 			}
 		}
@@ -45,7 +44,7 @@ impl ImplResourceHandler for ResourceHandlerImpl {
 			*response_length = -1; // Indicating that the length is unknown
 		}
 		if let Some(response) = response {
-			if self.data.is_some() {
+			if self.reader.is_some() {
 				if let Some(mimetype) = &self.mimetype {
 					let cef_mime = CefString::from(mimetype.as_str());
 					response.set_mime_type(Some(&cef_mime));
@@ -61,27 +60,15 @@ impl ImplResourceHandler for ResourceHandlerImpl {
 	}
 
 	fn read(&self, data_out: *mut u8, bytes_to_read: c_int, bytes_read: Option<&mut c_int>, _callback: Option<&mut ResourceReadCallback>) -> c_int {
-		let mut read = 0;
-
+		let Some(bytes_read) = bytes_read else { unreachable!() };
 		let out = unsafe { std::slice::from_raw_parts_mut(data_out, bytes_to_read as usize) };
-		if let Some(data) = &self.data {
-			let mut data = data.borrow_mut();
-
-			for (out, data) in out.iter_mut().zip(data.deref_mut()) {
-				*out = data;
-				read += 1;
+		if let Some(reader) = &self.reader {
+			if let Ok(read) = reader.borrow_mut().read(out) {
+				*bytes_read = read as i32;
+				return 1; // Indicating that data was read
 			}
 		}
-
-		if let Some(bytes_read) = bytes_read {
-			*bytes_read = read;
-		}
-
-		if read > 0 {
-			1 // Indicating that data was read
-		} else {
-			0 // Indicating no data was read
-		}
+		0 // Indicating no data was read
 	}
 
 	fn get_raw(&self) -> *mut _cef_resource_handler_t {
@@ -97,7 +84,7 @@ impl Clone for ResourceHandlerImpl {
 		}
 		Self {
 			object: self.object,
-			data: self.data.clone(),
+			reader: self.reader.clone(),
 			mimetype: self.mimetype.clone(),
 		}
 	}

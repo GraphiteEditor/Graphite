@@ -16,6 +16,8 @@
 use crate::CustomEvent;
 use crate::render::FrameBufferRef;
 use graphite_desktop_wrapper::{WgpuContext, deserialize_editor_message};
+use std::fs::File;
+use std::io::{Cursor, Read};
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
@@ -65,8 +67,22 @@ impl WindowSize {
 
 #[derive(Clone)]
 pub(crate) struct Resource {
-	pub(crate) data: Vec<u8>,
+	pub(crate) reader: ResourceReader,
 	pub(crate) mimetype: Option<String>,
+}
+
+#[derive(Clone)]
+pub(crate) enum ResourceReader {
+	Embedded(Cursor<&'static [u8]>),
+	File(Arc<File>),
+}
+impl Read for ResourceReader {
+	fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+		match self {
+			ResourceReader::Embedded(cursor) => cursor.read(buf),
+			ResourceReader::File(file) => file.as_ref().read(buf),
+		}
+	}
 }
 
 #[derive(Clone)]
@@ -75,6 +91,7 @@ pub(crate) struct CefHandler {
 	event_loop_proxy: EventLoopProxy<CustomEvent>,
 	wgpu_context: WgpuContext,
 }
+
 struct WindowSizeReceiver {
 	receiver: Receiver<WindowSize>,
 	window_size: WindowSize,
@@ -191,21 +208,24 @@ impl CefEventHandler for CefHandler {
 				&& let Some(file) = resources.get_file(&path)
 			{
 				return Some(Resource {
-					data: file.contents().to_vec(),
+					reader: ResourceReader::Embedded(Cursor::new(file.contents())),
 					mimetype,
 				});
 			}
 		}
 
-		#[cfg(not(feature = "embedded_resources"))]
+		// #[cfg(not(feature = "embedded_resources"))]
 		{
 			use std::path::Path;
 			let asset_path_env = std::env::var("GRAPHITE_RESOURCES").ok()?;
 			let asset_path = Path::new(&asset_path_env);
 			let file_path = asset_path.join(path.strip_prefix("/").unwrap_or(&path));
 			if file_path.exists() && file_path.is_file() {
-				if let Ok(data) = std::fs::read(file_path) {
-					return Some(Resource { data, mimetype });
+				if let Ok(file) = std::fs::File::open(file_path) {
+					return Some(Resource {
+						reader: ResourceReader::File(file.into()),
+						mimetype,
+					});
 				}
 			}
 		}
