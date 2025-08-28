@@ -68,6 +68,8 @@ impl ImplResourceHandler for ResourceHandlerImpl {
 				if read > 0 {
 					return 1; // Indicating that data was read
 				}
+			} else {
+				*bytes_read = -2; // Indicating ERR_FAILED
 			}
 		}
 		0 // Indicating no data was read
