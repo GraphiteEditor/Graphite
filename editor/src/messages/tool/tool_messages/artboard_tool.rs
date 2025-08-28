@@ -153,6 +153,7 @@ impl ArtboardToolData {
 
 	fn select_artboard(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> bool {
 		if let Some(intersection) = Self::hovered_artboard(document, input) {
+			log::info!("Selecting artboard: {:?}", intersection);
 			self.selected_artboard = Some(intersection);
 
 			if let Some(bounds) = document.metadata().bounding_box_document(intersection) {
@@ -244,21 +245,34 @@ impl Fsm for ArtboardToolFsmState {
 
 				// Measure with Alt held down between selected artboard and hovered layers/artboards
 				// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
-				if overlay_context.visibility_settings.quick_measurement() && !matches!(state, ArtboardToolFsmState::ResizingBounds) && input.keyboard.get(Key::Alt as usize) {
+				let alt_pressed = input.keyboard.get(Key::Alt as usize);
+				let quick_measurement_enabled = overlay_context.visibility_settings.quick_measurement();
+				let not_resizing = !matches!(state, ArtboardToolFsmState::ResizingBounds);
+				
+				// log::info!("Artboard measurement check: alt_pressed={}, quick_measurement_enabled={}, not_resizing={}", alt_pressed, quick_measurement_enabled, not_resizing);
+				
+				if quick_measurement_enabled && not_resizing && alt_pressed {
+					
 					// Get the selected artboard bounds
 					let selected_artboard_bounds = tool_data.selected_artboard
-						.and_then(|layer| document.metadata().bounding_box_document(layer))
+						.and_then(|layer| {
+							let bounds = document.metadata().bounding_box_document(layer);
+							bounds
+						})
 						.map(Rect::from_box);
 
 					// Find hovered artboard or regular layer
 					let hovered_artboard = ArtboardToolData::hovered_artboard(document, input);
 					let hovered_layer = document.click_xray(input).find(|&layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
-
+					
+					
 					// Get bounds for the hovered object (prioritize artboards)
 					let hovered_bounds = if let Some(artboard) = hovered_artboard {
-						document.metadata().bounding_box_document(artboard).map(Rect::from_box)
+						let bounds = document.metadata().bounding_box_document(artboard);
+						bounds.map(Rect::from_box)
 					} else if let Some(layer) = hovered_layer {
-						document.metadata().bounding_box_document(layer).map(Rect::from_box)
+						let bounds = document.metadata().bounding_box_document(layer);
+						bounds.map(Rect::from_box)
 					} else {
 						None
 					};
