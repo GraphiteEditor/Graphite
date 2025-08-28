@@ -248,13 +248,13 @@ impl Fsm for ArtboardToolFsmState {
 				let alt_pressed = input.keyboard.get(Key::Alt as usize);
 				let quick_measurement_enabled = overlay_context.visibility_settings.quick_measurement();
 				let not_resizing = !matches!(state, ArtboardToolFsmState::ResizingBounds);
-				
+
 				// log::info!("Artboard measurement check: alt_pressed={}, quick_measurement_enabled={}, not_resizing={}", alt_pressed, quick_measurement_enabled, not_resizing);
-				
+
 				if quick_measurement_enabled && not_resizing && alt_pressed {
-					
 					// Get the selected artboard bounds
-					let selected_artboard_bounds = tool_data.selected_artboard
+					let selected_artboard_bounds = tool_data
+						.selected_artboard
 						.and_then(|layer| {
 							let bounds = document.metadata().bounding_box_document(layer);
 							bounds
@@ -264,8 +264,7 @@ impl Fsm for ArtboardToolFsmState {
 					// Find hovered artboard or regular layer
 					let hovered_artboard = ArtboardToolData::hovered_artboard(document, input);
 					let hovered_layer = document.click_xray(input).find(|&layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
-					
-					
+
 					// Get bounds for the hovered object (prioritize artboards)
 					let hovered_bounds = if let Some(artboard) = hovered_artboard {
 						let bounds = document.metadata().bounding_box_document(artboard);
