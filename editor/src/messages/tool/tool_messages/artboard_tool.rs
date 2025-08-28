@@ -26,7 +26,7 @@ pub struct ArtboardTool {
 pub enum ArtboardToolMessage {
 	// Standard messages
 	Abort,
-	Overlays(OverlayContext),
+	Overlays { context: OverlayContext },
 
 	// Tool-specific messages
 	UpdateSelectedArtboard,
@@ -83,7 +83,7 @@ impl ToolTransition for ArtboardTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(ArtboardToolMessage::Abort.into()),
-			overlay_provider: Some(|overlay_context| ArtboardToolMessage::Overlays(overlay_context).into()),
+			overlay_provider: Some(|context| ArtboardToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
 	}
@@ -179,7 +179,7 @@ impl ArtboardToolData {
 		let Some(movement) = &bounds.selected_edges else {
 			return;
 		};
-		if self.selected_artboard.unwrap() == LayerNodeIdentifier::ROOT_PARENT {
+		if self.selected_artboard == Some(LayerNodeIdentifier::ROOT_PARENT) {
 			log::error!("Selected artboard cannot be ROOT_PARENT");
 			return;
 		}
@@ -227,7 +227,7 @@ impl Fsm for ArtboardToolFsmState {
 
 		let ToolMessage::Artboard(event) = event else { return self };
 		match (self, event) {
-			(state, ArtboardToolMessage::Overlays(mut overlay_context)) => {
+			(state, ArtboardToolMessage::Overlays { context: mut overlay_context }) => {
 				let display_transform_cage = overlay_context.visibility_settings.transform_cage();
 				if display_transform_cage && state != ArtboardToolFsmState::Drawing {
 					if let Some(bounds) = tool_data.selected_artboard.and_then(|layer| document.metadata().bounding_box_document(layer)) {
@@ -569,7 +569,7 @@ mod test_artboard {
 	async fn get_artboards(editor: &mut EditorTestUtils) -> Table<graphene_std::Artboard> {
 		let instrumented = match editor.eval_graph().await {
 			Ok(instrumented) => instrumented,
-			Err(e) => panic!("Failed to evaluate graph: {}", e),
+			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 		instrumented
 			.grab_all_input::<graphene_std::graphic::extend::NewInput<graphene_std::Artboard>>(&editor.runtime)

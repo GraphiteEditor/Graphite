@@ -1,6 +1,5 @@
 use crate::render_ext::RenderExt;
 use crate::to_peniko::BlendModeExt;
-use bezier_rs::Subpath;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_core::blending::BlendMode;
@@ -14,6 +13,7 @@ use graphene_core::raster::BitmapMut;
 use graphene_core::raster::Image;
 use graphene_core::raster_types::{CPU, GPU, Raster};
 use graphene_core::render_complexity::RenderComplexity;
+use graphene_core::subpath::Subpath;
 use graphene_core::table::{Table, TableRow};
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::uuid::{NodeId, generate_uuid};
@@ -21,6 +21,7 @@ use graphene_core::vector::Vector;
 use graphene_core::vector::click_target::{ClickTarget, FreePoint};
 use graphene_core::vector::style::{Fill, Stroke, StrokeAlign, ViewMode};
 use graphene_core::{Artboard, Graphic};
+use kurbo::Affine;
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -678,8 +679,10 @@ impl Render for Table<Vector> {
 			let transformed_bounds_matrix = element_transform * DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
 
 			let mut path = String::new();
-			for subpath in row.element.stroke_bezier_paths() {
-				let _ = subpath.subpath_to_svg(&mut path, applied_stroke_transform);
+
+			for mut bezpath in row.element.stroke_bezpath_iter() {
+				bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+				path.push_str(bezpath.to_svg().as_str());
 			}
 
 			let mask_type = if vector.style.stroke().map(|x| x.align) == Some(StrokeAlign::Inside) {
@@ -780,8 +783,11 @@ impl Render for Table<Vector> {
 
 			let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
 			let mut path = kurbo::BezPath::new();
-			for subpath in row.element.stroke_bezier_paths() {
-				subpath.to_vello_path(applied_stroke_transform, &mut path);
+			for mut bezpath in row.element.stroke_bezpath_iter() {
+				bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+				for element in bezpath {
+					path.push(element);
+				}
 			}
 
 			// If we're using opacity or a blend mode, we need to push a layer
@@ -982,7 +988,7 @@ impl Render for Table<Vector> {
 			let vector = row.element;
 
 			if let Some(element_id) = element_id {
-				let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::weight);
+				let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::effective_width);
 				let filled = vector.style.fill() != &Fill::None;
 				let fill = |mut subpath: Subpath<_>| {
 					if filled {
@@ -1203,7 +1209,7 @@ impl Render for Table<Raster<CPU>> {
 	}
 }
 
-const LAZY_ARC_VEC_ZERO_U8: LazyLock<Arc<Vec<u8>>> = LazyLock::new(|| Arc::new(Vec::new()));
+static LAZY_ARC_VEC_ZERO_U8: LazyLock<Arc<Vec<u8>>> = LazyLock::new(|| Arc::new(Vec::new()));
 
 impl Render for Table<Raster<GPU>> {
 	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {

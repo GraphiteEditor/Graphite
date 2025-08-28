@@ -3,11 +3,17 @@ use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::*;
 use crate::messages::prelude::*;
-use bezier_rs::{Bezier, Identifier, Subpath, TValue};
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, FloatExt};
 use graphene_std::math::math_ext::QuadExt;
 use graphene_std::renderer::Quad;
+use graphene_std::subpath::pathseg_points;
+use graphene_std::subpath::{Identifier, ManipulatorGroup, Subpath};
 use graphene_std::vector::PointId;
+use graphene_std::vector::algorithms::bezpath_algorithms::{pathseg_normals_to_point, pathseg_tangents_to_point};
+use graphene_std::vector::algorithms::intersection::filtered_segment_intersections;
+use graphene_std::vector::misc::dvec2_to_point;
+use graphene_std::vector::misc::point_to_dvec2;
+use kurbo::{Affine, ParamCurve, PathSeg};
 
 #[derive(Clone, Debug, Default)]
 pub struct LayerSnapper {
@@ -37,7 +43,7 @@ impl LayerSnapper {
 			return;
 		}
 
-		for document_curve in bounds.bezier_lines() {
+		for document_curve in bounds.to_lines() {
 			self.paths_to_snap.push(SnapCandidatePath {
 				document_curve,
 				layer,
@@ -70,7 +76,7 @@ impl LayerSnapper {
 			if document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::IntersectionPoint)) || document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::AlongPath)) {
 				for subpath in document.metadata().layer_outline(layer) {
 					for (start_index, curve) in subpath.iter().enumerate() {
-						let document_curve = curve.apply_transformation(|p| transform.transform_point2(p));
+						let document_curve = Affine::new(transform.to_cols_array()) * curve;
 						let start = subpath.manipulator_groups()[start_index].id;
 						if snap_data.ignore_manipulator(layer, start) || snap_data.ignore_manipulator(layer, subpath.manipulator_groups()[(start_index + 1) % subpath.len()].id) {
 							continue;
@@ -98,13 +104,14 @@ impl LayerSnapper {
 
 		for path in &self.paths_to_snap {
 			// Skip very short paths
-			if path.document_curve.start.distance_squared(path.document_curve.end) < tolerance * tolerance * 2. {
+			if path.document_curve.start().distance_squared(path.document_curve.end()) < tolerance * tolerance * 2. {
 				continue;
 			}
-			let time = path.document_curve.project(point.document_point);
-			let snapped_point_document = path.document_curve.evaluate(bezier_rs::TValue::Parametric(time));
-
-			let distance = snapped_point_document.distance(point.document_point);
+			let Some((distance_squared, closest)) = path.approx_nearest_point(point.document_point, 10) else {
+				continue;
+			};
+			let snapped_point_document = point_to_dvec2(closest);
+			let distance = distance_squared.sqrt();
 
 			if distance < tolerance {
 				snap_results.curves.push(SnappedCurve {
@@ -144,8 +151,8 @@ impl LayerSnapper {
 
 		for path in &self.paths_to_snap {
 			for constraint_path in constraint_path.iter() {
-				for time in path.document_curve.intersections(&constraint_path, None, None) {
-					let snapped_point_document = path.document_curve.evaluate(bezier_rs::TValue::Parametric(time));
+				for time in filtered_segment_intersections(path.document_curve, constraint_path, None, None) {
+					let snapped_point_document = point_to_dvec2(path.document_curve.eval(time));
 
 					let distance = snapped_point_document.distance(point.document_point);
 
@@ -266,8 +273,8 @@ impl LayerSnapper {
 fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool, point: &SnapCandidatePoint, tolerance: f64, snap_results: &mut SnapResults) {
 	if normals && path.bounds.is_none() {
 		for &neighbor in &point.neighbors {
-			for t in path.document_curve.normals_to_point(neighbor) {
-				let normal_point = path.document_curve.evaluate(TValue::Parametric(t));
+			for t in pathseg_normals_to_point(path.document_curve, dvec2_to_point(neighbor)) {
+				let normal_point = point_to_dvec2(path.document_curve.eval(t));
 				let distance = normal_point.distance(point.document_point);
 				if distance > tolerance {
 					continue;
@@ -287,8 +294,8 @@ fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool,
 	}
 	if tangents && path.bounds.is_none() {
 		for &neighbor in &point.neighbors {
-			for t in path.document_curve.tangents_to_point(neighbor) {
-				let tangent_point = path.document_curve.evaluate(TValue::Parametric(t));
+			for t in pathseg_tangents_to_point(path.document_curve, dvec2_to_point(neighbor)) {
+				let tangent_point = point_to_dvec2(path.document_curve.eval(t));
 				let distance = tangent_point.distance(point.document_point);
 				if distance > tolerance {
 					continue;
@@ -310,11 +317,104 @@ fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool,
 
 #[derive(Clone, Debug)]
 struct SnapCandidatePath {
-	document_curve: Bezier,
+	document_curve: PathSeg,
 	layer: LayerNodeIdentifier,
 	start: PointId,
 	target: SnapTarget,
 	bounds: Option<Quad>,
+}
+
+impl SnapCandidatePath {
+	/// Calculates the point on the curve which lies closest to `point`.
+	///
+	/// ## Algorithm:
+	/// 1. We first perform a coarse scan of the path segment to find the most promising starting point.
+	/// 2. Afterwards we refine this point by performing a binary search to either side assuming that the segment contains at most one extremal point.
+	/// 3. The smaller of the two resulting distances is returned.
+	///
+	/// ## Visualization:
+	/// ```text
+	///        Query Point (×)
+	///             ×
+	///            /|\
+	///           / | \  distance checks
+	///          /  |  \
+	///         v   v   v
+	///     ●---●---●---●---●  <- Curve with coarse scan points
+	///     0  0.25 0.5 0.75 1  (parameter t values)
+	///         ^       ^
+	///         |   |   |
+	///        min mid max
+	///    Find closest scan point
+	///
+	///    Refine left region using binary search:
+	///
+	///            ●------●------●
+	///           0.25  0.375   0.5
+	///
+	///    Result:           |     (=0.4)
+	///    And the right region:
+	///
+	///            ●------●------●
+	///           0.5   0.625   0.75
+	///    Result: |               (=0.5)
+	///
+	///    The t value with minimal dist is thus 0.4
+	///    Return: (dist_closest, point_on_curve)
+	/// ```
+	pub fn approx_nearest_point(&self, point: DVec2, lut_steps: usize) -> Option<(f64, kurbo::Point)> {
+		let point = dvec2_to_point(point);
+
+		let time_values = (0..lut_steps).map(|x| x as f64 / lut_steps as f64);
+		let points = time_values.map(|t| (t, self.document_curve.eval(t)));
+		let points_with_distances = points.map(|(t, p)| (t, p.distance_squared(point), p));
+		let (t, _, _) = points_with_distances.min_by(|(_, a, _), (_, b, _)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))?;
+
+		let min_t = (t - (lut_steps as f64).recip()).max(0.);
+		let max_t = (t + (lut_steps as f64).recip()).min(1.);
+		let left = self.refine_nearest_point(point, min_t, t);
+		let right = self.refine_nearest_point(point, t, max_t);
+
+		if left.0 < right.0 { Some(left) } else { Some(right) }
+	}
+
+	/// Refines the nearest point search within a given parameter range using binary search.
+	///
+	/// This method performs iterative refinement by:
+	/// 1. Evaluating the midpoint of the current parameter range
+	/// 2. Comparing distances at the endpoints and midpoint
+	/// 3. Narrowing the search range to the side with the shorter distance
+	/// 4. Continuing until convergence (when the range becomes very small)
+	///
+	/// Returns a tuple of (parameter_t, closest_point) where parameter_t is in the range [min_t, max_t].
+	fn refine_nearest_point(&self, point: kurbo::Point, mut min_t: f64, mut max_t: f64) -> (f64, kurbo::Point) {
+		let mut min_dist = self.document_curve.eval(min_t).distance_squared(point);
+		let mut max_dist = self.document_curve.eval(max_t).distance_squared(point);
+		let mut mid_t = max_t.lerp(min_t, 0.5);
+		let mut mid_point = self.document_curve.eval(mid_t);
+		let mut mid_dist = mid_point.distance_squared(point);
+
+		for _ in 0..10 {
+			if (min_dist - max_dist).abs() < 1e-3 {
+				return (mid_dist, mid_point);
+			}
+			if mid_dist > min_dist && mid_dist > max_dist {
+				return (mid_dist, mid_point);
+			}
+			if max_dist > min_dist {
+				max_t = mid_t;
+				max_dist = mid_dist;
+			} else {
+				min_t = mid_t;
+				min_dist = mid_dist;
+			}
+			mid_t = max_t.lerp(min_t, 0.5);
+			mid_point = self.document_curve.eval(mid_t);
+			mid_dist = mid_point.distance_squared(point);
+		}
+
+		(mid_dist, mid_point)
+	}
 }
 
 #[derive(Clone, Debug, Default)]
@@ -440,12 +540,13 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 			if points.len() >= crate::consts::MAX_LAYER_SNAP_POINTS {
 				return;
 			}
+			let curve = pathseg_points(curve);
 
-			let in_handle = curve.handle_start().map(|handle| handle - curve.start).filter(handle_not_under(to_document));
-			let out_handle = curve.handle_end().map(|handle| handle - curve.end).filter(handle_not_under(to_document));
+			let in_handle = curve.p1.map(|handle| handle - curve.p0).filter(handle_not_under(to_document));
+			let out_handle = curve.p2.map(|handle| handle - curve.p3).filter(handle_not_under(to_document));
 			if in_handle.is_none() && out_handle.is_none() {
 				points.push(SnapCandidatePoint::new(
-					to_document.transform_point2(curve.start() * 0.5 + curve.end * 0.5),
+					to_document.transform_point2(curve.p0 * 0.5 + curve.p3 * 0.5),
 					SnapSource::Path(PathSnapSource::LineMidpoint),
 					SnapTarget::Path(PathSnapTarget::LineMidpoint),
 					Some(layer),
@@ -487,7 +588,7 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 	}
 }
 
-pub fn are_manipulator_handles_colinear(manipulators: &bezier_rs::ManipulatorGroup<PointId>, to_document: DAffine2, subpath: &Subpath<PointId>, index: usize) -> bool {
+pub fn are_manipulator_handles_colinear(manipulators: &ManipulatorGroup<PointId>, to_document: DAffine2, subpath: &Subpath<PointId>, index: usize) -> bool {
 	let anchor = manipulators.anchor;
 	let handle_in = manipulators.in_handle.map(|handle| anchor - handle).filter(handle_not_under(to_document));
 	let handle_out = manipulators.out_handle.map(|handle| handle - anchor).filter(handle_not_under(to_document));

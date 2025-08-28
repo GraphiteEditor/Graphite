@@ -6,7 +6,7 @@ use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BO
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
-use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
+use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
@@ -27,7 +27,6 @@ use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
-use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
@@ -35,10 +34,13 @@ use graphene_std::math::quad::Quad;
 use graphene_std::path_bool::{boolean_intersect, path_bool_lib};
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Raster;
+use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
+use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
 use graphene_std::vector::style::ViewMode;
+use kurbo::{Affine, CubicBez, Line, ParamCurve, PathSeg, QuadBez};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -83,8 +85,6 @@ pub struct DocumentMessageHandler {
 	/// List of the [`LayerNodeIdentifier`]s that are currently collapsed by the user in the Layers panel.
 	/// Collapsed means that the expansion arrow isn't set to show the children of these layers.
 	pub collapsed: CollapsedLayers,
-	/// The name of the document, which is displayed in the tab and title bar of the editor.
-	pub name: String,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
 	pub commit_hash: String,
@@ -111,6 +111,12 @@ pub struct DocumentMessageHandler {
 	// Fields omitted from the saved document format
 	// =============================================
 	//
+	/// The name of the document, which is displayed in the tab and title bar of the editor.
+	#[serde(skip)]
+	pub name: String,
+	/// The path of the to the document file.
+	#[serde(skip)]
+	pub(crate) path: Option<PathBuf>,
 	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
 	#[serde(skip)]
 	breadcrumb_network_path: Vec<NodeId>,
@@ -123,9 +129,6 @@ pub struct DocumentMessageHandler {
 	/// Stack of document network snapshots for future history states.
 	#[serde(skip)]
 	document_redo_history: VecDeque<NodeNetworkInterface>,
-	/// The path of the to the document file.
-	#[serde(skip)]
-	path: Option<PathBuf>,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
 	#[serde(skip)]
 	saved_hash: Option<u64>,
@@ -157,7 +160,6 @@ impl Default for DocumentMessageHandler {
 			// ============================================
 			network_interface: default_document_network_interface(),
 			collapsed: CollapsedLayers::default(),
-			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
 			document_mode: DocumentMode::DesignMode,
@@ -170,11 +172,12 @@ impl Default for DocumentMessageHandler {
 			// =============================================
 			// Fields omitted from the saved document format
 			// =============================================
+			name: DEFAULT_DOCUMENT_NAME.to_string(),
+			path: None,
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
 			document_undo_history: VecDeque::new(),
 			document_redo_history: VecDeque::new(),
-			path: None,
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
@@ -389,7 +392,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 				}
 			}
-			DocumentMessage::DrawArtboardOverlays(overlay_context) => {
+			DocumentMessage::DrawArtboardOverlays { context: overlay_context } => {
 				if !overlay_context.visibility_settings.artboard_name() {
 					return;
 				}
@@ -580,24 +583,25 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::UpdateHints);
 				} else {
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
+					responses.add(OverlaysMessage::Draw); // Redraw overlays when graph is closed
 				}
 			}
 			DocumentMessage::GraphViewOverlayToggle => {
 				responses.add(DocumentMessage::GraphViewOverlay { open: !self.graph_view_overlay_open });
 			}
-			DocumentMessage::GridOptions(grid) => {
-				self.snapping_state.grid = grid;
+			DocumentMessage::GridOptions { options } => {
+				self.snapping_state.grid = options;
 				self.snapping_state.grid_snapping = true;
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			DocumentMessage::GridOverlays(mut overlay_context) => {
+			DocumentMessage::GridOverlays { context: mut overlay_context } => {
 				if self.snapping_state.grid_snapping {
 					grid_overlay(self, &mut overlay_context)
 				}
 			}
-			DocumentMessage::GridVisibility(enabled) => {
-				self.snapping_state.grid_snapping = enabled;
+			DocumentMessage::GridVisibility { visible } => {
+				self.snapping_state.grid_snapping = visible;
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
@@ -944,7 +948,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::RenameDocument { new_name } => {
-				self.name = new_name;
+				self.name = new_name.clone();
+
+				self.path = None;
+				self.set_save_state(false);
+
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 			}
@@ -1017,25 +1025,40 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					multiplier: scrollbar_multiplier.into(),
 				});
 			}
-			DocumentMessage::SaveDocument => {
+			DocumentMessage::SaveDocument | DocumentMessage::SaveDocumentAs => {
+				if let DocumentMessage::SaveDocumentAs = message {
+					self.path = None;
+				}
+
 				self.set_save_state(true);
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 				// Update the save status of the just saved document
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
-				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {
-					true => self.name.clone(),
-					false => self.name.clone() + FILE_SAVE_SUFFIX,
-				};
 				responses.add(FrontendMessage::TriggerSaveDocument {
 					document_id,
-					name,
+					name: format!("{}.{}", self.name.clone(), FILE_EXTENSION),
 					path: self.path.clone(),
 					content: self.serialize_document().into_bytes(),
 				})
 			}
 			DocumentMessage::SavedDocument { path } => {
 				self.path = path;
+
+				// Update the name to match the file stem
+				let document_name_from_path = self.path.as_ref().and_then(|path| {
+					if path.extension().is_some_and(|e| e == FILE_EXTENSION) {
+						path.file_stem().map(|n| n.to_string_lossy().to_string())
+					} else {
+						None
+					}
+				});
+				if let Some(name) = document_name_from_path {
+					self.name = name;
+
+					responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+					responses.add(NodeGraphMessage::UpdateNewNodeGraph);
+				}
 			}
 			DocumentMessage::SelectParentLayer => {
 				let selected_nodes = self.network_interface.selected_nodes();
@@ -1059,7 +1082,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if !parent_layers.is_empty() {
 					let nodes = parent_layers.into_iter().collect();
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
-					responses.add(BroadcastEvent::SelectionChanged);
+					responses.add(EventMessage::SelectionChanged);
 				}
 			}
 			DocumentMessage::SelectAllLayers => {
@@ -1134,7 +1157,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						} else {
 							responses.add_front(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
 						}
-						responses.add(BroadcastEvent::SelectionChanged);
+						responses.add(EventMessage::SelectionChanged);
 					} else {
 						nodes.push(id);
 					}
@@ -1203,7 +1226,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					Some(overlays_type) => overlays_type,
 					None => {
 						visibility_settings.all = visible;
-						responses.add(BroadcastEvent::ToolAbort);
+						responses.add(EventMessage::ToolAbort);
 						responses.add(OverlaysMessage::Draw);
 						return;
 					}
@@ -1226,7 +1249,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					OverlaysType::Handles => visibility_settings.handles = visible,
 				}
 
-				responses.add(BroadcastEvent::ToolAbort);
+				responses.add(EventMessage::ToolAbort);
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::SetRangeSelectionLayer { new_layer } => {
@@ -1440,12 +1463,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					let transform = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 					self.network_interface.set_document_to_viewport_transform(transform);
 					// Ensure selection box is kept in sync with the pointer when the PTZ changes
-					responses.add(SelectToolMessage::PointerMove(SelectToolPointerKeys {
-						axis_align: Key::Shift,
-						snap_angle: Key::Shift,
-						center: Key::Alt,
-						duplicate: Key::Alt,
-					}));
+					responses.add(SelectToolMessage::PointerMove {
+						modifier_keys: SelectToolPointerKeys {
+							axis_align: Key::Shift,
+							snap_angle: Key::Shift,
+							center: Key::Alt,
+							duplicate: Key::Alt,
+						},
+					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
 					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
@@ -1474,11 +1499,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::SelectionStepBack => {
 				self.network_interface.selection_step_back(&self.selection_network_path);
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::SelectionStepForward => {
 				self.network_interface.selection_step_forward(&self.selection_network_path);
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::WrapContentInArtboard { place_artboard_at_origin } => {
 				// Get bounding box of all layers
@@ -1565,6 +1590,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			ZoomCanvasTo200Percent,
 			ZoomCanvasToFitAll,
 		);
+
+		// Additional actions available on desktop
+		#[cfg(not(target_family = "wasm"))]
+		common.extend(actions!(DocumentMessageDiscriminant::SaveDocumentAs));
 
 		// Additional actions if there are any selected layers
 		if self.network_interface.selected_nodes().selected_layers(self.metadata()).next().is_some() {
@@ -1753,7 +1782,8 @@ impl DocumentMessageHandler {
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
 		let document_message_handler = serde_json::from_str::<DocumentMessageHandler>(serialized_content)
-			.or_else(|_| {
+			.or_else(|e| {
+				log::warn!("failed to directly load document with the following error: {e}. Trying old DocumentMessageHandler");
 				// TODO: Eventually remove this document upgrade code
 				#[derive(Debug, serde::Serialize, serde::Deserialize)]
 				pub struct OldDocumentMessageHandler {
@@ -2481,7 +2511,7 @@ impl DocumentMessageHandler {
 				.icon("Grid")
 				.tooltip("Grid")
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleGridVisibility))
-				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisibility(optional_input.checked).into())
+				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisibility { visible: optional_input.checked }.into())
 				.widget_holder(),
 			PopoverButton::new()
 				.popover_layout(overlay_options(&self.snapping_state.grid))
@@ -2982,10 +3012,10 @@ fn quad_to_path_lib_segments(quad: Quad) -> Vec<path_bool_lib::PathSegment> {
 }
 
 fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> Vec<path_bool_lib::PathSegment> {
-	let segment = |bezier: bezier_rs::Bezier| match bezier.handles {
-		bezier_rs::BezierHandles::Linear => path_bool_lib::PathSegment::Line(bezier.start, bezier.end),
-		bezier_rs::BezierHandles::Quadratic { handle } => path_bool_lib::PathSegment::Quadratic(bezier.start, handle, bezier.end),
-		bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => path_bool_lib::PathSegment::Cubic(bezier.start, handle_start, handle_end, bezier.end),
+	let segment = |bezier: PathSeg| match bezier {
+		PathSeg::Line(line) => path_bool_lib::PathSegment::Line(point_to_dvec2(line.p0), point_to_dvec2(line.p1)),
+		PathSeg::Quad(quad_bez) => path_bool_lib::PathSegment::Quadratic(point_to_dvec2(quad_bez.p0), point_to_dvec2(quad_bez.p1), point_to_dvec2(quad_bez.p2)),
+		PathSeg::Cubic(cubic_bez) => path_bool_lib::PathSegment::Cubic(point_to_dvec2(cubic_bez.p0), point_to_dvec2(cubic_bez.p1), point_to_dvec2(cubic_bez.p2), point_to_dvec2(cubic_bez.p3)),
 	};
 	click_targets
 		.filter_map(|target| {
@@ -2996,7 +3026,7 @@ fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'
 			}
 		})
 		.flatten()
-		.map(|bezier| segment(bezier.apply_transformation(|x| transform.transform_point2(x))))
+		.map(|bezier| segment(Affine::new(transform.to_cols_array()) * bezier))
 		.collect()
 }
 
@@ -3019,11 +3049,11 @@ impl<'a> ClickXRayIter<'a> {
 
 	/// Handles the checking of the layer where the target is a rect or path
 	fn check_layer_area_target(&mut self, click_targets: Option<&Vec<ClickTarget>>, clip: bool, layer: LayerNodeIdentifier, path: Vec<path_bool_lib::PathSegment>, transform: DAffine2) -> XRayResult {
-		// Convert back to Bezier-rs types for intersections
+		// Convert back to Kurbo types for intersections
 		let segment = |bezier: &path_bool_lib::PathSegment| match *bezier {
-			path_bool_lib::PathSegment::Line(start, end) => bezier_rs::Bezier::from_linear_dvec2(start, end),
-			path_bool_lib::PathSegment::Cubic(start, h1, h2, end) => bezier_rs::Bezier::from_cubic_dvec2(start, h1, h2, end),
-			path_bool_lib::PathSegment::Quadratic(start, h1, end) => bezier_rs::Bezier::from_quadratic_dvec2(start, h1, end),
+			path_bool_lib::PathSegment::Line(start, end) => PathSeg::Line(Line::new(dvec2_to_point(start), dvec2_to_point(end))),
+			path_bool_lib::PathSegment::Cubic(start, h1, h2, end) => PathSeg::Cubic(CubicBez::new(dvec2_to_point(start), dvec2_to_point(h1), dvec2_to_point(h2), dvec2_to_point(end))),
+			path_bool_lib::PathSegment::Quadratic(start, h1, end) => PathSeg::Quad(QuadBez::new(dvec2_to_point(start), dvec2_to_point(h1), dvec2_to_point(end))),
 			path_bool_lib::PathSegment::Arc(_, _, _, _, _, _, _) => unimplemented!(),
 		};
 		let get_clip = || path.iter().map(segment);
@@ -3072,7 +3102,10 @@ impl<'a> ClickXRayIter<'a> {
 			XRayTarget::Quad(quad) => self.check_layer_area_target(click_targets, clip, layer, quad_to_path_lib_segments(*quad), transform),
 			XRayTarget::Path(path) => self.check_layer_area_target(click_targets, clip, layer, path.clone(), transform),
 			XRayTarget::Polygon(polygon) => {
-				let polygon = polygon.iter_closed().map(|line| path_bool_lib::PathSegment::Line(line.start, line.end)).collect();
+				let polygon = polygon
+					.iter_closed()
+					.map(|line| path_bool_lib::PathSegment::Line(point_to_dvec2(line.start()), point_to_dvec2(line.end())))
+					.collect();
 				self.check_layer_area_target(click_targets, clip, layer, polygon, transform)
 			}
 		}

@@ -1,6 +1,6 @@
-use bezier_rs::{ManipulatorGroup, Subpath};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
+use graphene_core::subpath::{ManipulatorGroup, PathSegPoints, Subpath, pathseg_points};
 use graphene_core::table::{Table, TableRow, TableRowRef};
 use graphene_core::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use graphene_core::vector::style::Fill;
@@ -114,11 +114,16 @@ fn subtract<'a>(vector: impl Iterator<Item = TableRowRef<'a, Vector>>) -> Table<
 
 	let mut result_vector_table = Table::new_from_row(vector.next().map(|x| x.into_cloned()).unwrap_or_default());
 	let mut first_row = result_vector_table.iter_mut().next().expect("Expected the one row we just pushed");
+	let first_row_transform = if first_row.transform.matrix2.determinant() != 0. {
+		first_row.transform.inverse()
+	} else {
+		DAffine2::IDENTITY
+	};
 
 	let mut next_vector = vector.next();
 
 	while let Some(lower_vector) = next_vector {
-		let transform_of_lower_into_space_of_upper = first_row.transform.inverse() * *lower_vector.transform;
+		let transform_of_lower_into_space_of_upper = first_row_transform * *lower_vector.transform;
 
 		let result = &mut first_row.element;
 
@@ -330,20 +335,29 @@ fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &Subpath<Po
 	use path_bool::PathSegment;
 	let mut global_start = None;
 	let mut global_end = DVec2::ZERO;
+
 	for bezier in subpath.iter() {
 		const EPS: f64 = 1e-8;
-		let transformed = bezier.apply_transformation(|pos| transform.transform_point2(pos).mul(EPS.recip()).round().mul(EPS));
-		let start = transformed.start;
-		let end = transformed.end;
+		let transform_point = |pos: DVec2| transform.transform_point2(pos).mul(EPS.recip()).round().mul(EPS);
+
+		let PathSegPoints { p0, p1, p2, p3 } = pathseg_points(bezier);
+
+		let p0 = transform_point(p0);
+		let p1 = p1.map(transform_point);
+		let p2 = p2.map(transform_point);
+		let p3 = transform_point(p3);
+
 		if global_start.is_none() {
-			global_start = Some(start);
+			global_start = Some(p0);
 		}
-		global_end = end;
-		let segment = match transformed.handles {
-			bezier_rs::BezierHandles::Linear => PathSegment::Line(start, end),
-			bezier_rs::BezierHandles::Quadratic { handle } => PathSegment::Quadratic(start, handle, end),
-			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => PathSegment::Cubic(start, handle_start, handle_end, end),
+		global_end = p3;
+
+		let segment = match (p1, p2) {
+			(None, None) => PathSegment::Line(p0, p3),
+			(None, Some(p2)) | (Some(p2), None) => PathSegment::Quadratic(p0, p2, p3),
+			(Some(p1), Some(p2)) => PathSegment::Cubic(p0, p1, p2, p3),
 		};
+
 		path.push(segment);
 	}
 	if let Some(start) = global_start {

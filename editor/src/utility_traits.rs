@@ -60,3 +60,9 @@ pub trait HierarchicalTree {
 		""
 	}
 }
+
+pub trait ExtractField {
+	fn field_types() -> Vec<(String, usize)>;
+	fn path() -> &'static str;
+	fn print_field_types();
+}

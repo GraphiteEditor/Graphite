@@ -438,9 +438,11 @@
 					}
 
 					// When we eventually have sub-documents, this should be changed to import the document instead of opening it in a separate tab
-					if (file.name.endsWith(".graphite")) {
+					const graphiteFileSuffix = "." + editor.handle.fileExtension();
+					if (file.name.endsWith(graphiteFileSuffix)) {
 						const content = await file.text();
-						editor.handle.openDocumentFile(file.name, content);
+						const documentName = file.name.slice(0, -graphiteFileSuffix.length);
+						editor.handle.openDocumentFile(documentName, content);
 						return;
 					}
 				});
@@ -768,7 +770,7 @@
 						width: 100%;
 
 						&:disabled {
-							-webkit-user-select: none; // Required as of Safari 15.0 (Graphite's minimum version) through the latest release
+							-webkit-user-select: none; // Still required by Safari as of 2025
 							user-select: none;
 							// Workaround for `user-select: none` not working on <input> elements
 							pointer-events: none;

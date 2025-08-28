@@ -7,6 +7,7 @@ use super::{PointId, SegmentDomain, SegmentId, StrokeId, Vector, VectorExt};
 use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
+use crate::subpath::{BezierHandles, ManipulatorGroup};
 use crate::table::{Table, TableRow, TableRowMut};
 use crate::transform::{Footprint, ReferencePoint, Transform};
 use crate::vector::PointDomain;
@@ -17,7 +18,6 @@ use crate::vector::misc::{handles_to_segment, segment_to_handles};
 use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, Graphic, OwnedContextImpl};
-use bezier_rs::ManipulatorGroup;
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
@@ -827,11 +827,11 @@ async fn points_to_polyline(_: impl Ctx, mut points: Table<Vector>, #[default(tr
 
 		if points_count > 2 {
 			(0..points_count - 1).for_each(|i| {
-				segment_domain.push(SegmentId::generate(), i, i + 1, bezier_rs::BezierHandles::Linear, StrokeId::generate());
+				segment_domain.push(SegmentId::generate(), i, i + 1, BezierHandles::Linear, StrokeId::generate());
 			});
 
 			if closed {
-				segment_domain.push(SegmentId::generate(), points_count - 1, 0, bezier_rs::BezierHandles::Linear, StrokeId::generate());
+				segment_domain.push(SegmentId::generate(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
 
 				row.element
 					.region_domain
@@ -864,7 +864,7 @@ async fn offset_path(_: impl Ctx, content: Table<Vector>, distance: f64, join: S
 			for mut bezpath in bezpaths {
 				bezpath.apply_affine(transform);
 
-				// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
+				// Taking the existing stroke data and passing it to Kurbo to generate new paths.
 				let mut bezpath_out = offset_bezpath(
 					&bezpath,
 					-distance,
@@ -938,6 +938,35 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 
 			row.element = result;
 			row
+		})
+		.collect()
+}
+
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
+async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
+	content
+		.into_iter()
+		.flat_map(|row| {
+			let style = row.element.style.clone();
+			let transform = row.transform;
+			let alpha_blending = row.alpha_blending;
+			let source_node_id = row.source_node_id;
+
+			row.element
+				.stroke_bezpath_iter()
+				.map(move |bezpath| {
+					let mut vector = Vector::default();
+					vector.append_bezpath(bezpath);
+					vector.style = style.clone();
+
+					TableRow {
+						element: vector,
+						transform,
+						alpha_blending,
+						source_node_id,
+					}
+				})
+				.collect::<Vec<TableRow<Vector>>>()
 		})
 		.collect()
 }
@@ -1065,11 +1094,11 @@ async fn sample_polyline(
 		.collect()
 }
 
-/// Splits a path at a given progress from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
+/// Cuts a path at a given progress from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
 ///
 /// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn split_path(_: impl Ctx, mut content: Table<Vector>, progress: Fraction, parameterized_distance: bool, reverse: bool) -> Table<Vector> {
+async fn cut_path(_: impl Ctx, mut content: Table<Vector>, progress: Fraction, parameterized_distance: bool, reverse: bool) -> Table<Vector> {
 	let euclidian = !parameterized_distance;
 
 	let bezpaths = content
@@ -1108,9 +1137,9 @@ async fn split_path(_: impl Ctx, mut content: Table<Vector>, progress: Fraction,
 	content
 }
 
-/// Splits path segments into separate disconnected pieces where each is a distinct subpath.
+/// Cuts path segments into separate disconnected pieces where each is a distinct subpath.
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn split_segments(_: impl Ctx, mut content: Table<Vector>) -> Table<Vector> {
+async fn cut_segments(_: impl Ctx, mut content: Table<Vector>) -> Table<Vector> {
 	// Iterate through every segment and make a copy of each of its endpoints, then reassign each segment's endpoints to its own unique point copy
 	for row in content.iter_mut() {
 		let points_count = row.element.point_domain.ids().len();
@@ -1351,7 +1380,7 @@ async fn spline(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 
 					let handle_start = first_handles[i];
 					let handle_end = positions[next_index] * 2. - first_handles[next_index];
-					let handles = bezier_rs::BezierHandles::Cubic { handle_start, handle_end };
+					let handles = BezierHandles::Cubic { handle_start, handle_end };
 
 					segment_domain.push(SegmentId::generate(), start_index, end_index, handles, stroke_id);
 				}
@@ -1405,14 +1434,14 @@ async fn jitter_points(
 				}
 
 				match handles {
-					bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
+					BezierHandles::Cubic { handle_start, handle_end } => {
 						*handle_start += start_delta;
 						*handle_end += end_delta;
 					}
-					bezier_rs::BezierHandles::Quadratic { handle } => {
+					BezierHandles::Quadratic { handle } => {
 						*handle = row.transform.transform_point2(*handle) + (start_delta + end_delta) / 2.;
 					}
-					bezier_rs::BezierHandles::Linear => {}
+					BezierHandles::Linear => {}
 				}
 			}
 
@@ -1846,7 +1875,7 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 		let mut next_id = vector.segment_domain.next_id();
 
 		for &[start, end] in new_segments {
-			let handles = bezier_rs::BezierHandles::Linear;
+			let handles = BezierHandles::Linear;
 			vector.segment_domain.push(next_id.next_id(), start, end, handles, StrokeId::ZERO);
 		}
 	}

@@ -2,6 +2,7 @@
 members = [
 	"editor",
 	"desktop",
+	"desktop/wrapper",
 	"proc-macros",
 	"frontend/wasm",
 	"node-graph/gapplication-io",
@@ -20,9 +21,7 @@ members = [
 	"node-graph/preprocessor",
 	"libraries/dyn-any",
 	"libraries/path-bool",
-	"libraries/bezier-rs",
 	"libraries/math-parser",
-	"website/other/bezier-rs-demos/wasm",
 ]
 default-members = [
 	"editor",
@@ -44,9 +43,14 @@ resolver = "2"
 
 [workspace.dependencies]
 # Local dependencies
-bezier-rs = { path = "libraries/bezier-rs", features = ["dyn-any", "serde"] }
-dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam", "reqwest", "log-bad-types", "rc"] }
-preprocessor = { path = "node-graph/preprocessor"}
+dyn-any = { path = "libraries/dyn-any", features = [
+	"derive",
+	"glam",
+	"reqwest",
+	"log-bad-types",
+	"rc",
+] }
+preprocessor = { path = "node-graph/preprocessor" }
 math-parser = { path = "libraries/math-parser" }
 path-bool = { path = "libraries/path-bool" }
 graphene-application-io = { path = "node-graph/gapplication-io" }
@@ -80,9 +84,8 @@ convert_case = "0.7"
 derivative = "2.2"
 thiserror = "2"
 anyhow = "1.0"
-proc-macro2 = { version = "1", features = [ "span-locations" ] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1.0"
-axum = "0.8"
 chrono = "0.4"
 ron = "0.8"
 fastnoise-lite = "1.1"
@@ -122,16 +125,24 @@ resvg = "0.44"
 usvg = "0.44"
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }
 rand_chacha = "0.9"
-glam = { version = "0.29", default-features = false, features = ["serde", "scalar-math", "debug-glam-assert"] }
+glam = { version = "0.29", default-features = false, features = [
+	"nostd-libm",
+	"scalar-math",
+	"bytemuck",
+] }
 base64 = "0.22"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp"] }
+image = { version = "0.25", default-features = false, features = [
+	"png",
+	"jpeg",
+	"bmp",
+] }
 parley = "0.5.0"
 skrifa = "0.32.0"
 pretty_assertions = "1.4.1"
 fern = { version = "0.7", features = ["colored"] }
 num_enum = "0.7"
 num-derive = "0.4"
-num-traits = { version = "0.2", default-features = false, features = ["i128"] }
+num-traits = { version = "0.2", default-features = false, features = ["libm"] }
 specta = { version = "2.0.0-rc.22", features = [
 	"glam",
 	"derive",
@@ -149,6 +160,7 @@ syn = { version = "2.0", default-features = false, features = [
 	"proc-macro",
 ] }
 kurbo = { version = "0.11.0", features = ["serde"] }
+lyon_geom = "1.0"
 petgraph = { version = "0.7.1", default-features = false, features = [
 	"graphmap",
 ] }

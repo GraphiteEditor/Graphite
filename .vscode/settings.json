@@ -35,16 +35,15 @@
 	"rust-analyzer.cargo.allTargets": false,
 	// ESLint config
 	"eslint.format.enable": true,
-	"eslint.workingDirectories": ["./frontend", "./website/other/bezier-rs-demos", "./website"],
+	"eslint.workingDirectories": ["./frontend", "./website"],
 	"eslint.validate": ["javascript", "typescript", "svelte"],
 	// Svelte config
 	"svelte.plugin.svelte.compilerWarnings": {
-		// NOTICE: Keep this list in sync with the list in `frontend/vite.config.ts`
-		"css-unused-selector": "ignore",
-		"vite-plugin-svelte-css-no-scopable-elements": "ignore",
-		"a11y-no-static-element-interactions": "ignore",
-		"a11y-no-noninteractive-element-interactions": "ignore",
-		"a11y-click-events-have-key-events": "ignore"
+		"css-unused-selector": "ignore", // NOTICE: Keep this list in sync with the list in `frontend/vite.config.ts`
+		"vite-plugin-svelte-css-no-scopable-elements": "ignore", // NOTICE: Keep this list in sync with the list in `frontend/vite.config.ts`
+		"a11y-no-static-element-interactions": "ignore", // NOTICE: Keep this list in sync with the list in `frontend/vite.config.ts`
+		"a11y-no-noninteractive-element-interactions": "ignore", // NOTICE: Keep this list in sync with the list in `frontend/vite.config.ts`
+		"a11y-click-events-have-key-events": "ignore" // NOTICE: Keep this list in sync with the list in `frontend/vite.config.ts`
 	},
 	// VS Code config
 	"html.format.wrapLineLength": 200,

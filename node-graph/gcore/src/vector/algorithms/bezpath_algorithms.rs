@@ -1,10 +1,12 @@
 use super::intersection::bezpath_intersections;
 use super::poisson_disk::poisson_disk_sample;
-use super::util::segment_tangent;
+use super::util::pathseg_tangent;
+use crate::math::polynomial::pathseg_to_parametric_polynomial;
 use crate::vector::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
 use crate::vector::misc::{PointSpacingType, dvec2_to_point, point_to_dvec2};
 use glam::{DMat2, DVec2};
-use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, QuadBez, Rect, Shape};
+use kurbo::common::{solve_cubic, solve_quadratic};
+use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
 use std::f64::consts::{FRAC_PI_2, PI};
 
 /// Splits the [`BezPath`] at segment index at `t` value which lie in the range of [0, 1].
@@ -187,6 +189,82 @@ pub enum TValue {
 	Euclidean(f64),
 }
 
+/// Default LUT step size in `compute_lookup_table` function.
+pub const DEFAULT_LUT_STEP_SIZE: usize = 10;
+
+/// Return a selection of equidistant points on the bezier curve.
+/// If no value is provided for `steps`, then the function will default `steps` to be 10.
+pub fn pathseg_compute_lookup_table(segment: PathSeg, steps: Option<usize>, eucliean: bool) -> impl Iterator<Item = DVec2> {
+	let steps = steps.unwrap_or(DEFAULT_LUT_STEP_SIZE);
+
+	(0..=steps).map(move |t| {
+		let tvalue = if eucliean {
+			TValue::Euclidean(t as f64 / steps as f64)
+		} else {
+			TValue::Parametric(t as f64 / steps as f64)
+		};
+		let t = eval_pathseg(segment, tvalue);
+		point_to_dvec2(segment.eval(t))
+	})
+}
+
+/// Returns an `Iterator` containing all possible parametric `t`-values at the given `x`-coordinate.
+pub fn pathseg_find_tvalues_for_x(segment: PathSeg, x: f64) -> impl Iterator<Item = f64> + use<> {
+	match segment {
+		PathSeg::Line(Line { p0, p1 }) => {
+			// If the transformed linear bezier is on the x-axis, `a` and `b` will both be zero and `solve_linear` will return no roots
+			let a = p1.x - p0.x;
+			let b = p0.x - x;
+
+			// Find the roots of the linear equation `ax + b`.
+			// There exist roots when `a` is not 0
+			if a.abs() > MAX_ABSOLUTE_DIFFERENCE { [Some(-b / a), None, None] } else { [None; 3] }
+		}
+		PathSeg::Quad(QuadBez { p0, p1, p2 }) => {
+			let a = p2.x - 2.0 * p1.x + p0.x;
+			let b = 2.0 * (p1.x - p0.x);
+			let c = p0.x - x;
+			let r = solve_quadratic(c, b, a);
+			[r.first().copied(), r.get(1).copied(), None]
+		}
+		PathSeg::Cubic(CubicBez { p0, p1, p2, p3 }) => {
+			let a = p3.x - 3.0 * p2.x + 3.0 * p1.x - p0.x;
+			let b = 3.0 * (p2.x - 2.0 * p1.x + p0.x);
+			let c = 3.0 * (p1.x - p0.x);
+			let d = p0.x - x;
+			let r = solve_cubic(d, c, b, a);
+			[r.first().copied(), r.get(1).copied(), r.get(2).copied()]
+		}
+	}
+	.into_iter()
+	.flatten()
+	.filter(|&t| (0.0..1.).contains(&t))
+}
+
+/// Find the `t`-value(s) such that the normal(s) at `t` pass through the specified point.
+pub fn pathseg_normals_to_point(segment: PathSeg, point: Point) -> Vec<f64> {
+	// We solve deriv(t) dot (self(t) - point) = 0.
+	let (mut x, mut y) = pathseg_to_parametric_polynomial(segment);
+	let x = x.coefficients_mut();
+	let y = y.coefficients_mut();
+	x[0] -= point.x;
+	y[0] -= point.y;
+	let poly = poly_cool::Poly::new([
+		x[0] * x[1] + y[0] * y[1],
+		x[1] * x[1] + y[1] * y[1] + 2. * (x[0] * x[2] + y[0] * y[2]),
+		3. * (x[2] * x[1] + y[2] * y[1]) + 3. * (x[0] * x[3] + y[0] * y[3]),
+		4. * (x[3] * x[1] + y[3] * y[1]) + 2. * (x[2] * x[2] + y[2] * y[2]),
+		5. * (x[3] * x[2] + y[3] * y[2]),
+		3. * (x[3] * x[3] + y[3] * y[3]),
+	]);
+	poly.roots_between(0., 1., 1e-8)
+}
+
+/// Find the `t`-value(s) such that the tangent(s) at `t` pass through the given point.
+pub fn pathseg_tangents_to_point(segment: PathSeg, point: Point) -> Vec<f64> {
+	segment.to_cubic().tangents_to_point(point).to_vec()
+}
+
 /// Return the subsegment for the given [TValue] range. Returns None if parametric value of `t1` is greater than `t2`.
 pub fn trim_pathseg(segment: PathSeg, t1: TValue, t2: TValue) -> Option<PathSeg> {
 	let t1 = eval_pathseg(segment, t1);
@@ -199,6 +277,68 @@ pub fn eval_pathseg(segment: PathSeg, t_value: TValue) -> f64 {
 	match t_value {
 		TValue::Parametric(t) => t,
 		TValue::Euclidean(t) => eval_pathseg_euclidean(segment, t, DEFAULT_ACCURACY),
+	}
+}
+
+/// Return an approximation of the length centroid, together with the length, of the bezier curve.
+///
+/// The length centroid is the center of mass for the arc length of the Bezier segment.
+/// An infinitely thin wire forming the Bezier segment's shape would balance at this point.
+///
+/// - `accuracy` is used to approximate the curve.
+pub(crate) fn pathseg_length_centroid_and_length(segment: PathSeg, accuracy: Option<f64>) -> (Vec2, f64) {
+	match segment {
+		PathSeg::Line(line) => ((line.start().to_vec2() + line.end().to_vec2()) / 2., (line.start().to_vec2() - line.end().to_vec2()).length()),
+		PathSeg::Quad(quad_bez) => {
+			let QuadBez { p0, p1, p2 } = quad_bez;
+			// Use Casteljau subdivision, noting that the length is more than the straight line distance from start to end but less than the straight line distance through the handles
+			fn recurse(a0: Vec2, a1: Vec2, a2: Vec2, accuracy: f64, level: u8) -> (f64, Vec2) {
+				let lower = (a2 - a1).length();
+				let upper = (a1 - a0).length() + (a2 - a1).length();
+				if upper - lower <= 2. * accuracy || level >= 8 {
+					let length = (lower + upper) / 2.;
+					return (length, length * (a0 + a1 + a2) / 3.);
+				}
+
+				let b1 = 0.5 * (a0 + a1);
+				let c1 = 0.5 * (a1 + a2);
+				let b2 = 0.5 * (b1 + c1);
+
+				let (length1, centroid_part1) = recurse(a0, b1, b2, 0.5 * accuracy, level + 1);
+				let (length2, centroid_part2) = recurse(b2, c1, a2, 0.5 * accuracy, level + 1);
+				(length1 + length2, centroid_part1 + centroid_part2)
+			}
+
+			let (length, centroid_parts) = recurse(p0.to_vec2(), p1.to_vec2(), p2.to_vec2(), accuracy.unwrap_or_default(), 0);
+			(centroid_parts / length, length)
+		}
+		PathSeg::Cubic(cubic_bez) => {
+			let CubicBez { p0, p1, p2, p3 } = cubic_bez;
+
+			// Use Casteljau subdivision, noting that the length is more than the straight line distance from start to end but less than the straight line distance through the handles
+			fn recurse(a0: Vec2, a1: Vec2, a2: Vec2, a3: Vec2, accuracy: f64, level: u8) -> (f64, Vec2) {
+				let lower = (a3 - a0).length();
+				let upper = (a1 - a0).length() + (a2 - a1).length() + (a3 - a2).length();
+				if upper - lower <= 2. * accuracy || level >= 8 {
+					let length = (lower + upper) / 2.;
+					return (length, length * (a0 + a1 + a2 + a3) / 4.);
+				}
+
+				let b1 = 0.5 * (a0 + a1);
+				let t0 = 0.5 * (a1 + a2);
+				let c1 = 0.5 * (a2 + a3);
+				let b2 = 0.5 * (b1 + t0);
+				let c2 = 0.5 * (t0 + c1);
+				let b3 = 0.5 * (b2 + c2);
+
+				let (length1, centroid_part1) = recurse(a0, b1, b2, b3, 0.5 * accuracy, level + 1);
+				let (length2, centroid_part2) = recurse(b3, c2, c1, a3, 0.5 * accuracy, level + 1);
+				(length1 + length2, centroid_part1 + centroid_part2)
+			}
+
+			let (length, centroid_parts) = recurse(p0.to_vec2(), p1.to_vec2(), p2.to_vec2(), p3.to_vec2(), accuracy.unwrap_or_default(), 0);
+			(centroid_parts / length, length)
+		}
 	}
 }
 
@@ -392,8 +532,8 @@ pub fn miter_line_join(bezpath1: &BezPath, bezpath2: &BezPath, miter_limit: Opti
 	let in_segment = bezpath1.segments().last()?;
 	let out_segment = bezpath2.segments().next()?;
 
-	let in_tangent = segment_tangent(in_segment, 1.);
-	let out_tangent = segment_tangent(out_segment, 0.);
+	let in_tangent = pathseg_tangent(in_segment, 1.);
+	let out_tangent = pathseg_tangent(out_segment, 0.);
 
 	if in_tangent == DVec2::ZERO || out_tangent == DVec2::ZERO {
 		// Avoid panic from normalizing zero vectors
@@ -454,7 +594,7 @@ pub fn round_line_join(bezpath1: &BezPath, bezpath2: &BezPath, center: DVec2) ->
 	let center_to_left = left - center;
 
 	let in_segment = bezpath1.segments().last();
-	let in_tangent = in_segment.map(|in_segment| segment_tangent(in_segment, 1.));
+	let in_tangent = in_segment.map(|in_segment| pathseg_tangent(in_segment, 1.));
 
 	let mut angle = center_to_right.angle_to(center_to_left) / 2.;
 	let mut arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
@@ -468,8 +608,9 @@ pub fn round_line_join(bezpath1: &BezPath, bezpath2: &BezPath, center: DVec2) ->
 }
 
 /// Returns `true` if the `bezpath1` is completely inside the `bezpath2`.
+/// NOTE: `bezpath2` must be a closed path to get correct results.
 pub fn bezpath_is_inside_bezpath(bezpath1: &BezPath, bezpath2: &BezPath, accuracy: Option<f64>, minimum_separation: Option<f64>) -> bool {
-	// Eliminate any possibility of one being inside the other, if either of them is empty
+	// Eliminate any possibility of one being inside the other, if either of them are empty
 	if bezpath1.is_empty() || bezpath2.is_empty() {
 		return false;
 	}
@@ -481,7 +622,7 @@ pub fn bezpath_is_inside_bezpath(bezpath1: &BezPath, bezpath2: &BezPath, accurac
 	// Reasoning:
 	// If the inner bezpath bounding box is larger than the outer bezpath bounding box in any direction
 	// then the inner bezpath is intersecting with or outside the outer bezpath.
-	if !outer_bbox.contains_rect(inner_bbox) {
+	if !outer_bbox.contains_rect(inner_bbox) && outer_bbox.intersect(inner_bbox).is_zero_area() {
 		return false;
 	}
 

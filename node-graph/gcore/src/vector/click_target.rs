@@ -1,8 +1,12 @@
+use super::algorithms::{bezpath_algorithms::bezpath_is_inside_bezpath, intersection::filtered_segment_intersections};
+use super::misc::dvec2_to_point;
 use crate::math::math_ext::QuadExt;
 use crate::math::quad::Quad;
+use crate::subpath::Subpath;
 use crate::vector::PointId;
-use bezier_rs::Subpath;
+use crate::vector::misc::point_to_dvec2;
 use glam::{DAffine2, DMat2, DVec2};
+use kurbo::{Affine, BezPath, ParamCurve, PathSeg, Shape};
 
 #[derive(Copy, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FreePoint {
@@ -99,7 +103,7 @@ impl ClickTarget {
 	}
 
 	/// Does the click target intersect the path
-	pub fn intersect_path<It: Iterator<Item = bezier_rs::Bezier>>(&self, mut bezier_iter: impl FnMut() -> It, layer_transform: DAffine2) -> bool {
+	pub fn intersect_path<It: Iterator<Item = PathSeg>>(&self, mut bezier_iter: impl FnMut() -> It, layer_transform: DAffine2) -> bool {
 		// Check if the matrix is not invertible
 		let mut layer_transform = layer_transform;
 		if layer_transform.matrix2.determinant().abs() <= f64::EPSILON {
@@ -107,25 +111,27 @@ impl ClickTarget {
 		}
 
 		let inverse = layer_transform.inverse();
-		let mut bezier_iter = || bezier_iter().map(|bezier| bezier.apply_transformation(|point| inverse.transform_point2(point)));
+		let mut bezier_iter = || bezier_iter().map(|bezier| Affine::new(inverse.to_cols_array()) * bezier);
 
 		match self.target_type() {
 			ClickTargetType::Subpath(subpath) => {
 				// Check if outlines intersect
-				let outline_intersects = |path_segment: bezier_rs::Bezier| bezier_iter().any(|line| !path_segment.intersections(&line, None, None).is_empty());
+				let outline_intersects = |path_segment: PathSeg| bezier_iter().any(|line| !filtered_segment_intersections(path_segment, line, None, None).is_empty());
 				if subpath.iter().any(outline_intersects) {
 					return true;
 				}
 				// Check if selection is entirely within the shape
-				if subpath.closed() && bezier_iter().next().is_some_and(|bezier| subpath.contains_point(bezier.start)) {
+				if subpath.closed() && bezier_iter().next().is_some_and(|bezier| subpath.contains_point(point_to_dvec2(bezier.start()))) {
 					return true;
 				}
 
+				let mut selection = BezPath::from_path_segments(bezier_iter());
+				selection.close_path();
+
 				// Check if shape is entirely within selection
-				let any_point_from_subpath = subpath.manipulator_groups().first().map(|manipulators| manipulators.anchor);
-				any_point_from_subpath.is_some_and(|shape_point| bezier_iter().map(|bezier| bezier.winding(shape_point)).sum::<i32>() != 0)
+				bezpath_is_inside_bezpath(&subpath.to_bezpath(), &selection, None, None)
 			}
-			ClickTargetType::FreePoint(point) => bezier_iter().map(|bezier: bezier_rs::Bezier| bezier.winding(point.position)).sum::<i32>() != 0,
+			ClickTargetType::FreePoint(point) => bezier_iter().map(|bezier: PathSeg| bezier.winding(dvec2_to_point(point.position))).sum::<i32>() != 0,
 		}
 	}
 
@@ -144,7 +150,7 @@ impl ClickTarget {
 		// Allows for selecting lines
 		// TODO: actual intersection of stroke
 		let inflated_quad = Quad::from_box(target_bounds);
-		self.intersect_path(|| inflated_quad.bezier_lines(), layer_transform)
+		self.intersect_path(|| inflated_quad.to_lines(), layer_transform)
 	}
 
 	/// Does the click target intersect the point (not accounting for stroke size)

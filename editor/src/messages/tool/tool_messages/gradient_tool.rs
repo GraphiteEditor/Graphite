@@ -24,7 +24,7 @@ pub struct GradientOptions {
 pub enum GradientToolMessage {
 	// Standard messages
 	Abort,
-	Overlays(OverlayContext),
+	Overlays { context: OverlayContext },
 
 	// Tool-specific messages
 	DeleteStop,
@@ -33,7 +33,7 @@ pub enum GradientToolMessage {
 	PointerMove { constrain_axis: Key },
 	PointerOutsideViewport { constrain_axis: Key },
 	PointerUp,
-	UpdateOptions(GradientOptionsUpdate),
+	UpdateOptions { options: GradientOptionsUpdate },
 }
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -56,11 +56,11 @@ impl ToolMetadata for GradientTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for GradientTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		let ToolMessage::Gradient(GradientToolMessage::UpdateOptions(action)) = message else {
+		let ToolMessage::Gradient(GradientToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, false);
 			return;
 		};
-		match action {
+		match options {
 			GradientOptionsUpdate::Type(gradient_type) => {
 				self.options.gradient_type = gradient_type;
 				// Update the selected gradient if it exists
@@ -91,14 +91,18 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 impl LayoutHolder for GradientTool {
 	fn layout(&self) -> Layout {
 		let gradient_type = RadioInput::new(vec![
-			RadioEntryData::new("Linear")
-				.label("Linear")
-				.tooltip("Linear gradient")
-				.on_update(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Linear)).into()),
-			RadioEntryData::new("Radial")
-				.label("Radial")
-				.tooltip("Radial gradient")
-				.on_update(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Radial)).into()),
+			RadioEntryData::new("Linear").label("Linear").tooltip("Linear gradient").on_update(move |_| {
+				GradientToolMessage::UpdateOptions {
+					options: GradientOptionsUpdate::Type(GradientType::Linear),
+				}
+				.into()
+			}),
+			RadioEntryData::new("Radial").label("Radial").tooltip("Radial gradient").on_update(move |_| {
+				GradientToolMessage::UpdateOptions {
+					options: GradientOptionsUpdate::Type(GradientType::Radial),
+				}
+				.into()
+			}),
 		])
 		.selected_index(Some((self.selected_gradient().unwrap_or(self.options.gradient_type) == GradientType::Radial) as u32))
 		.widget_holder();
@@ -224,7 +228,7 @@ impl ToolTransition for GradientTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(GradientToolMessage::Abort.into()),
-			overlay_provider: Some(|overlay_context| GradientToolMessage::Overlays(overlay_context).into()),
+			overlay_provider: Some(|context| GradientToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
 	}
@@ -256,7 +260,7 @@ impl Fsm for GradientToolFsmState {
 
 		let ToolMessage::Gradient(event) = event else { return self };
 		match (self, event) {
-			(_, GradientToolMessage::Overlays(mut overlay_context)) => {
+			(_, GradientToolMessage::Overlays { context: mut overlay_context }) => {
 				let selected = tool_data.selected_gradient.as_ref();
 
 				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
@@ -548,7 +552,7 @@ mod test_gradient {
 	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<(Fill, DAffine2)> {
 		let instrumented = match editor.eval_graph().await {
 			Ok(instrumented) => instrumented,
-			Err(e) => panic!("Failed to evaluate graph: {}", e),
+			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 
 		let document = editor.active_document();
@@ -569,7 +573,7 @@ mod test_gradient {
 		let (fill, transform) = fills.first().unwrap();
 		let gradient = fill.as_gradient().expect("Expected gradient fill type");
 
-		(gradient.clone(), transform.clone())
+		(gradient.clone(), *transform)
 	}
 
 	fn assert_stops_at_positions(actual_positions: &[f64], expected_positions: &[f64], tolerance: f64) {
@@ -582,7 +586,7 @@ mod test_gradient {
 		);
 
 		for (i, (actual, expected)) in actual_positions.iter().zip(expected_positions.iter()).enumerate() {
-			assert!((actual - expected).abs() < tolerance, "Stop {}: Expected position near {}, got {}", i, expected, actual);
+			assert!((actual - expected).abs() < tolerance, "Stop {i}: Expected position near {expected}, got {actual}");
 		}
 	}
 
@@ -709,8 +713,7 @@ mod test_gradient {
 		let positions: Vec<f64> = updated_gradient.stops.iter().map(|(pos, _)| *pos).collect();
 		assert!(
 			positions.iter().any(|pos| (pos - 0.5).abs() < 0.1),
-			"Expected to find a stop near position 0.5, but found: {:?}",
-			positions
+			"Expected to find a stop near position 0.5, but found: {positions:?}"
 		);
 	}
 
@@ -778,7 +781,7 @@ mod test_gradient {
 
 		// Verify the end point has been updated to the new position
 		let updated_end = transform.transform_point2(updated_gradient.end);
-		assert!(updated_end.abs_diff_eq(DVec2::new(100., 50.), 1e-10), "Expected end point at (100, 50), got {:?}", updated_end);
+		assert!(updated_end.abs_diff_eq(DVec2::new(100., 50.), 1e-10), "Expected end point at (100, 50), got {updated_end:?}");
 	}
 
 	#[tokio::test]

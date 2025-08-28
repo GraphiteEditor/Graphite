@@ -462,28 +462,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
-name = "bezier-rs"
-version = "0.4.0"
-dependencies = [
- "dyn-any",
- "glam",
- "kurbo",
- "poly-cool",
- "serde",
-]
-
-[[package]]
-name = "bezier-rs-wasm"
-version = "0.0.0"
-dependencies = [
- "bezier-rs",
- "glam",
- "js-sys",
- "log",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "bincode"
 version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1799,6 +1777,7 @@ version = "0.29.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8babf46d4c1c9d92deac9f7be466f76dfc4482b6452fc5024b5e8daf6ffeb3ee"
 dependencies = [
+ "bytemuck",
  "libm",
  "serde",
 ]
@@ -1885,7 +1864,6 @@ dependencies = [
 name = "graph-craft"
 version = "0.1.0"
 dependencies = [
- "bezier-rs",
  "criterion",
  "dyn-any",
  "glam",
@@ -1963,7 +1941,6 @@ name = "graphene-core"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "bezier-rs",
  "bytemuck",
  "ctor",
  "dyn-any",
@@ -1972,10 +1949,12 @@ dependencies = [
  "image",
  "kurbo",
  "log",
+ "lyon_geom",
  "node-macro",
  "num-traits",
  "parley",
  "petgraph 0.7.1",
+ "poly-cool",
  "rand 0.9.1",
  "rand_chacha 0.9.0",
  "rustc-hash 2.1.1",
@@ -2020,7 +1999,6 @@ dependencies = [
 name = "graphene-path-bool"
 version = "0.1.0"
 dependencies = [
- "bezier-rs",
  "dyn-any",
  "glam",
  "graphene-core",
@@ -2035,7 +2013,6 @@ dependencies = [
 name = "graphene-raster-nodes"
 version = "0.1.0"
 dependencies = [
- "bezier-rs",
  "bytemuck",
  "dyn-any",
  "fastnoise-lite",
@@ -2044,8 +2021,10 @@ dependencies = [
  "graphene-core",
  "graphene-core-shaders",
  "image",
+ "kurbo",
  "ndarray",
  "node-macro",
+ "num-traits",
  "rand 0.9.1",
  "rand_chacha 0.9.0",
  "serde",
@@ -2058,10 +2037,7 @@ name = "graphene-std"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "bytemuck",
  "dyn-any",
- "fastnoise-lite",
- "futures",
  "glam",
  "graph-craft",
  "graphene-application-io",
@@ -2073,10 +2049,7 @@ dependencies = [
  "graphene-svg-renderer",
  "image",
  "log",
- "ndarray",
  "node-macro",
- "rand 0.9.1",
- "rand_chacha 0.9.0",
  "reqwest",
  "tokio",
  "vello",
@@ -2091,10 +2064,10 @@ name = "graphene-svg-renderer"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "bezier-rs",
  "dyn-any",
  "glam",
  "graphene-core",
+ "kurbo",
  "log",
  "num-traits",
  "serde",
@@ -2106,17 +2079,19 @@ dependencies = [
 name = "graphite-desktop"
 version = "0.1.0"
 dependencies = [
+ "ash",
  "bytemuck",
  "cef",
+ "core-foundation",
  "derivative",
  "dirs",
  "futures",
  "glam",
- "graph-craft",
- "graphene-std",
- "graphite-editor",
- "image",
+ "graphite-desktop-wrapper",
  "include_dir",
+ "libc",
+ "objc2-io-surface",
+ "objc2-metal 0.3.1",
  "open",
  "rfd",
  "ron",
@@ -2125,8 +2100,26 @@ dependencies = [
  "tracing-subscriber",
  "vello",
  "wgpu",
- "wgpu-executor",
+ "windows",
  "winit",
+]
+
+[[package]]
+name = "graphite-desktop-wrapper"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "futures",
+ "graph-craft",
+ "graphene-std",
+ "graphite-editor",
+ "image",
+ "ron",
+ "thiserror 2.0.12",
+ "tracing",
+ "vello",
+ "wgpu",
+ "wgpu-executor",
 ]
 
 [[package]]
@@ -2134,9 +2127,7 @@ name = "graphite-editor"
 version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
- "bezier-rs",
  "bitflags 2.9.1",
- "bytemuck",
  "derivative",
  "dyn-any",
  "env_logger",
@@ -2152,18 +2143,15 @@ dependencies = [
  "num_enum",
  "once_cell",
  "preprocessor",
- "ron",
  "serde",
  "serde_json",
  "specta",
  "spin",
  "thiserror 2.0.12",
  "tokio",
- "tracing",
  "usvg",
  "vello",
  "wasm-bindgen",
- "wasm-bindgen-futures",
  "web-sys",
  "wgpu-executor",
 ]
@@ -3014,6 +3002,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
+name = "lyon_geom"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8af69edc087272df438b3ee436c4bb6d7c04aa8af665cfd398feae627dbd8570"
+dependencies = [
+ "arrayvec",
+ "euclid",
+ "num-traits",
+]
+
+[[package]]
 name = "malloc_buf"
 version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3498,7 +3497,7 @@ dependencies = [
  "block2 0.5.1",
  "objc2 0.5.2",
  "objc2-foundation 0.2.2",
- "objc2-metal",
+ "objc2-metal 0.2.2",
 ]
 
 [[package]]
@@ -3554,6 +3553,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-io-surface"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7282e9ac92529fa3457ce90ebb15f4ecbc383e8338060960760fa2cf75420c3c"
+dependencies = [
+ "bitflags 2.9.1",
+ "libc",
+ "objc2 0.6.1",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.1",
+]
+
+[[package]]
 name = "objc2-link-presentation"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3578,6 +3590,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-metal"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f246c183239540aab1782457b35ab2040d4259175bd1d0c58e46ada7b47a874"
+dependencies = [
+ "bitflags 2.9.1",
+ "block2 0.6.1",
+ "dispatch2",
+ "objc2 0.6.1",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.1",
+]
+
+[[package]]
 name = "objc2-quartz-core"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3587,7 +3613,7 @@ dependencies = [
  "block2 0.5.1",
  "objc2 0.5.2",
  "objc2-foundation 0.2.2",
- "objc2-metal",
+ "objc2-metal 0.2.2",
 ]
 
 [[package]]
@@ -3832,9 +3858,13 @@ dependencies = [
  "glam",
  "glob",
  "image",
+ "lyon_geom",
  "regex",
  "resvg",
+ "roots",
+ "rustc-hash 2.1.1",
  "slotmap",
+ "smallvec",
  "svg",
 ]
 
@@ -4661,6 +4691,12 @@ dependencies = [
  "serde",
  "serde_derive",
 ]
+
+[[package]]
+name = "roots"
+version = "0.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "082f11ffa03bbef6c2c6ea6bea1acafaade2fd9050ae0234ab44a2153742b058"
 
 [[package]]
 name = "roxmltree"

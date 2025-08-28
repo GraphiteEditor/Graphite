@@ -129,7 +129,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::AddPathNode => {
 				if let Some(layer) = make_path_editable_is_allowed(network_interface, network_interface.document_metadata()) {
 					responses.add(NodeGraphMessage::CreateNodeInLayerWithTransaction { node_type: "Path".to_string(), layer });
-					responses.add(BroadcastEvent::SelectionChanged);
+					responses.add(EventMessage::SelectionChanged);
 				}
 			}
 			NodeGraphMessage::AddImport => {
@@ -142,7 +142,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::Init => {
 				responses.add(BroadcastMessage::SubscribeEvent {
-					on: BroadcastEvent::SelectionChanged,
+					on: EventMessage::SelectionChanged,
 					send: Box::new(NodeGraphMessage::SelectedNodesUpdated.into()),
 				});
 				network_interface.load_structure();
@@ -1472,7 +1472,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 				selected_nodes.add_selected_nodes(nodes);
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			NodeGraphMessage::SelectedNodesRemove { nodes } => {
 				let Some(selected_nodes) = network_interface.selected_nodes_mut(selection_network_path) else {
@@ -1480,7 +1480,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 				selected_nodes.retain_selected_nodes(|node| !nodes.contains(node));
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			NodeGraphMessage::SelectedNodesSet { nodes } => {
 				let Some(selected_nodes) = network_interface.selected_nodes_mut(selection_network_path) else {
@@ -1488,7 +1488,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 				selected_nodes.set_selected_nodes(nodes);
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			NodeGraphMessage::SendClickTargets => responses.add(FrontendMessage::UpdateClickTargets {
 				click_targets: Some(network_interface.collect_frontend_click_targets(breadcrumb_network_path)),
@@ -1516,7 +1516,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let mut nodes = Vec::new();
 				for node_id in &self.frontend_nodes {
 					let Some(node_bbox) = network_interface.node_bounding_box(node_id, breadcrumb_network_path) else {
-						log::error!("Could not get bbox for node: {:?}", node_id);
+						log::error!("Could not get bbox for node: {node_id:?}");
 						continue;
 					};
 
@@ -1680,6 +1680,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(OverlaysMessage::Draw); // Redraw overlays to update artboard names
 			}
 			NodeGraphMessage::SetDisplayNameImpl { node_id, alias } => {
 				network_interface.set_display_name(&node_id, alias, selection_network_path);
@@ -1720,7 +1721,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::ToggleLocked { node_id } => {
 				let Some(node_metadata) = network_interface.document_network_metadata().persistent_metadata.node_metadata.get(&node_id) else {
-					log::error!("Cannot get node {:?} in NodeGraphMessage::ToggleLocked", node_id);
+					log::error!("Cannot get node {node_id:?} in NodeGraphMessage::ToggleLocked");
 					return;
 				};
 
@@ -1836,7 +1837,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							continue;
 						};
 						let quad = Quad::from_box([box_selection_start, box_selection_end_graph]);
-						if click_targets.node_click_target.intersect_path(|| quad.bezier_lines(), DAffine2::IDENTITY) {
+						if click_targets.node_click_target.intersect_path(|| quad.to_lines(), DAffine2::IDENTITY) {
 							nodes.insert(node_id);
 						}
 					}
@@ -1887,7 +1888,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 				selected_nodes.clear_selected_nodes();
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 
 				responses.add(NodeGraphMessage::SendGraph);
 			}
@@ -2485,7 +2486,7 @@ impl NodeGraphMessageHandler {
 					data_type: frontend_data_type,
 					name: "Output 1".to_string(),
 					description: String::new(),
-					resolved_type: format!("{:?}", output_type),
+					resolved_type: format!("{output_type:?}"),
 					connected_to,
 				})
 			} else {
@@ -2517,7 +2518,7 @@ impl NodeGraphMessageHandler {
 					data_type,
 					name: output_name,
 					description: String::new(),
-					resolved_type: format!("{:?}", output_type),
+					resolved_type: format!("{output_type:?}"),
 					connected_to,
 				});
 			}

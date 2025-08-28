@@ -6,6 +6,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 use graphene_std::math::quad::Quad;
+use graphene_std::subpath;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::{PointId, Vector};
@@ -160,6 +161,17 @@ impl DocumentMetadata {
 			.reduce(Quad::combine_bounds)
 	}
 
+	/// Get the loose bounding box of the click target of the specified layer in the specified transform space
+	pub fn loose_bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
+		self.click_targets(layer)?
+			.iter()
+			.filter_map(|click_target| match click_target.target_type() {
+				ClickTargetType::Subpath(subpath) => subpath.loose_bounding_box_with_transform(transform),
+				ClickTargetType::FreePoint(_) => click_target.bounding_box_with_transform(transform),
+			})
+			.reduce(Quad::combine_bounds)
+	}
+
 	/// Calculate the corners of the bounding box but with a nonzero size.
 	///
 	/// If the layer bounds are `0` in either axis then they are changed to be `1`.
@@ -196,7 +208,7 @@ impl DocumentMetadata {
 		self.all_layers().filter_map(|layer| self.bounding_box_viewport(layer)).reduce(Quad::combine_bounds)
 	}
 
-	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &bezier_rs::Subpath<PointId>> {
+	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &subpath::Subpath<PointId>> {
 		static EMPTY: Vec<ClickTarget> = Vec::new();
 		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
 		click_targets.iter().filter_map(|target| match target.target_type() {
