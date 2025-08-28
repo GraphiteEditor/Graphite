@@ -2087,8 +2087,8 @@ dependencies = [
  "dirs",
  "futures",
  "glam",
+ "graphite-desktop-embedded-resources",
  "graphite-desktop-wrapper",
- "include_dir",
  "libc",
  "objc2-io-surface",
  "objc2-metal 0.3.1",
@@ -2102,6 +2102,13 @@ dependencies = [
  "wgpu",
  "windows",
  "winit",
+]
+
+[[package]]
+name = "graphite-desktop-embedded-resources"
+version = "0.1.0"
+dependencies = [
+ "include_dir",
 ]
 
 [[package]]
@@ -4129,6 +4136,7 @@ dependencies = [
  "graph-craft",
  "graphene-std",
  "interpreted-executor",
+ "log",
 ]
 
 [[package]]

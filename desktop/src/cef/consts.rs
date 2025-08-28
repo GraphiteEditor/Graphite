@@ -1,2 +1,2 @@
-pub(crate) const GRAPHITE_SCHEME: &str = "graphite-static";
-pub(crate) const FRONTEND_DOMAIN: &str = "frontend";
+pub(crate) const RESOURCE_SCHEME: &str = "resources";
+pub(crate) const RESOURCE_DOMAIN: &str = "resources";
