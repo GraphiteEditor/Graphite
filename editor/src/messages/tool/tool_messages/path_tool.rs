@@ -24,12 +24,11 @@ use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandi
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate, make_path_editable_is_allowed};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
-use graphene_std::subpath::pathseg_points;
+use graphene_std::subpath::{Bezier, BezierHandles, pathseg_points};
 use graphene_std::transform::ReferencePoint;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::algorithms::util::pathseg_tangent;
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::misc::{HandleId, HandleType, ManipulatorPointId};
 use graphene_std::vector::misc::{HandleId, HandleType, ManipulatorPointId, dvec2_to_point, point_to_dvec2};
 use graphene_std::vector::{HandleExt, NoHashBuilder, PointId, SegmentId, Vector, VectorModificationType};
 use kurbo::{DEFAULT_ACCURACY, ParamCurve, ParamCurveNearest, PathSeg, Rect};
