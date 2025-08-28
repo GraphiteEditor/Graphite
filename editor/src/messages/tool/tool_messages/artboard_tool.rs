@@ -153,7 +153,6 @@ impl ArtboardToolData {
 
 	fn select_artboard(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> bool {
 		if let Some(intersection) = Self::hovered_artboard(document, input) {
-			log::info!("Selecting artboard: {:?}", intersection);
 			self.selected_artboard = Some(intersection);
 
 			if let Some(bounds) = document.metadata().bounding_box_document(intersection) {
@@ -248,8 +247,6 @@ impl Fsm for ArtboardToolFsmState {
 				let alt_pressed = input.keyboard.get(Key::Alt as usize);
 				let quick_measurement_enabled = overlay_context.visibility_settings.quick_measurement();
 				let not_resizing = !matches!(state, ArtboardToolFsmState::ResizingBounds);
-
-				// log::info!("Artboard measurement check: alt_pressed={}, quick_measurement_enabled={}, not_resizing={}", alt_pressed, quick_measurement_enabled, not_resizing);
 
 				if quick_measurement_enabled && not_resizing && alt_pressed {
 					// Get the selected artboard bounds
