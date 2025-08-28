@@ -214,7 +214,7 @@ impl CefEventHandler for CefHandler {
 			}
 		}
 
-		// #[cfg(not(feature = "embedded_resources"))]
+		#[cfg(not(feature = "embedded_resources"))]
 		{
 			use std::path::Path;
 			let asset_path_env = std::env::var("GRAPHITE_RESOURCES").ok()?;
