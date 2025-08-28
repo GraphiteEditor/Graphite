@@ -6,20 +6,21 @@ use cef::{
 
 use super::CefContext;
 use super::singlethreaded::SingleThreadedCefContext;
-use crate::cef::CefHandler;
-use crate::cef::consts::{FRONTEND_DOMAIN, GRAPHITE_SCHEME};
+use crate::cef::CefEventHandler;
+use crate::cef::consts::{RESOURCE_DOMAIN, RESOURCE_SCHEME};
 use crate::cef::dirs::{cef_cache_dir, cef_data_dir};
 use crate::cef::input::InputState;
 use crate::cef::internal::{BrowserProcessAppImpl, BrowserProcessClientImpl, RenderHandlerImpl, RenderProcessAppImpl};
 
-pub(crate) struct CefContextBuilder {
+pub(crate) struct CefContextBuilder<H: CefEventHandler> {
 	pub(crate) args: Args,
 	pub(crate) is_sub_process: bool,
+	_marker: std::marker::PhantomData<H>,
 }
 
-unsafe impl Send for CefContextBuilder {}
+unsafe impl<H: CefEventHandler> Send for CefContextBuilder<H> {}
 
-impl CefContextBuilder {
+impl<H: CefEventHandler> CefContextBuilder<H> {
 	pub(crate) fn new() -> Self {
 		#[cfg(target_os = "macos")]
 		let _loader = {
@@ -34,7 +35,11 @@ impl CefContextBuilder {
 		let switch = CefString::from("type");
 		let is_sub_process = cmd.has_switch(Some(&switch)) == 1;
 
-		Self { args, is_sub_process }
+		Self {
+			args,
+			is_sub_process,
+			_marker: std::marker::PhantomData,
+		}
 	}
 
 	pub(crate) fn is_sub_process(&self) -> bool {
@@ -45,7 +50,7 @@ impl CefContextBuilder {
 		let cmd = self.args.as_cmd_line().unwrap();
 		let switch = CefString::from("type");
 		let process_type = CefString::from(&cmd.switch_value(Some(&switch)));
-		let mut app = RenderProcessAppImpl::app();
+		let mut app = RenderProcessAppImpl::<H>::app();
 		let ret = execute_process(Some(self.args.as_main_args()), Some(&mut app), std::ptr::null_mut());
 		if ret >= 0 {
 			SetupError::SubprocessFailed(process_type.to_string())
@@ -55,7 +60,7 @@ impl CefContextBuilder {
 	}
 
 	#[cfg(target_os = "macos")]
-	pub(crate) fn initialize(self, event_handler: CefHandler) -> Result<impl CefContext, InitError> {
+	pub(crate) fn initialize(self, event_handler: H) -> Result<impl CefContext, InitError> {
 		let settings = Settings {
 			windowless_rendering_enabled: 1,
 			multi_threaded_message_loop: 0,
@@ -71,7 +76,7 @@ impl CefContextBuilder {
 	}
 
 	#[cfg(not(target_os = "macos"))]
-	pub(crate) fn initialize(self, event_handler: CefHandler) -> Result<impl CefContext, InitError> {
+	pub(crate) fn initialize(self, event_handler: H) -> Result<impl CefContext, InitError> {
 		let settings = Settings {
 			windowless_rendering_enabled: 1,
 			multi_threaded_message_loop: 1,
@@ -97,7 +102,7 @@ impl CefContextBuilder {
 		Ok(super::multithreaded::MultiThreadedCefContextProxy)
 	}
 
-	fn initialize_inner(self, event_handler: &CefHandler, settings: Settings) -> Result<(), InitError> {
+	fn initialize_inner(self, event_handler: &H, settings: Settings) -> Result<(), InitError> {
 		let mut cef_app = App::new(BrowserProcessAppImpl::new(event_handler.clone()));
 		let result = cef::initialize(Some(self.args.as_main_args()), Some(&settings), Some(&mut cef_app), std::ptr::null_mut());
 		// Attention! Wrapping this in an extra App is necessary, otherwise the program still compiles but segfaults
@@ -113,11 +118,11 @@ impl CefContextBuilder {
 	}
 }
 
-fn create_browser(event_handler: CefHandler) -> Result<SingleThreadedCefContext, InitError> {
+fn create_browser<H: CefEventHandler>(event_handler: H) -> Result<SingleThreadedCefContext, InitError> {
 	let render_handler = RenderHandler::new(RenderHandlerImpl::new(event_handler.clone()));
 	let mut client = Client::new(BrowserProcessClientImpl::new(render_handler, event_handler.clone()));
 
-	let url = CefString::from(format!("{GRAPHITE_SCHEME}://{FRONTEND_DOMAIN}/").as_str());
+	let url = CefString::from(format!("{RESOURCE_SCHEME}://{RESOURCE_DOMAIN}/").as_str());
 
 	let window_info = WindowInfo {
 		windowless_rendering_enabled: 1,
