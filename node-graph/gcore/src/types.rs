@@ -1,6 +1,7 @@
 use std::any::TypeId;
 
 pub use std::borrow::Cow;
+use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 
 #[macro_export]
@@ -160,6 +161,12 @@ impl Deref for ProtoNodeIdentifier {
 	}
 }
 
+impl Display for ProtoNodeIdentifier {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		f.debug_tuple("ProtoNodeIdentifier").field(&self.name).finish()
+	}
+}
+
 fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Cow<'static, str>, D::Error> {
 	use serde::Deserialize;
 
@@ -230,7 +237,6 @@ pub enum Type {
 	/// A wrapper around the Rust type id for any concrete Rust type. Allows us to do equality comparisons, like checking if a String == a String.
 	Concrete(TypeDescriptor),
 	/// Runtime type information for a function. Given some input, gives some output.
-	/// See the example and explanation in the `ComposeNode` implementation within the node registry for more info.
 	Fn(Box<Type>, Box<Type>),
 	/// Represents a future which promises to return the inner type.
 	Future(Box<Type>),
@@ -367,7 +373,7 @@ impl std::fmt::Debug for Type {
 			Self::Future(ty) => format!("{ty:?}"),
 		};
 		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
-		write!(f, "{}", result)
+		write!(f, "{result}")
 	}
 }
 
@@ -380,6 +386,6 @@ impl std::fmt::Display for Type {
 			Type::Future(ty) => ty.to_string(),
 		};
 		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
-		write!(f, "{}", result)
+		write!(f, "{result}")
 	}
 }

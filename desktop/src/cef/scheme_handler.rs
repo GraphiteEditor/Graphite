@@ -11,8 +11,7 @@ use cef::{
 };
 use include_dir::{Dir, include_dir};
 
-pub(crate) const GRAPHITE_SCHEME: &str = "graphite-static";
-pub(crate) const FRONTEND_DOMAIN: &str = "frontend";
+use super::consts::{FRONTEND_DOMAIN, GRAPHITE_SCHEME};
 
 pub(crate) struct GraphiteSchemeHandlerFactory {
 	object: *mut RcImpl<_cef_scheme_handler_factory_t, Self>,
@@ -88,6 +87,7 @@ impl<'a> GraphiteFrontendResourceHandler<'a> {
 			match ext {
 				"html" => Some("text/html".to_string()),
 				"css" => Some("text/css".to_string()),
+				"txt" => Some("text/plain".to_string()),
 				"wasm" => Some("application/wasm".to_string()),
 				"js" => Some("application/javascript".to_string()),
 				"png" => Some("image/png".to_string()),

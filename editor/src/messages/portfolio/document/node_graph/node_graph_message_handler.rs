@@ -1516,7 +1516,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let mut nodes = Vec::new();
 				for node_id in &self.frontend_nodes {
 					let Some(node_bbox) = network_interface.node_bounding_box(node_id, breadcrumb_network_path) else {
-						log::error!("Could not get bbox for node: {:?}", node_id);
+						log::error!("Could not get bbox for node: {node_id:?}");
 						continue;
 					};
 
@@ -1721,7 +1721,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::ToggleLocked { node_id } => {
 				let Some(node_metadata) = network_interface.document_network_metadata().persistent_metadata.node_metadata.get(&node_id) else {
-					log::error!("Cannot get node {:?} in NodeGraphMessage::ToggleLocked", node_id);
+					log::error!("Cannot get node {node_id:?} in NodeGraphMessage::ToggleLocked");
 					return;
 				};
 
@@ -2486,7 +2486,7 @@ impl NodeGraphMessageHandler {
 					data_type: frontend_data_type,
 					name: "Output 1".to_string(),
 					description: String::new(),
-					resolved_type: format!("{:?}", output_type),
+					resolved_type: format!("{output_type:?}"),
 					connected_to,
 				})
 			} else {
@@ -2518,7 +2518,7 @@ impl NodeGraphMessageHandler {
 					data_type,
 					name: output_name,
 					description: String::new(),
-					resolved_type: format!("{:?}", output_type),
+					resolved_type: format!("{output_type:?}"),
 					connected_to,
 				});
 			}

@@ -61,7 +61,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 				(
 					NodeId(i as u64),
 					match inputs.len() {
-						1 if false => {
+						1 => {
 							let input = inputs.iter().next().unwrap();
 							let input_ty = input.nested_type();
 
@@ -84,9 +84,9 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 
 							DocumentNode {
 								inputs: vec![NodeInput::network(input.clone(), i)],
-								// manual_composition: Some(fn_input.clone()),
 								implementation: DocumentNodeImplementation::ProtoNode(proto_node),
 								visible: true,
+								call_argument: concrete!(Context),
 								..Default::default()
 							}
 						}
@@ -107,8 +107,8 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 
 		let document_node = DocumentNode {
 			inputs: network_inputs,
-			manual_composition: Some(input_type.clone()),
-			implementation: DocumentNodeImplementation::ProtoNode(id.clone().into()),
+			call_argument: input_type.clone(),
+			implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 			visible: true,
 			skip_deduplication: false,
 			..Default::default()
@@ -118,12 +118,11 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 
 		let node = DocumentNode {
 			inputs,
-			manual_composition: Some(input_type.clone()),
+			call_argument: input_type.clone(),
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				exports: vec![NodeInput::Node {
 					node_id: NodeId(input_count as u64),
 					output_index: 0,
-					lambda: false,
 				}],
 				nodes,
 				scope_injections: Default::default(),

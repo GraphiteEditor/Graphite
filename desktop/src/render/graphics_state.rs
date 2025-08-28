@@ -232,7 +232,7 @@ impl GraphicsState {
 		self.bind_overlays_texture(texture);
 	}
 
-	pub(crate) fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+	pub(crate) fn render(&mut self, window: &Window) -> Result<(), wgpu::SurfaceError> {
 		if let Some(scene) = self.overlays_scene.take() {
 			self.render_overlays(scene);
 		}
@@ -275,6 +275,7 @@ impl GraphicsState {
 			}
 		}
 		self.context.queue.submit(std::iter::once(encoder.finish()));
+		window.pre_present_notify();
 		output.present();
 
 		Ok(())

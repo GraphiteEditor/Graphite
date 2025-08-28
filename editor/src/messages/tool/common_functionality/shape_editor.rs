@@ -2,7 +2,7 @@ use super::graph_modification_utils::merge_layers;
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
 use super::utility_functions::{adjust_handle_colinearity, calculate_segment_angle, restore_g1_continuity, restore_previous_handle_position};
 use crate::consts::HANDLE_LENGTH_FACTOR;
-use crate::messages::portfolio::document::overlays::utility_functions::selected_segments;
+use crate::messages::portfolio::document::overlays::utility_functions::selected_segments_for_layer;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{PathSnapSource, SnapSource};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
@@ -421,7 +421,7 @@ impl ShapeState {
 		(point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors)
 	}
 
-	pub fn close_selected_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn close_selected_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, vector_meshes: bool) {
 		// First collect all selected anchor points across all layers
 		let all_selected_points: Vec<(LayerNodeIdentifier, PointId)> = self
 			.selected_shape_state
@@ -449,7 +449,8 @@ impl ShapeState {
 			let Some(vector1) = document.network_interface.compute_modified_vector(layer1) else { return };
 			let Some(vector2) = document.network_interface.compute_modified_vector(layer2) else { return };
 
-			if vector1.all_connected(start_point).count() != 1 || vector2.all_connected(end_point).count() != 1 {
+			// If vector meshes is not selected then only for endpoints, otherwise normally applicable
+			if !vector_meshes && (vector1.all_connected(start_point).count() != 1 || vector2.all_connected(end_point).count() != 1) {
 				return;
 			}
 
@@ -559,7 +560,7 @@ impl ShapeState {
 		select_threshold: f64,
 		extend_selection: bool,
 		path_overlay_mode: PathOverlayMode,
-		frontier_handles_info: &Option<HashMap<SegmentId, Vec<PointId>>>,
+		frontier_handles_info: Option<&HashMap<LayerNodeIdentifier, HashMap<SegmentId, Vec<PointId>>>>,
 	) -> Option<Option<SelectedPointsInfo>> {
 		if self.selected_shape_state.is_empty() {
 			return None;
@@ -608,7 +609,7 @@ impl ShapeState {
 		mouse_position: DVec2,
 		select_threshold: f64,
 		path_overlay_mode: PathOverlayMode,
-		frontier_handles_info: &Option<HashMap<SegmentId, Vec<PointId>>>,
+		frontier_handles_info: Option<&HashMap<LayerNodeIdentifier, HashMap<SegmentId, Vec<PointId>>>>,
 		point_editing_mode: bool,
 	) -> Option<(bool, Option<SelectedPointsInfo>)> {
 		if self.selected_shape_state.is_empty() {
@@ -622,15 +623,22 @@ impl ShapeState {
 			}
 			let vector = network_interface.compute_modified_vector(layer)?;
 			let point_position = manipulator_point_id.get_position(&vector)?;
-
+			let selected_shape_state = self.selected_shape_state.get(&layer)?;
 			// Check if point is visible under current overlay mode or not
-			let selected_segments = selected_segments(network_interface, self);
+			let selected_segments_for_layer = selected_segments_for_layer(&vector, selected_shape_state);
 			let selected_points = self.selected_points().cloned().collect::<HashSet<_>>();
-			if !is_visible_point(manipulator_point_id, &vector, path_overlay_mode, frontier_handles_info, selected_segments, &selected_points) {
+			let frontier_handles_for_layer = frontier_handles_info.and_then(|frontier_handles| frontier_handles.get(&layer));
+			if !is_visible_point(
+				manipulator_point_id,
+				&vector,
+				path_overlay_mode,
+				frontier_handles_for_layer,
+				&selected_segments_for_layer,
+				&selected_points,
+			) {
 				return None;
 			}
 
-			let selected_shape_state = self.selected_shape_state.get(&layer)?;
 			let already_selected = selected_shape_state.is_point_selected(manipulator_point_id);
 
 			// Offset to snap the selected point to the cursor
@@ -733,6 +741,13 @@ impl ShapeState {
 		}
 	}
 
+	/// Selects all segments for the selected layers.
+	pub fn select_all_segments_in_selected_layers(&mut self, document: &DocumentMessageHandler) {
+		for (&layer, state) in self.selected_shape_state.iter_mut() {
+			Self::select_all_segments_in_layer_with_state(document, layer, state);
+		}
+	}
+
 	/// Internal helper function that selects all anchors, and deselects all handles, for a layer given its [`LayerNodeIdentifier`] and [`SelectedLayerState`].
 	fn select_all_anchors_in_layer_with_state(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, state: &mut SelectedLayerState) {
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
@@ -741,6 +756,15 @@ impl ShapeState {
 
 		for &point in vector.point_domain.ids() {
 			state.select_point(ManipulatorPointId::Anchor(point))
+		}
+	}
+
+	/// Internal helper function that selects all segments, for a layer given its [`LayerNodeIdentifier`] and [`SelectedLayerState`].
+	fn select_all_segments_in_layer_with_state(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, state: &mut SelectedLayerState) {
+		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
+
+		for &segment in vector.segment_domain.ids() {
+			state.select_segment(segment);
 		}
 	}
 
@@ -1606,7 +1630,7 @@ impl ShapeState {
 		mouse_position: DVec2,
 		select_threshold: f64,
 		path_overlay_mode: PathOverlayMode,
-		frontier_handles_info: &Option<HashMap<SegmentId, Vec<PointId>>>,
+		frontier_handles_info: Option<&HashMap<LayerNodeIdentifier, HashMap<SegmentId, Vec<PointId>>>>,
 	) -> Option<(LayerNodeIdentifier, ManipulatorPointId)> {
 		if self.selected_shape_state.is_empty() {
 			return None;
@@ -1621,10 +1645,11 @@ impl ShapeState {
 				if distance_squared < select_threshold_squared {
 					// Check if point is visible in current PathOverlayMode
 					let vector = network_interface.compute_modified_vector(layer)?;
-					let selected_segments = selected_segments(network_interface, self);
+					let Some(state) = self.selected_shape_state.get(&layer) else { continue };
+					let selected_segments = selected_segments_for_layer(&vector, state);
 					let selected_points = self.selected_points().cloned().collect::<HashSet<_>>();
-
-					if !is_visible_point(manipulator_point_id, &vector, path_overlay_mode, frontier_handles_info, selected_segments, &selected_points) {
+					let frontier_handles_for_layer = frontier_handles_info.and_then(|handles_info| handles_info.get(&layer));
+					if !is_visible_point(manipulator_point_id, &vector, path_overlay_mode, frontier_handles_for_layer, &selected_segments, &selected_points) {
 						return None;
 					}
 
@@ -1868,53 +1893,64 @@ impl ShapeState {
 		}
 	}
 
-	pub fn select_points_by_manipulator_id(&mut self, points: &Vec<ManipulatorPointId>) {
-		let layers_to_modify: Vec<_> = self.selected_shape_state.keys().cloned().collect();
+	pub fn select_anchor_and_connected_handles(&mut self, network_interface: &NodeNetworkInterface) {
+		let mut non_empty_layers = self.selected_shape_state.iter_mut().filter(|(_, state)| !state.is_empty());
 
-		for layer in layers_to_modify {
-			if let Some(state) = self.selected_shape_state.get_mut(&layer) {
-				for point in points {
-					state.select_point(*point);
-				}
+		let Some((layer, state)) = non_empty_layers.next() else { return };
+		if non_empty_layers.next().is_some() {
+			return;
+		}
+		let Some(vector) = network_interface.compute_modified_vector(*layer) else { return };
+
+		// Get the current point and its connected handles
+		let selected_points = state.selected_points.clone();
+		if let Some(point) = selected_points.iter().next() {
+			if let Some(anchor) = point.get_anchor(&vector) {
+				state.select_point(ManipulatorPointId::Anchor(anchor));
+			}
+			if let Some(handles) = point.get_handle_pair(&vector) {
+				state.select_point(handles[0].to_manipulator_point());
+				state.select_point(handles[1].to_manipulator_point());
 			}
 		}
 	}
 
-	/// Converts a nearby clicked anchor point's handles between sharp (zero-length handles) and smooth (pulled-apart handle(s)).
-	/// If both handles aren't zero-length, they are set that. If both are zero-length, they are stretched apart by a reasonable amount.
-	/// This can can be activated by double clicking on an anchor with the Path tool.
-	pub fn flip_smooth_sharp(&self, network_interface: &NodeNetworkInterface, target: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) -> bool {
-		let mut process_layer = |layer| {
-			let vector = network_interface.compute_modified_vector(layer)?;
-			let transform_to_screenspace = network_interface.document_metadata().transform_to_viewport_if_feeds(layer, network_interface);
-
-			let mut result = None;
-			let mut closest_distance_squared = tolerance * tolerance;
-
-			// Find the closest anchor point on the current layer
-			for (&id, &anchor) in vector.point_domain.ids().iter().zip(vector.point_domain.positions()) {
-				let screenspace = transform_to_screenspace.transform_point2(anchor);
-				let distance_squared = screenspace.distance_squared(target);
-
-				if distance_squared < closest_distance_squared {
-					closest_distance_squared = distance_squared;
-					result = Some((id, anchor));
-				}
+	pub fn select_points_by_layer_and_id(&mut self, points: &HashMap<LayerNodeIdentifier, Vec<ManipulatorPointId>>) {
+		for (layer, points) in points {
+			if let Some(state) = self.selected_shape_state.get_mut(layer) {
+				points.iter().for_each(|point| state.select_point(*point));
 			}
+		}
+	}
 
-			let (id, anchor) = result?;
-			let handles = vector.all_connected(id);
-			let positions = handles
-				.filter_map(|handle| handle.to_manipulator_point().get_position(&vector))
-				.filter(|&handle| anchor.abs_diff_eq(handle, 1e-5))
-				.count();
+	pub fn select_point_by_layer_and_id(&mut self, point: ManipulatorPointId, layer: LayerNodeIdentifier) {
+		if let Some(state) = self.selected_shape_state.get_mut(&layer) {
+			state.select_point(point);
+		}
+	}
 
-			// Check if the anchor is connected to linear segments.
-			let one_or_more_segment_linear = vector.connected_linear_segments(id) != 0;
+	/// Converts all selected anchor points' handles between sharp (zero-length handles) and smooth (pulled-apart colinear handle(s)).
+	/// If both handles aren't zero-length, they are set to that. If both are zero-length, they are stretched apart by a reasonable amount.
+	/// This can can be activated by double clicking on an anchor with the Path tool.
+	pub fn flip_smooth_sharp(&self, network_interface: &NodeNetworkInterface, responses: &mut VecDeque<Message>) {
+		let mut process_layer = |layer: LayerNodeIdentifier, selected_points: &HashSet<ManipulatorPointId>| {
+			let vector = network_interface.compute_modified_vector(layer)?;
 
 			// Check by comparing the handle positions to the anchor if this manipulator group is a point
-			for point in self.selected_points() {
+			for point in selected_points {
 				let Some(point_id) = point.as_anchor() else { continue };
+				let anchor = point.get_position(&vector)?;
+				let handles = vector.all_connected(point_id);
+
+				// TODO: Check if this method of finding non-colinear is really required
+				let positions = handles
+					.filter_map(|handle| handle.to_manipulator_point().get_position(&vector))
+					.filter(|&handle| anchor.abs_diff_eq(handle, 1e-5))
+					.count();
+
+				// Check if the anchor is connected to linear segments.
+				let one_or_more_segment_linear = vector.connected_linear_segments(point_id) != 0;
+
 				if positions != 0 || one_or_more_segment_linear {
 					self.convert_manipulator_handles_to_colinear(&vector, point_id, responses, layer);
 				} else {
@@ -1958,13 +1994,10 @@ impl ShapeState {
 			Some(true)
 		};
 
-		for &layer in self.selected_shape_state.keys() {
-			if let Some(result) = process_layer(layer) {
-				return result;
-			}
-		}
-
-		false
+		self.selected_shape_state.iter().for_each(|(layer, state)| {
+			let selected_points = &state.selected_points;
+			process_layer(*layer, selected_points);
+		});
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -1974,7 +2007,7 @@ impl ShapeState {
 		selection_shape: SelectionShape,
 		selection_change: SelectionChange,
 		path_overlay_mode: PathOverlayMode,
-		frontier_handles_info: &Option<HashMap<SegmentId, Vec<PointId>>>,
+		frontier_handles_info: Option<&HashMap<LayerNodeIdentifier, HashMap<SegmentId, Vec<PointId>>>>,
 		select_segments: bool,
 		select_points: bool,
 		// Here, "selection mode" represents touched or enclosed, not to be confused with editing modes
@@ -2046,14 +2079,13 @@ impl ShapeState {
 		network_interface: &NodeNetworkInterface,
 		selection_shape: SelectionShape,
 		path_overlay_mode: PathOverlayMode,
-		frontier_handles_info: &Option<HashMap<SegmentId, Vec<PointId>>>,
+		frontier_handles_info: Option<&HashMap<LayerNodeIdentifier, HashMap<SegmentId, Vec<PointId>>>>,
 		select_segments: bool,
 		select_points: bool,
 		// Represents if the box/lasso selection touches or encloses the targets (not to be confused with editing modes).
 		selection_mode: SelectionMode,
 	) -> (HashMap<LayerNodeIdentifier, HashSet<ManipulatorPointId>>, HashMap<LayerNodeIdentifier, HashSet<SegmentId>>) {
 		let selected_points = self.selected_points().cloned().collect::<HashSet<_>>();
-		let selected_segments = selected_segments(network_interface, self);
 
 		let mut points_inside: HashMap<LayerNodeIdentifier, HashSet<ManipulatorPointId>> = HashMap::new();
 		let mut segments_inside: HashMap<LayerNodeIdentifier, HashSet<SegmentId>> = HashMap::new();
@@ -2137,7 +2169,10 @@ impl ShapeState {
 					};
 
 					if select && select_points {
-						let is_visible_handle = is_visible_point(id, &vector, path_overlay_mode, frontier_handles_info, selected_segments.clone(), &selected_points);
+						let frontier_handles_for_layer = frontier_handles_info.and_then(|frontier_handles| frontier_handles.get(&layer));
+						let state = self.selected_shape_state.get(&layer).expect("Cannot find state for layer");
+						let selected_segments_for_layer = selected_segments_for_layer(&vector, state);
+						let is_visible_handle = is_visible_point(id, &vector, path_overlay_mode, frontier_handles_for_layer, &selected_segments_for_layer, &selected_points);
 
 						if is_visible_handle {
 							points_inside.entry(layer).or_default().insert(id);

@@ -287,6 +287,6 @@ mod test {
 	fn display() {
 		let p = Polynomial::new([1., 2., 0., 3.]);
 
-		assert_eq!(format!("{:.2}", p), "3.00x^3 + 2.00x + 1.00");
+		assert_eq!(format!("{p:.2}"), "3.00x^3 + 2.00x + 1.00");
 	}
 }
