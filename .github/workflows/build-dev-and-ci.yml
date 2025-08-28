@@ -104,11 +104,11 @@ jobs:
         env:
           RUSTFLAGS: -Dwarnings
         run: |
-          mold -run cargo build --all-features
+          mold -run cargo build --all-features --profile=test
 
       - name: 🧪 Run Rust tests
         run: |
-          mold -run cargo test --all-features --workspace
+          mold -run cargo test --all-features
 
       - name: 📃 Generate code documentation info for website
         if: github.ref == 'refs/heads/master'
