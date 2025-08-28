@@ -859,7 +859,7 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 				.on_commit(commit_value)
 				.widget_holder(),
 		]),
-		Some(&TaggedValue::Vec2(vec2)) => widgets.extend_from_slice(&[
+		Some(&TaggedValue::FVec2(vec2)) => widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			number_props
 				// We use an arbitrary `y` instead of an arbitrary `x` here because the "Grid" node's "Spacing" value's height should be used from rectangular mode when transferred to "Y Spacing" in isometric mode

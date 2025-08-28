@@ -202,8 +202,8 @@ tagged_value! {
 	// ============
 	// STRUCT TYPES
 	// ============
-	Vec2(Vec2),
-	Affine2(Affine2),
+	FVec2(Vec2),
+	FAffine2(Affine2),
 	#[serde(alias = "IVec2", alias = "UVec2")]
 	DVec2(DVec2),
 	DAffine2(DAffine2),
@@ -459,7 +459,17 @@ mod fake_hash {
 			self.to_bits().hash(state)
 		}
 	}
+	impl FakeHash for f32 {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.to_bits().hash(state)
+		}
+	}
 	impl FakeHash for DVec2 {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.to_array().iter().for_each(|x| x.to_bits().hash(state))
+		}
+	}
+	impl FakeHash for Vec2 {
 		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 			self.to_array().iter().for_each(|x| x.to_bits().hash(state))
 		}
@@ -469,22 +479,12 @@ mod fake_hash {
 			self.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
 		}
 	}
-	impl FakeHash for f32 {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.to_bits().hash(state)
-		}
-	}
-	impl FakeHash for Vec2 {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.to_array().iter().for_each(|x| x.to_bits().hash(state))
-		}
-	}
 	impl FakeHash for Affine2 {
 		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 			self.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
 		}
 	}
-	impl<X: FakeHash> FakeHash for Option<X> {
+	impl<T: FakeHash> FakeHash for Option<T> {
 		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 			if let Some(x) = self {
 				1.hash(state);
@@ -494,7 +494,7 @@ mod fake_hash {
 			}
 		}
 	}
-	impl<X: FakeHash> FakeHash for Vec<X> {
+	impl<T: FakeHash> FakeHash for Vec<T> {
 		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 			self.len().hash(state);
 			self.iter().for_each(|x| x.hash(state))
