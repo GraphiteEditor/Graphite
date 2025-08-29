@@ -187,17 +187,12 @@
 
 	function outputConnectedToText(output: FrontendGraphOutput): string {
 		if (output.connectedTo.length === 0) return "Connected to nothing";
-		let text = "Connected to:\n";
 
-		for (const connection of output.connectedTo) {
-			text += connection;
-			text += "\n";
-		}
-		return text;
+		return `Connected to:\n${output.connectedTo.join("\n")}`;
 	}
 
 	function inputConnectedToText(input: FrontendGraphInput): string {
-		return `Connected to: ${input.connectedTo}`;
+		return `Connected to:\n${input.connectedTo}`;
 	}
 
 	function zipWithUndefined(arr1: FrontendGraphInput[], arr2: FrontendGraphOutput[]) {
@@ -243,16 +238,12 @@
 							{
 								value: "node",
 								label: "Node",
-								action: () => {
-									toggleLayerDisplay(false, contextMenuData.nodeId);
-								},
+								action: () => toggleLayerDisplay(false, contextMenuData.nodeId),
 							},
 							{
 								value: "layer",
 								label: "Layer",
-								action: () => {
-									toggleLayerDisplay(true, contextMenuData.nodeId);
-								},
+								action: () => toggleLayerDisplay(true, contextMenuData.nodeId),
 							},
 						]}
 						disabled={!canBeToggledBetweenNodeAndLayer(contextMenuData.nodeId)}
@@ -335,13 +326,13 @@
 					</svg>
 
 					<div
-						class="edit-import-export import"
 						on:pointerenter={() => (hoveringImportIndex = index)}
 						on:pointerleave={() => (hoveringImportIndex = undefined)}
+						class="edit-import-export import"
+						class:separator-bottom={index === 0 && $nodeGraph.updateImportsExports.addImportExport}
+						class:separator-top={index === 1 && $nodeGraph.updateImportsExports.addImportExport}
 						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 8) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 8) / 24 + index}
-						style={(index === 0 && $nodeGraph.updateImportsExports.addImportExport ? "border-bottom: 1px solid rgb(var(--color-7-middlegray-rgb));" : "") +
-							(index === 1 && $nodeGraph.updateImportsExports.addImportExport ? "border-top: 1px solid rgb(var(--color-7-middlegray-rgb));" : "")}
 					>
 						{#if editingNameImportIndex == index}
 							<input
@@ -369,7 +360,7 @@
 									/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 								}}
 							/>
-							{#if index !== 0}
+							{#if index > 0}
 								<div class="reorder-drag-grip" title="Reorder this export" />
 							{/if}
 						{/if}
@@ -380,13 +371,7 @@
 						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 12) / 24}
 						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 12) / 24}
 					>
-						<IconButton
-							size={24}
-							icon="Add"
-							action={() => {
-								editor.handle.addPrimaryImport();
-							}}
-						/>
+						<IconButton size={24} icon="Add" action={() => editor.handle.addPrimaryImport()} />
 					</div>
 				{/if}
 			{/each}
@@ -412,16 +397,16 @@
 						{/if}
 					</svg>
 					<div
-						class="edit-import-export export"
 						on:pointerenter={() => (hoveringExportIndex = index)}
 						on:pointerleave={() => (hoveringExportIndex = undefined)}
+						class="edit-import-export export"
+						class:separator-bottom={index === 0 && $nodeGraph.updateImportsExports.addImportExport}
+						class:separator-top={index === 1 && $nodeGraph.updateImportsExports.addImportExport}
 						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 8) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 8) / 24 + index}
-						style={(index === 0 && $nodeGraph.updateImportsExports.addImportExport ? "border-bottom: 1px solid rgb(var(--color-7-middlegray-rgb));" : "") +
-							(index === 1 && $nodeGraph.updateImportsExports.addImportExport ? "border-top: 1px solid rgb(var(--color-7-middlegray-rgb));" : "")}
 					>
 						{#if (hoveringExportIndex === index || editingNameExportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
-							{#if index !== 0}
+							{#if index > 0}
 								<div class="reorder-drag-grip" title="Reorder this export" />
 							{/if}
 							<IconButton
@@ -456,13 +441,7 @@
 						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 12) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 12) / 24}
 					>
-						<IconButton
-							size={24}
-							icon="Add"
-							action={() => {
-								editor.handle.addPrimaryExport();
-							}}
-						/>
+						<IconButton size={24} icon="Add" action={() => editor.handle.addPrimaryExport()} />
 					</div>
 				{/if}
 			{/each}
@@ -473,26 +452,14 @@
 					style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 12) / 24}
 					style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 12) / 24 + $nodeGraph.updateImportsExports.imports.length}
 				>
-					<IconButton
-						size={24}
-						icon="Add"
-						action={() => {
-							editor.handle.addSecondaryImport();
-						}}
-					/>
+					<IconButton size={24} icon="Add" action={() => editor.handle.addSecondaryImport()} />
 				</div>
 				<div
 					class="plus"
 					style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 12) / 24}
 					style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 12) / 24 + $nodeGraph.updateImportsExports.exports.length}
 				>
-					<IconButton
-						size={24}
-						icon={"Add"}
-						action={() => {
-							editor.handle.addSecondaryExport();
-						}}
-					/>
+					<IconButton size={24} icon={"Add"} action={() => editor.handle.addSecondaryExport()} />
 				</div>
 			{/if}
 
@@ -968,8 +935,26 @@
 				display: flex;
 				align-items: center;
 				top: calc(var(--offset-top) * 24px);
-				margin-top: -4px;
+				margin-top: -5px;
 				height: 24px;
+
+				&.separator-bottom::after,
+				&.separator-top::before {
+					content: "";
+					position: absolute;
+					background: var(--color-8-uppergray);
+					height: 1px;
+					left: -4px;
+					right: -4px;
+				}
+
+				&.separator-bottom::after {
+					bottom: -1px;
+				}
+
+				&.separator-top::before {
+					top: 0;
+				}
 
 				&.import {
 					right: calc(100% - var(--offset-left) * 24px);

@@ -1,3 +1,5 @@
+mod deserialization;
+
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier, NodeRelations};
 use super::misc::PTZ;
 use super::nodes::SelectedNodes;
@@ -8,6 +10,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::{Direction,
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
+use deserialization::deserialize_node_persistent_metadata;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
@@ -25,9 +28,6 @@ use kurbo::BezPath;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
-
-mod deserialization;
-use deserialization::deserialize_node_persistent_metadata;
 use std::ops::Deref;
 
 /// All network modifications should be done through this API, so the fields cannot be public. However, all fields within this struct can be public since it it not possible to have a public mutable reference.
@@ -568,7 +568,6 @@ impl NodeNetworkInterface {
 
 				let Some(input_type) = std::iter::once(node_types.call_argument.clone()).chain(node_types.inputs.clone()).nth(input_index + skip_footprint) else {
 					log::error!("Could not get type for {node_id_path:?}, input: {input_index}");
-					log::error!("Could not get type for {node_id_path:?}, input: {input_index}");
 					return (concrete!(()), TypeSource::Error("could not get the protonode's input"));
 				};
 
@@ -611,13 +610,6 @@ impl NodeNetworkInterface {
 
 		self.guess_type_from_node(&mut network_path.to_vec(), node_id, input_connector.input_index())
 	}
-
-	// pub fn compiled_nested_input_type(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<Type> {
-	// 	match self.input_type(input_connector, network_path) {
-	// 		TypeSource::Compiled(compiled_type) => Some(compiled_type.into_nested_type()),
-	// 		_ => None,
-	// 	}
-	// }
 
 	pub fn valid_input_types(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Vec<Type> {
 		let InputConnector::Node { node_id, input_index } = input_connector else {
@@ -797,7 +789,7 @@ impl NodeNetworkInterface {
 				let mut frontend_imports = (0..node.inputs.len())
 					.map(|import_index| self.frontend_output_from_connector(&OutputConnector::Import(import_index), network_path))
 					.collect::<Vec<_>>();
-				if frontend_imports.len() == 0 {
+				if frontend_imports.is_empty() {
 					frontend_imports.push(None);
 				}
 				frontend_imports
@@ -810,7 +802,7 @@ impl NodeNetworkInterface {
 	pub fn frontend_exports(&mut self, network_path: &[NodeId]) -> Vec<Option<FrontendGraphInput>> {
 		let Some(network) = self.nested_network(network_path) else { return Vec::new() };
 		let mut frontend_exports = ((0..network.exports.len()).map(|export_index| self.frontend_input_from_connector(&InputConnector::Export(export_index), network_path))).collect::<Vec<_>>();
-		if frontend_exports.len() == 0 {
+		if frontend_exports.is_empty() {
 			frontend_exports.push(None);
 		}
 		frontend_exports
@@ -894,7 +886,7 @@ impl NodeNetworkInterface {
 		Some((rounded_import_top_left.as_ivec2(), rounded_export_top_right.as_ivec2()))
 	}
 
-	// Returns None if there is an error, it is a hidden primary export, or a hidden input
+	/// Returns None if there is an error, it is a hidden primary export, or a hidden input
 	pub fn frontend_input_from_connector(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<FrontendGraphInput> {
 		// Return None if it is a hidden input
 		if self.input_from_connector(input_connector, network_path).is_some_and(|input| !input.is_exposed()) {
@@ -903,7 +895,7 @@ impl NodeNetworkInterface {
 		let (export_type, source) = self.input_type(input_connector, network_path);
 		let data_type = FrontendGraphDataType::displayed_type(&export_type, &source);
 		let connected_to = self
-			.upstream_output_connector(&input_connector, network_path)
+			.upstream_output_connector(input_connector, network_path)
 			.map(|output_connector| match output_connector {
 				OutputConnector::Node { node_id, output_index } => {
 					let mut name = self.display_name(&node_id, network_path);
@@ -945,12 +937,12 @@ impl NodeNetworkInterface {
 			name,
 			description,
 			resolved_type: format!("{export_type:?}"),
-			valid_types: self.valid_input_types(&input_connector, network_path).iter().map(|ty| ty.to_string()).collect(),
+			valid_types: self.valid_input_types(input_connector, network_path).iter().map(|ty| ty.to_string()).collect(),
 			connected_to,
 		})
 	}
 
-	// Returns None if there is an error, it is the document network, a hidden primary output or import
+	/// Returns None if there is an error, it is the document network, a hidden primary output or import
 	pub fn frontend_output_from_connector(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Option<FrontendGraphOutput> {
 		let (output_type, type_source) = self.output_type(output_connector, network_path);
 		let (name, description) = match output_connector {
@@ -983,7 +975,7 @@ impl NodeNetworkInterface {
 				if *import_index == 0 && self.hidden_primary_import(network_path) {
 					return None;
 				};
-				let (import_name, description) = self.displayed_input_name_and_description(&encapsulating_node_id, *import_index, encapsulating_path);
+				let (import_name, description) = self.displayed_input_name_and_description(encapsulating_node_id, *import_index, encapsulating_path);
 
 				let import_name = if *output_type.nested_type() != concrete!(()) {
 					import_name
@@ -993,7 +985,9 @@ impl NodeNetworkInterface {
 				(import_name, description)
 			}
 		};
+
 		let data_type = FrontendGraphDataType::displayed_type(&output_type, &type_source);
+
 		let mut connected_to = self
 			.outward_wires(network_path)
 			.and_then(|outward_wires| outward_wires.get(output_connector))
@@ -1352,7 +1346,7 @@ impl NodeNetworkInterface {
 
 	pub fn hidden_primary_output(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		match self.implementation(node_id, network_path) {
-			Some(DocumentNodeImplementation::Network(network)) => network.exports.get(0).is_none_or(|input| !input.is_exposed()),
+			Some(DocumentNodeImplementation::Network(network)) => network.exports.first().is_none_or(|input| !input.is_exposed()),
 			_ => false,
 		}
 	}
@@ -2105,7 +2099,7 @@ impl NodeNetworkInterface {
 		let Some(network) = self.nested_network(network_path) else { return };
 		let mut import_export_ports = Ports::new();
 
-		if network_path.len() > 0 {
+		if !network_path.is_empty() {
 			let import_start_index = if self.hidden_primary_import(network_path) { 1 } else { 0 };
 			for import_index in import_start_index..self.number_of_imports(network_path) {
 				import_export_ports.insert_output_port_at_center(import_index, import_export_position.0.as_dvec2() + DVec2::new(0., import_index as f64 * 24.));
@@ -3863,7 +3857,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let number_of_inputs = self.number_of_inputs(parent_id, &encapsulating_network_path);
+		let number_of_inputs = self.number_of_inputs(parent_id, encapsulating_network_path);
 		let Some(outward_wires) = self.outward_wires(network_path) else {
 			log::error!("Could not get outward wires in remove_import");
 			return;
@@ -4291,10 +4285,11 @@ impl NodeNetworkInterface {
 			InputConnector::Export(_) => network_path.split_last(),
 		};
 
-		if let Some((layer_id, layer_path)) = layer_node_path {
-			if !self.is_eligible_to_be_layer(layer_id, layer_path) && self.is_layer(layer_id, layer_path) {
-				self.set_to_node_or_layer(layer_id, layer_path, false);
-			}
+		if let Some((layer_id, layer_path)) = layer_node_path
+			&& !self.is_eligible_to_be_layer(layer_id, layer_path)
+			&& self.is_layer(layer_id, layer_path)
+		{
+			self.set_to_node_or_layer(layer_id, layer_path, false);
 		}
 
 		// Side effects
@@ -5251,6 +5246,7 @@ impl NodeNetworkInterface {
 		for node_id in &valid_upstream_chain_nodes {
 			self.set_chain_position(node_id, network_path);
 		}
+
 		// Reload click target of the layer which used to encapsulate the node
 		if !valid_upstream_chain_nodes.is_empty() {
 			let mut downstream_layer = Some(input_connector.node_id().unwrap());

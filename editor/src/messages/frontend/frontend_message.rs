@@ -125,15 +125,17 @@ pub enum FrontendMessage {
 		document_id: DocumentId,
 	},
 	UpdateImportsExports {
-		// If the primary import/export is not visible, then it is None
+		/// If the primary import is not visible, then it is None.
 		imports: Vec<Option<FrontendGraphOutput>>,
+		/// If the primary export is not visible, then it is None.
 		exports: Vec<Option<FrontendGraphInput>>,
-		// The primary import/export location
+		/// The primary import location.
 		#[serde(rename = "importPosition")]
 		import_position: IVec2,
+		/// The primary export location.
 		#[serde(rename = "exportPosition")]
 		export_position: IVec2,
-		// The document network does not have an add import or export button
+		/// The document network does not have an add import or export button.
 		#[serde(rename = "addImportExport")]
 		add_import_export: bool,
 	},

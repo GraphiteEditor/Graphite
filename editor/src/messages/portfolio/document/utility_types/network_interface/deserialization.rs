@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
-use serde_json::Value;
-
 use crate::messages::portfolio::document::utility_types::network_interface::{DocumentNodePersistentMetadata, InputMetadata, InputPersistentMetadata, NodeNetworkMetadata, NodeTypePersistentMetadata};
+use serde_json::Value;
+use std::collections::HashMap;
 
 /// Persistent metadata for each node in the network, which must be included when creating, serializing, and deserializing saving a node.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -126,7 +124,7 @@ where
 		return Ok(document.into());
 	};
 	if let Ok(document) = serde_json::from_value::<DocumentNodePersistentMetadata>(value.clone()) {
-		return Ok(document.into());
+		return Ok(document);
 	};
 	if let Ok(document) = serde_json::from_value::<DocumentNodePersistentMetadataPropertiesRow>(value.clone()) {
 		return Ok(document.into());

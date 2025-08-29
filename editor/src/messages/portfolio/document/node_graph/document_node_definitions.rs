@@ -904,7 +904,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::DVec2(DVec2 { x: 0., y: 0. }), true)],
+					inputs: vec![NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {

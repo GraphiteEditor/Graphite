@@ -61,7 +61,7 @@ pub struct FrontendGraphInput {
 	#[serde(rename = "validTypes")]
 	pub valid_types: Vec<String>,
 	#[serde(rename = "connectedTo")]
-	// Either "nothing", "import index {index}", "{node name} output {output_index}"
+	/// Either "nothing", "import index {index}", or "{node name} output {output_index}".
 	pub connected_to: String,
 }
 
@@ -73,8 +73,8 @@ pub struct FrontendGraphOutput {
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: String,
 	pub description: String,
-	// If connected to an export, it is "export index {index}"
-	// If connected to a node it is "{node name} input {input_index}"
+	/// If connected to an export, it is "export index {index}".
+	/// If connected to a node, it is "{node name} input {input_index}".
 	#[serde(rename = "connectedTo")]
 	pub connected_to: Vec<String>,
 }

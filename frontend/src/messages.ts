@@ -225,16 +225,12 @@ export class FrontendNode {
 
 	readonly displayName!: string;
 
-	// @Type(() => FrontendGraphInput)
 	readonly primaryInput!: FrontendGraphInput | undefined;
 
-	// @Type(() => FrontendGraphInput)
 	readonly exposedInputs!: FrontendGraphInput[];
 
-	// @Type(() => FrontendGraphOutput)
 	readonly primaryOutput!: FrontendGraphOutput | undefined;
 
-	// @Type(() => FrontendGraphOutput)
 	readonly exposedOutputs!: FrontendGraphOutput[];
 
 	readonly primaryInputConnectedToLayer!: boolean;

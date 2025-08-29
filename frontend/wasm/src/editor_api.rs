@@ -314,25 +314,25 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name=addPrimaryImport)]
+	#[wasm_bindgen(js_name = addPrimaryImport)]
 	pub fn add_primary_import(&self) {
 		self.dispatch(DocumentMessage::AddTransaction);
 		self.dispatch(NodeGraphMessage::AddPrimaryImport);
 	}
 
-	#[wasm_bindgen(js_name=addSecondaryImport)]
+	#[wasm_bindgen(js_name = addSecondaryImport)]
 	pub fn add_secondary_import(&self) {
 		self.dispatch(DocumentMessage::AddTransaction);
 		self.dispatch(NodeGraphMessage::AddSecondaryImport);
 	}
 
-	#[wasm_bindgen(js_name=addPrimaryExport)]
+	#[wasm_bindgen(js_name = addPrimaryExport)]
 	pub fn add_primary_export(&self) {
 		self.dispatch(DocumentMessage::AddTransaction);
 		self.dispatch(NodeGraphMessage::AddPrimaryExport);
 	}
 
-	#[wasm_bindgen(js_name=addSecondaryExport)]
+	#[wasm_bindgen(js_name = addSecondaryExport)]
 	pub fn add_secondary_export(&self) {
 		self.dispatch(DocumentMessage::AddTransaction);
 		self.dispatch(NodeGraphMessage::AddSecondaryExport);
