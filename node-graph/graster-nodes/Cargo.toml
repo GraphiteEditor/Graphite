@@ -14,9 +14,12 @@ workspace = true
 
 [features]
 default = ["std"]
+shader-nodes = [
+	"std",
+	"dep:graphene-raster-nodes-shaders",
+]
 std = [
 	"dep:graphene-core",
-	"dep:graphene-raster-nodes-shaders",
 	"dep:dyn-any",
 	"dep:image",
 	"dep:ndarray",
@@ -26,8 +29,6 @@ std = [
 	"dep:serde",
 	"dep:specta",
 	"dep:kurbo",
-	"glam/debug-glam-assert",
-	"glam/serde",
 ]
 
 [dependencies]
