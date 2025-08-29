@@ -71,7 +71,7 @@ impl ShaderCodegen for PerPixelAdjust {
 		let entry_point_name = quote!(#entry_point_mod::#entry_point_name_ident);
 		let uniform_struct_ident = format_ident!("Uniform");
 		let uniform_struct = quote!(#entry_point_mod::#uniform_struct_ident);
-		let gpu_node_mod = format_ident!("{}_gpu", fn_name);
+		let shader_node_mod = format_ident!("{}_shader_node", fn_name);
 
 		let codegen = PerPixelAdjustCodegen {
 			parsed,
@@ -82,7 +82,7 @@ impl ShaderCodegen for PerPixelAdjust {
 			entry_point_name,
 			uniform_struct_ident,
 			uniform_struct,
-			gpu_node_mod,
+			shader_node_mod,
 		};
 
 		Ok(ShaderTokens {
@@ -101,7 +101,7 @@ pub struct PerPixelAdjustCodegen<'a> {
 	entry_point_name: TokenStream,
 	uniform_struct_ident: Ident,
 	uniform_struct: TokenStream,
-	gpu_node_mod: Ident,
+	shader_node_mod: Ident,
 }
 
 impl PerPixelAdjustCodegen<'_> {
@@ -286,9 +286,9 @@ impl PerPixelAdjustCodegen<'_> {
 				shader_node: Some(ShaderNodeType::ShaderNode),
 				..self.parsed.attributes.clone()
 			},
-			fn_name: self.gpu_node_mod.clone(),
-			struct_name: format_ident!("{}", self.gpu_node_mod.to_string().to_case(Case::Pascal)),
-			mod_name: self.gpu_node_mod.clone(),
+			fn_name: self.shader_node_mod.clone(),
+			struct_name: format_ident!("{}", self.shader_node_mod.to_string().to_case(Case::Pascal)),
+			mod_name: self.shader_node_mod.clone(),
 			fn_generics: vec![parse_quote!('a: 'n)],
 			where_clause: None,
 			input: Input {
@@ -307,10 +307,10 @@ impl PerPixelAdjustCodegen<'_> {
 		let gpu_node_impl = crate::codegen::generate_node_code(&parsed_node_fn)?;
 
 		// wrap node in `mod #gpu_node_mod`
-		let gpu_node_mod = &self.gpu_node_mod;
+		let shader_node_mod = &self.shader_node_mod;
 		Ok(quote! {
 			#[cfg(feature = #SHADER_NODES_FEATURE_GATE)]
-			mod #gpu_node_mod {
+			mod #shader_node_mod {
 				use super::*;
 				use wgpu_executor::WgpuExecutor;
 
