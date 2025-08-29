@@ -1,5 +1,5 @@
 use crate::parsing::{Input, NodeFnAttributes, ParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField};
-use crate::shader_nodes::{ShaderCodegen, ShaderNodeType, ShaderTokens};
+use crate::shader_nodes::{SHADER_NODES_FEATURE_GATE, ShaderCodegen, ShaderNodeType, ShaderTokens};
 use convert_case::{Case, Casing};
 use proc_macro_crate::FoundCrate;
 use proc_macro2::{Ident, TokenStream};
@@ -19,7 +19,7 @@ impl Parse for PerPixelAdjust {
 }
 
 impl ShaderCodegen for PerPixelAdjust {
-	fn codegen(&self, parsed: &ParsedNodeFn, node_cfg: &TokenStream) -> syn::Result<ShaderTokens> {
+	fn codegen(&self, parsed: &ParsedNodeFn) -> syn::Result<ShaderTokens> {
 		let fn_name = &parsed.fn_name;
 
 		let mut params;
@@ -75,7 +75,6 @@ impl ShaderCodegen for PerPixelAdjust {
 
 		let codegen = PerPixelAdjustCodegen {
 			parsed,
-			node_cfg,
 			params,
 			has_uniform,
 			entry_point_mod,
@@ -95,7 +94,6 @@ impl ShaderCodegen for PerPixelAdjust {
 
 pub struct PerPixelAdjustCodegen<'a> {
 	parsed: &'a ParsedNodeFn,
-	node_cfg: &'a TokenStream,
 	params: Vec<Param<'a>>,
 	has_uniform: bool,
 	entry_point_mod: Ident,
@@ -285,7 +283,7 @@ impl PerPixelAdjustCodegen<'_> {
 		let mut parsed_node_fn = ParsedNodeFn {
 			vis: self.parsed.vis.clone(),
 			attributes: NodeFnAttributes {
-				shader_node: Some(ShaderNodeType::GpuNode),
+				shader_node: Some(ShaderNodeType::ShaderNode),
 				..self.parsed.attributes.clone()
 			},
 			fn_name: self.gpu_node_mod.clone(),
@@ -309,10 +307,9 @@ impl PerPixelAdjustCodegen<'_> {
 		let gpu_node_impl = crate::codegen::generate_node_code(&parsed_node_fn)?;
 
 		// wrap node in `mod #gpu_node_mod`
-		let node_cfg = self.node_cfg;
 		let gpu_node_mod = &self.gpu_node_mod;
 		Ok(quote! {
-			#node_cfg
+			#[cfg(feature = #SHADER_NODES_FEATURE_GATE)]
 			mod #gpu_node_mod {
 				use super::*;
 				use wgpu_executor::WgpuExecutor;
