@@ -77,7 +77,6 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 						})
 						.collect(),
 					output_names: vec![output_type.to_string()],
-					has_primary_output: true,
 					locked: false,
 					..Default::default()
 				},
