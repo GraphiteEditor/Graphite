@@ -21,6 +21,7 @@ image-compare = []
 vello = ["dep:vello", "gpu"]
 resvg = []
 wayland = ["graph-craft/wayland"]
+shader-nodes = ["graphene-raster-nodes/shader-nodes"]
 
 [dependencies]
 # Local dependencies
