@@ -1,8 +1,8 @@
 use super::snapping::{SnapCandidatePoint, SnapData, SnapManager};
 use super::transformation_cage::{BoundingBoxManager, SizeSnapData};
 use crate::consts::ROTATE_INCREMENT;
-use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_text};
@@ -568,25 +568,21 @@ pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec
 	(d1 * len1, d2 * len2)
 }
 
-pub fn make_path_editable_is_allowed(network_interface: &NodeNetworkInterface, metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
+pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterface) -> Option<LayerNodeIdentifier> {
 	// Must have exactly one layer selected
 	let selected_nodes = network_interface.selected_nodes();
-	let mut selected_layers = selected_nodes.selected_layers(metadata);
+	let mut selected_layers = selected_nodes.selected_layers(network_interface.document_metadata());
 	let first_layer = selected_layers.next()?;
 	if selected_layers.next().is_some() {
 		return None;
 	}
+	for _ in selected_layers {}
 
 	// Must be a layer of type Table<Vector>
-	let compatible_type = NodeGraphLayer::new(first_layer, network_interface)
-		.horizontal_layer_flow()
-		.nth(1)
-		.map(|node_id| {
-			let (output_type, _) = network_interface.output_type(&node_id, 0, &[]);
-			output_type.nested_type() == concrete!(Table<Vector>).nested_type()
-		})
-		.unwrap_or_default();
-	if !compatible_type {
+	let node_id = NodeGraphLayer::new(first_layer, network_interface).horizontal_layer_flow().nth(1)?;
+
+	let (output_type, _) = network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
+	if output_type.nested_type() != concrete!(Table<Vector>).nested_type() {
 		return None;
 	}
 

@@ -18,7 +18,11 @@ pub enum NodeGraphMessage {
 	},
 	AddPathNode,
 	AddImport,
+	AddPrimaryImport,
+	AddSecondaryImport,
 	AddExport,
+	AddPrimaryExport,
+	AddSecondaryExport,
 	Init,
 	SelectedNodesUpdated,
 	Copy,
@@ -62,6 +66,12 @@ pub enum NodeGraphMessage {
 		input_connector: InputConnector,
 		set_to_exposed: bool,
 		start_transaction: bool,
+	},
+	ExposeEncapsulatingPrimaryInput {
+		exposed: bool,
+	},
+	ExposePrimaryExport {
+		exposed: bool,
 	},
 	InsertNode {
 		node_id: NodeId,
