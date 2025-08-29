@@ -452,7 +452,7 @@ impl Hash for dyn AnyHash {
 }
 impl Hash for Box<dyn AnyHash + Send + Sync> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.dyn_hash(state);
+		(**self).dyn_hash(state);
 	}
 }
 
