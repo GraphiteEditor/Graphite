@@ -60,10 +60,7 @@
           cargoBuildFlags = [ "-p" "rustc_codegen_spirv" "--features=use-installed-tools" "--no-default-features" ];
           doCheck = false;
         });
-
-        # Wrapper script for running rust commands with the rust toolchain used by rust-gpu.
-        # For example `rust-gpu cargo --version` or `rust-gpu rustc --version`.
-        execWithRustGPUEnvironment = pkgs.writeShellScriptBin "rust-gpu" ''
+        rustGpuCargo = pkgs.writeShellScriptBin "cargo" ''
           #!${pkgs.lib.getExe pkgs.bash}
 
           filtered_args=()
@@ -74,11 +71,9 @@
             esac
           done
 
-          export PATH="${pkgs.lib.makeBinPath [ rustGPUToolchainPkg pkgs.spirv-tools ]}:$PATH"
-          export RUSTC_CODEGEN_SPIRV_PATH="${rustc_codegen_spirv}/lib/librustc_codegen_spirv.so"
-
-          exec ${"\${filtered_args[@]}"}
+          exec ${rustGPUToolchainPkg}/bin/cargo ${"\${filtered_args[@]}"}
         '';
+        rustGpuPathOverride = "${rustGpuCargo}/bin:${rustGPUToolchainPkg}/bin:${pkgs.spirv-tools}/bin";
 
         libcef = pkgs.libcef.overrideAttrs (finalAttrs: previousAttrs: {
           version = "139.0.17";
@@ -137,8 +132,6 @@
 
           # Linker
           pkgs.mold
-
-          execWithRustGPUEnvironment
         ];
         # Development tools that don't need to be in LD_LIBRARY_PATH
         devTools = with pkgs; [
@@ -150,6 +143,9 @@
           gnuplot
           samply
           cargo-flamegraph
+
+          # Useful for rust-gpu debugging
+          pkgs.spirv-tools
         ];
       in
       {
@@ -160,6 +156,9 @@
           LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath buildInputs}:${libcefPath}";
           CEF_PATH = libcefPath;
           XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS";
+
+          RUST_GPU_PATH_OVERRIDE = rustGpuPathOverride;
+          RUSTC_CODEGEN_SPIRV_PATH = "${rustc_codegen_spirv}/lib/librustc_codegen_spirv.so";
 
           shellHook = ''
             alias cargo='mold --run cargo'
