@@ -23,10 +23,10 @@
 		"setup": "node package-installer.js",
 		"native:build-dev": "wasm-pack build ./wasm --dev --target=web --features native",
 		"native:build-production": "wasm-pack build ./wasm --release --target=web --features native",
-		"wasm:build-dev": "wasm-pack build ./wasm --dev --target=web",
+		"wasm:build-dev": "wasm-pack build ./wasm --dev --target=web --features shader-nodes",
 		"wasm:build-profiling": "wasm-pack build ./wasm --profiling --target=web",
 		"wasm:build-production": "wasm-pack build ./wasm --release --target=web",
-		"wasm:watch-dev": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"wasm-pack build . --dev --target=web -- --color=always\"",
+		"wasm:watch-dev": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"wasm-pack build . --dev --target=web -- --features shader-nodes --color=always\"",
 		"wasm:watch-profiling": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"wasm-pack build . --profiling --target=web -- --color=always\"",
 		"wasm:watch-production": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"wasm-pack build . --release --target=web -- --color=always\""
 	},
