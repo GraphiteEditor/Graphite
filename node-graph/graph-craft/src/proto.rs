@@ -300,27 +300,22 @@ impl ProtoNetwork {
 		// Perform topological sort once
 		self.reorder_ids()?;
 
-		let mut out_nodes = Vec::with_capacity(10);
-		let output_dependencies = self.find_context_dependencies(self.output, &mut out_nodes);
-		if !output_dependencies.is_empty() {
-			return Err(format!("Node Graph contains unresolved context dependencies: {output_dependencies:?}"));
-		}
-		out_nodes.sort_by_key(|&(id, _)| id);
+		self.find_context_dependencies(self.output);
 
-		// TODO: use outwards edges tracked in original node location instead
-		// Collect outward edges once
-		let outwards_edges = self.collect_outwards_edges();
-
-		for (node_id, context_deps) in out_nodes {
-			self.insert_context_nullification_node(&outwards_edges, node_id, context_deps);
-		}
+		// Perform topological sort a second time to integrate the new nodes
+		self.reorder_ids()?;
 
 		Ok(())
 	}
 
-	fn insert_context_nullification_node(&mut self, outwards_edges: &HashMap<NodeId, Vec<NodeId>>, node_id: NodeId, context_deps: ContextFeatures) {
+	fn insert_context_nullification_node(&mut self, node_id: NodeId, context_deps: ContextFeatures) -> NodeId {
 		let (_, node) = &self.nodes[node_id.0 as usize];
-		let path = node.original_location.path.clone();
+		let mut path = node.original_location.path.clone();
+
+		// Add a path extension with a placeholder value which should not conflict with existing paths
+		if let Some(p) = path.as_mut() {
+			p.push(NodeId(10))
+		}
 
 		let memo_node_id = NodeId(self.nodes.len() as u64);
 
@@ -357,7 +352,7 @@ impl ProtoNetwork {
 		self.nodes.push((
 			nullification_node_id,
 			ProtoNode {
-				construction_args: ConstructionArgs::Nodes(vec![memo_node_id, nullification_node_id]),
+				construction_args: ConstructionArgs::Nodes(vec![memo_node_id, nullification_value_node_id]),
 				call_argument: concrete!(Context),
 				identifier: graphene_core::context_modification::context_modification::IDENTIFIER,
 				original_location: OriginalLocation {
@@ -367,47 +362,53 @@ impl ProtoNetwork {
 				..Default::default()
 			},
 		));
-		self.replace_node_id(outwards_edges, node_id, nullification_node_id);
+		nullification_node_id
 	}
 
-	fn find_context_dependencies(&self, id: NodeId, out_nodes: &mut Vec<(NodeId, ContextFeatures)>) -> ContextFeatures {
+	fn find_context_dependencies(&mut self, id: NodeId) -> (ContextFeatures, Option<NodeId>) {
 		let mut branch_dependencies = Vec::new();
 		let mut combined_deps = ContextFeatures::default();
-		let node = &self.nodes[id.0 as usize].1;
+		let node_index = id.0 as usize;
 
-		let inputs = match &node.construction_args {
-			// TODO: Consider if value nodes can use the context
-			ConstructionArgs::Value(_) => return ContextFeatures::default(),
-			ConstructionArgs::Nodes(items) => items,
-			ConstructionArgs::Inline(_) => return ContextFeatures::default(),
+		let mut inputs = match &self.nodes[node_index].1.construction_args {
+			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be chached
+			ConstructionArgs::Value(_) => return (ContextFeatures::default(), Some(id)),
+			ConstructionArgs::Nodes(items) => items.clone(),
+			ConstructionArgs::Inline(_) => return (ContextFeatures::default(), Some(id)),
 		};
 
 		// Compute the dependencies for each branch and combine all of them
-		for &node in inputs {
-			let branch = self.find_context_dependencies(node, out_nodes);
+		for &node in &inputs {
+			let branch = self.find_context_dependencies(node);
+
 			branch_dependencies.push(branch);
-			combined_deps |= branch;
+			combined_deps |= branch.0;
 		}
+		let node = &self.nodes[node_index].1;
+		let context_features = node.context_features;
 
 		let mut new_deps = combined_deps;
 
 		// Remove requirements which this node provides
-		new_deps &= !node.context_features.inject;
+		new_deps &= !context_features.inject;
 		// Add requirements we have
-		new_deps |= node.context_features.extract;
+		new_deps |= context_features.extract;
 
 		// If we either introduce new dependencies, we can cache all children which don't yet need that dependency
 		let we_introduce_new_deps = !combined_deps.contains(new_deps);
 
 		// For diverging branches, we can add a cache node for all branches which don't reqire all dependencies
-		for (&node, deps) in inputs.iter().zip(branch_dependencies.into_iter()) {
-			if we_introduce_new_deps || deps != combined_deps {
-				out_nodes.push((node, deps));
+		for (child_node, (deps, new_id)) in inputs.iter_mut().zip(branch_dependencies.into_iter()) {
+			if let Some(new_id) = new_id {
+				*child_node = new_id;
+			} else if we_introduce_new_deps || deps != combined_deps {
+				*child_node = self.insert_context_nullification_node(*child_node, deps);
 			}
 		}
+		self.nodes[node_index].1.construction_args = ConstructionArgs::Nodes(inputs);
 
 		// Which dependencies do we supply (and don't need ourselves)?
-		let net_injections = node.context_features.inject.difference(node.context_features.extract);
+		let net_injections = context_features.inject.difference(context_features.extract);
 
 		// Which dependences still need to be meet after this node?
 		let remaining_deps_from_children = combined_deps.difference(net_injections);
@@ -415,12 +416,13 @@ impl ProtoNetwork {
 		// Do we satisfy any existing dependencies?
 		let we_supply_existing_deps = !combined_deps.difference(remaining_deps_from_children).is_empty();
 
+		let mut new_id = None;
 		if we_supply_existing_deps {
 			// Our set of context dependencies has shrunk so we can add a cache node after the current node
-			out_nodes.push((id, new_deps));
+			new_id = Some(self.insert_context_nullification_node(id, new_deps));
 		}
 
-		new_deps
+		(new_deps, new_id)
 	}
 
 	/// Update all of the references to a node ID in the graph with a new ID named `compose_node_id`.
