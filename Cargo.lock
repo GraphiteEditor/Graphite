@@ -1777,6 +1777,7 @@ version = "0.29.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8babf46d4c1c9d92deac9f7be466f76dfc4482b6452fc5024b5e8daf6ffeb3ee"
 dependencies = [
+ "bytemuck",
  "libm",
  "serde",
 ]
@@ -2086,8 +2087,8 @@ dependencies = [
  "dirs",
  "futures",
  "glam",
+ "graphite-desktop-embedded-resources",
  "graphite-desktop-wrapper",
- "include_dir",
  "libc",
  "objc2-io-surface",
  "objc2-metal 0.3.1",
@@ -2101,6 +2102,13 @@ dependencies = [
  "wgpu",
  "windows",
  "winit",
+]
+
+[[package]]
+name = "graphite-desktop-embedded-resources"
+version = "0.1.0"
+dependencies = [
+ "include_dir",
 ]
 
 [[package]]
@@ -4128,6 +4136,7 @@ dependencies = [
  "graph-craft",
  "graphene-std",
  "interpreted-executor",
+ "log",
 ]
 
 [[package]]
