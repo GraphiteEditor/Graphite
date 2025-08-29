@@ -250,13 +250,7 @@ impl Fsm for ArtboardToolFsmState {
 
 				if quick_measurement_enabled && not_resizing && alt_pressed {
 					// Get the selected artboard bounds
-					let selected_artboard_bounds = tool_data
-						.selected_artboard
-						.and_then(|layer| {
-							let bounds = document.metadata().bounding_box_document(layer);
-							bounds
-						})
-						.map(Rect::from_box);
+					let selected_artboard_bounds = tool_data.selected_artboard.and_then(|layer| document.metadata().bounding_box_document(layer)).map(Rect::from_box);
 
 					// Find hovered artboard or regular layer
 					let hovered_artboard = ArtboardToolData::hovered_artboard(document, input);
@@ -264,11 +258,9 @@ impl Fsm for ArtboardToolFsmState {
 
 					// Get bounds for the hovered object (prioritize artboards)
 					let hovered_bounds = if let Some(artboard) = hovered_artboard {
-						let bounds = document.metadata().bounding_box_document(artboard);
-						bounds.map(Rect::from_box)
+						document.metadata().bounding_box_document(artboard).map(Rect::from_box)
 					} else if let Some(layer) = hovered_layer {
-						let bounds = document.metadata().bounding_box_document(layer);
-						bounds.map(Rect::from_box)
+						document.metadata().bounding_box_document(layer).map(Rect::from_box)
 					} else {
 						None
 					};
