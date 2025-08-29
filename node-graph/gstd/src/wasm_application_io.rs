@@ -156,7 +156,7 @@ fn render_svg(data: impl Render, mut render: SvgRender, render_params: RenderPar
 		});
 	}
 
-	data.render_svg(&mut render, &render_params);
+	data.render_svg(&mut render, Default::default(), &render_params);
 
 	render.wrap_with_transform(footprint.transform, Some(footprint.resolution.as_dvec2()));
 
@@ -251,7 +251,7 @@ where
 	for row in data.iter_mut() {
 		*row.transform = glam::DAffine2::from_translation(-aabb.start) * *row.transform;
 	}
-	data.render_svg(&mut render, &render_params);
+	data.render_svg(&mut render, Default::default(), &render_params);
 	render.format_svg(glam::DVec2::ZERO, size);
 	let svg_string = render.svg.to_svg_string();
 

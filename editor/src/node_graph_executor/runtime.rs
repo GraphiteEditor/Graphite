@@ -364,7 +364,7 @@ impl NodeRuntime {
 			..Default::default()
 		};
 		let mut render = SvgRender::new();
-		graphic.render_svg(&mut render, &render_params);
+		graphic.render_svg(&mut render, Default::default(), &render_params);
 
 		// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag
 		render.format_svg(bounds[0], bounds[1]);

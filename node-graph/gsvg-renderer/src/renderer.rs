@@ -226,7 +226,7 @@ pub struct RenderMetadata {
 
 // TODO: Rename to "Graphical"
 pub trait Render: BoundingBox + RenderComplexity {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
+	fn render_svg(&self, render: &mut SvgRender, tranform: DAffine2, render_params: &RenderParams);
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams);
@@ -248,14 +248,14 @@ pub trait Render: BoundingBox + RenderComplexity {
 }
 
 impl Render for Graphic {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+	fn render_svg(&self, render: &mut SvgRender, transform: DAffine2, render_params: &RenderParams) {
 		match self {
-			Graphic::Graphic(table) => table.render_svg(render, render_params),
-			Graphic::Vector(table) => table.render_svg(render, render_params),
-			Graphic::RasterCPU(table) => table.render_svg(render, render_params),
+			Graphic::Graphic(table) => table.render_svg(render, transform, render_params),
+			Graphic::Vector(table) => table.render_svg(render, transform, render_params),
+			Graphic::RasterCPU(table) => table.render_svg(render, transform, render_params),
 			Graphic::RasterGPU(_) => (),
-			Graphic::Color(table) => table.render_svg(render, render_params),
-			Graphic::Gradient(table) => table.render_svg(render, render_params),
+			Graphic::Color(table) => table.render_svg(render, transform, render_params),
+			Graphic::Gradient(table) => table.render_svg(render, transform, render_params),
 		}
 	}
 
@@ -365,7 +365,7 @@ impl Render for Graphic {
 }
 
 impl Render for Artboard {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+	fn render_svg(&self, render: &mut SvgRender, parent_transform: DAffine2, render_params: &RenderParams) {
 		// Rectangle for the artboard
 		if !render_params.hide_artboards {
 			// Background
@@ -407,7 +407,8 @@ impl Render for Artboard {
 			},
 			// Artwork content
 			|render| {
-				self.content.render_svg(render, render_params);
+				let child_transform = parent_transform * DAffine2::from_translation(self.location.as_dvec2());
+				self.content.render_svg(render, child_transform, render_params);
 			},
 		);
 	}
@@ -462,9 +463,9 @@ impl Render for Artboard {
 }
 
 impl Render for Table<Artboard> {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+	fn render_svg(&self, render: &mut SvgRender, parent_transform: DAffine2, render_params: &RenderParams) {
 		for artboard in self.iter() {
-			artboard.element.render_svg(render, render_params);
+			artboard.element.render_svg(render, parent_transform, render_params);
 		}
 	}
 
@@ -493,11 +494,12 @@ impl Render for Table<Artboard> {
 }
 
 impl Render for Table<Graphic> {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+	fn render_svg(&self, render: &mut SvgRender, parent_transform: DAffine2, render_params: &RenderParams) {
 		let mut iter = self.iter().peekable();
 		let mut mask_state = None;
 
 		while let Some(row) = iter.next() {
+			let child_transform = parent_transform * *row.transform;
 			render.parent_tag(
 				"g",
 				|attributes| {
@@ -522,7 +524,7 @@ impl Render for Table<Graphic> {
 						let mask_type = if row.element.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
 						mask_state = Some((uuid, mask_type));
 						let mut svg = SvgRender::new();
-						row.element.render_svg(&mut svg, &render_params.for_clipper());
+						row.element.render_svg(&mut svg, child_transform, &render_params.for_clipper());
 
 						write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
 						mask_type.write_to_defs(&mut attributes.0.svg_defs, uuid, svg.svg.to_svg_string());
@@ -538,7 +540,7 @@ impl Render for Table<Graphic> {
 					}
 				},
 				|render| {
-					row.element.render_svg(render, render_params);
+					row.element.render_svg(render, child_transform, render_params);
 				},
 			);
 		}
@@ -667,7 +669,7 @@ impl Render for Table<Graphic> {
 }
 
 impl Render for Table<Vector> {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+	fn render_svg(&self, render: &mut SvgRender, parent_transform: DAffine2, render_params: &RenderParams) {
 		for row in self.iter() {
 			let multiplied_transform = *row.transform;
 			let vector = &row.element;
@@ -752,9 +754,11 @@ impl Render for Table<Vector> {
 				let defs = &mut attributes.0.svg_defs;
 				if let Some((ref id, mask_type, ref vector_row)) = push_id {
 					let mut svg = SvgRender::new();
-					vector_row.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
+					vector_row.render_svg(&mut svg, parent_transform, &render_params.for_alignment(applied_stroke_transform));
+
 					let stroke = row.element.style.stroke().unwrap();
 					let weight = stroke.effective_width() * max_scale(applied_stroke_transform);
+
 					let quad = Quad::from_box(transformed_bounds).inflate(weight);
 					let (x, y) = quad.top_left().into();
 					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
@@ -1152,7 +1156,7 @@ impl Render for Table<Vector> {
 }
 
 impl Render for Table<Raster<CPU>> {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+	fn render_svg(&self, render: &mut SvgRender, _: DAffine2, render_params: &RenderParams) {
 		for row in self.iter() {
 			let image = row.element;
 			let transform = *row.transform;
@@ -1297,7 +1301,7 @@ impl Render for Table<Raster<CPU>> {
 static LAZY_ARC_VEC_ZERO_U8: LazyLock<Arc<Vec<u8>>> = LazyLock::new(|| Arc::new(Vec::new()));
 
 impl Render for Table<Raster<GPU>> {
-	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {
+	fn render_svg(&self, _render: &mut SvgRender, _: DAffine2, _render_params: &RenderParams) {
 		log::warn!("tried to render texture as an svg");
 	}
 
@@ -1353,13 +1357,13 @@ impl Render for Table<Raster<GPU>> {
 }
 
 impl Render for Table<Color> {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+	fn render_svg(&self, render: &mut SvgRender, parent_transform: DAffine2, render_params: &RenderParams) {
 		for row in self.iter() {
 			render.leaf_tag("rect", |attributes| {
 				attributes.push("width", render_params.footprint.resolution.x.to_string());
 				attributes.push("height", render_params.footprint.resolution.y.to_string());
-
-				let matrix = format_transform_matrix(render_params.footprint.transform.inverse());
+				let transform = parent_transform.inverse() * render_params.footprint.transform.inverse();
+				let matrix = format_transform_matrix(transform);
 				if !matrix.is_empty() {
 					attributes.push("transform", matrix);
 				}
@@ -1383,7 +1387,7 @@ impl Render for Table<Color> {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, _: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
 		for row in self.iter() {
@@ -1391,7 +1395,7 @@ impl Render for Table<Color> {
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 
-			let transform = parent_transform * render_params.footprint.transform.inverse();
+			let transform = render_params.footprint.transform.inverse();
 			let color = row.element;
 			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
 
@@ -1417,7 +1421,7 @@ impl Render for Table<Color> {
 }
 
 impl Render for Table<GradientStops> {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+	fn render_svg(&self, render: &mut SvgRender, _: DAffine2, render_params: &RenderParams) {
 		for row in self.iter() {
 			render.leaf_tag("rect", |attributes| {
 				attributes.push("width", render_params.footprint.resolution.x.to_string());
