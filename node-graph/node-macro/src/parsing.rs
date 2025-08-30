@@ -39,7 +39,7 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) description: String,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct NodeFnAttributes {
 	pub(crate) category: Option<LitStr>,
 	pub(crate) display_name: Option<LitStr>,
@@ -144,7 +144,7 @@ pub struct NodeParsedField {
 	pub implementations: Punctuated<Implementation, Comma>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct Input {
 	pub(crate) pat_ident: PatIdent,
 	pub(crate) ty: Type,
@@ -663,7 +663,7 @@ pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
 }
 
 impl ParsedNodeFn {
-	fn replace_impl_trait_in_input(&mut self) {
+	pub fn replace_impl_trait_in_input(&mut self) {
 		if let Type::ImplTrait(impl_trait) = self.input.ty.clone() {
 			let ident = Ident::new("_Input", impl_trait.span());
 			let mut bounds = impl_trait.bounds;
