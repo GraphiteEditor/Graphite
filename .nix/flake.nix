@@ -57,7 +57,7 @@
             hash = "sha256-rG1cZvOV0vYb1dETOzzbJ0asYdE039UZImobXZfKIno=";
           };
           cargoHash = "sha256-AEigcEc5wiBd3zLqWN/2HSbkfOVFneAqNvg9HsouZf4=";
-          cargoBuildFlags = [ "-p" "rustc_codegen_spirv" "--features=use-installed-tools" "--no-default-features" ];
+          cargoBuildFlags = [ "-p" "rustc_codegen_spirv" "--features=use-compiled-tools" "--no-default-features" ];
           doCheck = false;
         });
         rustGpuCargo = pkgs.writeShellScriptBin "cargo" ''
@@ -73,7 +73,7 @@
 
           exec ${rustGPUToolchainPkg}/bin/cargo ${"\${filtered_args[@]}"}
         '';
-        rustGpuPathOverride = "${rustGpuCargo}/bin:${rustGPUToolchainPkg}/bin:${pkgs.spirv-tools}/bin";
+        rustGpuPathOverride = "${rustGpuCargo}/bin:${rustGPUToolchainPkg}/bin";
 
         libcef = pkgs.libcef.overrideAttrs (finalAttrs: previousAttrs: {
           version = "139.0.17";
