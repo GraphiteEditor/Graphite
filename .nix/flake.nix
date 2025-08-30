@@ -143,9 +143,6 @@
           gnuplot
           samply
           cargo-flamegraph
-
-          # Useful for rust-gpu debugging
-          pkgs.spirv-tools
         ];
       in
       {
