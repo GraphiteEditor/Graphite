@@ -16,7 +16,6 @@ gpu = ["graphite-editor/gpu"]
 # Local dependencies
 graphite-editor = { path = "../../editor", features = [
 	"gpu",
-	"ron",
 	"vello",
 ] }
 graphene-std = { workspace = true }

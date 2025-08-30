@@ -173,6 +173,8 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<String>() => text_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<DVec2>() => vec2_widget(default_info, "X", "Y", "", None, false),
 						Some(x) if x == TypeId::of::<DAffine2>() => transform_widget(default_info, &mut extra_widgets),
+						Some(x) if x == TypeId::of::<Color>() => color_widget(default_info, ColorInput::default()),
+						Some(x) if x == TypeId::of::<Option<Color>>() => color_widget(default_info, ColorInput::default()),
 						// ==========================
 						// PRIMITIVE COLLECTION TYPES
 						// ==========================
@@ -926,6 +928,22 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 
 	// Add the color input
 	match &**tagged_value {
+		TaggedValue::ColorNotInTable(color) => widgets.push(
+			color_button
+				.value(FillChoice::Solid(*color))
+				.allow_none(false)
+				.on_update(update_value(|input: &ColorInput| TaggedValue::ColorNotInTable(input.value.as_solid().unwrap()), node_id, index))
+				.on_commit(commit_value)
+				.widget_holder(),
+		),
+		TaggedValue::OptionalColorNotInTable(color) => widgets.push(
+			color_button
+				.value(color.map_or(FillChoice::None, FillChoice::Solid))
+				.allow_none(true)
+				.on_update(update_value(|input: &ColorInput| TaggedValue::OptionalColorNotInTable(input.value.as_solid()), node_id, index))
+				.on_commit(commit_value)
+				.widget_holder(),
+		),
 		TaggedValue::Color(color_table) => widgets.push(
 			color_button
 				.value(match color_table.iter().next() {
@@ -965,7 +983,7 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 				.on_commit(commit_value)
 				.widget_holder(),
 		),
-		_ => {}
+		x => warn!("Colour {x:?}"),
 	}
 
 	LayoutGroup::Row { widgets }

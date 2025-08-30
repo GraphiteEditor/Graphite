@@ -5,7 +5,6 @@ use crate::cef::ipc::{MessageType, SendMessage};
 pub struct BrowserProcessV8HandlerImpl {
 	object: *mut cef::rc::RcImpl<cef::sys::_cef_v8_handler_t, Self>,
 }
-
 impl BrowserProcessV8HandlerImpl {
 	pub(crate) fn new() -> Self {
 		Self { object: std::ptr::null_mut() }
@@ -72,7 +71,6 @@ impl Clone for BrowserProcessV8HandlerImpl {
 		Self { object: self.object }
 	}
 }
-
 impl Rc for BrowserProcessV8HandlerImpl {
 	fn as_base(&self) -> &cef::sys::cef_base_ref_counted_t {
 		unsafe {
@@ -81,7 +79,6 @@ impl Rc for BrowserProcessV8HandlerImpl {
 		}
 	}
 }
-
 impl WrapV8Handler for BrowserProcessV8HandlerImpl {
 	fn wrap_rc(&mut self, object: *mut cef::rc::RcImpl<cef::sys::_cef_v8_handler_t, Self>) {
 		self.object = object;
