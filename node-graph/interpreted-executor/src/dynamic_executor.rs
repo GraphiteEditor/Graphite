@@ -35,10 +35,17 @@ impl Default for DynamicExecutor {
 
 type Path = Box<[NodeId]>;
 
-#[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedDocumentNodeTypesDelta {
 	pub add: Vec<(Path, NodeTypes)>,
 	pub remove: Vec<Path>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NodeTypes {
+	// This is currently unused. Only the output is used
+	pub inputs: Vec<Type>,
+	pub output: Type,
 }
 
 impl DynamicExecutor {
@@ -100,8 +107,6 @@ impl DynamicExecutor {
 
 	pub fn document_node_types<'a>(&'a self, nodes: impl Iterator<Item = Path> + 'a) -> impl Iterator<Item = (Path, NodeTypes)> + 'a {
 		nodes.flat_map(|id| self.tree.source_map().get(&id).map(|(_, b)| (id, b.clone())))
-		// TODO: https://github.com/GraphiteEditor/Graphite/issues/1767
-		// TODO: Non exposed inputs are not added to the inputs_source_map, so they are not included in the resolved_document_node_types. The type is still available in the typing_context. This only affects the UI-only "Import" node.
 	}
 }
 

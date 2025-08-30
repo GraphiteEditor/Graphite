@@ -10,13 +10,13 @@ use crate::messages::portfolio::document::node_graph::utility_types::{ContextMen
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	self, FlowType, InputConnector, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing, TypeSource,
+	self, FlowType, InputConnector, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_clip_mode};
+use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
@@ -1206,13 +1206,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							return;
 						}
 
+						let compatible_type = network_interface.output_type(&output_connector, selection_network_path).add_node_string();
+
 						// Get the output types from the network interface
 						let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
 							warn!("No network_metadata");
 							return;
 						};
-
-						let compatible_type = network_interface.output_type(&output_connector.unwrap(), selection_network_path).add_node_string();
 
 						let appear_right_of_mouse = if ipp.mouse.position.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
 						let appear_above_mouse = if ipp.mouse.position.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
@@ -1648,6 +1648,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						has_left_input_wire,
 					});
 					responses.add(NodeGraphMessage::SendSelectedNodes);
+					responses.add(NodeGraphMessage::SendWires);
 					self.update_node_graph_hints(responses);
 				}
 			}
@@ -2100,7 +2101,7 @@ impl NodeGraphMessageHandler {
 				.popover_layout({
 					// Showing only compatible types
 					let compatible_type = match (selection_includes_layers, has_multiple_selection, selected_layer) {
-						(true, false, Some(layer)) => network_interface.output_type(&OutputConnector::node(node_id, 0), &[]).add_node_string(),
+						(true, false, Some(layer)) => network_interface.output_type(&OutputConnector::node(layer.to_node(), 1), &[]).add_node_string(),
 						_ => None,
 					};
 

@@ -1,5 +1,3 @@
-mod deserialization;
-
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier, NodeRelations};
 use super::misc::PTZ;
 use super::nodes::SelectedNodes;
@@ -13,24 +11,22 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
 use deserialization::deserialize_node_persistent_metadata;
 use glam::{DAffine2, DVec2, IVec2};
+use graph_craft::Type;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, InlineRust, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
-use graph_craft::{ProtoNodeIdentifier, Type, concrete};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::{PointId, Vector, VectorModificationType};
-use interpreted_executor::node_registry::NODE_REGISTRY;
 use kurbo::BezPath;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::hash::Hash;
+use std::ops::Deref;
 
 mod deserialization;
-mod resolved_types;
-use deserialization::deserialize_node_persistent_metadata;
-use std::ops::Deref;
+pub mod resolved_types;
 
 /// All network modifications should be done through this API, so the fields cannot be public. However, all fields within this struct can be public since it it not possible to have a public mutable reference.
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -669,7 +665,7 @@ impl NodeNetworkInterface {
 		let valid_types = match self.valid_input_types(&input_connector, network_path) {
 			Ok(input_types) => input_types.iter().map(|ty| ty.to_string()).collect(),
 			Err(e) => {
-				log::error!("Error getting valid types for input {input_connector}: {e}");
+				log::error!("Error getting valid types for input {input_connector:?}: {e}");
 				Vec::new()
 			}
 		};
@@ -718,7 +714,7 @@ impl NodeNetworkInterface {
 				} else if let Some(import_type_name) = output_type.compiled_nested_type_name() {
 					import_type_name
 				} else {
-					format!("Import index {}", export_index)
+					format!("Import index {}", *import_index)
 				};
 
 				(import_name, description)
@@ -1064,7 +1060,10 @@ impl NodeNetworkInterface {
 			log::error!("Could not get downstream_connectors in primary_output_connected_to_layer");
 			return false;
 		};
-		let downstream_nodes = downstream_connectors.iter().filter_map(|connector| connector.node_id()).collect::<Vec<_>>();
+		let downstream_nodes = downstream_connectors
+			.iter()
+			.filter_map(|connector| if connector.input_index() == 0 { connector.node_id() } else { None })
+			.collect::<Vec<_>>();
 		downstream_nodes.iter().any(|node_id| self.is_layer(node_id, network_path))
 	}
 
@@ -1445,30 +1444,6 @@ impl NodeNetworkInterface {
 			transaction_status: TransactionStatus::Finished,
 		}
 	}
-}
-
-/// Gets the type for a random protonode implementation (used if there is no type from the compiled network)
-fn random_protonode_implementation(protonode: &graph_craft::ProtoNodeIdentifier) -> Option<&graphene_std::NodeIOTypes> {
-	let mut protonode = protonode.clone();
-	// TODO: Remove
-	if let Some((path, _generics)) = protonode.name.split_once('<') {
-		protonode = path.to_string().to_string().into();
-	}
-	let Some(node_io_hashmap) = NODE_REGISTRY.get(&protonode) else {
-		log::error!("Could not get hashmap for proto node: {protonode:?}");
-		return None;
-	};
-
-	let node_types = node_io_hashmap.keys().min_by_key(|node_io_types| {
-		let mut hasher = DefaultHasher::new();
-		node_io_types.hash(&mut hasher);
-		hasher.finish()
-	});
-
-	if node_types.is_none() {
-		log::error!("Could not get node_types from hashmap");
-	};
-	node_types
 }
 
 // Private mutable getters for use within the network interface
