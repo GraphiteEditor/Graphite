@@ -1,8 +1,8 @@
 use crate::Context;
 use crate::shader_runtime::{FULLSCREEN_VERTEX_SHADER_NAME, ShaderRuntime};
-use bytemuck::NoUninit;
 use futures::lock::Mutex;
 use graphene_core::raster_types::{GPU, Raster};
+use graphene_core::shaders::buffer_struct::BufferStruct;
 use graphene_core::table::{Table, TableRow};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -27,7 +27,7 @@ impl PerPixelAdjustShaderRuntime {
 }
 
 impl ShaderRuntime {
-	pub async fn run_per_pixel_adjust<T: NoUninit>(&self, shaders: &Shaders<'_>, textures: Table<Raster<GPU>>, args: Option<&T>) -> Table<Raster<GPU>> {
+	pub async fn run_per_pixel_adjust<T: BufferStruct>(&self, shaders: &Shaders<'_>, textures: Table<Raster<GPU>>, args: Option<&T>) -> Table<Raster<GPU>> {
 		let mut cache = self.per_pixel_adjust.pipeline_cache.lock().await;
 		let pipeline = cache
 			.entry(shaders.fragment_shader_name.to_owned())
@@ -38,7 +38,7 @@ impl ShaderRuntime {
 			device.create_buffer_init(&BufferInitDescriptor {
 				label: Some(&format!("{} arg buffer", pipeline.name.as_str())),
 				usage: BufferUsages::STORAGE,
-				contents: bytemuck::bytes_of(args),
+				contents: bytemuck::bytes_of(&T::write(*args)),
 			})
 		});
 		pipeline.dispatch(&self.context, textures, arg_buffer)

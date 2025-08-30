@@ -1,8 +1,11 @@
+use crate::crate_ident::CrateIdent;
 use proc_macro::TokenStream;
 use proc_macro_error2::proc_macro_error;
 use syn::GenericParam;
 
+mod buffer_struct;
 mod codegen;
+mod crate_ident;
 mod derive_choice_type;
 mod parsing;
 mod shader_nodes;
@@ -13,7 +16,7 @@ mod validation;
 #[proc_macro_attribute]
 pub fn node(attr: TokenStream, item: TokenStream) -> TokenStream {
 	// Performs the `node_impl` macro's functionality of attaching an `impl Node for TheGivenStruct` block to the node struct
-	parsing::new_node_fn(attr.into(), item.into()).into()
+	parsing::new_node_fn(attr.into(), item.into()).unwrap_or_else(|err| err.to_compile_error()).into()
 }
 
 /// Generate meta-information for an enum.
@@ -27,5 +30,12 @@ pub fn node(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// Doc comments on a variant become tooltip text.
 #[proc_macro_derive(ChoiceType, attributes(widget, menu_separator, label, icon))]
 pub fn derive_choice_type(input_item: TokenStream) -> TokenStream {
-	TokenStream::from(derive_choice_type::derive_choice_type_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
+	derive_choice_type::derive_choice_type_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()).into()
+}
+
+/// Derive a struct to implement `ShaderStruct`, see that for docs.
+#[proc_macro_derive(BufferStruct)]
+pub fn derive_buffer_struct(input_item: TokenStream) -> TokenStream {
+	let crate_ident = CrateIdent::default();
+	TokenStream::from(buffer_struct::derive_buffer_struct(&crate_ident, input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
 }

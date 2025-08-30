@@ -1,3 +1,4 @@
+use crate::crate_ident::CrateIdent;
 use crate::parsing::{NodeFnAttributes, ParsedNodeFn};
 use crate::shader_nodes::per_pixel_adjust::PerPixelAdjust;
 use proc_macro2::{Ident, TokenStream};
@@ -50,11 +51,11 @@ impl Parse for ShaderNodeType {
 }
 
 pub trait ShaderCodegen {
-	fn codegen(&self, parsed: &ParsedNodeFn) -> syn::Result<ShaderTokens>;
+	fn codegen(&self, crate_ident: &CrateIdent, parsed: &ParsedNodeFn) -> syn::Result<ShaderTokens>;
 }
 
 impl ShaderCodegen for ShaderNodeType {
-	fn codegen(&self, parsed: &ParsedNodeFn) -> syn::Result<ShaderTokens> {
+	fn codegen(&self, crate_ident: &CrateIdent, parsed: &ParsedNodeFn) -> syn::Result<ShaderTokens> {
 		match self {
 			ShaderNodeType::None | ShaderNodeType::ShaderNode => (),
 			_ => {
@@ -66,7 +67,7 @@ impl ShaderCodegen for ShaderNodeType {
 
 		match self {
 			ShaderNodeType::None | ShaderNodeType::ShaderNode => Ok(ShaderTokens::default()),
-			ShaderNodeType::PerPixelAdjust(x) => x.codegen(parsed),
+			ShaderNodeType::PerPixelAdjust(x) => x.codegen(crate_ident, parsed),
 		}
 	}
 }
