@@ -20,12 +20,21 @@ impl Default for Font {
 	}
 }
 /// A cache of all loaded font data and preview urls along with the default font (send from `init_app` in `editor_api.rs`)
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default, PartialEq, DynAny)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Default, PartialEq, DynAny)]
 pub struct FontCache {
 	/// Actual font file data used for rendering a font
 	font_file_data: HashMap<Font, Vec<u8>>,
 	/// Web font preview URLs used for showing fonts when live editing
 	preview_urls: HashMap<Font, String>,
+}
+
+impl std::fmt::Debug for FontCache {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("FontCache")
+			.field("font_file_data", &self.font_file_data.keys().collect::<Vec<_>>())
+			.field("preview_urls", &self.preview_urls)
+			.finish()
+	}
 }
 
 impl FontCache {

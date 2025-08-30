@@ -2,13 +2,24 @@ use crate::gradient::GradientStops;
 use crate::raster_types::{CPU, Raster};
 use crate::table::{Table, TableRowRef};
 use crate::vector::Vector;
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, Graphic, OwnedContextImpl};
+use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, Graphic, InjectIndex, InjectVarArgs, OwnedContextImpl};
 use glam::DVec2;
 use graphene_core_shaders::color::Color;
 
+#[repr(transparent)]
+#[derive(dyn_any::DynAny)]
+struct HashableDVec2(DVec2);
+
+impl std::hash::Hash for HashableDVec2 {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.0.x.to_bits().hash(state);
+		self.0.y.to_bits().hash(state);
+	}
+}
+
 #[node_macro::node(name("Instance on Points"), category("Instancing"), path(graphene_core::vector))]
 async fn instance_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
-	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx,
+	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx + InjectIndex + InjectVarArgs,
 	points: Table<Vector>,
 	#[implementations(
 		Context -> Table<Graphic>,
@@ -26,7 +37,7 @@ async fn instance_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>
 		let mut iteration = async |index, point| {
 			let transformed_point = transform.transform_point2(point);
 
-			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_vararg(Box::new(transformed_point));
+			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_vararg(Box::new(HashableDVec2(transformed_point)));
 			let generated_instance = instance.eval(new_ctx.into_context()).await;
 
 			for mut generated_row in generated_instance.into_iter() {
@@ -52,7 +63,7 @@ async fn instance_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>
 
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn instance_repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
-	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+	ctx: impl ExtractAll + CloneVarArgs + Ctx + InjectIndex,
 	#[implementations(
 		Context -> Table<Graphic>,
 		Context -> Table<Vector>,
@@ -84,8 +95,8 @@ async fn instance_repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn instance_position(ctx: impl Ctx + ExtractVarArgs) -> DVec2 {
-	match ctx.vararg(0).map(|dynamic| dynamic.downcast_ref::<DVec2>()) {
-		Ok(Some(position)) => return *position,
+	match ctx.vararg(0).map(|dynamic| dynamic.downcast_ref::<HashableDVec2>()) {
+		Ok(Some(position)) => return position.0,
 		Ok(_) => warn!("Extracted value of incorrect type"),
 		Err(e) => warn!("Cannot extract position vararg: {e:?}"),
 	}

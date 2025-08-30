@@ -43,6 +43,7 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 			fields,
 			description,
 			properties,
+			context_features,
 		} = metadata;
 
 		let Some(implementations) = &node_registry.get(id) else { continue };
@@ -59,10 +60,11 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					inputs,
-					call_argument: (input_type.clone()),
+					call_argument: input_type.clone(),
 					implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 					visible: true,
 					skip_deduplication: false,
+					context_features: ContextDependencies::from(context_features.as_slice()),
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {

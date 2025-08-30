@@ -18,6 +18,7 @@ dealloc_nodes = []
 graphene-core-shaders = { workspace = true, features = ["std"] }
 
 # Workspace dependencies
+bitflags = { workspace = true }
 bytemuck = { workspace = true }
 node-macro = { workspace = true }
 num-traits = { workspace = true }
