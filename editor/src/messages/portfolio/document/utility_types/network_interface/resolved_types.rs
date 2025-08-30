@@ -1,8 +1,14 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use graph_craft::Type;
+use graph_craft::{
+	ProtoNodeIdentifier, Type, concrete,
+	document::{DocumentNodeImplementation, InlineRust, NodeInput, value::TaggedValue},
+};
 use graphene_std::uuid::NodeId;
-use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
+use interpreted_executor::{
+	dynamic_executor::{NodeTypes, ResolvedDocumentNodeTypesDelta},
+	node_registry::NODE_REGISTRY,
+};
 
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 
@@ -10,13 +16,6 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Inp
 #[derive(Debug, Default)]
 pub struct ResolvedDocumentNodeTypes {
 	pub types: HashMap<Vec<NodeId>, NodeTypes>,
-}
-
-#[derive(Debug, Default)]
-pub struct NodeTypes {
-	// TODO: This is currently unused. Only the output is used
-	pub inputs: Vec<Type>,
-	pub output: Type,
 }
 
 impl ResolvedDocumentNodeTypes {
@@ -56,20 +55,20 @@ impl TypeSource {
 
 	pub fn compiled_nested_type(&self) -> Option<&Type> {
 		match self {
-			TypeSource::Compiled(compiled_type) => Some(compiled_type.compiled_nested_type()),
-			TypeSource::TaggedValue(value_type) => Some(value_type.compiled_nested_type()),
+			TypeSource::Compiled(compiled_type) => Some(compiled_type.nested_type()),
+			TypeSource::TaggedValue(value_type) => Some(value_type.nested_type()),
 			_ => None,
 		}
 	}
 
 	// If Some, the type should be displayed in the imports/exports, if None it should be replaced with "import/export index _"
-	pub fn compiled_nested_type_name(self) -> Option<String> {
-		self.into_compiled_nested_type().map(|ty| ty.to_string())
+	pub fn compiled_nested_type_name(&self) -> Option<String> {
+		self.compiled_nested_type().map(|ty| ty.to_string())
 	}
 
 	// Used when searching for nodes in the add Node popup
-	pub fn add_node_string(self) -> Option<String> {
-		self.into_compiled_nested_type().map(|ty| format!("type:{}", ty.to_string()))
+	pub fn add_node_string(&self) -> Option<String> {
+		self.compiled_nested_type().map(|ty| format!("type:{}", ty.to_string()))
 	}
 
 	// The type to display in the tooltip
@@ -99,8 +98,15 @@ impl NodeNetworkInterface {
 					// If we are trying to get the input type of an unknown node, check if it has a reference to its definition and use that input type
 					if let InputConnector::Node { node_id, input_index } = input_connector {
 						if let Some(definition) = self.get_node_definition(node_id, network_path) {
-							if let Some(value) = definition.node_template.document_node.inputs.get(*input_index).cloned().and_then(|input| input.as_value()) {
-								return TypeSource::DocumentNodeDefinition(value.ty());
+							if let Some(ty) = definition
+								.node_template
+								.document_node
+								.inputs
+								.get(*input_index)
+								.cloned()
+								.and_then(|input| input.as_value().map(|value| value.ty()))
+							{
+								return TypeSource::DocumentNodeDefinition(ty);
 							}
 						}
 					}
@@ -174,13 +180,14 @@ impl NodeNetworkInterface {
 						let valid_types = implementations
 							.iter()
 							.filter_map(|(node_io, _)| {
-								if !valid_output_types.contains(&node_io.return_value) {
+								if !valid_output_types.iter().any(|output_type| output_type.nested_type() == node_io.return_value.nested_type()) {
 									return None;
 								}
+
 								let valid_inputs = (0..node_io.inputs.len()).filter(|iterator_index| iterator_index != input_index).all(|iterator_index| {
 									let input_type = self.input_type(&InputConnector::node(*node_id, iterator_index), network_path);
 									match input_type.into_compiled_nested_type() {
-										Some(input_type) => node_io.inputs.get(iterator_index) == Some(&input_type),
+										Some(input_type) => node_io.inputs.get(iterator_index).map(|input_type| input_type.nested_type()) == Some(&input_type),
 										None => true,
 									}
 								});
@@ -205,7 +212,7 @@ impl NodeNetworkInterface {
 						let Some(implementations) = NODE_REGISTRY.get(&ProtoNodeIdentifier::new(render_node)) else {
 							return Err(format!("Protonode {render_node:?} not found in registry"));
 						};
-						Ok(implementations.iter().map(|(types, _)| types.inputs[1]).collect())
+						Ok(implementations.iter().map(|(types, _)| types.inputs[1].clone()).collect())
 					}
 				}
 			}
@@ -293,7 +300,7 @@ impl NodeNetworkInterface {
 					return None;
 				};
 				match implementation {
-					DocumentNodeImplementation::Network(node_network) => {
+					DocumentNodeImplementation::Network(_) => {
 						let Some(outward_wires) = self.outward_wires(&network_path) else {
 							log::error!("Could not get outward wires in random_downstream_protonode_from_connector");
 							return None;
@@ -305,7 +312,7 @@ impl NodeNetworkInterface {
 						let Some(first_input) = inputs_from_import.first().cloned() else {
 							return None;
 						};
-						self.random_downstream_type_from_connector(&first_input, &[network_path, &[node_id]].concat())
+						self.random_downstream_type_from_connector(&first_input, &[network_path, &[*node_id]].concat())
 					}
 					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
 						let Some(implementations) = NODE_REGISTRY.get(proto_node_identifier) else {
