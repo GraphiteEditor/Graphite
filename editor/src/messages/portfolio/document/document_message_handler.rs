@@ -2800,14 +2800,9 @@ impl DocumentMessageHandler {
 				.popover_layout({
 					// Showing only compatible types
 					let compatible_type = selected_layer.and_then(|layer| {
-						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &self.network_interface);
-						let node_type = graph_layer.horizontal_layer_flow().nth(1);
-						if let Some(node_id) = node_type {
-							let (output_type, _) = self.network_interface.output_type(&OutputConnector::node(node_id, 0), &self.selection_network_path);
-							Some(format!("type:{}", output_type.nested_type()))
-						} else {
-							None
-						}
+						self.network_interface
+							.upstream_output_connector(&InputConnector::node(layer.to_node(), 1), &[])
+							.and_then(|upstream_output| self.network_interface.output_type(&upstream_output, &[]).add_node_string())
 					});
 
 					let mut node_chooser = NodeCatalog::new();
