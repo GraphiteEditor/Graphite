@@ -176,6 +176,14 @@
 		return `M-2,-2 L${nodeWidth + 2},-2 L${nodeWidth + 2},${nodeHeight + 2} L-2,${nodeHeight + 2}z ${rectangles.join(" ")}`;
 	}
 
+	function inputTooltip(value: FrontendGraphInput): string {
+		return dataTypeTooltip(value) + "\n\n" + inputConnectedToText(value) + "\n\n" + validTypesText(value);
+	}
+
+	function outputTooltip(value: FrontendGraphOutput): string {
+		return dataTypeTooltip(value) + "\n\n" + outputConnectedToText(value);
+	}
+
 	function dataTypeTooltip(value: FrontendGraphInput | FrontendGraphOutput): string {
 		return `Data Type: ${value.resolvedType}`;
 	}
@@ -317,7 +325,7 @@
 						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 8) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 8) / 24 + index}
 					>
-						<title>{`${dataTypeTooltip(frontendOutput)}\n\n${outputConnectedToText(frontendOutput)}`}</title>
+						<title>{outputTooltip(frontendOutput)}</title>
 						{#if frontendOutput.connectedTo.length > 0}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 						{:else}
@@ -389,7 +397,7 @@
 						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 8) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 8) / 24 + index}
 					>
-						<title>{`${dataTypeTooltip(frontendInput)}\n\n${inputConnectedToText(frontendInput)}`}</title>
+						<title>{inputTooltip(frontendInput)}</title>
 						{#if frontendInput.connectedTo !== "nothing"}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 						{:else}
@@ -528,7 +536,7 @@
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\n\n${outputConnectedToText(node.primaryOutput)}`}</title>
+							<title>{outputTooltip(node.primaryOutput)}</title>
 							{#if node.primaryOutput.connectedTo.length > 0}
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
 								{#if node.primaryOutputConnectedToLayer}
@@ -550,7 +558,7 @@
 						style:--data-color-dim={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()}-dim)`}
 					>
 						{#if node.primaryInput}
-							<title>{`${dataTypeTooltip(node.primaryInput)}\n\n${validTypesText(node.primaryInput)}\n\n${inputConnectedToText(node.primaryInput)}`}</title>
+							<title>{inputTooltip(node.primaryInput)}</title>
 						{/if}
 						{#if node.primaryInput?.connectedTo !== "nothing"}
 							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
@@ -574,7 +582,7 @@
 							style:--data-color={`var(--color-data-${stackDataInput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
 						>
-							<title>{`${dataTypeTooltip(stackDataInput)}\n\n${validTypesText(stackDataInput)}\n\n${inputConnectedToText(stackDataInput)}`}</title>
+							<title>{inputTooltip(stackDataInput)}</title>
 							{#if stackDataInput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -692,7 +700,7 @@
 							style:--data-color={`var(--color-data-${node.primaryInput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
 						>
-							<title>{`${dataTypeTooltip(node.primaryInput)}\n\n${validTypesText(node.primaryInput)}\n\n${inputConnectedToText(node.primaryInput)}`}</title>
+							<title>{inputTooltip(node.primaryInput)}</title>
 							{#if node.primaryInput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -711,7 +719,7 @@
 								style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
 								style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
 							>
-								<title>{`${dataTypeTooltip(secondary)}\n\n${validTypesText(secondary)}\n\n${inputConnectedToText(secondary)}`}</title>
+								<title>{inputTooltip(secondary)}</title>
 								{#if secondary.connectedTo !== undefined}
 									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 								{:else}
@@ -733,7 +741,7 @@
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\n\n${outputConnectedToText(node.primaryOutput)}`}</title>
+							<title>{outputTooltip(node.primaryOutput)}</title>
 							{#if node.primaryOutput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -751,7 +759,7 @@
 							style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
 						>
-							<title>{`${dataTypeTooltip(secondary)}\n\n${outputConnectedToText(secondary)}`}</title>
+							<title>{outputTooltip(secondary)}</title>
 							{#if secondary.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}

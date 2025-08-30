@@ -1,9 +1,10 @@
-use crate::messages::portfolio::document::utility_types::network_interface::TypeSource;
 use glam::IVec2;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Type;
 use std::borrow::Cow;
+
+use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::TypeSource;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
@@ -42,7 +43,7 @@ impl FrontendGraphDataType {
 		}
 	}
 
-	pub fn displayed_type(type_source: TypeSource) -> Self {
+	pub fn displayed_type(type_source: &TypeSource) -> Self {
 		match type_source.compiled_nested_type() {
 			Some(nested_type) => Self::from_type(&nested_type),
 			None => Self::General,
