@@ -5,10 +5,15 @@ use std::path::PathBuf;
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 	env_logger::builder().init();
 
-	let shader_crate = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/.."));
+	// Skip building the shader if they are provided externally
+	println!("cargo:rerun-if-env-changed=GRAPHENE_RASTER_NODES_SHADER_PATH");
+	if !std::env::var("GRAPHENE_RASTER_NODES_SHADER_PATH").unwrap_or_default().is_empty() {
+		return Ok(());
+	}
 
 	// Allows overriding the PATH to inject the rust-gpu rust toolchain when building the rest of the project with stable rustc.
 	// Used in nix shell. Do not remove without checking with developers using nix.
+	println!("cargo:rerun-if-env-changed=RUST_GPU_PATH_OVERRIDE");
 	if let Ok(path_override) = std::env::var("RUST_GPU_PATH_OVERRIDE") {
 		let current_path = std::env::var("PATH").unwrap_or_default();
 		let new_path = format!("{path_override}:{current_path}");
@@ -18,6 +23,9 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 		}
 	}
 
+	let shader_crate = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/.."));
+
+	println!("cargo:rerun-if-env-changed=RUSTC_CODEGEN_SPIRV_PATH");
 	let rustc_codegen_spirv_path = std::env::var("RUSTC_CODEGEN_SPIRV_PATH").unwrap_or_default();
 	let backend = if rustc_codegen_spirv_path.is_empty() {
 		// install the toolchain and build the `rustc_codegen_spirv` codegen backend with it
@@ -42,6 +50,6 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 	// needs to be fixed upstream
 	let path_to_wgsl = path_to_spv.with_extension("wgsl");
 
-	println!("cargo::rustc-env=WGSL_SHADER_PATH={}", path_to_wgsl.display());
+	println!("cargo::rustc-env=GRAPHENE_RASTER_NODES_SHADER_PATH={}", path_to_wgsl.display());
 	Ok(())
 }
