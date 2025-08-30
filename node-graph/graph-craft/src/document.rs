@@ -204,6 +204,14 @@ pub enum DocumentNodeMetadata {
 	DocumentNodePath,
 }
 
+impl DocumentNodeMetadata {
+	pub fn ty(&self) -> Type {
+		match self {
+			DocumentNodeMetadata::DocumentNodePath => concrete!(Vec<NodeId>),
+		}
+	}
+}
+
 impl NodeInput {
 	pub const fn node(node_id: NodeId, output_index: usize) -> Self {
 		Self::Node { node_id, output_index }

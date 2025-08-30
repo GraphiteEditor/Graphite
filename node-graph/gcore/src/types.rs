@@ -334,6 +334,15 @@ impl Type {
 		}
 	}
 
+	pub fn into_nested_type(self) -> Type {
+		match self {
+			Self::Generic(_) => self,
+			Self::Concrete(_) => self,
+			Self::Fn(_, output) => output.into_nested_type(),
+			Self::Future(output) => output.into_nested_type(),
+		}
+	}
+
 	pub fn replace_nested(&mut self, f: impl Fn(&Type) -> Option<Type>) -> Option<Type> {
 		if let Some(replacement) = f(self) {
 			return Some(std::mem::replace(self, replacement));
