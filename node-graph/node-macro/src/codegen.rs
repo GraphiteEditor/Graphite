@@ -1,7 +1,7 @@
 use crate::parsing::*;
 use convert_case::{Case, Casing};
 use proc_macro_crate::FoundCrate;
-use proc_macro2::{TokenStream as TokenStream2, TokenStream};
+use proc_macro2::TokenStream as TokenStream2;
 use quote::{ToTokens, format_ident, quote, quote_spanned};
 use std::sync::atomic::AtomicU64;
 use syn::punctuated::Punctuated;
@@ -295,7 +295,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let cfg = crate::shader_nodes::modify_cfg(attributes);
 	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, &graphene_core, &identifier, &cfg);
-	let shader_entry_point = attributes.shader_node.as_ref().map(|n| n.codegen_shader_entry_point(parsed)).unwrap_or(Ok(TokenStream::new()))?;
+	let shader_entry_point = attributes.shader_node.as_ref().map(|n| n.codegen_shader_entry_point(parsed)).unwrap_or(Ok(TokenStream2::new()))?;
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
 		#[inline]
