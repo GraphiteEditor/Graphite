@@ -17,7 +17,7 @@ use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::portfolio::utility_types::PersistentData;
@@ -2820,16 +2820,11 @@ impl DocumentMessageHandler {
 				.tooltip("Add an operation to the end of this layer's chain of nodes")
 				.disabled(!has_selection || has_multiple_selection)
 				.popover_layout({
-					// Showing only compatible types
+					// Showing only compatible types for the layer based on the output type of the node upstream from its horizontal input
 					let compatible_type = selected_layer.and_then(|layer| {
-						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &self.network_interface);
-						let node_type = graph_layer.horizontal_layer_flow().nth(1);
-						if let Some(node_id) = node_type {
-							let (output_type, _) = self.network_interface.output_type(&OutputConnector::node(node_id, 0), &self.selection_network_path);
-							Some(format!("type:{}", output_type.nested_type()))
-						} else {
-							None
-						}
+						self.network_interface
+							.upstream_output_connector(&InputConnector::node(layer.to_node(), 1), &[])
+							.and_then(|upstream_output| self.network_interface.output_type(&upstream_output, &[]).add_node_string())
 					});
 
 					let mut node_chooser = NodeCatalog::new();
