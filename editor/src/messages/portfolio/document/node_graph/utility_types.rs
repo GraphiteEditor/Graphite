@@ -42,10 +42,10 @@ impl FrontendGraphDataType {
 		}
 	}
 
-	pub fn displayed_type(input: &Type, type_source: &TypeSource) -> Self {
-		match type_source {
-			TypeSource::Error(_) | TypeSource::RandomProtonodeImplementation => Self::General,
-			_ => Self::from_type(input),
+	pub fn displayed_type(type_source: TypeSource) -> Self {
+		match type_source.compiled_nested_type() {
+			Some(nested_type) => Self::from_type(&nested_type),
+			None => Self::General,
 		}
 	}
 }

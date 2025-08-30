@@ -1550,7 +1550,11 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 
 						input_type.clone()
 					}
-					_ => context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path).0,
+					_ => context
+						.network_interface
+						.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path)
+						.into_compiled_nested_type()
+						.unwrap_or(concrete!(())),
 				};
 
 				property_from_type(node_id, input_index, &input_type, number_options, unit_suffix, display_decimal_places, step, context).unwrap_or_else(|value| value)
@@ -1932,7 +1936,7 @@ pub struct ParameterWidgetsInfo<'a> {
 impl<'a> ParameterWidgetsInfo<'a> {
 	pub fn new(node_id: NodeId, index: usize, blank_assist: bool, context: &'a mut NodePropertiesContext) -> ParameterWidgetsInfo<'a> {
 		let (name, description) = context.network_interface.displayed_input_name_and_description(&node_id, index, context.selection_network_path);
-		let input_type = FrontendGraphDataType::from_type(&context.network_interface.input_type(&InputConnector::node(node_id, index), context.selection_network_path).0);
+		let input_type = FrontendGraphDataType::from_type(&context.network_interface.input_type(&InputConnector::node(node_id, index), context.selection_network_path));
 		let document_node = context.network_interface.document_node(&node_id, context.selection_network_path);
 
 		ParameterWidgetsInfo {

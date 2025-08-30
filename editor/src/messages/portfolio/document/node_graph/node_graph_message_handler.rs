@@ -878,7 +878,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					};
 					let Some(output_connector) = output_connector else { return };
 					self.wire_in_progress_from_connector = network_interface.output_position(&output_connector, selection_network_path);
-					self.wire_in_progress_type = FrontendGraphDataType::from_type(&network_interface.input_type(clicked_input, breadcrumb_network_path).0);
+					self.wire_in_progress_type = FrontendGraphDataType::displayed_type(&network_interface.input_type(clicked_input, breadcrumb_network_path));
 					return;
 				}
 
@@ -888,8 +888,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.initial_disconnecting = false;
 
 					self.wire_in_progress_from_connector = network_interface.output_position(&clicked_output, selection_network_path);
-					let (output_type, source) = &network_interface.output_type(&clicked_output, breadcrumb_network_path);
-					self.wire_in_progress_type = FrontendGraphDataType::displayed_type(output_type, source);
+					let output_type = network_interface.output_type(&clicked_output, breadcrumb_network_path);
+					self.wire_in_progress_type = FrontendGraphDataType::displayed_type(&output_type);
 
 					self.update_node_graph_hints(responses);
 					return;
@@ -1207,16 +1207,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						}
 
 						// Get the output types from the network interface
-						let (output_type, type_source) = network_interface.output_type(&output_connector, selection_network_path);
 						let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
 							warn!("No network_metadata");
 							return;
 						};
 
-						let compatible_type = match type_source {
-							TypeSource::RandomProtonodeImplementation | TypeSource::Error(_) => None,
-							_ => Some(format!("type:{}", output_type.nested_type())),
-						};
+						let compatible_type = network_interface.output_type(&output_connector.unwrap(), selection_network_path).add_node_string();
 
 						let appear_right_of_mouse = if ipp.mouse.position.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
 						let appear_above_mouse = if ipp.mouse.position.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
@@ -1990,12 +1986,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
-				for (path, node_type) in resolved_types.add {
-					network_interface.resolved_types.types.insert(path.to_vec(), node_type);
-				}
-				for path in resolved_types.remove {
-					network_interface.resolved_types.types.remove(&path.to_vec());
-				}
+				network_interface.resolved_types.update(resolved_types);
 				self.node_graph_errors = node_graph_errors;
 			}
 			NodeGraphMessage::UpdateActionButtons => {
@@ -2109,16 +2100,7 @@ impl NodeGraphMessageHandler {
 				.popover_layout({
 					// Showing only compatible types
 					let compatible_type = match (selection_includes_layers, has_multiple_selection, selected_layer) {
-						(true, false, Some(layer)) => {
-							let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
-							let node_type = graph_layer.horizontal_layer_flow().nth(1);
-							if let Some(node_id) = node_type {
-								let (output_type, _) = network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
-								Some(format!("type:{}", output_type.nested_type()))
-							} else {
-								None
-							}
-						}
+						(true, false, Some(layer)) => network_interface.output_type(&OutputConnector::node(node_id, 0), &[]).add_node_string(),
 						_ => None,
 					};
 
@@ -2431,17 +2413,10 @@ impl NodeGraphMessageHandler {
 							.icon(Some("Node".to_string()))
 							.tooltip("Add an operation to the end of this layer's chain of nodes")
 							.popover_layout({
-								let layer_identifier = LayerNodeIdentifier::new(layer, context.network_interface);
-								let compatible_type = {
-									let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer_identifier, context.network_interface);
-									let node_type = graph_layer.horizontal_layer_flow().nth(1);
-									if let Some(node_id) = node_type {
-										let (output_type, _) = context.network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
-										Some(format!("type:{}", output_type.nested_type()))
-									} else {
-										None
-									}
-								};
+								let compatible_type = context
+									.network_interface
+									.upstream_output_connector(&InputConnector::node(layer, 1), &[])
+									.and_then(|upstream_output| context.network_interface.output_type(&upstream_output, &[]).add_node_string());
 
 								let mut node_chooser = NodeCatalog::new();
 								node_chooser.intial_search = compatible_type.unwrap_or("".to_string());
