@@ -1,4 +1,3 @@
-use crate::messages::portfolio::document::utility_types::network_interface::TypeSource;
 use glam::IVec2;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
@@ -39,13 +38,6 @@ impl FrontendGraphDataType {
 			TaggedValue::Gradient(_) | TaggedValue::GradientStops(_) | TaggedValue::GradientTable(_) => Self::Gradient,
 			TaggedValue::String(_) | TaggedValue::VecString(_) => Self::Typography,
 			_ => Self::General,
-		}
-	}
-
-	pub fn displayed_type(input: &Type, type_source: &TypeSource) -> Self {
-		match type_source {
-			TypeSource::Error(_) | TypeSource::RandomProtonodeImplementation => Self::General,
-			_ => Self::from_type(input),
 		}
 	}
 }

@@ -10,13 +10,13 @@ use crate::messages::portfolio::document::node_graph::utility_types::{ContextMen
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	self, FlowType, InputConnector, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing, TypeSource,
+	self, FlowType, InputConnector, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_clip_mode};
+use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
@@ -881,7 +881,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					};
 					let Some(output_connector) = output_connector else { return };
 					self.wire_in_progress_from_connector = network_interface.output_position(&output_connector, selection_network_path);
-					self.wire_in_progress_type = FrontendGraphDataType::from_type(&network_interface.input_type(clicked_input, breadcrumb_network_path).0);
+					self.wire_in_progress_type = network_interface.input_type(clicked_input, breadcrumb_network_path).displayed_type();
 					return;
 				}
 
@@ -891,8 +891,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.initial_disconnecting = false;
 
 					self.wire_in_progress_from_connector = network_interface.output_position(&clicked_output, selection_network_path);
-					let (output_type, source) = &network_interface.output_type(&clicked_output, breadcrumb_network_path);
-					self.wire_in_progress_type = FrontendGraphDataType::displayed_type(output_type, source);
+					let output_type = network_interface.output_type(&clicked_output, breadcrumb_network_path);
+					self.wire_in_progress_type = output_type.displayed_type();
 
 					self.update_node_graph_hints(responses);
 					return;
@@ -1211,20 +1211,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						}
 
 						// Get the output types from the network interface
-						let (output_type, type_source) = network_interface.output_type(&output_connector, selection_network_path);
 						let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
 							warn!("No network_metadata");
 							return;
 						};
 
-						let compatible_type = match type_source {
-							TypeSource::RandomProtonodeImplementation | TypeSource::Error(_) => None,
-							_ => Some(format!("type:{}", output_type.nested_type())),
-						};
-
 						let appear_right_of_mouse = if ipp.mouse.position.x > viewport.size().y() - 173. { -173. } else { 0. };
 						let appear_above_mouse = if ipp.mouse.position.y > viewport.size().y() - 34. { -34. } else { 0. };
 						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x;
+
+						let compatible_type = network_interface.output_type(&output_connector, selection_network_path).add_node_string();
 
 						self.context_menu = Some(ContextMenuInformation {
 							context_menu_coordinates: ((point.x + node_graph_shift.x) as i32, (point.y + node_graph_shift.y) as i32),
@@ -1996,12 +1992,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
-				for (path, node_type) in resolved_types.add {
-					network_interface.resolved_types.types.insert(path.to_vec(), node_type);
-				}
-				for path in resolved_types.remove {
-					network_interface.resolved_types.types.remove(&path.to_vec());
-				}
+				network_interface.resolved_types.update(resolved_types);
 				self.node_graph_errors = node_graph_errors;
 			}
 			NodeGraphMessage::UpdateActionButtons => {
@@ -2115,16 +2106,7 @@ impl NodeGraphMessageHandler {
 				.popover_layout({
 					// Showing only compatible types
 					let compatible_type = match (selection_includes_layers, has_multiple_selection, selected_layer) {
-						(true, false, Some(layer)) => {
-							let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
-							let node_type = graph_layer.horizontal_layer_flow().nth(1);
-							if let Some(node_id) = node_type {
-								let (output_type, _) = network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
-								Some(format!("type:{}", output_type.nested_type()))
-							} else {
-								None
-							}
-						}
+						(true, false, Some(layer)) => network_interface.output_type(&OutputConnector::node(layer.to_node(), 1), &[]).add_node_string(),
 						_ => None,
 					};
 
@@ -2437,17 +2419,10 @@ impl NodeGraphMessageHandler {
 							.icon(Some("Node".to_string()))
 							.tooltip("Add an operation to the end of this layer's chain of nodes")
 							.popover_layout({
-								let layer_identifier = LayerNodeIdentifier::new(layer, context.network_interface);
-								let compatible_type = {
-									let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer_identifier, context.network_interface);
-									let node_type = graph_layer.horizontal_layer_flow().nth(1);
-									if let Some(node_id) = node_type {
-										let (output_type, _) = context.network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
-										Some(format!("type:{}", output_type.nested_type()))
-									} else {
-										None
-									}
-								};
+								let compatible_type = context
+									.network_interface
+									.upstream_output_connector(&InputConnector::node(layer, 1), &[])
+									.and_then(|upstream_output| context.network_interface.output_type(&upstream_output, &[]).add_node_string());
 
 								let mut node_chooser = NodeCatalog::new();
 								node_chooser.intial_search = compatible_type.unwrap_or("".to_string());
