@@ -42,6 +42,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					..Default::default()
 				},
 				// TODO: Add conversion step
+				// Keep this in sync with the protonode id in valid_input_types for the document network export
 				DocumentNode {
 					call_argument: concrete!(graphene_std::application_io::RenderConfig),
 					inputs: vec![
