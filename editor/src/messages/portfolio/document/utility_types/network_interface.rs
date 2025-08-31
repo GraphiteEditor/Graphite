@@ -662,20 +662,19 @@ impl NodeNetworkInterface {
 		};
 
 		// TODO: Move in separate Tooltip overlay
-		let valid_types = match self.valid_input_types(&input_connector, network_path) {
-			Ok(input_types) => input_types.iter().map(|ty| ty.to_string()).collect(),
-			Err(e) => {
-				log::error!("Error getting valid types for input {input_connector:?}: {e}");
-				Vec::new()
-			}
-		};
+		// let valid_types = match self.valid_input_types(&input_connector, network_path) {
+		// 	Ok(input_types) => input_types.iter().map(|ty| ty.to_string()).collect(),
+		// 	Err(e) => {
+		// 		log::error!("Error getting valid types for input {input_connector:?}: {e}");
+		// 		Vec::new()
+		// 	}
+		// };
 
 		Some(FrontendGraphInput {
 			data_type,
 			resolved_type,
 			name,
 			description,
-			valid_types,
 			connected_to,
 		})
 	}
