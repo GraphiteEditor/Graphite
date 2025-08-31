@@ -89,6 +89,8 @@ pub struct FrontendGraphOutput {
 // Metadata that is common to nodes and layers
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeMetadata {
+	#[serde(rename = "node_id")]
+	pub node_id: NodeId,
 	// TODO: Remove and replace with popup manager system
 	#[serde(rename = "canBeLayer")]
 	pub can_be_layer: bool,
@@ -125,7 +127,7 @@ pub struct FrontendLayer {
 	#[serde(rename = "chainWidth")]
 	pub chain_width: u32,
 	#[serde(rename = "layerHasLeftBorderGap")]
-	layer_has_left_border_gap: bool,
+	pub layer_has_left_border_gap: bool,
 	#[serde(rename = "primaryInputConnectedToLayer")]
 	pub primary_input_connected_to_layer: bool,
 	#[serde(rename = "primaryOutputConnectedToLayer")]
@@ -148,9 +150,15 @@ pub struct FrontendLayer {
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeOrLayer {
-	pub metadata: FrontendNodeMetadata,
 	pub node: Option<FrontendNode>,
 	pub layer: Option<FrontendLayer>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontendNodeToRender {
+	pub metadata: FrontendNodeMetadata,
+	#[serde(rename = "nodeOrLayer")]
+	pub node_or_layer: FrontendNodeOrLayer,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
