@@ -175,13 +175,15 @@ export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic
 export class FrontendGraphInput {
 	readonly dataType!: FrontendGraphDataType;
 
+	readonly resolvedType!: string;
+
 	readonly name!: string;
 
 	readonly description!: string;
 
-	readonly resolvedType!: string;
+	readonly connectedToString!: string;
 
-	readonly connectedTo!: string;
+	readonly connectedToNode!: bigint | undefined;
 }
 
 export class FrontendGraphOutput {
@@ -196,26 +198,42 @@ export class FrontendGraphOutput {
 	readonly connectedTo!: string[];
 }
 
-export class FrontendNode {
-	readonly id!: bigint;
-
-	readonly isLayer!: boolean;
-
+export class FrontendNodeMetadata {
 	readonly canBeLayer!: boolean;
+
+	readonly displayName!: string;
 
 	readonly selected!: boolean;
 
 	readonly reference!: string | undefined;
 
-	readonly displayName!: string;
+	readonly visible!: boolean;
 
-	readonly primaryInput!: FrontendGraphInput | undefined;
+	// readonly wires!: (string | undefined)[];
 
-	readonly exposedInputs!: FrontendGraphInput[];
+	readonly errors!: string | undefined;
+}
 
-	readonly primaryOutput!: FrontendGraphOutput | undefined;
+export class FrontendNode {
+	// readonly position!: FrontendNodePosition;
+	readonly position!: XY;
 
-	readonly exposedOutputs!: FrontendGraphOutput[];
+	readonly inputs!: (FrontendGraphInput | undefined)[];
+
+	readonly outputs!: (FrontendGraphOutput | undefined)[];
+}
+
+export class FrontendLayer {
+	// readonly position!: FrontendLayerPosition;
+	readonly position!: XY;
+
+	readonly bottomInput!: FrontendGraphInput;
+
+	readonly sideInput!: FrontendGraphInput | undefined;
+
+	readonly output!: FrontendGraphOutput;
+
+	readonly locked!: boolean;
 
 	readonly chainWidth!: number;
 
@@ -224,19 +242,27 @@ export class FrontendNode {
 	readonly primaryInputConnectedToLayer!: boolean;
 
 	readonly primaryOutputConnectedToLayer!: boolean;
+}
 
-	@TupleToVec2
-	readonly position!: XY;
+export class FrontendNodePosition {
+	readonly absolute!: XY | undefined;
+	readonly chain!: boolean | undefined;
+}
 
-	// TODO: Store field for the width of the left node chain
+export class FrontendLayerPosition {
+	readonly absolute!: XY | undefined;
+	readonly stack!: number | undefined;
+}
 
-	readonly previewed!: boolean;
+export class FrontendNodeOrLayer {
+	readonly metadata!: FrontendNodeMetadata;
+	readonly node!: FrontendNode | undefined;
+	readonly layer!: FrontendLayer | undefined;
+}
 
-	readonly visible!: boolean;
-
-	readonly unlocked!: boolean;
-
-	readonly errors!: string | undefined;
+export class UpdateCentralNodeGraph extends JsMessage {
+	readonly nodeOrLayer!: FrontendNodeOrLayer[];
+	readonly inSelectedNetwork!: boolean;
 }
 
 export class FrontendNodeType {

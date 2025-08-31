@@ -1,11 +1,11 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
+import type { FrontendNodeOrLayer } from "@graphite/messages";
 import {
 	type Box,
 	type FrontendClickTargets,
 	type ContextMenuInformation,
-	type FrontendNode,
 	type FrontendNodeType,
 	type WirePath,
 	ClearAllNodeGraphWires,
@@ -32,8 +32,7 @@ export function createNodeGraphState(editor: Editor) {
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
 		layerWidths: new Map<bigint, number>(),
 		updateImportsExports: undefined as UpdateImportsExports | undefined,
-		nodesToRender: new Map<bigint, FrontendNode>(),
-
+		nodesToRender: new Map<bigint, FrontendNodeToRender>(),
 		visibleNodes: new Set<bigint>(),
 		/// The index is the exposed input index. The exports have a first key value of u32::MAX.
 		wires: new Map<bigint, Map<number, WirePath>>(),
@@ -92,6 +91,7 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeJsMessage(UpdateLayerWidths, (updateLayerWidths) => {
 		update((state) => {
 			state.layerWidths = updateLayerWidths.layerWidths;
