@@ -79,7 +79,7 @@ export class UpdateLayerWidths extends JsMessage {
 }
 
 export class UpdateNodeGraphNodes extends JsMessage {
-	readonly nodesToRender!: FrontendNode[];
+	readonly nodesToRender!: FrontendNodeToRender[];
 
 	readonly inSelectedNetwork!: boolean;
 
@@ -201,6 +201,8 @@ export class FrontendGraphOutput {
 }
 
 export class FrontendNodeMetadata {
+	readonly nodeId!: bigint;
+
 	readonly canBeLayer!: boolean;
 
 	readonly displayName!: string;
@@ -257,9 +259,13 @@ export class FrontendLayerPosition {
 }
 
 export class FrontendNodeOrLayer {
-	readonly metadata!: FrontendNodeMetadata;
 	readonly node!: FrontendNode | undefined;
 	readonly layer!: FrontendLayer | undefined;
+}
+
+export class FrontendNodeToRender {
+	readonly metadata!: FrontendNodeMetadata;
+	readonly nodeOrLayer!: FrontendNodeOrLayer;
 }
 
 export class UpdateCentralNodeGraph extends JsMessage {

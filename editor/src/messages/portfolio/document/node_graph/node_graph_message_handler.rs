@@ -6,9 +6,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
-use crate::messages::portfolio::document::node_graph::utility_types::{
-	ContextMenuData, Direction, FrontendGraphDataType, FrontendLayer, FrontendNodeMetadata, FrontendNodeOrLayer, FrontendXY, FrontendXY,
-};
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, FrontendXY};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
@@ -24,7 +22,7 @@ use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
-use graph_craft::proto::{GraphErrors, NodeMetadata};
+use graph_craft::proto::GraphErrors;
 use graphene_std::math::math_ext::QuadExt;
 use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
 use graphene_std::*;
@@ -1638,7 +1636,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::UpdateActionButtons);
 				if graph_view_overlay_open {
 					let nodes_to_render = network_interface.collect_nodes(&self.node_graph_errors, breadcrumb_network_path);
-					self.frontend_nodes = nodes_to_render.iter().map(|node| node.id).collect();
+					self.frontend_nodes = nodes_to_render.iter().map(|node| node.metadata.node_id).collect();
 					let previewed_node = network_interface.previewed_node(breadcrumb_network_path);
 					responses.add(FrontendMessage::UpdateNodeGraphNodes {
 						nodes_to_render,

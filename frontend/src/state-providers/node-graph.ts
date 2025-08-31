@@ -1,11 +1,11 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import type { FrontendNodeOrLayer } from "@graphite/messages";
 import {
 	type Box,
 	type FrontendClickTargets,
 	type ContextMenuInformation,
+	type FrontendNodeToRender,
 	type FrontendNodeType,
 	type WirePath,
 	ClearAllNodeGraphWires,
@@ -103,7 +103,7 @@ export function createNodeGraphState(editor: Editor) {
 		update((state) => {
 			state.nodesToRender.clear();
 			updateNodeGraphNodes.nodesToRender.forEach((node) => {
-				state.nodesToRender.set(node.id, node);
+				state.nodesToRender.set(node.metadata.nodeId, node);
 			});
 			state.inSelectedNetwork = updateNodeGraphNodes.inSelectedNetwork;
 			state.previewedNode = updateNodeGraphNodes.previewedNode;

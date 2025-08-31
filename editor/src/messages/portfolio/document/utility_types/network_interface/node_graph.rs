@@ -5,14 +5,16 @@ use graphene_std::uuid::NodeId;
 use crate::{
 	consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP},
 	messages::portfolio::document::{
-		node_graph::utility_types::{FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendXY},
+		node_graph::utility_types::{
+			FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput, FrontendLayer, FrontendNode, FrontendNodeMetadata, FrontendNodeOrLayer, FrontendNodeToRender, FrontendXY,
+		},
 		utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, OutputConnector},
 	},
 };
 
 // Functions used to collect data from the network interface for use in rendering the node graph
 impl NodeNetworkInterface {
-	pub fn collect_nodes(&mut self, node_graph_errors: &GraphErrors, network_path: &[NodeId]) -> Vec<FrontendNode> {
+	pub fn collect_nodes(&mut self, node_graph_errors: &GraphErrors, network_path: &[NodeId]) -> Vec<FrontendNodeToRender> {
 		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get nested network when collecting nodes");
 			return Vec::new();
@@ -21,32 +23,6 @@ impl NodeNetworkInterface {
 		let mut nodes = Vec::new();
 		for (node_id, visible) in network.nodes.iter().map(|(node_id, node)| (*node_id, node.visible)).collect::<Vec<_>>() {
 			let node_id_path = [network_path, &[node_id]].concat();
-
-			let primary_input_connector = InputConnector::node(node_id, 0);
-
-			let primary_input = if self.input_from_connector(&primary_input_connector, network_path).is_some_and(|input| input.is_exposed()) {
-				self.frontend_input_from_connector(&primary_input_connector, network_path)
-			} else {
-				None
-			};
-			let exposed_inputs = (1..self.number_of_inputs(&node_id, network_path))
-				.filter_map(|input_index| self.frontend_input_from_connector(&InputConnector::node(node_id, input_index), network_path))
-				.collect();
-
-			let primary_output = self.frontend_output_from_connector(&OutputConnector::node(node_id, 0), network_path);
-
-			let exposed_outputs = (1..self.number_of_outputs(&node_id, network_path))
-				.filter_map(|output_index| self.frontend_output_from_connector(&OutputConnector::node(node_id, output_index), network_path))
-				.collect();
-
-			let Some(position) = self.position(&node_id, network_path) else {
-				log::error!("Could not get position for node: {node_id}");
-				continue;
-			};
-			let position = FrontendXY { x: position.x, y: position.y };
-			let previewed = self.previewed_node(network_path) == Some(node_id);
-
-			let locked = self.is_locked(&node_id, network_path);
 
 			let errors = node_graph_errors
 				.iter()
@@ -60,31 +36,73 @@ impl NodeNetworkInterface {
 					}
 				});
 
-			nodes.push(FrontendNode {
-				id: node_id,
-				is_layer: self.node_metadata(&node_id, network_path).is_some_and(|node_metadata| node_metadata.persistent_metadata.is_layer()),
+			let metadata = FrontendNodeMetadata {
+				node_id,
 				can_be_layer: self.is_eligible_to_be_layer(&node_id, network_path),
+				display_name: self.display_name(&node_id, network_path),
 				selected: selected_nodes.0.contains(&node_id),
 				reference: self.reference(&node_id, network_path).cloned().unwrap_or_default(),
-				display_name: self.display_name(&node_id, network_path),
-				previewed,
 				visible,
 				errors,
+			};
 
-				primary_input,
-				exposed_inputs,
-				primary_output,
-				exposed_outputs,
-				position,
+			let node_or_layer = match self.is_layer(&node_id, network_path) {
+				true => {
+					let Some(position) = self.position(&node_id, network_path) else {
+						log::error!("Could not get position for node: {node_id}");
+						continue;
+					};
+					let position = FrontendXY { x: position.x, y: position.y };
 
-				locked,
-				chain_width: self.chain_width(&node_id, network_path),
-				layer_has_left_border_gap: self.layer_has_left_border_gap(&node_id, network_path),
-				primary_input_connected_to_layer: self.primary_output_connected_to_layer(&node_id, network_path),
-				primary_output_connected_to_layer: self.primary_input_connected_to_layer(&node_id, network_path),
-			});
+					let Some(bottom_input) = self.frontend_input_from_connector(&InputConnector::node(node_id, 0), network_path) else {
+						log::error!("Layer must have a visible primary input");
+						continue;
+					};
+					let side_input = self.frontend_input_from_connector(&InputConnector::node(node_id, 1), network_path);
+					let Some(output) = self.frontend_output_from_connector(&OutputConnector::node(node_id, 0), network_path) else {
+						log::error!("Layer must have a visible primary output");
+						continue;
+					};
+
+					let layer = Some(FrontendLayer {
+						bottom_input,
+						side_input,
+						output,
+						position,
+						locked: self.is_locked(&node_id, network_path),
+						chain_width: self.chain_width(&node_id, network_path),
+						layer_has_left_border_gap: self.layer_has_left_border_gap(&node_id, network_path),
+						primary_input_connected_to_layer: self.primary_output_connected_to_layer(&node_id, network_path),
+						primary_output_connected_to_layer: self.primary_input_connected_to_layer(&node_id, network_path),
+					});
+					FrontendNodeOrLayer { node: None, layer }
+				}
+				false => {
+					let Some(position) = self.position(&node_id, network_path) else {
+						log::error!("Could not get position for node: {node_id}");
+						continue;
+					};
+
+					let position = FrontendXY { x: position.x, y: position.y };
+
+					let inputs = (0..self.number_of_inputs(&node_id, network_path))
+						.map(|input_index| self.frontend_input_from_connector(&InputConnector::node(node_id, input_index), network_path))
+						.collect();
+
+					let outputs = (0..self.number_of_outputs(&node_id, network_path))
+						.map(|output_index| self.frontend_output_from_connector(&OutputConnector::node(node_id, output_index), network_path))
+						.collect();
+
+					let node = Some(FrontendNode { position, inputs, outputs });
+
+					FrontendNodeOrLayer { node, layer: None }
+				}
+			};
+
+			let frontend_node_to_render = FrontendNodeToRender { metadata, node_or_layer };
+
+			nodes.push(frontend_node_to_render);
 		}
-
 		nodes
 	}
 
@@ -146,12 +164,15 @@ impl NodeNetworkInterface {
 		// 	}
 		// };
 
+		let connected_to_node = self.upstream_output_connector(input_connector, network_path).and_then(|output_connector| output_connector.node_id());
+
 		Some(FrontendGraphInput {
 			data_type,
 			resolved_type,
 			name,
 			description,
 			connected_to,
+			connected_to_node,
 		})
 	}
 
