@@ -1302,6 +1302,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				self.network_interface.finish_transaction();
 				self.document_redo_history.clear();
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
 			DocumentMessage::AbortTransaction => {
 				responses.add(DocumentMessage::RepeatedAbortTransaction { undo_count: 1 });
@@ -1317,6 +1318,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				self.network_interface.finish_transaction();
 				responses.add(OverlaysMessage::Draw);
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
 			DocumentMessage::ToggleLayerExpansion { id, recursive } => {
 				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
