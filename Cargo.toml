@@ -91,7 +91,7 @@ futures = "0.3"
 env_logger = "0.11"
 log = "0.4"
 bitflags = { version = "2.4", features = ["serde"] }
-ctor = "0.5"
+ctor = "0.2"
 convert_case = "0.8"
 derivative = "2.2"
 thiserror = "2"
