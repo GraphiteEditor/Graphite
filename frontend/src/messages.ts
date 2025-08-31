@@ -197,8 +197,6 @@ export class FrontendGraphInput {
 
 	readonly resolvedType!: string;
 
-	readonly validTypes!: string[];
-
 	readonly connectedTo!: string;
 }
 
