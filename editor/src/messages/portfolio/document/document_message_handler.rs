@@ -1978,16 +1978,16 @@ impl DocumentMessageHandler {
 		Some(previous_network)
 	}
 
-	pub fn current_hash(&self) -> Option<u64> {
-		self.document_undo_history.iter().last().map(|network| network.document_network().current_hash())
+	pub fn current_hash(&self) -> u64 {
+		self.network_interface.document_network().current_hash()
 	}
 
 	pub fn is_auto_saved(&self) -> bool {
-		self.current_hash() == self.auto_saved_hash
+		Some(self.current_hash()) == self.auto_saved_hash
 	}
 
 	pub fn is_saved(&self) -> bool {
-		self.current_hash() == self.saved_hash
+		Some(self.current_hash()) == self.saved_hash
 	}
 
 	pub fn is_graph_overlay_open(&self) -> bool {
@@ -1996,7 +1996,7 @@ impl DocumentMessageHandler {
 
 	pub fn set_auto_save_state(&mut self, is_saved: bool) {
 		if is_saved {
-			self.auto_saved_hash = self.current_hash();
+			self.auto_saved_hash = Some(self.current_hash());
 		} else {
 			self.auto_saved_hash = None;
 		}
@@ -2004,7 +2004,7 @@ impl DocumentMessageHandler {
 
 	pub fn set_save_state(&mut self, is_saved: bool) {
 		if is_saved {
-			self.saved_hash = self.current_hash();
+			self.saved_hash = Some(self.current_hash());
 		} else {
 			self.saved_hash = None;
 		}
