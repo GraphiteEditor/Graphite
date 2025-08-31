@@ -177,7 +177,7 @@
 	}
 
 	function inputTooltip(value: FrontendGraphInput): string {
-		return dataTypeTooltip(value) + "\n\n" + inputConnectedToText(value) + "\n\n" + validTypesText(value);
+		return dataTypeTooltip(value) + "\n\n" + inputConnectedToText(value) + "\n\n";
 	}
 
 	function outputTooltip(value: FrontendGraphOutput): string {
@@ -188,10 +188,10 @@
 		return `Data Type: ${value.resolvedType}`;
 	}
 
-	function validTypesText(value: FrontendGraphInput): string {
-		const validTypes = value.validTypes.length > 0 ? value.validTypes.map((x) => `• ${x}`).join("\n") : "None";
-		return `Valid Types:\n${validTypes}`;
-	}
+	// function validTypesText(value: FrontendGraphInput): string {
+	// 	const validTypes = value.validTypes.length > 0 ? value.validTypes.map((x) => `• ${x}`).join("\n") : "None";
+	// 	return `Valid Types:\n${validTypes}`;
+	// }
 
 	function outputConnectedToText(output: FrontendGraphOutput): string {
 		if (output.connectedTo.length === 0) return "Connected to nothing";
