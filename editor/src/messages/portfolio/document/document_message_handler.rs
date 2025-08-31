@@ -17,7 +17,7 @@ use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::portfolio::utility_types::PersistentData;
@@ -2766,7 +2766,7 @@ impl DocumentMessageHandler {
 		});
 	}
 
-	pub fn update_layers_panel_bottom_bar_widgets(&self, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
+	pub fn update_layers_panel_bottom_bar_widgets(&mut self, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
 		if !layers_panel_open {
 			return;
 		}
@@ -2776,6 +2776,7 @@ impl DocumentMessageHandler {
 		let selected_layer = selected_layers.next();
 		let has_selection = selected_layer.is_some();
 		let has_multiple_selection = selected_layers.next().is_some();
+		for _ in selected_layers {}
 
 		let widgets = vec![
 			PopoverButton::new()
@@ -2789,7 +2790,7 @@ impl DocumentMessageHandler {
 						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &self.network_interface);
 						let node_type = graph_layer.horizontal_layer_flow().nth(1);
 						if let Some(node_id) = node_type {
-							let (output_type, _) = self.network_interface.output_type(&node_id, 0, &self.selection_network_path);
+							let (output_type, _) = self.network_interface.output_type(&OutputConnector::node(node_id, 0), &self.selection_network_path);
 							Some(format!("type:{}", output_type.nested_type()))
 						} else {
 							None

@@ -27,9 +27,7 @@ fern = { workspace = true }
 chrono = { workspace = true }
 wgpu = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
-
-# Required dependencies
-clap = { version = "4.5.31", features = ["cargo", "derive"] }
+clap = { workspace = true, features = ["cargo", "derive"] }
 
 # Optional local dependencies
 wgpu-executor = { path = "../wgpu-executor", optional = true }

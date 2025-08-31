@@ -12,12 +12,6 @@ export class JsMessage {
 }
 
 const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
-const ImportsToVec2Array = Transform(({ obj: { imports } }: { obj: { imports: [FrontendGraphOutput, number, number][] } }) =>
-	imports.map(([outputMetadata, x, y]) => ({ outputMetadata, position: { x, y } })),
-);
-const ExportsToVec2Array = Transform(({ obj: { exports } }: { obj: { exports: [FrontendGraphInput, number, number][] } }) =>
-	exports.map(([inputMetadata, x, y]) => ({ inputMetadata, position: { x, y } })),
-);
 
 // const BigIntTupleToVec2 = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : { x: Number(value[0]), y: Number(value[1]) }));
 
@@ -58,17 +52,17 @@ export class UpdateContextMenuInformation extends JsMessage {
 }
 
 export class UpdateImportsExports extends JsMessage {
-	@ImportsToVec2Array
-	readonly imports!: { outputMetadata: FrontendGraphOutput; position: XY }[];
+	readonly imports!: (FrontendGraphOutput | undefined)[];
 
-	@ExportsToVec2Array
-	readonly exports!: { inputMetadata: FrontendGraphInput; position: XY }[];
+	readonly exports!: (FrontendGraphInput | undefined)[];
 
 	@TupleToVec2
-	readonly addImport!: XY | undefined;
+	readonly importPosition!: XY;
 
 	@TupleToVec2
-	readonly addExport!: XY | undefined;
+	readonly exportPosition!: XY;
+
+	readonly addImportExport!: boolean;
 }
 
 export class UpdateInSelectedNetwork extends JsMessage {
@@ -194,29 +188,6 @@ export type ContextMenuInformation = {
 
 export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic" | "Raster" | "Vector" | "Color";
 
-export class Node {
-	readonly index!: bigint;
-	// Omitted if this Node is an Import or Export to/from the node network
-	readonly nodeId?: bigint;
-}
-
-const CreateOutputConnectorOptional = Transform(({ obj }) => {
-	if (obj.connectedTo == undefined) {
-		return undefined;
-	}
-	if (obj.connectedTo?.export !== undefined) {
-		return { index: obj.connectedTo?.export };
-	} else if (obj.connectedTo?.import !== undefined) {
-		return { index: obj.connectedTo?.import };
-	} else {
-		if (obj.connectedTo?.node.inputIndex !== undefined) {
-			return { nodeId: obj.connectedTo?.node.nodeId, index: obj.connectedTo?.node.inputIndex };
-		} else {
-			return { nodeId: obj.connectedTo?.node.nodeId, index: obj.connectedTo?.node.outputIndex };
-		}
-	}
-});
-
 export class FrontendGraphInput {
 	readonly dataType!: FrontendGraphDataType;
 
@@ -228,27 +199,8 @@ export class FrontendGraphInput {
 
 	readonly validTypes!: string[];
 
-	@CreateOutputConnectorOptional
-	connectedTo!: Node | undefined;
+	readonly connectedTo!: string;
 }
-
-const CreateInputConnectorArray = Transform(({ obj }) => {
-	const newInputConnectors: Node[] = [];
-	obj.connectedTo.forEach((connector: any) => {
-		if (connector.export !== undefined) {
-			newInputConnectors.push({ index: connector.export });
-		} else if (connector.import !== undefined) {
-			newInputConnectors.push({ index: connector.import });
-		} else {
-			if (connector.node.inputIndex !== undefined) {
-				newInputConnectors.push({ nodeId: connector.node.nodeId, index: connector.node.inputIndex });
-			} else {
-				newInputConnectors.push({ nodeId: connector.node.nodeId, index: connector.node.outputIndex });
-			}
-		}
-	});
-	return newInputConnectors;
-});
 
 export class FrontendGraphOutput {
 	readonly dataType!: FrontendGraphDataType;
@@ -259,8 +211,7 @@ export class FrontendGraphOutput {
 
 	readonly resolvedType!: string;
 
-	@CreateInputConnectorArray
-	connectedTo!: Node[];
+	readonly connectedTo!: string[];
 }
 
 export class FrontendNode {
@@ -274,20 +225,20 @@ export class FrontendNode {
 
 	readonly displayName!: string;
 
-	@Type(() => FrontendGraphInput)
 	readonly primaryInput!: FrontendGraphInput | undefined;
 
-	@Type(() => FrontendGraphInput)
 	readonly exposedInputs!: FrontendGraphInput[];
 
-	@Type(() => FrontendGraphOutput)
 	readonly primaryOutput!: FrontendGraphOutput | undefined;
 
-	@Type(() => FrontendGraphOutput)
 	readonly exposedOutputs!: FrontendGraphOutput[];
 
+	readonly primaryInputConnectedToLayer!: boolean;
+
+	readonly primaryOutputConnectedToLayer!: boolean;
+
 	@TupleToVec2
-	readonly position!: XY | undefined;
+	readonly position!: XY;
 
 	// TODO: Store field for the width of the left node chain
 
@@ -298,8 +249,6 @@ export class FrontendNode {
 	readonly unlocked!: boolean;
 
 	readonly errors!: string | undefined;
-
-	readonly uiOnly!: boolean;
 }
 
 export class FrontendNodeType {

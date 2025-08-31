@@ -3171,7 +3171,7 @@ impl Fsm for PathToolFsmState {
 					colinear,
 				};
 
-				tool_data.make_path_editable_is_allowed = make_path_editable_is_allowed(&document.network_interface, document.metadata()).is_some();
+				tool_data.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
 				tool_data.update_selection_status(shape_editor, document);
 				tool_data.update_merge_point_toggle(shape_editor, document, tool_action_data.preferences.vector_meshes);
 

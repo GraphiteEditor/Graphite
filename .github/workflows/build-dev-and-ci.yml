@@ -108,7 +108,7 @@ jobs:
 
       - name: 🧪 Run Rust tests
         run: |
-          mold -run cargo test --all-features --workspace
+          mold -run cargo test --all-features
 
       - name: 📃 Generate code documentation info for website
         if: github.ref == 'refs/heads/master'
