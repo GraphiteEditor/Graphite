@@ -1,4 +1,4 @@
-use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendNode};
+use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart};
 use super::{document_node_definitions, node_properties};
 use crate::consts::GRID_SIZE;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
@@ -1634,7 +1634,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(PropertiesPanelMessage::Refresh);
 				if breadcrumb_network_path == selection_network_path && graph_view_overlay_open {
-					let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
+					let nodes = network_interface.collect_nodes(&self.node_graph_errors, breadcrumb_network_path);
 					self.frontend_nodes = nodes.iter().map(|node| node.id).collect();
 					responses.add(FrontendMessage::UpdateNodeGraphNodes { nodes });
 					responses.add(NodeGraphMessage::UpdateVisibleNodes);
@@ -2497,94 +2497,6 @@ impl NodeGraphMessageHandler {
 		}
 
 		added_wires
-	}
-
-	fn collect_nodes(&self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Vec<FrontendNode> {
-		let Some(network) = network_interface.nested_network(breadcrumb_network_path) else {
-			log::error!("Could not get nested network when collecting nodes");
-			return Vec::new();
-		};
-		let mut nodes = Vec::new();
-		for (node_id, visible) in network.nodes.iter().map(|(node_id, node)| (*node_id, node.visible)).collect::<Vec<_>>() {
-			let node_id_path = [breadcrumb_network_path, &[node_id]].concat();
-
-			let primary_input_connector = InputConnector::node(node_id, 0);
-
-			let primary_input = if network_interface
-				.input_from_connector(&primary_input_connector, breadcrumb_network_path)
-				.is_some_and(|input| input.is_exposed())
-			{
-				network_interface.frontend_input_from_connector(&primary_input_connector, breadcrumb_network_path)
-			} else {
-				None
-			};
-			let exposed_inputs = (1..network_interface.number_of_inputs(&node_id, breadcrumb_network_path))
-				.filter_map(|input_index| network_interface.frontend_input_from_connector(&InputConnector::node(node_id, input_index), breadcrumb_network_path))
-				.collect();
-
-			let primary_output = network_interface.frontend_output_from_connector(&OutputConnector::node(node_id, 0), breadcrumb_network_path);
-
-			let exposed_outputs = (1..network_interface.number_of_outputs(&node_id, breadcrumb_network_path))
-				.filter_map(|output_index| network_interface.frontend_output_from_connector(&OutputConnector::node(node_id, output_index), breadcrumb_network_path))
-				.collect();
-			let (primary_output_connected_to_layer, primary_input_connected_to_layer) = if network_interface.is_layer(&node_id, breadcrumb_network_path) {
-				(
-					network_interface.primary_output_connected_to_layer(&node_id, breadcrumb_network_path),
-					network_interface.primary_input_connected_to_layer(&node_id, breadcrumb_network_path),
-				)
-			} else {
-				(false, false)
-			};
-
-			let is_export = network_interface
-				.input_from_connector(&InputConnector::Export(0), breadcrumb_network_path)
-				.is_some_and(|export| export.as_node().is_some_and(|export_node_id| node_id == export_node_id));
-			let is_root_node = network_interface.root_node(breadcrumb_network_path).is_some_and(|root_node| root_node.node_id == node_id);
-
-			let Some(position) = network_interface.position(&node_id, breadcrumb_network_path) else {
-				log::error!("Could not get position for node: {node_id}");
-				continue;
-			};
-			let previewed = is_export && !is_root_node;
-
-			let locked = network_interface.is_locked(&node_id, breadcrumb_network_path);
-
-			let errors = self
-				.node_graph_errors
-				.iter()
-				.find(|error| error.node_path == node_id_path)
-				.map(|error| format!("{:?}", error.error.clone()))
-				.or_else(|| {
-					if self.node_graph_errors.iter().any(|error| error.node_path.starts_with(&node_id_path)) {
-						Some("Node graph type error within this node".to_string())
-					} else {
-						None
-					}
-				});
-
-			nodes.push(FrontendNode {
-				id: node_id,
-				is_layer: network_interface
-					.node_metadata(&node_id, breadcrumb_network_path)
-					.is_some_and(|node_metadata| node_metadata.persistent_metadata.is_layer()),
-				can_be_layer: network_interface.is_eligible_to_be_layer(&node_id, breadcrumb_network_path),
-				reference: network_interface.reference(&node_id, breadcrumb_network_path).cloned().unwrap_or_default(),
-				display_name: network_interface.display_name(&node_id, breadcrumb_network_path),
-				primary_input,
-				exposed_inputs,
-				primary_output,
-				exposed_outputs,
-				primary_output_connected_to_layer,
-				primary_input_connected_to_layer,
-				position,
-				previewed,
-				visible,
-				locked,
-				errors,
-			});
-		}
-
-		nodes
 	}
 
 	fn collect_subgraph_names(network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Option<Vec<String>> {
