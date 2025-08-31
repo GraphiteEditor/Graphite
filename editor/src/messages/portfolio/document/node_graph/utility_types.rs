@@ -64,9 +64,12 @@ pub struct FrontendGraphInput {
 	pub description: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: String,
-	#[serde(rename = "connectedTo")]
 	/// Either "nothing", "import index {index}", or "{node name} output {output_index}".
+	#[serde(rename = "connectedToString")]
 	pub connected_to: String,
+	/// Used to render the upstream node once this node is rendered
+	#[serde(rename = "connectedToNode")]
+	pub connected_to_node: Option<NodeId>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -83,38 +86,71 @@ pub struct FrontendGraphOutput {
 	pub connected_to: Vec<String>,
 }
 
+// Metadata that is common to nodes and layers
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct FrontendNode {
-	pub id: graph_craft::document::NodeId,
-	#[serde(rename = "isLayer")]
-	pub is_layer: bool,
+pub struct FrontendNodeMetadata {
+	// TODO: Remove and replace with popup manager system
 	#[serde(rename = "canBeLayer")]
 	pub can_be_layer: bool,
-	pub selected: bool,
-	pub reference: Option<String>,
 	#[serde(rename = "displayName")]
 	pub display_name: String,
-	#[serde(rename = "primaryInput")]
-	pub primary_input: Option<FrontendGraphInput>,
-	#[serde(rename = "exposedInputs")]
-	pub exposed_inputs: Vec<FrontendGraphInput>,
-	#[serde(rename = "primaryOutput")]
-	pub primary_output: Option<FrontendGraphOutput>,
-	#[serde(rename = "exposedOutputs")]
-	pub exposed_outputs: Vec<FrontendGraphOutput>,
+	pub selected: bool,
+	// Used to get the description, which is stored in a global hashmap
+	pub reference: Option<String>,
+	// Reduces opacity of node/hidden eye icon
+	pub visible: bool,
+	// The svg string for each input
+	// pub wires: Vec<Option<String>>,
+	pub errors: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontendNode {
+	// pub position: FrontendNodePosition,
+	pub position: FrontendXY,
+	pub inputs: Vec<Option<FrontendGraphInput>>,
+	pub outputs: Vec<Option<FrontendGraphOutput>>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontendLayer {
+	#[serde(rename = "bottomInput")]
+	pub bottom_input: FrontendGraphInput,
+	#[serde(rename = "sideInput")]
+	pub side_input: Option<FrontendGraphInput>,
+	pub output: FrontendGraphOutput,
+	// pub position: FrontendLayerPosition,
+	pub position: FrontendXY,
+	pub locked: bool,
 	#[serde(rename = "chainWidth")]
 	pub chain_width: u32,
 	#[serde(rename = "layerHasLeftBorderGap")]
-	pub layer_has_left_border_gap: bool,
-	#[serde(rename = "primaryOutputConnectedToLayer")]
-	pub primary_output_connected_to_layer: bool,
+	layer_has_left_border_gap: bool,
 	#[serde(rename = "primaryInputConnectedToLayer")]
 	pub primary_input_connected_to_layer: bool,
-	pub position: FrontendXY,
-	pub visible: bool,
-	pub locked: bool,
-	pub previewed: bool,
-	pub errors: Option<String>,
+	#[serde(rename = "primaryOutputConnectedToLayer")]
+	pub primary_output_connected_to_layer: bool,
+}
+
+// // Should be an enum but those are hard to serialize/deserialize to TS
+// #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+// pub struct FrontendNodePosition {
+// 	pub absolute: Option<FrontendXY>,
+// 	pub chain: Option<bool>,
+// }
+
+// // Should be an enum but those are hard to serialize/deserialize to TS
+// #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+// pub struct FrontendLayerPosition {
+// 	pub absolute: Option<FrontendXY>,
+// 	pub stack: Option<u32>,
+// }
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontendNodeOrLayer {
+	pub metadata: FrontendNodeMetadata,
+	pub node: Option<FrontendNode>,
+	pub layer: Option<FrontendLayer>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]

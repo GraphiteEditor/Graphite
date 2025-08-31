@@ -117,10 +117,11 @@
 
 	function toggleLayerDisplay(displayAsLayer: boolean, toggleId: bigint) {
 		editor.handle.setToNodeOrLayer(toggleId, displayAsLayer);
+		editor.handle.setToNodeOrLayer(toggleId, displayAsLayer);
 	}
 
 	function canBeToggledBetweenNodeAndLayer(toggleDisplayAsLayerNodeId: bigint) {
-		return $nodeGraph.nodesToRender.get(toggleDisplayAsLayerNodeId)?.canBeLayer || false;
+		return $nodeGraph.nodesToRender.get(toggleDisplayAsLayerNodeId)?.metadata.canBeLayer || false;
 	}
 
 	function createNode(nodeType: string) {
@@ -199,7 +200,7 @@
 	}
 
 	function inputConnectedToText(input: FrontendGraphInput): string {
-		return `Connected to:\n${input.connectedTo}`;
+		return `Connected to:\n${input.connectedToString}`;
 	}
 
 	function zipWithUndefined(arr1: FrontendGraphInput[], arr2: FrontendGraphOutput[]) {
