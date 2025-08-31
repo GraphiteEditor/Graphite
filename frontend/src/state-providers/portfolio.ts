@@ -3,8 +3,8 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
+import type { OpenDocument } from "@graphite/messages";
 import {
-	type FrontendDocumentDetails,
 	TriggerFetchAndOpenDocument,
 	TriggerSaveDocument,
 	TriggerExportImage,
@@ -24,7 +24,7 @@ import { extractPixelData, rasterizeSVG } from "@graphite/utility-functions/rast
 export function createPortfolioState(editor: Editor) {
 	const { subscribe, update } = writable({
 		unsaved: false,
-		documents: [] as FrontendDocumentDetails[],
+		documents: [] as OpenDocument[],
 		activeDocumentIndex: 0,
 		dataPanelOpen: false,
 		propertiesPanelOpen: true,
