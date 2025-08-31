@@ -257,7 +257,7 @@ pub fn pathseg_normals_to_point(segment: PathSeg, point: Point) -> Vec<f64> {
 		5. * (x[3] * x[2] + y[3] * y[2]),
 		3. * (x[3] * x[3] + y[3] * y[3]),
 	]);
-	poly.roots_between(0., 1., 1e-8)
+	poly.roots_between(0., 1., 1e-8).to_vec()
 }
 
 /// Find the `t`-value(s) such that the tangent(s) at `t` pass through the given point.
