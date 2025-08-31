@@ -952,6 +952,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				self.path = None;
 				self.set_save_state(false);
+				self.set_auto_save_state(false);
 
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
