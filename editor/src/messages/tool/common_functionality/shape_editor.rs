@@ -1383,8 +1383,9 @@ impl ShapeState {
 	}
 
 	/// Dissolve the selected points.
-	pub fn delete_selected_points(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, start_transaction: bool) -> bool {
+	pub fn delete_selected_points(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, start_transaction: bool) {
 		let mut transaction_started = false;
+
 		for (&layer, state) in &mut self.selected_shape_state {
 			let mut missing_anchors = HashMap::new();
 			let mut deleted_anchors = HashSet::new();
@@ -1497,11 +1498,11 @@ impl ShapeState {
 				}
 			}
 		}
-		transaction_started
 	}
 
 	pub fn delete_selected_segments(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, start_transaction: bool) -> bool {
 		let mut transaction_started = false;
+
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
@@ -1515,11 +1516,13 @@ impl ShapeState {
 				}
 			}
 		}
+
 		transaction_started
 	}
 
-	pub fn delete_hanging_selected_anchors(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, start_transaction: bool) -> bool {
+	pub fn delete_hanging_selected_anchors(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, start_transaction: bool) {
 		let mut transaction_started = false;
+
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
@@ -1536,12 +1539,12 @@ impl ShapeState {
 				}
 			}
 		}
-		transaction_started
 	}
 
 	// Break path at a selected point, note that it also adds a transaction if there is some change in state, returns whether some change happened or not
-	pub fn break_path_at_selected_point(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> bool {
+	pub fn break_path_at_selected_point(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		let mut transaction_started = false;
+
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
@@ -1591,12 +1594,12 @@ impl ShapeState {
 				}
 			}
 		}
-		transaction_started
 	}
 
 	/// Delete point(s) and adjacent segments, also starts a transaction if some change takes place
 	pub fn delete_point_and_break_path(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> bool {
 		let mut transaction_started = false;
+
 		for (&layer, state) in &mut self.selected_shape_state {
 			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
@@ -1618,6 +1621,7 @@ impl ShapeState {
 				}
 			}
 		}
+
 		transaction_started
 	}
 
