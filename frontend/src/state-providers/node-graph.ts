@@ -13,7 +13,6 @@ import {
 	UpdateBox,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
-	UpdateInSelectedNetwork,
 	UpdateImportReorderIndex,
 	UpdateExportReorderIndex,
 	UpdateImportsExports,
@@ -21,7 +20,6 @@ import {
 	UpdateNodeGraphNodes,
 	UpdateVisibleNodes,
 	UpdateNodeGraphWires,
-	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
 	UpdateWirePathInProgress,
@@ -33,10 +31,9 @@ export function createNodeGraphState(editor: Editor) {
 		clickTargets: undefined as FrontendClickTargets | undefined,
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
 		layerWidths: new Map<bigint, number>(),
-		chainWidths: new Map<bigint, number>(),
-		hasLeftInputWire: new Map<bigint, boolean>(),
 		updateImportsExports: undefined as UpdateImportsExports | undefined,
-		nodes: new Map<bigint, FrontendNode>(),
+		nodesToRender: new Map<bigint, FrontendNode>(),
+
 		visibleNodes: new Set<bigint>(),
 		/// The index is the exposed input index. The exports have a first key value of u32::MAX.
 		wires: new Map<bigint, Map<number, WirePath>>(),
@@ -44,9 +41,9 @@ export function createNodeGraphState(editor: Editor) {
 		nodeDescriptions: new Map<string, string>(),
 		nodeTypes: [] as FrontendNodeType[],
 		thumbnails: new Map<bigint, string>(),
-		selected: [] as bigint[],
 		transform: { scale: 1, x: 0, y: 0 },
 		inSelectedNetwork: true,
+		previewedNode: undefined as bigint | undefined,
 		reorderImportIndex: undefined as number | undefined,
 		reorderExportIndex: undefined as number | undefined,
 	});
@@ -95,26 +92,20 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateInSelectedNetwork, (updateInSelectedNetwork) => {
-		update((state) => {
-			state.inSelectedNetwork = updateInSelectedNetwork.inSelectedNetwork;
-			return state;
-		});
-	});
 	editor.subscriptions.subscribeJsMessage(UpdateLayerWidths, (updateLayerWidths) => {
 		update((state) => {
 			state.layerWidths = updateLayerWidths.layerWidths;
-			state.chainWidths = updateLayerWidths.chainWidths;
-			state.hasLeftInputWire = updateLayerWidths.hasLeftInputWire;
 			return state;
 		});
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphNodes, (updateNodeGraphNodes) => {
 		update((state) => {
-			state.nodes.clear();
-			updateNodeGraphNodes.nodes.forEach((node) => {
-				state.nodes.set(node.id, node);
+			state.nodesToRender.clear();
+			updateNodeGraphNodes.nodesToRender.forEach((node) => {
+				state.nodesToRender.set(node.id, node);
 			});
+			state.inSelectedNetwork = updateNodeGraphNodes.inSelectedNetwork;
+			state.previewedNode = updateNodeGraphNodes.previewedNode;
 			return state;
 		});
 	});
@@ -145,12 +136,6 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(ClearAllNodeGraphWires, (_) => {
 		update((state) => {
 			state.wires.clear();
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelection, (updateNodeGraphSelection) => {
-		update((state) => {
-			state.selected = updateNodeGraphSelection.selected;
 			return state;
 		});
 	});

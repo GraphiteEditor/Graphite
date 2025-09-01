@@ -6,7 +6,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
-use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType};
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, FrontendXY};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
@@ -192,7 +192,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
 				responses.add(PropertiesPanelMessage::Refresh);
-				responses.add(NodeGraphMessage::SendSelectedNodes);
+				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(ArtboardToolMessage::UpdateSelectedArtboard);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(OverlaysMessage::Draw);
@@ -1633,21 +1633,22 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(PropertiesPanelMessage::Refresh);
-				if breadcrumb_network_path == selection_network_path && graph_view_overlay_open {
-					let nodes = network_interface.collect_nodes(&self.node_graph_errors, breadcrumb_network_path);
-					self.frontend_nodes = nodes.iter().map(|node| node.id).collect();
-					responses.add(FrontendMessage::UpdateNodeGraphNodes { nodes });
+				responses.add(NodeGraphMessage::UpdateActionButtons);
+				if graph_view_overlay_open {
+					let nodes_to_render = network_interface.collect_nodes(&self.node_graph_errors, breadcrumb_network_path);
+					self.frontend_nodes = nodes_to_render.iter().map(|node| node.id).collect();
+					let previewed_node = network_interface.previewed_node(breadcrumb_network_path);
+					responses.add(FrontendMessage::UpdateNodeGraphNodes {
+						nodes_to_render,
+						in_selected_network: selection_network_path == breadcrumb_network_path,
+						previewed_node,
+					});
 					responses.add(NodeGraphMessage::UpdateVisibleNodes);
 
-					let (layer_widths, chain_widths, has_left_input_wire) = network_interface.collect_layer_widths(breadcrumb_network_path);
+					let layer_widths = network_interface.collect_layer_widths(breadcrumb_network_path);
 
 					responses.add(NodeGraphMessage::UpdateImportsExports);
-					responses.add(FrontendMessage::UpdateLayerWidths {
-						layer_widths,
-						chain_widths,
-						has_left_input_wire,
-					});
-					responses.add(NodeGraphMessage::SendSelectedNodes);
+					responses.add(FrontendMessage::UpdateLayerWidths { layer_widths });
 					responses.add(NodeGraphMessage::SendWires);
 					self.update_node_graph_hints(responses);
 				}
@@ -1956,6 +1957,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 
+				let import_position = FrontendXY {
+					x: import_position.x,
+					y: import_position.y,
+				};
+				let export_position = FrontendXY {
+					x: export_position.x,
+					y: export_position.y,
+				};
+
 				// Do not show the add import or add export button in the document network;
 				let add_import_export = !breadcrumb_network_path.is_empty();
 
@@ -2000,21 +2010,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				self.update_graph_bar_right(graph_fade_artwork_percentage, network_interface, breadcrumb_network_path, navigation_handler);
 				self.send_node_bar_layout(responses);
 			}
-			NodeGraphMessage::UpdateInSelectedNetwork => responses.add(FrontendMessage::UpdateInSelectedNetwork {
-				in_selected_network: selection_network_path == breadcrumb_network_path,
-			}),
 			NodeGraphMessage::UpdateHints => {
 				self.update_node_graph_hints(responses);
-			}
-			NodeGraphMessage::SendSelectedNodes => {
-				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(breadcrumb_network_path) else {
-					log::error!("Could not get selected nodes in NodeGraphMessage::SendSelectedNodes");
-					return;
-				};
-				responses.add(NodeGraphMessage::UpdateActionButtons);
-				responses.add(FrontendMessage::UpdateNodeGraphSelection {
-					selected: selected_nodes.selected_nodes().cloned().collect::<Vec<_>>(),
-				});
 			}
 		}
 		let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {

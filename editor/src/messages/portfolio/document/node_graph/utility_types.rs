@@ -1,4 +1,3 @@
-use glam::IVec2;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Type;
@@ -52,6 +51,12 @@ impl FrontendGraphDataType {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontendXY {
+	pub x: i32,
+	pub y: i32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendGraphInput {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
@@ -85,6 +90,7 @@ pub struct FrontendNode {
 	pub is_layer: bool,
 	#[serde(rename = "canBeLayer")]
 	pub can_be_layer: bool,
+	pub selected: bool,
 	pub reference: Option<String>,
 	#[serde(rename = "displayName")]
 	pub display_name: String,
@@ -96,11 +102,15 @@ pub struct FrontendNode {
 	pub primary_output: Option<FrontendGraphOutput>,
 	#[serde(rename = "exposedOutputs")]
 	pub exposed_outputs: Vec<FrontendGraphOutput>,
+	#[serde(rename = "chainWidth")]
+	pub chain_width: u32,
+	#[serde(rename = "layerHasLeftBorderGap")]
+	pub layer_has_left_border_gap: bool,
 	#[serde(rename = "primaryOutputConnectedToLayer")]
 	pub primary_output_connected_to_layer: bool,
 	#[serde(rename = "primaryInputConnectedToLayer")]
 	pub primary_input_connected_to_layer: bool,
-	pub position: IVec2,
+	pub position: FrontendXY,
 	pub visible: bool,
 	pub locked: bool,
 	pub previewed: bool,

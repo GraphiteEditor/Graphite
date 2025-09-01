@@ -116,12 +116,11 @@
 	}
 
 	function toggleLayerDisplay(displayAsLayer: boolean, toggleId: bigint) {
-		let node = $nodeGraph.nodes.get(toggleId);
-		if (node) editor.handle.setToNodeOrLayer(node.id, displayAsLayer);
+		editor.handle.setToNodeOrLayer(toggleId, displayAsLayer);
 	}
 
 	function canBeToggledBetweenNodeAndLayer(toggleDisplayAsLayerNodeId: bigint) {
-		return $nodeGraph.nodes.get(toggleDisplayAsLayerNodeId)?.canBeLayer || false;
+		return $nodeGraph.nodesToRender.get(toggleDisplayAsLayerNodeId)?.canBeLayer || false;
 	}
 
 	function createNode(nodeType: string) {
@@ -148,7 +147,7 @@
 		return borderMask(boxes, nodeWidth, nodeHeight);
 	}
 
-	function layerBorderMask(nodeWidthFromThumbnail: number, nodeChainAreaLeftExtension: number, hasLeftInputWire: boolean): string {
+	function layerBorderMask(nodeWidthFromThumbnail: number, nodeChainAreaLeftExtension: number, layerHasLeftBorderGap: boolean): string {
 		const NODE_HEIGHT = 2 * 24;
 		const THUMBNAIL_WIDTH = 72 + 8 * 2;
 		const FUDGE_HEIGHT_BEYOND_LAYER_HEIGHT = 2;
@@ -158,7 +157,7 @@
 		const boxes: { x: number; y: number; width: number; height: number }[] = [];
 
 		// Left input
-		if (hasLeftInputWire && nodeChainAreaLeftExtension > 0) {
+		if (layerHasLeftBorderGap && nodeChainAreaLeftExtension > 0) {
 			boxes.push({ x: -8, y: 16, width: 16, height: 16 });
 		}
 
@@ -318,8 +317,6 @@
 						xmlns="http://www.w3.org/2000/svg"
 						viewBox="0 0 8 8"
 						class="connector"
-						data-connector="output"
-						data-datatype={frontendOutput.dataType}
 						style:--data-color={`var(--color-data-${frontendOutput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendOutput.dataType.toLowerCase()}-dim)`}
 						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 8) / 24}
@@ -390,8 +387,6 @@
 						xmlns="http://www.w3.org/2000/svg"
 						viewBox="0 0 8 8"
 						class="connector"
-						data-connector="input"
-						data-datatype={frontendInput.dataType}
 						style:--data-color={`var(--color-data-${frontendInput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendInput.dataType.toLowerCase()}-dim)`}
 						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 8) / 24}
@@ -492,54 +487,47 @@
 	<!-- Layers and nodes -->
 	<div class="layers-and-nodes" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		<!-- Layers -->
-		{#each Array.from($nodeGraph.nodes)
-			.filter(([nodeId, node]) => node.isLayer && $nodeGraph.visibleNodes.has(nodeId))
-			.map(([_, node], nodeIndex) => ({ node, nodeIndex })) as { node, nodeIndex } (nodeIndex)}
+		{#each Array.from($nodeGraph.nodesToRender).filter(([nodeId, node]) => node.isLayer && $nodeGraph.visibleNodes.has(nodeId)) as [nodeId, layer]}
 			{@const clipPathId = String(Math.random()).substring(2)}
-			{@const stackDataInput = node.exposedInputs[0]}
-			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
-			{@const layerChainWidth = $nodeGraph.chainWidths.get(node.id) || 0}
-			{@const hasLeftInputWire = $nodeGraph.hasLeftInputWire.get(node.id) || false}
-			{@const description = (node.reference && $nodeGraph.nodeDescriptions.get(node.reference)) || undefined}
+			{@const layerAreaWidth = $nodeGraph.layerWidths.get(layer.id) || 8}
+			{@const layerChainWidth = layer.chainWidth !== 0 ? layer.chainWidth + 0.5 : 0}
+			{@const description = (layer.reference && $nodeGraph.nodeDescriptions.get(layer.reference)) || undefined}
 			<div
 				class="layer"
-				class:selected={$nodeGraph.selected.includes(node.id)}
+				class:selected={layer.selected}
 				class:in-selected-network={$nodeGraph.inSelectedNetwork}
-				class:previewed={node.previewed}
-				class:disabled={!node.visible}
-				style:--offset-left={node.position?.x || 0}
-				style:--offset-top={node.position?.y || 0}
+				class:previewed={layer.previewed}
+				class:disabled={!layer.visible}
+				style:--offset-left={layer.position.x}
+				style:--offset-top={layer.position.y}
 				style:--clip-path-id={`url(#${clipPathId})`}
-				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
-				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
+				style:--data-color={`var(--color-data-${(layer.primaryOutput?.dataType || "General").toLowerCase()})`}
+				style:--data-color-dim={`var(--color-data-${(layer.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				style:--layer-area-width={layerAreaWidth}
-				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
-				title={`${node.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
-				data-node={node.id}
+				style:--node-chain-area-left-extension={layerChainWidth}
+				title={`${layer.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${nodeId}` : "")}
 			>
-				{#if node.errors}
-					<span class="node-error faded" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
-					<span class="node-error hover" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
+				{#if layer.errors}
+					<span class="node-error faded" transition:fade={FADE_TRANSITION} title="" data-node-error>{layer.errors}</span>
+					<span class="node-error hover" transition:fade={FADE_TRANSITION} title="" data-node-error>{layer.errors}</span>
 				{/if}
 				<div class="thumbnail">
-					{#if $nodeGraph.thumbnails.has(node.id)}
-						{@html $nodeGraph.thumbnails.get(node.id)}
+					{#if $nodeGraph.thumbnails.has(nodeId)}
+						{@html $nodeGraph.thumbnails.get(nodeId)}
 					{/if}
 					<!-- Layer stacking top output -->
-					{#if node.primaryOutput}
+					{#if layer.primaryOutput}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 12"
 							class="connector top"
-							data-connector="output"
-							data-datatype={node.primaryOutput.dataType}
-							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
+							style:--data-color={`var(--color-data-${layer.primaryOutput.dataType.toLowerCase()})`}
+							style:--data-color-dim={`var(--color-data-${layer.primaryOutput.dataType.toLowerCase()}-dim)`}
 						>
-							<title>{outputTooltip(node.primaryOutput)}</title>
-							{#if node.primaryOutput.connectedTo.length > 0}
+							<title>{outputTooltip(layer.primaryOutput)}</title>
+							{#if layer.primaryOutput.connectedTo.length > 0}
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
-								{#if node.primaryOutputConnectedToLayer}
+								{#if layer.primaryOutputConnectedToLayer}
 									<path d="M0,-3.5h8v8l-2.521,-1.681a2.666,2.666,0,0,0,-2.959,0l-2.52,1.681z" fill="var(--data-color-dim)" />
 								{/if}
 							{:else}
@@ -552,17 +540,15 @@
 						xmlns="http://www.w3.org/2000/svg"
 						viewBox="0 0 8 12"
 						class="connector bottom"
-						data-connector="input"
-						data-datatype={node.primaryInput?.dataType}
-						style:--data-color={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()})`}
-						style:--data-color-dim={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()}-dim)`}
+						style:--data-color={`var(--color-data-${(layer.primaryInput?.dataType || "General").toLowerCase()})`}
+						style:--data-color-dim={`var(--color-data-${(layer.primaryInput?.dataType || "General").toLowerCase()}-dim)`}
 					>
-						{#if node.primaryInput}
-							<title>{inputTooltip(node.primaryInput)}</title>
+						{#if layer.primaryInput}
+							<title>{inputTooltip(layer.primaryInput)}</title>
 						{/if}
-						{#if node.primaryInput?.connectedTo !== "nothing"}
+						{#if layer.primaryInput?.connectedTo !== "nothing"}
 							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
-							{#if node.primaryInputConnectedToLayer}
+							{#if layer.primaryInputConnectedToLayer}
 								<path d="M0,10.95l2.52,-1.69c0.89,-0.6,2.06,-0.6,2.96,0l2.52,1.69v5.05h-8v-5.05z" fill="var(--data-color-dim)" />
 							{/if}
 						{:else}
@@ -571,19 +557,17 @@
 					</svg>
 				</div>
 				<!-- Layer input connector (from left) -->
-				{#if node.exposedInputs.length > 0}
+				{#if layer.exposedInputs.length > 0}
 					<div class="input connectors">
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
 							class="connector"
-							data-connector="input"
-							data-datatype={stackDataInput.dataType}
-							style:--data-color={`var(--color-data-${stackDataInput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
+							style:--data-color={`var(--color-data-${layer.exposedInputs[0].dataType.toLowerCase()})`}
+							style:--data-color-dim={`var(--color-data-${layer.exposedInputs[0].dataType.toLowerCase()}-dim)`}
 						>
-							<title>{inputTooltip(stackDataInput)}</title>
-							{#if stackDataInput.connectedTo !== undefined}
+							<title>{inputTooltip(layer.exposedInputs[0])}</title>
+							{#if layer.exposedInputs[0].connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -593,25 +577,25 @@
 				{/if}
 				<div class="details">
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel>{node.displayName}</TextLabel>
+					<TextLabel>{layer.displayName}</TextLabel>
 				</div>
 				<div class="solo-drag-grip" title="Drag only this layer without pushing others outside the stack"></div>
 				<IconButton
 					class="visibility"
 					data-visibility-button
 					size={24}
-					icon={node.visible ? "EyeVisible" : "EyeHidden"}
+					icon={layer.visible ? "EyeVisible" : "EyeHidden"}
 					action={() => {
 						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
-					tooltip={node.visible ? "Visible" : "Hidden"}
+					tooltip={layer.visible ? "Visible" : "Hidden"}
 				/>
 
 				<svg class="border-mask" width="0" height="0">
 					<defs>
 						<clipPath id={clipPathId}>
 							<!-- Keep this equation in sync with the equivalent one in the CSS rule for `.layer { width: ... }` below -->
-							<path clip-rule="evenodd" d={layerBorderMask(24 * layerAreaWidth - 12, layerChainWidth ? (0.5 + layerChainWidth) * 24 : 0, hasLeftInputWire)} />
+							<path clip-rule="evenodd" d={layerBorderMask(24 * layerAreaWidth - 12, layerChainWidth * 24, layer.layerHasLeftBorderGap)} />
 						</clipPath>
 					</defs>
 				</svg>
@@ -647,15 +631,13 @@
 		</div>
 
 		<!-- Nodes -->
-		{#each Array.from($nodeGraph.nodes)
-			.filter(([nodeId, node]) => !node.isLayer && $nodeGraph.visibleNodes.has(nodeId))
-			.map(([_, node], nodeIndex) => ({ node, nodeIndex })) as { node, nodeIndex } (nodeIndex)}
+		{#each Array.from($nodeGraph.nodesToRender).filter(([nodeId, node]) => !node.isLayer && $nodeGraph.visibleNodes.has(nodeId)) as [nodeId, node]}
 			{@const exposedInputsOutputs = zipWithUndefined(node.exposedInputs, node.exposedOutputs)}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const description = (node.reference && $nodeGraph.nodeDescriptions.get(node.reference)) || undefined}
 			<div
 				class="node"
-				class:selected={$nodeGraph.selected.includes(node.id)}
+				class:selected={node.selected}
 				class:previewed={node.previewed}
 				class:disabled={!node.visible}
 				style:--offset-left={node.position?.x || 0}
@@ -663,8 +645,7 @@
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				title={`${node.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
-				data-node={node.id}
+				title={`${node.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${nodeId}` : "")}
 			>
 				{#if node.errors}
 					<span class="node-error faded" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
@@ -695,8 +676,6 @@
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
 							class="connector primary-connector"
-							data-connector="input"
-							data-datatype={node.primaryInput?.dataType}
 							style:--data-color={`var(--color-data-${node.primaryInput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
 						>
@@ -714,8 +693,6 @@
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 8 8"
 								class="connector"
-								data-connector="input"
-								data-datatype={secondary.dataType}
 								style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
 								style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
 							>
@@ -736,8 +713,6 @@
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
 							class="connector primary-connector"
-							data-connector="output"
-							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
 						>
@@ -754,8 +729,6 @@
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
 							class="connector"
-							data-connector="output"
-							data-datatype={secondary.dataType}
 							style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
 						>
@@ -784,7 +757,6 @@
 </div>
 
 <!-- Box selection widget -->
-<!-- TODO: Make its initial corner stay put (in graph space) when panning around -->
 {#if $nodeGraph.box}
 	<div
 		class="box-selection"

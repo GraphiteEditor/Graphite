@@ -55,17 +55,11 @@ export class UpdateImportsExports extends JsMessage {
 
 	readonly exports!: (FrontendGraphInput | undefined)[];
 
-	@TupleToVec2
 	readonly importPosition!: XY;
 
-	@TupleToVec2
 	readonly exportPosition!: XY;
 
 	readonly addImportExport!: boolean;
-}
-
-export class UpdateInSelectedNetwork extends JsMessage {
-	readonly inSelectedNetwork!: boolean;
 }
 
 export class UpdateImportReorderIndex extends JsMessage {
@@ -77,21 +71,18 @@ export class UpdateExportReorderIndex extends JsMessage {
 }
 
 const LayerWidths = Transform(({ obj }) => obj.layerWidths);
-const ChainWidths = Transform(({ obj }) => obj.chainWidths);
-const HasLeftInputWire = Transform(({ obj }) => obj.hasLeftInputWire);
 
 export class UpdateLayerWidths extends JsMessage {
 	@LayerWidths
 	readonly layerWidths!: Map<bigint, number>;
-	@ChainWidths
-	readonly chainWidths!: Map<bigint, number>;
-	@HasLeftInputWire
-	readonly hasLeftInputWire!: Map<bigint, boolean>;
 }
 
 export class UpdateNodeGraphNodes extends JsMessage {
-	@Type(() => FrontendNode)
-	readonly nodes!: FrontendNode[];
+	readonly nodesToRender!: FrontendNode[];
+
+	readonly inSelectedNetwork!: boolean;
+
+	readonly previewedNode!: bigint | undefined;
 }
 
 export class UpdateVisibleNodes extends JsMessage {
@@ -121,11 +112,6 @@ export class UpdateNodeThumbnail extends JsMessage {
 	readonly id!: bigint;
 
 	readonly value!: string;
-}
-
-export class UpdateNodeGraphSelection extends JsMessage {
-	@Type(() => BigInt)
-	readonly selected!: bigint[];
 }
 
 export class UpdateOpenDocumentsList extends JsMessage {
@@ -211,11 +197,13 @@ export class FrontendGraphOutput {
 }
 
 export class FrontendNode {
+	readonly id!: bigint;
+
 	readonly isLayer!: boolean;
 
 	readonly canBeLayer!: boolean;
 
-	readonly id!: bigint;
+	readonly selected!: boolean;
 
 	readonly reference!: string | undefined;
 
@@ -228,6 +216,10 @@ export class FrontendNode {
 	readonly primaryOutput!: FrontendGraphOutput | undefined;
 
 	readonly exposedOutputs!: FrontendGraphOutput[];
+
+	readonly chainWidth!: number;
+
+	readonly layerHasLeftBorderGap!: boolean;
 
 	readonly primaryInputConnectedToLayer!: boolean;
 
@@ -1672,7 +1664,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateImportReorderIndex,
 	UpdateImportsExports,
 	UpdateInputHints,
-	UpdateInSelectedNetwork,
 	UpdateLayersPanelBottomBarLayout,
 	UpdateLayersPanelControlBarLeftLayout,
 	UpdateLayersPanelControlBarRightLayout,
@@ -1682,7 +1673,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
 	UpdateNodeGraphNodes,
-	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
 	UpdateNodeGraphWires,
 	UpdateNodeThumbnail,
