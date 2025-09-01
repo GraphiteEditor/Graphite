@@ -30,7 +30,12 @@ export default defineConfig({
 				defaultHandler?.(warning);
 			},
 		}),
-		viteMultipleAssets(["../demo-artwork"]),
+		viteMultipleAssets(
+			// Additional static asset directories besides `public/`
+			[{ input: "../demo-artwork/**", output: "demo-artwork" }],
+			// Options where we set custom MIME types
+			{ mimeTypes: { ".graphite": "application/json" } },
+		),
 	],
 	resolve: {
 		alias: [
@@ -64,11 +69,6 @@ export default defineConfig({
 					},
 				}),
 			],
-			output: {
-				// Inject `.min` into the filename of minified CSS files to tell Cloudflare not to minify it again.
-				// Cloudflare's minifier breaks the CSS due to a bug where it removes whitespace around calc() plus operators.
-				assetFileNames: (info) => `assets/[name]-[hash]${info.name?.endsWith(".css") ? ".min" : ""}[extname]`,
-			},
 		},
 	},
 });

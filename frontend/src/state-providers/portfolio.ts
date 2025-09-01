@@ -46,7 +46,7 @@ export function createPortfolioState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(TriggerFetchAndOpenDocument, async (triggerFetchAndOpenDocument) => {
 		try {
 			const { name, filename } = triggerFetchAndOpenDocument;
-			const url = new URL(filename, document.location.href);
+			const url = new URL(`demo-artwork/${filename}`, document.location.href);
 			const data = await fetch(url);
 			const content = await data.text();
 
