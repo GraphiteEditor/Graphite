@@ -1636,7 +1636,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::UpdateActionButtons);
 				if graph_view_overlay_open {
 					let nodes_to_render = network_interface.collect_nodes(&self.node_graph_errors, breadcrumb_network_path);
-					self.frontend_nodes = nodes_to_render.iter().map(|node| node.id).collect();
+					self.frontend_nodes = nodes_to_render.iter().map(|node| node.metadata.node_id).collect();
 					let previewed_node = network_interface.previewed_node(breadcrumb_network_path);
 					responses.add(FrontendMessage::UpdateNodeGraphNodes {
 						nodes_to_render,

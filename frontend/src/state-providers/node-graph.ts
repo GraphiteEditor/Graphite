@@ -5,7 +5,7 @@ import {
 	type Box,
 	type FrontendClickTargets,
 	type ContextMenuInformation,
-	type FrontendNode,
+	type FrontendNodeToRender,
 	type FrontendNodeType,
 	type WirePath,
 	ClearAllNodeGraphWires,
@@ -33,8 +33,7 @@ export function createNodeGraphState(editor: Editor) {
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
 		layerWidths: new Map<bigint, number>(),
 		updateImportsExports: undefined as UpdateImportsExports | undefined,
-		nodesToRender: new Map<bigint, FrontendNode>(),
-
+		nodesToRender: new Map<bigint, FrontendNodeToRender>(),
 		visibleNodes: new Set<bigint>(),
 		/// The index is the exposed input index. The exports have a first key value of u32::MAX.
 		wires: new Map<bigint, Map<number, WirePath>>(),
@@ -93,6 +92,7 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeJsMessage(UpdateLayerWidths, (updateLayerWidths) => {
 		update((state) => {
 			state.layerWidths = updateLayerWidths.layerWidths;
@@ -103,7 +103,7 @@ export function createNodeGraphState(editor: Editor) {
 		update((state) => {
 			state.nodesToRender.clear();
 			updateNodeGraphNodes.nodesToRender.forEach((node) => {
-				state.nodesToRender.set(node.id, node);
+				state.nodesToRender.set(node.metadata.nodeId, node);
 			});
 			state.inSelectedNetwork = updateNodeGraphNodes.inSelectedNetwork;
 			state.previewedNode = updateNodeGraphNodes.previewedNode;
