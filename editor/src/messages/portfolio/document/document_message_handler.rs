@@ -1285,16 +1285,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
-			// Commits the transaction if the network was mutated since the transaction started, otherwise it aborts the transaction
+			// Commits the transaction if the network was mutated since the transaction started, otherwise it cancels the transaction
 			DocumentMessage::EndTransaction => match self.network_interface.transaction_status() {
 				TransactionStatus::Started => {
-					responses.add_front(DocumentMessage::AbortTransaction);
+					responses.add_front(DocumentMessage::CancelTransaction);
 				}
 				TransactionStatus::Modified => {
 					responses.add_front(DocumentMessage::CommitTransaction);
 				}
 				TransactionStatus::Finished => {}
 			},
+			DocumentMessage::CancelTransaction => {
+				self.network_interface.finish_transaction();
+				self.document_undo_history.pop_back();
+			}
 			DocumentMessage::CommitTransaction => {
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
 					return;
@@ -1302,9 +1306,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.network_interface.finish_transaction();
 				self.document_redo_history.clear();
 			}
-			DocumentMessage::AbortTransaction => {
-				responses.add(DocumentMessage::RepeatedAbortTransaction { undo_count: 1 });
-			}
+			DocumentMessage::AbortTransaction => match self.network_interface.transaction_status() {
+				TransactionStatus::Started => {
+					responses.add_front(DocumentMessage::CancelTransaction);
+				}
+				TransactionStatus::Modified => {
+					responses.add(DocumentMessage::RepeatedAbortTransaction { undo_count: 1 });
+				}
+				TransactionStatus::Finished => {}
+			},
 			DocumentMessage::RepeatedAbortTransaction { undo_count } => {
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
 					return;
