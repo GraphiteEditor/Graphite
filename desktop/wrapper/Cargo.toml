@@ -1,0 +1,32 @@
+[package]
+name = "graphite-desktop-wrapper"
+version = "0.1.0"
+description = "Graphite Desktop Wrapper"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "Apache-2.0"
+repository = ""
+edition = "2024"
+rust-version = "1.87"
+
+[features]
+default = ["gpu"]
+gpu = ["graphite-editor/gpu"]
+
+[dependencies]
+# Local dependencies
+graphite-editor = { path = "../../editor", features = [
+	"gpu",
+	"vello",
+] }
+graphene-std = { workspace = true }
+graph-craft = { workspace = true }
+wgpu-executor = { workspace = true }
+
+wgpu = { workspace = true }
+thiserror = { workspace = true }
+futures = { workspace = true }
+tracing = { workspace = true }
+dirs = { workspace = true }
+ron = { workspace = true}
+vello = { workspace = true }
+image = { workspace = true }

@@ -12,12 +12,6 @@ export class JsMessage {
 }
 
 const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
-const ImportsToVec2Array = Transform(({ obj: { imports } }: { obj: { imports: [FrontendGraphOutput, number, number][] } }) =>
-	imports.map(([outputMetadata, x, y]) => ({ outputMetadata, position: { x, y } })),
-);
-const ExportsToVec2Array = Transform(({ obj: { exports } }: { obj: { exports: [FrontendGraphInput, number, number][] } }) =>
-	exports.map(([inputMetadata, x, y]) => ({ inputMetadata, position: { x, y } })),
-);
 
 // const BigIntTupleToVec2 = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : { x: Number(value[0]), y: Number(value[1]) }));
 
@@ -58,17 +52,17 @@ export class UpdateContextMenuInformation extends JsMessage {
 }
 
 export class UpdateImportsExports extends JsMessage {
-	@ImportsToVec2Array
-	readonly imports!: { outputMetadata: FrontendGraphOutput; position: XY }[];
+	readonly imports!: (FrontendGraphOutput | undefined)[];
 
-	@ExportsToVec2Array
-	readonly exports!: { inputMetadata: FrontendGraphInput; position: XY }[];
+	readonly exports!: (FrontendGraphInput | undefined)[];
 
 	@TupleToVec2
-	readonly addImport!: XY | undefined;
+	readonly importPosition!: XY;
 
 	@TupleToVec2
-	readonly addExport!: XY | undefined;
+	readonly exportPosition!: XY;
+
+	readonly addImportExport!: boolean;
 }
 
 export class UpdateInSelectedNetwork extends JsMessage {
@@ -180,7 +174,7 @@ export class Box {
 export type FrontendClickTargets = {
 	readonly nodeClickTargets: string[];
 	readonly layerClickTargets: string[];
-	readonly portClickTargets: string[];
+	readonly connectorClickTargets: string[];
 	readonly iconClickTargets: string[];
 	readonly allNodesBoundingBox: string;
 	readonly importExportsBoundingBox: string;
@@ -192,30 +186,7 @@ export type ContextMenuInformation = {
 	contextMenuData: "CreateNode" | { type: "CreateNode"; compatibleType: string } | { nodeId: bigint; currentlyIsNode: boolean };
 };
 
-export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Group" | "Artboard";
-
-export class Node {
-	readonly index!: bigint;
-	// Omitted if this Node is an Import or Export to/from the node network
-	readonly nodeId?: bigint;
-}
-
-const CreateOutputConnectorOptional = Transform(({ obj }) => {
-	if (obj.connectedTo == undefined) {
-		return undefined;
-	}
-	if (obj.connectedTo?.export !== undefined) {
-		return { index: obj.connectedTo?.export };
-	} else if (obj.connectedTo?.import !== undefined) {
-		return { index: obj.connectedTo?.import };
-	} else {
-		if (obj.connectedTo?.node.inputIndex !== undefined) {
-			return { nodeId: obj.connectedTo?.node.nodeId, index: obj.connectedTo?.node.inputIndex };
-		} else {
-			return { nodeId: obj.connectedTo?.node.nodeId, index: obj.connectedTo?.node.outputIndex };
-		}
-	}
-});
+export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic" | "Raster" | "Vector" | "Color";
 
 export class FrontendGraphInput {
 	readonly dataType!: FrontendGraphDataType;
@@ -228,27 +199,8 @@ export class FrontendGraphInput {
 
 	readonly validTypes!: string[];
 
-	@CreateOutputConnectorOptional
-	connectedTo!: Node | undefined;
+	readonly connectedTo!: string;
 }
-
-const CreateInputConnectorArray = Transform(({ obj }) => {
-	const newInputConnectors: Node[] = [];
-	obj.connectedTo.forEach((connector: any) => {
-		if (connector.export !== undefined) {
-			newInputConnectors.push({ index: connector.export });
-		} else if (connector.import !== undefined) {
-			newInputConnectors.push({ index: connector.import });
-		} else {
-			if (connector.node.inputIndex !== undefined) {
-				newInputConnectors.push({ nodeId: connector.node.nodeId, index: connector.node.inputIndex });
-			} else {
-				newInputConnectors.push({ nodeId: connector.node.nodeId, index: connector.node.outputIndex });
-			}
-		}
-	});
-	return newInputConnectors;
-});
 
 export class FrontendGraphOutput {
 	readonly dataType!: FrontendGraphDataType;
@@ -259,8 +211,7 @@ export class FrontendGraphOutput {
 
 	readonly resolvedType!: string;
 
-	@CreateInputConnectorArray
-	connectedTo!: Node[];
+	readonly connectedTo!: string[];
 }
 
 export class FrontendNode {
@@ -274,20 +225,20 @@ export class FrontendNode {
 
 	readonly displayName!: string;
 
-	@Type(() => FrontendGraphInput)
 	readonly primaryInput!: FrontendGraphInput | undefined;
 
-	@Type(() => FrontendGraphInput)
 	readonly exposedInputs!: FrontendGraphInput[];
 
-	@Type(() => FrontendGraphOutput)
 	readonly primaryOutput!: FrontendGraphOutput | undefined;
 
-	@Type(() => FrontendGraphOutput)
 	readonly exposedOutputs!: FrontendGraphOutput[];
 
+	readonly primaryInputConnectedToLayer!: boolean;
+
+	readonly primaryOutputConnectedToLayer!: boolean;
+
 	@TupleToVec2
-	readonly position!: XY | undefined;
+	readonly position!: XY;
 
 	// TODO: Store field for the width of the left node chain
 
@@ -298,8 +249,6 @@ export class FrontendNode {
 	readonly unlocked!: boolean;
 
 	readonly errors!: string | undefined;
-
-	readonly uiOnly!: boolean;
 }
 
 export class FrontendNodeType {
@@ -347,6 +296,24 @@ export class TriggerIndexedDbRemoveDocument extends JsMessage {
 	// Use a string since IndexedDB can not use BigInts for keys
 	@Transform(({ value }: { value: bigint }) => value.toString())
 	documentId!: string;
+}
+
+export type AppWindowPlatform = "Web" | "Windows" | "Mac" | "Linux";
+
+export class UpdatePlatform extends JsMessage {
+	@Transform(({ value }: { value: AppWindowPlatform }) => value)
+	readonly platform!: AppWindowPlatform;
+}
+
+export class UpdateWindowState extends JsMessage {
+	readonly maximized!: boolean;
+	readonly minimized!: boolean;
+}
+
+export class CloseWindow extends JsMessage {}
+
+export class UpdateViewportHolePunch extends JsMessage {
+	readonly active!: boolean;
 }
 
 export class UpdateInputHints extends JsMessage {
@@ -501,7 +468,7 @@ export class Color {
 		const canvas = document.createElement("canvas");
 		canvas.width = 1;
 		canvas.height = 1;
-		const context = canvas.getContext("2d");
+		const context = canvas.getContext("2d", { willReadFrequently: true });
 		if (!context) return undefined;
 
 		context.clearRect(0, 0, 1, 1);
@@ -748,10 +715,16 @@ export class UpdateGraphFadeArtwork extends JsMessage {
 	readonly percentage!: number;
 }
 
-export class UpdateSpreadsheetState extends JsMessage {
+export class UpdateDataPanelState extends JsMessage {
 	readonly open!: boolean;
+}
 
-	readonly node!: bigint | undefined;
+export class UpdatePropertiesPanelState extends JsMessage {
+	readonly open!: boolean;
+}
+
+export class UpdateLayersPanelState extends JsMessage {
+	readonly open!: boolean;
 }
 
 export class UpdateMouseCursor extends JsMessage {
@@ -776,9 +749,17 @@ export class TriggerImport extends JsMessage {}
 
 export class TriggerPaste extends JsMessage {}
 
-export class TriggerDelayedZoomCanvasToFitAll extends JsMessage {}
+export class TriggerSaveDocument extends JsMessage {
+	readonly documentId!: bigint;
 
-export class TriggerDownloadImage extends JsMessage {
+	readonly name!: string;
+
+	readonly path!: string | undefined;
+
+	readonly content!: ArrayBuffer;
+}
+
+export class TriggerExportImage extends JsMessage {
 	readonly svg!: string;
 
 	readonly name!: string;
@@ -789,10 +770,10 @@ export class TriggerDownloadImage extends JsMessage {
 	readonly size!: XY;
 }
 
-export class TriggerDownloadTextFile extends JsMessage {
-	readonly document!: string;
-
+export class TriggerSaveFile extends JsMessage {
 	readonly name!: string;
+
+	readonly content!: ArrayBuffer;
 }
 
 export class TriggerSavePreferences extends JsMessage {
@@ -814,6 +795,8 @@ export class UpdateDocumentLayerStructureJs extends JsMessage {
 	readonly dataBuffer!: DataBuffer;
 }
 
+export type TextAlign = "Left" | "Center" | "Right" | "JustifyLeft";
+
 export class DisplayEditableTextbox extends JsMessage {
 	readonly text!: string;
 
@@ -831,6 +814,8 @@ export class DisplayEditableTextbox extends JsMessage {
 	readonly maxWidth!: undefined | number;
 
 	readonly maxHeight!: undefined | number;
+
+	readonly align!: TextAlign;
 }
 
 export class DisplayEditableTextboxTransform extends JsMessage {
@@ -913,6 +898,8 @@ export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
 	readonly commitDate!: string;
 }
 
+export class TriggerDisplayThirdPartyLicensesDialog extends JsMessage {}
+
 // WIDGET PROPS
 
 export abstract class WidgetProps {
@@ -954,9 +941,11 @@ export class ColorInput extends WidgetProps {
 	})
 	value!: FillChoice;
 
+	allowNone!: boolean;
+
 	disabled!: boolean;
 
-	allowNone!: boolean;
+	menuDirection!: MenuDirection | undefined;
 
 	// allowTransparency!: boolean; // TODO: Implement
 
@@ -1102,6 +1091,19 @@ export class IconLabel extends WidgetProps {
 
 export class ImageButton extends WidgetProps {
 	image!: IconName;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	width!: string | undefined;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	height!: string | undefined;
+
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltip!: string | undefined;
+}
+
+export class ImageLabel extends WidgetProps {
+	url!: string;
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	width!: string | undefined;
@@ -1305,6 +1307,8 @@ export class TextInput extends WidgetProps {
 
 	minWidth!: number;
 
+	maxWidth!: number;
+
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 }
@@ -1320,18 +1324,20 @@ export class TextLabel extends WidgetProps {
 
 	italic!: boolean;
 
+	monospace!: boolean;
+
+	multiline!: boolean;
+
 	centerAlign!: boolean;
 
 	tableAlign!: boolean;
 
-	minWidth!: number;
-
-	multiline!: boolean;
+	minWidth!: string;
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 
-	checkboxId!: bigint | undefined;
+	forCheckbox!: bigint | undefined;
 }
 
 export type ReferencePoint = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";
@@ -1356,6 +1362,7 @@ const widgetSubTypes = [
 	{ value: FontInput, name: "FontInput" },
 	{ value: IconButton, name: "IconButton" },
 	{ value: ImageButton, name: "ImageButton" },
+	{ value: ImageLabel, name: "ImageLabel" },
 	{ value: IconLabel, name: "IconLabel" },
 	{ value: NodeCatalog, name: "NodeCatalog" },
 	{ value: NumberInput, name: "NumberInput" },
@@ -1445,11 +1452,11 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 
 	updates.diff.forEach((update) => {
 		// Find the object where the diff applies to
-		const diffObject = update.widgetPath.reduce((targetLayout, index) => {
-			if ("columnWidgets" in targetLayout) return targetLayout.columnWidgets[index];
-			if ("rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
-			if ("tableWidgets" in targetLayout) return targetLayout.tableWidgets[index];
-			if ("layout" in targetLayout) return targetLayout.layout[index];
+		const diffObject = update.widgetPath.reduce((targetLayout: UIItem | undefined, index: number): UIItem | undefined => {
+			if (targetLayout && "columnWidgets" in targetLayout) return targetLayout.columnWidgets[index];
+			if (targetLayout && "rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
+			if (targetLayout && "tableWidgets" in targetLayout) return targetLayout.tableWidgets[index];
+			if (targetLayout && "layout" in targetLayout) return targetLayout.layout[index];
 			if (targetLayout instanceof Widget) {
 				if (targetLayout.props.kind === "PopoverButton" && targetLayout.props instanceof PopoverButton && targetLayout.props.popoverLayout) {
 					return targetLayout.props.popoverLayout[index];
@@ -1460,9 +1467,20 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 			}
 			// This is a path traversal so we can assume from the backend that it exists
 			// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-			if ("action" in targetLayout) return targetLayout.children![index];
-			return targetLayout[index];
+			if (targetLayout && "action" in targetLayout) return targetLayout.children![index];
+
+			return targetLayout?.[index];
 		}, layout.layout as UIItem);
+
+		// Exit if we failed to produce a valid patch for the existing layout.
+		// This means that the backend assumed an existing layout that doesn't exist in the frontend. This can happen, for
+		// example, if a panel is destroyed in the frontend but was never cleared in the backend, so the next time the backend
+		// tries to update the layout, it attempts to insert only the changes against the old layout that no longer exists.
+		if (diffObject === undefined) {
+			// eslint-disable-next-line no-console
+			console.error("In `patchWidgetLayout`, the `diffObject` is undefined. The layout has not been updated. See the source code comment above this error for hints.");
+			return;
+		}
 
 		// If this is a list with a length, then set the length to 0 to clear the list
 		if ("length" in diffObject) {
@@ -1586,9 +1604,9 @@ export class UpdateMenuBarLayout extends JsMessage {
 
 export class UpdateNodeGraphControlBarLayout extends WidgetDiffUpdate {}
 
-export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate {}
+export class UpdatePropertiesPanelLayout extends WidgetDiffUpdate {}
 
-export class UpdateSpreadsheetLayout extends WidgetDiffUpdate {}
+export class UpdateDataPanelLayout extends WidgetDiffUpdate {}
 
 export class UpdateToolOptionsLayout extends WidgetDiffUpdate {}
 
@@ -1630,9 +1648,10 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayRemoveEditableTextbox,
 	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
-	TriggerDelayedZoomCanvasToFitAll,
-	TriggerDownloadImage,
-	TriggerDownloadTextFile,
+	TriggerDisplayThirdPartyLicensesDialog,
+	TriggerSaveDocument,
+	TriggerSaveFile,
+	TriggerExportImage,
 	TriggerFetchAndOpenDocument,
 	TriggerFontLoad,
 	TriggerImport,
@@ -1666,29 +1685,34 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateEyedropperSamplingState,
 	UpdateGraphFadeArtwork,
 	UpdateGraphViewOverlay,
-	UpdateSpreadsheetState,
 	UpdateImportReorderIndex,
 	UpdateImportsExports,
 	UpdateInputHints,
 	UpdateInSelectedNetwork,
+	UpdateLayersPanelBottomBarLayout,
 	UpdateLayersPanelControlBarLeftLayout,
 	UpdateLayersPanelControlBarRightLayout,
-	UpdateLayersPanelBottomBarLayout,
 	UpdateLayerWidths,
+	UpdateWindowState,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
-	UpdateNodeGraphNodes,
-	UpdateVisibleNodes,
-	UpdateNodeGraphWires,
-	UpdateNodeGraphTransform,
 	UpdateNodeGraphControlBarLayout,
+	UpdateNodeGraphNodes,
 	UpdateNodeGraphSelection,
+	UpdateNodeGraphTransform,
+	UpdateNodeGraphWires,
 	UpdateNodeThumbnail,
 	UpdateOpenDocumentsList,
-	UpdatePropertyPanelSectionsLayout,
-	UpdateSpreadsheetLayout,
+	UpdatePlatform,
+	UpdatePropertiesPanelLayout,
+	UpdateDataPanelLayout,
+	UpdateDataPanelState,
+	UpdatePropertiesPanelState,
+	UpdateLayersPanelState,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
+	UpdateViewportHolePunch,
+	UpdateVisibleNodes,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,
 } as const;

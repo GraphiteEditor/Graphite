@@ -27,6 +27,10 @@ default = ["parsing"]
 glam = "0.29.0"
 regex = "1.10.6"
 slotmap = "1.0.7"
+lyon_geom = "1.0"
+roots = "0.0.8"
+rustc-hash = "2.0.0"
+smallvec = "1.13.2"
 
 [dev-dependencies]
 glob = "0.3"

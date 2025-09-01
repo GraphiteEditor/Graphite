@@ -43,7 +43,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: AddEventListenerOptions }[] = [
-		{ target: window, eventName: "resize", action: () => updateBoundsOfViewports(editor, window.document.body) },
+		{ target: window, eventName: "resize", action: () => updateBoundsOfViewports(editor) },
 		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent) => onBeforeUnload(e) },
 		{ target: window, eventName: "keyup", action: (e: KeyboardEvent) => onKeyUp(e) },
 		{ target: window, eventName: "keydown", action: (e: KeyboardEvent) => onKeyDown(e) },
@@ -169,7 +169,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		potentiallyRestoreCanvasFocus(e);
 
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-node-graph]");
+		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 		const inDialog = target instanceof Element && target.closest("[data-dialog] [data-floating-menu-content]");
 		const inContextMenu = target instanceof Element && target.closest("[data-context-menu]");
 		const inTextInput = target === textToolInteractiveInputElement;
@@ -219,7 +219,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 		// Allow only events within the viewport or node graph boundaries
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-node-graph]");
+		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 		if (!(isTargetingCanvas instanceof Element)) return;
 
 		// Allow only repeated increments of double-clicks (not 1, 3, 5, etc.)
@@ -256,7 +256,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	function onWheelScroll(e: WheelEvent) {
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-node-graph]");
+		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 
 		// Redirect vertical scroll wheel movement into a horizontal scroll on a horizontally scrollable element
 		// There seems to be no possible way to properly employ the browser's smooth scrolling interpolation
@@ -303,13 +303,19 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (!dataTransfer || targetIsTextField(e.target || undefined)) return;
 		e.preventDefault();
 
+		const LAYER_DATA = "graphite/layer: ";
+		const NODES_DATA = "graphite/nodes: ";
+		const VECTOR_DATA = "graphite/vector: ";
+
 		Array.from(dataTransfer.items).forEach(async (item) => {
 			if (item.type === "text/plain") {
 				item.getAsString((text) => {
-					if (text.startsWith("graphite/layer: ")) {
-						editor.handle.pasteSerializedData(text.substring(16, text.length));
-					} else if (text.startsWith("graphite/nodes: ")) {
-						editor.handle.pasteSerializedNodes(text.substring(16, text.length));
+					if (text.startsWith(LAYER_DATA)) {
+						editor.handle.pasteSerializedData(text.substring(LAYER_DATA.length, text.length));
+					} else if (text.startsWith(NODES_DATA)) {
+						editor.handle.pasteSerializedNodes(text.substring(NODES_DATA.length, text.length));
+					} else if (text.startsWith(VECTOR_DATA)) {
+						editor.handle.pasteSerializedVector(text.substring(VECTOR_DATA.length, text.length));
 					}
 				});
 			}
@@ -328,8 +334,11 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
 			}
 
-			if (file.name.endsWith(".graphite")) {
-				editor.handle.openDocumentFile(file.name, await file.text());
+			const graphiteFileSuffix = "." + editor.handle.fileExtension();
+			if (file.name.endsWith(graphiteFileSuffix)) {
+				const content = await file.text();
+				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
+				editor.handle.openDocumentFile(documentName, content);
 			}
 		});
 	}
@@ -502,7 +511,9 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	function potentiallyRestoreCanvasFocus(e: Event) {
 		const { target } = e;
-		const newInCanvasArea = (target instanceof Element && target.closest("[data-viewport], [data-graph]")) instanceof Element && !targetIsTextField(window.document.activeElement || undefined);
+		const newInCanvasArea =
+			(target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-graph]")) instanceof Element &&
+			!targetIsTextField(window.document.activeElement || undefined);
 		if (!canvasFocused && newInCanvasArea) {
 			canvasFocused = true;
 			app?.focus();
@@ -514,7 +525,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	// Bind the event listeners
 	bindListeners();
 	// Resize on creation
-	updateBoundsOfViewports(editor, window.document.body);
+	updateBoundsOfViewports(editor);
 
 	// Return the destructor
 	return unbindListeners;

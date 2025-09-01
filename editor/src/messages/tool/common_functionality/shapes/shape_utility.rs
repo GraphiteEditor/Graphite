@@ -1,4 +1,6 @@
 use super::ShapeToolData;
+use crate::consts::{ARC_SWEEP_GIZMO_RADIUS, ARC_SWEEP_GIZMO_TEXT_HEIGHT};
+use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -9,12 +11,12 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::transformation_cage::BoundingBoxManager;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::*;
-use bezier_rs::Subpath;
 use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::subpath::{self, Subpath};
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::misc::dvec2_to_point;
+use graphene_std::vector::misc::{ArcType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
 use std::collections::VecDeque;
 use std::f64::consts::{PI, TAU};
@@ -23,10 +25,12 @@ use std::f64::consts::{PI, TAU};
 pub enum ShapeType {
 	#[default]
 	Polygon = 0,
-	Star = 1,
-	Rectangle = 2,
-	Ellipse = 3,
-	Line = 4,
+	Star,
+	Circle,
+	Arc,
+	Rectangle,
+	Ellipse,
+	Line,
 }
 
 impl ShapeType {
@@ -34,6 +38,8 @@ impl ShapeType {
 		(match self {
 			Self::Polygon => "Polygon",
 			Self::Star => "Star",
+			Self::Circle => "Circle",
+			Self::Arc => "Arc",
 			Self::Rectangle => "Rectangle",
 			Self::Ellipse => "Ellipse",
 			Self::Line => "Line",
@@ -71,7 +77,7 @@ impl ShapeType {
 	}
 }
 
-pub type ShapeToolModifierKey = [Key; 4];
+pub type ShapeToolModifierKey = [Key; 3];
 
 /// The `ShapeGizmoHandler` trait defines the interactive behavior and overlay logic for shape-specific tools in the editor.
 /// A gizmo is a visual handle or control point used to manipulate a shape's properties (e.g., number of sides, radius, angle).
@@ -124,6 +130,8 @@ pub trait ShapeGizmoHandler {
 	///
 	/// For example, dragging states or hover flags should be cleared to avoid visual glitches when switching tools or shapes.
 	fn cleanup(&mut self);
+
+	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon>;
 }
 
 /// Center, Lock Ratio, Lock Angle, Snap Angle, Increase/Decrease Side
@@ -197,12 +205,12 @@ pub fn transform_cage_overlays(document: &DocumentMessageHandler, tool_data: &mu
 
 pub fn anchor_overlays(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 	for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
-		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 		let transform = document.metadata().transform_to_viewport(layer);
 
-		overlay_context.outline_vector(&vector_data, transform);
+		overlay_context.outline_vector(&vector, transform);
 
-		for (_, &position) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
+		for (_, &position) in vector.point_domain.ids().iter().zip(vector.point_domain.positions()) {
 			overlay_context.manipulator_anchor(transform.transform_point2(position), false, None);
 		}
 	}
@@ -232,6 +240,58 @@ pub fn extract_polygon_parameters(layer: Option<LayerNodeIdentifier>, document: 
 	};
 
 	Some((n, radius))
+}
+
+/// Extract the node input values of an arc.
+/// Returns an option of (radius, start angle, sweep angle, arc type).
+pub fn extract_arc_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(f64, f64, f64, ArcType)> {
+	let node_inputs = NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs("Arc")?;
+
+	let (Some(&TaggedValue::F64(radius)), Some(&TaggedValue::F64(start_angle)), Some(&TaggedValue::F64(sweep_angle)), Some(&TaggedValue::ArcType(arc_type))) = (
+		node_inputs.get(1)?.as_value(),
+		node_inputs.get(2)?.as_value(),
+		node_inputs.get(3)?.as_value(),
+		node_inputs.get(4)?.as_value(),
+	) else {
+		return None;
+	};
+
+	Some((radius, start_angle, sweep_angle, arc_type))
+}
+
+/// Calculate the viewport positions of arc endpoints
+pub fn arc_end_points(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(DVec2, DVec2)> {
+	let (radius, start_angle, sweep_angle, _) = extract_arc_parameters(Some(layer?), document)?;
+
+	let viewport = document.metadata().transform_to_viewport(layer?);
+
+	arc_end_points_ignore_layer(radius, start_angle, sweep_angle, Some(viewport))
+}
+
+pub fn arc_end_points_ignore_layer(radius: f64, start_angle: f64, sweep_angle: f64, viewport: Option<DAffine2>) -> Option<(DVec2, DVec2)> {
+	let end_angle = start_angle.to_radians() + sweep_angle.to_radians();
+
+	let start_point = radius * DVec2::from_angle(start_angle.to_radians());
+	let end_point = radius * DVec2::from_angle(end_angle);
+
+	if let Some(transform) = viewport {
+		return Some((transform.transform_point2(start_point), transform.transform_point2(end_point)));
+	}
+
+	Some((start_point, end_point))
+}
+
+/// Calculate the viewport position of a star vertex given its index
+/// Extract the node input values of Circle.
+/// Returns an option of (radius).
+pub fn extract_circle_radius(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<f64> {
+	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Circle")?;
+
+	let Some(&TaggedValue::F64(radius)) = node_inputs.get(1)?.as_value() else {
+		return None;
+	};
+
+	Some(radius)
 }
 
 /// Calculate the viewport position of as a star vertex given its index
@@ -286,6 +346,29 @@ pub fn polygon_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMe
 	let radius: f64 = radius * 2.;
 
 	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::Subpath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius))];
+
+	overlay_context.outline(subpath.iter(), viewport, None);
+}
+
+/// Outlines the geometric shape made by an Arc node
+pub fn arc_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
+	let Some(layer) = layer else { return };
+
+	let Some((radius, start_angle, sweep_angle, arc_type)) = extract_arc_parameters(Some(layer), document) else {
+		return;
+	};
+
+	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::Subpath(Subpath::new_arc(
+		radius,
+		start_angle / 360. * std::f64::consts::TAU,
+		sweep_angle / 360. * std::f64::consts::TAU,
+		match arc_type {
+			ArcType::Open => subpath::ArcType::Open,
+			ArcType::Closed => subpath::ArcType::Closed,
+			ArcType::PieSlice => subpath::ArcType::PieSlice,
+		},
+	))];
+	let viewport = document.metadata().transform_to_viewport(layer);
 
 	overlay_context.outline(subpath.iter(), viewport, None);
 }
@@ -362,4 +445,33 @@ pub fn draw_snapping_ticks(snap_radii: &[f64], direction: DVec2, viewport: DAffi
 		overlay_context.line(tick_position, tick_position + tick_direction * 5., None, Some(2.));
 		overlay_context.line(tick_position, tick_position - tick_direction * 5., None, Some(2.));
 	}
+}
+
+/// Wraps an angle (in radians) into the range [0, 2π).
+pub fn wrap_to_tau(angle: f64) -> f64 {
+	(angle % TAU + TAU) % TAU
+}
+
+pub fn format_rounded(value: f64, precision: usize) -> String {
+	format!("{value:.precision$}").trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+/// Gives the approximated angle to display in degrees, given an angle in degrees.
+pub fn calculate_display_angle(angle: f64) -> f64 {
+	if angle.is_sign_positive() {
+		angle - (angle / 360.).floor() * 360.
+	} else if angle.is_sign_negative() {
+		angle - ((angle / 360.).floor() + 1.) * 360.
+	} else {
+		angle
+	}
+}
+
+pub fn calculate_arc_text_transform(angle: f64, offset_angle: f64, center: DVec2, width: f64) -> DAffine2 {
+	let text_angle_on_unit_circle = DVec2::from_angle((angle.to_radians() % TAU) / 2. + offset_angle);
+	let text_texture_position = DVec2::new(
+		(ARC_SWEEP_GIZMO_RADIUS + 4. + width) * text_angle_on_unit_circle.x,
+		(ARC_SWEEP_GIZMO_RADIUS + ARC_SWEEP_GIZMO_TEXT_HEIGHT) * text_angle_on_unit_circle.y,
+	);
+	DAffine2::from_translation(text_texture_position + center)
 }

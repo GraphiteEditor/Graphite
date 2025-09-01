@@ -42,7 +42,7 @@ pub trait Size {
 	fn size(&self) -> UVec2;
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 impl Size for web_sys::HtmlCanvasElement {
 	fn size(&self) -> UVec2 {
 		UVec2::new(self.width(), self.height())
@@ -52,9 +52,18 @@ impl Size for web_sys::HtmlCanvasElement {
 #[derive(Debug, Clone)]
 pub struct ImageTexture {
 	#[cfg(feature = "wgpu")]
-	pub texture: Arc<wgpu::Texture>,
+	pub texture: wgpu::Texture,
 	#[cfg(not(feature = "wgpu"))]
 	pub texture: (),
+}
+
+impl<'a> serde::Deserialize<'a> for ImageTexture {
+	fn deserialize<D>(_: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'a>,
+	{
+		unimplemented!("attempted to serialize a texture")
+	}
 }
 
 impl Hash for ImageTexture {
@@ -106,9 +115,9 @@ pub struct SurfaceHandle<Surface> {
 	pub surface: Surface,
 }
 
-// #[cfg(target_arch = "wasm32")]
+// #[cfg(target_family = "wasm")]
 // unsafe impl<T: dyn_any::WasmNotSend> Send for SurfaceHandle<T> {}
-// #[cfg(target_arch = "wasm32")]
+// #[cfg(target_family = "wasm")]
 // unsafe impl<T: dyn_any::WasmNotSync> Sync for SurfaceHandle<T> {}
 
 impl<S: Size> Size for SurfaceHandle<S> {
@@ -144,9 +153,9 @@ impl<'a, Surface> Drop for SurfaceHandle<'a, Surface> {
 	}
 }*/
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 pub type ResourceFuture = Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>>>>;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 pub type ResourceFuture = Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>> + Send>>;
 
 pub trait ApplicationIo {
@@ -240,7 +249,7 @@ struct Logger;
 
 impl NodeGraphUpdateSender for Logger {
 	fn send(&self, message: NodeGraphUpdateMessage) {
-		log::warn!("dispatching message with fallback node graph update sender {:?}", message);
+		log::warn!("dispatching message with fallback node graph update sender {message:?}");
 	}
 }
 

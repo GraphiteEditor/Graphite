@@ -1,11 +1,11 @@
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
+use crate::messages::defer::DeferMessageContext;
 use crate::messages::dialog::DialogMessageContext;
 use crate::messages::layout::layout_message_handler::LayoutMessageContext;
 use crate::messages::prelude::*;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {
-	buffered_queue: Option<Vec<VecDeque<Message>>>,
 	message_queues: Vec<VecDeque<Message>>,
 	pub responses: Vec<FrontendMessage>,
 	pub message_handlers: DispatcherMessageHandlers,
@@ -14,8 +14,10 @@ pub struct Dispatcher {
 #[derive(Debug, Default)]
 pub struct DispatcherMessageHandlers {
 	animation_message_handler: AnimationMessageHandler,
+	app_window_message_handler: AppWindowMessageHandler,
 	broadcast_message_handler: BroadcastMessageHandler,
 	debug_message_handler: DebugMessageHandler,
+	defer_message_handler: DeferMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
 	globals_message_handler: GlobalsMessageHandler,
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
@@ -24,7 +26,6 @@ pub struct DispatcherMessageHandlers {
 	pub portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
-	workspace_message_handler: WorkspaceMessageHandler,
 }
 
 impl DispatcherMessageHandlers {
@@ -50,7 +51,10 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 ];
-const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(BroadcastEventDiscriminant::AnimationFrame))];
+const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
+	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(EventMessageDiscriminant::AnimationFrame)),
+	MessageDiscriminant::Animation(AnimationMessageDiscriminant::IncrementFrameCounter),
+];
 // TODO: Find a way to combine these with the list above. We use strings for now since these are the standard variant names used by multiple messages. But having these also type-checked would be best.
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
 
@@ -90,14 +94,6 @@ impl Dispatcher {
 
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T, process_after_all_current: bool) {
 		let message = message.into();
-		// Add all additional messages to the buffer if it exists (except from the end buffer message)
-		if !matches!(message, Message::EndBuffer { .. }) {
-			if let Some(buffered_queue) = &mut self.buffered_queue {
-				Self::schedule_execution(buffered_queue, true, [message]);
-
-				return;
-			}
-		}
 
 		// If we are not maintaining the buffer, simply add to the current queue
 		Self::schedule_execution(&mut self.message_queues, process_after_all_current, [message]);
@@ -129,14 +125,24 @@ impl Dispatcher {
 				Message::Animation(message) => {
 					self.message_handlers.animation_message_handler.process_message(message, &mut queue, ());
 				}
+				Message::AppWindow(message) => {
+					self.message_handlers.app_window_message_handler.process_message(message, &mut queue, ());
+				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
 				Message::Debug(message) => {
 					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
+				}
+				Message::Defer(message) => {
+					let context = DeferMessageContext {
+						portfolio: &self.message_handlers.portfolio_message_handler,
+					};
+					self.message_handlers.defer_message_handler.process_message(message, &mut queue, context);
 				}
 				Message::Dialog(message) => {
 					let context = DialogMessageContext {
 						portfolio: &self.message_handlers.portfolio_message_handler,
 						preferences: &self.message_handlers.preferences_message_handler,
+						viewport_bounds: &self.message_handlers.input_preprocessor_message_handler.viewport_bounds,
 					};
 					self.message_handlers.dialog_message_handler.process_message(message, &mut queue, context);
 				}
@@ -204,9 +210,12 @@ impl Dispatcher {
 					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Tool(message) => {
-					let document_id = self.message_handlers.portfolio_message_handler.active_document_id().unwrap();
-					let Some(document) = self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id) else {
+					let Some(document_id) = self.message_handlers.portfolio_message_handler.active_document_id() else {
 						warn!("Called ToolMessage without an active document.\nGot {message:?}");
+						return;
+					};
+					let Some(document) = self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id) else {
+						warn!("Called ToolMessage with an invalid active document.\nGot {message:?}");
 						return;
 					};
 
@@ -221,43 +230,9 @@ impl Dispatcher {
 
 					self.message_handlers.tool_message_handler.process_message(message, &mut queue, context);
 				}
-				Message::Workspace(message) => {
-					self.message_handlers.workspace_message_handler.process_message(message, &mut queue, ());
-				}
 				Message::NoOp => {}
 				Message::Batched { messages } => {
 					messages.iter().for_each(|message| self.handle_message(message.to_owned(), false));
-				}
-				Message::StartBuffer => {
-					self.buffered_queue = Some(std::mem::take(&mut self.message_queues));
-				}
-				Message::EndBuffer { render_metadata } => {
-					// Assign the message queue to the currently buffered queue
-					if let Some(buffered_queue) = self.buffered_queue.take() {
-						self.cleanup_queues(false);
-						assert!(self.message_queues.is_empty(), "message queues are always empty when ending a buffer");
-						self.message_queues = buffered_queue;
-					};
-
-					let graphene_std::renderer::RenderMetadata {
-						upstream_footprints: footprints,
-						local_transforms,
-						first_instance_source_id,
-						click_targets,
-						clip_targets,
-					} = render_metadata;
-
-					// Run these update state messages immediately
-					let messages = [
-						DocumentMessage::UpdateUpstreamTransforms {
-							upstream_footprints: footprints,
-							local_transforms,
-							first_instance_source_id,
-						},
-						DocumentMessage::UpdateClickTargets { click_targets },
-						DocumentMessage::UpdateClipTargets { clip_targets },
-					];
-					Self::schedule_execution(&mut self.message_queues, false, messages.map(Message::from));
 				}
 			}
 
@@ -467,7 +442,7 @@ mod test {
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 6);
 
-		println!("{:?} {:?}", layers_after_copy, layers_before_copy);
+		println!("{layers_after_copy:?} {layers_before_copy:?}");
 
 		assert_eq!(layers_after_copy[5], shape_id);
 	}
@@ -522,7 +497,8 @@ mod test {
 			);
 
 			let responses = editor.editor.handle_message(PortfolioMessage::OpenDocumentFile {
-				document_name: document_name.into(),
+				document_name: Some(document_name.to_string()),
+				document_path: None,
 				document_serialized_content,
 			});
 

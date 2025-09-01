@@ -1,18 +1,21 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE,
-	COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH,
-	PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
+	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COLOR_OVERLAY_YELLOW_DULL,
+	COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE,
+	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, SEGMENT_SELECTED_THICKNESS,
 };
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::Message;
-use bezier_rs::{Bezier, Subpath};
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
 use graphene_std::Color;
 use graphene_std::math::quad::Quad;
+use graphene_std::subpath::Subpath;
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::{PointId, SegmentId, VectorData};
+use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
+use graphene_std::vector::{PointId, SegmentId, Vector};
+use kurbo::{self, Affine, CubicBez, ParamCurve, PathSeg};
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
@@ -23,7 +26,7 @@ pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
 }
 
-// Types of overlays used by DocumentMessage to enable/disable select group of overlays in the frontend
+/// Types of overlays used by DocumentMessage to enable/disable the selected set of viewport overlays.
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OverlaysType {
 	ArtboardName,
@@ -294,6 +297,147 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
+	#[allow(clippy::too_many_arguments)]
+	pub fn dashed_ellipse(
+		&mut self,
+		center: DVec2,
+		radius_x: f64,
+		radius_y: f64,
+		rotation: Option<f64>,
+		start_angle: Option<f64>,
+		end_angle: Option<f64>,
+		counterclockwise: Option<bool>,
+		color_fill: Option<&str>,
+		color_stroke: Option<&str>,
+		dash_width: Option<f64>,
+		dash_gap_width: Option<f64>,
+		dash_offset: Option<f64>,
+	) {
+		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
+		let center = center.round();
+
+		self.start_dpi_aware_transform();
+
+		if let Some(dash_width) = dash_width {
+			let dash_gap_width = dash_gap_width.unwrap_or(1.);
+			let array = js_sys::Array::new();
+			array.push(&JsValue::from(dash_width));
+			array.push(&JsValue::from(dash_gap_width));
+
+			if let Some(dash_offset) = dash_offset {
+				if dash_offset != 0. {
+					self.render_context.set_line_dash_offset(dash_offset);
+				}
+			}
+
+			self.render_context
+				.set_line_dash(&JsValue::from(array))
+				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
+				.ok();
+		}
+
+		self.render_context.begin_path();
+		self.render_context
+			.ellipse_with_anticlockwise(
+				center.x,
+				center.y,
+				radius_x,
+				radius_y,
+				rotation.unwrap_or_default(),
+				start_angle.unwrap_or_default(),
+				end_angle.unwrap_or(TAU),
+				counterclockwise.unwrap_or_default(),
+			)
+			.expect("Failed to draw ellipse");
+		self.render_context.set_stroke_style_str(color_stroke);
+
+		if let Some(fill_color) = color_fill {
+			self.render_context.set_fill_style_str(fill_color);
+			self.render_context.fill();
+		}
+		self.render_context.stroke();
+
+		// Reset the dash pattern back to solid
+		if dash_width.is_some() {
+			self.render_context
+				.set_line_dash(&JsValue::from(js_sys::Array::new()))
+				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
+				.ok();
+		}
+		if dash_offset.is_some() && dash_offset != Some(0.) {
+			self.render_context.set_line_dash_offset(0.);
+		}
+
+		self.end_dpi_aware_transform();
+	}
+
+	pub fn dashed_circle(
+		&mut self,
+		position: DVec2,
+		radius: f64,
+		color_fill: Option<&str>,
+		color_stroke: Option<&str>,
+		dash_width: Option<f64>,
+		dash_gap_width: Option<f64>,
+		dash_offset: Option<f64>,
+		transform: Option<DAffine2>,
+	) {
+		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
+		let position = position.round();
+
+		self.start_dpi_aware_transform();
+
+		if let Some(transform) = transform {
+			let [a, b, c, d, e, f] = transform.to_cols_array();
+			self.render_context.transform(a, b, c, d, e, f).expect("Failed to transform circle");
+		}
+
+		if let Some(dash_width) = dash_width {
+			let dash_gap_width = dash_gap_width.unwrap_or(1.);
+			let array = js_sys::Array::new();
+			array.push(&JsValue::from(dash_width));
+			array.push(&JsValue::from(dash_gap_width));
+
+			if let Some(dash_offset) = dash_offset {
+				if dash_offset != 0. {
+					self.render_context.set_line_dash_offset(dash_offset);
+				}
+			}
+
+			self.render_context
+				.set_line_dash(&JsValue::from(array))
+				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
+				.ok();
+		}
+
+		self.render_context.begin_path();
+		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
+		self.render_context.set_stroke_style_str(color_stroke);
+
+		if let Some(fill_color) = color_fill {
+			self.render_context.set_fill_style_str(fill_color);
+			self.render_context.fill();
+		}
+		self.render_context.stroke();
+
+		// Reset the dash pattern back to solid
+		if dash_width.is_some() {
+			self.render_context
+				.set_line_dash(&JsValue::from(js_sys::Array::new()))
+				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
+				.ok();
+		}
+		if dash_offset.is_some() && dash_offset != Some(0.) {
+			self.render_context.set_line_dash_offset(0.);
+		}
+
+		self.end_dpi_aware_transform();
+	}
+
+	pub fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
+		self.dashed_circle(position, radius, color_fill, color_stroke, None, None, None, None);
+	}
+
 	pub fn manipulator_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
 		self.start_dpi_aware_transform();
 
@@ -317,6 +461,42 @@ impl OverlayContext {
 		let color_stroke = color.unwrap_or(COLOR_OVERLAY_BLUE);
 		let color_fill = if selected { color_stroke } else { COLOR_OVERLAY_WHITE };
 		self.square(position, None, Some(color_fill), Some(color_stroke));
+	}
+
+	pub fn hover_manipulator_handle(&mut self, position: DVec2, selected: bool) {
+		self.start_dpi_aware_transform();
+
+		let position = position.round() - DVec2::splat(0.5);
+
+		self.render_context.begin_path();
+		self.render_context
+			.arc(position.x, position.y, (MANIPULATOR_GROUP_MARKER_SIZE + 2.) / 2., 0., TAU)
+			.expect("Failed to draw the circle");
+
+		self.render_context.set_fill_style_str(COLOR_OVERLAY_BLUE_50);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE_50);
+		self.render_context.fill();
+		self.render_context.stroke();
+
+		self.render_context.begin_path();
+		self.render_context
+			.arc(position.x, position.y, MANIPULATOR_GROUP_MARKER_SIZE / 2., 0., TAU)
+			.expect("Failed to draw the circle");
+
+		let color_fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
+
+		self.render_context.set_fill_style_str(color_fill);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		self.render_context.fill();
+		self.render_context.stroke();
+
+		self.end_dpi_aware_transform();
+	}
+
+	pub fn hover_manipulator_anchor(&mut self, position: DVec2, selected: bool) {
+		self.square(position, Some(MANIPULATOR_GROUP_MARKER_SIZE + 2.), Some(COLOR_OVERLAY_BLUE_50), Some(COLOR_OVERLAY_BLUE_50));
+		let color_fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
+		self.square(position, None, Some(color_fill), Some(COLOR_OVERLAY_BLUE));
 	}
 
 	/// Transforms the canvas context to adjust for DPI scaling
@@ -374,23 +554,6 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
-		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
-		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
-		let position = position.round();
-
-		self.start_dpi_aware_transform();
-
-		self.render_context.begin_path();
-		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
-		self.render_context.set_fill_style_str(color_fill);
-		self.render_context.set_stroke_style_str(color_stroke);
-		self.render_context.fill();
-		self.render_context.stroke();
-
-		self.end_dpi_aware_transform();
-	}
-
 	pub fn draw_arc(&mut self, center: DVec2, radius: f64, start_from: f64, end_at: f64) {
 		let segments = ((end_at - start_from).abs() / (std::f64::consts::PI / 4.)).ceil() as usize;
 		let step = (end_at - start_from) / segments as f64;
@@ -411,16 +574,18 @@ impl OverlayContext {
 			let handle_start = start + start_vec.perp() * radius * factor;
 			let handle_end = end - end_vec.perp() * radius * factor;
 
-			let bezier = Bezier {
-				start,
-				end,
-				handles: bezier_rs::BezierHandles::Cubic { handle_start, handle_end },
-			};
+			let bezier = PathSeg::Cubic(CubicBez::new(dvec2_to_point(start), dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(end)));
 
 			self.bezier_command(bezier, DAffine2::IDENTITY, i == 0);
 		}
 
 		self.render_context.stroke();
+	}
+
+	pub fn draw_arc_gizmo_angle(&mut self, pivot: DVec2, bold_radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
+		let end_point1 = pivot + bold_radius * DVec2::from_angle(angle + offset_angle);
+		self.line(pivot, end_point1, None, None);
+		self.draw_arc(pivot, arc_radius, offset_angle, (angle) % TAU + offset_angle);
 	}
 
 	pub fn draw_angle(&mut self, pivot: DVec2, radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
@@ -584,13 +749,19 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
+	pub fn arc_sweep_angle(&mut self, offset_angle: f64, angle: f64, end_point_position: DVec2, bold_radius: f64, pivot: DVec2, text: &str, transform: DAffine2) {
+		self.manipulator_handle(end_point_position, true, None);
+		self.draw_arc_gizmo_angle(pivot, bold_radius, ARC_SWEEP_GIZMO_RADIUS, offset_angle, angle.to_radians());
+		self.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
+	}
+
 	/// Used by the Pen and Path tools to outline the path of the shape.
-	pub fn outline_vector(&mut self, vector_data: &VectorData, transform: DAffine2) {
+	pub fn outline_vector(&mut self, vector: &Vector, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
 		let mut last_point = None;
-		for (_, bezier, start_id, end_id) in vector_data.segment_bezier_iter() {
+		for (_, bezier, start_id, end_id) in vector.segment_iter() {
 			let move_to = last_point != Some(start_id);
 			last_point = Some(end_id);
 
@@ -604,7 +775,7 @@ impl OverlayContext {
 	}
 
 	/// Used by the Pen tool in order to show how the bezier curve would look like.
-	pub fn outline_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	pub fn outline_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
@@ -616,13 +787,13 @@ impl OverlayContext {
 	}
 
 	/// Used by the path tool segment mode in order to show the selected segments.
-	pub fn outline_select_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	pub fn outline_select_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
 		self.bezier_command(bezier, transform, true);
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
-		self.render_context.set_line_width(4.);
+		self.render_context.set_line_width(SEGMENT_SELECTED_THICKNESS);
 		self.render_context.stroke();
 
 		self.render_context.set_line_width(1.);
@@ -630,13 +801,13 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn outline_overlay_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+	pub fn outline_overlay_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
 		self.bezier_command(bezier, transform, true);
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE_50);
-		self.render_context.set_line_width(4.);
+		self.render_context.set_line_width(SEGMENT_SELECTED_THICKNESS);
 		self.render_context.stroke();
 
 		self.render_context.set_line_width(1.);
@@ -644,18 +815,18 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	fn bezier_command(&self, bezier: Bezier, transform: DAffine2, move_to: bool) {
+	fn bezier_command(&self, bezier: PathSeg, transform: DAffine2, move_to: bool) {
 		self.start_dpi_aware_transform();
 
-		let Bezier { start, end, handles } = bezier.apply_transformation(|point| transform.transform_point2(point));
+		let bezier = Affine::new(transform.to_cols_array()) * bezier;
 		if move_to {
-			self.render_context.move_to(start.x, start.y);
+			self.render_context.move_to(bezier.start().x, bezier.start().y);
 		}
-
-		match handles {
-			bezier_rs::BezierHandles::Linear => self.render_context.line_to(end.x, end.y),
-			bezier_rs::BezierHandles::Quadratic { handle } => self.render_context.quadratic_curve_to(handle.x, handle.y, end.x, end.y),
-			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => self.render_context.bezier_curve_to(handle_start.x, handle_start.y, handle_end.x, handle_end.y, end.x, end.y),
+		match bezier.as_path_el() {
+			kurbo::PathEl::LineTo(point) => self.render_context.line_to(point.x, point.y),
+			kurbo::PathEl::QuadTo(point, point1) => self.render_context.quadratic_curve_to(point.x, point.y, point1.x, point1.y),
+			kurbo::PathEl::CurveTo(point, point1, point2) => self.render_context.bezier_curve_to(point.x, point.y, point1.x, point1.y, point2.x, point2.y),
+			_ => unreachable!(),
 		}
 
 		self.end_dpi_aware_transform();
@@ -669,36 +840,35 @@ impl OverlayContext {
 			let subpath = subpath.borrow();
 			let mut curves = subpath.iter().peekable();
 
-			let Some(first) = curves.peek() else {
+			let Some(&first) = curves.peek() else {
 				continue;
 			};
 
-			self.render_context.move_to(transform.transform_point2(first.start()).x, transform.transform_point2(first.start()).y);
-			for curve in curves {
-				match curve.handles {
-					bezier_rs::BezierHandles::Linear => {
-						let a = transform.transform_point2(curve.end());
-						let a = a.round() - DVec2::splat(0.5);
+			let start_point = transform.transform_point2(point_to_dvec2(first.start()));
+			self.render_context.move_to(start_point.x, start_point.y);
 
-						self.render_context.line_to(a.x, a.y)
+			for curve in curves {
+				match curve {
+					PathSeg::Line(line) => {
+						let a = transform.transform_point2(point_to_dvec2(line.p1));
+						let a = a.round() - DVec2::splat(0.5);
+						self.render_context.line_to(a.x, a.y);
 					}
-					bezier_rs::BezierHandles::Quadratic { handle } => {
-						let a = transform.transform_point2(handle);
-						let b = transform.transform_point2(curve.end());
+					PathSeg::Quad(quad_bez) => {
+						let a = transform.transform_point2(point_to_dvec2(quad_bez.p1));
+						let b = transform.transform_point2(point_to_dvec2(quad_bez.p2));
 						let a = a.round() - DVec2::splat(0.5);
 						let b = b.round() - DVec2::splat(0.5);
-
-						self.render_context.quadratic_curve_to(a.x, a.y, b.x, b.y)
+						self.render_context.quadratic_curve_to(a.x, a.y, b.x, b.y);
 					}
-					bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
-						let a = transform.transform_point2(handle_start);
-						let b = transform.transform_point2(handle_end);
-						let c = transform.transform_point2(curve.end());
+					PathSeg::Cubic(cubic_bez) => {
+						let a = transform.transform_point2(point_to_dvec2(cubic_bez.p1));
+						let b = transform.transform_point2(point_to_dvec2(cubic_bez.p2));
+						let c = transform.transform_point2(point_to_dvec2(cubic_bez.p3));
 						let a = a.round() - DVec2::splat(0.5);
 						let b = b.round() - DVec2::splat(0.5);
 						let c = c.round() - DVec2::splat(0.5);
-
-						self.render_context.bezier_curve_to(a.x, a.y, b.x, b.y, c.x, c.y)
+						self.render_context.bezier_curve_to(a.x, a.y, b.x, b.y, c.x, c.y);
 					}
 				}
 			}
@@ -713,7 +883,7 @@ impl OverlayContext {
 
 	/// Used by the Select tool to outline a path or a free point when selected or hovered.
 	pub fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
-		let mut subpaths: Vec<bezier_rs::Subpath<PointId>> = vec![];
+		let mut subpaths: Vec<Subpath<PointId>> = vec![];
 
 		target_types.for_each(|target_type| match target_type.borrow() {
 			ClickTargetType::FreePoint(point) => {
@@ -855,7 +1025,7 @@ pub enum Pivot {
 
 pub enum DrawHandles {
 	All,
-	SelectedAnchors(Vec<SegmentId>),
-	FrontierHandles(HashMap<SegmentId, Vec<PointId>>),
+	SelectedAnchors(HashMap<LayerNodeIdentifier, Vec<SegmentId>>),
+	FrontierHandles(HashMap<LayerNodeIdentifier, HashMap<SegmentId, Vec<PointId>>>),
 	None,
 }

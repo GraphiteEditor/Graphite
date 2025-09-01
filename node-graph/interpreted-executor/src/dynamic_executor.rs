@@ -150,8 +150,8 @@ pub enum IntrospectError {
 impl std::fmt::Display for IntrospectError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			IntrospectError::PathNotFound(path) => write!(f, "Path not found: {:?}", path),
-			IntrospectError::ProtoNodeNotFound(id) => write!(f, "ProtoNode not found: {:?}", id),
+			IntrospectError::PathNotFound(path) => write!(f, "Path not found: {path:?}"),
+			IntrospectError::ProtoNodeNotFound(id) => write!(f, "ProtoNode not found: {id:?}"),
 			IntrospectError::NoData => write!(f, "No data found for this node"),
 			IntrospectError::RuntimeNotReady => write!(f, "Node runtime is not ready"),
 		}
@@ -278,24 +278,24 @@ impl BorrowTree {
 	///     let (proto_network, node_id, proto_node) = ProtoNetwork::example();
 	///     let typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
 	///     let mut borrow_tree = BorrowTree::new(proto_network, &typing_context).await?;
-	///     
+	///
 	///     // Assert that the node exists in the BorrowTree
 	///     assert!(borrow_tree.get(node_id).is_some(), "Node should exist before removal");
-	///     
+	///
 	///     // Remove the node
 	///     let removed_path = borrow_tree.free_node(node_id);
-	///     
+	///
 	///     // Assert that the node was successfully removed
 	///     assert!(removed_path.is_some(), "Node removal should return a path");
 	///     assert!(borrow_tree.get(node_id).is_none(), "Node should not exist after removal");
-	///     
+	///
 	///     // Try to remove the same node again
 	///     let second_removal = borrow_tree.free_node(node_id);
-	///     
+	///
 	///     assert_eq!(second_removal, None, "Second removal should return None");
-	///     
+	///
 	///     println!("All assertions passed. free_node function works as expected.");
-	///     
+	///
 	///     Ok(())
 	/// }
 	/// ```
@@ -393,7 +393,7 @@ impl BorrowTree {
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(ids) => {
-				let ids: Vec<_> = ids.iter().map(|(id, _)| *id).collect();
+				let ids = ids.to_vec();
 				let construction_nodes = self.node_deps(&ids);
 				let constructor = typing_context.constructor(id).ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
 				let node = constructor(construction_nodes).await;

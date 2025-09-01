@@ -15,18 +15,19 @@ export function downloadFileBlob(filename: string, blob: Blob) {
 	URL.revokeObjectURL(url);
 }
 
-export function downloadFileText(filename: string, text: string) {
-	const type = filename.endsWith(".svg") ? "image/svg+xml;charset=utf-8" : "text/plain;charset=utf-8";
+export function downloadFile(filename: string, content: ArrayBuffer) {
+	const type = filename.endsWith(".svg") ? "image/svg+xml;charset=utf-8" : "application/octet-stream";
 
-	const blob = new Blob([text], { type });
+	const blob = new Blob([new Uint8Array(content)], { type });
 	downloadFileBlob(filename, blob);
 }
 
-export async function upload<T extends "text" | "data" | "both">(acceptedExtensions: string, textOrData: T): Promise<UploadResult<T>> {
+// See https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/file#accept for the `accept` string format
+export async function upload<T extends "text" | "data" | "both">(accept: string, textOrData: T): Promise<UploadResult<T>> {
 	return new Promise<UploadResult<T>>((resolve, _) => {
 		const element = document.createElement("input");
 		element.type = "file";
-		element.accept = acceptedExtensions;
+		element.accept = accept;
 
 		element.addEventListener(
 			"change",

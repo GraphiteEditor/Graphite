@@ -83,7 +83,7 @@ AI/ML is filling a rapidly growing role as a tool in the creative process. Graph
 <details>
 <summary>For additional technical details: click here</summary>
 
-The approach should be extensible to future models. It needs to run fast and natively on the assorted hardware of local user machines with hardware acceleration. It should be a one-click installation process for users to download and run models without requiring dependencies or environment setup. Ideally, it should allow the more lightweight models to run locally in browsers with WebGPU. It needs to also be deployable to servers in a scalable, cost-viable manner that reuses most of the same code that runs locally. Runtime overhead, cold start times, and memory usage should be minimized for quick, frequent switching between models in a node graph pipeline. The tech stack also needs to be permissively licensed and, as much as possible, Rust-centric so it doesn't add complexity to our Wasm and Tauri build processes. For Stable Diffusion, we need the flexability to track the latest research and extensions to the ecosystem like new base models, checkpoint training, DreamBooth, LoRA, ControlNet, IP-Adapter, etc. and expose these functionalities through modular nodes.
+The approach should be extensible to future models. It needs to run fast and natively on the assorted hardware of local user machines with hardware acceleration. It should be a one-click installation process for users to download and run models without requiring dependencies or environment setup. Ideally, it should allow the more lightweight models to run locally in browsers with WebGPU. It needs to also be deployable to servers in a scalable, cost-viable manner that reuses most of the same code that runs locally. Runtime overhead, cold start times, and memory usage should be minimized for quick, frequent switching between models in a node graph pipeline. The tech stack also needs to be permissively licensed and, as much as possible, Rust-centric so it doesn't add complexity to our Wasm and desktop build processes. For Stable Diffusion, we need the flexability to track the latest research and extensions to the ecosystem like new base models, checkpoint training, DreamBooth, LoRA, ControlNet, IP-Adapter, etc. and expose these functionalities through modular nodes.
 
 To meet most of these criteria, our current thinking is to distribute and run our models using the [ONNX](https://onnx.ai/) format. This would integrate ONNX runtimes for WebGPU, native (DirectML, CUDA), and GPU cloud providers. The issue with this approach is that these models (particularly Stable Diffusion) aren't available in an ONNX format.
 
@@ -335,7 +335,7 @@ Duration: 9 months
 Students: Hannah Li, Rob Nadal, Thomas Cheng, Linda Zheng, Jackie Chen
 
 - [Bezier-rs library](https://crates.io/crates/bezier-rs)
-- [Interactive web demo](/libraries/bezier-rs/)
+- [Interactive web demo](https://keavon.github.io/Bezier-rs/)
 
 **Outcomes:** The student group designed an API for representing and manipulating Bezier curves and paths as a standalone Rust library which was published to crates.io. It now serves as the underlying vector data format used in Graphite, and acts as a testbed for new computational geometry algorithms. The team also built an interactive web demo catalog to showcase many of the algorithms, which are also handily embedded in the library's [documentation](https://docs.rs/bezier-rs/latest/bezier_rs/).
 

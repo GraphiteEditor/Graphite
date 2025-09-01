@@ -26,6 +26,7 @@ impl MessageData {
 #[derive(Debug)]
 pub struct DebugMessageTree {
 	name: String,
+	fields: Option<Vec<String>>,
 	variants: Option<Vec<DebugMessageTree>>,
 	message_handler: Option<MessageData>,
 	message_handler_data: Option<MessageData>,
@@ -36,11 +37,16 @@ impl DebugMessageTree {
 	pub fn new(name: &str) -> DebugMessageTree {
 		DebugMessageTree {
 			name: name.to_string(),
+			fields: None,
 			variants: None,
 			message_handler: None,
 			message_handler_data: None,
 			path: "",
 		}
+	}
+
+	pub fn add_fields(&mut self, fields: Vec<String>) {
+		self.fields = Some(fields);
 	}
 
 	pub fn set_path(&mut self, path: &'static str) {
@@ -67,6 +73,10 @@ impl DebugMessageTree {
 		&self.name
 	}
 
+	pub fn fields(&self) -> Option<&Vec<String>> {
+		self.fields.as_ref()
+	}
+
 	pub fn path(&self) -> &'static str {
 		self.path
 	}
@@ -81,19 +91,5 @@ impl DebugMessageTree {
 
 	pub fn message_handler_fields(&self) -> Option<&MessageData> {
 		self.message_handler.as_ref()
-	}
-
-	pub fn has_message_handler_data_fields(&self) -> bool {
-		match self.message_handler_data_fields() {
-			Some(_) => true,
-			None => false,
-		}
-	}
-
-	pub fn has_message_handler_fields(&self) -> bool {
-		match self.message_handler_fields() {
-			Some(_) => true,
-			None => false,
-		}
 	}
 }

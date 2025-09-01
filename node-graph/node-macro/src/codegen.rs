@@ -41,19 +41,12 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let struct_generics: Vec<Ident> = fields.iter().enumerate().map(|(i, _)| format_ident!("Node{}", i)).collect();
 	let input_ident = &input.pat_ident;
 
-	let field_idents: Vec<_> = fields
-		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { pat_ident, .. } | ParsedField::Node { pat_ident, .. } => pat_ident,
-		})
-		.collect();
+	let field_idents: Vec<_> = fields.iter().map(|f| &f.pat_ident).collect();
 	let field_names: Vec<_> = field_idents.iter().map(|pat_ident| &pat_ident.ident).collect();
 
 	let input_names: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { name, .. } | ParsedField::Node { name, .. } => name,
-		})
+		.map(|f| &f.name)
 		.zip(field_names.iter())
 		.map(|zipped| match zipped {
 			(Some(name), _) => name.value(),
@@ -61,12 +54,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		})
 		.collect();
 
-	let input_descriptions: Vec<_> = fields
-		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { description, .. } | ParsedField::Node { description, .. } => description,
-		})
-		.collect();
+	let input_descriptions: Vec<_> = fields.iter().map(|f| &f.description).collect();
 
 	let struct_fields = field_names.iter().zip(struct_generics.iter()).map(|(name, r#gen)| {
 		quote! { pub(super) #name: #r#gen }
@@ -84,9 +72,9 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let field_types: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { ty, .. } => ty.clone(),
-			ParsedField::Node { output_type, input_type, .. } => match parsed.is_async {
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
+			ParsedFieldType::Node(NodeParsedField { output_type, input_type, .. }) => match parsed.is_async {
 				true => parse_quote!(&'n impl #graphene_core::Node<'n, #input_type, Output = impl core::future::Future<Output=#output_type>>),
 				false => parse_quote!(&'n impl #graphene_core::Node<'n, #input_type, Output = #output_type>),
 			},
@@ -95,24 +83,18 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let widget_override: Vec<_> = fields
 		.iter()
-		.map(|field| {
-			let parsed_widget_override = match field {
-				ParsedField::Regular { widget_override, .. } => widget_override,
-				ParsedField::Node { widget_override, .. } => widget_override,
-			};
-			match parsed_widget_override {
-				ParsedWidgetOverride::None => quote!(RegistryWidgetOverride::None),
-				ParsedWidgetOverride::Hidden => quote!(RegistryWidgetOverride::Hidden),
-				ParsedWidgetOverride::String(lit_str) => quote!(RegistryWidgetOverride::String(#lit_str)),
-				ParsedWidgetOverride::Custom(lit_str) => quote!(RegistryWidgetOverride::Custom(#lit_str)),
-			}
+		.map(|field| match &field.widget_override {
+			ParsedWidgetOverride::None => quote!(RegistryWidgetOverride::None),
+			ParsedWidgetOverride::Hidden => quote!(RegistryWidgetOverride::Hidden),
+			ParsedWidgetOverride::String(lit_str) => quote!(RegistryWidgetOverride::String(#lit_str)),
+			ParsedWidgetOverride::Custom(lit_str) => quote!(RegistryWidgetOverride::Custom(#lit_str)),
 		})
 		.collect();
 
 	let value_sources: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { value_source, .. } => match value_source {
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { value_source, .. }) => match value_source {
 				ParsedValueSource::Default(data) => quote!(RegistryValueSource::Default(stringify!(#data))),
 				ParsedValueSource::Scope(data) => quote!(RegistryValueSource::Scope(#data)),
 				_ => quote!(RegistryValueSource::None),
@@ -123,8 +105,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let default_types: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { implementations, .. } => match implementations.first() {
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { implementations, .. }) => match implementations.first() {
 				Some(ty) => quote!(Some(concrete!(#ty))),
 				_ => quote!(None),
 			},
@@ -134,8 +116,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let number_min_values: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { number_soft_min, number_hard_min, .. } => match (number_soft_min, number_hard_min) {
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { number_soft_min, number_hard_min, .. }) => match (number_soft_min, number_hard_min) {
 				(Some(soft_min), _) => quote!(Some(#soft_min)),
 				(None, Some(hard_min)) => quote!(Some(#hard_min)),
 				(None, None) => quote!(None),
@@ -145,8 +127,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		.collect();
 	let number_max_values: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { number_soft_max, number_hard_max, .. } => match (number_soft_max, number_hard_max) {
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { number_soft_max, number_hard_max, .. }) => match (number_soft_max, number_hard_max) {
 				(Some(soft_max), _) => quote!(Some(#soft_max)),
 				(None, Some(hard_max)) => quote!(Some(#hard_max)),
 				(None, None) => quote!(None),
@@ -156,77 +138,45 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		.collect();
 	let number_mode_range_values: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular {
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField {
 				number_mode_range: Some(number_mode_range),
 				..
-			} => quote!(Some(#number_mode_range)),
+			}) => quote!(Some(#number_mode_range)),
 			_ => quote!(None),
 		})
 		.collect();
 	let number_display_decimal_places: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular {
-				number_display_decimal_places: Some(decimal_places),
-				..
-			}
-			| ParsedField::Node {
-				number_display_decimal_places: Some(decimal_places),
-				..
-			} => {
-				quote!(Some(#decimal_places))
-			}
-			_ => quote!(None),
-		})
+		.map(|field| field.number_display_decimal_places.as_ref().map_or(quote!(None), |i| quote!(Some(#i))))
 		.collect();
-	let number_step: Vec<_> = fields
-		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { number_step: Some(step), .. } | ParsedField::Node { number_step: Some(step), .. } => {
-				quote!(Some(#step))
-			}
-			_ => quote!(None),
-		})
-		.collect();
+	let number_step: Vec<_> = fields.iter().map(|field| field.number_step.as_ref().map_or(quote!(None), |i| quote!(Some(#i)))).collect();
 
-	let unit_suffix: Vec<_> = fields
-		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { unit: Some(unit), .. } | ParsedField::Node { unit: Some(unit), .. } => {
-				quote!(Some(#unit))
-			}
-			_ => quote!(None),
-		})
-		.collect();
+	let unit_suffix: Vec<_> = fields.iter().map(|field| field.unit.as_ref().map_or(quote!(None), |i| quote!(Some(#i)))).collect();
 
 	let exposed: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { exposed, .. } => quote!(#exposed),
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { exposed, .. }) => quote!(#exposed),
 			_ => quote!(true),
 		})
 		.collect();
 
-	let eval_args = fields.iter().map(|field| match field {
-		ParsedField::Regular { pat_ident, .. } => {
-			let name = &pat_ident.ident;
-			quote! { let #name = self.#name.eval(__input.clone()).await; }
-		}
-		ParsedField::Node { pat_ident, .. } => {
-			let name = &pat_ident.ident;
-			quote! { let #name = &self.#name; }
+	let eval_args = fields.iter().map(|field| {
+		let name = &field.pat_ident.ident;
+		match &field.ty {
+			ParsedFieldType::Regular { .. } => {
+				quote! { let #name = self.#name.eval(__input.clone()).await; }
+			}
+			ParsedFieldType::Node { .. } => {
+				quote! { let #name = &self.#name; }
+			}
 		}
 	});
 
-	let min_max_args = fields.iter().map(|field| match field {
-		ParsedField::Regular {
-			pat_ident,
-			number_hard_min,
-			number_hard_max,
-			..
-		} => {
-			let name = &pat_ident.ident;
+	let min_max_args = fields.iter().map(|field| match &field.ty {
+		ParsedFieldType::Regular(RegularParsedField { number_hard_min, number_hard_max, .. }) => {
+			let name = &field.pat_ident.ident;
 			let mut tokens = quote!();
 			if let Some(min) = number_hard_min {
 				tokens.extend(quote_spanned! {min.span()=>
@@ -241,15 +191,13 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			}
 			tokens
 		}
-		ParsedField::Node { .. } => {
-			quote!()
-		}
+		ParsedFieldType::Node { .. } => quote!(),
 	});
 
-	let all_implementation_types = fields.iter().flat_map(|field| match field {
-		ParsedField::Regular { implementations, .. } => implementations.into_iter().cloned().collect::<Vec<_>>(),
-		ParsedField::Node { implementations, .. } => implementations
-			.into_iter()
+	let all_implementation_types = fields.iter().flat_map(|field| match &field.ty {
+		ParsedFieldType::Regular(RegularParsedField { implementations, .. }) => implementations.iter().cloned().collect::<Vec<_>>(),
+		ParsedFieldType::Node(NodeParsedField { implementations, .. }) => implementations
+			.iter()
 			.flat_map(|implementation| [implementation.input.clone(), implementation.output.clone()])
 			.collect(),
 	});
@@ -260,11 +208,11 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let mut clampable_clauses = Vec::new();
 
 	for (field, name) in fields.iter().zip(struct_generics.iter()) {
-		clauses.push(match (field, *is_async) {
+		clauses.push(match (&field.ty, *is_async) {
 			(
-				ParsedField::Regular {
+				ParsedFieldType::Regular(RegularParsedField {
 					ty, number_hard_min, number_hard_max, ..
-				},
+				}),
 				_,
 			) => {
 				let all_lifetime_ty = substitute_lifetimes(ty.clone(), "all");
@@ -284,7 +232,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 					#name: #graphene_core::Node<'n, #input_type, Output = #fut_ident> + #graphene_core::WasmNotSync
 				)
 			}
-			(ParsedField::Node { input_type, output_type, .. }, true) => {
+			(ParsedFieldType::Node(NodeParsedField { input_type, output_type, .. }), true) => {
 				let id = future_idents.len();
 				let fut_ident = format_ident!("F{}", id);
 				future_idents.push(fut_ident.clone());
@@ -294,7 +242,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 					#name: #graphene_core::Node<'n, #input_type, Output = #fut_ident > + #graphene_core::WasmNotSync
 				)
 			}
-			(ParsedField::Node { .. }, false) => unreachable!(),
+			(ParsedFieldType::Node { .. }, false) => unreachable!(),
 		});
 	}
 	let where_clause = where_clause.clone().unwrap_or(WhereClause {
@@ -345,13 +293,15 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 
-	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, &graphene_core, &identifier);
+	let cfg = crate::shader_nodes::modify_cfg(attributes);
+	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, &graphene_core, &identifier, &cfg);
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
 		#[inline]
 		#[allow(clippy::too_many_arguments)]
 		#vis #async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_ident: #input_type #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
 
+		#cfg
 		#[automatically_derived]
 		impl<'n, #(#fn_generics,)* #(#struct_generics,)* #(#future_idents,)*> #graphene_core::Node<'n, #input_type> for #mod_name::#struct_name<#(#struct_generics,)*>
 		#struct_where_clause
@@ -359,17 +309,21 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			#eval_impl
 		}
 
+		#cfg
 		const fn #identifier() -> #graphene_core::ProtoNodeIdentifier {
 			#graphene_core::ProtoNodeIdentifier::new(std::concat!(#identifier_path, "::", std::stringify!(#struct_name)))
 		}
 
+		#cfg
 		#[doc(inline)]
 		pub use #mod_name::#struct_name;
 
 		#[doc(hidden)]
 		#node_input_accessor
 
+		#cfg
 		#[doc(hidden)]
+		#[allow(clippy::module_inception)]
 		mod #mod_name {
 			use super::*;
 			use #graphene_core as gcore;
@@ -401,7 +355,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 			#register_node_impl
 
-			#[cfg_attr(not(target_arch = "wasm32"), ctor)]
+			#[cfg_attr(not(target_family = "wasm"), ctor)]
 			fn register_metadata() {
 				let metadata = NodeMetadata {
 					display_name: #display_name,
@@ -434,7 +388,14 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 }
 
 /// Generates strongly typed utilites to access inputs
-fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::GenericParam], field_idents: &[&PatIdent], graphene_core: &TokenStream2, identifier: &Ident) -> TokenStream2 {
+fn generate_node_input_references(
+	parsed: &ParsedNodeFn,
+	fn_generics: &[crate::GenericParam],
+	field_idents: &[&PatIdent],
+	graphene_core: &TokenStream2,
+	identifier: &Ident,
+	cfg: &TokenStream2,
+) -> TokenStream2 {
 	let inputs_module_name = format_ident!("{}", parsed.struct_name.to_string().to_case(Case::Snake));
 
 	let mut generated_input_accessor = Vec::new();
@@ -442,9 +403,9 @@ fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::G
 		let (mut modified, mut generic_collector) = FilterUsedGenerics::new(fn_generics);
 
 		for (input_index, (parsed_input, input_ident)) in parsed.fields.iter().zip(field_idents).enumerate() {
-			let mut ty = match parsed_input {
-				ParsedField::Regular { ty, .. } => ty,
-				ParsedField::Node { output_type, .. } => output_type,
+			let mut ty = match &parsed_input.ty {
+				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty,
+				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type,
 			}
 			.clone();
 
@@ -479,6 +440,7 @@ fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::G
 	}
 
 	quote! {
+		#cfg
 		pub mod #inputs_module_name {
 			use super::*;
 
@@ -527,20 +489,20 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 		.fields
 		.iter()
 		.map(|field| {
-			match field {
-				ParsedField::Regular { implementations, ty, .. } => {
+			match &field.ty {
+				ParsedFieldType::Regular(RegularParsedField { implementations, ty, .. }) => {
 					if !implementations.is_empty() {
 						implementations.iter().map(|ty| (&unit, ty)).collect()
 					} else {
 						vec![(&unit, ty)]
 					}
 				}
-				ParsedField::Node {
+				ParsedFieldType::Node(NodeParsedField {
 					implementations,
 					input_type,
 					output_type,
 					..
-				} => {
+				}) => {
 					if !implementations.is_empty() {
 						implementations.iter().map(|impl_| (&impl_.input, &impl_.output)).collect()
 					} else {
@@ -565,7 +527,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 			let field_name = field_names[j];
 			let (input_type, output_type) = &types[i.min(types.len() - 1)];
 
-			let node = matches!(parsed.fields[j], ParsedField::Node { .. });
+			let node = matches!(parsed.fields[j].ty, ParsedFieldType::Node { .. });
 
 			let downcast_node = quote!(
 				let #field_name: DowncastBothNode<#input_type, #output_type> = DowncastBothNode::new(args[#j].clone());
@@ -605,7 +567,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 
 	Ok(quote! {
 
-		#[cfg_attr(not(target_arch = "wasm32"), ctor)]
+		#[cfg_attr(not(target_family = "wasm"), ctor)]
 		fn register_node() {
 			let mut registry = NODE_REGISTRY.lock().unwrap();
 			registry.insert(
@@ -615,7 +577,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 				]
 			);
 		}
-		#[cfg(target_arch = "wasm32")]
+		#[cfg(target_family = "wasm")]
 		#[unsafe(no_mangle)]
 		extern "C" fn #registry_name() {
 			register_node();

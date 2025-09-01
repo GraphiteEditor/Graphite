@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate log;
+
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::proto::RegistryValueSource;
@@ -61,7 +64,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 				(
 					NodeId(i as u64),
 					match inputs.len() {
-						1 if false => {
+						1 => {
 							let input = inputs.iter().next().unwrap();
 							let input_ty = input.nested_type();
 
@@ -84,9 +87,9 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 
 							DocumentNode {
 								inputs: vec![NodeInput::network(input.clone(), i)],
-								// manual_composition: Some(fn_input.clone()),
 								implementation: DocumentNodeImplementation::ProtoNode(proto_node),
 								visible: true,
+								call_argument: concrete!(Context),
 								..Default::default()
 							}
 						}
@@ -107,8 +110,8 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 
 		let document_node = DocumentNode {
 			inputs: network_inputs,
-			manual_composition: Some(input_type.clone()),
-			implementation: DocumentNodeImplementation::ProtoNode(id.clone().into()),
+			call_argument: input_type.clone(),
+			implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 			visible: true,
 			skip_deduplication: false,
 			..Default::default()
@@ -118,12 +121,11 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 
 		let node = DocumentNode {
 			inputs,
-			manual_composition: Some(input_type.clone()),
+			call_argument: input_type.clone(),
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				exports: vec![NodeInput::Node {
 					node_id: NodeId(input_count as u64),
 					output_index: 0,
-					lambda: false,
 				}],
 				nodes,
 				scope_injections: Default::default(),
@@ -151,7 +153,14 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 
 			match field.value_source {
 				RegistryValueSource::None => {}
-				RegistryValueSource::Default(data) => return NodeInput::value(TaggedValue::from_primitive_string(data, ty).unwrap_or(TaggedValue::None), exposed),
+				RegistryValueSource::Default(data) => {
+					if let Some(custom_default) = TaggedValue::from_primitive_string(data, ty) {
+						return NodeInput::value(custom_default, exposed);
+					} else {
+						// It is incredibly useful to get a warning when the default type cannot be parsed rather than defaulting to `()`.
+						warn!("Failed to parse default value for type {ty:?} with data {data}");
+					}
+				}
 				RegistryValueSource::Scope(data) => return NodeInput::scope(Cow::Borrowed(data)),
 			};
 

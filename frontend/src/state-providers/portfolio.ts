@@ -6,18 +6,18 @@ import { type Editor } from "@graphite/editor";
 import {
 	type FrontendDocumentDetails,
 	TriggerFetchAndOpenDocument,
-	TriggerDownloadImage,
-	TriggerDownloadTextFile,
+	TriggerSaveDocument,
+	TriggerExportImage,
+	TriggerSaveFile,
 	TriggerImport,
 	TriggerOpenDocument,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
-	UpdateSpreadsheetState,
-	defaultWidgetLayout,
-	patchWidgetLayout,
-	UpdateSpreadsheetLayout,
+	UpdateDataPanelState,
+	UpdatePropertiesPanelState,
+	UpdateLayersPanelState,
 } from "@graphite/messages";
-import { downloadFileText, downloadFileBlob, upload } from "@graphite/utility-functions/files";
+import { downloadFile, downloadFileBlob, upload } from "@graphite/utility-functions/files";
 import { extractPixelData, rasterizeSVG } from "@graphite/utility-functions/rasterization";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -26,9 +26,9 @@ export function createPortfolioState(editor: Editor) {
 		unsaved: false,
 		documents: [] as FrontendDocumentDetails[],
 		activeDocumentIndex: 0,
-		spreadsheetOpen: false,
-		spreadsheetNode: BigInt(0) as bigint | undefined,
-		spreadsheetWidgets: defaultWidgetLayout(),
+		dataPanelOpen: false,
+		propertiesPanelOpen: true,
+		layersPanelOpen: true,
 	});
 
 	// Set up message subscriptions on creation
@@ -62,9 +62,16 @@ export function createPortfolioState(editor: Editor) {
 		}
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerOpenDocument, async () => {
-		const extension = editor.handle.fileSaveSuffix();
-		const data = await upload(extension, "text");
-		editor.handle.openDocumentFile(data.filename, data.content);
+		const suffix = "." + editor.handle.fileExtension();
+		const data = await upload(suffix, "text");
+
+		// Use filename as document name, removing the extension if it exists
+		let documentName = data.filename;
+		if (documentName.endsWith(suffix)) {
+			documentName = documentName.slice(0, -suffix.length);
+		}
+
+		editor.handle.openDocumentFile(documentName, data.content);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImport, async () => {
 		const data = await upload("image/*", "both");
@@ -76,19 +83,24 @@ export function createPortfolioState(editor: Editor) {
 		}
 
 		// In case the user accidentally uploads a Graphite file, open it instead of failing to import it
-		if (data.filename.endsWith(".graphite")) {
-			editor.handle.openDocumentFile(data.filename, data.content.text);
+		const graphiteFileSuffix = "." + editor.handle.fileExtension();
+		if (data.filename.endsWith(graphiteFileSuffix)) {
+			const documentName = data.filename.slice(0, -graphiteFileSuffix.length);
+			editor.handle.openDocumentFile(documentName, data.content.text);
 			return;
 		}
 
 		const imageData = await extractPixelData(new Blob([data.content.data], { type: data.type }));
 		editor.handle.pasteImage(data.filename, new Uint8Array(imageData.data), imageData.width, imageData.height);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerDownloadTextFile, (triggerFileDownload) => {
-		downloadFileText(triggerFileDownload.name, triggerFileDownload.document);
+	editor.subscriptions.subscribeJsMessage(TriggerSaveDocument, (triggerSaveDocument) => {
+		downloadFile(triggerSaveDocument.name, triggerSaveDocument.content);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerDownloadImage, async (triggerDownloadImage) => {
-		const { svg, name, mime, size } = triggerDownloadImage;
+	editor.subscriptions.subscribeJsMessage(TriggerSaveFile, (triggerFileDownload) => {
+		downloadFile(triggerFileDownload.name, triggerFileDownload.content);
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerExportImage, async (TriggerExportImage) => {
+		const { svg, name, mime, size } = TriggerExportImage;
 
 		// Fill the canvas with white if it'll be a JPEG (which does not support transparency and defaults to black)
 		const backgroundColor = mime.endsWith("jpeg") ? "white" : undefined;
@@ -103,18 +115,21 @@ export function createPortfolioState(editor: Editor) {
 			// Fail silently if there's an error rasterizing the SVG, such as a zero-sized image
 		}
 	});
-
-	editor.subscriptions.subscribeJsMessage(UpdateSpreadsheetState, async (updateSpreadsheetState) => {
+	editor.subscriptions.subscribeJsMessage(UpdateDataPanelState, async (updateDataPanelState) => {
 		update((state) => {
-			state.spreadsheetOpen = updateSpreadsheetState.open;
-			state.spreadsheetNode = updateSpreadsheetState.node;
+			state.dataPanelOpen = updateDataPanelState.open;
 			return state;
 		});
 	});
-
-	editor.subscriptions.subscribeJsMessage(UpdateSpreadsheetLayout, (updateSpreadsheetLayout) => {
+	editor.subscriptions.subscribeJsMessage(UpdatePropertiesPanelState, async (updatePropertiesPanelState) => {
 		update((state) => {
-			patchWidgetLayout(state.spreadsheetWidgets, updateSpreadsheetLayout);
+			state.propertiesPanelOpen = updatePropertiesPanelState.open;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateLayersPanelState, async (updateLayersPanelState) => {
+		update((state) => {
+			state.layersPanelOpen = updateLayersPanelState.open;
 			return state;
 		});
 	});

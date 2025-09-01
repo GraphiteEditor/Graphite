@@ -3,7 +3,6 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
-use bezier_rs::Subpath;
 use glam::{DAffine2, IVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
@@ -11,12 +10,14 @@ use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Artboard;
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::{CPU, RasterDataTable};
+use graphene_std::raster_types::{CPU, Raster};
+use graphene_std::subpath::Subpath;
+use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::vector::Vector;
 use graphene_std::vector::style::{Fill, Stroke};
 use graphene_std::vector::{PointId, VectorModificationType};
-use graphene_std::vector::{VectorData, VectorDataTable};
-use graphene_std::{GraphicGroupTable, NodeInputDecleration};
+use graphene_std::{Graphic, NodeInputDecleration};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -130,11 +131,11 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Creates an artboard as the primary export for the document network
 	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_document_node_type("Artboard").expect("Node").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroupTable::default()), true)),
-			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_std::GraphicGroupTable::default()), true)),
+			Some(NodeInput::value(TaggedValue::Artboard(Default::default()), true)),
+			Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
 			Some(NodeInput::value(TaggedValue::DVec2(artboard.location.into()), false)),
 			Some(NodeInput::value(TaggedValue::DVec2(artboard.dimensions.into()), false)),
-			Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
+			Some(NodeInput::value(TaggedValue::Color(Table::new_from_element(artboard.background)), false)),
 			Some(NodeInput::value(TaggedValue::Bool(artboard.clip), false)),
 		]);
 		self.network_interface.insert_node(new_id, artboard_node_template, &[]);
@@ -143,7 +144,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn insert_boolean_data(&mut self, operation: graphene_std::path_bool::BooleanOperation, layer: LayerNodeIdentifier) {
 		let boolean = resolve_document_node_type("Boolean Operation").expect("Boolean node does not exist").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_std::GraphicGroupTable::default()), true)),
+			Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
 			Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
 		]);
 
@@ -152,12 +153,12 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&boolean_id, layer, &[]);
 	}
 
-	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
-		let vector_data = VectorDataTable::new(VectorData::from_subpaths(subpaths, true));
+	pub fn insert_vector(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
+		let vector = Table::new_from_element(Vector::from_subpaths(subpaths, true));
 
 		let shape = resolve_document_node_type("Path")
 			.expect("Path node does not exist")
-			.node_template_input_override([Some(NodeInput::value(TaggedValue::VectorData(vector_data), false))]);
+			.node_template_input_override([Some(NodeInput::value(TaggedValue::Vector(vector), false))]);
 		let shape_id = NodeId::new();
 		self.network_interface.insert_node(shape_id, shape, &[]);
 		self.network_interface.move_node_to_chain_start(&shape_id, layer, &[]);
@@ -198,6 +199,7 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::value(TaggedValue::OptionalF64(typesetting.max_width), false)),
 			Some(NodeInput::value(TaggedValue::OptionalF64(typesetting.max_height), false)),
 			Some(NodeInput::value(TaggedValue::F64(typesetting.tilt), false)),
+			Some(NodeInput::value(TaggedValue::TextAlign(typesetting.align), false)),
 		]);
 
 		let text_id = NodeId::new();
@@ -217,11 +219,11 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
 	}
 
-	pub fn insert_image_data(&mut self, image_frame: RasterDataTable<CPU>, layer: LayerNodeIdentifier) {
+	pub fn insert_image_data(&mut self, image_frame: Table<Raster<CPU>>, layer: LayerNodeIdentifier) {
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let image = resolve_document_node_type("Image Value")
 			.expect("ImageValue node does not exist")
-			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::RasterData(image_frame), false))]);
+			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::Raster(image_frame), false))]);
 
 		let image_id = NodeId::new();
 		self.network_interface.insert_node(image_id, image, &[]);
@@ -261,7 +263,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Gets the node id of a node with a specific reference (name) that is upstream (leftward) from the layer node, but before reaching another upstream layer stack.
-	/// For example, if given a group layer, this would find a requested "Transform" or "Boolean Operation" node in its chain, between the group layer and its layer stack child contents.
+	/// For example, if given a parent layer, this would find a requested "Transform" or "Boolean Operation" node in its chain, between the parent layer and its layer stack child contents.
 	/// It would also travel up an entire layer that's not fed by a stack until reaching the generator node, such as a "Rectangle" or "Path" layer.
 	pub fn locate_node_in_layer_chain(reference_name: &str, left_of_layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 		let upstream = network_interface.upstream_flow_back_from_nodes(vec![left_of_layer.to_node()], &[], network_interface::FlowType::HorizontalFlow);
@@ -294,14 +296,15 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn create_node(&mut self, reference: &str) -> Option<NodeId> {
 		let output_layer = self.get_output_layer()?;
 		let Some(node_definition) = resolve_document_node_type(reference) else {
-			log::error!("Node type {} does not exist in ModifyInputsContext::existing_node_id", reference);
+			log::error!("Node type {reference} does not exist in ModifyInputsContext::existing_node_id");
 			return None;
 		};
-		// If inserting a path node, insert a Flatten Path if the type is a graphic group.
-		// TODO: Allow the path node to operate on Graphic Group data by utilizing the reference for each vector data in a group.
+
+		// If inserting a 'Path' node, insert a 'Flatten Path' node if the type is `Graphic`.
+		// TODO: Allow the 'Path' node to operate on table data by utilizing the reference (index or ID?) for each row.
 		if node_definition.identifier == "Path" {
 			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type().clone();
-			if layer_input_type == concrete!(GraphicGroupTable) {
+			if layer_input_type == concrete!(Table<Graphic>) {
 				let Some(flatten_path_definition) = resolve_document_node_type("Flatten Path") else {
 					log::error!("Flatten Path does not exist in ModifyInputsContext::existing_node_id");
 					return None;
@@ -326,11 +329,11 @@ impl<'a> ModifyInputsContext<'a> {
 		match &fill {
 			Fill::None => {
 				let input_connector = InputConnector::node(fill_node_id, backup_color_index);
-				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::OptionalColor(None), false), true);
+				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(Table::new()), false), true);
 			}
 			Fill::Solid(color) => {
 				let input_connector = InputConnector::node(fill_node_id, backup_color_index);
-				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::OptionalColor(Some(*color)), false), true);
+				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(Table::new_from_element(*color)), false), true);
 			}
 			Fill::Gradient(gradient) => {
 				let input_connector = InputConnector::node(fill_node_id, backup_gradient_index);
@@ -369,8 +372,10 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn stroke_set(&mut self, stroke: Stroke) {
 		let Some(stroke_node_id) = self.existing_node_id("Stroke", true) else { return };
 
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::ColorInput::<Option<graphene_std::Color>>::INDEX);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::OptionalColor(stroke.color), false), true);
+		let stroke_color = if let Some(color) = stroke.color { Table::new_from_element(color) } else { Table::new() };
+
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::ColorInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(stroke_color), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::WeightInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.weight), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::AlignInput::INDEX);

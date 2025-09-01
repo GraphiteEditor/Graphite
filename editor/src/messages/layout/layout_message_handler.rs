@@ -59,8 +59,8 @@ impl LayoutMessageHandler {
 	/// Get the widget path for the widget with the specified id
 	fn get_widget_path(widget_layout: &WidgetLayout, widget_id: WidgetId) -> Option<(&WidgetHolder, Vec<usize>)> {
 		let mut stack = widget_layout.layout.iter().enumerate().map(|(index, val)| (vec![index], val)).collect::<Vec<_>>();
-		while let Some((mut widget_path, group)) = stack.pop() {
-			match group {
+		while let Some((mut widget_path, layout_group)) = stack.pop() {
+			match layout_group {
 				// Check if any of the widgets in the current column or row have the correct id
 				LayoutGroup::Column { widgets } | LayoutGroup::Row { widgets } => {
 					for (index, widget) in widgets.iter().enumerate() {
@@ -308,6 +308,7 @@ impl LayoutMessageHandler {
 
 				responses.add(callback_message);
 			}
+			Widget::ImageLabel(_) => {}
 			Widget::IconLabel(_) => {}
 			Widget::InvisibleStandinInput(invisible) => {
 				let callback_message = match action {
@@ -481,18 +482,18 @@ impl LayoutMessageHandler {
 		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping));
 
 		let message = match layout_target {
+			LayoutTarget::MenuBar => unreachable!("Menu bar is not diffed"),
 			LayoutTarget::DialogButtons => FrontendMessage::UpdateDialogButtons { layout_target, diff },
 			LayoutTarget::DialogColumn1 => FrontendMessage::UpdateDialogColumn1 { layout_target, diff },
 			LayoutTarget::DialogColumn2 => FrontendMessage::UpdateDialogColumn2 { layout_target, diff },
 			LayoutTarget::DocumentBar => FrontendMessage::UpdateDocumentBarLayout { layout_target, diff },
 			LayoutTarget::DocumentMode => FrontendMessage::UpdateDocumentModeLayout { layout_target, diff },
+			LayoutTarget::DataPanel => FrontendMessage::UpdateDataPanelLayout { layout_target, diff },
 			LayoutTarget::LayersPanelControlLeftBar => FrontendMessage::UpdateLayersPanelControlBarLeftLayout { layout_target, diff },
 			LayoutTarget::LayersPanelControlRightBar => FrontendMessage::UpdateLayersPanelControlBarRightLayout { layout_target, diff },
 			LayoutTarget::LayersPanelBottomBar => FrontendMessage::UpdateLayersPanelBottomBarLayout { layout_target, diff },
-			LayoutTarget::MenuBar => unreachable!("Menu bar is not diffed"),
+			LayoutTarget::PropertiesPanel => FrontendMessage::UpdatePropertiesPanelLayout { layout_target, diff },
 			LayoutTarget::NodeGraphControlBar => FrontendMessage::UpdateNodeGraphControlBarLayout { layout_target, diff },
-			LayoutTarget::PropertiesSections => FrontendMessage::UpdatePropertyPanelSectionsLayout { layout_target, diff },
-			LayoutTarget::Spreadsheet => FrontendMessage::UpdateSpreadsheetLayout { layout_target, diff },
 			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { layout_target, diff },
 			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { layout_target, diff },
 			LayoutTarget::WorkingColors => FrontendMessage::UpdateWorkingColorsLayout { layout_target, diff },

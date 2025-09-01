@@ -17,7 +17,7 @@
 	}
 </script>
 
-<LayoutRow class="window-buttons-web" on:click={() => handleClick()} tooltip={($fullscreen.windowFullscreen ? "Exit" : "Enter") + " Fullscreen (F11)"}>
+<LayoutRow class="window-buttons-web" on:click={handleClick} tooltip={$fullscreen.windowFullscreen ? "Exit Fullscreen (F11)" : "Enter Fullscreen (F11)"}>
 	{#if requestFullscreenHotkeys}
 		<TextLabel italic={true}>Go fullscreen to access all hotkeys</TextLabel>
 	{/if}

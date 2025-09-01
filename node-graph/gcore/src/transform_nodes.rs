@@ -1,10 +1,12 @@
-use crate::instances::Instances;
-use crate::raster_types::{CPU, GPU, RasterDataTable};
+use crate::gradient::GradientStops;
+use crate::raster_types::{CPU, GPU, Raster};
+use crate::table::Table;
 use crate::transform::{ApplyTransform, Footprint, Transform};
-use crate::vector::VectorDataTable;
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, GraphicGroupTable, OwnedContextImpl};
+use crate::vector::Vector;
+use crate::{CloneVarArgs, Context, Ctx, ExtractAll, Graphic, OwnedContextImpl};
 use core::f64;
 use glam::{DAffine2, DVec2};
+use graphene_core_shaders::color::Color;
 
 #[node_macro::node(category(""))]
 async fn transform<T: ApplyTransform + 'n + 'static>(
@@ -12,10 +14,12 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 	#[implementations(
 		Context -> DAffine2,
 		Context -> DVec2,
-		Context -> VectorDataTable,
-		Context -> GraphicGroupTable,
-		Context -> RasterDataTable<CPU>,
-		Context -> RasterDataTable<GPU>,
+		Context -> Table<Vector>,
+		Context -> Table<Graphic>,
+		Context -> Table<Raster<CPU>>,
+		Context -> Table<Raster<GPU>>,
+		Context -> Table<Color>,
+		Context -> Table<GradientStops>,
 	)]
 	value: impl Node<Context<'static>, Output = T>,
 	translate: DVec2,
@@ -43,10 +47,10 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 #[node_macro::node(category(""))]
 fn replace_transform<Data, TransformInput: Transform>(
 	_: impl Ctx,
-	#[implementations(VectorDataTable, RasterDataTable<CPU>, GraphicGroupTable)] mut data: Instances<Data>,
+	#[implementations(Table<Vector>, Table<Raster<CPU>>, Table<Graphic>, Table<Color>, Table<GradientStops>)] mut data: Table<Data>,
 	#[implementations(DAffine2)] transform: TransformInput,
-) -> Instances<Data> {
-	for data_transform in data.instance_mut_iter() {
+) -> Table<Data> {
+	for data_transform in data.iter_mut() {
 		*data_transform.transform = transform.transform();
 	}
 	data
@@ -56,14 +60,16 @@ fn replace_transform<Data, TransformInput: Transform>(
 async fn extract_transform<T>(
 	_: impl Ctx,
 	#[implementations(
-		GraphicGroupTable,
-		VectorDataTable,
-		RasterDataTable<CPU>,
-		RasterDataTable<GPU>,
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Raster<GPU>>,
+		Table<Color>,
+		Table<GradientStops>,
 	)]
-	vector_data: Instances<T>,
+	vector: Table<T>,
 ) -> DAffine2 {
-	vector_data.instance_ref_iter().next().map(|vector_data| *vector_data.transform).unwrap_or_default()
+	vector.iter().next().map(|row| *row.transform).unwrap_or_default()
 }
 
 #[node_macro::node(category("Math: Transform"))]
@@ -90,10 +96,12 @@ fn decompose_scale(_: impl Ctx, transform: DAffine2) -> DVec2 {
 async fn boundless_footprint<T: 'n + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
-		Context -> VectorDataTable,
-		Context -> GraphicGroupTable,
-		Context -> RasterDataTable<CPU>,
-		Context -> RasterDataTable<GPU>,
+		Context -> Table<Vector>,
+		Context -> Table<Graphic>,
+		Context -> Table<Raster<CPU>>,
+		Context -> Table<Raster<GPU>>,
+		Context -> Table<Color>,
+		Context -> Table<GradientStops>,
 		Context -> String,
 		Context -> f64,
 	)]
@@ -108,10 +116,12 @@ async fn boundless_footprint<T: 'n + 'static>(
 async fn freeze_real_time<T: 'n + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
-		Context -> VectorDataTable,
-		Context -> GraphicGroupTable,
-		Context -> RasterDataTable<CPU>,
-		Context -> RasterDataTable<GPU>,
+		Context -> Table<Vector>,
+		Context -> Table<Graphic>,
+		Context -> Table<Raster<CPU>>,
+		Context -> Table<Raster<GPU>>,
+		Context -> Table<Color>,
+		Context -> Table<GradientStops>,
 		Context -> String,
 		Context -> f64,
 	)]

@@ -5,8 +5,6 @@ use graphene_std::Color;
 use graphene_std::raster::curve::Curve;
 use graphene_std::transform::ReferencePoint;
 use graphite_proc_macros::WidgetBuilder;
-use once_cell::sync::OnceCell;
-use std::sync::Arc;
 
 #[derive(Clone, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
@@ -20,7 +18,7 @@ pub struct CheckboxInput {
 
 	pub tooltip: String,
 
-	#[serde(rename = "forLabel", skip_serializing_if = "checkbox_id_is_empty")]
+	#[serde(rename = "forLabel")]
 	pub for_label: CheckboxId,
 
 	#[serde(skip)]
@@ -44,19 +42,24 @@ impl Default for CheckboxInput {
 			icon: "Checkmark".into(),
 			tooltip: Default::default(),
 			tooltip_shortcut: Default::default(),
-			for_label: CheckboxId::default(),
+			for_label: CheckboxId::new(),
 			on_update: Default::default(),
 			on_commit: Default::default(),
 		}
 	}
 }
 
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
-pub struct CheckboxId(Arc<OnceCell<u64>>);
+#[derive(Copy, Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CheckboxId(u64);
 
 impl CheckboxId {
-	pub fn fill(&mut self) {
-		let _ = self.0.set(graphene_std::uuid::generate_uuid());
+	pub fn new() -> Self {
+		Self(graphene_std::uuid::generate_uuid())
+	}
+}
+impl Default for CheckboxId {
+	fn default() -> Self {
+		Self::new()
 	}
 }
 impl specta::Type for CheckboxId {
@@ -64,29 +67,6 @@ impl specta::Type for CheckboxId {
 		// TODO: This might not be right, but it works for now. We just need the type `bigint | undefined`.
 		specta::datatype::DataType::Primitive(specta::datatype::PrimitiveType::u64)
 	}
-}
-impl serde::Serialize for CheckboxId {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: serde::Serializer,
-	{
-		self.0.get().copied().serialize(serializer)
-	}
-}
-impl<'a> serde::Deserialize<'a> for CheckboxId {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: serde::Deserializer<'a>,
-	{
-		let id = u64::deserialize(deserializer)?;
-		let checkbox_id = CheckboxId(OnceCell::new().into());
-		checkbox_id.0.set(id).map_err(serde::de::Error::custom)?;
-		Ok(checkbox_id)
-	}
-}
-
-fn checkbox_id_is_empty(id: &CheckboxId) -> bool {
-	id.0.get().is_none()
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
@@ -435,6 +415,9 @@ pub struct TextInput {
 
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
+
+	#[serde(rename = "maxWidth")]
+	pub max_width: u32,
 
 	// Callbacks
 	#[serde(skip)]

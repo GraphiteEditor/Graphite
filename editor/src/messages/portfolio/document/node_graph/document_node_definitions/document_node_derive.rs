@@ -59,8 +59,8 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					inputs,
-					manual_composition: Some(input_type.clone()),
-					implementation: DocumentNodeImplementation::ProtoNode(id.clone().into()),
+					call_argument: (input_type.clone()),
+					implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 					visible: true,
 					skip_deduplication: false,
 					..Default::default()
@@ -77,7 +77,6 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 						})
 						.collect(),
 					output_names: vec![output_type.to_string()],
-					has_primary_output: true,
 					locked: false,
 					..Default::default()
 				},

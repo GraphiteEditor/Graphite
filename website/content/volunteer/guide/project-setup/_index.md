@@ -26,8 +26,6 @@ cargo install -f wasm-bindgen-cli@0.2.100
 
 Regarding the last one: you'll likely get faster build times if you manually install that specific version of `wasm-bindgen-cli`. It is supposed to be installed automatically but a version mismatch causes it to reinstall every single recompilation. It may need to be manually updated periodically to match the version of the `wasm-bindgen` dependency in [`Cargo.toml`](https://github.com/GraphiteEditor/Graphite/blob/master/Cargo.toml).
 
-Lastly, if you intend to develop using the Tauri desktop app build target, obtain [Tauri's dependencies](https://v2.tauri.app/start/prerequisites/). This is not the usual setup for most contributors, so you will know if you need it.
-
 ## Repository
 
 Clone the project to a convenient location:

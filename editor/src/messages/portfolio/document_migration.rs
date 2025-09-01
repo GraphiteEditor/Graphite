@@ -5,20 +5,22 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
-use bezier_rs::Subpath;
 use glam::IVec2;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::ProtoNodeIdentifier;
-use graphene_std::text::TypesettingConfig;
+use graphene_std::subpath::Subpath;
+use graphene_std::table::Table;
+use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::uuid::NodeId;
+use graphene_std::vector::Vector;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign};
-use graphene_std::vector::{VectorData, VectorDataTable};
 use std::collections::HashMap;
 
 const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::vector::vector_nodes::SamplePointsNode", "graphene_core::vector::SamplePolylineNode"),
 	("graphene_core::vector::vector_nodes::SubpathSegmentLengthsNode", "graphene_core::vector::SubpathSegmentLengthsNode"),
+	("\"manual_composition\":null", "\"manual_composition\":{\"Generic\":\"T\"}"),
 ];
 
 pub struct NodeReplacement<'a> {
@@ -27,22 +29,56 @@ pub struct NodeReplacement<'a> {
 }
 
 const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
-	// graphic element
+	// artboard
 	NodeReplacement {
-		node: graphene_std::graphic_element::append_artboard::IDENTIFIER,
-		aliases: &["graphene_core::AddArtboardNode"],
+		node: graphene_std::artboard::create_artboard::IDENTIFIER,
+		aliases: &[
+			"graphene_core::ConstructArtboardNode",
+			"graphene_core::graphic_element::ToArtboardNode",
+			"graphene_core::artboard::ToArtboardNode",
+		],
+	},
+	// graphic
+	NodeReplacement {
+		node: graphene_std::graphic::to_graphic::IDENTIFIER,
+		aliases: &[
+			"graphene_core::ToGraphicGroupNode",
+			"graphene_core::graphic_element::ToGroupNode",
+			"graphene_core::graphic::ToGroupNode",
+		],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic_element::to_artboard::IDENTIFIER,
-		aliases: &["graphene_core::ConstructArtboardNode"],
+		node: graphene_std::graphic::wrap_graphic::IDENTIFIER,
+		aliases: &[
+			// Converted from "To Element"
+			"graphene_core::ToGraphicElementNode",
+			"graphene_core::graphic_element::ToElementNode",
+			"graphene_core::graphic::ToElementNode",
+		],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic_element::to_element::IDENTIFIER,
-		aliases: &["graphene_core::ToGraphicElementNode"],
+		node: graphene_std::graphic::legacy_layer_extend::IDENTIFIER,
+		aliases: &[
+			"graphene_core::graphic_element::LayerNode",
+			"graphene_core::graphic::LayerNode",
+			// Converted from "Append Artboard"
+			"graphene_core::AddArtboardNode",
+			"graphene_core::graphic_element::AppendArtboardNode",
+			"graphene_core::graphic::AppendArtboardNode",
+			"graphene_core::artboard::AppendArtboardNode",
+		],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic_element::to_group::IDENTIFIER,
-		aliases: &["graphene_core::ToGraphicGroupNode"],
+		node: graphene_std::graphic::flatten_graphic::IDENTIFIER,
+		aliases: &["graphene_core::graphic_element::FlattenGroupNode", "graphene_core::graphic::FlattenGroupNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::flatten_vector::IDENTIFIER,
+		aliases: &["graphene_core::graphic_element::FlattenVectorNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::index::IDENTIFIER,
+		aliases: &["graphene_core::graphic_element::IndexNode"],
 	},
 	// math_nodes
 	NodeReplacement {
@@ -186,12 +222,25 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::ops::PercentageValueNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::coordinate_value::IDENTIFIER,
+		node: graphene_std::math_nodes::vec_2_value::IDENTIFIER,
 		aliases: &[
-			"graphene_core::ops::CoordinateValueNode",
 			"graphene_core::ops::ConstructVector2",
 			"graphene_core::ops::Vector2ValueNode",
+			"graphene_core::ops::CoordinateValueNode",
+			"graphene_math_nodes::CoordinateValueNode",
 		],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::cut_segments::IDENTIFIER,
+		aliases: &["graphene_core::vector::SplitSegmentsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::cut_path::IDENTIFIER,
+		aliases: &["graphene_core::vector::SplitPathNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::vec_2_to_point::IDENTIFIER,
+		aliases: &["graphene_core::vector::PositionToPointNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::color_value::IDENTIFIER,
@@ -223,8 +272,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::ops::SomeNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::debug::unwrap::IDENTIFIER,
-		aliases: &["graphene_core::ops::UnwrapNode"],
+		node: graphene_std::debug::unwrap_option::IDENTIFIER,
+		aliases: &["graphene_core::ops::UnwrapNode", "graphene_core::debug::UnwrapNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::debug::clone::IDENTIFIER,
@@ -251,7 +300,24 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::vector::auto_tangents::IDENTIFIER,
 		aliases: &["graphene_core::vector::GenerateHandlesNode", "graphene_core::vector::RemoveHandlesNode"],
 	},
-	// raster::adjustments
+	// graphene_raster_nodes::blending_nodes
+	NodeReplacement {
+		node: graphene_std::raster_nodes::blending_nodes::blend::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::BlendNode",
+			"graphene_core::raster::adjustments::BlendNode",
+			"graphene_core::raster::BlendNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::blending_nodes::color_overlay::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::ColorOverlayNode",
+			"graphene_core::raster::adjustments::ColorOverlayNode",
+			"graphene_raster_nodes::generate_curves::ColorOverlayNode",
+		],
+	},
+	// graphene_raster_nodes::adjustments
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::luminance::IDENTIFIER,
 		aliases: &["graphene_core::raster::adjustments::LuminanceNode", "graphene_core::raster::LuminanceNode"],
@@ -293,20 +359,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::raster::adjustments::ThresholdNode", "graphene_core::raster::ThresholdNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::adjustments::blend::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::BlendNode", "graphene_core::raster::BlendNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::raster_nodes::adjustments::blend_color_pair::IDENTIFIER,
-		aliases: &["graphene_core::raster::BlendColorPairNode"],
-	},
-	// this node doesn't seem to exist?
-	// (graphene_std::raster_nodes::adjustments::blend_color::IDENTIFIER, &["graphene_core::raster::adjustments::BlendColorsNode","graphene_core::raster::BlendColorsNode"]),
-	NodeReplacement {
-		node: graphene_std::raster_nodes::adjustments::gradient_map::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::GradientMapNode", "graphene_core::raster::GradientMapNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::vibrance::IDENTIFIER,
 		aliases: &["graphene_core::raster::adjustments::VibranceNode", "graphene_core::raster::VibranceNode"],
 	},
@@ -326,11 +378,16 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::raster_nodes::adjustments::exposure::IDENTIFIER,
 		aliases: &["graphene_core::raster::adjustments::ExposureNode", "graphene_core::raster::ExposureNode"],
 	},
+	// graphene_raster_nodes::*
 	NodeReplacement {
-		node: graphene_std::raster_nodes::adjustments::color_overlay::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::ColorOverlayNode", "graphene_raster_nodes::generate_curves::ColorOverlayNode"],
+		node: graphene_std::raster_nodes::gradient_map::gradient_map::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::gradient_map::GradientMapNode",
+			"graphene_raster_nodes::adjustments::GradientMapNode",
+			"graphene_core::raster::adjustments::GradientMapNode",
+			"graphene_core::raster::GradientMapNode",
+		],
 	},
-	// raster
 	NodeReplacement {
 		node: graphene_std::raster_nodes::generate_curves::generate_curves::IDENTIFIER,
 		aliases: &["graphene_core::raster::adjustments::GenerateCurvesNode"],
@@ -369,7 +426,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::image_value::IDENTIFIER,
-		aliases: &["graphene_std::raster::ImageValueNode"],
+		aliases: &["graphene_std::raster::ImageValueNode", "graphene_std::raster::ImageNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER,
@@ -438,6 +495,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::path_bool::boolean_operation::IDENTIFIER,
 		aliases: &["graphene_std::vector::BooleanOperationNode"],
 	},
+	NodeReplacement {
+		node: graphene_std::vector::path_modify::IDENTIFIER,
+		aliases: &["graphene_core::vector::vector_data::modification::PathModifyNode"],
+	},
 	// brush
 	NodeReplacement {
 		node: graphene_std::brush::brush::brush_stamp_generator::IDENTIFIER,
@@ -499,7 +560,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				let mut default_template = NodeTemplate::default();
 				default_template.document_node.implementation = DocumentNodeImplementation::ProtoNode(new.clone());
 				document.network_interface.replace_implementation(node_id, &network_path, &mut default_template);
-				document.network_interface.set_manual_compostion(node_id, &network_path, Some(graph_craft::Type::Generic("T".into())));
+				document.network_interface.set_call_argument(node_id, &network_path, graph_craft::Type::Generic("T".into()));
 			}
 		}
 	}
@@ -524,11 +585,11 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	// Upgrade old nodes to use `Context` instead of `()` or `Footprint` for manual composition
-	if node.manual_composition == Some(graph_craft::concrete!(())) || node.manual_composition == Some(graph_craft::concrete!(graphene_std::transform::Footprint)) {
+	// Upgrade old nodes to use `Context` instead of `()` or `Footprint` as their call argument
+	if node.call_argument == graph_craft::concrete!(()) || node.call_argument == graph_craft::concrete!(graphene_std::transform::Footprint) {
 		document
 			.network_interface
-			.set_manual_compostion(node_id, network_path, graph_craft::concrete!(graphene_std::Context).into());
+			.set_call_argument(node_id, network_path, graph_craft::concrete!(graphene_std::Context).into());
 	}
 
 	// Only nodes that have not been modified and still refer to a definition can be updated
@@ -573,17 +634,17 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		}
 
-		// Obtain the document node for the given node ID, extract the vector points, and create vector data from the list of points
+		// Obtain the document node for the given node ID, extract the vector points, and create a Vector path from the list of points
 		let node = document.network_interface.document_node(node_id, network_path)?;
 		let Some(TaggedValue::VecDVec2(points)) = node.inputs.get(1).and_then(|tagged_value| tagged_value.as_value()) else {
 			log::error!("The old Spline node's input at index 1 is not a TaggedValue::VecDVec2");
 			return None;
 		};
-		let vector_data = VectorData::from_subpath(Subpath::from_anchors_linear(points.to_vec(), false));
+		let vector = Vector::from_subpath(Subpath::from_anchors_linear(points.to_vec(), false));
 
-		// Retrieve the output connectors linked to the "Spline" node's output port
+		// Retrieve the output connectors linked to the "Spline" node's output connector
 		let Some(spline_outputs) = document.network_interface.outward_wires(network_path)?.get(&OutputConnector::node(*node_id, 0)).cloned() else {
-			log::error!("Vec of InputConnector Spline node is connected to its output port 0.");
+			log::error!("Vec of InputConnector Spline node is connected to its output connector 0.");
 			return None;
 		};
 
@@ -593,13 +654,13 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		};
 
-		// Get the "Path" node definition and fill it in with the vector data and default vector modification
+		// Get the "Path" node definition and fill it in with the Vector path and default vector modification
 		let Some(path_node_type) = resolve_document_node_type("Path") else {
 			log::error!("Path node does not exist.");
 			return None;
 		};
 		let path_node = path_node_type.node_template_input_override([
-			Some(NodeInput::value(TaggedValue::VectorData(VectorDataTable::new(vector_data)), true)),
+			Some(NodeInput::value(TaggedValue::Vector(Table::new_from_element(vector)), true)),
 			Some(NodeInput::value(TaggedValue::VectorModification(Default::default()), false)),
 		]);
 
@@ -628,14 +689,14 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// Reposition the new "Path" node with an offset relative to the original "Spline" node's position
 		document.network_interface.shift_node(&new_path_id, node_position + IVec2::new(-7, 0), network_path);
 
-		// Redirect each output connection from the old node to the new "Spline" node's output port
+		// Redirect each output connection from the old node to the new "Spline" node's output connector
 		for input_connector in spline_outputs {
 			document.network_interface.set_input(&input_connector, NodeInput::node(new_spline_id, 0), network_path);
 		}
 	}
 
 	// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
-	if reference == "Text" && inputs_count != 10 {
+	if reference == "Text" && inputs_count != 11 {
 		let mut template = resolve_document_node_type(reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
@@ -691,8 +752,17 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		);
 		document.network_interface.set_input(
 			&InputConnector::node(*node_id, 9),
-			if inputs_count >= 10 {
+			if inputs_count >= 11 {
 				old_inputs[9].clone()
+			} else {
+				NodeInput::value(TaggedValue::TextAlign(TextAlign::default()), false)
+			},
+			network_path,
+		);
+		document.network_interface.set_input(
+			&InputConnector::node(*node_id, 10),
+			if inputs_count >= 11 {
+				old_inputs[10].clone()
 			} else {
 				NodeInput::value(TaggedValue::Bool(false), false)
 			},
@@ -765,7 +835,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[3].clone(), network_path);
 	}
 
-	// Upgrade artboard name being passed as hidden value input to "To Artboard"
+	// Upgrade artboard name being passed as hidden value input to "Create Artboard"
 	if reference == "Artboard" && reset_node_definitions_on_open {
 		let label = document.network_interface.display_name(node_id, network_path);
 		document
@@ -1022,8 +1092,8 @@ mod tests {
 			*hashmap.entry(node.node.clone()).or_default() += 1;
 		});
 		let duplicates = hashmap.iter().filter(|(_, count)| **count > 1).map(|(node, _)| &node.name).collect::<Vec<_>>();
-		if duplicates.len() > 0 {
-			panic!("Duplicate entries in `NODE_REPLACEMENTS`: {:?}", duplicates);
+		if !duplicates.is_empty() {
+			panic!("Duplicate entries in `NODE_REPLACEMENTS`: {duplicates:?}");
 		}
 	}
 }

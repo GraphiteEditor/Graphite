@@ -63,20 +63,29 @@ new_key_type! {
 //
 // SPDX-License-Identifier: MIT
 
-use crate::aabb::{Aabb, bounding_box_around_point, bounding_box_max_extent, merge_bounding_boxes};
+use crate::aabb::{Aabb, bounding_box_max_extent, extend_bounding_box, merge_bounding_boxes};
 use crate::epsilons::Epsilons;
+use crate::grid::{BitVec, Grid};
 use crate::intersection_path_segment::{path_segment_intersection, segments_equal};
 use crate::path::Path;
 use crate::path_cubic_segment_self_intersection::path_cubic_segment_self_intersection;
 use crate::path_segment::PathSegment;
 #[cfg(feature = "logging")]
 use crate::path_to_path_data;
-use crate::quad_tree::QuadTree;
-use glam::DVec2;
+
+use glam::{BVec2, DVec2, I64Vec2};
+use roots::{Roots, find_roots_cubic};
+use rustc_hash::FxHashMap as HashMap;
+use rustc_hash::FxHashSet as HashSet;
 use slotmap::{SlotMap, new_key_type};
+use smallvec::SmallVec;
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
 use std::fmt::Display;
+
+fn new_hash_map<K, V>(capacity: usize) -> HashMap<K, V> {
+	HashMap::with_capacity_and_hasher(capacity, Default::default())
+}
 
 /// Represents the types of boolean operations that can be performed on paths.
 #[derive(Debug, Clone, Copy)]
@@ -128,9 +137,6 @@ pub enum FillRule {
 	EvenOdd,
 }
 
-const INTERSECTION_TREE_DEPTH: usize = 8;
-const POINT_TREE_DEPTH: usize = 8;
-
 pub const EPS: Epsilons = Epsilons {
 	point: 1e-5,
 	linear: 1e-4,
@@ -153,7 +159,7 @@ pub struct MajorGraphEdge {
 pub struct MajorGraphVertex {
 	#[cfg_attr(not(feature = "logging"), expect(dead_code))]
 	pub point: DVec2,
-	outgoing_edges: Vec<MajorEdgeKey>,
+	outgoing_edges: SmallVec<[MajorEdgeKey; 4]>,
 }
 
 /// Represents the initial graph structure used in boolean operations.
@@ -167,7 +173,7 @@ struct MajorGraph {
 
 #[derive(Debug, Clone, PartialEq)]
 struct MinorGraphEdge {
-	segments: Vec<PathSegment>,
+	segments: SmallVec<[PathSegment; 4]>,
 	parent: u8,
 	incident_vertices: [MinorVertexKey; 2],
 	direction_flag: Direction,
@@ -215,7 +221,7 @@ impl PartialOrd for MinorGraphEdge {
 
 #[derive(Debug, Clone, Default)]
 struct MinorGraphVertex {
-	outgoing_edges: Vec<MinorEdgeKey>,
+	outgoing_edges: SmallVec<[MinorEdgeKey; 8]>,
 }
 
 #[derive(Debug, Clone)]
@@ -244,6 +250,23 @@ struct DualGraphHalfEdge {
 	twin: Option<DualEdgeKey>,
 }
 
+impl DualGraphHalfEdge {
+	fn start_segment(&self) -> PathSegment {
+		let segment = self.segments[0];
+		match self.direction_flag {
+			Direction::Forward => segment,
+			Direction::Backwards => segment.reverse(),
+		}
+	}
+
+	fn outer_boundnig_box(&self) -> Aabb {
+		self.segments
+			.iter()
+			.map(|seg| seg.approx_bounding_box())
+			.fold(Default::default(), |old, new| merge_bounding_boxes(&old, &new))
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct DualGraphVertex {
 	incident_edges: Vec<DualEdgeKey>,
@@ -258,6 +281,8 @@ struct DualGraphComponent {
 	edges: Vec<DualEdgeKey>,
 	vertices: Vec<DualVertexKey>,
 	outer_face: Option<DualVertexKey>,
+	inner_bb: Aabb,
+	outer_bb: Aabb,
 }
 
 /// Represents the dual graph of the MinorGraph.
@@ -334,7 +359,7 @@ fn dual_graph_to_dot(components: &[DualGraphComponent], edges: &SlotMap<DualEdge
 
 fn segment_to_edge(parent: u8) -> impl Fn(&PathSegment) -> Option<MajorGraphEdgeStage1> {
 	move |seg| {
-		if bounding_box_max_extent(&seg.bounding_box()) < EPS.point {
+		if bounding_box_max_extent(&seg.bounding_box()) < EPS.point / 2. {
 			return None;
 		}
 
@@ -404,31 +429,42 @@ fn split_at_self_intersections(edges: &mut Vec<MajorGraphEdgeStage1>) {
 /// A tuple containing:
 /// * A vector of split edges (MajorGraphEdgeStage2).
 /// * An optional overall bounding box (AaBb) for all edges.
-fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdgeStage2>, Option<Aabb>) {
+fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> Vec<MajorGraphEdgeStage1> {
 	// Step 1: Add bounding boxes to edges
-	let with_bounding_box: Vec<MajorGraphEdgeStage2> = edges.iter().map(|(seg, parent)| (*seg, *parent, seg.bounding_box())).collect();
-
+	let with_bounding_box: Vec<MajorGraphEdgeStage2> = edges.iter().map(|(seg, parent)| (*seg, *parent, seg.approx_bounding_box())).collect();
 	// Step 2: Calculate total bounding box
-	let total_bounding_box = with_bounding_box.iter().fold(None, |acc, (_, _, bb)| Some(merge_bounding_boxes(acc, bb)));
+	let total_bounding_box = with_bounding_box.iter().fold(Default::default(), |acc, (_, _, bb)| merge_bounding_boxes(&acc, bb));
 
-	let total_bounding_box = match total_bounding_box {
-		Some(bb) => bb,
-		None => return (Vec::new(), None),
-	};
+	let max_extent = bounding_box_max_extent(&total_bounding_box);
+	let cell_size = max_extent / (edges.len() as f64).sqrt();
+
+	// Step 3: Create grid for efficient intersection checks
+	let mut grid = Grid::new(cell_size, edges.len());
 
 	// Step 3: Create edge tree for efficient intersection checks
-	let mut edge_tree = QuadTree::new(total_bounding_box, INTERSECTION_TREE_DEPTH, 8);
+	// let mut edge_tree = QuadTree::new(total_bounding_box, INTERSECTION_TREE_DEPTH, 16);
+	// let mut rtree = crate::util::rtree::RTree::new(24);
 
-	let mut splits_per_edge: HashMap<usize, Vec<f64>> = HashMap::new();
+	let mut splits_per_edge: Vec<Vec<f64>> = vec![Vec::new(); edges.len()];
 
-	fn add_split(splits_per_edge: &mut HashMap<usize, Vec<f64>>, i: usize, t: f64) {
-		splits_per_edge.entry(i).or_default().push(t);
+	fn add_split(splits_per_edge: &mut [Vec<f64>], i: usize, t: f64) {
+		splits_per_edge[i].push(t);
 	}
+	// let mut candidates = Vec::with_capacity(8);
+	let mut candidates = BitVec::new(edges.len());
 
 	// Step 4: Find intersections and record split points
 	for (i, edge) in with_bounding_box.iter().enumerate() {
-		let candidates = edge_tree.find(&edge.2);
-		for &j in &candidates {
+		// let candidates = edge_tree.find(&edge.2);
+		// let mut quad_candidates: Vec<_> = quad_candidates.into_iter().collect();
+		// quad_candidates.sort_unstable();
+		// let mut candidates = rtree.query(&edge.2);
+		// candidates.sort_unstable();
+		// assert_eq!(candidates, quad_candidates);
+		candidates.clear();
+		grid.query(&edge.2, &mut candidates);
+
+		for j in candidates.iter_set_bits() {
 			let candidate: &(PathSegment, u8) = &edges[j];
 			let include_endpoints = edge.1 != candidate.1 || !(candidate.0.end().abs_diff_eq(edge.0.start(), EPS.point) || candidate.0.start().abs_diff_eq(edge.0.end(), EPS.point));
 			let intersection = path_segment_intersection(&edge.0, &candidate.0, include_endpoints, &EPS);
@@ -437,14 +473,16 @@ fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdge
 				add_split(&mut splits_per_edge, j, t1);
 			}
 		}
-		edge_tree.insert(edge.2, i);
+		grid.insert(&edge.2, i);
+		// edge_tree.insert(edge.2, i);
+		// rtree.insert(edge.2, i);
 	}
 
 	// Step 5: Apply splits to create new edges
 	let mut new_edges = Vec::new();
 
 	for (i, (seg, parent, _)) in with_bounding_box.into_iter().enumerate() {
-		if let Some(splits) = splits_per_edge.get(&i) {
+		if let Some(splits) = splits_per_edge.get(i) {
 			let mut splits = splits.clone();
 			splits.sort_by(|a, b| a.partial_cmp(b).unwrap());
 			let mut tmp_seg = seg;
@@ -462,16 +500,16 @@ fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdge
 					continue;
 				}
 				let (seg1, seg2) = tmp_seg.split_at(tt);
-				new_edges.push((seg1, parent, seg1.bounding_box()));
+				new_edges.push((seg1, parent));
 				tmp_seg = seg2;
 			}
-			new_edges.push((tmp_seg, parent, tmp_seg.bounding_box()));
+			new_edges.push((tmp_seg, parent));
 		} else {
-			new_edges.push((seg, parent, seg.bounding_box()));
+			new_edges.push((seg, parent));
 		}
 	}
 
-	(new_edges, Some(total_bounding_box))
+	new_edges
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -507,30 +545,43 @@ impl Direction {
 	}
 }
 
-// TODO:(@TrueDoctor) Optimize this by rounding each vertex up and down and then inserting them in a hashmap. This should remove the need for bbox calculations and the quad tree
-fn find_vertices(edges: &[MajorGraphEdgeStage2], bounding_box: Aabb) -> MajorGraph {
-	let mut vertex_tree = QuadTree::new(bounding_box, POINT_TREE_DEPTH, 8);
+const ROUNDING_FACTOR: f64 = 1.0 / (2. * EPS.point);
+
+fn round_point(point: DVec2) -> I64Vec2 {
+	(point * ROUNDING_FACTOR).round().as_i64vec2()
+}
+
+type Edges = SmallVec<[(PathSegment, u8, MajorEdgeKey, MajorEdgeKey); 2]>;
+
+fn find_vertices(edges: &[MajorGraphEdgeStage1]) -> MajorGraph {
 	let mut graph = MajorGraph {
-		edges: SlotMap::with_key(),
-		vertices: SlotMap::with_key(),
+		edges: SlotMap::with_capacity_and_key(edges.len() * 2),
+		vertices: SlotMap::with_capacity_and_key(edges.len()),
 	};
 
-	let mut parents: HashMap<MajorEdgeKey, u8> = HashMap::new();
+	let mut vertex_pair_id_to_edges: HashMap<_, Edges> = new_hash_map(edges.len());
+	let mut vertex_hashmap: HashMap<I64Vec2, MajorVertexKey> = new_hash_map(edges.len() * 2);
 
-	let mut vertex_pair_id_to_edges: HashMap<_, Vec<(MajorGraphEdgeStage2, MajorEdgeKey, MajorEdgeKey)>> = HashMap::new();
-
-	for (seg, parent, bounding_box) in edges {
+	for (seg, parent) in edges {
 		let mut get_vertex = |point: DVec2| -> MajorVertexKey {
-			let box_around_point = bounding_box_around_point(point, EPS.point);
-			if let Some(&existing_vertex) = vertex_tree.find(&box_around_point).iter().next() {
-				existing_vertex
-			} else {
-				let vertex_key = graph.vertices.insert(MajorGraphVertex { point, outgoing_edges: Vec::new() });
-				vertex_tree.insert(box_around_point, vertex_key);
-				vertex_key
+			let rounded = round_point(point);
+			for dx in -1..=1 {
+				for dy in -1..=1 {
+					let offset = I64Vec2::new(dx, dy);
+					if let Some(&vertex) = vertex_hashmap.get(&(rounded + offset)) {
+						return vertex;
+					}
+				}
 			}
-		};
 
+			let vertex_key = graph.vertices.insert(MajorGraphVertex {
+				point,
+				outgoing_edges: SmallVec::new(),
+			});
+			vertex_hashmap.insert(rounded, vertex_key);
+			vertex_key
+		};
+		// we should subtract the center instead here
 		let start_vertex = get_vertex(seg.start());
 		let end_vertex = get_vertex(seg.end());
 
@@ -556,10 +607,12 @@ fn find_vertices(edges: &[MajorGraphEdgeStage2], bounding_box: Aabb) -> MajorGra
 		if let Some(existing_edges) = vertex_pair_id_to_edges.get(&vertex_pair_id) {
 			if let Some(existing_edge) = existing_edges
 				.iter()
-				.find(|(other_seg, ..)| segments_equal(seg, &other_seg.0, EPS.point) || segments_equal(&seg.reverse(), &other_seg.0, EPS.point))
+				.find(|(other_seg, ..)| segments_equal(seg, other_seg, EPS.point) || segments_equal(&seg.reverse(), other_seg, EPS.point))
 			{
-				*parents.entry(existing_edge.1).or_default() |= parent;
-				*parents.entry(existing_edge.2).or_default() |= parent;
+				if existing_edge.1 != *parent {
+					graph.edges[existing_edge.2].parent = 0b11;
+					graph.edges[existing_edge.3].parent = 0b11;
+				}
 				continue;
 			}
 		}
@@ -585,13 +638,7 @@ fn find_vertices(edges: &[MajorGraphEdgeStage2], bounding_box: Aabb) -> MajorGra
 		graph.vertices[start_vertex].outgoing_edges.push(fwd_edge_key);
 		graph.vertices[end_vertex].outgoing_edges.push(bwd_edge_key);
 
-		vertex_pair_id_to_edges
-			.entry(vertex_pair_id)
-			.or_default()
-			.push(((*seg, *parent, *bounding_box), fwd_edge_key, bwd_edge_key));
-	}
-	for (edge_key, parent) in parents {
-		graph.edges[edge_key].parent |= parent;
+		vertex_pair_id_to_edges.entry(vertex_pair_id).or_default().push((*seg, *parent, fwd_edge_key, bwd_edge_key));
 	}
 
 	graph
@@ -624,11 +671,14 @@ fn get_order(vertex: &MajorGraphVertex) -> usize {
 ///
 /// A new MinorGraph representing the simplified structure.
 fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
-	let mut new_edges = SlotMap::with_key();
-	let mut new_vertices = SlotMap::with_key();
-	let mut to_minor_vertex = HashMap::new();
-	let mut id_to_edge = HashMap::new();
-	let mut visited = HashSet::new();
+	let vertex_count = major_graph.vertices.len();
+	let edge_count = major_graph.edges.len();
+	let mut new_edges = SlotMap::with_capacity_and_key(edge_count / 2);
+	let mut new_vertices = SlotMap::with_capacity_and_key(vertex_count.ilog2() as usize + 2);
+	let mut to_minor_vertex = new_hash_map(vertex_count);
+	let mut id_to_edge = new_hash_map(edge_count);
+	// merge with to_minor_vertex
+	let mut visited = HashSet::with_capacity_and_hasher(vertex_count, Default::default());
 
 	// Handle components that are not cycles
 	for (major_vertex_key, vertex) in &major_graph.vertices {
@@ -638,10 +688,10 @@ fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
 		}
 		let start_vertex = *to_minor_vertex
 			.entry(major_vertex_key)
-			.or_insert_with(|| new_vertices.insert(MinorGraphVertex { outgoing_edges: Vec::new() }));
+			.or_insert_with(|| new_vertices.insert(MinorGraphVertex { outgoing_edges: SmallVec::new() }));
 
 		for &start_edge_key in &vertex.outgoing_edges {
-			let mut segments = Vec::new();
+			let mut segments = SmallVec::new();
 			let mut edge_key = start_edge_key;
 			let mut edge = &major_graph.edges[edge_key];
 
@@ -660,7 +710,7 @@ fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
 
 			let end_vertex = *to_minor_vertex
 				.entry(edge.incident_vertices[1])
-				.or_insert_with(|| new_vertices.insert(MinorGraphVertex { outgoing_edges: Vec::new() }));
+				.or_insert_with(|| new_vertices.insert(MinorGraphVertex { outgoing_edges: SmallVec::new() }));
 			assert!(major_graph.edges[start_edge_key].twin.is_some());
 			assert!(edge.twin.is_some());
 
@@ -693,7 +743,7 @@ fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
 		let mut edge_key = vertex.outgoing_edges[0];
 		let mut edge = &major_graph.edges[edge_key];
 		let mut cycle = MinorGraphCycle {
-			segments: Vec::new(),
+			segments: Vec::with_capacity(4),
 			parent: edge.parent,
 			direction_flag: edge.direction_flag,
 		};
@@ -721,8 +771,10 @@ fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
 fn remove_dangling_edges(graph: &mut MinorGraph) {
 	// Basically DFS for each parent with BFS number
 	fn walk(parent: u8, graph: &MinorGraph) -> HashSet<MinorVertexKey> {
-		let mut kept_vertices = HashSet::new();
-		let mut vertex_to_level = HashMap::new();
+		// merge
+		let vertex_count = graph.vertices.len();
+		let mut kept_vertices = HashSet::with_capacity_and_hasher(vertex_count, Default::default());
+		let mut vertex_to_level = new_hash_map(vertex_count);
 
 		fn visit(
 			vertex: MinorVertexKey,
@@ -768,8 +820,8 @@ fn remove_dangling_edges(graph: &mut MinorGraph) {
 	graph.vertices.retain(|k, _| kept_vertices_a.contains(&k) || kept_vertices_b.contains(&k));
 
 	for vertex in graph.vertices.values_mut() {
-		vertex.outgoing_edges.retain(|&edge_key| {
-			let edge = &graph.edges[edge_key];
+		vertex.outgoing_edges.retain(|edge_key| {
+			let edge = &graph.edges[*edge_key];
 			(edge.parent & 1 == 1 && kept_vertices_a.contains(&edge.incident_vertices[0]) && kept_vertices_a.contains(&edge.incident_vertices[1]))
 				|| (edge.parent & 2 == 2 && kept_vertices_b.contains(&edge.incident_vertices[0]) && kept_vertices_b.contains(&edge.incident_vertices[1]))
 		});
@@ -786,7 +838,7 @@ fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 		if vertex.outgoing_edges.len() > 2 {
 			vertex.outgoing_edges.sort_by(|&a, &b| graph.edges[a].partial_cmp(&graph.edges[b]).unwrap());
 			if cfg!(feature = "logging") {
-				eprintln!("Outgoing edges for {:?}:", vertex_key);
+				eprintln!("Outgoing edges for {vertex_key:?}:");
 				for &edge_key in &vertex.outgoing_edges {
 					let edge = &graph.edges[edge_key];
 					let angle = edge.start_segment().start_angle();
@@ -797,6 +849,7 @@ fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 	}
 }
 
+#[cfg(feature = "logging")]
 fn face_to_polygon(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>) -> Vec<DVec2> {
 	const CNT: usize = 3;
 
@@ -829,6 +882,7 @@ fn line_segment_intersects_horizontal_ray(a: DVec2, b: DVec2, point: DVec2) -> b
 	x >= point.x
 }
 
+#[cfg(feature = "logging")]
 fn compute_point_winding(polygon: &[DVec2], tested_point: DVec2) -> i32 {
 	if polygon.len() <= 2 {
 		return 0;
@@ -844,6 +898,7 @@ fn compute_point_winding(polygon: &[DVec2], tested_point: DVec2) -> i32 {
 	winding
 }
 
+#[cfg(feature = "logging")]
 fn compute_winding(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>) -> Option<i32> {
 	let polygon = face_to_polygon(face, edges);
 
@@ -862,28 +917,49 @@ fn compute_winding(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGrap
 }
 
 fn compute_signed_area(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>) -> f64 {
-	let polygon = face_to_polygon(face, edges);
-	if polygon.len() <= 4 {
-		return -1.;
+	const CNT: usize = 3;
+	let mut area = 0.0;
+	let mut prev_point: Option<DVec2> = None;
+	let mut start_point = None;
+	let mut point_count = 0;
+
+	for &edge_key in &face.incident_edges {
+		let edge = &edges[edge_key];
+		for seg in &edge.segments {
+			for i in 0..CNT {
+				let t0 = i as f64 / CNT as f64;
+				let t = if edge.direction_flag.forward() { t0 } else { 1. - t0 };
+				let current_point = seg.sample_at(t);
+
+				if let Some(prev) = prev_point {
+					area += prev.x * current_point.y;
+					area -= current_point.x * prev.y;
+				} else {
+					start_point = Some(current_point);
+				}
+
+				prev_point = Some(current_point);
+				point_count += 1;
+			}
+		}
+	}
+
+	if point_count <= 4 {
+		return -f64::EPSILON;
+	}
+
+	// Close the polygon
+	if let (Some(start), Some(end)) = (start_point, prev_point) {
+		area += end.x * start.y;
+		area -= start.x * end.y;
 	}
 
 	#[cfg(feature = "logging")]
-	eprintln!("vertex: {:?}", face);
-	#[cfg(feature = "logging")]
-	for point in &polygon {
-		eprintln!("{}, {}", point.x, point.y);
-	}
-	let mut area = 0.;
-
-	for i in 0..polygon.len() {
-		let a = polygon[i];
-		let b = polygon[(i + 1) % polygon.len()];
-		area += a.x * b.y;
-		area -= b.x * a.y;
+	{
+		eprintln!("vertex: {:?}", face);
+		eprintln!("winding: {}", area);
 	}
 
-	#[cfg(feature = "logging")]
-	eprintln!("winding: {}", area);
 	area
 }
 
@@ -912,8 +988,9 @@ fn compute_signed_area(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, Dual
 /// operation cannot be completed successfully.
 fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 	let mut new_vertices: Vec<DualVertexKey> = Vec::new();
-	let mut minor_to_dual_edge: HashMap<MinorEdgeKey, DualEdgeKey> = HashMap::new();
-	let mut dual_edges = SlotMap::with_key();
+	let edge_count = minor_graph.edges.len();
+	let mut minor_to_dual_edge: HashMap<MinorEdgeKey, DualEdgeKey> = new_hash_map(edge_count);
+	let mut dual_edges = SlotMap::with_capacity_and_key(edge_count);
 	let mut dual_vertices = SlotMap::with_key();
 
 	for (start_edge_key, start_edge) in &minor_graph.edges {
@@ -935,7 +1012,7 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			let twin_dual_key = minor_to_dual_edge.get(&twin).copied();
 
 			let new_edge_key = dual_edges.insert(DualGraphHalfEdge {
-				segments: edge.segments.clone(),
+				segments: edge.segments.to_vec(),
 				parent: edge.parent,
 				incident_vertex: face_key,
 				direction_flag: edge.direction_flag,
@@ -990,9 +1067,9 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 		new_vertices.push(outer_face_key);
 	}
 
-	let mut components = Vec::new();
-	let mut visited_vertices = HashSet::new();
-	let mut visited_edges = HashSet::new();
+	let mut components = Vec::with_capacity(12);
+	let mut visited_vertices = HashSet::with_capacity_and_hasher(dual_vertices.len(), Default::default());
+	let mut visited_edges = HashSet::with_capacity_and_hasher(edge_count, Default::default());
 
 	if cfg!(feature = "logging") {
 		eprintln!("faces: {}, dual-edges: {}, cycles: {}", new_vertices.len(), dual_edges.len(), minor_graph.cycles.len())
@@ -1046,14 +1123,17 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 		#[cfg(feature = "logging")]
 		eprintln!("component_vertices: {}", component_vertices.len());
 
+		#[cfg(feature = "logging")]
 		let windings: Option<Vec<_>> = component_vertices
 			.iter()
 			.map(|face_key| compute_winding(&dual_vertices[*face_key], &dual_edges).map(|w| (face_key, w)))
 			.collect();
-		let Some(windings) = windings else {
+		#[cfg(feature = "logging")]
+		let Some(_) = windings else {
 			return Err(BooleanError::NoEarInPolygon);
 		};
 
+		#[cfg(feature = "logging")]
 		let areas: Vec<_> = component_vertices
 			.iter()
 			.map(|face_key| (face_key, compute_signed_area(&dual_vertices[*face_key], &dual_edges)))
@@ -1070,31 +1150,38 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 						vertices: component_vertices.clone(),
 						edges: component_edges.clone(),
 						outer_face: None,
+						inner_bb: Default::default(),
+						outer_bb: Default::default(),
 					}],
 					&dual_edges,
 				)
 			);
 		}
 
-		let mut count = windings.iter().filter(|(_, winding)| winding < &0).count();
-		let mut reverse_winding = false;
-		// If the paths are reversed use positive winding as outer face
-		if windings.len() > 2 && count == windings.len() - 1 {
-			count = 1;
-			reverse_winding = true;
-		}
-		let outer_face_key = if count != 1 {
-			#[cfg(feature = "logging")]
-			eprintln!("Found multiple outer faces: {areas:?}, falling back to area calculation");
-			let (key, _) = *areas.iter().max_by_key(|(_, area)| (area.abs() * 1000.) as u64).unwrap();
-			*key
-		} else {
-			*windings
-				.iter()
-				.find(|&&(&_, ref winding)| (winding < &0) ^ reverse_winding)
-				.expect("No outer face of a component found.")
-				.0
-		};
+		let areas: Vec<_> = component_vertices
+			.iter()
+			.map(|face_key| (face_key, (compute_signed_area(&dual_vertices[*face_key], &dual_edges) * 1000.) as i64))
+			.collect();
+		#[cfg(feature = "logging")]
+		eprintln!("Found multiple outer faces: {areas:?}, falling back to area calculation");
+		let (&outer_face_key, _) = *areas
+			.iter()
+			.max_by(|(_, a1), (_, a2)| match a1.abs().cmp(&a2.abs()) {
+				Ordering::Equal => a1.cmp(a2),
+				ord => ord,
+			})
+			.unwrap();
+		let inner_bb = dual_vertices[outer_face_key]
+			.incident_edges
+			.iter()
+			.map(|edge_key| dual_edges[*edge_key].start_segment().start())
+			.fold(Default::default(), |bbox, point| extend_bounding_box(Some(bbox), point));
+		let outer_bb = dual_vertices[outer_face_key]
+			.incident_edges
+			.iter()
+			.map(|edge_key| dual_edges[*edge_key].outer_boundnig_box())
+			.reduce(|acc, new| merge_bounding_boxes(&acc, &new))
+			.unwrap_or_default();
 		#[cfg(feature = "logging")]
 		dbg!(outer_face_key);
 
@@ -1102,6 +1189,8 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			vertices: component_vertices,
 			edges: component_edges,
 			outer_face: Some(outer_face_key),
+			inner_bb,
+			outer_bb,
 		});
 	}
 
@@ -1122,6 +1211,9 @@ fn get_next_edge(edge_key: MinorEdgeKey, graph: &MinorGraph) -> MinorEdgeKey {
 }
 
 fn test_inclusion(a: &DualGraphComponent, b: &DualGraphComponent, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>, vertices: &SlotMap<DualVertexKey, DualGraphVertex>) -> Option<DualVertexKey> {
+	if a.inner_bb.min().cmpge(b.outer_bb.min()) & a.inner_bb.max().cmple(b.outer_bb.max()) != BVec2::TRUE {
+		return None;
+	}
 	let tested_point = edges[a.edges[0]].segments[0].start();
 	for (face_key, face) in b.vertices.iter().map(|&key| (key, &vertices[key])) {
 		if Some(face_key) == b.outer_face {
@@ -1141,30 +1233,86 @@ fn test_inclusion(a: &DualGraphComponent, b: &DualGraphComponent, edges: &SlotMa
 	None
 }
 fn bounding_box_intersects_horizontal_ray(bounding_box: &Aabb, point: DVec2) -> bool {
-	interval_crosses_point(bounding_box.top, bounding_box.bottom, point[1]) && bounding_box.right >= point[0]
+	bounding_box.right() >= point[0] && (bounding_box.top()..bounding_box.bottom()).contains(&point[1])
 }
 
+#[derive(Copy, Clone)]
 struct IntersectionSegment {
 	bounding_box: Aabb,
 	seg: PathSegment,
 }
 
 pub fn path_segment_horizontal_ray_intersection_count(orig_seg: &PathSegment, point: DVec2) -> usize {
-	let total_bounding_box = orig_seg.bounding_box();
-
+	let total_bounding_box = orig_seg.approx_bounding_box();
 	if !bounding_box_intersects_horizontal_ray(&total_bounding_box, point) {
 		return 0;
 	}
 
-	let mut segments = vec![IntersectionSegment {
-		bounding_box: total_bounding_box,
-		seg: *orig_seg,
-	}];
+	match orig_seg {
+		PathSegment::Cubic(..) => cubic_bezier_horizontal_ray_intersection_count(orig_seg, point),
+		_ => fallback_intersection_count(orig_seg, total_bounding_box, point),
+	}
+}
+
+fn cubic_bezier_horizontal_ray_intersection_count(cubic: &PathSegment, point: DVec2) -> usize {
+	let y = point.y;
+	let PathSegment::Cubic(p0, p1, p2, p3) = cubic else { unreachable!() };
+
+	// Transform the curve so that the horizontal line is at y = 0
+	let a = -p0.y + 3.0 * p1.y - 3.0 * p2.y + p3.y;
+	let b = 3.0 * p0.y - 6.0 * p1.y + 3.0 * p2.y;
+	let c = -3.0 * p0.y + 3.0 * p1.y;
+	let d = p0.y - y;
+
+	let roots = find_roots_cubic(a, b, c, d);
+
 	let mut count = 0;
+	match roots {
+		Roots::Three(roots) => {
+			for &t in roots.iter() {
+				if (0.0..=1.0).contains(&t) {
+					let x = cubic.sample_at(t).x;
+					if x > point.x {
+						count += 1;
+					}
+				}
+			}
+		}
+		Roots::Two(roots) => {
+			for &t in roots.iter() {
+				if (0.0..=1.0).contains(&t) {
+					let x = cubic.sample_at(t).x;
+					if x > point.x {
+						count += 1;
+					}
+				}
+			}
+		}
+		Roots::One(roots) => {
+			for &t in roots.iter() {
+				if (0.0..=1.0).contains(&t) {
+					let x = cubic.sample_at(t).x;
+					if x > point.x {
+						count += 1;
+					}
+				}
+			}
+		}
+		_ => {}
+	}
+
+	count
+}
+
+fn fallback_intersection_count(orig_seg: &PathSegment, bounding_box: Aabb, point: DVec2) -> usize {
+	// Existing implementation for non-cubic segments
+	let mut segments = vec![IntersectionSegment { bounding_box, seg: *orig_seg }];
+	let mut count = 0;
+	let mut next_segments = Vec::new();
 
 	while !segments.is_empty() {
-		let mut next_segments = Vec::new();
-		for segment in segments {
+		next_segments.clear();
+		for segment in segments.iter() {
 			if bounding_box_max_extent(&segment.bounding_box) < EPS.linear {
 				if line_segment_intersects_horizontal_ray(segment.seg.start(), segment.seg.end(), point) {
 					count += 1;
@@ -1173,7 +1321,6 @@ pub fn path_segment_horizontal_ray_intersection_count(orig_seg: &PathSegment, po
 				let split = &segment.seg.split_at(0.5);
 				let bounding_box0 = split.0.bounding_box();
 				let bounding_box1 = split.1.bounding_box();
-
 				if bounding_box_intersects_horizontal_ray(&bounding_box0, point) {
 					next_segments.push(IntersectionSegment {
 						bounding_box: bounding_box0,
@@ -1188,9 +1335,8 @@ pub fn path_segment_horizontal_ray_intersection_count(orig_seg: &PathSegment, po
 				}
 			}
 		}
-		segments = next_segments;
+		std::mem::swap(&mut next_segments, &mut segments);
 	}
-
 	count
 }
 
@@ -1216,27 +1362,27 @@ pub fn path_segment_horizontal_ray_intersection_count(orig_seg: &PathSegment, po
 /// # Returns
 ///
 /// A vector of NestingTree structures representing the top-level components and their nested subcomponents.
-fn compute_nesting_tree(DualGraph { components, vertices, edges }: &DualGraph) -> Vec<NestingTree> {
-	let mut nesting_trees = Vec::new();
+fn compute_nesting_tree(DualGraph { components, vertices, edges }: &mut DualGraph) -> Vec<NestingTree> {
+	let mut nesting_trees = Vec::with_capacity(4);
 
-	for component in components {
+	for component in components.drain(..) {
 		insert_component(&mut nesting_trees, component, edges, vertices);
 	}
 
 	nesting_trees
 }
 
-fn insert_component(trees: &mut Vec<NestingTree>, component: &DualGraphComponent, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>, vertices: &SlotMap<DualVertexKey, DualGraphVertex>) {
+fn insert_component(trees: &mut Vec<NestingTree>, component: DualGraphComponent, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>, vertices: &SlotMap<DualVertexKey, DualGraphVertex>) {
 	for tree in trees.iter_mut() {
-		if let Some(face_key) = test_inclusion(component, &tree.component, edges, vertices) {
+		if let Some(face_key) = test_inclusion(&component, &tree.component, edges, vertices) {
 			if let Some(children) = tree.outgoing_edges.get_mut(&face_key) {
 				insert_component(children, component, edges, vertices);
 			} else {
 				tree.outgoing_edges.insert(
 					face_key,
 					vec![NestingTree {
-						component: component.clone(),
-						outgoing_edges: HashMap::new(),
+						component,
+						outgoing_edges: HashMap::default(),
 					}],
 				);
 			}
@@ -1245,15 +1391,14 @@ fn insert_component(trees: &mut Vec<NestingTree>, component: &DualGraphComponent
 	}
 
 	let mut new_tree = NestingTree {
-		component: component.clone(),
-		outgoing_edges: HashMap::new(),
+		component,
+		outgoing_edges: HashMap::default(),
 	};
 
 	let mut i = 0;
 	while i < trees.len() {
 		if let Some(face_key) = test_inclusion(&trees[i].component, &new_tree.component, edges, vertices) {
-			// TODO: (@TrueDoctor) use swap remove
-			let tree = trees.remove(i);
+			let tree = trees.swap_remove(i);
 			new_tree.outgoing_edges.entry(face_key).or_default().push(tree);
 		} else {
 			i += 1;
@@ -1288,12 +1433,15 @@ fn flag_faces(
 	vertices: &SlotMap<DualVertexKey, DualGraphVertex>,
 	flags: &mut HashMap<DualVertexKey, u8>,
 ) {
+	let mut visited_faces = HashSet::default();
+	let mut face_stack = VecDeque::new();
 	for tree in nesting_trees.iter() {
 		let mut tree_stack = vec![(tree, 0, 0)];
 
 		while let Some((current_tree, a_running_count, b_running_count)) = tree_stack.pop() {
-			let mut visited_faces = HashSet::new();
-			let mut face_stack = VecDeque::new();
+			// TODO: Test if clearing is faster
+			visited_faces.clear();
+			face_stack.clear();
 
 			let outer_face_key = current_tree.component.outer_face.expect("Component doesn't have an outer face.");
 			face_stack.push_back((outer_face_key, a_running_count, b_running_count));
@@ -1346,7 +1494,7 @@ fn walk_faces<'a>(faces: &'a [DualVertexKey], edges: &SlotMap<DualEdgeKey, DualG
 	// TODO: Try using a binary search to avoid the hashset construction
 	let is_removed_edge = |edge: &DualGraphHalfEdge| face_set.contains(&edge.incident_vertex) == face_set.contains(&edges[edge.twin.unwrap()].incident_vertex);
 
-	let mut edge_to_next = HashMap::new();
+	let mut edge_to_next = HashMap::with_capacity_and_hasher(edges.len(), Default::default());
 	for face_key in faces {
 		let face = &vertices[*face_key];
 		let mut prev_edge = *face.incident_edges.last().unwrap();
@@ -1356,8 +1504,8 @@ fn walk_faces<'a>(faces: &'a [DualVertexKey], edges: &SlotMap<DualEdgeKey, DualG
 		}
 	}
 
-	let mut visited_edges = HashSet::new();
-	let mut result = Vec::new();
+	let mut visited_edges = HashSet::with_capacity_and_hasher(edges.len(), Default::default());
+	let mut result = Vec::with_capacity(edges.len());
 
 	for &face_key in faces {
 		let face = &vertices[face_key];
@@ -1544,24 +1692,23 @@ impl Display for BooleanError {
 /// - Input paths are invalid or cannot be processed.
 /// - The operation encounters an unsolvable geometric configuration.
 /// - Issues arise in determining the nesting structure of the paths.
+#[inline(never)]
 pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: FillRule, op: PathBooleanOperation) -> Result<Vec<Path>, BooleanError> {
 	let mut unsplit_edges: Vec<MajorGraphEdgeStage1> = a.iter().map(segment_to_edge(1)).chain(b.iter().map(segment_to_edge(2))).flatten().collect();
 
+	if unsplit_edges.is_empty() {
+		return Ok(Vec::new());
+	}
 	split_at_self_intersections(&mut unsplit_edges);
 
-	let (split_edges, total_bounding_box) = split_at_intersections(&unsplit_edges);
+	let split_edges = split_at_intersections(&unsplit_edges);
 
 	#[cfg(feature = "logging")]
-	for (edge, _, _) in split_edges.iter() {
+	for (edge, _) in split_edges.iter() {
 		eprintln!("{}", path_to_path_data(&vec![*edge], 0.001));
 	}
 
-	let total_bounding_box = match total_bounding_box {
-		Some(bb) => bb,
-		None => return Ok(Vec::new()), // Input geometry is empty
-	};
-
-	let major_graph = find_vertices(&split_edges, total_bounding_box);
+	let major_graph = find_vertices(&split_edges);
 
 	#[cfg(feature = "logging")]
 	eprintln!("Major graph:");
@@ -1583,33 +1730,33 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 
 	#[cfg(feature = "logging")]
 	for (key, edge) in minor_graph.edges.iter() {
-		eprintln!("{key:?}:\n{}", path_to_path_data(&edge.segments, 0.001));
+		eprintln!("{key:?}:\n{}", path_to_path_data(&edge.segments.to_vec(), 0.001));
 	}
 	#[cfg(feature = "logging")]
 	for vertex in minor_graph.vertices.values() {
-		eprintln!("{:?}", vertex);
+		eprintln!("{vertex:?}");
 	}
 	sort_outgoing_edges_by_angle(&mut minor_graph);
 	#[cfg(feature = "logging")]
 	for vertex in minor_graph.vertices.values() {
-		eprintln!("{:?}", vertex);
+		eprintln!("{vertex:?}");
 	}
 
 	for (edge_key, edge) in &minor_graph.edges {
-		assert!(minor_graph.vertices.contains_key(edge.incident_vertices[0]), "Edge {:?} has invalid start vertex", edge_key);
-		assert!(minor_graph.vertices.contains_key(edge.incident_vertices[1]), "Edge {:?} has invalid end vertex", edge_key);
-		assert!(edge.twin.is_some(), "Edge {:?} should have a twin", edge_key);
+		assert!(minor_graph.vertices.contains_key(edge.incident_vertices[0]), "Edge {edge_key:?} has invalid start vertex");
+		assert!(minor_graph.vertices.contains_key(edge.incident_vertices[1]), "Edge {edge_key:?} has invalid end vertex");
+		assert!(edge.twin.is_some(), "Edge {edge_key:?} should have a twin");
 		let twin = &minor_graph.edges[edge.twin.unwrap()];
-		assert_eq!(twin.twin.unwrap(), edge_key, "Twin relationship should be symmetrical for edge {:?}", edge_key);
+		assert_eq!(twin.twin.unwrap(), edge_key, "Twin relationship should be symmetrical for edge {edge_key:?}");
 	}
 
-	let dual_graph = compute_dual(&minor_graph)?;
+	let mut dual_graph = compute_dual(&minor_graph)?;
 
-	let nesting_trees = compute_nesting_tree(&dual_graph);
+	let nesting_trees = compute_nesting_tree(&mut dual_graph);
 
 	#[cfg(feature = "logging")]
 	for tree in &nesting_trees {
-		eprintln!("nesting_trees: {:?}", tree);
+		eprintln!("nesting_trees: {tree:?}");
 	}
 
 	let DualGraph { edges, vertices, .. } = &dual_graph;
@@ -1619,7 +1766,7 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 	#[cfg(feature = "logging")]
 	eprintln!("{}", dual_graph_to_dot(&dual_graph.components, edges));
 
-	let mut flags = HashMap::new();
+	let mut flags = new_hash_map(vertices.len());
 	flag_faces(&nesting_trees, a_fill_rule, b_fill_rule, edges, vertices, &mut flags);
 
 	#[cfg(feature = "logging")]
@@ -1648,19 +1795,10 @@ mod tests {
 	#[test]
 	fn test_split_at_intersections() {
 		let unsplit_edges = unsplit_edges();
-		let (split_edges, total_bounding_box) = split_at_intersections(&unsplit_edges);
-
-		// Check that we have a valid bounding box
-		assert!(total_bounding_box.is_some());
+		let split_edges = split_at_intersections(&unsplit_edges);
 
 		// Check that we have more edges after splitting (due to intersections)
 		assert!(split_edges.len() >= unsplit_edges.len());
-
-		// Check that all edges have a valid bounding box
-		for (_, _, bb) in &split_edges {
-			assert!(bb.left <= bb.right);
-			assert!(bb.top <= bb.bottom);
-		}
 
 		// You might want to add more specific checks based on the expected behavior
 		// of your split_at_intersections function
@@ -1684,8 +1822,8 @@ mod tests {
 	fn test_compute_minor() {
 		// Set up the initial graph
 		let unsplit_edges = unsplit_edges();
-		let (split_edges, total_bounding_box) = split_at_intersections(&unsplit_edges);
-		let major_graph = find_vertices(&split_edges, total_bounding_box.unwrap());
+		let split_edges = split_at_intersections(&unsplit_edges);
+		let major_graph = find_vertices(&split_edges);
 
 		// Compute minor graph
 		let minor_graph = compute_minor(&major_graph);
@@ -1739,8 +1877,8 @@ mod tests {
 	fn test_sort_outgoing_edges_by_angle() {
 		// Set up the initial graph
 		let unsplit_edges = unsplit_edges();
-		let (split_edges, total_bounding_box) = split_at_intersections(&unsplit_edges);
-		let major_graph = find_vertices(&split_edges, total_bounding_box.unwrap());
+		let split_edges = split_at_intersections(&unsplit_edges);
+		let major_graph = find_vertices(&split_edges);
 		let mut minor_graph = compute_minor(&major_graph);
 
 		// Print initial state
@@ -1748,7 +1886,7 @@ mod tests {
 		print_minor_graph_state(&minor_graph);
 
 		// Store initial edge order
-		let initial_edge_order: HashMap<MinorVertexKey, Vec<MinorEdgeKey>> = minor_graph.vertices.iter().map(|(k, v)| (k, v.outgoing_edges.clone())).collect();
+		let initial_edge_order: HashMap<MinorVertexKey, SmallVec<[MinorEdgeKey; 8]>> = minor_graph.vertices.iter().map(|(k, v)| (k, v.outgoing_edges.clone())).collect();
 
 		// Apply sort_outgoing_edges_by_angle
 		sort_outgoing_edges_by_angle(&mut minor_graph);
@@ -1821,15 +1959,10 @@ mod tests {
 
 	#[test]
 	fn test_bounding_box_intersects_horizontal_ray() {
-		let bbox = Aabb {
-			top: 10.,
-			right: 40.,
-			bottom: 30.,
-			left: 20.,
-		};
+		let bbox = Aabb::new(20., 10., 40., 30.);
 
-		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(0., 30.)));
-		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(20., 30.)));
+		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(0., 29.)));
+		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(20., 29.)));
 		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(10., 20.)));
 		assert!(!bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(30., 40.)));
 	}

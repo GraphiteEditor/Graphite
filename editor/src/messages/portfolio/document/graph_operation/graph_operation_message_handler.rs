@@ -174,7 +174,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);
-				modify_inputs.insert_vector_data(subpaths, layer, true, true, true);
+				modify_inputs.insert_vector(subpaths, layer, true, true, true);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
@@ -349,7 +349,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 			let subpaths = convert_usvg_path(path);
 			let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box()).reduce(Quad::combine_bounds).unwrap_or_default();
 
-			modify_inputs.insert_vector_data(subpaths, layer, true, path.fill().is_some(), path.stroke().is_some());
+			modify_inputs.insert_vector(subpaths, layer, true, path.fill().is_some(), path.stroke().is_some());
 
 			if let Some(transform_node_id) = modify_inputs.existing_node_id("Transform", true) {
 				transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, transform * usvg_transform(node.abs_transform()));
@@ -426,7 +426,6 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 			Fill::Gradient(Gradient {
 				start,
 				end,
-				transform: DAffine2::IDENTITY,
 				gradient_type: GradientType::Linear,
 				stops,
 			})
@@ -453,7 +452,6 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 			Fill::Gradient(Gradient {
 				start,
 				end,
-				transform: DAffine2::IDENTITY,
 				gradient_type: GradientType::Radial,
 				stops,
 			})
