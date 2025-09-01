@@ -3,7 +3,6 @@ import { writable } from "svelte/store";
 import { type Editor } from "@graphite/editor";
 import { TriggerFontLoad } from "@graphite/messages";
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createFontsState(editor: Editor) {
 	// TODO: Do some code cleanup to remove the need for this empty store
 	const { subscribe } = writable({});

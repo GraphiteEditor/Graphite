@@ -1,7 +1,6 @@
 /* eslint-disable no-console */
 
 import { spawnSync } from "child_process";
-
 import fs from "fs";
 import path from "path";
 
@@ -361,11 +360,9 @@ function htmlDecode(input: string): string {
 		if (maybeEntity) return maybeEntity[1];
 
 		let match;
-		// eslint-disable-next-line no-cond-assign
 		if ((match = entityCode.match(/^#x([\da-fA-F]+)$/))) {
 			return String.fromCharCode(parseInt(match[1], 16));
 		}
-		// eslint-disable-next-line no-cond-assign
 		if ((match = entityCode.match(/^#(\d+)$/))) {
 			return String.fromCharCode(~~match[1]);
 		}

@@ -1,5 +1,3 @@
-/* eslint-disable max-classes-per-file */
-
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
@@ -20,7 +18,6 @@ import {
 import { downloadFile, downloadFileBlob, upload } from "@graphite/utility-functions/files";
 import { extractPixelData, rasterizeSVG } from "@graphite/utility-functions/rasterization";
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createPortfolioState(editor: Editor) {
 	const { subscribe, update } = writable({
 		unsaved: false,
@@ -90,7 +87,7 @@ export function createPortfolioState(editor: Editor) {
 			return;
 		}
 
-		const imageData = await extractPixelData(new Blob([data.content.data], { type: data.type }));
+		const imageData = await extractPixelData(new Blob([new Uint8Array(data.content.data)], { type: data.type }));
 		editor.handle.pasteImage(data.filename, new Uint8Array(imageData.data), imageData.width, imageData.height);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerSaveDocument, (triggerSaveDocument) => {

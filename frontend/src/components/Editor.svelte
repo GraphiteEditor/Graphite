@@ -146,8 +146,9 @@
 			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 32"><line stroke="red" stroke-width="4px" x1="0" y1="36" x2="80" y2="-4" /></svg>\
 			');
 
-		--color-transparent-checkered-background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
-			linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(#ffffff, #ffffff);
+		--color-transparent-checkered-background:
+			linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
+			linear-gradient(#ffffff, #ffffff);
 		--color-transparent-checkered-background-size: 16px 16px, 16px 16px, 16px 16px;
 		--color-transparent-checkered-background-position: 0 0, 8px 8px, 8px 8px;
 		--color-transparent-checkered-background-position-plus-one: 1px 1px, 9px 9px, 9px 9px;

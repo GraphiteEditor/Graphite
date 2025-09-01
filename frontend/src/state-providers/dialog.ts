@@ -13,7 +13,6 @@ import {
 } from "@graphite/messages";
 import { type IconName } from "@graphite/utility-functions/icons";
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createDialogState(editor: Editor) {
 	const { subscribe, update } = writable({
 		visible: false,
