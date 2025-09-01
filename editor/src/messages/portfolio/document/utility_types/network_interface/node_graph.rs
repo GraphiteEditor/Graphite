@@ -72,8 +72,8 @@ impl NodeNetworkInterface {
 						locked: self.is_locked(&node_id, network_path),
 						chain_width: self.chain_width(&node_id, network_path),
 						layer_has_left_border_gap: self.layer_has_left_border_gap(&node_id, network_path),
-						primary_input_connected_to_layer: self.primary_output_connected_to_layer(&node_id, network_path),
-						primary_output_connected_to_layer: self.primary_input_connected_to_layer(&node_id, network_path),
+						primary_input_connected_to_layer: self.primary_input_connected_to_layer(&node_id, network_path),
+						primary_output_connected_to_layer: self.primary_output_connected_to_layer(&node_id, network_path),
 					});
 					FrontendNodeOrLayer { node: None, layer }
 				}

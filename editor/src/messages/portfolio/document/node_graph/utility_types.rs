@@ -89,7 +89,7 @@ pub struct FrontendGraphOutput {
 // Metadata that is common to nodes and layers
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeMetadata {
-	#[serde(rename = "node_id")]
+	#[serde(rename = "nodeId")]
 	pub node_id: NodeId,
 	// TODO: Remove and replace with popup manager system
 	#[serde(rename = "canBeLayer")]

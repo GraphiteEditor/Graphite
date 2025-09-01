@@ -130,20 +130,24 @@
 		editor.handle.createNode(nodeType, $nodeGraph.contextMenuInformation.contextMenuCoordinates.x, $nodeGraph.contextMenuInformation.contextMenuCoordinates.y);
 	}
 
-	function nodeBorderMask(nodeWidth: number, primaryInputExists: boolean, exposedSecondaryInputs: number, primaryOutputExists: boolean, exposedSecondaryOutputs: number): string {
-		const nodeHeight = Math.max(1 + exposedSecondaryInputs, 1 + exposedSecondaryOutputs) * 24;
+	function nodeBorderMask(nodeInputs: (FrontendGraphInput | undefined)[], nodeOutputs: (FrontendGraphOutput | undefined)[]): string {
+		const nodeWidth = 120;
+		const secondaryInputs = nodeInputs.slice(1).filter((x): x is FrontendGraphInput => x !== undefined);
+		const secondaryOutputs = nodeOutputs.slice(1);
+
+		const nodeHeight = Math.max(1 + secondaryInputs.length, 1 + secondaryOutputs.length) * 24;
 
 		const boxes: { x: number; y: number; width: number; height: number }[] = [];
 
 		// Primary input
-		if (primaryInputExists) boxes.push({ x: -8, y: 4, width: 16, height: 16 });
+		if (nodeInputs[0]) boxes.push({ x: -8, y: 4, width: 16, height: 16 });
 		// Secondary inputs
-		for (let i = 0; i < exposedSecondaryInputs; i++) boxes.push({ x: -8, y: 4 + (i + 1) * 24, width: 16, height: 16 });
+		for (let i = 0; i < secondaryInputs.length; i++) boxes.push({ x: -8, y: 4 + (i + 1) * 24, width: 16, height: 16 });
 
 		// Primary output
-		if (primaryOutputExists) boxes.push({ x: nodeWidth - 8, y: 4, width: 16, height: 16 });
+		if (nodeOutputs[0]) boxes.push({ x: nodeWidth - 8, y: 4, width: 16, height: 16 });
 		// Exposed outputs
-		for (let i = 0; i < exposedSecondaryOutputs; i++) boxes.push({ x: nodeWidth - 8, y: 4 + (i + 1) * 24, width: 16, height: 16 });
+		for (let i = 0; i < secondaryOutputs.length; i++) boxes.push({ x: nodeWidth - 8, y: 4 + (i + 1) * 24, width: 16, height: 16 });
 
 		return borderMask(boxes, nodeWidth, nodeHeight);
 	}
@@ -203,11 +207,17 @@
 		return `Connected to:\n${input.connectedToString}`;
 	}
 
-	function zipWithUndefined(arr1: FrontendGraphInput[], arr2: FrontendGraphOutput[]) {
-		const maxLength = Math.max(arr1.length, arr2.length);
-		const result = [];
+	function collectExposedInputsOutputs(
+		inputs: (FrontendGraphInput | undefined)[],
+		outputs: (FrontendGraphOutput | undefined)[],
+	): [FrontendGraphInput | undefined, FrontendGraphOutput | undefined][] {
+		const secondaryInputs = inputs.slice(1).filter((x): x is FrontendGraphInput => x !== undefined);
+		const secondaryOutputs = outputs.slice(1);
+		const maxLength = Math.max(secondaryInputs.length, secondaryOutputs.length);
+		const result: [FrontendGraphInput | undefined, FrontendGraphOutput | undefined][] = [];
+
 		for (let i = 0; i < maxLength; i++) {
-			result.push([arr1[i], arr2[i]]);
+			result.push([secondaryInputs[i] || undefined, secondaryOutputs[i] || undefined]);
 		}
 		return result;
 	}
@@ -485,124 +495,118 @@
 		{/if}
 	</div>
 
-	<!-- Layers and nodes -->
-	<div class="layers-and-nodes" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
-		<!-- Layers -->
-		{#each Array.from($nodeGraph.nodesToRender).filter(([nodeId, node]) => node.isLayer && $nodeGraph.visibleNodes.has(nodeId)) as [nodeId, layer]}
-			{@const clipPathId = String(Math.random()).substring(2)}
-			{@const layerAreaWidth = $nodeGraph.layerWidths.get(layer.id) || 8}
-			{@const layerChainWidth = layer.chainWidth !== 0 ? layer.chainWidth + 0.5 : 0}
-			{@const description = (layer.reference && $nodeGraph.nodeDescriptions.get(layer.reference)) || undefined}
-			<div
-				class="layer"
-				class:selected={layer.selected}
-				class:in-selected-network={$nodeGraph.inSelectedNetwork}
-				class:previewed={layer.previewed}
-				class:disabled={!layer.visible}
-				style:--offset-left={layer.position.x}
-				style:--offset-top={layer.position.y}
-				style:--clip-path-id={`url(#${clipPathId})`}
-				style:--data-color={`var(--color-data-${(layer.primaryOutput?.dataType || "General").toLowerCase()})`}
-				style:--data-color-dim={`var(--color-data-${(layer.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				style:--layer-area-width={layerAreaWidth}
-				style:--node-chain-area-left-extension={layerChainWidth}
-				title={`${layer.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${nodeId}` : "")}
-			>
-				{#if layer.errors}
-					<span class="node-error faded" transition:fade={FADE_TRANSITION} title="" data-node-error>{layer.errors}</span>
-					<span class="node-error hover" transition:fade={FADE_TRANSITION} title="" data-node-error>{layer.errors}</span>
-				{/if}
-				<div class="thumbnail">
-					{#if $nodeGraph.thumbnails.has(nodeId)}
-						{@html $nodeGraph.thumbnails.get(nodeId)}
+	<div class="layers-and-nodes" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+		{#each Array.from($nodeGraph.nodesToRender) as [nodeId, nodeToRender]}
+			{#if nodeToRender.nodeOrLayer.layer !== undefined}
+				{@const nodeMetadata = nodeToRender.metadata}
+				{@const layer = nodeToRender.nodeOrLayer.layer}
+				{@const clipPathId = String(Math.random()).substring(2)}
+				{@const layerAreaWidth = $nodeGraph.layerWidths.get(nodeToRender.metadata.nodeId) || 8}
+				{@const layerChainWidth = layer.chainWidth !== 0 ? layer.chainWidth + 0.5 : 0}
+				{@const description = (nodeMetadata.reference && $nodeGraph.nodeDescriptions.get(nodeMetadata.reference)) || undefined}
+				<div
+					class="layer"
+					class:selected={nodeMetadata.selected}
+					class:in-selected-network={$nodeGraph.inSelectedNetwork}
+					class:previewed={$nodeGraph.previewedNode === nodeId}
+					class:disabled={!nodeMetadata.visible}
+					style:--offset-left={layer.position.x}
+					style:--offset-top={layer.position.y}
+					style:--clip-path-id={`url(#${clipPathId})`}
+					style:--data-color={`var(--color-data-${layer.output.dataType.toLowerCase()})`}
+					style:--data-color-dim={`var(--color-data-${layer.output.dataType.toLowerCase()}-dim)`}
+					style:--layer-area-width={layerAreaWidth}
+					style:--node-chain-area-left-extension={layerChainWidth}
+					title={`${nodeMetadata.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${nodeId}` : "")}
+				>
+					{#if nodeMetadata.errors}
+						<span class="node-error faded" transition:fade={FADE_TRANSITION} title="" data-node-error>{layer.errors}</span>
+						<span class="node-error hover" transition:fade={FADE_TRANSITION} title="" data-node-error>{layer.errors}</span>
 					{/if}
-					<!-- Layer stacking top output -->
-					{#if layer.primaryOutput}
+					<div class="thumbnail">
+						{#if $nodeGraph.thumbnails.has(nodeId)}
+							{@html $nodeGraph.thumbnails.get(nodeId)}
+						{/if}
+						<!-- Layer stacking top output -->
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 12"
 							class="connector top"
-							style:--data-color={`var(--color-data-${layer.primaryOutput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${layer.primaryOutput.dataType.toLowerCase()}-dim)`}
+							style:--data-color={`var(--color-data-${layer.output.dataType.toLowerCase()})`}
+							style:--data-color-dim={`var(--color-data-${layer.output.dataType.toLowerCase()}-dim)`}
 						>
-							<title>{outputTooltip(layer.primaryOutput)}</title>
-							{#if layer.primaryOutput.connectedTo.length > 0}
-								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
-								{#if layer.primaryOutputConnectedToLayer}
-									<path d="M0,-3.5h8v8l-2.521,-1.681a2.666,2.666,0,0,0,-2.959,0l-2.52,1.681z" fill="var(--data-color-dim)" />
-								{/if}
-							{:else}
-								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color-dim)" />
+							<title>{outputTooltip(layer.output)}</title>
+							<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill={layer.output.connectedTo.length > 0 ? "var(--data-color)" : "var(--data-color-dim)"} />
+
+							{#if layer.output.connectedTo.length > 0 && layer.primaryOutputConnectedToLayer}
+								<path d="M0,-3.5h8v8l-2.521,-1.681a2.666,2.666,0,0,0,-2.959,0l-2.52,1.681z" fill="var(--data-color-dim)" />
 							{/if}
 						</svg>
-					{/if}
-					<!-- Layer stacking bottom input -->
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						viewBox="0 0 8 12"
-						class="connector bottom"
-						style:--data-color={`var(--color-data-${(layer.primaryInput?.dataType || "General").toLowerCase()})`}
-						style:--data-color-dim={`var(--color-data-${(layer.primaryInput?.dataType || "General").toLowerCase()}-dim)`}
-					>
-						{#if layer.primaryInput}
-							<title>{inputTooltip(layer.primaryInput)}</title>
-						{/if}
-						{#if layer.primaryInput?.connectedTo !== "nothing"}
-							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
-							{#if layer.primaryInputConnectedToLayer}
-								<path d="M0,10.95l2.52,-1.69c0.89,-0.6,2.06,-0.6,2.96,0l2.52,1.69v5.05h-8v-5.05z" fill="var(--data-color-dim)" />
-							{/if}
-						{:else}
-							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color-dim)" />
-						{/if}
-					</svg>
-				</div>
-				<!-- Layer input connector (from left) -->
-				{#if layer.exposedInputs.length > 0}
-					<div class="input connectors">
+						<!-- Layer stacking bottom input -->
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="connector"
-							style:--data-color={`var(--color-data-${layer.exposedInputs[0].dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${layer.exposedInputs[0].dataType.toLowerCase()}-dim)`}
+							viewBox="0 0 8 12"
+							class="connector bottom"
+							style:--data-color={`var(--color-data-${layer.bottomInput.dataType.toLowerCase()})`}
+							style:--data-color-dim={`var(--color-data-${layer.bottomInput.dataType.toLowerCase()}-dim)`}
 						>
-							<title>{inputTooltip(layer.exposedInputs[0])}</title>
-							{#if layer.exposedInputs[0].connectedTo !== undefined}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+							{#if layer.bottomInput}
+								<title>{inputTooltip(layer.bottomInput)}</title>
+							{/if}
+							{#if layer.bottomInput?.connectedToNode !== undefined}
+								<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
+								{#if layer.primaryInputConnectedToLayer}
+									<path d="M0,10.95l2.52,-1.69c0.89,-0.6,2.06,-0.6,2.96,0l2.52,1.69v5.05h-8v-5.05z" fill="var(--data-color-dim)" />
+								{/if}
 							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+								<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color-dim)" />
 							{/if}
 						</svg>
 					</div>
-				{/if}
-				<div class="details">
-					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel>{layer.displayName}</TextLabel>
+					<!-- Layer input connector (from left) -->
+					{#if layer.sideInput}
+						<div class="input connectors">
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 8 8"
+								class="connector"
+								style:--data-color={`var(--color-data-${layer.sideInput.dataType.toLowerCase()})`}
+								style:--data-color-dim={`var(--color-data-${layer.sideInput.dataType.toLowerCase()}-dim)`}
+							>
+								<title>{inputTooltip(layer.sideInput)}</title>
+								<path
+									d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z"
+									fill={layer.sideInput.connectedToNode !== undefined ? "var(--data-color)" : "var(--data-color-dim)"}
+								/>
+							</svg>
+						</div>
+					{/if}
+					<div class="details">
+						<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
+						<TextLabel>{nodeMetadata.displayName}</TextLabel>
+					</div>
+					<div class="solo-drag-grip" title="Drag only this layer without pushing others outside the stack"></div>
+					<IconButton
+						class={"visibility"}
+						size={24}
+						icon={nodeMetadata.visible ? "EyeVisible" : "EyeHidden"}
+						action={() => {
+							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+						}}
+						tooltip={nodeMetadata.visible ? "Visible" : "Hidden"}
+					/>
+
+					<svg class="border-mask" width="0" height="0">
+						<defs>
+							<clipPath id={clipPathId}>
+								<!-- Keep this equation in sync with the equivalent one in the CSS rule for `.layer { width: ... }` below -->
+								<path clip-rule="evenodd" d={layerBorderMask(24 * layerAreaWidth - 12, layerChainWidth * 24, layer.layerHasLeftBorderGap)} />
+							</clipPath>
+						</defs>
+					</svg>
 				</div>
-				<div class="solo-drag-grip" title="Drag only this layer without pushing others outside the stack"></div>
-				<IconButton
-					class="visibility"
-					data-visibility-button
-					size={24}
-					icon={layer.visible ? "EyeVisible" : "EyeHidden"}
-					action={() => {
-						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
-					}}
-					tooltip={layer.visible ? "Visible" : "Hidden"}
-				/>
-
-				<svg class="border-mask" width="0" height="0">
-					<defs>
-						<clipPath id={clipPathId}>
-							<!-- Keep this equation in sync with the equivalent one in the CSS rule for `.layer { width: ... }` below -->
-							<path clip-rule="evenodd" d={layerBorderMask(24 * layerAreaWidth - 12, layerChainWidth * 24, layer.layerHasLeftBorderGap)} />
-						</clipPath>
-					</defs>
-				</svg>
-			</div>
+			{/if}
 		{/each}
-
 		<!-- Node connection wires -->
 		<div class="wires">
 			<svg>
@@ -630,129 +634,96 @@
 				{/if}
 			</svg>
 		</div>
-
-		<!-- Nodes -->
-		{#each Array.from($nodeGraph.nodesToRender).filter(([nodeId, node]) => !node.isLayer && $nodeGraph.visibleNodes.has(nodeId)) as [nodeId, node]}
-			{@const exposedInputsOutputs = zipWithUndefined(node.exposedInputs, node.exposedOutputs)}
-			{@const clipPathId = String(Math.random()).substring(2)}
-			{@const description = (node.reference && $nodeGraph.nodeDescriptions.get(node.reference)) || undefined}
-			<div
-				class="node"
-				class:selected={node.selected}
-				class:previewed={node.previewed}
-				class:disabled={!node.visible}
-				style:--offset-left={node.position?.x || 0}
-				style:--offset-top={node.position?.y || 0}
-				style:--clip-path-id={`url(#${clipPathId})`}
-				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
-				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				title={`${node.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${nodeId}` : "")}
-			>
-				{#if node.errors}
-					<span class="node-error faded" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
-					<span class="node-error hover" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
-				{/if}
-				<!-- Primary row -->
-				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
-					<IconLabel icon={nodeIcon(node.reference)} />
-					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel>{node.displayName}</TextLabel>
-				</div>
-				<!-- Secondary rows -->
-				{#if exposedInputsOutputs.length > 0}
-					<div class="secondary" class:in-selected-network={$nodeGraph.inSelectedNetwork}>
-						{#each exposedInputsOutputs as [input, output]}
-							<div class={`secondary-row expanded ${input !== undefined ? "input" : "output"}`}>
-								<TextLabel tooltip={(input !== undefined ? `${input.name}\n\n${input.description}` : `${output.name}\n\n${output.description}`).trim()}>
-									{input !== undefined ? input.name : output.name}
-								</TextLabel>
-							</div>
+		{#each Array.from($nodeGraph.nodesToRender) as [nodeId, nodeToRender]}
+			{#if nodeToRender.nodeOrLayer.node !== undefined && $nodeGraph.visibleNodes.has(nodeId)}
+				{@const nodeMetadata = nodeToRender.metadata}
+				{@const node = nodeToRender.nodeOrLayer.node}
+				{@const exposedInputsOutputs = collectExposedInputsOutputs(node.inputs, node.outputs)}
+				{@const clipPathId = String(Math.random()).substring(2)}
+				{@const description = (nodeMetadata.reference && $nodeGraph.nodeDescriptions.get(nodeMetadata.reference)) || undefined}
+				<div
+					class="node"
+					class:selected={nodeMetadata.selected}
+					class:previewed={$nodeGraph.previewedNode == nodeId}
+					class:disabled={!nodeMetadata.visible}
+					style:--offset-left={node.position.x}
+					style:--offset-top={node.position.y}
+					style:--clip-path-id={`url(#${clipPathId})`}
+					style:--data-color={`var(--color-data-${(node.outputs[0]?.dataType || "General").toLowerCase()})`}
+					style:--data-color-dim={`var(--color-data-${(node.outputs[0]?.dataType || "General").toLowerCase()}-dim)`}
+					title={`${nodeMetadata.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${nodeId}` : "")}
+				>
+					{#if nodeMetadata.errors}
+						<span class="node-error faded" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
+						<span class="node-error hover" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
+					{/if}
+					<!-- Primary row -->
+					<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
+						<IconLabel icon={nodeIcon(nodeMetadata.reference)} />
+						<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
+						<TextLabel>{nodeMetadata.displayName}</TextLabel>
+					</div>
+					<!-- Secondary rows -->
+					{#if exposedInputsOutputs.length > 0}
+						<div class="secondary" class:in-selected-network={$nodeGraph.inSelectedNetwork}>
+							{#each exposedInputsOutputs as [input, output]}
+								<div class={`secondary-row expanded ${input ? "input" : output ? "output" : ""}`}>
+									<TextLabel tooltip={(input ? `${input.name}\n\n${input.description}` : output ? `${output.name}\n\n${output.description}` : "").trim()}>
+										{input?.name ?? output?.name ?? ""}
+									</TextLabel>
+								</div>
+							{/each}
+						</div>
+					{/if}
+					<!-- Input connectors -->
+					<div class="input connectors">
+						{#each node.inputs as input}
+							{#if input !== undefined}
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									viewBox="0 0 8 8"
+									class="connector"
+									style:--data-color={`var(--color-data-${input.dataType.toLowerCase()})`}
+									style:--data-color-dim={`var(--color-data-${input.dataType.toLowerCase()}-dim)`}
+								>
+									<title>{inputTooltip(input)}</title>
+									<path
+										d={`M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z`}
+										fill={`var(--data-color${input.connectedToString === "nothing" ? "-dim" : ""})`}
+									/>
+								</svg>
+							{/if}
 						{/each}
 					</div>
-				{/if}
-				<!-- Input connectors -->
-				<div class="input connectors">
-					{#if node.primaryInput?.dataType}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="connector primary-connector"
-							style:--data-color={`var(--color-data-${node.primaryInput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
-						>
-							<title>{inputTooltip(node.primaryInput)}</title>
-							{#if node.primaryInput.connectedTo !== undefined}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+					<!-- Output connectors -->
+					<div class="output connectors">
+						{#each node.outputs as output}
+							{#if output !== undefined}
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									viewBox="0 0 8 8"
+									class="connector"
+									style:--data-color={`var(--color-data-${output.dataType.toLowerCase()})`}
+									style:--data-color-dim={`var(--color-data-${output.dataType.toLowerCase()}-dim)`}
+								>
+									<title>{outputTooltip(output)}</title>
+									<path
+										d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z"
+										fill={output.connectedTo !== undefined ? "var(--data-color)" : "var(--data-color-dim)"}
+									/>
+								</svg>
 							{/if}
-						</svg>
-					{/if}
-					{#each node.exposedInputs as secondary, index}
-						{#if index < node.exposedInputs.length}
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								viewBox="0 0 8 8"
-								class="connector"
-								style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
-								style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
-							>
-								<title>{inputTooltip(secondary)}</title>
-								{#if secondary.connectedTo !== undefined}
-									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-								{:else}
-									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-								{/if}
-							</svg>
-						{/if}
-					{/each}
+						{/each}
+					</div>
+					<svg class="border-mask" width="0" height="0">
+						<defs>
+							<clipPath id={clipPathId}>
+								<path clip-rule="evenodd" d={nodeBorderMask(node.inputs, node.outputs)} />
+							</clipPath>
+						</defs>
+					</svg>
 				</div>
-				<!-- Output connectors -->
-				<div class="output connectors">
-					{#if node.primaryOutput}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="connector primary-connector"
-							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
-						>
-							<title>{outputTooltip(node.primaryOutput)}</title>
-							{#if node.primaryOutput.connectedTo !== undefined}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
-					{/if}
-					{#each node.exposedOutputs as secondary}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="connector"
-							style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
-						>
-							<title>{outputTooltip(secondary)}</title>
-							{#if secondary.connectedTo !== undefined}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
-					{/each}
-				</div>
-				<svg class="border-mask" width="0" height="0">
-					<defs>
-						<clipPath id={clipPathId}>
-							<path
-								clip-rule="evenodd"
-								d={nodeBorderMask(120, node.primaryInput?.dataType !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs.length)}
-							/>
-						</clipPath>
-					</defs>
-				</svg>
-			</div>
+			{/if}
 		{/each}
 	</div>
 </div>
@@ -1094,6 +1065,8 @@
 				position: absolute;
 				// Keeps the connectors above the wires
 				z-index: 1;
+
+				margin-top: -24px;
 
 				&.input {
 					left: -3px;
