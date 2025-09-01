@@ -118,5 +118,18 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			let message = AppWindowMessage::AppWindowUpdatePlatform { platform };
 			dispatcher.queue_editor_message(message.into());
 		}
+		DesktopWrapperMessage::LoadDocument { id, document } => {
+			let message = PortfolioMessage::OpenDocumentFileWithId {
+				document_id: id,
+				document_name: Some(document.name),
+				document_path: document.path,
+				document_serialized_content: document.content,
+				document_is_auto_saved: true,
+				document_is_saved: document.is_saved,
+				to_front: false,
+				select_after_open: false,
+			};
+			todo!()
+		}
 	}
 }

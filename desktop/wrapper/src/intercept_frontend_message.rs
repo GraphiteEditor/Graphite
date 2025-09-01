@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use graphite_editor::messages::prelude::FrontendMessage;
 
 use super::DesktopWrapperMessageDispatcher;
-use super::messages::{DesktopFrontendMessage, FileFilter, OpenFileDialogContext, SaveFileDialogContext};
+use super::messages::{DesktopFrontendMessage, Document, FileFilter, OpenFileDialogContext, SaveFileDialogContext};
 
 pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageDispatcher, message: FrontendMessage) -> Option<FrontendMessage> {
 	match message {
@@ -72,6 +72,26 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		}
 		FrontendMessage::CloseWindow => {
 			dispatcher.respond(DesktopFrontendMessage::CloseWindow);
+		}
+		FrontendMessage::TriggerPersistenceWriteDocument { document_id, document, details } => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceWriteDocument {
+				id: document_id,
+				document: Document {
+					name: details.name,
+					path: None,
+					content: document,
+					is_saved: details.is_saved,
+				},
+			});
+		}
+		FrontendMessage::TriggerPersistenceRemoveDocument { document_id } => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceDeleteDocument { id: document_id });
+		}
+		FrontendMessage::TriggerLoadFirstAutoSaveDocument => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadCurrentDocument);
+		}
+		FrontendMessage::TriggerLoadRestAutoSaveDocuments => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadRemainingDocuments);
 		}
 		m => return Some(m),
 	}
