@@ -1190,7 +1190,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
-				responses.add(NodeGraphMessage::UpdateInSelectedNetwork);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::SetBlendModeForSelectedLayers { blend_mode } => {
 				for layer in self.network_interface.selected_nodes().selected_layers_except_artboards(&self.network_interface) {

@@ -5,7 +5,7 @@ use graphene_std::uuid::NodeId;
 use crate::{
 	consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP},
 	messages::portfolio::document::{
-		node_graph::utility_types::{FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput, FrontendNode},
+		node_graph::utility_types::{FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendXY},
 		utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, OutputConnector},
 	},
 };
@@ -17,6 +17,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network when collecting nodes");
 			return Vec::new();
 		};
+		let selected_nodes = self.selected_nodes_in_nested_network(network_path).unwrap_or_default();
 		let mut nodes = Vec::new();
 		for (node_id, visible) in network.nodes.iter().map(|(node_id, node)| (*node_id, node.visible)).collect::<Vec<_>>() {
 			let node_id_path = [network_path, &[node_id]].concat();
@@ -37,19 +38,12 @@ impl NodeNetworkInterface {
 			let exposed_outputs = (1..self.number_of_outputs(&node_id, network_path))
 				.filter_map(|output_index| self.frontend_output_from_connector(&OutputConnector::node(node_id, output_index), network_path))
 				.collect();
-			let (primary_output_connected_to_layer, primary_input_connected_to_layer) = if self.is_layer(&node_id, network_path) {
-				(
-					self.primary_output_connected_to_layer(&node_id, network_path),
-					self.primary_input_connected_to_layer(&node_id, network_path),
-				)
-			} else {
-				(false, false)
-			};
 
 			let Some(position) = self.position(&node_id, network_path) else {
 				log::error!("Could not get position for node: {node_id}");
 				continue;
 			};
+			let position = FrontendXY { x: position.x, y: position.y };
 			let previewed = self.previewed_node(network_path) == Some(node_id);
 
 			let locked = self.is_locked(&node_id, network_path);
@@ -70,19 +64,24 @@ impl NodeNetworkInterface {
 				id: node_id,
 				is_layer: self.node_metadata(&node_id, network_path).is_some_and(|node_metadata| node_metadata.persistent_metadata.is_layer()),
 				can_be_layer: self.is_eligible_to_be_layer(&node_id, network_path),
+				selected: selected_nodes.0.contains(&node_id),
 				reference: self.reference(&node_id, network_path).cloned().unwrap_or_default(),
 				display_name: self.display_name(&node_id, network_path),
+				previewed,
+				visible,
+				errors,
+
 				primary_input,
 				exposed_inputs,
 				primary_output,
 				exposed_outputs,
-				primary_output_connected_to_layer,
-				primary_input_connected_to_layer,
 				position,
-				previewed,
-				visible,
+
 				locked,
-				errors,
+				chain_width: self.chain_width(&node_id, network_path),
+				layer_has_left_border_gap: self.layer_has_left_border_gap(&node_id, network_path),
+				primary_input_connected_to_layer: self.primary_output_connected_to_layer(&node_id, network_path),
+				primary_output_connected_to_layer: self.primary_input_connected_to_layer(&node_id, network_path),
 			});
 		}
 
@@ -259,9 +258,12 @@ impl NodeNetworkInterface {
 
 	/// Checks if a layer should display a gap in its left border
 	pub fn layer_has_left_border_gap(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow)
-			.skip(1)
-			.any(|node_id| !self.is_chain(&node_id, network_path))
+		self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow).skip(1).any(|node_id| {
+			!self.is_chain(&node_id, network_path)
+				|| self
+					.upstream_output_connector(&InputConnector::node(node_id, 0), network_path)
+					.is_some_and(|output_connector| matches!(output_connector, OutputConnector::Import(_)))
+		})
 	}
 
 	/// Returns the node which should have a dashed border drawn around it
