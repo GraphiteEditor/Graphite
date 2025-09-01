@@ -77,8 +77,12 @@ export class UpdateLayerWidths extends JsMessage {
 	readonly layerWidths!: Map<bigint, number>;
 }
 
-export class UpdateNodeGraphNodes extends JsMessage {
+export class UpdateNodeGraphRender extends JsMessage {
 	readonly nodesToRender!: FrontendNodeToRender[];
+
+	readonly open!: boolean;
+
+	readonly opacity!: number;
 
 	readonly inSelectedNetwork!: boolean;
 
@@ -728,10 +732,6 @@ export type MouseCursorIcon = (typeof mouseCursorIconCSSNames)[MouseCursor];
 
 export class UpdateGraphViewOverlay extends JsMessage {
 	open!: boolean;
-}
-
-export class UpdateGraphFadeArtwork extends JsMessage {
-	readonly percentage!: number;
 }
 
 export class UpdateDataPanelState extends JsMessage {
@@ -1691,7 +1691,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentScrollbars,
 	UpdateExportReorderIndex,
 	UpdateEyedropperSamplingState,
-	UpdateGraphFadeArtwork,
 	UpdateGraphViewOverlay,
 	UpdateImportReorderIndex,
 	UpdateImportsExports,
@@ -1704,7 +1703,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
-	UpdateNodeGraphNodes,
+	UpdateNodeGraphRender,
 	UpdateNodeGraphTransform,
 	UpdateNodeGraphWires,
 	UpdateNodeThumbnail,

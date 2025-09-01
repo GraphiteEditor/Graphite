@@ -244,9 +244,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "setColorChoice")]
 		set_color_choice: Option<String>,
 	},
-	UpdateGraphFadeArtwork {
-		percentage: f64,
-	},
 	UpdateInputHints {
 		#[serde(rename = "hintData")]
 		hint_data: HintData,
@@ -274,9 +271,11 @@ pub enum FrontendMessage {
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,
 	},
-	UpdateNodeGraphNodes {
+	UpdateNodeGraphRender {
 		#[serde(rename = "nodesToRender")]
 		nodes_to_render: Vec<FrontendNodeToRender>,
+		open: bool,
+		opacity: f64,
 		#[serde(rename = "inSelectedNetwork")]
 		in_selected_network: bool,
 		// Displays a dashed border around the node

@@ -1634,24 +1634,24 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::UpdateActionButtons);
-				if graph_view_overlay_open {
-					let nodes_to_render = network_interface.collect_nodes(&self.node_graph_errors, breadcrumb_network_path);
-					self.frontend_nodes = nodes_to_render.iter().map(|node| node.metadata.node_id).collect();
-					let previewed_node = network_interface.previewed_node(breadcrumb_network_path);
-					responses.add(FrontendMessage::UpdateNodeGraphNodes {
-						nodes_to_render,
-						in_selected_network: selection_network_path == breadcrumb_network_path,
-						previewed_node,
-					});
-					responses.add(NodeGraphMessage::UpdateVisibleNodes);
+				let nodes_to_render = network_interface.collect_nodes(&self.node_graph_errors, breadcrumb_network_path);
+				self.frontend_nodes = nodes_to_render.iter().map(|node| node.metadata.node_id).collect();
+				let previewed_node = network_interface.previewed_node(breadcrumb_network_path);
+				responses.add(FrontendMessage::UpdateNodeGraphRender {
+					nodes_to_render,
+					open: graph_view_overlay_open,
+					opacity: graph_fade_artwork_percentage,
+					in_selected_network: selection_network_path == breadcrumb_network_path,
+					previewed_node,
+				});
+				responses.add(NodeGraphMessage::UpdateVisibleNodes);
 
-					let layer_widths = network_interface.collect_layer_widths(breadcrumb_network_path);
+				let layer_widths = network_interface.collect_layer_widths(breadcrumb_network_path);
 
-					responses.add(NodeGraphMessage::UpdateImportsExports);
-					responses.add(FrontendMessage::UpdateLayerWidths { layer_widths });
-					responses.add(NodeGraphMessage::SendWires);
-					self.update_node_graph_hints(responses);
-				}
+				responses.add(NodeGraphMessage::UpdateImportsExports);
+				responses.add(FrontendMessage::UpdateLayerWidths { layer_widths });
+				responses.add(NodeGraphMessage::SendWires);
+				self.update_node_graph_hints(responses);
 			}
 			NodeGraphMessage::SetGridAlignedEdges => {
 				if graph_view_overlay_open {

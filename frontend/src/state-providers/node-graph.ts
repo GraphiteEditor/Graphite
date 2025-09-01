@@ -17,7 +17,7 @@ import {
 	UpdateExportReorderIndex,
 	UpdateImportsExports,
 	UpdateLayerWidths,
-	UpdateNodeGraphNodes,
+	UpdateNodeGraphRender,
 	UpdateVisibleNodes,
 	UpdateNodeGraphWires,
 	UpdateNodeGraphTransform,
@@ -33,6 +33,9 @@ export function createNodeGraphState(editor: Editor) {
 		layerWidths: new Map<bigint, number>(),
 		updateImportsExports: undefined as UpdateImportsExports | undefined,
 		nodesToRender: new Map<bigint, FrontendNodeToRender>(),
+		open: false,
+		opacity: 0.8,
+
 		visibleNodes: new Set<bigint>(),
 		/// The index is the exposed input index. The exports have a first key value of u32::MAX.
 		wires: new Map<bigint, Map<number, WirePath>>(),
@@ -98,14 +101,16 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphNodes, (updateNodeGraphNodes) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphRender, (updateNodeGraphRender) => {
 		update((state) => {
 			state.nodesToRender.clear();
-			updateNodeGraphNodes.nodesToRender.forEach((node) => {
+			updateNodeGraphRender.nodesToRender.forEach((node) => {
 				state.nodesToRender.set(node.metadata.nodeId, node);
 			});
-			state.inSelectedNetwork = updateNodeGraphNodes.inSelectedNetwork;
-			state.previewedNode = updateNodeGraphNodes.previewedNode;
+			state.open = updateNodeGraphRender.open;
+			state.opacity = updateNodeGraphRender.opacity;
+			state.inSelectedNetwork = updateNodeGraphRender.inSelectedNetwork;
+			state.previewedNode = updateNodeGraphRender.previewedNode;
 			return state;
 		});
 	});
