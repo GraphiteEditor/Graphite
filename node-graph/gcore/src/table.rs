@@ -1,7 +1,7 @@
+use crate::Graphic;
 use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::transform::ApplyTransform;
 use crate::uuid::NodeId;
-use crate::Graphic;
 use crate::{AlphaBlending, math::quad::Quad};
 use dyn_any::StaticType;
 use glam::DAffine2;

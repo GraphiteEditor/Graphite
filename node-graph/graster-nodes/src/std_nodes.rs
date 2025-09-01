@@ -2,6 +2,7 @@ use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWar
 use dyn_any::DynAny;
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
+use graphene_core::Graphic;
 use graphene_core::blending::AlphaBlending;
 use graphene_core::color::Color;
 use graphene_core::color::{AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
@@ -13,7 +14,6 @@ use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::table::{Table, TableRow};
 use graphene_core::transform::Transform;
 use graphene_core::vector::Vector;
-use graphene_core::Graphic;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::fmt::Debug;

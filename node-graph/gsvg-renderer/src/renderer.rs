@@ -588,9 +588,8 @@ impl Render for Table<Graphic> {
 					masked = true;
 					let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
-					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+					scene.push_luminance_mask_layer(1., kurbo::Affine::IDENTITY, &rect);
 					mask.render_to_vello(scene, transform, context, &render_params.for_clipper());
-					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
 				}
 			}
 
@@ -626,7 +625,6 @@ impl Render for Table<Graphic> {
 			}
 
 			if masked {
-				scene.pop_layer();
 				scene.pop_layer();
 			}
 
@@ -909,9 +907,8 @@ impl Render for Table<Vector> {
 					masked = true;
 					let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
-					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+					scene.push_luminance_mask_layer(1., kurbo::Affine::IDENTITY, &rect);
 					mask.render_to_vello(scene, element_transform, _context, &render_params.for_clipper());
-					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
 				}
 			}
 
@@ -1105,7 +1102,6 @@ impl Render for Table<Vector> {
 			}
 
 			if masked {
-				scene.pop_layer();
 				scene.pop_layer();
 			}
 
@@ -1333,16 +1329,14 @@ impl Render for Table<Raster<CPU>> {
 					masked = true;
 					let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
-					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+					scene.push_luminance_mask_layer(1., kurbo::Affine::IDENTITY, &rect);
 					mask.render_to_vello(scene, transform, _context, &render_params.for_clipper());
-					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
 				}
 			}
 
 			scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
 
 			if masked {
-				scene.pop_layer();
 				scene.pop_layer();
 			}
 
