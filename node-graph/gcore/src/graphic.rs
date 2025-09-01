@@ -378,6 +378,7 @@ async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten: bo
 				_ => {
 					output_graphic_table.push(TableRow {
 						element: current_element,
+						mask: current_row.mask.clone(),
 						transform: *current_row.transform,
 						alpha_blending: *current_row.alpha_blending,
 						source_node_id: reference,
@@ -416,6 +417,7 @@ async fn flatten_vector(_: impl Ctx, content: Table<Graphic>) -> Table<Vector> {
 					for current_vector_row in vector_table.iter() {
 						output_vector_table.push(TableRow {
 							element: current_vector_row.element.clone(),
+							mask: current_vector_row.mask.clone(),
 							transform: *current_graphic_row.transform * *current_vector_row.transform,
 							alpha_blending: AlphaBlending {
 								blend_mode: current_vector_row.alpha_blending.blend_mode,
@@ -520,6 +522,7 @@ pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Res
 			for (graphic, source_node_id) in old.elements {
 				graphic_table.push(TableRow {
 					element: graphic,
+					mask: None,
 					transform: old.transform,
 					alpha_blending: old.alpha_blending,
 					source_node_id,
@@ -535,6 +538,7 @@ pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Res
 					for (graphic, source_node_id) in &row.element.elements {
 						graphic_table.push(TableRow {
 							element: graphic.clone(),
+							mask: None,
 							transform: *row.transform,
 							alpha_blending: *row.alpha_blending,
 							source_node_id: *source_node_id,

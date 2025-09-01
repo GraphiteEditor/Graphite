@@ -393,6 +393,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 		},
 		FormatVersions::OldImageFrame(image_frame_with_transform_and_blending) => TableRow {
 			element: Raster::new_cpu(image_frame_with_transform_and_blending.image),
+			mask: None,
 			transform: image_frame_with_transform_and_blending.transform,
 			alpha_blending: image_frame_with_transform_and_blending.alpha_blending,
 			source_node_id: None,

@@ -431,6 +431,7 @@ async fn round_corners(
 		.map(|source| {
 			let source_transform = *source.transform;
 			let source_transform_inverse = source_transform.inverse();
+			let source_mask = source.mask.clone();
 			let source_node_id = source.source_node_id;
 			let source = source.element;
 
@@ -523,6 +524,7 @@ async fn round_corners(
 
 			TableRow {
 				element: result,
+				mask: source_mask.clone(),
 				transform: source_transform,
 				alpha_blending: Default::default(),
 				source_node_id: *source_node_id,
@@ -664,6 +666,7 @@ async fn auto_tangents(
 			let transform = *source.transform;
 			let alpha_blending = *source.alpha_blending;
 			let source_node_id = *source.source_node_id;
+			let mask = source.mask.clone();
 			let source = source.element;
 
 			let mut result = Vector {
@@ -760,6 +763,7 @@ async fn auto_tangents(
 
 			TableRow {
 				element: result,
+				mask,
 				transform,
 				alpha_blending,
 				source_node_id,
@@ -949,6 +953,7 @@ async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector>
 		.flat_map(|row| {
 			let style = row.element.style.clone();
 			let transform = row.transform;
+			let mask = row.mask;
 			let alpha_blending = row.alpha_blending;
 			let source_node_id = row.source_node_id;
 
@@ -961,6 +966,7 @@ async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector>
 
 					TableRow {
 						element: vector,
+						mask: mask.clone(),
 						transform,
 						alpha_blending,
 						source_node_id,
