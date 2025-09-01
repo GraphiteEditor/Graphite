@@ -30,3 +30,4 @@ dirs = { workspace = true }
 ron = { workspace = true}
 vello = { workspace = true }
 image = { workspace = true }
+serde = { workspace = true }

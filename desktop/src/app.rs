@@ -1,6 +1,7 @@
 use crate::CustomEvent;
 use crate::cef::WindowSize;
 use crate::consts::{APP_NAME, CEF_MESSAGE_LOOP_MAX_ITERATIONS};
+use crate::persist::PersistentData;
 use crate::render::GraphicsState;
 use graphite_desktop_wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, Platform};
 use graphite_desktop_wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
@@ -37,6 +38,7 @@ pub(crate) struct WinitApp {
 	start_render_sender: SyncSender<()>,
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
+	persitent_data: PersistentData,
 }
 
 impl WinitApp {
@@ -65,6 +67,7 @@ impl WinitApp {
 			start_render_sender,
 			web_communication_initialized: false,
 			web_communication_startup_buffer: Vec::new(),
+			persitent_data: PersistentData::default(),
 		}
 	}
 
@@ -160,6 +163,14 @@ impl WinitApp {
 			}
 			DesktopFrontendMessage::CloseWindow => {
 				let _ = self.event_loop_proxy.send_event(CustomEvent::CloseWindow);
+			}
+			DesktopFrontendMessage::PersistenceWriteDocument { id, document } => {
+				self.persitent_data.write_document(id, document);
+				self.persitent_data.write_to_disk();
+			}
+			DesktopFrontendMessage::PersistenceDeleteDocument { id } => {
+				self.persitent_data.delete_document(&id);
+				self.persitent_data.write_to_disk();
 			}
 		}
 	}

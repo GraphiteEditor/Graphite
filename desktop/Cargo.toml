@@ -41,6 +41,7 @@ vello = { workspace = true }
 derivative = { workspace = true }
 rfd = { workspace = true }
 open = { workspace = true }
+serde = { workspace = true }
 
 # Hardware acceleration dependencies
 ash = { version = "0.38", optional = true }
