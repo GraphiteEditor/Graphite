@@ -42,8 +42,14 @@ pub enum DesktopFrontendMessage {
 	PersistenceDeleteDocument {
 		id: DocumentId,
 	},
+	PersistenceUpdateCurrentDocument {
+		id: DocumentId,
+	},
 	PersistenceLoadCurrentDocument,
 	PersistenceLoadRemainingDocuments,
+	PersistenceUpdateDocumentsList {
+		ids: Vec<DocumentId>,
+	},
 	CloseWindow,
 }
 
@@ -58,15 +64,15 @@ pub enum DesktopWrapperMessage {
 	ImportImage { path: PathBuf, content: Vec<u8> },
 	PollNodeGraphEvaluation,
 	UpdatePlatform(Platform),
-	LoadDocument { id: DocumentId, document: Document },
+	LoadDocument { id: DocumentId, document: Document, to_front: bool },
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
 pub struct Document {
-	pub(crate) name: String,
-	pub(crate) path: Option<PathBuf>,
-	pub(crate) content: String,
-	pub(crate) is_saved: bool,
+	pub content: String,
+	pub name: String,
+	pub path: Option<PathBuf>,
+	pub is_saved: bool,
 }
 
 pub struct FileFilter {

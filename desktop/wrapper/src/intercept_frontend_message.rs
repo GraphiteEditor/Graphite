@@ -87,6 +87,20 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerPersistenceRemoveDocument { document_id } => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceDeleteDocument { id: document_id });
 		}
+		FrontendMessage::UpdateActiveDocument { document_id } => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceUpdateCurrentDocument { id: document_id });
+
+			// Forward this to update the ui
+			return Some(FrontendMessage::UpdateActiveDocument { document_id });
+		}
+		FrontendMessage::UpdateOpenDocumentsList { open_documents } => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceUpdateDocumentsList {
+				ids: open_documents.iter().map(|document| document.id).collect(),
+			});
+
+			// Forward this to update the ui
+			return Some(FrontendMessage::UpdateOpenDocumentsList { open_documents });
+		}
 		FrontendMessage::TriggerLoadFirstAutoSaveDocument => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadCurrentDocument);
 		}
