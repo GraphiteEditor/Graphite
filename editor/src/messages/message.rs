@@ -58,7 +58,7 @@ mod test {
 	fn generate_message_tree() {
 		let result = Message::build_message_tree();
 		let mut file = std::fs::File::create("../hierarchical_message_system_tree.txt").unwrap();
-		file.write_all(format!("{} `{}`\n", result.name(), result.path()).as_bytes()).unwrap();
+		file.write_all(format!("{} `{}#L{}`\n", result.name(), result.path(), result.line_number()).as_bytes()).unwrap();
 		if let Some(variants) = result.variants() {
 			for (i, variant) in variants.iter().enumerate() {
 				let is_last = i == variants.len() - 1;
@@ -80,7 +80,8 @@ mod test {
 		if tree.path().is_empty() {
 			file.write_all(format!("{}{}{}\n", prefix, branch, tree.name()).as_bytes()).unwrap();
 		} else {
-			file.write_all(format!("{}{}{} `{}`\n", prefix, branch, tree.name(), tree.path()).as_bytes()).unwrap();
+			file.write_all(format!("{}{}{} `{}#L{}`\n", prefix, branch, tree.name(), tree.path(), tree.line_number()).as_bytes())
+				.unwrap();
 		}
 
 		// Print children if any
@@ -116,7 +117,8 @@ mod test {
 			if data.name().is_empty() && tree.name() != FRONTEND_MESSAGE_STR {
 				panic!("{}'s MessageHandler is missing #[message_handler_data]", tree.name());
 			} else if tree.name() != FRONTEND_MESSAGE_STR {
-				file.write_all(format!("{}{}{} `{}`\n", prefix, branch, data.name(), data.path()).as_bytes()).unwrap();
+				file.write_all(format!("{}{}{} `{}#L{}`\n", prefix, branch, data.name(), data.path(), data.line_number()).as_bytes())
+					.unwrap();
 
 				for (i, field) in data.fields().iter().enumerate() {
 					let is_last_field = i == len - 1;
@@ -133,7 +135,8 @@ mod test {
 			if data.path().is_empty() {
 				file.write_all(format!("{}{}{}\n", prefix, "└── ", data.name()).as_bytes()).unwrap();
 			} else {
-				file.write_all(format!("{}{}{} `{}`\n", prefix, "└── ", data.name(), data.path()).as_bytes()).unwrap();
+				file.write_all(format!("{}{}{} `{}#L{}`\n", prefix, "└── ", data.name(), data.path(), data.line_number()).as_bytes())
+					.unwrap();
 			}
 			for (i, field) in data.fields().iter().enumerate() {
 				let is_last_field = i == len - 1;
