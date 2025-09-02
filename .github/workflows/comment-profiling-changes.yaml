@@ -34,12 +34,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/iai-callgrind-runner
-          key: ${{ runner.os }}-iai-callgrind-runner-0.12.3
+          key: ${{ runner.os }}-iai-callgrind-runner-0.16.1
 
       - name: Install iai-callgrind
         if: steps.cache-iai.outputs.cache-hit != 'true'
         run: |
-          cargo install iai-callgrind-runner@0.12.3
+          cargo install iai-callgrind-runner@0.16.1
 
       - name: Checkout master branch
         run: |
