@@ -117,7 +117,9 @@ export class UpdateNodeGraphRender extends JsMessage {
 	readonly inSelectedNetwork!: boolean;
 
 	readonly previewedNode!: bigint | undefined;
+}
 
+export class UpdateNativeNodeGraphRender extends JsMessage {
 	readonly nativeNodeGraphRender!: boolean;
 }
 
@@ -1739,6 +1741,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
 	UpdateNodeGraphRender,
+	UpdateNativeNodeGraphRender,
 	UpdateNodeGraphSelectionBox,
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,

@@ -1,19 +1,19 @@
 use glam::{DVec2, IVec2};
 use graph_craft::proto::GraphErrors;
-use graphene_std::uuid::NodeId;
+use graphene_std::{
+	node_graph_overlay::types::{
+		FrontendExport, FrontendExports, FrontendGraphInput, FrontendGraphOutput, FrontendImport, FrontendLayer, FrontendNode, FrontendNodeMetadata, FrontendNodeOrLayer, FrontendNodeToRender,
+		FrontendXY,
+	},
+	uuid::NodeId,
+};
 use kurbo::BezPath;
 
 use crate::{
 	consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP},
-	messages::portfolio::document::{
-		node_graph::utility_types::{
-			FrontendExport, FrontendExports, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput, FrontendImport, FrontendLayer, FrontendNode, FrontendNodeMetadata, FrontendNodeOrLayer,
-			FrontendNodeToRender, FrontendXY,
-		},
-		utility_types::{
-			network_interface::{FlowType, InputConnector, NodeNetworkInterface, OutputConnector, Previewing},
-			wires::{GraphWireStyle, build_vector_wire},
-		},
+	messages::portfolio::document::utility_types::{
+		network_interface::{FlowType, InputConnector, NodeNetworkInterface, OutputConnector, Previewing},
+		wires::{GraphWireStyle, build_vector_wire},
 	},
 };
 
@@ -116,7 +116,7 @@ impl NodeNetworkInterface {
 							(
 								wire,
 								self.wire_is_thick(&InputConnector::node(node_id, input_index), network_path),
-								FrontendGraphDataType::displayed_type(&self.input_type(&InputConnector::node(node_id, input_index), network_path)),
+								self.input_type(&InputConnector::node(node_id, input_index), network_path).displayed_type(),
 							)
 						})
 				})
@@ -136,7 +136,7 @@ impl NodeNetworkInterface {
 			return None;
 		}
 		let input_type = self.input_type(input_connector, network_path);
-		let data_type = FrontendGraphDataType::displayed_type(&input_type);
+		let data_type = input_type.displayed_type();
 		let resolved_type = input_type.resolved_type_name();
 
 		let connected_to = self
@@ -239,7 +239,7 @@ impl NodeNetworkInterface {
 				(import_name, description)
 			}
 		};
-		let data_type = FrontendGraphDataType::displayed_type(&output_type);
+		let data_type = output_type.displayed_type();
 		let resolved_type = output_type.resolved_type_name();
 		let mut connected_to = self
 			.outward_wires(network_path)
