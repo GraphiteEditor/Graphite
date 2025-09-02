@@ -1,5 +1,3 @@
-/* eslint-disable import/first */
-
 // Graphics
 import GraphiteLogotypeSolid from "@graphite-frontend/assets/graphics/graphite-logotype-solid.svg";
 
