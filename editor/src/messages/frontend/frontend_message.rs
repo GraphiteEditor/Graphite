@@ -2,10 +2,10 @@ use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
-	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNodeToRender, FrontendNodeType, FrontendXY, Transform,
+	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendExports, FrontendImport, FrontendNodeToRender, FrontendNodeType, FrontendXY, Transform,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
-use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
+use crate::messages::portfolio::document::utility_types::wires::WirePathInProgress;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 use graph_craft::document::NodeId;
@@ -125,9 +125,8 @@ pub enum FrontendMessage {
 	},
 	UpdateImportsExports {
 		/// If the primary import is not visible, then it is None.
-		imports: Vec<Option<FrontendGraphOutput>>,
-		/// If the primary export is not visible, then it is None.
-		exports: Vec<Option<FrontendGraphInput>>,
+		imports: Vec<Option<FrontendImport>>,
+		exports: FrontendExports,
 		/// The primary import location.
 		#[serde(rename = "importPosition")]
 		import_position: FrontendXY,
@@ -138,7 +137,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "addImportExport")]
 		add_import_export: bool,
 	},
-	UpdateBox {
+	UpdateNodeGraphSelectionBox {
 		#[serde(rename = "box")]
 		box_selection: Option<BoxSelection>,
 	},
@@ -242,9 +241,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "setColorChoice")]
 		set_color_choice: Option<String>,
 	},
-	UpdateGraphFadeArtwork {
-		percentage: f64,
-	},
 	UpdateInputHints {
 		#[serde(rename = "hintData")]
 		hint_data: HintData,
@@ -272,22 +268,22 @@ pub enum FrontendMessage {
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,
 	},
-	UpdateNodeGraphNodes {
+	UpdateNodeGraphRender {
 		#[serde(rename = "nodesToRender")]
 		nodes_to_render: Vec<FrontendNodeToRender>,
+		open: bool,
+		opacity: f64,
 		#[serde(rename = "inSelectedNetwork")]
 		in_selected_network: bool,
 		// Displays a dashed border around the node
 		#[serde(rename = "previewedNode")]
 		previewed_node: Option<NodeId>,
+		#[serde(rename = "nativeNodeGraphRender")]
+		native_node_graph_render: bool,
 	},
 	UpdateVisibleNodes {
 		nodes: Vec<NodeId>,
 	},
-	UpdateNodeGraphWires {
-		wires: Vec<WirePathUpdate>,
-	},
-	ClearAllNodeGraphWires,
 	UpdateNodeGraphControlBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
@@ -320,8 +316,8 @@ pub enum FrontendMessage {
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateWirePathInProgress {
-		#[serde(rename = "wirePath")]
-		wire_path: Option<WirePath>,
+		#[serde(rename = "wirePathInProgress")]
+		wire_path_in_progress: Option<WirePathInProgress>,
 	},
 	UpdateWorkingColorsLayout {
 		#[serde(rename = "layoutTarget")]

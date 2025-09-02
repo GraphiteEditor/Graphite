@@ -1,20 +1,25 @@
 use glam::{DVec2, IVec2};
 use graph_craft::proto::GraphErrors;
 use graphene_std::uuid::NodeId;
+use kurbo::BezPath;
 
 use crate::{
 	consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP},
 	messages::portfolio::document::{
 		node_graph::utility_types::{
-			FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput, FrontendLayer, FrontendNode, FrontendNodeMetadata, FrontendNodeOrLayer, FrontendNodeToRender, FrontendXY,
+			FrontendExport, FrontendExports, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput, FrontendImport, FrontendLayer, FrontendNode, FrontendNodeMetadata, FrontendNodeOrLayer,
+			FrontendNodeToRender, FrontendXY,
 		},
-		utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, OutputConnector},
+		utility_types::{
+			network_interface::{FlowType, InputConnector, NodeNetworkInterface, OutputConnector, Previewing},
+			wires::{GraphWireStyle, build_vector_wire},
+		},
 	},
 };
 
 // Functions used to collect data from the network interface for use in rendering the node graph
 impl NodeNetworkInterface {
-	pub fn collect_nodes(&mut self, node_graph_errors: &GraphErrors, network_path: &[NodeId]) -> Vec<FrontendNodeToRender> {
+	pub fn collect_nodes(&mut self, node_graph_errors: &GraphErrors, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Vec<FrontendNodeToRender> {
 		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get nested network when collecting nodes");
 			return Vec::new();
@@ -99,7 +104,25 @@ impl NodeNetworkInterface {
 				}
 			};
 
-			let frontend_node_to_render = FrontendNodeToRender { metadata, node_or_layer };
+			let wires = (0..self.number_of_displayed_inputs(&node_id, network_path))
+				.filter_map(|input_index| {
+					self.wire_from_input(&InputConnector::node(node_id, input_index), wire_style, network_path)
+						.filter(|_| {
+							self.upstream_output_connector(&InputConnector::node(node_id, input_index), network_path)
+								.is_some_and(|output| !matches!(output, OutputConnector::Import(_)))
+						})
+						.map(|path| path.to_svg())
+						.map(|wire| {
+							(
+								wire,
+								self.wire_is_thick(&InputConnector::node(node_id, input_index), network_path),
+								FrontendGraphDataType::displayed_type(&self.input_type(&InputConnector::node(node_id, input_index), network_path)),
+							)
+						})
+				})
+				.collect();
+
+			let frontend_node_to_render = FrontendNodeToRender { metadata, node_or_layer, wires };
 
 			nodes.push(frontend_node_to_render);
 		}
@@ -318,16 +341,35 @@ impl NodeNetworkInterface {
 			.is_some_and(|node_id| self.is_layer(&node_id, network_path))
 	}
 
-	pub fn frontend_imports(&mut self, network_path: &[NodeId]) -> Vec<Option<FrontendGraphOutput>> {
+	/// The imports contain both the output port and the outward wires
+	pub fn frontend_imports(&mut self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Vec<Option<FrontendImport>> {
 		match network_path.split_last() {
-			Some((node_id, encapsulatingnetwork_path)) => {
-				let Some(node) = self.document_node(node_id, encapsulatingnetwork_path) else {
-					log::error!("Could not get node {node_id} in network {encapsulatingnetwork_path:?}");
+			Some((node_id, encapsulating_network_path)) => {
+				let Some(node) = self.document_node(node_id, encapsulating_network_path) else {
+					log::error!("Could not get node {node_id} in network {encapsulating_network_path:?}");
 					return Vec::new();
 				};
 				let mut frontend_imports = (0..node.inputs.len())
-					.map(|import_index| self.frontend_output_from_connector(&OutputConnector::Import(import_index), network_path))
+					.map(|import_index| {
+						let port = self.frontend_output_from_connector(&OutputConnector::Import(import_index), network_path);
+						port.and_then(|port| {
+							let outward_wires = self.outward_wires(network_path)?;
+							let downstream_inputs = outward_wires.get(&OutputConnector::Import(import_index)).cloned()?;
+							let wires = downstream_inputs
+								.iter()
+								.filter_map(|input_connector| {
+									let Some(wire) = self.wire_from_input(&input_connector, graph_wire_style, network_path) else {
+										log::error!("Could not get wire path for import input: {input_connector:?}");
+										return None;
+									};
+									Some(wire.to_svg())
+								})
+								.collect::<Vec<_>>();
+							Some(FrontendImport { port, wires })
+						})
+					})
 					.collect::<Vec<_>>();
+
 				if frontend_imports.is_empty() {
 					frontend_imports.push(None);
 				}
@@ -338,13 +380,29 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn frontend_exports(&mut self, network_path: &[NodeId]) -> Vec<Option<FrontendGraphInput>> {
-		let Some(network) = self.nested_network(network_path) else { return Vec::new() };
-		let mut frontend_exports = ((0..network.exports.len()).map(|export_index| self.frontend_input_from_connector(&InputConnector::Export(export_index), network_path))).collect::<Vec<_>>();
-		if frontend_exports.is_empty() {
-			frontend_exports.push(None);
+	/// The imports contain the export port, the outward wires, and the preview wire if it exists
+	pub fn frontend_exports(&mut self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> FrontendExports {
+		let Some(network) = self.nested_network(network_path) else {
+			log::error!("Could not get nested network in frontend exports");
+			return FrontendExports::default();
+		};
+		let mut exports = (0..network.exports.len())
+			.map(|export_index| {
+				let export_connector = InputConnector::Export(export_index);
+				let frontend_export = self.frontend_input_from_connector(&export_connector, network_path);
+
+				frontend_export.and_then(|export| {
+					let wire = self.wire_from_input(&export_connector, graph_wire_style, network_path).map(|path| path.to_svg());
+					Some(FrontendExport { port: export, wire })
+				})
+			})
+			.collect::<Vec<_>>();
+
+		if exports.is_empty() {
+			exports.push(None);
 		}
-		frontend_exports
+		let preview_wire = self.wire_to_root(graph_wire_style, network_path);
+		FrontendExports { exports, preview_wire }
 	}
 
 	pub fn import_export_position(&mut self, network_path: &[NodeId]) -> Option<(IVec2, IVec2)> {
@@ -423,5 +481,61 @@ impl NodeNetworkInterface {
 		let rounded_export_top_right = DVec2::new((export_top_right.x / 24.).round() * 24., (export_top_right.y / 24.).round() * 24.);
 
 		Some((rounded_import_top_left.as_ivec2(), rounded_export_top_right.as_ivec2()))
+	}
+
+	pub fn wire_is_thick(&self, input: &InputConnector, network_path: &[NodeId]) -> bool {
+		let Some(upstream_output) = self.upstream_output_connector(input, network_path) else {
+			return false;
+		};
+		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
+		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
+		vertical_end && vertical_start
+	}
+
+	/// Returns the vector subpath and a boolean of whether the wire should be thick.
+	pub fn wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<BezPath> {
+		let Some(input_position) = self.get_input_center(input, network_path) else {
+			log::error!("Could not get dom rect for wire end: {input:?}");
+			return None;
+		};
+		// An upstream output could not be found
+		let Some(upstream_output) = self.upstream_output_connector(input, network_path) else {
+			return None;
+		};
+		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
+			log::error!("Could not get output port for wire start: {:?}", upstream_output);
+			return None;
+		};
+		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
+		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
+		Some(build_vector_wire(output_position, input_position, vertical_start, vertical_end, wire_style))
+	}
+
+	/// When previewing, there may be a second path to the root node.
+	pub fn wire_to_root(&mut self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<String> {
+		let input = InputConnector::Export(0);
+		let current_export = self.upstream_output_connector(&input, network_path)?;
+
+		let root_node = match self.previewing(network_path) {
+			Previewing::Yes { root_node_to_restore } => root_node_to_restore,
+			Previewing::No => None,
+		}?;
+
+		if Some(root_node.node_id) == current_export.node_id() {
+			return None;
+		}
+		let Some(input_position) = self.get_input_center(&input, network_path) else {
+			log::error!("Could not get input position for wire end in root node: {input:?}");
+			return None;
+		};
+		let upstream_output = OutputConnector::node(root_node.node_id, root_node.output_index);
+		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
+			log::error!("Could not get output position for wire start in root node: {upstream_output:?}");
+			return None;
+		};
+		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
+		let vector_wire = build_vector_wire(output_position, input_position, vertical_start, false, graph_wire_style);
+
+		Some(vector_wire.to_svg())
 	}
 }

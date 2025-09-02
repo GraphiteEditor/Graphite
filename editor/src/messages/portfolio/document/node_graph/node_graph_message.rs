@@ -139,8 +139,6 @@ pub enum NodeGraphMessage {
 	},
 	SendClickTargets,
 	EndSendClickTargets,
-	UnloadWires,
-	SendWires,
 	UpdateVisibleNodes,
 	SendGraph,
 	SetGridAlignedEdges,
@@ -185,6 +183,7 @@ pub enum NodeGraphMessage {
 	TogglePreviewImpl {
 		node_id: NodeId,
 	},
+	ToggleNativeNodeGraphRender,
 	SetImportExportName {
 		name: String,
 		index: ImportOrExport,

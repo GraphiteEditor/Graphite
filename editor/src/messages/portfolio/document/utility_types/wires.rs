@@ -1,26 +1,14 @@
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use glam::{DVec2, IVec2};
-use graphene_std::{uuid::NodeId, vector::misc::dvec2_to_point};
+use graphene_std::vector::misc::dvec2_to_point;
 use kurbo::{BezPath, DEFAULT_ACCURACY, Line, Point, Shape};
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct WirePath {
-	#[serde(rename = "pathString")]
-	pub path_string: String,
+pub struct WirePathInProgress {
+	pub wire: String,
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 	pub thick: bool,
-	pub dashed: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct WirePathUpdate {
-	pub id: NodeId,
-	#[serde(rename = "inputIndex")]
-	pub input_index: usize,
-	// If none, then remove the wire from the map
-	#[serde(rename = "wirePathUpdate")]
-	pub wire_path_update: Option<WirePath>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]

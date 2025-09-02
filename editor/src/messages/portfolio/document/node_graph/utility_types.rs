@@ -60,10 +60,10 @@ pub struct FrontendXY {
 pub struct FrontendGraphInput {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
-	pub name: String,
-	pub description: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: String,
+	pub name: String,
+	pub description: String,
 	/// Either "nothing", "import index {index}", or "{node name} output {output_index}".
 	#[serde(rename = "connectedToString")]
 	pub connected_to: String,
@@ -84,6 +84,26 @@ pub struct FrontendGraphOutput {
 	/// If connected to a node, it is "{node name} input {input_index}".
 	#[serde(rename = "connectedTo")]
 	pub connected_to: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontendExport {
+	pub port: FrontendGraphInput,
+	pub wire: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontendExports {
+	/// If the primary export is not visible, then it is None.
+	pub exports: Vec<Option<FrontendExport>>,
+	#[serde(rename = "previewWire")]
+	pub preview_wire: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontendImport {
+	pub port: FrontendGraphOutput,
+	pub wires: Vec<String>,
 }
 
 // Metadata that is common to nodes and layers
@@ -159,6 +179,8 @@ pub struct FrontendNodeToRender {
 	pub metadata: FrontendNodeMetadata,
 	#[serde(rename = "nodeOrLayer")]
 	pub node_or_layer: FrontendNodeOrLayer,
+	//TODO: Remove
+	pub wires: Vec<(String, bool, FrontendGraphDataType)>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
