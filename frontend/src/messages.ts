@@ -26,11 +26,35 @@ export type XY = { x: number; y: number };
 // ============================================================================
 
 export class UpdateBox extends JsMessage {
-	readonly box!: Box | undefined;
+	readonly box!: FrontendSelectionBox | undefined;
+}
+
+export class FrontendClickTargets {
+	readonly nodeClickTargets!: string[];
+	readonly layerClickTargets!: string[];
+	readonly connectorClickTargets!: string[];
+	readonly iconClickTargets!: string[];
+	readonly allNodesBoundingBox!: string;
+	readonly importExportsBoundingBox!: string;
+	readonly modifyImportExport!: string[];
 }
 
 export class UpdateClickTargets extends JsMessage {
 	readonly clickTargets!: FrontendClickTargets | undefined;
+}
+
+export class FrontendSelectionBox {
+	readonly startX!: number;
+
+	readonly startY!: number;
+
+	readonly endX!: number;
+
+	readonly endY!: number;
+}
+
+export class UpdateNodeGraphSelectionBox extends JsMessage {
+	readonly box!: FrontendSelectionBox | undefined;
 }
 
 const ContextTupleToVec2 = Transform((data) => {
@@ -45,15 +69,20 @@ const ContextTupleToVec2 = Transform((data) => {
 	return { contextMenuCoordinates, contextMenuData };
 });
 
+export class ContextMenuInformation {
+	readonly contextMenuCoordinates!: XY;
+	readonly contextMenuData!: "CreateNode" | { type: "CreateNode"; compatibleType: string } | { nodeId: bigint; currentlyIsNode: boolean };
+}
+
 export class UpdateContextMenuInformation extends JsMessage {
 	@ContextTupleToVec2
 	readonly contextMenuInformation!: ContextMenuInformation | undefined;
 }
 
 export class UpdateImportsExports extends JsMessage {
-	readonly imports!: (FrontendGraphOutput | undefined)[];
+	readonly imports!: (FrontendImport | undefined)[];
 
-	readonly exports!: (FrontendGraphInput | undefined)[];
+	readonly exports!: FrontendExports;
 
 	readonly importPosition!: XY;
 
@@ -93,12 +122,6 @@ export class UpdateVisibleNodes extends JsMessage {
 	readonly nodes!: bigint[];
 }
 
-export class UpdateNodeGraphWires extends JsMessage {
-	readonly wires!: WireUpdate[];
-}
-
-export class ClearAllNodeGraphWires extends JsMessage {}
-
 export class UpdateNodeGraphTransform extends JsMessage {
 	readonly transform!: NodeGraphTransform;
 }
@@ -123,8 +146,14 @@ export class UpdateOpenDocumentsList extends JsMessage {
 	readonly openDocuments!: OpenDocument[];
 }
 
+export class WirePathInProgress {
+	readonly wire!: string;
+	readonly thick!: boolean;
+	readonly dataType!: FrontendGraphDataType;
+}
+
 export class UpdateWirePathInProgress extends JsMessage {
-	readonly wirePath!: WirePath | undefined;
+	readonly wirePathInProgress!: WirePathInProgress | undefined;
 }
 
 export class OpenDocument {
@@ -149,6 +178,7 @@ export class DocumentDetails {
 	}
 }
 
+<<<<<<< HEAD
 export class Box {
 	readonly startX!: number;
 
@@ -174,6 +204,12 @@ export type ContextMenuInformation = {
 	contextMenuData: "CreateNode" | { type: "CreateNode"; compatibleType: string } | { nodeId: bigint; currentlyIsNode: boolean };
 };
 
+=======
+export class FrontendDocumentDetails extends DocumentDetails {
+	readonly id!: bigint;
+}
+
+>>>>>>> 17a1a3d5 (Complete separating node rendering from imports/exports)
 export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic" | "Raster" | "Vector" | "Color";
 
 export class FrontendGraphInput {
@@ -200,6 +236,21 @@ export class FrontendGraphOutput {
 	readonly resolvedType!: string;
 
 	readonly connectedTo!: string[];
+}
+
+export class FrontendExport {
+	readonly port!: FrontendGraphInput;
+	readonly wire!: string | undefined;
+}
+
+export class FrontendExports {
+	readonly exports!: (FrontendExport | undefined)[];
+	readonly previewWire!: string | undefined;
+}
+
+export class FrontendImport {
+	readonly port!: FrontendGraphOutput;
+	readonly wires!: string[];
 }
 
 export class FrontendNodeMetadata {
@@ -268,6 +319,8 @@ export class FrontendNodeOrLayer {
 export class FrontendNodeToRender {
 	readonly metadata!: FrontendNodeMetadata;
 	readonly nodeOrLayer!: FrontendNodeOrLayer;
+	// TODO: Remove
+	readonly wires!: [string, boolean, FrontendGraphDataType][];
 }
 
 export class UpdateCentralNodeGraph extends JsMessage {
@@ -1647,7 +1700,6 @@ type JSMessageFactory = (data: any, wasm: WebAssembly.Memory, handle: EditorHand
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageMakers: Record<string, MessageMaker> = {
-	ClearAllNodeGraphWires,
 	DisplayDialog,
 	DisplayDialogDismiss,
 	DisplayDialogPanic,
@@ -1676,7 +1728,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerTextCopy,
 	TriggerVisitLink,
 	UpdateActiveDocument,
-	UpdateBox,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
 	UpdateDialogButtons,
@@ -1704,8 +1755,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
 	UpdateNodeGraphRender,
+	UpdateNodeGraphSelectionBox,
 	UpdateNodeGraphTransform,
-	UpdateNodeGraphWires,
 	UpdateNodeThumbnail,
 	UpdateOpenDocumentsList,
 	UpdatePlatform,

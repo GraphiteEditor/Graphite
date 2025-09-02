@@ -4,9 +4,8 @@ use super::nodes::SelectedNodes;
 use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DocumentNodeDefinition, resolve_document_node_type};
-use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType};
+use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets};
 use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::ResolvedDocumentNodeTypes;
-use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
 use deserialization::deserialize_node_persistent_metadata;
@@ -20,7 +19,6 @@ use graphene_std::subpath::Subpath;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::{PointId, Vector, VectorModificationType};
-use kurbo::BezPath;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::Hash;
@@ -682,13 +680,6 @@ impl NodeNetworkInterface {
 			.node_metadata(node_id, network_path)
 			.and_then(|node_metadata| node_metadata.persistent_metadata.input_metadata.get(index))?;
 		Some(&metadata.persistent_metadata)
-	}
-
-	fn transient_input_metadata(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&InputTransientMetadata> {
-		let metadata = self
-			.node_metadata(node_id, network_path)
-			.and_then(|node_metadata| node_metadata.persistent_metadata.input_metadata.get(index))?;
-		Some(&metadata.transient_metadata)
 	}
 
 	/// Returns the input name to display in the properties panel. If the name is empty then the type is used.
@@ -1538,30 +1529,6 @@ impl NodeNetworkInterface {
 			return;
 		};
 		network_metadata.transient_metadata.import_export_ports.unload();
-
-		// Always unload all wires connected to them as well
-		let number_of_imports = self.number_of_imports(network_path);
-		let Some(outward_wires) = self.outward_wires(network_path) else {
-			log::error!("Could not get outward wires in remove_import");
-			return;
-		};
-		let mut input_connectors = Vec::new();
-		for import_index in 0..number_of_imports {
-			let Some(outward_wires_for_import) = outward_wires.get(&OutputConnector::Import(import_index)).cloned() else {
-				log::error!("Could not get outward wires for import in remove_import");
-				return;
-			};
-			input_connectors.extend(outward_wires_for_import);
-		}
-		let Some(network) = self.nested_network(network_path) else {
-			return;
-		};
-		for export_index in 0..network.exports.len() {
-			input_connectors.push(InputConnector::Export(export_index));
-		}
-		for input in &input_connectors {
-			self.unload_wire(input, network_path);
-		}
 	}
 
 	pub fn modify_import_export(&mut self, network_path: &[NodeId]) -> Option<&ModifyImportExportClickTarget> {
@@ -1980,99 +1947,6 @@ impl NodeNetworkInterface {
 			.find_map(|(input_index, click_target)| if index == input_index { click_target.bounding_box_center() } else { None })
 	}
 
-	pub fn newly_loaded_input_wire(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
-		if !self.wire_is_loaded(input, network_path) {
-			self.load_wire(input, graph_wire_style, network_path);
-		} else {
-			return None;
-		}
-
-		let wire = match input {
-			InputConnector::Node { node_id, input_index } => {
-				let input_metadata = self.transient_input_metadata(node_id, *input_index, network_path)?;
-				let TransientMetadata::Loaded(wire) = &input_metadata.wire else {
-					log::error!("Could not load wire for input: {input:?}");
-					return None;
-				};
-				wire.clone()
-			}
-			InputConnector::Export(export_index) => {
-				let network_metadata = self.network_metadata(network_path)?;
-				let Some(TransientMetadata::Loaded(wire)) = network_metadata.transient_metadata.wires.get(*export_index) else {
-					log::error!("Could not load wire for input: {input:?}");
-					return None;
-				};
-				wire.clone()
-			}
-		};
-		Some(wire)
-	}
-
-	pub fn wire_is_loaded(&mut self, input: &InputConnector, network_path: &[NodeId]) -> bool {
-		match input {
-			InputConnector::Node { node_id, input_index } => {
-				let Some(input_metadata) = self.transient_input_metadata(node_id, *input_index, network_path) else {
-					log::error!("Input metadata should always exist for input");
-					return false;
-				};
-				input_metadata.wire.is_loaded()
-			}
-			InputConnector::Export(export_index) => {
-				let Some(network_metadata) = self.network_metadata(network_path) else {
-					return false;
-				};
-				match network_metadata.transient_metadata.wires.get(*export_index) {
-					Some(wire) => wire.is_loaded(),
-					None => false,
-				}
-			}
-		}
-	}
-
-	fn load_wire(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) {
-		let dashed = match self.previewing(network_path) {
-			Previewing::Yes { .. } => match input {
-				InputConnector::Node { .. } => false,
-				InputConnector::Export(export_index) => *export_index == 0,
-			},
-			Previewing::No => false,
-		};
-		let Some(wire) = self.wire_path_from_input(input, graph_wire_style, dashed, network_path) else {
-			log::error!("Could not load wire path from input");
-			return;
-		};
-		match input {
-			InputConnector::Node { node_id, input_index } => {
-				let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else { return };
-				let Some(input_metadata) = node_metadata.persistent_metadata.input_metadata.get_mut(*input_index) else {
-					// log::warn!("Node metadata must exist on node: {input:?}");
-					return;
-				};
-				let wire_update = WirePathUpdate {
-					id: *node_id,
-					input_index: *input_index,
-					wire_path_update: Some(wire),
-				};
-				input_metadata.transient_metadata.wire = TransientMetadata::Loaded(wire_update);
-			}
-			InputConnector::Export(export_index) => {
-				let Some(network_metadata) = self.network_metadata_mut(network_path) else { return };
-				if *export_index >= network_metadata.transient_metadata.wires.len() {
-					network_metadata.transient_metadata.wires.resize(export_index + 1, TransientMetadata::Unloaded);
-				}
-				let Some(input_metadata) = network_metadata.transient_metadata.wires.get_mut(*export_index) else {
-					return;
-				};
-				let wire_update = WirePathUpdate {
-					id: NodeId(u64::MAX),
-					input_index: *export_index,
-					wire_path_update: Some(wire),
-				};
-				*input_metadata = TransientMetadata::Loaded(wire_update);
-			}
-		}
-	}
-
 	pub fn all_input_connectors(&self, network_path: &[NodeId]) -> Vec<InputConnector> {
 		let mut input_connectors = Vec::new();
 		let Some(network) = self.nested_network(network_path) else {
@@ -2095,141 +1969,6 @@ impl NodeNetworkInterface {
 			.into_iter()
 			.filter(|input| self.input_from_connector(input, network_path).is_some_and(|input| input.is_exposed()))
 			.collect()
-	}
-
-	/// Maps to the frontend representation of a wire start. Includes disconnected value wire inputs.
-	pub fn node_graph_wire_inputs(&self, network_path: &[NodeId]) -> Vec<(NodeId, usize)> {
-		self.node_graph_input_connectors(network_path)
-			.iter()
-			.map(|input| match input {
-				InputConnector::Node { node_id, input_index } => (*node_id, *input_index),
-				InputConnector::Export(export_index) => (NodeId(u64::MAX), *export_index),
-			})
-			.chain(std::iter::once((NodeId(u64::MAX), u32::MAX as usize)))
-			.collect()
-	}
-
-	fn unload_wires_for_node(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
-		let number_of_outputs = self.number_of_outputs(node_id, network_path);
-		let Some(outward_wires) = self.outward_wires(network_path) else {
-			log::error!("Could not get outward wires in reorder_export");
-			return;
-		};
-		let mut input_connectors = Vec::new();
-		for output_index in 0..number_of_outputs {
-			let Some(inputs) = outward_wires.get(&OutputConnector::node(*node_id, output_index)) else {
-				continue;
-			};
-			input_connectors.extend(inputs.clone())
-		}
-		for input_index in 0..self.number_of_inputs(node_id, network_path) {
-			input_connectors.push(InputConnector::node(*node_id, input_index));
-		}
-		for input in input_connectors {
-			self.unload_wire(&input, network_path);
-		}
-	}
-
-	pub fn unload_wire(&mut self, input: &InputConnector, network_path: &[NodeId]) {
-		match input {
-			InputConnector::Node { node_id, input_index } => {
-				let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
-					return;
-				};
-				let Some(input_metadata) = node_metadata.persistent_metadata.input_metadata.get_mut(*input_index) else {
-					// log::warn!("Node metadata must exist on node: {input:?}");
-					return;
-				};
-				input_metadata.transient_metadata.wire = TransientMetadata::Unloaded;
-			}
-			InputConnector::Export(export_index) => {
-				let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-					return;
-				};
-				if *export_index >= network_metadata.transient_metadata.wires.len() {
-					network_metadata.transient_metadata.wires.resize(export_index + 1, TransientMetadata::Unloaded);
-				}
-				let Some(input_metadata) = network_metadata.transient_metadata.wires.get_mut(*export_index) else {
-					return;
-				};
-				*input_metadata = TransientMetadata::Unloaded;
-			}
-		}
-	}
-
-	/// When previewing, there may be a second path to the root node.
-	pub fn wire_to_root(&mut self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
-		let input = InputConnector::Export(0);
-		let current_export = self.upstream_output_connector(&input, network_path)?;
-
-		let root_node = match self.previewing(network_path) {
-			Previewing::Yes { root_node_to_restore } => root_node_to_restore,
-			Previewing::No => None,
-		}?;
-
-		if Some(root_node.node_id) == current_export.node_id() {
-			return None;
-		}
-		let Some(input_position) = self.get_input_center(&input, network_path) else {
-			log::error!("Could not get input position for wire end in root node: {input:?}");
-			return None;
-		};
-		let upstream_output = OutputConnector::node(root_node.node_id, root_node.output_index);
-		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
-			log::error!("Could not get output position for wire start in root node: {upstream_output:?}");
-			return None;
-		};
-		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
-		let vertical_start: bool = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
-		let thick = vertical_end && vertical_start;
-		let vector_wire = build_vector_wire(output_position, input_position, vertical_start, vertical_end, graph_wire_style);
-
-		let path_string = vector_wire.to_svg();
-		let data_type = FrontendGraphDataType::displayed_type(&self.input_type(&input, network_path));
-		let wire_path_update = Some(WirePath {
-			path_string,
-			data_type,
-			thick,
-			dashed: false,
-		});
-
-		Some(WirePathUpdate {
-			id: NodeId(u64::MAX),
-			input_index: u32::MAX as usize,
-			wire_path_update,
-		})
-	}
-
-	/// Returns the vector subpath and a boolean of whether the wire should be thick.
-	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(BezPath, bool)> {
-		let Some(input_position) = self.get_input_center(input, network_path) else {
-			log::error!("Could not get dom rect for wire end: {input:?}");
-			return None;
-		};
-		// An upstream output could not be found, so the wire does not exist, but it should still be loaded as as empty vector
-		let Some(upstream_output) = self.upstream_output_connector(input, network_path) else {
-			return Some((BezPath::new(), false));
-		};
-		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
-			log::error!("Could not get output port for wire start: {:?}", upstream_output);
-			return None;
-		};
-		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
-		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
-		let thick = vertical_end && vertical_start;
-		Some((build_vector_wire(output_position, input_position, vertical_start, vertical_end, wire_style), thick))
-	}
-
-	pub fn wire_path_from_input(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, dashed: bool, network_path: &[NodeId]) -> Option<WirePath> {
-		let (vector_wire, thick) = self.vector_wire_from_input(input, graph_wire_style, network_path)?;
-		let path_string = vector_wire.to_svg();
-		let data_type = FrontendGraphDataType::displayed_type(&self.input_type(input, network_path));
-		Some(WirePath {
-			path_string,
-			data_type,
-			thick,
-			dashed,
-		})
 	}
 
 	pub fn node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&DocumentNodeClickTargets> {
@@ -2469,7 +2208,6 @@ impl NodeNetworkInterface {
 			return;
 		};
 		node_metadata.transient_metadata.click_targets.unload();
-		self.unload_wires_for_node(node_id, network_path);
 	}
 
 	pub fn unload_upstream_node_click_targets(&mut self, node_ids: Vec<NodeId>, network_path: &[NodeId]) {
@@ -3792,17 +3530,14 @@ impl NodeNetworkInterface {
 			// If a connection is made to the imports
 			(NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }, NodeInput::Network { .. }) => {
 				self.unload_outward_wires(network_path);
-				self.unload_wire(input_connector, network_path);
 			}
 			// If a connection to the imports is disconnected
 			(NodeInput::Network { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
 				self.unload_outward_wires(network_path);
-				self.unload_wire(input_connector, network_path);
 			}
 			// If a node is disconnected.
 			(NodeInput::Node { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
 				self.unload_outward_wires(network_path);
-				self.unload_wire(input_connector, network_path);
 
 				if let Some((old_upstream_node_id, previous_position)) = previous_metadata {
 					let old_upstream_node_is_layer = self.is_layer(&old_upstream_node_id, network_path);
@@ -5848,9 +5583,6 @@ pub struct NodeNetworkTransientMetadata {
 	pub modify_import_export: TransientMetadata<ModifyImportExportClickTarget>,
 	// Distance to the edges of the network, where the import/export ports are displayed. Rounded to nearest grid space when the panning ends.
 	pub rounded_network_edge_distance: TransientMetadata<NetworkEdgeDistance>,
-
-	// Wires from the exports
-	pub wires: Vec<TransientMetadata<WirePathUpdate>>,
 }
 
 #[derive(Debug, Clone)]
@@ -6029,12 +5761,11 @@ impl InputPersistentMetadata {
 	}
 }
 
-#[derive(Debug, Clone, Default)]
-struct InputTransientMetadata {
-	wire: TransientMetadata<WirePathUpdate>,
-	// downstream_protonode: populated for all inputs after each compile
-	// types: populated for each protonode after each
-}
+// #[derive(Debug, Clone, Default)]
+// struct InputTransientMetadata {
+// 	// downstream_protonode: populated for all inputs after each compile
+// 	// types: populated for each protonode after each
+// }
 
 /// Persistent metadata for each node in the network, which must be included when creating, serializing, and deserializing saving a node.
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -6073,15 +5804,15 @@ impl DocumentNodePersistentMetadata {
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct InputMetadata {
 	pub persistent_metadata: InputPersistentMetadata,
-	#[serde(skip)]
-	transient_metadata: InputTransientMetadata,
+	// #[serde(skip)]
+	// transient_metadata: InputTransientMetadata,
 }
 
 impl Clone for InputMetadata {
 	fn clone(&self) -> Self {
 		InputMetadata {
 			persistent_metadata: self.persistent_metadata.clone(),
-			transient_metadata: Default::default(),
+			// transient_metadata: Default::default(),
 		}
 	}
 }

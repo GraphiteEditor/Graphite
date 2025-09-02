@@ -564,8 +564,9 @@
 							</canvas>
 						{/if}
 					</div>
-
-					<Graph />
+					<div class="graph-view" class:open={$document.graphViewOverlayOpen} data-graph>
+						<Graph />
+					</div>
 				</LayoutCol>
 				<LayoutCol class="ruler-or-scrollbar right-scrollbar">
 					<ScrollbarInput
@@ -820,6 +821,18 @@
 								outline: none; // Ok for contenteditable element
 								margin: -1px;
 							}
+						}
+					}
+
+					.graph-view {
+						pointer-events: none;
+						transition: opacity 0.2s;
+						opacity: 0;
+
+						&.open {
+							cursor: auto;
+							pointer-events: auto;
+							opacity: 1;
 						}
 					}
 

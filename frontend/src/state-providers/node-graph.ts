@@ -2,15 +2,13 @@ import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
 import {
-	type Box,
+	type FrontendSelectionBox,
 	type FrontendClickTargets,
 	type ContextMenuInformation,
 	type FrontendNodeToRender,
 	type FrontendNodeType,
-	type WirePath,
-	ClearAllNodeGraphWires,
+	type WirePathInProgress,
 	SendUIMetadata,
-	UpdateBox,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
 	UpdateImportReorderIndex,
@@ -19,35 +17,39 @@ import {
 	UpdateLayerWidths,
 	UpdateNodeGraphRender,
 	UpdateVisibleNodes,
-	UpdateNodeGraphWires,
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
 	UpdateWirePathInProgress,
+	UpdateNodeGraphSelectionBox,
 } from "@graphite/messages";
 
 export function createNodeGraphState(editor: Editor) {
 	const { subscribe, update } = writable({
-		box: undefined as Box | undefined,
+		// Data that will continue to be rendered in Svelte for now
+		selectionBox: undefined as FrontendSelectionBox | undefined,
 		clickTargets: undefined as FrontendClickTargets | undefined,
-		contextMenuInformation: undefined as ContextMenuInformation | undefined,
-		layerWidths: new Map<bigint, number>(),
+		wirePathInProgress: undefined as WirePathInProgress | undefined,
 		updateImportsExports: undefined as UpdateImportsExports | undefined,
-		nodesToRender: new Map<bigint, FrontendNodeToRender>(),
-		open: false,
-		opacity: 0.8,
-
-		visibleNodes: new Set<bigint>(),
-		/// The index is the exposed input index. The exports have a first key value of u32::MAX.
-		wires: new Map<bigint, Map<number, WirePath>>(),
-		wirePathInProgress: undefined as WirePath | undefined,
-		nodeDescriptions: new Map<string, string>(),
-		nodeTypes: [] as FrontendNodeType[],
-		thumbnails: new Map<bigint, string>(),
-		transform: { scale: 1, x: 0, y: 0 },
-		inSelectedNetwork: true,
-		previewedNode: undefined as bigint | undefined,
 		reorderImportIndex: undefined as number | undefined,
 		reorderExportIndex: undefined as number | undefined,
+
+		contextMenuInformation: undefined as ContextMenuInformation | undefined,
+		nodeTypes: [] as FrontendNodeType[],
+		nodeDescriptions: new Map<string, string>(),
+
+		// Data that will be moved into the node graph to be rendered natively
+		nodesToRender: new Map<bigint, FrontendNodeToRender>(),
+		opacity: 0.8,
+		inSelectedNetwork: true,
+		previewedNode: undefined as bigint | undefined,
+
+		// TODO: Remove these fields
+		visibleNodes: new Set<bigint>(),
+		layerWidths: new Map<bigint, number>(),
+
+		// Data that will be passed in the context
+		thumbnails: new Map<bigint, string>(),
+		transform: { scale: 1, x: 0, y: 0 },
 	});
 
 	// Set up message subscriptions on creation
@@ -58,15 +60,21 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateBox, (updateBox) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelectionBox, (updateBox) => {
 		update((state) => {
-			state.box = updateBox.box;
+			state.selectionBox = updateBox.box;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateClickTargets, (UpdateClickTargets) => {
+	editor.subscriptions.subscribeJsMessage(UpdateClickTargets, (updateClickTargets) => {
 		update((state) => {
-			state.clickTargets = UpdateClickTargets.clickTargets;
+			state.clickTargets = updateClickTargets.clickTargets;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateWirePathInProgress, (updateWirePathInProgress) => {
+		update((state) => {
+			state.wirePathInProgress = updateWirePathInProgress.wirePathInProgress;
 			return state;
 		});
 	});
@@ -107,7 +115,6 @@ export function createNodeGraphState(editor: Editor) {
 			updateNodeGraphRender.nodesToRender.forEach((node) => {
 				state.nodesToRender.set(node.metadata.nodeId, node);
 			});
-			state.open = updateNodeGraphRender.open;
 			state.opacity = updateNodeGraphRender.opacity;
 			state.inSelectedNetwork = updateNodeGraphRender.inSelectedNetwork;
 			state.previewedNode = updateNodeGraphRender.previewedNode;
@@ -117,30 +124,6 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateVisibleNodes, (updateVisibleNodes) => {
 		update((state) => {
 			state.visibleNodes = new Set<bigint>(updateVisibleNodes.nodes);
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphWires, (updateNodeWires) => {
-		update((state) => {
-			updateNodeWires.wires.forEach((wireUpdate) => {
-				let inputMap = state.wires.get(wireUpdate.id);
-				// If it doesn't exist, create it and set it in the outer map
-				if (!inputMap) {
-					inputMap = new Map();
-					state.wires.set(wireUpdate.id, inputMap);
-				}
-				if (wireUpdate.wirePathUpdate !== undefined) {
-					inputMap.set(wireUpdate.inputIndex, wireUpdate.wirePathUpdate);
-				} else {
-					inputMap.delete(wireUpdate.inputIndex);
-				}
-			});
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(ClearAllNodeGraphWires, (_) => {
-		update((state) => {
-			state.wires.clear();
 			return state;
 		});
 	});
@@ -158,7 +141,7 @@ export function createNodeGraphState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateWirePathInProgress, (updateWirePathInProgress) => {
 		update((state) => {
-			state.wirePathInProgress = updateWirePathInProgress.wirePath;
+			state.wirePathInProgress = updateWirePathInProgress.wirePathInProgress;
 			return state;
 		});
 	});
