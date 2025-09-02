@@ -183,6 +183,7 @@ pub enum NodeGraphMessage {
 	TogglePreviewImpl {
 		node_id: NodeId,
 	},
+	ToggleNativeNodeGraphRender,
 	SetImportExportName {
 		name: String,
 		index: ImportOrExport,

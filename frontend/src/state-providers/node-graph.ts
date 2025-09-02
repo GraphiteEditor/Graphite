@@ -47,6 +47,7 @@ export function createNodeGraphState(editor: Editor) {
 		// TODO: Remove these fields
 		visibleNodes: new Set<bigint>(),
 		layerWidths: new Map<bigint, number>(),
+		nativeNodeGraphRender: false,
 
 		// Data that will be passed in the context
 		thumbnails: new Map<bigint, string>(),
@@ -119,6 +120,7 @@ export function createNodeGraphState(editor: Editor) {
 			state.opacity = updateNodeGraphRender.opacity;
 			state.inSelectedNetwork = updateNodeGraphRender.inSelectedNetwork;
 			state.previewedNode = updateNodeGraphRender.previewedNode;
+			state.nativeNodeGraphRender = updateNodeGraphRender.nativeNodeGraphRender;
 			return state;
 		});
 	});

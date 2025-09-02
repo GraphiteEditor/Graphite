@@ -278,6 +278,8 @@ pub enum FrontendMessage {
 		// Displays a dashed border around the node
 		#[serde(rename = "previewedNode")]
 		previewed_node: Option<NodeId>,
+		#[serde(rename = "nativeNodeGraphRender")]
+		native_node_graph_render: bool,
 	},
 	UpdateVisibleNodes {
 		nodes: Vec<NodeId>,
