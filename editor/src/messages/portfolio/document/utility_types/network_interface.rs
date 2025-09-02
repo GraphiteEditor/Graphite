@@ -5288,7 +5288,7 @@ impl InputConnector {
 }
 
 /// Represents an output connector
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum OutputConnector {
 	#[serde(rename = "node")]
 	Node {

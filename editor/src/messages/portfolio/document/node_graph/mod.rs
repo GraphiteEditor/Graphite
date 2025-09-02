@@ -1,4 +1,5 @@
 pub mod document_node_definitions;
+pub mod generate_node_graph_overlay;
 mod node_graph_message;
 mod node_graph_message_handler;
 pub mod node_properties;

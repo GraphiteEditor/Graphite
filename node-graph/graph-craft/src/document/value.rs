@@ -259,6 +259,7 @@ tagged_value! {
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_path_bool::BooleanOperation),
 	TextAlign(graphene_core::text::TextAlign),
+	NodeGraphOverlayData(graphene_core::node_graph_overlay::types::NodeGraphOverlayData),
 }
 
 impl TaggedValue {
