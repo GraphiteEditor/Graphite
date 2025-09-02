@@ -28,9 +28,9 @@ rawkit-tests = ["dep:image", "dep:libraw-rs", "dep:reqwest", "dep:rayon"]
 rawkit-proc-macros = { version = "0.1.0", path = "rawkit-proc-macros" }
 
 # Required dependencies
-bitstream-io = "2.5.3"
+bitstream-io = "4.5.0"
 num_enum = "0.7.3"
-thiserror = "1.0.66"
+thiserror = "2.0.16"
 
 # Optional dependencies (should be dev dependencies, but Cargo currently doesn't allow optional dev dependencies)
 image = { version = "0.25.4", optional = true }
