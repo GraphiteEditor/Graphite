@@ -37,11 +37,10 @@ export function createNodeGraphState(editor: Editor) {
 		opacity: 0.8,
 
 		visibleNodes: new Set<bigint>(),
-		/// The index is the exposed input index. The exports have a first key value of u32::MAX.
-		wires: new Map<bigint, Map<number, WirePath>>(),
-		wirePathInProgress: undefined as WirePath | undefined,
-		nodeDescriptions: new Map<string, string>(),
-		nodeTypes: [] as FrontendNodeType[],
+		layerWidths: new Map<bigint, number>(),
+		nativeNodeGraphRender: false,
+
+		// Data that will be passed in the context
 		thumbnails: new Map<bigint, string>(),
 		transform: { scale: 1, x: 0, y: 0 },
 		inSelectedNetwork: true,
@@ -111,6 +110,7 @@ export function createNodeGraphState(editor: Editor) {
 			state.opacity = updateNodeGraphRender.opacity;
 			state.inSelectedNetwork = updateNodeGraphRender.inSelectedNetwork;
 			state.previewedNode = updateNodeGraphRender.previewedNode;
+			state.nativeNodeGraphRender = updateNodeGraphRender.nativeNodeGraphRender;
 			return state;
 		});
 	});
