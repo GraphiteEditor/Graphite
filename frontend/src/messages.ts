@@ -129,35 +129,34 @@ export class UpdateNodeGraphSelection extends JsMessage {
 }
 
 export class UpdateOpenDocumentsList extends JsMessage {
-	@Type(() => FrontendDocumentDetails)
-	readonly openDocuments!: FrontendDocumentDetails[];
+	@Type(() => OpenDocument)
+	readonly openDocuments!: OpenDocument[];
 }
 
 export class UpdateWirePathInProgress extends JsMessage {
 	readonly wirePath!: WirePath | undefined;
 }
 
-// Allows the auto save system to use a string for the id rather than a BigInt.
-// IndexedDb does not allow for BigInts as primary keys.
-// TypeScript does not allow subclasses to change the type of class variables in subclasses.
-// It is an abstract class to point out that it should not be instantiated directly.
-export abstract class DocumentDetails {
+export class OpenDocument {
+	readonly id!: bigint;
+	@Type(() => DocumentDetails)
+	readonly details!: DocumentDetails;
+
+	get displayName(): string {
+		return this.details.displayName;
+	}
+}
+
+export class DocumentDetails {
 	readonly name!: string;
 
 	readonly isAutoSaved!: boolean;
 
 	readonly isSaved!: boolean;
 
-	// This field must be provided by the subclass implementation
-	// readonly id!: bigint | string;
-
 	get displayName(): string {
 		return `${this.name}${this.isSaved ? "" : "*"}`;
 	}
-}
-
-export class FrontendDocumentDetails extends DocumentDetails {
-	readonly id!: bigint;
 }
 
 export class Box {
@@ -277,21 +276,20 @@ export class WireUpdate {
 	readonly wirePathUpdate!: WirePath | undefined;
 }
 
-export class IndexedDbDocumentDetails extends DocumentDetails {
+export class TriggerPersistenceWriteDocument extends JsMessage {
+	// Use a string since IndexedDB can not use BigInts for keys
 	@Transform(({ value }: { value: bigint }) => value.toString())
-	id!: string;
-}
+	documentId!: string;
 
-export class TriggerIndexedDbWriteDocument extends JsMessage {
 	document!: string;
 
-	@Type(() => IndexedDbDocumentDetails)
-	details!: IndexedDbDocumentDetails;
+	@Type(() => DocumentDetails)
+	details!: DocumentDetails;
 
 	version!: string;
 }
 
-export class TriggerIndexedDbRemoveDocument extends JsMessage {
+export class TriggerPersistenceRemoveDocument extends JsMessage {
 	// Use a string since IndexedDB can not use BigInts for keys
 	@Transform(({ value }: { value: bigint }) => value.toString())
 	documentId!: string;
@@ -1643,8 +1641,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerFetchAndOpenDocument,
 	TriggerFontLoad,
 	TriggerImport,
-	TriggerIndexedDbRemoveDocument,
-	TriggerIndexedDbWriteDocument,
+	TriggerPersistenceRemoveDocument,
+	TriggerPersistenceWriteDocument,
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadPreferences,
 	TriggerLoadRestAutoSaveDocuments,
