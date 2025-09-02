@@ -188,7 +188,7 @@
 	}
 </script>
 
-<LayoutRow class={"curve-input"} classes={{ disabled, ...classes }} style={styleName} {styles} {tooltip}>
+<LayoutRow class="curve-input" classes={{ disabled, ...classes }} style={styleName} {styles} {tooltip}>
 	<svg viewBox="0 0 1 1" on:pointermove={handlePointerMove} on:pointerup={handlePointerUp}>
 		{#each { length: GRID_SIZE - 1 } as _, i}
 			<path class="grid" d={`M 0 ${(i + 1) / GRID_SIZE} L 1 ${(i + 1) / GRID_SIZE}`} />

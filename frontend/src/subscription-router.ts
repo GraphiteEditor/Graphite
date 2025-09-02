@@ -9,7 +9,6 @@ type JsMessageCallback<T extends JsMessage> = (messageData: T) => void;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JsMessageCallbackMap = Record<string, JsMessageCallback<any> | undefined>;
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createSubscriptionRouter() {
 	const subscriptions: JsMessageCallbackMap = {};
 

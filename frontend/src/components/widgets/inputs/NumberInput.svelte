@@ -640,7 +640,7 @@
 </script>
 
 <FieldInput
-	class={"number-input"}
+	class="number-input"
 	classes={{
 		increment: mode === "Increment",
 		range: mode === "Range",

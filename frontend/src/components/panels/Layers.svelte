@@ -547,7 +547,7 @@
 						<div class="expand-arrow-none"></div>
 					{/if}
 					{#if listing.entry.clipped}
-						<IconLabel icon="Clipped" class="clipped-arrow" tooltip={"Clipping mask is active (Alt-click border to release)"} />
+						<IconLabel icon="Clipped" class="clipped-arrow" tooltip="Clipping mask is active (Alt-click border to release)" />
 					{/if}
 					<div class="thumbnail">
 						{#if $nodeGraph.thumbnails.has(listing.entry.id)}
@@ -555,7 +555,7 @@
 						{/if}
 					</div>
 					{#if listing.entry.name === "Artboard"}
-						<IconLabel icon="Artboard" class={"layer-type-icon"} />
+						<IconLabel icon="Artboard" class="layer-type-icon" />
 					{/if}
 					<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
 						<input
@@ -572,7 +572,7 @@
 					</LayoutRow>
 					{#if !listing.entry.unlocked || !listing.entry.parentsUnlocked}
 						<IconButton
-							class={"status-toggle"}
+							class="status-toggle"
 							classes={{ inherited: !listing.entry.parentsUnlocked }}
 							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
 							size={24}
@@ -582,7 +582,7 @@
 						/>
 					{/if}
 					<IconButton
-						class={"status-toggle"}
+						class="status-toggle"
 						classes={{ inherited: !listing.entry.parentsVisible }}
 						action={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
 						size={24}
