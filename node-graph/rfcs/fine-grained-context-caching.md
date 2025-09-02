@@ -184,11 +184,11 @@ This is expected to have the biggest impact on real time applications such as an
 # Unresolved questions
 [unresolved-questions]: #unresolved-questions
 
-- How do we communicate to the context modification nodes which parts of the context should be "zeroed"?
-- How does this interact with "smart caching" (nodes which use e.g. the Footprint to approximate the result through upscaling)?
+- ~How do we communicate to the context modification nodes which parts of the context should be "zeroed"?~
+- ~How does this interact with "smart caching" (nodes which use e.g. the Footprint to approximate the result through upscaling)?~
 
 
 # Future possibilities
 [future-possibilities]: #future-possibilities
 
-~Adding `Inject*` annotation to complement the `Extract*` ones to provide even more fine grained control over caching.~
+- ~Adding `Inject*` annotation to complement the `Extract*` ones to provide even more fine grained control over caching.~
