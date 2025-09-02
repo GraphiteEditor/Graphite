@@ -38,7 +38,7 @@ pub(crate) struct WinitApp {
 	start_render_sender: SyncSender<()>,
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
-	persitent_data: PersistentData,
+	persistent_data: PersistentData,
 }
 
 impl WinitApp {
@@ -52,6 +52,9 @@ impl WinitApp {
 				let _ = start_render_receiver.recv();
 			}
 		});
+
+		let mut persistent_data = PersistentData::default();
+		persistent_data.load_from_disk();
 
 		Self {
 			cef_context,
@@ -67,7 +70,7 @@ impl WinitApp {
 			start_render_sender,
 			web_communication_initialized: false,
 			web_communication_startup_buffer: Vec::new(),
-			persitent_data: PersistentData::default(),
+			persistent_data,
 		}
 	}
 
@@ -165,12 +168,32 @@ impl WinitApp {
 				let _ = self.event_loop_proxy.send_event(CustomEvent::CloseWindow);
 			}
 			DesktopFrontendMessage::PersistenceWriteDocument { id, document } => {
-				self.persitent_data.write_document(id, document);
-				self.persitent_data.write_to_disk();
+				self.persistent_data.write_document(id, document);
 			}
 			DesktopFrontendMessage::PersistenceDeleteDocument { id } => {
-				self.persitent_data.delete_document(&id);
-				self.persitent_data.write_to_disk();
+				self.persistent_data.delete_document(&id);
+			}
+			DesktopFrontendMessage::PersistenceUpdateCurrentDocument { id } => {
+				self.persistent_data.set_current_document(id);
+			}
+			DesktopFrontendMessage::PersistenceUpdateDocumentsList { ids } => {
+				self.persistent_data.force_document_order(ids);
+			}
+			DesktopFrontendMessage::PersistenceLoadCurrentDocument => {
+				if let Some((id, document)) = self.persistent_data.get_current_document() {
+					let message = DesktopWrapperMessage::LoadDocument { id, document, to_front: false };
+					self.dispatch_desktop_wrapper_message(message);
+				}
+			}
+			DesktopFrontendMessage::PersistenceLoadRemainingDocuments => {
+				for (id, document) in self.persistent_data.get_documents_before_current() {
+					let message = DesktopWrapperMessage::LoadDocument { id, document, to_front: true };
+					self.dispatch_desktop_wrapper_message(message);
+				}
+				for (id, document) in self.persistent_data.get_documents_after_current() {
+					let message = DesktopWrapperMessage::LoadDocument { id, document, to_front: false };
+					self.dispatch_desktop_wrapper_message(message);
+				}
 			}
 		}
 	}
