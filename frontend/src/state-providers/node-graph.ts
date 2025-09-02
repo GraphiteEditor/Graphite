@@ -118,6 +118,7 @@ export function createNodeGraphState(editor: Editor) {
 			state.opacity = updateNodeGraphRender.opacity;
 			state.inSelectedNetwork = updateNodeGraphRender.inSelectedNetwork;
 			state.previewedNode = updateNodeGraphRender.previewedNode;
+			state.nativeNodeGraphRender = updateNodeGraphRender.nativeNodeGraphRender;
 			return state;
 		});
 	});

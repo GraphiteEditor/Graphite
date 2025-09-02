@@ -1630,6 +1630,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					opacity: graph_fade_artwork_percentage,
 					in_selected_network: selection_network_path == breadcrumb_network_path,
 					previewed_node,
+					native_node_graph_render: self.native_node_graph_render,
 				});
 				responses.add(NodeGraphMessage::UpdateVisibleNodes);
 
@@ -1780,6 +1781,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::TogglePreviewImpl { node_id } => {
 				network_interface.toggle_preview(node_id, selection_network_path);
+			}
+			NodeGraphMessage::ToggleNativeNodeGraphRender => {
+				self.native_node_graph_render = !self.native_node_graph_render;
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::ToggleSelectedLocked => {
 				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
