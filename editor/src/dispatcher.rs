@@ -20,11 +20,11 @@ pub struct DispatcherMessageHandlers {
 	defer_message_handler: DeferMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
 	globals_message_handler: GlobalsMessageHandler,
-	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
+	pub input_preprocessor_message_handler: InputPreprocessorMessageHandler,
 	key_mapping_message_handler: KeyMappingMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
 	pub portfolio_message_handler: PortfolioMessageHandler,
-	preferences_message_handler: PreferencesMessageHandler,
+	pub preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
 }
 
