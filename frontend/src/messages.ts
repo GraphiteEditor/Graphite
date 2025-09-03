@@ -77,7 +77,7 @@ export class UpdateLayerWidths extends JsMessage {
 	readonly layerWidths!: Map<bigint, number>;
 }
 
-export class UpdateNodeGraphRender extends JsMessage {
+export class UpdateNodeGraphSvelteRender extends JsMessage {
 	readonly nodesToRender!: FrontendNodeToRender[];
 
 	readonly open!: boolean;
@@ -89,8 +89,12 @@ export class UpdateNodeGraphRender extends JsMessage {
 	readonly previewedNode!: bigint | undefined;
 }
 
-export class UpdateNativeNodeGraphRender extends JsMessage {
-	readonly nativeNodeGraphRender!: boolean;
+export class UpdateShouldRenderSvelteNodes extends JsMessage {
+	readonly shouldRenderSvelteNodes!: boolean;
+}
+
+export class UpdateNativeNodeGraphSVG extends JsMessage {
+	readonly svgString!: string;
 }
 
 export class UpdateVisibleNodes extends JsMessage {
@@ -1707,8 +1711,9 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
-	UpdateNodeGraphRender,
-	UpdateNativeNodeGraphRender,
+	UpdateNodeGraphSvelteRender,
+	UpdateShouldRenderSvelteNodes,
+	UpdateNativeNodeGraphSVG,
 	UpdateNodeGraphSelectionBox,
 	UpdateNodeGraphTransform,
 	UpdateNodeGraphWires,

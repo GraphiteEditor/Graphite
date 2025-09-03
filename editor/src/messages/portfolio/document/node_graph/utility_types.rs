@@ -35,13 +35,6 @@ pub struct DragStart {
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct Transform {
-	pub scale: f64,
-	pub x: f64,
-	pub y: f64,
-}
-
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct BoxSelection {
 	#[serde(rename = "startX")]
 	pub start_x: u32,

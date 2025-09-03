@@ -427,6 +427,16 @@ impl Color {
 		Color { red, green, blue, alpha }.to_linear_srgb().map_rgb(|channel| channel * alpha)
 	}
 
+	pub fn from_rgba8(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
+		let map_range = |int_color| int_color as f32 / 255.;
+
+		let red = map_range(red);
+		let green = map_range(green);
+		let blue = map_range(blue);
+		let alpha = map_range(alpha);
+		Color { red, green, blue, alpha }
+	}
+
 	/// Create a [Color] from a hue, saturation, lightness and alpha (all between 0 and 1)
 	///
 	/// # Examples
@@ -938,6 +948,17 @@ impl Color {
 		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
 
 		Some(Color::from_rgb8_srgb(r, g, b))
+	}
+
+	pub fn from_rgba8_no_srgb(color_str: &str) -> Option<Color> {
+		if color_str.len() != 6 {
+			return None;
+		}
+		let r = u8::from_str_radix(&color_str[0..2], 16).ok()?;
+		let g = u8::from_str_radix(&color_str[2..4], 16).ok()?;
+		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
+		let a = 255;
+		Some(Color::from_rgba8(r, g, b, a))
 	}
 
 	/// Linearly interpolates between two colors based on t.

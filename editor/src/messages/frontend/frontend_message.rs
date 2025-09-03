@@ -1,13 +1,13 @@
 use super::utility_types::{DocumentDetails, MouseCursorIcon, OpenDocument};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::utility_types::{BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendNodeType, Transform};
+use crate::messages::portfolio::document::node_graph::utility_types::{BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendNodeType};
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 use graph_craft::document::NodeId;
-use graphene_std::node_graph_overlay::types::{FrontendExports, FrontendImport, FrontendNodeToRender, FrontendXY};
+use graphene_std::node_graph_overlay::types::{FrontendExports, FrontendImport, FrontendNodeToRender, FrontendXY, NodeGraphTransform};
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
 use graphene_std::text::{Font, TextAlign};
@@ -270,7 +270,7 @@ pub enum FrontendMessage {
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,
 	},
-	UpdateNodeGraphRender {
+	UpdateNodeGraphSvelteRender {
 		#[serde(rename = "nodesToRender")]
 		nodes_to_render: Vec<FrontendNodeToRender>,
 		open: bool,
@@ -281,9 +281,13 @@ pub enum FrontendMessage {
 		#[serde(rename = "previewedNode")]
 		previewed_node: Option<NodeId>,
 	},
-	UpdateNativeNodeGraphRender {
-		#[serde(rename = "nativeNodeGraphRender")]
-		native_node_graph_render: bool,
+	UpdateShouldRenderSvelteNodes {
+		#[serde(rename = "shouldRenderSvelteNodes")]
+		should_render_svelte_nodes: bool,
+	},
+	UpdateNativeNodeGraphSVG {
+		#[serde(rename = "svgString")]
+		svg_string: String,
 	},
 	UpdateVisibleNodes {
 		nodes: Vec<NodeId>,
@@ -298,7 +302,7 @@ pub enum FrontendMessage {
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateNodeGraphTransform {
-		transform: Transform,
+		transform: NodeGraphTransform,
 	},
 	UpdateNodeThumbnail {
 		id: NodeId,
