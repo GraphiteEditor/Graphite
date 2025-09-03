@@ -1,7 +1,30 @@
-use crate::uuid::NodeId;
+use glam::{DAffine2, DVec2};
+
+use crate::{node_graph_overlay::consts::*, uuid::NodeId};
+use std::hash::{Hash, Hasher};
+
+#[derive(Clone, Debug, Default, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct NodeGraphTransform {
+	pub scale: f64,
+	pub x: f64,
+	pub y: f64,
+}
+
+impl NodeGraphTransform {
+	pub fn to_daffine2(&self) -> DAffine2 {
+		DAffine2::from_scale_angle_translation(DVec2::splat(self.scale), 0.0, DVec2::new(self.x, self.y))
+	}
+}
+
+impl Hash for NodeGraphTransform {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.scale.to_bits().hash(state);
+		self.x.to_bits().hash(state);
+		self.y.to_bits().hash(state);
+	}
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
-
 pub struct NodeGraphOverlayData {
 	pub nodes_to_render: Vec<FrontendNodeToRender>,
 	pub open: bool,
@@ -21,7 +44,6 @@ pub struct FrontendNodeToRender {
 
 // Metadata that is common to nodes and layers
 #[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
-
 pub struct FrontendNodeMetadata {
 	#[serde(rename = "nodeId")]
 	pub node_id: NodeId,
@@ -41,7 +63,6 @@ pub struct FrontendNodeMetadata {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
-
 pub struct FrontendNode {
 	// pub position: FrontendNodePosition,
 	pub position: FrontendXY,
@@ -50,7 +71,6 @@ pub struct FrontendNode {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
-
 pub struct FrontendLayer {
 	#[serde(rename = "bottomInput")]
 	pub bottom_input: FrontendGraphInput,
@@ -71,7 +91,6 @@ pub struct FrontendLayer {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
-
 pub struct FrontendXY {
 	pub x: i32,
 	pub y: i32,
@@ -93,15 +112,32 @@ pub struct FrontendXY {
 // 	pub stack: Option<u32>,
 // }
 
+// Should be an enum but those are hard to serialize/deserialize to TS
 #[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
-
 pub struct FrontendNodeOrLayer {
 	pub node: Option<FrontendNode>,
 	pub layer: Option<FrontendLayer>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
+impl FrontendNodeOrLayer {
+	pub fn to_enum(self) -> NodeOrLayer {
+		let node_or_layer = if let Some(node) = self.node {
+			Some(NodeOrLayer::Node(node))
+		} else if let Some(layer) = self.layer {
+			Some(NodeOrLayer::Layer(layer))
+		} else {
+			None
+		};
+		node_or_layer.unwrap()
+	}
+}
 
+pub enum NodeOrLayer {
+	Node(FrontendNode),
+	Layer(FrontendLayer),
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendGraphInput {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
@@ -118,7 +154,6 @@ pub struct FrontendGraphInput {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
-
 pub struct FrontendGraphOutput {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
@@ -140,7 +175,6 @@ pub struct FrontendExport {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
-
 pub struct FrontendExports {
 	/// If the primary export is not visible, then it is None.
 	pub exports: Vec<Option<FrontendExport>>,
@@ -149,7 +183,6 @@ pub struct FrontendExports {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
-
 pub struct FrontendImport {
 	pub port: FrontendGraphOutput,
 	pub wires: Vec<String>,
@@ -167,4 +200,33 @@ pub enum FrontendGraphDataType {
 	Color,
 	Gradient,
 	Typography,
+}
+
+impl FrontendGraphDataType {
+	pub fn data_color(&self) -> &'static str {
+		match self {
+			FrontendGraphDataType::General => COLOR_DATA_GENERAL,
+			FrontendGraphDataType::Number => COLOR_DATA_NUMBER,
+			FrontendGraphDataType::Artboard => COLOR_DATA_ARTBOARD,
+			FrontendGraphDataType::Graphic => COLOR_DATA_GRAPHIC,
+			FrontendGraphDataType::Raster => COLOR_DATA_RASTER,
+			FrontendGraphDataType::Vector => COLOR_DATA_VECTOR,
+			FrontendGraphDataType::Color => COLOR_DATA_COLOR,
+			FrontendGraphDataType::Gradient => COLOR_DATA_GRADIENT,
+			FrontendGraphDataType::Typography => COLOR_DATA_TYPOGRAPHY,
+		}
+	}
+	pub fn data_color_dim(&self) -> &'static str {
+		match self {
+			FrontendGraphDataType::General => COLOR_DATA_GENERAL_DIM,
+			FrontendGraphDataType::Number => COLOR_DATA_NUMBER_DIM,
+			FrontendGraphDataType::Artboard => COLOR_DATA_ARTBOARD_DIM,
+			FrontendGraphDataType::Graphic => COLOR_DATA_GRAPHIC_DIM,
+			FrontendGraphDataType::Raster => COLOR_DATA_RASTER_DIM,
+			FrontendGraphDataType::Vector => COLOR_DATA_VECTOR_DIM,
+			FrontendGraphDataType::Color => COLOR_DATA_COLOR_DIM,
+			FrontendGraphDataType::Gradient => COLOR_DATA_GRADIENT_DIM,
+			FrontendGraphDataType::Typography => COLOR_DATA_TYPOGRAPHY_DIM,
+		}
+	}
 }

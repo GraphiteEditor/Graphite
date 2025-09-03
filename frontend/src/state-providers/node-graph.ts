@@ -15,8 +15,9 @@ import {
 	UpdateExportReorderIndex,
 	UpdateImportsExports,
 	UpdateLayerWidths,
-	UpdateNodeGraphRender,
-	UpdateNativeNodeGraphRender,
+	UpdateNodeGraphSvelteRender,
+	UpdateShouldRenderSvelteNodes,
+	UpdateNativeNodeGraphSVG,
 	UpdateVisibleNodes,
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
@@ -33,6 +34,7 @@ export function createNodeGraphState(editor: Editor) {
 		updateImportsExports: undefined as UpdateImportsExports | undefined,
 		reorderImportIndex: undefined as number | undefined,
 		reorderExportIndex: undefined as number | undefined,
+		nativeNodeGraphSVGString: "",
 
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
 		nodeTypes: [] as FrontendNodeType[],
@@ -47,6 +49,7 @@ export function createNodeGraphState(editor: Editor) {
 		// TODO: Remove these fields
 		visibleNodes: new Set<bigint>(),
 		layerWidths: new Map<bigint, number>(),
+		shouldRenderSvelteNodes: false,
 
 		// Data that will be passed in the context
 		thumbnails: new Map<bigint, string>(),
@@ -110,21 +113,27 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphRender, (updateNodeGraphRender) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSvelteRender, (updateNodeGraphSvelteRender) => {
 		update((state) => {
 			state.nodesToRender.clear();
-			updateNodeGraphRender.nodesToRender.forEach((node) => {
+			updateNodeGraphSvelteRender.nodesToRender.forEach((node) => {
 				state.nodesToRender.set(node.metadata.nodeId, node);
 			});
-			state.opacity = updateNodeGraphRender.opacity;
-			state.inSelectedNetwork = updateNodeGraphRender.inSelectedNetwork;
-			state.previewedNode = updateNodeGraphRender.previewedNode;
+			state.opacity = updateNodeGraphSvelteRender.opacity;
+			state.inSelectedNetwork = updateNodeGraphSvelteRender.inSelectedNetwork;
+			state.previewedNode = updateNodeGraphSvelteRender.previewedNode;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNativeNodeGraphRender, (updateNativeNodeGraphRender) => {
+	editor.subscriptions.subscribeJsMessage(UpdateShouldRenderSvelteNodes, (UpdateShouldRenderSvelteNodes) => {
 		update((state) => {
-			state.nativeNodeGraphRender = updateNativeNodeGraphRender.nativeNodeGraphRender;
+			state.shouldRenderSvelteNodes = UpdateShouldRenderSvelteNodes.shouldRenderSvelteNodes;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateNativeNodeGraphSVG, (updateNativeNodeGraphRender) => {
+		update((state) => {
+			state.nativeNodeGraphSVGString = updateNativeNodeGraphRender.svgString;
 			return state;
 		});
 	});

@@ -21,7 +21,7 @@ use crate::messages::tool::common_functionality::utility_functions::make_path_ed
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2, IVec2};
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
+use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_std::math::math_ext::QuadExt;
 use graphene_std::node_graph_overlay::types::{FrontendGraphDataType, FrontendXY};
@@ -1795,8 +1795,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::ToggleNativeNodeGraphRender => {
 				self.native_node_graph_render = !self.native_node_graph_render;
-				self.node_graph_overlay = None;
+				responses.add(FrontendMessage::UpdateShouldRenderSvelteNodes {
+					should_render_svelte_nodes: self.native_node_graph_render,
+				});
 				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(MenuBarMessage::SendLayout);
 			}
 			NodeGraphMessage::ToggleSelectedLocked => {
 				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
