@@ -95,7 +95,7 @@ pub struct NodeGraphMessageHandler {
 	/// Used to keep track of what nodes are sent to the front end so that only visible ones are sent to the frontend
 	frontend_nodes: Vec<NodeId>,
 	/// Disables rendering nodes in Svelte
-	native_node_graph_render: bool,
+	should_render_svelte_nodes: bool,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -1625,7 +1625,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::UpdateActionButtons);
 
-				if self.native_node_graph_render {
+				if !self.should_render_svelte_nodes {
+					// Generate and render node graph overlay network
 				} else {
 					let nodes_to_render = network_interface.collect_nodes(&self.node_graph_errors, preferences.graph_wire_style, breadcrumb_network_path);
 					self.frontend_nodes = nodes_to_render.iter().map(|node| node.metadata.node_id).collect();
@@ -1789,9 +1790,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				network_interface.toggle_preview(node_id, selection_network_path);
 			}
 			NodeGraphMessage::ToggleNativeNodeGraphRender => {
-				self.native_node_graph_render = !self.native_node_graph_render;
+				self.should_render_svelte_nodes = !self.should_render_svelte_nodes;
 				responses.add(FrontendMessage::UpdateShouldRenderSvelteNodes {
-					should_render_svelte_nodes: self.native_node_graph_render,
+					should_render_svelte_nodes: self.should_render_svelte_nodes,
 				});
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(MenuBarMessage::SendLayout);
@@ -2627,7 +2628,7 @@ impl Default for NodeGraphMessageHandler {
 			reordering_import: None,
 			end_index: None,
 			frontend_nodes: Vec::new(),
-			native_node_graph_render: false,
+			should_render_svelte_nodes: false,
 		}
 	}
 }
