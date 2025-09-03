@@ -4,11 +4,16 @@ use graphite_desktop_wrapper::messages::{Document, DocumentId};
 pub(crate) struct PersistentData {
 	documents: DocumentStore,
 	current_document: Option<DocumentId>,
+	#[serde(skip)]
+	document_order: Option<Vec<DocumentId>>,
 }
 
 impl PersistentData {
 	pub(crate) fn write_document(&mut self, id: DocumentId, document: Document) {
 		self.documents.write(id, document);
+		if let Some(order) = &self.document_order {
+			self.documents.force_order(order.clone());
+		}
 		self.flush();
 	}
 
@@ -20,13 +25,20 @@ impl PersistentData {
 		self.flush();
 	}
 
+	pub(crate) fn get_current_document_id(&self) -> Option<DocumentId> {
+		match self.current_document {
+			Some(id) => Some(id),
+			None => Some(*self.documents.document_ids().first()?),
+		}
+	}
+
 	pub(crate) fn get_current_document(&self) -> Option<(DocumentId, Document)> {
-		let current_id = self.current_document()?;
+		let current_id = self.get_current_document_id()?;
 		Some((current_id, self.documents.read(&current_id)?))
 	}
 
 	pub(crate) fn get_documents_before_current(&self) -> Vec<(DocumentId, Document)> {
-		let Some(current_id) = self.current_document() else {
+		let Some(current_id) = self.get_current_document_id() else {
 			return Vec::new();
 		};
 		self.documents
@@ -38,7 +50,7 @@ impl PersistentData {
 	}
 
 	pub(crate) fn get_documents_after_current(&self) -> Vec<(DocumentId, Document)> {
-		let Some(current_id) = self.current_document() else {
+		let Some(current_id) = self.get_current_document_id() else {
 			return Vec::new();
 		};
 		self.documents
@@ -55,16 +67,9 @@ impl PersistentData {
 		self.flush();
 	}
 
-	pub(crate) fn force_document_order(&mut self, order: Vec<DocumentId>) {
-		self.documents.force_order(order);
+	pub(crate) fn set_document_order(&mut self, order: Vec<DocumentId>) {
+		self.document_order = Some(order);
 		self.flush();
-	}
-
-	fn current_document(&self) -> Option<DocumentId> {
-		match self.current_document {
-			Some(id) => Some(id),
-			None => Some(*self.documents.document_ids().first()?),
-		}
 	}
 
 	fn flush(&self) {
@@ -143,8 +148,18 @@ impl DocumentStore {
 		})
 	}
 
-	fn force_order(&mut self, order: Vec<DocumentId>) {
-		self.0.sort_by_key(|meta| order.iter().position(|id| *id == meta.id).unwrap_or(usize::MAX));
+	fn force_order(&mut self, desired_order: Vec<DocumentId>) {
+		let mut ordered_prefix_len = 0;
+		for id in desired_order {
+			if let Some(offset) = self.0[ordered_prefix_len..].iter().position(|meta| meta.id == id) {
+				let found_index = ordered_prefix_len + offset;
+				if found_index != ordered_prefix_len {
+					self.0[ordered_prefix_len..=found_index].rotate_right(1);
+				}
+				ordered_prefix_len += 1;
+			}
+		}
+		self.0.truncate(ordered_prefix_len);
 	}
 
 	fn document_ids(&self) -> Vec<DocumentId> {

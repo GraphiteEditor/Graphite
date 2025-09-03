@@ -131,5 +131,9 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			};
 			dispatcher.queue_editor_message(message.into());
 		}
+		DesktopWrapperMessage::SelectDocument { id } => {
+			let message = PortfolioMessage::SelectDocument { document_id: id };
+			dispatcher.queue_editor_message(message.into());
+		}
 	}
 }
