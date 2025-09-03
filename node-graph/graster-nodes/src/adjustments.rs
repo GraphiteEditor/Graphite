@@ -549,7 +549,7 @@ pub enum RedGreenBlue {
 
 /// Color Channel
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum RedGreenBlueAlpha {
 	#[default]
@@ -561,7 +561,7 @@ pub enum RedGreenBlueAlpha {
 
 /// Style of noise pattern
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
 pub enum NoiseType {
 	#[default]
@@ -577,7 +577,7 @@ pub enum NoiseType {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 /// Style of layered levels of the noise pattern
 pub enum FractalType {
 	#[default]
@@ -594,7 +594,7 @@ pub enum FractalType {
 
 /// Distance function used by the cellular noise
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub enum CellularDistanceFunction {
 	#[default]
 	Euclidean,
@@ -605,7 +605,7 @@ pub enum CellularDistanceFunction {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub enum CellularReturnType {
 	CellValue,
 	#[default]
@@ -625,7 +625,7 @@ pub enum CellularReturnType {
 
 /// Type of domain warp
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
 pub enum DomainWarpType {
 	#[default]
@@ -737,7 +737,7 @@ fn channel_mixer<T: Adjust<Color>>(
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum RelativeAbsolute {
 	#[default]
@@ -747,7 +747,7 @@ pub enum RelativeAbsolute {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub enum SelectiveColorChoice {
 	#[default]
 	Reds,
