@@ -136,7 +136,7 @@ impl NodeNetworkInterface {
 			return None;
 		}
 		let input_type = self.input_type(input_connector, network_path);
-		let data_type = FrontendGraphDataType::displayed_type(&input_type);
+		let data_type = input_type.displayed_type();
 		let resolved_type = input_type.resolved_type_name();
 
 		let connected_to = self
@@ -239,7 +239,7 @@ impl NodeNetworkInterface {
 				(import_name, description)
 			}
 		};
-		let data_type = FrontendGraphDataType::displayed_type(&output_type);
+		let data_type = output_type.displayed_type();
 		let resolved_type = output_type.resolved_type_name();
 		let mut connected_to = self
 			.outward_wires(network_path)

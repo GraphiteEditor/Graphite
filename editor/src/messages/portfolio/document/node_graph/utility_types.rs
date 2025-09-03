@@ -1,6 +1,4 @@
 use graph_craft::document::NodeId;
-use graph_craft::document::value::TaggedValue;
-use graphene_std::Type;
 use std::borrow::Cow;
 
 use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::TypeSource;
@@ -208,7 +206,7 @@ impl FrontendNodeType {
 		}
 	}
 }
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DragStart {
 	pub start_x: f64,
 	pub start_y: f64,

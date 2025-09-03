@@ -116,7 +116,9 @@ export class UpdateNodeGraphRender extends JsMessage {
 	readonly inSelectedNetwork!: boolean;
 
 	readonly previewedNode!: bigint | undefined;
+}
 
+export class UpdateNativeNodeGraphRender extends JsMessage {
 	readonly nativeNodeGraphRender!: boolean;
 }
 

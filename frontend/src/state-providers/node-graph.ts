@@ -16,6 +16,7 @@ import {
 	UpdateImportsExports,
 	UpdateLayerWidths,
 	UpdateNodeGraphRender,
+	UpdateNativeNodeGraphRender,
 	UpdateVisibleNodes,
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
@@ -118,7 +119,12 @@ export function createNodeGraphState(editor: Editor) {
 			state.opacity = updateNodeGraphRender.opacity;
 			state.inSelectedNetwork = updateNodeGraphRender.inSelectedNetwork;
 			state.previewedNode = updateNodeGraphRender.previewedNode;
-			state.nativeNodeGraphRender = updateNodeGraphRender.nativeNodeGraphRender;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateNativeNodeGraphRender, (updateNativeNodeGraphRender) => {
+		update((state) => {
+			state.nativeNodeGraphRender = updateNativeNodeGraphRender.nativeNodeGraphRender;
 			return state;
 		});
 	});

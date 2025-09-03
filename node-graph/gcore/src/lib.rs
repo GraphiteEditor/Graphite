@@ -17,6 +17,7 @@ pub mod logic;
 pub mod math;
 pub mod memo;
 pub mod misc;
+pub mod node_graph_overlay;
 pub mod ops;
 pub mod raster;
 pub mod raster_types;

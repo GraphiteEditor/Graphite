@@ -1,4 +1,3 @@
-use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use glam::{DVec2, IVec2};
 use graphene_std::vector::misc::dvec2_to_point;
 use kurbo::{BezPath, DEFAULT_ACCURACY, Line, Point, Shape};
