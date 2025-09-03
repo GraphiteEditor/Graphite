@@ -74,6 +74,7 @@
 		// Replace usage of `-rgb` variants with CSS color() function to calculate alpha when browsers support it
 		// See https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color() and https://caniuse.com/css-color-function
 		// Specifically, support for the relative syntax is needed: `color(from var(--color-0-black) srgb r g b / 0.5)` to convert black to 50% alpha
+		// Keep in sync with node_graph_overlay/consts.rs
 		--color-0-black: #000;
 		--color-0-black-rgb: 0, 0, 0;
 		--color-1-nearblack: #111;
