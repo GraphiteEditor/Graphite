@@ -17,8 +17,9 @@ import {
 	UpdateExportReorderIndex,
 	UpdateImportsExports,
 	UpdateLayerWidths,
-	UpdateNodeGraphRender,
-	UpdateNativeNodeGraphRender,
+	UpdateNodeGraphSvelteRender,
+	UpdateShouldRenderSvelteNodes,
+	UpdateNativeNodeGraphSVG,
 	UpdateVisibleNodes,
 	UpdateNodeGraphWires,
 	UpdateNodeGraphTransform,
@@ -30,6 +31,12 @@ export function createNodeGraphState(editor: Editor) {
 	const { subscribe, update } = writable({
 		box: undefined as Box | undefined,
 		clickTargets: undefined as FrontendClickTargets | undefined,
+		wirePathInProgress: undefined as WirePathInProgress | undefined,
+		updateImportsExports: undefined as UpdateImportsExports | undefined,
+		reorderImportIndex: undefined as number | undefined,
+		reorderExportIndex: undefined as number | undefined,
+		nativeNodeGraphSVGString: "",
+
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
 		layerWidths: new Map<bigint, number>(),
 		updateImportsExports: undefined as UpdateImportsExports | undefined,
@@ -39,7 +46,7 @@ export function createNodeGraphState(editor: Editor) {
 
 		visibleNodes: new Set<bigint>(),
 		layerWidths: new Map<bigint, number>(),
-		nativeNodeGraphRender: false,
+		shouldRenderSvelteNodes: false,
 
 		// Data that will be passed in the context
 		thumbnails: new Map<bigint, string>(),
@@ -101,22 +108,27 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphRender, (updateNodeGraphRender) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSvelteRender, (updateNodeGraphSvelteRender) => {
 		update((state) => {
 			state.nodesToRender.clear();
-			updateNodeGraphRender.nodesToRender.forEach((node) => {
+			updateNodeGraphSvelteRender.nodesToRender.forEach((node) => {
 				state.nodesToRender.set(node.metadata.nodeId, node);
 			});
-			state.open = updateNodeGraphRender.open;
-			state.opacity = updateNodeGraphRender.opacity;
-			state.inSelectedNetwork = updateNodeGraphRender.inSelectedNetwork;
-			state.previewedNode = updateNodeGraphRender.previewedNode;
+			state.opacity = updateNodeGraphSvelteRender.opacity;
+			state.inSelectedNetwork = updateNodeGraphSvelteRender.inSelectedNetwork;
+			state.previewedNode = updateNodeGraphSvelteRender.previewedNode;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNativeNodeGraphRender, (updateNativeNodeGraphRender) => {
+	editor.subscriptions.subscribeJsMessage(UpdateShouldRenderSvelteNodes, (UpdateShouldRenderSvelteNodes) => {
 		update((state) => {
-			state.nativeNodeGraphRender = updateNativeNodeGraphRender.nativeNodeGraphRender;
+			state.shouldRenderSvelteNodes = UpdateShouldRenderSvelteNodes.shouldRenderSvelteNodes;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateNativeNodeGraphSVG, (updateNativeNodeGraphRender) => {
+		update((state) => {
+			state.nativeNodeGraphSVGString = updateNativeNodeGraphRender.svgString;
 			return state;
 		});
 	});
