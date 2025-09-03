@@ -11,6 +11,7 @@ use graphene_brush::brush_stroke::BrushStroke;
 use graphene_core::raster::Image;
 use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::table::Table;
+use graphene_core::text::FontCache;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
 use graphene_core::vector::Vector;
@@ -38,7 +39,9 @@ macro_rules! tagged_value {
 			RenderOutput(RenderOutput),
 			SurfaceFrame(SurfaceFrame),
 			#[serde(skip)]
-			EditorApi(Arc<WasmEditorApi>)
+			EditorApi(Arc<WasmEditorApi>),
+			#[serde(skip)]
+			FontCache(Arc<FontCache>),
 		}
 
 		// We must manually implement hashing because some values are floats and so do not reproducibly hash (see FakeHash below)
@@ -52,6 +55,7 @@ macro_rules! tagged_value {
 					Self::RenderOutput(x) => x.hash(state),
 					Self::SurfaceFrame(x) => x.hash(state),
 					Self::EditorApi(x) => x.hash(state),
+					Self::FontCache(x) => x.hash(state),
 				}
 			}
 		}
@@ -64,6 +68,7 @@ macro_rules! tagged_value {
 					Self::RenderOutput(x) => Box::new(x),
 					Self::SurfaceFrame(x) => Box::new(x),
 					Self::EditorApi(x) => Box::new(x),
+					Self::FontCache(x) => Box::new(x),
 				}
 			}
 			/// Converts to a Arc<dyn Any + Send + Sync + 'static>
@@ -74,6 +79,7 @@ macro_rules! tagged_value {
 					Self::RenderOutput(x) => Arc::new(x),
 					Self::SurfaceFrame(x) => Arc::new(x),
 					Self::EditorApi(x) => Arc::new(x),
+					Self::FontCache(x) => Arc::new(x),
 				}
 			}
 			/// Creates a graphene_core::Type::Concrete(TypeDescriptor { .. }) with the type of the value inside the tagged value
@@ -83,7 +89,8 @@ macro_rules! tagged_value {
 					$( Self::$identifier(_) => concrete!($ty), )*
 					Self::RenderOutput(_) => concrete!(RenderOutput),
 					Self::SurfaceFrame(_) => concrete!(SurfaceFrame),
-					Self::EditorApi(_) => concrete!(&WasmEditorApi)
+					Self::EditorApi(_) => concrete!(&WasmEditorApi),
+					Self::FontCache(_) => concrete!(Arc<FontCache>),
 				}
 			}
 			/// Attempts to downcast the dynamic type to a tagged value
@@ -96,7 +103,6 @@ macro_rules! tagged_value {
 					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(*downcast(input).unwrap())), )*
 					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(*downcast(input).unwrap())),
 					x if x == TypeId::of::<SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(*downcast(input).unwrap())),
-
 
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 				}

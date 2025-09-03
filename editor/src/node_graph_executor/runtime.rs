@@ -40,6 +40,8 @@ pub struct NodeRuntime {
 	update_thumbnails: bool,
 
 	editor_api: Arc<WasmEditorApi>,
+	font_cache: Arc<FontCache>,
+
 	node_graph_errors: GraphErrors,
 	monitor_nodes: Vec<Vec<NodeId>>,
 
@@ -60,7 +62,7 @@ pub struct NodeRuntime {
 pub enum GraphRuntimeRequest {
 	GraphUpdate(GraphUpdate),
 	ExecutionRequest(ExecutionRequest),
-	FontCacheUpdate(FontCache),
+	FontCacheUpdate(Arc<FontCache>),
 	EditorPreferencesUpdate(EditorPreferences),
 }
 
@@ -113,13 +115,14 @@ impl NodeRuntime {
 			update_thumbnails: true,
 
 			editor_api: WasmEditorApi {
-				font_cache: FontCache::default(),
 				editor_preferences: Box::new(EditorPreferences::default()),
 				node_graph_message_sender: Box::new(InternalNodeGraphUpdateSender(sender)),
 
 				application_io: None,
 			}
 			.into(),
+
+			font_cache: Arc::new(FontCache::default()),
 
 			node_graph_errors: Vec::new(),
 			monitor_nodes: Vec::new(),
@@ -139,7 +142,6 @@ impl NodeRuntime {
 				application_io: Some(WasmApplicationIo::new().await.into()),
 				#[cfg(any(test, not(target_family = "wasm")))]
 				application_io: Some(WasmApplicationIo::new_offscreen().await.into()),
-				font_cache: self.editor_api.font_cache.clone(),
 				node_graph_message_sender: Box::new(self.sender.clone()),
 				editor_preferences: Box::new(self.editor_preferences.clone()),
 			}
@@ -163,13 +165,7 @@ impl NodeRuntime {
 		for request in requests {
 			match request {
 				GraphRuntimeRequest::FontCacheUpdate(font_cache) => {
-					self.editor_api = WasmEditorApi {
-						font_cache,
-						application_io: self.editor_api.application_io.clone(),
-						node_graph_message_sender: Box::new(self.sender.clone()),
-						editor_preferences: Box::new(self.editor_preferences.clone()),
-					}
-					.into();
+					self.font_cache = font_cache;
 					if let Some(graph) = self.old_graph.clone() {
 						// We ignore this result as compilation errors should have been reported in an earlier iteration
 						let _ = self.update_network(graph).await;
@@ -178,7 +174,6 @@ impl NodeRuntime {
 				GraphRuntimeRequest::EditorPreferencesUpdate(preferences) => {
 					self.editor_preferences = preferences.clone();
 					self.editor_api = WasmEditorApi {
-						font_cache: self.editor_api.font_cache.clone(),
 						application_io: self.editor_api.application_io.clone(),
 						node_graph_message_sender: Box::new(self.sender.clone()),
 						editor_preferences: Box::new(preferences),
@@ -240,7 +235,7 @@ impl NodeRuntime {
 	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, String> {
 		preprocessor::expand_network(&mut graph, &self.substitutions);
 
-		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
+		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone(), self.font_cache.clone());
 
 		// We assume only one output
 		assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
@@ -408,7 +403,6 @@ pub async fn replace_application_io(application_io: WasmApplicationIo) {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	if let Some(node_runtime) = &mut *node_runtime {
 		node_runtime.editor_api = WasmEditorApi {
-			font_cache: node_runtime.editor_api.font_cache.clone(),
 			application_io: Some(application_io.into()),
 			node_graph_message_sender: Box::new(node_runtime.sender.clone()),
 			editor_preferences: Box::new(node_runtime.editor_preferences.clone()),

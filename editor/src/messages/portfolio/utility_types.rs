@@ -1,8 +1,9 @@
 use graphene_std::text::FontCache;
+use std::sync::Arc;
 
 #[derive(Debug, Default)]
 pub struct PersistentData {
-	pub font_cache: FontCache,
+	pub font_cache: Arc<FontCache>,
 	pub use_vello: bool,
 }
 

@@ -1317,7 +1317,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					implementation: DocumentNodeImplementation::ProtoNode(text::text::IDENTIFIER),
 					call_argument: concrete!(Context),
 					inputs: vec![
-						NodeInput::scope("editor-api"),
+						NodeInput::scope("font-cache"),
 						NodeInput::value(TaggedValue::String("Lorem ipsum".to_string()), false),
 						NodeInput::value(
 							TaggedValue::Font(Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into())),

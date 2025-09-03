@@ -31,6 +31,7 @@ use graphene_std::subpath::BezierHandles;
 use graphene_std::text::Font;
 use graphene_std::vector::misc::HandleId;
 use graphene_std::vector::{PointId, SegmentId, Vector, VectorModificationType};
+use std::sync::Arc;
 use std::vec;
 
 #[derive(ExtractField)]
@@ -351,8 +352,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				data,
 			} => {
 				let font = Font::new(font_family, font_style);
-
-				self.persistent_data.font_cache.insert(font, preview_url, data);
+				let mut font_cache = self.persistent_data.font_cache.as_ref().clone();
+				font_cache.insert(font, preview_url, data);
+				self.persistent_data.font_cache = Arc::new(font_cache);
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
 				for document_id in self.document_ids.iter() {
 					let node_to_inspect = self.node_to_inspect();

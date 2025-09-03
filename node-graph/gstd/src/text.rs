@@ -1,11 +1,12 @@
-use graph_craft::wasm_application_io::WasmEditorApi;
+use std::sync::Arc;
+
 pub use graphene_core::text::*;
 use graphene_core::{Ctx, table::Table, vector::Vector};
 
 #[node_macro::node(category(""))]
 fn text<'i: 'n>(
 	_: impl Ctx,
-	editor: &'i WasmEditorApi,
+	font_cache: Arc<FontCache>,
 	text: String,
 	font_name: Font,
 	#[unit(" px")]
@@ -38,7 +39,7 @@ fn text<'i: 'n>(
 		align,
 	};
 
-	let font_data = editor.font_cache.get(&font_name).map(|f| load_font(f));
+	let font_data = font_cache.get(&font_name).map(|f| load_font(f));
 
 	to_path(&text, font_data, typesetting, per_glyph_instances)
 }

@@ -5,10 +5,11 @@ use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput,
 use graph_craft::generic;
 use graph_craft::wasm_application_io::WasmEditorApi;
 use graphene_std::Context;
+use graphene_std::text::FontCache;
 use graphene_std::uuid::NodeId;
 use std::sync::Arc;
 
-pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEditorApi>) -> NodeNetwork {
+pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEditorApi>, font_cache: Arc<FontCache>) -> NodeNetwork {
 	network.generate_node_paths(&[]);
 
 	let inner_network = DocumentNode {
@@ -72,12 +73,22 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 			inputs: vec![NodeInput::value(TaggedValue::EditorApi(editor_api), false)],
 			..Default::default()
 		},
+		DocumentNode {
+			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::ops::identity::IDENTIFIER),
+			inputs: vec![NodeInput::value(TaggedValue::FontCache(font_cache), false)],
+			..Default::default()
+		},
 	];
 
 	NodeNetwork {
 		exports: vec![NodeInput::node(NodeId(1), 0)],
 		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
-		scope_injections: [("editor-api".to_string(), (NodeId(2), concrete!(&WasmEditorApi)))].into_iter().collect(),
+		scope_injections: [
+			("editor-api".to_string(), (NodeId(2), concrete!(&WasmEditorApi))),
+			("font-cache".to_string(), (NodeId(3), concrete!(Arc<FontCache>))),
+		]
+		.into_iter()
+		.collect(),
 		// TODO(TrueDoctor): check if it makes sense to set `generated` to `true`
 		generated: false,
 	}

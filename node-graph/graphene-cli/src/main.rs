@@ -90,7 +90,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	let preferences = EditorPreferences { use_vello: true };
 	let editor_api = Arc::new(WasmEditorApi {
-		font_cache: FontCache::default(),
 		application_io: Some(application_io.into()),
 		node_graph_message_sender: Box::new(UpdateLogger {}),
 		editor_preferences: Box::new(preferences),
@@ -184,7 +183,9 @@ fn compile_graph(document_string: String, editor_api: Arc<WasmEditorApi>) -> Res
 	let substitutions = preprocessor::generate_node_substitutions();
 	preprocessor::expand_network(&mut network, &substitutions);
 
-	let wrapped_network = wrap_network_in_scope(network.clone(), editor_api);
+	let font_cache = Arc::new(FontCache::default());
+
+	let wrapped_network = wrap_network_in_scope(network.clone(), editor_api, font_cache);
 
 	let compiler = Compiler {};
 	compiler.compile_single(wrapped_network).map_err(|x| x.into())

@@ -13,6 +13,7 @@ use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
 use graphene_std::wasm_application_io::RenderOutputType;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
+use std::sync::Arc;
 
 mod runtime_io;
 pub use runtime_io::NodeRuntimeIO;
@@ -89,7 +90,7 @@ impl NodeGraphExecutor {
 		execution_id
 	}
 
-	pub fn update_font_cache(&self, font_cache: FontCache) {
+	pub fn update_font_cache(&self, font_cache: Arc<FontCache>) {
 		self.runtime_io.send(GraphRuntimeRequest::FontCacheUpdate(font_cache)).expect("Failed to send font cache update");
 	}
 

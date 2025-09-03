@@ -190,7 +190,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_node_template();
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let text = resolve_document_node_type("Text").expect("Text node does not exist").node_template_input_override([
-			Some(NodeInput::scope("editor-api")),
+			Some(NodeInput::scope("font-cache")),
 			Some(NodeInput::value(TaggedValue::String(text), false)),
 			Some(NodeInput::value(TaggedValue::Font(font), false)),
 			Some(NodeInput::value(TaggedValue::F64(typesetting.font_size), false)),
