@@ -1794,9 +1794,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				network_interface.toggle_preview(node_id, selection_network_path);
 			}
 			NodeGraphMessage::ToggleNativeNodeGraphRender => {
-				self.native_node_graph_render = !self.native_node_graph_render;
+				self.should_render_svelte_nodes = !self.should_render_svelte_nodes;
 				responses.add(FrontendMessage::UpdateShouldRenderSvelteNodes {
-					should_render_svelte_nodes: self.native_node_graph_render,
+					should_render_svelte_nodes: self.should_render_svelte_nodes,
 				});
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(MenuBarMessage::SendLayout);
