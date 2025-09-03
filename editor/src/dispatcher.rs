@@ -157,7 +157,10 @@ impl Dispatcher {
 						return;
 					} else {
 						// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
-						self.responses.push(message);
+						// Deduplicate the render native node graph messages. TODO: Replace responses with hashset
+						if !(message == FrontendMessage::RequestNativeNodeGraphRender && self.responses.contains(&FrontendMessage::RequestNativeNodeGraphRender)) {
+							self.responses.push(message);
+						}
 					}
 				}
 				Message::Globals(message) => {

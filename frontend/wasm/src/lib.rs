@@ -7,12 +7,15 @@ extern crate log;
 pub mod editor_api;
 pub mod helpers;
 pub mod native_communcation;
+pub mod wasm_node_graph_ui_executor;
 
 use editor::messages::prelude::*;
 use std::panic;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use wasm_bindgen::prelude::*;
+
+use crate::wasm_node_graph_ui_executor::WasmNodeGraphUIExecutor;
 
 // Set up the persistent editor backend state
 pub static EDITOR_HAS_CRASHED: AtomicBool = AtomicBool::new(false);
@@ -22,6 +25,8 @@ pub static LOGGER: WasmLog = WasmLog;
 thread_local! {
 	#[cfg(not(feature = "native"))]
 	pub static EDITOR: Mutex<Option<editor::application::Editor>> = const { Mutex::new(None) };
+	#[cfg(not(feature = "native"))]
+	pub static WASM_NODE_GRAPH_EXECUTOR: Mutex<Option<WasmNodeGraphUIExecutor>> = const { Mutex::new(None) };
 	pub static MESSAGE_BUFFER: std::cell::RefCell<Vec<Message>> = const { std::cell::RefCell::new(Vec::new()) };
 	pub static EDITOR_HANDLE: Mutex<Option<editor_api::EditorHandle>> = const { Mutex::new(None) };
 }

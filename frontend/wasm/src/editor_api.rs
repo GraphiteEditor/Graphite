@@ -5,7 +5,9 @@
 // on the dispatcher messaging system and more complex Rust data types.
 //
 use crate::helpers::translate_key;
-use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
+#[cfg(not(feature = "native"))]
+use crate::wasm_node_graph_ui_executor::WasmNodeGraphUIExecutor;
+use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER, WASM_NODE_GRAPH_EXECUTOR};
 use editor::consts::FILE_EXTENSION;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
@@ -17,6 +19,7 @@ use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
+use interpreted_executor::ui_runtime::CompilationRequest;
 use js_sys::{Object, Reflect};
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
@@ -149,7 +152,11 @@ impl EditorHandle {
 	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
 		let editor = Editor::new();
 		let editor_handle = EditorHandle { frontend_message_handler_callback };
+		let node_graph_executor = WasmNodeGraphUIExecutor::new();
 		if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
+			log::error!("Attempted to initialize the editor more than once");
+		}
+		if WASM_NODE_GRAPH_EXECUTOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(node_graph_executor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
 		}
 		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
@@ -208,6 +215,17 @@ impl EditorHandle {
 
 	// Sends a FrontendMessage to JavaScript
 	fn send_frontend_message_to_js(&self, mut message: FrontendMessage) {
+		// Intercept any requests to render the node graph overlay
+		if message == FrontendMessage::RequestNativeNodeGraphRender {
+			executor_editor_and_handle(|executor, editor, _handle| {
+				if let Some(node_graph_overlay_network) = editor.generate_node_graph_overlay_network() {
+					let compilation_request = CompilationRequest { network: node_graph_overlay_network };
+					executor.compilation_request(compilation_request);
+				}
+			});
+			return;
+		}
+
 		if let FrontendMessage::UpdateImageData { ref image_data } = message {
 			let new_hash = calculate_hash(image_data);
 			let prev_hash = IMAGE_DATA_HASH.load(Ordering::Relaxed);
@@ -263,6 +281,18 @@ impl EditorHandle {
 			*g.borrow_mut() = Some(Closure::new(move |_timestamp| {
 				#[cfg(not(feature = "native"))]
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
+
+				// Poll the UI node graph
+				#[cfg(not(feature = "native"))]
+				executor_editor_and_handle(|executor, editor, handle| {
+					for frontend_message in executor
+						.poll_node_graph_ui_evaluation(editor)
+						.into_iter()
+						.flat_map(|runtime_response| editor.handle_message(runtime_response))
+					{
+						handle.send_frontend_message_to_js(frontend_message);
+					}
+				});
 
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 					handle(|handle| {
@@ -982,6 +1012,31 @@ fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) ->
 	})
 }
 
+#[cfg(not(feature = "native"))]
+fn executor<T: Default>(callback: impl FnOnce(&mut WasmNodeGraphUIExecutor) -> T) -> T {
+	WASM_NODE_GRAPH_EXECUTOR.with(|executor| {
+		let mut guard = executor.try_lock();
+		let Ok(Some(executor)) = guard.as_deref_mut() else {
+			log::error!("Failed to borrow editor");
+			return T::default();
+		};
+
+		callback(executor)
+	})
+}
+
+#[cfg(not(feature = "native"))]
+pub(crate) fn executor_editor_and_handle(callback: impl FnOnce(&mut WasmNodeGraphUIExecutor, &mut Editor, &mut EditorHandle)) {
+	executor(|executor| {
+		handle(|editor_handle| {
+			editor(|editor| {
+				// Call the closure with the editor and its handle
+				callback(executor, editor, editor_handle);
+			})
+		});
+	})
+}
+
 /// Provides access to the `Editor` and its `EditorHandle` by calling the given closure with them as arguments.
 #[cfg(not(feature = "native"))]
 pub(crate) fn editor_and_handle(callback: impl FnOnce(&mut Editor, &mut EditorHandle)) {
@@ -1039,7 +1094,6 @@ async fn poll_node_graph_evaluation() {
 		// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
 	});
 }
-
 fn auto_save_all_documents() {
 	// Process no further messages after a crash to avoid spamming the console
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {

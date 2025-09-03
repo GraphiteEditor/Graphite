@@ -25,7 +25,9 @@ editor = { path = "../../editor", package = "graphite-editor", features = [
 	"resvg",
 	"vello",
 ] }
+interpreted-executor = { workspace = true }
 graphene-std = { workspace = true }
+once_cell = { workspace = true }
 
 # Workspace dependencies
 graph-craft = { workspace = true }
