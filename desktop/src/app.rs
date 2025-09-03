@@ -177,21 +177,27 @@ impl WinitApp {
 				self.persistent_data.set_current_document(id);
 			}
 			DesktopFrontendMessage::PersistenceUpdateDocumentsList { ids } => {
-				self.persistent_data.force_document_order(ids);
+				self.persistent_data.set_document_order(ids);
 			}
 			DesktopFrontendMessage::PersistenceLoadCurrentDocument => {
 				if let Some((id, document)) = self.persistent_data.get_current_document() {
 					let message = DesktopWrapperMessage::LoadDocument { id, document, to_front: false };
 					self.dispatch_desktop_wrapper_message(message);
+					let message = DesktopWrapperMessage::SelectDocument { id };
+					self.dispatch_desktop_wrapper_message(message);
 				}
 			}
 			DesktopFrontendMessage::PersistenceLoadRemainingDocuments => {
-				for (id, document) in self.persistent_data.get_documents_before_current() {
+				for (id, document) in self.persistent_data.get_documents_before_current().into_iter().rev() {
 					let message = DesktopWrapperMessage::LoadDocument { id, document, to_front: true };
 					self.dispatch_desktop_wrapper_message(message);
 				}
 				for (id, document) in self.persistent_data.get_documents_after_current() {
 					let message = DesktopWrapperMessage::LoadDocument { id, document, to_front: false };
+					self.dispatch_desktop_wrapper_message(message);
+				}
+				if let Some(id) = self.persistent_data.get_current_document_id() {
+					let message = DesktopWrapperMessage::SelectDocument { id };
 					self.dispatch_desktop_wrapper_message(message);
 				}
 			}

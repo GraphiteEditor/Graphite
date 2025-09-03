@@ -65,6 +65,7 @@ pub enum DesktopWrapperMessage {
 	PollNodeGraphEvaluation,
 	UpdatePlatform(Platform),
 	LoadDocument { id: DocumentId, document: Document, to_front: bool },
+	SelectDocument { id: DocumentId },
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
