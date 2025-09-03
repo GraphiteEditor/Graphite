@@ -223,7 +223,7 @@
 	}
 </script>
 
-{#if !$nodeGraph.nativeNodeGraphRender}
+{#if $nodeGraph.shouldRenderSvelteNodes}
 	<div
 		class="graph-background"
 		style:--grid-spacing={`${gridSpacing}px`}
@@ -445,6 +445,8 @@
 			{/if}
 		{/each}
 	</div>
+{:else}
+	<div class="native-node-graph-ui">{@html $nodeGraph.nativeNodeGraphSVGString}</div>
 {/if}
 
 <div class="graph" bind:this={graph}>
@@ -1004,11 +1006,15 @@
 			mix-blend-mode: screen;
 			opacity: var(--fade-artwork);
 		}
+	}
 
-		> img {
-			position: absolute;
-			bottom: 0;
-		}
+	.native-node-graph-ui {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+	}
 
 		.breadcrumb-trail-buttons {
 			margin-top: 8px;
