@@ -9,9 +9,3 @@ pub(crate) fn cef_data_dir() -> PathBuf {
 	ensure_dir_exists(&path);
 	path
 }
-
-pub(crate) fn cef_cache_dir() -> PathBuf {
-	let path = cef_data_dir().join("cache");
-	ensure_dir_exists(&path);
-	path
-}

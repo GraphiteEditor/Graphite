@@ -1,14 +1,14 @@
 use cef::args::Args;
 use cef::sys::{CEF_API_VERSION_LAST, cef_resultcode_t};
 use cef::{
-	App, BrowserSettings, CefString, Client, DictionaryValue, ImplCommandLine, RenderHandler, RequestContext, Settings, WindowInfo, api_hash, browser_host_create_browser_sync, execute_process,
+	App, BrowserSettings, CefString, Client, DictionaryValue, ImplCommandLine, ImplRequestContextHandler, RenderHandler, RequestContext, RequestContextSettings, Settings, WindowInfo, api_hash,
+	browser_host_create_browser_sync, execute_process,
 };
 
 use super::CefContext;
 use super::singlethreaded::SingleThreadedCefContext;
 use crate::cef::CefEventHandler;
 use crate::cef::consts::{RESOURCE_DOMAIN, RESOURCE_SCHEME};
-use crate::cef::dirs::{cef_cache_dir, cef_data_dir};
 use crate::cef::input::InputState;
 use crate::cef::internal::{BrowserProcessAppImpl, BrowserProcessClientImpl, RenderHandlerImpl, RenderProcessAppImpl};
 
@@ -80,8 +80,7 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 		let settings = Settings {
 			windowless_rendering_enabled: 1,
 			multi_threaded_message_loop: 1,
-			root_cache_path: cef_data_dir().to_str().map(CefString::from).unwrap(),
-			cache_path: cef_cache_dir().to_str().map(CefString::from).unwrap(),
+			cache_path: CefString::from(""),
 			..Default::default()
 		};
 
@@ -137,13 +136,15 @@ fn create_browser<H: CefEventHandler>(event_handler: H) -> Result<SingleThreaded
 		..Default::default()
 	};
 
+	let mut incognito_request_context = cef::request_context_create_context(Some(&RequestContextSettings::default()), Option::<&mut cef::RequestContextHandler>::None);
+
 	let browser = browser_host_create_browser_sync(
 		Some(&window_info),
 		Some(&mut client),
 		Some(&url),
 		Some(&settings),
 		Option::<&mut DictionaryValue>::None,
-		Option::<&mut RequestContext>::None,
+		incognito_request_context.as_mut(),
 	);
 
 	if let Some(browser) = browser {
