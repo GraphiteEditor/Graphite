@@ -96,8 +96,6 @@ pub struct NodeGraphMessageHandler {
 	frontend_nodes: Vec<NodeId>,
 	/// Disables rendering nodes in Svelte
 	native_node_graph_render: bool,
-	/// The node which renders the node graph overlay. Inserted after the root export
-	pub node_graph_overlay: Option<DocumentNode>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -1636,8 +1634,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						in_selected_network: selection_network_path == breadcrumb_network_path,
 						previewed_node,
 					};
-					self.node_graph_overlay = Some(super::generate_node_graph_overlay::generate_node_graph_overlay(node_graph_render_data, graph_fade_artwork_percentage));
-					responses.add(PortfolioMessage::SubmitActiveGraphRender);
+					let _ = Some(super::generate_node_graph_overlay::generate_node_graph_overlay(node_graph_render_data, graph_fade_artwork_percentage));
 				} else {
 					responses.add(FrontendMessage::UpdateNodeGraphRender {
 						nodes_to_render,
@@ -1799,7 +1796,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::ToggleNativeNodeGraphRender => {
 				self.native_node_graph_render = !self.native_node_graph_render;
-				self.node_graph_overlay = None;
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::ToggleSelectedLocked => {
