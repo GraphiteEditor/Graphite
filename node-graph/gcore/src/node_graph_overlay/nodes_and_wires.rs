@@ -1,5 +1,6 @@
+use glam::DVec2;
 use graphene_core_shaders::color::{AlphaMut, Color};
-use kurbo::{BezPath, RoundedRect, Shape};
+use kurbo::{BezPath, Rect, RoundedRect, Shape};
 
 use crate::{
 	node_graph_overlay::{
@@ -65,30 +66,62 @@ pub fn draw_layers(nodes: &Vec<FrontendNodeToRender>) -> Table<Vector> {
 	let mut layer_table = Table::new();
 	for node_to_render in nodes {
 		if let Some(frontend_layer) = node_to_render.node_or_layer.layer.as_ref() {
+			// First render the text too get the layer width
+			let text_width: f64 = 0.;
+
+			// The layer position is the top left of the thumbnail
+			let layer_position = DVec2::new(frontend_layer.position.x as f64 * GRID_SIZE + 0.5, frontend_layer.position.y as f64 * GRID_SIZE);
+
+			// Width from the left of the thumbnail to the left border
 			let chain_width = if frontend_layer.chain_width > 0 {
 				frontend_layer.chain_width as f64 * GRID_SIZE + 0.5 * GRID_SIZE
 			} else {
 				0.
 			};
+			// Width from the right of the thumbnail to the right border
+			let right_layer_width = text_width.max(4.5);
+			let thumbnail_width = 2. * GRID_SIZE;
+			let full_layer_width = chain_width + thumbnail_width + right_layer_width;
 
-			let x0 = frontend_layer.position.x as f64 * GRID_SIZE - chain_width + 0.5 * GRID_SIZE;
-			let y0 = frontend_layer.position.y as f64 * GRID_SIZE;
+			let x0 = layer_position.x - chain_width;
+			let y0 = layer_position.y;
 			let h = 2. * GRID_SIZE;
-			let w = chain_width + 8. * GRID_SIZE - 0.5 * GRID_SIZE;
 
-			let rect = RoundedRect::new(x0, y0, x0 + w, y0 + h, 8.);
-			let bez_path = rect.to_path(BEZ_PATH_TOLERANCE);
-			let mut vector = Vector::from_bezpath(bez_path);
-			let border_color = Color::from_rgba8_no_srgb(COLOR_5_DULLGRAY).unwrap();
-			vector.style.stroke = Some(crate::vector::style::Stroke::new(Some(border_color), 1.));
+			// Background
+			let bg_rect = RoundedRect::new(x0, y0, x0 + full_layer_width, y0 + full_layer_width, 8.);
+			let bez_path = bg_rect.to_path(BEZ_PATH_TOLERANCE);
+			let mut bg_vector = Vector::from_bezpath(bez_path);
 			let mut background = if node_to_render.metadata.selected {
 				Color::from_rgba8_no_srgb(COLOR_6_LOWERGRAY).unwrap()
 			} else {
 				Color::from_rgba8_no_srgb(COLOR_0_BLACK).unwrap()
 			};
 			background.set_alpha(0.33);
-			vector.style.fill = crate::vector::style::Fill::Solid(background);
-			layer_table.push(TableRow::new_from_element(vector));
+			bg_vector.style.fill = crate::vector::style::Fill::Solid(background);
+			layer_table.push(TableRow::new_from_element(bg_vector));
+
+			// Border
+			let border_rect = RoundedRect::new(x0, y0, x0 + full_layer_width, y0 + full_layer_width, 8.);
+			let bez_path = border_rect.to_path(BEZ_PATH_TOLERANCE);
+			let mut border_vector = Vector::from_bezpath(bez_path);
+			let border_color = Color::from_rgba8_no_srgb(COLOR_5_DULLGRAY).unwrap();
+			border_vector.style.stroke = Some(crate::vector::style::Stroke::new(Some(border_color), 1.));
+			layer_table.push(TableRow::new_from_element(border_vector));
+
+			// Border mask
+			let mut border_mask = BezPath::new();
+			if frontend_layer.layer_has_left_border_gap && chain_width > 0.1 {
+				let left_input_mask = Rect::new(-8., 16., 8., 32.);
+				border_mask.extend(left_input_mask.to_path(BEZ_PATH_TOLERANCE));
+			}
+			let thumbnail_mask = Rect::new(chain_width - 8., -2., chain_width + 72. + 8. * 2., 2. * GRID_SIZE + 2.);
+			border_mask.extend(thumbnail_mask.to_path(BEZ_PATH_TOLERANCE));
+			let right_visibility_mask = Rect::new(full_layer_width - 12., 12., full_layer_width + 12., 36.);
+			border_mask.extend(right_visibility_mask.to_path(BEZ_PATH_TOLERANCE));
+			let border_mask_vector = Vector::from_bezpath(border_mask);
+			let mut border_mask = TableRow::new_from_element(border_mask_vector);
+			border_mask.alpha_blending.clip = true;
+			layer_table.push(border_mask);
 		}
 	}
 	layer_table
