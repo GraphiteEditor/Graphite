@@ -126,7 +126,7 @@ impl std::fmt::Debug for NodeIOTypes {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ProtoNodeIdentifier {
 	pub name: Cow<'static, str>,
 }
@@ -230,7 +230,7 @@ impl PartialEq for TypeDescriptor {
 }
 
 /// Graph runtime type information used for type inference.
-#[derive(Clone, PartialEq, Eq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Type {
 	/// A wrapper for some type variable used within the inference system. Resolved at inference time and replaced with a concrete type.
 	Generic(Cow<'static, str>),

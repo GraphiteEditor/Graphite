@@ -115,10 +115,17 @@ impl NodeGraphExecutor {
 
 	/// Update the cached network if necessary.
 	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, node_to_inspect: Option<NodeId>, ignore_hash: bool) -> Result<(), String> {
-		let network_hash = document.network_interface.document_network().current_hash();
+		let mut network = document.network_interface.document_network().clone();
+		if let Some(mut node_graph_overlay_node) = document.node_graph_handler.node_graph_overlay.clone() {
+			let node_graph_overlay_id = NodeId::new();
+			let new_export = NodeInput::node(node_graph_overlay_id, 0);
+			let old_export = std::mem::replace(&mut network.exports[0], new_export);
+			node_graph_overlay_node.inputs[0] = old_export;
+			network.nodes.insert(node_graph_overlay_id, node_graph_overlay_node);
+		}
+		let network_hash = network.current_hash();
 		// Refresh the graph when it changes or the inspect node changes
 		if network_hash != self.node_graph_hash || self.previous_node_to_inspect != node_to_inspect || ignore_hash {
-			let network = document.network_interface.document_network().clone();
 			self.previous_node_to_inspect = node_to_inspect;
 			self.node_graph_hash = network_hash;
 

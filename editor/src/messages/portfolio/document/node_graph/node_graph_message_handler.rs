@@ -6,7 +6,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
-use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, FrontendXY};
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
@@ -21,9 +21,10 @@ use crate::messages::tool::common_functionality::utility_functions::make_path_ed
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2, IVec2};
-use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_std::math::math_ext::QuadExt;
+use graphene_std::node_graph_overlay::types::{FrontendGraphDataType, FrontendXY};
 use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
 use graphene_std::*;
 use kurbo::{DEFAULT_ACCURACY, Shape};
@@ -95,6 +96,8 @@ pub struct NodeGraphMessageHandler {
 	frontend_nodes: Vec<NodeId>,
 	/// Disables rendering nodes in Svelte
 	native_node_graph_render: bool,
+	/// The node which renders the node graph overlay. Inserted after the root export
+	pub node_graph_overlay: Option<DocumentNode>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -878,7 +881,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					};
 					let Some(output_connector) = output_connector else { return };
 					self.wire_in_progress_from_connector = network_interface.output_position(&output_connector, selection_network_path);
-					self.wire_in_progress_type = FrontendGraphDataType::displayed_type(&network_interface.input_type(clicked_input, breadcrumb_network_path));
+					self.wire_in_progress_type = network_interface.input_type(clicked_input, breadcrumb_network_path).displayed_type();
 					return;
 				}
 
@@ -889,7 +892,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					self.wire_in_progress_from_connector = network_interface.output_position(&clicked_output, selection_network_path);
 					let output_type = network_interface.output_type(&clicked_output, breadcrumb_network_path);
-					self.wire_in_progress_type = FrontendGraphDataType::displayed_type(&output_type);
+					self.wire_in_progress_type = output_type.displayed_type();
 
 					self.update_node_graph_hints(responses);
 					return;
@@ -1637,14 +1640,24 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let nodes_to_render = network_interface.collect_nodes(&self.node_graph_errors, breadcrumb_network_path);
 				self.frontend_nodes = nodes_to_render.iter().map(|node| node.metadata.node_id).collect();
 				let previewed_node = network_interface.previewed_node(breadcrumb_network_path);
-				responses.add(FrontendMessage::UpdateNodeGraphRender {
-					nodes_to_render,
-					open: graph_view_overlay_open,
-					opacity: graph_fade_artwork_percentage,
-					in_selected_network: selection_network_path == breadcrumb_network_path,
-					previewed_node,
-					native_node_graph_render: self.native_node_graph_render,
-				});
+				if self.native_node_graph_render {
+					let node_graph_render_data = node_graph_overlay::types::NodeGraphOverlayData {
+						nodes_to_render,
+						open: graph_view_overlay_open,
+						in_selected_network: selection_network_path == breadcrumb_network_path,
+						previewed_node,
+					};
+					self.node_graph_overlay = Some(super::generate_node_graph_overlay::generate_node_graph_overlay(node_graph_render_data, graph_fade_artwork_percentage));
+					responses.add(PortfolioMessage::SubmitActiveGraphRender);
+				} else {
+					responses.add(FrontendMessage::UpdateNodeGraphRender {
+						nodes_to_render,
+						open: graph_view_overlay_open,
+						opacity: graph_fade_artwork_percentage,
+						in_selected_network: selection_network_path == breadcrumb_network_path,
+						previewed_node,
+					});
+				}
 				responses.add(NodeGraphMessage::UpdateVisibleNodes);
 
 				let layer_widths = network_interface.collect_layer_widths(breadcrumb_network_path);
@@ -1803,6 +1816,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::ToggleNativeNodeGraphRender => {
 				self.native_node_graph_render = !self.native_node_graph_render;
+				self.node_graph_overlay = None;
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::ToggleSelectedLocked => {
@@ -2673,6 +2687,7 @@ impl Default for NodeGraphMessageHandler {
 			end_index: None,
 			frontend_nodes: Vec::new(),
 			native_node_graph_render: false,
+			node_graph_overlay: None,
 		}
 	}
 }
