@@ -223,6 +223,15 @@
 	}
 </script>
 
+{#if $nodeGraph.shouldRenderSvelteNodes}
+	<div
+		class="graph-background"
+		style:--grid-spacing={`${gridSpacing}px`}
+		style:--grid-offset-x={`${$nodeGraph.transform.x}px`}
+		style:--grid-offset-y={`${$nodeGraph.transform.y}px`}
+		style:--grid-dot-radius={`${gridDotRadius}px`}
+		style:--fade-artwork={`${$nodeGraph.opacity}%`}
+	/>
 <div
 	class="graph-background"
 	style:--grid-spacing={`${gridSpacing}px`}
@@ -345,6 +354,108 @@
 		{/if}
 	{/each}
 
+		{#each Array.from($nodeGraph.nodesToRender) as [_, nodeToRender]}
+			{#each nodeToRender.wires as [wire, thick, dataType]}
+				<svg class="wire">
+					<path d={wire} style:--data-line-width={`${thick ? 8 : 2}px`} style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`} style:--data-dasharray={"3,0"} />
+				</svg>
+			{/each}
+		{/each}
+		{#each Array.from($nodeGraph.nodesToRender) as [nodeId, nodeToRender]}
+			{#if nodeToRender.nodeOrLayer.node !== undefined && $nodeGraph.visibleNodes.has(nodeId)}
+				{@const nodeMetadata = nodeToRender.metadata}
+				{@const node = nodeToRender.nodeOrLayer.node}
+				{@const exposedInputsOutputs = collectExposedInputsOutputs(node.inputs, node.outputs)}
+				{@const clipPathId = String(Math.random()).substring(2)}
+				{@const description = (nodeMetadata.reference && $nodeGraph.nodeDescriptions.get(nodeMetadata.reference)) || undefined}
+				<div
+					class="node"
+					class:selected={nodeMetadata.selected}
+					class:previewed={$nodeGraph.previewedNode == nodeId}
+					class:disabled={!nodeMetadata.visible}
+					style:--offset-left={node.position.x}
+					style:--offset-top={node.position.y}
+					style:--clip-path-id={`url(#${clipPathId})`}
+					style:--data-color={`var(--color-data-${(node.outputs[0]?.dataType || "General").toLowerCase()})`}
+					style:--data-color-dim={`var(--color-data-${(node.outputs[0]?.dataType || "General").toLowerCase()}-dim)`}
+					title={`${nodeMetadata.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${nodeId}` : "")}
+				>
+					{#if nodeMetadata.errors}
+						<span class="node-error faded" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
+						<span class="node-error hover" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
+					{/if}
+					<!-- Primary row -->
+					<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
+						<IconLabel icon={nodeIcon(nodeMetadata.reference)} />
+						<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
+						<TextLabel>{nodeMetadata.displayName}</TextLabel>
+					</div>
+					<!-- Secondary rows -->
+					{#if exposedInputsOutputs.length > 0}
+						<div class="secondary" class:in-selected-network={$nodeGraph.inSelectedNetwork}>
+							{#each exposedInputsOutputs as [input, output]}
+								<div class={`secondary-row expanded ${input ? "input" : output ? "output" : ""}`}>
+									<TextLabel tooltip={(input ? `${input.name}\n\n${input.description}` : output ? `${output.name}\n\n${output.description}` : "").trim()}>
+										{input?.name ?? output?.name ?? ""}
+									</TextLabel>
+								</div>
+							{/each}
+						</div>
+					{/if}
+					<!-- Input connectors -->
+					<div class="input connectors">
+						{#each node.inputs as input}
+							{#if input !== undefined}
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									viewBox="0 0 8 8"
+									class="connector"
+									style:--data-color={`var(--color-data-${input.dataType.toLowerCase()})`}
+									style:--data-color-dim={`var(--color-data-${input.dataType.toLowerCase()}-dim)`}
+								>
+									<title>{inputTooltip(input)}</title>
+									<path
+										d={`M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z`}
+										fill={`var(--data-color${input.connectedToString === "nothing" ? "-dim" : ""})`}
+									/>
+								</svg>
+							{/if}
+						{/each}
+					</div>
+					<!-- Output connectors -->
+					<div class="output connectors">
+						{#each node.outputs as output}
+							{#if output !== undefined}
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									viewBox="0 0 8 8"
+									class="connector"
+									style:--data-color={`var(--color-data-${output.dataType.toLowerCase()})`}
+									style:--data-color-dim={`var(--color-data-${output.dataType.toLowerCase()}-dim)`}
+								>
+									<title>{outputTooltip(output)}</title>
+									<path
+										d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z"
+										fill={output.connectedTo !== undefined ? "var(--data-color)" : "var(--data-color-dim)"}
+									/>
+								</svg>
+							{/if}
+						{/each}
+					</div>
+					<svg class="border-mask" width="0" height="0">
+						<defs>
+							<clipPath id={clipPathId}>
+								<path clip-rule="evenodd" d={nodeBorderMask(node.inputs, node.outputs)} />
+							</clipPath>
+						</defs>
+					</svg>
+				</div>
+			{/if}
+		{/each}
+	</div>
+{:else}
+	<div class="native-node-graph-ui">{@html $nodeGraph.nativeNodeGraphSVGString}</div>
+{/if}
 	{#each Array.from($nodeGraph.nodesToRender) as [_, nodeToRender]}
 		{#each nodeToRender.wires as [wire, thick, dataType]}
 			<svg class="wire">
@@ -767,6 +878,199 @@
 			background-repeat: repeat;
 			image-rendering: pixelated;
 			mix-blend-mode: screen;
+			opacity: var(--fade-artwork);
+		}
+	}
+
+	.native-node-graph-ui {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+	}
+
+		.breadcrumb-trail-buttons {
+			margin-top: 8px;
+			margin-left: 8px;
+		}
+
+		.context-menu {
+			width: max-content;
+			position: absolute;
+			box-sizing: border-box;
+			padding: 5px;
+			z-index: 3;
+			background-color: var(--color-3-darkgray);
+			border-radius: 4px;
+
+			.toggle-layer-or-node .text-label {
+				line-height: 24px;
+				margin-right: 8px;
+			}
+
+			.merge-selected-nodes {
+				justify-content: center;
+			}
+		}
+
+		.click-targets {
+			position: absolute;
+			pointer-events: none;
+			width: 100%;
+			height: 100%;
+			z-index: 10;
+
+			svg {
+				overflow: visible;
+				width: 100%;
+				height: 100%;
+				stroke-width: 1;
+				fill: none;
+
+				.layer {
+					stroke: yellow;
+				}
+
+				.node {
+					stroke: blue;
+				}
+
+				.connector {
+					stroke: green;
+				}
+
+				.visibility {
+					stroke: red;
+				}
+
+				.all-nodes-bounding-box {
+					stroke: purple;
+				}
+
+				.modify-import-export {
+					stroke: orange;
+				}
+			}
+		}
+
+		.wires {
+			pointer-events: none;
+			position: absolute;
+			width: 100%;
+			height: 100%;
+
+			svg {
+				width: 100%;
+				height: 100%;
+				overflow: visible;
+
+				path {
+					fill: none;
+					stroke: var(--data-color-dim);
+					stroke-width: var(--data-line-width);
+					stroke-dasharray: var(--data-dasharray);
+				}
+			}
+		}
+
+		.imports-and-exports {
+			width: 100%;
+			height: 100%;
+			position: absolute;
+			// Keeps the connectors above the wires
+			z-index: 1;
+
+			.connector {
+				position: absolute;
+				width: 8px;
+				height: 8px;
+				margin-top: 4px;
+				margin-left: 5px;
+				top: calc(var(--offset-top) * 24px);
+				left: calc(var(--offset-left) * 24px);
+			}
+
+			.reorder-bar {
+				position: absolute;
+				top: calc(var(--offset-top) * 24px);
+				left: calc(var(--offset-left) * 24px);
+				width: 50px;
+				height: 2px;
+				background: white;
+			}
+
+			.plus {
+				position: absolute;
+				top: calc(var(--offset-top) * 24px);
+				left: calc(var(--offset-left) * 24px);
+			}
+
+			.edit-import-export {
+				position: absolute;
+				display: flex;
+				align-items: center;
+				top: calc(var(--offset-top) * 24px);
+				margin-top: -5px;
+				height: 24px;
+
+				&.separator-bottom::after,
+				&.separator-top::before {
+					content: "";
+					position: absolute;
+					background: var(--color-8-uppergray);
+					height: 1px;
+					left: -4px;
+					right: -4px;
+				}
+
+				&.separator-bottom::after {
+					bottom: -1px;
+				}
+
+				&.separator-top::before {
+					top: 0;
+				}
+
+				&.import {
+					right: calc(100% - var(--offset-left) * 24px);
+				}
+
+				&.export {
+					left: calc(var(--offset-left) * 24px + 17px);
+				}
+
+				.import-text {
+					text-align: right;
+					text-wrap: nowrap;
+				}
+
+				.export-text {
+					text-wrap: nowrap;
+				}
+
+				.import-text-input {
+					text-align: right;
+				}
+
+				.remove-button-import {
+					margin-left: 3px;
+				}
+
+				.remove-button-export {
+					margin-right: 3px;
+				}
+
+				.reorder-drag-grip {
+					width: 8px;
+					height: 24px;
+					background-position: 2px 8px;
+					border-radius: 2px;
+					margin: -6px 0;
+					background-image: var(--icon-drag-grip-hover);
+				}
+			}
+		}
 		}
 	}
 

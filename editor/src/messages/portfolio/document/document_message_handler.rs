@@ -119,10 +119,10 @@ pub struct DocumentMessageHandler {
 	pub(crate) path: Option<PathBuf>,
 	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
 	#[serde(skip)]
-	breadcrumb_network_path: Vec<NodeId>,
+	pub breadcrumb_network_path: Vec<NodeId>,
 	/// Path to network that is currently selected. Updated based on the most recently clicked panel.
 	#[serde(skip)]
-	selection_network_path: Vec<NodeId>,
+	pub selection_network_path: Vec<NodeId>,
 	/// Stack of document network snapshots for previous history states.
 	#[serde(skip)]
 	document_undo_history: VecDeque<NodeNetworkInterface>,
