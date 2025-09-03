@@ -1,4 +1,5 @@
 pub const GRID_SIZE: f64 = 24.;
+pub const GRID_COLLAPSE_SPACING: f64 = 10.;
 pub const BEZ_PATH_TOLERANCE: f64 = 0.1;
 
 // Keep in sync with colors in Editor.svelte
