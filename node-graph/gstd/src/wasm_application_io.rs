@@ -1,3 +1,4 @@
+use glam::DVec2;
 use graph_craft::document::value::RenderOutput;
 pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
@@ -6,6 +7,7 @@ use graphene_core::Artboard;
 use graphene_core::gradient::GradientStops;
 #[cfg(target_family = "wasm")]
 use graphene_core::math::bbox::Bbox;
+use graphene_core::node_graph_overlay::ui_context::UIContext;
 use graphene_core::raster::image::Image;
 use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::table::Table;
@@ -348,4 +350,25 @@ async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
 		_ => todo!("Non-SVG render output for {output_format:?}"),
 	};
 	RenderOutput { data, metadata }
+}
+
+#[node_macro::node(skip_impl)]
+async fn render_node_graph_ui<T: Render + WasmNotSend>(
+	ui_context: UIContext,
+	#[implementations(
+		UIContext -> Table<Artboard>,
+		UIContext -> Table<Graphic>,
+		UIContext -> Table<Vector>,
+		UIContext -> Table<Raster<CPU>>,
+		UIContext -> Table<Color>,
+		UIContext -> Table<GradientStops>,
+	)]
+	data: impl Node<UIContext, Output = T>,
+) -> String {
+	let data = data.eval(ui_context.clone()).await;
+	let render_params = RenderParams::default();
+	let mut render = SvgRender::new();
+	data.render_svg(&mut render, &render_params);
+	render.format_svg(DVec2::ZERO, ui_context.resolution.as_dvec2());
+	render.svg.to_svg_string()
 }
