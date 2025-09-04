@@ -1,6 +1,9 @@
+use std::sync::Arc;
+
 use graphene_core_shaders::Ctx;
 
 use crate::{
+	Graphic,
 	node_graph_overlay::{
 		background::generate_background,
 		nodes_and_wires::{draw_layers, draw_nodes},
@@ -8,8 +11,8 @@ use crate::{
 		ui_context::{UIContext, UIRuntimeResponse},
 	},
 	table::Table,
+	text::FontCache,
 	transform::ApplyTransform,
-	vector::Vector,
 };
 
 pub mod background;
@@ -19,31 +22,31 @@ pub mod types;
 pub mod ui_context;
 
 #[node_macro::node(skip_impl)]
-pub fn generate_nodes(_: impl Ctx, node_graph_overlay_data: NodeGraphOverlayData) -> Table<Vector> {
+pub fn generate_nodes(_: impl Ctx, node_graph_overlay_data: NodeGraphOverlayData, font_cache: Arc<FontCache>) -> Table<Graphic> {
 	let mut nodes_and_wires = Table::new();
-	let layers = draw_layers(&node_graph_overlay_data.nodes_to_render);
+	let layers = draw_layers(&node_graph_overlay_data.nodes_to_render, font_cache.as_ref());
 	nodes_and_wires.extend(layers);
 
-	let nodes = draw_nodes(&node_graph_overlay_data.nodes_to_render);
+	let nodes = draw_nodes(&node_graph_overlay_data.nodes_to_render, font_cache.as_ref());
 	nodes_and_wires.extend(nodes);
 
 	nodes_and_wires
 }
 
 #[node_macro::node(skip_impl)]
-pub fn transform_nodes(ui_context: UIContext, mut nodes: Table<Vector>) -> Table<Vector> {
+pub fn transform_nodes(ui_context: UIContext, mut nodes: Table<Graphic>) -> Table<Graphic> {
 	let matrix = ui_context.transform.to_daffine2();
-	nodes.apply_transform(&matrix);
+	nodes.left_apply_transform(&matrix);
 	nodes
 }
 
 #[node_macro::node(skip_impl)]
-pub fn dot_grid_background(ui_context: UIContext, opacity: f64) -> Table<Vector> {
-	generate_background(ui_context, opacity)
+pub fn dot_grid_background(ui_context: UIContext, opacity: f64) -> Table<Graphic> {
+	Table::new_from_element(Graphic::Vector(generate_background(ui_context, opacity)))
 }
 
 #[node_macro::node(skip_impl)]
-pub fn node_graph_ui_extend(_: impl Ctx, new: Table<Vector>, mut base: Table<Vector>) -> Table<Vector> {
+pub fn node_graph_ui_extend(_: impl Ctx, new: Table<Graphic>, mut base: Table<Graphic>) -> Table<Graphic> {
 	base.extend(new);
 	base
 }
