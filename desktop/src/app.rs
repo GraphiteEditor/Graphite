@@ -214,6 +214,15 @@ impl WinitApp {
 					self.dispatch_desktop_wrapper_message(message);
 				}
 			}
+			DesktopFrontendMessage::PersistenceWritePreferences { content } => {
+				self.persistent_data.write_preferences(content);
+			}
+			DesktopFrontendMessage::PersistenceLoadPreferences => {
+				if let Some(content) = self.persistent_data.load_preferences() {
+					let message = DesktopWrapperMessage::LoadPreferences { content };
+					self.dispatch_desktop_wrapper_message(message);
+				}
+			}
 		}
 	}
 

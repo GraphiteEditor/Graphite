@@ -6,6 +6,7 @@ pub(crate) struct PersistentData {
 	current_document: Option<DocumentId>,
 	#[serde(skip)]
 	document_order: Option<Vec<DocumentId>>,
+	preferences: Option<String>,
 }
 
 impl PersistentData {
@@ -72,6 +73,15 @@ impl PersistentData {
 		self.flush();
 	}
 
+	pub(crate) fn write_preferences(&mut self, content: String) {
+		self.preferences = Some(content);
+		self.flush();
+	}
+
+	pub(crate) fn load_preferences(&self) -> Option<String> {
+		self.preferences.clone()
+	}
+
 	fn flush(&self) {
 		let data = match ron::to_string(self) {
 			Ok(d) => d,
@@ -110,7 +120,7 @@ impl PersistentData {
 
 	fn persistence_file_path() -> std::path::PathBuf {
 		let mut path = crate::dirs::graphite_data_dir();
-		path.push(format!("{}.ron", crate::consts::APP_AUTOSAVE_DIRECTORY_NAME));
+		path.push(crate::consts::APP_STATE_FILE_NAME);
 		path
 	}
 }
