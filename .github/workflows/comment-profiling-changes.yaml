@@ -77,12 +77,12 @@ jobs:
       - name: Run PR benchmarks
         run: |
           # Compile benchmarks
-          cargo bench --bench compile_demo_art_iai -- --baseline=master --output-format=json | jq -sc > /tmp/compile_output.json
+          cargo bench --bench compile_demo_art_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/compile_output.json
 
           # Runtime benchmarks  
-          cargo bench --bench update_executor_iai -- --baseline=master --output-format=json | jq -sc > /tmp/update_output.json
-          cargo bench --bench run_once_iai -- --baseline=master --output-format=json | jq -sc > /tmp/run_once_output.json
-          cargo bench --bench run_cached_iai -- --baseline=master --output-format=json | jq -sc > /tmp/run_cached_output.json
+          cargo bench --bench update_executor_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/update_output.json
+          cargo bench --bench run_once_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/run_once_output.json
+          cargo bench --bench run_cached_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/run_cached_output.json
 
       - name: Make old comments collapsed by default
         uses: actions/github-script@v7
