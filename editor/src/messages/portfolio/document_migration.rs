@@ -1047,6 +1047,16 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.add_import(TaggedValue::U32(0), false, 1, "Loop Level", "TODO", &node_path);
 	}
 
+	// Add context features to nodes that don't have them (fine-grained context caching migration)
+	if node.context_features == graphene_std::ContextDependencies::default() {
+		if let Some(reference) = document.network_interface.reference(node_id, network_path).cloned().flatten() {
+			if let Some(node_definition) = resolve_document_node_type(&reference) {
+				let context_features = node_definition.node_template.document_node.context_features;
+				document.network_interface.set_context_features(node_id, network_path, context_features);
+			}
+		}
+	}
+
 	// ==================================
 	// PUT ALL MIGRATIONS ABOVE THIS LINE
 	// ==================================
