@@ -481,6 +481,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::transform::CullNode",
 			"graphene_core::transform::BoundlessFootprintNode",
 			"graphene_core::transform::FreezeRealTimeNode",
+			"graphene_core::transform_nodes::BoundlessFootprintNode",
+			"graphene_core::transform_nodes::FreezeRealTimeNode",
 		],
 	},
 	NodeReplacement {
