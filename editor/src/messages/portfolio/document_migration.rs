@@ -450,14 +450,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::transform_nodes::transform::IDENTIFIER,
 		aliases: &["graphene_core::transform::TransformNode"],
 	},
-	NodeReplacement {
-		node: graphene_std::transform_nodes::boundless_footprint::IDENTIFIER,
-		aliases: &["graphene_core::transform::BoundlessFootprintNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::transform_nodes::freeze_real_time::IDENTIFIER,
-		aliases: &["graphene_core::transform::FreezeRealTimeNode"],
-	},
 	// ???
 	NodeReplacement {
 		node: graphene_std::vector::spline::IDENTIFIER,
@@ -485,7 +477,11 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::ops::identity::IDENTIFIER,
-		aliases: &["graphene_core::transform::CullNode"],
+		aliases: &[
+			"graphene_core::transform::CullNode",
+			"graphene_core::transform::BoundlessFootprintNode",
+			"graphene_core::transform::FreezeRealTimeNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::flatten_path::IDENTIFIER,

@@ -386,7 +386,6 @@ impl ProtoNetwork {
 			branch_dependencies.push(branch);
 			combined_deps |= branch.0;
 		}
-		let node = &self.nodes[node_index].1;
 		let mut new_deps = combined_deps;
 
 		// Remove requirements which this node provides
