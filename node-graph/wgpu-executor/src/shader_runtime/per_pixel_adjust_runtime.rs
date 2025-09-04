@@ -160,7 +160,9 @@ impl PerPixelAdjustGraphicsPipeline {
 		let device = &context.device;
 		let name = self.name.as_str();
 
-		let mut cmd = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("gpu_invert") });
+		let mut cmd = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+			label: Some(&format!("{name} cmd encoder")),
+		});
 		let out = textures
 			.iter()
 			.map(|instance| {
