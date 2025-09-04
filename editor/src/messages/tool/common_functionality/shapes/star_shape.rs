@@ -8,8 +8,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Inp
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::number_of_points_dial::{NumberOfPointsDial, NumberOfPointsDialState};
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::point_radius_handle::{PointRadiusHandle, PointRadiusHandleState};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, star_outline};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{GizmoContext, ShapeGizmoHandler, star_outline};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use core::f64;
 use glam::DAffine2;
@@ -28,9 +27,9 @@ impl ShapeGizmoHandler for StarGizmoHandler {
 		self.number_of_points_dial.is_hovering() || self.point_radius_handle.hovered()
 	}
 
-	fn handle_state(&mut self, selected_star_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		self.number_of_points_dial.handle_actions(selected_star_layer, mouse_position, document, responses);
-		self.point_radius_handle.handle_actions(selected_star_layer, document, mouse_position, responses);
+	fn handle_state(&mut self, selected_star_layer: LayerNodeIdentifier, mouse_position: DVec2, ctx: &mut GizmoContext) {
+		self.number_of_points_dial.handle_actions(selected_star_layer, mouse_position, ctx);
+		self.point_radius_handle.handle_actions(selected_star_layer, mouse_position, ctx);
 	}
 
 	fn handle_click(&mut self) {
@@ -44,45 +43,30 @@ impl ShapeGizmoHandler for StarGizmoHandler {
 		}
 	}
 
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, drag_start: DVec2, ctx: &mut GizmoContext) {
 		if self.number_of_points_dial.is_dragging() {
-			self.number_of_points_dial.update_number_of_sides(document, input, responses, drag_start);
+			self.number_of_points_dial.update_number_of_sides(drag_start, ctx);
 		}
 
 		if self.point_radius_handle.is_dragging_or_snapped() {
-			self.point_radius_handle.update_inner_radius(document, input, responses, drag_start);
+			self.point_radius_handle.update_inner_radius(drag_start, ctx);
 		}
 	}
 
-	fn overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		selected_star_layer: Option<LayerNodeIdentifier>,
-		input: &InputPreprocessorMessageHandler,
-		shape_editor: &mut &mut ShapeState,
-		mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	) {
-		self.number_of_points_dial.overlays(document, selected_star_layer, shape_editor, mouse_position, overlay_context);
-		self.point_radius_handle.overlays(selected_star_layer, document, input, overlay_context);
+	fn overlays(&self, selected_star_layer: Option<LayerNodeIdentifier>, mouse_position: DVec2, ctx: &mut GizmoContext, overlay_context: &mut OverlayContext) {
+		self.number_of_points_dial.overlays(selected_star_layer, mouse_position, ctx, overlay_context);
+		self.point_radius_handle.overlays(selected_star_layer, ctx, overlay_context);
 
-		star_outline(selected_star_layer, document, overlay_context);
+		star_outline(selected_star_layer, ctx.document, overlay_context);
 	}
 
-	fn dragging_overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		input: &InputPreprocessorMessageHandler,
-		shape_editor: &mut &mut ShapeState,
-		mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	) {
+	fn dragging_overlays(&self, mouse_position: DVec2, ctx: &mut GizmoContext, overlay_context: &mut OverlayContext) {
 		if self.number_of_points_dial.is_dragging() {
-			self.number_of_points_dial.overlays(document, None, shape_editor, mouse_position, overlay_context);
+			self.number_of_points_dial.overlays(None, mouse_position, ctx, overlay_context);
 		}
 
 		if self.point_radius_handle.is_dragging_or_snapped() {
-			self.point_radius_handle.overlays(None, document, input, overlay_context);
+			self.point_radius_handle.overlays(None, ctx, overlay_context);
 		}
 	}
 

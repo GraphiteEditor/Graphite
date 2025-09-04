@@ -1,6 +1,9 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::tool::common_functionality::gizmos::gizmo_manager::GizmoManager;
 use crate::messages::tool::common_functionality::operations::circular_repeat::{CircularRepeatOperation, CircularRepeatOperationData};
+use crate::messages::tool::common_functionality::shapes::shape_utility::GizmoContext;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OperationType {
@@ -52,6 +55,7 @@ pub enum OperationToolMessage {
 pub enum OperationToolFsmState {
 	#[default]
 	Ready,
+	ModifyingGizmo,
 	Drawing,
 }
 
@@ -124,7 +128,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Oper
 				Confirm,
 				Abort,
 			),
-			OperationToolFsmState::Drawing => actions!(OperationToolMessageDiscriminant;
+			OperationToolFsmState::Drawing | OperationToolFsmState::ModifyingGizmo => actions!(OperationToolMessageDiscriminant;
 				DragStop,
 				PointerMove,
 				Confirm,
@@ -151,11 +155,23 @@ impl ToolTransition for OperationTool {
 pub struct OperationToolData {
 	pub drag_start: DVec2,
 	pub circular_operation_data: CircularRepeatOperationData,
+	gizmo_manager: GizmoManager,
 }
 
 impl OperationToolData {
 	fn cleanup(&mut self) {
 		CircularRepeatOperation::cleanup(self);
+	}
+
+	fn common_overlays(&self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, overlay_context: &mut OverlayContext) {
+		for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
+			outline_layer(layer, document, overlay_context);
+
+			let Some(hovered_layer) = document.click(input) else { continue };
+			if hovered_layer != layer {
+				outline_layer(hovered_layer, document, overlay_context);
+			}
+		}
 	}
 }
 
@@ -171,19 +187,37 @@ impl Fsm for OperationToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let ToolActionMessageContext { document, input, .. } = tool_action_data;
+		let ToolActionMessageContext { document, input, shape_editor, .. } = tool_action_data;
+
+		let mut ctx = GizmoContext {
+			document,
+			input,
+			responses,
+			shape_editor,
+		};
 
 		let ToolMessage::Operation(event) = event else { return self };
 		match (self, event) {
 			(_, OperationToolMessage::Overlays { context: mut overlay_context }) => {
-				match tool_options.operation_type {
-					OperationType::CircularRepeat => CircularRepeatOperation::overlays(&self, tool_data, document, input, &mut overlay_context),
-					_ => {}
+				if matches!(self, OperationToolFsmState::Ready) {
+					tool_data.gizmo_manager.handle_operation_actions(input.mouse.position, &mut ctx);
+					tool_data.gizmo_manager.overlays(input.mouse.position, &mut ctx, &mut overlay_context);
+					CircularRepeatOperation::overlays(&self, tool_data, document, input, &mut overlay_context);
 				}
+
+				if matches!(self, OperationToolFsmState::ModifyingGizmo) {
+					tool_data.gizmo_manager.overlays(input.mouse.position, &mut ctx, &mut overlay_context);
+				}
+
+				tool_data.common_overlays(document, input, &mut overlay_context);
 
 				self
 			}
 			(OperationToolFsmState::Ready, OperationToolMessage::DragStart) => {
+				if tool_data.gizmo_manager.handle_click() {
+					tool_data.drag_start = input.mouse.position;
+					return OperationToolFsmState::ModifyingGizmo;
+				}
 				match tool_options.operation_type {
 					OperationType::CircularRepeat => {
 						CircularRepeatOperation::create_node(tool_data, document, responses, input);
@@ -193,7 +227,7 @@ impl Fsm for OperationToolFsmState {
 
 				OperationToolFsmState::Drawing
 			}
-			(OperationToolFsmState::Drawing, OperationToolMessage::DragStop) => {
+			(OperationToolFsmState::Drawing | OperationToolFsmState::ModifyingGizmo, OperationToolMessage::DragStop) => {
 				if tool_data.drag_start.distance(input.mouse.position) < 5. {
 					responses.add(DocumentMessage::AbortTransaction);
 				};
@@ -216,6 +250,12 @@ impl Fsm for OperationToolFsmState {
 
 				OperationToolFsmState::Drawing
 			}
+			(OperationToolFsmState::ModifyingGizmo, OperationToolMessage::PointerMove) => {
+				// Don't add the repeat node unless dragging more that 5 px
+				tool_data.gizmo_manager.handle_update(tool_data.drag_start, &mut ctx);
+
+				OperationToolFsmState::ModifyingGizmo
+			}
 			(OperationToolFsmState::Drawing, OperationToolMessage::IncreaseCount) => {
 				match tool_options.operation_type {
 					OperationType::CircularRepeat => CircularRepeatOperation::increase_decrease_count(tool_data, true, document, responses),
@@ -237,7 +277,7 @@ impl Fsm for OperationToolFsmState {
 
 			(OperationToolFsmState::Drawing, OperationToolMessage::PointerOutsideViewport) => OperationToolFsmState::Drawing,
 			(state, OperationToolMessage::PointerOutsideViewport) => state,
-			(OperationToolFsmState::Drawing, OperationToolMessage::Abort) => {
+			(OperationToolFsmState::Drawing | OperationToolFsmState::ModifyingGizmo, OperationToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				OperationToolFsmState::Ready
 			}
@@ -248,11 +288,11 @@ impl Fsm for OperationToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			OperationToolFsmState::Ready => HintData(vec![HintGroup(vec![
+			OperationToolFsmState::Ready | OperationToolFsmState::ModifyingGizmo => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::Lmb, "Draw Spline"),
 				HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
 			])]),
-			OperationToolFsmState::Drawing => HintData(vec![
+			_ => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Extend Spline")]),
 				HintGroup(vec![HintInfo::keys([Key::Enter], "End Spline")]),
@@ -265,4 +305,10 @@ impl Fsm for OperationToolFsmState {
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
+}
+
+fn outline_layer(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
+	let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
+	let viewport = document.metadata().transform_to_viewport(layer);
+	overlay_context.outline_vector(&vector, viewport);
 }

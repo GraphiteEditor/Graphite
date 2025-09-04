@@ -79,13 +79,20 @@ impl ShapeType {
 
 pub type ShapeToolModifierKey = [Key; 3];
 
+pub struct GizmoContext<'a> {
+	pub document: &'a DocumentMessageHandler,
+	pub input: &'a InputPreprocessorMessageHandler,
+	pub responses: &'a mut VecDeque<Message>,
+	pub shape_editor: &'a mut ShapeState,
+}
+
 /// The `ShapeGizmoHandler` trait defines the interactive behavior and overlay logic for shape-specific tools in the editor.
 /// A gizmo is a visual handle or control point used to manipulate a shape's properties (e.g., number of sides, radius, angle).
 pub trait ShapeGizmoHandler {
 	/// Called every frame to update the gizmo's interaction state based on the mouse position and selection.
 	///
 	/// This includes detecting hover states and preparing interaction flags or visual feedback (e.g., highlighting a hovered handle).
-	fn handle_state(&mut self, selected_shape_layers: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>);
+	fn handle_state(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, ctx: &mut GizmoContext);
 
 	/// Called when a mouse click occurs over the canvas and a gizmo handle is hovered.
 	///
@@ -96,32 +103,17 @@ pub trait ShapeGizmoHandler {
 	/// Called during a drag interaction to update the shape's parameters in real time.
 	///
 	/// For example, a handle might calculate the distance from the drag start to determine a new radius or update the number of points.
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>);
+	fn handle_update(&mut self, drag_start: DVec2, ctx: &mut GizmoContext);
 
 	/// Draws the static or hover-dependent overlays associated with the gizmo.
 	///
 	/// These overlays include visual indicators like shape outlines, control points, and hover highlights.
-	fn overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		selected_shape_layers: Option<LayerNodeIdentifier>,
-		input: &InputPreprocessorMessageHandler,
-		shape_editor: &mut &mut ShapeState,
-		mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	);
+	fn overlays(&self, selected_shape_layers: Option<LayerNodeIdentifier>, mouse_position: DVec2, ctx: &mut GizmoContext, overlay_context: &mut OverlayContext);
 
 	/// Draws overlays specifically during a drag operation.
 	///
 	/// Used to give real-time visual feedback based on drag progress, such as showing the updated shape preview or snapping guides.
-	fn dragging_overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		input: &InputPreprocessorMessageHandler,
-		shape_editor: &mut &mut ShapeState,
-		mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	);
+	fn dragging_overlays(&self, mouse_position: DVec2, ctx: &mut GizmoContext, overlay_context: &mut OverlayContext);
 
 	/// Returns `true` if any handle or control point in the gizmo is currently being hovered.
 	fn is_any_gizmo_hovered(&self) -> bool;

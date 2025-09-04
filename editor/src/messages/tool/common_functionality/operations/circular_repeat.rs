@@ -1,9 +1,59 @@
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::tool::common_functionality::shapes::shape_utility::extract_circular_repeat_parameters;
+use crate::messages::tool::common_functionality::gizmos::operation_gizmos::count_gizmos::{RepeatCountDial, RepeatCountDialState};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{GizmoContext, ShapeGizmoHandler, extract_circular_repeat_parameters};
 use crate::messages::tool::tool_messages::operation_tool::{OperationToolData, OperationToolFsmState};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use std::collections::VecDeque;
+
+#[derive(Clone, Debug, Default)]
+pub struct CircularRepeatGizmoHandler {
+	count_dial: RepeatCountDial,
+}
+
+impl CircularRepeatGizmoHandler {
+	pub fn new() -> Self {
+		Self { ..Default::default() }
+	}
+}
+
+impl ShapeGizmoHandler for CircularRepeatGizmoHandler {
+	fn handle_state(&mut self, selected_shape_layer: LayerNodeIdentifier, mouse_position: DVec2, ctx: &mut GizmoContext) {
+		self.count_dial.handle_actions(selected_shape_layer, mouse_position, ctx);
+	}
+
+	fn is_any_gizmo_hovered(&self) -> bool {
+		self.count_dial.is_hovering()
+	}
+
+	fn handle_click(&mut self) {
+		if self.count_dial.is_hovering() {
+			self.count_dial.update_state(RepeatCountDialState::Dragging);
+		}
+	}
+
+	fn handle_update(&mut self, drag_start: DVec2, ctx: &mut GizmoContext) {
+		if self.count_dial.is_dragging() {
+			self.count_dial.update_number_of_sides(drag_start, ctx);
+		}
+	}
+
+	fn dragging_overlays(&self, mouse_position: DVec2, ctx: &mut GizmoContext, overlay_context: &mut OverlayContext) {
+		if self.count_dial.is_dragging() {
+			self.count_dial.overlays(None, mouse_position, ctx, overlay_context);
+		}
+	}
+
+	fn overlays(&self, selected_shape_layer: Option<LayerNodeIdentifier>, mouse_position: DVec2, ctx: &mut GizmoContext, overlay_context: &mut OverlayContext) {
+		self.count_dial.overlays(selected_shape_layer, mouse_position, ctx, overlay_context);
+	}
+
+	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
+		None
+	}
+
+	fn cleanup(&mut self) {}
+}
 
 #[derive(Default)]
 pub struct CircularRepeatOperation;
@@ -77,9 +127,7 @@ impl CircularRepeatOperation {
 		for (layer, initial_radius) in &tool_data.circular_operation_data.layers_dragging {
 			// If the layer’s sign differs from the clicked layer, invert delta to preserve consistent in/out dragging behavior
 
-			let Some((angle, _, count)) = extract_circular_repeat_parameters(Some(*layer), document) else {
-				return;
-			};
+			let (angle, _, count) = extract_circular_repeat_parameters(Some(*layer), document).unwrap_or((0.0, 0.0, 6));
 
 			let new_radius = if initial_radius.signum() == clicked_radius.signum() {
 				*initial_radius + delta
@@ -107,25 +155,12 @@ impl CircularRepeatOperation {
 	) {
 		match tool_state {
 			OperationToolFsmState::Ready => {
-				// Draw overlays for all selected layers
-				for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
-					Self::draw_layer_overlay(layer, document, input, overlay_context)
-				}
-
 				// Also highlight the hovered layer if it’s not selected
 				if let Some(layer) = document.click(&input) {
 					Self::draw_layer_overlay(layer, document, input, overlay_context);
 				}
 			}
-			_ => {
-				// While dragging, only draw overlays for the layers being modified
-				for layer in tool_data.circular_operation_data.layers_dragging.iter().map(|(l, _)| l) {
-					let Some(vector) = document.network_interface.compute_modified_vector(*layer) else { continue };
-					let viewport = document.metadata().transform_to_viewport(*layer);
-
-					overlay_context.outline_vector(&vector, viewport);
-				}
-			}
+			_ => {}
 		}
 	}
 
@@ -133,11 +168,11 @@ impl CircularRepeatOperation {
 		if let Some(vector) = document.network_interface.compute_modified_vector(layer) {
 			let viewport = document.metadata().transform_to_viewport(layer);
 			let center = viewport.transform_point2(DVec2::ZERO);
+
 			// Show a small circle if the mouse is near the repeat center
 			if center.distance(input.mouse.position) < 5. {
 				overlay_context.circle(center, 3., None, None);
 			}
-			overlay_context.outline_vector(&vector, viewport);
 		}
 	}
 

@@ -1,19 +1,17 @@
 use crate::consts::GIZMO_HIDE_THRESHOLD;
 use crate::consts::{COLOR_OVERLAY_RED, POINT_RADIUS_HANDLE_SNAP_THRESHOLD};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::message::Message;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::{overlays::utility_types::OverlayContext, utility_types::network_interface::InputConnector};
 use crate::messages::prelude::FrontendMessage;
 use crate::messages::prelude::Responses;
-use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage};
+use crate::messages::prelude::{DocumentMessageHandler, NodeGraphMessage};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
-use crate::messages::tool::common_functionality::shapes::shape_utility::{draw_snapping_ticks, extract_polygon_parameters, polygon_outline, polygon_vertex_position, star_outline};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{GizmoContext, draw_snapping_ticks, extract_polygon_parameters, polygon_outline, polygon_vertex_position, star_outline};
 use crate::messages::tool::common_functionality::shapes::shape_utility::{extract_star_parameters, star_vertex_position};
 use glam::DVec2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use std::collections::VecDeque;
 use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_4, PI, SQRT_2};
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -54,7 +52,8 @@ impl PointRadiusHandle {
 		self.handle_state = state;
 	}
 
-	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, mouse_position: DVec2, responses: &mut VecDeque<Message>) {
+	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, ctx: &mut GizmoContext) {
+		let GizmoContext { document, responses, .. } = ctx;
 		match &self.handle_state {
 			PointRadiusHandleState::Inactive => {
 				// Draw the point handle gizmo for the star shape
@@ -142,7 +141,9 @@ impl PointRadiusHandle {
 		}
 	}
 
-	pub fn overlays(&self, selected_star_layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, overlay_context: &mut OverlayContext) {
+	pub fn overlays(&self, selected_star_layer: Option<LayerNodeIdentifier>, ctx: &mut GizmoContext, overlay_context: &mut OverlayContext) {
+		let GizmoContext { document, input, .. } = ctx;
+
 		match &self.handle_state {
 			PointRadiusHandleState::Inactive => {
 				let Some(layer) = selected_star_layer else { return };
@@ -411,7 +412,9 @@ impl PointRadiusHandle {
 			.map(|(i, rad)| (i, *rad - original_radius))
 	}
 
-	pub fn update_inner_radius(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>, drag_start: DVec2) {
+	pub fn update_inner_radius(&mut self, drag_start: DVec2, ctx: &mut GizmoContext) {
+		let GizmoContext { document, responses, input, .. } = ctx;
+
 		let Some(layer) = self.layer else { return };
 
 		let Some(node_id) = graph_modification_utils::get_star_id(layer, &document.network_interface).or(graph_modification_utils::get_polygon_id(layer, &document.network_interface)) else {
