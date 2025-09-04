@@ -141,15 +141,15 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 	// PREFERENCES
 
-	async function savePreferences(preferences: TriggerSavePreferences["preferences"]) {
+	async function savePreferences(preferences: string) {
 		await set("preferences", preferences, graphiteStore);
 	}
 
 	async function loadPreferences() {
-		const preferences = await get<Record<string, unknown>>("preferences", graphiteStore);
+		const preferences = await get<string>("preferences", graphiteStore);
 		if (!preferences) return;
 
-		editor.handle.loadPreferences(JSON.stringify(preferences));
+		editor.handle.loadPreferences(preferences);
 	}
 
 	// FRONTEND MESSAGE SUBSCRIPTIONS
