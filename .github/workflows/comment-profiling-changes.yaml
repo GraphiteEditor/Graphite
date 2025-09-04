@@ -116,18 +116,6 @@ jobs:
           script: |
             const fs = require('fs');
 
-            // Debug: Check file contents before parsing
-            console.log("=== File contents ===");
-            const files = ['/tmp/compile_output.json', '/tmp/update_output.json', '/tmp/run_once_output.json', '/tmp/run_cached_output.json'];
-            files.forEach(file => {
-              try {
-                const content = fs.readFileSync(file, 'utf8');
-                console.log(`${file}: ${content.length} chars`);
-                console.log(`First 200 chars: ${content.substring(0, 200)}`);
-              } catch (e) {
-                console.log(`${file}: Error reading - ${e.message}`);
-              }
-            });
 
             const compileOutput = JSON.parse(fs.readFileSync('/tmp/compile_output.json', 'utf8'));
             const updateOutput = JSON.parse(fs.readFileSync('/tmp/update_output.json', 'utf8'));  
@@ -160,11 +148,13 @@ jobs:
               let hasSignificantChanges = false;
               
               for (const benchmark of benchmarkOutput) {
-                if (benchmark.callgrind_summary && benchmark.callgrind_summary.summaries) {
-                  const summary = benchmark.callgrind_summary.summaries[0];
-                  const irDiff = summary.events.Ir;
-                  
-                  if (irDiff.diff_pct !== null) {
+                if (benchmark.profiles && benchmark.profiles.length > 0) {
+                  const profile = benchmark.profiles[0];
+                  if (profile.summaries && profile.summaries.total && profile.summaries.total.regressions) {
+                    const irRegression = profile.summaries.total.regressions.find(r => r.kind === 'Ir');
+                    
+                    if (irRegression && irRegression.diff_pct !== null) {
+                      const irDiff = irRegression;
                     hasResults = true;
                     const changePercentage = formatPercentage(irDiff.diff_pct);
                     const color = irDiff.diff_pct > 0 ? "red" : "lime";
@@ -176,10 +166,10 @@ jobs:
                     sectionBody += "<details>\n<summary>Detailed metrics</summary>\n\n```\n";
                     sectionBody += `Baselines:                master|       HEAD\n`;
                     
-                    for (const [eventKind, costsDiff] of Object.entries(summary.events)) {
-                      if (costsDiff.diff_pct !== null) {
-                        const changePercentage = formatPercentage(costsDiff.diff_pct);
-                        const line = `${padRight(eventKind, 20)} ${padLeft(formatNumber(costsDiff.old), 11)}|${padLeft(formatNumber(costsDiff.new), 11)} ${padLeft(changePercentage, 15)}`;
+                    for (const regression of profile.summaries.total.regressions) {
+                      if (regression.diff_pct !== null) {
+                        const changePercentage = formatPercentage(regression.diff_pct);
+                        const line = `${padRight(regression.kind, 20)} ${padLeft(formatNumber(regression.old), 11)}|${padLeft(formatNumber(regression.new), 11)} ${padLeft(changePercentage, 15)}`;
                         sectionBody += `${line}\n`;
                       }
                     }
@@ -189,6 +179,7 @@ jobs:
                     if (Math.abs(irDiff.diff_pct) > 5) {
                       significantChanges = true;
                       hasSignificantChanges = true;
+                    }
                     }
                   }
                 }
