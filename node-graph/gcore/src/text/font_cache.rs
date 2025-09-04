@@ -1,6 +1,8 @@
 use dyn_any::DynAny;
 use std::collections::HashMap;
 
+use crate::consts::{SOURCE_SANS_PRO_FAMILY, SOURCE_SANS_PRO_STYLE};
+
 /// A font type (storing font family and font style and an optional preview URL)
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Hash, PartialEq, Eq, DynAny, specta::Type)]
 pub struct Font {
@@ -20,12 +22,28 @@ impl Default for Font {
 	}
 }
 /// A cache of all loaded font data and preview urls along with the default font (send from `init_app` in `editor_api.rs`)
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default, PartialEq, DynAny)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, DynAny)]
 pub struct FontCache {
 	/// Actual font file data used for rendering a font
 	font_file_data: HashMap<Font, Vec<u8>>,
 	/// Web font preview URLs used for showing fonts when live editing
 	preview_urls: HashMap<Font, String>,
+}
+
+impl Default for FontCache {
+	fn default() -> Self {
+		let font = Font::new(SOURCE_SANS_PRO_FAMILY.to_string(), SOURCE_SANS_PRO_STYLE.to_string());
+		// Load Source Sans Pro font data
+		// TODO: Grab this from the node_modules folder (either with `include_bytes!` or ideally at runtime) instead of checking the font file into the repo.
+		// TODO: And maybe use the WOFF2 version (if it's supported) for its smaller, compressed file size.
+		const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
+		let mut font_file_data = HashMap::new();
+		font_file_data.insert(font, FONT_DATA.to_vec());
+		Self {
+			font_file_data,
+			preview_urls: HashMap::new(),
+		}
+	}
 }
 
 impl FontCache {
@@ -59,6 +77,15 @@ impl FontCache {
 	/// Gets the preview URL for showing in text field when live editing
 	pub fn get_preview_url(&self, font: &Font) -> Option<&String> {
 		self.preview_urls.get(font)
+	}
+
+	/// Get the default font (Source Sans Pro) which is loaded from disk
+	pub fn source_sans_pro(&self) -> &Vec<u8> {
+		self.get(&Font {
+			font_family: SOURCE_SANS_PRO_FAMILY.to_string(),
+			font_style: SOURCE_SANS_PRO_STYLE.to_string(),
+		})
+		.expect("Source sans pro must be added to font cache")
 	}
 }
 
