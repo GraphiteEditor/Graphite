@@ -17,3 +17,4 @@ pub(super) use browser_process_app::BrowserProcessAppImpl;
 pub(super) use browser_process_client::BrowserProcessClientImpl;
 pub(super) use render_handler::RenderHandlerImpl;
 pub(super) use render_process_app::RenderProcessAppImpl;
+pub(super) use scheme_handler_factory::SchemeHandlerFactoryImpl;

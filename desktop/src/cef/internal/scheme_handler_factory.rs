@@ -31,26 +31,14 @@ impl<H: CefEventHandler> SchemeHandlerFactoryImpl<H> {
 }
 
 impl<H: CefEventHandler> ImplSchemeHandlerFactory for SchemeHandlerFactoryImpl<H> {
-	fn create(&self, _browser: Option<&mut Browser>, _frame: Option<&mut Frame>, scheme_name: Option<&CefString>, request: Option<&mut Request>) -> Option<ResourceHandler> {
-		if let Some(scheme_name) = scheme_name {
-			if scheme_name.to_string() != RESOURCE_SCHEME {
-				return None;
-			}
-			if let Some(request) = request {
-				let url = CefString::from(&request.url()).to_string();
-				let path = url.strip_prefix(&format!("{RESOURCE_SCHEME}://")).unwrap();
-				let domain = path.split('/').next().unwrap_or("");
-				let path = path.strip_prefix(domain).unwrap_or("");
-				let path = path.trim_start_matches('/');
-				return match domain {
-					RESOURCE_DOMAIN => {
-						let resource = self.event_handler.load_resource(path.to_string().into());
-						Some(ResourceHandler::new(ResourceHandlerImpl::new(resource)))
-					}
-					_ => None,
-				};
-			}
-			return None;
+	fn create(&self, _browser: Option<&mut Browser>, _frame: Option<&mut Frame>, _scheme_name: Option<&CefString>, request: Option<&mut Request>) -> Option<ResourceHandler> {
+		if let Some(request) = request {
+			let url = CefString::from(&request.url()).to_string();
+			let path = url
+				.strip_prefix(&format!("{RESOURCE_SCHEME}://{RESOURCE_DOMAIN}/"))
+				.expect("CEF should only call this for our custom scheme and domain that we registered this factory for");
+			let resource = self.event_handler.load_resource(path.to_string().into());
+			return Some(ResourceHandler::new(ResourceHandlerImpl::new(resource)));
 		}
 		None
 	}

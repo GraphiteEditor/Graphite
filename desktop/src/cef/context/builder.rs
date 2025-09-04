@@ -1,7 +1,9 @@
+use std::path::PathBuf;
+
 use cef::args::Args;
 use cef::sys::{CEF_API_VERSION_LAST, cef_resultcode_t};
 use cef::{
-	App, BrowserSettings, CefString, Client, DictionaryValue, ImplCommandLine, ImplRequestContextHandler, RenderHandler, RequestContext, RequestContextSettings, Settings, WindowInfo, api_hash,
+	App, BrowserSettings, CefString, Client, DictionaryValue, ImplCommandLine, ImplRequestContext, RenderHandler, RequestContextSettings, SchemeHandlerFactory, Settings, WindowInfo, api_hash,
 	browser_host_create_browser_sync, execute_process,
 };
 
@@ -9,8 +11,9 @@ use super::CefContext;
 use super::singlethreaded::SingleThreadedCefContext;
 use crate::cef::CefEventHandler;
 use crate::cef::consts::{RESOURCE_DOMAIN, RESOURCE_SCHEME};
+use crate::cef::dirs::create_instance_dir;
 use crate::cef::input::InputState;
-use crate::cef::internal::{BrowserProcessAppImpl, BrowserProcessClientImpl, RenderHandlerImpl, RenderProcessAppImpl};
+use crate::cef::internal::{BrowserProcessAppImpl, BrowserProcessClientImpl, RenderHandlerImpl, RenderProcessAppImpl, SchemeHandlerFactoryImpl};
 
 pub(crate) struct CefContextBuilder<H: CefEventHandler> {
 	pub(crate) args: Args,
@@ -61,32 +64,37 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 
 	#[cfg(target_os = "macos")]
 	pub(crate) fn initialize(self, event_handler: H) -> Result<impl CefContext, InitError> {
+		let instance_dir = create_instance_dir();
+
 		let settings = Settings {
 			windowless_rendering_enabled: 1,
 			multi_threaded_message_loop: 0,
 			external_message_pump: 1,
-			root_cache_path: cef_data_dir().to_str().map(CefString::from).unwrap(),
-			cache_path: cef_cache_dir().to_str().map(CefString::from).unwrap(),
-			..Default::default()
-		};
-
-		self.initialize_inner(&event_handler, settings)?;
-
-		create_browser(event_handler)
-	}
-
-	#[cfg(not(target_os = "macos"))]
-	pub(crate) fn initialize(self, event_handler: H) -> Result<impl CefContext, InitError> {
-		let settings = Settings {
-			windowless_rendering_enabled: 1,
-			multi_threaded_message_loop: 1,
+			root_cache_path: instance_dir.to_str().map(CefString::from).unwrap(),
 			cache_path: CefString::from(""),
 			..Default::default()
 		};
 
 		self.initialize_inner(&event_handler, settings)?;
 
-		super::multithreaded::run_on_ui_thread(move || match create_browser(event_handler) {
+		create_browser(event_handler, instance_dir)
+	}
+
+	#[cfg(not(target_os = "macos"))]
+	pub(crate) fn initialize(self, event_handler: H) -> Result<impl CefContext, InitError> {
+		let instance_dir = create_instance_dir();
+
+		let settings = Settings {
+			windowless_rendering_enabled: 1,
+			multi_threaded_message_loop: 1,
+			root_cache_path: instance_dir.to_str().map(CefString::from).unwrap(),
+			cache_path: CefString::from(""),
+			..Default::default()
+		};
+
+		self.initialize_inner(&event_handler, settings)?;
+
+		super::multithreaded::run_on_ui_thread(move || match create_browser(event_handler, instance_dir) {
 			Ok(context) => {
 				super::multithreaded::CONTEXT.with(|b| {
 					*b.borrow_mut() = Some(context);
@@ -102,10 +110,10 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 	}
 
 	fn initialize_inner(self, event_handler: &H, settings: Settings) -> Result<(), InitError> {
-		let mut cef_app = App::new(BrowserProcessAppImpl::new(event_handler.clone()));
-		let result = cef::initialize(Some(self.args.as_main_args()), Some(&settings), Some(&mut cef_app), std::ptr::null_mut());
 		// Attention! Wrapping this in an extra App is necessary, otherwise the program still compiles but segfaults
+		let mut cef_app = App::new(BrowserProcessAppImpl::new(event_handler.clone()));
 
+		let result = cef::initialize(Some(self.args.as_main_args()), Some(&settings), Some(&mut cef_app), std::ptr::null_mut());
 		if result != 1 {
 			let cef_exit_code = cef::get_exit_code() as u32;
 			if cef_exit_code == cef_resultcode_t::CEF_RESULT_CODE_NORMAL_EXIT_PROCESS_NOTIFIED as u32 {
@@ -117,11 +125,9 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 	}
 }
 
-fn create_browser<H: CefEventHandler>(event_handler: H) -> Result<SingleThreadedCefContext, InitError> {
+fn create_browser<H: CefEventHandler>(event_handler: H, instance_dir: PathBuf) -> Result<SingleThreadedCefContext, InitError> {
 	let render_handler = RenderHandler::new(RenderHandlerImpl::new(event_handler.clone()));
 	let mut client = Client::new(BrowserProcessClientImpl::new(render_handler, event_handler.clone()));
-
-	let url = CefString::from(format!("{RESOURCE_SCHEME}://{RESOURCE_DOMAIN}/").as_str());
 
 	let window_info = WindowInfo {
 		windowless_rendering_enabled: 1,
@@ -136,7 +142,22 @@ fn create_browser<H: CefEventHandler>(event_handler: H) -> Result<SingleThreaded
 		..Default::default()
 	};
 
-	let mut incognito_request_context = cef::request_context_create_context(Some(&RequestContextSettings::default()), Option::<&mut cef::RequestContextHandler>::None);
+	let Some(mut incognito_request_context) = cef::request_context_create_context(
+		Some(&RequestContextSettings {
+			persist_session_cookies: 0,
+			cache_path: CefString::from(""),
+			..Default::default()
+		}),
+		Option::<&mut cef::RequestContextHandler>::None,
+	) else {
+		return Err(InitError::RequestContextCreationFailed);
+	};
+
+	let mut scheme_handler_factory = SchemeHandlerFactory::new(SchemeHandlerFactoryImpl::new(event_handler.clone()));
+	incognito_request_context.clear_scheme_handler_factories();
+	incognito_request_context.register_scheme_handler_factory(Some(&CefString::from(RESOURCE_SCHEME)), Some(&CefString::from(RESOURCE_DOMAIN)), Some(&mut scheme_handler_factory));
+
+	let url = CefString::from(format!("{RESOURCE_SCHEME}://{RESOURCE_DOMAIN}/").as_str());
 
 	let browser = browser_host_create_browser_sync(
 		Some(&window_info),
@@ -144,13 +165,14 @@ fn create_browser<H: CefEventHandler>(event_handler: H) -> Result<SingleThreaded
 		Some(&url),
 		Some(&settings),
 		Option::<&mut DictionaryValue>::None,
-		incognito_request_context.as_mut(),
+		Some(&mut incognito_request_context),
 	);
 
 	if let Some(browser) = browser {
 		Ok(SingleThreadedCefContext {
 			browser,
 			input_state: InputState::default(),
+			instance_dir,
 		})
 	} else {
 		tracing::error!("Failed to create browser");
@@ -172,6 +194,8 @@ pub(crate) enum InitError {
 	InitializationFailed(u32),
 	#[error("Browser creation failed")]
 	BrowserCreationFailed,
+	#[error("Request context creation failed")]
+	RequestContextCreationFailed,
 	#[error("Another instance is already running")]
 	AlreadyRunning,
 }

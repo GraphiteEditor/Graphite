@@ -2263,6 +2263,7 @@ dependencies = [
  "objc2-io-surface",
  "objc2-metal 0.3.1",
  "open",
+ "rand 0.9.2",
  "rfd",
  "ron",
  "thiserror 2.0.16",
