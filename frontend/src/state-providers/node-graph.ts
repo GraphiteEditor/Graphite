@@ -27,7 +27,6 @@ import {
 	UpdateWirePathInProgress,
 } from "@graphite/messages";
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createNodeGraphState(editor: Editor) {
 	const { subscribe, update } = writable({
 		box: undefined as Box | undefined,

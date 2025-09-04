@@ -1,4 +1,4 @@
-use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
+use super::utility_types::{DocumentDetails, MouseCursorIcon, OpenDocument};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
@@ -90,13 +90,15 @@ pub enum FrontendMessage {
 		font: Font,
 	},
 	TriggerImport,
-	TriggerIndexedDbRemoveDocument {
+	TriggerPersistenceRemoveDocument {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
 	},
-	TriggerIndexedDbWriteDocument {
+	TriggerPersistenceWriteDocument {
+		#[serde(rename = "documentId")]
+		document_id: DocumentId,
 		document: String,
-		details: FrontendDocumentDetails,
+		details: DocumentDetails,
 	},
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadRestAutoSaveDocuments,
@@ -308,7 +310,7 @@ pub enum FrontendMessage {
 	},
 	UpdateOpenDocumentsList {
 		#[serde(rename = "openDocuments")]
-		open_documents: Vec<FrontendDocumentDetails>,
+		open_documents: Vec<OpenDocument>,
 	},
 	UpdatePropertiesPanelLayout {
 		#[serde(rename = "layoutTarget")]
