@@ -1,7 +1,7 @@
 use std::fs::create_dir_all;
 use std::path::PathBuf;
 
-use crate::consts::{APP_AUTOSAVE_DIRECTORY_NAME, APP_DIRECTORY_NAME};
+use crate::consts::{APP_DIRECTORY_NAME, APP_DOCUMENTS_DIRECTORY_NAME};
 
 pub(crate) fn ensure_dir_exists(path: &PathBuf) {
 	if !path.exists() {
@@ -16,7 +16,7 @@ pub(crate) fn graphite_data_dir() -> PathBuf {
 }
 
 pub(crate) fn graphite_autosave_documents_dir() -> PathBuf {
-	let path = graphite_data_dir().join(APP_AUTOSAVE_DIRECTORY_NAME);
+	let path = graphite_data_dir().join(APP_DOCUMENTS_DIRECTORY_NAME);
 	ensure_dir_exists(&path);
 	path
 }

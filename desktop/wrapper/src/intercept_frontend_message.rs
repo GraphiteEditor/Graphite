@@ -107,6 +107,12 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerLoadRestAutoSaveDocuments => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadRemainingDocuments);
 		}
+		FrontendMessage::TriggerSavePreferences { preferences } => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceWritePreferences { content: preferences });
+		}
+		FrontendMessage::TriggerLoadPreferences => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadPreferences);
+		}
 		m => return Some(m),
 	}
 	None

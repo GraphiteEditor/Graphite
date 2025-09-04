@@ -50,6 +50,10 @@ pub enum DesktopFrontendMessage {
 	PersistenceUpdateDocumentsList {
 		ids: Vec<DocumentId>,
 	},
+	PersistenceWritePreferences {
+		content: String,
+	},
+	PersistenceLoadPreferences,
 	CloseWindow,
 }
 
@@ -66,6 +70,7 @@ pub enum DesktopWrapperMessage {
 	UpdatePlatform(Platform),
 	LoadDocument { id: DocumentId, document: Document, to_front: bool },
 	SelectDocument { id: DocumentId },
+	LoadPreferences { content: String },
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]

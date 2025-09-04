@@ -95,7 +95,9 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			}
 		}
 
-		responses.add(FrontendMessage::TriggerSavePreferences { preferences: self.clone() });
+		if let Ok(preferences) = serde_json::to_string(&self) {
+			responses.add(FrontendMessage::TriggerSavePreferences { preferences });
+		}
 	}
 
 	advertise_actions!(PreferencesMessageDiscriminant;
