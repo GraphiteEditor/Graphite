@@ -116,6 +116,19 @@ jobs:
           script: |
             const fs = require('fs');
 
+            // Debug: Check file contents before parsing
+            console.log("=== File contents ===");
+            const files = ['/tmp/compile_output.json', '/tmp/update_output.json', '/tmp/run_once_output.json', '/tmp/run_cached_output.json'];
+            files.forEach(file => {
+              try {
+                const content = fs.readFileSync(file, 'utf8');
+                console.log(`${file}: ${content.length} chars`);
+                console.log(`First 200 chars: ${content.substring(0, 200)}`);
+              } catch (e) {
+                console.log(`${file}: Error reading - ${e.message}`);
+              }
+            });
+
             const compileOutput = JSON.parse(fs.readFileSync('/tmp/compile_output.json', 'utf8'));
             const updateOutput = JSON.parse(fs.readFileSync('/tmp/update_output.json', 'utf8'));  
             const runOnceOutput = JSON.parse(fs.readFileSync('/tmp/run_once_output.json', 'utf8'));
