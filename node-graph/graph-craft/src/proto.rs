@@ -370,11 +370,13 @@ impl ProtoNetwork {
 		let mut combined_deps = ContextFeatures::default();
 		let node_index = id.0 as usize;
 
+		let context_features = self.nodes[node_index].1.context_features;
+
 		let mut inputs = match &self.nodes[node_index].1.construction_args {
 			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be chached
-			ConstructionArgs::Value(_) => return (ContextFeatures::default(), Some(id)),
+			ConstructionArgs::Value(_) => return (context_features.extract, Some(id)),
 			ConstructionArgs::Nodes(items) => items.clone(),
-			ConstructionArgs::Inline(_) => return (ContextFeatures::default(), Some(id)),
+			ConstructionArgs::Inline(_) => return (context_features.extract, Some(id)),
 		};
 
 		// Compute the dependencies for each branch and combine all of them
@@ -385,8 +387,6 @@ impl ProtoNetwork {
 			combined_deps |= branch.0;
 		}
 		let node = &self.nodes[node_index].1;
-		let context_features = node.context_features;
-
 		let mut new_deps = combined_deps;
 
 		// Remove requirements which this node provides

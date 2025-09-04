@@ -18,8 +18,10 @@ async fn context_modification<T>(
 		Context -> (),
 		Context -> bool,
 		Context -> u32,
+		Context -> u64,
 		Context -> f32,
 		Context -> f64,
+		Context -> String,
 		Context -> DAffine2,
 		Context -> DVec2,
 		Context -> Table<Vector>,
@@ -29,6 +31,7 @@ async fn context_modification<T>(
 		Context -> Table<Color>,
 		Context -> Table<Artboard>,
 		Context -> Table<GradientStops>,
+		Context -> GradientStops,
 	)]
 	value: impl Node<Context<'static>, Output = T>,
 	features_to_keep: ContextFeatures,

@@ -114,6 +114,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 			implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 			visible: true,
 			skip_deduplication: false,
+			context_features: ContextDependencies::from(metadata.context_features.as_slice()),
 			..Default::default()
 		};
 

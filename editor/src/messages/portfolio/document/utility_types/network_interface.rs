@@ -1248,11 +1248,7 @@ impl NodeNetworkInterface {
 
 	/// Returns the display name of the node. If the display name is empty, it will return "Untitled Node" or "Untitled Layer" depending on the node type.
 	pub fn display_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
-		let is_layer = self
-			.node_metadata(node_id, network_path)
-			.expect("Could not get persistent node metadata in untitled_layer_label")
-			.persistent_metadata
-			.is_layer();
+		let is_layer = self.is_layer(node_id, network_path);
 
 		let Some(reference) = self.reference(node_id, network_path) else {
 			log::error!("Could not get reference in untitled_layer_label");
