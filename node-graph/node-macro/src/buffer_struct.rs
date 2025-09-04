@@ -58,9 +58,11 @@ pub fn derive_buffer_struct_enum(crate_ident: &CrateIdent, item: &ItemEnum) -> R
 	})
 }
 
-/// see `BufferStruct` docs
+/// see [`BufferStruct`] docs
 ///
 /// This is also largely copied from my (@firestar99) project and adjusted
+///
+/// [`BufferStruct`]: `graphene_core_shaders::shaders::buffer_struct::BufferStruct`
 pub fn derive_buffer_struct_struct(crate_ident: &CrateIdent, item: &ItemStruct) -> Result<TokenStream> {
 	let gcore_shaders = crate_ident.gcore_shaders()?;
 	let mod_buffer_struct = quote!(#gcore_shaders::shaders::buffer_struct);

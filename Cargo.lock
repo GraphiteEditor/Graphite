@@ -3474,6 +3474,7 @@ version = "0.0.0"
 dependencies = [
  "convert_case 0.8.0",
  "graphene-core",
+ "graphene-core-shaders",
  "indoc",
  "proc-macro-crate",
  "proc-macro-error2",
