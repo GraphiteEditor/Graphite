@@ -132,7 +132,7 @@
 					}}
 					bind:this={tabElements[tabIndex]}
 				>
-					<TextLabel classes={{ unsaved: !$portfolio.documents[tabIndex]?.isSaved}}>
+					<TextLabel classes={{ unsaved: !$portfolio.documents[tabIndex]?.isSaved }}>
 						{tabLabel.name}
 					</TextLabel>
 					{#if tabCloseButtons}
