@@ -1331,6 +1331,14 @@ async fn poisson_disk_points(
 
 #[node_macro::node(category(""), path(graphene_core::vector))]
 async fn subpath_segment_lengths(_: impl Ctx, content: Table<Vector>) -> Vec<f64> {
+	let pathseg_perimeter = |segment: PathSeg| {
+		if is_linear(segment) {
+			Line::new(segment.start(), segment.end()).perimeter(DEFAULT_ACCURACY)
+		} else {
+			segment.perimeter(DEFAULT_ACCURACY)
+		}
+	};
+
 	content
 		.into_iter()
 		.flat_map(|vector| {
@@ -1340,7 +1348,7 @@ async fn subpath_segment_lengths(_: impl Ctx, content: Table<Vector>) -> Vec<f64
 				.stroke_bezpath_iter()
 				.flat_map(|mut bezpath| {
 					bezpath.apply_affine(Affine::new(transform.to_cols_array()));
-					bezpath.segments().map(|segment| segment.perimeter(DEFAULT_ACCURACY)).collect::<Vec<f64>>()
+					bezpath.segments().map(pathseg_perimeter).collect::<Vec<f64>>()
 				})
 				.collect::<Vec<f64>>()
 		})
