@@ -12,12 +12,10 @@ export function panicProxy<T extends object>(module: T): T {
 			// Special handling to wrap the return of a constructor in the proxy
 			const isClass = isFunction && /^\s*class\s+/.test(targetValue.toString());
 			if (isClass) {
-				// eslint-disable-next-line func-names
 				return function (...args: unknown[]): unknown {
 					// All three of these comment lines are necessary to suppress errors at both compile time and while editing this file (@ts-expect-error doesn't work here while editing the file)
 					// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 					// @ts-ignore
-					// eslint-disable-next-line new-cap
 					const result = new targetValue(...args);
 
 					return panicProxy(result);
@@ -25,7 +23,6 @@ export function panicProxy<T extends object>(module: T): T {
 			}
 
 			// Replace the original function with a wrapper function that runs the original in a try-catch block
-			// eslint-disable-next-line func-names
 			return function (...args: unknown[]): unknown {
 				let result;
 				try {

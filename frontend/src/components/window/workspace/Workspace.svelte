@@ -2,7 +2,7 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { FrontendDocumentDetails } from "@graphite/messages";
+	import type { OpenDocument } from "@graphite/messages";
 	import type { DialogState } from "@graphite/state-providers/dialog";
 	import type { PortfolioState } from "@graphite/state-providers/portfolio";
 
@@ -29,7 +29,7 @@
 
 	$: documentPanel?.scrollTabIntoView($portfolio.activeDocumentIndex);
 
-	$: documentTabLabels = $portfolio.documents.map((doc: FrontendDocumentDetails) => {
+	$: documentTabLabels = $portfolio.documents.map((doc: OpenDocument) => {
 		const name = doc.displayName;
 
 		if (!editor.handle.inDevelopmentMode()) return { name };

@@ -259,7 +259,7 @@
 
 	<!-- Click target debug visualizations -->
 	{#if $nodeGraph.clickTargets}
-		<div class="click-targets" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+		<div class="click-targets" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 			<svg>
 				{#each $nodeGraph.clickTargets.nodeClickTargets as pathString}
 					<path class="node" d={pathString} />
@@ -283,14 +283,14 @@
 	{/if}
 
 	<!-- Thick vertical layer connection wires -->
-	<div class="wires" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+	<div class="wires" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		<svg>
 			{#each $nodeGraph.wires.values() as map}
 				{#each map.values() as { pathString, dataType, thick, dashed }}
 					{#if thick}
 						<path
 							d={pathString}
-							style:--data-line-width={"8px"}
+							style:--data-line-width="8px"
 							style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
 							style:--data-dasharray={`3,${dashed ? 2 : 0}`}
@@ -302,7 +302,7 @@
 	</div>
 
 	<!-- Import and Export connectors -->
-	<div class="imports-and-exports" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+	<div class="imports-and-exports" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		{#if $nodeGraph.updateImportsExports}
 			{#each $nodeGraph.updateImportsExports.imports as frontendOutput, index}
 				{#if frontendOutput}
@@ -352,7 +352,7 @@
 						{#if (hoveringImportIndex === index || editingNameImportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
 							<IconButton
 								size={16}
-								icon={"Remove"}
+								icon="Remove"
 								class="remove-button-import"
 								data-index={index}
 								data-import-text-edge
@@ -411,7 +411,7 @@
 							{/if}
 							<IconButton
 								size={16}
-								icon={"Remove"}
+								icon="Remove"
 								class="remove-button-export"
 								data-index={index}
 								data-export-text-edge
@@ -459,7 +459,7 @@
 					style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 12) / 24}
 					style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 12) / 24 + $nodeGraph.updateImportsExports.exports.length}
 				>
-					<IconButton size={24} icon={"Add"} action={() => editor.handle.addSecondaryExport()} />
+					<IconButton size={24} icon="Add" action={() => editor.handle.addSecondaryExport()} />
 				</div>
 			{/if}
 
@@ -482,7 +482,7 @@
 	</div>
 
 	<!-- Layers and nodes -->
-	<div class="layers-and-nodes" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+	<div class="layers-and-nodes" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		<!-- Layers -->
 		{#each Array.from($nodeGraph.nodes)
 			.filter(([nodeId, node]) => node.isLayer && $nodeGraph.visibleNodes.has(nodeId))
@@ -589,7 +589,7 @@
 				</div>
 				<div class="solo-drag-grip" title="Drag only this layer without pushing others outside the stack"></div>
 				<IconButton
-					class={"visibility"}
+					class="visibility"
 					data-visibility-button
 					size={24}
 					icon={node.visible ? "EyeVisible" : "EyeHidden"}
@@ -618,7 +618,7 @@
 						{#if !thick}
 							<path
 								d={pathString}
-								style:--data-line-width={"2px"}
+								style:--data-line-width="2px"
 								style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
 								style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
 								style:--data-dasharray={`3,${dashed ? 2 : 0}`}

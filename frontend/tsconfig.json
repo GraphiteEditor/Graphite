@@ -2,9 +2,9 @@
 	"compilerOptions": {
 		"target": "ESNext",
 		"module": "ESNext",
+		"moduleResolution": "node",
 		"strict": true,
 		"importHelpers": true,
-		"moduleResolution": "node",
 		"experimentalDecorators": true,
 		"skipLibCheck": true,
 		"esModuleInterop": true,
@@ -20,11 +20,9 @@
 		},
 		"lib": ["ESNext", "DOM", "DOM.Iterable", "ScriptHost"]
 	},
-	"include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.svelte", "*.ts", "*.js", "*.cjs"],
-	"exclude": ["node_modules"],
+	"include": ["src/**/*.ts", "src/**/*.svelte", "*.ts"],
 	"ts-node": {
 		"compilerOptions": {
-			"module": "commonjs",
 			"useDefineForClassFields": false,
 			"noImplicitOverride": true
 		}

@@ -3,6 +3,7 @@ use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
 use core::hash::Hash;
+use glam::Vec4;
 use half::f16;
 #[cfg(not(feature = "std"))]
 use num_traits::Euclid;
@@ -1074,6 +1075,21 @@ impl Color {
 			alpha: (self.alpha * other.alpha).clamp(0., 1.),
 			..*self
 		}
+	}
+
+	#[inline(always)]
+	pub const fn from_vec4(vec: Vec4) -> Self {
+		Self {
+			red: vec.x,
+			green: vec.y,
+			blue: vec.z,
+			alpha: vec.w,
+		}
+	}
+
+	#[inline(always)]
+	pub fn to_vec4(&self) -> Vec4 {
+		Vec4::new(self.red, self.green, self.blue, self.alpha)
 	}
 }
 
