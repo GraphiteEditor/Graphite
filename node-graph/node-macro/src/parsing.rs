@@ -419,12 +419,12 @@ fn parse_context_feature_idents(ty: &Type) -> Vec<Ident> {
 				if let Some(segment) = path.segments.last() {
 					match segment.ident.to_string().as_str() {
 						"ExtractFootprint"
-						| "ExtractTime"
+						| "ExtractRealTime"
 						| "ExtractAnimationTime"
 						| "ExtractIndex"
 						| "ExtractVarArgs"
 						| "InjectFootprint"
-						| "InjectTime"
+						| "InjectRealTime"
 						| "InjectAnimationTime"
 						| "InjectIndex"
 						| "InjectVarArgs" => {

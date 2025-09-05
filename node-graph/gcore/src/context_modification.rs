@@ -85,7 +85,7 @@ mod tests {
 			OwnedContextImpl::empty()
 				.with_footprint(Footprint::default()) // Same footprint
 				.with_index(2)
-				.with_real_time(999.9) // Different time
+				.with_real_time(999.9) // Different real time
 				.with_vararg(Box::new("test"))
 				.with_animation_time(888.8), // Different animation time
 		));
@@ -101,7 +101,7 @@ mod tests {
 		assert_eq!(hash1, hash2, "Hash of nullified context should remain stable regardless of input changes when features are nullified");
 
 		// Test partial nullification - keep only footprint
-		let partial_features = ContextFeatures::FOOTPRINT | ContextFeatures::VAR_ARGS;
+		let partial_features = ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS;
 
 		let partial_nullified1 = OwnedContextImpl::from_flags(original_ctx.clone().unwrap(), partial_features);
 		let partial_nullified2 = OwnedContextImpl::from_flags(changed_ctx.clone().unwrap(), partial_features);

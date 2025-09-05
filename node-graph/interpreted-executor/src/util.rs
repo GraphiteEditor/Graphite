@@ -53,7 +53,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode")),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::FOOTPRINT,
-						inject: ContextFeatures::FOOTPRINT | ContextFeatures::TIME | ContextFeatures::ANIMATION_TIME,
+						inject: ContextFeatures::FOOTPRINT | ContextFeatures::REAL_TIME | ContextFeatures::ANIMATION_TIME,
 					},
 					..Default::default()
 				},
