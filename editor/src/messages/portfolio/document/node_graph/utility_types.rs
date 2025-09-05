@@ -262,8 +262,6 @@ pub struct FrontendClickTargets {
 	pub icon_click_targets: Vec<String>,
 	#[serde(rename = "allNodesBoundingBox")]
 	pub all_nodes_bounding_box: String,
-	#[serde(rename = "importExportsBoundingBox")]
-	pub import_exports_bounding_box: String,
 	#[serde(rename = "modifyImportExport")]
 	pub modify_import_export: Vec<String>,
 }

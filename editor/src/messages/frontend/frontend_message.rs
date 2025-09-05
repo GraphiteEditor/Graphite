@@ -7,7 +7,7 @@ use crate::messages::portfolio::document::utility_types::wires::WirePathInProgre
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 use graph_craft::document::NodeId;
-use graphene_std::node_graph_overlay::types::{FrontendExports, FrontendImport, FrontendNodeToRender, FrontendXY, NodeGraphTransform};
+use graphene_std::node_graph_overlay::types::{FrontendExports, FrontendImport, FrontendXY, NodeGraphTransform};
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
 use graphene_std::text::{Font, TextAlign};
@@ -270,16 +270,9 @@ pub enum FrontendMessage {
 		cursor: MouseCursorIcon,
 	},
 	RequestNativeNodeGraphRender,
-	UpdateShouldRenderSvelteNodes {
-		#[serde(rename = "shouldRenderSvelteNodes")]
-		should_render_svelte_nodes: bool,
-	},
 	UpdateNativeNodeGraphSVG {
 		#[serde(rename = "svgString")]
 		svg_string: String,
-	},
-	UpdateVisibleNodes {
-		nodes: Vec<NodeId>,
 	},
 	UpdateNodeGraphControlBarLayout {
 		#[serde(rename = "layoutTarget")]

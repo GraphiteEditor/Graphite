@@ -90,15 +90,23 @@ impl NodeNetworkInterface {
 
 					let position = FrontendXY { x: position.x, y: position.y };
 
-					let inputs = (0..self.number_of_inputs(&node_id, network_path))
-						.map(|input_index| self.frontend_input_from_connector(&InputConnector::node(node_id, input_index), network_path))
+					let primary_input = self.frontend_input_from_connector(&InputConnector::node(node_id, 0), network_path);
+					let secondary_inputs = (1..self.number_of_inputs(&node_id, network_path))
+						.filter_map(|input_index| self.frontend_input_from_connector(&InputConnector::node(node_id, input_index), network_path))
 						.collect();
 
-					let outputs = (0..self.number_of_outputs(&node_id, network_path))
-						.map(|output_index| self.frontend_output_from_connector(&OutputConnector::node(node_id, output_index), network_path))
+					let primary_output = self.frontend_output_from_connector(&OutputConnector::node(node_id, 0), network_path);
+					let secondary_outputs = (1..self.number_of_outputs(&node_id, network_path))
+						.filter_map(|output_index| self.frontend_output_from_connector(&OutputConnector::node(node_id, output_index), network_path))
 						.collect();
 
-					let node = Some(FrontendNode { position, inputs, outputs });
+					let node = Some(FrontendNode {
+						position,
+						primary_input,
+						primary_output,
+						secondary_inputs,
+						secondary_outputs,
+					});
 
 					FrontendNodeOrLayer { node, layer: None }
 				}

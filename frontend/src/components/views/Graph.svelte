@@ -617,7 +617,6 @@
 					<path class="visibility" d={pathString} />
 				{/each}
 				<path class="all-nodes-bounding-box" d={$nodeGraph.clickTargets.allNodesBoundingBox} />
-				<path class="all-nodes-bounding-box" d={$nodeGraph.clickTargets.importExportsBoundingBox} />
 				{#each $nodeGraph.clickTargets.modifyImportExport as pathString}
 					<path class="modify-import-export" d={pathString} />
 				{/each}
