@@ -6,7 +6,7 @@ use spirv_std::spirv;
 ///
 /// So to make a fullscreen triangle around a box at (-1..1):
 ///
-/// ```norun
+/// ```text
 /// 3  +
 ///    |\
 /// 2  |  \

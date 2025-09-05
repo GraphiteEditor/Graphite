@@ -116,7 +116,6 @@ jobs:
           script: |
             const fs = require('fs');
 
-
             const compileOutput = JSON.parse(fs.readFileSync('/tmp/compile_output.json', 'utf8'));
             const updateOutput = JSON.parse(fs.readFileSync('/tmp/update_output.json', 'utf8'));  
             const runOnceOutput = JSON.parse(fs.readFileSync('/tmp/run_once_output.json', 'utf8'));
