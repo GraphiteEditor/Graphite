@@ -1,3 +1,27 @@
+pub trait ToNativeKeycode {
+	fn to_native_keycode(&self) -> i32;
+}
+
+impl ToNativeKeycode for winit::keyboard::PhysicalKey {
+	fn to_native_keycode(&self) -> i32 {
+		use winit::platform::scancode::PhysicalKeyExtScancode;
+
+		#[cfg(target_os = "linux")]
+		{
+			self.to_scancode().map(|evdev| (evdev + 8) as i32).unwrap_or(0)
+		}
+		#[cfg(any(target_os = "macos", target_os = "windows"))]
+		{
+			self.to_scancode().map(|c| c as i32).unwrap_or(0)
+		}
+	}
+}
+
+// Windows Virtual keyboard binary representation
+pub(crate) trait ToVKBits {
+	fn to_vk_bits(&self) -> i32;
+}
+
 macro_rules! map_enum {
 	($target:expr, $enum:ident, $( ($code:expr, $variant:ident), )+ ) => {
 		match $target {
@@ -7,22 +31,6 @@ macro_rules! map_enum {
 			_ => 0,
 		}
 	};
-}
-
-macro_rules! map {
-	($target:expr, $( ($code:expr, $variant:literal), )+ ) => {
-		match $target {
-			$(
-				$variant => $code,
-			)+
-			_ => 0,
-		}
-	};
-}
-
-// Windows Virtual keyboard binary representation
-pub(crate) trait ToVKBits {
-	fn to_vk_bits(&self) -> i32;
 }
 
 impl ToVKBits for winit::keyboard::NamedKey {
@@ -136,6 +144,17 @@ impl ToVKBits for winit::keyboard::NamedKey {
 	}
 }
 
+macro_rules! map {
+	($target:expr, $( ($code:expr, $variant:literal), )+ ) => {
+		match $target {
+			$(
+				$variant => $code,
+			)+
+			_ => 0,
+		}
+	};
+}
+
 impl ToVKBits for char {
 	fn to_vk_bits(&self) -> i32 {
 		map!(
@@ -234,215 +253,6 @@ impl ToVKBits for char {
 			(0xDE, '"'),
 			(0xBF, '/'),
 			(0xBF, '?'),
-		)
-	}
-}
-
-// Chromium dom key binary representation
-pub(crate) trait ToDomBits {
-	fn to_dom_bits(&self) -> i32;
-}
-
-impl ToDomBits for winit::keyboard::NamedKey {
-	fn to_dom_bits(&self) -> i32 {
-		use winit::keyboard::NamedKey;
-		map_enum!(
-			self,
-			NamedKey,
-			(0x00, Hyper),
-			(0x85, Super),
-			(0x25, Control),
-			(0x32, Shift),
-			(0x40, Alt),
-			(0x00, Fn),
-			(0x00, FnLock),
-			(0x24, Enter),
-			(0x09, Escape),
-			(0x16, Backspace),
-			(0x17, Tab),
-			(0x41, Space),
-			(0x42, CapsLock),
-			(0x43, F1),
-			(0x44, F2),
-			(0x45, F3),
-			(0x46, F4),
-			(0x47, F5),
-			(0x48, F6),
-			(0x49, F7),
-			(0x4a, F8),
-			(0x4b, F9),
-			(0x4c, F10),
-			(0x5f, F11),
-			(0x60, F12),
-			(0x6b, PrintScreen),
-			(0x4e, ScrollLock),
-			(0x7f, Pause),
-			(0x76, Insert),
-			(0x6e, Home),
-			(0x70, PageUp),
-			(0x77, Delete),
-			(0x73, End),
-			(0x75, PageDown),
-			(0x72, ArrowRight),
-			(0x71, ArrowLeft),
-			(0x74, ArrowDown),
-			(0x6f, ArrowUp),
-			(0x4d, NumLock),
-			(0x87, ContextMenu),
-			(0x7c, Power),
-			(0xbf, F13),
-			(0xc0, F14),
-			(0xc1, F15),
-			(0xc2, F16),
-			(0xc3, F17),
-			(0xc4, F18),
-			(0xc5, F19),
-			(0xc6, F20),
-			(0xc7, F21),
-			(0xc8, F22),
-			(0xc9, F23),
-			(0xca, F24),
-			(0x8e, Open),
-			(0x92, Help),
-			(0x8c, Select),
-			(0x89, Again),
-			(0x8b, Undo),
-			(0x91, Cut),
-			(0x8d, Copy),
-			(0x8f, Paste),
-			(0x90, Find),
-			(0x79, AudioVolumeMute),
-			(0x7b, AudioVolumeUp),
-			(0x7a, AudioVolumeDown),
-			(0x65, KanaMode),
-			(0x64, Convert),
-			(0x66, NonConvert),
-			(0x00, Props),
-			(0xe9, BrightnessUp),
-			(0xe8, BrightnessDown),
-			(0xd7, MediaPlay),
-			(0xd1, MediaPause),
-			(0xaf, MediaRecord),
-			(0xd8, MediaFastForward),
-			(0xb0, MediaRewind),
-			(0xab, MediaTrackNext),
-			(0xad, MediaTrackPrevious),
-			(0xae, MediaStop),
-			(0xa9, Eject),
-			(0xac, MediaPlayPause),
-			(0xa3, LaunchMail),
-			(0xe1, BrowserSearch),
-			(0xb4, BrowserHome),
-			(0xa6, BrowserBack),
-			(0xa7, BrowserForward),
-			(0x88, BrowserStop),
-			(0xb5, BrowserRefresh),
-			(0xa4, BrowserFavorites),
-			(0xf0, MailReply),
-			(0xf1, MailForward),
-			(0xef, MailSend),
-		)
-	}
-}
-
-impl ToDomBits for char {
-	fn to_dom_bits(&self) -> i32 {
-		map!(
-			self,
-			(0x26, 'a'),
-			(0x38, 'b'),
-			(0x36, 'c'),
-			(0x28, 'd'),
-			(0x1a, 'e'),
-			(0x29, 'f'),
-			(0x2a, 'g'),
-			(0x2b, 'h'),
-			(0x1f, 'i'),
-			(0x2c, 'j'),
-			(0x2d, 'k'),
-			(0x2e, 'l'),
-			(0x3a, 'm'),
-			(0x39, 'n'),
-			(0x20, 'o'),
-			(0x21, 'p'),
-			(0x18, 'q'),
-			(0x1b, 'r'),
-			(0x27, 's'),
-			(0x1c, 't'),
-			(0x1e, 'u'),
-			(0x37, 'v'),
-			(0x19, 'w'),
-			(0x35, 'x'),
-			(0x1d, 'y'),
-			(0x34, 'z'),
-			(0x26, 'A'),
-			(0x38, 'B'),
-			(0x36, 'C'),
-			(0x28, 'D'),
-			(0x1a, 'E'),
-			(0x29, 'F'),
-			(0x2a, 'G'),
-			(0x2b, 'H'),
-			(0x1f, 'I'),
-			(0x2c, 'J'),
-			(0x2d, 'K'),
-			(0x2e, 'L'),
-			(0x3a, 'M'),
-			(0x39, 'N'),
-			(0x20, 'O'),
-			(0x21, 'P'),
-			(0x18, 'Q'),
-			(0x1b, 'R'),
-			(0x27, 'S'),
-			(0x1c, 'T'),
-			(0x1e, 'U'),
-			(0x37, 'V'),
-			(0x19, 'W'),
-			(0x35, 'X'),
-			(0x1d, 'Y'),
-			(0x34, 'Z'),
-			(0x0a, '1'),
-			(0x0b, '2'),
-			(0x0c, '3'),
-			(0x0d, '4'),
-			(0x0e, '5'),
-			(0x0f, '6'),
-			(0x10, '7'),
-			(0x11, '8'),
-			(0x12, '9'),
-			(0x13, '0'),
-			(0x0a, '!'),
-			(0x0b, '@'),
-			(0x0c, '#'),
-			(0x0d, '$'),
-			(0x0e, '%'),
-			(0x0f, '^'),
-			(0x10, '&'),
-			(0x11, '*'),
-			(0x12, '('),
-			(0x13, ')'),
-			(0x31, '`'),
-			(0x31, '~'),
-			(0x14, '-'),
-			(0x14, '_'),
-			(0x15, '='),
-			(0x15, '+'),
-			(0x22, '['),
-			(0x22, '{'),
-			(0x23, ']'),
-			(0x23, '}'),
-			(0x33, '\\'),
-			(0x33, '|'),
-			(0x2f, ';'),
-			(0x2f, ':'),
-			(0x3b, ','),
-			(0x3b, '<'),
-			(0x3c, '.'),
-			(0x3c, '>'),
-			(0x30, '\''),
-			(0x30, '"'),
-			(0x3d, '/'),
-			(0x3d, '?'),
 		)
 	}
 }

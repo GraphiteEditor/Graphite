@@ -4,7 +4,7 @@ use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 
 mod keymap;
-use keymap::{ToDomBits, ToVKBits};
+use keymap::{ToNativeKeycode, ToVKBits};
 
 pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputState, event: &WindowEvent) {
 	match event {
@@ -106,21 +106,23 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 					_ => return,
 				};
 
+				let native_key_code = event.physical_key.to_native_keycode();
+
+				let modifiers = input_state.cef_modifiers(&event.location, event.repeat).raw();
+
 				let mut key_event = KeyEvent {
 					size: size_of::<KeyEvent>(),
-					focus_on_editable_field: 1,
-					modifiers: input_state.cef_modifiers(&event.location, event.repeat).raw(),
-					is_system_key: 0,
+					modifiers,
 					..Default::default()
 				};
 
 				if let Some(named_key) = named_key {
-					key_event.native_key_code = named_key.to_dom_bits();
 					key_event.windows_key_code = named_key.to_vk_bits();
 				} else if let Some(char) = character {
-					key_event.native_key_code = char.to_dom_bits();
 					key_event.windows_key_code = char.to_vk_bits();
 				}
+
+				key_event.native_key_code = native_key_code;
 
 				match event.state {
 					ElementState::Pressed => {
@@ -128,15 +130,22 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 						host.send_key_event(Some(&key_event));
 
 						if let Some(char) = character {
+							let mut char_key_event = KeyEvent {
+								size: size_of::<KeyEvent>(),
+								modifiers,
+								is_system_key: 0,
+								..Default::default()
+							};
 							let mut buf = [0; 2];
 							char.encode_utf16(&mut buf);
-							key_event.character = buf[0];
+							char_key_event.windows_key_code = buf[0] as i32;
+							char_key_event.character = buf[0];
+							char_key_event.native_key_code = native_key_code;
 							let mut buf = [0; 2];
 							char.to_lowercase().next().unwrap().encode_utf16(&mut buf);
-							key_event.unmodified_character = buf[0];
-
-							key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_CHAR);
-							host.send_key_event(Some(&key_event));
+							char_key_event.unmodified_character = buf[0];
+							char_key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_CHAR);
+							host.send_key_event(Some(&char_key_event));
 						}
 					}
 					ElementState::Released => {
