@@ -2191,6 +2191,7 @@ dependencies = [
  "specta",
  "spirv-std",
  "tokio",
+ "wgpu-executor",
 ]
 
 [[package]]
