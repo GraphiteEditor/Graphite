@@ -1,11 +1,14 @@
 use crate::node_registry;
 use dyn_any::StaticType;
-use graph_craft::Type;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::{TaggedValue, UpcastAsRefNode, UpcastNode};
 use graph_craft::graphene_compiler::Executor;
 use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
+use graph_craft::{Type, concrete};
+use graphene_std::memo;
+use graphene_std::node_graph_overlay::ui_context::UIContext;
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::sync::Arc;
@@ -18,8 +21,6 @@ pub struct DynamicExecutor {
 	tree: BorrowTree,
 	/// Stores the types of the proto nodes.
 	typing_context: TypingContext,
-	// This allows us to keep the nodes around for one more frame which is used for introspection
-	orphaned_nodes: HashSet<NodeId>,
 }
 
 impl Default for DynamicExecutor {
@@ -28,7 +29,6 @@ impl Default for DynamicExecutor {
 			output: Default::default(),
 			tree: Default::default(),
 			typing_context: TypingContext::new(&node_registry::NODE_REGISTRY),
-			orphaned_nodes: HashSet::new(),
 		}
 	}
 }
@@ -55,12 +55,7 @@ impl DynamicExecutor {
 		let output = proto_network.output;
 		let tree = BorrowTree::new(proto_network, &typing_context).await?;
 
-		Ok(Self {
-			tree,
-			output,
-			typing_context,
-			orphaned_nodes: HashSet::new(),
-		})
+		Ok(Self { tree, output, typing_context })
 	}
 
 	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
@@ -69,11 +64,10 @@ impl DynamicExecutor {
 		self.output = proto_network.output;
 		self.typing_context.update(&proto_network)?;
 		let (add, orphaned) = self.tree.update(proto_network, &self.typing_context).await?;
-		let old_to_remove = core::mem::replace(&mut self.orphaned_nodes, orphaned);
-		let mut remove = Vec::with_capacity(old_to_remove.len() - self.orphaned_nodes.len().min(old_to_remove.len()));
-		for node_id in old_to_remove {
-			if self.orphaned_nodes.contains(&node_id) {
-				let path = self.tree.free_node(node_id);
+		let mut remove = Vec::with_capacity(orphaned.len());
+		for node_id in orphaned {
+			let (removed, path) = self.tree.free_node(node_id);
+			if removed {
 				self.typing_context.remove_inference(node_id);
 				if let Some(path) = path {
 					remove.push(path);
@@ -152,6 +146,24 @@ impl std::fmt::Display for IntrospectError {
 	}
 }
 
+// Stores the node when can be evaluated, as well as corresponding metadata
+#[derive(Clone)]
+struct CompiledProtonode {
+	// A type erased struct which implements Node, allowing .eval to be called
+	node_container: SharedNodeContainer,
+	path: Path,
+	compilations_without_node: u32,
+	// Non user visible cache nodes (those in the graph overlay and network wrapping artwork)
+	// Get immediately removed, since they output of those networks is side effect based, not return value based
+	// Normal nodes cache stick around for a few compilations, since there is a high likelyhood of reaching the same SNI again
+	// All other nodes get immediately removed since they do not store any data
+	remove_after: u32,
+	// Since the container is type erased, the types must be annotated
+	// types: NodeIOTypes,
+	// Used in incremental compilation
+	// callers: NodeId,
+}
+
 /// A store of dynamically typed nodes and their associated source map.
 ///
 /// [`BorrowTree`] maintains two main data structures:
@@ -173,7 +185,7 @@ impl std::fmt::Display for IntrospectError {
 #[derive(Default, Clone)]
 pub struct BorrowTree {
 	/// A hashmap of node IDs and dynamically typed nodes.
-	nodes: HashMap<NodeId, (SharedNodeContainer, Path)>,
+	nodes: HashMap<NodeId, CompiledProtonode>,
 	/// A hashmap from the document path to the proto node ID.
 	source_map: HashMap<Path, (NodeId, NodeTypes)>,
 }
@@ -205,22 +217,26 @@ impl BorrowTree {
 	}
 
 	fn node_deps(&self, nodes: &[NodeId]) -> Vec<SharedNodeContainer> {
-		nodes.iter().map(|node| self.nodes.get(node).unwrap().0.clone()).collect()
+		nodes.iter().map(|node| self.nodes.get(node).unwrap().node_container.clone()).collect()
 	}
 
-	fn store_node(&mut self, node: SharedNodeContainer, id: NodeId, path: Path) {
-		self.nodes.insert(id, (node, path));
+	fn store_node(&mut self, id: NodeId, node: SharedNodeContainer, path: Path, remove_after: u32) {
+		self.nodes.insert(
+			id,
+			CompiledProtonode {
+				node_container: node,
+				path,
+				compilations_without_node: 0,
+				remove_after,
+			},
+		);
 	}
 
 	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
 	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 		let (id, _) = self.source_map.get(node_path).ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
-		let (node, _path) = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
-		node.serialize().ok_or(IntrospectError::NoData)
-	}
-
-	pub fn get(&self, id: NodeId) -> Option<SharedNodeContainer> {
-		self.nodes.get(&id).map(|(node, _)| node.clone())
+		let compiled_protonode = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
+		compiled_protonode.node_container.serialize().ok_or(IntrospectError::NoData)
 	}
 
 	/// Evaluate the output node of the [`BorrowTree`].
@@ -229,8 +245,8 @@ impl BorrowTree {
 		I: StaticType + 'i + Send + Sync,
 		O: StaticType + 'i,
 	{
-		let (node, _path) = self.nodes.get(&id).cloned()?;
-		let output = node.eval(Box::new(input));
+		let compiled_protonode = self.nodes.get(&id).cloned()?;
+		let output = compiled_protonode.node_container.eval(Box::new(input));
 		dyn_any::downcast::<O>(output.await).ok().map(|o| *o)
 	}
 	/// Evaluate the output node of the [`BorrowTree`] and cast it to a tagged value.
@@ -239,23 +255,25 @@ impl BorrowTree {
 	where
 		I: StaticType + 'static + Send + Sync,
 	{
-		let (node, _path) = self.nodes.get(&id).cloned().ok_or("Output node not found in executor")?;
-		let output = node.eval(Box::new(input));
+		let compiled_protonode = self.nodes.get(&id).cloned().ok_or("Output node not found in executor")?;
+		let output = compiled_protonode.node_container.eval(Box::new(input));
 		TaggedValue::try_from_any(output.await)
 	}
 
-	/// Removes a node from the [`BorrowTree`] and returns its associated path.
-	///
+	/// Tries to removes a node from the [`BorrowTree`] and return its associated path.
+	//
 	/// This method removes the specified node from both the `nodes` HashMap and,
-	/// if applicable, the `source_map` HashMap.
+	/// if applicable, the `source_map` HashMap if it has been not compiled for more
+	/// iterations that specified.
 	///
 	/// # Arguments
 	///
 	/// * `self` - Mutable reference to the [`BorrowTree`].
-	/// * `id` - The `NodeId` of the node to be removed.
+	/// * `id` - The `NodeId` of the node that is not present in the network
 	///
 	/// # Returns
 	///
+	/// bool - Whether the node has been removed
 	/// [`Option<Path>`] - The path associated with the removed node, or `None` if the node wasn't found.
 	///
 	/// # Example
@@ -296,16 +314,26 @@ impl BorrowTree {
 	///
 	/// # Notes
 	///
-	/// - Removes the node from `nodes` HashMap.
+	/// - Tries to Removes the node from `nodes` HashMap.
 	/// - If the node is the primary node for its path in the `source_map`, it's also removed from there.
 	/// - Returns `None` if the node is not found in the `nodes` HashMap.
-	pub fn free_node(&mut self, id: NodeId) -> Option<Path> {
-		let (_, path) = self.nodes.remove(&id)?;
-		if self.source_map.get(&path)?.0 == id {
-			self.source_map.remove(&path);
-			return Some(path);
+	pub fn free_node(&mut self, id: NodeId) -> (bool, Option<Path>) {
+		match self.nodes.entry(id) {
+			Entry::Occupied(mut occupied_entry) => {
+				occupied_entry.get_mut().compilations_without_node += 1;
+				if occupied_entry.get().compilations_without_node >= occupied_entry.get().remove_after {
+					let (_, compiled_protonode) = occupied_entry.remove_entry();
+					if self.source_map.get(&compiled_protonode.path).is_some_and(|path| path.0 == id) {
+						self.source_map.remove(&compiled_protonode.path);
+						return (true, Some(compiled_protonode.path));
+					}
+					return (true, None);
+				}
+			}
+			Entry::Vacant(_) => panic!("Compiled protonode must exist in borrow tree when removing"),
 		}
-		None
+
+		(false, None)
 	}
 
 	/// Updates the source map for a given node in the [`BorrowTree`].
@@ -383,7 +411,7 @@ impl BorrowTree {
 					let node = Box::new(upcasted) as TypeErasedBox<'_>;
 					NodeContainer::new(node)
 				};
-				self.store_node(node, id, path.into());
+				self.store_node(id, node, path.into(), 1);
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(ids) => {
@@ -392,7 +420,12 @@ impl BorrowTree {
 				let constructor = typing_context.constructor(id).ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
 				let node = constructor(construction_nodes).await;
 				let node = NodeContainer::new(node);
-				self.store_node(node, id, path.into());
+				let remove_after = if proto_node.identifier == memo::memo::IDENTIFIER && proto_node.call_argument != concrete!(UIContext) {
+					3
+				} else {
+					1
+				};
+				self.store_node(id, node, path.into(), remove_after);
 			}
 		};
 		Ok(())
