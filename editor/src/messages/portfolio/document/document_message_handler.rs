@@ -476,7 +476,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
-				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
 			DocumentMessage::Escape => {
 				if self.node_graph_handler.drag_start.is_some() {
@@ -505,7 +504,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::PTZUpdate);
-				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
 			DocumentMessage::FlipSelectedLayers { flip_axis } => {
 				let scale = match flip_axis {
@@ -568,7 +566,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(ToolMessage::DeactivateTools);
 					responses.add(OverlaysMessage::Draw); // Clear the overlays
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
-					responses.add(NodeGraphMessage::SetGridAlignedEdges);
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 					responses.add(NodeGraphMessage::UpdateHints);
 				} else {
@@ -1476,10 +1473,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
-					responses.add(NodeGraphMessage::UpdateEdges);
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
 					responses.add(NodeGraphMessage::UpdateImportsExports);
-
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
 						transform: NodeGraphTransform {
 							scale: transform.matrix2.x_axis.x,
@@ -1928,9 +1923,6 @@ impl DocumentMessageHandler {
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
-
-		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
-		responses.add(NodeGraphMessage::SetGridAlignedEdges);
 
 		Some(previous_network)
 	}
