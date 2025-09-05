@@ -1,13 +1,13 @@
+use crate::crate_ident::CrateIdent;
 use crate::parsing::{Input, NodeFnAttributes, ParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField};
 use crate::shader_nodes::{SHADER_NODES_FEATURE_GATE, ShaderCodegen, ShaderNodeType, ShaderTokens};
 use convert_case::{Case, Casing};
-use proc_macro_crate::FoundCrate;
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use std::borrow::Cow;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{PatIdent, Type, parse_quote};
+use syn::{LitStr, PatIdent, Type, parse_quote};
 
 #[derive(Debug, Clone)]
 pub struct PerPixelAdjust {}
@@ -19,7 +19,7 @@ impl Parse for PerPixelAdjust {
 }
 
 impl ShaderCodegen for PerPixelAdjust {
-	fn codegen(&self, parsed: &ParsedNodeFn) -> syn::Result<ShaderTokens> {
+	fn codegen(&self, crate_ident: &CrateIdent, parsed: &ParsedNodeFn) -> syn::Result<ShaderTokens> {
 		let fn_name = &parsed.fn_name;
 
 		let mut params;
@@ -74,6 +74,7 @@ impl ShaderCodegen for PerPixelAdjust {
 		let shader_node_mod = format_ident!("{}_shader_node", fn_name);
 
 		let codegen = PerPixelAdjustCodegen {
+			crate_ident,
 			parsed,
 			params,
 			has_uniform,
@@ -93,6 +94,7 @@ impl ShaderCodegen for PerPixelAdjust {
 }
 
 pub struct PerPixelAdjustCodegen<'a> {
+	crate_ident: &'a CrateIdent,
 	parsed: &'a ParsedNodeFn,
 	params: Vec<Param<'a>>,
 	has_uniform: bool,
@@ -107,6 +109,9 @@ pub struct PerPixelAdjustCodegen<'a> {
 impl PerPixelAdjustCodegen<'_> {
 	fn codegen_shader_entry_point(&self) -> syn::Result<TokenStream> {
 		let fn_name = &self.parsed.fn_name;
+		let gcore_shaders = self.crate_ident.gcore_shaders()?;
+		let reexport = quote!(#gcore_shaders::shaders::__private);
+
 		let uniform_members = self
 			.params
 			.iter()
@@ -115,6 +120,16 @@ impl PerPixelAdjustCodegen<'_> {
 				ParamType::Uniform => Some(quote! {#ident: #ty}),
 			})
 			.collect::<Vec<_>>();
+		let uniform_struct_ident = &self.uniform_struct_ident;
+		let uniform_struct = parse_quote! {
+			#[repr(C)]
+			#[derive(Copy, Clone)]
+			pub struct #uniform_struct_ident {
+				#(pub #uniform_members),*
+			}
+		};
+		let uniform_struct_shader_struct_derive = crate::buffer_struct::derive_buffer_struct_struct(&self.crate_ident, &uniform_struct)?;
+
 		let image_params = self
 			.params
 			.iter()
@@ -135,31 +150,28 @@ impl PerPixelAdjustCodegen<'_> {
 
 		let entry_point_mod = &self.entry_point_mod;
 		let entry_point_name = &self.entry_point_name_ident;
-		let uniform_struct_ident = &self.uniform_struct_ident;
 		Ok(quote! {
 			pub mod #entry_point_mod {
 				use super::*;
-				use graphene_core_shaders::color::Color;
-				use spirv_std::spirv;
-				use spirv_std::glam::{Vec4, Vec4Swizzles};
-				use spirv_std::image::{Image2d, ImageWithMethods};
-				use spirv_std::image::sample_with::lod;
+				use #gcore_shaders::color::Color;
+				use #reexport::glam::{Vec4, Vec4Swizzles};
+				use #reexport::spirv_std::spirv;
+				use #reexport::spirv_std::image::{Image2d, ImageWithMethods};
+				use #reexport::spirv_std::image::sample_with::lod;
 
 				pub const #entry_point_name: &str = core::concat!(core::module_path!(), "::entry_point");
 
-				#[repr(C)]
-				#[derive(Copy, Clone, bytemuck::NoUninit)]
-				pub struct #uniform_struct_ident {
-					#(pub #uniform_members),*
-				}
+				#uniform_struct
+				#uniform_struct_shader_struct_derive
 
 				#[spirv(fragment)]
 				pub fn entry_point(
 					#[spirv(frag_coord)] frag_coord: Vec4,
 					color_out: &mut Vec4,
-					#[spirv(descriptor_set = 0, binding = 0, storage_buffer)] uniform: &Uniform,
+					#[spirv(descriptor_set = 0, binding = 0, storage_buffer)] uniform: &UniformBuffer,
 					#(#image_params),*
 				) {
+					let uniform = <Uniform as #gcore_shaders::shaders::buffer_struct::BufferStruct>::read(*uniform);
 					let texel_coord = frag_coord.xy().as_uvec2();
 					let color: Color = #fn_name(#context, #(#call_args),*);
 					*color_out = color.to_vec4();
@@ -169,10 +181,8 @@ impl PerPixelAdjustCodegen<'_> {
 	}
 
 	fn codegen_gpu_node(&self) -> syn::Result<TokenStream> {
-		let gcore = match &self.parsed.crate_name {
-			FoundCrate::Itself => format_ident!("crate"),
-			FoundCrate::Name(name) => format_ident!("{name}"),
-		};
+		let gcore = self.crate_ident.gcore()?;
+		let wgpu_executor = self.crate_ident.wgpu_executor()?;
 
 		// adapt fields for gpu node
 		let raster_gpu: Type = parse_quote!(#gcore::table::Table<#gcore::raster_types::Raster<#gcore::raster_types::GPU>>);
@@ -207,13 +217,13 @@ impl PerPixelAdjustCodegen<'_> {
 			.collect::<syn::Result<Vec<_>>>()?;
 
 		// insert wgpu_executor field
-		let wgpu_executor = format_ident!("__wgpu_executor");
+		let executor = format_ident!("__wgpu_executor");
 		fields.push(ParsedField {
 			pat_ident: PatIdent {
 				attrs: vec![],
 				by_ref: None,
 				mutability: None,
-				ident: parse_quote!(#wgpu_executor),
+				ident: parse_quote!(#executor),
 				subpat: None,
 			},
 			name: None,
@@ -271,7 +281,7 @@ impl PerPixelAdjustCodegen<'_> {
 		let entry_point_name = &self.entry_point_name;
 		let body = quote! {
 			{
-				#wgpu_executor.shader_runtime.run_per_pixel_adjust(&::wgpu_executor::shader_runtime::per_pixel_adjust_runtime::Shaders {
+				#executor.shader_runtime.run_per_pixel_adjust(&::wgpu_executor::shader_runtime::per_pixel_adjust_runtime::Shaders {
 					wgsl_shader: crate::WGSL_SHADER,
 					fragment_shader_name: super::#entry_point_name,
 					has_uniform: #has_uniform,
@@ -280,9 +290,13 @@ impl PerPixelAdjustCodegen<'_> {
 		};
 
 		// call node codegen
+		let display_name = self.parsed.attributes.display_name.clone();
+		let display_name = display_name.unwrap_or_else(|| LitStr::new(&self.shader_node_mod.to_string().strip_suffix("_shader_node").unwrap().to_case(Case::Title), Span::call_site()));
+		let display_name = LitStr::new(&format!("{} GPU", display_name.value()), display_name.span());
 		let mut parsed_node_fn = ParsedNodeFn {
 			vis: self.parsed.vis.clone(),
 			attributes: NodeFnAttributes {
+				display_name: Some(display_name),
 				shader_node: Some(ShaderNodeType::ShaderNode),
 				..self.parsed.attributes.clone()
 			},
@@ -301,11 +315,10 @@ impl PerPixelAdjustCodegen<'_> {
 			is_async: true,
 			fields,
 			body,
-			crate_name: self.parsed.crate_name.clone(),
-			description: "".to_string(),
+			description: self.parsed.description.clone(),
 		};
 		parsed_node_fn.replace_impl_trait_in_input();
-		let gpu_node_impl = crate::codegen::generate_node_code(&parsed_node_fn)?;
+		let gpu_node_impl = crate::codegen::generate_node_code(self.crate_ident, &parsed_node_fn)?;
 
 		// wrap node in `mod #gpu_node_mod`
 		let shader_node_mod = &self.shader_node_mod;
@@ -313,7 +326,7 @@ impl PerPixelAdjustCodegen<'_> {
 			#[cfg(feature = #SHADER_NODES_FEATURE_GATE)]
 			mod #shader_node_mod {
 				use super::*;
-				use wgpu_executor::WgpuExecutor;
+				use #wgpu_executor::WgpuExecutor;
 
 				#gpu_node_impl
 			}
