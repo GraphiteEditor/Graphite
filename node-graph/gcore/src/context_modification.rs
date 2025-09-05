@@ -27,6 +27,8 @@ async fn context_modification<T>(
 		Context -> DVec2,
 		Context -> Vec<DVec2>,
 		Context -> Vec<NodeId>,
+		Context -> Vec<f64>,
+		Context -> Vec<f32>,
 		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
