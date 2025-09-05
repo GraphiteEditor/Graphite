@@ -18,6 +18,8 @@
 
 	import type { Editor } from "@graphite/editor";
 	import { type LayoutKeysGroup, type Key } from "@graphite/messages";
+	import type { PortfolioState } from "@graphite/state-providers/portfolio";
+
 	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
 
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
@@ -33,7 +35,7 @@
 	const BUTTON_MIDDLE = 1;
 
 	const editor = getContext<Editor>("editor");
-
+	const portfolio = getContext<PortfolioState>("portfolio");
 	export let tabMinWidths = false;
 	export let tabCloseButtons = false;
 	export let tabLabels: { name: string; tooltip?: string }[];
@@ -130,7 +132,9 @@
 					}}
 					bind:this={tabElements[tabIndex]}
 				>
-					<TextLabel>{tabLabel.name}</TextLabel>
+					<TextLabel classes={{ unsaved: !$portfolio.documents[tabIndex]?.isSaved}}>
+						{tabLabel.name}
+					</TextLabel>
 					{#if tabCloseButtons}
 						<IconButton
 							action={(e) => {
@@ -268,6 +272,20 @@
 						// Height and line-height required because https://stackoverflow.com/a/21611191/775283
 						height: 28px;
 						line-height: 28px;
+						position: relative;
+						&.unsaved {
+							padding-right: 12px;
+							&::after {
+								content: "*";
+								position: absolute;
+								right: 4px;
+								top: 0;
+								height: 28px;
+								line-height: 28px;
+								background: inherit;
+								padding-left: 2px;
+							}
+						}
 					}
 
 					.icon-button {
