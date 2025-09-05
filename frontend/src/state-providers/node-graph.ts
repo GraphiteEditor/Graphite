@@ -17,14 +17,11 @@ import {
 	UpdateExportReorderIndex,
 	UpdateImportsExports,
 	UpdateLayerWidths,
-	UpdateNodeGraphSvelteRender,
-	UpdateShouldRenderSvelteNodes,
 	UpdateNativeNodeGraphSVG,
-	UpdateVisibleNodes,
-	UpdateNodeGraphWires,
-	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
 	UpdateWirePathInProgress,
+	UpdateNodeGraphSelectionBox,
+	UpdateNodeGraphTransform,
 } from "@graphite/messages";
 
 export function createNodeGraphState(editor: Editor) {
@@ -43,10 +40,8 @@ export function createNodeGraphState(editor: Editor) {
 		nodesToRender: new Map<bigint, FrontendNodeToRender>(),
 		open: false,
 		opacity: 0.8,
-
-		visibleNodes: new Set<bigint>(),
-		layerWidths: new Map<bigint, number>(),
-		shouldRenderSvelteNodes: false,
+		inSelectedNetwork: true,
+		previewedNode: undefined as bigint | undefined,
 
 		// Data that will be passed in the context
 		thumbnails: new Map<bigint, string>(),
@@ -102,63 +97,9 @@ export function createNodeGraphState(editor: Editor) {
 		});
 	});
 
-	editor.subscriptions.subscribeJsMessage(UpdateLayerWidths, (updateLayerWidths) => {
-		update((state) => {
-			state.layerWidths = updateLayerWidths.layerWidths;
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSvelteRender, (updateNodeGraphSvelteRender) => {
-		update((state) => {
-			state.nodesToRender.clear();
-			updateNodeGraphSvelteRender.nodesToRender.forEach((node) => {
-				state.nodesToRender.set(node.metadata.nodeId, node);
-			});
-			state.opacity = updateNodeGraphSvelteRender.opacity;
-			state.inSelectedNetwork = updateNodeGraphSvelteRender.inSelectedNetwork;
-			state.previewedNode = updateNodeGraphSvelteRender.previewedNode;
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateShouldRenderSvelteNodes, (UpdateShouldRenderSvelteNodes) => {
-		update((state) => {
-			state.shouldRenderSvelteNodes = UpdateShouldRenderSvelteNodes.shouldRenderSvelteNodes;
-			return state;
-		});
-	});
 	editor.subscriptions.subscribeJsMessage(UpdateNativeNodeGraphSVG, (updateNativeNodeGraphRender) => {
 		update((state) => {
 			state.nativeNodeGraphSVGString = updateNativeNodeGraphRender.svgString;
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateVisibleNodes, (updateVisibleNodes) => {
-		update((state) => {
-			state.visibleNodes = new Set<bigint>(updateVisibleNodes.nodes);
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphWires, (updateNodeWires) => {
-		update((state) => {
-			updateNodeWires.wires.forEach((wireUpdate) => {
-				let inputMap = state.wires.get(wireUpdate.id);
-				// If it doesn't exist, create it and set it in the outer map
-				if (!inputMap) {
-					inputMap = new Map();
-					state.wires.set(wireUpdate.id, inputMap);
-				}
-				if (wireUpdate.wirePathUpdate !== undefined) {
-					inputMap.set(wireUpdate.inputIndex, wireUpdate.wirePathUpdate);
-				} else {
-					inputMap.delete(wireUpdate.inputIndex);
-				}
-			});
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(ClearAllNodeGraphWires, (_) => {
-		update((state) => {
-			state.wires.clear();
 			return state;
 		});
 	});
@@ -171,12 +112,6 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateNodeThumbnail, (updateNodeThumbnail) => {
 		update((state) => {
 			state.thumbnails.set(updateNodeThumbnail.id, updateNodeThumbnail.value);
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateWirePathInProgress, (updateWirePathInProgress) => {
-		update((state) => {
-			state.wirePathInProgress = updateWirePathInProgress.wirePath;
 			return state;
 		});
 	});

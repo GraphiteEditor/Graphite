@@ -139,11 +139,7 @@ pub enum NodeGraphMessage {
 	},
 	SendClickTargets,
 	EndSendClickTargets,
-	UnloadWires,
-	SendWires,
-	UpdateVisibleNodes,
 	SendGraph,
-	SetGridAlignedEdges,
 	SetInputValue {
 		node_id: NodeId,
 		input_index: usize,
@@ -185,7 +181,6 @@ pub enum NodeGraphMessage {
 	TogglePreviewImpl {
 		node_id: NodeId,
 	},
-	ToggleNativeNodeGraphRender,
 	SetImportExportName {
 		name: String,
 		index: ImportOrExport,
@@ -219,7 +214,6 @@ pub enum NodeGraphMessage {
 	SetLockedOrVisibilitySideEffects {
 		node_ids: Vec<NodeId>,
 	},
-	UpdateEdges,
 	UpdateBoxSelection,
 	UpdateImportsExports,
 	UpdateLayerPanel,

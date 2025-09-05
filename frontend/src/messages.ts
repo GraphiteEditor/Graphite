@@ -26,7 +26,16 @@ export type XY = { x: number; y: number };
 // ============================================================================
 
 export class UpdateBox extends JsMessage {
-	readonly box!: Box | undefined;
+	readonly box!: FrontendSelectionBox | undefined;
+}
+
+export class FrontendClickTargets {
+	readonly nodeClickTargets!: string[];
+	readonly layerClickTargets!: string[];
+	readonly connectorClickTargets!: string[];
+	readonly iconClickTargets!: string[];
+	readonly allNodesBoundingBox!: string;
+	readonly modifyImportExport!: string[];
 }
 
 export class UpdateClickTargets extends JsMessage {
@@ -77,35 +86,9 @@ export class UpdateLayerWidths extends JsMessage {
 	readonly layerWidths!: Map<bigint, number>;
 }
 
-export class UpdateNodeGraphSvelteRender extends JsMessage {
-	readonly nodesToRender!: FrontendNodeToRender[];
-
-	readonly open!: boolean;
-
-	readonly opacity!: number;
-
-	readonly inSelectedNetwork!: boolean;
-
-	readonly previewedNode!: bigint | undefined;
-}
-
-export class UpdateShouldRenderSvelteNodes extends JsMessage {
-	readonly shouldRenderSvelteNodes!: boolean;
-}
-
 export class UpdateNativeNodeGraphSVG extends JsMessage {
 	readonly svgString!: string;
 }
-
-export class UpdateVisibleNodes extends JsMessage {
-	readonly nodes!: bigint[];
-}
-
-export class UpdateNodeGraphWires extends JsMessage {
-	readonly wires!: WireUpdate[];
-}
-
-export class ClearAllNodeGraphWires extends JsMessage {}
 
 export class UpdateNodeGraphTransform extends JsMessage {
 	readonly transform!: NodeGraphTransform;
@@ -1711,12 +1694,9 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
-	UpdateNodeGraphSvelteRender,
-	UpdateShouldRenderSvelteNodes,
 	UpdateNativeNodeGraphSVG,
-	UpdateNodeGraphSelectionBox,
 	UpdateNodeGraphTransform,
-	UpdateNodeGraphWires,
+	UpdateNodeGraphSelectionBox,
 	UpdateNodeThumbnail,
 	UpdateOpenDocumentsList,
 	UpdatePlatform,
@@ -1728,7 +1708,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateViewportHolePunch,
-	UpdateVisibleNodes,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,
 } as const;

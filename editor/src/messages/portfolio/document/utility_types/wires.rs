@@ -66,8 +66,19 @@ pub fn build_vector_wire(output_position: DVec2, input_position: DVec2, vertical
 			let horizontal_curve = horizontal_curve_amount * curve_length;
 			let vertical_curve = vertical_curve_amount * curve_length;
 
+			let wire_start = if vertical_in && vertical_out { output_position + DVec2::new(0., -4.) } else { output_position };
+			let wire_end = if vertical_in && vertical_in {
+				DVec2::new(input_position.x, input_position.y) + DVec2::new(0., 4.)
+			} else {
+				DVec2::new(input_position.x, input_position.y)
+			};
+
+			if vertical_in && vertical_in && wire_end.y + 5. > wire_start.y {
+				return BezPath::new();
+			}
+
 			let locations = [
-				output_position,
+				wire_start,
 				DVec2::new(
 					if vertical_out { output_position.x } else { output_position.x + horizontal_curve },
 					if vertical_out { output_position.y - vertical_curve } else { output_position.y },
@@ -76,7 +87,7 @@ pub fn build_vector_wire(output_position: DVec2, input_position: DVec2, vertical
 					if vertical_in { input_position.x } else { input_position.x - horizontal_curve },
 					if vertical_in { input_position.y + vertical_curve } else { input_position.y },
 				),
-				DVec2::new(input_position.x, input_position.y),
+				wire_end,
 			];
 
 			let smoothing = 0.5;

@@ -493,30 +493,29 @@
 		</LayoutCol>
 	{/if}
 
-		<!-- Click target debug visualizations -->
-		{#if $nodeGraph.clickTargets}
-			<div class="click-targets" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
-				<svg>
-					{#each $nodeGraph.clickTargets.nodeClickTargets as pathString}
-						<path class="node" d={pathString} />
-					{/each}
-					{#each $nodeGraph.clickTargets.layerClickTargets as pathString}
-						<path class="layer" d={pathString} />
-					{/each}
-					{#each $nodeGraph.clickTargets.connectorClickTargets as pathString}
-						<path class="connector" d={pathString} />
-					{/each}
-					{#each $nodeGraph.clickTargets.iconClickTargets as pathString}
-						<path class="visibility" d={pathString} />
-					{/each}
-					<path class="all-nodes-bounding-box" d={$nodeGraph.clickTargets.allNodesBoundingBox} />
-					<path class="all-nodes-bounding-box" d={$nodeGraph.clickTargets.importExportsBoundingBox} />
-					{#each $nodeGraph.clickTargets.modifyImportExport as pathString}
-						<path class="modify-import-export" d={pathString} />
-					{/each}
-				</svg>
-			</div>
-		{/if}
+	<!-- Click target debug visualizations -->
+	{#if $nodeGraph.clickTargets}
+		<div class="click-targets" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+			<svg>
+				{#each $nodeGraph.clickTargets.nodeClickTargets as pathString}
+					<path class="node" d={pathString} />
+				{/each}
+				{#each $nodeGraph.clickTargets.layerClickTargets as pathString}
+					<path class="layer" d={pathString} />
+				{/each}
+				{#each $nodeGraph.clickTargets.connectorClickTargets as pathString}
+					<path class="connector" d={pathString} />
+				{/each}
+				{#each $nodeGraph.clickTargets.iconClickTargets as pathString}
+					<path class="visibility" d={pathString} />
+				{/each}
+				<path class="all-nodes-bounding-box" d={$nodeGraph.clickTargets.allNodesBoundingBox} />
+				{#each $nodeGraph.clickTargets.modifyImportExport as pathString}
+					<path class="modify-import-export" d={pathString} />
+				{/each}
+			</svg>
+		</div>
+	{/if}
 
 		<!-- Thick vertical layer connection wires -->
 		<div class="wires" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>

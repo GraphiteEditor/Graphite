@@ -18,7 +18,6 @@ pub struct MenuBarMessageHandler {
 	pub has_selection_history: (bool, bool),
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 	pub reset_node_definitions_on_open: bool,
-	pub should_render_svelte_nodes: bool,
 	pub make_path_editable_is_allowed: bool,
 	pub data_panel_open: bool,
 	pub layers_panel_open: bool,
@@ -49,7 +48,6 @@ impl LayoutHolder for MenuBarMessageHandler {
 		let message_logging_verbosity_names = self.message_logging_verbosity == MessageLoggingVerbosity::Names;
 		let message_logging_verbosity_contents = self.message_logging_verbosity == MessageLoggingVerbosity::Contents;
 		let reset_node_definitions_on_open = self.reset_node_definitions_on_open;
-		let should_render_svelte_nodes = self.should_render_svelte_nodes;
 		let make_path_editable_is_allowed = self.make_path_editable_is_allowed;
 
 		let menu_bar_entries = vec![
@@ -696,12 +694,6 @@ impl LayoutHolder for MenuBarMessageHandler {
 								label: "Reset Nodes to Definitions on Open".into(),
 								icon: Some(if reset_node_definitions_on_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
 								action: MenuBarEntry::create_action(|_| PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen.into()),
-								..MenuBarEntry::default()
-							}],
-							vec![MenuBarEntry {
-								label: "HTML Node Graph Render".into(),
-								icon: Some(if should_render_svelte_nodes { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
-								action: MenuBarEntry::create_action(|_| NodeGraphMessage::ToggleNativeNodeGraphRender.into()),
 								..MenuBarEntry::default()
 							}],
 							vec![

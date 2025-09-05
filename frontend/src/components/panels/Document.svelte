@@ -586,7 +586,6 @@
 					thumbPosition={scrollbarPos.x}
 					on:trackShift={({ detail }) => editor.handle.panCanvasByFraction(detail, 0)}
 					on:thumbPosition={({ detail }) => panCanvasX(detail)}
-					on:thumbDragEnd={() => editor.handle.setGridAlignedEdges()}
 					on:thumbDragStart={() => editor.handle.panCanvasAbortPrepare(true)}
 					on:thumbDragAbort={() => editor.handle.panCanvasAbort(true)}
 				/>
