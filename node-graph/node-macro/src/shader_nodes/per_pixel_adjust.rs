@@ -2,7 +2,7 @@ use crate::crate_ident::CrateIdent;
 use crate::parsing::{Input, NodeFnAttributes, ParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField};
 use crate::shader_nodes::{SHADER_NODES_FEATURE_GATE, ShaderCodegen, ShaderNodeType, ShaderTokens};
 use convert_case::{Case, Casing};
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use std::borrow::Cow;
 use syn::parse::{Parse, ParseStream};
@@ -290,10 +290,13 @@ impl PerPixelAdjustCodegen<'_> {
 		};
 
 		// call node codegen
+		let display_name = self.parsed.attributes.display_name.clone();
+		let display_name = display_name.unwrap_or_else(|| LitStr::new(&self.shader_node_mod.to_string().strip_suffix("_shader_node").unwrap().to_case(Case::Title), Span::call_site()));
+		let display_name = LitStr::new(&format!("{} GPU", display_name.value()), display_name.span());
 		let mut parsed_node_fn = ParsedNodeFn {
 			vis: self.parsed.vis.clone(),
 			attributes: NodeFnAttributes {
-				display_name: self.parsed.attributes.display_name.as_ref().map(|name| LitStr::new(&format!("{} GPU", name.value()), name.span())),
+				display_name: Some(display_name),
 				shader_node: Some(ShaderNodeType::ShaderNode),
 				..self.parsed.attributes.clone()
 			},
