@@ -1,5 +1,5 @@
 use crate::crate_ident::CrateIdent;
-use crate::parsing::{Input, NodeFnAttributes, ParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField};
+use crate::parsing::{Input, NodeFnAttributes, ParsedField, ParsedFieldType, ParsedNodeFn, ParsedValueSource, RegularParsedField};
 use crate::shader_nodes::{SHADER_NODES_FEATURE_GATE, ShaderCodegen, ShaderNodeType, ShaderTokens};
 use convert_case::{Case, Casing};
 use proc_macro2::{Ident, Span, TokenStream};
@@ -231,8 +231,8 @@ impl PerPixelAdjustCodegen<'_> {
 			widget_override: Default::default(),
 			ty: ParsedFieldType::Regular(RegularParsedField {
 				ty: parse_quote!(&'a WgpuExecutor),
-				exposed: false,
-				value_source: Default::default(),
+				exposed: true,
+				value_source: ParsedValueSource::Scope(LitStr::new("wgpu-executor", Span::call_site())),
 				number_soft_min: None,
 				number_soft_max: None,
 				number_hard_min: None,
