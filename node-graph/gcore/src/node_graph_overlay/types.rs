@@ -75,8 +75,10 @@ pub struct FrontendNodeMetadata {
 pub struct FrontendNode {
 	// pub position: FrontendNodePosition,
 	pub position: FrontendXY,
-	pub inputs: Vec<Option<FrontendGraphInput>>,
-	pub outputs: Vec<Option<FrontendGraphOutput>>,
+	pub primary_output: Option<FrontendGraphOutput>,
+	pub primary_input: Option<FrontendGraphInput>,
+	pub secondary_inputs: Vec<FrontendGraphInput>,
+	pub secondary_outputs: Vec<FrontendGraphOutput>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]

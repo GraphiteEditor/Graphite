@@ -21,11 +21,13 @@ pub mod ui_context;
 #[node_macro::node(skip_impl)]
 pub fn generate_nodes(_: impl Ctx, mut node_graph_overlay_data: NodeGraphOverlayData) -> Table<Graphic> {
 	let mut nodes_and_wires = Table::new();
-	let layers = draw_layers(&node_graph_overlay_data.nodes_to_render);
+	let (layers, side_ports) = draw_layers(&node_graph_overlay_data.nodes_to_render);
 	nodes_and_wires.extend(layers);
 
 	let wires = draw_wires(&mut node_graph_overlay_data.nodes_to_render);
 	nodes_and_wires.extend(wires);
+
+	nodes_and_wires.extend(side_ports);
 
 	let nodes = draw_nodes(&node_graph_overlay_data.nodes_to_render);
 	nodes_and_wires.extend(nodes);

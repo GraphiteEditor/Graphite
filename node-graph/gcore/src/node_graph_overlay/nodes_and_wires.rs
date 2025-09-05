@@ -1,6 +1,6 @@
 use glam::{DAffine2, DVec2};
 use graphene_core_shaders::color::{AlphaMut, Color};
-use kurbo::{BezPath, Rect, RoundedRect, Shape};
+use kurbo::{BezPath, Circle, Rect, RoundedRect, Shape};
 
 use crate::{
 	Graphic,
@@ -26,9 +26,9 @@ pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 			let x = frontend_node.position.x as f64 * GRID_SIZE;
 			let y = frontend_node.position.y as f64 * GRID_SIZE + GRID_SIZE / 2.;
 			let node_width = GRID_SIZE * 5.0;
-			let number_of_exposed_inputs = frontend_node.inputs.iter().skip(1).filter(|x| x.is_some()).count();
-			let number_of_exposed_outputs = frontend_node.outputs.iter().skip(1).filter(|x| x.is_some()).count();
-			let number_of_rows = 1 + number_of_exposed_inputs.max(number_of_exposed_outputs);
+			let number_of_secondary_inputs = frontend_node.secondary_inputs.len();
+			let number_of_secondary_outputs = frontend_node.secondary_outputs.len();
+			let number_of_rows = 1 + number_of_secondary_inputs.max(number_of_secondary_outputs);
 			let node_height = number_of_rows as f64 * GRID_SIZE;
 
 			let node_rect = RoundedRect::new(x, y, x + node_width, y + node_height, 2.);
@@ -49,7 +49,7 @@ pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 			bg_vector.style.fill = crate::vector::style::Fill::Solid(node_color.clone());
 			bg_table.push(TableRow::new_from_element(bg_vector));
 			// Make primary input brighter
-			if number_of_exposed_inputs == 0 {
+			if number_of_secondary_inputs == 0 {
 				// Draw the first row with rounded bottom corners
 				bg_table.push(TableRow::new_from_element(node_first_row(x, y, false)));
 			} else {
@@ -62,7 +62,7 @@ pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 			let mut border_mask_path = BezPath::new();
 			border_mask_path.move_to((-2., -2.));
 			border_mask_path.line_to((node_width + 2., -2.));
-			if frontend_node.outputs[0].is_some() {
+			if frontend_node.primary_output.is_some() {
 				border_mask_path.line_to((node_width + 2., 4.));
 				border_mask_path.line_to((node_width - 2., 4.));
 				border_mask_path.line_to((node_width - 2., 20.));
@@ -70,7 +70,7 @@ pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 			border_mask_path.line_to((node_width + 2., 20.));
 			for row in 1..number_of_rows {
 				border_mask_path.line_to((node_width + 2., row as f64 * GRID_SIZE + 4.));
-				if frontend_node.outputs.get(row).is_some_and(|output| output.is_some()) {
+				if row <= number_of_secondary_outputs {
 					border_mask_path.line_to((node_width - 2., row as f64 * GRID_SIZE + 4.));
 					border_mask_path.line_to((node_width - 2., row as f64 * GRID_SIZE + 20.));
 					border_mask_path.line_to((node_width + 2., row as f64 * GRID_SIZE + 20.));
@@ -80,13 +80,13 @@ pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 			border_mask_path.line_to((-2., number_of_rows as f64 * GRID_SIZE + 2.));
 			for row in (1..number_of_rows).rev() {
 				border_mask_path.line_to((-2., row as f64 * GRID_SIZE + 20.));
-				if frontend_node.inputs.iter().skip(1).filter(|input| input.is_some()).nth(row - 1).is_some_and(|input| input.is_some()) {
+				if row <= number_of_secondary_inputs {
 					border_mask_path.line_to((2., row as f64 * GRID_SIZE + 20.));
 					border_mask_path.line_to((2., row as f64 * GRID_SIZE + 4.));
 					border_mask_path.line_to((2., row as f64 * GRID_SIZE + 4.));
 				}
 			}
-			if frontend_node.inputs[0].is_some() {
+			if frontend_node.primary_input.is_some() {
 				border_mask_path.line_to((-2., 20.));
 				border_mask_path.line_to((2., 20.));
 				border_mask_path.line_to((2., 4.));
@@ -105,7 +105,8 @@ pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 			// Border table is implemented as a clip mask
 			let mut border_table = Table::new();
 			let mut border_vector = Vector::from_bezpath(node_bez_path);
-			let primary_output_color = frontend_node.outputs[0]
+			let primary_output_color = frontend_node
+				.primary_output
 				.as_ref()
 				.map(|primary_output| primary_output.data_type.data_color_dim())
 				.unwrap_or(FrontendGraphDataType::General.data_color_dim());
@@ -132,15 +133,16 @@ pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 			for text_row in node_text.iter_mut() {
 				*text_row.transform = DAffine2::from_translation(DVec2::new(x + 8., y + 3.));
 			}
-			for (row, input) in frontend_node.inputs.iter().enumerate().skip(1) {
-				if let Some(input) = input {
+
+			for row in 1..=number_of_rows {
+				if let Some(input) = frontend_node.secondary_inputs.get(row - 1) {
 					let font_blob = Some(text::load_font(SOURCE_SANS_FONT_DATA));
 					let mut input_row_text = crate::text::to_path(&input.name, font_blob, typesetting, false);
 					for text_row in input_row_text.iter_mut() {
 						*text_row.transform = DAffine2::from_translation(DVec2::new(x + 8., y + 24. * row as f64 + 3.));
 					}
 					node_text.extend(input_row_text);
-				} else if let Some(Some(output)) = frontend_node.outputs.get(row) {
+				} else if let Some(output) = frontend_node.secondary_outputs.get(row - 1) {
 					let font_blob = Some(text::load_font(SOURCE_SANS_FONT_DATA));
 					let mut output_row_text = crate::text::to_path(&output.name, font_blob, typesetting, false);
 					// Find width to right align text
@@ -176,14 +178,41 @@ pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 			text_area_row.alpha_blending.clip = true;
 			let text_area_table = Table::new_from_row(text_area_row);
 			node_table.push(TableRow::new_from_element(Graphic::Vector(text_area_table)));
+
+			// Input and output ports
+			let mut ports_table = Table::new();
+			if let Some(primary_input) = &frontend_node.primary_input {
+				let mut row = port_row(&primary_input.data_type);
+				row.transform = DAffine2::from_translation(DVec2::new(0., 12.));
+				ports_table.push(row);
+			}
+			for (index, secondary_input) in frontend_node.secondary_inputs.iter().enumerate() {
+				let mut row = port_row(&secondary_input.data_type);
+				row.transform = DAffine2::from_translation(DVec2::new(0., 12. + GRID_SIZE * (index + 1) as f64));
+				ports_table.push(row);
+			}
+			if let Some(primary_output) = &frontend_node.primary_output {
+				let mut row = port_row(&primary_output.data_type);
+				row.transform = DAffine2::from_translation(DVec2::new(5. * GRID_SIZE, 12.));
+				ports_table.push(row);
+			}
+			for (index, secondary_output) in frontend_node.secondary_outputs.iter().enumerate() {
+				let mut row = port_row(&secondary_output.data_type);
+				row.transform = DAffine2::from_translation(DVec2::new(5. * GRID_SIZE, 12. + GRID_SIZE * (index + 1) as f64));
+				ports_table.push(row);
+			}
+			let mut graphic_ports_row = TableRow::new_from_element(Graphic::Vector(ports_table));
+			graphic_ports_row.transform = DAffine2::from_translation(DVec2::new(x - 3., y - 4.));
+			node_table.push(graphic_ports_row);
 		}
 	}
 
 	node_table
 }
 
-pub fn draw_layers(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
+pub fn draw_layers(nodes: &Vec<FrontendNodeToRender>) -> (Table<Graphic>, Table<Graphic>) {
 	let mut layer_table = Table::new();
+	let mut side_ports = Table::new();
 	for node_to_render in nodes {
 		if let Some(frontend_layer) = node_to_render.node_or_layer.layer.as_ref() {
 			// The layer position is the top left of the thumbnail
@@ -219,12 +248,12 @@ pub fn draw_layers(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 
 			// Text starts at thumbnail + left padding
 			let text_start = 12. + 8.;
-			let right_text_edge = text_start + text_width;
+			let right_text_edge = 8. + text_width;
 			let rounded_text_edge = (right_text_edge as f64 / 24.).ceil() * 24.;
 
 			let rounded_layer_width_pixels = rounded_text_edge + 24.;
-			// Subtract the left thumbnail
-			let layer_right_edge_width = rounded_layer_width_pixels - 12.;
+			// add the left thumbnail gap
+			let layer_right_edge_width = rounded_layer_width_pixels + 12.;
 
 			let right_layer_width = layer_right_edge_width.max(4.5 * GRID_SIZE);
 			let thumbnail_width = 3. * GRID_SIZE;
@@ -305,10 +334,84 @@ pub fn draw_layers(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 			}
 			let top_layer = text_table;
 			layer_table.push(TableRow::new_from_element(Graphic::Vector(top_layer)));
+
+			// Ports
+			let mut ports_table = Table::new();
+			if let Some(side_input) = &frontend_layer.side_input {
+				let mut port = port_row(&side_input.data_type);
+				port.transform = DAffine2::from_translation(DVec2::new(layer_position.x - 15., layer_position.y + GRID_SIZE - 4.));
+				ports_table.push(port);
+			}
+			let top_port = BezPath::from_svg("M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z").unwrap();
+			let mut vector = Vector::from_bezpath(top_port);
+			vector.style.fill = Fill::Solid(Color::from_rgba8_no_srgb(frontend_layer.output.data_type.data_color()).unwrap());
+			let mut side_port = TableRow::new_from_element(vector);
+			side_port.transform = DAffine2::from_translation(DVec2::new(frontend_layer.position.x as f64 * 24. + GRID_SIZE * 2. - 4., layer_position.y - 12.));
+			side_ports.push(side_port);
+			if frontend_layer.primary_output_connected_to_layer {
+				let top_wire_cap = BezPath::from_svg("M0,-3.5h8v8l-2.521,-1.681a2.666,2.666,0,0,0,-2.959,0l-2.52,1.681z").unwrap();
+				let mut vector = Vector::from_bezpath(top_wire_cap);
+				vector.style.fill = Fill::Solid(Color::from_rgba8_no_srgb(frontend_layer.output.data_type.data_color_dim()).unwrap());
+				let mut vector_row = TableRow::new_from_element(vector);
+				vector_row.transform = DAffine2::from_translation(DVec2::new(frontend_layer.position.x as f64 * 24. + GRID_SIZE * 2. - 4., layer_position.y - 12.));
+				ports_table.push(vector_row);
+			}
+			let bottom_port = BezPath::from_svg("M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z").unwrap();
+			let mut vector = Vector::from_bezpath(bottom_port);
+			vector.style.fill = Fill::Solid(Color::from_rgba8_no_srgb(frontend_layer.bottom_input.data_type.data_color()).unwrap());
+			let mut vector_row = TableRow::new_from_element(vector);
+			vector_row.transform = DAffine2::from_translation(DVec2::new(frontend_layer.position.x as f64 * 24. + GRID_SIZE * 2. - 4., layer_position.y + 2. * GRID_SIZE));
+			ports_table.push(vector_row);
+			if frontend_layer.primary_input_connected_to_layer {
+				let bottom_port_cap = BezPath::from_svg("M0,10.95l2.52,-1.69c0.89,-0.6,2.06,-0.6,2.96,0l2.52,1.69v5.05h-8v-5.05z").unwrap();
+				let mut vector = Vector::from_bezpath(bottom_port_cap);
+				vector.style.fill = Fill::Solid(Color::from_rgba8_no_srgb(frontend_layer.bottom_input.data_type.data_color_dim()).unwrap());
+				let mut vector_row = TableRow::new_from_element(vector);
+				vector_row.transform = DAffine2::from_translation(DVec2::new(frontend_layer.position.x as f64 * 24. + GRID_SIZE * 2. - 4., layer_position.y + 2. * GRID_SIZE));
+				ports_table.push(vector_row);
+			}
+			layer_table.push(TableRow::new_from_element(Graphic::Vector(ports_table)));
+
+			// Eye and grip icon
+			let mut icons_table = Table::new();
+			let icon_svg = if node_to_render.metadata.visible {
+				BezPath::from_svg("M8,3C3,3,0,8,0,8s3,5,8,5s8-5,8-5S13,3,8,3z M8,12c-2.2,0-4-1.8-4-4s1.8-4,4-4s4,1.8,4,4S10.2,12,8,12z").unwrap()
+			} else {
+				BezPath::from_svg("M8,4c3.5,0,5.9,2.8,6.8,4c-0.9,1.2-3.3,4-6.8,4S2.1,9.2,1.2,8C2.1,6.8,4.5,4,8,4 M8,3C3,3,0,8,0,8s3,5,8,5s8-5,8-5S13,3,8,3L8,3z").unwrap()
+			};
+			let mut icon_vector = Vector::from_bezpath(icon_svg);
+			icon_vector.style.fill = Fill::Solid(Color::WHITE);
+			let mut icon_row = TableRow::new_from_element(icon_vector);
+			icon_row.transform = DAffine2::from_translation(layer_position + DVec2::new(thumbnail_width + right_layer_width - 8., 16.));
+			icons_table.push(icon_row);
+
+			if node_to_render.metadata.selected {
+				let mut grip_path = BezPath::new();
+				let circle = Circle::new((0.5, 1.5), 0.5);
+				grip_path.extend(circle.to_path(BEZ_PATH_TOLERANCE));
+				let circle = Circle::new((0.5, 4.5), 0.5);
+				grip_path.extend(circle.to_path(BEZ_PATH_TOLERANCE));
+				let circle = Circle::new((0.5, 7.5), 0.5);
+				grip_path.extend(circle.to_path(BEZ_PATH_TOLERANCE));
+				let circle = Circle::new((3.5, 1.5), 0.5);
+				grip_path.extend(circle.to_path(BEZ_PATH_TOLERANCE));
+				let circle = Circle::new((3.5, 4.5), 0.5);
+				grip_path.extend(circle.to_path(BEZ_PATH_TOLERANCE));
+				let circle = Circle::new((3.5, 7.5), 0.5);
+				grip_path.extend(circle.to_path(BEZ_PATH_TOLERANCE));
+				let mut grip_vector = Vector::from_bezpath(grip_path);
+				grip_vector.style.fill = Fill::Solid(Color::from_rgba8_no_srgb(COLOR_E_NEARWHITE).unwrap());
+				let mut grip_row = TableRow::new_from_element(grip_vector);
+				grip_row.transform = DAffine2::from_translation(layer_position + DVec2::new(thumbnail_width + right_layer_width + 6. - GRID_SIZE, 19.5));
+				icons_table.push(grip_row);
+			}
+			layer_table.push(TableRow::new_from_element(Graphic::Vector(icons_table)));
 		}
 	}
 
-	layer_table
+	let mut ports_table = Table::new();
+	ports_table.push(TableRow::new_from_element(Graphic::Vector(side_ports)));
+	(layer_table, ports_table)
 }
 
 fn node_first_row(x0: f64, y0: f64, rounded_bottom: bool) -> Vector {
@@ -352,10 +455,13 @@ fn node_first_row(x0: f64, y0: f64, rounded_bottom: bool) -> Vector {
 	vector
 }
 
-fn port() -> BezPath {
-	BezPath::from_svg("M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z").unwrap_or_else(|e| {
+fn port_row(data_type: &FrontendGraphDataType) -> TableRow<Vector> {
+	let path = BezPath::from_svg("M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z").unwrap_or_else(|e| {
 		panic!("Could not parse port svg from string: {}", e);
-	})
+	});
+	let mut vector = Vector::from_bezpath(path);
+	vector.style.fill = Fill::Solid(Color::from_rgba8_no_srgb(data_type.data_color()).unwrap());
+	TableRow::new_from_element(vector)
 }
 
 pub fn draw_wires(nodes: &mut Vec<FrontendNodeToRender>) -> Table<Graphic> {
