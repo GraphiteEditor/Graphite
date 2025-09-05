@@ -5,17 +5,18 @@ use kurbo::{BezPath, Rect, RoundedRect, Shape};
 use crate::{
 	Graphic,
 	bounds::{BoundingBox, RenderBoundingBox},
+	consts::SOURCE_SANS_FONT_DATA,
 	node_graph_overlay::{
 		consts::*,
 		types::{FrontendGraphDataType, FrontendNodeToRender},
 	},
 	table::{Table, TableRow},
-	text::{self, FontCache, TextAlign, TypesettingConfig},
+	text::{self, TextAlign, TypesettingConfig},
 	transform::ApplyTransform,
 	vector::{Vector, style::Fill},
 };
 
-pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>, _font_cache: &FontCache) -> Table<Graphic> {
+pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 	let mut node_table = Table::new();
 	for node_to_render in nodes {
 		if let Some(frontend_node) = node_to_render.node_or_layer.node.as_ref() {
@@ -94,7 +95,7 @@ pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>, _font_cache: &FontCache) ->
 	node_table
 }
 
-pub fn draw_layers(nodes: &Vec<FrontendNodeToRender>, font_cache: &FontCache) -> Table<Graphic> {
+pub fn draw_layers(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 	let mut layer_table = Table::new();
 	for node_to_render in nodes {
 		if let Some(frontend_layer) = node_to_render.node_or_layer.layer.as_ref() {
@@ -120,7 +121,7 @@ pub fn draw_layers(nodes: &Vec<FrontendNodeToRender>, font_cache: &FontCache) ->
 				align: TextAlign::Left,
 			};
 
-			let font_blob = Some(text::load_font(font_cache.source_sans_pro()));
+			let font_blob = Some(text::load_font(SOURCE_SANS_FONT_DATA));
 			let mut text_table = crate::text::to_path(&node_to_render.metadata.display_name, font_blob, typesetting, false);
 
 			let text_width = if let RenderBoundingBox::Rectangle(bbox) = text_table.bounding_box(DAffine2::default(), true) {
