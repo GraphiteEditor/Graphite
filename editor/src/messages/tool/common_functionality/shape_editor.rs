@@ -2123,7 +2123,7 @@ impl ShapeState {
 
 					let select = match selection_shape {
 						SelectionShape::Box(rect) => {
-							let enclosed = segment_bbox.contains_rect(rect);
+							let enclosed = rect.contains_rect(segment_bbox);
 							match selection_mode {
 								SelectionMode::Enclosed => enclosed,
 								_ => {
