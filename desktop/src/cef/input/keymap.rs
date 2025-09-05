@@ -1,32 +1,18 @@
-use winit::keyboard::PhysicalKey;
-use winit::platform::scancode::PhysicalKeyExtScancode;
-
 pub trait ToNativeKeycode {
 	fn to_native_keycode(&self) -> i32;
 }
 
-impl ToNativeKeycode for PhysicalKey {
+impl ToNativeKeycode for winit::keyboard::PhysicalKey {
 	fn to_native_keycode(&self) -> i32 {
+		use winit::platform::scancode::PhysicalKeyExtScancode;
+
 		#[cfg(target_os = "linux")]
 		{
-			// Chromium wants XKB (evdev + 8)
 			self.to_scancode().map(|evdev| (evdev + 8) as i32).unwrap_or(0)
 		}
-
-		#[cfg(target_os = "macos")]
+		#[cfg(any(target_os = "macos", target_os = "windows"))]
 		{
-			// Chromium wants the mac hardware keycode
-			self.to_scancode().map(|n| n as i32).unwrap_or(0)
-		}
-
-		#[cfg(target_os = "windows")]
-		{
-			// winit returns a 16-bit value where bit 8 indicates "extended" (E0) and
-			// low 8 bits are the scan code. Pack into Win32 lParam-style bits.
-			let s = self.to_scancode().unwrap_or(0);
-			let scan_low8 = (s & 0xFF) as i32;
-			let extended = ((s & 0x100) != 0) as i32;
-			(scan_low8 << 16) | (extended << 24)
+			self.to_scancode().map(|c| c as i32).unwrap_or(0)
 		}
 	}
 }
