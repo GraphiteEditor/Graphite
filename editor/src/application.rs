@@ -52,8 +52,7 @@ impl Editor {
 			previewed_node,
 		};
 		let opacity = active_document.graph_fade_artwork_percentage;
-		let font_cache = self.dispatcher.message_handlers.portfolio_message_handler.persistent_data.font_cache.clone();
-		let node_graph_overlay_node = generate_node_graph_overlay(node_graph_render_data, opacity, font_cache);
+		let node_graph_overlay_node = generate_node_graph_overlay(node_graph_render_data, opacity);
 		Some(NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(0), 0)],
 			nodes: vec![(NodeId(0), node_graph_overlay_node)].into_iter().collect(),

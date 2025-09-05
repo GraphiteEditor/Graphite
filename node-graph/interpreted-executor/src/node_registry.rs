@@ -24,7 +24,6 @@ use graphene_std::gradient::GradientStops;
 use graphene_std::node_graph_overlay::types::NodeGraphOverlayData;
 use graphene_std::node_graph_overlay::ui_context::UIContext;
 use graphene_std::table::Table;
-use graphene_std::text::FontCache;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
 #[cfg(feature = "gpu")]
@@ -186,7 +185,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				node_io
 			},
 		),
-		async_node!(graphene_core::node_graph_overlay::GenerateNodesNode<_, _>, input: UIContext, fn_params: [UIContext => NodeGraphOverlayData, UIContext => Arc<FontCache>]),
+		async_node!(graphene_core::node_graph_overlay::GenerateNodesNode<_>, input: UIContext, fn_params: [UIContext => NodeGraphOverlayData]),
 		async_node!(graphene_core::node_graph_overlay::TransformNodesNode<_>, input: UIContext, fn_params: [UIContext =>Table<Graphic>]),
 		async_node!(graphene_core::node_graph_overlay::DotGridBackgroundNode<_>, input: UIContext, fn_params: [UIContext =>f64]),
 		async_node!(graphene_core::node_graph_overlay::NodeGraphUiExtendNode<_, _>, input: UIContext, fn_params: [UIContext =>Table<Graphic>, UIContext =>Table<Graphic>]),

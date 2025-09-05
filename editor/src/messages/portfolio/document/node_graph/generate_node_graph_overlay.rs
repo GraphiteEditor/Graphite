@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use graph_craft::{
 	concrete,
 	document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork, value::TaggedValue},
@@ -7,14 +5,11 @@ use graph_craft::{
 use graphene_std::{
 	node_graph_overlay::{types::NodeGraphOverlayData, ui_context::UIContext},
 	table::Table,
-	text::FontCache,
 	uuid::NodeId,
 };
 
 /// https://excalidraw.com/#json=LgKS6I4lQvGPmke06ZJyp,D9aON9vVZJAjNnZWfwy_SQ
-pub fn generate_node_graph_overlay(node_graph_overlay_data: NodeGraphOverlayData, opacity: f64, font_cache: Arc<FontCache>) -> DocumentNode {
-	let font_cache_id = NodeId::new();
-
+pub fn generate_node_graph_overlay(node_graph_overlay_data: NodeGraphOverlayData, opacity: f64) -> DocumentNode {
 	let generate_nodes_id = NodeId::new();
 	let cache_nodes_id = NodeId::new();
 	let transform_nodes_id = NodeId::new();
@@ -39,20 +34,12 @@ pub fn generate_node_graph_overlay(node_graph_overlay_data: NodeGraphOverlayData
 		implementation: DocumentNodeImplementation::Network(NodeNetwork {
 			exports: vec![NodeInput::node(send_overlay_id, 0)],
 			nodes: vec![
-				(
-					font_cache_id,
-					DocumentNode {
-						inputs: vec![NodeInput::value(TaggedValue::FontCache(font_cache), false)],
-						implementation: DocumentNodeImplementation::ProtoNode(graphene_std::ops::identity::IDENTIFIER),
-						..Default::default()
-					},
-				),
 				// Create the nodes
 				(
 					generate_nodes_id,
 					DocumentNode {
 						call_argument: concrete!(UIContext),
-						inputs: vec![NodeInput::network(concrete!(UIContext), 1), NodeInput::node(font_cache_id, 0)],
+						inputs: vec![NodeInput::network(concrete!(UIContext), 1)],
 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::node_graph_overlay::GenerateNodesNode".into()),
 						..Default::default()
 					},
