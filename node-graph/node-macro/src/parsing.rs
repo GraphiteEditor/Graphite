@@ -39,7 +39,7 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) description: String,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct NodeFnAttributes {
 	pub(crate) category: Option<LitStr>,
 	pub(crate) display_name: Option<LitStr>,
@@ -120,6 +120,8 @@ pub enum ParsedFieldType {
 	Node(NodeParsedField),
 }
 
+/// a param of any kind, either a concrete type or a generic type with a set of possible types specified via
+/// `#[implementation(type)]`
 #[derive(Clone, Debug)]
 pub struct RegularParsedField {
 	pub ty: Type,
@@ -131,8 +133,10 @@ pub struct RegularParsedField {
 	pub number_hard_max: Option<LitFloat>,
 	pub number_mode_range: Option<ExprTuple>,
 	pub implementations: Punctuated<Type, Comma>,
+	pub gpu_image: bool,
 }
 
+/// a param of `impl Node` with `#[implementation(in -> out)]`
 #[derive(Clone, Debug)]
 pub struct NodeParsedField {
 	pub input_type: Type,
@@ -140,7 +144,7 @@ pub struct NodeParsedField {
 	pub implementations: Punctuated<Implementation, Comma>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct Input {
 	pub(crate) pat_ident: PatIdent,
 	pub(crate) ty: Type,
@@ -529,6 +533,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				.map_err(|e| Error::new_spanned(attr, format!("Invalid `step` for argument '{ident}': {e}\nUSAGE EXAMPLE: #[step(2.)]")))
 		})
 		.transpose()?;
+	let gpu_image = extract_attribute(attrs, "gpu_image").is_some();
 
 	let (is_node, node_input_type, node_output_type) = parse_node_type(&ty);
 	let description = attrs
@@ -590,6 +595,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				ty,
 				value_source,
 				implementations,
+				gpu_image,
 			}),
 			name,
 			description,
@@ -657,7 +663,7 @@ pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
 }
 
 impl ParsedNodeFn {
-	fn replace_impl_trait_in_input(&mut self) {
+	pub fn replace_impl_trait_in_input(&mut self) {
 		if let Type::ImplTrait(impl_trait) = self.input.ty.clone() {
 			let ident = Ident::new("_Input", impl_trait.span());
 			let mut bounds = impl_trait.bounds;
@@ -829,6 +835,7 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: None,
 					implementations: Punctuated::new(),
+					gpu_image: false,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
@@ -909,6 +916,7 @@ mod tests {
 						number_hard_max: None,
 						number_mode_range: None,
 						implementations: Punctuated::new(),
+						gpu_image: false,
 					}),
 					number_display_decimal_places: None,
 					number_step: None,
@@ -972,6 +980,7 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: None,
 					implementations: Punctuated::new(),
+					gpu_image: false,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
@@ -1038,6 +1047,7 @@ mod tests {
 						p.push(parse_quote!(f64));
 						p
 					},
+					gpu_image: false,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
@@ -1106,6 +1116,7 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: Some(parse_quote!((0., 100.))),
 					implementations: Punctuated::new(),
+					gpu_image: false,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
@@ -1167,6 +1178,7 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: None,
 					implementations: Punctuated::new(),
+					gpu_image: false,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,

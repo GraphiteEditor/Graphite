@@ -282,7 +282,6 @@
 		const stop = gradientSpectrumInputWidget && activeIndex !== undefined && gradient?.atIndex(activeIndex);
 		if (stop && gradientSpectrumInputWidget instanceof SpectrumInput) {
 			stop.color = colorToEmit;
-			gradient = gradient;
 		}
 
 		dispatch("colorOrGradient", gradient || colorToEmit);
@@ -452,7 +451,6 @@
 						{gradient}
 						{disabled}
 						on:gradient={() => {
-							gradient = gradient;
 							if (gradient) dispatch("colorOrGradient", gradient);
 						}}
 						on:activeMarkerIndexChange={gradientActiveMarkerIndexChange}
@@ -596,7 +594,7 @@
 					unit="%"
 					mode="Range"
 					displayDecimalPlaces={1}
-					tooltip={`Scale of translucency, from transparent (0%) to opaque (100%), for the color's alpha channel`}
+					tooltip="Scale of translucency, from transparent (0%) to opaque (100%), for the color's alpha channel"
 				/>
 			</LayoutRow>
 			<LayoutRow class="leftover-space" />

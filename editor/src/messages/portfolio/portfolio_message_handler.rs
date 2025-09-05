@@ -6,7 +6,7 @@ use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION}
 use crate::messages::animation::TimingInformation;
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
-use crate::messages::frontend::utility_types::FrontendDocumentDetails;
+use crate::messages::frontend::utility_types::{DocumentDetails, OpenDocument};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -109,7 +109,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						let metadata = &document.network_interface.document_network_metadata().persistent_metadata;
 						(!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty())
 					};
-					self.menu_bar_message_handler.make_path_editable_is_allowed = make_path_editable_is_allowed(&document.network_interface, document.metadata()).is_some();
+					self.menu_bar_message_handler.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
 				}
 
 				self.menu_bar_message_handler.process_message(message, responses, ());
@@ -187,13 +187,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::AutoSaveDocument { document_id } => {
 				let document = self.documents.get(&document_id).unwrap();
-				responses.add(FrontendMessage::TriggerIndexedDbWriteDocument {
+				responses.add(FrontendMessage::TriggerPersistenceWriteDocument {
+					document_id,
 					document: document.serialize_document(),
-					details: FrontendDocumentDetails {
-						is_auto_saved: document.is_auto_saved(),
-						is_saved: document.is_saved(),
-						id: document_id,
+					details: DocumentDetails {
 						name: document.name.clone(),
+						is_saved: document.is_saved(),
+						is_auto_saved: document.is_auto_saved(),
 					},
 				})
 			}
@@ -216,7 +216,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 
 				for document_id in &self.document_ids {
-					responses.add(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id: *document_id });
+					responses.add(FrontendMessage::TriggerPersistenceRemoveDocument { document_id: *document_id });
 				}
 
 				responses.add(PortfolioMessage::DestroyAllDocuments);
@@ -242,7 +242,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
 				responses.add(PortfolioMessage::DeleteDocument { document_id });
-				responses.add(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id });
+				responses.add(FrontendMessage::TriggerPersistenceRemoveDocument { document_id });
 
 				// Send the new list of document tab names
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
@@ -1044,11 +1044,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					.document_ids
 					.iter()
 					.filter_map(|id| {
-						self.documents.get(id).map(|document| FrontendDocumentDetails {
-							is_auto_saved: document.is_auto_saved(),
-							is_saved: document.is_saved(),
+						self.documents.get(id).map(|document| OpenDocument {
 							id: *id,
-							name: document.name.clone(),
+							details: DocumentDetails {
+								is_auto_saved: document.is_auto_saved(),
+								is_saved: document.is_saved(),
+								name: document.name.clone(),
+							},
 						})
 					})
 					.collect::<Vec<_>>();
@@ -1144,7 +1146,7 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, layers_panel_open: bool, responses: &mut VecDeque<Message>, to_front: bool) {
+	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, layers_panel_open: bool, responses: &mut VecDeque<Message>, to_front: bool) {
 		if to_front {
 			self.document_ids.push_front(document_id);
 		} else {

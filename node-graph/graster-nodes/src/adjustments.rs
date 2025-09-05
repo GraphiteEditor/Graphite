@@ -30,9 +30,10 @@ use num_traits::float::Float;
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27clrL%27%20%3D%20Color%20Lookup
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Color%20Lookup%20(Photoshop%20CS6
 
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, node_macro::ChoiceType)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, node_macro::ChoiceType, bytemuck::NoUninit)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
+#[repr(u32)]
 pub enum LuminanceCalculation {
 	#[default]
 	#[label("sRGB")]
@@ -52,6 +53,7 @@ fn luminance<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	luminance_calc: LuminanceCalculation,
 ) -> T {
@@ -68,7 +70,7 @@ fn luminance<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::node(category("Raster"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster"), cfg(feature = "std"))]
 fn gamma_correction<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -77,6 +79,7 @@ fn gamma_correction<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	#[default(2.2)]
 	#[range((0.01, 10.))]
@@ -98,6 +101,7 @@ fn extract_channel<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	channel: RedGreenBlueAlpha,
 ) -> T {
@@ -122,6 +126,7 @@ fn make_opaque<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 ) -> T {
 	input.adjust(|color| {
@@ -139,7 +144,7 @@ fn make_opaque<T: Adjust<Color>>(
 //
 // Some further analysis available at:
 // https://geraldbakker.nl/psnumbers/brightness-contrast.html
-#[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), properties("brightness_contrast_properties"), shader_node(PerPixelAdjust))]
+#[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), properties("brightness_contrast_properties"), cfg(feature = "std"))]
 fn brightness_contrast<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -148,6 +153,7 @@ fn brightness_contrast<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	brightness: SignedPercentageF32,
 	contrast: SignedPercentageF32,
@@ -238,6 +244,7 @@ fn levels<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 	#[default(0.)] shadows: PercentageF32,
 	#[default(50.)] midtones: PercentageF32,
@@ -306,6 +313,7 @@ fn black_and_white<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 	#[default(Color::BLACK)] tint: Color,
 	#[default(40.)]
@@ -379,6 +387,7 @@ fn hue_saturation<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	hue_shift: AngleF32,
 	saturation_shift: SignedPercentageF32,
@@ -414,6 +423,7 @@ fn invert<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 ) -> T {
 	input.adjust(|color| {
@@ -437,6 +447,7 @@ fn threshold<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 	#[default(50.)] min_luminance: PercentageF32,
 	#[default(100.)] max_luminance: PercentageF32,
@@ -483,6 +494,7 @@ fn vibrance<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 	vibrance: SignedPercentageF32,
 ) -> T {
@@ -548,9 +560,10 @@ pub enum RedGreenBlue {
 }
 
 /// Color Channel
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, bytemuck::NoUninit)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
+#[repr(u32)]
 pub enum RedGreenBlueAlpha {
 	#[default]
 	Red,
@@ -640,7 +653,7 @@ pub enum DomainWarpType {
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27mixr%27%20%3D%20Channel%20Mixer
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Lab%20color%20only-,Channel%20Mixer,-Key%20is%20%27mixr
-#[node_macro::node(category("Raster: Adjustment"), properties("channel_mixer_properties"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), properties("channel_mixer_properties"), cfg(feature = "std"))]
 fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -649,6 +662,7 @@ fn channel_mixer<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 
 	monochrome: bool,
@@ -769,7 +783,7 @@ pub enum SelectiveColorChoice {
 //
 // Algorithm based on:
 // https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
-#[node_macro::node(category("Raster: Adjustment"), properties("selective_color_properties"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), properties("selective_color_properties"), cfg(feature = "std"))]
 fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -778,6 +792,7 @@ fn selective_color<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 
 	mode: RelativeAbsolute,
@@ -921,6 +936,7 @@ fn posterize<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	#[default(4)]
 	#[hard_min(2.)]
@@ -955,6 +971,7 @@ fn exposure<T: Adjust<Color>>(
 		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	exposure: f32,
 	offset: f32,

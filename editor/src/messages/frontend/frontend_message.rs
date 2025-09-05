@@ -1,4 +1,4 @@
-use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
+use super::utility_types::{DocumentDetails, MouseCursorIcon, OpenDocument};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
@@ -8,6 +8,7 @@ use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, La
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
+use glam::IVec2;
 use graph_craft::document::NodeId;
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
@@ -89,13 +90,15 @@ pub enum FrontendMessage {
 		font: Font,
 	},
 	TriggerImport,
-	TriggerIndexedDbRemoveDocument {
+	TriggerPersistenceRemoveDocument {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
 	},
-	TriggerIndexedDbWriteDocument {
+	TriggerPersistenceWriteDocument {
+		#[serde(rename = "documentId")]
+		document_id: DocumentId,
 		document: String,
-		details: FrontendDocumentDetails,
+		details: DocumentDetails,
 	},
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadRestAutoSaveDocuments,
@@ -124,12 +127,19 @@ pub enum FrontendMessage {
 		document_id: DocumentId,
 	},
 	UpdateImportsExports {
-		imports: Vec<(FrontendGraphOutput, i32, i32)>,
-		exports: Vec<(FrontendGraphInput, i32, i32)>,
-		#[serde(rename = "addImport")]
-		add_import: Option<(i32, i32)>,
-		#[serde(rename = "addExport")]
-		add_export: Option<(i32, i32)>,
+		/// If the primary import is not visible, then it is None.
+		imports: Vec<Option<FrontendGraphOutput>>,
+		/// If the primary export is not visible, then it is None.
+		exports: Vec<Option<FrontendGraphInput>>,
+		/// The primary import location.
+		#[serde(rename = "importPosition")]
+		import_position: IVec2,
+		/// The primary export location.
+		#[serde(rename = "exportPosition")]
+		export_position: IVec2,
+		/// The document network does not have an add import or export button.
+		#[serde(rename = "addImportExport")]
+		add_import_export: bool,
 	},
 	UpdateInSelectedNetwork {
 		#[serde(rename = "inSelectedNetwork")]
@@ -300,7 +310,7 @@ pub enum FrontendMessage {
 	},
 	UpdateOpenDocumentsList {
 		#[serde(rename = "openDocuments")]
-		open_documents: Vec<FrontendDocumentDetails>,
+		open_documents: Vec<OpenDocument>,
 	},
 	UpdatePropertiesPanelLayout {
 		#[serde(rename = "layoutTarget")]

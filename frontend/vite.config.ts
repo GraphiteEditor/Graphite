@@ -1,7 +1,6 @@
 /* eslint-disable no-console */
 
 import { spawnSync } from "child_process";
-
 import fs from "fs";
 import path from "path";
 
@@ -31,7 +30,12 @@ export default defineConfig({
 				defaultHandler?.(warning);
 			},
 		}),
-		viteMultipleAssets(["../demo-artwork"]),
+		viteMultipleAssets(
+			// Additional static asset directories besides `public/`
+			[{ input: "../demo-artwork/**", output: "demo-artwork" }],
+			// Options where we set custom MIME types
+			{ mimeTypes: { ".graphite": "application/json" } },
+		),
 	],
 	resolve: {
 		alias: [
@@ -65,11 +69,6 @@ export default defineConfig({
 					},
 				}),
 			],
-			output: {
-				// Inject `.min` into the filename of minified CSS files to tell Cloudflare not to minify it again.
-				// Cloudflare's minifier breaks the CSS due to a bug where it removes whitespace around calc() plus operators.
-				assetFileNames: (info) => `assets/[name]-[hash]${info.name?.endsWith(".css") ? ".min" : ""}[extname]`,
-			},
 		},
 	},
 });
@@ -361,11 +360,9 @@ function htmlDecode(input: string): string {
 		if (maybeEntity) return maybeEntity[1];
 
 		let match;
-		// eslint-disable-next-line no-cond-assign
 		if ((match = entityCode.match(/^#x([\da-fA-F]+)$/))) {
 			return String.fromCharCode(parseInt(match[1], 16));
 		}
-		// eslint-disable-next-line no-cond-assign
 		if ((match = entityCode.match(/^#(\d+)$/))) {
 			return String.fromCharCode(~~match[1]);
 		}

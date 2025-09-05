@@ -34,10 +34,46 @@
           inherit system overlays;
         };
 
-        rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
+        rustExtensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
+        rust = pkgs.rust-bin.stable.latest.default.override {
           targets = [ "wasm32-unknown-unknown" ];
-          extensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
+          extensions = rustExtensions;
         };
+
+        rustGPUToolchainPkg = pkgs.rust-bin.nightly."2025-06-23".default.override {
+          extensions = rustExtensions ++ [ "rustc-dev" "llvm-tools" ];
+        };
+        rustGPUToolchainRustPlatform = pkgs.makeRustPlatform {
+          cargo = rustGPUToolchainPkg;
+          rustc = rustGPUToolchainPkg;
+        };
+        rustc_codegen_spirv = rustGPUToolchainRustPlatform.buildRustPackage (finalAttrs: {
+          pname = "rustc_codegen_spirv";
+          version = "0-unstable-2025-08-04";
+          src = pkgs.fetchFromGitHub {
+            owner = "Rust-GPU";
+            repo = "rust-gpu";
+            rev = "c12f216121820580731440ee79ebc7403d6ea04f";
+            hash = "sha256-rG1cZvOV0vYb1dETOzzbJ0asYdE039UZImobXZfKIno=";
+          };
+          cargoHash = "sha256-AEigcEc5wiBd3zLqWN/2HSbkfOVFneAqNvg9HsouZf4=";
+          cargoBuildFlags = [ "-p" "rustc_codegen_spirv" "--features=use-compiled-tools" "--no-default-features" ];
+          doCheck = false;
+        });
+        rustGpuCargo = pkgs.writeShellScriptBin "cargo" ''
+          #!${pkgs.lib.getExe pkgs.bash}
+
+          filtered_args=()
+          for arg in "$@"; do
+            case "$arg" in
+              +nightly|+nightly-*) ;;
+              *) filtered_args+=("$arg") ;;
+            esac
+          done
+
+          exec ${rustGPUToolchainPkg}/bin/cargo ${"\${filtered_args[@]}"}
+        '';
+        rustGpuPathOverride = "${rustGpuCargo}/bin:${rustGPUToolchainPkg}/bin";
 
         libcef = pkgs.libcef.overrideAttrs (finalAttrs: previousAttrs: {
           version = "139.0.17";
@@ -51,7 +87,6 @@
             strip $out/lib/*
           '';
         });
-
         libcefPath = pkgs.runCommand "libcef-path" {} ''
           mkdir -p $out
 
@@ -85,7 +120,7 @@
 
         # Development tools that don't need to be in LD_LIBRARY_PATH
         buildTools =  [
-          rustc-wasm
+          rust
           pkgs.nodejs
           pkgs.nodePackages.npm
           pkgs.binaryen
@@ -118,6 +153,9 @@
           LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath buildInputs}:${libcefPath}";
           CEF_PATH = libcefPath;
           XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS";
+
+          RUST_GPU_PATH_OVERRIDE = rustGpuPathOverride;
+          RUSTC_CODEGEN_SPIRV_PATH = "${rustc_codegen_spirv}/lib/librustc_codegen_spirv.so";
 
           shellHook = ''
             alias cargo='mold --run cargo'
