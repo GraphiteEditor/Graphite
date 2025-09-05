@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use graphene_core_shaders::Ctx;
 
 use crate::{
@@ -11,7 +9,6 @@ use crate::{
 		ui_context::{UIContext, UIRuntimeResponse},
 	},
 	table::Table,
-	text::FontCache,
 	transform::ApplyTransform,
 };
 
@@ -22,12 +19,12 @@ pub mod types;
 pub mod ui_context;
 
 #[node_macro::node(skip_impl)]
-pub fn generate_nodes(_: impl Ctx, node_graph_overlay_data: NodeGraphOverlayData, font_cache: Arc<FontCache>) -> Table<Graphic> {
+pub fn generate_nodes(_: impl Ctx, node_graph_overlay_data: NodeGraphOverlayData) -> Table<Graphic> {
 	let mut nodes_and_wires = Table::new();
-	let layers = draw_layers(&node_graph_overlay_data.nodes_to_render, font_cache.as_ref());
+	let layers = draw_layers(&node_graph_overlay_data.nodes_to_render);
 	nodes_and_wires.extend(layers);
 
-	let nodes = draw_nodes(&node_graph_overlay_data.nodes_to_render, font_cache.as_ref());
+	let nodes = draw_nodes(&node_graph_overlay_data.nodes_to_render);
 	nodes_and_wires.extend(nodes);
 
 	nodes_and_wires
