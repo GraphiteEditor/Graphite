@@ -36,7 +36,6 @@ export class FrontendClickTargets {
 	readonly connectorClickTargets!: string[];
 	readonly iconClickTargets!: string[];
 	readonly allNodesBoundingBox!: string;
-	readonly importExportsBoundingBox!: string;
 	readonly modifyImportExport!: string[];
 }
 
@@ -107,22 +106,8 @@ export class UpdateLayerWidths extends JsMessage {
 	readonly layerWidths!: Map<bigint, number>;
 }
 
-export class UpdateNodeGraphRender extends JsMessage {
-	readonly nodesToRender!: FrontendNodeToRender[];
-
-	readonly open!: boolean;
-
-	readonly opacity!: number;
-
-	readonly inSelectedNetwork!: boolean;
-
-	readonly previewedNode!: bigint | undefined;
-
-	readonly nativeNodeGraphRender!: boolean;
-}
-
-export class UpdateVisibleNodes extends JsMessage {
-	readonly nodes!: bigint[];
+export class UpdateNativeNodeGraphSVG extends JsMessage {
+	readonly svgString!: string;
 }
 
 export class UpdateNodeGraphTransform extends JsMessage {
@@ -1738,9 +1723,9 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
-	UpdateNodeGraphRender,
-	UpdateNodeGraphSelectionBox,
+	UpdateNativeNodeGraphSVG,
 	UpdateNodeGraphTransform,
+	UpdateNodeGraphSelectionBox,
 	UpdateNodeThumbnail,
 	UpdateOpenDocumentsList,
 	UpdatePlatform,
@@ -1752,7 +1737,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateViewportHolePunch,
-	UpdateVisibleNodes,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,
 } as const;

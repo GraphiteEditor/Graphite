@@ -4,7 +4,7 @@ use graph_craft::{
 	ProtoNodeIdentifier, Type, concrete,
 	document::{DocumentNodeImplementation, InlineRust, NodeInput, value::TaggedValue},
 };
-use graphene_std::uuid::NodeId;
+use graphene_std::{node_graph_overlay::types::FrontendGraphDataType, uuid::NodeId};
 use interpreted_executor::{
 	dynamic_executor::{NodeTypes, ResolvedDocumentNodeTypesDelta},
 	node_registry::NODE_REGISTRY,
@@ -45,6 +45,31 @@ pub enum TypeSource {
 }
 
 impl TypeSource {
+	pub fn displayed_type(&self) -> FrontendGraphDataType {
+		match self.compiled_nested_type() {
+			Some(nested_type) => match TaggedValue::from_type_or_none(nested_type) {
+				TaggedValue::U32(_)
+				| TaggedValue::U64(_)
+				| TaggedValue::F32(_)
+				| TaggedValue::F64(_)
+				| TaggedValue::DVec2(_)
+				| TaggedValue::F64Array4(_)
+				| TaggedValue::VecF64(_)
+				| TaggedValue::VecDVec2(_)
+				| TaggedValue::DAffine2(_) => FrontendGraphDataType::Number,
+				TaggedValue::Artboard(_) => FrontendGraphDataType::Artboard,
+				TaggedValue::Graphic(_) => FrontendGraphDataType::Graphic,
+				TaggedValue::Raster(_) => FrontendGraphDataType::Raster,
+				TaggedValue::Vector(_) => FrontendGraphDataType::Vector,
+				TaggedValue::Color(_) => FrontendGraphDataType::Color,
+				TaggedValue::Gradient(_) | TaggedValue::GradientStops(_) | TaggedValue::GradientTable(_) => FrontendGraphDataType::Gradient,
+				TaggedValue::String(_) => FrontendGraphDataType::Typography,
+				_ => FrontendGraphDataType::General,
+			},
+			None => FrontendGraphDataType::General,
+		}
+	}
+
 	pub fn into_compiled_nested_type(self) -> Option<Type> {
 		match self {
 			TypeSource::Compiled(compiled_type) => Some(compiled_type.into_nested_type()),

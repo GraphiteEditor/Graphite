@@ -1,14 +1,13 @@
 use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::utility_types::{
-	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendExports, FrontendImport, FrontendNodeToRender, FrontendNodeType, FrontendXY, Transform,
-};
+use crate::messages::portfolio::document::node_graph::utility_types::{BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendNodeType};
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::portfolio::document::utility_types::wires::WirePathInProgress;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 use graph_craft::document::NodeId;
+use graphene_std::node_graph_overlay::types::{FrontendExports, FrontendImport, FrontendXY, NodeGraphTransform};
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
 use graphene_std::text::{Font, TextAlign};
@@ -268,21 +267,10 @@ pub enum FrontendMessage {
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,
 	},
-	UpdateNodeGraphRender {
-		#[serde(rename = "nodesToRender")]
-		nodes_to_render: Vec<FrontendNodeToRender>,
-		open: bool,
-		opacity: f64,
-		#[serde(rename = "inSelectedNetwork")]
-		in_selected_network: bool,
-		// Displays a dashed border around the node
-		#[serde(rename = "previewedNode")]
-		previewed_node: Option<NodeId>,
-		#[serde(rename = "nativeNodeGraphRender")]
-		native_node_graph_render: bool,
-	},
-	UpdateVisibleNodes {
-		nodes: Vec<NodeId>,
+	RequestNativeNodeGraphRender,
+	UpdateNativeNodeGraphSVG {
+		#[serde(rename = "svgString")]
+		svg_string: String,
 	},
 	UpdateNodeGraphControlBarLayout {
 		#[serde(rename = "layoutTarget")]
@@ -290,7 +278,7 @@ pub enum FrontendMessage {
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateNodeGraphTransform {
-		transform: Transform,
+		transform: NodeGraphTransform,
 	},
 	UpdateNodeThumbnail {
 		id: NodeId,

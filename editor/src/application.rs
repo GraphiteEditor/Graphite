@@ -1,5 +1,8 @@
 use crate::dispatcher::Dispatcher;
+use crate::messages::portfolio::document::node_graph::generate_node_graph_overlay::generate_node_graph_overlay;
 use crate::messages::prelude::*;
+use graph_craft::document::{NodeInput, NodeNetwork};
+use graphene_std::node_graph_overlay::types::NodeGraphOverlayData;
 pub use graphene_std::uuid::*;
 
 // TODO: serialize with serde to save the current editor state
@@ -29,6 +32,32 @@ impl Editor {
 
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		self.dispatcher.poll_node_graph_evaluation(responses)
+	}
+
+	pub fn generate_node_graph_overlay_network(&mut self) -> Option<NodeNetwork> {
+		let Some(active_document) = self.dispatcher.message_handlers.portfolio_message_handler.active_document_mut() else {
+			return None;
+		};
+		let breadcrumb_network_path = &active_document.breadcrumb_network_path;
+		let nodes_to_render = active_document.network_interface.collect_nodes(
+			&active_document.node_graph_handler.node_graph_errors,
+			self.dispatcher.message_handlers.preferences_message_handler.graph_wire_style,
+			breadcrumb_network_path,
+		);
+		let previewed_node = active_document.network_interface.previewed_node(breadcrumb_network_path);
+		let node_graph_render_data = NodeGraphOverlayData {
+			nodes_to_render,
+			open: active_document.graph_view_overlay_open,
+			in_selected_network: &active_document.selection_network_path == breadcrumb_network_path,
+			previewed_node,
+		};
+		let opacity = active_document.graph_fade_artwork_percentage;
+		let node_graph_overlay_node = generate_node_graph_overlay(node_graph_render_data, opacity);
+		Some(NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(0), 0)],
+			nodes: vec![(NodeId(0), node_graph_overlay_node)].into_iter().collect(),
+			..Default::default()
+		})
 	}
 }
 

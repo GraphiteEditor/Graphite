@@ -9,6 +9,7 @@ use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
 use graphene_std::Color;
+use graphene_std::consts::SOURCE_SANS_FONT_DATA;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::{self, Subpath};
 use graphene_std::table::Table;
@@ -1021,11 +1022,7 @@ impl OverlayContextInternal {
 			align: TextAlign::Left,
 		};
 
-		// Load Source Sans Pro font data
-		// TODO: Grab this from the node_modules folder (either with `include_bytes!` or ideally at runtime) instead of checking the font file into the repo.
-		// TODO: And maybe use the WOFF2 version (if it's supported) for its smaller, compressed file size.
-		const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
-		let font_blob = Some(load_font(FONT_DATA));
+		let font_blob = Some(load_font(SOURCE_SANS_FONT_DATA));
 
 		// Convert text to paths and calculate actual bounds
 		let text_table = to_path(text, font_blob, typesetting, false);

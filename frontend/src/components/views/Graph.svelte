@@ -223,7 +223,7 @@
 	}
 </script>
 
-{#if !$nodeGraph.nativeNodeGraphRender}
+{#if $nodeGraph.shouldRenderSvelteNodes}
 	<div
 		class="graph-background"
 		style:--grid-spacing={`${gridSpacing}px`}
@@ -445,6 +445,8 @@
 			{/if}
 		{/each}
 	</div>
+{:else}
+	<div class="native-node-graph-ui">{@html $nodeGraph.nativeNodeGraphSVGString}</div>
 {/if}
 
 <div class="graph" bind:this={graph}>
@@ -508,7 +510,6 @@
 					<path class="visibility" d={pathString} />
 				{/each}
 				<path class="all-nodes-bounding-box" d={$nodeGraph.clickTargets.allNodesBoundingBox} />
-				<path class="all-nodes-bounding-box" d={$nodeGraph.clickTargets.importExportsBoundingBox} />
 				{#each $nodeGraph.clickTargets.modifyImportExport as pathString}
 					<path class="modify-import-export" d={pathString} />
 				{/each}
@@ -770,6 +771,14 @@
 			image-rendering: pixelated;
 			mix-blend-mode: screen;
 		}
+	}
+
+	.native-node-graph-ui {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
 	}
 
 	.layers-and-nodes {

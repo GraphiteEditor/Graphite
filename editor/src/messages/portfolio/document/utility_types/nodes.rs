@@ -62,7 +62,7 @@ pub struct LayerPanelEntry {
 }
 
 /// IMPORTANT: the same node may appear multiple times.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SelectedNodes(pub Vec<NodeId>);
 
 impl SelectedNodes {
@@ -172,5 +172,5 @@ impl SelectedNodes {
 	}
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct CollapsedLayers(pub Vec<LayerNodeIdentifier>);

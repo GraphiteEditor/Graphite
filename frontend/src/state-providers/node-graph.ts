@@ -15,12 +15,11 @@ import {
 	UpdateExportReorderIndex,
 	UpdateImportsExports,
 	UpdateLayerWidths,
-	UpdateNodeGraphRender,
-	UpdateVisibleNodes,
-	UpdateNodeGraphTransform,
+	UpdateNativeNodeGraphSVG,
 	UpdateNodeThumbnail,
 	UpdateWirePathInProgress,
 	UpdateNodeGraphSelectionBox,
+	UpdateNodeGraphTransform,
 } from "@graphite/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -33,6 +32,7 @@ export function createNodeGraphState(editor: Editor) {
 		updateImportsExports: undefined as UpdateImportsExports | undefined,
 		reorderImportIndex: undefined as number | undefined,
 		reorderExportIndex: undefined as number | undefined,
+		nativeNodeGraphSVGString: "",
 
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
 		nodeTypes: [] as FrontendNodeType[],
@@ -43,11 +43,6 @@ export function createNodeGraphState(editor: Editor) {
 		opacity: 0.8,
 		inSelectedNetwork: true,
 		previewedNode: undefined as bigint | undefined,
-
-		// TODO: Remove these fields
-		visibleNodes: new Set<bigint>(),
-		layerWidths: new Map<bigint, number>(),
-		nativeNodeGraphRender: false,
 
 		// Data that will be passed in the context
 		thumbnails: new Map<bigint, string>(),
@@ -105,28 +100,9 @@ export function createNodeGraphState(editor: Editor) {
 		});
 	});
 
-	editor.subscriptions.subscribeJsMessage(UpdateLayerWidths, (updateLayerWidths) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNativeNodeGraphSVG, (updateNativeNodeGraphRender) => {
 		update((state) => {
-			state.layerWidths = updateLayerWidths.layerWidths;
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphRender, (updateNodeGraphRender) => {
-		update((state) => {
-			state.nodesToRender.clear();
-			updateNodeGraphRender.nodesToRender.forEach((node) => {
-				state.nodesToRender.set(node.metadata.nodeId, node);
-			});
-			state.opacity = updateNodeGraphRender.opacity;
-			state.inSelectedNetwork = updateNodeGraphRender.inSelectedNetwork;
-			state.previewedNode = updateNodeGraphRender.previewedNode;
-			state.nativeNodeGraphRender = updateNodeGraphRender.nativeNodeGraphRender;
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateVisibleNodes, (updateVisibleNodes) => {
-		update((state) => {
-			state.visibleNodes = new Set<bigint>(updateVisibleNodes.nodes);
+			state.nativeNodeGraphSVGString = updateNativeNodeGraphRender.svgString;
 			return state;
 		});
 	});
@@ -139,12 +115,6 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateNodeThumbnail, (updateNodeThumbnail) => {
 		update((state) => {
 			state.thumbnails.set(updateNodeThumbnail.id, updateNodeThumbnail.value);
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateWirePathInProgress, (updateWirePathInProgress) => {
-		update((state) => {
-			state.wirePathInProgress = updateWirePathInProgress.wirePathInProgress;
 			return state;
 		});
 	});

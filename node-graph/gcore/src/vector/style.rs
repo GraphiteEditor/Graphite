@@ -416,7 +416,7 @@ impl Stroke {
 		self
 	}
 
-	pub fn with_dash_lengths(mut self, dash_lengths: &str) -> Option<Self> {
+	pub fn with_dash_lengths_str(mut self, dash_lengths: &str) -> Option<Self> {
 		dash_lengths
 			.split(&[',', ' '])
 			.filter(|x| !x.is_empty())
@@ -427,6 +427,11 @@ impl Stroke {
 				self.dash_lengths = lengths;
 				self
 			})
+	}
+
+	pub fn with_dash_lengths(mut self, dash_lengths: Vec<f64>) -> Self {
+		self.dash_lengths = dash_lengths;
+		self
 	}
 
 	pub fn with_dash_offset(mut self, dash_offset: f64) -> Self {
