@@ -60,7 +60,7 @@ pub struct DocumentNode {
 	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
 	#[serde(skip)]
 	pub original_location: OriginalLocation,
-	// List of Extract and Inject annotations for the Context
+	/// List of Extract and Inject annotations for the Context.
 	#[serde(default)]
 	pub context_features: ContextDependencies,
 }

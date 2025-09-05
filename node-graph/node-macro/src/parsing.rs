@@ -385,7 +385,7 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 					.map(|attr| parse_implementations(attr, &pat_ident.ident))
 					.transpose()?
 					.unwrap_or_default();
-				let context_features = parse_context_feature_idents(&**ty);
+				let context_features = parse_context_feature_idents(ty);
 				input = Some(Input {
 					pat_ident,
 					ty: (**ty).clone(),
@@ -407,7 +407,7 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 	Ok((input, fields))
 }
 
-/// Parse context feature identifiers from the trait bounds of a context parameter
+/// Parse context feature identifiers from the trait bounds of a context parameter.
 fn parse_context_feature_idents(ty: &Type) -> Vec<Ident> {
 	let mut features = Vec::new();
 

@@ -294,8 +294,8 @@ impl ProtoNetwork {
 		(inwards_edges, id_map)
 	}
 
-	/// Inserts context nullification nodes to optimize caching
-	/// This analysis is performed after topological sorting to ensure proper dependency tracking
+	/// Inserts context nullification nodes to optimize caching.
+	/// This analysis is performed after topological sorting to ensure proper dependency tracking.
 	pub fn insert_context_nullification_nodes(&mut self) -> Result<(), String> {
 		// Perform topological sort once
 		self.reorder_ids()?;
@@ -373,7 +373,7 @@ impl ProtoNetwork {
 		let context_features = self.nodes[node_index].1.context_features;
 
 		let mut inputs = match &self.nodes[node_index].1.construction_args {
-			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be chached
+			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be cached
 			ConstructionArgs::Value(_) => return (context_features.extract, Some(id)),
 			ConstructionArgs::Nodes(items) => items.clone(),
 			ConstructionArgs::Inline(_) => return (context_features.extract, Some(id)),
@@ -409,7 +409,7 @@ impl ProtoNetwork {
 		// Which dependencies do we supply (and don't need ourselves)?
 		let net_injections = context_features.inject.difference(context_features.extract);
 
-		// Which dependences still need to be meet after this node?
+		// Which dependencies still need to be met after this node?
 		let remaining_deps_from_children = combined_deps.difference(net_injections);
 
 		// Do we satisfy any existing dependencies?
@@ -426,7 +426,7 @@ impl ProtoNetwork {
 
 	/// Update all of the references to a node ID in the graph with a new ID named `compose_node_id`.
 	fn replace_node_id(&mut self, outwards_edges: &HashMap<NodeId, Vec<NodeId>>, node_id: NodeId, replacement_node_id: NodeId) {
-		// Update references in other nodes to use the new  node
+		// Update references in other nodes to use the new node
 		if let Some(referring_nodes) = outwards_edges.get(&node_id) {
 			for &referring_node_id in referring_nodes {
 				let (_, referring_node) = &mut self.nodes[referring_node_id.0 as usize];
