@@ -111,7 +111,6 @@ impl NodeNetworkInterface {
 							self.upstream_output_connector(&InputConnector::node(node_id, input_index), network_path)
 								.is_some_and(|output| !matches!(output, OutputConnector::Import(_)))
 						})
-						.map(|path| path.to_svg())
 						.map(|wire| {
 							(
 								wire,
@@ -401,7 +400,7 @@ impl NodeNetworkInterface {
 		if exports.is_empty() {
 			exports.push(None);
 		}
-		let preview_wire = self.wire_to_root(graph_wire_style, network_path);
+		let preview_wire = self.wire_to_root(graph_wire_style, network_path).map(|wire| wire.to_svg());
 		FrontendExports { exports, preview_wire }
 	}
 
@@ -512,7 +511,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// When previewing, there may be a second path to the root node.
-	pub fn wire_to_root(&mut self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<String> {
+	pub fn wire_to_root(&mut self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<BezPath> {
 		let input = InputConnector::Export(0);
 		let current_export = self.upstream_output_connector(&input, network_path)?;
 
@@ -536,6 +535,6 @@ impl NodeNetworkInterface {
 		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
 		let vector_wire = build_vector_wire(output_position, input_position, vertical_start, false, graph_wire_style);
 
-		Some(vector_wire.to_svg())
+		Some(vector_wire)
 	}
 }

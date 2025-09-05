@@ -185,6 +185,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				node_io
 			},
 		),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: UIContext, fn_params: [UIContext => ()]),
 		async_node!(graphene_core::node_graph_overlay::GenerateNodesNode<_>, input: UIContext, fn_params: [UIContext => NodeGraphOverlayData]),
 		async_node!(graphene_core::node_graph_overlay::TransformNodesNode<_>, input: UIContext, fn_params: [UIContext =>Table<Graphic>]),
 		async_node!(graphene_core::node_graph_overlay::DotGridBackgroundNode<_>, input: UIContext, fn_params: [UIContext =>f64]),

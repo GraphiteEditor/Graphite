@@ -267,17 +267,7 @@ pub enum FrontendMessage {
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,
 	},
-	UpdateNodeGraphSvelteRender {
-		#[serde(rename = "nodesToRender")]
-		nodes_to_render: Vec<FrontendNodeToRender>,
-		open: bool,
-		opacity: f64,
-		#[serde(rename = "inSelectedNetwork")]
-		in_selected_network: bool,
-		// Displays a dashed border around the node
-		#[serde(rename = "previewedNode")]
-		previewed_node: Option<NodeId>,
-	},
+	RequestNativeNodeGraphRender,
 	UpdateShouldRenderSvelteNodes {
 		#[serde(rename = "shouldRenderSvelteNodes")]
 		should_render_svelte_nodes: bool,
