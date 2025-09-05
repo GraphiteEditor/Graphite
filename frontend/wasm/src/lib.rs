@@ -66,7 +66,7 @@ pub fn panic_hook(info: &panic::PanicHookInfo) {
 				/text>"#
 				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
 				.to_string();
-				handle.send_frontend_message_to_js_rust_proxy(FrontendMessage::UpdateDocumentArtwork { svg: error });
+				handle.send_frontend_message_to_js(FrontendMessage::UpdateDocumentArtwork { svg: error });
 			});
 		}
 
@@ -77,11 +77,8 @@ pub fn panic_hook(info: &panic::PanicHookInfo) {
 
 	log::error!("{info}");
 
-	EDITOR_HANDLE.with(|editor_handle| {
-		let mut guard = editor_handle.lock();
-		if let Ok(Some(handle)) = guard.as_deref_mut() {
-			handle.send_frontend_message_to_js_rust_proxy(FrontendMessage::DisplayDialogPanic { panic_info: info.to_string() });
-		}
+	editor_api::handle(|editor_handle| {
+		editor_handle.send_frontend_message_to_js(FrontendMessage::DisplayDialogPanic { panic_info: info.to_string() });
 	});
 }
 
