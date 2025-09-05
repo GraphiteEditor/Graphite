@@ -11,7 +11,7 @@ pub fn receive_native_message(buffer: ArrayBuffer) {
 		Ok(messages) => {
 			let callback = move |handle: &mut EditorHandle| {
 				for message in messages {
-					handle.send_frontend_message_to_js_rust_proxy(message);
+					handle.send_frontend_message_to_js(message);
 				}
 			};
 			editor_api::handle(callback);
