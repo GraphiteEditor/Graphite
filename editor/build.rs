@@ -15,9 +15,9 @@ fn main() {
 	println!("cargo:rerun-if-changed=.git/refs/heads");
 
 	// Try to get the commit information from the environment (e.g. set by CI), otherwise fall back to Git commands.
-	let commit_date = env_or_else_trim("GRAPHITE_GIT_COMMIT_DATE", || git_or_unknown(&["log", "-1", "--format=%cI"]));
-	let commit_hash = env_or_else_trim("GRAPHITE_GIT_COMMIT_HASH", || git_or_unknown(&["rev-parse", "HEAD"]));
-	let commit_branch = env_or_else_trim("GRAPHITE_GIT_COMMIT_BRANCH", || {
+	let commit_date = env_or_else("GRAPHITE_GIT_COMMIT_DATE", || git_or_unknown(&["log", "-1", "--format=%cI"]));
+	let commit_hash = env_or_else("GRAPHITE_GIT_COMMIT_HASH", || git_or_unknown(&["rev-parse", "HEAD"]));
+	let commit_branch = env_or_else("GRAPHITE_GIT_COMMIT_BRANCH", || {
 		let gh = env::var("GITHUB_HEAD_REF").unwrap_or_default();
 		if !gh.trim().is_empty() {
 			gh.trim().to_string()
@@ -34,16 +34,15 @@ fn main() {
 	println!("cargo:rustc-env=GRAPHITE_RELEASE_SERIES={GRAPHITE_RELEASE_SERIES}");
 }
 
-// Get an environment variable, or if it is not set or empty, use the provided fallback function.
-// Returns a trimmed string.
-fn env_or_else_trim(key: &str, fallback: impl FnOnce() -> String) -> String {
+/// Get an environment variable, or if it is not set or empty, use the provided fallback function. Returns a string with trimmed whitespace.
+fn env_or_else(key: &str, fallback: impl FnOnce() -> String) -> String {
 	match env::var(key) {
 		Ok(v) if !v.trim().is_empty() => v.trim().to_string(),
 		_ => fallback().trim().to_string(),
 	}
 }
 
-// Execute a Git command for its output. Return "unknown" if it fails for any of the possible reasons.
+/// Execute a Git command to obtain its output. Return "unknown" if it fails for any of the possible reasons.
 fn git_or_unknown(args: &[&str]) -> String {
 	git(args).unwrap_or_else(|| "unknown".to_string())
 }
