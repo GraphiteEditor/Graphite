@@ -6649,7 +6649,7 @@ struct InputTransientMetadata {
 }
 
 /// Persistent metadata for each node in the network, which must be included when creating, serializing, and deserializing saving a node.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentNodePersistentMetadata {
 	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties if no display name is set.
 	// TODO: Used during serialization/deserialization to prevent storing implementation or inputs (and possible other fields) if they are the same as the definition.
@@ -6674,21 +6674,6 @@ pub struct DocumentNodePersistentMetadata {
 	pub node_type_metadata: NodeTypePersistentMetadata,
 	/// This should always be Some for nodes with a [`DocumentNodeImplementation::Network`], and none for [`DocumentNodeImplementation::ProtoNode`]
 	pub network_metadata: Option<NodeNetworkMetadata>,
-}
-
-impl Default for DocumentNodePersistentMetadata {
-	fn default() -> Self {
-		DocumentNodePersistentMetadata {
-			reference: None,
-			display_name: String::new(),
-			input_metadata: Vec::new(),
-			output_names: Vec::new(),
-			pinned: false,
-			locked: false,
-			node_type_metadata: NodeTypePersistentMetadata::default(),
-			network_metadata: None,
-		}
-	}
 }
 
 impl DocumentNodePersistentMetadata {
