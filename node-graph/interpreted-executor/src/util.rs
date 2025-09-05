@@ -8,6 +8,7 @@ use graphene_std::Context;
 use graphene_std::ContextFeatures;
 use graphene_std::uuid::NodeId;
 use std::sync::Arc;
+use wgpu_executor::WgpuExecutor;
 
 pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEditorApi>) -> NodeNetwork {
 	network.generate_node_paths(&[]);
@@ -68,7 +69,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 	};
 
 	// wrap the inner network in a scope
-	let nodes = vec![
+	let mut nodes = vec![
 		inner_network,
 		render_node,
 		DocumentNode {
@@ -77,11 +78,21 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 			..Default::default()
 		},
 	];
+	let mut scope_injections = vec![("editor-api".to_string(), (NodeId(2), concrete!(&WasmEditorApi)))];
+
+	if cfg!(feature = "gpu") {
+		nodes.push(DocumentNode {
+			implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::from("graphene_core::ops::IntoNode<&WgpuExecutor>")),
+			inputs: vec![NodeInput::node(NodeId(2), 0)],
+			..Default::default()
+		});
+		scope_injections.push(("wgpu-executor".to_string(), (NodeId(3), concrete!(&WgpuExecutor))));
+	}
 
 	NodeNetwork {
 		exports: vec![NodeInput::node(NodeId(1), 0)],
 		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
-		scope_injections: [("editor-api".to_string(), (NodeId(2), concrete!(&WasmEditorApi)))].into_iter().collect(),
+		scope_injections: scope_injections.into_iter().collect(),
 		// TODO(TrueDoctor): check if it makes sense to set `generated` to `true`
 		generated: false,
 	}
