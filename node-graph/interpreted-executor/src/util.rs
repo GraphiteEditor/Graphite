@@ -5,6 +5,7 @@ use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput,
 use graph_craft::generic;
 use graph_craft::wasm_application_io::WasmEditorApi;
 use graphene_std::Context;
+use graphene_std::ContextFeatures;
 use graphene_std::uuid::NodeId;
 use std::sync::Arc;
 
@@ -50,6 +51,10 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 						NodeInput::node(NodeId(1), 0),
 					],
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode")),
+					context_features: graphene_std::ContextDependencies {
+						extract: ContextFeatures::FOOTPRINT,
+						inject: ContextFeatures::FOOTPRINT | ContextFeatures::REAL_TIME | ContextFeatures::ANIMATION_TIME,
+					},
 					..Default::default()
 				},
 			]

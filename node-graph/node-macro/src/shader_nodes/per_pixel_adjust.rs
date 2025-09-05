@@ -295,6 +295,7 @@ impl PerPixelAdjustCodegen<'_> {
 				pat_ident: self.parsed.input.pat_ident.clone(),
 				ty: parse_quote!(impl #gcore::context::Ctx),
 				implementations: Default::default(),
+				context_features: self.parsed.input.context_features.clone(),
 			},
 			output_type: raster_gpu,
 			is_async: true,
