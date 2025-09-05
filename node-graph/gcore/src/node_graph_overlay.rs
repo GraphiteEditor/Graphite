@@ -4,7 +4,7 @@ use crate::{
 	Graphic,
 	node_graph_overlay::{
 		background::generate_background,
-		nodes_and_wires::{draw_layers, draw_nodes},
+		nodes_and_wires::{draw_layers, draw_nodes, draw_wires},
 		types::NodeGraphOverlayData,
 		ui_context::{UIContext, UIRuntimeResponse},
 	},
@@ -19,10 +19,13 @@ pub mod types;
 pub mod ui_context;
 
 #[node_macro::node(skip_impl)]
-pub fn generate_nodes(_: impl Ctx, node_graph_overlay_data: NodeGraphOverlayData) -> Table<Graphic> {
+pub fn generate_nodes(_: impl Ctx, mut node_graph_overlay_data: NodeGraphOverlayData) -> Table<Graphic> {
 	let mut nodes_and_wires = Table::new();
 	let layers = draw_layers(&node_graph_overlay_data.nodes_to_render);
 	nodes_and_wires.extend(layers);
+
+	let wires = draw_wires(&mut node_graph_overlay_data.nodes_to_render);
+	nodes_and_wires.extend(wires);
 
 	let nodes = draw_nodes(&node_graph_overlay_data.nodes_to_render);
 	nodes_and_wires.extend(nodes);

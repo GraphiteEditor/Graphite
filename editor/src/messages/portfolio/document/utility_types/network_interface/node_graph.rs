@@ -111,7 +111,6 @@ impl NodeNetworkInterface {
 							self.upstream_output_connector(&InputConnector::node(node_id, input_index), network_path)
 								.is_some_and(|output| !matches!(output, OutputConnector::Import(_)))
 						})
-						.map(|path| path.to_svg())
 						.map(|wire| {
 							(
 								wire,
@@ -367,7 +366,8 @@ impl NodeNetworkInterface {
 		if frontend_exports.is_empty() {
 			frontend_exports.push(None);
 		}
-		frontend_exports
+		let preview_wire = self.wire_to_root(graph_wire_style, network_path).map(|wire| wire.to_svg());
+		FrontendExports { exports, preview_wire }
 	}
 
 	pub fn import_export_position(&mut self, network_path: &[NodeId]) -> Option<(IVec2, IVec2)> {
@@ -446,5 +446,61 @@ impl NodeNetworkInterface {
 		let rounded_export_top_right = DVec2::new((export_top_right.x / 24.).round() * 24., (export_top_right.y / 24.).round() * 24.);
 
 		Some((rounded_import_top_left.as_ivec2(), rounded_export_top_right.as_ivec2()))
+	}
+
+	pub fn wire_is_thick(&self, input: &InputConnector, network_path: &[NodeId]) -> bool {
+		let Some(upstream_output) = self.upstream_output_connector(input, network_path) else {
+			return false;
+		};
+		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
+		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
+		vertical_end && vertical_start
+	}
+
+	/// Returns the vector subpath and a boolean of whether the wire should be thick.
+	pub fn wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<BezPath> {
+		let Some(input_position) = self.get_input_center(input, network_path) else {
+			log::error!("Could not get dom rect for wire end: {input:?}");
+			return None;
+		};
+		// An upstream output could not be found
+		let Some(upstream_output) = self.upstream_output_connector(input, network_path) else {
+			return None;
+		};
+		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
+			log::error!("Could not get output port for wire start: {:?}", upstream_output);
+			return None;
+		};
+		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
+		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
+		Some(build_vector_wire(output_position, input_position, vertical_start, vertical_end, wire_style))
+	}
+
+	/// When previewing, there may be a second path to the root node.
+	pub fn wire_to_root(&mut self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<BezPath> {
+		let input = InputConnector::Export(0);
+		let current_export = self.upstream_output_connector(&input, network_path)?;
+
+		let root_node = match self.previewing(network_path) {
+			Previewing::Yes { root_node_to_restore } => root_node_to_restore,
+			Previewing::No => None,
+		}?;
+
+		if Some(root_node.node_id) == current_export.node_id() {
+			return None;
+		}
+		let Some(input_position) = self.get_input_center(&input, network_path) else {
+			log::error!("Could not get input position for wire end in root node: {input:?}");
+			return None;
+		};
+		let upstream_output = OutputConnector::node(root_node.node_id, root_node.output_index);
+		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
+			log::error!("Could not get output position for wire start in root node: {upstream_output:?}");
+			return None;
+		};
+		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
+		let vector_wire = build_vector_wire(output_position, input_position, vertical_start, false, graph_wire_style);
+
+		Some(vector_wire)
 	}
 }

@@ -20,9 +20,10 @@ pub fn generate_node_graph_overlay(node_graph_overlay_data: NodeGraphOverlayData
 	let merge_nodes_and_bg_id = NodeId::new();
 	let render_overlay_id = NodeId::new();
 	let send_overlay_id = NodeId::new();
-	let _cache_output_id = NodeId::new();
+	let cache_output_id = NodeId::new();
 	// TODO: Replace with new cache node
-	let memo_implementation = DocumentNodeImplementation::ProtoNode(graphene_std::ops::identity::IDENTIFIER);
+	let identity_implementation = DocumentNodeImplementation::ProtoNode(graphene_std::ops::identity::IDENTIFIER);
+	let memo_implementation = DocumentNodeImplementation::ProtoNode(graphene_std::memo::memo::IDENTIFIER);
 
 	DocumentNode {
 		inputs: vec![
@@ -32,7 +33,7 @@ pub fn generate_node_graph_overlay(node_graph_overlay_data: NodeGraphOverlayData
 		],
 
 		implementation: DocumentNodeImplementation::Network(NodeNetwork {
-			exports: vec![NodeInput::node(send_overlay_id, 0)],
+			exports: vec![NodeInput::node(cache_output_id, 0)],
 			nodes: vec![
 				// Create the nodes
 				(
@@ -50,7 +51,7 @@ pub fn generate_node_graph_overlay(node_graph_overlay_data: NodeGraphOverlayData
 					DocumentNode {
 						call_argument: concrete!(UIContext),
 						inputs: vec![NodeInput::node(generate_nodes_id, 0)],
-						implementation: memo_implementation.clone(),
+						implementation: identity_implementation.clone(),
 						..Default::default()
 					},
 				),
@@ -80,7 +81,7 @@ pub fn generate_node_graph_overlay(node_graph_overlay_data: NodeGraphOverlayData
 					DocumentNode {
 						call_argument: concrete!(UIContext),
 						inputs: vec![NodeInput::node(generate_node_graph_bg, 0)],
-						implementation: memo_implementation.clone(),
+						implementation: identity_implementation.clone(),
 						..Default::default()
 					},
 				),
@@ -114,16 +115,16 @@ pub fn generate_node_graph_overlay(node_graph_overlay_data: NodeGraphOverlayData
 						..Default::default()
 					},
 				),
-				// Cache the full node graph so its not rerendered when the artwork changes
-				// (
-				// 	cache_nodes_id,
-				// 	DocumentNode {
-				// 		call_argument: concrete!(UIContext),
-				// 		inputs: vec![NodeInput::node(send_overlay_id, 0)],
-				// 		implementation: memo_implementation.clone(),
-				// 		..Default::default()
-				// 	},
-				// ),
+				// Cache the full node graph so its not rerendered when nothing changes
+				(
+					cache_output_id,
+					DocumentNode {
+						call_argument: concrete!(UIContext),
+						inputs: vec![NodeInput::node(send_overlay_id, 0)],
+						implementation: memo_implementation.clone(),
+						..Default::default()
+					},
+				),
 			]
 			.into_iter()
 			.collect(),

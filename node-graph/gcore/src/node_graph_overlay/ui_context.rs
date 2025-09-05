@@ -14,6 +14,20 @@ pub struct UIContextImpl {
 	pub response_sender: Sender<UIRuntimeResponse>,
 }
 
+use std::hash::{Hash, Hasher};
+impl Hash for UIContextImpl {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.transform.hash(state);
+		self.resolution.hash(state);
+	}
+}
+
+impl PartialEq for UIContextImpl {
+	fn eq(&self, other: &Self) -> bool {
+		self.transform == other.transform && self.resolution == other.resolution
+	}
+}
+
 #[derive(Debug, Clone, dyn_any::DynAny)]
 pub enum UIRuntimeResponse {
 	RuntimeReady,
