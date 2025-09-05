@@ -1642,13 +1642,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					let nodes_to_render = network_interface.collect_nodes(&self.node_graph_errors, preferences.graph_wire_style, breadcrumb_network_path);
 					self.frontend_nodes = nodes_to_render.iter().map(|node| node.metadata.node_id).collect();
 					let previewed_node = network_interface.previewed_node(breadcrumb_network_path);
-					responses.add(FrontendMessage::UpdateNodeGraphSvelteRender {
-						nodes_to_render,
-						open: graph_view_overlay_open,
-						opacity: graph_fade_artwork_percentage,
-						in_selected_network: selection_network_path == breadcrumb_network_path,
-						previewed_node,
-					});
 				}
 				responses.add(NodeGraphMessage::UpdateVisibleNodes);
 

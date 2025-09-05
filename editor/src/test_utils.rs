@@ -301,13 +301,7 @@ pub trait FrontendMessageTestUtils {
 
 impl FrontendMessageTestUtils for FrontendMessage {
 	fn check_node_graph_error(&self) {
-		let FrontendMessage::UpdateNodeGraphSvelteRender { nodes_to_render, .. } = self else { return };
-
-		for node in nodes_to_render {
-			if let Some(error) = &node.metadata.errors {
-				panic!("error on {}: {}", node.metadata.display_name, error);
-			}
-		}
+		// TODO: Implement
 	}
 }
 

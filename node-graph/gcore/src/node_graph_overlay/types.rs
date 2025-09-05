@@ -1,4 +1,5 @@
 use glam::{DAffine2, DVec2};
+use kurbo::BezPath;
 
 use crate::{node_graph_overlay::consts::*, uuid::NodeId};
 use std::hash::{Hash, Hasher};
@@ -10,21 +11,22 @@ pub struct NodeGraphTransform {
 	pub y: f64,
 }
 
-impl NodeGraphTransform {
-	pub fn to_daffine2(&self) -> DAffine2 {
-		DAffine2::from_scale_angle_translation(DVec2::splat(self.scale), 0.0, DVec2::new(self.x, self.y))
-	}
-}
-
 impl Hash for NodeGraphTransform {
 	fn hash<H: Hasher>(&self, state: &mut H) {
+		// Convert f64 to u64 bit pattern for hashing
 		self.scale.to_bits().hash(state);
 		self.x.to_bits().hash(state);
 		self.y.to_bits().hash(state);
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
+impl NodeGraphTransform {
+	pub fn to_daffine2(&self) -> DAffine2 {
+		DAffine2::from_scale_angle_translation(DVec2::splat(self.scale), 0.0, DVec2::new(self.x, self.y))
+	}
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub struct NodeGraphOverlayData {
 	pub nodes_to_render: Vec<FrontendNodeToRender>,
 	pub open: bool,
@@ -33,13 +35,20 @@ pub struct NodeGraphOverlayData {
 	pub previewed_node: Option<NodeId>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Clone, Debug, Default, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub struct FrontendNodeToRender {
 	pub metadata: FrontendNodeMetadata,
 	#[serde(rename = "nodeOrLayer")]
 	pub node_or_layer: FrontendNodeOrLayer,
 	//TODO: Remove
-	pub wires: Vec<(String, bool, FrontendGraphDataType)>,
+	pub wires: Vec<(BezPath, bool, FrontendGraphDataType)>,
+}
+
+impl Hash for FrontendNodeToRender {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.metadata.hash(state);
+		self.node_or_layer.hash(state);
+	}
 }
 
 // Metadata that is common to nodes and layers
