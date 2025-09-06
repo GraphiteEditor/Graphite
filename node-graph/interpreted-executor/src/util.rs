@@ -74,17 +74,6 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					},
 					..Default::default()
 				},
-				// // TODO: Add conversion step
-				// DocumentNode {
-				// 	call_argument: concrete!(graphene_std::application_io::RenderConfig),
-				// 	inputs: vec![
-				// 		NodeInput::scope("editor-api"),
-				// 		NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Context)), Box::new(generic!(T))), 0),
-				// 		NodeInput::node(NodeId(1), 0),
-				// 	],
-				// 	implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode")),
-				// 	..Default::default()
-				// },
 			]
 			.into_iter()
 			.enumerate()

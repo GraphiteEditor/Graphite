@@ -185,7 +185,7 @@ pub struct RenderParams {
 
 impl Hash for RenderParams {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.view_mode.hash(state);
+		self.render_mode.hash(state);
 		self.footprint.hash(state);
 		self.thumbnail.hash(state);
 		self.hide_artboards.hash(state);
