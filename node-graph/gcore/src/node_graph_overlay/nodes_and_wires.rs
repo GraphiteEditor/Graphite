@@ -168,8 +168,6 @@ pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 			// }
 
 			let node_text_row = TableRow::new_from_element(Graphic::Vector(node_text));
-			// node_text_row.transform.left_apply_transform(&DAffine2::from_translation(DVec2::new(x + 8., y + 8.)));
-			// log::debug!("node_text_row {:?}", node_text_row.transform);
 			node_table.push(node_text_row);
 
 			// Add black clipping path to view text in node

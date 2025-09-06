@@ -92,7 +92,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let editor_api = Arc::new(WasmEditorApi {
 		font_cache: FontCache::default(),
 		application_io: Some(application_io.into()),
-		node_graph_message_sender: Box::new(UpdateLogger {}),
 		editor_preferences: Box::new(preferences),
 	});
 

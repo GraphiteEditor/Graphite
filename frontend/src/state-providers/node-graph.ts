@@ -14,12 +14,13 @@ import {
 	UpdateImportReorderIndex,
 	UpdateExportReorderIndex,
 	UpdateImportsExports,
-	UpdateLayerWidths,
 	UpdateNativeNodeGraphSVG,
 	UpdateNodeThumbnail,
 	UpdateWirePathInProgress,
 	UpdateNodeGraphSelectionBox,
 	UpdateNodeGraphTransform,
+	UpdateTooltip,
+	type XY,
 } from "@graphite/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -38,11 +39,8 @@ export function createNodeGraphState(editor: Editor) {
 		nodeTypes: [] as FrontendNodeType[],
 		nodeDescriptions: new Map<string, string>(),
 
-		// Data that will be moved into the node graph to be rendered natively
-		nodesToRender: new Map<bigint, FrontendNodeToRender>(),
-		opacity: 0.8,
-		inSelectedNetwork: true,
-		previewedNode: undefined as bigint | undefined,
+		tooltipPosition: undefined as XY | undefined,
+		tooltipText: "test",
 
 		// Data that will be passed in the context
 		thumbnails: new Map<bigint, string>(),
@@ -115,6 +113,13 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateNodeThumbnail, (updateNodeThumbnail) => {
 		update((state) => {
 			state.thumbnails.set(updateNodeThumbnail.id, updateNodeThumbnail.value);
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateTooltip, (updateTooltip) => {
+		update((state) => {
+			state.tooltipPosition = updateTooltip.position;
+			state.tooltipText = updateTooltip.text;
 			return state;
 		});
 	});

@@ -1,4 +1,4 @@
-use crate::messages::prelude::*;
+use crate::messages::{prelude::*, side_effects::{SideEffectMessage}};
 use graphite_proc_macros::*;
 
 #[impl_message]
@@ -17,6 +17,8 @@ pub enum Message {
 	Defer(DeferMessage),
 	#[child]
 	Dialog(DialogMessage),
+	#[child]
+	SideEffect(SideEffectMessage),
 	#[child]
 	Frontend(FrontendMessage),
 	#[child]

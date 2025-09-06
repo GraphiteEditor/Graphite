@@ -180,33 +180,6 @@
 		return `M-2,-2 L${nodeWidth + 2},-2 L${nodeWidth + 2},${nodeHeight + 2} L-2,${nodeHeight + 2}z ${rectangles.join(" ")}`;
 	}
 
-	function inputTooltip(value: FrontendGraphInput): string {
-		return dataTypeTooltip(value) + "\n\n" + inputConnectedToText(value) + "\n\n";
-	}
-
-	function outputTooltip(value: FrontendGraphOutput): string {
-		return dataTypeTooltip(value) + "\n\n" + outputConnectedToText(value);
-	}
-
-	function dataTypeTooltip(value: FrontendGraphInput | FrontendGraphOutput): string {
-		return `Data Type: ${value.resolvedType}`;
-	}
-
-	// function validTypesText(value: FrontendGraphInput): string {
-	// 	const validTypes = value.validTypes.length > 0 ? value.validTypes.map((x) => `• ${x}`).join("\n") : "None";
-	// 	return `Valid Types:\n${validTypes}`;
-	// }
-
-	function outputConnectedToText(output: FrontendGraphOutput): string {
-		if (output.connectedTo.length === 0) return "Connected to nothing";
-
-		return `Connected to:\n${output.connectedTo.join("\n")}`;
-	}
-
-	function inputConnectedToText(input: FrontendGraphInput): string {
-		return `Connected to:\n${input.connectedToString}`;
-	}
-
 	function collectExposedInputsOutputs(
 		inputs: (FrontendGraphInput | undefined)[],
 		outputs: (FrontendGraphOutput | undefined)[],
@@ -326,7 +299,6 @@
 						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 8) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 8) / 24 + index}
 					>
-						<title>{outputTooltip(frontendOutput)}</title>
 						{#if frontendOutput.connectedTo.length > 0}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 						{:else}
@@ -407,7 +379,6 @@
 						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 8) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 8) / 24 + index}
 					>
-						<title>{inputTooltip(frontendInput)}</title>
 						{#if frontendInput.connectedTo !== "nothing"}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 						{:else}
@@ -510,6 +481,15 @@
 		{/if}
 	</div>
 </div>
+
+<!-- Input/Output tooltip widget -->
+{#if $nodeGraph.tooltipPosition}
+	<div class="connector-tooltip">
+		<div class="connector-tooltip-div" style:--offset-left={`${$nodeGraph.tooltipPosition.x + 10}px`} style:--offset-top={`${$nodeGraph.tooltipPosition.y + 10}px`}>
+			{$nodeGraph.tooltipText}
+		</div>
+	</div>
+{/if}
 
 <!-- Box selection widget -->
 {#if $nodeGraph.selectionBox}

@@ -9,6 +9,7 @@ use crate::helpers::translate_key;
 use crate::wasm_node_graph_ui_executor::WasmNodeGraphUIExecutor;
 use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER, WASM_NODE_GRAPH_EXECUTOR};
 use editor::consts::FILE_EXTENSION;
+use editor::dispatcher::EditorOutput;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -19,7 +20,6 @@ use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
-use interpreted_executor::ui_runtime::CompilationRequest;
 use js_sys::{Object, Reflect};
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
@@ -221,20 +221,32 @@ impl EditorHandle {
 	}
 
 	// Messages can come from the runtime, browser, or a timed callback. This processes them in the editor and does all the side effects
-	// Like updating the frontend and node graph ui network.
-	fn process_messages(&self, messages: impl IntoIterator<Item = Message>, editor: &mut Editor) {
+	// Like updating the frontend and node graph ui network. Some side effects are deduplicated and produce other side effects.
+	fn process_messages(&self, messages: impl IntoIterator<Item = Message>, editor_param: &mut Editor) {
 		// Get the editor, dispatch the message, and store the `FrontendMessage` queue response
-		for side_effect in messages.into_iter().flat_map(|message| editor.handle_message(message)).collect::<Vec<_>>() {
-			if side_effect == FrontendMessage::RequestNativeNodeGraphRender {
-				if let Some(node_graph_overlay_network) = editor.generate_node_graph_overlay_network() {
-					let compilation_request = CompilationRequest { network: node_graph_overlay_network };
+		for output in messages.into_iter().flat_map(|message| editor_param.handle_message(message)).collect::<Vec<_>>() {
+			match output {
+				EditorOutput::RequestNativeNodeGraphRender { compilation_request } => {
 					let res = executor(|executor| executor.compilation_request(compilation_request));
 					if let Err(_) = res {
 						log::error!("Could not borrow executor in process_messages_in_editor");
 					}
 				}
-			} else {
-				self.send_frontend_message_to_js(side_effect);
+				EditorOutput::RequestDeferredMessage { message, timeout } => {
+					let callback = Closure::once_into_js(move || {
+						editor_and_handle(|editor, handle| {
+							handle.process_messages(std::iter::once(*message), editor);
+						});
+					});
+
+					window()
+						.unwrap()
+						.set_timeout_with_callback_and_timeout_and_arguments_0(callback.as_ref().unchecked_ref(), timeout.as_millis() as i32)
+						.unwrap();
+				}
+				EditorOutput::FrontendMessage { frontend_message } => {
+					self.send_frontend_message_to_js(frontend_message);
+				}
 			}
 		}
 	}

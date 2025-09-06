@@ -1481,7 +1481,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 							x: transform.translation.x,
 							y: transform.translation.y,
 						},
-					})
+					});
+					responses.add(NodeGraphMessage::PointerMove { shift: Key::Shift });
 				}
 			}
 			DocumentMessage::SelectionStepBack => {

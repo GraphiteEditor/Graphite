@@ -129,6 +129,11 @@ export class UpdateNodeThumbnail extends JsMessage {
 	readonly value!: string;
 }
 
+export class UpdateTooltip extends JsMessage {
+	readonly position!: XY | undefined;
+	readonly text!: string;
+}
+
 export class UpdateOpenDocumentsList extends JsMessage {
 	@Type(() => FrontendDocumentDetails)
 	readonly openDocuments!: FrontendDocumentDetails[];
@@ -1736,6 +1741,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateLayersPanelState,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
+	UpdateTooltip,
 	UpdateViewportHolePunch,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,

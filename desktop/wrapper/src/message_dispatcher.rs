@@ -65,9 +65,9 @@ impl<'a> DesktopWrapperMessageDispatcher<'a> {
 				.editor
 				.handle_message(EditorMessage::Batched {
 					messages: std::mem::take(&mut self.editor_message_queue).into_boxed_slice(),
-				})
-				.into_iter()
-				.filter_map(|m| intercept_frontend_message(self, m));
+				});
+				// .into_iter()
+				// .filter_map(|m| intercept_frontend_message(self, m));
 			frontend_messages.extend(current_frontend_messages);
 		}
 

@@ -5,8 +5,8 @@ use graph_craft::document::value::{RenderOutput, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
+use graphene_std::application_io::RenderConfig;
 use graphene_std::application_io::TimingInformation;
-use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig};
 use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
 use graphene_std::text::FontCache;
 use graphene_std::transform::Footprint;
@@ -44,7 +44,6 @@ pub struct CompilationResponse {
 pub enum NodeGraphUpdate {
 	ExecutionResponse(ExecutionResponse),
 	CompilationResponse(CompilationResponse),
-	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
 }
 
 #[derive(Debug, Default)]

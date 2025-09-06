@@ -15,4 +15,5 @@ pub mod message;
 pub mod portfolio;
 pub mod preferences;
 pub mod prelude;
+pub mod side_effects;
 pub mod tool;

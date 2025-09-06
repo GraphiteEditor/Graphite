@@ -214,6 +214,7 @@ pub enum NodeGraphMessage {
 	SetLockedOrVisibilitySideEffects {
 		node_ids: Vec<NodeId>,
 	},
+	TryDisplayTooltip,
 	UpdateBoxSelection,
 	UpdateImportsExports,
 	UpdateLayerPanel,

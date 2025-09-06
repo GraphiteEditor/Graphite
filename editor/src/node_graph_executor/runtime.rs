@@ -7,7 +7,7 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graph_craft::{ProtoNodeIdentifier, concrete};
-use graphene_std::application_io::{ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
+use graphene_std::application_io::{ImageTexture, RenderConfig};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::memo::IORecord;
 use graphene_std::renderer::{Render, RenderParams, SvgRender};
@@ -94,12 +94,6 @@ impl InternalNodeGraphUpdateSender {
 	}
 }
 
-impl NodeGraphUpdateSender for InternalNodeGraphUpdateSender {
-	fn send(&self, message: NodeGraphUpdateMessage) {
-		self.0.send(NodeGraphUpdate::NodeGraphUpdateMessage(message)).expect("Failed to send response")
-	}
-}
-
 pub static NODE_RUNTIME: Lazy<Mutex<Option<NodeRuntime>>> = Lazy::new(|| Mutex::new(None));
 
 impl NodeRuntime {
@@ -115,8 +109,6 @@ impl NodeRuntime {
 			editor_api: WasmEditorApi {
 				font_cache: FontCache::default(),
 				editor_preferences: Box::new(EditorPreferences::default()),
-				node_graph_message_sender: Box::new(InternalNodeGraphUpdateSender(sender)),
-
 				application_io: None,
 			}
 			.into(),
@@ -140,7 +132,6 @@ impl NodeRuntime {
 				#[cfg(any(test, not(target_family = "wasm")))]
 				application_io: Some(WasmApplicationIo::new_offscreen().await.into()),
 				font_cache: self.editor_api.font_cache.clone(),
-				node_graph_message_sender: Box::new(self.sender.clone()),
 				editor_preferences: Box::new(self.editor_preferences.clone()),
 			}
 			.into();
@@ -166,7 +157,6 @@ impl NodeRuntime {
 					self.editor_api = WasmEditorApi {
 						font_cache,
 						application_io: self.editor_api.application_io.clone(),
-						node_graph_message_sender: Box::new(self.sender.clone()),
 						editor_preferences: Box::new(self.editor_preferences.clone()),
 					}
 					.into();
@@ -180,7 +170,6 @@ impl NodeRuntime {
 					self.editor_api = WasmEditorApi {
 						font_cache: self.editor_api.font_cache.clone(),
 						application_io: self.editor_api.application_io.clone(),
-						node_graph_message_sender: Box::new(self.sender.clone()),
 						editor_preferences: Box::new(preferences),
 					}
 					.into();
@@ -410,7 +399,6 @@ pub async fn replace_application_io(application_io: WasmApplicationIo) {
 		node_runtime.editor_api = WasmEditorApi {
 			font_cache: node_runtime.editor_api.font_cache.clone(),
 			application_io: Some(application_io.into()),
-			node_graph_message_sender: Box::new(node_runtime.sender.clone()),
 			editor_preferences: Box::new(node_runtime.editor_preferences.clone()),
 		}
 		.into();

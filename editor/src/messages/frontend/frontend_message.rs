@@ -267,7 +267,6 @@ pub enum FrontendMessage {
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,
 	},
-	RequestNativeNodeGraphRender,
 	UpdateNativeNodeGraphSVG {
 		#[serde(rename = "svgString")]
 		svg_string: String,
@@ -292,6 +291,10 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
+	},
+	UpdateTooltip {
+		position: Option<FrontendXY>,
+		text: String,
 	},
 	UpdateToolOptionsLayout {
 		#[serde(rename = "layoutTarget")]

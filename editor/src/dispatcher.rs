@@ -1,3 +1,7 @@
+use std::time::Duration;
+
+use interpreted_executor::ui_runtime::CompilationRequest;
+
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::defer::DeferMessageContext;
 use crate::messages::dialog::DialogMessageContext;
@@ -7,7 +11,6 @@ use crate::messages::prelude::*;
 #[derive(Debug, Default)]
 pub struct Dispatcher {
 	message_queues: Vec<VecDeque<Message>>,
-	pub responses: Vec<FrontendMessage>,
 	pub message_handlers: DispatcherMessageHandlers,
 }
 
@@ -28,6 +31,15 @@ pub struct DispatcherMessageHandlers {
 	tool_message_handler: ToolMessageHandler,
 }
 
+// Output messages are what the editor returns after processing Messages. It is handled by the scope outside the editor,
+// which has access to the node graph executor, frontend, etc
+pub enum EditorOutput {
+	// These messages perform some side effect other than updating the frontend, but outside the scope of the editor
+	RequestNativeNodeGraphRender { compilation_request: CompilationRequest },
+	RequestDeferredMessage { message: Box<Message>, timeout: Duration },
+	FrontendMessage { frontend_message: FrontendMessage },
+}
+
 impl DispatcherMessageHandlers {
 	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
 		Self {
@@ -41,7 +53,6 @@ impl DispatcherMessageHandlers {
 /// The last occurrence of the message in the message queue is sufficient to ensure correct behavior.
 /// In addition, these messages do not change any state in the backend (aside from caches).
 const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
-	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(NodeGraphMessageDiscriminant::SendGraph))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
 		PropertiesPanelMessageDiscriminant::Refresh,
 	))),
@@ -93,11 +104,13 @@ impl Dispatcher {
 		}
 	}
 
-	pub fn handle_message<T: Into<Message>>(&mut self, message: T, process_after_all_current: bool) {
+	pub fn handle_message<T: Into<Message>>(&mut self, message: T, process_after_all_current: bool) -> Vec<EditorOutput> {
 		let message = message.into();
-
 		// If we are not maintaining the buffer, simply add to the current queue
 		Self::schedule_execution(&mut self.message_queues, process_after_all_current, [message]);
+
+		let mut side_effects = Vec::new();
+		let mut output_messages = Vec::new();
 
 		while let Some(message) = self.message_queues.last_mut().and_then(VecDeque::pop_front) {
 			// Skip processing of this message if it will be processed later (at the end of the shallowest level queue)
@@ -148,20 +161,8 @@ impl Dispatcher {
 					self.message_handlers.dialog_message_handler.process_message(message, &mut queue, context);
 				}
 				Message::Frontend(message) => {
-					// Handle these messages immediately by returning early
-					if let FrontendMessage::TriggerFontLoad { .. } = message {
-						self.responses.push(message);
-						self.cleanup_queues(false);
-
-						// Return early to avoid running the code after the match block
-						return;
-					} else {
-						// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
-						// Deduplicate the render native node graph messages. TODO: Replace responses with hashset
-						if !(message == FrontendMessage::RequestNativeNodeGraphRender && self.responses.contains(&FrontendMessage::RequestNativeNodeGraphRender)) {
-							self.responses.push(message);
-						}
-					}
+					// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
+					output_messages.push(EditorOutput::FrontendMessage { frontend_message: message });
 				}
 				Message::Globals(message) => {
 					self.message_handlers.globals_message_handler.process_message(message, &mut queue, ());
@@ -213,14 +214,19 @@ impl Dispatcher {
 				Message::Preferences(message) => {
 					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());
 				}
+				Message::SideEffect(message) => {
+					if !side_effects.contains(&message) {
+						side_effects.push(message);
+					}
+				}
 				Message::Tool(message) => {
 					let Some(document_id) = self.message_handlers.portfolio_message_handler.active_document_id() else {
 						warn!("Called ToolMessage without an active document.\nGot {message:?}");
-						return;
+						return Vec::new();
 					};
 					let Some(document) = self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id) else {
 						warn!("Called ToolMessage with an invalid active document.\nGot {message:?}");
-						return;
+						return Vec::new();
 					};
 
 					let context = ToolMessageContext {
@@ -236,7 +242,9 @@ impl Dispatcher {
 				}
 				Message::NoOp => {}
 				Message::Batched { messages } => {
-					messages.iter().for_each(|message| self.handle_message(message.to_owned(), false));
+					for nested_outputs in messages.into_iter().map(|message| self.handle_message(message, false)) {
+						output_messages.extend(nested_outputs);
+					}
 				}
 			}
 
@@ -247,6 +255,12 @@ impl Dispatcher {
 
 			self.cleanup_queues(false);
 		}
+
+		// The full message tree has been processed, so the side effects can be processed
+		for message in side_effects {
+			output_messages.extend(self.handle_side_effect(message));
+		}
+		output_messages
 	}
 
 	pub fn collect_actions(&self) -> ActionList {
@@ -314,6 +328,7 @@ impl Dispatcher {
 
 #[cfg(test)]
 mod test {
+	use crate::messages::side_effects::EditorOutputMessage;
 	pub use crate::test_utils::test_prelude::*;
 
 	/// Create an editor with three layers
@@ -513,7 +528,10 @@ mod test {
 
 			for response in responses {
 				// Check for the existence of the file format incompatibility warning dialog after opening the test file
-				if let FrontendMessage::UpdateDialogColumn1 { layout_target: _, diff } = response {
+				if let EditorOutputMessage::FrontendMessage {
+					frontend_message: FrontendMessage::UpdateDialogColumn1 { layout_target: _, diff },
+				} = response
+				{
 					if let DiffUpdate::SubLayout(sub_layout) = &diff[0].new_value {
 						if let LayoutGroup::Row { widgets } = &sub_layout[0] {
 							if let Widget::TextLabel(TextLabel { value, .. }) = &widgets[0].widget {

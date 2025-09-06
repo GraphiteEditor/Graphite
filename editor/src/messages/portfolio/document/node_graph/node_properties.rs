@@ -1024,13 +1024,6 @@ pub fn get_document_node<'a>(node_id: NodeId, context: &'a NodePropertiesContext
 	network.nodes.get(&node_id).ok_or(format!("node {node_id} not found in get_document_node"))
 }
 
-pub fn query_node_and_input_info<'a>(node_id: NodeId, input_index: usize, context: &'a mut NodePropertiesContext<'a>) -> Result<(&'a DocumentNode, String, String), String> {
-	let (name, description) = context.network_interface.displayed_input_name_and_description(&node_id, input_index, context.selection_network_path);
-	let document_node = get_document_node(node_id, context)?;
-
-	Ok((document_node, name, description))
-}
-
 pub fn query_noise_pattern_state(node_id: NodeId, context: &NodePropertiesContext) -> Result<(bool, bool, bool, bool, bool, bool), String> {
 	let document_node = get_document_node(node_id, context)?;
 	let current_noise_type = document_node.inputs.iter().find_map(|input| match input.as_value() {
