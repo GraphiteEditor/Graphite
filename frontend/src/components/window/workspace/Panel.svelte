@@ -36,7 +36,7 @@
 
 	export let tabMinWidths = false;
 	export let tabCloseButtons = false;
-	export let tabLabels: { name: string; tooltip?: string }[];
+	export let tabLabels: { name: string; isSaved?: boolean; tooltip?: string }[];
 	export let tabActiveIndex: number;
 	export let panelType: PanelType | undefined = undefined;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
@@ -131,6 +131,9 @@
 					bind:this={tabElements[tabIndex]}
 				>
 					<TextLabel>{tabLabel.name}</TextLabel>
+					{#if !tabLabel.isSaved}
+						<span>*</span>
+					{/if}
 					{#if tabCloseButtons}
 						<IconButton
 							action={(e) => {
