@@ -155,7 +155,7 @@ export class DocumentDetails {
 	readonly isSaved!: boolean;
 
 	get displayName(): string {
-		return `${this.name}${this.isSaved ? "" : "*"}`;
+		return `${this.name}`;
 	}
 }
 
