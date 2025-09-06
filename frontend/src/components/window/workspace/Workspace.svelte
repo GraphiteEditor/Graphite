@@ -31,11 +31,11 @@
 
 	$: documentTabLabels = $portfolio.documents.map((doc: OpenDocument) => {
 		const name = doc.details.name;
-		const isSaved = doc.details.isSaved;
-		if (!editor.handle.inDevelopmentMode()) return { name, isSaved };
+		const isUnsaved = !doc.details.isSaved;
+		if (!editor.handle.inDevelopmentMode()) return { name, isUnsaved };
 
 		const tooltip = `Document ID: ${doc.id}`;
-		return { name, isSaved, tooltip };
+		return { name, isUnsaved, tooltip };
 	});
 
 	const editor = getContext<Editor>("editor");
