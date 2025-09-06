@@ -378,12 +378,7 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 					.map(|attr| parse_implementations(attr, &pat_ident.ident))
 					.transpose()?
 					.unwrap_or_default();
-				let extra_injections = extract_attribute(attrs, "extra_injections")
-					.map(|attr| parse_injections(attr, &pat_ident.ident))
-					.transpose()?
-					.unwrap_or_default();
-				let mut context_features = parse_context_feature_idents(ty);
-				context_features.extend(extra_injections);
+				let context_features = parse_context_feature_idents(ty);
 				input = Some(Input {
 					pat_ident,
 					ty: (**ty).clone(),
@@ -443,15 +438,6 @@ fn parse_context_feature_idents(ty: &Type) -> Vec<Ident> {
 fn parse_implementations(attr: &Attribute, name: &Ident) -> syn::Result<Punctuated<Type, Comma>> {
 	let content: TokenStream2 = attr.parse_args()?;
 	let parser = Punctuated::<Type, Comma>::parse_terminated;
-	parser.parse2(content.clone()).map_err(|e| {
-		let span = e.span(); // Get the span of the error
-		Error::new(span, format!("Failed to parse implementations for argument '{name}': {e}"))
-	})
-}
-
-fn parse_injections(attr: &Attribute, name: &Ident) -> syn::Result<Punctuated<Ident, Comma>> {
-	let content: TokenStream2 = attr.parse_args()?;
-	let parser = Punctuated::<Ident, Comma>::parse_terminated;
 	parser.parse2(content.clone()).map_err(|e| {
 		let span = e.span(); // Get the span of the error
 		Error::new(span, format!("Failed to parse implementations for argument '{name}': {e}"))
@@ -889,7 +875,7 @@ mod tests {
 				Hello
 				World
 			*/
-			fn transform<T: 'static>(#[extra_injections(InjectFootprint)] footprint: Footprint, transform_target: impl Node<Footprint, Output = T>, translate: DVec2) -> T {
+			fn transform<T: 'static>(footprint: Footprint, transform_target: impl Node<Footprint, Output = T>, translate: DVec2) -> T {
 				// Implementation details...
 			}
 		);
@@ -915,7 +901,7 @@ mod tests {
 				pat_ident: pat_ident("footprint"),
 				ty: parse_quote!(Footprint),
 				implementations: Punctuated::new(),
-				context_features: vec![format_ident!("InjectFootprint")],
+				context_features: vec![],
 			},
 			output_type: parse_quote!(T),
 			is_async: false,
