@@ -1,8 +1,9 @@
+use graphite_editor::messages::prelude::FrontendMessage;
 use std::path::PathBuf;
 
-use graphite_editor::messages::prelude::{DocumentId, FrontendMessage};
-
 pub(crate) use graphite_editor::messages::prelude::Message as EditorMessage;
+
+pub use graphite_editor::messages::prelude::DocumentId;
 
 pub enum DesktopFrontendMessage {
 	ToWeb(Vec<FrontendMessage>),
@@ -34,12 +35,22 @@ pub enum DesktopFrontendMessage {
 		maximized: bool,
 		minimized: bool,
 	},
+	PersistenceWriteDocument {
+		id: DocumentId,
+		document: Document,
+	},
+	PersistenceDeleteDocument {
+		id: DocumentId,
+	},
+	PersistenceUpdateCurrentDocument {
+		id: DocumentId,
+	},
+	PersistenceLoadCurrentDocument,
+	PersistenceLoadRemainingDocuments,
+	PersistenceUpdateDocumentsList {
+		ids: Vec<DocumentId>,
+	},
 	CloseWindow,
-}
-
-pub struct FileFilter {
-	pub name: String,
-	pub extensions: Vec<String>,
 }
 
 pub enum DesktopWrapperMessage {
@@ -53,6 +64,21 @@ pub enum DesktopWrapperMessage {
 	ImportImage { path: PathBuf, content: Vec<u8> },
 	PollNodeGraphEvaluation,
 	UpdatePlatform(Platform),
+	LoadDocument { id: DocumentId, document: Document, to_front: bool },
+	SelectDocument { id: DocumentId },
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+pub struct Document {
+	pub content: String,
+	pub name: String,
+	pub path: Option<PathBuf>,
+	pub is_saved: bool,
+}
+
+pub struct FileFilter {
+	pub name: String,
+	pub extensions: Vec<String>,
 }
 
 pub enum OpenFileDialogContext {
