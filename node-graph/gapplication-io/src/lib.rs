@@ -227,6 +227,7 @@ pub enum ExportFormat {
 	},
 	Jpeg,
 	Canvas,
+	Texture,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
