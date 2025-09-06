@@ -1,4 +1,5 @@
 use glam::{DAffine2, DVec2};
+use graphene_core_shaders::color::Color;
 use kurbo::BezPath;
 
 use crate::{node_graph_overlay::consts::*, uuid::NodeId};
@@ -214,8 +215,8 @@ pub enum FrontendGraphDataType {
 }
 
 impl FrontendGraphDataType {
-	pub fn data_color(&self) -> &'static str {
-		match self {
+	pub fn data_color(&self) -> Color {
+		let color_str = match self {
 			FrontendGraphDataType::General => COLOR_DATA_GENERAL,
 			FrontendGraphDataType::Number => COLOR_DATA_NUMBER,
 			FrontendGraphDataType::Artboard => COLOR_DATA_ARTBOARD,
@@ -225,10 +226,11 @@ impl FrontendGraphDataType {
 			FrontendGraphDataType::Color => COLOR_DATA_COLOR,
 			FrontendGraphDataType::Gradient => COLOR_DATA_GRADIENT,
 			FrontendGraphDataType::Typography => COLOR_DATA_TYPOGRAPHY,
-		}
+		};
+		Color::from_rgba8_no_srgb(color_str).unwrap()
 	}
-	pub fn data_color_dim(&self) -> &'static str {
-		match self {
+	pub fn data_color_dim(&self) -> Color {
+		let color_str = match self {
 			FrontendGraphDataType::General => COLOR_DATA_GENERAL_DIM,
 			FrontendGraphDataType::Number => COLOR_DATA_NUMBER_DIM,
 			FrontendGraphDataType::Artboard => COLOR_DATA_ARTBOARD_DIM,
@@ -238,6 +240,7 @@ impl FrontendGraphDataType {
 			FrontendGraphDataType::Color => COLOR_DATA_COLOR_DIM,
 			FrontendGraphDataType::Gradient => COLOR_DATA_GRADIENT_DIM,
 			FrontendGraphDataType::Typography => COLOR_DATA_TYPOGRAPHY_DIM,
-		}
+		};
+		Color::from_rgba8_no_srgb(color_str).unwrap()
 	}
 }
