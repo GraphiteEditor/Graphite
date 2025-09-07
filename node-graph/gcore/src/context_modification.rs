@@ -3,6 +3,7 @@ use crate::context::{CloneVarArgs, Context, ContextFeatures, Ctx, ExtractAll};
 use crate::gradient::GradientStops;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::Table;
+use crate::transform::Footprint;
 use crate::uuid::NodeId;
 use crate::vector::Vector;
 use crate::{Graphic, OwnedContextImpl};
@@ -24,6 +25,7 @@ async fn context_modification<T>(
 		Context -> f64,
 		Context -> String,
 		Context -> DAffine2,
+		Context -> Footprint,
 		Context -> DVec2,
 		Context -> Vec<DVec2>,
 		Context -> Vec<NodeId>,
