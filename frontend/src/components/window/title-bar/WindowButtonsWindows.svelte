@@ -12,13 +12,13 @@
 </script>
 
 <LayoutRow class="window-button windows" tooltip="Minimize" on:click={() => editor.handle.appWindowMinimize()}>
-	<IconLabel icon={"WindowButtonWinMinimize"} />
+	<IconLabel icon="WindowButtonWinMinimize" />
 </LayoutRow>
 <LayoutRow class="window-button windows" tooltip={maximized ? "Restore Down" : "Maximize"} on:click={() => editor.handle.appWindowMaximize()}>
 	<IconLabel icon={maximized ? "WindowButtonWinRestoreDown" : "WindowButtonWinMaximize"} />
 </LayoutRow>
 <LayoutRow class="window-button windows" tooltip="Close" on:click={() => editor.handle.appWindowClose()}>
-	<IconLabel icon={"WindowButtonWinClose"} />
+	<IconLabel icon="WindowButtonWinClose" />
 </LayoutRow>
 
 <style lang="scss" global>

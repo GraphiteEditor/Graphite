@@ -438,9 +438,11 @@
 					}
 
 					// When we eventually have sub-documents, this should be changed to import the document instead of opening it in a separate tab
-					if (file.name.endsWith(".graphite")) {
+					const graphiteFileSuffix = "." + editor.handle.fileExtension();
+					if (file.name.endsWith(graphiteFileSuffix)) {
 						const content = await file.text();
-						editor.handle.openDocumentFile(file.name, content);
+						const documentName = file.name.slice(0, -graphiteFileSuffix.length);
+						editor.handle.openDocumentFile(documentName, content);
 						return;
 					}
 				});
@@ -545,7 +547,7 @@
 						<div class="expand-arrow-none"></div>
 					{/if}
 					{#if listing.entry.clipped}
-						<IconLabel icon="Clipped" class="clipped-arrow" tooltip={"Clipping mask is active (Alt-click border to release)"} />
+						<IconLabel icon="Clipped" class="clipped-arrow" tooltip="Clipping mask is active (Alt-click border to release)" />
 					{/if}
 					<div class="thumbnail">
 						{#if $nodeGraph.thumbnails.has(listing.entry.id)}
@@ -553,7 +555,7 @@
 						{/if}
 					</div>
 					{#if listing.entry.name === "Artboard"}
-						<IconLabel icon="Artboard" class={"layer-type-icon"} />
+						<IconLabel icon="Artboard" class="layer-type-icon" />
 					{/if}
 					<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
 						<input
@@ -570,7 +572,7 @@
 					</LayoutRow>
 					{#if !listing.entry.unlocked || !listing.entry.parentsUnlocked}
 						<IconButton
-							class={"status-toggle"}
+							class="status-toggle"
 							classes={{ inherited: !listing.entry.parentsUnlocked }}
 							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
 							size={24}
@@ -580,7 +582,7 @@
 						/>
 					{/if}
 					<IconButton
-						class={"status-toggle"}
+						class="status-toggle"
 						classes={{ inherited: !listing.entry.parentsVisible }}
 						action={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
 						size={24}
@@ -768,7 +770,7 @@
 						width: 100%;
 
 						&:disabled {
-							-webkit-user-select: none; // Required as of Safari 15.0 (Graphite's minimum version) through the latest release
+							-webkit-user-select: none; // Still required by Safari as of 2025
 							user-select: none;
 							// Workaround for `user-select: none` not working on <input> elements
 							pointer-events: none;

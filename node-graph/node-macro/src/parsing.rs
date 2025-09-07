@@ -7,11 +7,12 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::{Comma, RArrow};
 use syn::{
-	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam, Visibility,
-	WhereClause, parse_quote,
+	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, TraitBound, Type, TypeImplTrait,
+	TypeParam, TypeParamBound, Visibility, WhereClause, parse_quote,
 };
 
 use crate::codegen::generate_node_code;
+use crate::crate_ident::CrateIdent;
 use crate::shader_nodes::ShaderNodeType;
 
 #[derive(Clone, Debug)]
@@ -35,11 +36,10 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) is_async: bool,
 	pub(crate) fields: Vec<ParsedField>,
 	pub(crate) body: TokenStream2,
-	pub(crate) crate_name: proc_macro_crate::FoundCrate,
 	pub(crate) description: String,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct NodeFnAttributes {
 	pub(crate) category: Option<LitStr>,
 	pub(crate) display_name: Option<LitStr>,
@@ -120,6 +120,8 @@ pub enum ParsedFieldType {
 	Node(NodeParsedField),
 }
 
+/// a param of any kind, either a concrete type or a generic type with a set of possible types specified via
+/// `#[implementation(type)]`
 #[derive(Clone, Debug)]
 pub struct RegularParsedField {
 	pub ty: Type,
@@ -131,8 +133,10 @@ pub struct RegularParsedField {
 	pub number_hard_max: Option<LitFloat>,
 	pub number_mode_range: Option<ExprTuple>,
 	pub implementations: Punctuated<Type, Comma>,
+	pub gpu_image: bool,
 }
 
+/// a param of `impl Node` with `#[implementation(in -> out)]`
 #[derive(Clone, Debug)]
 pub struct NodeParsedField {
 	pub input_type: Type,
@@ -140,11 +144,12 @@ pub struct NodeParsedField {
 	pub implementations: Punctuated<Implementation, Comma>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct Input {
 	pub(crate) pat_ident: PatIdent,
 	pub(crate) ty: Type,
 	pub(crate) implementations: Punctuated<Type, Comma>,
+	pub(crate) context_features: Vec<Ident>,
 }
 
 impl Parse for Implementation {
@@ -295,8 +300,8 @@ impl Parse for NodeFnAttributes {
 }
 
 fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNodeFn> {
-	let attributes = syn::parse2::<NodeFnAttributes>(attr.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node_fn attributes: {}", e)))?;
-	let input_fn = syn::parse2::<ItemFn>(item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse function: {}. Make sure it's a valid Rust function.", e)))?;
+	let attributes = syn::parse2::<NodeFnAttributes>(attr.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node_fn attributes: {e}")))?;
+	let input_fn = syn::parse2::<ItemFn>(item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse function: {e}. Make sure it's a valid Rust function.")))?;
 
 	let vis = input_fn.vis;
 	let fn_name = input_fn.sig.ident.clone();
@@ -309,12 +314,6 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 	let output_type = parse_output(&input_fn.sig.output)?;
 	let where_clause = input_fn.sig.generics.where_clause;
 	let body = input_fn.block.to_token_stream();
-	let crate_name = proc_macro_crate::crate_name("graphene-core").map_err(|e| {
-		Error::new(
-			proc_macro2::Span::call_site(),
-			format!("Failed to find location of graphene_core. Make sure it is imported as a dependency: {}", e),
-		)
-	})?;
 	let description = input_fn
 		.attrs
 		.iter()
@@ -345,7 +344,6 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 		fields,
 		where_clause,
 		body,
-		crate_name,
 		description,
 	})
 }
@@ -380,10 +378,12 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 					.map(|attr| parse_implementations(attr, &pat_ident.ident))
 					.transpose()?
 					.unwrap_or_default();
+				let context_features = parse_context_feature_idents(ty);
 				input = Some(Input {
 					pat_ident,
 					ty: (**ty).clone(),
 					implementations,
+					context_features,
 				});
 			} else if let Pat::Ident(pat_ident) = &**pat {
 				let field = parse_field(pat_ident.clone(), (**ty).clone(), attrs).map_err(|e| Error::new_spanned(pat_ident, format!("Failed to parse argument '{}': {}", pat_ident.ident, e)))?;
@@ -400,12 +400,47 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 	Ok((input, fields))
 }
 
+/// Parse context feature identifiers from the trait bounds of a context parameter.
+fn parse_context_feature_idents(ty: &Type) -> Vec<Ident> {
+	let mut features = Vec::new();
+
+	// Check if this is an impl trait (impl Ctx + ...)
+	if let Type::ImplTrait(TypeImplTrait { bounds, .. }) = ty {
+		for bound in bounds {
+			if let TypeParamBound::Trait(TraitBound { path, .. }) = bound {
+				// Extract the last segment of the trait path
+				if let Some(segment) = path.segments.last() {
+					match segment.ident.to_string().as_str() {
+						"ExtractFootprint"
+						| "ExtractRealTime"
+						| "ExtractAnimationTime"
+						| "ExtractIndex"
+						| "ExtractVarArgs"
+						| "InjectFootprint"
+						| "InjectRealTime"
+						| "InjectAnimationTime"
+						| "InjectIndex"
+						| "InjectVarArgs" => {
+							features.push(segment.ident.clone());
+						}
+						// Skip Modify* traits as they don't affect usage tracking
+						// Also ignore other traits like Ctx, ExtractAll, etc.
+						_ => {}
+					}
+				}
+			}
+		}
+	}
+
+	features
+}
+
 fn parse_implementations(attr: &Attribute, name: &Ident) -> syn::Result<Punctuated<Type, Comma>> {
 	let content: TokenStream2 = attr.parse_args()?;
 	let parser = Punctuated::<Type, Comma>::parse_terminated;
 	parser.parse2(content.clone()).map_err(|e| {
 		let span = e.span(); // Get the span of the error
-		Error::new(span, format!("Failed to parse implementations for argument '{}': {}", name, e))
+		Error::new(span, format!("Failed to parse implementations for argument '{name}': {e}"))
 	})
 }
 
@@ -431,27 +466,21 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	let ident = &pat_ident.ident;
 
 	let default_value = extract_attribute(attrs, "default")
-		.map(|attr| {
-			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid `default` value for argument '{}': {}", ident, e)))
-		})
+		.map(|attr| attr.parse_args().map_err(|e| Error::new_spanned(attr, format!("Invalid `default` value for argument '{ident}': {e}"))))
 		.transpose()?;
 
 	let scope = extract_attribute(attrs, "scope")
-		.map(|attr| {
-			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid `scope` value for argument '{}': {}", ident, e)))
-		})
+		.map(|attr| attr.parse_args().map_err(|e| Error::new_spanned(attr, format!("Invalid `scope` value for argument '{ident}': {e}"))))
 		.transpose()?;
 
 	let name = extract_attribute(attrs, "name")
-		.map(|attr| attr.parse_args().map_err(|e| Error::new_spanned(attr, format!("Invalid `name` value for argument '{}': {}", ident, e))))
+		.map(|attr| attr.parse_args().map_err(|e| Error::new_spanned(attr, format!("Invalid `name` value for argument '{ident}': {e}"))))
 		.transpose()?;
 
 	let widget_override = extract_attribute(attrs, "widget")
 		.map(|attr| {
 			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid `widget override` value for argument '{}': {}", ident, e)))
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid `widget override` value for argument '{ident}': {e}")))
 		})
 		.transpose()?
 		.unwrap_or_default();
@@ -468,26 +497,26 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	let number_soft_min = extract_attribute(attrs, "soft_min")
 		.map(|attr| {
 			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `soft_min` value for argument '{}': {}", ident, e)))
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `soft_min` value for argument '{ident}': {e}")))
 		})
 		.transpose()?;
 	let number_soft_max = extract_attribute(attrs, "soft_max")
 		.map(|attr| {
 			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `soft_max` value for argument '{}': {}", ident, e)))
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `soft_max` value for argument '{ident}': {e}")))
 		})
 		.transpose()?;
 
 	let number_hard_min = extract_attribute(attrs, "hard_min")
 		.map(|attr| {
 			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `hard_min` value for argument '{}': {}", ident, e)))
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `hard_min` value for argument '{ident}': {e}")))
 		})
 		.transpose()?;
 	let number_hard_max = extract_attribute(attrs, "hard_max")
 		.map(|attr| {
 			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `hard_max` value for argument '{}': {}", ident, e)))
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `hard_max` value for argument '{ident}': {e}")))
 		})
 		.transpose()?;
 
@@ -496,10 +525,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			attr.parse_args::<ExprTuple>().map_err(|e| {
 				Error::new_spanned(
 					attr,
-					format!(
-						"Invalid `range` tuple of min and max range slider values for argument '{}': {}\nUSAGE EXAMPLE: #[range((0., 100.))]",
-						ident, e
-					),
+					format!("Invalid `range` tuple of min and max range slider values for argument '{ident}': {e}\nUSAGE EXAMPLE: #[range((0., 100.))]"),
 				)
 			})
 		})
@@ -511,7 +537,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	}
 
 	let unit = extract_attribute(attrs, "unit")
-		.map(|attr| attr.parse_args::<LitStr>().map_err(|_e| Error::new_spanned(attr, format!("Expected a unit type as string"))))
+		.map(|attr| attr.parse_args::<LitStr>().map_err(|_e| Error::new_spanned(attr, "Expected a unit type as string".to_string())))
 		.transpose()?;
 
 	let number_display_decimal_places = extract_attribute(attrs, "display_decimal_places")
@@ -519,14 +545,14 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			attr.parse_args::<LitInt>().map_err(|e| {
 				Error::new_spanned(
 					attr,
-					format!("Invalid `integer` for number of decimals for argument '{}': {}\nUSAGE EXAMPLE: #[display_decimal_places(2)]", ident, e),
+					format!("Invalid `integer` for number of decimals for argument '{ident}': {e}\nUSAGE EXAMPLE: #[display_decimal_places(2)]"),
 				)
 			})
 		})
 		.transpose()?
 		.map(|f| {
 			if let Err(e) = f.base10_parse::<u32>() {
-				Err(Error::new_spanned(f, format!("Expected a `u32` for `display_decimal_places` for '{}': {}", ident, e)))
+				Err(Error::new_spanned(f, format!("Expected a `u32` for `display_decimal_places` for '{ident}': {e}")))
 			} else {
 				Ok(f)
 			}
@@ -535,9 +561,10 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	let number_step = extract_attribute(attrs, "step")
 		.map(|attr| {
 			attr.parse_args::<LitFloat>()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid `step` for argument '{}': {}\nUSAGE EXAMPLE: #[step(2.)]", ident, e)))
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid `step` for argument '{ident}': {e}\nUSAGE EXAMPLE: #[step(2.)]")))
 		})
 		.transpose()?;
+	let gpu_image = extract_attribute(attrs, "gpu_image").is_some();
 
 	let (is_node, node_input_type, node_output_type) = parse_node_type(&ty);
 	let description = attrs
@@ -599,6 +626,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				ty,
 				value_source,
 				implementations,
+				gpu_image,
 			}),
 			name,
 			description,
@@ -645,28 +673,16 @@ fn extract_attribute<'a>(attrs: &'a [Attribute], name: &str) -> Option<&'a Attri
 }
 
 // Modify the new_node_fn function to use the code generation
-pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
-	let parse_result = parse_node_fn(attr, item.clone());
-	let Ok(mut parsed_node) = parse_result else {
-		let e = parse_result.unwrap_err();
-		return Error::new(e.span(), format!("Failed to parse node function: {e}")).to_compile_error();
-	};
-
+pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenStream2> {
+	let crate_ident = CrateIdent::default();
+	let mut parsed_node = parse_node_fn(attr, item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node function: {e}")))?;
 	parsed_node.replace_impl_trait_in_input();
-	if let Err(e) = crate::validation::validate_node_fn(&parsed_node) {
-		return Error::new(e.span(), format!("Validation Error:\n{e}")).to_compile_error();
-	}
-	match generate_node_code(&parsed_node) {
-		Ok(parsed) => parsed,
-		Err(e) => {
-			// Return the error as a compile error
-			Error::new(e.span(), format!("Failed to parse node function: {}", e)).to_compile_error()
-		}
-	}
+	crate::validation::validate_node_fn(&parsed_node).map_err(|e| Error::new(e.span(), format!("Validation Error: {e}")))?;
+	generate_node_code(&crate_ident, &parsed_node).map_err(|e| Error::new(e.span(), format!("Failed to generate node code: {e}")))
 }
 
 impl ParsedNodeFn {
-	fn replace_impl_trait_in_input(&mut self) {
+	pub fn replace_impl_trait_in_input(&mut self) {
 		if let Type::ImplTrait(impl_trait) = self.input.ty.clone() {
 			let ident = Ident::new("_Input", impl_trait.span());
 			let mut bounds = impl_trait.bounds;
@@ -693,7 +709,6 @@ impl ParsedNodeFn {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use proc_macro_crate::FoundCrate;
 	use proc_macro2::Span;
 	use quote::{quote, quote_spanned};
 	use syn::parse_quote;
@@ -757,7 +772,7 @@ mod tests {
 						}
 						_ => panic!("Mismatched default values"),
 					}
-					assert_eq!(format!("{:?}", p_ty), format!("{:?}", e_ty));
+					assert_eq!(format!("{p_ty:?}"), format!("{:?}", e_ty));
 				}
 				(
 					ParsedField {
@@ -780,8 +795,8 @@ mod tests {
 					},
 				) => {
 					assert_eq!(p_name, e_name);
-					assert_eq!(format!("{:?}", p_input), format!("{:?}", e_input));
-					assert_eq!(format!("{:?}", p_output), format!("{:?}", e_output));
+					assert_eq!(format!("{p_input:?}"), format!("{:?}", e_input));
+					assert_eq!(format!("{p_output:?}"), format!("{:?}", e_output));
 				}
 				_ => panic!("Mismatched field types"),
 			}
@@ -820,6 +835,7 @@ mod tests {
 				pat_ident: pat_ident("a"),
 				ty: parse_quote!(f64),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(f64),
 			is_async: false,
@@ -838,13 +854,13 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: None,
 					implementations: Punctuated::new(),
+					gpu_image: false,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::from("Multi\nLine\n"),
 		};
 
@@ -885,6 +901,7 @@ mod tests {
 				pat_ident: pat_ident("footprint"),
 				ty: parse_quote!(Footprint),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(T),
 			is_async: false,
@@ -918,6 +935,7 @@ mod tests {
 						number_hard_max: None,
 						number_mode_range: None,
 						implementations: Punctuated::new(),
+						gpu_image: false,
 					}),
 					number_display_decimal_places: None,
 					number_step: None,
@@ -925,7 +943,6 @@ mod tests {
 				},
 			],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::from("Hello\n\t\t\t\tWorld\n"),
 		};
 
@@ -937,7 +954,7 @@ mod tests {
 		let attr = quote!(category("Vector: Shape"));
 		let input = quote!(
 			/// Test
-			fn circle(_: impl Ctx, #[default(50.)] radius: f64) -> Vector {
+			fn circle(_: impl Ctx + ExtractFootprint, #[default(50.)] radius: f64) -> Vector {
 				// Implementation details...
 			}
 		);
@@ -961,8 +978,9 @@ mod tests {
 			where_clause: None,
 			input: Input {
 				pat_ident: pat_ident("_"),
-				ty: parse_quote!(impl Ctx),
+				ty: parse_quote!(impl Ctx + ExtractFootprint),
 				implementations: Punctuated::new(),
+				context_features: vec![format_ident!("ExtractFootprint")],
 			},
 			output_type: parse_quote!(Vector),
 			is_async: false,
@@ -981,13 +999,13 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: None,
 					implementations: Punctuated::new(),
+					gpu_image: false,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: "Test\n".into(),
 		};
 
@@ -1024,6 +1042,7 @@ mod tests {
 				pat_ident: pat_ident("image"),
 				ty: parse_quote!(Table<Raster<P>>),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(Table<Raster<P>>),
 			is_async: false,
@@ -1047,13 +1066,13 @@ mod tests {
 						p.push(parse_quote!(f64));
 						p
 					},
+					gpu_image: false,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::new(),
 		};
 
@@ -1097,6 +1116,7 @@ mod tests {
 				pat_ident: pat_ident("a"),
 				ty: parse_quote!(f64),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(f64),
 			is_async: false,
@@ -1115,13 +1135,13 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: Some(parse_quote!((0., 100.))),
 					implementations: Punctuated::new(),
+					gpu_image: false,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::new(),
 		};
 
@@ -1158,6 +1178,7 @@ mod tests {
 				pat_ident: pat_ident("api"),
 				ty: parse_quote!(&WasmEditorApi),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(Table<Raster<CPU>>),
 			is_async: true,
@@ -1176,13 +1197,13 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: None,
 					implementations: Punctuated::new(),
+					gpu_image: false,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::new(),
 		};
 
@@ -1219,12 +1240,12 @@ mod tests {
 				pat_ident: pat_ident("input"),
 				ty: parse_quote!(i32),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(i32),
 			is_async: false,
 			fields: vec![],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::new(),
 		};
 

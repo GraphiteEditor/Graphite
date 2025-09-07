@@ -91,6 +91,32 @@ pub fn get_current_normalized_pivot(inputs: &[NodeInput]) -> DVec2 {
 	if let Some(&TaggedValue::DVec2(pivot)) = inputs[5].as_value() { pivot } else { DVec2::splat(0.5) }
 }
 
+/// Expand a bounds to avoid div zero errors
+fn clamp_bounds(bounds_min: DVec2, mut bounds_max: DVec2) -> [DVec2; 2] {
+	let bounds_size = bounds_max - bounds_min;
+	if bounds_size.x < 1e-10 {
+		bounds_max.x = bounds_min.x + 1.;
+	}
+	if bounds_size.y < 1e-10 {
+		bounds_max.y = bounds_min.y + 1.;
+	}
+	[bounds_min, bounds_max]
+}
+/// Returns corners of all subpaths
+fn subpath_bounds(subpaths: &[Subpath<PointId>]) -> [DVec2; 2] {
+	subpaths
+		.iter()
+		.filter_map(|subpath| subpath.bounding_box())
+		.reduce(|b1, b2| [b1[0].min(b2[0]), b1[1].max(b2[1])])
+		.unwrap_or_default()
+}
+
+/// Returns corners of all subpaths (but expanded to avoid division-by-zero errors)
+pub fn nonzero_subpath_bounds(subpaths: &[Subpath<PointId>]) -> [DVec2; 2] {
+	let [bounds_min, bounds_max] = subpath_bounds(subpaths);
+	clamp_bounds(bounds_min, bounds_max)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -137,30 +163,4 @@ mod tests {
 			}
 		}
 	}
-}
-
-/// Expand a bounds to avoid div zero errors
-fn clamp_bounds(bounds_min: DVec2, mut bounds_max: DVec2) -> [DVec2; 2] {
-	let bounds_size = bounds_max - bounds_min;
-	if bounds_size.x < 1e-10 {
-		bounds_max.x = bounds_min.x + 1.;
-	}
-	if bounds_size.y < 1e-10 {
-		bounds_max.y = bounds_min.y + 1.;
-	}
-	[bounds_min, bounds_max]
-}
-/// Returns corners of all subpaths
-fn subpath_bounds(subpaths: &[Subpath<PointId>]) -> [DVec2; 2] {
-	subpaths
-		.iter()
-		.filter_map(|subpath| subpath.bounding_box())
-		.reduce(|b1, b2| [b1[0].min(b2[0]), b1[1].max(b2[1])])
-		.unwrap_or_default()
-}
-
-/// Returns corners of all subpaths (but expanded to avoid division-by-zero errors)
-pub fn nonzero_subpath_bounds(subpaths: &[Subpath<PointId>]) -> [DVec2; 2] {
-	let [bounds_min, bounds_max] = subpath_bounds(subpaths);
-	clamp_bounds(bounds_min, bounds_max)
 }

@@ -4,6 +4,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::compass_rose::Axis;
+use crate::messages::tool::common_functionality::measure;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping;
 use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
@@ -12,7 +13,7 @@ use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use graph_craft::document::NodeId;
 use graphene_std::Artboard;
-use graphene_std::renderer::Quad;
+use graphene_std::renderer::{Quad, Rect};
 use graphene_std::table::Table;
 
 #[derive(Default, ExtractField)]
@@ -179,7 +180,7 @@ impl ArtboardToolData {
 		let Some(movement) = &bounds.selected_edges else {
 			return;
 		};
-		if self.selected_artboard.unwrap() == LayerNodeIdentifier::ROOT_PARENT {
+		if self.selected_artboard == Some(LayerNodeIdentifier::ROOT_PARENT) {
 			log::error!("Selected artboard cannot be ROOT_PARENT");
 			return;
 		}
@@ -239,6 +240,39 @@ impl Fsm for ArtboardToolFsmState {
 					}
 				} else {
 					tool_data.bounding_box_manager.take();
+				}
+
+				// Measure with Alt held down between selected artboard and hovered layers/artboards
+				// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
+				let alt_pressed = input.keyboard.get(Key::Alt as usize);
+				let quick_measurement_enabled = overlay_context.visibility_settings.quick_measurement();
+				let not_resizing = !matches!(state, ArtboardToolFsmState::ResizingBounds);
+
+				if quick_measurement_enabled && not_resizing && alt_pressed {
+					// Get the selected artboard bounds
+					let selected_artboard_bounds = tool_data.selected_artboard.and_then(|layer| document.metadata().bounding_box_document(layer)).map(Rect::from_box);
+
+					// Find hovered artboard or regular layer
+					let hovered_artboard = ArtboardToolData::hovered_artboard(document, input);
+					let hovered_layer = document.click_xray(input).find(|&layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
+
+					// Get bounds for the hovered object (prioritize artboards)
+					let hovered_bounds = if let Some(artboard) = hovered_artboard {
+						document.metadata().bounding_box_document(artboard).map(Rect::from_box)
+					} else if let Some(layer) = hovered_layer {
+						document.metadata().bounding_box_document(layer).map(Rect::from_box)
+					} else {
+						None
+					};
+
+					// If both selected artboard and hovered object bounds exist, overlay measurement lines
+					if let (Some(selected_bounds), Some(hovered_bounds)) = (selected_artboard_bounds, hovered_bounds) {
+						// Don't measure if it's the same artboard
+						if selected_artboard_bounds != Some(hovered_bounds) {
+							let document_to_viewport = document.metadata().document_to_viewport;
+							measure::overlay(selected_bounds, hovered_bounds, document_to_viewport, document_to_viewport, &mut overlay_context);
+						}
+					}
 				}
 
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
@@ -569,7 +603,7 @@ mod test_artboard {
 	async fn get_artboards(editor: &mut EditorTestUtils) -> Table<graphene_std::Artboard> {
 		let instrumented = match editor.eval_graph().await {
 			Ok(instrumented) => instrumented,
-			Err(e) => panic!("Failed to evaluate graph: {}", e),
+			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 		instrumented
 			.grab_all_input::<graphene_std::graphic::extend::NewInput<graphene_std::Artboard>>(&editor.runtime)

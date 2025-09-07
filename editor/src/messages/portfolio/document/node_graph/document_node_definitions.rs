@@ -46,7 +46,7 @@ impl NodePropertiesContext<'_> {
 				return None;
 			};
 			widget_override_lambda(*node_id, index, self)
-				.map_err(|error| log::error!("Error in widget override lambda: {}", error))
+				.map_err(|error| log::error!("Error in widget override lambda: {error}"))
 				.ok()
 		} else {
 			None
@@ -111,7 +111,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
 					inputs: vec![NodeInput::value(TaggedValue::None, true)],
-					manual_composition: Some(generic!(T)),
+					call_argument: generic!(T),
 					skip_deduplication: true,
 					..Default::default()
 				},
@@ -145,74 +145,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(2), 0)],
-						nodes: [
-							DocumentNode {
-								inputs: vec![NodeInput::network(generic!(T), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::freeze_real_time::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::boundless_footprint::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
 					inputs: vec![NodeInput::value(TaggedValue::None, true)],
+					implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
+					call_argument: generic!(T),
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Memoize".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Freeze Real Time".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Boundless Footprint".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
 					input_metadata: vec![("Data", "TODO").into()],
 					output_names: vec!["Data".to_string()],
 					..Default::default()
@@ -233,33 +171,33 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::to_graphic::IDENTIFIER),
-								manual_composition: Some(concrete!(Context)),
+								call_argument: concrete!(Context),
 								..Default::default()
 							},
 							// Secondary (left) input type coercion
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 1)],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::wrap_graphic::IDENTIFIER),
-								manual_composition: Some(concrete!(Context)),
+								call_argument: concrete!(Context),
 								..Default::default()
 							},
 							// Store the ID of the parent node (which encapsulates this sub-network) in each row we are extending the table with.
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::source_node_id::IDENTIFIER),
-								manual_composition: Some(concrete!(Context)),
+								call_argument: concrete!(Context),
 								..Default::default()
 							},
 							// The monitor node is used to display a thumbnail in the UI
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(2), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-								manual_composition: Some(concrete!(Context)),
+								call_argument: concrete!(Context),
 								skip_deduplication: true,
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(3), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::extend::IDENTIFIER),
 								..Default::default()
@@ -349,7 +287,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: [
 							// Ensure this ID is kept in sync with the ID in set_alias so that the name input is kept in sync with the alias
 							DocumentNode {
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								implementation: DocumentNodeImplementation::ProtoNode(artboard::create_artboard::IDENTIFIER),
 								inputs: vec![
 									NodeInput::network(concrete!(TaggedValue), 1),
@@ -365,7 +303,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::source_node_id::IDENTIFIER),
-								manual_composition: Some(concrete!(Context)),
+								call_argument: concrete!(Context),
 								..Default::default()
 							},
 							// The monitor node is used to display a thumbnail in the UI.
@@ -373,16 +311,15 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								skip_deduplication: true,
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(concrete!(Context)),
+								call_argument: concrete!(Context),
 								inputs: vec![
 									NodeInput::network(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(Table<Artboard>))), 0),
 									NodeInput::node(NodeId(2), 0),
-									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::extend::IDENTIFIER),
 								..Default::default()
@@ -495,13 +432,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: [
 							DocumentNode {
 								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::scope("editor-api"), NodeInput::network(concrete!(String), 1)],
-								manual_composition: Some(concrete!(Context)),
+								call_argument: concrete!(Context),
 								implementation: DocumentNodeImplementation::ProtoNode(wasm_application_io::load_resource::IDENTIFIER),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								manual_composition: Some(concrete!(Context)),
+								call_argument: concrete!(Context),
 								implementation: DocumentNodeImplementation::ProtoNode(wasm_application_io::decode_image::IDENTIFIER),
 								..Default::default()
 							},
@@ -568,7 +505,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(concrete!(Context)),
+								call_argument: concrete!(Context),
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
 								..Default::default()
@@ -630,20 +567,20 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								inputs: vec![NodeInput::scope("editor-api")],
 								implementation: DocumentNodeImplementation::ProtoNode(wasm_application_io::create_surface::IDENTIFIER),
-								manual_composition: Some(concrete!(Context)),
+								call_argument: concrete!(Context),
 								skip_deduplication: true,
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
-								manual_composition: Some(concrete!(Context)),
+								call_argument: concrete!(Context),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 0), NodeInput::network(concrete!(Footprint), 1), NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(wasm_application_io::rasterize::IDENTIFIER),
-								manual_composition: Some(concrete!(Context)),
+								call_argument: concrete!(Context),
 								..Default::default()
 							},
 						]
@@ -716,7 +653,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Raster: Pattern",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					manual_composition: Some(concrete!(Context)),
+					call_argument: concrete!(Context),
 					implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::std_nodes::noise_pattern::IDENTIFIER),
 					inputs: vec![
 						NodeInput::value(TaggedValue::None, false),
@@ -771,6 +708,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
 						exports: vec![
+							NodeInput::value(TaggedValue::None, false),
 							NodeInput::node(NodeId(0), 0),
 							NodeInput::node(NodeId(1), 0),
 							NodeInput::node(NodeId(2), 0),
@@ -783,7 +721,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								..Default::default()
 							},
 							DocumentNode {
@@ -792,7 +730,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								..Default::default()
 							},
 							DocumentNode {
@@ -801,7 +739,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								..Default::default()
 							},
 							DocumentNode {
@@ -810,7 +748,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								..Default::default()
 							},
 						]
@@ -825,8 +763,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_metadata: vec![("Image", "TODO").into()],
-					output_names: vec!["Red".to_string(), "Green".to_string(), "Blue".to_string(), "Alpha".to_string()],
-					has_primary_output: false,
+					output_names: vec!["".to_string(), "Red".to_string(), "Green".to_string(), "Blue".to_string(), "Alpha".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
 							node_metadata: [
@@ -883,18 +820,18 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
+						exports: vec![NodeInput::value(TaggedValue::None, false), NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(Table<Raster<CPU>>), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
 								implementation: DocumentNodeImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(Table<Raster<CPU>>), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
 								implementation: DocumentNodeImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								..Default::default()
 							},
 						]
@@ -905,13 +842,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::Raster(Default::default()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_metadata: vec![("Vec2", "TODO").into()],
-					output_names: vec!["X".to_string(), "Y".to_string()],
-					has_primary_output: false,
+					output_names: vec!["".to_string(), "X".to_string(), "Y".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
 							node_metadata: [
@@ -962,7 +898,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								NodeInput::network(concrete!(Vec<brush::brush_stroke::BrushStroke>), 1),
 								NodeInput::network(concrete!(BrushCache), 2),
 							],
-							manual_composition: Some(concrete!(Context)),
+							call_argument: concrete!(Context),
 							implementation: DocumentNodeImplementation::ProtoNode(brush::brush::brush::IDENTIFIER),
 							..Default::default()
 						}]
@@ -1013,7 +949,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
 					inputs: vec![NodeInput::value(TaggedValue::Raster(Default::default()), true)],
-					manual_composition: Some(concrete!(Context)),
+					call_argument: concrete!(Context),
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1032,7 +968,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::ProtoNode(memo::impure_memo::IDENTIFIER),
 					inputs: vec![NodeInput::value(TaggedValue::Raster(Default::default()), true)],
-					manual_composition: Some(concrete!(Context)),
+					call_argument: concrete!(Context),
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1054,13 +990,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								manual_composition: Some(concrete!(Context)),
+								call_argument: concrete!(Context),
 								inputs: vec![NodeInput::scope("editor-api")],
 								implementation: DocumentNodeImplementation::ProtoNode(wgpu_executor::create_gpu_surface::IDENTIFIER),
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(concrete!(Context)),
+								call_argument: concrete!(Context),
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::impure_memo::IDENTIFIER),
 								..Default::default()
@@ -1126,12 +1062,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(Table<Raster<CPU>>), 0), NodeInput::node(NodeId(0), 0)],
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								implementation: DocumentNodeImplementation::ProtoNode(wgpu_executor::texture_upload::upload_texture::IDENTIFIER),
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::impure_memo::IDENTIFIER),
 								..Default::default()
@@ -1247,7 +1183,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(Table<Vector>), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								skip_deduplication: true,
 								..Default::default()
 							},
@@ -1257,7 +1193,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(graphene_std::vector::VectorModification), 1),
 									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
 								],
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								implementation: DocumentNodeImplementation::ProtoNode(vector::path_modify::IDENTIFIER),
 								..Default::default()
 							},
@@ -1317,7 +1253,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::ProtoNode(text::text::IDENTIFIER),
-					manual_composition: Some(concrete!(Context)),
+					call_argument: concrete!(Context),
 					inputs: vec![
 						NodeInput::scope("editor-api"),
 						NodeInput::value(TaggedValue::String("Lorem ipsum".to_string()), false),
@@ -1427,7 +1363,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								skip_deduplication: true,
 								..Default::default()
 							},
@@ -1439,7 +1375,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(DVec2), 3),
 									NodeInput::network(concrete!(DVec2), 4),
 								],
-								manual_composition: Some(concrete!(Context)),
+								call_argument: concrete!(Context),
 								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::transform::IDENTIFIER),
 								..Default::default()
 							},
@@ -1519,30 +1455,18 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(3), 0)],
+						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: vec![
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(Table<Vector>), 0), NodeInput::network(concrete!(vector::style::Fill), 1)],
 								implementation: DocumentNodeImplementation::ProtoNode(path_bool::boolean_operation::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::freeze_real_time::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(2), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::boundless_footprint::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								..Default::default()
 							},
 						]
@@ -1578,22 +1502,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									},
 									..Default::default()
 								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Freeze Real Time".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Boundless Footprint".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
 							]
 							.into_iter()
 							.enumerate()
@@ -1617,12 +1525,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(4), 0)],
+						exports: vec![NodeInput::node(NodeId(2), 0)],
 						nodes: [
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(Table<Vector>), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(vector::subpath_segment_lengths::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								..Default::default()
 							},
 							DocumentNode {
@@ -1637,25 +1545,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::node(NodeId(0), 0),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(vector::sample_polyline::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(2), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::freeze_real_time::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(3), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::boundless_footprint::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								..Default::default()
 							},
 						]
@@ -1700,22 +1596,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Memoize".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Freeze Real Time".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Boundless Footprint".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(28, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1783,7 +1663,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(3), 0)],
+						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
 								inputs: vec![
@@ -1791,26 +1671,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(f64), 1),
 									NodeInput::network(concrete!(u32), 2),
 								],
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								implementation: DocumentNodeImplementation::ProtoNode(vector::poisson_disk_points::IDENTIFIER),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::freeze_real_time::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(2), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::boundless_footprint::IDENTIFIER),
-								manual_composition: Some(generic!(T)),
+								call_argument: generic!(T),
 								..Default::default()
 							},
 						]
@@ -1843,22 +1711,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Memoize".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Freeze Real Time".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Boundless Footprint".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1944,10 +1796,10 @@ fn static_input_properties() -> InputProperties {
 		"string".to_string(),
 		Box::new(|node_id, index, context| {
 			let Some(value) = context.network_interface.input_data(&node_id, index, "string_properties", context.selection_network_path) else {
-				return Err(format!("Could not get string properties for node {}", node_id));
+				return Err(format!("Could not get string properties for node {node_id}"));
 			};
 			let Some(string) = value.as_str() else {
-				return Err(format!("Could not downcast string properties for node {}", node_id));
+				return Err(format!("Could not downcast string properties for node {node_id}"));
 			};
 			Ok(node_properties::string_properties(string))
 		}),

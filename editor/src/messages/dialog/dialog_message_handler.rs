@@ -1,5 +1,6 @@
 use super::new_document_dialog::NewDocumentDialogMessageContext;
 use super::simple_dialogs::{self, AboutGraphiteDialog, ComingSoonDialog, DemoArtworkDialog, LicensesDialog};
+use crate::messages::dialog::simple_dialogs::LicensesThirdPartyDialog;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportBounds;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
@@ -101,6 +102,10 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 			DialogMessage::RequestLicensesDialogWithLocalizedCommitDate { localized_commit_year } => {
 				let dialog = LicensesDialog { localized_commit_year };
 
+				dialog.send_dialog_to_frontend(responses);
+			}
+			DialogMessage::RequestLicensesThirdPartyDialogWithLicenseText { license_text } => {
+				let dialog = LicensesThirdPartyDialog { license_text };
 				dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::RequestNewDocumentDialog => {

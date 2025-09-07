@@ -55,7 +55,7 @@ pub fn clean_rust_type_syntax(input: String) -> String {
 				}
 			}
 			'<' => {
-				while let Some(' ') = result.chars().rev().next() {
+				while let Some(' ') = result.chars().next_back() {
 					result.pop();
 				}
 				result.push('<');
@@ -64,7 +64,7 @@ pub fn clean_rust_type_syntax(input: String) -> String {
 				}
 			}
 			'>' => {
-				while let Some(' ') = result.chars().rev().next() {
+				while let Some(' ') = result.chars().next_back() {
 					result.pop();
 				}
 				result.push('>');
@@ -74,7 +74,7 @@ pub fn clean_rust_type_syntax(input: String) -> String {
 			}
 			'-' => {
 				if let Some('>') = chars.peek() {
-					while let Some(' ') = result.chars().rev().next() {
+					while let Some(' ') = result.chars().next_back() {
 						result.pop();
 					}
 					result.push_str(" -> ");
@@ -88,7 +88,7 @@ pub fn clean_rust_type_syntax(input: String) -> String {
 			}
 			':' => {
 				if let Some(':') = chars.peek() {
-					while let Some(' ') = result.chars().rev().next() {
+					while let Some(' ') = result.chars().next_back() {
 						result.pop();
 					}
 				}

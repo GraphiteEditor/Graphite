@@ -202,11 +202,11 @@ impl SelectTool {
 		let list = <BooleanOperation as graphene_std::choice_type::ChoiceTypeStatic>::list();
 		list.iter().flat_map(|i| i.iter()).map(move |(operation, info)| {
 			let mut tooltip = info.label.to_string();
-			if let Some(doc) = info.docstring.as_deref() {
+			if let Some(doc) = info.docstring {
 				tooltip.push_str("\n\n");
 				tooltip.push_str(doc);
 			}
-			IconButton::new(info.icon.as_deref().unwrap(), 24)
+			IconButton::new(info.icon.unwrap(), 24)
 				.tooltip(tooltip)
 				.disabled(selected_count == 0)
 				.on_update(move |_| {
@@ -852,7 +852,13 @@ impl Fsm for SelectToolFsmState {
 				if let Some(pivot) = pivot {
 					let offset = tool_data
 						.pivot_gizmo_start
-						.map(|offset| tool_data.pivot_gizmo.pivot_disconnected().then_some(tool_data.drag_current - offset).unwrap_or_default())
+						.map(|offset| {
+							if tool_data.pivot_gizmo.pivot_disconnected() {
+								tool_data.drag_current - offset
+							} else {
+								Default::default()
+							}
+						})
 						.unwrap_or_default();
 					let shift = tool_data.pivot_gizmo_shift.unwrap_or_default();
 					overlay_context.pivot(pivot + offset + shift, angle);
@@ -895,7 +901,7 @@ impl Fsm for SelectToolFsmState {
 									color
 								} else {
 									let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
-									&format!("#{}", color_string)
+									&format!("#{color_string}")
 								};
 								let line_center = tool_data.line_center;
 								overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color), None);
@@ -1443,8 +1449,6 @@ impl Fsm for SelectToolFsmState {
 							}
 
 							tool_data.get_snap_candidates(document, input);
-
-							responses.add(DocumentMessage::StartTransaction);
 						}
 					}
 				}
@@ -1455,7 +1459,11 @@ impl Fsm for SelectToolFsmState {
 				tool_data.select_single_layer = None;
 
 				if let Some(start) = tool_data.pivot_gizmo_start {
-					let offset = tool_data.pivot_gizmo.pivot_disconnected().then_some(tool_data.drag_current - start).unwrap_or_default();
+					let offset = if tool_data.pivot_gizmo.pivot_disconnected() {
+						tool_data.drag_current - start
+					} else {
+						Default::default()
+					};
 					if let Some(v) = tool_data.pivot_gizmo.pivot.pivot.as_mut() {
 						*v += offset;
 					}
@@ -1613,8 +1621,6 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(_, SelectToolMessage::SetPivot { position }) => {
-				responses.add(DocumentMessage::StartTransaction);
-
 				tool_data.pivot_gizmo.pivot.last_non_none_reference_point = position;
 				tool_data.pivot_gizmo.pivot.pinned = false;
 
@@ -1649,7 +1655,9 @@ impl Fsm for SelectToolFsmState {
 			}
 			(_, SelectToolMessage::PivotShift { offset, flush }) => {
 				if flush {
-					tool_data.pivot_gizmo.pivot.pivot.as_mut().map(|v| *v += tool_data.pivot_gizmo_shift.take().unwrap_or_default());
+					if let Some(v) = tool_data.pivot_gizmo.pivot.pivot.as_mut() {
+						*v += tool_data.pivot_gizmo_shift.take().unwrap_or_default();
+					}
 					let pivot_gizmo = tool_data.pivot_gizmo();
 					responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
 					return self;

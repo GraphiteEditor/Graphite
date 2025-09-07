@@ -29,7 +29,7 @@
 	<LayoutRow class="hint-groups">
 		{#each hintData as hintGroup, index (hintGroup)}
 			{#if index !== 0}
-				<Separator type={"Section"} />
+				<Separator type="Section" />
 			{/if}
 			{#each hintGroup as hint (hint)}
 				{#if hint.plus}

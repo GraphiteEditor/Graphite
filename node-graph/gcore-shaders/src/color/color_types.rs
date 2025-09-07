@@ -3,10 +3,12 @@ use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
 use core::hash::Hash;
+use glam::Vec4;
 use half::f16;
-#[cfg(target_arch = "spirv")]
+use node_macro::BufferStruct;
+#[cfg(not(feature = "std"))]
 use num_traits::Euclid;
-#[cfg(target_arch = "spirv")]
+#[cfg(not(feature = "std"))]
 use num_traits::float::Float;
 
 #[repr(C)]
@@ -214,7 +216,7 @@ impl Pixel for Luma {}
 /// The other components (RGB) are stored as `f32` that range from `0.0` up to `f32::MAX`,
 /// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.0` (black) to `1.0` (white) in SDR color.
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable, BufferStruct)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub struct Color {
 	red: f32,
@@ -439,9 +441,9 @@ impl Color {
 			lightness + saturation - lightness * saturation
 		};
 		let temp2 = 2. * lightness - temp1;
-		#[cfg(not(target_arch = "spirv"))]
+		#[cfg(feature = "std")]
 		let rem = |x: f32| x.rem_euclid(1.);
-		#[cfg(target_arch = "spirv")]
+		#[cfg(not(feature = "std"))]
 		let rem = |x: f32| x.rem_euclid(&1.);
 
 		let mut red = rem(hue + 1. / 3.);
@@ -700,7 +702,7 @@ impl Color {
 		if c_s <= 0.5 {
 			c_b - (1. - 2. * c_s) * c_b * (1. - c_b)
 		} else {
-			let d: fn(f32) -> f32 = |x| if x <= 0.25 { ((16. * x - 12.) * x + 4.) * x } else { x.sqrt() };
+			let d = |x: f32| if x <= 0.25 { ((16. * x - 12.) * x + 4.) * x } else { x.sqrt() };
 			c_b + (2. * c_s - 1.) * (d(c_b) - c_b)
 		}
 	}
@@ -892,9 +894,9 @@ impl Color {
 		} else {
 			4. + (self.red - self.green) / (max_channel - min_channel)
 		} / 6.;
-		#[cfg(not(target_arch = "spirv"))]
+		#[cfg(feature = "std")]
 		let hue = hue.rem_euclid(1.);
-		#[cfg(target_arch = "spirv")]
+		#[cfg(not(feature = "std"))]
 		let hue = hue.rem_euclid(&1.);
 
 		[hue, saturation, lightness, self.alpha]
@@ -1074,6 +1076,21 @@ impl Color {
 			alpha: (self.alpha * other.alpha).clamp(0., 1.),
 			..*self
 		}
+	}
+
+	#[inline(always)]
+	pub const fn from_vec4(vec: Vec4) -> Self {
+		Self {
+			red: vec.x,
+			green: vec.y,
+			blue: vec.z,
+			alpha: vec.w,
+		}
+	}
+
+	#[inline(always)]
+	pub fn to_vec4(&self) -> Vec4 {
+		Vec4::new(self.red, self.green, self.blue, self.alpha)
 	}
 }
 

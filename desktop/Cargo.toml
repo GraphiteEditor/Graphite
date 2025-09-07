@@ -9,26 +9,28 @@ edition = "2024"
 rust-version = "1.87"
 
 [features]
-default = ["gpu"]
-gpu = ["graphite-editor/gpu"]
+default = ["recommended", "embedded_resources"]
+recommended = ["gpu", "accelerated_paint"]
+embedded_resources = ["dep:graphite-desktop-embedded-resources"]
+gpu = ["graphite-desktop-wrapper/gpu"]
+
+# Hardware acceleration features
+accelerated_paint = ["accelerated_paint_dmabuf", "accelerated_paint_d3d11", "accelerated_paint_iosurface"]
+accelerated_paint_dmabuf = ["libc", "ash"]
+accelerated_paint_d3d11 = ["windows", "ash"]
+accelerated_paint_iosurface = ["objc2-io-surface", "objc2-metal", "core-foundation"]
 
 [dependencies]
-# # Local dependencies
-graphite-editor = { path = "../editor", features = [
-	"gpu",
-	"ron",
-	"vello",
-] }
-graphene-std = { workspace = true }
-graph-craft = { workspace = true }
-wgpu-executor = { workspace = true }
+# Local dependencies
+graphite-desktop-wrapper = { path = "wrapper" }
+graphite-desktop-embedded-resources = { path = "embedded-resources", optional = true }
 
 wgpu = { workspace = true }
 winit = { workspace = true, features = ["serde"] }
 thiserror = { workspace = true }
 futures = { workspace = true }
 cef = { workspace = true }
-include_dir = { workspace = true }
+cef-dll-sys = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing = { workspace = true }
 dirs = { workspace = true }
@@ -39,4 +41,26 @@ vello = { workspace = true }
 derivative = { workspace = true }
 rfd = { workspace = true }
 open = { workspace = true }
-image = { workspace = true }
+
+# Hardware acceleration dependencies
+ash = { version = "0.38", optional = true }
+
+# Windows-specific dependencies
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+	"Win32_Graphics_Direct3D11",
+	"Win32_Graphics_Direct3D12",
+	"Win32_Graphics_Dxgi",
+	"Win32_Graphics_Dxgi_Common",
+	"Win32_Foundation"
+], optional = true }
+
+# macOS-specific dependencies
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-io-surface = { version = "0.3", optional = true }
+objc2-metal = { version = "0.3", optional = true }
+core-foundation = { version = "0.9", optional = true }
+
+# Linux-specific dependencies
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = { version = "0.2", optional = true }

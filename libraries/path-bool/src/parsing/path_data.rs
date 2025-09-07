@@ -45,7 +45,7 @@ pub fn commands_from_path_data(d: &str) -> Result<Vec<PathCommand>, BooleanError
 			*i += cap[0].len();
 			&cap[1] == "1"
 		} else {
-			panic!("Invalid path data. Expected a flag at index {}", i);
+			panic!("Invalid path data. Expected a flag at index {i}");
 		}
 	};
 
@@ -128,8 +128,8 @@ pub fn path_to_path_data(path: &Path, eps: f64) -> String {
 	path_to_commands(path.iter(), eps)
 		.map(|cmd| match cmd {
 			PathCommand::Absolute(abs_cmd) => match abs_cmd {
-				AbsolutePathCommand::H(dx) => format!("H {:.12}", dx),
-				AbsolutePathCommand::V(dy) => format!("V {:.12}", dy),
+				AbsolutePathCommand::H(dx) => format!("H {dx:.12}"),
+				AbsolutePathCommand::V(dy) => format!("V {dy:.12}"),
 				AbsolutePathCommand::M(p) => format!("M {:.12},{:.12}", p.x, p.y),
 				AbsolutePathCommand::L(p) => format!("L {:.12},{:.12}", p.x, p.y),
 				AbsolutePathCommand::C(p1, p2, p3) => format!("C {:.12},{:.12} {:.12},{:.12} {:.12},{:.12}", p1.x, p1.y, p2.x, p2.y, p3.x, p3.y),
@@ -146,18 +146,18 @@ pub fn path_to_path_data(path: &Path, eps: f64) -> String {
 				AbsolutePathCommand::Z => "Z".to_string(),
 			},
 			PathCommand::Relative(rel_cmd) => match rel_cmd {
-				RelativePathCommand::M(dx, dy) => format!("m {:.12},{:.12}", dx, dy),
-				RelativePathCommand::L(dx, dy) => format!("l {:.12},{:.12}", dx, dy),
-				RelativePathCommand::H(dx) => format!("h {:.12}", dx),
-				RelativePathCommand::V(dy) => format!("v {:.12}", dy),
-				RelativePathCommand::C(dx1, dy1, dx2, dy2, dx, dy) => format!("c{:.12},{:.12} {:.12},{:.12} {:.12},{:.12}", dx1, dy1, dx2, dy2, dx, dy),
+				RelativePathCommand::M(dx, dy) => format!("m {dx:.12},{dy:.12}"),
+				RelativePathCommand::L(dx, dy) => format!("l {dx:.12},{dy:.12}"),
+				RelativePathCommand::H(dx) => format!("h {dx:.12}"),
+				RelativePathCommand::V(dy) => format!("v {dy:.12}"),
+				RelativePathCommand::C(dx1, dy1, dx2, dy2, dx, dy) => format!("c{dx1:.12},{dy1:.12} {dx2:.12},{dy2:.12} {dx:.12},{dy:.12}"),
 				RelativePathCommand::S(dx2, dy2, dx, dy) => {
-					format!("s {:.12},{:.12} {:.12},{:.12}", dx2, dy2, dx, dy)
+					format!("s {dx2:.12},{dy2:.12} {dx:.12},{dy:.12}")
 				}
 				RelativePathCommand::Q(dx1, dy1, dx, dy) => {
-					format!("q {:.12},{:.12} {:.12},{:.12}", dx1, dy1, dx, dy)
+					format!("q {dx1:.12},{dy1:.12} {dx:.12},{dy:.12}")
 				}
-				RelativePathCommand::T(dx, dy) => format!("t{:.12},{:.12}", dx, dy),
+				RelativePathCommand::T(dx, dy) => format!("t{dx:.12},{dy:.12}"),
 				RelativePathCommand::A(rx, ry, x_axis_rotation, large_arc_flag, sweep_flag, dx, dy) => {
 					format!("a {:.12} {:.12} {:.12} {} {} {:.12},{:.12}", rx, ry, x_axis_rotation, large_arc_flag as u8, sweep_flag as u8, dx, dy)
 				}

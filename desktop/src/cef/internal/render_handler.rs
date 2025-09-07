@@ -17,6 +17,7 @@ impl<H: CefEventHandler> RenderHandlerImpl<H> {
 		}
 	}
 }
+
 impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 	fn view_rect(&self, _browser: Option<&mut Browser>, rect: Option<&mut Rect>) {
 		if let Some(rect) = rect {
@@ -45,6 +46,23 @@ impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 		let frame_buffer = FrameBufferRef::new(buffer_slice, width as usize, height as usize).expect("Failed to create frame buffer");
 
 		self.event_handler.draw(frame_buffer)
+	}
+
+	#[cfg(feature = "accelerated_paint")]
+	fn on_accelerated_paint(&self, _browser: Option<&mut Browser>, type_: PaintElementType, _dirty_rect_count: usize, _dirty_rects: Option<&Rect>, info: Option<&cef::AcceleratedPaintInfo>) {
+		use crate::cef::texture_import::shared_texture_handle::SharedTextureHandle;
+
+		if type_ != PaintElementType::default() {
+			return;
+		}
+
+		let shared_handle = SharedTextureHandle::new(info.unwrap());
+		if let SharedTextureHandle::Unsupported = shared_handle {
+			tracing::error!("Platform does not support accelerated painting");
+			return;
+		}
+
+		self.event_handler.draw_gpu(shared_handle);
 	}
 
 	fn get_raw(&self) -> *mut _cef_render_handler_t {

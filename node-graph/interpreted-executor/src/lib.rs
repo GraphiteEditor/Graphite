@@ -19,7 +19,8 @@ mod tests {
 				(
 					NodeId(0),
 					DocumentNode {
-						inputs: vec![NodeInput::network(concrete!(u32), 0)],
+						inputs: vec![],
+						call_argument: concrete!(u32),
 						implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
 						..Default::default()
 					},

@@ -83,9 +83,11 @@
 				return;
 			}
 
-			if (file.name.endsWith(".graphite")) {
+			const graphiteFileSuffix = "." + editor.handle.fileExtension();
+			if (file.name.endsWith(graphiteFileSuffix)) {
 				const content = await file.text();
-				editor.handle.openDocumentFile(file.name, content);
+				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
+				editor.handle.openDocumentFile(documentName, content);
 				return;
 			}
 		});
@@ -158,32 +160,34 @@
 					</LayoutRow>
 					<LayoutRow class="actions">
 						<table>
-							<tr>
-								<td>
-									<TextButton label="New Document" icon="File" flush={true} action={() => editor.handle.newDocumentDialog()} />
-								</td>
-								<td>
-									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
-								</td>
-							</tr>
-							<tr>
-								<td>
-									<TextButton label="Open Document" icon="Folder" flush={true} action={() => editor.handle.openDocument()} />
-								</td>
-								<td>
-									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
-								</td>
-							</tr>
-							<tr>
-								<td colspan="2">
-									<TextButton label="Open Demo Artwork" icon="Image" flush={true} action={() => editor.handle.demoArtworkDialog()} />
-								</td>
-							</tr>
-							<tr>
-								<td colspan="2">
-									<TextButton label="Support the Development Fund" icon="Heart" flush={true} action={() => editor.handle.visitUrl("https://graphite.rs/donate/")} />
-								</td>
-							</tr>
+							<tbody>
+								<tr>
+									<td>
+										<TextButton label="New Document" icon="File" flush={true} action={() => editor.handle.newDocumentDialog()} />
+									</td>
+									<td>
+										<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
+									</td>
+								</tr>
+								<tr>
+									<td>
+										<TextButton label="Open Document" icon="Folder" flush={true} action={() => editor.handle.openDocument()} />
+									</td>
+									<td>
+										<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
+									</td>
+								</tr>
+								<tr>
+									<td colspan="2">
+										<TextButton label="Open Demo Artwork" icon="Image" flush={true} action={() => editor.handle.demoArtworkDialog()} />
+									</td>
+								</tr>
+								<tr>
+									<td colspan="2">
+										<TextButton label="Support the Development Fund" icon="Heart" flush={true} action={() => editor.handle.visitUrl("https://graphite.rs/donate/")} />
+									</td>
+								</tr>
+							</tbody>
 						</table>
 					</LayoutRow>
 				</LayoutCol>

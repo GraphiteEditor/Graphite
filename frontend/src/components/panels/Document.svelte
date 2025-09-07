@@ -151,9 +151,11 @@
 				return;
 			}
 
-			if (file.name.endsWith(".graphite")) {
+			const graphiteFileSuffix = "." + editor.handle.fileExtension();
+			if (file.name.endsWith(graphiteFileSuffix)) {
 				const content = await file.text();
-				editor.handle.openDocumentFile(file.name, content);
+				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
+				editor.handle.openDocumentFile(documentName, content);
 				return;
 			}
 		});
@@ -327,11 +329,11 @@
 
 		await tick();
 
-		if (!textInput) {
-			return;
-		}
+		if (!textInput) return;
 
+		// eslint-disable-next-line svelte/no-dom-manipulating
 		if (displayEditableTextbox.text === "") textInput.textContent = "";
+		// eslint-disable-next-line svelte/no-dom-manipulating
 		else textInput.textContent = `${displayEditableTextbox.text}\n`;
 
 		// Make it so `maxHeight` is a multiple of `lineHeight`
@@ -506,7 +508,7 @@
 				<LayoutRow class="spacer" />
 			{/if}
 			<LayoutCol class="tool-shelf-bottom-widgets">
-				<WidgetLayout class={"working-colors-input-area"} layout={$document.workingColorsLayout} />
+				<WidgetLayout class="working-colors-input-area" layout={$document.workingColorsLayout} />
 			</LayoutCol>
 		</LayoutCol>
 		<LayoutCol class="viewport-container">

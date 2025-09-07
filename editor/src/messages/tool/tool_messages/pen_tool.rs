@@ -1667,17 +1667,21 @@ impl Fsm for PenToolFsmState {
 						path_overlays(document, DrawHandles::All, shape_editor, &mut overlay_context);
 					}
 					PenOverlayMode::FrontierHandles => {
-						if let Some(latest_segment) = tool_data.prior_segment {
-							path_overlays(document, DrawHandles::SelectedAnchors(vec![latest_segment]), shape_editor, &mut overlay_context);
-						}
-						// If a vector mesh then there can be more than one prior segments
-						else if let Some(segments) = tool_data.prior_segments.clone() {
-							if preferences.vector_meshes {
-								path_overlays(document, DrawHandles::SelectedAnchors(segments), shape_editor, &mut overlay_context);
+						if let Some(layer) = tool_data.current_layer {
+							if let Some(latest_segment) = tool_data.prior_segment {
+								let selected_anchors_data = HashMap::from([(layer, vec![latest_segment])]);
+								path_overlays(document, DrawHandles::SelectedAnchors(selected_anchors_data), shape_editor, &mut overlay_context);
 							}
-						} else {
-							path_overlays(document, DrawHandles::None, shape_editor, &mut overlay_context);
-						};
+							// If a vector mesh then there can be more than one prior segments
+							else if let Some(segments) = tool_data.prior_segments.clone() {
+								if preferences.vector_meshes {
+									let selected_anchors_data = HashMap::from([(layer, segments)]);
+									path_overlays(document, DrawHandles::SelectedAnchors(selected_anchors_data), shape_editor, &mut overlay_context);
+								}
+							} else {
+								path_overlays(document, DrawHandles::None, shape_editor, &mut overlay_context);
+							};
+						}
 					}
 				}
 

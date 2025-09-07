@@ -44,7 +44,7 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 			ExportDialogMessage::ExportBounds { bounds } => self.bounds = bounds,
 
 			ExportDialogMessage::Submit => responses.add_front(PortfolioMessage::SubmitDocumentExport {
-				file_name: portfolio.active_document().map(|document| document.name.clone()).unwrap_or_default(),
+				name: portfolio.active_document().map(|document| document.name.clone()).unwrap_or_default(),
 				file_type: self.file_type,
 				scale_factor: self.scale_factor,
 				bounds: self.bounds,
@@ -92,13 +92,13 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			.collect();
 
 		let export_type = vec![
-			TextLabel::new("File Type").table_align(true).min_width(100).widget_holder(),
+			TextLabel::new("File Type").table_align(true).min_width("100px").widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(entries).selected_index(Some(self.file_type as u32)).widget_holder(),
 		];
 
 		let resolution = vec![
-			TextLabel::new("Scale Factor").table_align(true).min_width(100).widget_holder(),
+			TextLabel::new("Scale Factor").table_align(true).min_width("100px").widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			NumberInput::new(Some(self.scale_factor))
 				.unit("")
@@ -144,14 +144,14 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		}
 
 		let export_area = vec![
-			TextLabel::new("Bounds").table_align(true).min_width(100).widget_holder(),
+			TextLabel::new("Bounds").table_align(true).min_width("100px").widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			DropdownInput::new(entries).selected_index(Some(index as u32)).widget_holder(),
 		];
 
 		let checkbox_id = CheckboxId::new();
 		let transparent_background = vec![
-			TextLabel::new("Transparency").table_align(true).min_width(100).for_checkbox(checkbox_id).widget_holder(),
+			TextLabel::new("Transparency").table_align(true).min_width("100px").for_checkbox(checkbox_id).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(self.transparent_background)
 				.disabled(self.file_type == FileType::Jpg)
