@@ -1,4 +1,4 @@
-use crate::{Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
+use crate::{ContextFeature, Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
 use dyn_any::{DynAny, StaticType};
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -16,6 +16,7 @@ pub struct NodeMetadata {
 	pub fields: Vec<FieldMetadata>,
 	pub description: &'static str,
 	pub properties: Option<&'static str>,
+	pub context_features: Vec<ContextFeature>,
 }
 
 // Translation struct between macro and definition

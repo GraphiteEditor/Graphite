@@ -77,12 +77,12 @@ jobs:
       - name: Run PR benchmarks
         run: |
           # Compile benchmarks
-          cargo bench --bench compile_demo_art_iai -- --baseline=master --output-format=json | jq -sc > /tmp/compile_output.json
+          cargo bench --bench compile_demo_art_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/compile_output.json
 
           # Runtime benchmarks  
-          cargo bench --bench update_executor_iai -- --baseline=master --output-format=json | jq -sc > /tmp/update_output.json
-          cargo bench --bench run_once_iai -- --baseline=master --output-format=json | jq -sc > /tmp/run_once_output.json
-          cargo bench --bench run_cached_iai -- --baseline=master --output-format=json | jq -sc > /tmp/run_cached_output.json
+          cargo bench --bench update_executor_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/update_output.json
+          cargo bench --bench run_once_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/run_once_output.json
+          cargo bench --bench run_cached_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/run_cached_output.json
 
       - name: Make old comments collapsed by default
         uses: actions/github-script@v7
@@ -147,11 +147,18 @@ jobs:
               let hasSignificantChanges = false;
               
               for (const benchmark of benchmarkOutput) {
-                if (benchmark.callgrind_summary && benchmark.callgrind_summary.summaries) {
-                  const summary = benchmark.callgrind_summary.summaries[0];
-                  const irDiff = summary.events.Ir;
-                  
-                  if (irDiff.diff_pct !== null) {
+                if (benchmark.profiles && benchmark.profiles.length > 0) {
+                  const profile = benchmark.profiles[0];
+                  if (profile.summaries && profile.summaries.parts && profile.summaries.parts.length > 0) {
+                    const part = profile.summaries.parts[0];
+                    if (part.metrics_summary && part.metrics_summary.Callgrind && part.metrics_summary.Callgrind.Ir) {
+                      const irData = part.metrics_summary.Callgrind.Ir;
+                      if (irData.diffs && irData.diffs.diff_pct !== null) {
+                        const irDiff = {
+                          diff_pct: parseFloat(irData.diffs.diff_pct),
+                          old: irData.metrics.Both[1].Int,
+                          new: irData.metrics.Both[0].Int
+                        };
                     hasResults = true;
                     const changePercentage = formatPercentage(irDiff.diff_pct);
                     const color = irDiff.diff_pct > 0 ? "red" : "lime";
@@ -163,19 +170,23 @@ jobs:
                     sectionBody += "<details>\n<summary>Detailed metrics</summary>\n\n```\n";
                     sectionBody += `Baselines:                master|       HEAD\n`;
                     
-                    for (const [eventKind, costsDiff] of Object.entries(summary.events)) {
-                      if (costsDiff.diff_pct !== null) {
-                        const changePercentage = formatPercentage(costsDiff.diff_pct);
-                        const line = `${padRight(eventKind, 20)} ${padLeft(formatNumber(costsDiff.old), 11)}|${padLeft(formatNumber(costsDiff.new), 11)} ${padLeft(changePercentage, 15)}`;
+                    for (const [metricName, metricData] of Object.entries(part.metrics_summary.Callgrind)) {
+                      if (metricData.diffs && metricData.diffs.diff_pct !== null) {
+                        const changePercentage = formatPercentage(parseFloat(metricData.diffs.diff_pct));
+                        const oldValue = metricData.metrics.Both[1].Int || metricData.metrics.Both[1].Float;
+                        const newValue = metricData.metrics.Both[0].Int || metricData.metrics.Both[0].Float;
+                        const line = `${padRight(metricName, 20)} ${padLeft(formatNumber(Math.round(oldValue)), 11)}|${padLeft(formatNumber(Math.round(newValue)), 11)} ${padLeft(changePercentage, 15)}`;
                         sectionBody += `${line}\n`;
                       }
                     }
                     
                     sectionBody += "```\n</details>\n\n";
                     
-                    if (Math.abs(irDiff.diff_pct) > 5) {
-                      significantChanges = true;
-                      hasSignificantChanges = true;
+                        if (Math.abs(irDiff.diff_pct) > 5) {
+                          significantChanges = true;
+                          hasSignificantChanges = true;
+                        }
+                      }
                     }
                   }
                 }
