@@ -157,6 +157,12 @@ mod gpu {
 			&self.texture
 		}
 	}
+
+	impl Drop for GPU {
+		fn drop(&mut self) {
+			self.texture.destroy();
+		}
+	}
 }
 
 #[cfg(not(feature = "wgpu"))]
@@ -173,6 +179,10 @@ mod gpu {
 		fn is_empty(&self) -> bool {
 			true
 		}
+	}
+
+	impl Drop for GPU {
+		fn drop(&mut self) {}
 	}
 }
 
