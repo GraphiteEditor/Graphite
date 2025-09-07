@@ -92,6 +92,8 @@ pub struct NodeGraphMessageHandler {
 	reordering_export: Option<usize>,
 	/// The end index of the moved connector
 	end_index: Option<usize>,
+	// The rendered string for each thumbnail
+	pub thumbnails: HashMap<NodeId, Graphic>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -1929,6 +1931,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				responses.add(NodeGraphMessage::SendGraph);
 			}
+			NodeGraphMessage::UpdateThumbnail { node_id, graphic } => {
+				self.thumbnails.insert(node_id, graphic);
+			}
 			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
 				network_interface.resolved_types.update(resolved_types);
 				self.node_graph_errors = node_graph_errors;
@@ -2599,6 +2604,7 @@ impl Default for NodeGraphMessageHandler {
 			reordering_export: None,
 			reordering_import: None,
 			end_index: None,
+			thumbnails: HashMap::new(),
 		}
 	}
 }
