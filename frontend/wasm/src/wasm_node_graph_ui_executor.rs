@@ -1,4 +1,8 @@
-use std::sync::{Mutex, mpsc::Receiver};
+use std::{
+	cell::RefCell,
+	rc::Rc,
+	sync::{Arc, Mutex, mpsc::Receiver},
+};
 
 use editor::{
 	application::Editor,
@@ -36,6 +40,7 @@ impl WasmNodeGraphUIExecutor {
 			executor: DynamicExecutor::default(),
 			compiler: Compiler {},
 			response_sender,
+			font_collection: Arc::new(Mutex::new(FontCollection::new())),
 		};
 		if let Ok(mut node_runtime) = NODE_UI_RUNTIME.lock() {
 			node_runtime.replace(runtime);

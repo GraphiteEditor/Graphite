@@ -50,7 +50,6 @@ impl Hash for NodeGraphOverlayData {
 		entries.sort_by(|a, b| a.0.cmp(b.0));
 		let mut hasher = std::collections::hash_map::DefaultHasher::new();
 		entries.hash(&mut hasher);
-		hasher.finish();
 	}
 }
 

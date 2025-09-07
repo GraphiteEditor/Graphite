@@ -1,10 +1,13 @@
-use std::sync::{Arc, mpsc::Sender};
+use std::sync::{Arc, Mutex, mpsc::Sender};
 
 use glam::UVec2;
 use graph_craft::{document::NodeNetwork, graphene_compiler::Compiler};
-use graphene_std::node_graph_overlay::{
-	types::NodeGraphTransform,
-	ui_context::{UIContextImpl, UIRuntimeResponse},
+use graphene_std::{
+	node_graph_overlay::{
+		types::NodeGraphTransform,
+		ui_context::{UIContextImpl, UIRuntimeResponse},
+	},
+	text::NewFontCache,
 };
 
 use crate::dynamic_executor::DynamicExecutor;
@@ -15,6 +18,7 @@ pub struct NodeGraphUIRuntime {
 	// Used within the node graph to return responses during evaluation
 	// Also used to return compilation responses, but not for the UI overlay since the types are not needed
 	pub response_sender: Sender<UIRuntimeResponse>,
+	pub font_collection: Arc<Mutex<NewFontCache>>,
 }
 
 impl NodeGraphUIRuntime {

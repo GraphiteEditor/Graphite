@@ -2,7 +2,7 @@ use dyn_any::DynAny;
 use std::collections::HashMap;
 
 /// A font type (storing font family and font style and an optional preview URL)
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Hash, PartialEq, Eq, DynAny, specta::Type)]
+#[derive(Debug, Clone, Hash, serde::Serialize, serde::Deserialize, PartialEq, Eq, DynAny, specta::Type)]
 pub struct Font {
 	#[serde(rename = "fontFamily")]
 	pub font_family: String,

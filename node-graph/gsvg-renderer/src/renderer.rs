@@ -16,6 +16,7 @@ use graphene_core::raster_types::{CPU, GPU, Raster};
 use graphene_core::render_complexity::RenderComplexity;
 use graphene_core::subpath::Subpath;
 use graphene_core::table::{Table, TableRow};
+use graphene_core::text::Typography;
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::uuid::{NodeId, generate_uuid};
 use graphene_core::vector::Vector;
@@ -26,6 +27,8 @@ use kurbo::Affine;
 use kurbo::Rect;
 use kurbo::Shape;
 use num_traits::Zero;
+use skrifa::MetadataProvider;
+use skrifa::attribute::Style;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -116,6 +119,18 @@ impl SvgRender {
 		attributes(&mut SvgRenderAttrs(self));
 
 		self.svg.push("/>".into());
+	}
+
+	pub fn leaf_text(&mut self, text: impl Into<SvgSegment>, attributes: impl FnOnce(&mut SvgRenderAttrs)) {
+		self.indent();
+
+		self.svg.push("<text".into());
+
+		attributes(&mut SvgRenderAttrs(self));
+
+		self.svg.push(">".into());
+		self.svg.push(text.into());
+		self.svg.push("</{text}>".into());
 	}
 
 	pub fn leaf_node(&mut self, content: impl Into<SvgSegment>) {
@@ -261,6 +276,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(table) => table.render_svg(render, render_params),
 			Graphic::Gradient(table) => table.render_svg(render, render_params),
+			Graphic::Typography(table) => table.render_svg(render, render_params),
 		}
 	}
 
@@ -273,6 +289,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(table) => table.render_to_vello(scene, transform, context, render_params),
 			Graphic::Color(table) => table.render_to_vello(scene, transform, context, render_params),
 			Graphic::Gradient(table) => table.render_to_vello(scene, transform, context, render_params),
+			Graphic::Typography(table) => table.render_to_vello(scene, transform, context, render_params),
 		}
 	}
 
@@ -284,6 +301,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(table) => table.to_graphic(),
 			Graphic::Color(table) => table.to_graphic(),
 			Graphic::Gradient(table) => table.to_graphic(),
+			Graphic::Typography(table) => table.to_graphic(),
 		}
 	}
 
@@ -333,6 +351,14 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, *row.transform);
 					}
 				}
+				Graphic::Typography(table) => {
+					metadata.upstream_footprints.insert(element_id, footprint);
+
+					// TODO: Find a way to handle more than the first row
+					if let Some(row) = table.iter().next() {
+						metadata.local_transforms.insert(element_id, *row.transform);
+					}
+				}
 			}
 		}
 
@@ -343,6 +369,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(table) => table.collect_metadata(metadata, footprint, element_id),
 			Graphic::Color(table) => table.collect_metadata(metadata, footprint, element_id),
 			Graphic::Gradient(table) => table.collect_metadata(metadata, footprint, element_id),
+			Graphic::Typography(table) => table.collect_metadata(metadata, footprint, element_id),
 		}
 	}
 
@@ -354,6 +381,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(table) => table.add_upstream_click_targets(click_targets),
 			Graphic::Color(table) => table.add_upstream_click_targets(click_targets),
 			Graphic::Gradient(table) => table.add_upstream_click_targets(click_targets),
+			Graphic::Typography(table) => table.add_upstream_click_targets(click_targets),
 		}
 	}
 
@@ -365,6 +393,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(table) => table.contains_artboard(),
 			Graphic::Color(table) => table.contains_artboard(),
 			Graphic::Gradient(table) => table.contains_artboard(),
+			Graphic::Typography(table) => table.contains_artboard(),
 		}
 	}
 
@@ -376,6 +405,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(_) => (),
 			Graphic::Gradient(_) => (),
+			Graphic::Typography(_) => (),
 		}
 	}
 }
@@ -1584,6 +1614,63 @@ impl Render for Table<GradientStops> {
 
 	fn to_graphic(self) -> Graphic {
 		Graphic::Gradient(self)
+	}
+}
+
+impl Render for Table<Typography> {
+	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
+		for table_row in self.iter() {
+			for line in table_row.element.layout.lines() {
+				for item in line.items() {
+					match item {
+						parley::PositionedLayoutItem::GlyphRun(glyph_run) => {
+							let font = glyph_run.run().font();
+							let font_ref = skrifa::FontRef::from_index(font.data.as_ref(), font.index).unwrap();
+							let font_attributes = font_ref.attributes();
+							let font_style = match font_attributes.style {
+								Style::Normal => "normal".to_string(),
+								Style::Italic => "italic".to_string(),
+								Style::Oblique(Some(angle)) => format!("oblique {}deg", angle),
+								Style::Oblique(None) => "oblique".to_string(),
+							};
+							render.parent_tag(
+								"g",
+								|attributes| {
+									let matrix = format_transform_matrix(*table_row.transform);
+									if !matrix.is_empty() {
+										attributes.push("transform", matrix);
+										attributes.push("font-family", table_row.element.font_family.clone());
+										attributes.push("font-size", glyph_run.run().font_size().to_string());
+										attributes.push("font-weight", font_attributes.weight.value().to_string());
+										attributes.push("font-style", font_style);
+									}
+								},
+								|render| {
+									for glyph in glyph_run.positioned_glyphs() {
+										let character = font_ref.glyph_names().get(skrifa::GlyphId::new(glyph.id as u32)).unwrap();
+										render.leaf_text(character.as_str().to_string(), |attributes| {
+											attributes.push("x", glyph.x.to_string());
+											attributes.push("y", glyph.y.to_string());
+										});
+									}
+								},
+							);
+						}
+						parley::PositionedLayoutItem::InlineBox(_positioned_inline_box) => {
+							log::error!("Inline box text rendering not supported");
+						}
+					}
+				}
+			}
+		}
+	}
+
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams) {
+		todo!()
+	}
+
+	fn to_graphic(self) -> Graphic {
+		todo!()
 	}
 }
 
