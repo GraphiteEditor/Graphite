@@ -10,21 +10,23 @@ use std::hash::Hasher;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-// TODO: This is a temporary hack, be sure to not reuse this when the brush is being rewritten.
+// TODO: This is a temporary hack, be sure to not reuse this when the brush system is replaced/rewritten.
 static NEXT_BRUSH_CACHE_IMPL_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 struct BrushCacheImpl {
+	#[serde(default = "new_unique_id")]
 	unique_id: u64,
 	// The full previous input that was cached.
+	#[serde(default)]
 	prev_input: Vec<BrushStroke>,
 
 	// The strokes that have been fully processed and blended into the background.
-	#[serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame_row")]
+	#[serde(default, deserialize_with = "graphene_core::raster::image::migrate_image_frame_row")]
 	background: TableRow<Raster<CPU>>,
-	#[serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame_row")]
+	#[serde(default, deserialize_with = "graphene_core::raster::image::migrate_image_frame_row")]
 	blended_image: TableRow<Raster<CPU>>,
-	#[serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame_row")]
+	#[serde(default, deserialize_with = "graphene_core::raster::image::migrate_image_frame_row")]
 	last_stroke_texture: TableRow<Raster<CPU>>,
 
 	// A cache for brush textures.
@@ -98,7 +100,7 @@ impl BrushCacheImpl {
 impl Default for BrushCacheImpl {
 	fn default() -> Self {
 		Self {
-			unique_id: NEXT_BRUSH_CACHE_IMPL_ID.fetch_add(1, Ordering::SeqCst),
+			unique_id: new_unique_id(),
 			prev_input: Vec::new(),
 			background: Default::default(),
 			blended_image: Default::default(),
@@ -118,6 +120,10 @@ impl Hash for BrushCacheImpl {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.unique_id.hash(state);
 	}
+}
+
+fn new_unique_id() -> u64 {
+	NEXT_BRUSH_CACHE_IMPL_ID.fetch_add(1, Ordering::SeqCst)
 }
 
 #[derive(Clone, Debug, Default)]

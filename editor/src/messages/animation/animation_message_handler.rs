@@ -99,14 +99,11 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 				}
 			}
 			AnimationMessage::UpdateTime => {
-				if self.is_playing() {
-					responses.add(PortfolioMessage::SubmitActiveGraphRender);
-
-					if self.live_preview_recently_zero {
-						// Update the restart and pause/play buttons
-						responses.add(PortfolioMessage::UpdateDocumentWidgets);
-						self.live_preview_recently_zero = false;
-					}
+				responses.add(PortfolioMessage::SubmitActiveGraphRender);
+				if self.is_playing() && self.live_preview_recently_zero {
+					// Update the restart and pause/play buttons
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+					self.live_preview_recently_zero = false;
 				}
 			}
 			AnimationMessage::RestartAnimation => {

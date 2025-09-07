@@ -1,9 +1,11 @@
 use core::fmt::Display;
 use core::hash::{Hash, Hasher};
+use node_macro::BufferStruct;
+use num_enum::{FromPrimitive, IntoPrimitive};
 #[cfg(not(feature = "std"))]
 use num_traits::float::Float;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, BufferStruct)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", serde(default))]
 pub struct AlphaBlending {
@@ -66,7 +68,7 @@ impl AlphaBlending {
 }
 
 #[repr(i32)]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub enum BlendMode {
 	// Basic group
