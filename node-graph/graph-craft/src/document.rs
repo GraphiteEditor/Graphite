@@ -45,7 +45,7 @@ pub struct DocumentNode {
 	#[cfg_attr(target_family = "wasm", serde(alias = "outputs"))]
 	pub inputs: Vec<NodeInput>,
 	/// Type of the argument which this node can be evaluated with.
-	#[serde(alias = "manual_composition", default)]
+	#[serde(default, alias = "manual_composition", deserialize_with = "migrate_call_argument")]
 	pub call_argument: Type,
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
@@ -57,12 +57,12 @@ pub struct DocumentNode {
 	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
 	#[serde(default)]
 	pub skip_deduplication: bool,
-	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
-	#[serde(skip)]
-	pub original_location: OriginalLocation,
 	/// List of Extract and Inject annotations for the Context.
 	#[serde(default)]
 	pub context_features: ContextDependencies,
+	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
+	#[serde(skip)]
+	pub original_location: OriginalLocation,
 }
 
 /// Represents the original location of a node input/output when [`NodeNetwork::generate_node_paths`] was called, allowing the types and errors to be derived.
@@ -1103,6 +1103,22 @@ impl<'a> Iterator for RecursiveNodeIter<'a> {
 		}
 		Some((current_id, node, path))
 	}
+}
+
+fn migrate_call_argument<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Type, D::Error> {
+	use serde::Deserialize;
+
+	#[derive(serde::Serialize, serde::Deserialize)]
+	#[serde(untagged)]
+	enum CallArg {
+		New(Type),
+		Old(Option<Type>),
+	}
+
+	Ok(match CallArg::deserialize(deserializer)? {
+		CallArg::New(ty) => ty,
+		CallArg::Old(ty) => ty.unwrap_or_default(),
+	})
 }
 
 #[cfg(test)]
