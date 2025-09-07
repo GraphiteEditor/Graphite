@@ -18,7 +18,6 @@ export async function initWasm() {
 	if (wasmImport !== undefined) return;
 
 	// Import the WASM module JS bindings and wrap them in the panic proxy
-	// eslint-disable-next-line import/no-cycle
 	const wasm = await init();
 	for (const [name, f] of Object.entries(wasm)) {
 		if (name.startsWith("__node_registry")) f();
@@ -58,7 +57,7 @@ export function createEditor(): Editor {
 		if (!demoArtwork) return;
 
 		try {
-			const url = new URL(`/${demoArtwork}.graphite`, document.location.href);
+			const url = new URL(`/demo-artwork/${demoArtwork}.graphite`, document.location.href);
 			const data = await fetch(url);
 			if (!data.ok) throw new Error();
 

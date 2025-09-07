@@ -466,6 +466,7 @@ impl EditorHandle {
 			document_is_saved,
 			document_serialized_content,
 			to_front,
+			select_after_open: false,
 		};
 		self.dispatch(message);
 	}

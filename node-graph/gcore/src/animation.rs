@@ -1,4 +1,4 @@
-use crate::{Ctx, ExtractAnimationTime, ExtractTime};
+use crate::{Ctx, ExtractAnimationTime, ExtractRealTime};
 
 const DAY: f64 = 1000. * 3600. * 24.;
 
@@ -21,17 +21,17 @@ pub enum AnimationTimeMode {
 }
 
 #[node_macro::node(category("Animation"))]
-fn real_time(ctx: impl Ctx + ExtractTime, _primary: (), mode: RealTimeMode) -> f64 {
-	let time = ctx.try_time().unwrap_or_default();
+fn real_time(ctx: impl Ctx + ExtractRealTime, _primary: (), mode: RealTimeMode) -> f64 {
+	let real_time = ctx.try_real_time().unwrap_or_default();
 	// TODO: Implement proper conversion using and existing time implementation
 	match mode {
-		RealTimeMode::Utc => time,
-		RealTimeMode::Year => (time / DAY / 365.25).floor() + 1970.,
-		RealTimeMode::Hour => (time / 1000. / 3600.).floor() % 24.,
-		RealTimeMode::Minute => (time / 1000. / 60.).floor() % 60.,
+		RealTimeMode::Utc => real_time,
+		RealTimeMode::Year => (real_time / DAY / 365.25).floor() + 1970.,
+		RealTimeMode::Hour => (real_time / 1000. / 3600.).floor() % 24., // TODO: Factor in a chosen timezone
+		RealTimeMode::Minute => (real_time / 1000. / 60.).floor() % 60., // TODO: Factor in a chosen timezone
 
-		RealTimeMode::Second => (time / 1000.).floor() % 60.,
-		RealTimeMode::Millisecond => time % 1000.,
+		RealTimeMode::Second => (real_time / 1000.).floor() % 60.,
+		RealTimeMode::Millisecond => real_time % 1000.,
 	}
 }
 
@@ -40,13 +40,13 @@ fn animation_time(ctx: impl Ctx + ExtractAnimationTime) -> f64 {
 	ctx.try_animation_time().unwrap_or_default()
 }
 
-// These nodes require more sophistcated algorithms for giving the correct result
+// These nodes require more sophisticated algorithms for giving the correct result
 
 // #[node_macro::node(category("Animation"))]
-// fn month(ctx: impl Ctx + ExtractTime) -> f64 {
-// 	((ctx.try_time().unwrap_or_default() / DAY / 365.25 % 1.) * 12.).floor()
+// fn month(ctx: impl Ctx + ExtractRealTime) -> f64 {
+// 	((ctx.try_real_time().unwrap_or_default() / DAY / 365.25 % 1.) * 12.).floor()
 // }
 // #[node_macro::node(category("Animation"))]
-// fn day(ctx: impl Ctx + ExtractTime) -> f64 {
-// 	(ctx.try_time().unwrap_or_default() / DAY
+// fn day(ctx: impl Ctx + ExtractRealTime) -> f64 {
+// 	(ctx.try_real_time().unwrap_or_default() / DAY
 // }

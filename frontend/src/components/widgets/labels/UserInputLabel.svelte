@@ -39,7 +39,7 @@
 	export let requiresLock = false;
 	export let textOnly = false;
 
-	$: keyboardLockInfoMessage = watchKeyboardLockInfoMessage(fullscreen.keyboardLockApiSupported);
+	$: keyboardLockInfoMessage = watchKeyboardLockInfoMessage($fullscreen.keyboardLockApiSupported);
 
 	$: displayKeyboardLockNotice = requiresLock && !$fullscreen.keyboardLocked;
 

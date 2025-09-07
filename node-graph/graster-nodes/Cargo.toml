@@ -6,8 +6,19 @@ description = "graphene raster data format"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "MIT OR Apache-2.0"
 
+[lib]
+crate-type = ["rlib", "dylib"]
+
+[lints]
+workspace = true
+
 [features]
 default = ["std"]
+shader-nodes = [
+	"std",
+	"dep:graphene-raster-nodes-shaders",
+	"dep:wgpu-executor",
+]
 std = [
 	"dep:graphene-core",
 	"dep:dyn-any",
@@ -19,8 +30,6 @@ std = [
 	"dep:serde",
 	"dep:specta",
 	"dep:kurbo",
-	"glam/debug-glam-assert",
-	"glam/serde",
 ]
 
 [dependencies]
@@ -31,11 +40,15 @@ node-macro = { workspace = true }
 # Local std dependencies
 dyn-any = { workspace = true, optional = true }
 graphene-core = { workspace = true, optional = true }
+wgpu-executor = { workspace = true, optional = true }
+graphene-raster-nodes-shaders = { path = "./shaders", optional = true }
 
 # Workspace dependencies
 bytemuck = { workspace = true }
 glam = { workspace = true }
+spirv-std = { workspace = true }
 num-traits = { workspace = true }
+num_enum = { workspace = true }
 
 # Workspace std dependencies
 specta = { workspace = true, optional = true }

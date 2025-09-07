@@ -27,3 +27,4 @@ proc-macro-error2 = "2"
 
 [dev-dependencies]
 graphene-core = { workspace = true }
+graphene-core-shaders = { workspace = true }

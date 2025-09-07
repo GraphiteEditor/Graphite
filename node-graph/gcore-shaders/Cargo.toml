@@ -7,9 +7,29 @@ authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "MIT OR Apache-2.0"
 
 [features]
-std = ["dep:dyn-any", "dep:serde", "dep:specta", "dep:log", "glam/debug-glam-assert", "glam/std", "glam/serde", "half/std", "half/serde", "num-traits/std"]
+# any feature that
+# * must be usable in shaders
+# * but requires std
+# * and should be on by default
+# should be in this list instead of `[workspace.dependency]`
+std = [
+	"dep:dyn-any",
+	"dep:serde",
+	"dep:specta",
+	"dep:log",
+	"glam/debug-glam-assert",
+	"glam/std",
+	"glam/serde",
+	"half/std",
+	"half/serde",
+	"num-traits/std",
+	"num_enum/std",
+]
 
 [dependencies]
+# Local dependencies
+node-macro = { workspace = true }
+
 # Local std dependencies
 dyn-any = { workspace = true, optional = true }
 
@@ -19,6 +39,8 @@ glam = { workspace = true }
 half = { workspace = true, default-features = false }
 num-derive = { workspace = true }
 num-traits = { workspace = true }
+num_enum = { workspace = true }
+spirv-std = { workspace = true }
 
 # Workspace std dependencies
 serde = { workspace = true, optional = true }

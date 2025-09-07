@@ -3,7 +3,9 @@ use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
 use core::hash::Hash;
+use glam::Vec4;
 use half::f16;
+use node_macro::BufferStruct;
 #[cfg(not(feature = "std"))]
 use num_traits::Euclid;
 #[cfg(not(feature = "std"))]
@@ -214,7 +216,7 @@ impl Pixel for Luma {}
 /// The other components (RGB) are stored as `f32` that range from `0.0` up to `f32::MAX`,
 /// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.0` (black) to `1.0` (white) in SDR color.
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable, BufferStruct)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub struct Color {
 	red: f32,
@@ -1074,6 +1076,21 @@ impl Color {
 			alpha: (self.alpha * other.alpha).clamp(0., 1.),
 			..*self
 		}
+	}
+
+	#[inline(always)]
+	pub const fn from_vec4(vec: Vec4) -> Self {
+		Self {
+			red: vec.x,
+			green: vec.y,
+			blue: vec.z,
+			alpha: vec.w,
+		}
+	}
+
+	#[inline(always)]
+	pub fn to_vec4(&self) -> Vec4 {
+		Vec4::new(self.red, self.green, self.blue, self.alpha)
 	}
 }
 

@@ -16,6 +16,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graph_craft::{Type, concrete};
 use graphene_std::Artboard;
+use graphene_std::ContextDependencies;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
@@ -567,7 +568,7 @@ impl NodeNetworkInterface {
 				let skip_footprint = 1;
 
 				let Some(input_type) = std::iter::once(node_types.call_argument.clone()).chain(node_types.inputs.clone()).nth(input_index + skip_footprint) else {
-					log::error!("Could not get type for {node_id_path:?}, input: {input_index}");
+					// log::warn!("Could not get type for {node_id_path:?}, input: {input_index}");
 					return (concrete!(()), TypeSource::Error("could not get the protonode's input"));
 				};
 
@@ -1248,11 +1249,7 @@ impl NodeNetworkInterface {
 
 	/// Returns the display name of the node. If the display name is empty, it will return "Untitled Node" or "Untitled Layer" depending on the node type.
 	pub fn display_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
-		let is_layer = self
-			.node_metadata(node_id, network_path)
-			.expect("Could not get persistent node metadata in untitled_layer_label")
-			.persistent_metadata
-			.is_layer();
+		let is_layer = self.is_layer(node_id, network_path);
 
 		let Some(reference) = self.reference(node_id, network_path) else {
 			log::error!("Could not get reference in untitled_layer_label");
@@ -2632,7 +2629,7 @@ impl NodeNetworkInterface {
 			InputConnector::Node { node_id, input_index } => {
 				let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else { return };
 				let Some(input_metadata) = node_metadata.persistent_metadata.input_metadata.get_mut(*input_index) else {
-					log::error!("Node metadata must exist on node: {input:?}");
+					// log::warn!("Node metadata must exist on node: {input:?}");
 					return;
 				};
 				let wire_update = WirePathUpdate {
@@ -2724,7 +2721,7 @@ impl NodeNetworkInterface {
 					return;
 				};
 				let Some(input_metadata) = node_metadata.persistent_metadata.input_metadata.get_mut(*input_index) else {
-					log::error!("Node metadata must exist on node: {input:?}");
+					// log::warn!("Node metadata must exist on node: {input:?}");
 					return;
 				};
 				input_metadata.transient_metadata.wire = TransientMetadata::Unloaded;
@@ -4203,6 +4200,18 @@ impl NodeNetworkInterface {
 			return;
 		};
 		node.call_argument = call_argument;
+	}
+
+	pub fn set_context_features(&mut self, node_id: &NodeId, network_path: &[NodeId], context_features: ContextDependencies) {
+		let Some(network) = self.network_mut(network_path) else {
+			log::error!("Could not get nested network in set_context_features");
+			return;
+		};
+		let Some(node) = network.nodes.get_mut(node_id) else {
+			log::error!("Could not get node in set_context_features");
+			return;
+		};
+		node.context_features = context_features;
 	}
 
 	pub fn set_input(&mut self, input_connector: &InputConnector, new_input: NodeInput, network_path: &[NodeId]) {
@@ -6640,7 +6649,7 @@ struct InputTransientMetadata {
 }
 
 /// Persistent metadata for each node in the network, which must be included when creating, serializing, and deserializing saving a node.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentNodePersistentMetadata {
 	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties if no display name is set.
 	// TODO: Used during serialization/deserialization to prevent storing implementation or inputs (and possible other fields) if they are the same as the definition.
@@ -6665,21 +6674,6 @@ pub struct DocumentNodePersistentMetadata {
 	pub node_type_metadata: NodeTypePersistentMetadata,
 	/// This should always be Some for nodes with a [`DocumentNodeImplementation::Network`], and none for [`DocumentNodeImplementation::ProtoNode`]
 	pub network_metadata: Option<NodeNetworkMetadata>,
-}
-
-impl Default for DocumentNodePersistentMetadata {
-	fn default() -> Self {
-		DocumentNodePersistentMetadata {
-			reference: None,
-			display_name: String::new(),
-			input_metadata: Vec::new(),
-			output_names: Vec::new(),
-			pinned: false,
-			locked: false,
-			node_type_metadata: NodeTypePersistentMetadata::default(),
-			network_metadata: None,
-		}
-	}
 }
 
 impl DocumentNodePersistentMetadata {

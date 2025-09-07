@@ -3,8 +3,8 @@ import { get as getFromStore } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
 import {
-	TriggerIndexedDbWriteDocument,
-	TriggerIndexedDbRemoveDocument,
+	TriggerPersistenceWriteDocument,
+	TriggerPersistenceRemoveDocument,
 	TriggerSavePreferences,
 	TriggerLoadPreferences,
 	TriggerLoadFirstAutoSaveDocument,
@@ -27,23 +27,23 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		await set("current_document_id", String(documentId), graphiteStore);
 	}
 
-	async function storeDocument(autoSaveDocument: TriggerIndexedDbWriteDocument) {
-		await update<Record<string, TriggerIndexedDbWriteDocument>>(
+	async function storeDocument(autoSaveDocument: TriggerPersistenceWriteDocument) {
+		await update<Record<string, TriggerPersistenceWriteDocument>>(
 			"documents",
 			(old) => {
 				const documents = old || {};
-				documents[autoSaveDocument.details.id] = autoSaveDocument;
+				documents[autoSaveDocument.documentId] = autoSaveDocument;
 				return documents;
 			},
 			graphiteStore,
 		);
 
 		await storeDocumentOrder();
-		await storeCurrentDocumentId(autoSaveDocument.details.id);
+		await storeCurrentDocumentId(autoSaveDocument.documentId);
 	}
 
 	async function removeDocument(id: string) {
-		await update<Record<string, TriggerIndexedDbWriteDocument>>(
+		await update<Record<string, TriggerPersistenceWriteDocument>>(
 			"documents",
 			(old) => {
 				const documents = old || {};
@@ -77,7 +77,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	}
 
 	async function loadFirstDocument() {
-		const previouslySavedDocuments = await get<Record<string, TriggerIndexedDbWriteDocument>>("documents", graphiteStore);
+		const previouslySavedDocuments = await get<Record<string, TriggerPersistenceWriteDocument>>("documents", graphiteStore);
 		const documentOrder = await get<string[]>("documents_tab_order", graphiteStore);
 		const currentDocumentId = await get<string>("current_document_id", graphiteStore);
 		if (!previouslySavedDocuments || !documentOrder) return;
@@ -86,20 +86,20 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 		if (currentDocumentId && currentDocumentId in previouslySavedDocuments) {
 			const doc = previouslySavedDocuments[currentDocumentId];
-			editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document, false);
+			editor.handle.openAutoSavedDocument(BigInt(doc.documentId), doc.details.name, doc.details.isSaved, doc.document, false);
 			editor.handle.selectDocument(BigInt(currentDocumentId));
 		} else {
 			const len = orderedSavedDocuments.length;
 			if (len > 0) {
 				const doc = orderedSavedDocuments[len - 1];
-				editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document, false);
-				editor.handle.selectDocument(BigInt(doc.details.id));
+				editor.handle.openAutoSavedDocument(BigInt(doc.documentId), doc.details.name, doc.details.isSaved, doc.document, false);
+				editor.handle.selectDocument(BigInt(doc.documentId));
 			}
 		}
 	}
 
 	async function loadRestDocuments() {
-		const previouslySavedDocuments = await get<Record<string, TriggerIndexedDbWriteDocument>>("documents", graphiteStore);
+		const previouslySavedDocuments = await get<Record<string, TriggerPersistenceWriteDocument>>("documents", graphiteStore);
 		const documentOrder = await get<string[]>("documents_tab_order", graphiteStore);
 		const currentDocumentId = await get<string>("current_document_id", graphiteStore);
 		if (!previouslySavedDocuments || !documentOrder) return;
@@ -107,19 +107,19 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		const orderedSavedDocuments = documentOrder.flatMap((id) => (previouslySavedDocuments[id] ? [previouslySavedDocuments[id]] : []));
 
 		if (currentDocumentId) {
-			const currentIndex = orderedSavedDocuments.findIndex((doc) => doc.details.id === currentDocumentId);
+			const currentIndex = orderedSavedDocuments.findIndex((doc) => doc.documentId === currentDocumentId);
 			const beforeCurrentIndex = currentIndex - 1;
 			const afterCurrentIndex = currentIndex + 1;
 
 			for (let i = beforeCurrentIndex; i >= 0; i--) {
-				const { document, details } = orderedSavedDocuments[i];
-				const { id, name, isSaved } = details;
-				editor.handle.openAutoSavedDocument(BigInt(id), name, isSaved, document, true);
+				const { documentId, document, details } = orderedSavedDocuments[i];
+				const { name, isSaved } = details;
+				editor.handle.openAutoSavedDocument(BigInt(documentId), name, isSaved, document, true);
 			}
 			for (let i = afterCurrentIndex; i < orderedSavedDocuments.length; i++) {
-				const { document, details } = orderedSavedDocuments[i];
-				const { id, name, isSaved } = details;
-				editor.handle.openAutoSavedDocument(BigInt(id), name, isSaved, document, false);
+				const { documentId, document, details } = orderedSavedDocuments[i];
+				const { name, isSaved } = details;
+				editor.handle.openAutoSavedDocument(BigInt(documentId), name, isSaved, document, false);
 			}
 
 			editor.handle.selectDocument(BigInt(currentDocumentId));
@@ -127,13 +127,13 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 			const length = orderedSavedDocuments.length;
 
 			for (let i = length - 2; i >= 0; i--) {
-				const { document, details } = orderedSavedDocuments[i];
-				const { id, name, isSaved } = details;
-				editor.handle.openAutoSavedDocument(BigInt(id), name, isSaved, document, true);
+				const { documentId, document, details } = orderedSavedDocuments[i];
+				const { name, isSaved } = details;
+				editor.handle.openAutoSavedDocument(BigInt(documentId), name, isSaved, document, true);
 			}
 
 			if (length > 0) {
-				const id = orderedSavedDocuments[length - 1].details.id;
+				const id = orderedSavedDocuments[length - 1].documentId;
 				editor.handle.selectDocument(BigInt(id));
 			}
 		}
@@ -161,10 +161,10 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	editor.subscriptions.subscribeJsMessage(TriggerLoadPreferences, async () => {
 		await loadPreferences();
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbWriteDocument, async (autoSaveDocument) => {
+	editor.subscriptions.subscribeJsMessage(TriggerPersistenceWriteDocument, async (autoSaveDocument) => {
 		await storeDocument(autoSaveDocument);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbRemoveDocument, async (removeAutoSaveDocument) => {
+	editor.subscriptions.subscribeJsMessage(TriggerPersistenceRemoveDocument, async (removeAutoSaveDocument) => {
 		await removeDocument(removeAutoSaveDocument.documentId);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerLoadFirstAutoSaveDocument, async () => {
@@ -175,7 +175,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerSaveActiveDocument, async (triggerSaveActiveDocument) => {
 		const documentId = String(triggerSaveActiveDocument.documentId);
-		const previouslySavedDocuments = await get<Record<string, TriggerIndexedDbWriteDocument>>("documents", graphiteStore);
+		const previouslySavedDocuments = await get<Record<string, TriggerPersistenceWriteDocument>>("documents", graphiteStore);
 		if (!previouslySavedDocuments) return;
 		if (documentId in previouslySavedDocuments) {
 			await storeCurrentDocumentId(documentId);

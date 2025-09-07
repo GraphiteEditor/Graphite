@@ -1,16 +1,16 @@
 use crate::gradient::GradientStops;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::Table;
-use crate::transform::{ApplyTransform, Footprint, Transform};
+use crate::transform::{ApplyTransform, Transform};
 use crate::vector::Vector;
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, Graphic, OwnedContextImpl};
+use crate::{CloneVarArgs, Context, Ctx, ExtractAll, Graphic, InjectFootprint, ModifyFootprint, OwnedContextImpl};
 use core::f64;
 use glam::{DAffine2, DVec2};
 use graphene_core_shaders::color::Color;
 
 #[node_macro::node(category(""))]
 async fn transform<T: ApplyTransform + 'n + 'static>(
-	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	ctx: impl Ctx + CloneVarArgs + ExtractAll + ModifyFootprint,
 	#[implementations(
 		Context -> DAffine2,
 		Context -> DVec2,
@@ -46,7 +46,7 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 
 #[node_macro::node(category(""))]
 fn replace_transform<Data, TransformInput: Transform>(
-	_: impl Ctx,
+	_: impl Ctx + InjectFootprint,
 	#[implementations(Table<Vector>, Table<Raster<CPU>>, Table<Graphic>, Table<Color>, Table<GradientStops>)] mut data: Table<Data>,
 	#[implementations(DAffine2)] transform: TransformInput,
 ) -> Table<Data> {
@@ -90,44 +90,4 @@ fn decompose_rotation(_: impl Ctx, transform: DAffine2) -> f64 {
 #[node_macro::node(category("Math: Transform"))]
 fn decompose_scale(_: impl Ctx, transform: DAffine2) -> DVec2 {
 	transform.decompose_scale()
-}
-
-#[node_macro::node(category("Debug"))]
-async fn boundless_footprint<T: 'n + 'static>(
-	ctx: impl Ctx + CloneVarArgs + ExtractAll,
-	#[implementations(
-		Context -> Table<Vector>,
-		Context -> Table<Graphic>,
-		Context -> Table<Raster<CPU>>,
-		Context -> Table<Raster<GPU>>,
-		Context -> Table<Color>,
-		Context -> Table<GradientStops>,
-		Context -> String,
-		Context -> f64,
-	)]
-	transform_target: impl Node<Context<'static>, Output = T>,
-) -> T {
-	let ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::BOUNDLESS);
-
-	transform_target.eval(ctx.into_context()).await
-}
-
-#[node_macro::node(category("Debug"))]
-async fn freeze_real_time<T: 'n + 'static>(
-	ctx: impl Ctx + CloneVarArgs + ExtractAll,
-	#[implementations(
-		Context -> Table<Vector>,
-		Context -> Table<Graphic>,
-		Context -> Table<Raster<CPU>>,
-		Context -> Table<Raster<GPU>>,
-		Context -> Table<Color>,
-		Context -> Table<GradientStops>,
-		Context -> String,
-		Context -> f64,
-	)]
-	transform_target: impl Node<Context<'static>, Output = T>,
-) -> T {
-	let ctx = OwnedContextImpl::from(ctx).with_real_time(0.);
-
-	transform_target.eval(ctx.into_context()).await
 }

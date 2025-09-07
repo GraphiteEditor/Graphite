@@ -952,6 +952,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				self.path = None;
 				self.set_save_state(false);
+				self.set_auto_save_state(false);
 
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
@@ -1305,6 +1306,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				self.network_interface.finish_transaction();
 				self.document_redo_history.clear();
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
 			DocumentMessage::AbortTransaction => match self.network_interface.transaction_status() {
 				TransactionStatus::Started => {
@@ -1326,6 +1328,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				self.network_interface.finish_transaction();
 				responses.add(OverlaysMessage::Draw);
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
 			DocumentMessage::ToggleLayerExpansion { id, recursive } => {
 				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
@@ -1793,7 +1796,7 @@ impl DocumentMessageHandler {
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
 		let document_message_handler = serde_json::from_str::<DocumentMessageHandler>(serialized_content)
 			.or_else(|e| {
-				log::warn!("failed to directly load document with the following error: {e}. Trying old DocumentMessageHandler");
+				log::warn!("Failed to directly load document with the following error: {e}. Trying old DocumentMessageHandler.");
 				// TODO: Eventually remove this document upgrade code
 				#[derive(Debug, serde::Serialize, serde::Deserialize)]
 				pub struct OldDocumentMessageHandler {
@@ -1985,16 +1988,16 @@ impl DocumentMessageHandler {
 		Some(previous_network)
 	}
 
-	pub fn current_hash(&self) -> Option<u64> {
-		self.document_undo_history.iter().last().map(|network| network.document_network().current_hash())
+	pub fn current_hash(&self) -> u64 {
+		self.network_interface.document_network().current_hash()
 	}
 
 	pub fn is_auto_saved(&self) -> bool {
-		self.current_hash() == self.auto_saved_hash
+		Some(self.current_hash()) == self.auto_saved_hash
 	}
 
 	pub fn is_saved(&self) -> bool {
-		self.current_hash() == self.saved_hash
+		Some(self.current_hash()) == self.saved_hash
 	}
 
 	pub fn is_graph_overlay_open(&self) -> bool {
@@ -2003,7 +2006,7 @@ impl DocumentMessageHandler {
 
 	pub fn set_auto_save_state(&mut self, is_saved: bool) {
 		if is_saved {
-			self.auto_saved_hash = self.current_hash();
+			self.auto_saved_hash = Some(self.current_hash());
 		} else {
 			self.auto_saved_hash = None;
 		}
@@ -2011,7 +2014,7 @@ impl DocumentMessageHandler {
 
 	pub fn set_save_state(&mut self, is_saved: bool) {
 		if is_saved {
-			self.saved_hash = self.current_hash();
+			self.saved_hash = Some(self.current_hash());
 		} else {
 			self.saved_hash = None;
 		}
@@ -2611,7 +2614,7 @@ impl DocumentMessageHandler {
 			layout: Layout::WidgetLayout(document_bar_layout),
 			layout_target: LayoutTarget::DocumentBar,
 		});
-		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
+		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	pub fn update_layers_panel_control_bar_widgets(&self, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
