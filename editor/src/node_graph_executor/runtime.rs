@@ -194,14 +194,14 @@ impl NodeRuntime {
 				}
 				GraphRuntimeRequest::ExecutionRequest(ExecutionRequest { execution_id, render_config, .. }) => {
 					let result = self.execute_network(render_config).await;
-					let mut responses = VecDeque::new();
+					let mut execution_responses = Vec::new();
 					// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
-					self.process_monitor_nodes(&mut responses, self.update_thumbnails);
+					self.process_monitor_nodes(&mut execution_responses, self.update_thumbnails);
 					self.update_thumbnails = false;
 
 					// Resolve the result from the inspection by accessing the monitor node
 					let inspect_result = self.inspect_state.and_then(|state| state.access(&self.executor));
-
+					execution_responses.push(ExecutionResponseMessage::InspectResult(inspect_result));
 					let texture = if let Ok(TaggedValue::RenderOutput(RenderOutput {
 						data: RenderOutputType::Texture(texture),
 						..
@@ -215,9 +215,8 @@ impl NodeRuntime {
 					self.sender.send_execution_response(ExecutionResponse {
 						execution_id,
 						result,
-						responses,
+						execution_responses,
 						vector_modify: self.vector_modify.clone(),
-						inspect_result,
 					});
 					return texture;
 				}
@@ -271,10 +270,10 @@ impl NodeRuntime {
 	}
 
 	/// Updates state data
-	pub fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>, update_thumbnails: bool) {
+	pub fn process_monitor_nodes(&mut self, responses: &mut Vec<ExecutionResponseMessage>, update_thumbnails: bool) {
 		// TODO: Consider optimizing this since it's currently O(m*n^2), with a sort it could be made O(m * n*log(n))
 		self.thumbnail_renders.retain(|id, _| self.monitor_nodes.iter().any(|monitor_node_path| monitor_node_path.contains(id)));
-
+		let mut updated_thumbnails = false;
 		for monitor_node_path in &self.monitor_nodes {
 			// Skip the inspect monitor node
 			if self.inspect_state.is_some_and(|inspect_state| monitor_node_path.last().copied() == Some(inspect_state.monitor_node)) {
@@ -298,13 +297,17 @@ impl NodeRuntime {
 			// Graphic table: thumbnail
 			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Graphic>>>() {
 				if update_thumbnails {
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses)
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses);
+					responses.push(ExecutionResponseMessage::UpdateNodeGraphThumbnail(parent_network_node_id, io.output.clone().to_graphic()));
+					updated_thumbnails = true;
 				}
 			}
 			// Artboard table: thumbnail
 			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Artboard>>>() {
 				if update_thumbnails {
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses)
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses);
+					responses.push(ExecutionResponseMessage::UpdateNodeGraphThumbnail(parent_network_node_id, io.output.clone().to_graphic()));
+					updated_thumbnails = true;
 				}
 			}
 			// Vector table: vector modifications
@@ -319,18 +322,21 @@ impl NodeRuntime {
 				log::warn!("Failed to downcast monitor node output {parent_network_node_id:?}");
 			}
 		}
+		if updated_thumbnails {
+			responses.push(ExecutionResponseMessage::SendGraph);
+		}
 	}
 
 	/// If this is `Graphic` data, regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
-	fn render_thumbnail(thumbnail_renders: &mut HashMap<NodeId, Vec<SvgSegment>>, parent_network_node_id: NodeId, graphic: &impl Render, responses: &mut VecDeque<FrontendMessage>) {
+	fn render_thumbnail(thumbnail_renders: &mut HashMap<NodeId, Vec<SvgSegment>>, parent_network_node_id: NodeId, graphic: &impl Render, responses: &mut Vec<ExecutionResponseMessage>) {
 		// Skip thumbnails if the layer is too complex (for performance)
 		if graphic.render_complexity() > 1000 {
 			let old = thumbnail_renders.insert(parent_network_node_id, Vec::new());
 			if old.is_none_or(|v| !v.is_empty()) {
-				responses.push_back(FrontendMessage::UpdateNodeThumbnail {
-					id: parent_network_node_id,
-					value: "<svg viewBox=\"0 0 10 10\"><title>Dense thumbnail omitted for performance</title><line x1=\"0\" y1=\"10\" x2=\"10\" y2=\"0\" stroke=\"red\" /></svg>".to_string(),
-				});
+				responses.push(ExecutionResponseMessage::UpdateFrontendThumbnail(
+					parent_network_node_id,
+					"<svg viewBox=\"0 0 10 10\"><title>Dense thumbnail omitted for performance</title><line x1=\"0\" y1=\"10\" x2=\"10\" y2=\"0\" stroke=\"red\" /></svg>".to_string(),
+				));
 			}
 			return;
 		}
@@ -364,10 +370,7 @@ impl NodeRuntime {
 		let old_thumbnail_svg = thumbnail_renders.entry(parent_network_node_id).or_default();
 
 		if old_thumbnail_svg != &new_thumbnail_svg {
-			responses.push_back(FrontendMessage::UpdateNodeThumbnail {
-				id: parent_network_node_id,
-				value: new_thumbnail_svg.to_svg_string(),
-			});
+			responses.push(ExecutionResponseMessage::UpdateFrontendThumbnail(parent_network_node_id, new_thumbnail_svg.to_svg_string()));
 			*old_thumbnail_svg = new_thumbnail_svg;
 		}
 	}

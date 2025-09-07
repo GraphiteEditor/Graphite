@@ -33,6 +33,7 @@ pub struct DispatcherMessageHandlers {
 
 // Output messages are what the editor returns after processing Messages. It is handled by the scope outside the editor,
 // which has access to the node graph executor, frontend, etc
+#[derive(Debug)]
 pub enum EditorOutput {
 	// These messages perform some side effect other than updating the frontend, but outside the scope of the editor
 	RequestNativeNodeGraphRender { compilation_request: CompilationRequest },

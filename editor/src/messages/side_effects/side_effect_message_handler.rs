@@ -41,6 +41,7 @@ impl Dispatcher {
 			open: active_document.graph_view_overlay_open,
 			in_selected_network: &active_document.selection_network_path == breadcrumb_network_path,
 			previewed_node,
+			thumbnails: active_document.node_graph_handler.thumbnails.clone(),
 		};
 		let opacity = active_document.graph_fade_artwork_percentage;
 		let node_graph_overlay_node = crate::messages::portfolio::document::node_graph::generate_node_graph_overlay::generate_node_graph_overlay(node_graph_render_data, opacity);

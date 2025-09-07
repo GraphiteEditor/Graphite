@@ -7,6 +7,7 @@ use glam::IVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
+use graphene_std::Graphic;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 
 #[impl_message(Message, DocumentMessage, NodeGraph)]
@@ -219,6 +220,10 @@ pub enum NodeGraphMessage {
 	UpdateImportsExports,
 	UpdateLayerPanel,
 	UpdateNewNodeGraph,
+	UpdateThumbnail {
+		node_id: NodeId,
+		graphic: Graphic,
+	},
 	UpdateTypes {
 		#[serde(skip)]
 		resolved_types: ResolvedDocumentNodeTypesDelta,

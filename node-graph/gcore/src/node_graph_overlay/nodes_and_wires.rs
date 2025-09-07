@@ -8,15 +8,14 @@ use crate::{
 	consts::SOURCE_SANS_FONT_DATA,
 	node_graph_overlay::{
 		consts::*,
-		types::{FrontendGraphDataType, FrontendNodeToRender},
+		types::{FrontendGraphDataType, FrontendNodeToRender, NodeGraphOverlayData},
 	},
 	table::{Table, TableRow},
 	text::{self, TextAlign, TypesettingConfig},
 	transform::ApplyTransform,
 	vector::{
 		Vector,
-		style::{Fill, Stroke, StrokeAlign},
-		style::{Fill, Stroke, StrokeAlign},
+		style::{Fill, Stroke},
 	},
 };
 
@@ -210,10 +209,10 @@ pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 	node_table
 }
 
-pub fn draw_layers(nodes: &Vec<FrontendNodeToRender>) -> (Table<Graphic>, Table<Graphic>) {
+pub fn draw_layers(nodes: &mut NodeGraphOverlayData) -> (Table<Graphic>, Table<Graphic>) {
 	let mut layer_table = Table::new();
 	let mut side_ports_table = Table::new();
-	for node_to_render in nodes {
+	for node_to_render in &nodes.nodes_to_render {
 		if let Some(frontend_layer) = node_to_render.node_or_layer.layer.as_ref() {
 			// The layer position is the top left of the thumbnail
 			let layer_position = DVec2::new(frontend_layer.position.x as f64 * GRID_SIZE + 12., frontend_layer.position.y as f64 * GRID_SIZE);
@@ -359,7 +358,7 @@ pub fn draw_layers(nodes: &Vec<FrontendNodeToRender>) -> (Table<Graphic>, Table<
 			}
 			let bottom_port = BezPath::from_svg("M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z").unwrap();
 			let mut vector = Vector::from_bezpath(bottom_port);
-			let mut bottom_port_fill = if frontend_layer.bottom_input.connected_to_node.is_some() {
+			let bottom_port_fill = if frontend_layer.bottom_input.connected_to_node.is_some() {
 				frontend_layer.bottom_input.data_type.data_color()
 			} else {
 				frontend_layer.bottom_input.data_type.data_color_dim()
@@ -456,10 +455,34 @@ pub fn draw_layers(nodes: &Vec<FrontendNodeToRender>) -> (Table<Graphic>, Table<
 					inner_thumbnail_table.push(TableRow::new_from_element(vector));
 				}
 			}
-			let mut thumbnail_row = TableRow::new_from_element(Graphic::Vector(inner_thumbnail_table));
-			thumbnail_row.alpha_blending.clip = true;
-			let graphic_table = Table::new_from_row(thumbnail_row);
-			layer_table.push(TableRow::new_from_element(Graphic::Graphic(graphic_table)));
+			let mut thumbnail_grid_row = TableRow::new_from_element(Graphic::Vector(inner_thumbnail_table));
+			thumbnail_grid_row.alpha_blending.clip = true;
+			let mut clipped_thumbnail_table = Table::new();
+			clipped_thumbnail_table.push(thumbnail_grid_row);
+			if let Some(thumbnail_graphic) = nodes.thumbnails.get_mut(&node_to_render.metadata.node_id) {
+				let thumbnail_graphic = std::mem::take(thumbnail_graphic);
+				let bbox = thumbnail_graphic.bounding_box(DAffine2::default(), false);
+				if let RenderBoundingBox::Rectangle(rect) = bbox {
+					let rect_size = rect[1] - rect[0];
+					let target_size = DVec2::new(68., 44.);
+					// uniform scale that fits in target box
+					let scale_x = target_size.x / rect_size.x;
+					let scale_y = target_size.y / rect_size.y;
+					let scale = scale_x.min(scale_y);
+
+					let translation = rect[0] * -scale;
+					let scaled_size = rect_size * scale;
+					let offset_to_center = (target_size - scaled_size) / 2.;
+
+					let mut thumbnail_graphic_row = TableRow::new_from_element(thumbnail_graphic);
+					thumbnail_graphic_row.transform = DAffine2::from_translation(layer_position + offset_to_center) * DAffine2::from_scale_angle_translation(DVec2::splat(scale), 0., translation);
+					thumbnail_graphic_row.alpha_blending.clip = true;
+
+					clipped_thumbnail_table.push(thumbnail_graphic_row);
+				}
+			}
+
+			layer_table.push(TableRow::new_from_element(Graphic::Graphic(clipped_thumbnail_table)));
 		}
 	}
 

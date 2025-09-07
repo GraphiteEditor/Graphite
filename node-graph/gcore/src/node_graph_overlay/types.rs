@@ -2,8 +2,11 @@ use glam::{DAffine2, DVec2};
 use graphene_core_shaders::color::Color;
 use kurbo::BezPath;
 
-use crate::{node_graph_overlay::consts::*, uuid::NodeId};
-use std::hash::{Hash, Hasher};
+use crate::{Graphic, node_graph_overlay::consts::*, uuid::NodeId};
+use std::{
+	collections::HashMap,
+	hash::{Hash, Hasher},
+};
 
 #[derive(Clone, Debug, Default, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct NodeGraphTransform {
@@ -27,13 +30,28 @@ impl NodeGraphTransform {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub struct NodeGraphOverlayData {
 	pub nodes_to_render: Vec<FrontendNodeToRender>,
 	pub open: bool,
 	pub in_selected_network: bool,
 	// Displays a dashed border around the node
 	pub previewed_node: Option<NodeId>,
+	pub thumbnails: HashMap<NodeId, Graphic>,
+}
+
+impl Hash for NodeGraphOverlayData {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.nodes_to_render.hash(state);
+		self.open.hash(state);
+		self.in_selected_network.hash(state);
+		self.previewed_node.hash(state);
+		let mut entries: Vec<_> = self.thumbnails.iter().collect();
+		entries.sort_by(|a, b| a.0.cmp(b.0));
+		let mut hasher = std::collections::hash_map::DefaultHasher::new();
+		entries.hash(&mut hasher);
+		hasher.finish();
+	}
 }
 
 #[derive(Clone, Debug, Default, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]

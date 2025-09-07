@@ -47,6 +47,7 @@ impl NodeGraphUIRuntime {
 
 /// Represents an update to the render state
 /// TODO: Incremental compilation
+#[derive(Debug)]
 pub struct CompilationRequest {
 	pub network: NodeNetwork,
 }

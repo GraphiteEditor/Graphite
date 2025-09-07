@@ -5,6 +5,7 @@ use graph_craft::document::value::{RenderOutput, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
+use graphene_std::Graphic;
 use graphene_std::application_io::RenderConfig;
 use graphene_std::application_io::TimingInformation;
 use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
@@ -29,10 +30,16 @@ pub struct ExecutionRequest {
 pub struct ExecutionResponse {
 	execution_id: u64,
 	result: Result<TaggedValue, String>,
-	responses: VecDeque<FrontendMessage>,
+	execution_responses: Vec<ExecutionResponseMessage>,
 	vector_modify: HashMap<NodeId, Vector>,
+}
+
+pub enum ExecutionResponseMessage {
 	/// The resulting value from the temporary inspected during execution
-	inspect_result: Option<InspectResult>,
+	InspectResult(Option<InspectResult>),
+	UpdateNodeGraphThumbnail(NodeId, Graphic),
+	UpdateFrontendThumbnail(NodeId, String),
+	SendGraph,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -252,11 +259,24 @@ impl NodeGraphExecutor {
 					let ExecutionResponse {
 						execution_id,
 						result,
-						responses: existing_responses,
+						execution_responses,
 						vector_modify,
-						inspect_result,
 					} = execution_response;
-
+					for execution_response in execution_responses {
+						match execution_response {
+							ExecutionResponseMessage::InspectResult(inspect_result) => {
+								// Update the Data panel on the frontend using the value of the inspect result.
+								if let Some(inspect_result) = (self.previous_node_to_inspect.is_some()).then_some(inspect_result).flatten() {
+									responses.add(DataPanelMessage::UpdateLayout { inspect_result });
+								} else {
+									responses.add(DataPanelMessage::ClearLayout);
+								}
+							}
+							ExecutionResponseMessage::UpdateNodeGraphThumbnail(node_id, graphic) => responses.add(NodeGraphMessage::UpdateThumbnail { node_id, graphic }),
+							ExecutionResponseMessage::UpdateFrontendThumbnail(node_id, string) => responses.add(FrontendMessage::UpdateNodeThumbnail { id: node_id, value: string }),
+							ExecutionResponseMessage::SendGraph => responses.add(NodeGraphMessage::SendGraph),
+						}
+					}
 					responses.add(OverlaysMessage::Draw);
 
 					let node_graph_output = match result {
@@ -269,7 +289,6 @@ impl NodeGraphExecutor {
 						}
 					};
 
-					responses.extend(existing_responses.into_iter().map(Into::into));
 					document.network_interface.update_vector_modify(vector_modify);
 
 					let execution_context = self.futures.remove(&execution_id).ok_or_else(|| "Invalid generation ID".to_string())?;
@@ -283,13 +302,6 @@ impl NodeGraphExecutor {
 						execution_id,
 						document_id: execution_context.document_id,
 					});
-
-					// Update the Data panel on the frontend using the value of the inspect result.
-					if let Some(inspect_result) = (self.previous_node_to_inspect.is_some()).then_some(inspect_result).flatten() {
-						responses.add(DataPanelMessage::UpdateLayout { inspect_result });
-					} else {
-						responses.add(DataPanelMessage::ClearLayout);
-					}
 				}
 				NodeGraphUpdate::CompilationResponse(execution_response) => {
 					let CompilationResponse { node_graph_errors, result } = execution_response;
