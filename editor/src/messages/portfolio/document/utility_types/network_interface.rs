@@ -568,7 +568,7 @@ impl NodeNetworkInterface {
 				let skip_footprint = 1;
 
 				let Some(input_type) = std::iter::once(node_types.call_argument.clone()).chain(node_types.inputs.clone()).nth(input_index + skip_footprint) else {
-					log::error!("Could not get type for {node_id_path:?}, input: {input_index}");
+					// log::warn!("Could not get type for {node_id_path:?}, input: {input_index}");
 					return (concrete!(()), TypeSource::Error("could not get the protonode's input"));
 				};
 
@@ -2629,7 +2629,7 @@ impl NodeNetworkInterface {
 			InputConnector::Node { node_id, input_index } => {
 				let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else { return };
 				let Some(input_metadata) = node_metadata.persistent_metadata.input_metadata.get_mut(*input_index) else {
-					log::error!("Node metadata must exist on node: {input:?}");
+					// log::warn!("Node metadata must exist on node: {input:?}");
 					return;
 				};
 				let wire_update = WirePathUpdate {
@@ -2721,7 +2721,7 @@ impl NodeNetworkInterface {
 					return;
 				};
 				let Some(input_metadata) = node_metadata.persistent_metadata.input_metadata.get_mut(*input_index) else {
-					log::error!("Node metadata must exist on node: {input:?}");
+					// log::warn!("Node metadata must exist on node: {input:?}");
 					return;
 				};
 				input_metadata.transient_metadata.wire = TransientMetadata::Unloaded;

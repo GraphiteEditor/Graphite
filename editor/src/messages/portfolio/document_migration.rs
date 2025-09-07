@@ -114,6 +114,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::ops::RootNode"],
 	},
 	NodeReplacement {
+		node: graphene_std::math_nodes::absolute_value::IDENTIFIER,
+		aliases: &["graphene_core::ops::AbsoluteValueNode"],
+	},
+	NodeReplacement {
 		node: graphene_std::math_nodes::logarithm::IDENTIFIER,
 		aliases: &["graphene_core::ops::LogarithmNode"],
 	},

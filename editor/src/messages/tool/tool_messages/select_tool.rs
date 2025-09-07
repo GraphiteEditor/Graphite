@@ -1449,8 +1449,6 @@ impl Fsm for SelectToolFsmState {
 							}
 
 							tool_data.get_snap_candidates(document, input);
-
-							responses.add(DocumentMessage::StartTransaction);
 						}
 					}
 				}
@@ -1623,8 +1621,6 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(_, SelectToolMessage::SetPivot { position }) => {
-				responses.add(DocumentMessage::StartTransaction);
-
 				tool_data.pivot_gizmo.pivot.last_non_none_reference_point = position;
 				tool_data.pivot_gizmo.pivot.pinned = false;
 
