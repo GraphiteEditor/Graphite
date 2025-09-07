@@ -140,7 +140,7 @@ impl WgpuExecutor {
 			let mut renderer = self.vello_renderer.lock().await;
 			for (image, texture) in context.resource_overrides.iter() {
 				let texture_view = wgpu::TexelCopyTextureInfoBase {
-					texture: texture.texture.clone(),
+					texture: wgpu::Texture::clone(&texture.texture),
 					mip_level: 0,
 					origin: Origin3d::ZERO,
 					aspect: TextureAspect::All,
