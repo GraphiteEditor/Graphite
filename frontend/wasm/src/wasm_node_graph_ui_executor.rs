@@ -1,15 +1,14 @@
-use std::{
-	cell::RefCell,
-	rc::Rc,
-	sync::{Arc, Mutex, mpsc::Receiver},
-};
+use std::sync::{Arc, Mutex, mpsc::Receiver};
 
 use editor::{
 	application::Editor,
 	messages::prelude::{FrontendMessage, Message},
 };
 use graph_craft::graphene_compiler::Compiler;
-use graphene_std::node_graph_overlay::{types::NodeGraphTransform, ui_context::UIRuntimeResponse};
+use graphene_std::{
+	node_graph_overlay::{types::NodeGraphTransform, ui_context::UIRuntimeResponse},
+	text::{NewFontCache, NewFontCacheWrapper},
+};
 use interpreted_executor::{
 	dynamic_executor::DynamicExecutor,
 	ui_runtime::{CompilationRequest, EvaluationRequest, NodeGraphUIRuntime},
@@ -40,7 +39,7 @@ impl WasmNodeGraphUIExecutor {
 			executor: DynamicExecutor::default(),
 			compiler: Compiler {},
 			response_sender,
-			font_collection: Arc::new(Mutex::new(FontCollection::new())),
+			font_cache: NewFontCacheWrapper(Arc::new(Mutex::new(NewFontCache::new()))),
 		};
 		if let Ok(mut node_runtime) = NODE_UI_RUNTIME.lock() {
 			node_runtime.replace(runtime);

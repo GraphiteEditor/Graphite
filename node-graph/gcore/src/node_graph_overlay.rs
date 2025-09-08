@@ -9,6 +9,7 @@ use crate::{
 		ui_context::{UIContext, UIRuntimeResponse},
 	},
 	table::Table,
+	text::NewFontCacheWrapper,
 	transform::ApplyTransform,
 };
 
@@ -19,9 +20,9 @@ pub mod types;
 pub mod ui_context;
 
 #[node_macro::node(skip_impl)]
-pub fn generate_nodes(_: impl Ctx, mut node_graph_overlay_data: NodeGraphOverlayData) -> Table<Graphic> {
+pub fn generate_nodes(_: impl Ctx, mut node_graph_overlay_data: NodeGraphOverlayData, font_cache: NewFontCacheWrapper) -> Table<Graphic> {
 	let mut nodes_and_wires = Table::new();
-	let (layers, side_ports) = draw_layers(&mut node_graph_overlay_data);
+	let (layers, side_ports) = draw_layers(&mut node_graph_overlay_data, font_cache.0.as_ref());
 	nodes_and_wires.extend(layers);
 
 	let wires = draw_wires(&mut node_graph_overlay_data.nodes_to_render);
@@ -29,7 +30,7 @@ pub fn generate_nodes(_: impl Ctx, mut node_graph_overlay_data: NodeGraphOverlay
 
 	nodes_and_wires.extend(side_ports);
 
-	let nodes = draw_nodes(&node_graph_overlay_data.nodes_to_render);
+	let nodes = draw_nodes(&node_graph_overlay_data.nodes_to_render, font_cache.0.as_ref());
 	nodes_and_wires.extend(nodes);
 
 	nodes_and_wires

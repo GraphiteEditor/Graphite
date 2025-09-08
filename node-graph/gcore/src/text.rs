@@ -1,14 +1,16 @@
 mod font_cache;
 mod to_path;
 
-use core::fmt;
 use std::{
 	borrow::Cow,
 	collections::{HashMap, hash_map::Entry},
+	fmt,
+	sync::{Arc, Mutex},
 };
 
 use dyn_any::DynAny;
 pub use font_cache::*;
+use graphene_core_shaders::color::Color;
 use parley::{Layout, StyleProperty};
 use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
@@ -45,13 +47,17 @@ impl From<TextAlign> for parley::Alignment {
 pub struct Typography {
 	pub layout: Layout<()>,
 	pub font_family: String,
+	pub color: Color,
+	pub stroke: Option<(Color, f64)>,
 }
 
 impl fmt::Debug for Typography {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("Typography")
-            .field("layout", &"<skipped>") // skip Layout<()> because it has no Debug
-            .finish()
+			.field("font_family", &self.font_family)
+			.field("color", &self.color)
+			.field("stroke", &self.stroke)
+			.finish()
 	}
 }
 
@@ -73,11 +79,31 @@ impl Typography {
 	}
 }
 
+#[derive(Clone)]
+pub struct NewFontCacheWrapper(pub Arc<Mutex<NewFontCache>>);
+
+impl fmt::Debug for NewFontCacheWrapper {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("font cache").finish()
+	}
+}
+
+impl PartialEq for NewFontCacheWrapper {
+	fn eq(&self, _other: &Self) -> bool {
+		log::error!("Font cache should not be compared");
+		false
+	}
+}
+
+unsafe impl dyn_any::StaticType for NewFontCacheWrapper {
+	type Static = NewFontCacheWrapper;
+}
+
 pub struct NewFontCache {
-	font_context: parley::FontContext,
-	layout_context: parley::LayoutContext<()>,
-	font_mapping: HashMap<Font, (String, parley::fontique::FontInfo)>,
-	hash: u64,
+	pub font_context: parley::FontContext,
+	pub layout_context: parley::LayoutContext<()>,
+	pub font_mapping: HashMap<Font, (String, parley::fontique::FontInfo)>,
+	pub hash: u64,
 }
 
 impl NewFontCache {
@@ -110,7 +136,6 @@ impl NewFontCache {
 							log::error!("Could not get family name for font: {:?}", vacant_entry.key());
 							return;
 						};
-						log::debug!("font info: {:?}", font_info);
 						let Some(font_info) = font_info.into_iter().next() else {
 							log::error!("Could not get font info for font: {:?}", vacant_entry.key());
 							return;
@@ -129,20 +154,30 @@ impl NewFontCache {
 		}
 	}
 
-	pub fn generate_typography(&mut self, font: Font, text: &str) -> Option<Typography> {
-		let Some((font_family, font_info)) = self.font_mapping.get(&font) else {
+	pub fn generate_typography(&mut self, font: &Font, font_size: f32, text: &str) -> Option<Typography> {
+		let Some((font_family, font_info)) = self.font_mapping.get(font) else {
 			log::error!("Font not loaded: {:?}", font);
 			return None;
 		};
 		let font_family = font_family.to_string();
+
 		let mut builder = self.layout_context.ranged_builder(&mut self.font_context, text, 1., false);
 
 		builder.push_default(StyleProperty::FontStack(parley::FontStack::Single(parley::FontFamily::Named(Cow::Owned(font_family.clone())))));
+		builder.push_default(StyleProperty::FontSize(font_size));
 		builder.push_default(StyleProperty::FontWeight(font_info.weight()));
 		builder.push_default(StyleProperty::FontStyle(font_info.style()));
 		builder.push_default(StyleProperty::FontWidth(font_info.width()));
 
-		let layout = builder.build(text);
-		Some(Typography { layout, font_family })
+		let mut layout: Layout<()> = builder.build(text);
+		layout.break_all_lines(None);
+		// layout.align(None, parley::Alignment::Start, AlignmentOptions::);
+
+		Some(Typography {
+			layout,
+			font_family,
+			color: Color::BLACK,
+			stroke: None,
+		})
 	}
 }

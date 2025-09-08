@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use glam::{DAffine2, DVec2};
 use graphene_core_shaders::color::{AlphaMut, Color};
 use kurbo::{BezPath, Circle, Rect, RoundedRect, Shape};
@@ -5,13 +7,13 @@ use kurbo::{BezPath, Circle, Rect, RoundedRect, Shape};
 use crate::{
 	Graphic,
 	bounds::{BoundingBox, RenderBoundingBox},
-	consts::SOURCE_SANS_FONT_DATA,
+	consts::{SOURCE_SANS_FONT_DATA, SOURCE_SANS_FONT_FAMILY, SOURCE_SANS_FONT_STYLE},
 	node_graph_overlay::{
 		consts::*,
 		types::{FrontendGraphDataType, FrontendNodeToRender, NodeGraphOverlayData},
 	},
 	table::{Table, TableRow},
-	text::{self, TextAlign, TypesettingConfig},
+	text::{self, Font, NewFontCache, TextAlign, TypesettingConfig},
 	transform::ApplyTransform,
 	vector::{
 		Vector,
@@ -19,7 +21,7 @@ use crate::{
 	},
 };
 
-pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
+pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>, font_cache: &Mutex<NewFontCache>) -> Table<Graphic> {
 	let mut node_table = Table::new();
 	for node_to_render in nodes {
 		if let Some(frontend_node) = node_to_render.node_or_layer.node.as_ref() {
@@ -118,56 +120,74 @@ pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 			border_table.push(border_vector_row);
 			node_table.push(TableRow::new_from_element(Graphic::Vector(border_table)));
 
-			let typesetting = TypesettingConfig {
-				font_size: 14.,
-				line_height_ratio: 1.2,
-				character_spacing: 0.0,
-				max_width: None,
-				max_height: None,
-				tilt: 0.0,
-				align: TextAlign::Left,
+			let text_table = match font_cache.lock() {
+				Ok(mut font_cache) => {
+					let font = Font::new(SOURCE_SANS_FONT_FAMILY.to_string(), SOURCE_SANS_FONT_STYLE.to_string());
+					let first_row_graphic = match font_cache.generate_typography(&font, 14., &node_to_render.metadata.display_name) {
+						Some(mut typography) => {
+							typography.color = Color::WHITE;
+							Graphic::Typography(Table::new_from_element(typography))
+						}
+						None => {
+							log::error!("Could not generate typography in draw node");
+							Graphic::default()
+						}
+					};
+
+					let mut node_text_row = TableRow::new_from_element(first_row_graphic);
+					node_text_row.transform = DAffine2::from_translation(DVec2::new(x + 8., y + 3.));
+					let mut text_table = Table::new_from_row(node_text_row);
+
+					for row in 1..=number_of_rows {
+						if let Some(input) = frontend_node.secondary_inputs.get(row - 1) {
+							let secondary_input_graphic = match font_cache.generate_typography(&font, 14., &input.name) {
+								Some(mut typography) => {
+									typography.color = Color::WHITE;
+									Graphic::Typography(Table::new_from_element(typography))
+								}
+								None => {
+									log::error!("Could not generate typography in draw node");
+									Graphic::default()
+								}
+							};
+							let mut node_text_row = TableRow::new_from_element(secondary_input_graphic);
+							node_text_row.transform = DAffine2::from_translation(DVec2::new(x + 8., y + 24. * row as f64 + 3.));
+							text_table.push(node_text_row);
+						} else if let Some(output) = frontend_node.secondary_outputs.get(row - 1) {
+							let secondary_output_graphic = match font_cache.generate_typography(&font, 14., &output.name) {
+								Some(mut typography) => {
+									typography.color = Color::WHITE;
+									Graphic::Typography(Table::new_from_element(typography))
+								}
+								None => {
+									log::error!("Could not generate typography in draw node");
+									Graphic::default()
+								}
+							};
+
+							// Find width to right align text
+							let full_text_width = if let RenderBoundingBox::Rectangle(bbox) = secondary_output_graphic.bounding_box(DAffine2::default(), true) {
+								bbox[1].x - bbox[0].x
+							} else {
+								0.
+							};
+							// Account for clipping
+							let text_width = full_text_width.min(5. * GRID_SIZE - 16.);
+							let left_offset = 5. * GRID_SIZE - 8. - text_width;
+							let mut node_text_row = TableRow::new_from_element(secondary_output_graphic);
+							node_text_row.transform = DAffine2::from_translation(DVec2::new(x + 8. + left_offset, y + 24. * row as f64 + 3.));
+							text_table.push(node_text_row);
+						}
+					}
+					text_table
+				}
+				Err(_) => {
+					log::error!("Could not lock font cache in draw node");
+					Table::new()
+				}
 			};
 
-			// Names for each row
-			let font_blob = Some(text::load_font(SOURCE_SANS_FONT_DATA));
-			let mut node_text = crate::text::to_path(&node_to_render.metadata.display_name, font_blob, typesetting, false);
-			for text_row in node_text.iter_mut() {
-				*text_row.transform = DAffine2::from_translation(DVec2::new(x + 8., y + 3.));
-			}
-
-			for row in 1..=number_of_rows {
-				if let Some(input) = frontend_node.secondary_inputs.get(row - 1) {
-					let font_blob = Some(text::load_font(SOURCE_SANS_FONT_DATA));
-					let mut input_row_text = crate::text::to_path(&input.name, font_blob, typesetting, false);
-					for text_row in input_row_text.iter_mut() {
-						*text_row.transform = DAffine2::from_translation(DVec2::new(x + 8., y + 24. * row as f64 + 3.));
-					}
-					node_text.extend(input_row_text);
-				} else if let Some(output) = frontend_node.secondary_outputs.get(row - 1) {
-					let font_blob = Some(text::load_font(SOURCE_SANS_FONT_DATA));
-					let mut output_row_text = crate::text::to_path(&output.name, font_blob, typesetting, false);
-					// Find width to right align text
-					let full_text_width = if let RenderBoundingBox::Rectangle(bbox) = output_row_text.bounding_box(DAffine2::default(), true) {
-						bbox[1].x - bbox[0].x
-					} else {
-						0.
-					};
-					// Account for clipping
-					let text_width = full_text_width.min(5. * GRID_SIZE - 16.);
-					let left_offset = 5. * GRID_SIZE - 8. - text_width;
-					for text_row in output_row_text.iter_mut() {
-						*text_row.transform = DAffine2::from_translation(DVec2::new(x + 8. + left_offset, y + 24. * row as f64 + 3.));
-					}
-					node_text.extend(output_row_text);
-				}
-			}
-
-			// for text_row in node_text.iter_mut() {
-			// 	text_row.element.style.fill = Fill::Solid(Color::WHITE);
-			// }
-
-			let node_text_row = TableRow::new_from_element(Graphic::Vector(node_text));
-			node_table.push(node_text_row);
+			node_table.extend(text_table);
 
 			// Add black clipping path to view text in node
 			let text_area = Rect::new(x + 8., y, x + node_width - 8., y + node_height);
@@ -209,7 +229,7 @@ pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 	node_table
 }
 
-pub fn draw_layers(nodes: &mut NodeGraphOverlayData) -> (Table<Graphic>, Table<Graphic>) {
+pub fn draw_layers(nodes: &mut NodeGraphOverlayData, font_cache: &Mutex<NewFontCache>) -> (Table<Graphic>, Table<Graphic>) {
 	let mut layer_table = Table::new();
 	let mut side_ports_table = Table::new();
 	for node_to_render in &nodes.nodes_to_render {
@@ -224,22 +244,26 @@ pub fn draw_layers(nodes: &mut NodeGraphOverlayData) -> (Table<Graphic>, Table<G
 				0.
 			};
 
-			// First render the text to get the layer width
-			// Create typesetting configuration
-			let typesetting = TypesettingConfig {
-				font_size: 14.,
-				line_height_ratio: 1.2,
-				character_spacing: 0.0,
-				max_width: None,
-				max_height: None,
-				tilt: 0.0,
-				align: TextAlign::Left,
+			let text_graphic = match font_cache.lock() {
+				Ok(mut font_cache) => {
+					let font = Font::new(SOURCE_SANS_FONT_FAMILY.to_string(), SOURCE_SANS_FONT_STYLE.to_string());
+					match font_cache.generate_typography(&font, 14., &node_to_render.metadata.display_name) {
+						Some(mut typography) => {
+							typography.color = Color::WHITE;
+							Graphic::Typography(Table::new_from_element(typography))
+						}
+						None => {
+							log::error!("Could not generate typography in draw layers");
+							Graphic::default()
+						}
+					}
+				}
+				Err(_) => {
+					log::error!("Could not lock font cache in draw layers");
+					Graphic::default()
+				}
 			};
-
-			let font_blob = Some(text::load_font(SOURCE_SANS_FONT_DATA));
-			let mut text_table = crate::text::to_path(&node_to_render.metadata.display_name, font_blob, typesetting, false);
-
-			let text_width = if let RenderBoundingBox::Rectangle(bbox) = text_table.bounding_box(DAffine2::default(), true) {
+			let text_width = if let RenderBoundingBox::Rectangle(bbox) = text_graphic.bounding_box(DAffine2::default(), true) {
 				bbox[1].x - bbox[0].x
 			} else {
 				0.
@@ -326,13 +350,10 @@ pub fn draw_layers(nodes: &mut NodeGraphOverlayData) -> (Table<Graphic>, Table<G
 			border_table.push(layer_border_clip);
 			layer_table.push(TableRow::new_from_element(Graphic::Vector(border_table)));
 
-			// The top layer contains the ports,thumbnail,text, etc
-			for text_row in text_table.iter_mut() {
-				text_row.element.style.fill = Fill::Solid(Color::WHITE);
-				*text_row.transform = DAffine2::from_translation(layer_position + DVec2::new(thumbnail_width + text_left_padding, 16.));
-			}
-			let top_layer = text_table;
-			layer_table.push(TableRow::new_from_element(Graphic::Vector(top_layer)));
+			// Text table
+			let mut text_row = TableRow::new_from_element(text_graphic);
+			text_row.transform = DAffine2::from_translation(layer_position + DVec2::new(thumbnail_width + text_left_padding, 16.));
+			layer_table.push(text_row);
 
 			// Ports
 			let mut ports_table = Table::new();

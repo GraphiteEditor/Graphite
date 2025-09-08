@@ -1,13 +1,19 @@
-use std::sync::{Arc, Mutex, mpsc::Sender};
+use std::sync::{Arc, mpsc::Sender};
 
 use glam::UVec2;
-use graph_craft::{document::NodeNetwork, graphene_compiler::Compiler};
+use graph_craft::{
+	concrete,
+	document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork, value::TaggedValue},
+	graphene_compiler::Compiler,
+};
+
 use graphene_std::{
 	node_graph_overlay::{
 		types::NodeGraphTransform,
 		ui_context::{UIContextImpl, UIRuntimeResponse},
 	},
-	text::NewFontCache,
+	text::NewFontCacheWrapper,
+	uuid::NodeId,
 };
 
 use crate::dynamic_executor::DynamicExecutor;
@@ -18,11 +24,19 @@ pub struct NodeGraphUIRuntime {
 	// Used within the node graph to return responses during evaluation
 	// Also used to return compilation responses, but not for the UI overlay since the types are not needed
 	pub response_sender: Sender<UIRuntimeResponse>,
-	pub font_collection: Arc<Mutex<NewFontCache>>,
+	pub font_cache: NewFontCacheWrapper,
 }
 
 impl NodeGraphUIRuntime {
-	pub async fn compile(&mut self, compilation_request: CompilationRequest) {
+	pub async fn compile(&mut self, mut compilation_request: CompilationRequest) {
+		let font_cache_id = NodeId::new();
+		let font_cache_node = DocumentNode {
+			inputs: vec![NodeInput::value(TaggedValue::NewFontCache(self.font_cache.clone()), false)],
+			implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
+			..Default::default()
+		};
+		compilation_request.network.nodes.insert(font_cache_id, font_cache_node);
+		compilation_request.network.scope_injections.insert("font-cache".to_string(), (font_cache_id, concrete!(())));
 		match self.compiler.compile_single(compilation_request.network) {
 			Ok(proto_network) => {
 				if let Err(e) = self.executor.update(proto_network).await {

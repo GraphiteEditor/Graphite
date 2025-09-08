@@ -124,13 +124,13 @@ impl SvgRender {
 	pub fn leaf_text(&mut self, text: impl Into<SvgSegment>, attributes: impl FnOnce(&mut SvgRenderAttrs)) {
 		self.indent();
 
-		self.svg.push("<text".into());
+		self.svg.push("<tspan".into());
 
 		attributes(&mut SvgRenderAttrs(self));
 
 		self.svg.push(">".into());
 		self.svg.push(text.into());
-		self.svg.push("</{text}>".into());
+		self.svg.push("</tspan>".into());
 	}
 
 	pub fn leaf_node(&mut self, content: impl Into<SvgSegment>) {
@@ -1634,21 +1634,28 @@ impl Render for Table<Typography> {
 								Style::Oblique(None) => "oblique".to_string(),
 							};
 							render.parent_tag(
-								"g",
+								"text",
 								|attributes| {
 									let matrix = format_transform_matrix(*table_row.transform);
 									if !matrix.is_empty() {
 										attributes.push("transform", matrix);
-										attributes.push("font-family", table_row.element.font_family.clone());
-										attributes.push("font-size", glyph_run.run().font_size().to_string());
-										attributes.push("font-weight", font_attributes.weight.value().to_string());
-										attributes.push("font-style", font_style);
+									}
+
+									attributes.push("font-family", table_row.element.font_family.clone());
+									attributes.push("font-size", glyph_run.run().font_size().to_string());
+									attributes.push("font-weight", font_attributes.weight.value().to_string());
+									attributes.push("font-style", font_style);
+									attributes.push("fill", format!("#{}", table_row.element.color.to_rgb_hex_srgb_from_gamma()));
+									if let Some((stroke_color, stroke_width)) = table_row.element.stroke.as_ref().cloned() {
+										attributes.push("stroke-color", format!("#{}", stroke_color.to_rgb_hex_srgb_from_gamma()));
+										attributes.push("stroke-width", format!("{stroke_width}"));
 									}
 								},
 								|render| {
 									for glyph in glyph_run.positioned_glyphs() {
-										let character = font_ref.glyph_names().get(skrifa::GlyphId::new(glyph.id as u32)).unwrap();
-										render.leaf_text(character.as_str().to_string(), |attributes| {
+										let mut character = font_ref.glyph_names().get(skrifa::GlyphId::new(glyph.id as u32)).unwrap().as_str().to_string();
+										let character = character.replace("space", " ");
+										render.leaf_text(character, |attributes| {
 											attributes.push("x", glyph.x.to_string());
 											attributes.push("y", glyph.y.to_string());
 										});

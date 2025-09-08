@@ -198,7 +198,6 @@ fn layout_text(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 	builder.push_default(LineHeight::FontSizeRelative(typesetting.line_height_ratio as f32));
 
 	let mut layout: Layout<()> = builder.build(str);
-
 	layout.break_all_lines(typesetting.max_width.map(|mw| mw as f32));
 	layout.align(typesetting.max_width.map(|max_w| max_w as f32), typesetting.align.into(), AlignmentOptions::default());
 

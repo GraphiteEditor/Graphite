@@ -40,7 +40,7 @@ pub fn generate_node_graph_overlay(node_graph_overlay_data: NodeGraphOverlayData
 					generate_nodes_id,
 					DocumentNode {
 						call_argument: concrete!(UIContext),
-						inputs: vec![NodeInput::network(concrete!(UIContext), 1)],
+						inputs: vec![NodeInput::network(concrete!(UIContext), 1), NodeInput::scope("font-cache")],
 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::node_graph_overlay::GenerateNodesNode".into()),
 						..Default::default()
 					},
