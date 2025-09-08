@@ -6,7 +6,7 @@ use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION}
 use crate::messages::animation::TimingInformation;
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
-use crate::messages::frontend::utility_types::FrontendDocumentDetails;
+use crate::messages::frontend::utility_types::{DocumentDetails, OpenDocument};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -187,13 +187,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::AutoSaveDocument { document_id } => {
 				let document = self.documents.get(&document_id).unwrap();
-				responses.add(FrontendMessage::TriggerIndexedDbWriteDocument {
+				responses.add(FrontendMessage::TriggerPersistenceWriteDocument {
+					document_id,
 					document: document.serialize_document(),
-					details: FrontendDocumentDetails {
-						is_auto_saved: document.is_auto_saved(),
-						is_saved: document.is_saved(),
-						id: document_id,
+					details: DocumentDetails {
 						name: document.name.clone(),
+						is_saved: document.is_saved(),
+						is_auto_saved: document.is_auto_saved(),
 					},
 				})
 			}
@@ -216,7 +216,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 
 				for document_id in &self.document_ids {
-					responses.add(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id: *document_id });
+					responses.add(FrontendMessage::TriggerPersistenceRemoveDocument { document_id: *document_id });
 				}
 
 				responses.add(PortfolioMessage::DestroyAllDocuments);
@@ -242,7 +242,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
 				responses.add(PortfolioMessage::DeleteDocument { document_id });
-				responses.add(FrontendMessage::TriggerIndexedDbRemoveDocument { document_id });
+				responses.add(FrontendMessage::TriggerPersistenceRemoveDocument { document_id });
 
 				// Send the new list of document tab names
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
@@ -422,17 +422,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document_path,
 				document_serialized_content,
 			} => {
-				let document_id = DocumentId(generate_uuid());
 				responses.add(PortfolioMessage::OpenDocumentFileWithId {
-					document_id,
+					document_id: DocumentId(generate_uuid()),
 					document_name,
 					document_path,
 					document_is_auto_saved: false,
 					document_is_saved: true,
 					document_serialized_content,
 					to_front: false,
+					select_after_open: true,
 				});
-				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
 				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;
@@ -446,6 +445,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document_is_saved,
 				document_serialized_content,
 				to_front,
+				select_after_open,
 			} => {
 				// Upgrade the document being opened to use fresh copies of all nodes
 				let reset_node_definitions_on_open = reset_node_definitions_on_open || document_migration_reset_node_definition(&document_serialized_content);
@@ -540,6 +540,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// Load the document into the portfolio so it opens in the editor
 				self.load_document(document, document_id, self.layers_panel_open, responses, to_front);
+
+				if select_after_open {
+					responses.add(PortfolioMessage::SelectDocument { document_id });
+				}
 			}
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
 				let mut all_new_ids = Vec::new();
@@ -954,14 +958,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::SubmitGraphRender { document_id, ignore_hash } => {
 				let node_to_inspect = self.node_to_inspect();
-				let result = self.executor.submit_node_graph_evaluation(
-					self.documents.get_mut(&document_id).expect("Tried to render non-existent document"),
-					document_id,
-					ipp.viewport_bounds.size().as_uvec2(),
-					timing_information,
-					node_to_inspect,
-					ignore_hash,
-				);
+				let Some(document) = self.documents.get_mut(&document_id) else {
+					log::error!("Tried to render non-existent document");
+					return;
+				};
+				let viewport_resolution = ipp.viewport_bounds.size().as_uvec2();
+
+				let result = self
+					.executor
+					.submit_node_graph_evaluation(document, document_id, viewport_resolution, timing_information, node_to_inspect, ignore_hash);
 
 				match result {
 					Err(description) => {
@@ -1044,11 +1049,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					.document_ids
 					.iter()
 					.filter_map(|id| {
-						self.documents.get(id).map(|document| FrontendDocumentDetails {
-							is_auto_saved: document.is_auto_saved(),
-							is_saved: document.is_saved(),
+						self.documents.get(id).map(|document| OpenDocument {
 							id: *id,
-							name: document.name.clone(),
+							details: DocumentDetails {
+								is_auto_saved: document.is_auto_saved(),
+								is_saved: document.is_saved(),
+								name: document.name.clone(),
+							},
 						})
 					})
 					.collect::<Vec<_>>();
@@ -1171,7 +1178,7 @@ impl PortfolioMessageHandler {
 
 	/// Returns an iterator over the open documents in order.
 	pub fn ordered_document_iterator(&self) -> impl Iterator<Item = &DocumentMessageHandler> {
-		self.document_ids.iter().map(|id| self.documents.get(id).expect("document id was not found in the document hashmap"))
+		self.document_ids.iter().map(|id| self.documents.get(id).expect("Document id was not found in the document hashmap"))
 	}
 
 	fn document_index(&self, document_id: DocumentId) -> usize {

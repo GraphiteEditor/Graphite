@@ -128,7 +128,10 @@ impl PointDomain {
 	}
 
 	pub fn push(&mut self, id: PointId, position: DVec2) {
-		debug_assert!(!self.id.contains(&id));
+		if self.id.contains(&id) {
+			return;
+		}
+
 		self.id.push(id);
 		self.position.push(position);
 	}
@@ -306,7 +309,10 @@ impl SegmentDomain {
 	}
 
 	pub fn push(&mut self, id: SegmentId, start: usize, end: usize, handles: BezierHandles, stroke: StrokeId) {
-		debug_assert!(!self.id.contains(&id), "Tried to push an existing point to a point domain");
+		#[cfg(debug_assertions)]
+		if self.id.contains(&id) {
+			warn!("Tried to push an existing point to a point domain");
+		}
 
 		self.id.push(id);
 		self.start_point.push(start);

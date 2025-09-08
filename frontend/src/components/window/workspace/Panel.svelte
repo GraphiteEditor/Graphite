@@ -36,7 +36,7 @@
 
 	export let tabMinWidths = false;
 	export let tabCloseButtons = false;
-	export let tabLabels: { name: string; tooltip?: string }[];
+	export let tabLabels: { name: string; unsaved?: boolean; tooltip?: string }[];
 	export let tabActiveIndex: number;
 	export let panelType: PanelType | undefined = undefined;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
@@ -130,7 +130,12 @@
 					}}
 					bind:this={tabElements[tabIndex]}
 				>
-					<TextLabel>{tabLabel.name}</TextLabel>
+					<LayoutRow class="name">
+						<TextLabel class="text">{tabLabel.name}</TextLabel>
+						{#if tabLabel.unsaved}
+							<TextLabel>*</TextLabel>
+						{/if}
+					</LayoutRow>
 					{#if tabCloseButtons}
 						<IconButton
 							action={(e) => {
@@ -160,32 +165,34 @@
 					</LayoutRow>
 					<LayoutRow class="actions">
 						<table>
-							<tr>
-								<td>
-									<TextButton label="New Document" icon="File" flush={true} action={() => editor.handle.newDocumentDialog()} />
-								</td>
-								<td>
-									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
-								</td>
-							</tr>
-							<tr>
-								<td>
-									<TextButton label="Open Document" icon="Folder" flush={true} action={() => editor.handle.openDocument()} />
-								</td>
-								<td>
-									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
-								</td>
-							</tr>
-							<tr>
-								<td colspan="2">
-									<TextButton label="Open Demo Artwork" icon="Image" flush={true} action={() => editor.handle.demoArtworkDialog()} />
-								</td>
-							</tr>
-							<tr>
-								<td colspan="2">
-									<TextButton label="Support the Development Fund" icon="Heart" flush={true} action={() => editor.handle.visitUrl("https://graphite.rs/donate/")} />
-								</td>
-							</tr>
+							<tbody>
+								<tr>
+									<td>
+										<TextButton label="New Document" icon="File" flush={true} action={() => editor.handle.newDocumentDialog()} />
+									</td>
+									<td>
+										<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
+									</td>
+								</tr>
+								<tr>
+									<td>
+										<TextButton label="Open Document" icon="Folder" flush={true} action={() => editor.handle.openDocument()} />
+									</td>
+									<td>
+										<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
+									</td>
+								</tr>
+								<tr>
+									<td colspan="2">
+										<TextButton label="Open Demo Artwork" icon="Image" flush={true} action={() => editor.handle.demoArtworkDialog()} />
+									</td>
+								</tr>
+								<tr>
+									<td colspan="2">
+										<TextButton label="Support the Development Fund" icon="Heart" flush={true} action={() => editor.handle.visitUrl("https://graphite.rs/donate/")} />
+									</td>
+								</tr>
+							</tbody>
 						</table>
 					</LayoutRow>
 				</LayoutCol>
@@ -258,14 +265,22 @@
 						}
 					}
 
-					.text-label {
+					.name {
 						flex: 1 1 100%;
-						overflow-x: hidden;
-						white-space: nowrap;
-						text-overflow: ellipsis;
-						// Height and line-height required because https://stackoverflow.com/a/21611191/775283
-						height: 28px;
-						line-height: 28px;
+
+						.text-label {
+							// Height and line-height required because https://stackoverflow.com/a/21611191/775283
+							height: 28px;
+							line-height: 28px;
+							flex: 0 0 auto;
+
+							&.text {
+								overflow-x: hidden;
+								white-space: nowrap;
+								text-overflow: ellipsis;
+								flex-shrink: 1;
+							}
+						}
 					}
 
 					.icon-button {

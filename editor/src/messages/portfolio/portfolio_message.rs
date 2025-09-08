@@ -79,6 +79,7 @@ pub enum PortfolioMessage {
 		document_is_saved: bool,
 		document_serialized_content: String,
 		to_front: bool,
+		select_after_open: bool,
 	},
 	ToggleResetNodesToDefinitionsOnOpen,
 	PasteIntoFolder {

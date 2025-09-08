@@ -23,7 +23,13 @@ impl From<DocumentNodePersistentMetadataInputNames> for DocumentNodePersistentMe
 	fn from(old: DocumentNodePersistentMetadataInputNames) -> Self {
 		DocumentNodePersistentMetadata {
 			input_metadata: Vec::new(),
-			..old.into()
+			reference: old.reference,
+			display_name: old.display_name,
+			output_names: old.output_names,
+			locked: old.locked,
+			pinned: old.pinned,
+			node_type_metadata: old.node_type_metadata,
+			network_metadata: old.network_metadata,
 		}
 	}
 }
