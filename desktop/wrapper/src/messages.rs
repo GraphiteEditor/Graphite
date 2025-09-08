@@ -1,9 +1,7 @@
-use graphite_editor::messages::prelude::FrontendMessage;
-use std::path::PathBuf;
-
-pub(crate) use graphite_editor::messages::prelude::Message as EditorMessage;
-
 pub use graphite_editor::messages::prelude::DocumentId;
+use graphite_editor::messages::prelude::FrontendMessage;
+pub(crate) use graphite_editor::messages::prelude::Message as EditorMessage;
+use std::path::PathBuf;
 
 pub enum DesktopFrontendMessage {
 	ToWeb(Vec<FrontendMessage>),

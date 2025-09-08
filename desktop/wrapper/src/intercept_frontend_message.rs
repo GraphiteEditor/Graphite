@@ -67,7 +67,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::UpdateWindowState { maximized, minimized } => {
 			dispatcher.respond(DesktopFrontendMessage::UpdateWindowState { maximized, minimized });
 
-			// Forward this to update the ui
+			// Forward this to update the UI
 			return Some(message);
 		}
 		FrontendMessage::CloseWindow => {
@@ -90,7 +90,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::UpdateActiveDocument { document_id } => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceUpdateCurrentDocument { id: document_id });
 
-			// Forward this to update the ui
+			// Forward this to update the UI
 			return Some(FrontendMessage::UpdateActiveDocument { document_id });
 		}
 		FrontendMessage::UpdateOpenDocumentsList { open_documents } => {
@@ -98,7 +98,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 				ids: open_documents.iter().map(|document| document.id).collect(),
 			});
 
-			// Forward this to update the ui
+			// Forward this to update the UI
 			return Some(FrontendMessage::UpdateOpenDocumentsList { open_documents });
 		}
 		FrontendMessage::TriggerLoadFirstAutoSaveDocument => {

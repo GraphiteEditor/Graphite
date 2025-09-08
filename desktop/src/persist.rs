@@ -25,20 +25,20 @@ impl PersistentData {
 		self.flush();
 	}
 
-	pub(crate) fn get_current_document_id(&self) -> Option<DocumentId> {
+	pub(crate) fn current_document_id(&self) -> Option<DocumentId> {
 		match self.current_document {
 			Some(id) => Some(id),
 			None => Some(*self.documents.document_ids().first()?),
 		}
 	}
 
-	pub(crate) fn get_current_document(&self) -> Option<(DocumentId, Document)> {
-		let current_id = self.get_current_document_id()?;
+	pub(crate) fn current_document(&self) -> Option<(DocumentId, Document)> {
+		let current_id = self.current_document_id()?;
 		Some((current_id, self.documents.read(&current_id)?))
 	}
 
-	pub(crate) fn get_documents_before_current(&self) -> Vec<(DocumentId, Document)> {
-		let Some(current_id) = self.get_current_document_id() else {
+	pub(crate) fn documents_before_current(&self) -> Vec<(DocumentId, Document)> {
+		let Some(current_id) = self.current_document_id() else {
 			return Vec::new();
 		};
 		self.documents
@@ -49,8 +49,8 @@ impl PersistentData {
 			.collect()
 	}
 
-	pub(crate) fn get_documents_after_current(&self) -> Vec<(DocumentId, Document)> {
-		let Some(current_id) = self.get_current_document_id() else {
+	pub(crate) fn documents_after_current(&self) -> Vec<(DocumentId, Document)> {
+		let Some(current_id) = self.current_document_id() else {
 			return Vec::new();
 		};
 		self.documents
@@ -98,7 +98,7 @@ impl PersistentData {
 				return;
 			}
 		};
-		let loaded: PersistentData = match ron::from_str(&data) {
+		let loaded = match ron::from_str(&data) {
 			Ok(d) => d,
 			Err(e) => {
 				tracing::error!("Failed to deserialize persistent data: {e}");
@@ -116,10 +116,10 @@ impl PersistentData {
 }
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
-struct DocumentStore(Vec<DocumentMeta>);
+struct DocumentStore(Vec<DocumentInfo>);
 impl DocumentStore {
 	fn write(&mut self, id: DocumentId, document: Document) {
-		let meta = DocumentMeta::new(id, &document);
+		let meta = DocumentInfo::new(id, &document);
 		if let Some(existing) = self.0.iter_mut().find(|meta| meta.id == id) {
 			*existing = meta;
 		} else {
@@ -174,13 +174,13 @@ impl DocumentStore {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
-struct DocumentMeta {
+struct DocumentInfo {
 	id: DocumentId,
 	name: String,
 	path: Option<std::path::PathBuf>,
 	is_saved: bool,
 }
-impl DocumentMeta {
+impl DocumentInfo {
 	fn new(id: DocumentId, Document { name, path, is_saved, .. }: &Document) -> Self {
 		Self {
 			id,

@@ -180,23 +180,26 @@ impl WinitApp {
 				self.persistent_data.set_document_order(ids);
 			}
 			DesktopFrontendMessage::PersistenceLoadCurrentDocument => {
-				if let Some((id, document)) = self.persistent_data.get_current_document() {
+				if let Some((id, document)) = self.persistent_data.current_document() {
 					let message = DesktopWrapperMessage::LoadDocument { id, document, to_front: false };
 					self.dispatch_desktop_wrapper_message(message);
+
 					let message = DesktopWrapperMessage::SelectDocument { id };
 					self.dispatch_desktop_wrapper_message(message);
 				}
 			}
 			DesktopFrontendMessage::PersistenceLoadRemainingDocuments => {
-				for (id, document) in self.persistent_data.get_documents_before_current().into_iter().rev() {
+				for (id, document) in self.persistent_data.documents_before_current().into_iter().rev() {
 					let message = DesktopWrapperMessage::LoadDocument { id, document, to_front: true };
 					self.dispatch_desktop_wrapper_message(message);
 				}
-				for (id, document) in self.persistent_data.get_documents_after_current() {
+
+				for (id, document) in self.persistent_data.documents_after_current() {
 					let message = DesktopWrapperMessage::LoadDocument { id, document, to_front: false };
 					self.dispatch_desktop_wrapper_message(message);
 				}
-				if let Some(id) = self.persistent_data.get_current_document_id() {
+
+				if let Some(id) = self.persistent_data.current_document_id() {
 					let message = DesktopWrapperMessage::SelectDocument { id };
 					self.dispatch_desktop_wrapper_message(message);
 				}
@@ -347,7 +350,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 			}
 			WindowEvent::RedrawRequested => {
 				let Some(ref mut graphics_state) = self.graphics_state else { return };
-				// Only rerender once we have a new ui texture to display
+				// Only rerender once we have a new UI texture to display
 				if let Some(window) = &self.window {
 					match graphics_state.render(window.as_ref()) {
 						Ok(_) => {}
