@@ -318,6 +318,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						}
 					})
 					.collect::<Vec<_>>(),
+				Graphic::Typography(typography) => typography.into_iter().flat_map(|row| row.element.to_vector()).collect::<Vec<_>>(),
 			}
 		})
 		.collect()

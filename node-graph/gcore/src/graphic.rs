@@ -3,6 +3,7 @@ use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::gradient::GradientStops;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::{Table, TableRow};
+use crate::text::Typography;
 use crate::uuid::NodeId;
 use crate::vector::Vector;
 use crate::{Artboard, Color, Ctx};
@@ -11,7 +12,7 @@ use glam::{DAffine2, DVec2};
 use std::hash::Hash;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
-#[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 pub enum Graphic {
 	Graphic(Table<Graphic>),
 	Vector(Table<Vector>),
@@ -19,6 +20,26 @@ pub enum Graphic {
 	RasterGPU(Table<Raster<GPU>>),
 	Color(Table<Color>),
 	Gradient(Table<GradientStops>),
+	Typography(Table<Typography>),
+}
+
+impl serde::Serialize for Graphic {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		let default: Table<Graphic> = Table::new();
+		default.serialize(serializer)
+	}
+}
+
+impl<'de> serde::Deserialize<'de> for Graphic {
+	fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		Ok(Graphic::Graphic(Table::new()))
+	}
 }
 
 impl Default for Graphic {
@@ -232,6 +253,7 @@ impl Graphic {
 			Graphic::RasterGPU(raster) => raster.iter().all(|row| row.alpha_blending.clip),
 			Graphic::Color(color) => color.iter().all(|row| row.alpha_blending.clip),
 			Graphic::Gradient(gradient) => gradient.iter().all(|row| row.alpha_blending.clip),
+			Graphic::Typography(typography) => typography.iter().all(|row| row.alpha_blending.clip),
 		}
 	}
 
@@ -256,6 +278,7 @@ impl BoundingBox for Graphic {
 			Graphic::Graphic(graphic) => graphic.bounding_box(transform, include_stroke),
 			Graphic::Color(color) => color.bounding_box(transform, include_stroke),
 			Graphic::Gradient(gradient) => gradient.bounding_box(transform, include_stroke),
+			Graphic::Typography(typography) => typography.bounding_box(transform, include_stroke),
 		}
 	}
 }

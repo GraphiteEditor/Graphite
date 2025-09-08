@@ -1,6 +1,7 @@
 use crate::gradient::GradientStops;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::Table;
+use crate::text::Typography;
 use crate::vector::Vector;
 use crate::{Artboard, Color, Graphic};
 
@@ -31,6 +32,7 @@ impl RenderComplexity for Graphic {
 			Self::RasterGPU(table) => table.render_complexity(),
 			Self::Color(table) => table.render_complexity(),
 			Self::Gradient(table) => table.render_complexity(),
+			Self::Typography(table) => table.render_complexity(),
 		}
 	}
 }
@@ -61,6 +63,12 @@ impl RenderComplexity for Color {
 }
 
 impl RenderComplexity for GradientStops {
+	fn render_complexity(&self) -> usize {
+		1
+	}
+}
+
+impl RenderComplexity for Typography {
 	fn render_complexity(&self) -> usize {
 		1
 	}
