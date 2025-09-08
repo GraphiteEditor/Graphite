@@ -55,6 +55,5 @@
 	"files.insertFinalNewline": true,
 	"files.associations": {
 		"*.graphite": "json"
-	},
-	"rust-analyzer.checkOnSave": true
+	}
 }

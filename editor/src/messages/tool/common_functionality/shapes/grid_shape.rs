@@ -1,14 +1,11 @@
 use super::shape_utility::ShapeToolModifierKey;
 use super::*;
-use crate::consts::{GRID_ANGLE_INDEX, GRID_SPACING_INDEX};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::grid_row_columns_gizmo::RowColumnGizmo;
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::grid_row_columns_gizmo::RowColumnGizmoState;
-
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::grid_rows_columns_gizmo::{RowColumnGizmo, RowColumnGizmoState};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
@@ -16,6 +13,7 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
 use graphene_std::vector::misc::GridType;
 use std::collections::VecDeque;
 
@@ -105,6 +103,8 @@ impl Grid {
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
+		use graphene_std::vector::generator_nodes::grid::*;
+
 		let [center, lock_ratio, _] = modifier;
 		let is_isometric = grid_type == GridType::Isometric;
 
@@ -118,16 +118,15 @@ impl Grid {
 		let (translation, dimensions, angle) = calculate_grid_params(start, end, is_isometric, ipp.keyboard.key(center), ipp.keyboard.key(lock_ratio));
 
 		// Set dimensions/spacing
-		let input_index = if is_isometric { GRID_SPACING_INDEX } else { 2 };
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, input_index),
+			input_connector: InputConnector::node(node_id, SpacingInput::<f64>::INDEX),
 			input: NodeInput::value(TaggedValue::DVec2(dimensions), false),
 		});
 
 		// Set angle for isometric grids
 		if let Some(angle_deg) = angle {
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, GRID_ANGLE_INDEX),
+				input_connector: InputConnector::node(node_id, AnglesInput::INDEX),
 				input: NodeInput::value(TaggedValue::DVec2(DVec2::splat(angle_deg)), false),
 			});
 		}
@@ -150,14 +149,14 @@ fn calculate_grid_params(start: DVec2, end: DVec2, is_isometric: bool, center: b
 	let mut angle = None;
 
 	match (center, lock_ratio) {
-		// Both center and lock_ratio: Centered + square/fixed-angle grid
+		// Both center and lock_ratio: centered + square/fixed-angle grid
 		(true, true) => {
 			if is_isometric {
-				// Fix angle at 30 degree - standardized isometric view
-				angle = Some(30_f64);
+				// Fix angle at 30° - standardized isometric view
+				angle = Some(30.);
 
 				// Calculate the width based on given height and angle 30°
-				let width = calculate_isometric_x_position(raw_dimensions.y / 9., (30_f64).to_radians(), (30_f64).to_radians()).abs();
+				let width = calculate_isometric_x_position(raw_dimensions.y / 9., 30_f64.to_radians(), 30_f64.to_radians()).abs();
 
 				// To make draw from center: shift x by half of width and y by half of height (mouse_delta.y)
 				translation -= DVec2::new(width / 2., mouse_delta.y / 2.);
@@ -168,7 +167,7 @@ fn calculate_grid_params(start: DVec2, end: DVec2, is_isometric: bool, center: b
 					translation -= DVec2::new(0., start.y - end.y);
 				}
 			} else {
-				// We want to make both dimensions same so we choose whichever is bigger and shift to make center
+				// We want to make both dimensions the same so we choose whichever is bigger and shift to make center
 				let max = raw_dimensions.x.max(raw_dimensions.y);
 				let distance_to_center = max;
 				translation = start - distance_to_center;
@@ -176,7 +175,7 @@ fn calculate_grid_params(start: DVec2, end: DVec2, is_isometric: bool, center: b
 			}
 		}
 
-		// Only center: Centered grid with free aspect ratio
+		// Only center: centered grid with free aspect ratio
 		(true, false) => {
 			if is_isometric {
 				// Calculate angle from mouse movement - dynamic angle based on drag direction
@@ -198,14 +197,14 @@ fn calculate_grid_params(start: DVec2, end: DVec2, is_isometric: bool, center: b
 			}
 		}
 
-		// Only lock_ratio: Square/fixed-angle grid from drag start point
+		// Only lock_ratio: square/fixed-angle grid from drag start point
 		(false, true) => {
 			let max: f64;
 			if is_isometric {
 				dimensions = DVec2::splat(raw_dimensions.y) / 9.;
 
 				// Use 30° for angle - consistent isometric standard
-				angle = Some(30. as f64);
+				angle = Some(30.);
 				max = raw_dimensions.y;
 			} else {
 				// Logic: Force square grid by using larger dimension
@@ -222,11 +221,11 @@ fn calculate_grid_params(start: DVec2, end: DVec2, is_isometric: bool, center: b
 			}
 		}
 
-		// Neither center nor lock_ratio: Free-form grid following exact user input
+		// Neither center nor lock_ratio: free-form grid following exact user input
 		(false, false) => {
 			if is_isometric {
 				// Calculate angle from mouse movement - fully dynamic
-				// Logic: Angle represents user's exact intended perspective
+				// Logic: angle represents user's exact intended perspective
 				angle = Some((raw_dimensions.y / (mouse_delta.x * 2.)).atan().to_degrees());
 				dimensions = DVec2::splat(raw_dimensions.y) / 9.;
 			} else {
@@ -241,7 +240,7 @@ fn calculate_grid_params(start: DVec2, end: DVec2, is_isometric: bool, center: b
 			}
 
 			// Adjust for upward drag (common to both grid types)
-			// Logic: Compensate for coordinate system where Y increases downward
+			// Logic: compensate for coordinate system where Y increases downward
 			if end.y < start.y {
 				translation -= DVec2::new(0., start.y - end.y);
 			}
@@ -253,5 +252,5 @@ fn calculate_grid_params(start: DVec2, end: DVec2, is_isometric: bool, center: b
 
 fn calculate_isometric_x_position(y_spacing: f64, rad_a: f64, rad_b: f64) -> f64 {
 	let spacing_x = y_spacing / (rad_a.tan() + rad_b.tan());
-	spacing_x * 9. as f64
+	spacing_x * 9.
 }

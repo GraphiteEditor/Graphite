@@ -1,6 +1,5 @@
 use super::ShapeToolData;
 use crate::consts::{ARC_SWEEP_GIZMO_RADIUS, ARC_SWEEP_GIZMO_TEXT_HEIGHT};
-use crate::consts::{GRID_ANGLE_INDEX, GRID_COLUMNS_INDEX, GRID_ROW_INDEX, GRID_SPACING_INDEX, GRID_TYPE_INDEX};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -15,11 +14,10 @@ use crate::messages::tool::utility_types::*;
 use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
 use graphene_std::subpath::{self, Subpath};
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::misc::{
-	ArcType, {GridType, dvec2_to_point},
-};
+use graphene_std::vector::misc::{ArcType, GridType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
 use std::collections::VecDeque;
 use std::f64::consts::{PI, TAU};
@@ -44,10 +42,10 @@ impl ShapeType {
 			Self::Star => "Star",
 			Self::Circle => "Circle",
 			Self::Arc => "Arc",
+			Self::Grid => "Grid",
 			Self::Rectangle => "Rectangle",
 			Self::Ellipse => "Ellipse",
 			Self::Line => "Line",
-			Self::Grid => "Grid",
 		})
 		.into()
 	}
@@ -482,16 +480,18 @@ pub fn calculate_arc_text_transform(angle: f64, offset_angle: f64, center: DVec2
 }
 
 /// Extract the node input values of Grid.
-/// Returns an option of (Grid-type, spacing,columns,rows,angles).
+/// Returns an option of (grid_type, spacing, columns, rows, angles).
 pub fn extract_grid_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<(GridType, DVec2, u32, u32, DVec2)> {
+	use graphene_std::vector::generator_nodes::grid::*;
+
 	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Grid")?;
 
 	let (Some(&TaggedValue::GridType(grid_type)), Some(&TaggedValue::DVec2(spacing)), Some(&TaggedValue::U32(columns)), Some(&TaggedValue::U32(rows)), Some(&TaggedValue::DVec2(angles))) = (
-		node_inputs.get(GRID_TYPE_INDEX)?.as_value(),
-		node_inputs.get(GRID_SPACING_INDEX)?.as_value(),
-		node_inputs.get(GRID_COLUMNS_INDEX)?.as_value(),
-		node_inputs.get(GRID_ROW_INDEX)?.as_value(),
-		node_inputs.get(GRID_ANGLE_INDEX)?.as_value(),
+		node_inputs.get(GridTypeInput::INDEX)?.as_value(),
+		node_inputs.get(SpacingInput::<f64>::INDEX)?.as_value(),
+		node_inputs.get(ColumnsInput::INDEX)?.as_value(),
+		node_inputs.get(RowsInput::INDEX)?.as_value(),
+		node_inputs.get(AnglesInput::INDEX)?.as_value(),
 	) else {
 		return None;
 	};

@@ -158,10 +158,3 @@ pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;
 
 // INPUT
 pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
-
-// GRID INPUT INDICES
-pub const GRID_TYPE_INDEX: usize = 1;
-pub const GRID_SPACING_INDEX: usize = 2;
-pub const GRID_COLUMNS_INDEX: usize = 3;
-pub const GRID_ROW_INDEX: usize = 4;
-pub const GRID_ANGLE_INDEX: usize = 5;

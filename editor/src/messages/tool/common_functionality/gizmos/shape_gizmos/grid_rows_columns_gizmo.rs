@@ -1,4 +1,4 @@
-use crate::consts::{GRID_COLUMNS_INDEX, GRID_ROW_COLUMN_GIZMO_OFFSET, GRID_ROW_INDEX};
+use crate::consts::GRID_ROW_COLUMN_GIZMO_OFFSET;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -13,6 +13,7 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::extract_
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
 use graphene_std::vector::misc::{GridType, dvec2_to_point, get_line_endpoints};
 use kurbo::{Line, ParamCurveNearest, Rect};
 use std::collections::VecDeque;
@@ -57,8 +58,8 @@ impl RowColumnGizmo {
 
 	fn initial_dimension(&self) -> u32 {
 		match &self.gizmo_type {
-			RowColumnGizmoType::Top | RowColumnGizmoType::Down => self.initial_rows,
-			RowColumnGizmoType::Right | RowColumnGizmoType::Left => self.initial_columns,
+			RowColumnGizmoType::Top | RowColumnGizmoType::Bottom => self.initial_rows,
+			RowColumnGizmoType::Left | RowColumnGizmoType::Right => self.initial_columns,
 			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
 		}
 	}
@@ -128,7 +129,7 @@ impl RowColumnGizmo {
 
 		responses.add(GraphOperationMessage::TransformChange {
 			layer,
-			transform: transform,
+			transform,
 			transform_in: TransformIn::Viewport,
 			skip_rerender: false,
 		});
@@ -150,10 +151,10 @@ impl RowColumnGizmo {
 				DAffine2::from_translation(move_up_by)
 			}
 			RowColumnGizmoType::Left => {
-				let move_left_by = self.gizmo_type.direction(viewport) * dimensions_delta as f64 * &self.gizmo_type.spacing(spacing, grid_type, angles);
+				let move_left_by = self.gizmo_type.direction(viewport) * dimensions_delta as f64 * self.gizmo_type.spacing(spacing, grid_type, angles);
 				DAffine2::from_translation(move_left_by)
 			}
-			RowColumnGizmoType::Down | RowColumnGizmoType::Right | RowColumnGizmoType::None => DAffine2::IDENTITY,
+			RowColumnGizmoType::Bottom | RowColumnGizmoType::Right | RowColumnGizmoType::None => DAffine2::IDENTITY,
 		}
 	}
 }
@@ -321,7 +322,7 @@ pub enum RowColumnGizmoType {
 	#[default]
 	None,
 	Top,
-	Down,
+	Bottom,
 	Left,
 	Right,
 }
@@ -332,14 +333,14 @@ impl RowColumnGizmoType {
 			GridType::Rectangular => match self {
 				Self::Top => get_rectangle_top_line_points(columns, rows, spacing),
 				Self::Right => get_rectangle_right_line_points(columns, rows, spacing),
-				Self::Down => get_rectangle_bottom_line_points(columns, rows, spacing),
+				Self::Bottom => get_rectangle_bottom_line_points(columns, rows, spacing),
 				Self::Left => get_rectangle_left_line_points(columns, rows, spacing),
 				Self::None => panic!("RowColumnGizmoType::None does not have line points"),
 			},
 			GridType::Isometric => match self {
 				Self::Top => calculate_isometric_top_line_points(columns, rows, spacing, angles),
 				Self::Right => calculate_isometric_right_line_points(columns, rows, spacing, angles),
-				Self::Down => calculate_isometric_bottom_line_points(columns, rows, spacing, angles),
+				Self::Bottom => calculate_isometric_bottom_line_points(columns, rows, spacing, angles),
 				Self::Left => calculate_isometric_left_line_points(columns, rows, spacing, angles),
 				Self::None => panic!("RowColumnGizmoType::None does not have line points"),
 			},
@@ -361,7 +362,7 @@ impl RowColumnGizmoType {
 
 		let (x0, x1) = match self {
 			Self::Top | Self::Left => (viewport.transform_point2(p0 + gap), viewport.transform_point2(p1)),
-			Self::Right | Self::Down => (viewport.transform_point2(p0), viewport.transform_point2(p1 + gap)),
+			Self::Bottom | Self::Right => (viewport.transform_point2(p0), viewport.transform_point2(p1 + gap)),
 			Self::None => panic!("RowColumnGizmoType::None does not have opposite"),
 		};
 
@@ -369,19 +370,19 @@ impl RowColumnGizmoType {
 	}
 
 	fn opposite_gizmo_type(&self) -> Self {
-		return match self {
-			Self::Top => Self::Down,
+		match self {
+			Self::Top => Self::Bottom,
 			Self::Right => Self::Left,
-			Self::Down => Self::Top,
+			Self::Bottom => Self::Top,
 			Self::Left => Self::Right,
 			Self::None => panic!("RowColumnGizmoType::None does not have opposite"),
-		};
+		}
 	}
 
 	pub fn direction(&self, viewport: DAffine2) -> DVec2 {
 		match self {
 			RowColumnGizmoType::Top => viewport.transform_vector2(-DVec2::Y),
-			RowColumnGizmoType::Down => viewport.transform_vector2(DVec2::Y),
+			RowColumnGizmoType::Bottom => viewport.transform_vector2(DVec2::Y),
 			RowColumnGizmoType::Right => viewport.transform_vector2(DVec2::X),
 			RowColumnGizmoType::Left => viewport.transform_vector2(-DVec2::X),
 			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a line"),
@@ -390,16 +391,16 @@ impl RowColumnGizmoType {
 
 	fn initial_dimension(&self, rows: u32, columns: u32) -> u32 {
 		match self {
-			RowColumnGizmoType::Top | RowColumnGizmoType::Down => rows,
-			RowColumnGizmoType::Right | RowColumnGizmoType::Left => columns,
+			RowColumnGizmoType::Top | RowColumnGizmoType::Bottom => rows,
+			RowColumnGizmoType::Left | RowColumnGizmoType::Right => columns,
 			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
 		}
 	}
 
 	fn spacing(&self, spacing: DVec2, grid_type: GridType, angles: DVec2) -> f64 {
 		match self {
-			RowColumnGizmoType::Top | RowColumnGizmoType::Down => spacing.y,
-			RowColumnGizmoType::Right | RowColumnGizmoType::Left => {
+			RowColumnGizmoType::Top | RowColumnGizmoType::Bottom => spacing.y,
+			RowColumnGizmoType::Left | RowColumnGizmoType::Right => {
 				if grid_type == GridType::Rectangular {
 					spacing.x
 				} else {
@@ -411,22 +412,24 @@ impl RowColumnGizmoType {
 	}
 
 	fn index(&self) -> usize {
+		use graphene_std::vector::generator_nodes::grid::*;
+
 		match self {
-			RowColumnGizmoType::Top | RowColumnGizmoType::Down => GRID_ROW_INDEX,
-			RowColumnGizmoType::Right | RowColumnGizmoType::Left => GRID_COLUMNS_INDEX,
+			RowColumnGizmoType::Top | RowColumnGizmoType::Bottom => RowsInput::INDEX,
+			RowColumnGizmoType::Left | RowColumnGizmoType::Right => ColumnsInput::INDEX,
 			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
 		}
 	}
 
 	pub fn mouse_icon(&self) -> MouseCursorIcon {
 		match self {
-			RowColumnGizmoType::Top | RowColumnGizmoType::Down => MouseCursorIcon::NSResize,
-			RowColumnGizmoType::Right | RowColumnGizmoType::Left => MouseCursorIcon::EWResize,
+			RowColumnGizmoType::Top | RowColumnGizmoType::Bottom => MouseCursorIcon::NSResize,
+			RowColumnGizmoType::Left | RowColumnGizmoType::Right => MouseCursorIcon::EWResize,
 			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
 		}
 	}
 
 	pub fn all() -> [Self; 4] {
-		[Self::Top, Self::Right, Self::Down, Self::Left]
+		[Self::Top, Self::Right, Self::Bottom, Self::Left]
 	}
 }

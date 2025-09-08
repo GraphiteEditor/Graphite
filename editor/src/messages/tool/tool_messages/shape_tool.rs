@@ -560,10 +560,11 @@ impl Fsm for ShapeToolFsmState {
 						if is_skewing || (dragging_bounds && is_near_square && !hovering_over_gizmo) {
 							bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
 						}
-						if !is_skewing && dragging_bounds && !hovering_over_gizmo {
-							if let Some(edges) = edges {
-								tool_data.skew_edge = bounds.get_closest_edge(edges, input.mouse.position);
-							}
+						if dragging_bounds
+							&& !is_skewing && !hovering_over_gizmo
+							&& let Some(edges) = edges
+						{
+							tool_data.skew_edge = bounds.get_closest_edge(edges, input.mouse.position);
 						}
 					}
 
@@ -663,6 +664,7 @@ impl Fsm for ShapeToolFsmState {
 					});
 
 					responses.add(DocumentMessage::StartTransaction);
+
 					return ShapeToolFsmState::ModifyingGizmo;
 				}
 
@@ -674,10 +676,10 @@ impl Fsm for ShapeToolFsmState {
 					document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface),
 					|_| false,
 					preferences,
-				) {
-					if clicked_on_line_endpoints(layer, document, input, tool_data) && !input.keyboard.key(Key::Control) {
-						return ShapeToolFsmState::DraggingLineEndpoints;
-					}
+				) && clicked_on_line_endpoints(layer, document, input, tool_data)
+					&& !input.keyboard.key(Key::Control)
+				{
+					return ShapeToolFsmState::DraggingLineEndpoints;
 				}
 
 				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, None);
@@ -717,7 +719,7 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Rectangle | ShapeType::Ellipse | ShapeType::Grid => tool_data.data.start(document, input),
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => tool_data.data.start(document, input),
 					ShapeType::Line => {
 						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 						let snapped = tool_data.data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
@@ -732,10 +734,10 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Star => Star::create_node(tool_options.vertices),
 					ShapeType::Circle => Circle::create_node(),
 					ShapeType::Arc => Arc::create_node(tool_options.arc_type),
+					ShapeType::Grid => Grid::create_node(tool_options.grid_type),
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
 					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
-					ShapeType::Grid => Grid::create_node(tool_options.grid_type),
 				};
 
 				let nodes = vec![(NodeId(0), node)];
@@ -744,7 +746,7 @@ impl Fsm for ShapeToolFsmState {
 				let defered_responses = &mut VecDeque::new();
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Rectangle | ShapeType::Ellipse | ShapeType::Grid => {
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
 						defered_responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
@@ -781,10 +783,10 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Star => Star::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Circle => Circle::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Arc => Arc::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Grid => Grid::update_shape(document, input, layer, tool_options.grid_type, tool_data, modifier, responses),
 					ShapeType::Rectangle => Rectangle::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Ellipse => Ellipse::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Line => Line::update_shape(document, input, layer, tool_data, modifier, responses),
-					ShapeType::Grid => Grid::update_shape(document, input, layer, tool_options.grid_type, tool_data, modifier, responses),
 				}
 
 				// Auto-panning
@@ -889,11 +891,11 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::SkewingBounds { .. }, ShapeToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
-					if let Some(bounds) = &mut tool_data.bounding_box_manager {
-						bounds.center_of_transformation += shift;
-						bounds.original_bound_transform.translation += shift;
-					}
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses)
+					&& let Some(bounds) = &mut tool_data.bounding_box_manager
+				{
+					bounds.center_of_transformation += shift;
+					bounds.original_bound_transform.translation += shift;
 				}
 
 				self
@@ -1025,7 +1027,7 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 				])],
 				ShapeType::Grid => vec![HintGroup(vec![
 					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Grid"),
-					HintInfo::keys([Key::Shift], "Constrain Grid").prepend_plus(),
+					HintInfo::keys([Key::Shift], "Constrain Regular").prepend_plus(),
 					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 				])],
 			};
@@ -1037,7 +1039,7 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 				ShapeType::Polygon | ShapeType::Star | ShapeType::Arc => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Rectangle => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Ellipse => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Circular"), HintInfo::keys([Key::Alt], "From Center")]),
-				ShapeType::Grid => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Grid"), HintInfo::keys([Key::Alt], "From Center")]),
+				ShapeType::Grid => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Line => HintGroup(vec![
 					HintInfo::keys([Key::Shift], "15° Increments"),
 					HintInfo::keys([Key::Alt], "From Center"),
