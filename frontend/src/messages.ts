@@ -55,17 +55,11 @@ export class UpdateImportsExports extends JsMessage {
 
 	readonly exports!: (FrontendGraphInput | undefined)[];
 
-	@TupleToVec2
 	readonly importPosition!: XY;
 
-	@TupleToVec2
 	readonly exportPosition!: XY;
 
 	readonly addImportExport!: boolean;
-}
-
-export class UpdateInSelectedNetwork extends JsMessage {
-	readonly inSelectedNetwork!: boolean;
 }
 
 export class UpdateImportReorderIndex extends JsMessage {
@@ -77,21 +71,24 @@ export class UpdateExportReorderIndex extends JsMessage {
 }
 
 const LayerWidths = Transform(({ obj }) => obj.layerWidths);
-const ChainWidths = Transform(({ obj }) => obj.chainWidths);
-const HasLeftInputWire = Transform(({ obj }) => obj.hasLeftInputWire);
 
 export class UpdateLayerWidths extends JsMessage {
 	@LayerWidths
 	readonly layerWidths!: Map<bigint, number>;
-	@ChainWidths
-	readonly chainWidths!: Map<bigint, number>;
-	@HasLeftInputWire
-	readonly hasLeftInputWire!: Map<bigint, boolean>;
 }
 
-export class UpdateNodeGraphNodes extends JsMessage {
-	@Type(() => FrontendNode)
-	readonly nodes!: FrontendNode[];
+export class UpdateNodeGraphRender extends JsMessage {
+	readonly nodesToRender!: FrontendNodeToRender[];
+
+	readonly open!: boolean;
+
+	readonly opacity!: number;
+
+	readonly inSelectedNetwork!: boolean;
+
+	readonly previewedNode!: bigint | undefined;
+
+	readonly nativeNodeGraphRender!: boolean;
 }
 
 export class UpdateVisibleNodes extends JsMessage {
@@ -121,11 +118,6 @@ export class UpdateNodeThumbnail extends JsMessage {
 	readonly id!: bigint;
 
 	readonly value!: string;
-}
-
-export class UpdateNodeGraphSelection extends JsMessage {
-	@Type(() => BigInt)
-	readonly selected!: bigint[];
 }
 
 export class UpdateOpenDocumentsList extends JsMessage {
@@ -189,13 +181,15 @@ export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic
 export class FrontendGraphInput {
 	readonly dataType!: FrontendGraphDataType;
 
+	readonly resolvedType!: string;
+
 	readonly name!: string;
 
 	readonly description!: string;
 
-	readonly resolvedType!: string;
+	readonly connectedToString!: string;
 
-	readonly connectedTo!: string;
+	readonly connectedToNode!: bigint | undefined;
 }
 
 export class FrontendGraphOutput {
@@ -210,41 +204,77 @@ export class FrontendGraphOutput {
 	readonly connectedTo!: string[];
 }
 
-export class FrontendNode {
-	readonly isLayer!: boolean;
+export class FrontendNodeMetadata {
+	readonly nodeId!: bigint;
 
 	readonly canBeLayer!: boolean;
 
-	readonly id!: bigint;
+	readonly displayName!: string;
+
+	readonly selected!: boolean;
 
 	readonly reference!: string | undefined;
 
-	readonly displayName!: string;
+	readonly visible!: boolean;
 
-	readonly primaryInput!: FrontendGraphInput | undefined;
+	// readonly wires!: (string | undefined)[];
 
-	readonly exposedInputs!: FrontendGraphInput[];
+	readonly errors!: string | undefined;
+}
 
-	readonly primaryOutput!: FrontendGraphOutput | undefined;
+export class FrontendNode {
+	// readonly position!: FrontendNodePosition;
+	readonly position!: XY;
 
-	readonly exposedOutputs!: FrontendGraphOutput[];
+	readonly inputs!: (FrontendGraphInput | undefined)[];
+
+	readonly outputs!: (FrontendGraphOutput | undefined)[];
+}
+
+export class FrontendLayer {
+	// readonly position!: FrontendLayerPosition;
+	readonly position!: XY;
+
+	readonly bottomInput!: FrontendGraphInput;
+
+	readonly sideInput!: FrontendGraphInput | undefined;
+
+	readonly output!: FrontendGraphOutput;
+
+	readonly locked!: boolean;
+
+	readonly chainWidth!: number;
+
+	readonly layerHasLeftBorderGap!: boolean;
 
 	readonly primaryInputConnectedToLayer!: boolean;
 
 	readonly primaryOutputConnectedToLayer!: boolean;
+}
 
-	@TupleToVec2
-	readonly position!: XY;
+export class FrontendNodePosition {
+	readonly absolute!: XY | undefined;
+	readonly chain!: boolean | undefined;
+}
 
-	// TODO: Store field for the width of the left node chain
+export class FrontendLayerPosition {
+	readonly absolute!: XY | undefined;
+	readonly stack!: number | undefined;
+}
 
-	readonly previewed!: boolean;
+export class FrontendNodeOrLayer {
+	readonly node!: FrontendNode | undefined;
+	readonly layer!: FrontendLayer | undefined;
+}
 
-	readonly visible!: boolean;
+export class FrontendNodeToRender {
+	readonly metadata!: FrontendNodeMetadata;
+	readonly nodeOrLayer!: FrontendNodeOrLayer;
+}
 
-	readonly unlocked!: boolean;
-
-	readonly errors!: string | undefined;
+export class UpdateCentralNodeGraph extends JsMessage {
+	readonly nodeOrLayer!: FrontendNodeOrLayer[];
+	readonly inSelectedNetwork!: boolean;
 }
 
 export class FrontendNodeType {
@@ -704,10 +734,6 @@ export type MouseCursorIcon = (typeof mouseCursorIconCSSNames)[MouseCursor];
 
 export class UpdateGraphViewOverlay extends JsMessage {
 	open!: boolean;
-}
-
-export class UpdateGraphFadeArtwork extends JsMessage {
-	readonly percentage!: number;
 }
 
 export class UpdateDataPanelState extends JsMessage {
@@ -1667,12 +1693,10 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentScrollbars,
 	UpdateExportReorderIndex,
 	UpdateEyedropperSamplingState,
-	UpdateGraphFadeArtwork,
 	UpdateGraphViewOverlay,
 	UpdateImportReorderIndex,
 	UpdateImportsExports,
 	UpdateInputHints,
-	UpdateInSelectedNetwork,
 	UpdateLayersPanelBottomBarLayout,
 	UpdateLayersPanelControlBarLeftLayout,
 	UpdateLayersPanelControlBarRightLayout,
@@ -1681,8 +1705,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
-	UpdateNodeGraphNodes,
-	UpdateNodeGraphSelection,
+	UpdateNodeGraphRender,
 	UpdateNodeGraphTransform,
 	UpdateNodeGraphWires,
 	UpdateNodeThumbnail,

@@ -13,7 +13,6 @@ import {
 	UpdateWorkingColorsLayout,
 	UpdateNodeGraphControlBarLayout,
 	UpdateGraphViewOverlay,
-	UpdateGraphFadeArtwork,
 } from "@graphite/messages";
 
 export function createDocumentState(editor: Editor) {
@@ -25,19 +24,11 @@ export function createDocumentState(editor: Editor) {
 		toolShelfLayout: defaultWidgetLayout(),
 		workingColorsLayout: defaultWidgetLayout(),
 		nodeGraphControlBarLayout: defaultWidgetLayout(),
-		// Graph view overlay
 		graphViewOverlayOpen: false,
-		fadeArtwork: 100,
 	});
 	const { subscribe, update } = state;
 
 	// Update layouts
-	editor.subscriptions.subscribeJsMessage(UpdateGraphFadeArtwork, (updateGraphFadeArtwork) => {
-		update((state) => {
-			state.fadeArtwork = updateGraphFadeArtwork.percentage;
-			return state;
-		});
-	});
 	editor.subscriptions.subscribeJsMessage(UpdateDocumentModeLayout, async (updateDocumentModeLayout) => {
 		await tick();
 

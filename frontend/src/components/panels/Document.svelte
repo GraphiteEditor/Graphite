@@ -565,9 +565,7 @@
 						{/if}
 					</div>
 
-					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork={`${$document.fadeArtwork}%`} data-graph>
-						<Graph />
-					</div>
+					<Graph />
 				</LayoutCol>
 				<LayoutCol class="ruler-or-scrollbar right-scrollbar">
 					<ScrollbarInput
@@ -822,30 +820,6 @@
 								outline: none; // Ok for contenteditable element
 								margin: -1px;
 							}
-						}
-					}
-
-					.graph-view {
-						pointer-events: none;
-						transition: opacity 0.2s;
-						opacity: 0;
-
-						&.open {
-							cursor: auto;
-							pointer-events: auto;
-							opacity: 1;
-						}
-
-						&::before {
-							content: "";
-							position: absolute;
-							top: 0;
-							left: 0;
-							width: 100%;
-							height: 100%;
-							background: var(--color-2-mildblack);
-							opacity: var(--fade-artwork);
-							pointer-events: none;
 						}
 					}
 

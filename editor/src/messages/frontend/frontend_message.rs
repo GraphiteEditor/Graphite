@@ -2,13 +2,12 @@ use super::utility_types::{DocumentDetails, MouseCursorIcon, OpenDocument};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
-	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, Transform,
+	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNodeToRender, FrontendNodeType, FrontendXY, Transform,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
-use glam::IVec2;
 use graph_craft::document::NodeId;
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
@@ -133,17 +132,13 @@ pub enum FrontendMessage {
 		exports: Vec<Option<FrontendGraphInput>>,
 		/// The primary import location.
 		#[serde(rename = "importPosition")]
-		import_position: IVec2,
+		import_position: FrontendXY,
 		/// The primary export location.
 		#[serde(rename = "exportPosition")]
-		export_position: IVec2,
+		export_position: FrontendXY,
 		/// The document network does not have an add import or export button.
 		#[serde(rename = "addImportExport")]
 		add_import_export: bool,
-	},
-	UpdateInSelectedNetwork {
-		#[serde(rename = "inSelectedNetwork")]
-		in_selected_network: bool,
 	},
 	UpdateBox {
 		#[serde(rename = "box")]
@@ -185,10 +180,6 @@ pub enum FrontendMessage {
 	UpdateLayerWidths {
 		#[serde(rename = "layerWidths")]
 		layer_widths: HashMap<NodeId, u32>,
-		#[serde(rename = "chainWidths")]
-		chain_widths: HashMap<NodeId, u32>,
-		#[serde(rename = "hasLeftInputWire")]
-		has_left_input_wire: HashMap<NodeId, bool>,
 	},
 	UpdateDialogButtons {
 		#[serde(rename = "layoutTarget")]
@@ -253,9 +244,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "setColorChoice")]
 		set_color_choice: Option<String>,
 	},
-	UpdateGraphFadeArtwork {
-		percentage: f64,
-	},
 	UpdateInputHints {
 		#[serde(rename = "hintData")]
 		hint_data: HintData,
@@ -283,8 +271,18 @@ pub enum FrontendMessage {
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,
 	},
-	UpdateNodeGraphNodes {
-		nodes: Vec<FrontendNode>,
+	UpdateNodeGraphRender {
+		#[serde(rename = "nodesToRender")]
+		nodes_to_render: Vec<FrontendNodeToRender>,
+		open: bool,
+		opacity: f64,
+		#[serde(rename = "inSelectedNetwork")]
+		in_selected_network: bool,
+		// Displays a dashed border around the node
+		#[serde(rename = "previewedNode")]
+		previewed_node: Option<NodeId>,
+		#[serde(rename = "nativeNodeGraphRender")]
+		native_node_graph_render: bool,
 	},
 	UpdateVisibleNodes {
 		nodes: Vec<NodeId>,
@@ -297,9 +295,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
-	},
-	UpdateNodeGraphSelection {
-		selected: Vec<NodeId>,
 	},
 	UpdateNodeGraphTransform {
 		transform: Transform,
