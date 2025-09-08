@@ -415,3 +415,11 @@ impl HandleId {
 		}
 	}
 }
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Dropdown)]
+pub enum SpiralType {
+	#[default]
+	Archimedean,
+	Logarithmic,
+}
