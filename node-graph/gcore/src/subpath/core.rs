@@ -1,10 +1,9 @@
-use std::f64::consts::TAU;
-
 use super::consts::*;
 use super::*;
 use crate::vector::misc::{SpiralType, point_to_dvec2};
 use glam::DVec2;
 use kurbo::PathSeg;
+use std::f64::consts::TAU;
 
 pub struct PathSegPoints {
 	pub p0: DVec2,
@@ -335,7 +334,7 @@ impl<PointId: Identifier> Subpath<PointId> {
 			let t1 = spiral_tangent(theta_next, a, b, spiral_type);
 
 			let arc_len = spiral_arc_length(theta, theta_next, a, b, spiral_type);
-			let d = arc_len / 3.0;
+			let d = arc_len / 3.;
 
 			let p1 = p0 + d * t0;
 			let p2 = p3 - d * t1;
@@ -437,5 +436,5 @@ pub fn archimedean_spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b
 pub fn archimedean_spiral_arc_length_origin(theta: f64, a: f64, b: f64) -> f64 {
 	let r = a + b * theta;
 	let sqrt_term = (r * r + b * b).sqrt();
-	(r * sqrt_term + b * b * ((r + sqrt_term).ln())) / (2.0 * b)
+	(r * sqrt_term + b * b * ((r + sqrt_term).ln())) / (2. * b)
 }

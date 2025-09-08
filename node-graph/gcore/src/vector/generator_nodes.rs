@@ -80,18 +80,18 @@ fn spiral(
 	_: impl Ctx,
 	_primary: (),
 	spiral_type: SpiralType,
+	#[default(5.)] turns: f64,
+	#[default(0.)] start_angle: f64,
 	#[default(0.)] inner_radius: f64,
 	#[default(25)] outer_radius: f64,
-	#[default(5.)] turns: f64,
-	#[default(90.)] angle_offset: f64,
-	#[default(0.)] start_angle: f64,
+	#[default(90.)] angular_resolution: f64,
 ) -> Table<Vector> {
 	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_spiral(
 		inner_radius,
 		outer_radius,
 		turns,
 		start_angle.to_radians(),
-		angle_offset.to_radians(),
+		angular_resolution.to_radians(),
 		spiral_type,
 	)))
 }

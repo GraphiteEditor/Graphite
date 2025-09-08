@@ -2395,6 +2395,7 @@ impl DocumentNodeDefinition {
 	/// `input_override` does not have to be the correct length.
 	pub fn node_template_input_override(&self, input_override: impl IntoIterator<Item = Option<NodeInput>>) -> NodeTemplate {
 		let mut template = self.node_template.clone();
+		// TODO: Replace the .enumerate() with changing the iterator to take a tuple of (index, input) so the user is forced to provide the correct index
 		input_override.into_iter().enumerate().for_each(|(index, input_override)| {
 			if let Some(input_override) = input_override {
 				// Only value inputs can be overridden, since node inputs change graph structure and must be handled by the network interface

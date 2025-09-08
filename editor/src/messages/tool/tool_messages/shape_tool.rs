@@ -120,11 +120,10 @@ fn create_turns_widget(turns: f64) -> WidgetHolder {
 	NumberInput::new(Some(turns))
 		.label("Turns")
 		.min(0.5)
-		.max(1000.)
 		.mode(NumberInputMode::Increment)
 		.on_update(|number_input: &NumberInput| {
 			ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::Turns(number_input.value.unwrap() as f64),
+				options: ShapeOptionsUpdate::Turns(number_input.value.unwrap()),
 			}
 			.into()
 		})
@@ -269,7 +268,8 @@ impl LayoutHolder for ShapeTool {
 
 		if self.options.shape_type == ShapeType::Spiral {
 			widgets.push(create_spiral_type_widget(self.options.spiral_type));
-			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+
 			widgets.push(create_turns_widget(self.options.turns));
 			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		}
@@ -531,15 +531,11 @@ impl ShapeToolData {
 		[Key::Alt, Key::Shift, Key::Control]
 	}
 
-	fn increase_no_sides_turns(&self, document: &DocumentMessageHandler, shape_type: ShapeType, responses: &mut VecDeque<Message>, decrease: bool) {
+	fn decrease_or_increase_sides(&self, document: &DocumentMessageHandler, shape_type: ShapeType, responses: &mut VecDeque<Message>, decrease: bool) {
 		if let Some(layer) = self.data.layer {
 			match shape_type {
-				ShapeType::Star | ShapeType::Polygon => {
-					Polygon::increase_decrease_sides(decrease, layer, document, responses);
-				}
-				ShapeType::Spiral => {
-					Spiral::update_turns(decrease, layer, document, responses);
-				}
+				ShapeType::Star | ShapeType::Polygon => Polygon::decrease_or_increase_sides(decrease, layer, document, responses),
+				ShapeType::Spiral => Spiral::update_turns(decrease, layer, document, responses),
 				_ => {}
 			}
 		}
@@ -721,11 +717,11 @@ impl Fsm for ShapeToolFsmState {
 				self
 			}
 			(ShapeToolFsmState::Drawing(_), ShapeToolMessage::IncreaseSides) => {
-				tool_data.increase_no_sides_turns(document, tool_options.shape_type, responses, false);
+				tool_data.decrease_or_increase_sides(document, tool_options.shape_type, responses, false);
 				self
 			}
 			(ShapeToolFsmState::Drawing(_), ShapeToolMessage::DecreaseSides) => {
-				tool_data.increase_no_sides_turns(document, tool_options.shape_type, responses, true);
+				tool_data.decrease_or_increase_sides(document, tool_options.shape_type, responses, true);
 				self
 			}
 			(ShapeToolFsmState::Ready(_), ShapeToolMessage::DragStart) => {
@@ -809,7 +805,7 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Spiral | ShapeType::Ellipse => {
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
 						tool_data.data.start(document, input)
 					}
 					ShapeType::Line => {
@@ -826,11 +822,11 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Star => Star::create_node(tool_options.vertices),
 					ShapeType::Circle => Circle::create_node(),
 					ShapeType::Arc => Arc::create_node(tool_options.arc_type),
+					ShapeType::Spiral => Spiral::create_node(tool_options.spiral_type, tool_options.turns),
 					ShapeType::Grid => Grid::create_node(tool_options.grid_type),
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
 					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
-					ShapeType::Spiral => Spiral::create_node(tool_options.spiral_type, tool_options.turns),
 				};
 
 				let nodes = vec![(NodeId(0), node)];
@@ -839,7 +835,7 @@ impl Fsm for ShapeToolFsmState {
 				let defered_responses = &mut VecDeque::new();
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse | ShapeType::Spiral => {
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
 						defered_responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
@@ -876,11 +872,11 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Star => Star::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Circle => Circle::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Arc => Arc::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Spiral => Spiral::update_shape(document, input, layer, tool_data, responses),
 					ShapeType::Grid => Grid::update_shape(document, input, layer, tool_options.grid_type, tool_data, modifier, responses),
 					ShapeType::Rectangle => Rectangle::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Ellipse => Ellipse::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Line => Line::update_shape(document, input, layer, tool_data, modifier, responses),
-					ShapeType::Spiral => Spiral::update_shape(document, input, layer, tool_data, responses),
 				}
 
 				// Auto-panning

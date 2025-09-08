@@ -157,9 +157,10 @@ impl Polygon {
 			});
 		}
 	}
-	/// Updates the number of sides of a polygon or star node and syncs the Shape Tool UI widget accordingly.
+
+	/// Updates the number of sides of a polygon or star node and syncs the Shape tool UI widget accordingly.
 	/// Increases or decreases the side count based on user input, clamped to a minimum of 3.
-	pub fn increase_decrease_sides(decrease: bool, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn decrease_or_increase_sides(decrease: bool, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface).or(graph_modification_utils::get_star_id(layer, &document.network_interface)) else {
 			return;
 		};
@@ -175,7 +176,7 @@ impl Polygon {
 			return;
 		};
 
-		let new_dimension = if !decrease { (n - 1).max(3) } else { n + 1 };
+		let new_dimension = if decrease { (n - 1).max(3) } else { n + 1 };
 
 		responses.add(ShapeToolMessage::UpdateOptions {
 			options: ShapeOptionsUpdate::Vertices(new_dimension),

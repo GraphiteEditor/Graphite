@@ -1292,8 +1292,10 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 	let spiral_type = enum_choice::<SpiralType>()
 		.for_socket(ParameterWidgetsInfo::new(node_id, SpiralTypeInput::INDEX, true, context))
 		.property_row();
+	let turns = number_widget(ParameterWidgetsInfo::new(node_id, TurnsInput::INDEX, true, context), NumberInput::default().min(0.1));
+	let start_angle = number_widget(ParameterWidgetsInfo::new(node_id, StartAngleInput::INDEX, true, context), NumberInput::default().unit("°"));
 
-	let mut widgets = vec![spiral_type];
+	let mut widgets = vec![spiral_type, LayoutGroup::Row { widgets: turns }, LayoutGroup::Row { widgets: start_angle }];
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
@@ -1334,18 +1336,12 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 		}
 	}
 
-	let turns = number_widget(ParameterWidgetsInfo::new(node_id, TurnsInput::INDEX, true, context), NumberInput::default().min(0.1));
-	let angle_offset = number_widget(
-		ParameterWidgetsInfo::new(node_id, AngleOffsetInput::INDEX, true, context),
+	let angular_resolution = number_widget(
+		ParameterWidgetsInfo::new(node_id, AngularResolutionInput::INDEX, true, context),
 		NumberInput::default().min(1.).max(180.).unit("°"),
 	);
-	let start_angle = number_widget(ParameterWidgetsInfo::new(node_id, StartAngleInput::INDEX, true, context), NumberInput::default().unit("°"));
 
-	widgets.extend([
-		LayoutGroup::Row { widgets: turns },
-		LayoutGroup::Row { widgets: angle_offset },
-		LayoutGroup::Row { widgets: start_angle },
-	]);
+	widgets.push(LayoutGroup::Row { widgets: angular_resolution });
 
 	widgets
 }
