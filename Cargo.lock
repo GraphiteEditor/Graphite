@@ -2245,7 +2245,9 @@ dependencies = [
  "kurbo",
  "log",
  "num-traits",
+ "parley",
  "serde",
+ "skrifa 0.36.0",
  "usvg 0.45.1",
  "vello",
 ]

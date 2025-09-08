@@ -12,6 +12,7 @@ use graphene_std::gradient::GradientStops;
 use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::table::Table;
+use graphene_std::text::Typography;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::{Fill, FillChoice};
 use graphene_std::{Artboard, Graphic};
@@ -266,6 +267,7 @@ impl TableRowLayout for Graphic {
 			Self::RasterGPU(table) => table.identifier(),
 			Self::Color(table) => table.identifier(),
 			Self::Gradient(table) => table.identifier(),
+			Self::Typography(table) => table.identifier(),
 		}
 	}
 	// Don't put a breadcrumb for Graphic
@@ -280,6 +282,7 @@ impl TableRowLayout for Graphic {
 			Self::RasterGPU(table) => table.layout_with_breadcrumb(data),
 			Self::Color(table) => table.layout_with_breadcrumb(data),
 			Self::Gradient(table) => table.layout_with_breadcrumb(data),
+			Self::Typography(table) => table.layout_with_breadcrumb(data),
 		}
 	}
 }
@@ -501,6 +504,21 @@ impl TableRowLayout for GradientStops {
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![self.element_widget(0)];
 		vec![LayoutGroup::Row { widgets }]
+	}
+}
+
+impl TableRowLayout for Typography {
+	fn type_name() -> &'static str {
+		"Typography"
+	}
+	fn identifier(&self) -> String {
+		"Typography".to_string()
+	}
+	fn element_widget(&self, _index: usize) -> WidgetHolder {
+		TextLabel::new("Not supported").widget_holder()
+	}
+	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::Row { widgets: Vec::new() }]
 	}
 }
 

@@ -15,6 +15,7 @@ use graphene_core::raster_types::{CPU, GPU, Raster};
 use graphene_core::render_complexity::RenderComplexity;
 use graphene_core::subpath::Subpath;
 use graphene_core::table::{Table, TableRow};
+use graphene_core::text::Typography;
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::uuid::{NodeId, generate_uuid};
 use graphene_core::vector::Vector;
@@ -23,11 +24,14 @@ use graphene_core::vector::style::{Fill, PaintOrder, Stroke, StrokeAlign, ViewMo
 use graphene_core::{Artboard, Graphic};
 use kurbo::Affine;
 use num_traits::Zero;
+use skrifa::MetadataProvider;
+use skrifa::attribute::Style;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
+use vello::peniko::StyleRef;
 #[cfg(feature = "vello")]
 use vello::*;
 
@@ -113,6 +117,18 @@ impl SvgRender {
 		attributes(&mut SvgRenderAttrs(self));
 
 		self.svg.push("/>".into());
+	}
+
+	pub fn leaf_text(&mut self, text: impl Into<SvgSegment>, attributes: impl FnOnce(&mut SvgRenderAttrs)) {
+		self.indent();
+
+		self.svg.push("<tspan".into());
+
+		attributes(&mut SvgRenderAttrs(self));
+
+		self.svg.push(">".into());
+		self.svg.push(text.into());
+		self.svg.push("</tspan>".into());
 	}
 
 	pub fn leaf_node(&mut self, content: impl Into<SvgSegment>) {
@@ -256,6 +272,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(table) => table.render_svg(render, render_params),
 			Graphic::Gradient(table) => table.render_svg(render, render_params),
+			Graphic::Typography(table) => table.render_svg(render, render_params),
 		}
 	}
 
@@ -268,6 +285,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(table) => table.render_to_vello(scene, transform, context, render_params),
 			Graphic::Color(table) => table.render_to_vello(scene, transform, context, render_params),
 			Graphic::Gradient(table) => table.render_to_vello(scene, transform, context, render_params),
+			Graphic::Typography(table) => table.render_to_vello(scene, transform, context, render_params),
 		}
 	}
 
@@ -317,6 +335,14 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, *row.transform);
 					}
 				}
+				Graphic::Typography(table) => {
+					metadata.upstream_footprints.insert(element_id, footprint);
+
+					// TODO: Find a way to handle more than the first row
+					if let Some(row) = table.iter().next() {
+						metadata.local_transforms.insert(element_id, *row.transform);
+					}
+				}
 			}
 		}
 
@@ -327,6 +353,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(table) => table.collect_metadata(metadata, footprint, element_id),
 			Graphic::Color(table) => table.collect_metadata(metadata, footprint, element_id),
 			Graphic::Gradient(table) => table.collect_metadata(metadata, footprint, element_id),
+			Graphic::Typography(table) => table.collect_metadata(metadata, footprint, element_id),
 		}
 	}
 
@@ -338,6 +365,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(table) => table.add_upstream_click_targets(click_targets),
 			Graphic::Color(table) => table.add_upstream_click_targets(click_targets),
 			Graphic::Gradient(table) => table.add_upstream_click_targets(click_targets),
+			Graphic::Typography(table) => table.add_upstream_click_targets(click_targets),
 		}
 	}
 
@@ -349,6 +377,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(table) => table.contains_artboard(),
 			Graphic::Color(table) => table.contains_artboard(),
 			Graphic::Gradient(table) => table.contains_artboard(),
+			Graphic::Typography(table) => table.contains_artboard(),
 		}
 	}
 
@@ -360,6 +389,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(_) => (),
 			Graphic::Gradient(_) => (),
+			Graphic::Typography(_) => (),
 		}
 	}
 }
@@ -1511,6 +1541,87 @@ impl Render for Table<GradientStops> {
 
 			if layer {
 				scene.pop_layer();
+			}
+		}
+	}
+}
+
+impl Render for Table<Typography> {
+	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
+		for table_row in self.iter() {
+			for line in table_row.element.layout.lines() {
+				for item in line.items() {
+					match item {
+						parley::PositionedLayoutItem::GlyphRun(glyph_run) => {
+							let font = glyph_run.run().font();
+							let font_ref = skrifa::FontRef::from_index(font.data.as_ref(), font.index).unwrap();
+							let font_attributes = font_ref.attributes();
+							let font_style = match font_attributes.style {
+								Style::Normal => "normal".to_string(),
+								Style::Italic => "italic".to_string(),
+								Style::Oblique(Some(angle)) => format!("oblique {}deg", angle),
+								Style::Oblique(None) => "oblique".to_string(),
+							};
+							render.parent_tag(
+								"text",
+								|attributes| {
+									let matrix = format_transform_matrix(*table_row.transform);
+									if !matrix.is_empty() {
+										attributes.push("transform", matrix);
+									}
+
+									attributes.push("font-family", table_row.element.font_family.clone());
+									attributes.push("font-weight", font_attributes.weight.value().to_string());
+									attributes.push("font-size", glyph_run.run().font_size().to_string());
+									attributes.push("font-style", font_style);
+									attributes.push("fill", format!("#{}", table_row.element.color.to_rgb_hex_srgb_from_gamma()));
+									attributes.push("opacity", table_row.alpha_blending.opacity.to_string());
+									if let Some((stroke_color, stroke_width)) = table_row.element.stroke.as_ref().cloned() {
+										attributes.push("stroke-color", format!("#{}", stroke_color.to_rgb_hex_srgb_from_gamma()));
+										attributes.push("stroke-width", format!("{stroke_width}"));
+									}
+								},
+								|render| {
+									for glyph in glyph_run.positioned_glyphs() {
+										let character = font_ref.glyph_names().get(skrifa::GlyphId::new(glyph.id as u32)).unwrap().as_str().to_string();
+										let character = character.replace("space", " ");
+										render.leaf_text(character, |attributes| {
+											attributes.push("x", glyph.x.to_string());
+											attributes.push("y", glyph.y.to_string());
+										});
+									}
+								},
+							);
+						}
+						parley::PositionedLayoutItem::InlineBox(_positioned_inline_box) => {
+							log::error!("Inline box text rendering not supported");
+						}
+					}
+				}
+			}
+		}
+	}
+
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {
+		for table_row in self.iter() {
+			for line in table_row.element.layout.lines() {
+				for item in line.items() {
+					match item {
+						parley::PositionedLayoutItem::GlyphRun(glyph_run) => {
+							let color = table_row.element.color.clone();
+							scene
+								.draw_glyphs(glyph_run.run().font())
+								.transform(kurbo::Affine::new((transform * *table_row.transform).to_cols_array()))
+								.font_size(glyph_run.run().font_size())
+								.brush(peniko::BrushRef::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])))
+								.brush_alpha(table_row.alpha_blending.opacity)
+								.draw(StyleRef::Fill(peniko::Fill::EvenOdd), glyph_run.glyphs().map(|g| Glyph { id: g.id as u32, x: g.x, y: g.y }));
+						}
+						parley::PositionedLayoutItem::InlineBox(_positioned_inline_box) => {
+							log::error!("Cannot render positioned inline box to vello");
+						}
+					}
+				}
 			}
 		}
 	}
