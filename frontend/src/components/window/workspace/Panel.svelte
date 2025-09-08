@@ -36,7 +36,7 @@
 
 	export let tabMinWidths = false;
 	export let tabCloseButtons = false;
-	export let tabLabels: { name: string; isUnsaved?: boolean; tooltip?: string }[];
+	export let tabLabels: { name: string; unsaved?: boolean; tooltip?: string }[];
 	export let tabActiveIndex: number;
 	export let panelType: PanelType | undefined = undefined;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
@@ -130,10 +130,12 @@
 					}}
 					bind:this={tabElements[tabIndex]}
 				>
-					<TextLabel>{tabLabel.name}</TextLabel>
-					{#if tabLabel.isUnsaved}
-						<span>*</span>
-					{/if}
+					<LayoutRow class="name">
+						<TextLabel class="text">{tabLabel.name}</TextLabel>
+						{#if tabLabel.unsaved}
+							<TextLabel>*</TextLabel>
+						{/if}
+					</LayoutRow>
 					{#if tabCloseButtons}
 						<IconButton
 							action={(e) => {
@@ -263,14 +265,22 @@
 						}
 					}
 
-					.text-label {
+					.name {
 						flex: 1 1 100%;
-						overflow-x: hidden;
-						white-space: nowrap;
-						text-overflow: ellipsis;
-						// Height and line-height required because https://stackoverflow.com/a/21611191/775283
-						height: 28px;
-						line-height: 28px;
+
+						.text-label {
+							// Height and line-height required because https://stackoverflow.com/a/21611191/775283
+							height: 28px;
+							line-height: 28px;
+							flex: 0 0 auto;
+
+							&.text {
+								overflow-x: hidden;
+								white-space: nowrap;
+								text-overflow: ellipsis;
+								flex-shrink: 1;
+							}
+						}
 					}
 
 					.icon-button {
