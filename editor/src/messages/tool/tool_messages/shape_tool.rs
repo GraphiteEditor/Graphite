@@ -535,7 +535,7 @@ impl ShapeToolData {
 		if let Some(layer) = self.data.layer {
 			match shape_type {
 				ShapeType::Star | ShapeType::Polygon => {
-					Polygon::update_sides(decrease, layer, document, responses);
+					Polygon::increase_decrease_sides(decrease, layer, document, responses);
 				}
 				ShapeType::Spiral => {
 					Spiral::update_turns(decrease, layer, document, responses);
