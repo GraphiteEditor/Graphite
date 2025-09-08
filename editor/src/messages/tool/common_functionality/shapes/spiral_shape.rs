@@ -7,6 +7,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Inp
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapTypeConfiguration};
+use crate::messages::tool::tool_messages::shape_tool::ShapeOptionsUpdate;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
@@ -97,6 +98,11 @@ impl Spiral {
 		} else {
 			turns = turns + 1.;
 		}
+
+		responses.add(ShapeToolMessage::UpdateOptions {
+			options: ShapeOptionsUpdate::Turns(turns),
+		});
+
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, SPIRAL_TURNS_INDEX),
 			input: NodeInput::value(TaggedValue::F64(turns), false),
