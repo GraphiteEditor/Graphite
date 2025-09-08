@@ -1,20 +1,15 @@
-use super::shape_utility::ShapeToolModifierKey;
-use super::shape_utility::update_radius_sign;
+use super::shape_utility::{ShapeToolModifierKey, update_radius_sign};
 use super::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::number_of_points_dial::NumberOfPointsDial;
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::number_of_points_dial::NumberOfPointsDialState;
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::point_radius_handle::PointRadiusHandle;
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::point_radius_handle::PointRadiusHandleState;
-use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::number_of_points_dial::{NumberOfPointsDial, NumberOfPointsDialState};
+use crate::messages::tool::common_functionality::gizmos::shape_gizmos::point_radius_handle::{PointRadiusHandle, PointRadiusHandleState};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
-use crate::messages::tool::common_functionality::shapes::shape_utility::polygon_outline;
+use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, polygon_outline};
 use crate::messages::tool::tool_messages::shape_tool::ShapeOptionsUpdate;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
@@ -162,39 +157,36 @@ impl Polygon {
 			});
 		}
 	}
-
 	/// Updates the number of sides of a polygon or star node and syncs the Shape Tool UI widget accordingly.
 	/// Increases or decreases the side count based on user input, clamped to a minimum of 3.
-	pub fn update_sides(decrease: bool, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface).or(graph_modification_utils::get_star_id(layer, &document.network_interface)) else {
-			return;
-		};
+	pub fn increase_decrease_sides(increase: bool, document: &DocumentMessageHandler, shape_tool_data: &mut ShapeToolData, responses: &mut VecDeque<Message>) {
+		if let Some(layer) = shape_tool_data.data.layer {
+			let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface).or(graph_modification_utils::get_star_id(layer, &document.network_interface)) else {
+				return;
+			};
 
-		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface)
-			.find_node_inputs("Regular Polygon")
-			.or(NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star"))
-		else {
-			return;
-		};
+			let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface)
+				.find_node_inputs("Regular Polygon")
+				.or(NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star"))
+			else {
+				return;
+			};
 
-		let Some(&TaggedValue::U32(n)) = node_inputs.get(1).unwrap().as_value() else { return };
+			let Some(&TaggedValue::U32(n)) = node_inputs.get(1).unwrap().as_value() else {
+				return;
+			};
 
-		let input: NodeInput;
-		if decrease {
-			input = NodeInput::value(TaggedValue::U32((n - 1).max(3)), false);
+			let new_dimension = if increase { n + 1 } else { (n - 1).max(3) };
+
 			responses.add(ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::Vertices((n - 1).max(3)),
+				options: ShapeOptionsUpdate::Vertices(new_dimension),
 			});
-		} else {
-			input = NodeInput::value(TaggedValue::U32(n + 1), false);
-			responses.add(ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::Vertices(n + 1),
+
+			responses.add(NodeGraphMessage::SetInput {
+				input_connector: InputConnector::node(node_id, 1),
+				input: NodeInput::value(TaggedValue::U32(new_dimension), false),
 			});
+			responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
-
-		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 1),
-			input,
-		});
 	}
 }

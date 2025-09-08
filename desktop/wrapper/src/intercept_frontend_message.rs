@@ -64,6 +64,15 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerVisitLink { url } => {
 			dispatcher.respond(DesktopFrontendMessage::OpenUrl(url));
 		}
+		FrontendMessage::UpdateWindowState { maximized, minimized } => {
+			dispatcher.respond(DesktopFrontendMessage::UpdateWindowState { maximized, minimized });
+
+			// Forward this to update the ui
+			return Some(message);
+		}
+		FrontendMessage::CloseWindow => {
+			dispatcher.respond(DesktopFrontendMessage::CloseWindow);
+		}
 		m => return Some(m),
 	}
 	None

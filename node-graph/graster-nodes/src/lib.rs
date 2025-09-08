@@ -1,12 +1,14 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[cfg(not(feature = "std"))]
-pub use graphene_core_shaders::glam;
-
 pub mod adjust;
 pub mod adjustments;
 pub mod blending_nodes;
 pub mod cubic_spline;
+pub mod fullscreen_vertex;
+
+/// required by shader macro
+#[cfg(feature = "shader-nodes")]
+pub use graphene_raster_nodes_shaders::WGSL_SHADER;
 
 #[cfg(feature = "std")]
 pub mod curve;

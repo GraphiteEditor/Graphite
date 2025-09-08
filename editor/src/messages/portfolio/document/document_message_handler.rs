@@ -17,7 +17,7 @@ use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::portfolio::utility_types::PersistentData;
@@ -952,6 +952,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				self.path = None;
 				self.set_save_state(false);
+				self.set_auto_save_state(false);
 
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
@@ -1285,26 +1286,37 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
-			// Commits the transaction if the network was mutated since the transaction started, otherwise it aborts the transaction
+			// Commits the transaction if the network was mutated since the transaction started, otherwise it cancels the transaction
 			DocumentMessage::EndTransaction => match self.network_interface.transaction_status() {
 				TransactionStatus::Started => {
-					responses.add_front(DocumentMessage::AbortTransaction);
+					responses.add_front(DocumentMessage::CancelTransaction);
 				}
 				TransactionStatus::Modified => {
 					responses.add_front(DocumentMessage::CommitTransaction);
 				}
 				TransactionStatus::Finished => {}
 			},
+			DocumentMessage::CancelTransaction => {
+				self.network_interface.finish_transaction();
+				self.document_undo_history.pop_back();
+			}
 			DocumentMessage::CommitTransaction => {
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
 					return;
 				}
 				self.network_interface.finish_transaction();
 				self.document_redo_history.clear();
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
-			DocumentMessage::AbortTransaction => {
-				responses.add(DocumentMessage::RepeatedAbortTransaction { undo_count: 1 });
-			}
+			DocumentMessage::AbortTransaction => match self.network_interface.transaction_status() {
+				TransactionStatus::Started => {
+					responses.add_front(DocumentMessage::CancelTransaction);
+				}
+				TransactionStatus::Modified => {
+					responses.add(DocumentMessage::RepeatedAbortTransaction { undo_count: 1 });
+				}
+				TransactionStatus::Finished => {}
+			},
 			DocumentMessage::RepeatedAbortTransaction { undo_count } => {
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
 					return;
@@ -1316,6 +1328,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				self.network_interface.finish_transaction();
 				responses.add(OverlaysMessage::Draw);
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
 			DocumentMessage::ToggleLayerExpansion { id, recursive } => {
 				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
@@ -1783,7 +1796,7 @@ impl DocumentMessageHandler {
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
 		let document_message_handler = serde_json::from_str::<DocumentMessageHandler>(serialized_content)
 			.or_else(|e| {
-				log::warn!("failed to directly load document with the following error: {e}. Trying old DocumentMessageHandler");
+				log::warn!("Failed to directly load document with the following error: {e}. Trying old DocumentMessageHandler.");
 				// TODO: Eventually remove this document upgrade code
 				#[derive(Debug, serde::Serialize, serde::Deserialize)]
 				pub struct OldDocumentMessageHandler {
@@ -1975,16 +1988,16 @@ impl DocumentMessageHandler {
 		Some(previous_network)
 	}
 
-	pub fn current_hash(&self) -> Option<u64> {
-		self.document_undo_history.iter().last().map(|network| network.document_network().current_hash())
+	pub fn current_hash(&self) -> u64 {
+		self.network_interface.document_network().current_hash()
 	}
 
 	pub fn is_auto_saved(&self) -> bool {
-		self.current_hash() == self.auto_saved_hash
+		Some(self.current_hash()) == self.auto_saved_hash
 	}
 
 	pub fn is_saved(&self) -> bool {
-		self.current_hash() == self.saved_hash
+		Some(self.current_hash()) == self.saved_hash
 	}
 
 	pub fn is_graph_overlay_open(&self) -> bool {
@@ -1993,7 +2006,7 @@ impl DocumentMessageHandler {
 
 	pub fn set_auto_save_state(&mut self, is_saved: bool) {
 		if is_saved {
-			self.auto_saved_hash = self.current_hash();
+			self.auto_saved_hash = Some(self.current_hash());
 		} else {
 			self.auto_saved_hash = None;
 		}
@@ -2001,7 +2014,7 @@ impl DocumentMessageHandler {
 
 	pub fn set_save_state(&mut self, is_saved: bool) {
 		if is_saved {
-			self.saved_hash = self.current_hash();
+			self.saved_hash = Some(self.current_hash());
 		} else {
 			self.saved_hash = None;
 		}
@@ -2601,7 +2614,7 @@ impl DocumentMessageHandler {
 			layout: Layout::WidgetLayout(document_bar_layout),
 			layout_target: LayoutTarget::DocumentBar,
 		});
-		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
+		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	pub fn update_layers_panel_control_bar_widgets(&self, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
@@ -2766,7 +2779,7 @@ impl DocumentMessageHandler {
 		});
 	}
 
-	pub fn update_layers_panel_bottom_bar_widgets(&self, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
+	pub fn update_layers_panel_bottom_bar_widgets(&mut self, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
 		if !layers_panel_open {
 			return;
 		}
@@ -2776,6 +2789,7 @@ impl DocumentMessageHandler {
 		let selected_layer = selected_layers.next();
 		let has_selection = selected_layer.is_some();
 		let has_multiple_selection = selected_layers.next().is_some();
+		for _ in selected_layers {}
 
 		let widgets = vec![
 			PopoverButton::new()
@@ -2789,7 +2803,7 @@ impl DocumentMessageHandler {
 						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &self.network_interface);
 						let node_type = graph_layer.horizontal_layer_flow().nth(1);
 						if let Some(node_id) = node_type {
-							let (output_type, _) = self.network_interface.output_type(&node_id, 0, &self.selection_network_path);
+							let (output_type, _) = self.network_interface.output_type(&OutputConnector::node(node_id, 0), &self.selection_network_path);
 							Some(format!("type:{}", output_type.nested_type()))
 						} else {
 							None

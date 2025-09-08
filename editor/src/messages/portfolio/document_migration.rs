@@ -114,6 +114,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::ops::RootNode"],
 	},
 	NodeReplacement {
+		node: graphene_std::math_nodes::absolute_value::IDENTIFIER,
+		aliases: &["graphene_core::ops::AbsoluteValueNode"],
+	},
+	NodeReplacement {
 		node: graphene_std::math_nodes::logarithm::IDENTIFIER,
 		aliases: &["graphene_core::ops::LogarithmNode"],
 	},
@@ -229,6 +233,14 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::ops::CoordinateValueNode",
 			"graphene_math_nodes::CoordinateValueNode",
 		],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::cut_segments::IDENTIFIER,
+		aliases: &["graphene_core::vector::SplitSegmentsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::cut_path::IDENTIFIER,
+		aliases: &["graphene_core::vector::SplitPathNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::vec_2_to_point::IDENTIFIER,
@@ -442,14 +454,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::transform_nodes::transform::IDENTIFIER,
 		aliases: &["graphene_core::transform::TransformNode"],
 	},
-	NodeReplacement {
-		node: graphene_std::transform_nodes::boundless_footprint::IDENTIFIER,
-		aliases: &["graphene_core::transform::BoundlessFootprintNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::transform_nodes::freeze_real_time::IDENTIFIER,
-		aliases: &["graphene_core::transform::FreezeRealTimeNode"],
-	},
 	// ???
 	NodeReplacement {
 		node: graphene_std::vector::spline::IDENTIFIER,
@@ -477,7 +481,13 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::ops::identity::IDENTIFIER,
-		aliases: &["graphene_core::transform::CullNode"],
+		aliases: &[
+			"graphene_core::transform::CullNode",
+			"graphene_core::transform::BoundlessFootprintNode",
+			"graphene_core::transform::FreezeRealTimeNode",
+			"graphene_core::transform_nodes::BoundlessFootprintNode",
+			"graphene_core::transform_nodes::FreezeRealTimeNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::flatten_path::IDENTIFIER,
@@ -552,7 +562,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				let mut default_template = NodeTemplate::default();
 				default_template.document_node.implementation = DocumentNodeImplementation::ProtoNode(new.clone());
 				document.network_interface.replace_implementation(node_id, &network_path, &mut default_template);
-				document.network_interface.set_call_argument(node_id, &network_path, graph_craft::Type::Generic("T".into()));
+				document.network_interface.set_call_argument(node_id, &network_path, default_template.document_node.call_argument);
 			}
 		}
 	}
@@ -579,9 +589,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 	// Upgrade old nodes to use `Context` instead of `()` or `Footprint` as their call argument
 	if node.call_argument == graph_craft::concrete!(()) || node.call_argument == graph_craft::concrete!(graphene_std::transform::Footprint) {
-		document
-			.network_interface
-			.set_call_argument(node_id, network_path, graph_craft::concrete!(graphene_std::Context).into());
+		document.network_interface.set_call_argument(node_id, network_path, graph_craft::concrete!(graphene_std::Context));
 	}
 
 	// Only nodes that have not been modified and still refer to a definition can be updated
@@ -1041,6 +1049,16 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		document.network_interface.add_import(TaggedValue::None, false, 0, "Primary", "", &node_path);
 		document.network_interface.add_import(TaggedValue::U32(0), false, 1, "Loop Level", "TODO", &node_path);
+	}
+
+	// Add context features to nodes that don't have them (fine-grained context caching migration)
+	if node.context_features == graphene_std::ContextDependencies::default() {
+		if let Some(reference) = document.network_interface.reference(node_id, network_path).cloned().flatten() {
+			if let Some(node_definition) = resolve_document_node_type(&reference) {
+				let context_features = node_definition.node_template.document_node.context_features;
+				document.network_interface.set_context_features(node_id, network_path, context_features);
+			}
+		}
 	}
 
 	// ==================================

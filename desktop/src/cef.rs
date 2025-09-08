@@ -16,6 +16,9 @@
 use crate::CustomEvent;
 use crate::render::FrameBufferRef;
 use graphite_desktop_wrapper::{WgpuContext, deserialize_editor_message};
+use std::fs::File;
+use std::io::{Cursor, Read};
+use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -27,7 +30,6 @@ mod input;
 mod internal;
 mod ipc;
 mod platform;
-mod scheme_handler;
 mod utility;
 
 #[cfg(feature = "accelerated_paint")]
@@ -38,13 +40,14 @@ use texture_import::SharedTextureHandle;
 pub(crate) use context::{CefContext, CefContextBuilder, InitError};
 use winit::event_loop::EventLoopProxy;
 
-pub(crate) trait CefEventHandler: Clone {
+pub(crate) trait CefEventHandler: Clone + Send + Sync + 'static {
 	fn window_size(&self) -> WindowSize;
 	fn draw<'a>(&self, frame_buffer: FrameBufferRef<'a>);
 	#[cfg(feature = "accelerated_paint")]
 	fn draw_gpu(&self, shared_texture: SharedTextureHandle);
-	/// Scheudule the main event loop to run the cef event loop after the timeout
-	///  [`_cef_browser_process_handler_t::on_schedule_message_pump_work`] for more documentation.
+	fn load_resource(&self, path: PathBuf) -> Option<Resource>;
+	/// Schedule the main event loop to run the CEF event loop after the timeout.
+	/// See [`_cef_browser_process_handler_t::on_schedule_message_pump_work`] for more documentation.
 	fn schedule_cef_message_loop_work(&self, scheduled_time: Instant);
 	fn initialized_web_communication(&self);
 	fn receive_web_message(&self, message: &[u8]);
@@ -63,11 +66,33 @@ impl WindowSize {
 }
 
 #[derive(Clone)]
+pub(crate) struct Resource {
+	pub(crate) reader: ResourceReader,
+	pub(crate) mimetype: Option<String>,
+}
+
+#[expect(dead_code)]
+#[derive(Clone)]
+pub(crate) enum ResourceReader {
+	Embedded(Cursor<&'static [u8]>),
+	File(Arc<File>),
+}
+impl Read for ResourceReader {
+	fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+		match self {
+			ResourceReader::Embedded(cursor) => cursor.read(buf),
+			ResourceReader::File(file) => file.as_ref().read(buf),
+		}
+	}
+}
+
+#[derive(Clone)]
 pub(crate) struct CefHandler {
 	window_size_receiver: Arc<Mutex<WindowSizeReceiver>>,
 	event_loop_proxy: EventLoopProxy<CustomEvent>,
 	wgpu_context: WgpuContext,
 }
+
 struct WindowSizeReceiver {
 	receiver: Receiver<WindowSize>,
 	window_size: WindowSize,
@@ -142,6 +167,73 @@ impl CefEventHandler for CefHandler {
 		let _ = self.event_loop_proxy.send_event(CustomEvent::UiUpdate(texture));
 	}
 
+	#[cfg(feature = "accelerated_paint")]
+	fn draw_gpu(&self, shared_texture: SharedTextureHandle) {
+		match shared_texture.import_texture(&self.wgpu_context.device) {
+			Ok(texture) => {
+				let _ = self.event_loop_proxy.send_event(CustomEvent::UiUpdate(texture));
+			}
+			Err(e) => {
+				tracing::error!("Failed to import shared texture: {}", e);
+			}
+		}
+	}
+
+	fn load_resource(&self, path: PathBuf) -> Option<Resource> {
+		let path = if path.as_os_str().is_empty() { PathBuf::from("index.html") } else { path };
+
+		let mimetype = match path.extension().and_then(|s| s.to_str()).unwrap_or("") {
+			"html" => Some("text/html".to_string()),
+			"css" => Some("text/css".to_string()),
+			"txt" => Some("text/plain".to_string()),
+			"wasm" => Some("application/wasm".to_string()),
+			"js" => Some("application/javascript".to_string()),
+			"png" => Some("image/png".to_string()),
+			"jpg" | "jpeg" => Some("image/jpeg".to_string()),
+			"svg" => Some("image/svg+xml".to_string()),
+			"xml" => Some("application/xml".to_string()),
+			"json" => Some("application/json".to_string()),
+			"ico" => Some("image/x-icon".to_string()),
+			"woff" => Some("font/woff".to_string()),
+			"woff2" => Some("font/woff2".to_string()),
+			"ttf" => Some("font/ttf".to_string()),
+			"otf" => Some("font/otf".to_string()),
+			"webmanifest" => Some("application/manifest+json".to_string()),
+			"graphite" => Some("application/graphite+json".to_string()),
+			_ => None,
+		};
+
+		#[cfg(feature = "embedded_resources")]
+		{
+			if let Some(resources) = &graphite_desktop_embedded_resources::EMBEDDED_RESOURCES
+				&& let Some(file) = resources.get_file(&path)
+			{
+				return Some(Resource {
+					reader: ResourceReader::Embedded(Cursor::new(file.contents())),
+					mimetype,
+				});
+			}
+		}
+
+		#[cfg(not(feature = "embedded_resources"))]
+		{
+			use std::path::Path;
+			let asset_path_env = std::env::var("GRAPHITE_RESOURCES").ok()?;
+			let asset_path = Path::new(&asset_path_env);
+			let file_path = asset_path.join(path.strip_prefix("/").unwrap_or(&path));
+			if file_path.exists() && file_path.is_file() {
+				if let Ok(file) = std::fs::File::open(file_path) {
+					return Some(Resource {
+						reader: ResourceReader::File(file.into()),
+						mimetype,
+					});
+				}
+			}
+		}
+
+		None
+	}
+
 	fn schedule_cef_message_loop_work(&self, scheduled_time: std::time::Instant) {
 		let _ = self.event_loop_proxy.send_event(CustomEvent::ScheduleBrowserWork(scheduled_time));
 	}
@@ -156,17 +248,5 @@ impl CefEventHandler for CefHandler {
 			return;
 		};
 		let _ = self.event_loop_proxy.send_event(CustomEvent::DesktopWrapperMessage(desktop_wrapper_message));
-	}
-
-	#[cfg(feature = "accelerated_paint")]
-	fn draw_gpu(&self, shared_texture: SharedTextureHandle) {
-		match shared_texture.import_texture(&self.wgpu_context.device) {
-			Ok(texture) => {
-				let _ = self.event_loop_proxy.send_event(CustomEvent::UiUpdate(texture));
-			}
-			Err(e) => {
-				tracing::error!("Failed to import shared texture: {}", e);
-			}
-		}
 	}
 }

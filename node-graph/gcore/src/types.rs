@@ -1,6 +1,7 @@
 use std::any::TypeId;
 
 pub use std::borrow::Cow;
+use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 
 #[macro_export]
@@ -157,6 +158,12 @@ impl Deref for ProtoNodeIdentifier {
 
 	fn deref(&self) -> &Self::Target {
 		self.name.as_ref()
+	}
+}
+
+impl Display for ProtoNodeIdentifier {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		f.debug_tuple("ProtoNodeIdentifier").field(&self.name).finish()
 	}
 }
 

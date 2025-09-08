@@ -16,7 +16,6 @@ wasm = ["wasm-bindgen", "graphene-std/wasm"]
 gpu = ["interpreted-executor/gpu", "wgpu-executor"]
 resvg = ["graphene-std/resvg"]
 vello = ["graphene-std/vello", "resvg"]
-ron = []
 
 [dependencies]
 # Local dependencies
@@ -45,9 +44,7 @@ once_cell = { workspace = true }
 web-sys = { workspace = true }
 vello = { workspace = true }
 base64 = { workspace = true }
-
-# Required dependencies
-spin = "0.9.8"
+spin = { workspace = true }
 
 # Optional local dependencies
 wgpu-executor = { workspace = true, optional = true }

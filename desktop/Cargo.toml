@@ -9,7 +9,9 @@ edition = "2024"
 rust-version = "1.87"
 
 [features]
-default = ["gpu", "accelerated_paint"]
+default = ["recommended", "embedded_resources"]
+recommended = ["gpu", "accelerated_paint"]
+embedded_resources = ["dep:graphite-desktop-embedded-resources"]
 gpu = ["graphite-desktop-wrapper/gpu"]
 
 # Hardware acceleration features
@@ -19,15 +21,16 @@ accelerated_paint_d3d11 = ["windows", "ash"]
 accelerated_paint_iosurface = ["objc2-io-surface", "objc2-metal", "core-foundation"]
 
 [dependencies]
-# # Local dependencies
+# Local dependencies
 graphite-desktop-wrapper = { path = "wrapper" }
+graphite-desktop-embedded-resources = { path = "embedded-resources", optional = true }
 
 wgpu = { workspace = true }
 winit = { workspace = true, features = ["serde"] }
 thiserror = { workspace = true }
 futures = { workspace = true }
 cef = { workspace = true }
-include_dir = { workspace = true }
+cef-dll-sys = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing = { workspace = true }
 dirs = { workspace = true }

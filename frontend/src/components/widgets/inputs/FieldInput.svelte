@@ -32,9 +32,7 @@
 	let id = String(Math.random()).substring(2);
 	let macKeyboardLayout = platformIsMac();
 
-	$: inputValue = value;
-
-	$: dispatch("value", inputValue);
+	$: dispatch("value", value);
 
 	// Select (highlight) all the text. For technical reasons, it is necessary to pass the current text.
 	export function selectAllText(currentText: string) {
@@ -85,7 +83,7 @@
 			{disabled}
 			{placeholder}
 			bind:this={inputOrTextarea}
-			bind:value={inputValue}
+			bind:value
 			on:focus={() => dispatch("textFocused")}
 			on:blur={() => dispatch("textChanged")}
 			on:change={() => dispatch("textChanged")}
@@ -104,7 +102,7 @@
 			{spellcheck}
 			{disabled}
 			bind:this={inputOrTextarea}
-			bind:value={inputValue}
+			bind:value
 			on:focus={() => dispatch("textFocused")}
 			on:blur={() => dispatch("textChanged")}
 			on:change={() => dispatch("textChanged")}

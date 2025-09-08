@@ -1,6 +1,7 @@
 use std::process::exit;
 use std::time::Instant;
 
+use cef::CefHandler;
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
 
@@ -24,12 +25,13 @@ pub(crate) enum CustomEvent {
 	WebCommunicationInitialized,
 	DesktopWrapperMessage(DesktopWrapperMessage),
 	NodeGraphExecutionResult(NodeGraphExecutionResult),
+	CloseWindow,
 }
 
 fn main() {
 	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
 
-	let cef_context_builder = cef::CefContextBuilder::new();
+	let cef_context_builder = cef::CefContextBuilder::<CefHandler>::new();
 
 	if cef_context_builder.is_sub_process() {
 		// We are in a CEF subprocess

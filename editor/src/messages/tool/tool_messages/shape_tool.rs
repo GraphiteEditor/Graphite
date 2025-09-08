@@ -10,6 +10,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::shapes::arc_shape::Arc;
 use crate::messages::tool::common_functionality::shapes::circle_shape::Circle;
+use crate::messages::tool::common_functionality::shapes::grid_shape::Grid;
 use crate::messages::tool::common_functionality::shapes::line_shape::{LineToolData, clicked_on_line_endpoints};
 use crate::messages::tool::common_functionality::shapes::polygon_shape::Polygon;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeToolModifierKey, ShapeType, anchor_overlays, transform_cage_overlays};
@@ -22,7 +23,7 @@ use crate::messages::tool::common_functionality::utility_functions::{closest_poi
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
-use graphene_std::vector::misc::{ArcType, SpiralType};
+use graphene_std::vector::misc::{ArcType, GridType, SpiralType};
 use std::vec;
 
 #[derive(Default, ExtractField)]
@@ -39,6 +40,7 @@ pub struct ShapeToolOptions {
 	vertices: u32,
 	shape_type: ShapeType,
 	arc_type: ArcType,
+	grid_type: GridType,
 	spiral_type: SpiralType,
 	turns: f64,
 }
@@ -54,6 +56,7 @@ impl Default for ShapeToolOptions {
 			arc_type: ArcType::Open,
 			spiral_type: SpiralType::Archimedean,
 			turns: 5.,
+			grid_type: GridType::Rectangular,
 		}
 	}
 }
@@ -71,6 +74,7 @@ pub enum ShapeOptionsUpdate {
 	ArcType(ArcType),
 	SpiralType(SpiralType),
 	Turns(f64),
+	GridType(GridType),
 }
 
 #[impl_message(Message, ToolMessage, Shape)]
@@ -159,6 +163,12 @@ fn create_shape_option_widget(shape_type: ShapeType) -> WidgetHolder {
 			}
 			.into()
 		}),
+		MenuListEntry::new("Grid").label("Grid").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Grid),
+			}
+			.into()
+		}),
 	]];
 	DropdownInput::new(entries).selected_index(Some(shape_type as u32)).widget_holder()
 }
@@ -220,6 +230,24 @@ fn create_spiral_type_widget(spiral_type: SpiralType) -> WidgetHolder {
 	DropdownInput::new(entries).selected_index(Some(spiral_type as u32)).widget_holder()
 }
 
+fn create_grid_type_widget(grid_type: GridType) -> WidgetHolder {
+	let entries = vec![
+		RadioEntryData::new("Rectangular").label("Rectangular").on_update(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::GridType(GridType::Rectangular),
+			}
+			.into()
+		}),
+		RadioEntryData::new("Isometric").label("Isometric").on_update(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::GridType(GridType::Isometric),
+			}
+			.into()
+		}),
+	];
+	RadioInput::new(entries).selected_index(Some(grid_type as u32)).widget_holder()
+}
+
 impl LayoutHolder for ShapeTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = vec![];
@@ -243,6 +271,11 @@ impl LayoutHolder for ShapeTool {
 			widgets.push(create_spiral_type_widget(self.options.spiral_type));
 			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 			widgets.push(create_turns_widget(self.options.turns));
+			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		}
+
+		if self.options.shape_type == ShapeType::Grid {
+			widgets.push(create_grid_type_widget(self.options.grid_type));
 			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		}
 
@@ -352,6 +385,9 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 			}
 			ShapeOptionsUpdate::Turns(turns) => {
 				self.options.turns = turns;
+			}
+			ShapeOptionsUpdate::GridType(grid_type) => {
+				self.options.grid_type = grid_type;
 			}
 		}
 
@@ -599,10 +635,11 @@ impl Fsm for ShapeToolFsmState {
 						if is_skewing || (dragging_bounds && is_near_square && !hovering_over_gizmo) {
 							bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
 						}
-						if !is_skewing && dragging_bounds && !hovering_over_gizmo {
-							if let Some(edges) = edges {
-								tool_data.skew_edge = bounds.get_closest_edge(edges, input.mouse.position);
-							}
+						if dragging_bounds
+							&& !is_skewing && !hovering_over_gizmo
+							&& let Some(edges) = edges
+						{
+							tool_data.skew_edge = bounds.get_closest_edge(edges, input.mouse.position);
 						}
 					}
 
@@ -716,6 +753,8 @@ impl Fsm for ShapeToolFsmState {
 						modifier: ShapeToolData::shape_tool_modifier_keys(),
 					});
 
+					responses.add(DocumentMessage::StartTransaction);
+
 					return ShapeToolFsmState::ModifyingGizmo;
 				}
 
@@ -727,10 +766,10 @@ impl Fsm for ShapeToolFsmState {
 					document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface),
 					|_| false,
 					preferences,
-				) {
-					if clicked_on_line_endpoints(layer, document, input, tool_data) && !input.keyboard.key(Key::Control) {
-						return ShapeToolFsmState::DraggingLineEndpoints;
-					}
+				) && clicked_on_line_endpoints(layer, document, input, tool_data)
+					&& !input.keyboard.key(Key::Control)
+				{
+					return ShapeToolFsmState::DraggingLineEndpoints;
 				}
 
 				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, None);
@@ -770,7 +809,9 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Rectangle | ShapeType::Spiral | ShapeType::Ellipse => tool_data.data.start(document, input),
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Spiral | ShapeType::Ellipse => {
+						tool_data.data.start(document, input)
+					}
 					ShapeType::Line => {
 						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 						let snapped = tool_data.data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
@@ -785,6 +826,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Star => Star::create_node(tool_options.vertices),
 					ShapeType::Circle => Circle::create_node(),
 					ShapeType::Arc => Arc::create_node(tool_options.arc_type),
+					ShapeType::Grid => Grid::create_node(tool_options.grid_type),
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
 					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
@@ -797,7 +839,7 @@ impl Fsm for ShapeToolFsmState {
 				let defered_responses = &mut VecDeque::new();
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Rectangle | ShapeType::Ellipse | ShapeType::Spiral => {
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse | ShapeType::Spiral => {
 						defered_responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
@@ -834,6 +876,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Star => Star::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Circle => Circle::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Arc => Arc::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Grid => Grid::update_shape(document, input, layer, tool_options.grid_type, tool_data, modifier, responses),
 					ShapeType::Rectangle => Rectangle::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Ellipse => Ellipse::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Line => Line::update_shape(document, input, layer, tool_data, modifier, responses),
@@ -942,11 +985,11 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::SkewingBounds { .. }, ShapeToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
-					if let Some(bounds) = &mut tool_data.bounding_box_manager {
-						bounds.center_of_transformation += shift;
-						bounds.original_bound_transform.translation += shift;
-					}
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses)
+					&& let Some(bounds) = &mut tool_data.bounding_box_manager
+				{
+					bounds.center_of_transformation += shift;
+					bounds.original_bound_transform.translation += shift;
 				}
 
 				self
@@ -1083,6 +1126,11 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 					HintInfo::keys([Key::Shift], "Constrain Arc").prepend_plus(),
 					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 				])],
+				ShapeType::Grid => vec![HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Grid"),
+					HintInfo::keys([Key::Shift], "Constrain Regular").prepend_plus(),
+					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+				])],
 			};
 			HintData(hint_groups)
 		}
@@ -1092,6 +1140,7 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 				ShapeType::Polygon | ShapeType::Star | ShapeType::Arc => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Rectangle => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Ellipse => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Circular"), HintInfo::keys([Key::Alt], "From Center")]),
+				ShapeType::Grid => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Line => HintGroup(vec![
 					HintInfo::keys([Key::Shift], "15° Increments"),
 					HintInfo::keys([Key::Alt], "From Center"),

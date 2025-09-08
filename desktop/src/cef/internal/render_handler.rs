@@ -9,7 +9,6 @@ pub(crate) struct RenderHandlerImpl<H: CefEventHandler> {
 	object: *mut RcImpl<_cef_render_handler_t, Self>,
 	event_handler: H,
 }
-
 impl<H: CefEventHandler> RenderHandlerImpl<H> {
 	pub(crate) fn new(event_handler: H) -> Self {
 		Self {
@@ -18,6 +17,7 @@ impl<H: CefEventHandler> RenderHandlerImpl<H> {
 		}
 	}
 }
+
 impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 	fn view_rect(&self, _browser: Option<&mut Browser>, rect: Option<&mut Rect>) {
 		if let Some(rect) = rect {
