@@ -14,7 +14,7 @@
 			<tr>
 				{#each row as cell}
 					<td>
-						<WidgetSpan widgetData={{ rowWidgets: [cell] }} {layoutTarget} />
+						<WidgetSpan widgetData={{ rowWidgets: [cell] }} {layoutTarget} narrow={true} />
 					</td>
 				{/each}
 			</tr>

@@ -650,14 +650,16 @@ impl PathStyle {
 	}
 }
 
-/// Represents different ways of rendering an object
+/// Ways the user can choose to view the artwork in the viewport.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
-pub enum ViewMode {
+pub enum RenderMode {
 	/// Render with normal coloration at the current viewport resolution
 	#[default]
-	Normal,
+	Normal = 0,
 	/// Render only the outlines of shapes at the current viewport resolution
 	Outline,
-	/// Render with normal coloration at the document resolution, showing the pixels when the current viewport resolution is higher
-	Pixels,
+	// /// Render with normal coloration at the document resolution, showing the pixels when the current viewport resolution is higher
+	// PixelPreview,
+	// /// Render a preview of how the object would be exported as an SVG.
+	// SvgPreview,
 }

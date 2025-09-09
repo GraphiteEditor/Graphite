@@ -153,7 +153,14 @@ impl NodeRuntime {
 		for request in self.receiver.try_iter() {
 			match request {
 				GraphRuntimeRequest::GraphUpdate(_) => graph = Some(request),
-				GraphRuntimeRequest::ExecutionRequest(_) => execution = Some(request),
+				GraphRuntimeRequest::ExecutionRequest(ref execution_request) => {
+					let for_export = execution_request.render_config.for_export;
+					execution = Some(request);
+					// If we get an export request we always execute it immedeatly otherwise it could get deduplicated
+					if for_export {
+						break;
+					}
+				}
 				GraphRuntimeRequest::FontCacheUpdate(_) => font = Some(request),
 				GraphRuntimeRequest::EditorPreferencesUpdate(_) => preferences = Some(request),
 			}

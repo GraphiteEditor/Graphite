@@ -241,9 +241,8 @@ async fn repeat<I: 'n + Send + Clone>(
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn circular_repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	// TODO: Implement other graphical types.
 	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] instance: Table<I>,
-	angle_offset: Angle,
+	start_angle: Angle,
 	#[unit(" px")]
 	#[default(5)]
 	radius: f64,
@@ -254,7 +253,7 @@ async fn circular_repeat<I: 'n + Send + Clone>(
 	let mut result_table = Table::new();
 
 	for index in 0..count {
-		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + angle_offset.to_radians());
+		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + start_angle.to_radians());
 		let translation = DAffine2::from_translation(radius * DVec2::Y);
 		let transform = angle * translation;
 
@@ -1331,6 +1330,14 @@ async fn poisson_disk_points(
 
 #[node_macro::node(category(""), path(graphene_core::vector))]
 async fn subpath_segment_lengths(_: impl Ctx, content: Table<Vector>) -> Vec<f64> {
+	let pathseg_perimeter = |segment: PathSeg| {
+		if is_linear(segment) {
+			Line::new(segment.start(), segment.end()).perimeter(DEFAULT_ACCURACY)
+		} else {
+			segment.perimeter(DEFAULT_ACCURACY)
+		}
+	};
+
 	content
 		.into_iter()
 		.flat_map(|vector| {
@@ -1340,7 +1347,7 @@ async fn subpath_segment_lengths(_: impl Ctx, content: Table<Vector>) -> Vec<f64
 				.stroke_bezpath_iter()
 				.flat_map(|mut bezpath| {
 					bezpath.apply_affine(Affine::new(transform.to_cols_array()));
-					bezpath.segments().map(|segment| segment.perimeter(DEFAULT_ACCURACY)).collect::<Vec<f64>>()
+					bezpath.segments().map(pathseg_perimeter).collect::<Vec<f64>>()
 				})
 				.collect::<Vec<f64>>()
 		})

@@ -46,8 +46,8 @@ pub(crate) trait CefEventHandler: Clone + Send + Sync + 'static {
 	#[cfg(feature = "accelerated_paint")]
 	fn draw_gpu(&self, shared_texture: SharedTextureHandle);
 	fn load_resource(&self, path: PathBuf) -> Option<Resource>;
-	/// Scheudule the main event loop to run the cef event loop after the timeout
-	///  [`_cef_browser_process_handler_t::on_schedule_message_pump_work`] for more documentation.
+	/// Schedule the main event loop to run the CEF event loop after the timeout.
+	/// See [`_cef_browser_process_handler_t::on_schedule_message_pump_work`] for more documentation.
 	fn schedule_cef_message_loop_work(&self, scheduled_time: Instant);
 	fn initialized_web_communication(&self);
 	fn receive_web_message(&self, message: &[u8]);

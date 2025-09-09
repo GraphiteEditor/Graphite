@@ -2,7 +2,7 @@ use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::{DAffine2, UVec2};
 use graphene_core::text::FontCache;
 use graphene_core::transform::Footprint;
-use graphene_core::vector::style::ViewMode;
+use graphene_core::vector::style::RenderMode;
 use std::fmt::Debug;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
@@ -240,7 +240,8 @@ pub struct RenderConfig {
 	pub viewport: Footprint,
 	pub export_format: ExportFormat,
 	pub time: TimingInformation,
-	pub view_mode: ViewMode,
+	#[serde(alias = "view_mode")]
+	pub render_mode: RenderMode,
 	pub hide_artboards: bool,
 	pub for_export: bool,
 }

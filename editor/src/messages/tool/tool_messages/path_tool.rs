@@ -2789,7 +2789,7 @@ impl Fsm for PathToolFsmState {
 							segments_map.insert(segment_id, new_segment_id);
 
 							let points = pathseg_points(bezier);
-							let handles = [points.p1, points.p2];
+							let handles = [points.p1.map(|handle| handle - points.p0), points.p2.map(|handle| handle - points.p3)];
 
 							let points = [points_map[&start], points_map[&end]];
 							let modification_type = VectorModificationType::InsertSegment { id: new_segment_id, points, handles };
@@ -2895,7 +2895,7 @@ impl Fsm for PathToolFsmState {
 							segments_map.insert(segment_id, new_id);
 
 							let points = pathseg_points(bezier);
-							let handles = [points.p1, points.p2];
+							let handles = [points.p1.map(|handle| handle - points.p0), points.p2.map(|handle| handle - points.p3)];
 
 							let points = [points_map[&start], points_map[&end]];
 							let modification_type = VectorModificationType::InsertSegment { id: new_id, points, handles };

@@ -6,6 +6,7 @@
 	export { styleName as style };
 	export let styles: Record<string, string | number | undefined> = {};
 	export let disabled = false;
+	export let narrow = false;
 	export let bold = false;
 	export let italic = false;
 	export let monospace = false;
@@ -27,6 +28,7 @@
 <label
 	class={`text-label ${className} ${extraClasses}`.trim()}
 	class:disabled
+	class:narrow
 	class:bold
 	class:italic
 	class:monospace
@@ -47,6 +49,10 @@
 		white-space: nowrap;
 		// Force Safari to not draw a text cursor, even though this element has `user-select: none`
 		cursor: default;
+
+		&.narrow.narrow {
+			--widget-height: 20px;
+		}
 
 		&.disabled {
 			color: var(--color-8-uppergray);

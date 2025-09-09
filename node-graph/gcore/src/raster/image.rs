@@ -218,7 +218,6 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 
 	#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 	enum RasterFrame {
-		/// A CPU-based bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
 		ImageFrame(Table<Image<Color>>),
 	}
 	impl<'de> serde::Deserialize<'de> for RasterFrame {
@@ -236,9 +235,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 
 	#[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 	pub enum GraphicElement {
-		/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
 		GraphicGroup(Table<GraphicElement>),
-		/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
 		VectorData(Table<Vector>),
 		RasterFrame(RasterFrame),
 	}
@@ -283,9 +280,71 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 	enum FormatVersions {
 		Image(Image<Color>),
 		OldImageFrame(OldImageFrame<Color>),
+		OlderImageFrameTable(OlderTable<ImageFrame<Color>>),
+		OldImageFrameTable(OldTable<ImageFrame<Color>>),
+		OldImageTable(OldTable<Image<Color>>),
+		OldRasterTable(OldTable<Raster<CPU>>),
 		ImageFrameTable(Table<ImageFrame<Color>>),
 		ImageTable(Table<Image<Color>>),
 		RasterTable(Table<Raster<CPU>>),
+	}
+
+	#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+	pub struct OldTable<T> {
+		#[serde(alias = "instances", alias = "instance")]
+		element: Vec<T>,
+		transform: Vec<DAffine2>,
+		alpha_blending: Vec<AlphaBlending>,
+	}
+
+	#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+	pub struct OlderTable<T> {
+		id: Vec<u64>,
+		#[serde(alias = "instances", alias = "instance")]
+		element: Vec<T>,
+	}
+
+	fn from_image_table(table: Table<Image<Color>>) -> Table<Raster<CPU>> {
+		Table::new_from_element(Raster::new_cpu(table.iter().next().unwrap().element.clone()))
+	}
+
+	fn old_table_to_new_table<T>(old_table: OldTable<T>) -> Table<T> {
+		old_table
+			.element
+			.into_iter()
+			.zip(old_table.transform.into_iter().zip(old_table.alpha_blending))
+			.map(|(element, (transform, alpha_blending))| TableRow {
+				element,
+				transform,
+				alpha_blending,
+				source_node_id: None,
+			})
+			.collect()
+	}
+
+	fn older_table_to_new_table<T>(old_table: OlderTable<T>) -> Table<T> {
+		old_table
+			.element
+			.into_iter()
+			.map(|element| TableRow {
+				element,
+				transform: DAffine2::IDENTITY,
+				alpha_blending: AlphaBlending::default(),
+				source_node_id: None,
+			})
+			.collect()
+	}
+
+	fn from_image_frame_table(image_frame: Table<ImageFrame<Color>>) -> Table<Raster<CPU>> {
+		Table::new_from_element(Raster::new_cpu(
+			image_frame
+				.iter()
+				.next()
+				.unwrap_or(Table::new_from_element(ImageFrame::default()).iter().next().unwrap())
+				.element
+				.image
+				.clone(),
+		))
 	}
 
 	Ok(match FormatVersions::deserialize(deserializer)? {
@@ -296,16 +355,12 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 			*image_frame_table.iter_mut().next().unwrap().alpha_blending = alpha_blending;
 			image_frame_table
 		}
-		FormatVersions::ImageFrameTable(image_frame) => Table::new_from_element(Raster::new_cpu(
-			image_frame
-				.iter()
-				.next()
-				.unwrap_or(Table::new_from_element(ImageFrame::default()).iter().next().unwrap())
-				.element
-				.image
-				.clone(),
-		)),
-		FormatVersions::ImageTable(table) => Table::new_from_element(Raster::new_cpu(table.iter().next().unwrap().element.clone())),
+		FormatVersions::OlderImageFrameTable(old_table) => from_image_frame_table(older_table_to_new_table(old_table)),
+		FormatVersions::OldImageFrameTable(old_table) => from_image_frame_table(old_table_to_new_table(old_table)),
+		FormatVersions::OldImageTable(old_table) => from_image_table(old_table_to_new_table(old_table)),
+		FormatVersions::OldRasterTable(old_table) => old_table_to_new_table(old_table),
+		FormatVersions::ImageFrameTable(image_frame) => from_image_frame_table(image_frame),
+		FormatVersions::ImageTable(table) => from_image_table(table),
 		FormatVersions::RasterTable(table) => table,
 	})
 }

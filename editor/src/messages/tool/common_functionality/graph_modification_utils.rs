@@ -363,8 +363,16 @@ pub fn get_arc_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInt
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Arc")
 }
 
+pub fn get_spiral_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Spiral")
+}
+
 pub fn get_text_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Text")
+}
+
+pub fn get_grid_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Grid")
 }
 
 /// Gets properties from the Text node
