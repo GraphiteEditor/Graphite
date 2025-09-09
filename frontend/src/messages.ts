@@ -128,9 +128,14 @@ export class UpdateNodeThumbnail extends JsMessage {
 	readonly value!: string;
 }
 
+export class UpdateTooltip extends JsMessage {
+	readonly position!: XY | undefined;
+	readonly text!: string;
+}
+
 export class UpdateOpenDocumentsList extends JsMessage {
-	@Type(() => OpenDocument)
-	readonly openDocuments!: OpenDocument[];
+	@Type(() => FrontendDocumentDetails)
+	readonly openDocuments!: FrontendDocumentDetails[];
 }
 
 export class WirePathInProgress {
@@ -143,53 +148,28 @@ export class UpdateWirePathInProgress extends JsMessage {
 	readonly wirePathInProgress!: WirePathInProgress | undefined;
 }
 
-export class OpenDocument {
-	readonly id!: bigint;
-	@Type(() => DocumentDetails)
-	readonly details!: DocumentDetails;
-
-	get displayName(): string {
-		return this.details.displayName;
-	}
-}
-
-export class DocumentDetails {
+// Allows the auto save system to use a string for the id rather than a BigInt.
+// IndexedDb does not allow for BigInts as primary keys.
+// TypeScript does not allow subclasses to change the type of class variables in subclasses.
+// It is an abstract class to point out that it should not be instantiated directly.
+export abstract class DocumentDetails {
 	readonly name!: string;
 
 	readonly isAutoSaved!: boolean;
 
 	readonly isSaved!: boolean;
 
+	// This field must be provided by the subclass implementation
+	// readonly id!: bigint | string;
+
 	get displayName(): string {
 		return `${this.name}${this.isSaved ? "" : "*"}`;
 	}
 }
 
-<<<<<<< HEAD
-export class Box {
-	readonly startX!: number;
-
-	readonly startY!: number;
-
-	readonly endX!: number;
-
-	readonly endY!: number;
+export class FrontendDocumentDetails extends DocumentDetails {
+	readonly id!: bigint;
 }
-
-export type FrontendClickTargets = {
-	readonly nodeClickTargets: string[];
-	readonly layerClickTargets: string[];
-	readonly connectorClickTargets: string[];
-	readonly iconClickTargets: string[];
-	readonly allNodesBoundingBox: string;
-	readonly importExportsBoundingBox: string;
-	readonly modifyImportExport: string[];
-};
-
-export type ContextMenuInformation = {
-	contextMenuCoordinates: XY;
-	contextMenuData: "CreateNode" | { type: "CreateNode"; compatibleType: string } | { nodeId: bigint; currentlyIsNode: boolean };
-};
 
 =======
 export class FrontendDocumentDetails extends DocumentDetails {
@@ -342,20 +322,21 @@ export class WireUpdate {
 	readonly wirePathUpdate!: WirePath | undefined;
 }
 
-export class TriggerPersistenceWriteDocument extends JsMessage {
-	// Use a string since IndexedDB can not use BigInts for keys
+export class IndexedDbDocumentDetails extends DocumentDetails {
 	@Transform(({ value }: { value: bigint }) => value.toString())
-	documentId!: string;
+	id!: string;
+}
 
+export class TriggerIndexedDbWriteDocument extends JsMessage {
 	document!: string;
 
-	@Type(() => DocumentDetails)
-	details!: DocumentDetails;
+	@Type(() => IndexedDbDocumentDetails)
+	details!: IndexedDbDocumentDetails;
 
 	version!: string;
 }
 
-export class TriggerPersistenceRemoveDocument extends JsMessage {
+export class TriggerIndexedDbRemoveDocument extends JsMessage {
 	// Use a string since IndexedDB can not use BigInts for keys
 	@Transform(({ value }: { value: bigint }) => value.toString())
 	documentId!: string;
@@ -1488,6 +1469,7 @@ export class WidgetDiffUpdate extends JsMessage {
 	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
+
 	@Transform(({ value }: { value: any }) => createWidgetDiff(value))
 	diff!: WidgetDiff[];
 }
@@ -1522,6 +1504,7 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 				return targetLayout;
 			}
 			// This is a path traversal so we can assume from the backend that it exists
+
 			if (targetLayout && "action" in targetLayout) return targetLayout.children![index];
 
 			return targetLayout?.[index];
@@ -1542,6 +1525,7 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 			diffObject.length = 0;
 		}
 		// Remove all of the keys from the old object
+
 		Object.keys(diffObject).forEach((key) => delete (diffObject as any)[key]);
 
 		// Assign keys to the new object
@@ -1574,6 +1558,7 @@ export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSect
 }
 
 // Unpacking rust types to more usable type in the frontend
+
 function createWidgetDiff(diffs: any[]): WidgetDiff[] {
 	return diffs.map((diff) => {
 		const { widgetPath, newValue } = diff;
@@ -1592,6 +1577,7 @@ function createWidgetDiff(diffs: any[]): WidgetDiff[] {
 }
 
 // Unpacking a layout group
+
 function createLayoutGroup(layoutGroup: any): LayoutGroup {
 	if (layoutGroup.column) {
 		const columnWidgets = hoistWidgetHolders(layoutGroup.column.columnWidgets);
@@ -1649,6 +1635,7 @@ export class UpdateMenuBarLayout extends JsMessage {
 	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
+
 	@Transform(({ value }: { value: any }) => createMenuLayout(value))
 	layout!: MenuBarEntry[];
 }
@@ -1671,6 +1658,7 @@ function createMenuLayout(menuBarEntry: any[]): MenuBarEntry[] {
 		children: createMenuLayoutRecursive(entry.children),
 	}));
 }
+
 function createMenuLayoutRecursive(children: any[][]): MenuBarEntry[][] {
 	return children.map((groups) =>
 		groups.map((entry) => ({
@@ -1683,6 +1671,7 @@ function createMenuLayoutRecursive(children: any[][]): MenuBarEntry[][] {
 }
 
 // `any` is used since the type of the object should be known from the Rust side
+
 type JSMessageFactory = (data: any, wasm: WebAssembly.Memory, handle: EditorHandle) => JsMessage;
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
@@ -1702,8 +1691,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerFetchAndOpenDocument,
 	TriggerFontLoad,
 	TriggerImport,
-	TriggerPersistenceRemoveDocument,
-	TriggerPersistenceWriteDocument,
+	TriggerIndexedDbRemoveDocument,
+	TriggerIndexedDbWriteDocument,
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadPreferences,
 	TriggerLoadRestAutoSaveDocuments,
@@ -1754,6 +1743,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateLayersPanelState,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
+	UpdateTooltip,
 	UpdateViewportHolePunch,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,

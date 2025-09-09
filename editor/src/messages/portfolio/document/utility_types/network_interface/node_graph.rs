@@ -144,24 +144,9 @@ impl NodeNetworkInterface {
 		}
 		let input_type = self.input_type(input_connector, network_path);
 		let data_type = input_type.displayed_type();
-		let resolved_type = input_type.resolved_type_name();
 
-		let connected_to = self
-			.upstream_output_connector(input_connector, network_path)
-			.map(|output_connector| match output_connector {
-				OutputConnector::Node { node_id, output_index } => {
-					let mut name = self.display_name(&node_id, network_path);
-					if cfg!(debug_assertions) {
-						name.push_str(&format!(" (id: {node_id})"));
-					}
-					format!("{name} output {output_index}")
-				}
-				OutputConnector::Import(import_index) => format!("Import index {import_index}"),
-			})
-			.unwrap_or("nothing".to_string());
-
-		let (name, description) = match input_connector {
-			InputConnector::Node { node_id, input_index } => self.displayed_input_name_and_description(node_id, *input_index, network_path),
+		let name = match input_connector {
+			InputConnector::Node { node_id, input_index } => self.displayed_input_name_and_description(node_id, *input_index, network_path).0,
 			InputConnector::Export(export_index) => {
 				// Get export name from parent node metadata input, which must match the number of exports.
 				// Empty string means to use type, or "Export + index" if type is empty determined
@@ -173,44 +158,26 @@ impl NodeNetworkInterface {
 						.unwrap_or_default()
 				};
 
-				let export_name = if !export_name.is_empty() {
+				if !export_name.is_empty() {
 					export_name
 				} else if let Some(export_type_name) = input_type.compiled_nested_type_name() {
 					export_type_name
 				} else {
 					format!("Export index {}", export_index)
-				};
-
-				(export_name, String::new())
+				}
 			}
 		};
 
-		// TODO: Move in separate Tooltip overlay
-		// let valid_types = match self.valid_input_types(&input_connector, network_path) {
-		// 	Ok(input_types) => input_types.iter().map(|ty| ty.to_string()).collect(),
-		// 	Err(e) => {
-		// 		log::error!("Error getting valid types for input {input_connector:?}: {e}");
-		// 		Vec::new()
-		// 	}
-		// };
-
 		let connected_to_node = self.upstream_output_connector(input_connector, network_path).and_then(|output_connector| output_connector.node_id());
 
-		Some(FrontendGraphInput {
-			data_type,
-			resolved_type,
-			name,
-			description,
-			connected_to,
-			connected_to_node,
-		})
+		Some(FrontendGraphInput { data_type, name, connected_to_node })
 	}
 
 	/// Returns None if there is an error, it is the document network, a hidden primary output or import
 	pub fn frontend_output_from_connector(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Option<FrontendGraphOutput> {
 		let output_type = self.output_type(output_connector, network_path);
 
-		let (name, description) = match output_connector {
+		let name = match output_connector {
 			OutputConnector::Node { node_id, output_index } => {
 				// Do not display the primary output port for a node if it is a network node with a hidden primary export
 				if *output_index == 0 && self.hidden_primary_output(node_id, network_path) {
@@ -220,8 +187,7 @@ impl NodeNetworkInterface {
 				let node_metadata = self.node_metadata(node_id, network_path)?;
 				let output_name = node_metadata.persistent_metadata.output_names.get(*output_index).cloned().unwrap_or_default();
 
-				let output_name = if !output_name.is_empty() { output_name } else { output_type.resolved_type_name() };
-				(output_name, String::new())
+				if !output_name.is_empty() { output_name } else { output_type.resolved_type_name() }
 			}
 			OutputConnector::Import(import_index) => {
 				// Get the import name from the encapsulating node input metadata
@@ -233,53 +199,19 @@ impl NodeNetworkInterface {
 				if *import_index == 0 && self.hidden_primary_import(network_path) {
 					return None;
 				};
-				let (import_name, description) = self.displayed_input_name_and_description(encapsulating_node_id, *import_index, encapsulating_path);
+				let import_name = self.displayed_input_name_and_description(encapsulating_node_id, *import_index, encapsulating_path).0;
 
-				let import_name = if !import_name.is_empty() {
+				if !import_name.is_empty() {
 					import_name
 				} else if let Some(import_type_name) = output_type.compiled_nested_type_name() {
 					import_type_name
 				} else {
 					format!("Import index {}", *import_index)
-				};
-
-				(import_name, description)
+				}
 			}
 		};
 		let data_type = output_type.displayed_type();
-		let resolved_type = output_type.resolved_type_name();
-		let mut connected_to = self
-			.outward_wires(network_path)
-			.and_then(|outward_wires| outward_wires.get(output_connector))
-			.cloned()
-			.unwrap_or_else(|| {
-				log::error!("Could not get {output_connector:?} in outward wires");
-				Vec::new()
-			})
-			.iter()
-			.map(|input| match input {
-				InputConnector::Node { node_id, input_index } => {
-					let mut name = self.display_name(node_id, network_path);
-					if cfg!(debug_assertions) {
-						name.push_str(&format!(" (id: {node_id})"));
-					}
-					format!("{name} input {input_index}")
-				}
-				InputConnector::Export(export_index) => format!("Export index {export_index}"),
-			})
-			.collect::<Vec<_>>();
-
-		if connected_to.is_empty() {
-			connected_to.push("nothing".to_string());
-		}
-
-		Some(FrontendGraphOutput {
-			data_type,
-			resolved_type,
-			name,
-			description,
-			connected_to,
-		})
+		Some(FrontendGraphOutput { data_type, name })
 	}
 
 	pub fn chain_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> u32 {
@@ -544,5 +476,91 @@ impl NodeNetworkInterface {
 		let vector_wire = build_vector_wire(output_position, input_position, vertical_start, false, graph_wire_style);
 
 		Some(vector_wire)
+	}
+
+	pub fn input_tooltip_text(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> String {
+		let input_type = self.input_type(input_connector, network_path);
+		let data_type_str = format!("Data Type: {input_type:?}");
+
+		let connected_to = self
+			.upstream_output_connector(input_connector, network_path)
+			.map(|output_connector| match output_connector {
+				OutputConnector::Node { node_id, output_index } => {
+					let mut name = self.display_name(&node_id, network_path);
+					if cfg!(debug_assertions) {
+						name.push_str(&format!(" (id: {node_id})"));
+					}
+					format!("{name} output {output_index}")
+				}
+				OutputConnector::Import(import_index) => format!("Import index {import_index}"),
+			})
+			.unwrap_or("nothing".to_string());
+		let connected_to_str = format!("Connected to: {connected_to}");
+
+		let valid_types = match self.valid_input_types(input_connector, network_path) {
+			Ok(valid) => valid,
+			Err(e) => {
+				log::error!("Could not get valid types in input tooltip text: {e}");
+				return String::new();
+			}
+		};
+
+		let valid_types_str = if !valid_types.is_empty() {
+			let mut strings = valid_types.iter().map(|x| format!("• {x}")).collect::<Vec<_>>();
+			strings.sort();
+			strings.join("\n")
+		} else {
+			"None".to_string()
+		};
+
+		let valid_types_str = format!("Valid Types:\n{}", valid_types_str);
+
+		format!("{data_type_str}\n\n{connected_to_str}\n\n{valid_types_str}")
+	}
+
+	pub fn output_tooltip_text(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> String {
+		let output_type = self.output_type(output_connector, network_path);
+		let data_type_str = format!("Data Type: {output_type:?}");
+
+		let mut connected_to = self
+			.outward_wires(network_path)
+			.and_then(|outward_wires| outward_wires.get(output_connector))
+			.cloned()
+			.unwrap_or_else(|| {
+				log::error!("Could not get {output_connector:?} in outward wires");
+				Vec::new()
+			})
+			.iter()
+			.map(|input| match input {
+				InputConnector::Node { node_id, input_index } => {
+					let mut name = self.display_name(node_id, network_path);
+					if cfg!(debug_assertions) {
+						name.push_str(&format!(" (id: {node_id})"));
+					}
+					format!("{name} input {input_index}")
+				}
+				InputConnector::Export(export_index) => format!("Export index {export_index}"),
+			})
+			.collect::<Vec<_>>();
+
+		connected_to.sort();
+		if connected_to.is_empty() {
+			connected_to.push("nothing".to_string());
+		}
+		let connected_to = connected_to.join("\n");
+		let connected_to_str = format!("Connected to:\n{connected_to}");
+
+		format!("{data_type_str}\n\n{connected_to_str}")
+	}
+
+	pub fn node_tooltip_text(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> String {
+		let display_name = self.display_name(node_id, network_path);
+		let description = self.description(node_id, network_path);
+		let Some(reference) = self.reference(node_id, network_path) else {
+			log::error!("Could not get referende in node_tooltip_text for {node_id}");
+			return String::new();
+		};
+
+		format!("{display_name}\nReference: {reference}\n\n{description}")
 	}
 }

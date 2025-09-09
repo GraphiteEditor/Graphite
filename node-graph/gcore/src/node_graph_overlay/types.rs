@@ -50,7 +50,6 @@ impl Hash for NodeGraphOverlayData {
 		entries.sort_by(|a, b| a.0.cmp(b.0));
 		let mut hasher = std::collections::hash_map::DefaultHasher::new();
 		entries.hash(&mut hasher);
-		hasher.finish();
 	}
 }
 
@@ -171,13 +170,7 @@ pub enum NodeOrLayer {
 pub struct FrontendGraphInput {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
-	#[serde(rename = "resolvedType")]
-	pub resolved_type: String,
 	pub name: String,
-	pub description: String,
-	/// Either "nothing", "import index {index}", or "{node name} output {output_index}".
-	#[serde(rename = "connectedToString")]
-	pub connected_to: String,
 	/// Used to render the upstream node once this node is rendered
 	#[serde(rename = "connectedToNode")]
 	pub connected_to_node: Option<NodeId>,
@@ -188,17 +181,9 @@ pub struct FrontendGraphOutput {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 	pub name: String,
-	#[serde(rename = "resolvedType")]
-	pub resolved_type: String,
-	pub description: String,
-	/// If connected to an export, it is "export index {index}".
-	/// If connected to a node, it is "{node name} input {input_index}".
-	#[serde(rename = "connectedTo")]
-	pub connected_to: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
-
 pub struct FrontendExport {
 	pub port: FrontendGraphInput,
 	pub wire: Option<String>,

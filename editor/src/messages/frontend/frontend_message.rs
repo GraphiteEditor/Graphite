@@ -305,6 +305,10 @@ pub enum FrontendMessage {
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
+	UpdateTooltip {
+		position: Option<FrontendXY>,
+		text: String,
+	},
 	UpdateWirePathInProgress {
 		#[serde(rename = "wirePathInProgress")]
 		wire_path_in_progress: Option<WirePathInProgress>,

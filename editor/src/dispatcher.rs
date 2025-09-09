@@ -140,6 +140,7 @@ impl Dispatcher {
 				Message::Defer(message) => {
 					let context = DeferMessageContext {
 						portfolio: &self.message_handlers.portfolio_message_handler,
+						time: self.message_handlers.input_preprocessor_message_handler.time,
 					};
 					self.message_handlers.defer_message_handler.process_message(message, &mut queue, context);
 				}

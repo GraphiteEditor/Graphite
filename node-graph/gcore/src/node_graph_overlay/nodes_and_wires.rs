@@ -16,7 +16,6 @@ use crate::{
 	vector::{
 		Vector,
 		style::{Fill, Stroke},
-		style::{Fill, Stroke, StrokeAlign},
 	},
 };
 

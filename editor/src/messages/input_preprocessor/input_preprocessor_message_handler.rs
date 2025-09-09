@@ -4,7 +4,7 @@ use crate::messages::input_mapper::utility_types::misc::FrameTimeInfo;
 use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 use glam::DVec2;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(ExtractField)]
 pub struct InputPreprocessorMessageContext {
@@ -14,7 +14,7 @@ pub struct InputPreprocessorMessageContext {
 #[derive(Debug, Default, ExtractField)]
 pub struct InputPreprocessorMessageHandler {
 	pub frame_time: FrameTimeInfo,
-	pub time: u64,
+	pub time: Instant,
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
 	pub viewport_bounds: ViewportBounds,
@@ -114,7 +114,7 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext> f
 			}
 			InputPreprocessorMessage::CurrentTime { timestamp } => {
 				responses.add(AnimationMessage::SetTime { time: timestamp as f64 });
-				self.time = timestamp;
+				self.time = Instant::from(timestamp);
 				self.frame_time.advance_timestamp(Duration::from_millis(timestamp));
 			}
 			InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys } => {
