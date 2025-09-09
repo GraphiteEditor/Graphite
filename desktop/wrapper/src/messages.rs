@@ -53,16 +53,43 @@ pub enum DesktopFrontendMessage {
 
 pub enum DesktopWrapperMessage {
 	FromWeb(Box<EditorMessage>),
-	OpenFileDialogResult { path: PathBuf, content: Vec<u8>, context: OpenFileDialogContext },
-	SaveFileDialogResult { path: PathBuf, context: SaveFileDialogContext },
-	OpenDocument { path: PathBuf, content: Vec<u8> },
-	OpenFile { path: PathBuf, content: Vec<u8> },
-	ImportFile { path: PathBuf, content: Vec<u8> },
-	ImportSvg { path: PathBuf, content: Vec<u8> },
-	ImportImage { path: PathBuf, content: Vec<u8> },
+	OpenFileDialogResult {
+		path: PathBuf,
+		content: Vec<u8>,
+		context: OpenFileDialogContext,
+	},
+	SaveFileDialogResult {
+		path: PathBuf,
+		context: SaveFileDialogContext,
+	},
+	OpenDocument {
+		path: PathBuf,
+		content: Vec<u8>,
+	},
+	OpenFile {
+		path: PathBuf,
+		content: Vec<u8>,
+	},
+	ImportFile {
+		path: PathBuf,
+		content: Vec<u8>,
+	},
+	ImportSvg {
+		path: PathBuf,
+		content: Vec<u8>,
+	},
+	ImportImage {
+		path: PathBuf,
+		content: Vec<u8>,
+	},
 	PollNodeGraphEvaluation,
 	UpdatePlatform(Platform),
-	LoadDocument { id: DocumentId, document: Document, to_front: bool },
+	LoadDocument {
+		id: DocumentId,
+		document: Document,
+		to_front: bool,
+		select_after_open: bool,
+	},
 	SelectDocument { id: DocumentId },
 }
 

@@ -181,24 +181,34 @@ impl WinitApp {
 			}
 			DesktopFrontendMessage::PersistenceLoadCurrentDocument => {
 				if let Some((id, document)) = self.persistent_data.current_document() {
-					let message = DesktopWrapperMessage::LoadDocument { id, document, to_front: false };
-					self.dispatch_desktop_wrapper_message(message);
-
-					let message = DesktopWrapperMessage::SelectDocument { id };
+					let message = DesktopWrapperMessage::LoadDocument {
+						id,
+						document,
+						to_front: false,
+						select_after_open: true,
+					};
 					self.dispatch_desktop_wrapper_message(message);
 				}
 			}
 			DesktopFrontendMessage::PersistenceLoadRemainingDocuments => {
 				for (id, document) in self.persistent_data.documents_before_current().into_iter().rev() {
-					let message = DesktopWrapperMessage::LoadDocument { id, document, to_front: true };
+					let message = DesktopWrapperMessage::LoadDocument {
+						id,
+						document,
+						to_front: true,
+						select_after_open: false,
+					};
 					self.dispatch_desktop_wrapper_message(message);
 				}
-
 				for (id, document) in self.persistent_data.documents_after_current() {
-					let message = DesktopWrapperMessage::LoadDocument { id, document, to_front: false };
+					let message = DesktopWrapperMessage::LoadDocument {
+						id,
+						document,
+						to_front: false,
+						select_after_open: false,
+					};
 					self.dispatch_desktop_wrapper_message(message);
 				}
-
 				if let Some(id) = self.persistent_data.current_document_id() {
 					let message = DesktopWrapperMessage::SelectDocument { id };
 					self.dispatch_desktop_wrapper_message(message);
