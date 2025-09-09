@@ -1,13 +1,13 @@
 use crate::WgpuExecutor;
+use graphene_core::Ctx;
 use graphene_core::color::SRGBA8;
 use graphene_core::raster_types::{CPU, GPU, Raster};
 use graphene_core::table::{Table, TableRow};
-use graphene_core::{Ctx, ExtractFootprint};
 use wgpu::util::{DeviceExt, TextureDataOrder};
 use wgpu::{Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages};
 
 #[node_macro::node(category(""))]
-pub async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: Table<Raster<CPU>>, executor: &'a WgpuExecutor) -> Table<Raster<GPU>> {
+pub async fn upload_texture<'a: 'n>(_: impl Ctx, input: Table<Raster<CPU>>, executor: &'a WgpuExecutor) -> Table<Raster<GPU>> {
 	let device = &executor.context.device;
 	let queue = &executor.context.queue;
 	let table = input

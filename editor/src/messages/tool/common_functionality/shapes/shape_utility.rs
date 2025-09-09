@@ -14,9 +14,10 @@ use crate::messages::tool::utility_types::*;
 use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
 use graphene_std::subpath::{self, Subpath};
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::misc::{ArcType, dvec2_to_point};
+use graphene_std::vector::misc::{ArcType, GridType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
 use std::collections::VecDeque;
 use std::f64::consts::{PI, TAU};
@@ -28,6 +29,8 @@ pub enum ShapeType {
 	Star,
 	Circle,
 	Arc,
+	Spiral,
+	Grid,
 	Rectangle,
 	Ellipse,
 	Line,
@@ -40,6 +43,8 @@ impl ShapeType {
 			Self::Star => "Star",
 			Self::Circle => "Circle",
 			Self::Arc => "Arc",
+			Self::Grid => "Grid",
+			Self::Spiral => "Spiral",
 			Self::Rectangle => "Rectangle",
 			Self::Ellipse => "Ellipse",
 			Self::Line => "Line",
@@ -474,4 +479,24 @@ pub fn calculate_arc_text_transform(angle: f64, offset_angle: f64, center: DVec2
 		(ARC_SWEEP_GIZMO_RADIUS + ARC_SWEEP_GIZMO_TEXT_HEIGHT) * text_angle_on_unit_circle.y,
 	);
 	DAffine2::from_translation(text_texture_position + center)
+}
+
+/// Extract the node input values of Grid.
+/// Returns an option of (grid_type, spacing, columns, rows, angles).
+pub fn extract_grid_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<(GridType, DVec2, u32, u32, DVec2)> {
+	use graphene_std::vector::generator_nodes::grid::*;
+
+	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Grid")?;
+
+	let (Some(&TaggedValue::GridType(grid_type)), Some(&TaggedValue::DVec2(spacing)), Some(&TaggedValue::U32(columns)), Some(&TaggedValue::U32(rows)), Some(&TaggedValue::DVec2(angles))) = (
+		node_inputs.get(GridTypeInput::INDEX)?.as_value(),
+		node_inputs.get(SpacingInput::<f64>::INDEX)?.as_value(),
+		node_inputs.get(ColumnsInput::INDEX)?.as_value(),
+		node_inputs.get(RowsInput::INDEX)?.as_value(),
+		node_inputs.get(AnglesInput::INDEX)?.as_value(),
+	) else {
+		return None;
+	};
+
+	Some((grid_type, spacing, columns, rows, angles))
 }

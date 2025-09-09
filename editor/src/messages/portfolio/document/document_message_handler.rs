@@ -39,7 +39,7 @@ use graphene_std::table::Table;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
-use graphene_std::vector::style::ViewMode;
+use graphene_std::vector::style::RenderMode;
 use kurbo::{Affine, CubicBez, Line, ParamCurve, PathSeg, QuadBez};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -92,9 +92,10 @@ pub struct DocumentMessageHandler {
 	pub document_ptz: PTZ,
 	/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
 	pub document_mode: DocumentMode,
-	/// The current view mode that the user has set for rendering the document within the viewport.
+	/// The current mode that the user has set for rendering the document within the viewport.
 	/// This is usually "Normal" but can be set to "Outline" or "Pixels" to see the canvas differently.
-	pub view_mode: ViewMode,
+	#[serde(alias = "view_mode")]
+	pub render_mode: RenderMode,
 	/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
 	/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
 	pub overlays_visibility_settings: OverlaysVisibilitySettings,
@@ -163,7 +164,7 @@ impl Default for DocumentMessageHandler {
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
 			document_mode: DocumentMode::DesignMode,
-			view_mode: ViewMode::default(),
+			render_mode: RenderMode::default(),
 			overlays_visibility_settings: OverlaysVisibilitySettings::default(),
 			rulers_visible: true,
 			graph_view_overlay_open: false,
@@ -1266,8 +1267,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer });
 				responses.add(DocumentMessage::EndTransaction);
 			}
-			DocumentMessage::SetViewMode { view_mode } => {
-				self.view_mode = view_mode;
+			DocumentMessage::SetRenderMode { render_mode } => {
+				self.render_mode = render_mode;
 				responses.add_front(NodeGraphMessage::RunDocumentGraph);
 			}
 			DocumentMessage::AddTransaction => {
@@ -1286,16 +1287,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
-			// Commits the transaction if the network was mutated since the transaction started, otherwise it aborts the transaction
+			// Commits the transaction if the network was mutated since the transaction started, otherwise it cancels the transaction
 			DocumentMessage::EndTransaction => match self.network_interface.transaction_status() {
 				TransactionStatus::Started => {
-					responses.add_front(DocumentMessage::AbortTransaction);
+					responses.add_front(DocumentMessage::CancelTransaction);
 				}
 				TransactionStatus::Modified => {
 					responses.add_front(DocumentMessage::CommitTransaction);
 				}
 				TransactionStatus::Finished => {}
 			},
+			DocumentMessage::CancelTransaction => {
+				self.network_interface.finish_transaction();
+				self.document_undo_history.pop_back();
+			}
 			DocumentMessage::CommitTransaction => {
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
 					return;
@@ -1304,9 +1309,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.document_redo_history.clear();
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
-			DocumentMessage::AbortTransaction => {
-				responses.add(DocumentMessage::RepeatedAbortTransaction { undo_count: 1 });
-			}
+			DocumentMessage::AbortTransaction => match self.network_interface.transaction_status() {
+				TransactionStatus::Started => {
+					responses.add_front(DocumentMessage::CancelTransaction);
+				}
+				TransactionStatus::Modified => {
+					responses.add(DocumentMessage::RepeatedAbortTransaction { undo_count: 1 });
+				}
+				TransactionStatus::Finished => {}
+			},
 			DocumentMessage::RepeatedAbortTransaction { undo_count } => {
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
 					return;
@@ -1786,7 +1797,7 @@ impl DocumentMessageHandler {
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
 		let document_message_handler = serde_json::from_str::<DocumentMessageHandler>(serialized_content)
 			.or_else(|e| {
-				log::warn!("failed to directly load document with the following error: {e}. Trying old DocumentMessageHandler");
+				log::warn!("Failed to directly load document with the following error: {e}. Trying old DocumentMessageHandler.");
 				// TODO: Eventually remove this document upgrade code
 				#[derive(Debug, serde::Serialize, serde::Deserialize)]
 				pub struct OldDocumentMessageHandler {
@@ -1811,9 +1822,9 @@ impl DocumentMessageHandler {
 					pub document_ptz: PTZ,
 					/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
 					pub document_mode: DocumentMode,
-					/// The current view mode that the user has set for rendering the document within the viewport.
+					/// The current mode that the user has set for rendering the document within the viewport.
 					/// This is usually "Normal" but can be set to "Outline" or "Pixels" to see the canvas differently.
-					pub view_mode: ViewMode,
+					pub view_mode: RenderMode,
 					/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
 					/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
 					pub overlays_visibility_settings: OverlaysVisibilitySettings,
@@ -1831,7 +1842,7 @@ impl DocumentMessageHandler {
 					commit_hash: old_message_handler.commit_hash,
 					document_ptz: old_message_handler.document_ptz,
 					document_mode: old_message_handler.document_mode,
-					view_mode: old_message_handler.view_mode,
+					render_mode: old_message_handler.view_mode,
 					overlays_visibility_settings: old_message_handler.overlays_visibility_settings,
 					rulers_visible: old_message_handler.rulers_visible,
 					graph_view_overlay_open: old_message_handler.graph_view_overlay_open,
@@ -2522,28 +2533,30 @@ impl DocumentMessageHandler {
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(vec![
-				RadioEntryData::new("normal")
-					.icon("ViewModeNormal")
-					.tooltip("View Mode: Normal")
-					.on_update(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Normal }.into()),
-				RadioEntryData::new("outline")
-					.icon("ViewModeOutline")
-					.tooltip("View Mode: Outline")
-					.on_update(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Outline }.into()),
-				RadioEntryData::new("pixels")
-					.icon("ViewModePixels")
-					.tooltip("View Mode: Pixels")
-					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(320) }.into()),
+				RadioEntryData::new("Normal")
+					.icon("RenderModeNormal")
+					.tooltip("Render Mode: Normal")
+					.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Normal }.into()),
+				RadioEntryData::new("Outline")
+					.icon("RenderModeOutline")
+					.tooltip("Render Mode: Outline")
+					.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Outline }.into()),
+				// RadioEntryData::new("PixelPreview")
+				// 	.icon("RenderModePixels")
+				// 	.tooltip("Render Mode: Pixel Preview")
+				// 	.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(320) }.into()),
+				// RadioEntryData::new("SvgPreview")
+				// 	.icon("RenderModeSvg")
+				// 	.tooltip("Render Mode: SVG Preview")
+				// 	.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1845) }.into()),
 			])
-			.selected_index(match self.view_mode {
-				ViewMode::Normal => Some(0),
-				_ => Some(1),
-			})
+			.selected_index(Some(self.render_mode as u32))
+			.narrow(true)
 			.widget_holder(),
 			// PopoverButton::new()
 			// 	.popover_layout(vec![
 			// 		LayoutGroup::Row {
-			// 			widgets: vec![TextLabel::new("View Mode").bold(true).widget_holder()],
+			// 			widgets: vec![TextLabel::new("Render Mode").bold(true).widget_holder()],
 			// 		},
 			// 		LayoutGroup::Row {
 			// 			widgets: vec![TextLabel::new("Coming soon").widget_holder()],
@@ -2604,7 +2617,7 @@ impl DocumentMessageHandler {
 			layout: Layout::WidgetLayout(document_bar_layout),
 			layout_target: LayoutTarget::DocumentBar,
 		});
-		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
+		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	pub fn update_layers_panel_control_bar_widgets(&self, layers_panel_open: bool, responses: &mut VecDeque<Message>) {

@@ -69,21 +69,21 @@ pub fn migrate_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resul
 
 	#[derive(serde::Serialize, serde::Deserialize)]
 	#[serde(untagged)]
-	enum EitherFormat {
+	enum ColorFormat {
 		Color(Color),
 		OptionalColor(Option<Color>),
 		ColorTable(Table<Color>),
 	}
 
-	Ok(match EitherFormat::deserialize(deserializer)? {
-		EitherFormat::Color(color) => Table::new_from_element(color),
-		EitherFormat::OptionalColor(color) => {
+	Ok(match ColorFormat::deserialize(deserializer)? {
+		ColorFormat::Color(color) => Table::new_from_element(color),
+		ColorFormat::OptionalColor(color) => {
 			if let Some(color) = color {
 				Table::new_from_element(color)
 			} else {
 				Table::new()
 			}
 		}
-		EitherFormat::ColorTable(color_table) => color_table,
+		ColorFormat::ColorTable(color_table) => color_table,
 	})
 }

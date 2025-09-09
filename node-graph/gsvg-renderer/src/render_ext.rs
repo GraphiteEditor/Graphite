@@ -3,7 +3,7 @@ use glam::DAffine2;
 use graphene_core::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 use graphene_core::gradient::{Gradient, GradientType};
 use graphene_core::uuid::generate_uuid;
-use graphene_core::vector::style::{Fill, PaintOrder, PathStyle, Stroke, StrokeAlign, StrokeCap, StrokeJoin, ViewMode};
+use graphene_core::vector::style::{Fill, PaintOrder, PathStyle, RenderMode, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
 
 pub trait RenderExt {
@@ -163,9 +163,9 @@ impl RenderExt for PathStyle {
 	/// Renders the shape's fill and stroke attributes as a string with them concatenated together.
 	#[allow(clippy::too_many_arguments)]
 	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, render_params: &RenderParams) -> String {
-		let view_mode = render_params.view_mode;
-		match view_mode {
-			ViewMode::Outline => {
+		let render_mode = render_params.render_mode;
+		match render_mode {
+			RenderMode::Outline => {
 				let fill_attribute = Fill::None.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
 				let mut outline_stroke = Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT);
 				// Outline strokes should be non-scaling by default
