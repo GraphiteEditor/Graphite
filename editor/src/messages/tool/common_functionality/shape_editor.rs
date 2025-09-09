@@ -1394,6 +1394,11 @@ impl ShapeState {
 			let selected_segments = &state.selected_segments;
 
 			for point in std::mem::take(&mut state.selected_points) {
+				if !transaction_started && start_transaction {
+					responses.add(DocumentMessage::AddTransaction);
+					transaction_started = true;
+				}
+
 				match point {
 					ManipulatorPointId::Anchor(anchor) => {
 						if let Some(handles) = Self::dissolve_anchor(anchor, responses, layer, &vector) {
@@ -1405,11 +1410,6 @@ impl ShapeState {
 					}
 					ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
 						let Some(handle) = point.as_handle() else { continue };
-
-						if !transaction_started && start_transaction {
-							responses.add(DocumentMessage::AddTransaction);
-							transaction_started = true;
-						}
 
 						// Place the handle on top of the anchor
 						let modification_type = handle.set_relative_position(DVec2::ZERO);
@@ -1467,11 +1467,6 @@ impl ShapeState {
 					handles: [Some(handle_start), Some(handle_end)],
 				};
 
-				if !transaction_started && start_transaction {
-					responses.add(DocumentMessage::AddTransaction);
-					transaction_started = true;
-				}
-
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 				for &handles in vector.colinear_manipulators.iter() {
@@ -1509,6 +1504,7 @@ impl ShapeState {
 			for (segment, _, start, end) in vector.segment_bezier_iter() {
 				if state.selected_segments.contains(&segment) {
 					if start_transaction && !transaction_started {
+						log::info!("111111");
 						responses.add(DocumentMessage::AddTransaction);
 						transaction_started = true;
 					}
