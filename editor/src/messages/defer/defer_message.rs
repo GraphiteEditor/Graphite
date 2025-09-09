@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::messages::prelude::*;
 
 #[impl_message(Message, Defer)]
@@ -8,4 +10,6 @@ pub enum DeferMessage {
 	AfterGraphRun { messages: Vec<Message> },
 	TriggerNavigationReady,
 	AfterNavigationReady { messages: Vec<Message> },
+	RequestDeferredMessage { timeout: Duration, message: Box<Message> },
+	CheckDeferredMessages,
 }

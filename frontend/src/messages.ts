@@ -127,10 +127,14 @@ export class UpdateNodeThumbnail extends JsMessage {
 
 	readonly value!: string;
 }
-
 export class UpdateOpenDocumentsList extends JsMessage {
 	@Type(() => OpenDocument)
 	readonly openDocuments!: OpenDocument[];
+}
+
+export class UpdateTooltip extends JsMessage {
+	readonly position!: XY | undefined;
+	readonly text!: string;
 }
 
 export class WirePathInProgress {
@@ -165,38 +169,6 @@ export class DocumentDetails {
 	}
 }
 
-<<<<<<< HEAD
-export class Box {
-	readonly startX!: number;
-
-	readonly startY!: number;
-
-	readonly endX!: number;
-
-	readonly endY!: number;
-}
-
-export type FrontendClickTargets = {
-	readonly nodeClickTargets: string[];
-	readonly layerClickTargets: string[];
-	readonly connectorClickTargets: string[];
-	readonly iconClickTargets: string[];
-	readonly allNodesBoundingBox: string;
-	readonly importExportsBoundingBox: string;
-	readonly modifyImportExport: string[];
-};
-
-export type ContextMenuInformation = {
-	contextMenuCoordinates: XY;
-	contextMenuData: "CreateNode" | { type: "CreateNode"; compatibleType: string } | { nodeId: bigint; currentlyIsNode: boolean };
-};
-
-=======
-export class FrontendDocumentDetails extends DocumentDetails {
-	readonly id!: bigint;
-}
-
->>>>>>> 17a1a3d5 (Complete separating node rendering from imports/exports)
 export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic" | "Raster" | "Vector" | "Color";
 
 export class FrontendGraphInput {
@@ -218,11 +190,7 @@ export class FrontendGraphOutput {
 
 	readonly name!: string;
 
-	readonly description!: string;
-
-	readonly resolvedType!: string;
-
-	readonly connectedTo!: string[];
+	readonly connected!: boolean;
 }
 
 export class FrontendExport {
@@ -1754,6 +1722,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateLayersPanelState,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
+	UpdateTooltip,
 	UpdateViewportHolePunch,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,

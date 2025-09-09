@@ -1,8 +1,11 @@
+use std::collections::BTreeMap;
+
 use crate::messages::prelude::*;
 
 #[derive(ExtractField)]
 pub struct DeferMessageContext<'a> {
 	pub portfolio: &'a PortfolioMessageHandler,
+	pub time: u64,
 }
 
 #[derive(Debug, Default, ExtractField)]
@@ -10,6 +13,7 @@ pub struct DeferMessageHandler {
 	after_graph_run: HashMap<DocumentId, Vec<(u64, Message)>>,
 	after_viewport_resize: Vec<Message>,
 	current_graph_submission_id: u64,
+	after_time_elapsed: BTreeMap<u64, Message>,
 }
 
 #[message_handler_data]
@@ -47,6 +51,15 @@ impl MessageHandler<DeferMessage, DeferMessageContext<'_>> for DeferMessageHandl
 			DeferMessage::TriggerNavigationReady => {
 				for message in self.after_viewport_resize.drain(..).rev() {
 					responses.add_front(message);
+				}
+			}
+			DeferMessage::RequestDeferredMessage { timeout, message } => {
+				self.after_time_elapsed.insert(context.time + timeout.as_millis() as u64, *message);
+			}
+			DeferMessage::CheckDeferredMessages => {
+				let after_current_time = self.after_time_elapsed.split_off(&context.time);
+				for (_, message) in std::mem::replace(&mut self.after_time_elapsed, after_current_time) {
+					responses.add(message);
 				}
 			}
 		}

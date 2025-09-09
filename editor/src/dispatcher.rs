@@ -59,6 +59,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(EventMessageDiscriminant::AnimationFrame)),
 	MessageDiscriminant::Animation(AnimationMessageDiscriminant::IncrementFrameCounter),
+	MessageDiscriminant::Defer(DeferMessageDiscriminant::CheckDeferredMessages),
 ];
 // TODO: Find a way to combine these with the list above. We use strings for now since these are the standard variant names used by multiple messages. But having these also type-checked would be best.
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
@@ -140,6 +141,7 @@ impl Dispatcher {
 				Message::Defer(message) => {
 					let context = DeferMessageContext {
 						portfolio: &self.message_handlers.portfolio_message_handler,
+						time: self.message_handlers.input_preprocessor_message_handler.time,
 					};
 					self.message_handlers.defer_message_handler.process_message(message, &mut queue, context);
 				}

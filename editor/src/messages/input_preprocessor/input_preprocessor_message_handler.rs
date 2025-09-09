@@ -43,6 +43,7 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext> f
 						.into(),
 					],
 				});
+				responses.add(NodeGraphMessage::UpdateNodeGraphTopRight);
 			}
 			InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);

@@ -1,6 +1,6 @@
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart};
 use super::{document_node_definitions, node_properties};
-use crate::consts::GRID_SIZE;
+use crate::consts::*;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
@@ -30,6 +30,7 @@ use graphene_std::*;
 use kurbo::{DEFAULT_ACCURACY, Shape};
 use renderer::Quad;
 use std::cmp::Ordering;
+use std::time::Duration;
 
 #[derive(Debug, ExtractField)]
 pub struct NodeGraphMessageContext<'a> {
@@ -94,6 +95,12 @@ pub struct NodeGraphMessageHandler {
 	end_index: Option<usize>,
 	// The rendered string for each thumbnail
 	pub thumbnails: HashMap<NodeId, Graphic>,
+	// If an input is being hovered. Used for tooltip
+	hovering_input: bool,
+	// If an output is being hovered. Used for tooltip
+	hovering_output: bool,
+	// If a node is being hovered. Used for tooltip
+	hovering_node: bool,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -1143,6 +1150,38 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							.unwrap_or_else(|| modify_import_export.reorder_imports_exports.input_ports().count() + 1),
 					);
 					responses.add(FrontendMessage::UpdateExportReorderIndex { index: self.end_index });
+				} else if !self.hovering_input && !self.hovering_output && !self.hovering_node {
+					if network_interface.input_connector_from_click(ipp.mouse.position, breadcrumb_network_path).is_some() {
+						responses.add(DeferMessage::RequestDeferredMessage {
+							message: Box::new(NodeGraphMessage::TryDisplayTooltip { initial_position: ipp.mouse.position }.into()),
+							timeout: Duration::from_millis(INPUT_TOOLTIP_DELAY),
+						});
+					} else if network_interface.output_connector_from_click(ipp.mouse.position, breadcrumb_network_path).is_some() {
+						responses.add(DeferMessage::RequestDeferredMessage {
+							message: Box::new(NodeGraphMessage::TryDisplayTooltip { initial_position: ipp.mouse.position }.into()),
+							timeout: Duration::from_millis(INPUT_TOOLTIP_DELAY),
+						})
+					} else if network_interface.node_from_click(ipp.mouse.position, breadcrumb_network_path).is_some() {
+						responses.add(DeferMessage::RequestDeferredMessage {
+							message: Box::new(NodeGraphMessage::TryDisplayTooltip { initial_position: ipp.mouse.position }.into()),
+							timeout: Duration::from_millis(INPUT_TOOLTIP_DELAY),
+						})
+					}
+				} else if self.hovering_input {
+					if !network_interface.input_connector_from_click(ipp.mouse.position, breadcrumb_network_path).is_some() {
+						self.hovering_input = false;
+						responses.add(FrontendMessage::UpdateTooltip { position: None, text: String::new() });
+					}
+				} else if self.hovering_output {
+					if !network_interface.output_connector_from_click(ipp.mouse.position, breadcrumb_network_path).is_some() {
+						self.hovering_output = false;
+						responses.add(FrontendMessage::UpdateTooltip { position: None, text: String::new() });
+					}
+				} else if self.hovering_node {
+					if !network_interface.node_from_click(ipp.mouse.position, breadcrumb_network_path).is_some() {
+						self.hovering_node = false;
+						responses.add(FrontendMessage::UpdateTooltip { position: None, text: String::new() });
+					}
 				}
 			}
 			NodeGraphMessage::PointerUp => {
@@ -1405,6 +1444,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.auto_panning.stop(&messages, responses);
 				}
 			}
+			NodeGraphMessage::UpdateNodeGraphTopRight => {
+				network_interface.set_node_graph_width(ipp.viewport_bounds.size().x, breadcrumb_network_path);
+				responses.add(NodeGraphMessage::UpdateImportsExports);
+			}
 			NodeGraphMessage::ShakeNode => {
 				let Some(drag_start) = &self.drag_start else {
 					log::error!("Drag start should be initialized when shaking a node");
@@ -1595,8 +1638,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::UpdateActionButtons);
-
-				responses.add(FrontendMessage::RequestNativeNodeGraphRender);
 				responses.add(NodeGraphMessage::UpdateImportsExports);
 				self.update_node_graph_hints(responses);
 			}
@@ -1806,6 +1847,61 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::SetVisibility { node_id, visible });
 				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids: vec![node_id] });
+			}
+			NodeGraphMessage::TryDisplayTooltip { initial_position } => {
+				if initial_position != ipp.mouse.position {
+					return;
+				} else if let Some(input) = network_interface.input_connector_from_click(ipp.mouse.position, breadcrumb_network_path) {
+					let text = network_interface.input_tooltip_text(&input, breadcrumb_network_path);
+					if let Some(position) = network_interface.input_position(&input, breadcrumb_network_path) {
+						let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) else {
+							return;
+						};
+						let position = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.transform_point2(position);
+						let xy = FrontendXY {
+							x: position.x as i32,
+							y: position.y as i32,
+						};
+						responses.add(FrontendMessage::UpdateTooltip { position: Some(xy), text });
+						self.hovering_input = true;
+					}
+				} else if let Some(output) = network_interface.output_connector_from_click(ipp.mouse.position, breadcrumb_network_path) {
+					let text = network_interface.output_tooltip_text(&output, breadcrumb_network_path);
+					if let Some(position) = network_interface.output_position(&output, breadcrumb_network_path) {
+						let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) else {
+							return;
+						};
+						let position = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.transform_point2(position);
+
+						let xy = FrontendXY {
+							x: position.x as i32,
+							y: position.y as i32,
+						};
+						responses.add(FrontendMessage::UpdateTooltip { position: Some(xy), text });
+						self.hovering_output = true;
+					}
+				} else if let Some(node_id) = network_interface.node_from_click(ipp.mouse.position, breadcrumb_network_path) {
+					let text = network_interface.node_tooltip_text(&node_id, breadcrumb_network_path);
+					let Some(position) = network_interface.position(&node_id, breadcrumb_network_path) else {
+						log::error!("Could not get position from node: {node_id}");
+						return;
+					};
+					let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) else {
+						return;
+					};
+					let position = network_metadata
+						.persistent_metadata
+						.navigation_metadata
+						.node_graph_to_viewport
+						.transform_point2(DVec2::new(position.x as f64 * 24., position.y as f64 * 24.));
+
+					let xy = FrontendXY {
+						x: position.x as i32,
+						y: position.y as i32,
+					};
+					responses.add(FrontendMessage::UpdateTooltip { position: Some(xy), text });
+					self.hovering_node = true;
+				}
 			}
 			NodeGraphMessage::SetPinned { node_id, pinned } => {
 				network_interface.set_pinned(&node_id, selection_network_path, pinned);
@@ -2565,6 +2661,9 @@ impl Default for NodeGraphMessageHandler {
 			reordering_import: None,
 			end_index: None,
 			thumbnails: HashMap::new(),
+			hovering_input: false,
+			hovering_output: false,
+			hovering_node: false,
 		}
 	}
 }

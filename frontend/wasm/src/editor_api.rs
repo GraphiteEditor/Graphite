@@ -134,11 +134,34 @@ pub struct EditorHandle {
 	frontend_message_handler_callback: js_sys::Function,
 }
 
-// Defined separately from the `impl` block below since this `impl` block lacks the `#[wasm_bindgen]` attribute.
-// Quirks in wasm-bindgen prevent functions in `#[wasm_bindgen]` `impl` blocks from being made publicly accessible from Rust.
 impl EditorHandle {
-	pub fn send_frontend_message_to_js_rust_proxy(&self, message: FrontendMessage) {
-		self.send_frontend_message_to_js(message);
+	// Sends a FrontendMessage to JavaScript
+	pub fn send_frontend_message_to_js(&self, mut message: FrontendMessage) {
+		if let FrontendMessage::UpdateImageData { ref image_data } = message {
+			let new_hash = calculate_hash(image_data);
+			let prev_hash = IMAGE_DATA_HASH.load(Ordering::Relaxed);
+
+			if new_hash != prev_hash {
+				render_image_data_to_canvases(image_data.as_slice());
+				IMAGE_DATA_HASH.store(new_hash, Ordering::Relaxed);
+			}
+			return;
+		}
+
+		if let FrontendMessage::UpdateDocumentLayerStructure { data_buffer } = message {
+			message = FrontendMessage::UpdateDocumentLayerStructureJs { data_buffer: data_buffer.into() };
+		}
+
+		let message_type = message.to_discriminant().local_name();
+
+		let serializer = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
+		let message_data = message.serialize(&serializer).expect("Failed to serialize FrontendMessage");
+
+		let js_return_value = self.frontend_message_handler_callback.call2(&JsValue::null(), &JsValue::from(message_type), &message_data);
+
+		if let Err(error) = js_return_value {
+			error!("While handling FrontendMessage {:?}, JavaScript threw an error:\n{:?}", message.to_discriminant().local_name(), error,)
+		}
 	}
 }
 
@@ -206,35 +229,6 @@ impl EditorHandle {
 		crate::native_communcation::send_message_to_cef(serialized_message)
 	}
 
-	// Sends a FrontendMessage to JavaScript
-	fn send_frontend_message_to_js(&self, mut message: FrontendMessage) {
-		if let FrontendMessage::UpdateImageData { ref image_data } = message {
-			let new_hash = calculate_hash(image_data);
-			let prev_hash = IMAGE_DATA_HASH.load(Ordering::Relaxed);
-
-			if new_hash != prev_hash {
-				render_image_data_to_canvases(image_data.as_slice());
-				IMAGE_DATA_HASH.store(new_hash, Ordering::Relaxed);
-			}
-			return;
-		}
-
-		if let FrontendMessage::UpdateDocumentLayerStructure { data_buffer } = message {
-			message = FrontendMessage::UpdateDocumentLayerStructureJs { data_buffer: data_buffer.into() };
-		}
-
-		let message_type = message.to_discriminant().local_name();
-
-		let serializer = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
-		let message_data = message.serialize(&serializer).expect("Failed to serialize FrontendMessage");
-
-		let js_return_value = self.frontend_message_handler_callback.call2(&JsValue::null(), &JsValue::from(message_type), &message_data);
-
-		if let Err(error) = js_return_value {
-			error!("While handling FrontendMessage {:?}, JavaScript threw an error:\n{:?}", message.to_discriminant().local_name(), error,)
-		}
-	}
-
 	// ========================================================================
 	// Add additional JS -> Rust wrapper functions below as needed for calling
 	// the backend from the web frontend.
@@ -277,7 +271,7 @@ impl EditorHandle {
 							timestamp: js_sys::Date::now() as u64,
 						});
 						handle.dispatch(AnimationMessage::IncrementFrameCounter);
-
+						handle.dispatch(DeferMessage::CheckDeferredMessages);
 						// Used by auto-panning, but this could possibly be refactored in the future, see:
 						// <https://github.com/GraphiteEditor/Graphite/pull/2562#discussion_r2041102786>
 						handle.dispatch(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame));
