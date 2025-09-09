@@ -106,7 +106,7 @@ pub enum FrontendMessage {
 	TriggerOpenDocument,
 	TriggerPaste,
 	TriggerSavePreferences {
-		preferences: String,
+		preferences: PreferencesMessageHandler,
 	},
 	TriggerSaveActiveDocument {
 		#[serde(rename = "documentId")]

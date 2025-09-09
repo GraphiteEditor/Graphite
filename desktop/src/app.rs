@@ -214,12 +214,12 @@ impl WinitApp {
 					self.dispatch_desktop_wrapper_message(message);
 				}
 			}
-			DesktopFrontendMessage::PersistenceWritePreferences { content } => {
-				self.persistent_data.write_preferences(content);
+			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
+				self.persistent_data.write_preferences(preferences);
 			}
 			DesktopFrontendMessage::PersistenceLoadPreferences => {
-				if let Some(content) = self.persistent_data.load_preferences() {
-					let message = DesktopWrapperMessage::LoadPreferences { content };
+				if let Some(preferences) = self.persistent_data.load_preferences() {
+					let message = DesktopWrapperMessage::LoadPreferences { preferences };
 					self.dispatch_desktop_wrapper_message(message);
 				}
 			}

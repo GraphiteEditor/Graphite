@@ -774,7 +774,7 @@ export class TriggerSaveFile extends JsMessage {
 }
 
 export class TriggerSavePreferences extends JsMessage {
-	readonly preferences!: string;
+	readonly preferences!: Record<string, unknown>;
 }
 
 export class TriggerSaveActiveDocument extends JsMessage {

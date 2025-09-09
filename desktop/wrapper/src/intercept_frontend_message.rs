@@ -108,7 +108,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadRemainingDocuments);
 		}
 		FrontendMessage::TriggerSavePreferences { preferences } => {
-			dispatcher.respond(DesktopFrontendMessage::PersistenceWritePreferences { content: preferences });
+			dispatcher.respond(DesktopFrontendMessage::PersistenceWritePreferences { preferences });
 		}
 		FrontendMessage::TriggerLoadPreferences => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadPreferences);

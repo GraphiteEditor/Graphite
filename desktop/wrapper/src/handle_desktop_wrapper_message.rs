@@ -140,8 +140,8 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			let message = PortfolioMessage::SelectDocument { document_id: id };
 			dispatcher.queue_editor_message(message.into());
 		}
-		DesktopWrapperMessage::LoadPreferences { content } => {
-			let message = PreferencesMessage::Load { preferences: content };
+		DesktopWrapperMessage::LoadPreferences { preferences } => {
+			let message = PreferencesMessage::Load { preferences };
 			dispatcher.queue_editor_message(message.into());
 		}
 	}
