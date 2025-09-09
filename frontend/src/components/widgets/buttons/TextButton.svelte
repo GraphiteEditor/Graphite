@@ -18,6 +18,7 @@
 	export let flush = false;
 	export let minWidth = 0;
 	export let disabled = false;
+	export let narrow = false;
 	export let tooltip: string | undefined = undefined;
 	export let menuListChildren: MenuListEntry[][] | undefined = undefined;
 
@@ -54,6 +55,7 @@
 		class:hover-icon={hoverIcon && !disabled}
 		class:emphasized
 		class:disabled
+		class:narrow
 		class:flush
 		style:min-width={minWidth > 0 ? `${minWidth}px` : undefined}
 		title={tooltip}
@@ -99,7 +101,7 @@
 		align-items: center;
 		flex: 0 0 auto;
 		white-space: nowrap;
-		height: 24px;
+		height: var(--widget-height);
 		margin: 0;
 		padding: 0 8px;
 		box-sizing: border-box;
@@ -107,8 +109,13 @@
 		border-radius: 2px;
 		background: var(--button-background-color);
 		color: var(--button-text-color);
-		--button-background-color: var(--color-5-dullgray);
+		--button-background-color: var(--color-4-dimgray);
 		--button-text-color: var(--color-e-nearwhite);
+		--widget-height: 24px;
+
+		&.narrow.narrow {
+			--widget-height: 20px;
+		}
 
 		&:hover,
 		&.open {

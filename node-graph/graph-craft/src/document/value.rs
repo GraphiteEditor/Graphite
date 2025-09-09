@@ -16,7 +16,7 @@ use graphene_core::uuid::NodeId;
 use graphene_core::vector::Vector;
 use graphene_core::vector::style::Fill;
 use graphene_core::vector::style::GradientStops;
-use graphene_core::{Artboard, Color, Graphic, MemoHash, Node, Type};
+use graphene_core::{Artboard, Color, ContextFeatures, Graphic, MemoHash, Node, Type};
 use graphene_svg_renderer::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
@@ -189,7 +189,7 @@ tagged_value! {
 	#[serde(alias = "VectorData")]
 	Vector(Table<Vector>),
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "ImageFrame", alias = "RasterData")]
+	#[serde(alias = "ImageFrame", alias = "RasterData", alias = "Image")]
 	Raster(Table<Raster<CPU>>),
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::graphic::migrate_graphic"))] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "GraphicGroup", alias = "Group")]
@@ -217,6 +217,7 @@ tagged_value! {
 	BrushStrokes(Vec<BrushStroke>),
 	BrushCache(BrushCache),
 	DocumentNode(DocumentNode),
+	ContextFeatures(ContextFeatures),
 	Curve(graphene_raster_nodes::curve::Curve),
 	Footprint(graphene_core::transform::Footprint),
 	VectorModification(Box<graphene_core::vector::VectorModification>),
@@ -241,6 +242,7 @@ tagged_value! {
 	ArcType(graphene_core::vector::misc::ArcType),
 	MergeByDistanceAlgorithm(graphene_core::vector::misc::MergeByDistanceAlgorithm),
 	PointSpacingType(graphene_core::vector::misc::PointSpacingType),
+	SpiralType(graphene_core::vector::misc::SpiralType),
 	#[serde(alias = "LineCap")]
 	StrokeCap(graphene_core::vector::style::StrokeCap),
 	#[serde(alias = "LineJoin")]
@@ -360,7 +362,7 @@ impl TaggedValue {
 					x if x == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					x if x == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
 					x if x == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
-					x if x == TypeId::of::<Color>() => to_color(string).map(|color| TaggedValue::ColorNotInTable(color))?,
+					x if x == TypeId::of::<Color>() => to_color(string).map(TaggedValue::ColorNotInTable)?,
 					x if x == TypeId::of::<Option<Color>>() => TaggedValue::ColorNotInTable(to_color(string)?),
 					x if x == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
 					x if x == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,

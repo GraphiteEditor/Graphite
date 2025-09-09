@@ -53,7 +53,7 @@ impl RadiusHandle {
 		let center = viewport.transform_point2(DVec2::ZERO);
 		if let Some(stroke_width) = get_stroke_width(layer, &document.network_interface) {
 			let circle_point = calculate_circle_point_position(angle, radius.abs());
-			let direction = circle_point.normalize();
+			let Some(direction) = circle_point.try_normalize() else { return false };
 			let mouse_distance = mouse_position.distance(center);
 
 			let spacing = Self::calculate_extra_spacing(viewport, radius, center, stroke_width, 15.);

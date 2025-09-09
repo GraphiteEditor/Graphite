@@ -1,8 +1,10 @@
+pub use graphite_editor::messages::prelude::DocumentId;
+use graphite_editor::messages::prelude::FrontendMessage;
 use std::path::PathBuf;
 
-use graphite_editor::messages::prelude::{DocumentId, FrontendMessage};
-
 pub(crate) use graphite_editor::messages::prelude::Message as EditorMessage;
+
+pub use graphite_editor::messages::prelude::PreferencesMessageHandler as Preferences;
 
 pub enum DesktopFrontendMessage {
 	ToWeb(Vec<FrontendMessage>),
@@ -34,25 +36,86 @@ pub enum DesktopFrontendMessage {
 		maximized: bool,
 		minimized: bool,
 	},
+	PersistenceWriteDocument {
+		id: DocumentId,
+		document: Document,
+	},
+	PersistenceDeleteDocument {
+		id: DocumentId,
+	},
+	PersistenceUpdateCurrentDocument {
+		id: DocumentId,
+	},
+	PersistenceLoadCurrentDocument,
+	PersistenceLoadRemainingDocuments,
+	PersistenceUpdateDocumentsList {
+		ids: Vec<DocumentId>,
+	},
+	PersistenceWritePreferences {
+		preferences: Preferences,
+	},
+	PersistenceLoadPreferences,
 	CloseWindow,
+}
+
+pub enum DesktopWrapperMessage {
+	FromWeb(Box<EditorMessage>),
+	OpenFileDialogResult {
+		path: PathBuf,
+		content: Vec<u8>,
+		context: OpenFileDialogContext,
+	},
+	SaveFileDialogResult {
+		path: PathBuf,
+		context: SaveFileDialogContext,
+	},
+	OpenDocument {
+		path: PathBuf,
+		content: Vec<u8>,
+	},
+	OpenFile {
+		path: PathBuf,
+		content: Vec<u8>,
+	},
+	ImportFile {
+		path: PathBuf,
+		content: Vec<u8>,
+	},
+	ImportSvg {
+		path: PathBuf,
+		content: Vec<u8>,
+	},
+	ImportImage {
+		path: PathBuf,
+		content: Vec<u8>,
+	},
+	PollNodeGraphEvaluation,
+	UpdatePlatform(Platform),
+	LoadDocument {
+		id: DocumentId,
+		document: Document,
+		to_front: bool,
+		select_after_open: bool,
+	},
+	SelectDocument {
+		id: DocumentId,
+	},
+	LoadPreferences {
+		preferences: Preferences,
+	},
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+pub struct Document {
+	pub content: String,
+	pub name: String,
+	pub path: Option<PathBuf>,
+	pub is_saved: bool,
 }
 
 pub struct FileFilter {
 	pub name: String,
 	pub extensions: Vec<String>,
-}
-
-pub enum DesktopWrapperMessage {
-	FromWeb(Box<EditorMessage>),
-	OpenFileDialogResult { path: PathBuf, content: Vec<u8>, context: OpenFileDialogContext },
-	SaveFileDialogResult { path: PathBuf, context: SaveFileDialogContext },
-	OpenDocument { path: PathBuf, content: Vec<u8> },
-	OpenFile { path: PathBuf, content: Vec<u8> },
-	ImportFile { path: PathBuf, content: Vec<u8> },
-	ImportSvg { path: PathBuf, content: Vec<u8> },
-	ImportImage { path: PathBuf, content: Vec<u8> },
-	PollNodeGraphEvaluation,
-	UpdatePlatform(Platform),
 }
 
 pub enum OpenFileDialogContext {

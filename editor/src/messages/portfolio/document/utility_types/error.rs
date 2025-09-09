@@ -16,7 +16,13 @@ pub enum EditorError {
 	#[error("The operation caused a document error:\n{0:?}")]
 	Document(String),
 
-	#[error("This document was created in an older version of the editor.\n\nBackwards compatibility is, regrettably, not present in the current alpha release.\n\nTechnical details:\n{0:?}")]
+	#[error(
+		"This document was created in an older version of the editor.\n\
+		\n\
+		Full backwards compatibility is not guaranteed in the current alpha release.\n\
+		\n\
+		If this document is critical, ask for support in Graphite's Discord community."
+	)]
 	DocumentDeserialization(String),
 
 	#[error("{0}")]

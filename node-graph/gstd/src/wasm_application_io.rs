@@ -307,7 +307,7 @@ async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
 	ctx.footprint();
 
 	let render_params = RenderParams {
-		view_mode: render_config.view_mode,
+		render_mode: render_config.render_mode,
 		hide_artboards: render_config.hide_artboards,
 		for_export: render_config.for_export,
 		footprint,

@@ -2100,6 +2100,7 @@ name = "graphene-core"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "bitflags 2.9.3",
  "bytemuck",
  "ctor",
  "dyn-any",
@@ -2136,10 +2137,13 @@ dependencies = [
  "graphene-core",
  "half",
  "log",
+ "node-macro",
  "num-derive",
  "num-traits",
+ "num_enum",
  "serde",
  "specta",
+ "spirv-std",
 ]
 
 [[package]]
@@ -2185,12 +2189,14 @@ dependencies = [
  "ndarray",
  "node-macro",
  "num-traits",
+ "num_enum",
  "rand 0.9.2",
  "rand_chacha 0.9.0",
  "serde",
  "specta",
  "spirv-std",
  "tokio",
+ "wgpu-executor",
 ]
 
 [[package]]
@@ -2265,6 +2271,7 @@ dependencies = [
  "open",
  "rfd",
  "ron",
+ "serde",
  "thiserror 2.0.16",
  "tracing",
  "tracing-subscriber",
@@ -2292,6 +2299,7 @@ dependencies = [
  "graphite-editor",
  "image",
  "ron",
+ "serde",
  "thiserror 2.0.16",
  "tracing",
  "vello",
@@ -2357,6 +2365,7 @@ dependencies = [
  "ron",
  "serde",
  "serde-wasm-bindgen",
+ "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -3468,6 +3477,7 @@ version = "0.0.0"
 dependencies = [
  "convert_case 0.8.0",
  "graphene-core",
+ "graphene-core-shaders",
  "indoc",
  "proc-macro-crate",
  "proc-macro-error2",
@@ -5522,6 +5532,7 @@ version = "0.9.0"
 source = "git+https://github.com/rust-gpu/rust-gpu?rev=c12f216121820580731440ee79ebc7403d6ea04f#c12f216121820580731440ee79ebc7403d6ea04f"
 dependencies = [
  "bitflags 1.3.2",
+ "bytemuck",
  "glam",
  "libm",
  "num-traits",

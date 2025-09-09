@@ -23,7 +23,7 @@ use graphene_std::raster::{
 use graphene_std::table::{Table, TableRow};
 use graphene_std::text::{Font, TextAlign};
 use graphene_std::transform::{Footprint, ReferencePoint, Transform};
-use graphene_std::vector::misc::{ArcType, CentroidType, GridType, MergeByDistanceAlgorithm, PointSpacingType};
+use graphene_std::vector::misc::{ArcType, CentroidType, GridType, MergeByDistanceAlgorithm, PointSpacingType, SpiralType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
@@ -1282,6 +1282,66 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let rows = number_widget(ParameterWidgetsInfo::new(node_id, RowsInput::INDEX, true, context), NumberInput::default().min(1.));
 
 	widgets.extend([LayoutGroup::Row { widgets: columns }, LayoutGroup::Row { widgets: rows }]);
+
+	widgets
+}
+
+pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::vector::generator_nodes::spiral::*;
+
+	let spiral_type = enum_choice::<SpiralType>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, SpiralTypeInput::INDEX, true, context))
+		.property_row();
+	let turns = number_widget(ParameterWidgetsInfo::new(node_id, TurnsInput::INDEX, true, context), NumberInput::default().min(0.1));
+	let start_angle = number_widget(ParameterWidgetsInfo::new(node_id, StartAngleInput::INDEX, true, context), NumberInput::default().unit("°"));
+
+	let mut widgets = vec![spiral_type, LayoutGroup::Row { widgets: turns }, LayoutGroup::Row { widgets: start_angle }];
+
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in exposure_properties: {err}");
+			return Vec::new();
+		}
+	};
+
+	let Some(spiral_type_input) = document_node.inputs.get(SpiralTypeInput::INDEX) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	if let Some(&TaggedValue::SpiralType(spiral_type)) = spiral_type_input.as_non_exposed_value() {
+		match spiral_type {
+			SpiralType::Archimedean => {
+				let inner_radius = LayoutGroup::Row {
+					widgets: number_widget(ParameterWidgetsInfo::new(node_id, InnerRadiusInput::INDEX, true, context), NumberInput::default().min(0.).unit(" px")),
+				};
+
+				let outer_radius = LayoutGroup::Row {
+					widgets: number_widget(ParameterWidgetsInfo::new(node_id, OuterRadiusInput::INDEX, true, context), NumberInput::default().unit(" px")),
+				};
+
+				widgets.extend([inner_radius, outer_radius]);
+			}
+			SpiralType::Logarithmic => {
+				let inner_radius = LayoutGroup::Row {
+					widgets: number_widget(ParameterWidgetsInfo::new(node_id, InnerRadiusInput::INDEX, true, context), NumberInput::default().min(0.).unit(" px")),
+				};
+
+				let outer_radius = LayoutGroup::Row {
+					widgets: number_widget(ParameterWidgetsInfo::new(node_id, OuterRadiusInput::INDEX, true, context), NumberInput::default().min(0.1).unit(" px")),
+				};
+
+				widgets.extend([inner_radius, outer_radius]);
+			}
+		}
+	}
+
+	let angular_resolution = number_widget(
+		ParameterWidgetsInfo::new(node_id, AngularResolutionInput::INDEX, true, context),
+		NumberInput::default().min(1.).max(180.).unit("°"),
+	);
+
+	widgets.push(LayoutGroup::Row { widgets: angular_resolution });
 
 	widgets
 }

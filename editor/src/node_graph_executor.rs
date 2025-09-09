@@ -149,7 +149,7 @@ impl NodeGraphExecutor {
 			export_format: graphene_std::application_io::ExportFormat::Canvas,
 			#[cfg(not(any(feature = "resvg", feature = "vello")))]
 			export_format: graphene_std::application_io::ExportFormat::Svg,
-			view_mode: document.view_mode,
+			render_mode: document.render_mode,
 			hide_artboards: false,
 			for_export: false,
 		};
@@ -198,7 +198,7 @@ impl NodeGraphExecutor {
 			},
 			time: Default::default(),
 			export_format: graphene_std::application_io::ExportFormat::Svg,
-			view_mode: document.view_mode,
+			render_mode: document.render_mode,
 			hide_artboards: export_config.transparent_background,
 			for_export: true,
 		};

@@ -19,7 +19,7 @@ use graphene_core::transform::{Footprint, Transform};
 use graphene_core::uuid::{NodeId, generate_uuid};
 use graphene_core::vector::Vector;
 use graphene_core::vector::click_target::{ClickTarget, FreePoint};
-use graphene_core::vector::style::{Fill, PaintOrder, Stroke, StrokeAlign, ViewMode};
+use graphene_core::vector::style::{Fill, PaintOrder, RenderMode, Stroke, StrokeAlign};
 use graphene_core::{Artboard, Graphic};
 use kurbo::Affine;
 use num_traits::Zero;
@@ -159,7 +159,7 @@ pub struct RenderContext {
 /// Static state used whilst rendering
 #[derive(Default, Clone)]
 pub struct RenderParams {
-	pub view_mode: ViewMode,
+	pub render_mode: RenderMode,
 	pub footprint: Footprint,
 	pub thumbnail: bool,
 	/// Don't render the rectangle for an artboard to allow exporting with a transparent background.
@@ -555,14 +555,14 @@ impl Render for Table<Graphic> {
 
 			let mut layer = false;
 
-			let blend_mode = match render_params.view_mode {
-				ViewMode::Outline => peniko::Mix::Normal,
+			let blend_mode = match render_params.render_mode {
+				RenderMode::Outline => peniko::Mix::Normal,
 				_ => alpha_blending.blend_mode.to_peniko(),
 			};
 			let mut bounds = RenderBoundingBox::None;
 
 			let opacity = row.alpha_blending.opacity(render_params.for_mask);
-			if opacity < 1. || (render_params.view_mode != ViewMode::Outline && alpha_blending.blend_mode != BlendMode::default()) {
+			if opacity < 1. || (render_params.render_mode != RenderMode::Outline && alpha_blending.blend_mode != BlendMode::default()) {
 				bounds = row.element.bounding_box(transform, true);
 
 				if let RenderBoundingBox::Rectangle(bounds) = bounds {
@@ -852,8 +852,8 @@ impl Render for Table<Vector> {
 			}
 
 			// If we're using opacity or a blend mode, we need to push a layer
-			let blend_mode = match render_params.view_mode {
-				ViewMode::Outline => peniko::Mix::Normal,
+			let blend_mode = match render_params.render_mode {
+				RenderMode::Outline => peniko::Mix::Normal,
 				_ => row.alpha_blending.blend_mode.to_peniko(),
 			};
 			let mut layer = false;
@@ -969,8 +969,8 @@ impl Render for Table<Vector> {
 			};
 
 			// Render the path
-			match render_params.view_mode {
-				ViewMode::Outline => {
+			match render_params.render_mode {
+				RenderMode::Outline => {
 					let outline_stroke = kurbo::Stroke {
 						width: LAYER_OUTLINE_STROKE_WEIGHT,
 						miter_limit: 4.,

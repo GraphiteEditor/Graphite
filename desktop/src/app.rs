@@ -1,6 +1,7 @@
 use crate::CustomEvent;
 use crate::cef::WindowSize;
 use crate::consts::{APP_NAME, CEF_MESSAGE_LOOP_MAX_ITERATIONS};
+use crate::persist::PersistentData;
 use crate::render::GraphicsState;
 use graphite_desktop_wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, Platform};
 use graphite_desktop_wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
@@ -37,6 +38,7 @@ pub(crate) struct WinitApp {
 	start_render_sender: SyncSender<()>,
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
+	persistent_data: PersistentData,
 }
 
 impl WinitApp {
@@ -50,6 +52,9 @@ impl WinitApp {
 				let _ = start_render_receiver.recv();
 			}
 		});
+
+		let mut persistent_data = PersistentData::default();
+		persistent_data.load_from_disk();
 
 		Self {
 			cef_context,
@@ -65,6 +70,7 @@ impl WinitApp {
 			start_render_sender,
 			web_communication_initialized: false,
 			web_communication_startup_buffer: Vec::new(),
+			persistent_data,
 		}
 	}
 
@@ -160,6 +166,62 @@ impl WinitApp {
 			}
 			DesktopFrontendMessage::CloseWindow => {
 				let _ = self.event_loop_proxy.send_event(CustomEvent::CloseWindow);
+			}
+			DesktopFrontendMessage::PersistenceWriteDocument { id, document } => {
+				self.persistent_data.write_document(id, document);
+			}
+			DesktopFrontendMessage::PersistenceDeleteDocument { id } => {
+				self.persistent_data.delete_document(&id);
+			}
+			DesktopFrontendMessage::PersistenceUpdateCurrentDocument { id } => {
+				self.persistent_data.set_current_document(id);
+			}
+			DesktopFrontendMessage::PersistenceUpdateDocumentsList { ids } => {
+				self.persistent_data.set_document_order(ids);
+			}
+			DesktopFrontendMessage::PersistenceLoadCurrentDocument => {
+				if let Some((id, document)) = self.persistent_data.current_document() {
+					let message = DesktopWrapperMessage::LoadDocument {
+						id,
+						document,
+						to_front: false,
+						select_after_open: true,
+					};
+					self.dispatch_desktop_wrapper_message(message);
+				}
+			}
+			DesktopFrontendMessage::PersistenceLoadRemainingDocuments => {
+				for (id, document) in self.persistent_data.documents_before_current().into_iter().rev() {
+					let message = DesktopWrapperMessage::LoadDocument {
+						id,
+						document,
+						to_front: true,
+						select_after_open: false,
+					};
+					self.dispatch_desktop_wrapper_message(message);
+				}
+				for (id, document) in self.persistent_data.documents_after_current() {
+					let message = DesktopWrapperMessage::LoadDocument {
+						id,
+						document,
+						to_front: false,
+						select_after_open: false,
+					};
+					self.dispatch_desktop_wrapper_message(message);
+				}
+				if let Some(id) = self.persistent_data.current_document_id() {
+					let message = DesktopWrapperMessage::SelectDocument { id };
+					self.dispatch_desktop_wrapper_message(message);
+				}
+			}
+			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
+				self.persistent_data.write_preferences(preferences);
+			}
+			DesktopFrontendMessage::PersistenceLoadPreferences => {
+				if let Some(preferences) = self.persistent_data.load_preferences() {
+					let message = DesktopWrapperMessage::LoadPreferences { preferences };
+					self.dispatch_desktop_wrapper_message(message);
+				}
 			}
 		}
 	}
@@ -307,7 +369,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 			}
 			WindowEvent::RedrawRequested => {
 				let Some(ref mut graphics_state) = self.graphics_state else { return };
-				// Only rerender once we have a new ui texture to display
+				// Only rerender once we have a new UI texture to display
 				if let Some(window) = &self.window {
 					match graphics_state.render(window.as_ref()) {
 						Ok(_) => {}

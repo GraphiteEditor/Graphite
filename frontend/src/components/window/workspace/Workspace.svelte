@@ -30,12 +30,12 @@
 	$: documentPanel?.scrollTabIntoView($portfolio.activeDocumentIndex);
 
 	$: documentTabLabels = $portfolio.documents.map((doc: OpenDocument) => {
-		const name = doc.displayName;
-
-		if (!editor.handle.inDevelopmentMode()) return { name };
+		const name = doc.details.name;
+		const unsaved = !doc.details.isSaved;
+		if (!editor.handle.inDevelopmentMode()) return { name, unsaved };
 
 		const tooltip = `Document ID: ${doc.id}`;
-		return { name, tooltip };
+		return { name, unsaved, tooltip };
 	});
 
 	const editor = getContext<Editor>("editor");

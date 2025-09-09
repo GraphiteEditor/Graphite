@@ -118,6 +118,8 @@ pub struct TextButton {
 
 	pub disabled: bool,
 
+	pub narrow: bool,
+
 	pub tooltip: String,
 
 	#[serde(skip)]
@@ -178,6 +180,8 @@ pub struct ColorInput {
 	pub allow_none: bool,
 
 	pub disabled: bool,
+
+	pub narrow: bool,
 
 	#[serde(rename = "menuDirection")]
 	pub menu_direction: Option<MenuDirection>,

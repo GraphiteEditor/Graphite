@@ -17,7 +17,7 @@ impl Compiler {
 		let proto_networks = network.into_proto_networks();
 
 		proto_networks.map(move |mut proto_network| {
-			proto_network.resolve_inputs()?;
+			proto_network.insert_context_nullification_nodes()?;
 			proto_network.generate_stable_node_ids();
 			Ok(proto_network)
 		})

@@ -79,18 +79,17 @@ impl LayoutMessageHandler {
 				LayoutGroup::Section { layout, .. } => {
 					stack.extend(layout.iter().enumerate().map(|(index, val)| ([widget_path.as_slice(), &[index]].concat(), val)));
 				}
-
 				LayoutGroup::Table { rows } => {
-					for (row_index, cell) in rows.iter().enumerate() {
-						for (cell_index, entry) in cell.iter().enumerate() {
+					for (row_index, row) in rows.iter().enumerate() {
+						for (cell_index, cell) in row.iter().enumerate() {
 							// Return if this is the correct ID
-							if entry.widget_id == widget_id {
+							if cell.widget_id == widget_id {
 								widget_path.push(row_index);
 								widget_path.push(cell_index);
-								return Some((entry, widget_path));
+								return Some((cell, widget_path));
 							}
 
-							if let Widget::PopoverButton(popover) = &entry.widget {
+							if let Widget::PopoverButton(popover) = &cell.widget {
 								stack.extend(
 									popover
 										.popover_layout

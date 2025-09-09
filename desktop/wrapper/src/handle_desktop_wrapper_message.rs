@@ -1,7 +1,7 @@
 use graphene_std::Color;
 use graphene_std::raster::Image;
 use graphite_editor::messages::app_window::app_window_message_handler::AppWindowPlatform;
-use graphite_editor::messages::prelude::{AppWindowMessage, DocumentMessage, PortfolioMessage};
+use graphite_editor::messages::prelude::{AppWindowMessage, DocumentMessage, PortfolioMessage, PreferencesMessage};
 
 use crate::messages::Platform;
 
@@ -116,6 +116,32 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 				Platform::Linux => AppWindowPlatform::Linux,
 			};
 			let message = AppWindowMessage::AppWindowUpdatePlatform { platform };
+			dispatcher.queue_editor_message(message.into());
+		}
+		DesktopWrapperMessage::LoadDocument {
+			id,
+			document,
+			to_front,
+			select_after_open,
+		} => {
+			let message = PortfolioMessage::OpenDocumentFileWithId {
+				document_id: id,
+				document_name: Some(document.name),
+				document_path: document.path,
+				document_serialized_content: document.content,
+				document_is_auto_saved: true,
+				document_is_saved: document.is_saved,
+				to_front,
+				select_after_open,
+			};
+			dispatcher.queue_editor_message(message.into());
+		}
+		DesktopWrapperMessage::SelectDocument { id } => {
+			let message = PortfolioMessage::SelectDocument { document_id: id };
+			dispatcher.queue_editor_message(message.into());
+		}
+		DesktopWrapperMessage::LoadPreferences { preferences } => {
+			let message = PreferencesMessage::Load { preferences };
 			dispatcher.queue_editor_message(message.into());
 		}
 	}
