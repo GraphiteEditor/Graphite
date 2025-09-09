@@ -9,6 +9,7 @@ use graphene_core::color::Color;
 use graphene_core::gradient::GradientStops;
 use graphene_core::gradient::GradientType;
 use graphene_core::math::quad::Quad;
+use graphene_core::node_graph_overlay::consts::BEZ_PATH_TOLERANCE;
 use graphene_core::raster::BitmapMut;
 use graphene_core::raster::Image;
 use graphene_core::raster_types::{CPU, GPU, Raster};
@@ -23,6 +24,8 @@ use graphene_core::vector::click_target::{ClickTarget, FreePoint};
 use graphene_core::vector::style::{Fill, PaintOrder, Stroke, StrokeAlign, ViewMode};
 use graphene_core::{Artboard, Graphic};
 use kurbo::Affine;
+use kurbo::Rect;
+use kurbo::Shape;
 use num_traits::Zero;
 use skrifa::MetadataProvider;
 use skrifa::attribute::Style;
@@ -247,6 +250,8 @@ pub trait Render: BoundingBox + RenderComplexity {
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams);
 
+	fn to_graphic(self) -> Graphic;
+
 	/// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection.
 	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
 
@@ -286,6 +291,17 @@ impl Render for Graphic {
 			Graphic::Color(table) => table.render_to_vello(scene, transform, context, render_params),
 			Graphic::Gradient(table) => table.render_to_vello(scene, transform, context, render_params),
 			Graphic::Typography(table) => table.render_to_vello(scene, transform, context, render_params),
+		}
+	}
+
+	fn to_graphic(self) -> Graphic {
+		match self {
+			Graphic::Graphic(table) => table.to_graphic(),
+			Graphic::Vector(table) => table.to_graphic(),
+			Graphic::RasterCPU(table) => table.to_graphic(),
+			Graphic::RasterGPU(table) => table.to_graphic(),
+			Graphic::Color(table) => table.to_graphic(),
+			Graphic::Gradient(table) => table.to_graphic(),
 		}
 	}
 
@@ -467,6 +483,23 @@ impl Render for Artboard {
 		}
 	}
 
+	fn to_graphic(self) -> Graphic {
+		let bg = Rect::new(
+			self.location.x as f64,
+			self.location.y as f64,
+			self.location.x as f64 + self.dimensions.x as f64,
+			self.location.y as f64 + self.dimensions.y as f64,
+		);
+		let mut bg_vector = Vector::from_bezpath(bg.to_path(BEZ_PATH_TOLERANCE));
+		bg_vector.style.fill = Fill::Solid(self.background);
+		let mut graphic_table = Table::new();
+		graphic_table.push(TableRow::new_from_element(Graphic::Graphic(Table::new_from_element(Graphic::Vector(Table::new_from_element(
+			bg_vector,
+		))))));
+		graphic_table.push(TableRow::new_from_element(Graphic::Graphic(self.content)));
+		Graphic::Graphic(graphic_table)
+	}
+
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
@@ -505,6 +538,20 @@ impl Render for Table<Artboard> {
 		}
 	}
 
+	fn to_graphic(self) -> Graphic {
+		let mut graphic_table = Table::new();
+		for item in self.into_iter() {
+			let graphic = item.element.to_graphic();
+			let graphic_row = TableRow {
+				element: graphic,
+				transform: item.transform,
+				alpha_blending: item.alpha_blending,
+				source_node_id: item.source_node_id,
+			};
+			graphic_table.push(graphic_row);
+		}
+		Graphic::Graphic(graphic_table)
+	}
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
 		for row in self.iter() {
 			row.element.collect_metadata(metadata, footprint, *row.source_node_id);
@@ -641,6 +688,10 @@ impl Render for Table<Graphic> {
 				scene.pop_layer();
 			}
 		}
+	}
+
+	fn to_graphic(self) -> Graphic {
+		Graphic::Graphic(self)
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
@@ -1141,6 +1192,10 @@ impl Render for Table<Vector> {
 		}
 	}
 
+	fn to_graphic(self) -> Graphic {
+		Graphic::Vector(self)
+	}
+
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for row in self.iter() {
 			let stroke_width = row.element.style.stroke().as_ref().map_or(0., Stroke::effective_width);
@@ -1318,6 +1373,10 @@ impl Render for Table<Raster<CPU>> {
 		}
 	}
 
+	fn to_graphic(self) -> Graphic {
+		Graphic::RasterCPU(self)
+	}
+
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 		click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
@@ -1362,6 +1421,10 @@ impl Render for Table<Raster<GPU>> {
 				scene.pop_layer()
 			}
 		}
+	}
+
+	fn to_graphic(self) -> Graphic {
+		Graphic::RasterGPU(self)
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
@@ -1443,6 +1506,10 @@ impl Render for Table<Color> {
 				scene.pop_layer();
 			}
 		}
+	}
+
+	fn to_graphic(self) -> Graphic {
+		Graphic::Color(self)
 	}
 }
 
@@ -1543,6 +1610,10 @@ impl Render for Table<GradientStops> {
 				scene.pop_layer();
 			}
 		}
+	}
+
+	fn to_graphic(self) -> Graphic {
+		Graphic::Gradient(self)
 	}
 }
 

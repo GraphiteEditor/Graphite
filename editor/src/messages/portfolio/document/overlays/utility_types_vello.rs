@@ -1022,8 +1022,7 @@ impl OverlayContextInternal {
 			align: TextAlign::Left,
 		};
 
-		const FONT_DATA: &[u8] = SOURCE_SANS_FONT_DATA;
-		let font_blob = Some(load_font(FONT_DATA));
+		let font_blob = Some(load_font(SOURCE_SANS_FONT_DATA));
 
 		// Convert text to paths and calculate actual bounds
 		let text_table = to_path(text, font_blob, typesetting, false);

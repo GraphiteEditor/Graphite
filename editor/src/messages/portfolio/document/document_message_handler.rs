@@ -1,5 +1,4 @@
 use super::node_graph::document_node_definitions;
-use super::node_graph::utility_types::Transform;
 use super::overlays::utility_types::Pivot;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
@@ -31,6 +30,7 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
+use graphene_std::node_graph_overlay::types::NodeGraphTransform;
 use graphene_std::path_bool::{boolean_intersect, path_bool_lib};
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Raster;
@@ -119,10 +119,10 @@ pub struct DocumentMessageHandler {
 	pub(crate) path: Option<PathBuf>,
 	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
 	#[serde(skip)]
-	breadcrumb_network_path: Vec<NodeId>,
+	pub breadcrumb_network_path: Vec<NodeId>,
 	/// Path to network that is currently selected. Updated based on the most recently clicked panel.
 	#[serde(skip)]
-	selection_network_path: Vec<NodeId>,
+	pub selection_network_path: Vec<NodeId>,
 	/// Stack of document network snapshots for previous history states.
 	#[serde(skip)]
 	document_undo_history: VecDeque<NodeNetworkInterface>,
@@ -477,7 +477,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::UnloadWires);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
-				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
 			DocumentMessage::Escape => {
 				if self.node_graph_handler.drag_start.is_some() {
@@ -507,7 +506,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::UnloadWires);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::PTZUpdate);
-				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
 			DocumentMessage::FlipSelectedLayers { flip_axis } => {
 				let scale = match flip_axis {
@@ -574,7 +572,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(ToolMessage::DeactivateTools);
 					responses.add(OverlaysMessage::Draw); // Clear the overlays
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
-					responses.add(NodeGraphMessage::SetGridAlignedEdges);
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 					responses.add(NodeGraphMessage::UpdateHints);
 				} else {
@@ -1495,12 +1492,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
-					responses.add(NodeGraphMessage::UpdateEdges);
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
 					responses.add(NodeGraphMessage::UpdateImportsExports);
-
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
-						transform: Transform {
+						transform: NodeGraphTransform {
 							scale: transform.matrix2.x_axis.x,
 							x: transform.translation.x,
 							y: transform.translation.y,
@@ -1947,10 +1942,6 @@ impl DocumentMessageHandler {
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
-
-		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
-		responses.add(NodeGraphMessage::UnloadWires);
-		responses.add(NodeGraphMessage::SetGridAlignedEdges);
 
 		Some(previous_network)
 	}

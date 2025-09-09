@@ -1,14 +1,19 @@
 use glam::{DVec2, IVec2};
 use graph_craft::proto::GraphErrors;
-use graphene_std::uuid::NodeId;
+use graphene_std::{
+	node_graph_overlay::types::{
+		FrontendExport, FrontendExports, FrontendGraphInput, FrontendGraphOutput, FrontendImport, FrontendLayer, FrontendNode, FrontendNodeMetadata, FrontendNodeOrLayer, FrontendNodeToRender,
+		FrontendXY,
+	},
+	uuid::NodeId,
+};
+use kurbo::BezPath;
 
 use crate::{
 	consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP},
-	messages::portfolio::document::{
-		node_graph::utility_types::{
-			FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput, FrontendLayer, FrontendNode, FrontendNodeMetadata, FrontendNodeOrLayer, FrontendNodeToRender, FrontendXY,
-		},
-		utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, OutputConnector},
+	messages::portfolio::document::utility_types::{
+		network_interface::{FlowType, InputConnector, NodeNetworkInterface, OutputConnector, Previewing},
+		wires::{GraphWireStyle, build_vector_wire},
 	},
 };
 
@@ -85,21 +90,46 @@ impl NodeNetworkInterface {
 
 					let position = FrontendXY { x: position.x, y: position.y };
 
-					let inputs = (0..self.number_of_inputs(&node_id, network_path))
-						.map(|input_index| self.frontend_input_from_connector(&InputConnector::node(node_id, input_index), network_path))
+					let primary_input = self.frontend_input_from_connector(&InputConnector::node(node_id, 0), network_path);
+					let secondary_inputs = (1..self.number_of_inputs(&node_id, network_path))
+						.filter_map(|input_index| self.frontend_input_from_connector(&InputConnector::node(node_id, input_index), network_path))
 						.collect();
 
-					let outputs = (0..self.number_of_outputs(&node_id, network_path))
-						.map(|output_index| self.frontend_output_from_connector(&OutputConnector::node(node_id, output_index), network_path))
+					let primary_output = self.frontend_output_from_connector(&OutputConnector::node(node_id, 0), network_path);
+					let secondary_outputs = (1..self.number_of_outputs(&node_id, network_path))
+						.filter_map(|output_index| self.frontend_output_from_connector(&OutputConnector::node(node_id, output_index), network_path))
 						.collect();
 
-					let node = Some(FrontendNode { position, inputs, outputs });
+					let node = Some(FrontendNode {
+						position,
+						primary_input,
+						primary_output,
+						secondary_inputs,
+						secondary_outputs,
+					});
 
 					FrontendNodeOrLayer { node, layer: None }
 				}
 			};
 
-			let frontend_node_to_render = FrontendNodeToRender { metadata, node_or_layer };
+			let wires = (0..self.number_of_displayed_inputs(&node_id, network_path))
+				.filter_map(|input_index| {
+					self.wire_from_input(&InputConnector::node(node_id, input_index), wire_style, network_path)
+						.filter(|_| {
+							self.upstream_output_connector(&InputConnector::node(node_id, input_index), network_path)
+								.is_some_and(|output| !matches!(output, OutputConnector::Import(_)))
+						})
+						.map(|wire| {
+							(
+								wire,
+								self.wire_is_thick(&InputConnector::node(node_id, input_index), network_path),
+								self.input_type(&InputConnector::node(node_id, input_index), network_path).displayed_type(),
+							)
+						})
+				})
+				.collect();
+
+			let frontend_node_to_render = FrontendNodeToRender { metadata, node_or_layer, wires };
 
 			nodes.push(frontend_node_to_render);
 		}
@@ -113,7 +143,7 @@ impl NodeNetworkInterface {
 			return None;
 		}
 		let input_type = self.input_type(input_connector, network_path);
-		let data_type = FrontendGraphDataType::displayed_type(&input_type);
+		let data_type = input_type.displayed_type();
 		let resolved_type = input_type.resolved_type_name();
 
 		let connected_to = self
@@ -216,7 +246,7 @@ impl NodeNetworkInterface {
 				(import_name, description)
 			}
 		};
-		let data_type = FrontendGraphDataType::displayed_type(&output_type);
+		let data_type = output_type.displayed_type();
 		let resolved_type = output_type.resolved_type_name();
 		let mut connected_to = self
 			.outward_wires(network_path)
@@ -344,7 +374,8 @@ impl NodeNetworkInterface {
 		if frontend_exports.is_empty() {
 			frontend_exports.push(None);
 		}
-		frontend_exports
+		let preview_wire = self.wire_to_root(graph_wire_style, network_path).map(|wire| wire.to_svg());
+		FrontendExports { exports, preview_wire }
 	}
 
 	pub fn import_export_position(&mut self, network_path: &[NodeId]) -> Option<(IVec2, IVec2)> {
@@ -423,5 +454,61 @@ impl NodeNetworkInterface {
 		let rounded_export_top_right = DVec2::new((export_top_right.x / 24.).round() * 24., (export_top_right.y / 24.).round() * 24.);
 
 		Some((rounded_import_top_left.as_ivec2(), rounded_export_top_right.as_ivec2()))
+	}
+
+	pub fn wire_is_thick(&self, input: &InputConnector, network_path: &[NodeId]) -> bool {
+		let Some(upstream_output) = self.upstream_output_connector(input, network_path) else {
+			return false;
+		};
+		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
+		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
+		vertical_end && vertical_start
+	}
+
+	/// Returns the vector subpath and a boolean of whether the wire should be thick.
+	pub fn wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<BezPath> {
+		let Some(input_position) = self.get_input_center(input, network_path) else {
+			log::error!("Could not get dom rect for wire end: {input:?}");
+			return None;
+		};
+		// An upstream output could not be found
+		let Some(upstream_output) = self.upstream_output_connector(input, network_path) else {
+			return None;
+		};
+		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
+			log::error!("Could not get output port for wire start: {:?}", upstream_output);
+			return None;
+		};
+		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
+		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
+		Some(build_vector_wire(output_position, input_position, vertical_start, vertical_end, wire_style))
+	}
+
+	/// When previewing, there may be a second path to the root node.
+	pub fn wire_to_root(&mut self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<BezPath> {
+		let input = InputConnector::Export(0);
+		let current_export = self.upstream_output_connector(&input, network_path)?;
+
+		let root_node = match self.previewing(network_path) {
+			Previewing::Yes { root_node_to_restore } => root_node_to_restore,
+			Previewing::No => None,
+		}?;
+
+		if Some(root_node.node_id) == current_export.node_id() {
+			return None;
+		}
+		let Some(input_position) = self.get_input_center(&input, network_path) else {
+			log::error!("Could not get input position for wire end in root node: {input:?}");
+			return None;
+		};
+		let upstream_output = OutputConnector::node(root_node.node_id, root_node.output_index);
+		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
+			log::error!("Could not get output position for wire start in root node: {upstream_output:?}");
+			return None;
+		};
+		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
+		let vector_wire = build_vector_wire(output_position, input_position, vertical_start, false, graph_wire_style);
+
+		Some(vector_wire)
 	}
 }

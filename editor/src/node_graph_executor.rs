@@ -29,10 +29,16 @@ pub struct ExecutionRequest {
 pub struct ExecutionResponse {
 	execution_id: u64,
 	result: Result<TaggedValue, String>,
-	responses: VecDeque<FrontendMessage>,
+	execution_responses: Vec<ExecutionResponseMessage>,
 	vector_modify: HashMap<NodeId, Vector>,
+}
+
+pub enum ExecutionResponseMessage {
 	/// The resulting value from the temporary inspected during execution
-	inspect_result: Option<InspectResult>,
+	InspectResult(Option<InspectResult>),
+	UpdateNodeGraphThumbnail(NodeId, Graphic),
+	UpdateFrontendThumbnail(NodeId, String),
+	SendGraph,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -115,10 +121,17 @@ impl NodeGraphExecutor {
 
 	/// Update the cached network if necessary.
 	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, node_to_inspect: Option<NodeId>, ignore_hash: bool) -> Result<(), String> {
-		let network_hash = document.network_interface.document_network().current_hash();
+		let mut network = document.network_interface.document_network().clone();
+		if let Some(mut node_graph_overlay_node) = document.node_graph_handler.node_graph_overlay.clone() {
+			let node_graph_overlay_id = NodeId::new();
+			let new_export = NodeInput::node(node_graph_overlay_id, 0);
+			let old_export = std::mem::replace(&mut network.exports[0], new_export);
+			node_graph_overlay_node.inputs[0] = old_export;
+			network.nodes.insert(node_graph_overlay_id, node_graph_overlay_node);
+		}
+		let network_hash = network.current_hash();
 		// Refresh the graph when it changes or the inspect node changes
 		if network_hash != self.node_graph_hash || self.previous_node_to_inspect != node_to_inspect || ignore_hash {
-			let network = document.network_interface.document_network().clone();
 			self.previous_node_to_inspect = node_to_inspect;
 			self.node_graph_hash = network_hash;
 
@@ -253,11 +266,24 @@ impl NodeGraphExecutor {
 					let ExecutionResponse {
 						execution_id,
 						result,
-						responses: existing_responses,
+						execution_responses,
 						vector_modify,
-						inspect_result,
 					} = execution_response;
-
+					for execution_response in execution_responses {
+						match execution_response {
+							ExecutionResponseMessage::InspectResult(inspect_result) => {
+								// Update the Data panel on the frontend using the value of the inspect result.
+								if let Some(inspect_result) = (self.previous_node_to_inspect.is_some()).then_some(inspect_result).flatten() {
+									responses.add(DataPanelMessage::UpdateLayout { inspect_result });
+								} else {
+									responses.add(DataPanelMessage::ClearLayout);
+								}
+							}
+							ExecutionResponseMessage::UpdateNodeGraphThumbnail(node_id, graphic) => responses.add(NodeGraphMessage::UpdateThumbnail { node_id, graphic }),
+							ExecutionResponseMessage::UpdateFrontendThumbnail(node_id, string) => responses.add(FrontendMessage::UpdateNodeThumbnail { id: node_id, value: string }),
+							ExecutionResponseMessage::SendGraph => responses.add(NodeGraphMessage::SendGraph),
+						}
+					}
 					responses.add(OverlaysMessage::Draw);
 
 					let node_graph_output = match result {
@@ -270,7 +296,6 @@ impl NodeGraphExecutor {
 						}
 					};
 
-					responses.extend(existing_responses.into_iter().map(Into::into));
 					document.network_interface.update_vector_modify(vector_modify);
 
 					let execution_context = self.futures.remove(&execution_id).ok_or_else(|| "Invalid generation ID".to_string())?;
@@ -284,13 +309,6 @@ impl NodeGraphExecutor {
 						execution_id,
 						document_id: execution_context.document_id,
 					});
-
-					// Update the Data panel on the frontend using the value of the inspect result.
-					if let Some(inspect_result) = (self.previous_node_to_inspect.is_some()).then_some(inspect_result).flatten() {
-						responses.add(DataPanelMessage::UpdateLayout { inspect_result });
-					} else {
-						responses.add(DataPanelMessage::ClearLayout);
-					}
 				}
 				NodeGraphUpdate::CompilationResponse(execution_response) => {
 					let CompilationResponse { node_graph_errors, result } = execution_response;

@@ -1,7 +1,7 @@
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier, NodeRelations};
 use super::misc::PTZ;
 use super::nodes::SelectedNodes;
-use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP};
+use crate::consts::GRID_SIZE;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DocumentNodeDefinition, resolve_document_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType};
@@ -1653,68 +1653,6 @@ impl NodeNetworkInterface {
 		network_metadata.transient_metadata.modify_import_export.unload();
 	}
 
-	pub fn rounded_network_edge_distance(&mut self, network_path: &[NodeId]) -> Option<&NetworkEdgeDistance> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in rounded_network_edge_distance");
-			return None;
-		};
-		if !network_metadata.transient_metadata.rounded_network_edge_distance.is_loaded() {
-			self.load_rounded_network_edge_distance(network_path);
-		}
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in rounded_network_edge_distance");
-			return None;
-		};
-		let TransientMetadata::Loaded(rounded_network_edge_distance) = &network_metadata.transient_metadata.rounded_network_edge_distance else {
-			log::error!("could not load import rounded_network_edge_distance");
-			return None;
-		};
-		Some(rounded_network_edge_distance)
-	}
-
-	fn load_rounded_network_edge_distance(&mut self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network in set_grid_aligned_edges");
-			return;
-		};
-		// When setting the edges to be grid aligned, update the pixel offset to ensure the next pan starts from the snapped import/export position
-		let node_graph_to_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport;
-		// TODO: Eventually replace node graph top right with the footprint when trying to get the network edge distance
-		let node_graph_top_right = network_metadata.persistent_metadata.navigation_metadata.node_graph_top_right;
-		let target_exports_distance = node_graph_to_viewport.inverse().transform_point2(DVec2::new(
-			node_graph_top_right.x - EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP as f64,
-			node_graph_top_right.y + EXPORTS_TO_TOP_EDGE_PIXEL_GAP as f64,
-		));
-
-		let target_imports_distance = node_graph_to_viewport
-			.inverse()
-			.transform_point2(DVec2::new(IMPORTS_TO_LEFT_EDGE_PIXEL_GAP as f64, IMPORTS_TO_TOP_EDGE_PIXEL_GAP as f64));
-
-		let rounded_exports_distance = DVec2::new((target_exports_distance.x / 24. + 0.5).floor() * 24., (target_exports_distance.y / 24. + 0.5).floor() * 24.);
-		let rounded_imports_distance = DVec2::new((target_imports_distance.x / 24. + 0.5).floor() * 24., (target_imports_distance.y / 24. + 0.5).floor() * 24.);
-
-		let rounded_viewport_exports_distance = node_graph_to_viewport.transform_point2(rounded_exports_distance);
-		let rounded_viewport_imports_distance = node_graph_to_viewport.transform_point2(rounded_imports_distance);
-
-		let network_edge_distance = NetworkEdgeDistance {
-			exports_to_edge_distance: rounded_viewport_exports_distance,
-			imports_to_edge_distance: rounded_viewport_imports_distance,
-		};
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get current network in load_export_ports");
-			return;
-		};
-		network_metadata.transient_metadata.rounded_network_edge_distance = TransientMetadata::Loaded(network_edge_distance);
-	}
-
-	fn unload_rounded_network_edge_distance(&mut self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in unload_export_ports");
-			return;
-		};
-		network_metadata.transient_metadata.rounded_network_edge_distance.unload();
-	}
-
 	fn owned_nodes(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&HashSet<NodeId>> {
 		let layer_node = self.node_metadata(node_id, network_path)?;
 		let NodeTypePersistentMetadata::Layer(LayerPersistentMetadata { owned_nodes, .. }) = &layer_node.persistent_metadata.node_type_metadata else {
@@ -2561,33 +2499,6 @@ impl NodeNetworkInterface {
 		let rect = Subpath::<PointId>::new_rect(bounds[0], bounds[1]);
 		let all_nodes_bounding_box = rect.to_bezpath().to_svg();
 
-		let Some(rounded_network_edge_distance) = self.rounded_network_edge_distance(network_path).cloned() else {
-			log::error!("Could not get rounded_network_edge_distance in collect_frontend_click_targets");
-			return FrontendClickTargets::default();
-		};
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in collect_frontend_click_targets");
-			return FrontendClickTargets::default();
-		};
-		let import_exports_viewport_top_left = rounded_network_edge_distance.imports_to_edge_distance;
-		let import_exports_viewport_bottom_right = rounded_network_edge_distance.exports_to_edge_distance;
-
-		let node_graph_top_left = network_metadata
-			.persistent_metadata
-			.navigation_metadata
-			.node_graph_to_viewport
-			.inverse()
-			.transform_point2(import_exports_viewport_top_left);
-		let node_graph_bottom_right = network_metadata
-			.persistent_metadata
-			.navigation_metadata
-			.node_graph_to_viewport
-			.inverse()
-			.transform_point2(import_exports_viewport_bottom_right);
-
-		let import_exports_target = Subpath::<PointId>::new_rect(node_graph_top_left, node_graph_bottom_right);
-		let import_exports_bounding_box = import_exports_target.to_bezpath().to_svg();
-
 		let mut modify_import_export = Vec::new();
 		if let Some(modify_import_export_click_targets) = self.modify_import_export(network_path) {
 			for click_target in modify_import_export_click_targets
@@ -2606,7 +2517,6 @@ impl NodeNetworkInterface {
 			connector_click_targets,
 			icon_click_targets,
 			all_nodes_bounding_box,
-			import_exports_bounding_box,
 			modify_import_export,
 		}
 	}
@@ -2853,26 +2763,6 @@ impl NodeNetworkInterface {
 		bounding_box_subpath.bounding_box_with_transform(network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport)
 	}
 
-	// TODO: Remove and get layer click targets from render output
-	pub fn collect_layer_widths(&mut self, network_path: &[NodeId]) -> HashMap<NodeId, u32> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in collect_layer_widths");
-			return HashMap::new();
-		};
-		let nodes = network_metadata
-			.persistent_metadata
-			.node_metadata
-			.iter()
-			.filter_map(|(node_id, _)| if self.is_layer(node_id, network_path) { Some(*node_id) } else { None })
-			.collect::<Vec<_>>();
-		let layer_widths = nodes
-			.iter()
-			.filter_map(|node_id| self.layer_width(node_id, network_path).map(|layer_width| (*node_id, layer_width)))
-			.collect::<HashMap<NodeId, u32>>();
-
-		layer_widths
-	}
-
 	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<Vector> {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
 
@@ -3043,18 +2933,6 @@ impl NodeNetworkInterface {
 			return;
 		};
 		network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport = transform;
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
-	}
-
-	// This should be run whenever the pan ends, a zoom occurs, or the network is opened
-	pub fn set_grid_aligned_edges(&mut self, node_graph_top_right: DVec2, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in set_grid_aligned_edges");
-			return;
-		};
-		network_metadata.persistent_metadata.navigation_metadata.node_graph_top_right = node_graph_top_right;
-		self.unload_rounded_network_edge_distance(network_path);
 		self.unload_import_export_ports(network_path);
 		self.unload_modify_import_export(network_path);
 	}
@@ -5562,7 +5440,7 @@ impl InputConnector {
 }
 
 /// Represents an output connector
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum OutputConnector {
 	#[serde(rename = "node")]
 	Node {
@@ -5846,11 +5724,6 @@ pub struct NodeNetworkTransientMetadata {
 	pub import_export_ports: TransientMetadata<Ports>,
 	/// Click targets for adding, removing, and moving import/export ports
 	pub modify_import_export: TransientMetadata<ModifyImportExportClickTarget>,
-	// Distance to the edges of the network, where the import/export ports are displayed. Rounded to nearest grid space when the panning ends.
-	pub rounded_network_edge_distance: TransientMetadata<NetworkEdgeDistance>,
-
-	// Wires from the exports
-	pub wires: Vec<TransientMetadata<WirePathUpdate>>,
 }
 
 #[derive(Debug, Clone)]
