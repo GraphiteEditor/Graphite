@@ -10,10 +10,6 @@ fn main() {
 	println!("cargo:rerun-if-env-changed=GRAPHITE_GIT_COMMIT_BRANCH");
 	println!("cargo:rerun-if-env-changed=GITHUB_HEAD_REF");
 
-	// Instruct Cargo to rerun this build script if the Git HEAD or refs change.
-	println!("cargo:rerun-if-changed=.git/HEAD");
-	println!("cargo:rerun-if-changed=.git/refs/heads");
-
 	// Try to get the commit information from the environment (e.g. set by CI), otherwise fall back to Git commands.
 	let commit_date = env_or_else("GRAPHITE_GIT_COMMIT_DATE", || git_or_unknown(&["log", "-1", "--format=%cI"]));
 	let commit_hash = env_or_else("GRAPHITE_GIT_COMMIT_HASH", || git_or_unknown(&["rev-parse", "HEAD"]));
