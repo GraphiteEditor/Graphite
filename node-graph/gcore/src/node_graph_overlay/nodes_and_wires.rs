@@ -162,13 +162,7 @@ pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 				}
 			}
 
-			// for text_row in node_text.iter_mut() {
-			// 	text_row.element.style.fill = Fill::Solid(Color::WHITE);
-			// }
-
 			let node_text_row = TableRow::new_from_element(Graphic::Vector(node_text));
-			// node_text_row.transform.left_apply_transform(&DAffine2::from_translation(DVec2::new(x + 8., y + 8.)));
-			// log::debug!("node_text_row {:?}", node_text_row.transform);
 			node_table.push(node_text_row);
 
 			// Add black clipping path to view text in node
@@ -193,12 +187,12 @@ pub fn draw_nodes(nodes: &Vec<FrontendNodeToRender>) -> Table<Graphic> {
 				ports_table.push(row);
 			}
 			if let Some(primary_output) = &frontend_node.primary_output {
-				let mut row = port_row(&primary_output.data_type, true);
+				let mut row = port_row(&primary_output.data_type, primary_output.connected);
 				row.transform = DAffine2::from_translation(DVec2::new(5. * GRID_SIZE, 12.));
 				ports_table.push(row);
 			}
 			for (index, secondary_output) in frontend_node.secondary_outputs.iter().enumerate() {
-				let mut row = port_row(&secondary_output.data_type, true);
+				let mut row = port_row(&secondary_output.data_type, secondary_output.connected);
 				row.transform = DAffine2::from_translation(DVec2::new(5. * GRID_SIZE, 12. + GRID_SIZE * (index + 1) as f64));
 				ports_table.push(row);
 			}
@@ -345,7 +339,12 @@ pub fn draw_layers(nodes: &mut NodeGraphOverlayData) -> (Table<Graphic>, Table<G
 			}
 			let top_port = BezPath::from_svg("M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z").unwrap();
 			let mut vector = Vector::from_bezpath(top_port);
-			vector.style.fill = Fill::Solid(frontend_layer.output.data_type.data_color());
+			vector.style.fill = if frontend_layer.output.connected {
+				Fill::Solid(frontend_layer.output.data_type.data_color())
+			} else {
+				Fill::Solid(frontend_layer.output.data_type.data_color_dim())
+			};
+
 			let mut top_port = TableRow::new_from_element(vector);
 			top_port.transform = DAffine2::from_translation(DVec2::new(frontend_layer.position.x as f64 * 24. + GRID_SIZE * 2. - 4., layer_position.y - 12.));
 			ports_table.push(top_port);

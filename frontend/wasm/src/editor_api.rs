@@ -5,11 +5,8 @@
 // on the dispatcher messaging system and more complex Rust data types.
 //
 use crate::helpers::translate_key;
-#[cfg(not(feature = "native"))]
-use crate::wasm_node_graph_ui_executor::WasmNodeGraphUIExecutor;
-use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER, WASM_NODE_GRAPH_EXECUTOR};
+use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
 use editor::consts::FILE_EXTENSION;
-use editor::dispatcher::EditorOutput;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -175,11 +172,7 @@ impl EditorHandle {
 	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
 		let editor = Editor::new();
 		let editor_handle = EditorHandle { frontend_message_handler_callback };
-		let node_graph_executor = WasmNodeGraphUIExecutor::new();
 		if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
-			log::error!("Attempted to initialize the editor more than once");
-		}
-		if WASM_NODE_GRAPH_EXECUTOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(node_graph_executor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
 		}
 		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
@@ -202,12 +195,28 @@ impl EditorHandle {
 	#[cfg(not(feature = "native"))]
 	fn dispatch<T: Into<Message>>(&self, message: T) {
 		// Process no further messages after a crash to avoid spamming the console
+
+		use crate::MESSAGE_BUFFER;
 		if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 			return;
 		}
-		let _ = editor(|editor| {
-			self.process_messages(std::iter::once(message.into()), editor);
+
+		// Get the editor, dispatch the message, and store the `FrontendMessage` queue response
+		let frontend_messages = EDITOR.with(|editor| {
+			let mut guard = editor.try_lock();
+			let Ok(Some(editor)) = guard.as_deref_mut() else {
+				// Enqueue messages which can't be procssed currently
+				MESSAGE_BUFFER.with_borrow_mut(|buffer| buffer.push(message.into()));
+				return vec![];
+			};
+
+			editor.handle_message(message)
 		});
+
+		// Send each `FrontendMessage` to the JavaScript frontend
+		for message in frontend_messages.into_iter() {
+			self.send_frontend_message_to_js(message);
+		}
 	}
 
 	#[cfg(feature = "native")]
@@ -218,37 +227,6 @@ impl EditorHandle {
 			return;
 		};
 		crate::native_communcation::send_message_to_cef(serialized_message)
-	}
-
-	// Messages can come from the runtime, browser, or a timed callback. This processes them in the editor and does all the side effects
-	// Like updating the frontend and node graph ui network. Some side effects are deduplicated and produce other side effects.
-	fn process_messages(&self, messages: impl IntoIterator<Item = Message>, editor_param: &mut Editor) {
-		// Get the editor, dispatch the message, and store the `FrontendMessage` queue response
-		for output in messages.into_iter().flat_map(|message| editor_param.handle_message(message)).collect::<Vec<_>>() {
-			match output {
-				EditorOutput::RequestNativeNodeGraphRender { compilation_request } => {
-					let res = executor(|executor| executor.compilation_request(compilation_request));
-					if let Err(_) = res {
-						log::error!("Could not borrow executor in process_messages_in_editor");
-					}
-				}
-				EditorOutput::RequestDeferredMessage { message, timeout } => {
-					let callback = Closure::once_into_js(move || {
-						editor_and_handle(|editor, handle| {
-							handle.process_messages(std::iter::once(*message), editor);
-						});
-					});
-
-					window()
-						.unwrap()
-						.set_timeout_with_callback_and_timeout_and_arguments_0(callback.as_ref().unchecked_ref(), timeout.as_millis() as i32)
-						.unwrap();
-				}
-				EditorOutput::FrontendMessage { frontend_message } => {
-					self.send_frontend_message_to_js(frontend_message);
-				}
-			}
-		}
 	}
 
 	// ========================================================================
@@ -280,20 +258,6 @@ impl EditorHandle {
 				#[cfg(not(feature = "native"))]
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
-				// Poll the UI node graph
-				#[cfg(not(feature = "native"))]
-				let result = editor(|editor| {
-					let node_graph_response = executor(|executor| executor.poll_node_graph_ui_evaluation(editor));
-
-					match node_graph_response {
-						Ok(node_graph_ui_messages) => handle(|handle| handle.process_messages(node_graph_ui_messages, editor)),
-						Err(_) => log::error!("Could not get executor in frame loop"),
-					}
-				});
-
-				if let Err(_) = result {
-					log::error!("Could not get editor in frame loop");
-				}
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 					handle(|handle| {
 						// Process all messages that have been queued up
@@ -496,6 +460,7 @@ impl EditorHandle {
 			document_is_saved,
 			document_serialized_content,
 			to_front,
+			select_after_open: false,
 		};
 		self.dispatch(message);
 	}
@@ -1000,49 +965,39 @@ fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
 
 /// Provides access to the `Editor` by calling the given closure with it as an argument.
 #[cfg(not(feature = "native"))]
-fn editor<T>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> Result<T, ()> {
+fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T {
 	EDITOR.with(|editor| {
 		let mut guard = editor.try_lock();
 		let Ok(Some(editor)) = guard.as_deref_mut() else {
-			return Err(());
-		};
-		Ok(callback(editor))
-	})
-}
-
-#[cfg(not(feature = "native"))]
-fn executor<T>(callback: impl FnOnce(&mut WasmNodeGraphUIExecutor) -> T) -> Result<T, ()> {
-	WASM_NODE_GRAPH_EXECUTOR.with(|executor| {
-		let mut guard = executor.try_lock();
-		let Ok(Some(executor)) = guard.as_deref_mut() else {
-			return Err(());
+			log::error!("Failed to borrow editor");
+			return T::default();
 		};
 
-		Ok(callback(executor))
-	})
-}
-
-/// Provides access to the `EditorHandle` by calling the given closure with them as arguments.
-pub(crate) fn handle(callback: impl FnOnce(&mut EditorHandle)) {
-	EDITOR_HANDLE.with(|editor_handle| {
-		let mut guard = editor_handle.try_lock();
-		let Ok(Some(editor_handle)) = guard.as_deref_mut() else {
-			return log::error!("Failed to borrow handle");
-		};
-
-		// Call the closure with the editor and its handle
-		callback(editor_handle)
+		callback(editor)
 	})
 }
 
 /// Provides access to the `Editor` and its `EditorHandle` by calling the given closure with them as arguments.
 #[cfg(not(feature = "native"))]
 pub(crate) fn editor_and_handle(callback: impl FnOnce(&mut Editor, &mut EditorHandle)) {
-	let _ = handle(|editor_handle| {
-		let _ = editor(|editor| {
+	handle(|editor_handle| {
+		editor(|editor| {
 			// Call the closure with the editor and its handle
 			callback(editor, editor_handle);
-		});
+		})
+	});
+}
+/// Provides access to the `EditorHandle` by calling the given closure with them as arguments.
+pub(crate) fn handle(callback: impl FnOnce(&mut EditorHandle)) {
+	EDITOR_HANDLE.with(|editor_handle| {
+		let mut guard = editor_handle.try_lock();
+		let Ok(Some(editor_handle)) = guard.as_deref_mut() else {
+			log::error!("Failed to borrow editor handle");
+			return;
+		};
+
+		// Call the closure with the editor and its handle
+		callback(editor_handle);
 	});
 }
 
@@ -1071,11 +1026,15 @@ async fn poll_node_graph_evaluation() {
 			crate::NODE_GRAPH_ERROR_DISPLAYED.store(false, Ordering::SeqCst);
 		}
 
-		handle.process_messages(messages, editor);
+		// Send each `FrontendMessage` to the JavaScript frontend
+		for response in messages.into_iter().flat_map(|message| editor.handle_message(message)) {
+			handle.send_frontend_message_to_js(response);
+		}
 
 		// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
 	});
 }
+
 fn auto_save_all_documents() {
 	// Process no further messages after a crash to avoid spamming the console
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {

@@ -1,5 +1,5 @@
 use glam::{DVec2, IVec2};
-use graphene_std::vector::misc::dvec2_to_point;
+use graphene_std::{node_graph_overlay::types::FrontendGraphDataType, vector::misc::dvec2_to_point};
 use kurbo::{BezPath, DEFAULT_ACCURACY, Line, Point, Shape};
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]

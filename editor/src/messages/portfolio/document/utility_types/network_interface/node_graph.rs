@@ -1,19 +1,19 @@
 use glam::{DVec2, IVec2};
 use graph_craft::proto::GraphErrors;
-use graphene_std::uuid::NodeId;
+use graphene_std::{
+	node_graph_overlay::types::{
+		FrontendExport, FrontendExports, FrontendGraphInput, FrontendGraphOutput, FrontendImport, FrontendLayer, FrontendNode, FrontendNodeMetadata, FrontendNodeOrLayer, FrontendNodeToRender,
+		FrontendXY,
+	},
+	uuid::NodeId,
+};
 use kurbo::BezPath;
 
 use crate::{
 	consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP},
-	messages::portfolio::document::{
-		node_graph::utility_types::{
-			FrontendExport, FrontendExports, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput, FrontendImport, FrontendLayer, FrontendNode, FrontendNodeMetadata, FrontendNodeOrLayer,
-			FrontendNodeToRender, FrontendXY,
-		},
-		utility_types::{
-			network_interface::{FlowType, InputConnector, NodeNetworkInterface, OutputConnector, Previewing},
-			wires::{GraphWireStyle, build_vector_wire},
-		},
+	messages::portfolio::document::utility_types::{
+		network_interface::{FlowType, InputConnector, NodeNetworkInterface, OutputConnector, Previewing},
+		wires::{GraphWireStyle, build_vector_wire},
 	},
 };
 
@@ -123,7 +123,7 @@ impl NodeNetworkInterface {
 							(
 								wire,
 								self.wire_is_thick(&InputConnector::node(node_id, input_index), network_path),
-								FrontendGraphDataType::displayed_type(&self.input_type(&InputConnector::node(node_id, input_index), network_path)),
+								self.input_type(&InputConnector::node(node_id, input_index), network_path).displayed_type(),
 							)
 						})
 				})
@@ -210,8 +210,12 @@ impl NodeNetworkInterface {
 				}
 			}
 		};
+		let connected = self
+			.outward_wires(network_path)
+			.and_then(|outward_wires| outward_wires.get(output_connector))
+			.is_some_and(|downstream| downstream.len() > 0);
 		let data_type = output_type.displayed_type();
-		Some(FrontendGraphOutput { data_type, name })
+		Some(FrontendGraphOutput { data_type, name, connected })
 	}
 
 	pub fn chain_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> u32 {
@@ -386,19 +390,18 @@ impl NodeNetworkInterface {
 		let import_top_left = DVec2::new(top_left_inner_bound.x.min(bounding_box_top_left.x), top_left_inner_bound.y.min(bounding_box_top_left.y));
 		let rounded_import_top_left = DVec2::new((import_top_left.x / 24.).round() * 24., (import_top_left.y / 24.).round() * 24.);
 
-		let viewport_top_right = network_metadata.persistent_metadata.navigation_metadata.node_graph_top_right;
-		let target_viewport_top_right = DVec2::new(
-			viewport_top_right.x - EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP as f64,
-			viewport_top_right.y + EXPORTS_TO_TOP_EDGE_PIXEL_GAP as f64,
-		);
+		let viewport_width = network_metadata.persistent_metadata.navigation_metadata.node_graph_width;
+
+		let target_viewport_top_right = DVec2::new(viewport_width - EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP as f64, EXPORTS_TO_TOP_EDGE_PIXEL_GAP as f64);
 
 		// An offset from the right edge in viewport pixels
 		let node_graph_pixel_offset_top_right = node_graph_to_viewport.inverse().transform_point2(target_viewport_top_right);
 
 		// A 5x5 grid offset from the right corner
-		let node_graph_grid_space_offset_top_right = node_graph_to_viewport.inverse().transform_point2(viewport_top_right) + DVec2::new(-5. * GRID_SIZE as f64, 4. * GRID_SIZE as f64);
+		let node_graph_grid_space_offset_top_right = node_graph_to_viewport.inverse().transform_point2(DVec2::new(viewport_width, 0.)) + DVec2::new(-5. * GRID_SIZE as f64, 4. * GRID_SIZE as f64);
 
-		// The inner bound of the export is the highest/furthest right of the two offsets
+		// The inner bound of the export is the highest/furthest right of the two offsets.
+		// When zoomed out this keeps it a constant grid space away from the edge, but when zoomed in it prevents the exports from getting too far in
 		let top_right_inner_bound = DVec2::new(
 			node_graph_pixel_offset_top_right.x.max(node_graph_grid_space_offset_top_right.x),
 			node_graph_pixel_offset_top_right.y.min(node_graph_grid_space_offset_top_right.y),
@@ -561,6 +564,6 @@ impl NodeNetworkInterface {
 			return String::new();
 		};
 
-		format!("{display_name}\nReference: {reference}\n\n{description}")
+		format!("{display_name}\n\nReference: {reference:?}\n\n{description}")
 	}
 }

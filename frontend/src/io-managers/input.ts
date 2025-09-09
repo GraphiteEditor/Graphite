@@ -157,8 +157,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		// TODO: This would allow it to properly decide to act on removing hover focus from something that was hovered in the canvas before moving over the GUI.
 		// TODO: Further explanation: https://github.com/GraphiteEditor/Graphite/pull/623#discussion_r866436197
 		const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
-		const inGraphOverlay = get(document).graphViewOverlayOpen;
-		if (!viewportPointerInteractionOngoing && (inFloatingMenu || inGraphOverlay)) return;
+		if (!viewportPointerInteractionOngoing && inFloatingMenu) return;
 
 		const modifiers = makeKeyboardModifiersBitfield(e);
 		if (detectShake(e)) editor.handle.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);

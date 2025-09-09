@@ -175,10 +175,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "exportIndex")]
 		index: Option<usize>,
 	},
-	UpdateLayerWidths {
-		#[serde(rename = "layerWidths")]
-		layer_widths: HashMap<NodeId, u32>,
-	},
 	UpdateDialogButtons {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
@@ -269,7 +265,6 @@ pub enum FrontendMessage {
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,
 	},
-	RequestNativeNodeGraphRender,
 	UpdateNativeNodeGraphSVG {
 		#[serde(rename = "svgString")]
 		svg_string: String,

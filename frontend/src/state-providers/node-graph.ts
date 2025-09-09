@@ -5,21 +5,21 @@ import {
 	type FrontendSelectionBox,
 	type FrontendClickTargets,
 	type ContextMenuInformation,
-	type FrontendNodeToRender,
 	type FrontendNodeType,
 	type WirePathInProgress,
+	type XY,
 	SendUIMetadata,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
 	UpdateImportReorderIndex,
 	UpdateExportReorderIndex,
 	UpdateImportsExports,
-	UpdateLayerWidths,
 	UpdateNativeNodeGraphSVG,
 	UpdateNodeThumbnail,
 	UpdateWirePathInProgress,
 	UpdateNodeGraphSelectionBox,
 	UpdateNodeGraphTransform,
+	UpdateTooltip,
 } from "@graphite/messages";
 
 export function createNodeGraphState(editor: Editor) {
@@ -37,11 +37,8 @@ export function createNodeGraphState(editor: Editor) {
 		nodeTypes: [] as FrontendNodeType[],
 		nodeDescriptions: new Map<string, string>(),
 
-		// Data that will be moved into the node graph to be rendered natively
-		nodesToRender: new Map<bigint, FrontendNodeToRender>(),
-		opacity: 0.8,
-		inSelectedNetwork: true,
-		previewedNode: undefined as bigint | undefined,
+		tooltipPosition: undefined as XY | undefined,
+		tooltipText: "test",
 
 		// Data that will be passed in the context
 		thumbnails: new Map<bigint, string>(),
@@ -117,7 +114,13 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
-
+	editor.subscriptions.subscribeJsMessage(UpdateTooltip, (updateTooltip) => {
+		update((state) => {
+			state.tooltipPosition = updateTooltip.position;
+			state.tooltipText = updateTooltip.text;
+			return state;
+		});
+	});
 	return {
 		subscribe,
 	};

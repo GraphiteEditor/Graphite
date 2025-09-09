@@ -2675,6 +2675,16 @@ impl NodeNetworkInterface {
 		self.unload_modify_import_export(network_path);
 	}
 
+	pub fn set_node_graph_width(&mut self, node_graph_width: f64, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get nested network in set_transform");
+			return;
+		};
+		network_metadata.persistent_metadata.navigation_metadata.node_graph_width = node_graph_width;
+		self.unload_import_export_ports(network_path);
+		self.unload_modify_import_export(network_path);
+	}
+
 	pub fn vector_modify(&mut self, node_id: &NodeId, modification_type: VectorModificationType) {
 		let Some(node) = self.network_mut(&[]).unwrap().nodes.get_mut(node_id) else {
 			log::error!("Could not get node in vector_modification");
@@ -5853,7 +5863,7 @@ pub enum LayerClickTargetTypes {
 	// Preview,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NavigationMetadata {
 	/// The current pan, and zoom state of the viewport's view of the node graph.
 	/// Ensure `DocumentMessage::UpdateDocumentTransform` is called when the pan, zoom, or transform changes.
@@ -5861,21 +5871,10 @@ pub struct NavigationMetadata {
 	// TODO: Remove and replace with calculate_offset_transform from the node_graph_ptz. This will be difficult since it requires both the navigation message handler and the IPP
 	/// Transform from node graph space to viewport space.
 	pub node_graph_to_viewport: DAffine2,
-	/// Top right of the node graph in viewport space
+	// TODO: Eventually replace with footprint
+	/// The width of the node graph in viewport space
 	#[serde(default)]
-	pub node_graph_top_right: DVec2,
-}
-
-impl Default for NavigationMetadata {
-	fn default() -> NavigationMetadata {
-		// Default PTZ and transform
-		NavigationMetadata {
-			node_graph_ptz: PTZ::default(),
-			node_graph_to_viewport: DAffine2::IDENTITY,
-			// TODO: Eventually replace with footprint
-			node_graph_top_right: DVec2::ZERO,
-		}
-	}
+	pub node_graph_width: f64,
 }
 
 // PartialEq required by message handlers

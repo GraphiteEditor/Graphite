@@ -562,7 +562,7 @@ struct PathToolData {
 	saved_selection_before_handle_drag: HashMap<LayerNodeIdentifier, (HashSet<ManipulatorPointId>, HashSet<SegmentId>)>,
 	handle_drag_toggle: bool,
 	saved_points_before_anchor_convert_smooth_sharp: HashMap<LayerNodeIdentifier, Vec<ManipulatorPointId>>,
-	last_click_time: Instant,
+	last_click_time: u64,
 	dragging_state: DraggingState,
 	angle: f64,
 	pivot_gizmo: PivotGizmo,

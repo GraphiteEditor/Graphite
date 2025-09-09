@@ -299,7 +299,7 @@
 						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 8) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 8) / 24 + index}
 					>
-						{#if frontendOutput.connectedTo.length > 0}
+						{#if frontendOutput.connected}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 						{:else}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />

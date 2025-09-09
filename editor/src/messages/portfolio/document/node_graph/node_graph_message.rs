@@ -3,7 +3,7 @@ use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{ImportOrExport, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::*;
-use glam::IVec2;
+use glam::{DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
@@ -112,6 +112,7 @@ pub enum NodeGraphMessage {
 	PointerOutsideViewport {
 		shift: Key,
 	},
+	UpdateNodeGraphTopRight,
 	ShakeNode,
 	RemoveImport {
 		import_index: usize,
@@ -215,7 +216,9 @@ pub enum NodeGraphMessage {
 	SetLockedOrVisibilitySideEffects {
 		node_ids: Vec<NodeId>,
 	},
-	TryDisplayTooltip,
+	TryDisplayTooltip {
+		initial_position: DVec2,
+	},
 	UpdateBoxSelection,
 	UpdateImportsExports,
 	UpdateLayerPanel,

@@ -181,6 +181,7 @@ pub struct FrontendGraphOutput {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 	pub name: String,
+	pub connected: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]

@@ -302,6 +302,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(table) => table.to_graphic(),
 			Graphic::Color(table) => table.to_graphic(),
 			Graphic::Gradient(table) => table.to_graphic(),
+			Graphic::Typography(table) => table.to_graphic(),
 		}
 	}
 
@@ -1695,6 +1696,10 @@ impl Render for Table<Typography> {
 				}
 			}
 		}
+	}
+
+	fn to_graphic(self) -> Graphic {
+		Graphic::Typography(self)
 	}
 }
 
