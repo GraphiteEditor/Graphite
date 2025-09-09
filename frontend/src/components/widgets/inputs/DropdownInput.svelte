@@ -20,6 +20,7 @@
 	export let drawIcon = false;
 	export let interactive = true;
 	export let disabled = false;
+	export let narrow = false;
 	export let tooltip: string | undefined = undefined;
 	export let minWidth = 0;
 	export let maxWidth = 0;
@@ -86,7 +87,11 @@
 
 <LayoutRow
 	class="dropdown-input"
-	styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}), ...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}) }}
+	classes={{ narrow }}
+	styles={{
+		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
+		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
+	}}
 	bind:this={self}
 	data-dropdown-input
 >
@@ -107,12 +112,12 @@
 	</LayoutRow>
 	<MenuList
 		on:naturalWidth={({ detail }) => (minWidth = detail)}
-		{activeEntry}
 		on:activeEntry={({ detail }) => (activeEntry = detail)}
 		on:hoverInEntry={({ detail }) => dispatchHoverInEntry(detail)}
 		on:hoverOutEntry={() => dispatchHoverOutEntry()}
-		{open}
 		on:open={({ detail }) => (open = detail)}
+		{open}
+		{activeEntry}
 		{entries}
 		{drawIcon}
 		{interactive}
@@ -125,13 +130,18 @@
 <style lang="scss" global>
 	.dropdown-input {
 		position: relative;
+		--widget-height: 24px;
+
+		&.narrow.narrow {
+			--widget-height: 20px;
+		}
 
 		.dropdown-box {
 			align-items: center;
 			white-space: nowrap;
-			background: var(--color-1-nearblack);
-			height: 24px;
 			border-radius: 2px;
+			background: var(--color-1-nearblack);
+			height: var(--widget-height);
 
 			.dropdown-label {
 				margin: 0;

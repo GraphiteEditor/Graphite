@@ -16,7 +16,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster::Image;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::ClickTarget;
-use graphene_std::vector::style::ViewMode;
+use graphene_std::vector::style::RenderMode;
 
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(derivative::Derivative, Clone, serde::Serialize, serde::Deserialize)]
@@ -176,8 +176,8 @@ pub enum DocumentMessage {
 		node_id: NodeId,
 		is_layer: bool,
 	},
-	SetViewMode {
-		view_mode: ViewMode,
+	SetRenderMode {
+		render_mode: RenderMode,
 	},
 	AddTransaction,
 	StartTransaction,
