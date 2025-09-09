@@ -2190,13 +2190,13 @@ fn static_input_properties() -> InputProperties {
 			if let Some(&TaggedValue::F64(val)) = input.as_non_exposed_value() {
 				widgets.extend_from_slice(&[
 					Separator::new(SeparatorType::Unrelated).widget_holder(),
-					NumberInput::new(Some(val.to_degrees()))
+					NumberInput::new(Some(val))
 						.unit("°")
 						.mode(NumberInputMode::Range)
 						.range_min(Some(-180.))
 						.range_max(Some(180.))
 						.on_update(node_properties::update_value(
-							|number_input: &NumberInput| TaggedValue::F64(number_input.value.unwrap().to_radians()),
+							|number_input: &NumberInput| TaggedValue::F64(number_input.value.unwrap()),
 							node_id,
 							index,
 						))
@@ -2219,29 +2219,28 @@ fn static_input_properties() -> InputProperties {
 				return Err("Input not found in transform skew input override".to_string());
 			};
 			if let Some(&TaggedValue::DVec2(val)) = input.as_non_exposed_value() {
-				let to_skew = |input: &NumberInput| input.value.unwrap().to_radians().tan();
 				widgets.extend_from_slice(&[
 					Separator::new(SeparatorType::Unrelated).widget_holder(),
-					NumberInput::new(Some(val.x.atan().to_degrees()))
+					NumberInput::new(Some(val.x))
 						.label("X")
 						.unit("°")
 						.min(-89.9)
 						.max(89.9)
 						.on_update(node_properties::update_value(
-							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(to_skew(input), val.y)),
+							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), val.y)),
 							node_id,
 							index,
 						))
 						.on_commit(node_properties::commit_value)
 						.widget_holder(),
 					Separator::new(SeparatorType::Related).widget_holder(),
-					NumberInput::new(Some(val.y.atan().to_degrees()))
+					NumberInput::new(Some(val.y))
 						.label("Y")
 						.unit("°")
 						.min(-89.9)
 						.max(89.9)
 						.on_update(node_properties::update_value(
-							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(val.x, to_skew(input))),
+							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(val.x, input.value.unwrap())),
 							node_id,
 							index,
 						))
