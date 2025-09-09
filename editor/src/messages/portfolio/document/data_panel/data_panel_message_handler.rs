@@ -195,6 +195,7 @@ trait TableRowLayout {
 	fn element_widget(&self, index: usize) -> WidgetHolder {
 		TextButton::new(self.identifier())
 			.on_update(move |_| DataPanelMessage::PushToElementPath { index }.into())
+			.narrow(true)
 			.widget_holder()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
@@ -227,11 +228,13 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 			.enumerate()
 			.map(|(index, row)| {
 				vec![
-					TextLabel::new(format!("{index}")).widget_holder(),
+					TextLabel::new(format!("{index}")).narrow(true).widget_holder(),
 					row.element.element_widget(index),
-					TextLabel::new(format_transform_matrix(row.transform)).widget_holder(),
-					TextLabel::new(format!("{}", row.alpha_blending)).widget_holder(),
-					TextLabel::new(row.source_node_id.map_or_else(|| "-".to_string(), |id| format!("{}", id.0))).widget_holder(),
+					TextLabel::new(format_transform_matrix(row.transform)).narrow(true).widget_holder(),
+					TextLabel::new(format!("{}", row.alpha_blending)).narrow(true).widget_holder(),
+					TextLabel::new(row.source_node_id.map_or_else(|| "-".to_string(), |id| format!("{}", id.0)))
+						.narrow(true)
+						.widget_holder(),
 				]
 			})
 			.collect::<Vec<_>>();
@@ -315,104 +318,130 @@ impl TableRowLayout for Vector {
 
 				match self.style.fill.clone() {
 					Fill::None => table_rows.push(vec![
-						TextLabel::new("Fill").widget_holder(),
-						ColorInput::new(FillChoice::None).disabled(true).menu_direction(Some(MenuDirection::Top)).widget_holder(),
+						TextLabel::new("Fill").narrow(true).widget_holder(),
+						ColorInput::new(FillChoice::None).disabled(true).menu_direction(Some(MenuDirection::Top)).narrow(true).widget_holder(),
 					]),
 					Fill::Solid(color) => table_rows.push(vec![
-						TextLabel::new("Fill").widget_holder(),
-						ColorInput::new(FillChoice::Solid(color)).disabled(true).menu_direction(Some(MenuDirection::Top)).widget_holder(),
+						TextLabel::new("Fill").narrow(true).widget_holder(),
+						ColorInput::new(FillChoice::Solid(color))
+							.disabled(true)
+							.menu_direction(Some(MenuDirection::Top))
+							.narrow(true)
+							.widget_holder(),
 					]),
 					Fill::Gradient(gradient) => {
 						table_rows.push(vec![
-							TextLabel::new("Fill").widget_holder(),
+							TextLabel::new("Fill").narrow(true).widget_holder(),
 							ColorInput::new(FillChoice::Gradient(gradient.stops))
 								.disabled(true)
 								.menu_direction(Some(MenuDirection::Top))
+								.narrow(true)
 								.widget_holder(),
 						]);
 						table_rows.push(vec![
-							TextLabel::new("Fill Gradient Type").widget_holder(),
-							TextLabel::new(gradient.gradient_type.to_string()).widget_holder(),
+							TextLabel::new("Fill Gradient Type").narrow(true).widget_holder(),
+							TextLabel::new(gradient.gradient_type.to_string()).narrow(true).widget_holder(),
 						]);
 						table_rows.push(vec![
-							TextLabel::new("Fill Gradient Start").widget_holder(),
-							TextLabel::new(format_dvec2(gradient.start)).widget_holder(),
+							TextLabel::new("Fill Gradient Start").narrow(true).widget_holder(),
+							TextLabel::new(format_dvec2(gradient.start)).narrow(true).widget_holder(),
 						]);
-						table_rows.push(vec![TextLabel::new("Fill Gradient End").widget_holder(), TextLabel::new(format_dvec2(gradient.end)).widget_holder()]);
+						table_rows.push(vec![
+							TextLabel::new("Fill Gradient End").narrow(true).widget_holder(),
+							TextLabel::new(format_dvec2(gradient.end)).narrow(true).widget_holder(),
+						]);
 					}
 				}
 
 				if let Some(stroke) = self.style.stroke.clone() {
 					let color = if let Some(color) = stroke.color { FillChoice::Solid(color) } else { FillChoice::None };
 					table_rows.push(vec![
-						TextLabel::new("Stroke").widget_holder(),
-						ColorInput::new(color).disabled(true).menu_direction(Some(MenuDirection::Top)).widget_holder(),
+						TextLabel::new("Stroke").narrow(true).widget_holder(),
+						ColorInput::new(color).disabled(true).menu_direction(Some(MenuDirection::Top)).narrow(true).widget_holder(),
 					]);
-					table_rows.push(vec![TextLabel::new("Stroke Weight").widget_holder(), TextLabel::new(format!("{} px", stroke.weight)).widget_holder()]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Dash Lengths").widget_holder(),
+						TextLabel::new("Stroke Weight").narrow(true).widget_holder(),
+						TextLabel::new(format!("{} px", stroke.weight)).narrow(true).widget_holder(),
+					]);
+					table_rows.push(vec![
+						TextLabel::new("Stroke Dash Lengths").narrow(true).widget_holder(),
 						TextLabel::new(if stroke.dash_lengths.is_empty() {
 							"-".to_string()
 						} else {
 							format!("[{}]", stroke.dash_lengths.iter().map(|x| format!("{x} px")).collect::<Vec<_>>().join(", "))
 						})
+						.narrow(true)
 						.widget_holder(),
 					]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Dash Offset").widget_holder(),
-						TextLabel::new(format!("{}", stroke.dash_offset)).widget_holder(),
-					]);
-					table_rows.push(vec![TextLabel::new("Stroke Cap").widget_holder(), TextLabel::new(stroke.cap.to_string()).widget_holder()]);
-					table_rows.push(vec![TextLabel::new("Stroke Join").widget_holder(), TextLabel::new(stroke.join.to_string()).widget_holder()]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Join Miter Limit").widget_holder(),
-						TextLabel::new(format!("{}", stroke.join_miter_limit)).widget_holder(),
-					]);
-					table_rows.push(vec![TextLabel::new("Stroke Align").widget_holder(), TextLabel::new(stroke.align.to_string()).widget_holder()]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Transform").widget_holder(),
-						TextLabel::new(format_transform_matrix(&stroke.transform)).widget_holder(),
+						TextLabel::new("Stroke Dash Offset").narrow(true).widget_holder(),
+						TextLabel::new(format!("{}", stroke.dash_offset)).narrow(true).widget_holder(),
 					]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Non-Scaling").widget_holder(),
-						TextLabel::new((if stroke.non_scaling { "Yes" } else { "No" }).to_string()).widget_holder(),
+						TextLabel::new("Stroke Cap").narrow(true).widget_holder(),
+						TextLabel::new(stroke.cap.to_string()).narrow(true).widget_holder(),
 					]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Paint Order").widget_holder(),
-						TextLabel::new(stroke.paint_order.to_string()).widget_holder(),
+						TextLabel::new("Stroke Join").narrow(true).widget_holder(),
+						TextLabel::new(stroke.join.to_string()).narrow(true).widget_holder(),
+					]);
+					table_rows.push(vec![
+						TextLabel::new("Stroke Join Miter Limit").narrow(true).widget_holder(),
+						TextLabel::new(format!("{}", stroke.join_miter_limit)).narrow(true).widget_holder(),
+					]);
+					table_rows.push(vec![
+						TextLabel::new("Stroke Align").narrow(true).widget_holder(),
+						TextLabel::new(stroke.align.to_string()).narrow(true).widget_holder(),
+					]);
+					table_rows.push(vec![
+						TextLabel::new("Stroke Transform").narrow(true).widget_holder(),
+						TextLabel::new(format_transform_matrix(&stroke.transform)).narrow(true).widget_holder(),
+					]);
+					table_rows.push(vec![
+						TextLabel::new("Stroke Non-Scaling").narrow(true).widget_holder(),
+						TextLabel::new((if stroke.non_scaling { "Yes" } else { "No" }).to_string()).narrow(true).widget_holder(),
+					]);
+					table_rows.push(vec![
+						TextLabel::new("Stroke Paint Order").narrow(true).widget_holder(),
+						TextLabel::new(stroke.paint_order.to_string()).narrow(true).widget_holder(),
 					]);
 				}
 
 				let colinear = self.colinear_manipulators.iter().map(|[a, b]| format!("[{a} / {b}]")).collect::<Vec<_>>().join(", ");
 				let colinear = if colinear.is_empty() { "-".to_string() } else { colinear };
-				table_rows.push(vec![TextLabel::new("Colinear Handle IDs").widget_holder(), TextLabel::new(colinear).widget_holder()]);
+				table_rows.push(vec![
+					TextLabel::new("Colinear Handle IDs").narrow(true).widget_holder(),
+					TextLabel::new(colinear).narrow(true).widget_holder(),
+				]);
 
 				table_rows.push(vec![
-					TextLabel::new("Upstream Nested Layers").widget_holder(),
+					TextLabel::new("Upstream Nested Layers").narrow(true).widget_holder(),
 					TextLabel::new(if self.upstream_nested_layers.is_some() {
 						"Yes (this preserves references to its upstream nested layers for editing by tools)"
 					} else {
 						"No (this doesn't preserve references to its upstream nested layers for editing by tools)"
 					})
+					.narrow(true)
 					.widget_holder(),
 				]);
 			}
 			VectorTableTab::Points => {
 				table_rows.push(column_headings(&["", "position"]));
-				table_rows.extend(
-					self.point_domain
-						.iter()
-						.map(|(id, position)| vec![TextLabel::new(format!("{}", id.inner())).widget_holder(), TextLabel::new(format!("{position}")).widget_holder()]),
-				);
+				table_rows.extend(self.point_domain.iter().map(|(id, position)| {
+					vec![
+						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_holder(),
+						TextLabel::new(format!("{position}")).narrow(true).widget_holder(),
+					]
+				}));
 			}
 			VectorTableTab::Segments => {
 				table_rows.push(column_headings(&["", "start_index", "end_index", "handles"]));
 				table_rows.extend(self.segment_domain.iter().map(|(id, start, end, handles)| {
 					vec![
-						TextLabel::new(format!("{}", id.inner())).widget_holder(),
-						TextLabel::new(format!("{start}")).widget_holder(),
-						TextLabel::new(format!("{end}")).widget_holder(),
-						TextLabel::new(format!("{handles:?}")).widget_holder(),
+						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_holder(),
+						TextLabel::new(format!("{start}")).narrow(true).widget_holder(),
+						TextLabel::new(format!("{end}")).narrow(true).widget_holder(),
+						TextLabel::new(format!("{handles:?}")).narrow(true).widget_holder(),
 					]
 				}));
 			}
@@ -420,9 +449,9 @@ impl TableRowLayout for Vector {
 				table_rows.push(column_headings(&["", "segment_range", "fill"]));
 				table_rows.extend(self.region_domain.iter().map(|(id, segment_range, fill)| {
 					vec![
-						TextLabel::new(format!("{}", id.inner())).widget_holder(),
-						TextLabel::new(format!("{segment_range:?}")).widget_holder(),
-						TextLabel::new(format!("{}", fill.inner())).widget_holder(),
+						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_holder(),
+						TextLabel::new(format!("{segment_range:?}")).narrow(true).widget_holder(),
+						TextLabel::new(format!("{}", fill.inner())).narrow(true).widget_holder(),
 					]
 				}));
 			}
@@ -477,7 +506,11 @@ impl TableRowLayout for Color {
 		format!("Color (#{})", self.to_gamma_srgb().to_rgba_hex_srgb())
 	}
 	fn element_widget(&self, _index: usize) -> WidgetHolder {
-		ColorInput::new(FillChoice::Solid(*self)).disabled(true).menu_direction(Some(MenuDirection::Top)).widget_holder()
+		ColorInput::new(FillChoice::Solid(*self))
+			.disabled(true)
+			.menu_direction(Some(MenuDirection::Top))
+			.narrow(true)
+			.widget_holder()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![self.element_widget(0)];
@@ -494,8 +527,9 @@ impl TableRowLayout for GradientStops {
 	}
 	fn element_widget(&self, _index: usize) -> WidgetHolder {
 		ColorInput::new(FillChoice::Gradient(self.clone()))
-			.disabled(true)
 			.menu_direction(Some(MenuDirection::Top))
+			.disabled(true)
+			.narrow(true)
 			.widget_holder()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {

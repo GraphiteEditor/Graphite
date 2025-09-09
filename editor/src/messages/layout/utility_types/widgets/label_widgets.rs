@@ -40,6 +40,8 @@ pub enum SeparatorType {
 pub struct TextLabel {
 	pub disabled: bool,
 
+	pub narrow: bool,
+
 	pub bold: bool,
 
 	pub italic: bool,

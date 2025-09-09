@@ -241,9 +241,8 @@ async fn repeat<I: 'n + Send + Clone>(
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn circular_repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	// TODO: Implement other graphical types.
 	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] instance: Table<I>,
-	angle_offset: Angle,
+	start_angle: Angle,
 	#[unit(" px")]
 	#[default(5)]
 	radius: f64,
@@ -254,7 +253,7 @@ async fn circular_repeat<I: 'n + Send + Clone>(
 	let mut result_table = Table::new();
 
 	for index in 0..count {
-		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + angle_offset.to_radians());
+		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + start_angle.to_radians());
 		let translation = DAffine2::from_translation(radius * DVec2::Y);
 		let transform = angle * translation;
 

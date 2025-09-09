@@ -11,6 +11,8 @@
 	export let placeholder: string | undefined = undefined;
 	// Disabled
 	export let disabled = false;
+	// Narrow
+	export let narrow = false;
 	// Value
 	export let value: string;
 	// Styling
@@ -76,6 +78,7 @@
 	spellcheck={true}
 	{label}
 	{disabled}
+	{narrow}
 	{tooltip}
 	{placeholder}
 	bind:this={self}

@@ -158,34 +158,34 @@ impl Polygon {
 		}
 	}
 
-	pub fn increase_decrease_sides(increase: bool, document: &DocumentMessageHandler, shape_tool_data: &mut ShapeToolData, responses: &mut VecDeque<Message>) {
-		if let Some(layer) = shape_tool_data.data.layer {
-			let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface).or(graph_modification_utils::get_star_id(layer, &document.network_interface)) else {
-				return;
-			};
+	/// Updates the number of sides of a polygon or star node and syncs the Shape tool UI widget accordingly.
+	/// Increases or decreases the side count based on user input, clamped to a minimum of 3.
+	pub fn decrease_or_increase_sides(decrease: bool, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface).or(graph_modification_utils::get_star_id(layer, &document.network_interface)) else {
+			return;
+		};
 
-			let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface)
-				.find_node_inputs("Regular Polygon")
-				.or(NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star"))
-			else {
-				return;
-			};
+		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface)
+			.find_node_inputs("Regular Polygon")
+			.or(NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star"))
+		else {
+			return;
+		};
 
-			let Some(&TaggedValue::U32(n)) = node_inputs.get(1).unwrap().as_value() else {
-				return;
-			};
+		let Some(&TaggedValue::U32(n)) = node_inputs.get(1).unwrap().as_value() else {
+			return;
+		};
 
-			let new_dimension = if increase { n + 1 } else { (n - 1).max(3) };
+		let new_dimension = if decrease { (n - 1).max(3) } else { n + 1 };
 
-			responses.add(ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::Vertices(new_dimension),
-			});
+		responses.add(ShapeToolMessage::UpdateOptions {
+			options: ShapeOptionsUpdate::Vertices(new_dimension),
+		});
 
-			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 1),
-				input: NodeInput::value(TaggedValue::U32(new_dimension), false),
-			});
-			responses.add(NodeGraphMessage::RunDocumentGraph);
-		}
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(node_id, 1),
+			input: NodeInput::value(TaggedValue::U32(new_dimension), false),
+		});
+		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 }

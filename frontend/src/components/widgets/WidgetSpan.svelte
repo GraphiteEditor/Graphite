@@ -40,6 +40,8 @@
 	export { className as class };
 	export let classes: Record<string, boolean> = {};
 
+	export let narrow = false;
+
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
 		.join(" ");
@@ -82,7 +84,7 @@
 
 <!-- TODO: Refactor this component to use `<svelte:component this={attributesObject} />` to avoid all the separate conditional components -->
 
-<div class={`widget-span ${className} ${extraClasses}`.trim()} class:row={direction === "row"} class:column={direction === "column"}>
+<div class={`widget-span ${className} ${extraClasses}`.trim()} class:narrow class:row={direction === "row"} class:column={direction === "column"}>
 	{#each widgets as component, index}
 		{@const checkboxInput = narrowWidgetProps(component.props, "CheckboxInput")}
 		{#if checkboxInput}
@@ -202,11 +204,17 @@
 	.widget-span.row {
 		flex: 0 0 auto;
 		display: flex;
-		min-height: 32px;
+		--row-height: 32px;
+		min-height: var(--row-height);
+
+		&.narrow {
+			--row-height: 24px;
+		}
 
 		> * {
 			--widget-height: 24px;
-			margin: calc((24px - var(--widget-height)) / 2 + 4px) 0;
+			// Vertically center the widget within the row
+			margin: calc((var(--row-height) - var(--widget-height)) / 2) 0;
 			min-height: var(--widget-height);
 
 			&:not(.multiline) {

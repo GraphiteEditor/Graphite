@@ -1776,6 +1776,7 @@ fn static_node_properties() -> NodeProperties {
 	map.insert("math_properties".to_string(), Box::new(node_properties::math_properties));
 	map.insert("rectangle_properties".to_string(), Box::new(node_properties::rectangle_properties));
 	map.insert("grid_properties".to_string(), Box::new(node_properties::grid_properties));
+	map.insert("spiral_properties".to_string(), Box::new(node_properties::spiral_properties));
 	map.insert("sample_polyline_properties".to_string(), Box::new(node_properties::sample_polyline_properties));
 	map.insert(
 		"monitor_properties".to_string(),
@@ -2394,6 +2395,7 @@ impl DocumentNodeDefinition {
 	/// `input_override` does not have to be the correct length.
 	pub fn node_template_input_override(&self, input_override: impl IntoIterator<Item = Option<NodeInput>>) -> NodeTemplate {
 		let mut template = self.node_template.clone();
+		// TODO: Replace the .enumerate() with changing the iterator to take a tuple of (index, input) so the user is forced to provide the correct index
 		input_override.into_iter().enumerate().for_each(|(index, input_override)| {
 			if let Some(input_override) = input_override {
 				// Only value inputs can be overridden, since node inputs change graph structure and must be handled by the network interface

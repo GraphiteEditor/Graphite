@@ -5,7 +5,7 @@ use crate::registry::types::{Angle, PixelSize};
 use crate::subpath;
 use crate::table::Table;
 use crate::vector::Vector;
-use crate::vector::misc::HandleId;
+use crate::vector::misc::{HandleId, SpiralType};
 use glam::DVec2;
 
 trait CornerRadius {
@@ -72,6 +72,27 @@ fn arc(
 			ArcType::Closed => subpath::ArcType::Closed,
 			ArcType::PieSlice => subpath::ArcType::PieSlice,
 		},
+	)))
+}
+
+#[node_macro::node(category("Vector: Shape"), properties("spiral_properties"))]
+fn spiral(
+	_: impl Ctx,
+	_primary: (),
+	spiral_type: SpiralType,
+	#[default(5.)] turns: f64,
+	#[default(0.)] start_angle: f64,
+	#[default(0.)] inner_radius: f64,
+	#[default(25)] outer_radius: f64,
+	#[default(90.)] angular_resolution: f64,
+) -> Table<Vector> {
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_spiral(
+		inner_radius,
+		outer_radius,
+		turns,
+		start_angle.to_radians(),
+		angular_resolution.to_radians(),
+		spiral_type,
 	)))
 }
 

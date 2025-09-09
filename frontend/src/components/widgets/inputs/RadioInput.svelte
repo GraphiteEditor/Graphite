@@ -13,6 +13,7 @@
 	export let selectedIndex: number | undefined = undefined;
 	export let disabled = false;
 	export let minWidth = 0;
+	export let narrow = false;
 
 	$: mixed = selectedIndex === undefined && !disabled;
 
@@ -24,7 +25,7 @@
 	}
 </script>
 
-<LayoutRow class="radio-input" classes={{ disabled, mixed }} styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}>
+<LayoutRow class="radio-input" classes={{ disabled, narrow, mixed }} styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}>
 	{#each entries as entry, index}
 		<button class:active={!mixed ? index === selectedIndex : undefined} on:click={() => handleEntryClick(entry)} title={entry.tooltip} tabindex={index === selectedIndex ? -1 : 0} {disabled}>
 			{#if entry.icon}
@@ -39,12 +40,13 @@
 
 <style lang="scss" global>
 	.radio-input {
-		background: var(--color-5-dullgray);
+		background: var(--color-4-dimgray);
 		border-radius: 2px;
-		height: 24px;
+		--widget-height: 24px;
+		height: var(--widget-height);
 
 		button {
-			background: var(--color-5-dullgray);
+			background: var(--color-4-dimgray);
 			fill: var(--color-e-nearwhite);
 			border-radius: 2px;
 			height: 20px;
@@ -100,33 +102,35 @@
 			}
 		}
 
-		&.mixed {
-			background: var(--color-4-dimgray);
+		&.narrow.narrow {
+			--widget-height: 20px;
+			height: var(--widget-height);
 
+			button {
+				height: 16px;
+			}
+		}
+
+		&.mixed {
 			button:not(:hover),
 			&.disabled button:hover {
 				background: var(--color-5-dullgray);
 			}
 		}
 
-		&.disabled {
-			background: var(--color-4-dimgray);
+		&.disabled button {
+			color: var(--color-8-uppergray);
 
-			button {
-				background: var(--color-4-dimgray);
-				color: var(--color-8-uppergray);
+			svg {
+				fill: var(--color-8-uppergray);
+			}
+
+			&.active {
+				background: var(--color-8-uppergray);
+				color: var(--color-2-mildblack);
 
 				svg {
-					fill: var(--color-8-uppergray);
-				}
-
-				&.active {
-					background: var(--color-8-uppergray);
-					color: var(--color-2-mildblack);
-
-					svg {
-						fill: var(--color-2-mildblack);
-					}
+					fill: var(--color-2-mildblack);
 				}
 			}
 		}
