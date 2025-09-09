@@ -90,7 +90,9 @@ pub enum DesktopWrapperMessage {
 		to_front: bool,
 		select_after_open: bool,
 	},
-	SelectDocument { id: DocumentId },
+	SelectDocument {
+		id: DocumentId,
+	},
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
