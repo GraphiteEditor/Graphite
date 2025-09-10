@@ -1,7 +1,7 @@
 use graphene_std::Color;
 use graphene_std::raster::Image;
 use graphite_editor::messages::app_window::app_window_message_handler::AppWindowPlatform;
-use graphite_editor::messages::prelude::{AppWindowMessage, DocumentMessage, PortfolioMessage};
+use graphite_editor::messages::prelude::{AppWindowMessage, DocumentMessage, PortfolioMessage, PreferencesMessage};
 
 use crate::messages::Platform;
 
@@ -138,6 +138,10 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 		}
 		DesktopWrapperMessage::SelectDocument { id } => {
 			let message = PortfolioMessage::SelectDocument { document_id: id };
+			dispatcher.queue_editor_message(message.into());
+		}
+		DesktopWrapperMessage::LoadPreferences { preferences } => {
+			let message = PreferencesMessage::Load { preferences };
 			dispatcher.queue_editor_message(message.into());
 		}
 	}

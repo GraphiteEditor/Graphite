@@ -1,4 +1,4 @@
-use graphite_desktop_wrapper::messages::{Document, DocumentId};
+use graphite_desktop_wrapper::messages::{Document, DocumentId, Preferences};
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PersistentData {
@@ -6,6 +6,7 @@ pub(crate) struct PersistentData {
 	current_document: Option<DocumentId>,
 	#[serde(skip)]
 	document_order: Option<Vec<DocumentId>>,
+	preferences: Option<Preferences>,
 }
 
 impl PersistentData {
@@ -72,21 +73,37 @@ impl PersistentData {
 		self.flush();
 	}
 
+	pub(crate) fn write_preferences(&mut self, preferences: Preferences) {
+		let Ok(preferences) = ron::ser::to_string_pretty(&preferences, Default::default()) else {
+			tracing::error!("Failed to serialize preferences");
+			return;
+		};
+		std::fs::write(Self::preferences_file_path(), &preferences).unwrap_or_else(|e| {
+			tracing::error!("Failed to write preferences to disk: {e}");
+		});
+	}
+
+	pub(crate) fn load_preferences(&self) -> Option<Preferences> {
+		let data = std::fs::read_to_string(Self::preferences_file_path()).ok()?;
+		let preferences = ron::from_str(&data).ok()?;
+		Some(preferences)
+	}
+
 	fn flush(&self) {
-		let data = match ron::to_string(self) {
+		let data = match ron::ser::to_string_pretty(self, Default::default()) {
 			Ok(d) => d,
 			Err(e) => {
 				tracing::error!("Failed to serialize persistent data: {e}");
 				return;
 			}
 		};
-		if let Err(e) = std::fs::write(Self::persistence_file_path(), data) {
+		if let Err(e) = std::fs::write(Self::state_file_path(), data) {
 			tracing::error!("Failed to write persistent data to disk: {e}");
 		}
 	}
 
 	pub(crate) fn load_from_disk(&mut self) {
-		let path = Self::persistence_file_path();
+		let path = Self::state_file_path();
 		let data = match std::fs::read_to_string(&path) {
 			Ok(d) => d,
 			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -108,9 +125,15 @@ impl PersistentData {
 		*self = loaded;
 	}
 
-	fn persistence_file_path() -> std::path::PathBuf {
+	fn state_file_path() -> std::path::PathBuf {
 		let mut path = crate::dirs::graphite_data_dir();
-		path.push(format!("{}.ron", crate::consts::APP_AUTOSAVE_DIRECTORY_NAME));
+		path.push(crate::consts::APP_STATE_FILE_NAME);
+		path
+	}
+
+	fn preferences_file_path() -> std::path::PathBuf {
+		let mut path = crate::dirs::graphite_data_dir();
+		path.push(crate::consts::APP_PREFERENCES_FILE_NAME);
 		path
 	}
 }

@@ -6,7 +6,7 @@ use crate::messages::prelude::*;
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PreferencesMessage {
 	// Management messages
-	Load { preferences: String },
+	Load { preferences: PreferencesMessageHandler },
 	ResetToDefaults,
 
 	// Per-preference messages

@@ -2208,6 +2208,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphene-raster-nodes-shaders-entrypoint"
+version = "0.1.0"
+dependencies = [
+ "graphene-raster-nodes",
+]
+
+[[package]]
 name = "graphene-std"
 version = "0.1.0"
 dependencies = [
@@ -2365,6 +2372,7 @@ dependencies = [
  "ron",
  "serde",
  "serde-wasm-bindgen",
+ "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
